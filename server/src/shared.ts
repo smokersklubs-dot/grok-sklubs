@@ -13,7 +13,11 @@ export type BotMode = "personal" | "teammate";
 /** How a bot handles actions that change things: ask every time, ask only for connector writes, or never ask. */
 export type Autonomy = "careful" | "balanced" | "trusted";
 
-export interface User { id: string; email: string; name: string }
+export type Locale = "fr" | "en";
+export interface User { id: string; email: string; name: string; locale: Locale }
+
+/** A file shown in the chat. `path` is relative to the bot's library; fetch it with GET /bots/:id/files/view?path=. */
+export interface Attachment { name: string; path: string; mime: string; size: number }
 
 export interface Bot {
   id: string;
@@ -55,7 +59,7 @@ export interface Live {
 export interface Origin { kind: "bot" | "routine" | "voice" | "webhook"; id: string; name: string }
 
 export type RowBody =
-  | { kind: "message"; role: "user" | "assistant"; text: string; streaming?: boolean; origin?: Origin; sources?: { url: string; title?: string }[] }
+  | { kind: "message"; role: "user" | "assistant"; text: string; streaming?: boolean; origin?: Origin; sources?: { url: string; title?: string }[]; attachments?: Attachment[] }
   | { kind: "step"; callId: string; tool: string; label: string; status: "running" | "done" | "error" | "waiting" | "denied"; args: Record<string, unknown>; summary?: string }
   | { kind: "card"; card: Card }
   | { kind: "event"; event: "routine" | "task" | "bot" | "reset" | "computer" | "call" | "members"; text: string; call?: CallRecord }
@@ -90,6 +94,18 @@ export interface Connector {
   status: "ready" | "error" | "connecting";
   error: string | null; tools: { name: string; description: string; readOnly: boolean }[];
 }
+/** A saved login. The password itself is never sent to the browser or to a model. */
+export interface VaultItem { id: string; name: string; site: string; username: string; hasPassword: boolean; note: string; createdAt: number }
+
+/** A well-known app that can be added as a connector in one step. */
+export interface CatalogApp {
+  id: string; name: string; category: string; description: string; url: string;
+  /** "token": the user pastes an access token. "none": no credential needed. */
+  auth: "token" | "none";
+  /** Where to get the token, in plain words. */
+  tokenHelp: string;
+}
+
 export interface Policy { tool: string; mode: "always_allow" | "needs_approval" | "blocked" }
 
 export interface FileEntry { name: string; size: number; modifiedAt: number; dir: boolean }

@@ -7,8 +7,9 @@ answers 401 without it. Types named below are defined in `server/src/shared.ts`.
 ## Account
 | Method | Path | Body | Returns |
 |---|---|---|---|
-| GET | `/me` | – | `{ user: User \| null, signupOpen: boolean }` |
-| POST | `/auth/signup` | `{ email, name?, password }` | `{ user }` (403 when signup is closed) |
+| GET | `/me` | – | `{ user: User \| null, signupOpen: boolean, imageGeneration: boolean }` |
+| PUT | `/prefs` | `{ locale?: "fr" \| "en", name?: string }` | `{ user }` — language used for server-written texts and bot replies |
+| POST | `/auth/signup` | `{ email, name?, password, locale? }` | `{ user }` (403 when signup is closed) |
 | POST | `/auth/login` | `{ email, password }` | `{ user }` (401 on bad credentials) |
 | POST | `/auth/logout` | – | `{ ok: true }` |
 | GET | `/events` | – | SSE stream of `ServerEvent` |
@@ -29,7 +30,8 @@ answers 401 without it. Types named below are defined in `server/src/shared.ts`.
 | Method | Path | Body | Returns |
 |---|---|---|---|
 | GET | `/bots/:id/rows?limit=&before=` | – | `{ generation, rows: Row[] }` (newest 200 by default, ascending) |
-| POST | `/bots/:id/messages` | `{ text, origin?: "voice" }` | `{ row }` |
+| POST | `/bots/:id/uploads` | multipart form, field `file` (max 25 MB) | `{ attachment: Attachment }` — stores the file in the bot's library under `uploads/` |
+| POST | `/bots/:id/messages` | `{ text, origin?: "voice", attachments?: string[] }` | `{ row }` — `attachments` are `path` values returned by uploads; `text` may be empty when there is at least one |
 | POST | `/bots/:id/stop` | – | `{ ok }` |
 | POST | `/bots/:id/reset` | – | `{ generation }` |
 | POST | `/approvals/:approvalId` | `{ decision: "allow" \| "always" \| "deny" }` | `{ ok }` |
@@ -64,7 +66,8 @@ answers 401 without it. Types named below are defined in `server/src/shared.ts`.
 | POST | `/bots/:id/desktop/sleep` | – | `{ ok }` — put it to sleep (state is kept) |
 | POST | `/bots/:id/desktop/reset` | – | `{ ok }` — Linux: erase the computer; browser: close it |
 | GET | `/bots/:id/files?path=` | – | `{ entries: FileEntry[] }` |
-| GET | `/bots/:id/files/download?path=` | – | file bytes |
+| GET | `/bots/:id/files/download?path=` | – | file bytes (as a download) |
+| GET | `/bots/:id/files/view?path=` | – | file bytes with their real content type, for showing images inline |
 
 ## Connectors (apps) and permissions
 | Method | Path | Body | Returns |
@@ -73,6 +76,11 @@ answers 401 without it. Types named below are defined in `server/src/shared.ts`.
 | POST | `/connectors` | `{ name, url, token?, botId?, seq? }` | `{ connector }` (botId+seq resolve a connect card) |
 | POST | `/connectors/:id/refresh` | – | `{ connector }` |
 | DELETE | `/connectors/:id` | – | `{ ok }` |
+| GET | `/connectors/catalog` | – | `{ apps: CatalogApp[] }` — one-step apps; add one with `POST /connectors {name, url, token}` |
+| GET | `/vault` | – | `{ items: VaultItem[] }` |
+| POST | `/vault` | `{ name, site?, username?, password?, note? }` | `{ item }` |
+| PATCH | `/vault/:id` | partial (omit `password` to keep it) | `{ item }` |
+| DELETE | `/vault/:id` | – | `{ ok }` |
 | GET | `/policies` | – | `{ policies: Policy[] }` |
 | DELETE | `/policies/:tool` | – | `{ ok }` |
 
