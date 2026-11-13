@@ -1,10 +1,11 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { q } from "./db.js";
 import { emit } from "./bus.js";
+import { tr } from "./i18n.js";
 import type { ChatMessage } from "./llm/types.js";
 import {
   AVATAR_COLORS, AVATAR_SHAPES,
-  type Bot, type Card, type CheckinSettings, type Memory, type Policy, type Row, type RowBody, type Skill, type Task, type User,
+  type Bot, type Card, type CheckinSettings, type Locale, type Memory, type VaultItem, type Policy, type Row, type RowBody, type Skill, type Task, type User,
 } from "./shared.js";
 
 export const now = () => Date.now();
@@ -13,17 +14,22 @@ export const clip = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1) 
 
 // ── Users ────────────────────────────────────────────────────────────────────
 export interface UserRecord extends User { passHash: string }
-const toUser = (r: any): UserRecord => ({ id: r.id, email: r.email, name: r.name, passHash: r.pass_hash });
+const toUser = (r: any): UserRecord => ({ id: r.id, email: r.email, name: r.name, locale: r.locale === "fr" ? "fr" : "en", passHash: r.pass_hash });
 
 export const users = {
   count: () => q.get<{ n: number }>("SELECT COUNT(*) AS n FROM users")!.n,
   byId: (id: string) => { const r = q.get("SELECT * FROM users WHERE id = ?", id); return r ? toUser(r) : null; },
   byEmail: (email: string) => { const r = q.get("SELECT * FROM users WHERE email = ?", email.trim()); return r ? toUser(r) : null; },
   all: () => q.all("SELECT * FROM users").map(toUser),
-  create(email: string, name: string, passHash: string): UserRecord {
+  localeOf: (id: string): Locale => (q.get<{ locale: string }>("SELECT locale FROM users WHERE id = ?", id)?.locale === "fr" ? "fr" : "en"),
+  setPrefs(id: string, f: { locale?: Locale; name?: string }) {
+    if (f.locale) q.run("UPDATE users SET locale = ? WHERE id = ?", f.locale, id);
+    if (f.name?.trim()) q.run("UPDATE users SET name = ? WHERE id = ?", f.name.trim().slice(0, 80), id);
+  },
+  create(email: string, name: string, passHash: string, locale: Locale = "en"): UserRecord {
     const id = newId("usr");
     const clean = email.trim().toLowerCase();
-    q.run("INSERT INTO users (id, email, name, pass_hash, created_at) VALUES (?, ?, ?, ?, ?)", id, clean, name.trim() || clean.split("@")[0], passHash, now());
+    q.run("INSERT INTO users (id, email, name, pass_hash, locale, created_at) VALUES (?, ?, ?, ?, ?, ?)", id, clean, name.trim() || clean.split("@")[0], passHash, locale, now());
     q.run("INSERT INTO settings (user_id) VALUES (?)", id);
     return users.byId(id)!;
   },
@@ -32,14 +38,14 @@ export const users = {
 // ── Bots ─────────────────────────────────────────────────────────────────────
 export interface BotRecord extends Bot { userId: string; hidden: boolean; parentId: string | null; nextSeq: number; rev: number; updatedAt: number }
 
-function previewOf(body: RowBody): string {
-  if (body.kind === "message") return body.text;
+function previewOf(body: RowBody, locale: Locale): string {
+  if (body.kind === "message") return body.text || (body.attachments?.length ? `📎 ${body.attachments.map((a) => a.name).join(", ")}` : "");
   if (body.kind === "event") return body.text;
   if (body.kind === "card") {
     const c = body.card;
-    if (c.type === "approval") return `Waiting for you: ${c.title}`;
+    if (c.type === "approval") return tr(locale, "Waiting for you: {title}", { title: c.title });
     if (c.type === "question") return c.question;
-    return `Connect ${c.name}`;
+    return tr(locale, "Connect {name}", { name: c.name });
   }
   return "";
 }
@@ -55,7 +61,7 @@ function toBot(r: any): BotRecord {
     instructions: r.instructions, shape: r.shape, color: r.color, mode: r.mode, primary: !!r.is_primary,
     effort: r.effort, model: r.model, autonomy: r.autonomy, voice, generation: r.generation, unread: r.unread,
     memberIds: JSON.parse(r.members || "[]"), hidden: !!r.hidden, parentId: r.parent_id, nextSeq: r.next_seq, rev: r.rev,
-    preview: last ? clip(previewOf(JSON.parse(last.body)).replace(/\s+/g, " "), 140) : "",
+    preview: last ? clip(previewOf(JSON.parse(last.body), users.localeOf(r.user_id)).replace(/\s+/g, " "), 140) : "",
     lastActivityAt: last?.created_at ?? r.updated_at, createdAt: r.created_at, updatedAt: r.updated_at,
   };
 }
@@ -323,6 +329,25 @@ export const settings = {
   budget: (userId: string) => q.get<{ budget_usd: number | null }>("SELECT budget_usd FROM settings WHERE user_id = ?", userId)?.budget_usd ?? null,
   setBudget: (userId: string, usd: number | null) =>
     q.run("INSERT INTO settings (user_id, budget_usd) VALUES (?, ?) ON CONFLICT(user_id) DO UPDATE SET budget_usd = excluded.budget_usd", userId, usd),
+};
+
+// ── Vault: saved logins ──────────────────────────────────────────────────────
+export interface VaultRecord extends VaultItem { userId: string; passwordEnc: string | null }
+const toVault = (r: any): VaultRecord => ({ id: r.id, userId: r.user_id, name: r.name, site: r.site, username: r.username, hasPassword: !!r.password_enc, passwordEnc: r.password_enc, note: r.note, createdAt: r.created_at });
+export const publicVault = ({ userId, passwordEnc, ...rest }: VaultRecord): VaultItem => rest;
+export const vault = {
+  list: (userId: string) => q.all("SELECT * FROM vault WHERE user_id = ? ORDER BY name COLLATE NOCASE", userId).map(toVault),
+  owned(userId: string, id: string) { const r = q.get("SELECT * FROM vault WHERE id = ? AND user_id = ?", id, userId); return r ? toVault(r) : null; },
+  byName(userId: string, name: string) { const r = q.get("SELECT * FROM vault WHERE user_id = ? AND name = ? COLLATE NOCASE", userId, name.trim()); return r ? toVault(r) : null; },
+  create(userId: string, f: { name: string; site: string; username: string; passwordEnc: string | null; note: string }): VaultRecord {
+    const id = newId("vlt");
+    q.run("INSERT INTO vault (id, user_id, name, site, username, password_enc, note, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", id, userId, f.name, f.site, f.username, f.passwordEnc, f.note, now());
+    return vault.owned(userId, id)!;
+  },
+  update(id: string, f: { name: string; site: string; username: string; passwordEnc: string | null; note: string }) {
+    q.run("UPDATE vault SET name = ?, site = ?, username = ?, password_enc = ?, note = ? WHERE id = ?", f.name, f.site, f.username, f.passwordEnc, f.note, id);
+  },
+  remove: (id: string) => q.run("DELETE FROM vault WHERE id = ?", id),
 };
 
 export const randomToken = (bytes = 32) => randomBytes(bytes).toString("base64url");

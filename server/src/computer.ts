@@ -1,12 +1,12 @@
 import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
-import { mkdirSync, readdirSync, statSync, writeFileSync, rmSync, existsSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync, rmSync, existsSync } from "node:fs";
 import path from "node:path";
 import { config } from "./config.js";
 import { emit } from "./bus.js";
 import { now } from "./store.js";
 import { adoptMachines, linuxMachines, linuxReady, linuxScreen, linuxShell, onMachinesChanged, sweepIdleMachines } from "./linux.js";
-import type { ComputerState, FileEntry } from "./shared.js";
+import type { Attachment, ComputerState, FileEntry } from "./shared.js";
 
 /**
  * Each bot gets a private "desktop": a folder of its own on disk plus a real browser with its own
@@ -262,6 +262,49 @@ export function saveFile(botId: string, name: string, content: string): string {
   mkdirSync(path.dirname(full), { recursive: true });
   writeFileSync(full, content, "utf8");
   return clean;
+}
+
+const MIME: Record<string, string> = {
+  png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", webp: "image/webp", svg: "image/svg+xml", pdf: "application/pdf",
+  txt: "text/plain", md: "text/markdown", csv: "text/csv", json: "application/json", html: "text/html", zip: "application/zip",
+  doc: "application/msword", docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  xls: "application/vnd.ms-excel", xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  mp3: "audio/mpeg", wav: "audio/wav", mp4: "video/mp4", mov: "video/quicktime",
+};
+export const mimeOf = (name: string) => MIME[name.split(".").pop()?.toLowerCase() ?? ""] ?? "application/octet-stream";
+/** Picture formats that are safe to show inline and that models can look at. */
+export const isInlineImage = (mime: string) => ["image/png", "image/jpeg", "image/gif", "image/webp"].includes(mime);
+
+/** Describes a file in the bot's library for showing it in the chat, or null if it is not a readable file there. */
+export function attachmentAt(botId: string, rel: string): Attachment | null {
+  let full: string;
+  try { full = resolveInWorkspace(botId, rel); } catch { return null; }
+  if (!existsSync(full) || !statSync(full).isFile()) return null;
+  const clean = path.relative(workspaceOf(botId), full).split(path.sep).join("/");
+  return { name: path.basename(full), path: clean, mime: mimeOf(full), size: statSync(full).size };
+}
+
+/** Stores an uploaded or generated file in the library without ever overwriting an existing one. */
+export function storeBytes(botId: string, folder: string, name: string, bytes: Buffer): Attachment {
+  const base = name.replace(/[^a-zA-Z0-9._ -]/g, "_").replace(/^\.+/, "").slice(-100) || "file";
+  const dir = resolveInWorkspace(botId, folder);
+  mkdirSync(dir, { recursive: true });
+  let candidate = base;
+  for (let i = 2; existsSync(path.join(dir, candidate)); i++) {
+    const dot = base.lastIndexOf(".");
+    candidate = dot > 0 ? `${base.slice(0, dot)}-${i}${base.slice(dot)}` : `${base}-${i}`;
+  }
+  writeFileSync(path.join(dir, candidate), bytes);
+  return attachmentAt(botId, `${folder}/${candidate}`)!;
+}
+
+/** Where a library file sits from the bot's own point of view. */
+export const botPathOf = (rel: string) => (kind === "linux" ? `~/files/${rel}` : rel);
+
+/** Reads a library picture for a model to look at; null when it is not a picture or is too large. */
+export function imageForModel(botId: string, a: Attachment): { mediaType: string; data: string } | null {
+  if (!isInlineImage(a.mime) || a.size > 5_000_000) return null;
+  try { return { mediaType: a.mime, data: readFileSync(resolveInWorkspace(botId, a.path)).toString("base64") }; } catch { return null; }
 }
 
 export function removeWorkspace(botId: string) {

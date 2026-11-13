@@ -32,7 +32,7 @@ export function pickMemories(bot: BotRecord): { lines: string[]; omitted: number
   return { lines: chosen.map((m) => `- ${m.text}`), omitted: all.length - chosen.length };
 }
 
-export interface PromptExtras { connectorNames: string[]; browser: boolean; shell: boolean; linux?: boolean }
+export interface PromptExtras { connectorNames: string[]; browser: boolean; shell: boolean; linux?: boolean; images?: boolean }
 
 export function buildSystemPrompt(bot: BotRecord, user: UserRecord, extras: PromptExtras): string {
   const team = bots.list(user.id).filter((b) => b.id !== bot.id && b.kind === "agent");
@@ -69,7 +69,9 @@ export function buildSystemPrompt(bot: BotRecord, user: UserRecord, extras: Prom
             ? "- You have a private folder and a shell (shell_run) that starts in it. Use it for files, scripts and data work."
             : "- Shell access is switched off on this server.",
         ]),
-    "- Save anything the user should keep with file_save; saved files appear in their library.",
+    "- Save anything the user should keep with file_save; saved files appear in their library. Use file_send to put a file or picture in front of them in the chat.",
+    extras.images ? "- You can create pictures with image_generate when the user asks for an image, illustration or visual." : "",
+    extras.browser ? "- When a site needs signing in, check vault_list for a saved login and enter it with vault_type (click the field first). You never see passwords, and you must never ask the user to type one into the chat — ask them to save it in Settings → Vault instead." : "",
     extras.connectorNames.length
       ? `- Connected apps: ${extras.connectorNames.join(", ")}. Their tools are named app_<app>__<action>. Prefer them over driving a website by hand.`
       : "- No apps are connected yet. If a job needs one, call connector_request and say why.",
@@ -80,7 +82,7 @@ export function buildSystemPrompt(bot: BotRecord, user: UserRecord, extras: Prom
     "- Save lasting facts and preferences with memory_save. Look things up with memory_search before asking the user to repeat themselves.",
     team.length ? "- Hand work to a teammate with bot_message when it fits their role better than yours; start a helper for a self-contained side job you want done in parallel." : "- Start a helper for a self-contained side job you want done in parallel.",
   ];
-  out.push(method.join("\n"));
+  out.push(method.filter(Boolean).join("\n"));
 
   out.push([
     "## How you write",
@@ -88,6 +90,7 @@ export function buildSystemPrompt(bot: BotRecord, user: UserRecord, extras: Prom
     "- No headings for simple replies; lists or tables only when they make the answer easier to use.",
     "- Never say something is done unless a tool result shows it. Never invent facts, names, numbers or links.",
     "- Report what happened, not the tools you used to get there.",
+    user.locale === "fr" ? "- Write to the user in French, unless they write to you in another language." : "- Write in the language the user writes in.",
   ].join("\n"));
 
   const context = [

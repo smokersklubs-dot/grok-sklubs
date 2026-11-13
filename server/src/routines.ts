@@ -2,15 +2,16 @@ import { q } from "./db.js";
 import { config } from "./config.js";
 import { describeCron, nextRun } from "./cron.js";
 import { newId, now, randomToken } from "./store.js";
-import type { Routine } from "./shared.js";
+import { tr } from "./i18n.js";
+import type { Locale, Routine } from "./shared.js";
 
 export interface RoutineRecord extends Routine { hookToken: string | null }
 
-export function describeRoutine(r: { trigger: string; schedule: string; runAt: number | null; timezone: string }): string {
-  if (r.trigger === "webhook") return "When its web address is called";
+export function describeRoutine(r: { trigger: string; schedule: string; runAt: number | null; timezone: string }, locale?: Locale): string {
+  if (r.trigger === "webhook") return tr(locale, "When its web address is called");
   if (r.trigger === "once")
-    return r.runAt ? `Once on ${new Date(r.runAt).toLocaleString("en-US", { timeZone: r.timezone, dateStyle: "medium", timeStyle: "short" })}` : "Once";
-  return describeCron(r.schedule);
+    return r.runAt ? tr(locale, "Once on {date}", { date: new Date(r.runAt).toLocaleString(locale === "fr" ? "fr-FR" : "en-US", { timeZone: r.timezone, dateStyle: "medium", timeStyle: "short" }) }) : tr(locale, "Once");
+  return describeCron(r.schedule, locale);
 }
 
 function toRoutine(r: any): RoutineRecord {
@@ -24,7 +25,7 @@ function toRoutine(r: any): RoutineRecord {
   };
 }
 
-export const publicRoutine = ({ hookToken, ...rest }: RoutineRecord): Routine => rest;
+export const publicRoutine = ({ hookToken, ...rest }: RoutineRecord, locale?: Locale): Routine => ({ ...rest, describe: describeRoutine(rest, locale) });
 
 export const routines = {
   forBot: (botId: string) => q.all("SELECT * FROM routines WHERE bot_id = ? ORDER BY created_at", botId).map(toRoutine),

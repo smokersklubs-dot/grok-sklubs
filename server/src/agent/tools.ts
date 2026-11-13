@@ -1,12 +1,15 @@
+import { unseal } from "../auth.js";
 import { emit, getLive } from "../bus.js";
-import { browserAvailable, computerKind, runShell, saveFile, screen, type Shot } from "../computer.js";
+import { attachmentAt, botPathOf, browserAvailable, computerKind, runShell, saveFile, screen, storeBytes, type Shot } from "../computer.js";
+import { generateImage, imageService } from "../images.js";
 import { config } from "../config.js";
 import { isValidTimezone, parseCron } from "../cron.js";
+import { tr } from "../i18n.js";
 import type { ImageBlock, TextBlock, ToolSpec } from "../llm/types.js";
 import { describeRoutine, routines } from "../routines.js";
 import { schedule, unschedule } from "../scheduler.js";
 import type { ActivityKind } from "../shared.js";
-import { bots, clip, memories, rows, settings, tasks, type BotRecord, type UserRecord } from "../store.js";
+import { bots, clip, memories, rows, settings, tasks, vault, type BotRecord, type UserRecord } from "../store.js";
 import { interrupt } from "./loop.js";
 import { createRoom, deliverBotMessage, dispatchToRoom, MAX_HELPERS, MAX_HOPS, startHelper } from "./team.js";
 
@@ -25,6 +28,8 @@ export interface BuiltinTool {
   label: string;
   /** Sensitive tools ask first unless the bot is trusted with them. */
   sensitive?: boolean;
+  /** Asks permission per call under its own key (English templates; {bot} and the vars are filled in). */
+  gate?: (args: Record<string, any>) => { key: string; title: string; reason: string; source: string; vars: Record<string, string> } | null;
   /** Extra detail for the live activity line. */
   detail?: (args: Record<string, any>) => string | undefined;
   run(args: Record<string, any>, ctx: ToolContext): Promise<ToolOutput>;
@@ -128,6 +133,56 @@ const workTools: BuiltinTool[] = [
   }),
 ];
 
+/** Library paths as the bot writes them ("~/files/x", "/root/files/x" or "x") → path inside the library. */
+const libraryPath = (p: string) => p.trim().replace(/^(~|\/root)\/files\//, "").replace(/^\.\//, "");
+
+const shareTools: BuiltinTool[] = [
+  tool("file_send", "Show a file from your library to the user in the chat. Pictures appear inline; other files as a download.", obj({ path: str("Path of the file in your library"), caption: str("A line to go with it") }, ["path"]), {
+    activity: "saving", label: "Sending a file", detail: (a) => String(a.path ?? ""),
+    run: async (a, c) => {
+      const att = attachmentAt(c.bot.id, libraryPath(String(a.path)));
+      if (!att) return { content: `There is no file at ${a.path} in your library.`, isError: true };
+      rows.append(c.bot, { kind: "message", role: "assistant", text: typeof a.caption === "string" ? a.caption : "", attachments: [att] });
+      bots.bumpUnread(c.bot.id);
+      return { content: "The user can see it in the chat now.", summary: att.name };
+    },
+  }),
+  tool("image_generate", "Create a picture from a description. It is saved in your library and shown to the user in the chat.", obj({ prompt: str("What the picture should show, in detail: subject, style, colours, framing"), filename: str("Short file name without extension") }, ["prompt"]), {
+    activity: "saving", label: "Creating an image",
+    run: async (a, c) => {
+      const img = await generateImage(String(a.prompt), c.signal);
+      const ext = img.mime === "image/jpeg" ? "jpg" : img.mime === "image/webp" ? "webp" : "png";
+      const att = storeBytes(c.bot.id, "images", `${String(a.filename ?? "image").trim() || "image"}.${ext}`, img.bytes);
+      rows.append(c.bot, { kind: "message", role: "assistant", text: "", attachments: [att] });
+      bots.bumpUnread(c.bot.id);
+      return { content: `Created and shown to the user. Saved as ${botPathOf(att.path)}.`, summary: att.name };
+    },
+  }),
+];
+
+const vaultTools: BuiltinTool[] = [
+  tool("vault_list", "List the logins the user has saved for you to use: names, sites and usernames. Passwords are never shown to you.", obj({}), {
+    activity: "remembering", label: "Checking saved logins",
+    run: async (_a, c) => {
+      const items = vault.list(c.user.id);
+      return { content: items.length ? JSON.stringify(items.map((i) => ({ name: i.name, site: i.site, username: i.username, has_password: i.hasPassword, note: i.note || undefined }))) : "No logins are saved. Ask the user to add one in Settings → Vault.", summary: `${items.length}` };
+    },
+  }),
+  tool("vault_type", "Type a saved username or password into the field that has keyboard focus on your screen. Click the field first. You never see the password; the user is asked before it is used.",
+    obj({ item: str("Name of the saved login"), field: { type: "string", enum: ["username", "password"] } }, ["item", "field"]), {
+    activity: "computer", label: "Typing a saved login", detail: (a) => String(a.item ?? ""),
+    gate: (a) => ({ key: `vault: ${String(a.item ?? "").trim()}`, title: "Allow {bot} to type the saved {field} for {item}?", reason: "type a saved login for {item}", source: "Vault", vars: { item: String(a.item ?? ""), field: a.field === "username" ? "username" : "password" } }),
+    run: async (a, c) => {
+      const item = vault.byName(c.user.id, String(a.item));
+      if (!item) return { content: `No saved login is called "${a.item}". Use vault_list to see the names.`, isError: true };
+      const value = a.field === "username" ? item.username : item.passwordEnc ? unseal(item.passwordEnc) : null;
+      if (!value) return { content: `That login has no ${a.field} saved.`, isError: true };
+      const s = await screen.type(c.bot.id, c.user.id, value);
+      return { ...shot(s, `Typed the saved ${a.field} into the focused field.`), summary: `${item.name} · ${a.field}` };
+    },
+  }),
+];
+
 const memoryTools: BuiltinTool[] = [
   tool("memory_save", "Remember a lasting fact or preference. Write one short, self-contained sentence.", obj({ text: str("The fact to remember") }, ["text"]), {
     activity: "remembering", label: "Saving a note",
@@ -184,7 +239,7 @@ const routineTools: BuiltinTool[] = [
       } else if (kind !== "webhook") return { content: "kind must be cron, once or webhook.", isError: true };
       const r = routines.create(c.bot.id, { name: String(a.name), prompt: String(a.prompt), trigger: kind, schedule: kind === "cron" ? String(a.schedule) : "", timezone: tz, runAt });
       schedule(r.id);
-      announceRoutine(c, `Routine created: ${r.name} — ${describeRoutine(r)}`);
+      announceRoutine(c, tr(c.user.locale, "Routine created: {name} — {when}", { name: r.name, when: describeRoutine(r, c.user.locale) }));
       return { content: JSON.stringify({ id: r.id, when: describeRoutine(r), webhook_url: r.hookUrl ?? undefined }), summary: r.name };
     },
   }),
@@ -207,7 +262,7 @@ const routineTools: BuiltinTool[] = [
       }
       const r = routines.update(cur.id, { name: a.name, prompt: a.prompt, schedule: cur.trigger === "cron" ? a.schedule : undefined, timezone: a.timezone, enabled: typeof a.enabled === "boolean" ? a.enabled : undefined })!;
       schedule(r.id);
-      announceRoutine(c, `Routine updated: ${r.name} — ${r.enabled ? describeRoutine(r) : "paused"}`);
+      announceRoutine(c, tr(c.user.locale, "Routine updated: {name} — {when}", { name: r.name, when: r.enabled ? describeRoutine(r, c.user.locale) : tr(c.user.locale, "paused") }));
       return { content: "Updated.", summary: r.name };
     },
   }),
@@ -320,7 +375,7 @@ const teamTools: BuiltinTool[] = [
       const ids = [...new Set(found.map((b) => b.id))];
       if (ids.length < 2) return { content: `A group needs at least two bots. Not found: ${missing.join(", ") || "—"}.`, isError: true };
       const room = createRoom(c.user.id, String(a.name).trim().slice(0, 60) || "Group", ids);
-      rows.append(room, { kind: "event", event: "members", text: `${c.bot.name} created this group with ${found.map((b) => b.name).join(", ")}.` });
+      rows.append(room, { kind: "event", event: "members", text: tr(c.user.locale, "{bot} created this group with {names}.", { bot: c.bot.name, names: found.map((b) => b.name).join(", ") }) });
       return { content: JSON.stringify({ id: room.id, missing }), summary: room.name };
     },
   }),
@@ -377,6 +432,8 @@ export function builtinTools(): BuiltinTool[] {
     ...(browserAvailable() ? screenTools : []),
     // On its own Linux computer a bot's commands are contained, so they do not need a permission card.
     ...workTools.filter((t) => t.spec.name !== "shell_run" || config.shellEnabled).map((t) => (t.spec.name === "shell_run" && computerKind() === "linux" ? { ...t, sensitive: false } : t)),
+    ...shareTools.filter((t) => t.spec.name !== "image_generate" || imageService()),
+    ...(browserAvailable() ? vaultTools : []),
     ...memoryTools, ...routineTools, ...taskTools, ...teamTools, ...userTools,
   ];
 }

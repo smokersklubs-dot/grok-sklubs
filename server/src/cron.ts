@@ -1,3 +1,6 @@
+import { tr } from "./i18n.js";
+import type { Locale } from "./shared.js";
+
 /** Five-field cron (minute hour day-of-month month day-of-week) evaluated in an IANA timezone. */
 
 interface Fields { minute: Set<number>; hour: Set<number>; dom: Set<number>; month: Set<number>; dow: Set<number>; domStar: boolean; dowStar: boolean }
@@ -76,24 +79,25 @@ export function nextRun(expr: string, tz: string, after: number): number | null 
   return null;
 }
 
-const clock = (h: number, m: number) => `${h % 12 === 0 ? 12 : h % 12}:${String(m).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`;
+const clock = (h: number, m: number, locale?: Locale) =>
+  locale === "fr" ? `${h} h ${String(m).padStart(2, "0")}` : `${h % 12 === 0 ? 12 : h % 12}:${String(m).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`;
 const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
 /** Plain-words rendering of common schedules; anything unusual shows the raw expression. */
-export function describeCron(expr: string): string {
+export function describeCron(expr: string, locale?: Locale): string {
   const p = expr.trim().split(/\s+/);
   if (p.length !== 5) return expr;
   const [min, hour, dom, month, dow] = p;
   const fixedTime = /^\d+$/.test(min) && /^\d+$/.test(hour);
   if (dom === "*" && month === "*") {
-    if (fixedTime && dow === "*") return `Every day at ${clock(+hour, +min)}`;
-    if (fixedTime && dow === "1-5") return `Weekdays at ${clock(+hour, +min)}`;
-    if (fixedTime && /^[0-7]$/.test(dow)) return `Every ${DAY_NAMES[+dow % 7]} at ${clock(+hour, +min)}`;
-    if (dow === "*" && min === "0" && hour === "*") return "Every hour";
+    if (fixedTime && dow === "*") return tr(locale, "Every day at {time}", { time: clock(+hour, +min, locale) });
+    if (fixedTime && dow === "1-5") return tr(locale, "Weekdays at {time}", { time: clock(+hour, +min, locale) });
+    if (fixedTime && /^[0-7]$/.test(dow)) return tr(locale, "Every {day} at {time}", { day: tr(locale, DAY_NAMES[+dow % 7]), time: clock(+hour, +min, locale) });
+    if (dow === "*" && min === "0" && hour === "*") return tr(locale, "Every hour");
     const everyMin = /^\*\/(\d+)$/.exec(min);
-    if (dow === "*" && everyMin && hour === "*") return `Every ${everyMin[1]} minutes`;
+    if (dow === "*" && everyMin && hour === "*") return tr(locale, "Every {n} minutes", { n: everyMin[1] });
     const everyHour = /^\*\/(\d+)$/.exec(hour);
-    if (dow === "*" && everyHour && /^\d+$/.test(min)) return `Every ${everyHour[1]} hours`;
+    if (dow === "*" && everyHour && /^\d+$/.test(min)) return tr(locale, "Every {n} hours", { n: everyHour[1] });
   }
   return expr;
 }

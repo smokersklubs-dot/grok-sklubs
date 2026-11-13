@@ -6,6 +6,7 @@ import { q } from "./db.js";
 import { enqueue } from "./agent/loop.js";
 import { consolidationSweep } from "./agent/memory.js";
 import { routines, type RoutineRecord } from "./routines.js";
+import { tr } from "./i18n.js";
 import { approvals, bots, clip, now, rows, settings, tasks, users } from "./store.js";
 
 /** Next due time per routine. One timer walks this map; nothing is scheduled twice. */
@@ -28,7 +29,7 @@ export function fireRoutine(r: RoutineRecord, payload?: unknown) {
   const bot = bots.byId(r.botId);
   if (!bot) return;
   routines.markRun(r.id, now());
-  rows.append(bot, { kind: "event", event: "routine", text: `Running routine: ${r.name}` });
+  rows.append(bot, { kind: "event", event: "routine", text: tr(users.localeOf(bot.userId), "Running routine: {name}", { name: r.name }) });
   const extra = payload === undefined ? "" : `\n\n[Data received with this call]\n${clip(JSON.stringify(payload, null, 2), 8000)}`;
   enqueue(bot.id, { kind: "routine", name: r.name, text: r.prompt + extra });
   emit(bot.userId, { type: "routines", botId: bot.id });

@@ -1,5 +1,6 @@
 import { emit } from "../bus.js";
-import { bots, clip, rows, type BotRecord, type UserRecord } from "../store.js";
+import { tr } from "../i18n.js";
+import { bots, clip, rows, users, type BotRecord, type UserRecord } from "../store.js";
 import { enqueue } from "./loop.js";
 
 export const MAX_HOPS = 3;
@@ -14,7 +15,7 @@ export function deliverBotMessage(from: BotRecord, to: BotRecord, text: string, 
 export function startHelper(parent: BotRecord, goal: string, label: string | undefined, depth: number): BotRecord {
   const short = clip((label || goal).replace(/\s+/g, " ").trim(), 32);
   const helper = bots.create(parent.userId, {
-    name: `${parent.name} › ${short}`, label: "Helper", description: `Temporary helper working for ${parent.name}.`,
+    name: `${parent.name} › ${short}`, label: tr(users.localeOf(parent.userId), "Helper"), description: tr(users.localeOf(parent.userId), "Temporary helper working for {name}.", { name: parent.name }),
     shape: parent.shape, color: parent.color, mode: parent.mode, effort: parent.effort, model: parent.model, autonomy: parent.autonomy,
     hidden: true, parentId: parent.id,
   });
@@ -49,7 +50,7 @@ export function dispatchToRoom(room: BotRecord, user: UserRecord, text: string, 
 }
 
 export function createRoom(userId: string, name: string, memberIds: string[]): BotRecord {
-  const room = bots.create(userId, { kind: "room", name, label: "Group", description: `Group chat with ${memberIds.length} bots.`, shape: "squircle", color: "slate", memberIds });
+  const room = bots.create(userId, { kind: "room", name, label: tr(users.localeOf(userId), "Group"), description: tr(users.localeOf(userId), "Group chat with {n} bots.", { n: memberIds.length }), shape: "squircle", color: "slate", memberIds });
   emit(userId, { type: "roster" });
   return room;
 }

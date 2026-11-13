@@ -15,7 +15,11 @@ Sklubot a été reconstruit **en salle blanche** : voir [docs/CLEANROOM.md](docs
 | **Bots** | Nom, rôle, description, consignes permanentes, avatar (12 formes × 11 couleurs), mode assistant personnel ou coéquipier, bot principal, niveau de réflexion, **modèle au choix par bot**, niveau d'autonomie |
 | **Discussion** | Réponses en direct, étapes d'outils repliables, sources web, cartes d'approbation / de question / de connexion, envoi pendant que le bot travaille (le message rejoint le tour en cours), arrêt, nouvelle conversation |
 | **Ordinateur** | **Un ordinateur Linux par bot** (conteneur isolé) : bureau graphique, navigateur Chromium, terminal, gestionnaire de fichiers, shell root, installation de logiciels ; tout est conservé entre les conversations ; **mise en veille automatique et réveil à la demande** ; capture, clic, saisie, touches, défilement, glisser ; bibliothèque de fichiers téléchargeables ; **vue en direct et prise de contrôle** depuis l'interface |
-| **Applications** | Connecteurs = serveurs d'outils distants au standard ouvert MCP (URL + jeton). Lectures automatiques, écritures soumises à approbation, « toujours autoriser » mémorisé et révocable |
+| **Applications** | **Catalogue d'applications à ajouter en une étape** (GitHub, Stripe, Hugging Face, documentation technique…) et tout serveur d'outils au standard ouvert MCP (URL + jeton). Lectures automatiques, écritures soumises à approbation, « toujours autoriser » mémorisé et révocable |
+| **Coffre** | Identifiants enregistrés et chiffrés ; le bot les saisit sur son ordinateur **sans jamais voir le mot de passe**, après ton accord ; tout ce qui revient vers le modèle est nettoyé |
+| **Fichiers et images** | Pièces jointes dans la discussion (le bot voit les images, les autres fichiers arrivent sur son ordinateur), envoi de fichiers par le bot, **génération d'images** |
+| **Langue** | Interface, textes du serveur et réponses des bots en **français ou en anglais** |
+| **Téléphone** | Application web installable sur l'écran d'accueil (iOS, Android) |
 | **Mémoire** | Souvenirs enregistrés par le bot, **apprentissage automatique** après les conversations (avec dédoublonnage), sélection des souvenirs pertinents à chaque tour, **résumé automatique** des longues conversations |
 | **Compétences** | Procédures rédigées par toi, injectées dans le bot |
 | **Automatisation** | Routines créées en discutant : planifiées (cron + fuseau), ponctuelles, ou **déclenchées par webhook** ; points réguliers proactifs du bot principal |
@@ -67,6 +71,12 @@ npm test                    # tests de bout en bout (modèle simulé, navigateur
 npm run typecheck
 ```
 
+### Génération d'images
+
+Elle s'active dès qu'une clé `OPENAI_API_KEY` ou `XAI_API_KEY` est présente, ou avec `IMAGE_API_KEY` /
+`IMAGE_BASE_URL` / `IMAGE_MODEL` pour tout service compatible. Les noms de modèles par défaut
+(`gpt-image-1`, `grok-2-image`) n'ont pas pu être essayés ici : ajuste `IMAGE_MODEL` si ton fournisseur en attend un autre.
+
 ## Sécurité — à lire
 
 - **Avec les ordinateurs Linux**, les commandes d'un bot s'exécutent dans son conteneur, pas sur ton serveur :
@@ -98,7 +108,6 @@ docs/cleanroom/        cahiers des charges fonctionnels issus de l'étude
 
 ## Limites connues
 
-- L'interface est en anglais pour l'instant.
 - Le fournisseur Claude est écrit d'après la documentation officielle du SDK et compile, mais **n'a pas pu être
   essayé avec une vraie clé** dans l'environnement de construction ; les tests utilisent un modèle simulé.
 - Voir aussi la section « Écarts » de [docs/CLEANROOM.md](docs/CLEANROOM.md).

@@ -1,10 +1,13 @@
 import { clearLive, emit, getLive, setLive } from "../bus.js";
-import { browserAvailable, computerKind } from "../computer.js";
+import { unseal } from "../auth.js";
+import { botPathOf, browserAvailable, computerKind, imageForModel } from "../computer.js";
 import { config } from "../config.js";
 import { connectors } from "../connectors.js";
 import { defaultModelRef, resolveModel, validateToolInput, type Block, type ChatMessage, type Effort, type TextBlock, type ToolResultBlock, type ToolSpec, type ToolUseBlock } from "../llm/index.js";
-import type { ActivityKind, Row } from "../shared.js";
-import { approvals, bots, clip, history, newId, paused, policies, rows, settings, users, type BotRecord, type UserRecord } from "../store.js";
+import { tr } from "../i18n.js";
+import { imageService } from "../images.js";
+import type { ActivityKind, Attachment, Row } from "../shared.js";
+import { approvals, bots, clip, history, newId, paused, policies, rows, settings, users, vault, type BotRecord, type UserRecord } from "../store.js";
 import { overBudget, record } from "../usage.js";
 import { compactIfNeeded } from "./memory.js";
 import { buildSystemPrompt } from "./prompt.js";
@@ -12,7 +15,7 @@ import { deliverBotMessage } from "./team.js";
 import { builtinTools, type BuiltinTool, type ToolOutput } from "./tools.js";
 
 export type Trigger =
-  | { kind: "user"; text: string; voice?: boolean }
+  | { kind: "user"; text: string; voice?: boolean; attachments?: Attachment[] }
   | { kind: "routine"; name: string; text: string }
   | { kind: "bot"; fromName: string; text: string; depth: number }
   | { kind: "system"; text: string; depth?: number }
@@ -54,7 +57,7 @@ const queues = new Map<string, Promise<void>>();
 const pendingCount = new Map<string, number>();
 const controllers = new Map<string, AbortController>();
 /** Messages typed while the bot is mid-turn; folded into that turn at the next step. */
-const steering = new Map<string, string[]>();
+const steering = new Map<string, Block[][]>();
 
 export const isBusy = (botId: string) => (pendingCount.get(botId) ?? 0) > 0;
 
@@ -76,23 +79,36 @@ export function enqueue(botId: string, trigger: Trigger) {
 }
 
 /** A user message: starts a turn, or — if the bot is already working — joins the turn in progress. */
-export function submitUserMessage(bot: BotRecord, text: string, voice = false) {
+export function submitUserMessage(bot: BotRecord, text: string, voice = false, attachments: Attachment[] = []) {
   if (controllers.has(bot.id) && !paused.get(bot.id)) {
     const list = steering.get(bot.id) ?? [];
-    list.push(text);
+    list.push(userBlocks(bot.id, text, attachments));
     steering.set(bot.id, list);
     setLive(bot.userId, bot.id, { queued: list.length });
     return;
   }
-  enqueue(bot.id, { kind: "user", text, voice });
+  enqueue(bot.id, { kind: "user", text, voice, attachments });
 }
 
 export function interrupt(botId: string) {
   controllers.get(botId)?.abort();
 }
 
-function drainSteering(bot: BotRecord): string[] {
-  const list = steering.get(bot.id) ?? [];
+/** What the model sees for a user message: the words, any pictures, and where attached files were put. */
+function userBlocks(botId: string, words: string, attachments: Attachment[] = []): Block[] {
+  const blocks: Block[] = [];
+  for (const a of attachments) {
+    const img = imageForModel(botId, a);
+    if (img) blocks.push({ type: "image", mediaType: img.mediaType, data: img.data });
+  }
+  const notes = attachments.map((a) => `- ${botPathOf(a.path)} (${a.mime}, ${a.size} bytes)`);
+  const full = [words, notes.length ? `[The user attached ${notes.length === 1 ? "a file" : "files"}, saved in your library:]\n${notes.join("\n")}` : ""].filter(Boolean).join("\n\n");
+  if (full) blocks.push({ type: "text", text: full });
+  return blocks;
+}
+
+function drainSteering(bot: BotRecord): Block[] {
+  const list = (steering.get(bot.id) ?? []).flat();
   if (list.length) {
     steering.delete(bot.id);
     setLive(bot.userId, bot.id, { queued: 0 });
@@ -147,7 +163,7 @@ async function newTurn(bot: BotRecord, user: UserRecord, depth: number, signal: 
   const connectorNames = [...new Set(remoteTools.map((t) => t.connectorName))];
   return {
     bot, user, depth, signal, generation: bot.generation,
-    system: buildSystemPrompt(bot, user, { connectorNames, browser: browserAvailable(), shell: config.shellEnabled, linux: computerKind() === "linux" }),
+    system: buildSystemPrompt(bot, user, { connectorNames, browser: browserAvailable(), shell: config.shellEnabled, linux: computerKind() === "linux", images: !!imageService() }),
     // Sorted so the tool list is byte-identical from call to call, which keeps provider caches warm.
     tools: [...builtins.map((b) => b.spec), ...remoteTools.map((r) => r.spec)].sort((a, b) => a.name.localeCompare(b.name)),
     modelRef: bot.model || defaultModelRef(),
@@ -178,14 +194,15 @@ async function runTurn(botId: string, trigger: Trigger): Promise<void> {
     } else {
       if (held) supersede(bot, held);
       if (overBudget(user.id)) {
-        rows.append(bot, { kind: "notice", tone: "warn", text: "This month's budget is used up, so I'm paused. Raise or clear the budget in Settings → Usage to continue." });
+        rows.append(bot, { kind: "notice", tone: "warn", text: tr(user.locale, "This month's budget is used up, so I'm paused. Raise or clear the budget in Settings → Usage to continue.") });
         return;
       }
       await compactIfNeeded(bot).catch((err) => console.error("[compaction]", err));
       const depth = trigger.kind === "bot" ? trigger.depth : trigger.kind === "system" ? trigger.depth ?? 0 : 0;
       turn = await newTurn(bot, user, depth, controller.signal);
       const extra = drainSteering(bot);
-      history.append(botId, bot.generation, { role: "user", content: [...repairDangling(botId, bot.generation), text(triggerMessage(trigger)), ...extra.map(text)] });
+      const first = trigger.kind === "user" ? userBlocks(botId, triggerMessage(trigger), trigger.attachments) : [text(triggerMessage(trigger))];
+      history.append(botId, bot.generation, { role: "user", content: [...repairDangling(botId, bot.generation), ...first, ...extra] });
     }
     await modelLoop(turn);
     // A helper's last words go back to whoever started it.
@@ -198,7 +215,7 @@ async function runTurn(botId: string, trigger: Trigger): Promise<void> {
   } catch (err) {
     const stopped = controller.signal.aborted;
     if (bots.byId(botId))
-      rows.append(bot, stopped ? { kind: "notice", tone: "info", text: "Stopped." } : { kind: "notice", tone: "error", text: `Something went wrong: ${clip(String((err as Error)?.message ?? err), 400)}` });
+      rows.append(bot, stopped ? { kind: "notice", tone: "info", text: tr(user.locale, "Stopped.") } : { kind: "notice", tone: "error", text: tr(user.locale, "Something went wrong: {detail}", { detail: clip(String((err as Error)?.message ?? err), 400) }) });
     if (!stopped) console.error(`[turn ${bot.name}]`, err);
   } finally {
     controllers.delete(botId);
@@ -206,7 +223,7 @@ async function runTurn(botId: string, trigger: Trigger): Promise<void> {
     if (!paused.get(botId)) clearLive(user.id, botId);
     bots.announce(bots.byId(botId));
     // Anything typed in the last instant of the turn still deserves an answer.
-    if (leftover.length && bots.byId(botId)) enqueue(botId, { kind: "user", text: leftover.join("\n\n") });
+    if (leftover.length && bots.byId(botId)) void inQueue(botId, async () => { history.append(botId, bots.byId(botId)!.generation, { role: "user", content: leftover }); }).then(() => enqueue(botId, { kind: "system", text: "The user's message above arrived just as your last turn ended. Answer it now." }));
   }
 }
 
@@ -232,30 +249,30 @@ async function modelLoop(turn: Turn) {
     const calls = result.content.filter((b): b is ToolUseBlock => b.type === "tool_use");
     if (result.stopReason === "refusal") {
       closeCalls(turn, calls, "The request was declined before this ran.");
-      rows.append(bot, { kind: "notice", tone: "warn", text: result.detail ?? "The model declined this request." });
+      rows.append(bot, { kind: "notice", tone: "warn", text: result.detail ?? tr(turn.user.locale, "The model declined this request.") });
       return;
     }
     if (result.stopReason === "max_tokens") {
       closeCalls(turn, calls, "The reply was cut off before this call was complete, so it did not run.");
-      rows.append(bot, { kind: "notice", tone: "warn", text: "The reply was cut off because it got too long. Ask me to continue." });
+      rows.append(bot, { kind: "notice", tone: "warn", text: tr(turn.user.locale, "The reply was cut off because it got too long. Ask me to continue.") });
       return;
     }
     if (!calls.length) {
       const extra = drainSteering(bot);
       if (!extra.length) return;
-      history.append(bot.id, turn.generation, { role: "user", content: extra.map(text) });
+      history.append(bot.id, turn.generation, { role: "user", content: extra });
       continue;
     }
     const stepSeq: Record<string, number> = {};
     for (const call of calls) {
       const b = turn.builtin.get(call.name);
-      stepSeq[call.id] = rows.append(bot, { kind: "step", callId: call.id, tool: call.name, label: b?.label ?? `Using ${turn.remote.get(call.name)?.connectorName ?? "an app"}`, status: "running", args: redact(call.input) }).seq;
+      stepSeq[call.id] = rows.append(bot, { kind: "step", callId: call.id, tool: call.name, label: b ? tr(turn.user.locale, b.label) : tr(turn.user.locale, "Using {app}", { app: turn.remote.get(call.name)?.connectorName ?? tr(turn.user.locale, "an app") }), status: "running", args: redact(call.input) }).seq;
     }
     const outcome = await processCalls(turn, { system: turn.system, tools: turn.tools, modelRef: turn.modelRef, pending: calls, results: [], stepSeq, generation: turn.generation, approvalId: "", depth: turn.depth, endTurn: false });
     if (outcome !== "continue") return;
     activity(turn, "thinking");
   }
-  rows.append(bot, { kind: "notice", tone: "warn", text: `I stopped after ${config.maxSteps} steps to avoid running away with this. Tell me to continue if it is worth it.` });
+  rows.append(bot, { kind: "notice", tone: "warn", text: tr(turn.user.locale, "I stopped after {n} steps to avoid running away with this. Tell me to continue if it is worth it.", { n: config.maxSteps }) });
 }
 
 function closeCalls(turn: Turn, calls: ToolUseBlock[], reason: string) {
@@ -299,21 +316,31 @@ class StreamingRow {
 }
 
 // ── Tool execution, permissions, approvals ───────────────────────────────────
-type Verdict = { kind: "allow" } | { kind: "block" } | { kind: "ask"; policyKey: string; title: string; source: string };
+type Verdict = { kind: "allow" } | { kind: "block" } | { kind: "ask"; policyKey: string; title: string; reason: string; source: string };
 
 function judge(turn: Turn, call: ToolUseBlock): Verdict {
   const { bot, user } = turn;
   const builtin = turn.builtin.get(call.name);
   const remote = turn.remote.get(call.name);
   if (!builtin && !remote) return { kind: "allow" }; // unknown tools fail on their own with a clear error
+  const loc = user.locale;
+  // Some tools decide per call what they need permission for (e.g. one saved login, not all of them).
+  const gate = builtin?.gate?.(call.input);
+  if (gate) {
+    const p = policies.get(user.id, gate.key);
+    if (p === "blocked") return { kind: "block" };
+    if (p === "always_allow") return { kind: "allow" };
+    const vars = { ...gate.vars, ...(gate.vars.field ? { field: tr(loc, gate.vars.field) } : {}) };
+    return { kind: "ask", policyKey: gate.key, title: tr(loc, gate.title, { bot: bot.name, ...vars }), reason: tr(loc, gate.reason, vars), source: tr(loc, gate.source) };
+  }
   const key = builtin ? call.name : `${remote!.connectorName}: ${remote!.remoteName}`;
   const policy = policies.get(user.id, key);
   if (policy === "blocked") return { kind: "block" };
   if (policy === "always_allow") return { kind: "allow" };
-  const title = builtin
-    ? `Allow ${bot.name} to run a command?`
-    : `Allow ${bot.name} to use ${remote!.connectorName}: ${remote!.remoteName.replace(/[_-]+/g, " ")}?`;
-  const ask: Verdict = { kind: "ask", policyKey: key, title, source: builtin ? "This computer" : remote!.connectorName };
+  const action = remote?.remoteName.replace(/[_-]+/g, " ") ?? "";
+  const ask: Verdict = builtin
+    ? { kind: "ask", policyKey: key, title: tr(loc, "Allow {bot} to run a command?", { bot: bot.name }), reason: tr(loc, "run a command"), source: tr(loc, "This computer") }
+    : { kind: "ask", policyKey: key, title: tr(loc, "Allow {bot} to use {app}: {action}?", { bot: bot.name, app: remote!.connectorName, action }), reason: tr(loc, "use {app}: {action}", { app: remote!.connectorName, action }), source: remote!.connectorName };
   if (policy === "needs_approval") return ask;
   if (builtin) return builtin.sensitive && bot.autonomy === "careful" ? ask : { kind: "allow" };
   return remote!.readOnly || bot.autonomy === "trusted" ? { kind: "allow" } : ask;
@@ -370,7 +397,7 @@ async function processCalls(turn: Turn, st: PausedTurn): Promise<"continue" | "e
   while (st.pending.length) {
     if (turn.signal.aborted) {
       // Record what we have so the next turn starts from a consistent transcript.
-      for (const call of st.pending) { st.results.push({ type: "tool_result", toolUseId: call.id, isError: true, content: [text("Not run: the user stopped the turn.")] }); setStep(turn, st, call, "denied", "stopped"); }
+      for (const call of st.pending) { st.results.push({ type: "tool_result", toolUseId: call.id, isError: true, content: [text("Not run: the user stopped the turn.")] }); setStep(turn, st, call, "denied", tr(user.locale, "stopped")); }
       st.pending = [];
       history.append(bot.id, st.generation, { role: "user", content: st.results });
       paused.clear(bot.id);
@@ -386,14 +413,14 @@ async function processCalls(turn: Turn, st: PausedTurn): Promise<"continue" | "e
       setStep(turn, st, call, "waiting");
       st.approvalId = approvalId;
       paused.set(bot.id, st);
-      setLive(user.id, bot.id, { running: false, activity: { kind: "waiting", since: Date.now() }, awaiting: { reason: verdict.title.replace(/^Allow \S+ to /, "").replace(/\?$/, ""), since: Date.now() } });
+      setLive(user.id, bot.id, { running: false, activity: { kind: "waiting", since: Date.now() }, awaiting: { reason: verdict.reason, since: Date.now() } });
       emit(user.id, { type: "tasks", botId: bot.id });
       return "paused";
     }
     let out: ToolOutput;
     if (verdict.kind === "block") {
       out = { content: DECLINED, isError: true };
-      setStep(turn, st, call, "denied", "not allowed");
+      setStep(turn, st, call, "denied", tr(user.locale, "not allowed"));
     } else {
       setStep(turn, st, call, "running");
       try {
@@ -405,15 +432,26 @@ async function processCalls(turn: Turn, st: PausedTurn): Promise<"continue" | "e
         setStep(turn, st, call, "error", clip(message, 200));
       }
     }
-    st.results.push({ type: "tool_result", toolUseId: call.id, isError: out.isError || undefined, content: typeof out.content === "string" ? [text(out.content)] : out.content });
+    const parts = typeof out.content === "string" ? [text(out.content)] : out.content;
+    st.results.push({ type: "tool_result", toolUseId: call.id, isError: out.isError || undefined, content: parts.map((p) => (p.type === "text" ? text(hideSecrets(user.id, p.text)) : p)) });
     st.endTurn ||= !!out.endTurn;
     st.pending.shift();
   }
   // Anything the user typed meanwhile rides along with the results, so the model sees it at once.
   const extra = st.endTurn ? [] : drainSteering(bot);
-  history.append(bot.id, st.generation, { role: "user", content: [...st.results, ...extra.map(text)] });
+  history.append(bot.id, st.generation, { role: "user", content: [...st.results, ...extra] });
   paused.clear(bot.id);
   return st.endTurn ? "end" : "continue";
+}
+
+/** Saved passwords must never reach a model, whatever a page or a command prints back. */
+function hideSecrets(userId: string, s: string): string {
+  let out = s;
+  for (const item of vault.list(userId)) {
+    const secret = item.passwordEnc ? unseal(item.passwordEnc) : null;
+    if (secret && secret.length >= 4 && out.includes(secret)) out = out.split(secret).join("[hidden]");
+  }
+  return out;
 }
 
 /** A new message arrived while an approval was open: the old request lapses and its calls are closed. */
@@ -427,7 +465,7 @@ function supersede(bot: BotRecord, st: PausedTurn) {
     st.results.push({ type: "tool_result", toolUseId: call.id, isError: true, content: [text("Skipped: the user sent a new message before this ran. Do not retry it unless they ask.")] });
     const seq = st.stepSeq[call.id];
     const row = seq ? rows.get(bot.id, st.generation, seq) : null;
-    if (row?.body.kind === "step") rows.rewrite(bot, st.generation, seq, { ...row.body, status: "denied", summary: "skipped" });
+    if (row?.body.kind === "step") rows.rewrite(bot, st.generation, seq, { ...row.body, status: "denied", summary: tr(users.localeOf(bot.userId), "skipped") });
   }
   if (st.generation === bot.generation) history.append(bot.id, st.generation, { role: "user", content: st.results });
   paused.clear(bot.id);

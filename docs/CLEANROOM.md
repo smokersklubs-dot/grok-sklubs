@@ -60,13 +60,14 @@ Par rapport à la documentation publique du produit d'origine, Sklubot **ne couv
 
 - exécution sur ton propre poste, passage du trafic par ton poste, clés de sécurité matérielles ;
   flux d'écran continu (la vue en direct est une suite de captures) ;
-- catalogue d'applications avec connexion OAuth en un clic, plusieurs comptes par application,
+- connexion des applications par autorisation en un clic (OAuth) : le catalogue ne propose que des
+  applications à jeton ou sans identifiant, soit six pour l'instant ; plusieurs comptes par application ;
   déclencheurs natifs (messagerie d'équipe, tickets, e-mail entrant) — seul le webhook générique existe ;
-- coffre d'identifiants et de moyens de paiement, formulaires sécurisés, achats ;
+- moyens de paiement, cartes virtuelles, achats ; import d'identifiants en masse ;
 - voix temps réel avec interruption naturelle ; appels téléphoniques ; participation à des réunions ;
 - adresse e-mail propre au bot ; présence dans des messageries tierces ;
-- applications mobiles et de bureau ; notifications poussées ;
-- pièces jointes dans la discussion, génération d'images et de vidéos, pages hébergées partageables ;
+- applications natives iOS, Android et de bureau (Sklubot s'installe comme application web) ; notifications poussées ;
+- génération de vidéos, pages hébergées partageables ;
 - fils, réactions, recherche dans les messages (la recherche porte sur les bots) ;
 - bots partagés entre plusieurs personnes, rôles, modèles de bots publiables, administration d'entreprise
   (SSO, journaux d'audit, politiques réseau) ;

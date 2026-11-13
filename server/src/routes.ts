@@ -8,17 +8,21 @@ import { decideApproval, enqueue, inQueue, interrupt, submitUserMessage } from "
 import { compactIfNeeded, consolidate, memoryStatus } from "./agent/memory.js";
 import { createRoom, dispatchToRoom, validMembers } from "./agent/team.js";
 import { retireBot } from "./agent/tools.js";
-import { createSession, dropSession, hashPassword, SESSION_COOKIE, signupOpen, userForToken, verifyPassword } from "./auth.js";
+import { createSession, dropSession, hashPassword, seal, SESSION_COOKIE, signupOpen, userForToken, verifyPassword } from "./auth.js";
 import { emit, getLive, subscribe } from "./bus.js";
-import { computerState, listFiles, removeWorkspace, resolveInWorkspace, screen } from "./computer.js";
+import { attachmentAt, computerState, isInlineImage, listFiles, mimeOf, removeWorkspace, resolveInWorkspace, screen, storeBytes } from "./computer.js";
+import { CATALOG } from "./catalog.js";
+import { imageService } from "./images.js";
 import { config } from "./config.js";
 import { connectors } from "./connectors.js";
 import { isValidTimezone } from "./cron.js";
+import { pickLocale, tr } from "./i18n.js";
 import { defaultModelRef, listProviders } from "./llm/index.js";
 import { publicRoutine, routines } from "./routines.js";
 import { fireCheckin, fireRoutine, schedule, unschedule } from "./scheduler.js";
 import type { CheckinSettings, ServerEvent } from "./shared.js";
-import { bots, memories, policies, publicBot, rows, settings, skills, tasks, users, type BotRecord, type UserRecord } from "./store.js";
+import { bots, memories, policies, publicBot, publicVault, rows, settings, skills, tasks, users, vault, type BotRecord, type UserRecord } from "./store.js";
+import type { Attachment } from "./shared.js";
 import { summary as usageSummary } from "./usage.js";
 
 type Env = { Variables: { user: UserRecord } };
@@ -37,7 +41,7 @@ const body = async (c: Context): Promise<Record<string, any>> => {
   const parsed = await c.req.json().catch(() => ({}));
   return parsed && typeof parsed === "object" ? parsed : {};
 };
-const publicUser = (u: UserRecord) => ({ id: u.id, email: u.email, name: u.name });
+const publicUser = (u: UserRecord) => ({ id: u.id, email: u.email, name: u.name, locale: u.locale });
 const ownBot = (c: Context<Env>, id = c.req.param("id")): BotRecord => bots.owned(c.get("user").id, id ?? "") ?? fail(404, "That bot does not exist.");
 const ownAgent = (c: Context<Env>): BotRecord => { const b = ownBot(c); return b.kind === "agent" ? b : fail(400, "A group chat cannot do that."); };
 
@@ -51,7 +55,7 @@ api.get("/health", (c) => c.json({ ok: true, model: defaultModelRef() }));
 
 api.get("/me", (c) => {
   const user = userForToken(getCookie(c, SESSION_COOKIE));
-  return c.json({ user: user ? publicUser(user) : null, signupOpen: signupOpen() });
+  return c.json({ user: user ? publicUser(user) : null, signupOpen: signupOpen(), imageGeneration: !!imageService() });
 });
 
 // Slows down password guessing: a handful of attempts per address and per account, per quarter hour.
@@ -70,11 +74,12 @@ api.post("/auth/signup", async (c) => {
   if (!/^[^@\s]+@[^@\s]+$/.test(email)) fail(400, "Enter a valid email address.");
   if (password.length < 8) fail(400, "Choose a password of at least 8 characters.");
   if (users.byEmail(email)) fail(409, "An account with this email already exists.");
-  const user = users.create(email, String(b.name ?? ""), hashPassword(password));
+  const locale = pickLocale(b.locale, c.req.header("accept-language"));
+  const user = users.create(email, String(b.name ?? ""), hashPassword(password), locale);
   // Every account starts with one main bot so there is someone to talk to straight away.
   bots.create(user.id, {
-    name: "Juno", label: "Chief of staff", primary: true, shape: "circle", color: "indigo",
-    description: "Your main point of contact. Keeps track of what is open, checks in when something needs you, and coordinates the other bots.",
+    name: "Juno", label: tr(locale, "Chief of staff"), primary: true, shape: "circle", color: "indigo",
+    description: tr(locale, "Your main point of contact. Keeps track of what is open, checks in when something needs you, and coordinates the other bots."),
   });
   startSession(c, user.id);
   return c.json({ user: publicUser(user) });
@@ -143,6 +148,12 @@ api.get("/events", (c) =>
     } finally { off(); }
   }));
 
+api.put("/prefs", async (c) => {
+  const b = await body(c);
+  users.setPrefs(c.get("user").id, { locale: b.locale === "fr" || b.locale === "en" ? b.locale : undefined, name: typeof b.name === "string" ? b.name : undefined });
+  return c.json({ user: publicUser(users.byId(c.get("user").id)!) });
+});
+
 api.get("/models", (c) => c.json({
   models: listProviders().filter((p) => p.available()).flatMap((p) => p.models.map((m) => ({ ref: `${p.id}:${m}`, provider: p.label, model: m }))),
   defaultRef: defaultModelRef(),
@@ -203,13 +214,28 @@ api.post("/bots/:id/messages", async (c) => {
   const bot = ownBot(c);
   const b = await body(c);
   const text = String(b.text ?? "").trim();
-  if (!text) fail(400, "Write a message first.");
+  // Only files this bot already holds under uploads/ can be attached; anything else is ignored.
+  const attachments = (Array.isArray(b.attachments) ? b.attachments : []).slice(0, 10)
+    .map((p: unknown) => (typeof p === "string" && p.startsWith("uploads/") ? attachmentAt(bot.id, p) : null))
+    .filter((a: Attachment | null): a is Attachment => !!a);
+  if (!text && !attachments.length) fail(400, "Write a message first.");
   if (text.length > 100_000) fail(413, "That message is too long.");
   const voice = b.origin === "voice";
-  const row = rows.append(bot, { kind: "message", role: "user", text, origin: voice ? { kind: "voice", id: "", name: "Voice" } : undefined });
+  const row = rows.append(bot, { kind: "message", role: "user", text, origin: voice ? { kind: "voice", id: "", name: "Voice" } : undefined, attachments: attachments.length ? attachments : undefined });
   if (bot.kind === "room") dispatchToRoom(bot, c.get("user"), text, null, 0);
-  else submitUserMessage(bot, text, voice);
+  else submitUserMessage(bot, text, voice, attachments);
   return c.json({ row });
+});
+
+api.post("/bots/:id/uploads", async (c) => {
+  const bot = ownAgent(c);
+  if (Number(c.req.header("content-length") ?? 0) > 26_000_000) fail(413, "Files can be up to 25 MB.");
+  const form = await c.req.parseBody().catch(() => ({}) as Record<string, unknown>);
+  const file = form.file;
+  if (!(file instanceof File)) return fail(400, "No file was sent.");
+  if (file.size > 25_000_000) fail(413, "Files can be up to 25 MB.");
+  if (!file.size) fail(400, "That file is empty.");
+  return c.json({ attachment: storeBytes(bot.id, "uploads", file.name, Buffer.from(await file.arrayBuffer())) });
 });
 
 api.post("/bots/:id/stop", (c) => { interrupt(ownBot(c).id); return c.json({ ok: true }); });
@@ -260,7 +286,7 @@ api.post("/bots/:id/cards/:seq/dismiss", (c) => {
 // ── Knowledge and automation ─────────────────────────────────────────────────
 api.get("/bots/:id/bundle", (c) => {
   const bot = ownBot(c);
-  return c.json({ memories: memories.list(bot.id), skills: skills.list(bot.id), routines: routines.forBot(bot.id).map(publicRoutine), tasks: tasks.forBot(bot.id), memoryStatus: memoryStatus(bot) });
+  return c.json({ memories: memories.list(bot.id), skills: skills.list(bot.id), routines: routines.forBot(bot.id).map((r) => publicRoutine(r, c.get("user").locale)), tasks: tasks.forBot(bot.id), memoryStatus: memoryStatus(bot) });
 });
 
 function skillFields(b: Record<string, any>, base?: { name: string; description: string; body: string }) {
@@ -297,14 +323,14 @@ api.post("/bots/:id/compact", async (c) => {
   try { return c.json(await inQueue(bot.id, () => compactIfNeeded(bots.byId(bot.id)!, true))); } catch (err) { return fail(502, `Could not reach the model: ${(err as Error).message}`); }
 });
 
-api.get("/bots/:id/routines", (c) => c.json({ routines: routines.forBot(ownBot(c).id).map(publicRoutine) }));
+api.get("/bots/:id/routines", (c) => c.json({ routines: routines.forBot(ownBot(c).id).map((r) => publicRoutine(r, c.get("user").locale)) }));
 const ownRoutine = (c: Context<Env>) => routines.owned(c.get("user").id, c.req.param("id") ?? "") ?? fail(404, "That routine does not exist.");
 api.patch("/routines/:id", async (c) => {
   const r = ownRoutine(c);
   const updated = routines.update(r.id, { enabled: !!(await body(c)).enabled })!;
   schedule(r.id);
   emit(c.get("user").id, { type: "routines", botId: r.botId });
-  return c.json({ routine: publicRoutine(updated) });
+  return c.json({ routine: publicRoutine(updated, c.get("user").locale) });
 });
 api.post("/routines/:id/run", (c) => { fireRoutine(ownRoutine(c)); return c.json({ ok: true }); });
 api.delete("/routines/:id", (c) => {
@@ -373,7 +399,54 @@ api.get("/bots/:id/files/download", (c) => {
   });
 });
 
+/** Shows a library file in the page. Only plain pictures are served inline; everything else is a download, so an uploaded page can never run as ours. */
+api.get("/bots/:id/files/view", (c) => {
+  const bot = ownBot(c);
+  const full = safePath(bot.id, c.req.query("path") ?? "");
+  if (!existsSync(full) || !statSync(full).isFile()) fail(404, "That file does not exist.");
+  const mime = mimeOf(full);
+  const inline = isInlineImage(mime);
+  return c.body(Readable.toWeb(createReadStream(full)) as unknown as ReadableStream, 200, {
+    "content-type": inline ? mime : "application/octet-stream", "content-length": String(statSync(full).size),
+    "content-disposition": `${inline ? "inline" : "attachment"}; filename="${path.basename(full).replace(/[^\w. -]/g, "_")}"`,
+    "x-content-type-options": "nosniff", "content-security-policy": "default-src 'none'; sandbox", "cache-control": "private, max-age=300",
+  });
+});
+
+// ── Vault ────────────────────────────────────────────────────────────────────
+function vaultFields(b: Record<string, any>, base?: { name: string; site: string; username: string; passwordEnc: string | null; note: string }) {
+  const pick = (key: "name" | "site" | "username" | "note", max: number) => (b[key] === undefined ? base?.[key] ?? "" : String(b[key])).trim().slice(0, max);
+  const name = pick("name", 80);
+  if (!name) fail(400, "Give this login a name.");
+  const password = typeof b.password === "string" && b.password ? b.password : null;
+  if (password && password.length > 1000) fail(400, "That password is too long.");
+  return { name, site: pick("site", 300), username: pick("username", 300), note: pick("note", 500), passwordEnc: password ? seal(password) : base?.passwordEnc ?? null };
+}
+api.get("/vault", (c) => c.json({ items: vault.list(c.get("user").id).map(publicVault) }));
+api.post("/vault", async (c) => {
+  const user = c.get("user");
+  const f = vaultFields(await body(c));
+  if (vault.byName(user.id, f.name)) fail(409, "A login with this name already exists.");
+  return c.json({ item: publicVault(vault.create(user.id, f)) });
+});
+api.patch("/vault/:id", async (c) => {
+  const user = c.get("user");
+  const cur = vault.owned(user.id, c.req.param("id")) ?? fail(404, "That login does not exist.");
+  const f = vaultFields(await body(c), cur);
+  const clash = vault.byName(user.id, f.name);
+  if (clash && clash.id !== cur.id) fail(409, "A login with this name already exists.");
+  vault.update(cur.id, f);
+  return c.json({ item: publicVault(vault.owned(user.id, cur.id)!) });
+});
+api.delete("/vault/:id", (c) => {
+  const cur = vault.owned(c.get("user").id, c.req.param("id")) ?? fail(404, "That login does not exist.");
+  vault.remove(cur.id);
+  policies.remove(c.get("user").id, `vault: ${cur.name}`);
+  return c.json({ ok: true });
+});
+
 // ── Connectors and permissions ───────────────────────────────────────────────
+api.get("/connectors/catalog", (c) => c.json({ apps: CATALOG }));
 api.get("/connectors", (c) => c.json({ connectors: connectors.list(c.get("user").id) }));
 
 api.post("/connectors", async (c) => {
@@ -418,9 +491,10 @@ api.put("/rooms/:id/members", async (c) => {
   const name = (id: string) => bots.byId(id)?.name ?? "a bot";
   const joined = ids.filter((id) => !room.memberIds.includes(id)).map(name);
   const left = room.memberIds.filter((id) => !ids.includes(id)).map(name);
-  bots.patch(room.id, { memberIds: ids, description: `Group chat with ${ids.length} bots.` });
+  const loc = c.get("user").locale;
+  bots.patch(room.id, { memberIds: ids, description: tr(loc, "Group chat with {n} bots.", { n: ids.length }) });
   if (joined.length || left.length)
-    rows.append(room, { kind: "event", event: "members", text: [joined.length ? `${joined.join(", ")} joined` : "", left.length ? `${left.join(", ")} left` : ""].filter(Boolean).join(" · ") });
+    rows.append(room, { kind: "event", event: "members", text: [joined.length ? tr(loc, "{names} joined", { names: joined.join(", ") }) : "", left.length ? tr(loc, "{names} left", { names: left.join(", ") }) : ""].filter(Boolean).join(" · ") });
   emit(room.userId, { type: "roster" });
   return c.json({ ok: true });
 });

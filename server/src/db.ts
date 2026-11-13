@@ -93,6 +93,18 @@ CREATE TABLE IF NOT EXISTS compactions (
 );
 `);
 
+CREATE_EXTRA();
+function CREATE_EXTRA() {
+  db.exec(`
+  CREATE TABLE IF NOT EXISTS vault (
+    id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, name TEXT NOT NULL,
+    site TEXT NOT NULL DEFAULT '', username TEXT NOT NULL DEFAULT '', password_enc TEXT, note TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL
+  );`);
+  // Columns added after the first release: add them only where they are missing.
+  const has = (table: string, column: string) => (db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).some((c) => c.name === column);
+  if (!has("users", "locale")) db.exec("ALTER TABLE users ADD COLUMN locale TEXT NOT NULL DEFAULT 'en'");
+}
+
 type Param = string | number | null | bigint;
 export const q = {
   all<T = Record<string, unknown>>(sql: string, ...p: Param[]): T[] {
