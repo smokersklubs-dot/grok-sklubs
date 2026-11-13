@@ -191,7 +191,8 @@ async function runTurn(botId: string, trigger: Trigger): Promise<void> {
     // A helper's last words go back to whoever started it.
     if (bot.parentId && turn.lastText && !paused.get(botId)) {
       const parent = bots.byId(bot.parentId);
-      if (parent) deliverBotMessage(bot, parent, turn.lastText, 0);
+      // The hop count travels with the report, so a bot and its helper cannot ping-pong forever.
+      if (parent) deliverBotMessage(bot, parent, turn.lastText, turn.depth);
     }
     if (trigger.kind === "system" && bot.primary) noteCheckinOutcome(user.id, turn.spoke);
   } catch (err) {

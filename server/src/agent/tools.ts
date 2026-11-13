@@ -294,6 +294,7 @@ const teamTools: BuiltinTool[] = [
     run: async (a, c) => {
       const h = bots.byId(String(a.id));
       if (!h || h.parentId !== c.bot.id) return { content: "No helper of yours has that id.", isError: true };
+      if (c.depth >= MAX_HOPS + 2) return { content: "You and this helper have gone back and forth too many times. Wrap up with what you have.", isError: true };
       deliverBotMessage(c.bot, h, String(a.message), c.depth);
       return { content: "Delivered.", summary: h.name };
     },

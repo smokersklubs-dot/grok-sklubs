@@ -1,4 +1,5 @@
 import { AnthropicProvider } from "./anthropic.js";
+import { DemoProvider } from "./demo.js";
 import { OpenAiCompatProvider } from "./openai-compat.js";
 import type { LlmProvider } from "./types.js";
 
@@ -17,6 +18,7 @@ const providers: LlmProvider[] = [
     id: "openai", label: "OpenAI-compatible", baseUrl: process.env.OPENAI_BASE_URL ?? "https://api.openai.com/v1", apiKeyEnv: "OPENAI_API_KEY",
     models: list(process.env.OPENAI_MODELS, ["gpt-5"]), sendsEffort: false,
   }),
+  new DemoProvider(),
 ];
 
 /** Adds a provider at the front of the list (used by tests and by embedders with their own model). */
