@@ -87,3 +87,9 @@ answers 401 without it. Types named below are defined in `server/src/shared.ts`.
 | POST | `/checkins/now` | – | `{ ok }` |
 | GET | `/usage` | – | `UsageSummary` |
 | PUT | `/usage/budget` | `{ budgetUsd: number \| null }` | `UsageSummary` |
+
+## Notes for clients
+
+- Message rows may carry `attachments`. Images (`mime` starting with `image/`) are shown inline from `/files/view`; other files as a chip linking to `/files/download`.
+- Approval cards for saved logins have `tool` = `vault: <item name>` and `source` = `Vault`.
+- `User.locale` decides the language of texts the server writes (notices, event lines, approval titles). The web app should use the same locale for its own texts.
