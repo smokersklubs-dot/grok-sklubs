@@ -52,7 +52,7 @@ export function SignIn() {
         <div className="signin-brand">
           <Avatar shape="squircle" color="ember" name="S" size={56} />
           <h1>Sklubot</h1>
-          <p>Your own team of AI bots — each with its own memory, skills, routines and browser desktop.</p>
+          <p>Your own team of AI bots — each with its own memory, skills, routines and computer.</p>
         </div>
 
         <h2 className="signin-title">{creating ? "Create your account" : "Sign in"}</h2>

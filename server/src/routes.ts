@@ -333,7 +333,7 @@ api.post("/bots/:id/screen/input", async (c) => {
   const uid = bot.userId;
   try {
     if (b.type === "goto") await screen.open(bot.id, uid, String(b.url ?? ""));
-    else if (!screen.isOpen(bot.id)) fail(409, "This bot has no browser open yet.");
+    else if (!screen.isOpen(bot.id)) fail(409, "This bot's computer is not on yet.");
     else if (b.type === "click") await screen.click(bot.id, uid, Number(b.x), Number(b.y));
     else if (b.type === "type") await screen.type(bot.id, uid, String(b.text ?? ""));
     else if (b.type === "key") await screen.key(bot.id, uid, String(b.key ?? ""));
@@ -346,6 +346,12 @@ api.post("/bots/:id/screen/input", async (c) => {
   return c.json({ ok: true });
 });
 
+api.post("/bots/:id/desktop/wake", async (c) => {
+  const bot = ownAgent(c);
+  try { await screen.wake(bot.id, bot.userId); } catch (err) { return fail(502, (err as Error).message); }
+  return c.json({ ok: true });
+});
+api.post("/bots/:id/desktop/sleep", async (c) => { await screen.sleep(ownBot(c).id); return c.json({ ok: true }); });
 api.post("/bots/:id/desktop/reset", async (c) => { await screen.reset(ownBot(c).id); return c.json({ ok: true }); });
 
 const safePath = (botId: string, rel: string) => { try { return resolveInWorkspace(botId, rel); } catch (err) { return fail(400, (err as Error).message); } };

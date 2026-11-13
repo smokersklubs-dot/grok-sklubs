@@ -1,7 +1,7 @@
 # Sklubot
 
 Une équipe de bots IA auto-hébergée. Chaque bot a un nom, un rôle, sa mémoire, ses compétences, son
-propre navigateur, ses fichiers, ses routines — et ils travaillent ensemble. Tout tourne sur ta machine,
+**propre ordinateur Linux**, ses fichiers, ses routines — et ils travaillent ensemble. Tout tourne sur ta machine,
 avec tes clés ; les données restent dans un fichier SQLite local.
 
 Sklubot a été reconstruit **en salle blanche** : voir [docs/CLEANROOM.md](docs/CLEANROOM.md).
@@ -14,7 +14,7 @@ Sklubot a été reconstruit **en salle blanche** : voir [docs/CLEANROOM.md](docs
 |---|---|
 | **Bots** | Nom, rôle, description, consignes permanentes, avatar (12 formes × 11 couleurs), mode assistant personnel ou coéquipier, bot principal, niveau de réflexion, **modèle au choix par bot**, niveau d'autonomie |
 | **Discussion** | Réponses en direct, étapes d'outils repliables, sources web, cartes d'approbation / de question / de connexion, envoi pendant que le bot travaille (le message rejoint le tour en cours), arrêt, nouvelle conversation |
-| **Ordinateur** | Un vrai navigateur par bot (profil et connexions conservés), capture, clic, saisie, touches, défilement, glisser ; lecture de page ; ligne de commande dans un dossier privé ; bibliothèque de fichiers téléchargeables ; **vue en direct et prise de contrôle** depuis l'interface |
+| **Ordinateur** | **Un ordinateur Linux par bot** (conteneur isolé) : bureau graphique, navigateur Chromium, terminal, gestionnaire de fichiers, shell root, installation de logiciels ; tout est conservé entre les conversations ; **mise en veille automatique et réveil à la demande** ; capture, clic, saisie, touches, défilement, glisser ; bibliothèque de fichiers téléchargeables ; **vue en direct et prise de contrôle** depuis l'interface |
 | **Applications** | Connecteurs = serveurs d'outils distants au standard ouvert MCP (URL + jeton). Lectures automatiques, écritures soumises à approbation, « toujours autoriser » mémorisé et révocable |
 | **Mémoire** | Souvenirs enregistrés par le bot, **apprentissage automatique** après les conversations (avec dédoublonnage), sélection des souvenirs pertinents à chaque tour, **résumé automatique** des longues conversations |
 | **Compétences** | Procédures rédigées par toi, injectées dans le bot |
@@ -40,13 +40,23 @@ des mots-clés permet de parcourir toute l'application : outils, approbations, c
 
 Le premier compte créé est le tien ; les inscriptions se ferment ensuite (sauf `OPEN_SIGNUP=1`).
 
-Pour que les bots aient un navigateur (facultatif mais recommandé) :
+### L'ordinateur Linux de chaque bot
+
+Il te faut **Docker** sur la machine qui héberge Sklubot. Construis l'image du bureau une fois (quelques minutes) :
 
 ```bash
-npm i playwright && npx playwright install chromium
+npm run computer:build
 ```
 
-Sans cela, ils gardent la lecture de pages web, la ligne de commande, les fichiers et les connecteurs.
+Au démarrage, Sklubot affiche `Computers: a Linux desktop per bot`. Chaque bot reçoit alors son propre
+conteneur à la première utilisation : Debian, bureau graphique 1280×800, Chromium, terminal, Python, Node.
+Son dossier personnel est conservé (logiciels installés, connexions du navigateur, fichiers). Le dossier
+`~/files` de l'ordinateur est la bibliothèque visible dans l'interface. Un ordinateur inactif depuis 20 minutes
+s'endort ; il se réveille tout seul. Quatre ordinateurs peuvent être éveillés en même temps (`MAX_DESKTOPS`),
+avec 2 Go de mémoire et 2 processeurs chacun (`DESKTOP_MEMORY`, `DESKTOP_CPUS`).
+
+Sans Docker, Sklubot se rabat sur un simple navigateur par bot (`npm i playwright && npx playwright install chromium`),
+et sinon sur la lecture de pages, la ligne de commande et les connecteurs.
 
 ### Développement
 
@@ -59,10 +69,13 @@ npm run typecheck
 
 ## Sécurité — à lire
 
-- **La ligne de commande des bots s'exécute sur la machine qui héberge Sklubot**, dans le dossier du bot,
-  avec un environnement vidé (aucune clé du serveur n'y est visible). Par défaut un bot « prudent » demande
-  ton accord avant chaque commande. Pour une vraie isolation, lance Sklubot dans un conteneur ou une machine
-  dédiée, ou coupe l'outil avec `SHELL_ENABLED=0`.
+- **Avec les ordinateurs Linux**, les commandes d'un bot s'exécutent dans son conteneur, pas sur ton serveur :
+  il n'y voit ni tes clés ni tes fichiers, et n'a donc pas besoin de demander avant chaque commande.
+  Le conteneur a accès à Internet et **peut joindre les services réseau de la machine hôte** (dont Sklubot
+  lui-même) : n'héberge rien de sensible sans mot de passe sur cette machine.
+- **Sans Docker**, la ligne de commande s'exécute sur la machine hôte, dans le dossier du bot, avec un
+  environnement vidé ; un bot « prudent » demande alors ton accord avant chaque commande. Tu peux couper
+  l'outil avec `SHELL_ENABLED=0`.
 - Trois niveaux d'autonomie par bot : **prudent** (demande avant les commandes et les écritures dans les
   applications), **équilibré** (demande seulement avant les écritures dans les applications), **confiance**
   (ne demande jamais).
@@ -76,6 +89,7 @@ npm run typecheck
 server/src/llm/        fournisseurs de modèles (Claude, compatible OpenAI/xAI)
 server/src/agent/      boucle d'agent, outils, mémoire, équipe, prompt
 server/src/            base, routes HTTP, ordinateur, connecteurs, planificateur, usage
+docker/desktop/        image de l'ordinateur Linux des bots
 server/test/           tests de bout en bout
 web/src/               interface React
 docs/API.md            référence de l'API

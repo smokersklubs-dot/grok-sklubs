@@ -1,5 +1,5 @@
 import { emit, getLive } from "../bus.js";
-import { browserAvailable, runShell, saveFile, screen, type Shot } from "../computer.js";
+import { browserAvailable, computerKind, runShell, saveFile, screen, type Shot } from "../computer.js";
 import { config } from "../config.js";
 import { isValidTimezone, parseCron } from "../cron.js";
 import type { ImageBlock, TextBlock, ToolSpec } from "../llm/types.js";
@@ -35,15 +35,18 @@ const str = (description: string) => ({ type: "string", description });
 const int = (description: string) => ({ type: "integer", description });
 
 const shot = (s: Shot, caption: string): ToolOutput => ({
-  content: [{ type: "text", text: `${caption}\nPage: ${s.title || "(untitled)"} — ${s.url}\nThe screenshot is 1280×800; coordinates start at the top-left corner.` }, { type: "image", mediaType: s.mediaType, data: s.data }],
-  summary: clip(s.title || s.url, 80),
+  content: [
+    { type: "text", text: `${caption}\n${s.url ? `Page: ${s.title || "(untitled)"} — ${s.url}` : `Window in front: ${s.title || "(the desktop)"}`}\nThe screenshot is ${config.desktopResolution.split("x").slice(0, 2).join("×")}; coordinates start at the top-left corner.` },
+    { type: "image", mediaType: s.mediaType, data: s.data },
+  ],
+  summary: clip(s.title || s.url || "screen", 80),
 });
 
 const tool = (name: string, description: string, schema: ToolSpec["inputSchema"], rest: Omit<BuiltinTool, "spec">): BuiltinTool =>
   ({ spec: { name, description, inputSchema: schema }, ...rest });
 
 const screenTools: BuiltinTool[] = [
-  tool("screen_view", "Take a screenshot of your browser to see what is on screen right now.", obj({}), {
+  tool("screen_view", "Take a screenshot of your screen to see what is on it right now.", obj({}), {
     activity: "computer", label: "Looking at the screen",
     run: async (_a, c) => shot(await screen.view(c.bot.id, c.user.id), "Current screen."),
   }),
@@ -108,11 +111,11 @@ const workTools: BuiltinTool[] = [
       return { content: `Status ${res.status}\n\n${clip(/html/.test(type) ? htmlToText(body) : body, 40_000)}`, summary: `${res.status} · ${hostOf(url) ?? ""}`, isError: !res.ok };
     },
   }),
-  tool("shell_run", "Run a shell command in your private folder and return its exit code and output.", obj({ command: str("Command line to run with bash"), timeout_seconds: int("Give up after this many seconds (default 120, max 290)") }, ["command"]), {
+  tool("shell_run", "Run a shell command on your computer and return its exit code and output.", obj({ command: str("Command line to run with bash"), timeout_seconds: int("Give up after this many seconds (default 120, max 290)") }, ["command"]), {
     activity: "shell", label: "Running a command", sensitive: true, detail: (a) => clip(String(a.command ?? ""), 60),
     run: async (a, c) => {
       const timeout = Math.min(290, Math.max(1, Number(a.timeout_seconds) || 120));
-      const r = await runShell(c.bot.id, String(a.command), timeout, c.signal);
+      const r = await runShell(c.bot.id, c.user.id, String(a.command), timeout, c.signal);
       return { content: `${r.timedOut ? `Timed out after ${timeout}s.` : `Exit code ${r.code}.`}\n${r.output || "(no output)"}`, summary: r.timedOut ? "timed out" : `exit ${r.code}`, isError: r.timedOut || r.code !== 0 };
     },
   }),
@@ -372,7 +375,8 @@ export async function retireBot(b: BotRecord) {
 export function builtinTools(): BuiltinTool[] {
   return [
     ...(browserAvailable() ? screenTools : []),
-    ...workTools.filter((t) => t.spec.name !== "shell_run" || config.shellEnabled),
+    // On its own Linux computer a bot's commands are contained, so they do not need a permission card.
+    ...workTools.filter((t) => t.spec.name !== "shell_run" || config.shellEnabled).map((t) => (t.spec.name === "shell_run" && computerKind() === "linux" ? { ...t, sensitive: false } : t)),
     ...memoryTools, ...routineTools, ...taskTools, ...teamTools, ...userTools,
   ];
 }

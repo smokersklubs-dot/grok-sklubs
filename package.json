@@ -2,15 +2,21 @@
   "name": "sklubot",
   "private": true,
   "version": "0.1.0",
-  "description": "Sklubot — a self-hosted team of AI bots with their own memory, tools, computers, schedules and group chats.",
+  "description": "Sklubot \u2014 a self-hosted team of AI bots with their own memory, tools, computers, schedules and group chats.",
   "license": "MIT",
-  "workspaces": ["server", "web"],
+  "workspaces": [
+    "server",
+    "web"
+  ],
   "scripts": {
     "dev": "npm run dev -w server & npm run dev -w web",
     "build": "npm run build -w web && npm run build -w server",
     "start": "npm run start -w server",
     "typecheck": "npm run typecheck -w server && npm run typecheck -w web",
-    "test": "npm run test -w server"
+    "test": "npm run test -w server",
+    "computer:build": "docker build -t sklubot-desktop docker/desktop"
   },
-  "engines": { "node": ">=22.13" }
+  "engines": {
+    "node": ">=22.13"
+  }
 }

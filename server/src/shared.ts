@@ -94,8 +94,11 @@ export interface Policy { tool: string; mode: "always_allow" | "needs_approval" 
 
 export interface FileEntry { name: string; size: number; modifiedAt: number; dir: boolean }
 export interface ComputerState {
-  /** Whether a real browser engine is installed so bots can see and operate web pages. */
+  /** "linux": each bot has its own Linux computer. "browser": each bot has a browser on the server. "none": neither is installed. */
+  kind: "linux" | "browser" | "none";
+  /** Whether bots have a screen at all (kind is not "none"). */
   browser: boolean;
+  /** `open` = switched on. Linux computers that exist but are asleep are listed with open: false. */
   desktops: { botId: string; open: boolean; url: string | null; lastUsedAt: number }[];
   maxDesktops: number;
 }

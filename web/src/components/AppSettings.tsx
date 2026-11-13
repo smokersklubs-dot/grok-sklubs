@@ -62,23 +62,29 @@ function ComputerSection() {
   return (
     <>
       <h2>Computer</h2>
-      <p className="muted">Each bot gets its own browser desktop on this server — a private window it uses to open pages, fill in forms and read what's on screen. You can watch or take control at any time.</p>
+      <p className="muted">
+        {computer?.kind === "linux"
+          ? "Each bot has its own Linux computer — a full desktop with a browser, a terminal and its own files, separate from every other bot and from this server. Computers go to sleep when idle and wake when needed; nothing on them is lost. You can watch or take control at any time."
+          : "Each bot gets its own browser on this server — a private window it uses to open pages, fill in forms and read what's on screen. You can watch or take control at any time."}
+      </p>
       {!computer && <Loading />}
       {computer && !computer.browser && (
-        <Empty icon="monitor" title="Browser engine not installed">
-          Bots can't open web pages until a browser engine is installed on the server. Everything else keeps working.
+        <Empty icon="monitor" title="No computer available">
+          Bots have no screen on this server yet. Whoever runs it can give every bot a Linux computer (Docker plus the desktop image) or install a browser engine. Everything else keeps working.
         </Empty>
       )}
       {computer && computer.browser && (
         <>
           <div className="status-row">
             <span className="dot-inline dot-ok" />
-            <span>Browser engine ready · {computer.desktops.filter((d) => d.open).length} of {computer.maxDesktops} desktops open</span>
+            <span>
+              {computer.kind === "linux" ? "Linux computers" : "Browser engine ready"} · {computer.desktops.filter((d) => d.open).length} of {computer.maxDesktops} {computer.kind === "linux" ? "awake" : "open"}
+            </span>
           </div>
-          <h3 className="pane-heading">Open desktops</h3>
+          <h3 className="pane-heading">{computer.kind === "linux" ? "Computers" : "Open desktops"}</h3>
           <ErrorNote>{error}</ErrorNote>
           {computer.desktops.length === 0 ? (
-            <p className="muted small">No desktops are open. One opens when a bot first needs to browse.</p>
+            <p className="muted small">{computer.kind === "linux" ? "No computer exists yet. A bot's computer is created the first time it needs one." : "No desktops are open. One opens when a bot first needs to browse."}</p>
           ) : (
             <ul className="list">
               {computer.desktops.map((d) => {
@@ -87,15 +93,32 @@ function ComputerSection() {
                   <li key={d.botId} className="list-row is-card">
                     {bot ? <BotAvatar bot={bot} size={30} /> : <span className="logo-tile">?</span>}
                     <div className="list-row-text">
-                      <span className="list-row-title">{bot?.name ?? "Removed bot"}{!d.open && <span className="chip">closed</span>}</span>
-                      <span className="list-row-sub truncate" title={d.url ?? undefined}>{d.url || "Blank page"} · used {relTime(d.lastUsedAt, now)}</span>
+                      <span className="list-row-title">{bot?.name ?? "Removed bot"}{!d.open && <span className="chip">{computer.kind === "linux" ? "asleep" : "closed"}</span>}</span>
+                      <span className="list-row-sub truncate" title={d.url ?? undefined}>{computer.kind === "linux" ? (d.open ? "Awake" : "Asleep — wakes when needed") : d.url || "Blank page"} · used {relTime(d.lastUsedAt, now)}</span>
                     </div>
                     {bot && <IconButton icon="eye" size={16} label={`Watch ${bot.name}'s desktop`} onClick={() => openViewer(bot.id)} />}
+                    {bot && computer.kind === "linux" && (
+                      <button
+                        type="button"
+                        className="btn btn-small"
+                        onClick={async () => {
+                          setError(null);
+                          try {
+                            await api("POST", `/bots/${d.botId}/desktop/${d.open ? "sleep" : "wake"}`);
+                            await loadComputer();
+                          } catch (e) {
+                            setError(errText(e));
+                          }
+                        }}
+                      >
+                        {d.open ? "Sleep" : "Wake"}
+                      </button>
+                    )}
                     <ConfirmButton
                       className="btn btn-small"
-                      label="Reset"
-                      confirmLabel="Confirm reset"
-                      busyLabel="Resetting…"
+                      label={computer.kind === "linux" ? "Erase" : "Reset"}
+                      confirmLabel={computer.kind === "linux" ? "Erase everything on it" : "Confirm reset"}
+                      busyLabel="Working…"
                       onConfirm={async () => {
                         setError(null);
                         try {
@@ -111,7 +134,11 @@ function ComputerSection() {
               })}
             </ul>
           )}
-          <p className="muted small">Reset closes every page on that desktop and starts it fresh. Up to {plural(computer.maxDesktops, "bot")} can have a desktop open at once.</p>
+          <p className="muted small">
+            {computer.kind === "linux"
+              ? `Erase deletes that computer with everything installed and saved on it, except the bot's library files; a clean one is created next time. Up to ${plural(computer.maxDesktops, "computer")} can be awake at once — the one unused longest goes to sleep.`
+              : `Reset closes every page on that desktop and starts it fresh. Up to ${plural(computer.maxDesktops, "bot")} can have a desktop open at once.`}
+          </p>
         </>
       )}
     </>

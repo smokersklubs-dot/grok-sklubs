@@ -44,6 +44,12 @@ export const config = {
   maxSteps: num("MAX_STEPS", 60),
   maxDesktops: num("MAX_DESKTOPS", 4),
   desktopIdleMin: num("DESKTOP_IDLE_MIN", 20),
+  /** "linux" = a container per bot, "browser" = a browser on this server, "auto" = linux when available. */
+  computer: (process.env.COMPUTER ?? "auto") as "auto" | "linux" | "browser",
+  desktopImage: process.env.DESKTOP_IMAGE ?? "sklubot-desktop",
+  desktopMemory: process.env.DESKTOP_MEMORY ?? "2g",
+  desktopCpus: num("DESKTOP_CPUS", 2),
+  desktopResolution: process.env.DESKTOP_RESOLUTION ?? "1280x800x24",
   compactChars: num("COMPACT_CHARS", 300_000),
   compactKeepTurns: num("COMPACT_KEEP_TURNS", 4),
   consolidateIdleMin: num("CONSOLIDATE_IDLE_MIN", 10),

@@ -1,5 +1,5 @@
 import { clearLive, emit, getLive, setLive } from "../bus.js";
-import { browserAvailable } from "../computer.js";
+import { browserAvailable, computerKind } from "../computer.js";
 import { config } from "../config.js";
 import { connectors } from "../connectors.js";
 import { defaultModelRef, resolveModel, validateToolInput, type Block, type ChatMessage, type Effort, type TextBlock, type ToolResultBlock, type ToolSpec, type ToolUseBlock } from "../llm/index.js";
@@ -147,7 +147,7 @@ async function newTurn(bot: BotRecord, user: UserRecord, depth: number, signal: 
   const connectorNames = [...new Set(remoteTools.map((t) => t.connectorName))];
   return {
     bot, user, depth, signal, generation: bot.generation,
-    system: buildSystemPrompt(bot, user, { connectorNames, browser: browserAvailable(), shell: config.shellEnabled }),
+    system: buildSystemPrompt(bot, user, { connectorNames, browser: browserAvailable(), shell: config.shellEnabled, linux: computerKind() === "linux" }),
     // Sorted so the tool list is byte-identical from call to call, which keeps provider caches warm.
     tools: [...builtins.map((b) => b.spec), ...remoteTools.map((r) => r.spec)].sort((a, b) => a.name.localeCompare(b.name)),
     modelRef: bot.model || defaultModelRef(),

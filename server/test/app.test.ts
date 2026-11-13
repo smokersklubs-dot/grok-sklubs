@@ -8,6 +8,7 @@ import { test } from "node:test";
 process.env.DATA_DIR = mkdtempSync(path.join(tmpdir(), "sklubot-test-"));
 process.env.SESSION_SECRET = "test-secret-test-secret-test-secret";
 process.env.NO_SCHEDULER = "1";
+process.env.COMPUTER = "browser";
 
 const { registerProvider } = await import("../src/llm/index.js");
 const { api } = await import("../src/routes.js");

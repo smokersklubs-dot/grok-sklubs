@@ -43,8 +43,9 @@ n'apparaissent nulle part dans l'application.
 
 ## Choix d'architecture différents de la référence
 
-- **Ordinateur** : un navigateur réel par bot sur le serveur, au lieu d'une machine virtuelle louée.
-  Aucun compte tiers ; la vue en direct passe par des captures, pas par un relais d'écran distant.
+- **Ordinateur** : un ordinateur Linux par bot dans un conteneur sur ton serveur, au lieu d'une machine
+  virtuelle louée chez un fournisseur. Aucun compte tiers ; la vue en direct passe par des captures
+  rafraîchies chaque seconde, pas par un flux d'écran continu.
 - **Applications** : connecteurs au standard ouvert MCP, au lieu d'un catalogue d'un fournisseur unique.
 - **Comptes** : e-mail et mot de passe locaux, au lieu d'une connexion déléguée à un service tiers.
 - **Voix** : reconnaissance et synthèse vocales du navigateur, au lieu d'une API vocale temps réel payante.
@@ -57,8 +58,8 @@ n'apparaissent nulle part dans l'application.
 
 Par rapport à la documentation publique du produit d'origine, Sklubot **ne couvre pas** :
 
-- machine Linux complète dans le cloud par utilisateur (bureau graphique, applications hors navigateur),
-  veille et réveil, exécution sur ton propre poste ;
+- exécution sur ton propre poste, passage du trafic par ton poste, clés de sécurité matérielles ;
+  flux d'écran continu (la vue en direct est une suite de captures) ;
 - catalogue d'applications avec connexion OAuth en un clic, plusieurs comptes par application,
   déclencheurs natifs (messagerie d'équipe, tickets, e-mail entrant) — seul le webhook générique existe ;
 - coffre d'identifiants et de moyens de paiement, formulaires sécurisés, achats ;

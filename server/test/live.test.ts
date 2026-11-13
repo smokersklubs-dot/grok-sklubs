@@ -10,8 +10,10 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 process.env.DATA_DIR = mkdtempSync(path.join(tmpdir(), "sklubot-live-"));
 process.env.SESSION_SECRET = "test-secret-test-secret-test-secret";
 process.env.NO_SCHEDULER = "1";
+process.env.COMPUTER = "browser";
 
-const { browserAvailable, closeAllDesktops, screen, computerState } = await import("../src/computer.js");
+const { browserAvailable, closeAllDesktops, screen, computerState, initComputer } = await import("../src/computer.js");
+await initComputer();
 const { connectors } = await import("../src/connectors.js");
 const { users } = await import("../src/store.js");
 

@@ -58,9 +58,11 @@ answers 401 without it. Types named below are defined in `server/src/shared.ts`.
 | Method | Path | Body | Returns |
 |---|---|---|---|
 | GET | `/computer` | – | `ComputerState` |
-| GET | `/bots/:id/screen` | – | `image/jpeg`, or 204 when the bot has no open desktop |
+| GET | `/bots/:id/screen` | – | `image/jpeg`, or 204 when the bot's computer is off (never wakes it) |
 | POST | `/bots/:id/screen/input` | `{ type: "click", x, y }` \| `{ type: "type", text }` \| `{ type: "key", key }` \| `{ type: "scroll", x, y, dy }` \| `{ type: "goto", url }` | `{ ok }` — take-control input; x/y are in screenshot pixels |
-| POST | `/bots/:id/desktop/reset` | – | `{ ok }` |
+| POST | `/bots/:id/desktop/wake` | – | `{ ok }` — switch the bot's Linux computer on |
+| POST | `/bots/:id/desktop/sleep` | – | `{ ok }` — put it to sleep (state is kept) |
+| POST | `/bots/:id/desktop/reset` | – | `{ ok }` — Linux: erase the computer; browser: close it |
 | GET | `/bots/:id/files?path=` | – | `{ entries: FileEntry[] }` |
 | GET | `/bots/:id/files/download?path=` | – | file bytes |
 

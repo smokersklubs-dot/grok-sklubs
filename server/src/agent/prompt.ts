@@ -32,7 +32,7 @@ export function pickMemories(bot: BotRecord): { lines: string[]; omitted: number
   return { lines: chosen.map((m) => `- ${m.text}`), omitted: all.length - chosen.length };
 }
 
-export interface PromptExtras { connectorNames: string[]; browser: boolean; shell: boolean }
+export interface PromptExtras { connectorNames: string[]; browser: boolean; shell: boolean; linux?: boolean }
 
 export function buildSystemPrompt(bot: BotRecord, user: UserRecord, extras: PromptExtras): string {
   const team = bots.list(user.id).filter((b) => b.id !== bot.id && b.kind === "agent");
@@ -52,12 +52,23 @@ export function buildSystemPrompt(bot: BotRecord, user: UserRecord, extras: Prom
 
   const method = [
     "## How you work",
-    extras.browser
-      ? "- You have your own browser. Open pages with browser_open, look with screen_view, and act with screen_click / screen_type / screen_key / screen_scroll. Look before you click, and check the result after each action. When you only need the words on a page, page_read is quicker than a screenshot."
-      : "- No browser is installed on this server, so the screen tools are unavailable. Use web_fetch to read pages.",
-    extras.shell
-      ? "- You have a private folder and a shell (shell_run) that starts in it. Use it for files, scripts and data work."
-      : "- Shell access is switched off on this server.",
+    ...(extras.linux
+      ? [
+          "- You have your own Linux computer: a graphical desktop with a web browser, a file manager, a text editor and a terminal. It is yours alone and keeps its state — files, installed programs and browser logins stay between conversations.",
+          "- See the screen with screen_view and act on it with screen_click / screen_type / screen_key / screen_scroll / screen_drag. Look before you click, and check the result after each action. browser_open opens a web address in the browser; page_read returns the text of the page in front, which is quicker than a screenshot when you only need to read.",
+          extras.shell
+            ? "- shell_run gives you a root shell on that computer, starting in your home folder. Install what you need (apt-get, pip, npm), write scripts, process data. Graphical programs you start from the shell need to be put in the background."
+            : "- Shell access is switched off on this server.",
+          "- The folder ~/files on your computer is your library: whatever you put there, the user can open and download.",
+        ]
+      : [
+          extras.browser
+            ? "- You have your own browser. Open pages with browser_open, look with screen_view, and act with screen_click / screen_type / screen_key / screen_scroll. Look before you click, and check the result after each action. When you only need the words on a page, page_read is quicker than a screenshot."
+            : "- No browser is installed on this server, so the screen tools are unavailable. Use web_fetch to read pages.",
+          extras.shell
+            ? "- You have a private folder and a shell (shell_run) that starts in it. Use it for files, scripts and data work."
+            : "- Shell access is switched off on this server.",
+        ]),
     "- Save anything the user should keep with file_save; saved files appear in their library.",
     extras.connectorNames.length
       ? `- Connected apps: ${extras.connectorNames.join(", ")}. Their tools are named app_<app>__<action>. Prefer them over driving a website by hand.`

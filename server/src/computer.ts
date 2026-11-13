@@ -5,6 +5,7 @@ import path from "node:path";
 import { config } from "./config.js";
 import { emit } from "./bus.js";
 import { now } from "./store.js";
+import { adoptMachines, linuxMachines, linuxReady, linuxScreen, linuxShell, onMachinesChanged, sweepIdleMachines } from "./linux.js";
 import type { ComputerState, FileEntry } from "./shared.js";
 
 /**
@@ -23,7 +24,32 @@ function loadEngine(): Engine | null {
   }
   return (engine = null);
 }
-export const browserAvailable = () => loadEngine() !== null;
+
+/** Which kind of computer bots get. Decided once at start-up by initComputer(). */
+let kind: ComputerState["kind"] = "none";
+export const computerKind = () => kind;
+/** True when bots have a screen to look at and act on. */
+export const browserAvailable = () => kind !== "none";
+
+export async function initComputer(owners: Map<string, string> = new Map()): Promise<string> {
+  const want = config.computer;
+  if (want !== "browser") {
+    const ready = await linuxReady();
+    if (ready.ok) {
+      kind = "linux";
+      onMachinesChanged((userId) => announce(userId));
+      await adoptMachines(owners);
+      return "Computers: a Linux desktop per bot (containers)";
+    }
+    if (want === "linux") throw new Error(`COMPUTER=linux was requested but ${ready.reason}.`);
+    kind = loadEngine() ? "browser" : "none";
+    return kind === "browser"
+      ? `Computers: a browser per bot on this server — for a full Linux computer per bot, ${ready.reason}`
+      : `Computers: none — ${ready.reason}; no browser engine either. Bots can still fetch pages, run commands and use connectors.`;
+  }
+  kind = loadEngine() ? "browser" : "none";
+  return kind === "browser" ? "Computers: a browser per bot on this server" : "Computers: none (no browser engine installed)";
+}
 
 export const VIEWPORT = { width: 1280, height: 800 };
 
@@ -39,8 +65,13 @@ export const workspaceOf = (botId: string) => {
 };
 
 export function computerState(userId: string): ComputerState {
+  if (kind === "linux")
+    return {
+      kind, browser: true, maxDesktops: config.maxDesktops,
+      desktops: linuxMachines(userId).sort((a, b) => b.lastUsedAt - a.lastUsedAt).map((m) => ({ botId: m.botId, open: m.power === "running", url: null, lastUsedAt: m.lastUsedAt })),
+    };
   return {
-    browser: browserAvailable(),
+    kind, browser: browserAvailable(),
     maxDesktops: config.maxDesktops,
     desktops: [...desktops.values()].filter((d) => d.userId === userId).sort((a, b) => b.lastUsedAt - a.lastUsedAt)
       .map((d) => ({ botId: d.botId, open: true, url: safeUrl(d), lastUsedAt: d.lastUsedAt })),
@@ -102,7 +133,7 @@ async function capture(d: Desktop): Promise<Shot> {
   return { data: buf.toString("base64"), mediaType: "image/jpeg", url: d.page.url(), title: await d.page.title().catch(() => "") };
 }
 
-export const screen = {
+const browserScreen = {
   view: (botId: string, userId: string) => withDesktop(botId, userId, capture),
   open: (botId: string, userId: string, url: string) => withDesktop(botId, userId, async (d) => {
     const target = /^[a-z][a-z0-9+.-]*:/i.test(url) ? url : `https://${url}`;
@@ -157,6 +188,29 @@ export const screen = {
   isOpen: (botId: string) => desktops.has(botId),
 };
 
+/** The bot's screen, whichever kind of computer it has. */
+export const screen = {
+  view: (botId: string, userId: string) => (kind === "linux" ? linuxScreen.view(botId, userId, workspaceOf(botId)) : browserScreen.view(botId, userId)),
+  open: (botId: string, userId: string, url: string) => (kind === "linux" ? linuxScreen.open(botId, userId, workspaceOf(botId), url) : browserScreen.open(botId, userId, url)),
+  click: (botId: string, userId: string, x: number, y: number, button: "left" | "right" | "middle" = "left", double = false) =>
+    kind === "linux" ? linuxScreen.click(botId, userId, workspaceOf(botId), x, y, button, double) : browserScreen.click(botId, userId, x, y, button, double),
+  type: (botId: string, userId: string, text: string) => (kind === "linux" ? linuxScreen.type(botId, userId, workspaceOf(botId), text) : browserScreen.type(botId, userId, text)),
+  key: (botId: string, userId: string, combo: string) => (kind === "linux" ? linuxScreen.key(botId, userId, workspaceOf(botId), combo) : browserScreen.key(botId, userId, combo)),
+  scroll: (botId: string, userId: string, x: number, y: number, dy: number) =>
+    kind === "linux" ? linuxScreen.scroll(botId, userId, workspaceOf(botId), x, y, dy) : browserScreen.scroll(botId, userId, x, y, dy),
+  drag: (botId: string, userId: string, x1: number, y1: number, x2: number, y2: number) =>
+    kind === "linux" ? linuxScreen.drag(botId, userId, workspaceOf(botId), x1, y1, x2, y2) : browserScreen.drag(botId, userId, x1, y1, x2, y2),
+  read: (botId: string, userId: string) => (kind === "linux" ? linuxScreen.read(botId, userId, workspaceOf(botId)) : browserScreen.read(botId, userId)),
+  peek: (botId: string) => (kind === "linux" ? linuxScreen.peek(botId) : browserScreen.peek(botId)),
+  isOpen: (botId: string) => (kind === "linux" ? linuxScreen.isOpen(botId) : browserScreen.isOpen(botId)),
+  /** Switches the computer on without doing anything on it (Linux computers only; a browser opens on first use). */
+  wake: async (botId: string, userId: string) => { if (kind === "linux") await linuxScreen.wake(botId, userId, workspaceOf(botId)); },
+  /** Linux: put the computer to sleep, keeping everything on it. Browser: close it. */
+  sleep: (botId: string) => (kind === "linux" ? linuxScreen.sleep(botId) : browserScreen.reset(botId)),
+  /** Linux: wipe the computer and start fresh next time. Browser: close it (logins are kept). */
+  reset: (botId: string) => (kind === "linux" ? linuxScreen.destroy(botId) : browserScreen.reset(botId)),
+};
+
 const KEY_ALIASES: Record<string, string> = {
   ctrl: "Control", control: "Control", cmd: "Meta", command: "Meta", meta: "Meta", alt: "Alt", option: "Alt", shift: "Shift",
   enter: "Enter", return: "Enter", esc: "Escape", escape: "Escape", tab: "Tab", space: "Space", backspace: "Backspace", delete: "Delete",
@@ -171,6 +225,7 @@ function normaliseKey(combo: string): string {
 
 /** Close browsers nobody has touched for a while so they do not hold memory forever. */
 export function sweepIdleDesktops() {
+  if (kind === "linux") return sweepIdleMachines();
   const cutoff = now() - config.desktopIdleMin * 60000;
   for (const d of desktops.values()) if (d.busy === 0 && d.lastUsedAt < cutoff) void closeDesktop(d.botId);
 }
@@ -216,9 +271,11 @@ export function removeWorkspace(botId: string) {
 // ── Shell ────────────────────────────────────────────────────────────────────
 const OUTPUT_TAIL = 20_000;
 
-/** Runs a command in the bot's folder with a scrubbed environment: no server secrets ever reach it. */
-export function runShell(botId: string, command: string, timeoutSec: number, signal?: AbortSignal): Promise<{ code: number | null; output: string; timedOut: boolean }> {
+/** Runs a command for a bot. Without a Linux computer it runs on this server, in the bot's folder, with a scrubbed environment so no server secret reaches it. */
+export function runShell(botId: string, userId: string, command: string, timeoutSec: number, signal?: AbortSignal): Promise<{ code: number | null; output: string; timedOut: boolean }> {
   if (!config.shellEnabled) return Promise.reject(new Error("shell access is switched off on this server"));
+  // On a Linux computer the command runs inside the bot's own machine, never on this server.
+  if (kind === "linux") return linuxShell(botId, userId, workspaceOf(botId), command, timeoutSec, signal);
   const cwd = workspaceOf(botId);
   const env = { PATH: process.env.PATH ?? "/usr/bin:/bin", HOME: cwd, LANG: process.env.LANG ?? "C.UTF-8", TERM: "dumb" };
   return new Promise((resolve) => {

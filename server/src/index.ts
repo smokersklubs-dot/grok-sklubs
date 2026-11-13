@@ -3,7 +3,8 @@ import path from "node:path";
 import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
-import { browserAvailable, closeAllDesktops } from "./computer.js";
+import { closeAllDesktops, initComputer } from "./computer.js";
+import { bots, users } from "./store.js";
 import { assertConfig, config } from "./config.js";
 import { connectors } from "./connectors.js";
 import { defaultModelRef, listProviders } from "./llm/index.js";
@@ -23,12 +24,18 @@ if (existsSync(path.join(config.webDist, "index.html"))) {
   app.get("*", (c) => c.html(index));
 }
 
+let computerNote: string;
+try {
+  const owners = new Map(users.all().flatMap((u) => bots.list(u.id, true).map((b) => [b.id, u.id] as [string, string])));
+  computerNote = await initComputer(owners);
+} catch (err) { console.error(`\nCannot start: ${(err as Error).message}\n`); process.exit(1); }
+
 startScheduler();
 const server = serve({ fetch: app.fetch, port: config.port }, () => {
   const ready = listProviders().filter((p) => p.available()).map((p) => p.label);
   console.log(`Sklubot is running at ${config.publicUrl}`);
   console.log(ready.length ? `Model providers: ${ready.join(", ")} (default ${defaultModelRef()})` : "No model provider configured yet — add ANTHROPIC_API_KEY to .env so bots can think.");
-  console.log(browserAvailable() ? "Browser engine: available" : "Browser engine: not installed (bots can still fetch pages, run commands and use connectors)");
+  console.log(computerNote);
 });
 
 async function shutdown() {

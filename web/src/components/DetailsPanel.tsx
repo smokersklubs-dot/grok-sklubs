@@ -157,11 +157,11 @@ function ComputerSection({ bot }: { bot: Bot }) {
   const engine = computer ? computer.browser : true;
   const { url, status } = useScreen(bot.id, 4000, engine);
   const text = !engine
-    ? "Browser engine not installed"
+    ? "No computer available"
     : status === "ok"
-      ? desktop?.url || "Desktop open"
+      ? desktop?.url || (computer?.kind === "linux" ? "Awake" : "Desktop open")
       : status === "none"
-        ? "No desktop open yet"
+        ? computer?.kind === "linux" ? "Asleep — wakes when needed" : "No desktop open yet"
         : status === "error"
           ? "Can't reach the desktop"
           : "Checking…";
@@ -175,7 +175,7 @@ function ComputerSection({ bot }: { bot: Bot }) {
           {url ? <img src={url} alt="" /> : status === "loading" && engine ? <span className="dot-inline dot-pulse" /> : <Icon name="monitor" size={22} />}
         </span>
         <span className="screen-card-text">
-          <span className="list-row-title">{bot.name}'s desktop</span>
+          <span className="list-row-title">{bot.name}'s {computer?.kind === "linux" ? "Linux computer" : "desktop"}</span>
           <span className="list-row-sub truncate">{text}</span>
         </span>
       </button>

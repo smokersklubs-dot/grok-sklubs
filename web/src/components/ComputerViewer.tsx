@@ -33,6 +33,14 @@ export function ComputerViewer({ botId }: { botId: string }) {
   const refreshTimer = useRef<number | undefined>(undefined);
 
   const engine = computer ? computer.browser : true;
+  const linux = computer?.kind === "linux";
+  const [waking, setWaking] = useState(false);
+  const wakeUp = async () => {
+    setWaking(true);
+    try { await api("POST", `/bots/${botId}/desktop/wake`); } catch { /* the status line shows the problem */ }
+    setWaking(false);
+    refresh();
+  };
   const { url, status, refresh } = useScreen(botId, 1000, engine);
   const desktop = computer?.desktops.find((d) => d.botId === botId);
 
@@ -133,13 +141,13 @@ export function ComputerViewer({ botId }: { botId: string }) {
   if (!bot) return null;
 
   const statusText = !engine
-    ? "Browser engine not installed"
+    ? "No computer available"
     : status === "ok"
       ? control
         ? "You're in control"
         : "Watching live"
       : status === "none"
-        ? "No desktop open"
+        ? linux ? "Asleep" : "No desktop open"
         : status === "error"
           ? "Can't reach the desktop"
           : "Connecting…";
@@ -183,8 +191,8 @@ export function ComputerViewer({ botId }: { botId: string }) {
         {!engine ? (
           <div className="viewer-empty">
             <Icon name="monitor" size={40} />
-            <h3>No browser engine on this server</h3>
-            <p>Bots need a browser engine installed on the server to open and operate web pages. Ask whoever runs this server to install it, then reopen this view.</p>
+            <h3>No computer on this server</h3>
+            <p>Bots need either a Linux computer (Docker plus the desktop image) or a browser engine on the server. Ask whoever runs it to set one up, then reopen this view.</p>
           </div>
         ) : url ? (
           <img
@@ -204,8 +212,9 @@ export function ComputerViewer({ botId }: { botId: string }) {
         ) : status === "none" ? (
           <div className="viewer-empty">
             <Icon name="monitor" size={40} />
-            <h3>No desktop open yet</h3>
-            <p>{bot.name} opens a desktop the first time it needs to browse. {control ? "Enter an address below to open one now." : "Take control to open a page yourself."}</p>
+            <h3>{linux ? `${bot.name}'s computer is asleep` : "No desktop open yet"}</h3>
+            <p>{linux ? "It wakes by itself when the bot needs it, with everything as it was left." : `${bot.name} opens a desktop the first time it needs to browse. ${control ? "Enter an address below to open one now." : "Take control to open a page yourself."}`}</p>
+            {linux && <button type="button" className="btn btn-primary" disabled={waking} onClick={wakeUp}>{waking ? "Waking up…" : "Wake computer"}</button>}
           </div>
         ) : status === "error" ? (
           <div className="viewer-empty">
