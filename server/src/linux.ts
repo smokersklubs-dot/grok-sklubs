@@ -11,14 +11,15 @@ import { now } from "./store.js";
 export interface Exec { code: number | null; stdout: Buffer; stderr: string; timedOut: boolean }
 
 /** Runs the docker CLI without a shell, so no argument is ever interpreted. */
-export function docker(args: string[], opts: { timeoutMs?: number; signal?: AbortSignal; maxBytes?: number } = {}): Promise<Exec> {
+export function docker(args: string[], opts: { timeoutMs?: number; signal?: AbortSignal; maxBytes?: number; input?: string } = {}): Promise<Exec> {
   return new Promise((resolve) => {
-    const child = spawn("docker", args, { stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn("docker", args, { stdio: [opts.input === undefined ? "ignore" : "pipe", "pipe", "pipe"] });
+    if (opts.input !== undefined) child.stdin!.end(opts.input);
     const chunks: Buffer[] = [];
     let size = 0, stderr = "", timedOut = false;
     const max = opts.maxBytes ?? 20_000_000;
-    child.stdout.on("data", (c: Buffer) => { size += c.length; chunks.push(c); while (size > max && chunks.length > 1) size -= chunks.shift()!.length; });
-    child.stderr.on("data", (c: Buffer) => { stderr = (stderr + c.toString("utf8")).slice(-8000); });
+    child.stdout!.on("data", (c: Buffer) => { size += c.length; chunks.push(c); while (size > max && chunks.length > 1) size -= chunks.shift()!.length; });
+    child.stderr!.on("data", (c: Buffer) => { stderr = (stderr + c.toString("utf8")).slice(-8000); });
     const kill = () => child.kill("SIGKILL");
     const timer = setTimeout(() => { timedOut = true; kill(); }, opts.timeoutMs ?? 30_000);
     opts.signal?.addEventListener("abort", kill, { once: true });
@@ -161,7 +162,9 @@ export const linuxScreen = {
       return capture(n);
     }),
   type: (botId: string, userId: string, ws: string, text: string) => onMachine(botId, userId, ws, async (n) => {
-    for (let i = 0; i < text.length; i += 1500) await x(n, "type", "--delay", "6", "--", text.slice(i, i + 1500));
+    // The text travels on standard input, so it never shows up in a process list (it may be a password).
+    const r = await docker(["exec", "-i", n, "xdotool", "type", "--delay", "6", "--file", "-"], { timeoutMs: 20_000 + text.length * 20, input: text });
+    if (r.code !== 0) throw new Error(`typing failed: ${r.stderr.trim().slice(0, 200) || "no detail"}`);
     await pause(300);
     return capture(n);
   }),

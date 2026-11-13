@@ -6,7 +6,7 @@ ENV DEBIAN_FRONTEND=noninteractive LANG=C.UTF-8 DISPLAY=:1 HOME=/root
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
       xvfb openbox tint2 xdotool imagemagick x11-xserver-utils dbus-x11 \
-      chromium xterm pcmanfm mousepad \
+      chromium xterm xfonts-base pcmanfm mousepad \
       fonts-dejavu fonts-liberation fonts-noto-color-emoji \
       ca-certificates curl wget git jq unzip zip nano less procps sudo \
       python3 python3-pip python3-venv python3-websocket nodejs npm \

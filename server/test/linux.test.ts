@@ -66,6 +66,14 @@ test("the bot can open a page in its browser, read it and click on it", { skip }
   assert.ok((await screen.peek(A))!.length > 3000);
 });
 
+test("typed text arrives exactly, including awkward characters", { skip }, async () => {
+  await runShell(A, USER, "pkill chromium; rm -f /tmp/typed.txt; (xterm -e 'read -r line; printf %s \"$line\" > /tmp/typed.txt' &) ; sleep 2", 30);
+  await screen.click(A, USER, 600, 400);
+  await screen.type(A, USER, `p@ss "w0rd" $HOME & it's`);
+  await screen.key(A, USER, "Enter");
+  assert.equal((await runShell(A, USER, "sleep 1; cat /tmp/typed.txt", 30)).output, `p@ss "w0rd" $HOME & it's`);
+});
+
 test("what a bot installs survives sleep, and only so many computers run at once", { skip }, async () => {
   await runShell(A, USER, "echo kept > ~/note.txt", 30);
   // MAX_DESKTOPS=1: waking B puts A to sleep.
