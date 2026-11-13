@@ -6,6 +6,8 @@ avec tes clés ; les données restent dans un fichier SQLite local.
 
 Sklubot a été reconstruit **en salle blanche** : voir [docs/CLEANROOM.md](docs/CLEANROOM.md).
 
+![Discussion avec cartes de question, étapes et routines](docs/screenshots/chat.png)
+
 ## Ce que ça fait
 
 | Domaine | Fonctions |
@@ -32,6 +34,9 @@ cp .env.example .env        # puis remplis SESSION_SECRET et ANTHROPIC_API_KEY
 npm run build
 npm start                   # http://localhost:8787
 ```
+
+**Essayer sans clé ni coût** : mets `DEMO_MODE=1` dans `.env` (sans clé de modèle). Un faux modèle qui suit
+des mots-clés permet de parcourir toute l'application : outils, approbations, cartes, routines, navigateur.
 
 Le premier compte créé est le tien ; les inscriptions se ferment ensuite (sauf `OPEN_SIGNUP=1`).
 
@@ -79,7 +84,10 @@ docs/cleanroom/        cahiers des charges fonctionnels issus de l'étude
 
 ## Limites connues
 
-Voir la section « Écarts » de [docs/CLEANROOM.md](docs/CLEANROOM.md).
+- L'interface est en anglais pour l'instant.
+- Le fournisseur Claude est écrit d'après la documentation officielle du SDK et compile, mais **n'a pas pu être
+  essayé avec une vraie clé** dans l'environnement de construction ; les tests utilisent un modèle simulé.
+- Voir aussi la section « Écarts » de [docs/CLEANROOM.md](docs/CLEANROOM.md).
 
 ## Licence
 
