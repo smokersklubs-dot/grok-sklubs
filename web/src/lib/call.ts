@@ -3,6 +3,7 @@
  * voice-origin message → the bot's next finished replies are read aloud with speech synthesis.
  */
 import { api, errText } from "../api";
+import { t } from "../i18n";
 import { useStore, type CallLine, type CallState, type Thread } from "../store";
 import type { Row } from "../types";
 import { canCall, createRecognition, makeUtterance, micErrorText, recognitionLang, speakable, type Recognition } from "./speech";
@@ -67,7 +68,7 @@ async function sendUtterance(botId: string, text: string): Promise<void> {
     useStore.getState().addRows(botId, [r.row]);
     if (getCall()?.botId === botId && spokenUpTo === null) spokenUpTo = r.row.seq;
   } catch (e) {
-    useStore.getState().showToast(`Couldn't send that: ${errText(e)}`);
+    useStore.getState().showToast(t("call.sendFailed", { error: errText(e) }));
   }
 }
 
@@ -154,7 +155,7 @@ export function startCall(botId: string): void {
 
   const r = createRecognition(recognitionLang(bot.voice));
   if (!r) {
-    fail("Voice chat isn't supported in this browser.");
+    fail(t("composer.voiceUnsupported"));
     return;
   }
   rec = r;

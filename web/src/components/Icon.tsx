@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useT } from "../i18n";
 
 /** Hand-drawn line icons on a 24×24 grid. */
 const PATHS = {
@@ -53,6 +54,10 @@ const PATHS = {
   external: <path d="M13.5 4.5h6v6M19.5 4.5l-8.5 8.5M17.5 14v3.5a2 2 0 01-2 2h-9a2 2 0 01-2-2v-9a2 2 0 012-2H10" />,
   cursor: <path d="M6 4l12.5 6.5-5.3 1.9-2 5.3z" />,
   eye: <><path d="M2.5 12c2.3-4 5.5-6 9.5-6s7.2 2 9.5 6c-2.3 4-5.5 6-9.5 6s-7.2-2-9.5-6z" /><circle cx="12" cy="12" r="2.8" /></>,
+  eyeOff: <><path d="M9.6 6.3A9.7 9.7 0 0112 6c4 0 7.2 2 9.5 6a14 14 0 01-2.6 3.3M6.3 7.7A13.6 13.6 0 002.5 12c2.3 4 5.5 6 9.5 6 1.5 0 2.9-.3 4.2-.900M9.9 9.900a2.8 2.8 0 004 4M4 4l16 16" /></>,
+  clip: <path d="M19.5 11.500l-7.8 7.800a4.6 4.6 0 01-6.5-6.500l8.3-8.300a3.1 3.1 0 014.4 4.400l-8.3 8.300a1.6 1.6 0 01-2.3-2.300l7.3-7.3" />,
+  key: <><circle cx="8" cy="15.5" r="4" /><path d="M11 12.700l8.5-8.500M16 7.500l2.5 2.500M13.5 10l2 2" /></>,
+  image: <><rect x="3.5" y="4.5" width="17" height="15" rx="3" /><circle cx="9" cy="10" r="1.7" /><path d="M4.5 17l4.5-4.2 3.5 3.2 2.5-2.2 4.5 4" /></>,
 } satisfies Record<string, ReactNode>;
 
 export type IconName = keyof typeof PATHS;
@@ -78,8 +83,9 @@ export function Icon({ name, size = 18, className }: { name: IconName; size?: nu
 }
 
 export function Spinner({ size = 16 }: { size?: number }) {
+  const t = useT();
   return (
-    <svg className="spinner" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" role="status" aria-label="Loading">
+    <svg className="spinner" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" role="status" aria-label={t("common.loading")}>
       <path d="M12 3.5a8.5 8.5 0 108.5 8.5" />
     </svg>
   );

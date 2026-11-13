@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { useT } from "./i18n";
 import { applyTheme, useStore } from "./store";
 import { AppSettings } from "./components/AppSettings";
 import { BotSettings } from "./components/BotSettings";
@@ -93,13 +94,14 @@ function Shell() {
 export function App() {
   const boot = useStore((s) => s.boot);
   const init = useStore((s) => s.init);
+  const t = useT();
   useEffect(() => {
     void init();
   }, [init]);
   useShortcuts();
   useSystemTheme();
 
-  if (boot === "loading") return <div className="boot" aria-busy="true" aria-label="Loading" />;
+  if (boot === "loading") return <div className="boot" aria-busy="true" aria-label={t("common.loading")} />;
   if (boot === "signedOut") return <SignIn />;
   return <Shell />;
 }

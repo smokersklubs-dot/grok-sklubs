@@ -1,6 +1,7 @@
 import { create } from "zustand";
-import { api, errText, setUnauthorizedHandler } from "./api";
-import type { Bot, BotBundle, ComputerState, Connector, Live, Routine, Row, ServerEvent, Task, User } from "./types";
+import { api, apiUpload, errText, setUnauthorizedHandler } from "./api";
+import { getLocale, isLocale, setLocale as applyLocale, t } from "./i18n";
+import type { Attachment, Bot, BotBundle, ComputerState, Connector, Live, Locale, Routine, Row, ServerEvent, Task, User } from "./types";
 
 export type Theme = "system" | "light" | "dark";
 export type ModalState =
@@ -10,7 +11,7 @@ export type ModalState =
   | { kind: "search" }
   | { kind: "connectors"; prefill?: { name: string; botId: string; seq: number } };
 export type BotSettingsTab = "general" | "skills" | "memories" | "routines";
-export type AppSection = "general" | "computer" | "permissions" | "connectors" | "usage" | "checkins" | "account";
+export type AppSection = "general" | "computer" | "permissions" | "connectors" | "vault" | "usage" | "checkins" | "account";
 
 export interface Thread {
   generation: number;
@@ -33,6 +34,21 @@ export interface CallState {
   startedAt: number | null;
   lines: CallLine[];
 }
+
+/** A file picked for the next message: uploaded straight away, sent by its `attachment.path`. */
+export interface Upload {
+  id: string;
+  name: string;
+  size: number;
+  mime: string;
+  status: "uploading" | "ready" | "error";
+  /** Object URL for a local thumbnail (images only). */
+  preview: string | null;
+  attachment: Attachment | null;
+  error: string | null;
+}
+export const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
+export const MAX_ATTACHMENTS = 10;
 
 export const IDLE_LIVE: Live = { running: false, activity: null, awaiting: null, startedAt: null, queued: 0 };
 const PAGE = 200;
@@ -68,6 +84,8 @@ function writePrefs(patch: Partial<Prefs>): void {
 export function applyTheme(theme: Theme): void {
   const dark = theme === "dark" || (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
   document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
+  // Keeps the phone status bar / installed-app title bar in step with the theme.
+  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", dark ? "#131416" : "#f4f2ee");
 }
 
 /** Merge rows by seq; an incoming row replaces a stored one when its rev is higher or equal. */
@@ -93,6 +111,9 @@ interface Store {
   boot: "loading" | "signedOut" | "ready";
   user: User | null;
   signupOpen: boolean;
+  /** Whether bots on this server can create images. */
+  imageGeneration: boolean;
+  locale: Locale;
   online: boolean;
 
   bots: Record<string, Bot>;
@@ -117,6 +138,7 @@ interface Store {
   viewerBotId: string | null;
   toast: string | null;
   drafts: Record<string, string>;
+  uploads: Record<string, Upload[]>;
   focusTick: number;
   call: CallState | null;
 
@@ -140,6 +162,12 @@ interface Store {
   applyEvent(ev: ServerEvent): void;
   resync(): void;
 
+  /** Change the interface language; saved to the account when signed in. Rejects (and reverts) if saving fails. */
+  setLocale(locale: Locale): Promise<void>;
+  /** Start uploading files for the next message. Returns a message when some were refused. */
+  attachFiles(botId: string, files: File[]): string | null;
+  removeUpload(botId: string, id: string): void;
+  clearUploads(botId: string, ids: string[]): void;
   setTheme(theme: Theme): void;
   setView(view: "chat" | "tasks"): void;
   toggleDetails(open?: boolean): void;
@@ -159,11 +187,14 @@ interface Store {
 
 let toastTimer: number | undefined;
 let started = false;
+let uploadSeq = 0;
 
 export const useStore = create<Store>((set, get) => ({
   boot: "loading",
   user: null,
   signupOpen: false,
+  imageGeneration: false,
+  locale: getLocale(),
   online: true,
 
   bots: {},
@@ -188,6 +219,7 @@ export const useStore = create<Store>((set, get) => ({
   viewerBotId: null,
   toast: null,
   drafts: {},
+  uploads: {},
   focusTick: 0,
   call: null,
 
@@ -198,7 +230,8 @@ export const useStore = create<Store>((set, get) => ({
       if (get().boot === "ready") set({ boot: "signedOut", user: null });
     });
     try {
-      const me = await api<{ user: User | null; signupOpen: boolean }>("GET", "/me");
+      const me = await api<{ user: User | null; signupOpen: boolean; imageGeneration?: boolean }>("GET", "/me");
+      set({ imageGeneration: me.imageGeneration === true });
       if (me.user) {
         set({ signupOpen: me.signupOpen });
         await get().signedIn(me.user);
@@ -212,6 +245,18 @@ export const useStore = create<Store>((set, get) => ({
 
   async signedIn(user) {
     set({ user });
+    // Once signed in, the account's language wins over the device's.
+    if (isLocale(user.locale)) {
+      applyLocale(user.locale);
+      set({ locale: user.locale });
+    }
+    if (get().boot === "signedOut") {
+      // Signed in from the form: /me was read before there was a session, so read the server flags again.
+      api<{ imageGeneration?: boolean }>("GET", "/me").then(
+        (me) => set({ imageGeneration: me.imageGeneration === true }),
+        () => undefined,
+      );
+    }
     try {
       await get().loadBots();
     } catch {
@@ -475,6 +520,62 @@ export const useStore = create<Store>((set, get) => ({
       const cur = st.selectedId;
       if (cur && st.threads[cur]) threads[cur] = st.threads[cur];
       return { threads };
+    });
+  },
+
+  async setLocale(locale) {
+    const before = get().locale;
+    if (locale === before) return;
+    applyLocale(locale);
+    set({ locale });
+    if (!get().user) return;
+    try {
+      const r = await api<{ user: User }>("PUT", "/prefs", { locale });
+      set({ user: r.user });
+    } catch (e) {
+      if (get().locale === locale) {
+        applyLocale(before);
+        set({ locale: before });
+      }
+      throw e;
+    }
+  },
+
+  attachFiles(botId, files) {
+    let problem: string | null = null;
+    let room = MAX_ATTACHMENTS - (get().uploads[botId]?.length ?? 0);
+    const added: Upload[] = [];
+    const patch = (id: string, p: Partial<Upload>) =>
+      set((s) => ({ uploads: { ...s.uploads, [botId]: (s.uploads[botId] ?? []).map((u) => (u.id === id ? { ...u, ...p } : u)) } }));
+    for (const file of files) {
+      if (file.size > MAX_UPLOAD_BYTES) {
+        problem = t("composer.tooBig", { name: file.name });
+        continue;
+      }
+      if (room <= 0) {
+        problem = t("composer.tooMany");
+        break;
+      }
+      room--;
+      const id = `u${++uploadSeq}`;
+      const mime = file.type || "application/octet-stream";
+      added.push({ id, name: file.name, size: file.size, mime, status: "uploading", preview: mime.startsWith("image/") ? URL.createObjectURL(file) : null, attachment: null, error: null });
+      apiUpload<{ attachment: Attachment }>(`/bots/${botId}/uploads`, file).then(
+        (r) => patch(id, { status: "ready", attachment: r.attachment }),
+        (e: unknown) => patch(id, { status: "error", error: errText(e) }),
+      );
+    }
+    if (added.length) set((s) => ({ uploads: { ...s.uploads, [botId]: [...(s.uploads[botId] ?? []), ...added] } }));
+    return problem;
+  },
+  removeUpload(botId, id) {
+    get().clearUploads(botId, [id]);
+  },
+  clearUploads(botId, ids) {
+    set((s) => {
+      const list = s.uploads[botId] ?? [];
+      for (const u of list) if (ids.includes(u.id) && u.preview) URL.revokeObjectURL(u.preview);
+      return { uploads: { ...s.uploads, [botId]: list.filter((u) => !ids.includes(u.id)) } };
     });
   },
 

@@ -1,4 +1,5 @@
 /** Small fetch helper for the JSON API under /api. */
+import { t } from "./i18n";
 
 export class ApiError extends Error {
   status: number;
@@ -14,17 +15,12 @@ export function setUnauthorizedHandler(fn: () => void): void {
   unauthorizedHandler = fn;
 }
 
-export async function api<T = unknown>(method: string, path: string, body?: unknown): Promise<T> {
+async function request<T>(path: string, init: RequestInit): Promise<T> {
   let res: Response;
   try {
-    res = await fetch("/api" + path, {
-      method,
-      credentials: "same-origin",
-      headers: body !== undefined ? { "Content-Type": "application/json" } : undefined,
-      body: body !== undefined ? JSON.stringify(body) : undefined,
-    });
+    res = await fetch("/api" + path, { credentials: "same-origin", ...init });
   } catch {
-    throw new ApiError("Can't reach the server. Check your connection and try again.", 0);
+    throw new ApiError(t("api.unreachable"), 0);
   }
   if (res.status === 204) return undefined as T;
   const text = await res.text();
@@ -42,12 +38,26 @@ export async function api<T = unknown>(method: string, path: string, body?: unkn
         ? (data as { error: string }).error
         : null;
     if (res.status === 401 && !path.startsWith("/auth/") && path !== "/me") unauthorizedHandler?.();
-    throw new ApiError(serverMessage ?? `Request failed (${res.status})`, res.status);
+    throw new ApiError(serverMessage ?? t("api.failed", { status: res.status }), res.status);
   }
   return data as T;
 }
 
-export const errText = (e: unknown): string =>
-  e instanceof Error && e.message ? e.message : "Something went wrong. Please try again.";
+export function api<T = unknown>(method: string, path: string, body?: unknown): Promise<T> {
+  return request<T>(path, {
+    method,
+    headers: body !== undefined ? { "Content-Type": "application/json" } : undefined,
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+}
+
+/** POST one file as multipart form data (field `file`). The browser sets the multipart boundary itself. */
+export function apiUpload<T = unknown>(path: string, file: File): Promise<T> {
+  const form = new FormData();
+  form.append("file", file, file.name);
+  return request<T>(path, { method: "POST", body: form });
+}
+
+export const errText = (e: unknown): string => (e instanceof Error && e.message ? e.message : t("api.generic"));
 
 export const enc = encodeURIComponent;

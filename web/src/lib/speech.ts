@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { Bot } from "../types";
+import { getLocale, t } from "../i18n";
 
 /** Minimal typings for the Web Speech recognition API (not part of lib.dom). */
 export interface RecognitionResultEvent {
@@ -46,20 +47,24 @@ export function createRecognition(lang: string): Recognition | null {
 
 export function recognitionLang(voice: Bot["voice"]): string {
   if (voice.lang && voice.lang !== "auto") return voice.lang;
-  return navigator.language || "en-US";
+  // Follow the interface language, keeping the browser's region when it is the same language.
+  const nav = navigator.language || "";
+  const locale = getLocale();
+  if (nav.toLowerCase().startsWith(locale)) return nav;
+  return locale === "fr" ? "fr-FR" : "en-US";
 }
 
 export function micErrorText(code: string): string | null {
   switch (code) {
     case "not-allowed":
     case "service-not-allowed":
-      return "Microphone access is blocked. Allow it in your browser's site settings and try again.";
+      return t("mic.blocked");
     case "audio-capture":
-      return "No microphone was found.";
+      return t("mic.none");
     case "network":
-      return "Speech recognition needs a network connection and couldn't reach its service.";
+      return t("mic.network");
     case "language-not-supported":
-      return "This language isn't supported for speech recognition in your browser.";
+      return t("mic.lang");
     default:
       return null; // "no-speech", "aborted": not worth surfacing
   }
@@ -68,11 +73,11 @@ export function micErrorText(code: string): string | null {
 /** Strip Markdown so it reads naturally when spoken aloud. */
 export function speakable(md: string): string {
   return md
-    .replace(/```[\s\S]*?```/g, " (code omitted) ")
+    .replace(/```[\s\S]*?```/g, ` ${t("speech.codeOmitted")} `)
     .replace(/`([^`]*)`/g, "$1")
     .replace(/!\[[^\]]*\]\([^)]*\)/g, "")
     .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
-    .replace(/https?:\/\/\S+/g, "link")
+    .replace(/https?:\/\/\S+/g, t("speech.link"))
     .replace(/^\s{0,3}(#{1,6}|>|[-*+]|\d+\.)\s+/gm, "")
     .replace(/[*_~|]+/g, "")
     .replace(/\s+/g, " ")

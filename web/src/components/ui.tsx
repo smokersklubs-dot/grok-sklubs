@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useT } from "../i18n";
 import { Icon, Spinner, type IconName } from "./Icon";
 
 /* ---------- Escape handling: only the top-most overlay reacts ---------- */
@@ -97,6 +98,7 @@ export function Modal({
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const titleId = useId();
+  const t = useT();
   useEscape(onClose);
   useDialogFocus(ref);
   return (
@@ -110,7 +112,7 @@ export function Modal({
         {header ?? (
           <div className={hideTitle ? "sr-only" : "modal-head"}>
             <h2 id={titleId}>{title}</h2>
-            {!hideTitle && <IconButton icon="close" label="Close" onClick={onClose} />}
+            {!hideTitle && <IconButton icon="close" label={t("common.close")} onClick={onClose} />}
           </div>
         )}
         {header && <h2 id={titleId} className="sr-only">{title}</h2>}
@@ -158,8 +160,8 @@ export function IconButton({
 /** Two-step confirm: the first click arms the button, a second click within 4 s runs the action. */
 export function ConfirmButton({
   label,
-  confirmLabel = "Click again to confirm",
-  busyLabel = "Working…",
+  confirmLabel,
+  busyLabel,
   onConfirm,
   disabled,
   className = "btn",
@@ -177,6 +179,7 @@ export function ConfirmButton({
   icon?: IconName;
   ariaLabel?: string;
 }) {
+  const t = useT();
   const [armed, setArmed] = useState(false);
   const [busy, setBusy] = useState(false);
   const alive = useRef(true);
@@ -217,7 +220,7 @@ export function ConfirmButton({
       aria-label={armed || busy ? undefined : ariaLabel}
     >
       {icon && !armed && !busy && <Icon name={icon} size={16} />}
-      {busy ? busyLabel : armed ? confirmLabel : label}
+      {busy ? (busyLabel ?? t("common.working")) : armed ? (confirmLabel ?? t("common.confirmAgain")) : label}
     </button>
   );
 }
@@ -344,22 +347,24 @@ export function Empty({ icon, title, children }: { icon?: IconName; title?: stri
   );
 }
 
-export function Loading({ label = "Loading…" }: { label?: string }) {
+export function Loading({ label }: { label?: string }) {
+  const t = useT();
   return (
     <div className="loading">
-      <Spinner /> <span>{label}</span>
+      <Spinner /> <span>{label ?? t("common.loading")}</span>
     </div>
   );
 }
 
 export function ErrorNote({ children, onDismiss }: { children: ReactNode; onDismiss?: () => void }) {
+  const t = useT();
   if (!children) return null;
   return (
     <div className="error-note" role="alert">
       <Icon name="alert" size={16} />
       <span>{children}</span>
       {onDismiss && (
-        <button type="button" className="error-note-x" aria-label="Dismiss" onClick={onDismiss}>
+        <button type="button" className="error-note-x" aria-label={t("common.dismiss")} onClick={onDismiss}>
           <Icon name="close" size={14} />
         </button>
       )}
