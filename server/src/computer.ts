@@ -1,0 +1,241 @@
+import { spawn } from "node:child_process";
+import { createRequire } from "node:module";
+import { mkdirSync, readdirSync, statSync, writeFileSync, rmSync, existsSync } from "node:fs";
+import path from "node:path";
+import { config } from "./config.js";
+import { emit } from "./bus.js";
+import { now } from "./store.js";
+import type { ComputerState, FileEntry } from "./shared.js";
+
+/**
+ * Each bot gets a private "desktop": a folder of its own on disk plus a real browser with its own
+ * profile (cookies and logins persist per bot). Everything runs on this server; nothing is rented.
+ */
+
+// The browser engine is optional. It is loaded lazily so the server still starts without it.
+type Engine = { chromium: { launchPersistentContext(dir: string, opts: Record<string, unknown>): Promise<any> } };
+let engine: Engine | null | undefined;
+function loadEngine(): Engine | null {
+  if (engine !== undefined) return engine;
+  const require = createRequire(import.meta.url);
+  for (const name of ["playwright", "playwright-core"]) {
+    try { engine = require(name) as Engine; return engine; } catch { /* try the next package */ }
+  }
+  return (engine = null);
+}
+export const browserAvailable = () => loadEngine() !== null;
+
+export const VIEWPORT = { width: 1280, height: 800 };
+
+interface Desktop { botId: string; userId: string; context: any; page: any; lastUsedAt: number; busy: number }
+const desktops = new Map<string, Desktop>();
+const opening = new Map<string, Promise<Desktop>>();
+
+const safeId = (id: string) => id.replace(/[^a-zA-Z0-9_-]/g, "_");
+export const workspaceOf = (botId: string) => {
+  const dir = path.join(config.workspaceDir, safeId(botId));
+  mkdirSync(dir, { recursive: true });
+  return dir;
+};
+
+export function computerState(userId: string): ComputerState {
+  return {
+    browser: browserAvailable(),
+    maxDesktops: config.maxDesktops,
+    desktops: [...desktops.values()].filter((d) => d.userId === userId).sort((a, b) => b.lastUsedAt - a.lastUsedAt)
+      .map((d) => ({ botId: d.botId, open: true, url: safeUrl(d), lastUsedAt: d.lastUsedAt })),
+  };
+}
+const safeUrl = (d: Desktop): string | null => { try { return d.page.url(); } catch { return null; } };
+const announce = (userId: string) => emit(userId, { type: "computer", computer: computerState(userId) });
+
+async function closeDesktop(botId: string) {
+  const d = desktops.get(botId);
+  if (!d) return;
+  desktops.delete(botId);
+  try { await d.context.close(); } catch { /* already gone */ }
+  announce(d.userId);
+}
+
+/** Opens (or reuses) the bot's browser. When the cap is reached the least recently used idle one is closed. */
+async function desktop(botId: string, userId: string): Promise<Desktop> {
+  const existing = desktops.get(botId);
+  if (existing) { existing.lastUsedAt = now(); return existing; }
+  const pending = opening.get(botId);
+  if (pending) return pending;
+  const eng = loadEngine();
+  if (!eng) throw new Error("No browser engine is installed on this server. Install one with: npm i playwright && npx playwright install chromium");
+  const attempt = (async () => {
+    if (desktops.size >= config.maxDesktops) {
+      const victims = [...desktops.values()].sort((a, b) => a.lastUsedAt - b.lastUsedAt);
+      await closeDesktop((victims.find((d) => d.busy === 0) ?? victims[0]).botId);
+    }
+    const profile = path.join(config.profileDir, safeId(botId));
+    mkdirSync(profile, { recursive: true });
+    const context = await eng.chromium.launchPersistentContext(profile, {
+      headless: true, viewport: VIEWPORT, acceptDownloads: true, downloadsPath: workspaceOf(botId),
+      args: ["--no-first-run", "--disable-dev-shm-usage"],
+    });
+    const page = context.pages()[0] ?? (await context.newPage());
+    // Links that open a new tab would leave the bot looking at a stale page; follow the newest tab instead.
+    context.on("page", (p: any) => { const d = desktops.get(botId); if (d) d.page = p; });
+    const d: Desktop = { botId, userId, context, page, lastUsedAt: now(), busy: 0 };
+    desktops.set(botId, d);
+    announce(userId);
+    return d;
+  })();
+  opening.set(botId, attempt);
+  try { return await attempt; } finally { opening.delete(botId); }
+}
+
+async function withDesktop<T>(botId: string, userId: string, fn: (d: Desktop) => Promise<T>): Promise<T> {
+  const d = await desktop(botId, userId);
+  d.busy++;
+  try { return await fn(d); } finally { d.busy--; d.lastUsedAt = now(); }
+}
+
+const settle = (page: any, ms = 600) => page.waitForLoadState("domcontentloaded", { timeout: 8000 }).catch(() => {}).then(() => page.waitForTimeout(ms));
+
+export interface Shot { data: string; mediaType: "image/jpeg"; url: string; title: string }
+async function capture(d: Desktop): Promise<Shot> {
+  const buf: Buffer = await d.page.screenshot({ type: "jpeg", quality: 70 });
+  return { data: buf.toString("base64"), mediaType: "image/jpeg", url: d.page.url(), title: await d.page.title().catch(() => "") };
+}
+
+export const screen = {
+  view: (botId: string, userId: string) => withDesktop(botId, userId, capture),
+  open: (botId: string, userId: string, url: string) => withDesktop(botId, userId, async (d) => {
+    const target = /^[a-z][a-z0-9+.-]*:/i.test(url) ? url : `https://${url}`;
+    if (!/^https?:/i.test(target)) throw new Error("only http and https addresses can be opened");
+    await d.page.goto(target, { waitUntil: "domcontentloaded", timeout: 40000 });
+    await settle(d.page, 800);
+    announce(userId);
+    return capture(d);
+  }),
+  click: (botId: string, userId: string, x: number, y: number, button: "left" | "right" | "middle" = "left", double = false) =>
+    withDesktop(botId, userId, async (d) => {
+      await d.page.mouse.click(x, y, { button, clickCount: double ? 2 : 1 });
+      await settle(d.page);
+      return capture(d);
+    }),
+  type: (botId: string, userId: string, text: string) => withDesktop(botId, userId, async (d) => {
+    await d.page.keyboard.type(text, { delay: 4 });
+    await d.page.waitForTimeout(250);
+    return capture(d);
+  }),
+  key: (botId: string, userId: string, combo: string) => withDesktop(botId, userId, async (d) => {
+    await d.page.keyboard.press(normaliseKey(combo));
+    await settle(d.page, 400);
+    return capture(d);
+  }),
+  scroll: (botId: string, userId: string, x: number, y: number, dy: number) => withDesktop(botId, userId, async (d) => {
+    await d.page.mouse.move(x, y);
+    await d.page.mouse.wheel(0, dy);
+    await d.page.waitForTimeout(350);
+    return capture(d);
+  }),
+  drag: (botId: string, userId: string, x1: number, y1: number, x2: number, y2: number) => withDesktop(botId, userId, async (d) => {
+    await d.page.mouse.move(x1, y1);
+    await d.page.mouse.down();
+    await d.page.mouse.move(x2, y2, { steps: 12 });
+    await d.page.mouse.up();
+    await d.page.waitForTimeout(300);
+    return capture(d);
+  }),
+  /** Visible text of the current page — far cheaper than a screenshot when the bot only needs to read. */
+  read: (botId: string, userId: string) => withDesktop(botId, userId, async (d) => {
+    const text: string = await d.page.evaluate("document.body ? document.body.innerText : ''");
+    return { url: d.page.url() as string, title: (await d.page.title().catch(() => "")) as string, text };
+  }),
+  /** Screenshot for the live viewer. Never opens a browser: returns null when the bot has none. */
+  async peek(botId: string): Promise<Buffer | null> {
+    const d = desktops.get(botId);
+    if (!d) return null;
+    try { return await d.page.screenshot({ type: "jpeg", quality: 60 }); } catch { return null; }
+  },
+  reset: closeDesktop,
+  isOpen: (botId: string) => desktops.has(botId),
+};
+
+const KEY_ALIASES: Record<string, string> = {
+  ctrl: "Control", control: "Control", cmd: "Meta", command: "Meta", meta: "Meta", alt: "Alt", option: "Alt", shift: "Shift",
+  enter: "Enter", return: "Enter", esc: "Escape", escape: "Escape", tab: "Tab", space: "Space", backspace: "Backspace", delete: "Delete",
+  up: "ArrowUp", down: "ArrowDown", left: "ArrowLeft", right: "ArrowRight", pageup: "PageUp", pagedown: "PageDown", home: "Home", end: "End",
+};
+function normaliseKey(combo: string): string {
+  return combo.split("+").map((part) => {
+    const k = part.trim();
+    return KEY_ALIASES[k.toLowerCase().replace(/[_\s]/g, "")] ?? (k.length === 1 ? k : k.charAt(0).toUpperCase() + k.slice(1));
+  }).join("+");
+}
+
+/** Close browsers nobody has touched for a while so they do not hold memory forever. */
+export function sweepIdleDesktops() {
+  const cutoff = now() - config.desktopIdleMin * 60000;
+  for (const d of desktops.values()) if (d.busy === 0 && d.lastUsedAt < cutoff) void closeDesktop(d.botId);
+}
+
+export async function closeAllDesktops() {
+  await Promise.all([...desktops.keys()].map(closeDesktop));
+}
+
+// ── Files ────────────────────────────────────────────────────────────────────
+/** Resolves a user- or model-supplied relative path inside the bot's folder, refusing anything that escapes it. */
+export function resolveInWorkspace(botId: string, rel: string): string {
+  const root = workspaceOf(botId);
+  if (/[\0-\x1f]/.test(rel)) throw new Error("invalid path");
+  const full = path.resolve(root, rel.replace(/^[/\\]+/, ""));
+  if (full !== root && !full.startsWith(root + path.sep)) throw new Error("that path is outside this bot's folder");
+  return full;
+}
+
+export function listFiles(botId: string, rel = ""): FileEntry[] {
+  const dir = resolveInWorkspace(botId, rel);
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir, { withFileTypes: true })
+    .filter((e) => !e.name.startsWith("."))
+    .map((e) => {
+      const st = statSync(path.join(dir, e.name));
+      return { name: e.name, size: st.size, modifiedAt: st.mtimeMs, dir: e.isDirectory() };
+    })
+    .sort((a, b) => Number(b.dir) - Number(a.dir) || b.modifiedAt - a.modifiedAt);
+}
+
+export function saveFile(botId: string, name: string, content: string): string {
+  const clean = name.split(/[/\\]/).map((seg) => seg.replace(/[^a-zA-Z0-9._ -]/g, "_").slice(0, 120)).filter((s) => s && s !== "." && s !== "..").join("/") || "untitled.txt";
+  const full = resolveInWorkspace(botId, clean);
+  mkdirSync(path.dirname(full), { recursive: true });
+  writeFileSync(full, content, "utf8");
+  return clean;
+}
+
+export function removeWorkspace(botId: string) {
+  for (const base of [config.workspaceDir, config.profileDir]) rmSync(path.join(base, safeId(botId)), { recursive: true, force: true });
+}
+
+// ── Shell ────────────────────────────────────────────────────────────────────
+const OUTPUT_TAIL = 20_000;
+
+/** Runs a command in the bot's folder with a scrubbed environment: no server secrets ever reach it. */
+export function runShell(botId: string, command: string, timeoutSec: number, signal?: AbortSignal): Promise<{ code: number | null; output: string; timedOut: boolean }> {
+  if (!config.shellEnabled) return Promise.reject(new Error("shell access is switched off on this server"));
+  const cwd = workspaceOf(botId);
+  const env = { PATH: process.env.PATH ?? "/usr/bin:/bin", HOME: cwd, LANG: process.env.LANG ?? "C.UTF-8", TERM: "dumb" };
+  return new Promise((resolve) => {
+    const child = spawn("bash", ["-lc", command], { cwd, env, detached: true, stdio: ["ignore", "pipe", "pipe"] });
+    let output = "";
+    let timedOut = false;
+    const add = (chunk: Buffer) => { output = (output + chunk.toString("utf8")).slice(-OUTPUT_TAIL * 2); };
+    child.stdout.on("data", add);
+    child.stderr.on("data", add);
+    const kill = () => { try { process.kill(-child.pid!, "SIGKILL"); } catch { /* already exited */ } };
+    const timer = setTimeout(() => { timedOut = true; kill(); }, timeoutSec * 1000);
+    signal?.addEventListener("abort", kill, { once: true });
+    child.on("error", (err) => { clearTimeout(timer); resolve({ code: null, output: String(err.message), timedOut }); });
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", kill);
+      resolve({ code, output: output.slice(-OUTPUT_TAIL), timedOut });
+    });
+  });
+}

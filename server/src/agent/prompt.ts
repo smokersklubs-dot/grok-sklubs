@@ -1,0 +1,107 @@
+import { config } from "../config.js";
+import { describeRoutine, routines } from "../routines.js";
+import { bots, memories, rows, skills, type BotRecord, type UserRecord } from "../store.js";
+
+const words = (s: string) => new Set(s.toLowerCase().match(/[\p{L}\p{N}]{3,}/gu) ?? []);
+
+/**
+ * Picks the memories worth showing this turn: ones that share words with what the user just said
+ * rank first, newer ones break ties, and the whole selection stays inside a fixed character budget.
+ */
+export function pickMemories(bot: BotRecord): { lines: string[]; omitted: number } {
+  const all = memories.list(bot.id, 500);
+  if (!all.length) return { lines: [], omitted: 0 };
+  const recentUser = rows.recentMessages(bot.id, bot.generation, 12)
+    .filter((r) => r.body.kind === "message" && r.body.role === "user").slice(-3)
+    .map((r) => (r.body.kind === "message" ? r.body.text : "")).join(" ");
+  const topic = words(recentUser);
+  const scored = all.map((m, i) => {
+    let overlap = 0;
+    for (const w of words(m.text)) if (topic.has(w)) overlap++;
+    return { m, score: overlap * 2 + (1 - i / all.length) };
+  }).sort((a, b) => b.score - a.score);
+  let budget = config.promptMemoryChars;
+  const chosen = [];
+  for (const { m } of scored) {
+    const cost = m.text.length + 3;
+    if (cost > budget) continue;
+    budget -= cost;
+    chosen.push(m);
+  }
+  chosen.sort((a, b) => a.createdAt - b.createdAt);
+  return { lines: chosen.map((m) => `- ${m.text}`), omitted: all.length - chosen.length };
+}
+
+export interface PromptExtras { connectorNames: string[]; browser: boolean; shell: boolean }
+
+export function buildSystemPrompt(bot: BotRecord, user: UserRecord, extras: PromptExtras): string {
+  const team = bots.list(user.id).filter((b) => b.id !== bot.id && b.kind === "agent");
+  const rooms = bots.list(user.id).filter((b) => b.kind === "room" && b.memberIds.includes(bot.id));
+  const parent = bot.parentId ? bots.byId(bot.parentId) : null;
+  const out: string[] = [];
+
+  out.push(
+    `You are ${bot.name}, one of the AI teammates working for ${user.name}. You are always on, you remember what matters, and you do real work rather than describe it.` +
+      (bot.label ? ` Your role: ${bot.label}.` : "") + (bot.description ? ` About you: ${bot.description}` : ""),
+  );
+  if (parent) out.push(`You are a temporary helper started by ${parent.name}. Finish the goal you were given, then report the outcome plainly; your final message is delivered to ${parent.name} automatically.`);
+  else if (bot.primary) out.push(`You are ${user.name}'s main point of contact: you coordinate the other bots, keep track of what is open, and reach out first when something deserves attention.`);
+  out.push(bot.mode === "teammate"
+    ? "You act as a shared teammate: several people may rely on your work, so keep things clear, neutral and easy to hand over."
+    : `You act as ${user.name}'s personal assistant: adapt to their preferences and keep their matters private.`);
+
+  const method = [
+    "## How you work",
+    extras.browser
+      ? "- You have your own browser. Open pages with browser_open, look with screen_view, and act with screen_click / screen_type / screen_key / screen_scroll. Look before you click, and check the result after each action. When you only need the words on a page, page_read is quicker than a screenshot."
+      : "- No browser is installed on this server, so the screen tools are unavailable. Use web_fetch to read pages.",
+    extras.shell
+      ? "- You have a private folder and a shell (shell_run) that starts in it. Use it for files, scripts and data work."
+      : "- Shell access is switched off on this server.",
+    "- Save anything the user should keep with file_save; saved files appear in their library.",
+    extras.connectorNames.length
+      ? `- Connected apps: ${extras.connectorNames.join(", ")}. Their tools are named app_<app>__<action>. Prefer them over driving a website by hand.`
+      : "- No apps are connected yet. If a job needs one, call connector_request and say why.",
+    "- Some actions need the user's approval. The system asks on your behalf and pauses you; if the answer is no, do not try again by another route — find a different way or say what could not be done.",
+    "- Use ask_user only when a real decision is the user's to make. Otherwise decide and move on.",
+    "- For work with several parts, track it with task_add and task_update so the user can see where things stand.",
+    "- For anything that should happen later or repeatedly, create a routine instead of promising to remember.",
+    "- Save lasting facts and preferences with memory_save. Look things up with memory_search before asking the user to repeat themselves.",
+    team.length ? "- Hand work to a teammate with bot_message when it fits their role better than yours; start a helper for a self-contained side job you want done in parallel." : "- Start a helper for a self-contained side job you want done in parallel.",
+  ];
+  out.push(method.join("\n"));
+
+  out.push([
+    "## How you write",
+    "- Short, warm and direct, the way a capable colleague writes in chat. Lead with the outcome.",
+    "- No headings for simple replies; lists or tables only when they make the answer easier to use.",
+    "- Never say something is done unless a tool result shows it. Never invent facts, names, numbers or links.",
+    "- Report what happened, not the tools you used to get there.",
+  ].join("\n"));
+
+  const context = [
+    "## Right now",
+    `- Time: ${new Date().toISOString()}`,
+    `- User: ${user.name} <${user.email}>`,
+    team.length
+      ? `- Team: ${team.map((b) => `${b.name}${b.label ? ` (${b.label})` : ""}${b.primary ? " — main contact" : ""}`).join("; ")}`
+      : "- You are the only bot on the team so far.",
+  ];
+  if (rooms.length) context.push(`- Group chats you are in: ${rooms.map((r) => r.name).join(", ")}`);
+  out.push(context.join("\n"));
+
+  const mine = routines.forBot(bot.id);
+  if (mine.length)
+    out.push(["## Your routines", ...mine.map((r) => `- ${r.name} [${r.id}] — ${r.enabled ? describeRoutine(r) : "paused"}: ${r.prompt.slice(0, 120)}`)].join("\n"));
+
+  const mem = pickMemories(bot);
+  if (mem.lines.length)
+    out.push(["## What you remember", ...mem.lines, mem.omitted ? `(${mem.omitted} older memories are not shown; memory_search can find them.)` : ""].filter(Boolean).join("\n"));
+
+  const sk = skills.list(bot.id);
+  if (sk.length)
+    out.push(["## Your skills", "Follow these when the situation matches.", ...sk.map((s) => `### ${s.name}${s.description ? `\nUse when: ${s.description}` : ""}\n${s.body}`)].join("\n\n"));
+
+  if (bot.instructions.trim()) out.push(`## Standing instructions from ${user.name}\n${bot.instructions.trim()}`);
+  return out.join("\n\n");
+}

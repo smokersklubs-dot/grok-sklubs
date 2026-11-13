@@ -23,7 +23,8 @@ export interface ToolSpec {
   inputSchema: { type: "object"; properties: Record<string, unknown>; required?: string[] };
 }
 
-export type StopReason = "end" | "tool_use" | "max_tokens" | "refusal" | "error";
+/** "pause" means the provider stopped mid-turn (e.g. a long hosted search) and expects the same turn to be continued. */
+export type StopReason = "end" | "tool_use" | "max_tokens" | "refusal" | "pause";
 
 export interface TurnUsage { inputTokens: number; outputTokens: number; cachedTokens: number }
 
@@ -32,8 +33,10 @@ export interface TurnResult {
   stopReason: StopReason;
   usage: TurnUsage;
   model: string;
-  /** Human-readable detail when stopReason is refusal/error. */
+  /** Human-readable detail when stopReason is refusal. */
   detail?: string;
+  /** Web pages the answer drew on, when the provider reports them. */
+  sources?: { url: string; title?: string }[];
 }
 
 export interface TurnRequest {
@@ -43,6 +46,8 @@ export interface TurnRequest {
   tools: ToolSpec[];
   effort: Effort;
   maxTokens?: number;
+  /** Let the provider search the web itself, where it can. */
+  webSearch?: boolean;
   signal?: AbortSignal;
   onText?: (delta: string) => void;
   onReasoning?: (delta: string) => void;
@@ -77,4 +82,15 @@ export function validateToolInput(spec: ToolSpec, input: unknown): string | null
     if (!ok) return `field "${key}" should be ${decl.type}, got ${actual}`;
   }
   return null;
+}
+
+/** Merges neighbouring messages of the same role so every provider sees strictly alternating turns. */
+export function alternate(messages: ChatMessage[]): ChatMessage[] {
+  const out: ChatMessage[] = [];
+  for (const m of messages) {
+    const last = out[out.length - 1];
+    if (last && last.role === m.role) out[out.length - 1] = { role: m.role, content: [...last.content, ...m.content] };
+    else if (m.content.length) out.push(m);
+  }
+  return out;
 }
