@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { api, errText } from "../api";
-import { useStore } from "../store";
+import { t, useT } from "../i18n";
+import { useStore, type Upload } from "../store";
 import type { Bot, Live, Row } from "../types";
-import { botTitle } from "../lib/format";
+import { botTitle, fileSize } from "../lib/format";
 import { endCall, startCall } from "../lib/call";
 import { canCall, canRecognize, createRecognition, micErrorText, recognitionLang, type Recognition } from "../lib/speech";
 import { Icon, Spinner } from "./Icon";
@@ -50,7 +51,7 @@ function useDictation(lang: string, onText: (text: string) => void, onError: (me
       setState("recording");
     } catch {
       rec.current = null;
-      cb.current.onError("Couldn't start the microphone.");
+      cb.current.onError(t("composer.micFailed"));
     }
   }, [lang]);
 
@@ -80,18 +81,54 @@ function useDictation(lang: string, onText: (text: string) => void, onError: (me
   return { state, start, stop, cancel };
 }
 
+const NO_UPLOADS: Upload[] = [];
+
+function hasFiles(e: { dataTransfer: DataTransfer | null }): boolean {
+  return !!e.dataTransfer && Array.from(e.dataTransfer.types).includes("Files");
+}
+
+/** One file waiting to go out with the next message. */
+function UploadChip({ upload, onRemove }: { upload: Upload; onRemove: () => void }) {
+  const t = useT();
+  const sub = upload.status === "uploading" ? t("composer.uploading") : upload.status === "error" ? upload.error || t("composer.uploadFailed") : fileSize(upload.size);
+  return (
+    <li className={`upload is-${upload.status}`} title={upload.status === "error" ? (upload.error ?? undefined) : upload.name}>
+      <span className="upload-thumb">
+        {upload.preview ? <img src={upload.preview} alt="" /> : <Icon name="file" size={18} />}
+        {upload.status === "uploading" && (
+          <span className="upload-busy">
+            <Spinner size={16} />
+          </span>
+        )}
+      </span>
+      <span className="upload-text">
+        <span className="upload-name truncate">{upload.name}</span>
+        <span className="upload-sub truncate" role={upload.status === "error" ? "alert" : undefined}>{sub}</span>
+      </span>
+      <button type="button" className="upload-x" aria-label={t("composer.removeFile", { name: upload.name })} title={t("composer.removeFile", { name: upload.name })} onClick={onRemove}>
+        <Icon name="close" size={13} />
+      </button>
+    </li>
+  );
+}
+
 export function Composer({ bot, live }: { bot: Bot; live: Live }) {
   const draft = useStore((s) => s.drafts[bot.id] ?? "");
+  const uploads = useStore((s) => s.uploads[bot.id]) ?? NO_UPLOADS;
   const focusTick = useStore((s) => s.focusTick);
   const callBotId = useStore((s) => s.call?.botId ?? null);
   const anyModal = useStore((s) => !!(s.modal || s.botSettings || s.appSettings || s.viewerBotId));
-  const { setDraft, addRows, openModal, resetConversation, showToast } = useStore.getState();
+  const { setDraft, addRows, openModal, resetConversation, showToast, attachFiles, removeUpload, clearUploads } = useStore.getState();
+  const t = useT();
   const [sending, setSending] = useState(false);
   const [stopping, setStopping] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [menu, setMenu] = useState(false);
   const [confirmNew, setConfirmNew] = useState(false);
+  const [dragging, setDragging] = useState(false);
   const area = useRef<HTMLTextAreaElement>(null);
+  const picker = useRef<HTMLInputElement>(null);
+  const dragDepth = useRef(0);
   const pressStarted = useRef<{ at: number; started: boolean } | null>(null);
 
   const insertAtCaret = useCallback(
@@ -130,6 +167,8 @@ export function Composer({ bot, live }: { bot: Bot; live: Live }) {
     if (!anyModal) area.current?.focus({ preventScroll: true });
     setError(null);
     setMenu(false);
+    setDragging(false);
+    dragDepth.current = 0;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bot.id, focusTick]);
 
@@ -138,17 +177,30 @@ export function Composer({ bot, live }: { bot: Bot; live: Live }) {
   }, [menu]);
 
   const text = draft.trim();
+  const ready = uploads.filter((u) => u.status === "ready" && u.attachment);
+  const uploading = uploads.some((u) => u.status === "uploading");
   const inCall = callBotId === bot.id;
   const isRoom = bot.kind === "room";
   const voiceOk = canCall() && !isRoom;
+  const canSend = (text.length > 0 || ready.length > 0) && !uploading && !sending;
+
+  const addFiles = (files: File[]) => {
+    if (files.length === 0) return;
+    const problem = attachFiles(bot.id, files);
+    setError(problem);
+    area.current?.focus();
+  };
 
   const send = async () => {
-    if (!text || sending) return;
+    if (!canSend) return;
+    const sent = ready;
     setSending(true);
     setError(null);
     try {
-      const r = await api<{ row: Row }>("POST", `/bots/${bot.id}/messages`, { text });
+      const paths = sent.map((u) => u.attachment?.path).filter((p): p is string => !!p);
+      const r = await api<{ row: Row }>("POST", `/bots/${bot.id}/messages`, paths.length ? { text, attachments: paths } : { text });
       addRows(bot.id, [r.row]);
+      clearUploads(bot.id, sent.map((u) => u.id));
       if ((useStore.getState().drafts[bot.id] ?? "").trim() === text) setDraft(bot.id, "");
     } catch (e) {
       setError(errText(e));
@@ -177,7 +229,7 @@ export function Composer({ bot, live }: { bot: Bot; live: Live }) {
     setMenu(false);
     try {
       await resetConversation(bot.id);
-      showToast("Started a new conversation");
+      showToast(t("chat.started"));
     } catch (e) {
       setError(errText(e));
     }
@@ -189,38 +241,81 @@ export function Composer({ bot, live }: { bot: Bot; live: Live }) {
   };
 
   const micLabel = !canRecognize()
-    ? "Dictation isn't supported in this browser"
+    ? t("composer.micUnsupported")
     : dictation.state === "recording"
-      ? "Stop dictating (Esc cancels)"
+      ? t("composer.micStop")
       : dictation.state === "transcribing"
-        ? "Transcribing…"
-        : "Dictate — tap, or hold while you speak";
+        ? t("composer.micTranscribing")
+        : t("composer.micStart");
 
   let action: { label: string; icon: "arrowUp" | "phoneOff" | "stop" | "wave"; run: () => void; disabled: boolean; cls: string };
-  if (text) action = { label: "Send message", icon: "arrowUp", run: () => void send(), disabled: sending, cls: "is-send" };
-  else if (inCall) action = { label: "End voice chat", icon: "phoneOff", run: endCall, disabled: false, cls: "is-end" };
-  else if (live.running) action = { label: "Stop", icon: "stop", run: () => void stop(), disabled: stopping, cls: "is-stop" };
-  else if (isRoom) action = { label: "Send message", icon: "arrowUp", run: () => undefined, disabled: true, cls: "is-send" };
+  if (text || uploads.length > 0) action = { label: uploading ? t("composer.waitUploads") : t("composer.send"), icon: "arrowUp", run: () => void send(), disabled: !canSend, cls: "is-send" };
+  else if (inCall) action = { label: t("composer.endCall"), icon: "phoneOff", run: endCall, disabled: false, cls: "is-end" };
+  else if (live.running) action = { label: t("composer.stop"), icon: "stop", run: () => void stop(), disabled: stopping, cls: "is-stop" };
+  else if (isRoom) action = { label: t("composer.send"), icon: "arrowUp", run: () => undefined, disabled: true, cls: "is-send" };
   else
     action = {
-      label: voiceOk ? "Start voice chat" : "Voice chat isn't supported in this browser",
+      label: voiceOk ? t("composer.startCall") : t("composer.voiceUnsupported"),
       icon: "wave",
       run: () => startCall(bot.id),
       disabled: !voiceOk,
       cls: "is-voice",
     };
 
+  const placeholder = t("composer.placeholder", { name: botTitle(bot) });
+
   return (
-    <div className="composer-wrap">
+    <div
+      className={`composer-wrap ${dragging ? "is-dragging" : ""}`}
+      onDragEnter={(e) => {
+        if (!hasFiles(e)) return;
+        e.preventDefault();
+        dragDepth.current += 1;
+        setDragging(true);
+      }}
+      onDragOver={(e) => {
+        if (!hasFiles(e)) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "copy";
+      }}
+      onDragLeave={(e) => {
+        if (!hasFiles(e)) return;
+        dragDepth.current = Math.max(0, dragDepth.current - 1);
+        if (dragDepth.current === 0) setDragging(false);
+      }}
+      onDrop={(e) => {
+        if (!hasFiles(e)) return;
+        e.preventDefault();
+        dragDepth.current = 0;
+        setDragging(false);
+        addFiles(Array.from(e.dataTransfer.files));
+      }}
+    >
       <ErrorNote onDismiss={() => setError(null)}>{error}</ErrorNote>
+      {uploads.length > 0 && (
+        <ul className="uploads" aria-label={t("composer.attachments")}>
+          {uploads.map((u) => (
+            <UploadChip key={u.id} upload={u} onRemove={() => removeUpload(bot.id, u.id)} />
+          ))}
+        </ul>
+      )}
       <div className="composer">
         <div className="menu-wrap">
-          <button type="button" className="icon-btn composer-plus" aria-label="More actions" title="More actions" aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu((v) => !v)}>
+          <button type="button" className="icon-btn composer-plus" aria-label={t("composer.more")} title={t("composer.more")} aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu((v) => !v)}>
             <Icon name="plus" size={20} />
           </button>
-          <Menu open={menu} onClose={() => setMenu(false)} side="top" label="More actions">
+          <Menu open={menu} onClose={() => setMenu(false)} side="top" label={t("composer.more")}>
+            <MenuItem
+              icon="clip"
+              onClick={() => {
+                setMenu(false);
+                picker.current?.click();
+              }}
+            >
+              {t("composer.attach")}
+            </MenuItem>
             <MenuItem icon="edit" danger={confirmNew} onClick={() => void newConversation()}>
-              {confirmNew ? "Click again to start over" : "New conversation"}
+              {t(confirmNew ? "chat.confirmNew" : "chat.newConversation")}
             </MenuItem>
             <MenuItem
               icon="plug"
@@ -229,18 +324,37 @@ export function Composer({ bot, live }: { bot: Bot; live: Live }) {
                 openModal({ kind: "connectors" });
               }}
             >
-              Connect apps
+              {t("sidebar.connectApps")}
             </MenuItem>
           </Menu>
+          <input
+            ref={picker}
+            type="file"
+            multiple
+            hidden
+            tabIndex={-1}
+            aria-hidden="true"
+            onChange={(e) => {
+              addFiles(Array.from(e.target.files ?? []));
+              e.target.value = "";
+            }}
+          />
         </div>
         <textarea
           ref={area}
           className="composer-input"
           rows={1}
           value={draft}
-          placeholder={`Message ${botTitle(bot)}`}
-          aria-label={`Message ${botTitle(bot)}`}
+          placeholder={placeholder}
+          aria-label={placeholder}
           onChange={(e) => setDraft(bot.id, e.target.value)}
+          onPaste={(e) => {
+            // Pasted images (screenshots, copied pictures) become attachments; pasted text stays text.
+            const files = Array.from(e.clipboardData.files);
+            if (files.length === 0 || e.clipboardData.getData("text/plain")) return;
+            e.preventDefault();
+            addFiles(files);
+          }}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
               e.preventDefault();
@@ -280,6 +394,11 @@ export function Composer({ bot, live }: { bot: Bot; live: Live }) {
           <Icon name={action.icon} size={19} />
         </button>
       </div>
+      {dragging && (
+        <div className="composer-drop" aria-hidden="true">
+          <Icon name="clip" size={18} /> {t("composer.drop")}
+        </div>
+      )}
     </div>
   );
 }

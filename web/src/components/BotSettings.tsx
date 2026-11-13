@@ -1,26 +1,17 @@
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from "react";
 import { api, errText } from "../api";
+import { tn, useT } from "../i18n";
 import { useStore, type BotSettingsTab } from "../store";
 import type { Autonomy, AvatarColor, AvatarShape, Bot, BotBundle, BotMode, Effort, Memory, ModelOption, Routine, Skill } from "../types";
 import { dateTime, nextRunLabel, shortDate } from "../lib/format";
 import { Avatar, BotAvatar } from "./Avatar";
 import { routineWhen, TriggerChip } from "./DetailsPanel";
 import { Icon } from "./Icon";
-import { LookPicker, MODES } from "./Modals";
+import { LookPicker, MODE_IDS } from "./Modals";
 import { ConfirmButton, copyText, Empty, ErrorNote, IconButton, Loading, Modal, Toggle } from "./ui";
 
-const EFFORTS: { id: Effort; title: string; text: string }[] = [
-  { id: "low", title: "Low", text: "Fastest replies; best for quick, simple requests." },
-  { id: "medium", title: "Medium", text: "A balance of speed and care for everyday work." },
-  { id: "high", title: "High", text: "Slower, but reasons more carefully about hard problems." },
-  { id: "xhigh", title: "Max", text: "Slowest and most thorough; for the toughest jobs." },
-];
-
-const AUTONOMY: { id: Autonomy; title: string; text: string }[] = [
-  { id: "careful", title: "Careful", text: "Asks before shell commands, file writes outside its library, and connector changes." },
-  { id: "balanced", title: "Balanced", text: "Asks only before making changes through connectors." },
-  { id: "trusted", title: "Trusted", text: "Never asks — acts on its own judgement." },
-];
+const EFFORT_IDS: Effort[] = ["low", "medium", "high", "xhigh"];
+const AUTONOMY_IDS: Autonomy[] = ["careful", "balanced", "trusted"];
 
 function ChoiceList<T extends string>({ label, value, options, onChange }: { label: string; value: T; options: { id: T; title: string; text: string }[]; onChange: (v: T) => void }) {
   return (
@@ -49,6 +40,10 @@ const formOf = (b: Bot): Form => ({
 
 function General({ bot, onClose }: { bot: Bot; onClose: () => void }) {
   const { upsertBot, resetConversation, loadBots } = useStore.getState();
+  const t = useT();
+  const efforts = EFFORT_IDS.map((id) => ({ id, title: t(`effort.${id}.title`), text: t(`effort.${id}.text`) }));
+  const autonomies = AUTONOMY_IDS.map((id) => ({ id, title: t(`autonomy.${id}.title`), text: t(`autonomy.${id}.text`) }));
+  const modes = MODE_IDS.map((id) => ({ id, title: t(`mode.${id}.title`), text: t(`mode.${id}.text`) }));
   const [form, setForm] = useState<Form>(() => formOf(bot));
   const [lookOpen, setLookOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -71,8 +66,8 @@ function General({ bot, onClose }: { bot: Bot; onClose: () => void }) {
 
   useEffect(() => {
     if (!note) return;
-    const t = window.setTimeout(() => setNote(null), 2400);
-    return () => window.clearTimeout(t);
+    const timer = window.setTimeout(() => setNote(null), 2400);
+    return () => window.clearTimeout(timer);
   }, [note]);
 
   const saved = formOf(bot);
@@ -90,7 +85,7 @@ function General({ bot, onClose }: { bot: Bot; onClose: () => void }) {
       const r = await api<{ bot: Bot }>("PATCH", `/bots/${bot.id}`, patch);
       upsertBot(r.bot);
       setForm(formOf(r.bot));
-      setNote({ tone: "ok", text: "Saved" });
+      setNote({ tone: "ok", text: t("common.saved") });
     } catch (err) {
       setNote({ tone: "error", text: errText(err) });
     } finally {
@@ -108,29 +103,29 @@ function General({ bot, onClose }: { bot: Bot; onClose: () => void }) {
       <div className="look-row">
         <Avatar shape={form.shape} color={form.color} name={form.name || bot.name} size={56} primary={bot.primary} />
         <button type="button" className="btn btn-small" onClick={() => setLookOpen((v) => !v)} aria-expanded={lookOpen}>
-          {lookOpen ? "Hide look options" : "Change look"}
+          {t(lookOpen ? "bot.hideLook" : "bot.changeLook")}
         </button>
       </div>
       {lookOpen && <LookPicker name={form.name} shape={form.shape} color={form.color} onShape={(s) => set("shape", s)} onColor={(c) => set("color", c)} />}
 
       <div className="field">
-        <label className="field-label" htmlFor={`${uid}n`}>Name</label>
+        <label className="field-label" htmlFor={`${uid}n`}>{t("common.name")}</label>
         <input id={`${uid}n`} className="input" value={form.name} maxLength={60} onChange={(e) => set("name", e.target.value)} />
       </div>
       <div className="field">
-        <label className="field-label" htmlFor={`${uid}l`}>Label</label>
-        <input id={`${uid}l`} className="input" value={form.label} maxLength={60} onChange={(e) => set("label", e.target.value)} placeholder="e.g. Research" />
-        <p className="field-hint">A short role shown next to the name.</p>
+        <label className="field-label" htmlFor={`${uid}l`}>{t("bot.label")}</label>
+        <input id={`${uid}l`} className="input" value={form.label} maxLength={60} onChange={(e) => set("label", e.target.value)} placeholder={t("bot.labelPlaceholder")} />
+        <p className="field-hint">{t("bot.labelHint")}</p>
       </div>
       <div className="field">
-        <label className="field-label" htmlFor={`${uid}d`}>About</label>
+        <label className="field-label" htmlFor={`${uid}d`}>{t("bot.about")}</label>
         <textarea id={`${uid}d`} className="input" rows={2} value={form.description} maxLength={500} onChange={(e) => set("description", e.target.value)} />
       </div>
 
       {!isRoom && (
         <>
           <div className="field">
-            <label className="field-label" htmlFor={`${uid}i`}>Instructions</label>
+            <label className="field-label" htmlFor={`${uid}i`}>{t("bot.instructions")}</label>
             <textarea
               id={`${uid}i`}
               className="input"
@@ -138,56 +133,56 @@ function General({ bot, onClose }: { bot: Bot; onClose: () => void }) {
               value={form.instructions}
               maxLength={8000}
               onChange={(e) => set("instructions", e.target.value)}
-              placeholder={"e.g. You look after my weekly reporting. Keep summaries under 200 words, lead with what changed, and always link your sources."}
+              placeholder={t("bot.instructionsPlaceholder")}
             />
-            <p className="field-hint">How this bot should behave, what it's responsible for, and anything it should always or never do.</p>
+            <p className="field-hint">{t("bot.instructionsHint")}</p>
           </div>
           <div className="field">
-            <label className="field-label" htmlFor={`${uid}m`}>Model</label>
+            <label className="field-label" htmlFor={`${uid}m`}>{t("bot.model")}</label>
             <select id={`${uid}m`} className="input" value={form.model} onChange={(e) => set("model", e.target.value)}>
-              <option value="">Server default{models?.defaultRef ? ` (${models.defaultRef})` : ""}</option>
+              <option value="">{models?.defaultRef ? t("bot.serverDefaultRef", { ref: models.defaultRef }) : t("bot.serverDefault")}</option>
               {modelOptions.map((m) => (
                 <option key={m.ref} value={m.ref}>{m.provider ? `${m.provider} · ${m.model}` : m.model}</option>
               ))}
             </select>
           </div>
           <div className="field">
-            <span className="field-label">Thinking effort</span>
-            <ChoiceList label="Thinking effort" value={form.effort} options={EFFORTS} onChange={(v) => set("effort", v)} />
+            <span className="field-label">{t("bot.thinking")}</span>
+            <ChoiceList label={t("bot.thinking")} value={form.effort} options={efforts} onChange={(v) => set("effort", v)} />
           </div>
           <div className="field">
-            <span className="field-label">Autonomy</span>
-            <ChoiceList label="Autonomy" value={form.autonomy} options={AUTONOMY} onChange={(v) => set("autonomy", v)} />
+            <span className="field-label">{t("bot.autonomy")}</span>
+            <ChoiceList label={t("bot.autonomy")} value={form.autonomy} options={autonomies} onChange={(v) => set("autonomy", v)} />
           </div>
           <div className="field">
-            <span className="field-label">Used as</span>
-            <ChoiceList label="Used as" value={form.mode} options={MODES} onChange={(v) => set("mode", v)} />
+            <span className="field-label">{t("bot.usedAs")}</span>
+            <ChoiceList label={t("bot.usedAs")} value={form.mode} options={modes} onChange={(v) => set("mode", v)} />
           </div>
         </>
       )}
 
       <div className={`save-bar ${dirty || note ? "is-visible" : ""}`}>
-        <span className={`save-note ${note?.tone === "error" ? "is-error" : ""}`} role="status">{note ? note.text : dirty ? "Unsaved changes" : ""}</span>
-        <button type="button" className="btn btn-ghost btn-small" disabled={!dirty || saving} onClick={() => setForm(formOf(bot))}>Discard</button>
-        <button type="submit" className="btn btn-primary btn-small" disabled={!dirty || !form.name.trim() || saving}>{saving ? "Saving…" : "Save"}</button>
+        <span className={`save-note ${note?.tone === "error" ? "is-error" : ""}`} role="status">{note ? note.text : dirty ? t("bot.unsaved") : ""}</span>
+        <button type="button" className="btn btn-ghost btn-small" disabled={!dirty || saving} onClick={() => setForm(formOf(bot))}>{t("bot.discard")}</button>
+        <button type="submit" className="btn btn-primary btn-small" disabled={!dirty || !form.name.trim() || saving}>{t(saving ? "common.saving" : "common.save")}</button>
       </div>
 
-      <h3 className="pane-heading">Conversation</h3>
+      <h3 className="pane-heading">{t("bot.conversation")}</h3>
       <div className="action-row">
         <div>
-          <p className="action-title">Start a new conversation</p>
-          <p className="muted small">Clears the chat. Memories, skills and routines are kept.</p>
+          <p className="action-title">{t("bot.startNew")}</p>
+          <p className="muted small">{t("bot.startNewHint")}</p>
         </div>
         <ConfirmButton
-          label="New conversation"
-          confirmLabel="Confirm — clear chat"
-          busyLabel="Clearing…"
+          label={t("chat.newConversation")}
+          confirmLabel={t("bot.confirmClear")}
+          busyLabel={t("bot.clearing")}
           className="btn btn-small"
           onConfirm={async () => {
             setActionError(null);
             try {
               await resetConversation(bot.id);
-              setNote({ tone: "ok", text: "New conversation started" });
+              setNote({ tone: "ok", text: t("bot.newStarted") });
             } catch (e) {
               setActionError(errText(e));
             }
@@ -197,8 +192,8 @@ function General({ bot, onClose }: { bot: Bot; onClose: () => void }) {
       {!bot.primary && !isRoom && (
         <div className="action-row">
           <div>
-            <p className="action-title">Make primary</p>
-            <p className="muted small">Your primary bot sits at the top of the sidebar and is your default assistant.</p>
+            <p className="action-title">{t("bot.makePrimary")}</p>
+            <p className="muted small">{t("bot.makePrimaryHint")}</p>
           </div>
           <button
             type="button"
@@ -213,23 +208,23 @@ function General({ bot, onClose }: { bot: Bot; onClose: () => void }) {
               }
             }}
           >
-            Make primary
+            {t("bot.makePrimary")}
           </button>
         </div>
       )}
 
-      <h3 className="pane-heading is-danger">Danger zone</h3>
+      <h3 className="pane-heading is-danger">{t("bot.danger")}</h3>
       <div className="action-row">
         <div>
-          <p className="action-title">Delete {isRoom ? "room" : "bot"}</p>
+          <p className="action-title">{t(isRoom ? "bot.deleteRoom" : "bot.deleteBot")}</p>
           <p className="muted small">
-            {bot.primary ? "Make another bot primary first — the primary bot can't be deleted." : "Removes its chat, memories, skills and routines for good."}
+            {t(bot.primary ? "bot.deletePrimaryHint" : "bot.deleteHint")}
           </p>
         </div>
         <ConfirmButton
-          label="Delete"
-          confirmLabel="Confirm delete"
-          busyLabel="Deleting…"
+          label={t("common.delete")}
+          confirmLabel={t("common.confirmDelete")}
+          busyLabel={t("common.deleting")}
           className="btn btn-small btn-danger"
           disabled={bot.primary}
           onConfirm={async () => {
@@ -253,6 +248,7 @@ function General({ bot, onClose }: { bot: Bot; onClose: () => void }) {
 
 function SkillEditor({ botId, skill, onDone }: { botId: string; skill: Skill | null; onDone: () => void }) {
   const loadBundle = useStore((s) => s.loadBundle);
+  const t = useT();
   const [name, setName] = useState(skill?.name ?? "");
   const [description, setDescription] = useState(skill?.description ?? "");
   const [body, setBody] = useState(skill?.body ?? "");
@@ -282,21 +278,21 @@ function SkillEditor({ botId, skill, onDone }: { botId: string; skill: Skill | n
   return (
     <form className="editor" onSubmit={submit}>
       <div className="field">
-        <label className="field-label" htmlFor={`${uid}n`}>Name</label>
-        <input ref={first} id={`${uid}n`} className="input" value={name} maxLength={80} onChange={(e) => setName(e.target.value)} placeholder="e.g. Weekly report" />
+        <label className="field-label" htmlFor={`${uid}n`}>{t("common.name")}</label>
+        <input ref={first} id={`${uid}n`} className="input" value={name} maxLength={80} onChange={(e) => setName(e.target.value)} placeholder={t("skill.namePlaceholder")} />
       </div>
       <div className="field">
-        <label className="field-label" htmlFor={`${uid}d`}>When to use it <span className="muted">(optional)</span></label>
-        <input id={`${uid}d`} className="input" value={description} maxLength={300} onChange={(e) => setDescription(e.target.value)} placeholder="e.g. When I ask for the weekly numbers" />
+        <label className="field-label" htmlFor={`${uid}d`}>{t("skill.when")} <span className="muted">{t("common.optional")}</span></label>
+        <input id={`${uid}d`} className="input" value={description} maxLength={300} onChange={(e) => setDescription(e.target.value)} placeholder={t("skill.whenPlaceholder")} />
       </div>
       <div className="field">
-        <label className="field-label" htmlFor={`${uid}b`}>Steps</label>
-        <textarea id={`${uid}b`} className="input" rows={7} value={body} onChange={(e) => setBody(e.target.value)} placeholder={"1. Gather…\n2. Summarise…\n3. Send…"} />
+        <label className="field-label" htmlFor={`${uid}b`}>{t("skill.steps")}</label>
+        <textarea id={`${uid}b`} className="input" rows={7} value={body} onChange={(e) => setBody(e.target.value)} placeholder={t("skill.stepsPlaceholder")} />
       </div>
       <ErrorNote>{error}</ErrorNote>
       <div className="row-end">
-        <button type="button" className="btn btn-ghost btn-small" onClick={onDone}>Cancel</button>
-        <button type="submit" className="btn btn-primary btn-small" disabled={!name.trim() || !body.trim() || busy}>{busy ? "Saving…" : "Save skill"}</button>
+        <button type="button" className="btn btn-ghost btn-small" onClick={onDone}>{t("common.cancel")}</button>
+        <button type="submit" className="btn btn-primary btn-small" disabled={!name.trim() || !body.trim() || busy}>{t(busy ? "common.saving" : "skill.save")}</button>
       </div>
     </form>
   );
@@ -304,22 +300,23 @@ function SkillEditor({ botId, skill, onDone }: { botId: string; skill: Skill | n
 
 function Skills({ bot, bundle }: { bot: Bot; bundle: BotBundle | undefined }) {
   const loadBundle = useStore((s) => s.loadBundle);
+  const t = useT();
   const [editing, setEditing] = useState<Skill | "new" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const skills = bundle?.skills;
   return (
     <div className="settings-pane">
       <div className="pane-intro">
-        <p className="muted">Skills are step-by-step playbooks {bot.name} follows for recurring jobs. It can also write its own when you teach it something in chat.</p>
+        <p className="muted">{t("skill.intro", { name: bot.name })}</p>
         {editing === null && (
           <button type="button" className="btn btn-small" onClick={() => setEditing("new")}>
-            <Icon name="plus" size={14} /> New skill
+            <Icon name="plus" size={14} /> {t("skill.new")}
           </button>
         )}
       </div>
       {editing === "new" && <SkillEditor botId={bot.id} skill={null} onDone={() => setEditing(null)} />}
       {!skills && <Loading />}
-      {skills && skills.length === 0 && editing === null && <Empty icon="book" title="No skills yet">Add one, or walk {bot.name} through a task in chat and ask it to save the steps.</Empty>}
+      {skills && skills.length === 0 && editing === null && <Empty icon="book" title={t("skill.emptyTitle")}>{t("skill.emptyText", { name: bot.name })}</Empty>}
       <ErrorNote>{error}</ErrorNote>
       {skills && skills.length > 0 && (
         <ul className="list">
@@ -334,11 +331,11 @@ function Skills({ bot, bundle }: { bot: Bot; bundle: BotBundle | undefined }) {
                   <span className="list-row-title">{s.name}</span>
                   <span className="list-row-sub">{s.description || s.body.split("\n").find((l) => l.trim()) || ""}</span>
                 </div>
-                <IconButton icon="edit" size={16} label={`Edit ${s.name}`} onClick={() => setEditing(s)} />
+                <IconButton icon="edit" size={16} label={t("skill.edit", { name: s.name })} onClick={() => setEditing(s)} />
                 <ConfirmButton
                   className="btn btn-small btn-ghost-danger"
-                  label="Delete"
-                  confirmLabel="Confirm"
+                  label={t("common.delete")}
+                  confirmLabel={t("common.confirm")}
                   busyLabel="…"
                   onConfirm={async () => {
                     setError(null);
@@ -363,6 +360,7 @@ function Skills({ bot, bundle }: { bot: Bot; bundle: BotBundle | undefined }) {
 
 function Memories({ bot, bundle }: { bot: Bot; bundle: BotBundle | undefined }) {
   const { mutateBundle, loadBundle } = useStore.getState();
+  const t = useT();
   const [q, setQ] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
@@ -389,7 +387,7 @@ function Memories({ bot, bundle }: { bot: Bot; bundle: BotBundle | undefined }) 
     setError(null);
     try {
       const r = await api<{ added: string[]; considered: number }>("POST", `/bots/${bot.id}/consolidate`);
-      setNote(r.added.length ? `Picked up ${r.added.length} new ${r.added.length === 1 ? "memory" : "memories"}.` : "Nothing new worth remembering.");
+      setNote(r.added.length ? tn("memory.picked", r.added.length) : t("memory.nothingNew"));
       await loadBundle(bot.id);
     } catch (e) {
       setError(errText(e));
@@ -402,7 +400,7 @@ function Memories({ bot, bundle }: { bot: Bot; bundle: BotBundle | undefined }) 
     setError(null);
     try {
       const r = await api<{ before: number; after: number; changed: boolean }>("POST", `/bots/${bot.id}/compact`);
-      setNote(r.changed ? "Older messages were summarised." : "Nothing to summarise yet.");
+      setNote(t(r.changed ? "memory.summarised" : "memory.nothingToSummarise"));
       await loadBundle(bot.id);
     } catch (e) {
       setError(errText(e));
@@ -414,22 +412,22 @@ function Memories({ bot, bundle }: { bot: Bot; bundle: BotBundle | undefined }) 
   return (
     <div className="settings-pane">
       <div className="pane-intro">
-        <p className="muted">What {bot.name} remembers between conversations. Say “remember that…” in chat to save something, and it also picks up useful facts on its own.</p>
-        <button type="button" className="btn btn-small" disabled={busy !== null} onClick={() => void consolidate()} title="Look through recent chat for things worth remembering">
-          {busy === "consolidate" ? "Reviewing…" : "Review recent chat"}
+        <p className="muted">{t("memory.intro", { name: bot.name })}</p>
+        <button type="button" className="btn btn-small" disabled={busy !== null} onClick={() => void consolidate()} title={t("memory.reviewTitle")}>
+          {t(busy === "consolidate" ? "memory.reviewing" : "memory.review")}
         </button>
       </div>
       {memories && memories.length > 6 && (
         <div className="search-field is-inline">
           <Icon name="search" size={16} />
-          <input className="search-input" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search memories…" aria-label="Search memories" />
+          <input className="search-input" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("memory.search")} aria-label={t("memory.searchLabel")} />
         </div>
       )}
       <ErrorNote>{error}</ErrorNote>
       {note && <p className="muted small" role="status">{note}</p>}
       {!memories && <Loading />}
-      {memories && memories.length === 0 && <Empty icon="brain" title="No memories yet">They'll appear here as you work together.</Empty>}
-      {memories && memories.length > 0 && shown && shown.length === 0 && <p className="muted small">No memories match “{q.trim()}”.</p>}
+      {memories && memories.length === 0 && <Empty icon="brain" title={t("memory.emptyTitle")}>{t("memory.emptyText")}</Empty>}
+      {memories && memories.length > 0 && shown && shown.length === 0 && <p className="muted small">{t("memory.none", { q: q.trim() })}</p>}
       {shown && shown.length > 0 && (
         <ul className="list">
           {shown.map((m) => (
@@ -437,29 +435,29 @@ function Memories({ bot, bundle }: { bot: Bot; bundle: BotBundle | undefined }) 
               <div className="list-row-text">
                 <span className="memory-text">{m.text}</span>
                 <span className="list-row-sub">
-                  <span className="chip">{m.source === "learned" ? "Picked up" : "Saved in chat"}</span> {shortDate(m.createdAt)}
+                  <span className="chip">{t(m.source === "learned" ? "memory.source.learned" : "memory.source.chat")}</span> {shortDate(m.createdAt)}
                 </span>
               </div>
-              <button type="button" className="btn btn-small btn-ghost" onClick={() => void forget(m)} aria-label={`Forget: ${m.text.slice(0, 60)}`}>Forget</button>
+              <button type="button" className="btn btn-small btn-ghost" onClick={() => void forget(m)} aria-label={t("memory.forgetLabel", { text: m.text.slice(0, 60) })}>{t("memory.forget")}</button>
             </li>
           ))}
         </ul>
       )}
 
-      <h3 className="pane-heading">Conversation memory</h3>
+      <h3 className="pane-heading">{t("memory.heading")}</h3>
       {status ? (
         <div className="meter-box">
           <div className="meter-head">
-            <span>{percent}% full</span>
-            <button type="button" className="link" disabled={busy !== null} onClick={() => void compact()}>{busy === "compact" ? "Summarising…" : "Summarise now"}</button>
+            <span>{t("memory.full", { percent })}</span>
+            <button type="button" className="link" disabled={busy !== null} onClick={() => void compact()}>{t(busy === "compact" ? "memory.summarising" : "memory.summarise")}</button>
           </div>
-          <div className="meter" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent} aria-label="Conversation memory used">
+          <div className="meter" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent} aria-label={t("memory.meterLabel")}>
             <span style={{ width: `${percent}%` }} />
           </div>
           <p className="muted small">
-            When this fills up, older messages are summarised so {bot.name} keeps the gist without the bulk.
-            {status.lastCompactedAt ? ` Last summarised ${shortDate(status.lastCompactedAt)}.` : " Not summarised yet."}
-            {status.lastConsolidatedAt ? ` Memories last reviewed ${shortDate(status.lastConsolidatedAt)}.` : ""}
+            {t("memory.foot", { name: bot.name })}{" "}
+            {status.lastCompactedAt ? t("memory.lastSummarised", { date: shortDate(status.lastCompactedAt) }) : t("memory.notSummarised")}
+            {status.lastConsolidatedAt ? ` ${t("memory.lastReviewed", { date: shortDate(status.lastConsolidatedAt) })}` : ""}
           </p>
         </div>
       ) : (
@@ -473,9 +471,10 @@ function Memories({ bot, bundle }: { bot: Bot; bundle: BotBundle | undefined }) 
 
 function RoutineItem({ r, onNote, onError }: { r: Routine; onNote: (t: string) => void; onError: (t: string | null) => void }) {
   const { toggleRoutine, loadBundle } = useStore.getState();
+  const t = useT();
   const [copied, setCopied] = useState(false);
   const [running, setRunning] = useState(false);
-  const next = !r.enabled ? "Paused" : r.trigger === "webhook" ? null : r.nextRunAt ? `Next ${nextRunLabel(r.nextRunAt, r.timezone || undefined)}` : null;
+  const next = !r.enabled ? t("routine.paused") : r.trigger === "webhook" ? null : r.nextRunAt ? t("routine.next", { when: nextRunLabel(r.nextRunAt, r.timezone || undefined) }) : null;
   return (
     <li className="routine">
       <div className="routine-head">
@@ -484,18 +483,18 @@ function RoutineItem({ r, onNote, onError }: { r: Routine; onNote: (t: string) =
             {r.name} <TriggerChip trigger={r.trigger} />
           </span>
           <span className="list-row-sub">
-            {r.trigger === "once" && r.runAt ? `Runs once on ${dateTime(r.runAt, r.timezone || undefined)}` : routineWhen({ ...r, enabled: true })}
+            {r.trigger === "once" && r.runAt ? t("routine.runsOnce", { date: dateTime(r.runAt, r.timezone || undefined) }) : routineWhen({ ...r, enabled: true })}
             {next ? ` · ${next}` : ""}
-            {r.lastRunAt ? ` · last ran ${shortDate(r.lastRunAt)}` : ""}
+            {r.lastRunAt ? ` · ${t("routine.lastRan", { date: shortDate(r.lastRunAt) })}` : ""}
           </span>
         </div>
         <Toggle
           checked={r.enabled}
-          label={`${r.enabled ? "Pause" : "Resume"} ${r.name}`}
+          label={t(r.enabled ? "routine.pause" : "routine.resume", { name: r.name })}
           onChange={(v) => {
             onError(null);
             toggleRoutine(r, v).then(
-              () => onNote(v ? "Resumed" : "Paused"),
+              () => onNote(t(v ? "routine.resumed" : "routine.paused")),
               (e: unknown) => onError(errText(e)),
             );
           }}
@@ -512,10 +511,10 @@ function RoutineItem({ r, onNote, onError }: { r: Routine; onNote: (t: string) =
               if (await copyText(r.hookUrl ?? "")) {
                 setCopied(true);
                 window.setTimeout(() => setCopied(false), 1500);
-              } else onError("Couldn't copy — select the address and copy it manually.");
+              } else onError(t("routine.copyFailed"));
             }}
           >
-            <Icon name={copied ? "check" : "copy"} size={13} /> {copied ? "Copied" : "Copy"}
+            <Icon name={copied ? "check" : "copy"} size={13} /> {t(copied ? "routine.copied" : "routine.copy")}
           </button>
         </div>
       )}
@@ -529,7 +528,7 @@ function RoutineItem({ r, onNote, onError }: { r: Routine; onNote: (t: string) =
             onError(null);
             try {
               await api("POST", `/routines/${r.id}/run`);
-              onNote("Running now");
+              onNote(t("routine.runningNow"));
             } catch (e) {
               onError(errText(e));
             } finally {
@@ -537,19 +536,19 @@ function RoutineItem({ r, onNote, onError }: { r: Routine; onNote: (t: string) =
             }
           }}
         >
-          <Icon name="bolt" size={13} /> {running ? "Starting…" : "Run now"}
+          <Icon name="bolt" size={13} /> {t(running ? "common.starting" : "routine.runNow")}
         </button>
         <ConfirmButton
           className="btn btn-small btn-ghost-danger"
-          label="Delete"
-          confirmLabel="Confirm delete"
-          busyLabel="Deleting…"
+          label={t("common.delete")}
+          confirmLabel={t("common.confirmDelete")}
+          busyLabel={t("common.deleting")}
           onConfirm={async () => {
             onError(null);
             try {
               await api("DELETE", `/routines/${r.id}`);
               await loadBundle(r.botId);
-              onNote("Deleted");
+              onNote(t("routine.deleted"));
             } catch (e) {
               onError(errText(e));
             }
@@ -561,23 +560,24 @@ function RoutineItem({ r, onNote, onError }: { r: Routine; onNote: (t: string) =
 }
 
 function Routines({ bot, bundle }: { bot: Bot; bundle: BotBundle | undefined }) {
+  const t = useT();
   const [note, setNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     if (!note) return;
-    const t = window.setTimeout(() => setNote(null), 2400);
-    return () => window.clearTimeout(t);
+    const timer = window.setTimeout(() => setNote(null), 2400);
+    return () => window.clearTimeout(timer);
   }, [note]);
   const routines = bundle?.routines;
   return (
     <div className="settings-pane">
       <div className="pane-intro">
-        <p className="muted">Routines run on a schedule, once at a set time, or when a webhook is called. To add or change one, just ask {bot.name} in chat.</p>
+        <p className="muted">{t("routine.intro", { name: bot.name })}</p>
         {note && <span className="chip state-ready" role="status">{note}</span>}
       </div>
       <ErrorNote>{error}</ErrorNote>
       {!routines && <Loading />}
-      {routines && routines.length === 0 && <Empty icon="clock" title="No routines yet">Try “Every Monday at 8, plan my week” in chat.</Empty>}
+      {routines && routines.length === 0 && <Empty icon="clock" title={t("routine.emptyTitle")}>{t("routine.emptyText")}</Empty>}
       {routines && routines.length > 0 && (
         <ul className="list">
           {routines.map((r) => (
@@ -595,6 +595,7 @@ export function BotSettings({ botId, tab }: { botId: string; tab: BotSettingsTab
   const bot = useStore((s) => s.bots[botId]);
   const bundle = useStore((s) => s.bundles[botId]);
   const { closeBotSettings, openBotSettings, loadBundle } = useStore.getState();
+  const t = useT();
 
   useEffect(() => {
     void loadBundle(botId);
@@ -606,18 +607,18 @@ export function BotSettings({ botId, tab }: { botId: string; tab: BotSettingsTab
 
   const isRoom = bot.kind === "room";
   const tabs: { id: BotSettingsTab; label: string; icon: "settings" | "book" | "brain" | "clock"; count?: number }[] = isRoom
-    ? [{ id: "general", label: "General", icon: "settings" }]
+    ? [{ id: "general", label: t("botSettings.tab.general"), icon: "settings" }]
     : [
-        { id: "general", label: "General", icon: "settings" },
-        { id: "skills", label: "Skills", icon: "book", count: bundle?.skills.length },
-        { id: "memories", label: "Memories", icon: "brain", count: bundle?.memories.length },
-        { id: "routines", label: "Routines", icon: "clock", count: bundle?.routines.length },
+        { id: "general", label: t("botSettings.tab.general"), icon: "settings" },
+        { id: "skills", label: t("botSettings.tab.skills"), icon: "book", count: bundle?.skills.length },
+        { id: "memories", label: t("botSettings.tab.memories"), icon: "brain", count: bundle?.memories.length },
+        { id: "routines", label: t("botSettings.tab.routines"), icon: "clock", count: bundle?.routines.length },
       ];
-  const active = tabs.some((t) => t.id === tab) ? tab : "general";
+  const active = tabs.some((x) => x.id === tab) ? tab : "general";
 
   return (
     <Modal
-      title={`${bot.name} settings`}
+      title={t("botSettings.title", { name: bot.name })}
       onClose={closeBotSettings}
       size="xl"
       className="bot-settings"
@@ -625,17 +626,17 @@ export function BotSettings({ botId, tab }: { botId: string; tab: BotSettingsTab
         <div className="modal-head">
           <BotAvatar bot={bot} size={30} badge />
           <span className="modal-head-title truncate">{bot.name}</span>
-          <IconButton icon="close" label="Close" onClick={closeBotSettings} />
+          <IconButton icon="close" label={t("common.close")} onClick={closeBotSettings} />
         </div>
       }
     >
       <div className="settings-layout">
-        <div className="settings-nav" role="tablist" aria-label="Bot settings" aria-orientation="vertical">
-          {tabs.map((t) => (
-            <button key={t.id} type="button" role="tab" aria-selected={active === t.id} className={`settings-nav-item ${active === t.id ? "is-active" : ""}`} onClick={() => openBotSettings(bot.id, t.id)}>
-              <Icon name={t.icon} size={16} />
-              <span className="grow">{t.label}</span>
-              {typeof t.count === "number" && <span className="nav-count">{t.count}</span>}
+        <div className="settings-nav" role="tablist" aria-label={t("botSettings.aria")} aria-orientation="vertical">
+          {tabs.map((x) => (
+            <button key={x.id} type="button" role="tab" aria-selected={active === x.id} className={`settings-nav-item ${active === x.id ? "is-active" : ""}`} onClick={() => openBotSettings(bot.id, x.id)}>
+              <Icon name={x.icon} size={16} />
+              <span className="grow">{x.label}</span>
+              {typeof x.count === "number" && <span className="nav-count">{x.count}</span>}
             </button>
           ))}
         </div>

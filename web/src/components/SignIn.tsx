@@ -1,5 +1,6 @@
 import { useId, useState, type FormEvent } from "react";
 import { api, errText } from "../api";
+import { LOCALES, useT } from "../i18n";
 import { useStore } from "../store";
 import type { User } from "../types";
 import { Avatar } from "./Avatar";
@@ -8,6 +9,9 @@ import { ErrorNote } from "./ui";
 export function SignIn() {
   const signupOpen = useStore((s) => s.signupOpen);
   const signedIn = useStore((s) => s.signedIn);
+  const locale = useStore((s) => s.locale);
+  const setLocale = useStore((s) => s.setLocale);
+  const t = useT();
   const [mode, setMode] = useState<"login" | "signup">(signupOpen ? "signup" : "login");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -22,22 +26,22 @@ export function SignIn() {
     if (busy) return;
     const mail = email.trim();
     if (!mail.includes("@")) {
-      setError("Enter a valid email address.");
+      setError(t("signin.errEmail"));
       return;
     }
     if (!password) {
-      setError("Enter your password.");
+      setError(t("signin.errPassword"));
       return;
     }
     if (creating && password.length < 8) {
-      setError("Choose a password with at least 8 characters.");
+      setError(t("signin.errShort"));
       return;
     }
     setBusy(true);
     setError(null);
     try {
       const r = creating
-        ? await api<{ user: User }>("POST", "/auth/signup", { email: mail, name: name.trim() || undefined, password })
+        ? await api<{ user: User }>("POST", "/auth/signup", { email: mail, name: name.trim() || undefined, password, locale })
         : await api<{ user: User }>("POST", "/auth/login", { email: mail, password });
       await signedIn(r.user);
     } catch (err) {
@@ -52,23 +56,23 @@ export function SignIn() {
         <div className="signin-brand">
           <Avatar shape="squircle" color="ember" name="S" size={56} />
           <h1>Sklubot</h1>
-          <p>Your own team of AI bots — each with its own memory, skills, routines and computer.</p>
+          <p>{t("signin.tagline")}</p>
         </div>
 
-        <h2 className="signin-title">{creating ? "Create your account" : "Sign in"}</h2>
+        <h2 className="signin-title">{t(creating ? "signin.create" : "signin.signIn")}</h2>
 
         {creating && (
           <div className="field">
-            <label className="field-label" htmlFor={ids.name}>Name</label>
-            <input id={ids.name} className="input" value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" maxLength={80} placeholder="What should your bots call you?" />
+            <label className="field-label" htmlFor={ids.name}>{t("common.name")}</label>
+            <input id={ids.name} className="input" value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" maxLength={80} placeholder={t("signin.namePlaceholder")} />
           </div>
         )}
         <div className="field">
-          <label className="field-label" htmlFor={ids.email}>Email</label>
-          <input id={ids.email} className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" autoFocus placeholder="you@example.com" />
+          <label className="field-label" htmlFor={ids.email}>{t("signin.email")}</label>
+          <input id={ids.email} className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" autoFocus placeholder={t("signin.emailPlaceholder")} />
         </div>
         <div className="field">
-          <label className="field-label" htmlFor={ids.password}>Password</label>
+          <label className="field-label" htmlFor={ids.password}>{t("signin.password")}</label>
           <input
             id={ids.password}
             className="input"
@@ -77,18 +81,18 @@ export function SignIn() {
             onChange={(e) => setPassword(e.target.value)}
             autoComplete={creating ? "new-password" : "current-password"}
           />
-          {creating && <p className="field-hint">At least 8 characters.</p>}
+          {creating && <p className="field-hint">{t("signin.passwordHint")}</p>}
         </div>
 
         <ErrorNote>{error}</ErrorNote>
 
         <button type="submit" className="btn btn-primary btn-block" disabled={busy}>
-          {busy ? (creating ? "Creating account…" : "Signing in…") : creating ? "Create account" : "Sign in"}
+          {t(busy ? (creating ? "signin.creating" : "signin.signingIn") : creating ? "signin.createBtn" : "signin.signIn")}
         </button>
 
         {signupOpen && (
           <p className="signin-switch">
-            {creating ? "Already have an account?" : "New here?"}{" "}
+            {t(creating ? "signin.haveAccount" : "signin.newHere")}{" "}
             <button
               type="button"
               className="link"
@@ -97,13 +101,20 @@ export function SignIn() {
                 setError(null);
               }}
             >
-              {creating ? "Sign in" : "Create an account"}
+              {t(creating ? "signin.signIn" : "signin.createLink")}
             </button>
           </p>
         )}
-        {!signupOpen && <p className="signin-switch">Sign-ups are closed on this server. Ask its owner for an account.</p>}
+        {!signupOpen && <p className="signin-switch">{t("signin.closed")}</p>}
       </form>
-      <p className="signin-foot">Sklubot is self-hosted, open-source software. Your conversations stay on this server.</p>
+      <p className="signin-foot">{t("signin.foot")}</p>
+      <div className="segmented signin-lang" role="radiogroup" aria-label={t("signin.language")}>
+        {LOCALES.map((l) => (
+          <button key={l.id} type="button" role="radio" aria-checked={locale === l.id} lang={l.id} className={locale === l.id ? "is-active" : ""} onClick={() => void setLocale(l.id)}>
+            {l.label}
+          </button>
+        ))}
+      </div>
     </main>
   );
 }

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, enc, errText } from "../api";
+import { t, useT } from "../i18n";
 import { useStore } from "../store";
 import type { Bot, FileEntry, Routine } from "../types";
 import { accentStyle } from "../lib/colors";
@@ -14,18 +15,18 @@ import { Empty, ErrorNote, IconButton, Loading, Toggle } from "./ui";
 type Tab = "activity" | "tasks" | "library";
 
 export function routineWhen(r: Routine): string {
-  if (!r.enabled) return "Paused";
-  if (r.trigger === "webhook") return "Runs when its webhook is called";
-  if (r.trigger === "once") return r.runAt ? `Once, ${dateTime(r.runAt, r.timezone || undefined)}` : "Runs once";
+  if (!r.enabled) return t("routine.paused");
+  if (r.trigger === "webhook") return t("routine.webhookWhen");
+  if (r.trigger === "once") return r.runAt ? t("routine.once", { date: dateTime(r.runAt, r.timezone || undefined) }) : t("routine.onceNoDate");
   return r.describe || r.schedule;
 }
 
-const TRIGGER_LABEL: Record<Routine["trigger"], string> = { cron: "Schedule", webhook: "Webhook", once: "One-off" };
 export function TriggerChip({ trigger }: { trigger: Routine["trigger"] }) {
+  const t = useT();
   return (
     <span className="chip">
       <Icon name={trigger === "webhook" ? "hook" : "clock"} size={12} />
-      {TRIGGER_LABEL[trigger]}
+      {t(`routine.trigger.${trigger}`)}
     </span>
   );
 }
@@ -35,16 +36,17 @@ export function TriggerChip({ trigger }: { trigger: Routine["trigger"] }) {
 function Upcoming({ bot }: { bot: Bot }) {
   const routines = useStore((s) => s.bundles[bot.id]?.routines);
   const { toggleRoutine, openBotSettings } = useStore.getState();
+  const t = useT();
   const [error, setError] = useState<string | null>(null);
   return (
     <section className="section">
       <div className="section-head">
-        <h3>Upcoming</h3>
-        <button type="button" className="link" onClick={() => openBotSettings(bot.id, "routines")}>Manage</button>
+        <h3>{t("details.upcoming")}</h3>
+        <button type="button" className="link" onClick={() => openBotSettings(bot.id, "routines")}>{t("details.manage")}</button>
       </div>
       {!routines && <Loading />}
       {routines && routines.length === 0 && (
-        <p className="muted small">No routines yet. Ask in chat — for example, “Every weekday at 9, send me a summary of my inbox.”</p>
+        <p className="muted small">{t("details.noRoutines")}</p>
       )}
       {routines && routines.length > 0 && (
         <ul className="list">
@@ -56,7 +58,7 @@ function Upcoming({ bot }: { bot: Bot }) {
               </div>
               <Toggle
                 checked={r.enabled}
-                label={`${r.enabled ? "Pause" : "Resume"} ${r.name}`}
+                label={t(r.enabled ? "routine.pause" : "routine.resume", { name: r.name })}
                 onChange={(next) => {
                   setError(null);
                   toggleRoutine(r, next).catch((e: unknown) => setError(errText(e)));
@@ -74,6 +76,7 @@ function Upcoming({ bot }: { bot: Bot }) {
 function Members({ room }: { room: Bot }) {
   const bots = useStore((s) => s.bots);
   const loadBots = useStore((s) => s.loadBots);
+  const t = useT();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
@@ -97,11 +100,11 @@ function Members({ room }: { room: Bot }) {
   return (
     <section className="section">
       <div className="section-head">
-        <h3>Members</h3>
+        <h3>{t("details.members")}</h3>
         {busy && <Spinner size={14} />}
       </div>
       {members.length === 0 ? (
-        <p className="muted small">No bots in this room yet.</p>
+        <p className="muted small">{t("details.noMembers")}</p>
       ) : (
         <ul className="list">
           {members.map((m) => (
@@ -114,8 +117,8 @@ function Members({ room }: { room: Bot }) {
               <IconButton
                 icon="close"
                 size={15}
-                label={`Remove ${m.name}`}
-                title={members.length <= 2 ? "A room needs at least two bots" : `Remove ${m.name}`}
+                label={t("details.removeMember", { name: m.name })}
+                title={members.length <= 2 ? t("details.needTwo") : t("details.removeMember", { name: m.name })}
                 disabled={busy || members.length <= 2}
                 onClick={() => void save(room.memberIds.filter((id) => id !== m.id))}
               />
@@ -125,7 +128,7 @@ function Members({ room }: { room: Bot }) {
       )}
       {adding ? (
         candidates.length === 0 ? (
-          <p className="muted small">Every bot is already in this room.</p>
+          <p className="muted small">{t("details.allIn")}</p>
         ) : (
           <ul className="list list-pick">
             {candidates.map((c) => (
@@ -141,10 +144,10 @@ function Members({ room }: { room: Bot }) {
         )
       ) : (
         <button type="button" className="btn btn-small" onClick={() => setAdding(true)}>
-          <Icon name="plus" size={14} /> Add a bot
+          <Icon name="plus" size={14} /> {t("details.addBot")}
         </button>
       )}
-      <p className="muted small">Type @ and a bot's name to ask it directly.</p>
+      <p className="muted small">{t("details.mentionHint")}</p>
       <ErrorNote>{error}</ErrorNote>
     </section>
   );
@@ -153,29 +156,30 @@ function Members({ room }: { room: Bot }) {
 function ComputerSection({ bot }: { bot: Bot }) {
   const computer = useStore((s) => s.computer);
   const openViewer = useStore((s) => s.openViewer);
+  const t = useT();
   const desktop = computer?.desktops.find((d) => d.botId === bot.id);
   const engine = computer ? computer.browser : true;
   const { url, status } = useScreen(bot.id, 4000, engine);
   const text = !engine
-    ? "No computer available"
+    ? t("computer.noneTitle")
     : status === "ok"
-      ? desktop?.url || (computer?.kind === "linux" ? "Awake" : "Desktop open")
+      ? desktop?.url || (computer?.kind === "linux" ? t("computer.awake") : t("details.desktopOpen"))
       : status === "none"
-        ? computer?.kind === "linux" ? "Asleep — wakes when needed" : "No desktop open yet"
+        ? computer?.kind === "linux" ? t("computer.asleep") : t("details.noDesktop")
         : status === "error"
-          ? "Can't reach the desktop"
-          : "Checking…";
+          ? t("details.unreachable")
+          : t("details.checking");
   return (
     <section className="section">
       <div className="section-head">
-        <h3>Computer</h3>
+        <h3>{t("details.computer")}</h3>
       </div>
-      <button type="button" className="screen-card" onClick={() => openViewer(bot.id)} aria-label={`Open ${bot.name}'s computer`}>
+      <button type="button" className="screen-card" onClick={() => openViewer(bot.id)} aria-label={t("details.openComputer", { name: bot.name })}>
         <span className="screen-thumb">
           {url ? <img src={url} alt="" /> : status === "loading" && engine ? <span className="dot-inline dot-pulse" /> : <Icon name="monitor" size={22} />}
         </span>
         <span className="screen-card-text">
-          <span className="list-row-title">{bot.name}'s {computer?.kind === "linux" ? "Linux computer" : "desktop"}</span>
+          <span className="list-row-title">{t(computer?.kind === "linux" ? "details.linuxOf" : "details.desktopOf", { name: bot.name })}</span>
           <span className="list-row-sub truncate">{text}</span>
         </span>
       </button>
@@ -189,6 +193,7 @@ function VoiceSection({ bot }: { bot: Bot }) {
   const voices = useVoices();
   const inCall = useStore((s) => s.call?.botId === bot.id);
   const upsertBot = useStore((s) => s.upsertBot);
+  const t = useT();
   const [error, setError] = useState<string | null>(null);
   const [previewing, setPreviewing] = useState(false);
   const speech = canSpeak();
@@ -225,40 +230,40 @@ function VoiceSection({ bot }: { bot: Bot }) {
   const preview = () => {
     if (!speech) return;
     window.speechSynthesis.cancel();
-    const u = makeUtterance(`Hi, I'm ${bot.name}. This is how I sound.`, voice);
+    const u = makeUtterance(t("voice.sample", { name: bot.name }), voice);
     u.onend = u.onerror = () => setPreviewing(false);
     setPreviewing(true);
     window.speechSynthesis.speak(u);
   };
 
-  const off = !speech ? "Speech isn't supported in this browser" : undefined;
+  const off = !speech ? t("voice.unsupported") : undefined;
   return (
     <section className="section">
       <div className="section-head">
-        <h3>Voice chat</h3>
+        <h3>{t("voice.heading")}</h3>
       </div>
       <div className="form-grid" title={off}>
-        <label className="field-label" htmlFor={`voice-${bot.id}`}>Voice</label>
+        <label className="field-label" htmlFor={`voice-${bot.id}`}>{t("voice.voice")}</label>
         <div className="row-gap">
           <select id={`voice-${bot.id}`} className="input input-small" value={voice.name} disabled={!speech} onChange={(e) => void save({ name: e.target.value })}>
-            <option value="">Browser default</option>
+            <option value="">{t("voice.default")}</option>
             {names.map((n) => (
               <option key={n} value={n}>{n}</option>
             ))}
           </select>
-          <button type="button" className="btn btn-small" onClick={preview} disabled={!speech || previewing} title={off ?? "Hear this voice"}>
-            <Icon name="play" size={12} /> {previewing ? "Playing…" : "Preview"}
+          <button type="button" className="btn btn-small" onClick={preview} disabled={!speech || previewing} title={off ?? t("voice.hear")}>
+            <Icon name="play" size={12} /> {t(previewing ? "voice.playing" : "voice.preview")}
           </button>
         </div>
-        <label className="field-label" htmlFor={`rate-${bot.id}`}>Speed</label>
+        <label className="field-label" htmlFor={`rate-${bot.id}`}>{t("voice.speed")}</label>
         <select id={`rate-${bot.id}`} className="input input-small" value={String(voice.rate)} disabled={!speech} onChange={(e) => void save({ rate: Number(e.target.value) })}>
           {rates.map((r) => (
-            <option key={r} value={String(r)}>{r === 1 ? "1× (normal)" : `${r}×`}</option>
+            <option key={r} value={String(r)}>{r === 1 ? t("voice.normal") : `${r}×`}</option>
           ))}
         </select>
-        <label className="field-label" htmlFor={`lang-${bot.id}`}>Language</label>
+        <label className="field-label" htmlFor={`lang-${bot.id}`}>{t("voice.language")}</label>
         <select id={`lang-${bot.id}`} className="input input-small" value={voice.lang || "auto"} disabled={!speech} onChange={(e) => void save({ lang: e.target.value })}>
-          <option value="auto">Auto</option>
+          <option value="auto">{t("voice.auto")}</option>
           {langs.map((l) => (
             <option key={l} value={l}>{l}</option>
           ))}
@@ -269,10 +274,10 @@ function VoiceSection({ bot }: { bot: Bot }) {
         type="button"
         className={`btn btn-block ${inCall ? "btn-danger" : "btn-accent"}`}
         disabled={!callable}
-        title={callable ? undefined : "Voice chat isn't supported in this browser"}
+        title={callable ? undefined : t("composer.voiceUnsupported")}
         onClick={() => (inCall ? endCall() : startCall(bot.id))}
       >
-        <Icon name={inCall ? "phoneOff" : "wave"} size={16} /> {inCall ? "End voice chat" : "Start voice chat"}
+        <Icon name={inCall ? "phoneOff" : "wave"} size={16} /> {t(inCall ? "composer.endCall" : "composer.startCall")}
       </button>
     </section>
   );
@@ -280,29 +285,28 @@ function VoiceSection({ bot }: { bot: Bot }) {
 
 /* ---------- Tasks tab ---------- */
 
-const TASK_CHIP = { working: "Working on it", needs_input: "Waiting on you", done: "Done" } as const;
-
 function TasksTab({ bot }: { bot: Bot }) {
   const tasks = useStore((s) => s.bundles[bot.id]?.tasks);
   const setView = useStore((s) => s.setView);
+  const t = useT();
   const sorted = useMemo(() => (tasks ? sortTasks(tasks) : null), [tasks]);
   return (
     <section className="section">
       <div className="section-head">
-        <h3>Tasks</h3>
-        <button type="button" className="link" onClick={() => setView("tasks")}>See all</button>
+        <h3>{t("sidebar.tasks")}</h3>
+        <button type="button" className="link" onClick={() => setView("tasks")}>{t("details.seeAll")}</button>
       </div>
       {!sorted && <Loading />}
-      {sorted && sorted.length === 0 && <Empty icon="tasks">Nothing on {bot.name}'s plate. Longer jobs you hand over show up here.</Empty>}
+      {sorted && sorted.length === 0 && <Empty icon="tasks">{t("details.tasksEmpty", { name: bot.name })}</Empty>}
       {sorted && sorted.length > 0 && (
         <ul className="list">
-          {sorted.map((t) => (
-            <li key={t.id} className={`list-row task-mini is-${t.state}`}>
-              <Icon name={t.state === "done" ? "tasks" : "ring"} size={17} />
+          {sorted.map((task) => (
+            <li key={task.id} className={`list-row task-mini is-${task.state}`}>
+              <Icon name={task.state === "done" ? "tasks" : "ring"} size={17} />
               <div className="list-row-text">
-                <span className="list-row-title">{t.title}</span>
-                {t.note && <span className="list-row-sub">{t.note}</span>}
-                <span className="list-row-sub">{TASK_CHIP[t.state]} · {relTime(t.updatedAt)}</span>
+                <span className="list-row-title">{task.title}</span>
+                {task.note && <span className="list-row-sub">{task.note}</span>}
+                <span className="list-row-sub">{t(`task.chip.${task.state}`)} · {relTime(task.updatedAt)}</span>
               </div>
             </li>
           ))}
@@ -320,6 +324,7 @@ function LibraryTab({ bot }: { bot: Bot }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
+  const t = useT();
 
   useEffect(() => {
     let dead = false;
@@ -355,8 +360,8 @@ function LibraryTab({ bot }: { bot: Bot }) {
   return (
     <section className="section">
       <div className="section-head">
-        <nav className="crumbs" aria-label="Folder path">
-          <button type="button" className="link" onClick={() => setPath("")} aria-current={parts.length === 0 ? "page" : undefined}>Library</button>
+        <nav className="crumbs" aria-label={t("library.path")}>
+          <button type="button" className="link" onClick={() => setPath("")} aria-current={parts.length === 0 ? "page" : undefined}>{t("library.root")}</button>
           {parts.map((p, i) => (
             <span key={i} className="crumb">
               <Icon name="chevronRight" size={12} />
@@ -366,26 +371,26 @@ function LibraryTab({ bot }: { bot: Bot }) {
             </span>
           ))}
         </nav>
-        <IconButton icon="refresh" size={15} label="Refresh" className={loading ? "is-spinning" : ""} onClick={() => setTick((t) => t + 1)} />
+        <IconButton icon="refresh" size={15} label={t("library.refresh")} className={loading ? "is-spinning" : ""} onClick={() => setTick((n) => n + 1)} />
       </div>
       {loading && !entries && <Loading />}
       {error && (
-        <Empty icon="alert" title="Couldn't load files">{error}</Empty>
+        <Empty icon="alert" title={t("library.loadFailed")}>{error}</Empty>
       )}
       {!error && entries && entries.length === 0 && (
         <Empty icon="folder">
-          {path ? "This folder is empty." : `Reports, notes and other files ${bot.name} saves will appear here.`}
+          {path ? t("library.emptyFolder") : t("library.emptyRoot", { name: bot.name })}
         </Empty>
       )}
       {!error && entries && entries.length > 0 && (
         <ul className="list">
           {entries.map((f) => (
             <li key={f.name} className="file-row">
-              <button type="button" className="list-row list-row-btn" onClick={() => (f.dir ? setPath(join(f.name)) : download(f.name))} title={f.dir ? `Open ${f.name}` : `Download ${f.name}`}>
+              <button type="button" className="list-row list-row-btn" onClick={() => (f.dir ? setPath(join(f.name)) : download(f.name))} title={f.dir ? t("library.open", { name: f.name }) : t("attach.downloadName", { name: f.name })}>
                 <Icon name={f.dir ? "folder" : "file"} size={18} />
                 <span className="list-row-text">
                   <span className="list-row-title truncate">{f.name}</span>
-                  <span className="list-row-sub">{f.dir ? "Folder" : fileSize(f.size)} · {relTime(f.modifiedAt)}</span>
+                  <span className="list-row-sub">{f.dir ? t("library.folder") : fileSize(f.size)} · {relTime(f.modifiedAt)}</span>
                 </span>
                 {!f.dir && <Icon name="download" size={15} className="file-dl" />}
               </button>
@@ -403,28 +408,29 @@ export function DetailsPanel() {
   const bot = useStore((s) => (s.selectedId ? s.bots[s.selectedId] : undefined));
   const { toggleDetails, openBotSettings } = useStore.getState();
   const [tab, setTab] = useState<Tab>("activity");
+  const t = useT();
   if (!bot) return null;
   const isRoom = bot.kind === "room";
   const tabs: { id: Tab; label: string }[] = [
-    { id: "activity", label: "Activity" },
-    { id: "tasks", label: "Tasks" },
-    { id: "library", label: "Library" },
+    { id: "activity", label: t("details.tab.activity") },
+    { id: "tasks", label: t("details.tab.tasks") },
+    { id: "library", label: t("details.tab.library") },
   ];
   return (
-    <aside className="details" style={accentStyle(bot.color)} aria-label={`${bot.name} details`}>
+    <aside className="details" style={accentStyle(bot.color)} aria-label={t("details.aria", { name: bot.name })}>
       <div className="details-top">
-        <IconButton icon="settings" label="Bot settings" onClick={() => openBotSettings(bot.id)} />
-        <IconButton icon="close" label="Hide details" onClick={() => toggleDetails(false)} />
+        <IconButton icon="settings" label={t("chat.botSettings")} onClick={() => openBotSettings(bot.id)} />
+        <IconButton icon="close" label={t("chat.hideDetails")} onClick={() => toggleDetails(false)} />
       </div>
       <div className="details-id">
         <BotAvatar bot={bot} size={72} badge />
         <h2>{bot.name}</h2>
         {bot.label && <p>{bot.label}</p>}
       </div>
-      <div className="tabs" role="tablist" aria-label="Details">
-        {tabs.map((t) => (
-          <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} className={`tab ${tab === t.id ? "is-active" : ""}`} onClick={() => setTab(t.id)}>
-            {t.label}
+      <div className="tabs" role="tablist" aria-label={t("details.tabs")}>
+        {tabs.map((x) => (
+          <button key={x.id} type="button" role="tab" aria-selected={tab === x.id} className={`tab ${tab === x.id ? "is-active" : ""}`} onClick={() => setTab(x.id)}>
+            {x.label}
           </button>
         ))}
       </div>

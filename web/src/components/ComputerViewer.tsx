@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { api, errText } from "../api";
+import { useT } from "../i18n";
 import { useStore } from "../store";
 import { useScreen } from "../lib/screen";
 import { BotAvatar } from "./Avatar";
@@ -19,6 +20,7 @@ export function ComputerViewer({ botId }: { botId: string }) {
   const bot = useStore((s) => s.bots[botId]);
   const computer = useStore((s) => s.computer);
   const closeViewer = useStore((s) => s.closeViewer);
+  const t = useT();
   const [control, setControl] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [address, setAddress] = useState("");
@@ -141,16 +143,16 @@ export function ComputerViewer({ botId }: { botId: string }) {
   if (!bot) return null;
 
   const statusText = !engine
-    ? "No computer available"
+    ? t("computer.noneTitle")
     : status === "ok"
       ? control
-        ? "You're in control"
-        : "Watching live"
+        ? t("viewer.inControl")
+        : t("viewer.watching")
       : status === "none"
-        ? linux ? "Asleep" : "No desktop open"
+        ? linux ? t("viewer.asleep") : t("viewer.noDesktop")
         : status === "error"
-          ? "Can't reach the desktop"
-          : "Connecting…";
+          ? t("details.unreachable")
+          : t("common.connecting");
 
   return (
     <div
@@ -158,7 +160,7 @@ export function ComputerViewer({ botId }: { botId: string }) {
       ref={root}
       role="dialog"
       aria-modal="true"
-      aria-label={`${bot.name}'s computer`}
+      aria-label={t("viewer.title", { name: bot.name })}
       tabIndex={-1}
       onMouseDown={(e) => {
         if (!control && e.target === e.currentTarget) closeViewer();
@@ -167,14 +169,14 @@ export function ComputerViewer({ botId }: { botId: string }) {
       <header className="viewer-bar">
         <BotAvatar bot={bot} size={28} />
         <div className="viewer-title">
-          <strong>{bot.name}'s computer</strong>
+          <strong>{t("viewer.title", { name: bot.name })}</strong>
           <span>
             {control && status === "ok" && <span className="dot-inline dot-live" />}
             {statusText}
             {desktop?.url && status === "ok" ? ` · ${desktop.url}` : ""}
           </span>
         </div>
-        <IconButton icon="close" label="Close" onClick={closeViewer} />
+        <IconButton icon="close" label={t("common.close")} onClick={closeViewer} />
       </header>
 
       <div
@@ -186,19 +188,19 @@ export function ComputerViewer({ botId }: { botId: string }) {
         onMouseDown={(e) => {
           if (!control && e.target === e.currentTarget) closeViewer();
         }}
-        aria-label={control ? "Remote desktop — keys you press are sent to it" : undefined}
+        aria-label={control ? t("viewer.remote") : undefined}
       >
         {!engine ? (
           <div className="viewer-empty">
             <Icon name="monitor" size={40} />
-            <h3>No computer on this server</h3>
-            <p>Bots need either a Linux computer (Docker plus the desktop image) or a browser engine on the server. Ask whoever runs it to set one up, then reopen this view.</p>
+            <h3>{t("viewer.noneTitle")}</h3>
+            <p>{t("viewer.noneText")}</p>
           </div>
         ) : url ? (
           <img
             ref={img}
             src={url}
-            alt={`${bot.name}'s screen`}
+            alt={t("viewer.screenAlt", { name: bot.name })}
             draggable={false}
             onClick={(e) => {
               if (!control) return;
@@ -212,21 +214,21 @@ export function ComputerViewer({ botId }: { botId: string }) {
         ) : status === "none" ? (
           <div className="viewer-empty">
             <Icon name="monitor" size={40} />
-            <h3>{linux ? `${bot.name}'s computer is asleep` : "No desktop open yet"}</h3>
-            <p>{linux ? "It wakes by itself when the bot needs it, with everything as it was left." : `${bot.name} opens a desktop the first time it needs to browse. ${control ? "Enter an address below to open one now." : "Take control to open a page yourself."}`}</p>
-            {linux && <button type="button" className="btn btn-primary" disabled={waking} onClick={wakeUp}>{waking ? "Waking up…" : "Wake computer"}</button>}
+            <h3>{linux ? t("viewer.asleepTitle", { name: bot.name }) : t("viewer.noDesktopTitle")}</h3>
+            <p>{linux ? t("viewer.asleepText") : `${t("viewer.noDesktopText", { name: bot.name })} ${t(control ? "viewer.hintControl" : "viewer.hintWatch")}`}</p>
+            {linux && <button type="button" className="btn btn-primary" disabled={waking} onClick={wakeUp}>{t(waking ? "viewer.waking" : "viewer.wake")}</button>}
           </div>
         ) : status === "error" ? (
           <div className="viewer-empty">
             <Icon name="alert" size={40} />
-            <h3>Can't reach the desktop</h3>
-            <p>The screen couldn't be loaded. It will keep retrying.</p>
-            <button type="button" className="btn" onClick={refresh}>Retry now</button>
+            <h3>{t("details.unreachable")}</h3>
+            <p>{t("viewer.unreachableText")}</p>
+            <button type="button" className="btn" onClick={refresh}>{t("viewer.retry")}</button>
           </div>
         ) : (
           <div className="viewer-empty">
             <Spinner size={28} />
-            <p>Connecting…</p>
+            <p>{t("common.connecting")}</p>
           </div>
         )}
       </div>
@@ -236,11 +238,11 @@ export function ComputerViewer({ botId }: { botId: string }) {
           {control ? (
             <>
               <form className="viewer-url" onSubmit={go}>
-                <label className="sr-only" htmlFor="viewer-url">Address</label>
-                <input id="viewer-url" className="input input-small" value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Go to an address…" spellCheck={false} autoCapitalize="off" autoCorrect="off" />
-                <button type="submit" className="btn btn-small" disabled={!address.trim()}>Go</button>
+                <label className="sr-only" htmlFor="viewer-url">{t("viewer.address")}</label>
+                <input id="viewer-url" className="input input-small" value={address} onChange={(e) => setAddress(e.target.value)} placeholder={t("viewer.addressPlaceholder")} spellCheck={false} autoCapitalize="off" autoCorrect="off" />
+                <button type="submit" className="btn btn-small" disabled={!address.trim()}>{t("viewer.go")}</button>
               </form>
-              <span className="viewer-hint">Click, type and scroll on the screen.</span>
+              <span className="viewer-hint">{t("viewer.controlHint")}</span>
               <button
                 type="button"
                 className="btn btn-small btn-primary"
@@ -249,16 +251,16 @@ export function ComputerViewer({ botId }: { botId: string }) {
                   setControl(false);
                 }}
               >
-                Done
+                {t("viewer.done")}
               </button>
             </>
           ) : (
             <>
               <span className="viewer-hint">
-                <Icon name="eye" size={15} /> You're watching. {bot.name} keeps working while you look.
+                <Icon name="eye" size={15} /> {t("viewer.watchingHint", { name: bot.name })}
               </span>
               <button type="button" className="btn btn-small btn-primary" onClick={() => setControl(true)}>
-                <Icon name="cursor" size={14} /> Take control
+                <Icon name="cursor" size={14} /> {t("viewer.take")}
               </button>
             </>
           )}

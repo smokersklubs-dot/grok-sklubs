@@ -192,6 +192,7 @@ export const en = {
   "connect.skipping": "Skipping…",
   "connect.btn": "Connect",
   "connect.connected": "{name} connected",
+  "connect.skipped": "Skipped",
 
   // Look, shapes and colours
   "look.shape": "Shape",

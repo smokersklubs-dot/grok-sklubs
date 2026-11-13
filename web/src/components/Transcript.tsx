@@ -1,12 +1,14 @@
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { enc } from "../api";
+import { t, tn, useT, type Key } from "../i18n";
 import { useStore, type Thread } from "../store";
-import type { ActivityKind, Bot, Live, Origin, Row, RowBody } from "../types";
-import { clockTime, dividerLabel, duration, elapsed, hostName, plural } from "../lib/format";
+import type { ActivityKind, Attachment, Bot, Live, Origin, Row, RowBody } from "../types";
+import { clockTime, dividerLabel, duration, elapsed, fileSize, hostName } from "../lib/format";
 import { renderMarkdown } from "../lib/markdown";
 import { Avatar, BotAvatar } from "./Avatar";
 import { CardView } from "./Cards";
 import { Icon, Spinner } from "./Icon";
-import { useTick } from "./ui";
+import { IconButton, useDialogFocus, useEscape, useTick } from "./ui";
 
 type MessageBody = Extract<RowBody, { kind: "message" }>;
 type StepBody = Extract<RowBody, { kind: "step" }>;
@@ -30,7 +32,7 @@ function buildItems(rows: Row[], running: boolean): Item[] {
   let prevAt: number | null = null;
   for (const row of rows) {
     const b = row.body;
-    if (b.kind === "message" && !b.text.trim() && !b.streaming) continue;
+    if (b.kind === "message" && !b.text.trim() && !b.streaming && !b.attachments?.length) continue;
     if (b.kind === "step" && running && b.status === "running") continue;
     if (prevAt === null || row.createdAt - prevAt > HOUR) {
       items.push({ t: "divider", key: `d${row.seq}`, label: dividerLabel(row.createdAt) });
@@ -64,12 +66,13 @@ const Markdown = memo(function Markdown({ text }: { text: string }) {
 
 function SenderLabel({ origin, role }: { origin: Origin; role: "user" | "assistant" }) {
   const bots = useStore((s) => s.bots);
+  const t = useT();
   if (origin.kind === "bot") {
     const b = bots[origin.id];
     return (
       <div className="sender">
         {b ? <BotAvatar bot={b} size={18} /> : <Avatar shape="circle" color="slate" name={origin.name} size={18} />}
-        <span>{role === "user" ? `from ${origin.name}` : origin.name}</span>
+        <span>{role === "user" ? t("msg.from", { name: origin.name }) : origin.name}</span>
       </div>
     );
   }
@@ -77,7 +80,7 @@ function SenderLabel({ origin, role }: { origin: Origin; role: "user" | "assista
     return (
       <div className="sender">
         <Icon name="clock" size={14} />
-        <span>routine · {origin.name}</span>
+        <span>{t("msg.routine", { name: origin.name })}</span>
       </div>
     );
   }
@@ -85,20 +88,80 @@ function SenderLabel({ origin, role }: { origin: Origin; role: "user" | "assista
     return (
       <div className="sender">
         <Icon name="hook" size={14} />
-        <span>webhook · {origin.name}</span>
+        <span>{t("msg.webhook", { name: origin.name })}</span>
       </div>
     );
   }
   return (
     <div className="sender">
       <Icon name="wave" size={14} />
-      <span>asked on a voice call</span>
+      <span>{t("msg.voice")}</span>
+    </div>
+  );
+}
+
+/* ---------- Attachments ---------- */
+
+const viewUrl = (botId: string, path: string) => `/api/bots/${botId}/files/view?path=${enc(path)}`;
+const downloadUrl = (botId: string, path: string) => `/api/bots/${botId}/files/download?path=${enc(path)}`;
+
+/** Full-window view of one image. Escape or a click outside the picture closes it. */
+function Lightbox({ botId, file, onClose }: { botId: string; file: Attachment; onClose: () => void }) {
+  const root = useRef<HTMLDivElement>(null);
+  const t = useT();
+  useEscape(onClose);
+  useDialogFocus(root);
+  const closeOnBackdrop = (e: React.MouseEvent) => {
+    if (e.target === e.currentTarget) onClose();
+  };
+  return (
+    <div className="lightbox" ref={root} role="dialog" aria-modal="true" aria-label={t("attach.viewer")} tabIndex={-1} onMouseDown={closeOnBackdrop}>
+      <header className="lightbox-bar">
+        <span className="lightbox-name truncate">{file.name}</span>
+        <a className="btn btn-small" href={downloadUrl(botId, file.path)} download={file.name}>
+          <Icon name="download" size={14} /> {t("attach.download")}
+        </a>
+        <IconButton icon="close" label={t("common.close")} onClick={onClose} />
+      </header>
+      <div className="lightbox-stage" onMouseDown={closeOnBackdrop}>
+        <img src={viewUrl(botId, file.path)} alt={file.name} />
+      </div>
+    </div>
+  );
+}
+
+function Attachments({ botId, files }: { botId: string; files: Attachment[] }) {
+  const [open, setOpen] = useState<Attachment | null>(null);
+  const t = useT();
+  const images = files.filter((f) => f.mime.startsWith("image/"));
+  const others = files.filter((f) => !f.mime.startsWith("image/"));
+  return (
+    <div className="attachments">
+      {images.map((f) => (
+        <button key={f.path} type="button" className="attach-image" onClick={() => setOpen(f)} aria-label={t("attach.open", { name: f.name })} title={f.name}>
+          <img src={viewUrl(botId, f.path)} alt={f.name} loading="lazy" />
+        </button>
+      ))}
+      {others.map((f) => (
+        <a key={f.path} className="attach-file" href={downloadUrl(botId, f.path)} download={f.name} title={t("attach.downloadName", { name: f.name })}>
+          <span className="attach-file-icon">
+            <Icon name="file" size={18} />
+          </span>
+          <span className="attach-file-text">
+            <span className="attach-file-name truncate">{f.name}</span>
+            <span className="attach-file-size">{fileSize(f.size)}</span>
+          </span>
+          <Icon name="download" size={15} className="attach-file-dl" />
+        </a>
+      ))}
+      {open && <Lightbox botId={botId} file={open} onClose={() => setOpen(null)} />}
     </div>
   );
 }
 
 function MessageGroup({ item }: { item: Extract<Item, { t: "msgs" }> }) {
   const n = item.rows.length;
+  const t = useT();
   return (
     <div className={`group ${item.mine ? "is-mine" : "is-theirs"}`}>
       {item.origin && <SenderLabel origin={item.origin} role={item.role} />}
@@ -107,10 +170,13 @@ function MessageGroup({ item }: { item: Extract<Item, { t: "msgs" }> }) {
         const pos = n === 1 ? "only" : i === 0 ? "first" : i === n - 1 ? "last" : "mid";
         return (
           <div key={row.seq} className={`msg is-${pos}`}>
-            <div className={`bubble ${b.streaming ? "is-streaming" : ""}`}>
-              {item.mine ? <p className="plain">{b.text}</p> : <Markdown text={b.text} />}
-              {b.streaming && <span className="stream-dots" aria-label="Still writing"><i /><i /><i /></span>}
-            </div>
+            {b.attachments && b.attachments.length > 0 && <Attachments botId={row.botId} files={b.attachments} />}
+            {(b.text.trim() || b.streaming) && (
+              <div className={`bubble ${b.streaming ? "is-streaming" : ""}`}>
+                {item.mine ? <p className="plain">{b.text}</p> : <Markdown text={b.text} />}
+                {b.streaming && <span className="stream-dots" aria-label={t("msg.stillWriting")}><i /><i /><i /></span>}
+              </div>
+            )}
             <time className="msg-time" dateTime={new Date(row.createdAt).toISOString()}>{clockTime(row.createdAt)}</time>
             {b.sources && b.sources.length > 0 && (
               <div className="sources">
@@ -131,10 +197,11 @@ function MessageGroup({ item }: { item: Extract<Item, { t: "msgs" }> }) {
 
 /* ---------- Steps ---------- */
 
-const STEP_MARK: Partial<Record<StepBody["status"], string>> = { error: "failed", denied: "not allowed", waiting: "waiting for approval", running: "in progress" };
+const STEP_MARK: Partial<Record<StepBody["status"], Key>> = { error: "step.mark.error", denied: "step.mark.denied", waiting: "step.mark.waiting", running: "step.mark.running" };
 
 function StepGroup({ rows }: { rows: Row[] }) {
   const [open, setOpen] = useState(false);
+  const t = useT();
   const steps = rows.map((r) => ({ seq: r.seq, body: r.body as StepBody }));
   const problem = steps.some((s) => s.body.status === "error" || s.body.status === "denied");
   const last = steps[steps.length - 1].body;
@@ -142,24 +209,27 @@ function StepGroup({ rows }: { rows: Row[] }) {
     <div className="steps">
       <button type="button" className="steps-toggle" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
         <Icon name="chevronRight" size={14} className={open ? "is-rotated" : ""} />
-        <span>{plural(steps.length, "step")}</span>
+        <span>{tn("count.step", steps.length)}</span>
         {!open && <span className="steps-last truncate">{last.label}</span>}
-        {problem && !open && <span className="dot-inline dot-error" title="A step failed or was not allowed" />}
+        {problem && !open && <span className="dot-inline dot-error" title={t("step.problem")} />}
       </button>
       {open && (
         <ol className="steps-list">
-          {steps.map(({ seq, body }) => (
+          {steps.map(({ seq, body }) => {
+            const mark = STEP_MARK[body.status];
+            return (
             <li key={seq} className="step" title={body.tool}>
               <span className={`dot-inline dot-step-${body.status}`} />
               <div className="step-text">
                 <span className="step-label">
                   {body.label || body.tool}
-                  {STEP_MARK[body.status] && <span className={`step-mark is-${body.status}`}>{STEP_MARK[body.status]}</span>}
+                  {mark && <span className={`step-mark is-${body.status}`}>{t(mark)}</span>}
                 </span>
                 {body.summary && <span className="step-summary">{body.summary}</span>}
               </div>
             </li>
-          ))}
+            );
+          })}
         </ol>
       )}
     </div>
@@ -170,6 +240,7 @@ function StepGroup({ rows }: { rows: Row[] }) {
 
 function EventRow({ body, botName }: { body: EventBody; botName: string }) {
   const [open, setOpen] = useState(false);
+  const t = useT();
   const call = body.call;
   const lines = call?.transcript ?? [];
   return (
@@ -182,13 +253,13 @@ function EventRow({ body, botName }: { body: EventBody; botName: string }) {
       {lines.length > 0 && (
         <>
           <button type="button" className="link" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
-            {open ? "Hide transcript" : "Show transcript"}
+            {t(open ? "event.hideTranscript" : "event.showTranscript")}
           </button>
           {open && (
             <div className="event-transcript">
               {lines.map((l, i) => (
                 <p key={i}>
-                  <b>{l.role === "user" ? "You" : botName}</b> {l.text}
+                  <b>{l.role === "user" ? t("common.you") : botName}</b> {l.text}
                 </p>
               ))}
             </div>
@@ -201,22 +272,22 @@ function EventRow({ body, botName }: { body: EventBody; botName: string }) {
 
 /* ---------- Activity line ---------- */
 
-const PHRASES: Record<ActivityKind, string[]> = {
-  thinking: ["Thinking it through", "Mulling it over", "Working out an approach"],
-  writing: ["Writing a reply"],
-  searching: ["Searching the web"],
-  reading: ["Reading up"],
-  browsing: ["Browsing a page"],
-  computer: ["Using its desktop"],
-  shell: ["Running a command"],
-  messaging: ["Checking with a teammate"],
-  connector: ["Working in a connected app"],
-  waiting: ["Needs your input"],
-  saving: ["Saving a file"],
-  remembering: ["Making a note to remember"],
-  planning: ["Planning the next steps"],
+const PHRASES: Record<ActivityKind, Key[]> = {
+  thinking: ["activity.thinking.0", "activity.thinking.1", "activity.thinking.2"],
+  writing: ["activity.writing"],
+  searching: ["activity.searching"],
+  reading: ["activity.reading"],
+  browsing: ["activity.browsing"],
+  computer: ["activity.computer"],
+  shell: ["activity.shell"],
+  messaging: ["activity.messaging"],
+  connector: ["activity.connector"],
+  waiting: ["activity.waiting"],
+  saving: ["activity.saving"],
+  remembering: ["activity.remembering"],
+  planning: ["activity.planning"],
 };
-const WORKING = ["Working on it", "Making progress", "Still at it", "Pulling things together", "Getting it done"];
+const WORKING: Key[] = ["activity.working.0", "activity.working.1", "activity.working.2", "activity.working.3", "activity.working.4"];
 
 function teammateName(rows: Row[], detail?: string): string | null {
   for (let i = rows.length - 1; i >= 0 && i >= rows.length - 30; i--) {
@@ -231,20 +302,21 @@ function teammateName(rows: Row[], detail?: string): string | null {
 }
 
 export function activityPhrase(live: Live, rows: Row[], now: number): string {
-  if (live.awaiting) return live.awaiting.reason || "Needs your input";
+  if (live.awaiting) return live.awaiting.reason || t("activity.waiting");
   const a = live.activity;
-  if (!a) return WORKING[Math.floor(Math.max(0, now - (live.startedAt ?? now)) / 6000) % WORKING.length];
+  if (!a) return t(WORKING[Math.floor(Math.max(0, now - (live.startedAt ?? now)) / 6000) % WORKING.length]);
   if (a.kind === "messaging") {
     const who = teammateName(rows, a.detail);
-    return who ? `Checking with ${who}` : PHRASES.messaging[0];
+    return who ? t("activity.checkingWith", { name: who }) : t("activity.messaging");
   }
-  if (a.kind === "connector" && a.detail) return `Working in ${a.detail}`;
+  if (a.kind === "connector" && a.detail) return t("activity.workingIn", { name: a.detail });
   const list = PHRASES[a.kind] ?? WORKING;
-  return list[Math.floor(Math.max(0, now - a.since) / 6000) % list.length];
+  return t(list[Math.floor(Math.max(0, now - a.since) / 6000) % list.length]);
 }
 
 function ActivityLine({ bot, live, rows }: { bot: Bot; live: Live; rows: Row[] }) {
   const now = useTick(1000);
+  useT();
   const since = live.startedAt ?? live.activity?.since ?? now;
   const waiting = !!live.awaiting;
   return (
@@ -252,7 +324,7 @@ function ActivityLine({ bot, live, rows }: { bot: Bot; live: Live; rows: Row[] }
       <BotAvatar bot={bot} size={22} />
       <span className={waiting ? "activity-text" : "activity-text shimmer"}>{activityPhrase(live, rows, now)}{waiting ? "" : "…"}</span>
       {!waiting && now - since >= 1000 && <span className="activity-time">{elapsed(now - since)}</span>}
-      {live.queued > 0 && <span className="chip">{plural(live.queued, "message")} queued</span>}
+      {live.queued > 0 && <span className="chip">{tn("count.queued", live.queued)}</span>}
     </div>
   );
 }
@@ -260,17 +332,15 @@ function ActivityLine({ bot, live, rows }: { bot: Bot; live: Live; rows: Row[] }
 /* ---------- Transcript ---------- */
 
 function EmptyChat({ bot }: { bot: Bot }) {
-  const fallback =
-    bot.kind === "room"
-      ? "A shared room. Mention a bot with @ to bring it into the conversation."
-      : bot.mode === "teammate"
-        ? "A teammate with its own job. Tell it what to take on, and it will keep you posted."
-        : "Your personal assistant. Ask for anything — it remembers what matters and can act on your behalf.";
+  const imageGeneration = useStore((s) => s.imageGeneration);
+  const t = useT();
+  const fallback = t(bot.kind === "room" ? "empty.room" : bot.mode === "teammate" ? "empty.teammate" : "empty.personal");
   return (
     <div className="chat-empty">
       <BotAvatar bot={bot} size={84} badge />
       <h2>{bot.name}</h2>
       <p>{bot.description || fallback}</p>
+      {imageGeneration && bot.kind !== "room" && <p className="chat-empty-hint">{t("empty.images")}</p>}
     </div>
   );
 }
@@ -283,9 +353,12 @@ export function Transcript({ bot, thread, live }: { bot: Bot; thread: Thread | u
   const pinned = useRef(true);
   const restore = useRef<number | null>(null);
   const [showJump, setShowJump] = useState(false);
+  const t = useT();
 
   const rows = thread?.rows ?? [];
-  const items = useMemo(() => buildItems(rows, live.running), [rows, live.running]);
+  // `t` changes with the language, so the date dividers are rebuilt when it does.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const items = useMemo(() => buildItems(rows, live.running), [rows, live.running, t]);
   const lastBody = rows.length ? rows[rows.length - 1].body : null;
   const streaming = lastBody?.kind === "message" && !!lastBody.streaming;
   const showActivity = (live.running && !streaming) || !!live.awaiting;
@@ -348,15 +421,15 @@ export function Transcript({ bot, thread, live }: { bot: Bot; thread: Thread | u
           )}
           {!loaded && thread?.error && (
             <div className="chat-empty">
-              <p>Couldn't load this conversation. {thread.error}</p>
-              <button type="button" className="btn" onClick={() => void loadRows(bot.id, true)}>Try again</button>
+              <p>{t("transcript.loadFailed", { error: thread.error })}</p>
+              <button type="button" className="btn" onClick={() => void loadRows(bot.id, true)}>{t("common.tryAgain")}</button>
             </div>
           )}
           {loaded && items.length === 0 && !showActivity && <EmptyChat bot={bot} />}
           {loaded && thread?.hasMore && (
             <div className="earlier">
               <button type="button" className="btn btn-small" onClick={earlier} disabled={thread.loadingEarlier}>
-                {thread.loadingEarlier ? "Loading…" : "Load earlier messages"}
+                {t(thread.loadingEarlier ? "common.loading" : "transcript.loadEarlier")}
               </button>
             </div>
           )}
@@ -379,7 +452,7 @@ export function Transcript({ bot, thread, live }: { bot: Bot; thread: Thread | u
           })}
           {loaded && showActivity && <ActivityLine bot={bot} live={live} rows={rows} />}
           {loaded && !showActivity && live.queued > 0 && (
-            <div className="activity"><span className="chip">{plural(live.queued, "message")} queued</span></div>
+            <div className="activity"><span className="chip">{tn("count.queued", live.queued)}</span></div>
           )}
         </div>
       </div>
@@ -387,8 +460,8 @@ export function Transcript({ bot, thread, live }: { bot: Bot; thread: Thread | u
         <button
           type="button"
           className="jump"
-          aria-label="Jump to latest"
-          title="Jump to latest"
+          aria-label={t("transcript.jump")}
+          title={t("transcript.jump")}
           onClick={() => {
             pinned.current = true;
             toBottom();

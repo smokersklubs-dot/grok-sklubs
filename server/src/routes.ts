@@ -11,7 +11,7 @@ import { retireBot } from "./agent/tools.js";
 import { createSession, dropSession, hashPassword, seal, SESSION_COOKIE, signupOpen, userForToken, verifyPassword } from "./auth.js";
 import { emit, getLive, subscribe } from "./bus.js";
 import { attachmentAt, computerState, isInlineImage, listFiles, mimeOf, removeWorkspace, resolveInWorkspace, screen, storeBytes } from "./computer.js";
-import { CATALOG } from "./catalog.js";
+import { catalogFor } from "./catalog.js";
 import { imageService } from "./images.js";
 import { config } from "./config.js";
 import { connectors } from "./connectors.js";
@@ -446,7 +446,7 @@ api.delete("/vault/:id", (c) => {
 });
 
 // ── Connectors and permissions ───────────────────────────────────────────────
-api.get("/connectors/catalog", (c) => c.json({ apps: CATALOG }));
+api.get("/connectors/catalog", (c) => c.json({ apps: catalogFor(c.get("user").locale) }));
 api.get("/connectors", (c) => c.json({ connectors: connectors.list(c.get("user").id) }));
 
 api.post("/connectors", async (c) => {

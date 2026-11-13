@@ -102,6 +102,9 @@ select.input { padding-right: 8px; }
 .input-small { min-height: 30px; padding: 4px 8px; font-size: 13px; border-radius: 8px; }
 .input-narrow { width: 140px; }
 
+.input-affix { position: relative; display: flex; }
+.input-affix .input { padding-right: 42px; }
+.input-affix .icon-btn { position: absolute; top: 3px; right: 3px; }
 .field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .field-label { font-size: 12.5px; font-weight: 600; color: var(--text-2); }
 .field-hint { font-size: 12px; color: var(--text-3); }
@@ -188,10 +191,11 @@ select.input { padding-right: 8px; }
 .avatar svg { display: block; overflow: visible; }
 .avatar-badge { position: absolute; right: -3px; bottom: -3px; display: grid; place-items: center; border-radius: 50%; background: var(--surface); color: #d99a0b; box-shadow: 0 0 0 1px var(--border); }
 .logo-tile { display: grid; place-items: center; flex: none; width: 34px; height: 34px; border-radius: 9px; background: var(--surface-3); color: var(--text-2); font-weight: 700; font-size: 15px; }
+.logo-tile.is-vault { background: var(--warn-soft); color: var(--warn); }
 .initials { display: grid; place-items: center; flex: none; width: 28px; height: 28px; border-radius: 50%; background: var(--surface-3); color: var(--text-2); font-size: 11px; font-weight: 700; }
 .initials.is-large { width: 48px; height: 48px; font-size: 16px; }
 
-.toast { position: fixed; left: 50%; bottom: 28px; z-index: 90; transform: translateX(-50%); padding: 9px 16px; border-radius: 999px; background: var(--ink); color: var(--ink-fg); font-size: 13px; font-weight: 550; box-shadow: var(--shadow-md); animation: rise 0.16s ease; max-width: calc(100vw - 32px); }
+.toast { position: fixed; left: 50%; bottom: calc(28px + env(safe-area-inset-bottom)); z-index: 90; transform: translateX(-50%); padding: 9px 16px; border-radius: 999px; background: var(--ink); color: var(--ink-fg); font-size: 13px; font-weight: 550; box-shadow: var(--shadow-md); animation: rise 0.16s ease; max-width: calc(100vw - 32px); }
 .boot { height: 100%; background: var(--bg); }
 
 /* Lists */

@@ -1,10 +1,11 @@
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from "react";
 import { api, errText } from "../api";
+import { tn, useT } from "../i18n";
 import { sortedBots, useStore } from "../store";
 import { AVATAR_COLORS, AVATAR_SHAPES } from "../types";
-import type { AvatarColor, AvatarShape, Bot, BotMode, Connector } from "../types";
+import type { AvatarColor, AvatarShape, Bot, BotMode, CatalogApp, Connector } from "../types";
 import { colorOf } from "../lib/colors";
-import { botTitle, plural } from "../lib/format";
+import { botTitle } from "../lib/format";
 import { Avatar, BotAvatar } from "./Avatar";
 import { Icon, Spinner } from "./Icon";
 import { ConfirmButton, Empty, ErrorNote, IconButton, Loading, Modal } from "./ui";
@@ -24,24 +25,25 @@ export function LookPicker({
   onShape: (s: AvatarShape) => void;
   onColor: (c: AvatarColor) => void;
 }) {
+  const t = useT();
   return (
     <div className="look">
-      <div className="look-grid" role="radiogroup" aria-label="Shape">
+      <div className="look-grid" role="radiogroup" aria-label={t("look.shape")}>
         {AVATAR_SHAPES.map((s) => (
-          <button key={s} type="button" role="radio" aria-checked={shape === s} aria-label={s} title={s} className={`look-shape ${shape === s ? "is-selected" : ""}`} onClick={() => onShape(s)}>
+          <button key={s} type="button" role="radio" aria-checked={shape === s} aria-label={t(`shape.${s}`)} title={t(`shape.${s}`)} className={`look-shape ${shape === s ? "is-selected" : ""}`} onClick={() => onShape(s)}>
             <Avatar shape={s} color={color} name={name || "A"} size={36} />
           </button>
         ))}
       </div>
-      <div className="look-colors" role="radiogroup" aria-label="Colour">
+      <div className="look-colors" role="radiogroup" aria-label={t("look.colour")}>
         {AVATAR_COLORS.map((c) => (
           <button
             key={c}
             type="button"
             role="radio"
             aria-checked={color === c}
-            aria-label={colorOf(c).label}
-            title={colorOf(c).label}
+            aria-label={t(`color.${c}`)}
+            title={t(`color.${c}`)}
             className={`swatch ${color === c ? "is-selected" : ""}`}
             style={{ background: colorOf(c).bg }}
             onClick={() => onColor(c)}
@@ -52,15 +54,14 @@ export function LookPicker({
   );
 }
 
-export const MODES: { id: BotMode; title: string; text: string }[] = [
-  { id: "personal", title: "Personal assistant", text: "Works for you alone and acts on your behalf." },
-  { id: "teammate", title: "Teammate", text: "Owns one job and can work alongside your other bots." },
-];
+/** Titles and descriptions are `mode.<id>.title` / `mode.<id>.text` in the dictionaries. */
+export const MODE_IDS: BotMode[] = ["personal", "teammate"];
 
 /* ---------- Create bot ---------- */
 
 export function CreateBotModal({ onClose }: { onClose: () => void }) {
   const { upsertBot, selectBot, openModal } = useStore.getState();
+  const t = useT();
   const [name, setName] = useState("");
   const [shape, setShape] = useState<AvatarShape>("squircle");
   const [color, setColor] = useState<AvatarColor>("ember");
@@ -87,26 +88,26 @@ export function CreateBotModal({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <Modal title="Create a bot" onClose={onClose} size="md">
+    <Modal title={t("createBot.title")} onClose={onClose} size="md">
       <form className="modal-body" onSubmit={submit}>
         <div className="create-preview">
           <Avatar shape={shape} color={color} name={name || "A"} size={72} />
         </div>
         <div className="field">
-          <label className="field-label" htmlFor={id}>Name</label>
-          <input id={id} className="input" value={name} maxLength={60} onChange={(e) => setName(e.target.value)} placeholder="e.g. Scout" autoComplete="off" />
+          <label className="field-label" htmlFor={id}>{t("common.name")}</label>
+          <input id={id} className="input" value={name} maxLength={60} onChange={(e) => setName(e.target.value)} placeholder={t("createBot.namePlaceholder")} autoComplete="off" />
         </div>
         <div className="field">
-          <span className="field-label">Look</span>
+          <span className="field-label">{t("createBot.look")}</span>
           <LookPicker name={name} shape={shape} color={color} onShape={setShape} onColor={setColor} />
         </div>
         <div className="field">
-          <span className="field-label">Type</span>
-          <div className="choice-list" role="radiogroup" aria-label="Type">
-            {MODES.map((m) => (
-              <button key={m.id} type="button" role="radio" aria-checked={mode === m.id} className={`choice ${mode === m.id ? "is-selected" : ""}`} onClick={() => setMode(m.id)}>
-                <span className="choice-title">{m.title}</span>
-                <span className="choice-text">{m.text}</span>
+          <span className="field-label">{t("createBot.type")}</span>
+          <div className="choice-list" role="radiogroup" aria-label={t("createBot.type")}>
+            {MODE_IDS.map((m) => (
+              <button key={m} type="button" role="radio" aria-checked={mode === m} className={`choice ${mode === m ? "is-selected" : ""}`} onClick={() => setMode(m)}>
+                <span className="choice-title">{t(`mode.${m}.title`)}</span>
+                <span className="choice-text">{t(`mode.${m}.text`)}</span>
               </button>
             ))}
           </div>
@@ -114,12 +115,12 @@ export function CreateBotModal({ onClose }: { onClose: () => void }) {
         <ErrorNote>{error}</ErrorNote>
         <div className="modal-foot">
           <button type="button" className="link" onClick={() => openModal({ kind: "createRoom" })}>
-            Create a group room instead
+            {t("createBot.roomInstead")}
           </button>
           <span className="spacer" />
-          <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
+          <button type="button" className="btn btn-ghost" onClick={onClose}>{t("common.cancel")}</button>
           <button type="submit" className="btn btn-primary" disabled={!name.trim() || busy}>
-            {busy ? "Creating…" : "Create bot"}
+            {t(busy ? "common.creating" : "createBot.submit")}
           </button>
         </div>
       </form>
@@ -132,6 +133,7 @@ export function CreateBotModal({ onClose }: { onClose: () => void }) {
 export function CreateRoomModal({ onClose }: { onClose: () => void }) {
   const bots = useStore((s) => s.bots);
   const { loadBots, selectBot } = useStore.getState();
+  const t = useT();
   const [name, setName] = useState("");
   const [picked, setPicked] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
@@ -157,16 +159,16 @@ export function CreateRoomModal({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <Modal title="Create a group room" onClose={onClose} size="md">
+    <Modal title={t("createRoom.title")} onClose={onClose} size="md">
       <form className="modal-body" onSubmit={submit}>
         <div className="field">
-          <label className="field-label" htmlFor={id}>Room name</label>
-          <input id={id} className="input" value={name} maxLength={60} onChange={(e) => setName(e.target.value)} placeholder="e.g. Launch planning" autoComplete="off" />
+          <label className="field-label" htmlFor={id}>{t("createRoom.name")}</label>
+          <input id={id} className="input" value={name} maxLength={60} onChange={(e) => setName(e.target.value)} placeholder={t("createRoom.namePlaceholder")} autoComplete="off" />
         </div>
         <div className="field">
-          <span className="field-label">Bots in this room</span>
+          <span className="field-label">{t("createRoom.bots")}</span>
           {agents.length < 2 ? (
-            <p className="muted small">You need at least two bots to start a room.</p>
+            <p className="muted small">{t("createRoom.needTwo")}</p>
           ) : (
             <ul className="check-list">
               {agents.map((b) => {
@@ -189,14 +191,14 @@ export function CreateRoomModal({ onClose }: { onClose: () => void }) {
               })}
             </ul>
           )}
-          <p className="field-hint">Pick at least two.</p>
+          <p className="field-hint">{t("createRoom.pickTwo")}</p>
         </div>
         <ErrorNote>{error}</ErrorNote>
         <div className="modal-foot">
           <span className="spacer" />
-          <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
+          <button type="button" className="btn btn-ghost" onClick={onClose}>{t("common.cancel")}</button>
           <button type="submit" className="btn btn-primary" disabled={!ready || busy}>
-            {busy ? "Creating…" : "Create room"}
+            {t(busy ? "common.creating" : "createRoom.submit")}
           </button>
         </div>
       </form>
@@ -209,6 +211,7 @@ export function CreateRoomModal({ onClose }: { onClose: () => void }) {
 export function SearchModal({ onClose }: { onClose: () => void }) {
   const bots = useStore((s) => s.bots);
   const selectBot = useStore((s) => s.selectBot);
+  const t = useT();
   const [q, setQ] = useState("");
   const [index, setIndex] = useState(0);
   const list = useRef<HTMLUListElement>(null);
@@ -232,15 +235,15 @@ export function SearchModal({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <Modal title="Search" onClose={onClose} size="md" hideTitle className="search-modal">
+    <Modal title={t("sidebar.search")} onClose={onClose} size="md" hideTitle className="search-modal">
       <div className="search-field">
         <Icon name="search" size={18} />
         <input
           className="search-input"
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="Search bots and rooms…"
-          aria-label="Search bots and rooms"
+          placeholder={t("search.placeholder")}
+          aria-label={t("search.label")}
           role="combobox"
           aria-expanded="true"
           aria-controls="search-results"
@@ -266,21 +269,26 @@ export function SearchModal({ onClose }: { onClose: () => void }) {
               <BotAvatar bot={b} size={32} badge />
               <span className="bot-row-text">
                 <span className="bot-row-name truncate">{botTitle(b)}</span>
-                <span className="bot-row-preview truncate">{b.preview || b.description || (b.kind === "room" ? "Group room" : "No messages yet")}</span>
+                <span className="bot-row-preview truncate">{b.preview || b.description || (b.kind === "room" ? t("search.room") : t("sidebar.noMessages"))}</span>
               </span>
             </button>
           </li>
         ))}
-        {results.length === 0 && <li className="search-none">No bots or rooms match “{q.trim()}”.</li>}
+        {results.length === 0 && <li className="search-none">{t("search.none", { q: q.trim() })}</li>}
       </ul>
     </Modal>
   );
 }
 
-/* ---------- Connectors ---------- */
+/* ---------- Connect apps ---------- */
+
+const logoLetter = (name: string) => (Array.from(name.trim())[0] ?? "?").toUpperCase();
+/** Two addresses are the same app when they differ only by case or a trailing slash. */
+const sameUrl = (a: string, b: string) => a.trim().replace(/\/+$/, "").toLowerCase() === b.trim().replace(/\/+$/, "").toLowerCase();
 
 function ConnectorRow({ c }: { c: Connector }) {
   const loadConnectors = useStore((s) => s.loadConnectors);
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -310,29 +318,29 @@ function ConnectorRow({ c }: { c: Connector }) {
   return (
     <li className="connector">
       <div className="connector-main">
-        <span className="logo-tile" aria-hidden="true">{(Array.from(c.name.trim())[0] ?? "?").toUpperCase()}</span>
+        <span className="logo-tile" aria-hidden="true">{logoLetter(c.name)}</span>
         <div className="list-row-text">
           <span className="list-row-title">
             {c.name}
-            <span className={`chip state-${c.status}`}>{c.status === "ready" ? "Ready" : c.status === "error" ? "Error" : "Connecting…"}</span>
+            <span className={`chip state-${c.status}`}>{t(`connector.status.${c.status}`)}</span>
           </span>
-          <span className="list-row-sub truncate" title={c.url}>{c.url}{c.hasToken ? " · access token saved" : ""}</span>
-          {c.status === "error" && <span className="list-row-sub is-error">{c.error || "The server couldn't be reached."}</span>}
+          <span className="list-row-sub truncate" title={c.url}>{c.url}{c.hasToken ? ` · ${t("connector.tokenSaved")}` : ""}</span>
+          {c.status === "error" && <span className="list-row-sub is-error">{c.error || t("connector.unreachable")}</span>}
         </div>
-        <IconButton icon="refresh" size={16} label={`Reconnect ${c.name}`} className={busy ? "is-spinning" : ""} disabled={busy} onClick={() => void refresh()} />
-        <ConfirmButton className="btn btn-small btn-ghost-danger" label="Remove" confirmLabel="Confirm remove" busyLabel="Removing…" onConfirm={remove} />
+        <IconButton icon="refresh" size={16} label={t("connector.reconnect", { name: c.name })} className={busy ? "is-spinning" : ""} disabled={busy} onClick={() => void refresh()} />
+        <ConfirmButton className="btn btn-small btn-ghost-danger" label={t("connector.remove")} confirmLabel={t("connector.confirmRemove")} busyLabel={t("connector.removing")} onConfirm={remove} />
       </div>
       <button type="button" className="connector-tools" onClick={() => setOpen((v) => !v)} aria-expanded={open} disabled={c.tools.length === 0}>
         <Icon name="chevronRight" size={13} className={open ? "is-rotated" : ""} />
-        {c.tools.length === 0 ? "No tools" : plural(c.tools.length, "tool")}
+        {c.tools.length === 0 ? t("connector.noTools") : tn("count.tool", c.tools.length)}
       </button>
       {open && (
         <ul className="tool-list">
-          {c.tools.map((t) => (
-            <li key={t.name}>
-              <code>{t.name}</code>
-              {t.readOnly && <span className="chip">read-only</span>}
-              {t.description && <span className="tool-desc">{t.description}</span>}
+          {c.tools.map((tool) => (
+            <li key={tool.name}>
+              <code>{tool.name}</code>
+              {tool.readOnly && <span className="chip">{t("connector.readOnly")}</span>}
+              {tool.description && <span className="tool-desc">{tool.description}</span>}
             </li>
           ))}
         </ul>
@@ -342,23 +350,168 @@ function ConnectorRow({ c }: { c: Connector }) {
   );
 }
 
-export function ConnectorsModal({ onClose, prefill }: { onClose: () => void; prefill?: { name: string; botId: string; seq: number } }) {
+type Prefill = { name: string; botId: string; seq: number };
+
+/** One catalogue app: "Add" opens an inline form (token if needed), "Connect" adds it in one step. */
+function CatalogCard({ app, connected, open, onToggle, prefill, onAdded }: { app: CatalogApp; connected: boolean; open: boolean; onToggle: () => void; prefill?: Prefill; onAdded: (resolvedCard: boolean) => void }) {
+  const t = useT();
+  const [token, setToken] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const id = useId();
+  const needsToken = app.auth === "token";
+  // When the modal was opened from a bot's "connect X" card, adding that same app also resolves the card.
+  const answersCard = !!prefill && (app.name.toLowerCase().includes(prefill.name.trim().toLowerCase()) || prefill.name.toLowerCase().includes(app.name.toLowerCase()));
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (busy || (needsToken && !token.trim())) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api<{ connector: Connector }>("POST", "/connectors", {
+        name: app.name,
+        url: app.url,
+        ...(needsToken ? { token: token.trim() } : {}),
+        ...(answersCard && prefill ? { botId: prefill.botId, seq: prefill.seq } : {}),
+      });
+      setToken("");
+      onAdded(answersCard);
+    } catch (err) {
+      setError(errText(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <li className={`catalog-card ${open ? "is-open" : ""}`}>
+      <div className="catalog-card-main">
+        <span className="logo-tile" aria-hidden="true">{logoLetter(app.name)}</span>
+        <div className="list-row-text">
+          <span className="list-row-title">{app.name}</span>
+          <span className="list-row-sub">{app.description}</span>
+        </div>
+        {connected ? (
+          <span className="chip state-ready">
+            <Icon name="check" size={12} /> {t("catalog.connected")}
+          </span>
+        ) : (
+          <button type="button" className="btn btn-small" aria-expanded={open} aria-controls={`${id}f`} aria-label={t("catalog.addName", { name: app.name })} onClick={onToggle}>
+            {open ? t("common.cancel") : t("catalog.add")}
+          </button>
+        )}
+      </div>
+      {open && !connected && (
+        <form id={`${id}f`} className="catalog-form" onSubmit={submit}>
+          {needsToken ? (
+            <div className="field">
+              <label className="field-label" htmlFor={`${id}t`}>{t("catalog.token")}</label>
+              <input id={`${id}t`} className="input" type="password" value={token} onChange={(e) => setToken(e.target.value)} autoComplete="off" spellCheck={false} data-autofocus="" autoFocus />
+              {app.tokenHelp && <p className="field-hint">{app.tokenHelp}</p>}
+              <p className="field-hint">{t("catalog.tokenStored")}</p>
+            </div>
+          ) : (
+            <p className="muted small">{t("catalog.noToken")}</p>
+          )}
+          <ErrorNote>{error}</ErrorNote>
+          <div className="row-end">
+            <button type="submit" className="btn btn-primary btn-small" disabled={busy || (needsToken && !token.trim())}>
+              {busy ? <><Spinner size={13} /> {t("common.connecting")}</> : t("connect.btn")}
+            </button>
+          </div>
+        </form>
+      )}
+    </li>
+  );
+}
+
+function Catalog({ connectors, prefill, onClose }: { connectors: Connector[] | null; prefill?: Prefill; onClose: () => void }) {
+  const loadConnectors = useStore((s) => s.loadConnectors);
+  const t = useT();
+  const [apps, setApps] = useState<CatalogApp[] | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [q, setQ] = useState("");
+  const [openId, setOpenId] = useState<string | null>(null);
+
+  useEffect(() => {
+    let dead = false;
+    api<{ apps: CatalogApp[] }>("GET", "/connectors/catalog").then(
+      (r) => !dead && setApps(Array.isArray(r?.apps) ? r.apps : []),
+      () => !dead && setFailed(true),
+    );
+    return () => {
+      dead = true;
+    };
+  }, []);
+
+  const groups = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    const shown = (apps ?? []).filter((a) => !needle || `${a.name} ${a.description}`.toLowerCase().includes(needle));
+    const byCategory = new Map<string, CatalogApp[]>();
+    for (const a of shown) byCategory.set(a.category, [...(byCategory.get(a.category) ?? []), a]);
+    return [...byCategory.entries()];
+  }, [apps, q]);
+
+  if (apps && apps.length === 0) return null;
+
+  return (
+    <section className="catalog" aria-labelledby="catalog-title">
+      <div className="catalog-head">
+        <h3 id="catalog-title">{t("catalog.title")}</h3>
+        {apps && (
+          <div className="search-field is-inline catalog-search">
+            <Icon name="search" size={15} />
+            <input className="search-input" type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("catalog.search")} aria-label={t("catalog.searchLabel")} />
+          </div>
+        )}
+      </div>
+      {!apps && !failed && <Loading label={t("catalog.loading")} />}
+      {failed && <p className="muted small">{t("catalog.failed")}</p>}
+      {apps && groups.length === 0 && <p className="muted small">{t("catalog.none", { q: q.trim() })}</p>}
+      {groups.map(([category, list]) => (
+        <div key={category} className="catalog-group">
+          <h4>{category}</h4>
+          <ul className="catalog-grid">
+            {list.map((app) => (
+              <CatalogCard
+                key={app.id}
+                app={app}
+                connected={!!connectors?.some((c) => sameUrl(c.url, app.url))}
+                open={openId === app.id}
+                onToggle={() => setOpenId((cur) => (cur === app.id ? null : app.id))}
+                prefill={prefill}
+                onAdded={(resolvedCard) => {
+                  setOpenId(null);
+                  void loadConnectors();
+                  if (resolvedCard) onClose();
+                }}
+              />
+            ))}
+          </ul>
+        </div>
+      ))}
+    </section>
+  );
+}
+
+export function ConnectorsModal({ onClose, prefill }: { onClose: () => void; prefill?: Prefill }) {
   const connectors = useStore((s) => s.connectors);
   const loadError = useStore((s) => s.connectorsError);
   const loadConnectors = useStore((s) => s.loadConnectors);
+  const t = useT();
   const [name, setName] = useState(prefill?.name ?? "");
   const [url, setUrl] = useState("");
   const [token, setToken] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [formOpen, setFormOpen] = useState(!!prefill);
-  const ids = { name: useId(), url: useId(), token: useId() };
+  const ids = { name: useId(), url: useId(), token: useId(), form: useId() };
 
   useEffect(() => {
     void loadConnectors();
   }, [loadConnectors]);
 
-  const showForm = formOpen || (connectors !== null && connectors.length === 0);
   const valid = name.trim().length > 0 && /^https?:\/\/\S+$/i.test(url.trim());
 
   const submit = async (e: FormEvent) => {
@@ -390,60 +543,62 @@ export function ConnectorsModal({ onClose, prefill }: { onClose: () => void; pre
   };
 
   return (
-    <Modal title="Connect apps" onClose={onClose} size="lg">
+    <Modal title={prefill ? t("connect.title", { name: prefill.name }) : t("connectors.title")} onClose={onClose} size="lg">
       <div className="modal-body connectors">
-        <p className="muted">
-          A connector is a remote MCP tool server: an address your bots can call to use another app's tools — calendars, issue trackers, databases and more.
-          Connectors are shared by all your bots.
-        </p>
+        <p className="muted">{t("connectors.intro")}</p>
 
-        {connectors === null && !loadError && <Loading label="Loading connectors…" />}
+        {connectors === null && !loadError && <Loading label={t("connectors.loading")} />}
         {loadError && connectors === null && <ErrorNote>{loadError}</ErrorNote>}
         {connectors && connectors.length > 0 && (
-          <ul className="connector-list">
-            {connectors.map((c) => (
-              <ConnectorRow key={c.id} c={c} />
-            ))}
-          </ul>
+          <section className="catalog" aria-labelledby="connected-title">
+            <div className="catalog-head">
+              <h3 id="connected-title">{t("connectors.connected")}</h3>
+            </div>
+            <ul className="connector-list">
+              {connectors.map((c) => (
+                <ConnectorRow key={c.id} c={c} />
+              ))}
+            </ul>
+          </section>
         )}
-        {connectors && connectors.length === 0 && !prefill && <Empty icon="plug" title="No connectors yet">Add your first one below.</Empty>}
+        {connectors && connectors.length === 0 && !prefill && <Empty icon="plug" title={t("connectors.emptyTitle")}>{t("connectors.emptyText")}</Empty>}
 
-        {showForm ? (
-          <form className="connector-form" onSubmit={submit}>
-            <h3>{prefill ? `Connect ${prefill.name}` : "Add connector"}</h3>
-            <div className="form-cols">
-              <div className="field">
-                <label className="field-label" htmlFor={ids.name}>Name</label>
-                <input id={ids.name} className="input" value={name} onChange={(e) => setName(e.target.value)} maxLength={60} placeholder="e.g. Calendar" autoComplete="off" />
+        <Catalog connectors={connectors} prefill={prefill} onClose={onClose} />
+
+        <div className="disclosure">
+          <button type="button" className="disclosure-toggle" aria-expanded={formOpen} aria-controls={ids.form} onClick={() => setFormOpen((v) => !v)}>
+            <Icon name="chevronRight" size={14} className={formOpen ? "is-rotated" : ""} />
+            {t("manual.disclosure")}
+          </button>
+          {formOpen && (
+            <form id={ids.form} className="connector-form" onSubmit={submit}>
+              <p className="muted small">{t("manual.intro")}</p>
+              <div className="form-cols">
+                <div className="field">
+                  <label className="field-label" htmlFor={ids.name}>{t("common.name")}</label>
+                  <input id={ids.name} className="input" value={name} onChange={(e) => setName(e.target.value)} maxLength={60} placeholder={t("manual.namePlaceholder")} autoComplete="off" />
+                </div>
+                <div className="field">
+                  <label className="field-label" htmlFor={ids.url}>{t("manual.url")}</label>
+                  <input id={ids.url} className="input" type="url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://example.com/mcp" autoComplete="off" spellCheck={false} />
+                </div>
               </div>
               <div className="field">
-                <label className="field-label" htmlFor={ids.url}>Server URL</label>
-                <input id={ids.url} className="input" type="url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://example.com/mcp" autoComplete="off" spellCheck={false} data-autofocus={prefill ? "" : undefined} />
+                <label className="field-label" htmlFor={ids.token}>{t("catalog.token")} <span className="muted">{t("common.optional")}</span></label>
+                <input id={ids.token} className="input" type="password" value={token} onChange={(e) => setToken(e.target.value)} autoComplete="off" placeholder={t("manual.tokenPlaceholder")} />
+                <p className="field-hint">{t("catalog.tokenStored")}</p>
               </div>
-            </div>
-            <div className="field">
-              <label className="field-label" htmlFor={ids.token}>Access token <span className="muted">(optional)</span></label>
-              <input id={ids.token} className="input" type="password" value={token} onChange={(e) => setToken(e.target.value)} autoComplete="off" placeholder="Sent as a bearer token, if the server needs one" />
-              <p className="field-hint">Stored on your server and never shown again.</p>
-            </div>
-            <ErrorNote>{error}</ErrorNote>
-            <div className="modal-foot">
-              <span className="spacer" />
-              {connectors && connectors.length > 0 && !prefill && (
-                <button type="button" className="btn btn-ghost" onClick={() => setFormOpen(false)}>Cancel</button>
-              )}
-              <button type="submit" className="btn btn-primary" disabled={!valid || busy}>
-                {busy ? <><Spinner size={14} /> Connecting…</> : "Add connector"}
-              </button>
-            </div>
-          </form>
-        ) : (
-          connectors && (
-            <button type="button" className="btn" onClick={() => setFormOpen(true)}>
-              <Icon name="plus" size={15} /> Add connector
-            </button>
-          )
-        )}
+              <ErrorNote>{error}</ErrorNote>
+              <div className="modal-foot">
+                <span className="spacer" />
+                <button type="button" className="btn btn-ghost" onClick={() => setFormOpen(false)}>{t("common.cancel")}</button>
+                <button type="submit" className="btn btn-primary" disabled={!valid || busy}>
+                  {busy ? <><Spinner size={14} /> {t("common.connecting")}</> : t("manual.submit")}
+                </button>
+              </div>
+            </form>
+          )}
+        </div>
       </div>
     </Modal>
   );

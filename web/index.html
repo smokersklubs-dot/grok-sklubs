@@ -5,7 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="color-scheme" content="light dark" />
     <title>Sklubot</title>
-    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect x='6' y='6' width='88' height='88' rx='28' fill='%23e2552d'/%3E%3Ctext x='50' y='52' text-anchor='middle' dominant-baseline='central' font-family='system-ui,sans-serif' font-size='52' font-weight='700' fill='white'%3ES%3C/text%3E%3C/svg%3E" />
+    <meta name="theme-color" content="#f4f2ee" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Sklubot" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <script>
       (function () {
         var theme = "system";
@@ -15,6 +22,15 @@
         } catch (e) {}
         var dark = theme === "dark" || (theme !== "light" && window.matchMedia("(prefers-color-scheme: dark)").matches);
         document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
+        var meta = document.querySelector('meta[name="theme-color"]');
+        if (meta) meta.setAttribute("content", dark ? "#131416" : "#f4f2ee");
+        // Language before the app loads: the saved choice, else the browser's (fr* → fr, otherwise en).
+        var lang = null;
+        try {
+          lang = localStorage.getItem("sklubot.locale");
+        } catch (e) {}
+        if (lang !== "fr" && lang !== "en") lang = /^fr/i.test(navigator.language || "") ? "fr" : "en";
+        document.documentElement.lang = lang;
       })();
     </script>
   </head>

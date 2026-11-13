@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useT } from "../i18n";
 import { IDLE_LIVE, useStore } from "../store";
 import { accentStyle } from "../lib/colors";
 import { botTitle } from "../lib/format";
@@ -17,16 +18,17 @@ export function ChatView() {
   const { toggleDetails, openViewer, openBotSettings, resetConversation, showToast, setMobileNav } = useStore.getState();
   const [menu, setMenu] = useState(false);
   const [confirmNew, setConfirmNew] = useState(false);
+  const t = useT();
 
   if (!bot) {
     return (
       <section className="main">
         <header className="chat-head">
-          <IconButton icon="menu" label="Open menu" className="only-mobile" onClick={() => setMobileNav(true)} />
+          <IconButton icon="menu" label={t("common.openMenu")} className="only-mobile" onClick={() => setMobileNav(true)} />
         </header>
         <div className="chat-empty">
-          <h2>No bot selected</h2>
-          <p>Pick a bot from the sidebar, or create one to get started.</p>
+          <h2>{t("chat.noBot")}</h2>
+          <p>{t("chat.noBotHint")}</p>
         </div>
       </section>
     );
@@ -38,16 +40,16 @@ export function ChatView() {
   };
 
   return (
-    <section className="main chat" style={accentStyle(bot.color)} aria-label={`Chat with ${bot.name}`}>
+    <section className="main chat" style={accentStyle(bot.color)} aria-label={t("chat.with", { name: bot.name })}>
       <header className="chat-head">
-        <IconButton icon="menu" label="Open menu" className="only-mobile" onClick={() => setMobileNav(true)} />
+        <IconButton icon="menu" label={t("common.openMenu")} className="only-mobile" onClick={() => setMobileNav(true)} />
         <div className="menu-wrap chat-head-center">
           <button type="button" className="bot-pill" onClick={() => (menu ? close() : setMenu(true))} aria-haspopup="menu" aria-expanded={menu}>
             <BotAvatar bot={bot} size={24} badge />
             <span className="truncate">{botTitle(bot)}</span>
             <Icon name="chevronDown" size={14} />
           </button>
-          <Menu open={menu} onClose={close} align="center" label={`${bot.name} actions`}>
+          <Menu open={menu} onClose={close} align="center" label={t("chat.actions", { name: bot.name })}>
             <MenuItem
               icon="panel"
               hint={isMac ? "⌘⇧," : "Ctrl+Shift+,"}
@@ -56,7 +58,7 @@ export function ChatView() {
                 toggleDetails();
               }}
             >
-              {detailsOpen ? "Hide details" : "Show details"}
+              {t(detailsOpen ? "chat.hideDetails" : "chat.showDetails")}
             </MenuItem>
             {bot.kind !== "room" && (
               <MenuItem
@@ -66,7 +68,7 @@ export function ChatView() {
                   openViewer(bot.id);
                 }}
               >
-                Open computer
+                {t("chat.openComputer")}
               </MenuItem>
             )}
             <MenuItem
@@ -79,12 +81,12 @@ export function ChatView() {
                 }
                 close();
                 resetConversation(bot.id).then(
-                  () => showToast("Started a new conversation"),
-                  (e: unknown) => showToast(e instanceof Error ? e.message : "Couldn't start a new conversation"),
+                  () => showToast(t("chat.started")),
+                  (e: unknown) => showToast(e instanceof Error ? e.message : t("chat.startFailed")),
                 );
               }}
             >
-              {confirmNew ? "Click again to start over" : "New conversation"}
+              {t(confirmNew ? "chat.confirmNew" : "chat.newConversation")}
             </MenuItem>
             <MenuItem
               icon="settings"
@@ -93,12 +95,12 @@ export function ChatView() {
                 openBotSettings(bot.id);
               }}
             >
-              Bot settings
+              {t("chat.botSettings")}
             </MenuItem>
           </Menu>
         </div>
         <span className="chat-head-right">
-          {!detailsOpen && <IconButton icon="panel" label="Show details" onClick={() => toggleDetails(true)} />}
+          {!detailsOpen && <IconButton icon="panel" label={t("chat.showDetails")} onClick={() => toggleDetails(true)} />}
         </span>
       </header>
       <Transcript bot={bot} thread={thread} live={live} />

@@ -35,7 +35,7 @@ export const fr: Dict = {
   "signin.tagline": "Ta propre équipe de bots IA — chacun avec sa mémoire, ses compétences, ses routines et son ordinateur.",
   "signin.create": "Crée ton compte",
   "signin.signIn": "Se connecter",
-  "signin.namePlaceholder": "Comment tes bots doivent-ils t’appeler ?",
+  "signin.namePlaceholder": "Comment doit-on t’appeler ?",
   "signin.email": "E-mail",
   "signin.emailPlaceholder": "toi@exemple.com",
   "signin.password": "Mot de passe",
@@ -194,6 +194,7 @@ export const fr: Dict = {
   "connect.skipping": "On passe…",
   "connect.btn": "Connecter",
   "connect.connected": "{name} est connecté",
+  "connect.skipped": "Ignoré",
 
   // Apparence, formes et couleurs
   "look.shape": "Forme",

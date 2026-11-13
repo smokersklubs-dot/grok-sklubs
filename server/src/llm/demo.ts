@@ -47,7 +47,9 @@ export class DemoProvider implements LlmProvider {
     } else {
       content = plan(said, (name) => req.tools.some((t) => t.name === name)) ?? [{
         type: "text",
-        text: `This is demo mode, so I am following keywords rather than thinking. You said: “${said.slice(0, 200)}”.\n\nTry: **open https://example.com**, **remember "I prefer short answers"**, **run "ls -la"**, **save "a note"**, **set up a routine**, **add a task "Call the bank"**, or **ask me a question**. Add a model key to .env to get a real teammate.`,
+        text: /Write to the user in French/.test(req.system)
+          ? `Ceci est le mode démo : je suis des mots-clés, je ne réfléchis pas. Tu as dit : « ${said.slice(0, 200)} ».\n\nEssaie : **open https://example.com**, **remember "je préfère les réponses courtes"**, **run "ls -la"**, **save "une note"**, **routine**, **task "Appeler la banque"** ou **question**. Ajoute une clé de modèle dans .env pour avoir un vrai coéquipier.`
+          : `This is demo mode, so I am following keywords rather than thinking. You said: “${said.slice(0, 200)}”.\n\nTry: **open https://example.com**, **remember "I prefer short answers"**, **run "ls -la"**, **save "a note"**, **set up a routine**, **add a task "Call the bank"**, or **ask me a question**. Add a model key to .env to get a real teammate.`,
       }];
     }
     for (const b of content) {

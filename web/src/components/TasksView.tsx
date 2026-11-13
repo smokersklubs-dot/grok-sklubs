@@ -1,14 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
+import { useT } from "../i18n";
 import { useStore } from "../store";
-import type { Task } from "../types";
 import { relTime, sortTasks } from "../lib/format";
 import { BotAvatar } from "./Avatar";
 import { Icon } from "./Icon";
 import { Empty, IconButton, Loading, useTick } from "./ui";
 
 type Filter = "open" | "done" | "all";
-const CHIP: Record<Task["state"], string> = { working: "Working on it", needs_input: "Waiting on you", done: "Done" };
-const VERB: Record<Task["state"], string> = { working: "Updated", needs_input: "Asked", done: "Completed" };
 
 export function TasksView() {
   const tasks = useStore((s) => s.tasks);
@@ -16,6 +14,7 @@ export function TasksView() {
   const { loadTasks, selectBot, setMobileNav } = useStore.getState();
   const [filter, setFilter] = useState<Filter>("open");
   const now = useTick(30_000);
+  const t = useT();
 
   useEffect(() => {
     void loadTasks();
@@ -28,17 +27,17 @@ export function TasksView() {
   }, [tasks, filter]);
 
   const filters: { id: Filter; label: string }[] = [
-    { id: "open", label: `In progress${openCount ? ` (${openCount})` : ""}` },
-    { id: "done", label: "Done" },
-    { id: "all", label: "All" },
+    { id: "open", label: openCount ? t("tasks.filter.openCount", { n: openCount }) : t("tasks.filter.open") },
+    { id: "done", label: t("tasks.filter.done") },
+    { id: "all", label: t("tasks.filter.all") },
   ];
 
   return (
-    <section className="main tasks-view" aria-label="Tasks">
+    <section className="main tasks-view" aria-label={t("sidebar.tasks")}>
       <header className="tasks-head">
-        <IconButton icon="menu" label="Open menu" className="only-mobile" onClick={() => setMobileNav(true)} />
-        <h1>Tasks</h1>
-        <div className="segmented" role="group" aria-label="Filter tasks">
+        <IconButton icon="menu" label={t("common.openMenu")} className="only-mobile" onClick={() => setMobileNav(true)} />
+        <h1>{t("sidebar.tasks")}</h1>
+        <div className="segmented" role="group" aria-label={t("tasks.filterLabel")}>
           {filters.map((f) => (
             <button key={f.id} type="button" className={filter === f.id ? "is-active" : ""} aria-pressed={filter === f.id} onClick={() => setFilter(f.id)}>
               {f.label}
@@ -47,40 +46,38 @@ export function TasksView() {
         </div>
       </header>
       <div className="tasks-body">
-        {!shown && <Loading label="Loading tasks…" />}
+        {!shown && <Loading label={t("tasks.loading")} />}
         {shown && shown.length === 0 && (
-          <Empty icon="tasks" title={filter === "done" ? "Nothing finished yet" : "No tasks right now"}>
-            {filter === "done"
-              ? "Tasks your bots complete will be listed here."
-              : "When you hand a bot a longer job, it tracks it here and tells you when it needs you."}
+          <Empty icon="tasks" title={t(filter === "done" ? "tasks.emptyDoneTitle" : "tasks.emptyOpenTitle")}>
+            {t(filter === "done" ? "tasks.emptyDoneText" : "tasks.emptyOpenText")}
           </Empty>
         )}
         {shown && shown.length > 0 && (
           <ul className="task-list">
-            {shown.map((t) => {
-              const bot = bots[t.botId];
+            {shown.map((task) => {
+              const bot = bots[task.botId];
               return (
-                <li key={t.id}>
-                  <button type="button" className={`task-row is-${t.state}`} onClick={() => bot && selectBot(bot.id)} disabled={!bot}>
+                <li key={task.id}>
+                  <button type="button" className={`task-row is-${task.state}`} onClick={() => bot && selectBot(bot.id)} disabled={!bot}>
                     <span className="task-check">
-                      <Icon name={t.state === "done" ? "tasks" : "ring"} size={20} />
+                      <Icon name={task.state === "done" ? "tasks" : "ring"} size={20} />
                     </span>
                     <span className="task-main">
-                      <span className="task-title">{t.title}</span>
-                      {t.note && <span className="task-note">{t.note}</span>}
+                      <span className="task-title">{task.title}</span>
+                      {task.note && <span className="task-note">{task.note}</span>}
                       <span className="task-meta">
                         {bot ? (
                           <>
                             <BotAvatar bot={bot} size={16} /> {bot.name}
                           </>
                         ) : (
-                          "Removed bot"
+                          t("common.removedBot")
                         )}
                         <span aria-hidden="true">·</span>
-                        {VERB[t.state]} {relTime(t.updatedAt, now)}
+                        {t(`task.verb.${task.state}`, { when: relTime(task.updatedAt, now) })}
                       </span>
                     </span>
-                    <span className={`chip state-${t.state}`}>{CHIP[t.state]}</span>
+                    <span className={`chip state-${task.state}`}>{t(`task.chip.${task.state}`)}</span>
                   </button>
                 </li>
               );

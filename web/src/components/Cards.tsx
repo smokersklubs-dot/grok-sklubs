@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { api, errText } from "../api";
+import { useT } from "../i18n";
 import { useStore } from "../store";
 import type { Card } from "../types";
 import { Icon } from "./Icon";
@@ -13,14 +14,8 @@ function LogoTile({ name }: { name: string }) {
   return <span className="logo-tile" aria-hidden="true">{letter}</span>;
 }
 
-const APPROVAL_OUTCOME: Record<Exclude<ApprovalCard["status"], "pending">, string> = {
-  allowed: "Allowed once",
-  always: "Always allowed",
-  denied: "Not allowed",
-  expired: "Expired — no answer in time",
-};
-
 function Approval({ card }: { card: ApprovalCard }) {
+  const t = useT();
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const decide = async (decision: "allow" | "always" | "deny") => {
@@ -35,13 +30,21 @@ function Approval({ card }: { card: ApprovalCard }) {
     }
   };
   const source = card.source || card.tool;
+  // Saved logins: the server sends source "Vault" and tool "vault: <item name>".
+  const vault = card.source === "Vault";
   return (
     <div className="card">
       <div className="card-head">
-        <LogoTile name={source} />
+        {vault ? (
+          <span className="logo-tile is-vault" role="img" aria-label={t("approval.vault")} title={t("approval.vault")}>
+            <Icon name="key" size={18} />
+          </span>
+        ) : (
+          <LogoTile name={source} />
+        )}
         <div className="card-head-text">
           <p className="card-title">{card.title}</p>
-          <p className="card-sub">{source}{card.tool && card.tool !== source ? <> · <code>{card.tool}</code></> : null}</p>
+          <p className="card-sub">{vault ? t("settings.section.vault") : source}{card.tool && card.tool !== source ? <> · <code>{card.tool}</code></> : null}</p>
         </div>
       </div>
       {card.detail && <pre className="card-detail">{card.detail}</pre>}
@@ -49,14 +52,14 @@ function Approval({ card }: { card: ApprovalCard }) {
         <>
           <div className="card-actions">
             <button type="button" className="btn btn-ghost" disabled={busy !== null} onClick={() => void decide("deny")}>
-              {busy === "deny" ? "Denying…" : "Deny"}
+              {t(busy === "deny" ? "approval.denying" : "approval.deny")}
             </button>
             <span className="spacer" />
-            <button type="button" className="btn" disabled={busy !== null} onClick={() => void decide("always")} title="Stop asking for this action">
-              {busy === "always" ? "Saving…" : "Always allow"}
+            <button type="button" className="btn" disabled={busy !== null} onClick={() => void decide("always")} title={t("approval.alwaysTitle")}>
+              {t(busy === "always" ? "common.saving" : "approval.alwaysBtn")}
             </button>
             <button type="button" className="btn btn-accent" disabled={busy !== null} onClick={() => void decide("allow")}>
-              {busy === "allow" ? "Allowing…" : "Allow"}
+              {t(busy === "allow" ? "approval.allowing" : "approval.allow")}
             </button>
           </div>
           {error && <p className="card-error" role="alert">{error}</p>}
@@ -64,7 +67,7 @@ function Approval({ card }: { card: ApprovalCard }) {
       ) : (
         <p className={`card-outcome is-${card.status}`}>
           <Icon name={card.status === "allowed" || card.status === "always" ? "check" : card.status === "denied" ? "close" : "clock"} size={14} />
-          {APPROVAL_OUTCOME[card.status]}
+          {t(`approval.${card.status}`)}
         </p>
       )}
     </div>
@@ -72,6 +75,7 @@ function Approval({ card }: { card: ApprovalCard }) {
 }
 
 function Question({ card, botId, seq }: { card: QuestionCard; botId: string; seq: number }) {
+  const t = useT();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const pending = card.status === "pending";
@@ -86,7 +90,7 @@ function Question({ card, botId, seq }: { card: QuestionCard; botId: string; seq
       setBusy(false);
     }
   };
-  const hint = pending ? "Pick an option, or just reply in your own words." : card.status === "answered" ? "Answered" : "Skipped";
+  const hint = t(pending ? "question.hint" : card.status === "answered" ? "question.answered" : "question.skipped");
   return (
     <div className="card">
       <p className="card-title">{card.question}</p>
@@ -104,10 +108,10 @@ function Question({ card, botId, seq }: { card: QuestionCard; botId: string; seq
           })}
         </div>
       )}
-      {card.status === "answered" && card.answer && !card.options.includes(card.answer) && <p className="card-outcome is-allowed">You answered: {card.answer}</p>}
+      {card.status === "answered" && card.answer && !card.options.includes(card.answer) && <p className="card-outcome is-allowed">{t("question.youAnswered", { answer: card.answer })}</p>}
       {pending && (
         <button type="button" className="link card-skip" disabled={busy} onClick={() => void run("dismiss")}>
-          Skip this question
+          {t("question.skip")}
         </button>
       )}
       {error && <p className="card-error" role="alert">{error}</p>}
@@ -117,6 +121,7 @@ function Question({ card, botId, seq }: { card: QuestionCard; botId: string; seq
 
 function Connect({ card, botId, seq }: { card: ConnectCard; botId: string; seq: number }) {
   const openModal = useStore((s) => s.openModal);
+  const t = useT();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const skip = async () => {
@@ -135,7 +140,7 @@ function Connect({ card, botId, seq }: { card: ConnectCard; botId: string; seq: 
       <div className="card-head">
         <LogoTile name={card.name} />
         <div className="card-head-text">
-          <p className="card-title">Connect {card.name}</p>
+          <p className="card-title">{t("connect.title", { name: card.name })}</p>
           {card.hint && <p className="card-sub">{card.hint}</p>}
         </div>
       </div>
@@ -143,17 +148,17 @@ function Connect({ card, botId, seq }: { card: ConnectCard; botId: string; seq: 
       {card.status === "pending" ? (
         <div className="card-actions">
           <button type="button" className="btn btn-ghost" disabled={busy} onClick={() => void skip()}>
-            {busy ? "Skipping…" : "Skip"}
+            {t(busy ? "connect.skipping" : "connect.skip")}
           </button>
           <span className="spacer" />
           <button type="button" className="btn btn-accent" disabled={busy} onClick={() => openModal({ kind: "connectors", prefill: { name: card.name, botId, seq } })}>
-            Connect
+            {t("connect.btn")}
           </button>
         </div>
       ) : (
         <p className={`card-outcome is-${card.status === "connected" ? "allowed" : "denied"}`}>
           <Icon name={card.status === "connected" ? "check" : "close"} size={14} />
-          {card.status === "connected" ? `${card.name} connected` : "Skipped"}
+          {card.status === "connected" ? t("connect.connected", { name: card.name }) : t("connect.skipped")}
         </p>
       )}
       {error && <p className="card-error" role="alert">{error}</p>}

@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { IDLE_LIVE, primaryBot, sortedBots, useStore } from "../store";
 import type { Bot, Live } from "../types";
+import { t, tn, useT } from "../i18n";
 import { botTitle, initials } from "../lib/format";
 import { BotAvatar } from "./Avatar";
 import { Icon } from "./Icon";
@@ -13,17 +14,18 @@ function statusOf(bot: Bot, live: Live): "attention" | "working" | "unread" | nu
   return null;
 }
 
-const STATUS_LABEL = { attention: "Waiting for you", working: "Working", unread: "Unread messages" } as const;
+const statusLabel = (status: "attention" | "working" | "unread"): string => t(`sidebar.status.${status}`);
 
 function previewOf(bot: Bot, live: Live): string {
-  if (live.awaiting) return `Waiting for you: ${live.awaiting.reason}`;
+  if (live.awaiting) return t("sidebar.waitingReason", { reason: live.awaiting.reason });
   if (bot.preview) return bot.preview;
-  if (live.running) return "Working…";
-  return "No messages yet";
+  if (live.running) return t("sidebar.workingPreview");
+  return t("sidebar.noMessages");
 }
 
 function BotRow({ bot, live, active, collapsed }: { bot: Bot; live: Live; active: boolean; collapsed: boolean }) {
   const selectBot = useStore((s) => s.selectBot);
+  useT();
   const status = statusOf(bot, live);
   const title = botTitle(bot);
   return (
@@ -34,11 +36,11 @@ function BotRow({ bot, live, active, collapsed }: { bot: Bot; live: Live; active
         onClick={() => selectBot(bot.id)}
         aria-current={active ? "true" : undefined}
         title={collapsed ? title : undefined}
-        aria-label={collapsed ? `${title}${status ? ` — ${STATUS_LABEL[status]}` : ""}` : undefined}
+        aria-label={collapsed ? `${title}${status ? ` — ${statusLabel(status)}` : ""}` : undefined}
       >
         <span className="bot-row-avatar">
           <BotAvatar bot={bot} size={38} />
-          {status && <span className={`dot dot-${status}`} title={STATUS_LABEL[status]} />}
+          {status && <span className={`dot dot-${status}`} title={statusLabel(status)} />}
         </span>
         {!collapsed && (
           <span className="bot-row-text">
@@ -50,7 +52,7 @@ function BotRow({ bot, live, active, collapsed }: { bot: Bot; live: Live; active
             <span className={`bot-row-preview truncate ${status === "attention" ? "is-attention" : ""}`}>{previewOf(bot, live)}</span>
           </span>
         )}
-        {!collapsed && bot.unread > 0 && <span className="count-badge" aria-label={`${bot.unread} unread`}>{bot.unread > 99 ? "99+" : bot.unread}</span>}
+        {!collapsed && bot.unread > 0 && <span className="count-badge" aria-label={tn("sidebar.unread", bot.unread)}>{bot.unread > 99 ? "99+" : bot.unread}</span>}
       </button>
     </li>
   );
@@ -68,6 +70,7 @@ export function Sidebar() {
   const online = useStore((s) => s.online);
   const { toggleSidebar, openModal, setView, selectBot, openAppSettings, logout, setMobileNav } = useStore.getState();
   const [menuOpen, setMenuOpen] = useState(false);
+  useT();
 
   const collapsed = collapsedPref && !mobileNav;
   const primary = useMemo(() => primaryBot(bots), [bots]);
@@ -80,24 +83,24 @@ export function Sidebar() {
   return (
     <>
       {mobileNav && <div className="sidebar-scrim" onClick={() => setMobileNav(false)} aria-hidden="true" />}
-      <nav className={`sidebar ${collapsed ? "is-collapsed" : ""} ${mobileNav ? "is-mobile-open" : ""}`} aria-label="Bots">
+      <nav className={`sidebar ${collapsed ? "is-collapsed" : ""} ${mobileNav ? "is-mobile-open" : ""}`} aria-label={t("sidebar.bots")}>
         <div className="sidebar-top">
           {!collapsed && <span className="sidebar-brand">Sklubot</span>}
           <span className="sidebar-top-actions">
             {!collapsed && (
               <>
-                <IconButton icon="search" label="Search" title={`Search (${modKey}K)`} onClick={() => openModal({ kind: "search" })} />
-                <IconButton icon="plus" label="New bot" onClick={() => openModal({ kind: "createBot" })} />
+                <IconButton icon="search" label={t("sidebar.search")} title={`${t("sidebar.search")} (${modKey}K)`} onClick={() => openModal({ kind: "search" })} />
+                <IconButton icon="plus" label={t("sidebar.newBot")} onClick={() => openModal({ kind: "createBot" })} />
               </>
             )}
             <IconButton
               icon="sidebar"
               className="sidebar-collapse"
-              label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-              title={`${collapsed ? "Expand" : "Collapse"} sidebar (${modKey}B)`}
+              label={t(collapsed ? "sidebar.expand" : "sidebar.collapse")}
+              title={`${t(collapsed ? "sidebar.expand" : "sidebar.collapse")} (${modKey}B)`}
               onClick={toggleSidebar}
             />
-            <IconButton icon="close" className="sidebar-close" label="Close menu" onClick={() => setMobileNav(false)} />
+            <IconButton icon="close" className="sidebar-close" label={t("sidebar.closeMenu")} onClick={() => setMobileNav(false)} />
           </span>
         </div>
 
@@ -106,15 +109,15 @@ export function Sidebar() {
           className={`nav-row ${view === "tasks" ? "is-active" : ""}`}
           onClick={() => setView(view === "tasks" ? "chat" : "tasks")}
           aria-pressed={view === "tasks"}
-          title={collapsed ? "Tasks" : undefined}
-          aria-label={collapsed ? `Tasks${waiting ? `, ${waiting} waiting on you` : ""}` : undefined}
+          title={collapsed ? t("sidebar.tasks") : undefined}
+          aria-label={collapsed ? `${t("sidebar.tasks")}${waiting ? `, ${tn("sidebar.tasksWaiting", waiting)}` : ""}` : undefined}
         >
           <span className="nav-row-icon">
             <Icon name="tasks" size={19} />
             {collapsed && waiting > 0 && <span className="dot dot-attention" />}
           </span>
-          {!collapsed && <span className="nav-row-label">Tasks</span>}
-          {!collapsed && waiting > 0 && <span className="count-badge is-attention" aria-label={`${waiting} waiting on you`}>{waiting}</span>}
+          {!collapsed && <span className="nav-row-label">{t("sidebar.tasks")}</span>}
+          {!collapsed && waiting > 0 && <span className="count-badge is-attention" aria-label={tn("sidebar.tasksWaiting", waiting)}>{waiting}</span>}
         </button>
 
         <div className="sidebar-scroll">
@@ -129,7 +132,7 @@ export function Sidebar() {
             >
               <span className="bot-row-avatar">
                 <BotAvatar bot={primary} size={collapsed ? 40 : 58} badge />
-                {primaryStatus && <span className={`dot dot-${primaryStatus}`} title={STATUS_LABEL[primaryStatus]} />}
+                {primaryStatus && <span className={`dot dot-${primaryStatus}`} title={statusLabel(primaryStatus)} />}
               </span>
               {!collapsed && (
                 <>
@@ -142,7 +145,7 @@ export function Sidebar() {
             </button>
           )}
 
-          {!collapsed && others.length > 0 && <h2 className="sidebar-heading">Team</h2>}
+          {!collapsed && others.length > 0 && <h2 className="sidebar-heading">{t("sidebar.team")}</h2>}
           <ul className="bot-list">
             {others.map((b) => (
               <BotRow key={b.id} bot={b} live={live[b.id] ?? IDLE_LIVE} active={chatActive && selectedId === b.id} collapsed={collapsed} />
@@ -155,13 +158,13 @@ export function Sidebar() {
                 <Icon name="plus" size={18} />
               </span>
               <span className="bot-row-text">
-                <span className="bot-row-name">Create a bot</span>
-                <span className="bot-row-preview">Give it one job — research, inbox, reports — and let it run.</span>
+                <span className="bot-row-name">{t("sidebar.createBot")}</span>
+                <span className="bot-row-preview">{t("sidebar.createBotHint")}</span>
               </span>
             </button>
           )}
           {collapsed && (
-            <button type="button" className="icon-btn rail-add" aria-label="New bot" title="New bot" onClick={() => openModal({ kind: "createBot" })}>
+            <button type="button" className="icon-btn rail-add" aria-label={t("sidebar.newBot")} title={t("sidebar.newBot")} onClick={() => openModal({ kind: "createBot" })}>
               <Icon name="plus" size={18} />
             </button>
           )}
@@ -169,7 +172,7 @@ export function Sidebar() {
 
         {!online && !collapsed && (
           <div className="sidebar-offline" role="status">
-            <span className="dot-inline dot-warn" /> Reconnecting…
+            <span className="dot-inline dot-warn" /> {t("sidebar.reconnecting")}
           </div>
         )}
 
@@ -180,7 +183,7 @@ export function Sidebar() {
                 <span className="initials">{initials(user.name || user.email)}</span>
                 <span className="truncate">{user.name || user.email}</span>
               </button>
-              <Menu open={menuOpen} onClose={() => setMenuOpen(false)} side="top" label="Account">
+              <Menu open={menuOpen} onClose={() => setMenuOpen(false)} side="top" label={t("sidebar.account")}>
                 <div className="menu-head truncate">{user.email}</div>
                 <MenuItem
                   icon="settings"
@@ -190,7 +193,7 @@ export function Sidebar() {
                     openAppSettings();
                   }}
                 >
-                  Settings
+                  {t("sidebar.settings")}
                 </MenuItem>
                 <MenuItem
                   icon="plug"
@@ -199,16 +202,16 @@ export function Sidebar() {
                     openModal({ kind: "connectors" });
                   }}
                 >
-                  Connect apps
+                  {t("sidebar.connectApps")}
                 </MenuItem>
                 <div className="menu-sep" />
                 <MenuItem icon="logout" danger onClick={() => void logout()}>
-                  Log out
+                  {t("sidebar.logout")}
                 </MenuItem>
               </Menu>
             </div>
           )}
-          <IconButton icon="plug" className="round-btn" label="Connect apps" onClick={() => openModal({ kind: "connectors" })} />
+          <IconButton icon="plug" className="round-btn" label={t("sidebar.connectApps")} onClick={() => openModal({ kind: "connectors" })} />
         </div>
       </nav>
     </>

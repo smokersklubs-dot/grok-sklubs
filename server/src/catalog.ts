@@ -1,4 +1,4 @@
-import type { CatalogApp } from "./shared.js";
+import type { CatalogApp, Locale } from "./shared.js";
 
 /**
  * Apps that can be added in one step. Each entry is a public tool server whose address was checked
@@ -33,3 +33,14 @@ export const CATALOG: CatalogApp[] = [
     description: "Search the Cloudflare developer documentation.", tokenHelp: "",
   },
 ];
+
+const FR: Record<string, { category: string; description: string; tokenHelp: string }> = {
+  github: { category: "Développement", description: "Dépôts, tickets, demandes de fusion, recherche de code et actions.", tokenHelp: "Crée un jeton d'accès personnel dans GitHub → Settings → Developer settings → Personal access tokens, limité aux dépôts et aux droits que tu veux donner aux bots." },
+  stripe: { category: "Activité", description: "Clients, paiements, factures, produits et abonnements.", tokenHelp: "Utilise une clé d'API restreinte depuis le tableau de bord Stripe → Développeurs → Clés API, avec seulement les droits nécessaires aux bots." },
+  huggingface: { category: "IA", description: "Recherche de modèles, de jeux de données, d'articles et de Spaces ; outils de la communauté.", tokenHelp: "Crée un jeton d'accès dans Hugging Face → Settings → Access Tokens." },
+  context7: { category: "Développement", description: "Documentation et exemples de code à jour pour les bibliothèques de programmation.", tokenHelp: "" },
+  deepwiki: { category: "Développement", description: "Pose des questions sur n'importe quel dépôt de code public et lis sa documentation générée.", tokenHelp: "" },
+  "cloudflare-docs": { category: "Développement", description: "Recherche dans la documentation développeur de Cloudflare.", tokenHelp: "" },
+};
+
+export const catalogFor = (locale: Locale): CatalogApp[] => (locale === "fr" ? CATALOG.map((a) => ({ ...a, ...FR[a.id] })) : CATALOG);
