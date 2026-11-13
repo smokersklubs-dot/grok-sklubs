@@ -19,6 +19,11 @@ const providers: LlmProvider[] = [
   }),
 ];
 
+/** Adds a provider at the front of the list (used by tests and by embedders with their own model). */
+export function registerProvider(p: LlmProvider) {
+  providers.unshift(p);
+}
+
 export function listProviders(): LlmProvider[] {
   return providers;
 }

@@ -23,7 +23,7 @@ const READ_WORDS = new Set(["get", "list", "search", "fetch", "find", "read", "r
 /** A tool is treated as read-only when the server says so, or when its name reads like a lookup. */
 export function looksReadOnly(name: string, hint?: boolean): boolean {
   if (hint !== undefined) return hint;
-  return name.toLowerCase().split(/[^a-z0-9]+|(?<=[a-z])(?=[A-Z])/).some((word) => READ_WORDS.has(word));
+  return name.split(/[^a-zA-Z0-9]+|(?<=[a-z])(?=[A-Z])/).some((word) => READ_WORDS.has(word.toLowerCase()));
 }
 
 async function connect(entry: Entry) {
@@ -97,6 +97,7 @@ export const connectors = {
     await connectors.drop(id);
     emit(userId, { type: "connectors" });
   },
+  closeAll: () => Promise.all([...entries.keys()].map((id) => connectors.drop(id))),
   /** Tools from every ready connector, namespaced so two servers can expose the same tool name. */
   async toolsFor(userId: string): Promise<{ spec: ToolSpec; connectorId: string; connectorName: string; remoteName: string; readOnly: boolean }[]> {
     const out = [];

@@ -221,7 +221,7 @@ async function modelLoop(turn: Turn) {
       messages: trimOldImages(history.load(bot.id, turn.generation)),
       onText: (delta) => { if (!stream.started) activity(turn, "writing"); stream.push(delta); },
       onToolStart: (_id, name) => { if (name === "web_search") activity(turn, "searching"); },
-    }).catch((err) => { stream.finish(); throw err; });
+    }).catch((err: unknown) => { stream.finish(); throw err; });
     record(turn.user.id, bot.id, result.model, result.usage);
     const said = stream.finish(result.sources);
     if (said) { turn.spoke = true; turn.lastText = said; }
