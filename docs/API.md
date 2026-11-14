@@ -101,3 +101,33 @@ answers 401 without it. Types named below are defined in `server/src/shared.ts`.
 - Message rows may carry `attachments`. Images (`mime` starting with `image/`) are shown inline from `/files/view`; other files as a chip linking to `/files/download`.
 - Approval cards for saved logins have `tool` = `vault: <item name>` and `source` = `Vault`.
 - `User.locale` decides the language of texts the server writes (notices, event lines, approval titles). The web app should use the same locale for its own texts.
+
+## Additions (second wave)
+
+| Method | Path | Body | Returns |
+|---|---|---|---|
+| POST | `/bots/:id/calls` | – | `{ callId }` — a voice call starts; writes a "call started" event row |
+| POST | `/bots/:id/calls/:callId/end` | `{ transcript: {role:"user"\|"assistant", text}[] }` | `{ ok }` — writes a "call ended" event row with `call` (duration, transcript); a one-line summary is added to it shortly after |
+| GET | `/search?q=` | – | `{ hits: SearchHit[] }` — message search across all the user's bots, including earlier conversations (max 40, newest first; `q` needs 2+ characters) |
+| GET | `/bots/:id/history/:generation` | – | `{ rows: Row[] }` — read-only rows of an earlier conversation of that bot |
+| POST | `/bots/:id/memories` | `{ text }` | `{ memory }` — add (or restore) a memory |
+| GET | `/routines/:id/runs` | – | `{ runs: RoutineRun[] }` — newest first, max 30 |
+| GET | `/audit?before=&limit=` | – | `{ entries: AuditEntry[] }` — newest first; `before` is an entry id |
+| GET | `/bots/:id/telegram` | – | `TelegramStatus` |
+| PUT | `/bots/:id/telegram` | `{ token }` | `TelegramStatus` — 400 if Telegram rejects the token |
+| DELETE | `/bots/:id/telegram` | – | `{ ok }` |
+| GET | `/pages` | – | `{ pages: SharedPage[] }` |
+| DELETE | `/pages/:token` | – | `{ ok }` — the public address stops working |
+| PUT | `/account/password` | `{ current, next }` | `{ ok }` (401 if `current` is wrong; `next` needs 8+ characters) |
+| DELETE | `/account` | `{ password }` | `{ ok }` — deletes the account and everything in it |
+| GET | `/export/data` | – | JSON file download: everything the account holds (no passwords or tokens) |
+| GET | `/export/team` | – | JSON file download: bots with their settings, skills and routines (no chats, memories or secrets) |
+| POST | `/import/team` | the JSON from `/export/team` | `{ created: number }` |
+| GET | `/usage.csv` | – | CSV download of this month's usage, one line per model call |
+
+Notes:
+- `PATCH /bots/:id` also accepts `roomRule` (rooms) and `disabledTools` (array of `ToolGroup`).
+- Telegram linking: after `PUT`, the user opens `https://t.me/<username>` and sends `/start <linkCode>`; `linked` then becomes true (a `bot` event is emitted). Only that one Telegram chat can talk to the bot.
+- Event rows with `event: "call"` carry `call` (`CallRecord`): show duration, summary, and the transcript on demand.
+- Published pages appear in chat as ordinary assistant messages containing the link.
+- Routines with `trigger: "watch"` have `watch` set; show what is watched and how often.

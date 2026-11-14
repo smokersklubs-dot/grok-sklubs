@@ -8,6 +8,12 @@ export const AVATAR_COLORS = ["ink", "clay", "ember", "amber", "moss", "teal", "
 export type AvatarShape = (typeof AVATAR_SHAPES)[number];
 export type AvatarColor = (typeof AVATAR_COLORS)[number];
 
+/** Families of tools that can be switched off for a bot. */
+export const TOOL_GROUPS = ["computer", "shell", "web", "files", "memory", "routines", "tasks", "team", "apps", "vault", "images", "pages"] as const;
+export type ToolGroup = (typeof TOOL_GROUPS)[number];
+/** Who answers a message nobody is mentioned in: the first member, every member, or nobody. */
+export type RoomRule = "lead" | "everyone" | "mentions";
+
 export type Effort = "low" | "medium" | "high" | "xhigh";
 export type BotMode = "personal" | "teammate";
 /** How a bot handles actions that change things: ask every time, ask only for connector writes, or never ask. */
@@ -35,6 +41,12 @@ export interface Bot {
   model: string;
   autonomy: Autonomy;
   voice: { name: string; rate: number; lang: string };
+  /** Rooms only. */
+  roomRule: RoomRule;
+  /** Tool families this bot may not use. */
+  disabledTools: ToolGroup[];
+  /** Username of the Telegram bot wired to this bot, if any. */
+  telegram: string | null;
   generation: number;
   unread: number;
   memberIds: string[];
@@ -80,11 +92,24 @@ export interface Task { id: string; botId: string; title: string; state: "workin
 
 export interface Routine {
   id: string; botId: string; name: string; prompt: string;
-  /** "cron" uses `schedule` (5 fields) and `timezone`; "webhook" fires on POST to `hookUrl`; "once" fires at `runAt`. */
-  trigger: "cron" | "webhook" | "once";
+  /** "cron" uses `schedule` (5 fields) and `timezone`; "webhook" fires on POST to `hookUrl`; "once" fires at `runAt`; "watch" fires when `watch.target` changes. */
+  trigger: "cron" | "webhook" | "once" | "watch";
+  watch: { kind: "url" | "file"; target: string; everyMin: number; lastCheckedAt: number | null } | null;
   schedule: string; timezone: string; runAt: number | null; hookUrl: string | null;
   enabled: boolean; lastRunAt: number | null; nextRunAt: number | null; describe: string; createdAt: number;
 }
+
+export interface RoutineRun { id: string; routineId: string; at: number; status: "running" | "done" | "quiet" | "error"; note: string }
+
+/** One line of the account's activity log. Never edited or deleted. */
+export interface AuditEntry { id: number; at: number; botId: string | null; kind: "tool" | "approval" | "account" | "apps" | "vault" | "routine" | "channel" | "system"; text: string }
+
+export interface TelegramStatus { connected: boolean; username: string | null; linked: boolean; linkCode: string | null }
+
+/** A page a bot published at a public address. */
+export interface SharedPage { token: string; botId: string; title: string; url: string; createdAt: number }
+
+export interface SearchHit { botId: string; botName: string; generation: number; current: boolean; seq: number; at: number; role: "user" | "assistant"; snippet: string }
 
 export interface MemoryStatus { lastConsolidatedAt: number | null; historyChars: number; compactAt: number; lastCompactedAt: number | null }
 export interface BotBundle { memories: Memory[]; skills: Skill[]; routines: Routine[]; tasks: Task[]; memoryStatus: MemoryStatus }
@@ -126,6 +151,8 @@ export interface UsageSummary {
   totals: { inputTokens: number; outputTokens: number; turns: number; costUsd: number };
   byBot: { botId: string; name: string; inputTokens: number; outputTokens: number; turns: number; costUsd: number }[];
   budgetUsd: number | null;
+  /** True once this month's spend has passed 80% of the budget. */
+  nearBudget: boolean;
 }
 
 /** Server → browser events on GET /api/events (one JSON object per SSE message). */
@@ -142,4 +169,5 @@ export type ServerEvent =
   | { type: "tasks"; botId: string }
   | { type: "memories"; botId: string }
   | { type: "connectors" }
-  | { type: "usage" };
+  | { type: "usage" }
+  | { type: "pages" };
