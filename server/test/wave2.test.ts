@@ -237,6 +237,10 @@ test("Telegram: only the linked chat reaches the bot, and replies go back there"
   assert.equal(tg.sent.some((m) => m.chat_id === "666" && m.text.startsWith("Echo")), false);
   assert.ok((await rowsOf(bot.id)).some((r) => r.body.kind === "message" && r.body.text === "bonjour depuis telegram"));
   assert.equal(JSON.stringify((await call("GET", "/bots")).json).includes("123456:abc"), false, "the token never leaves the server");
+  // A gem is also announced on Telegram (the daily limit is reset for this check).
+  q.run("DELETE FROM rows WHERE bot_id = ? AND kind = 'event' AND body LIKE '%\"cheer\"%'", bot.id);
+  await say(bot, `call celebrate ${JSON.stringify({ kind: "lead", score: 95, evidence: "3 pricing visits in 24 h", value: "6000 EUR/yr", reason: "a hot lead" })}`);
+  await until(() => tg.sent.some((m) => m.chat_id === "42" && m.text.includes("💎") && m.text.includes("a hot lead") && m.text.includes("95/100")), "gem on Telegram");
   await call("DELETE", `/bots/${bot.id}/telegram`);
   assert.equal((await call("GET", `/bots/${bot.id}/telegram`)).json.connected, false);
 });

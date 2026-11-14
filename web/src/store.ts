@@ -569,6 +569,11 @@ export const useStore = create<Store>((set, get) => ({
         const look = s.bots[ev.botId]?.character;
         if (!look || look.euphoria === false) break;
         startEuphoria(ev.botId);
+        // Not looking at this bot (another tab, another bot): a system notification so the gem is not missed.
+        if (document.visibilityState !== "visible" || s.selectedId !== ev.botId) {
+          const bot = s.bots[ev.botId];
+          if (bot) notifyBot(bot.id, `💎 ${bot.name}`, firstWords(t("event.cheer", { reason: ev.reason })), () => get().selectBot(bot.id));
+        }
         if (look.shout !== false && document.visibilityState === "visible") playShout(s.locale, { speak: !s.call });
         break;
       }

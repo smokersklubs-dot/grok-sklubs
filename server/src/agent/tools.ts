@@ -493,6 +493,8 @@ const teamTools: BuiltinTool[] = [
   }),
 ];
 
+const GEM_LABEL: Record<GemKind, string> = { lead: "New lead", seo: "SEO", data: "Data", opportunity: "Opportunity", deal: "Deal", saving: "Saving", other: "Gem" };
+
 const userTools: BuiltinTool[] = [
   tool("ask_user", "Ask the user a question that only they can answer. Offer a few ready-made answers. This ends your turn; their answer arrives as their next message.",
     obj({ question: str("The question"), options: { type: "array", items: { type: "string" }, description: "Up to six suggested answers" } }, ["question"]), {
@@ -536,6 +538,10 @@ const userTools: BuiltinTool[] = [
       const gem: Gem = { kind, score, why, value };
       rows.append(c.bot, { kind: "event", event: "cheer", text: reason, gem });
       emit(c.user.id, { type: "cheer", botId: c.bot.id, reason, gem });
+      // Away from the screen (a morning gem hunt, say): also tell the user on Telegram when this bot is linked there.
+      const loc = c.user.locale;
+      const alert = [tr(loc, "💎 {bot} found a gem: {reason}", { bot: c.bot.name, reason }), `${tr(loc, GEM_LABEL[kind])} · ${score}/100${value ? ` · ${value}` : ""}`, why].join("\n");
+      void import("../telegram.js").then((m) => m.send(c.bot, alert)).catch(() => undefined);
       return { content: "The user saw you celebrate. Now explain the gem: what you found, the numbers, what it could bring and the next step you suggest.", summary: `${reason} · ${score}/100` };
     },
   }),
