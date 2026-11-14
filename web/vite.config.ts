@@ -8,7 +8,7 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      "/api": { target, changeOrigin: true },
+      "/api": { target, changeOrigin: true, ws: true },
     },
   },
   build: { outDir: "dist", sourcemap: false },

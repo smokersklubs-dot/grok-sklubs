@@ -211,6 +211,8 @@ export const linuxScreen = {
     try { return await grab(containerName(botId)); } catch { return null; }
   },
   isOpen: (botId: string) => machines.get(botId)?.power === "running",
+  /** Counts as use, so the idle sweep leaves the computer awake. */
+  touch: (botId: string) => { const m = machines.get(botId); if (m) m.lastUsedAt = now(); },
   wake: (botId: string, userId: string, ws: string) => wake(botId, userId, ws).then(() => {}),
   sleep: sleepMachine,
   /** Wipes the computer: the container and its home volume are deleted; a fresh one is made on next use. */

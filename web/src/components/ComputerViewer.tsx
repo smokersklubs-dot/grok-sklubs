@@ -4,6 +4,7 @@ import { useT } from "../i18n";
 import { useStore } from "../store";
 import { useScreen } from "../lib/screen";
 import { BotAvatar } from "./Avatar";
+import { LiveScreen } from "./LiveScreen";
 import { Icon, Spinner } from "./Icon";
 import { IconButton, useDialogFocus, useEscape } from "./ui";
 
@@ -45,6 +46,12 @@ export function ComputerViewer({ botId }: { botId: string }) {
   };
   const { url, status, refresh } = useScreen(botId, 1000, engine);
   const desktop = computer?.desktops.find((d) => d.botId === botId);
+  // On a Linux computer the screen is streamed live; screenshots remain the fallback if the stream cannot open.
+  // A failed stream falls back to screenshots until the mode or the computer's state changes.
+  const liveKey = `${control}-${desktop?.open}`;
+  const [liveFailedFor, setLiveFailedFor] = useState<string | null>(null);
+  const [liveUp, setLiveUp] = useState(false);
+  const live = linux && !!desktop?.open && liveFailedFor !== liveKey;
 
   useDialogFocus(root);
   // In control mode Escape belongs to the remote desktop, so the overlay ignores it.
@@ -183,8 +190,8 @@ export function ComputerViewer({ botId }: { botId: string }) {
         className={`viewer-stage ${control ? "is-control" : ""}`}
         ref={stage}
         tabIndex={control ? 0 : -1}
-        onKeyDown={onKeyDown}
-        onWheel={onWheel}
+        onKeyDown={live ? undefined : onKeyDown}
+        onWheel={live ? undefined : onWheel}
         onMouseDown={(e) => {
           if (!control && e.target === e.currentTarget) closeViewer();
         }}
@@ -196,6 +203,11 @@ export function ComputerViewer({ botId }: { botId: string }) {
             <h3>{t("viewer.noneTitle")}</h3>
             <p>{t("viewer.noneText")}</p>
           </div>
+        ) : live ? (
+          <>
+            <LiveScreen botId={botId} control={control} label={t("viewer.screenAlt", { name: bot.name })} onConnect={() => setLiveUp(true)} onClose={() => { if (!liveUp) setLiveFailedFor(liveKey); setLiveUp(false); }} />
+            {!liveUp && <div className="viewer-empty live-wait"><Spinner size={28} /><p>{t("common.connecting")}</p></div>}
+          </>
         ) : url ? (
           <img
             ref={img}
@@ -237,11 +249,11 @@ export function ComputerViewer({ botId }: { botId: string }) {
         <footer className="viewer-foot">
           {control ? (
             <>
-              <form className="viewer-url" onSubmit={go}>
+              {!live && <form className="viewer-url" onSubmit={go}>
                 <label className="sr-only" htmlFor="viewer-url">{t("viewer.address")}</label>
                 <input id="viewer-url" className="input input-small" value={address} onChange={(e) => setAddress(e.target.value)} placeholder={t("viewer.addressPlaceholder")} spellCheck={false} autoCapitalize="off" autoCorrect="off" />
                 <button type="submit" className="btn btn-small" disabled={!address.trim()}>{t("viewer.go")}</button>
-              </form>
+              </form>}
               <span className="viewer-hint">{t("viewer.controlHint")}</span>
               <button
                 type="button"

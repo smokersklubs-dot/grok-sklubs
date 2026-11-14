@@ -10,6 +10,7 @@ import { connectors } from "./connectors.js";
 import { defaultModelRef, listProviders } from "./llm/index.js";
 import { api, site } from "./routes.js";
 import { startScheduler } from "./scheduler.js";
+import { attachLiveScreens } from "./vnc.js";
 import { recoverInterruptedTurns } from "./agent/loop.js";
 import { telegram } from "./telegram.js";
 
@@ -44,6 +45,8 @@ const server = serve({ fetch: app.fetch, port: config.port }, () => {
   console.log(ready.length ? `Model providers: ${ready.join(", ")} (default ${defaultModelRef()})` : "No model provider configured yet — add ANTHROPIC_API_KEY to .env so bots can think.");
   console.log(computerNote);
 });
+
+attachLiveScreens(server as unknown as import("node:http").Server);
 
 async function shutdown() {
   server.close();
