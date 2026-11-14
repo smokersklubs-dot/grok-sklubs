@@ -1,5 +1,5 @@
 import { useEffect, useId, useState, type FormEvent } from "react";
-import { api, errText } from "../api";
+import { api, ApiError, errText } from "../api";
 import { LOCALES, useT } from "../i18n";
 import { useStore } from "../store";
 import type { User } from "../types";
@@ -9,6 +9,7 @@ import { ErrorNote } from "./ui";
 
 export function SignIn() {
   const signupOpen = useStore((s) => s.signupOpen);
+  const setupCodeRequired = useStore((s) => s.setupCodeRequired);
   const signedIn = useStore((s) => s.signedIn);
   const locale = useStore((s) => s.locale);
   const setLocale = useStore((s) => s.setLocale);
@@ -17,9 +18,10 @@ export function SignIn() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [setupCode, setSetupCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const ids = { name: useId(), email: useId(), password: useId() };
+  const ids = { name: useId(), email: useId(), password: useId(), setupCode: useId() };
   const creating = mode === "signup" && signupOpen;
   // A one-time sign-in link that has expired or was already used lands here with ?link=expired.
   const [linkExpired] = useState(() => new URLSearchParams(location.search).get("link") === "expired");
@@ -46,15 +48,19 @@ export function SignIn() {
       setError(t("signin.errShort"));
       return;
     }
+    if (creating && setupCodeRequired && !setupCode.trim()) {
+      setError(t("signin.errSetupCode"));
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
       const r = creating
-        ? await api<{ user: User }>("POST", "/auth/signup", { email: mail, name: name.trim() || undefined, password, locale })
+        ? await api<{ user: User }>("POST", "/auth/signup", { email: mail, name: name.trim() || undefined, password, locale, setupCode: setupCodeRequired ? setupCode.trim() : undefined })
         : await api<{ user: User }>("POST", "/auth/login", { email: mail, password });
       await signedIn(r.user);
     } catch (err) {
-      setError(errText(err));
+      setError(creating && setupCodeRequired && err instanceof ApiError && err.status === 403 && /setup code/i.test(err.message) ? t("signin.errSetupCodeWrong") : errText(err));
       setBusy(false);
     }
   };
@@ -99,6 +105,13 @@ export function SignIn() {
           />
           {creating && <p className="field-hint">{t("signin.passwordHint")}</p>}
         </div>
+        {creating && setupCodeRequired && (
+          <div className="field">
+            <label className="field-label" htmlFor={ids.setupCode}>{t("signin.setupCode")}</label>
+            <input id={ids.setupCode} className="input" value={setupCode} onChange={(e) => setSetupCode(e.target.value)} autoComplete="one-time-code" spellCheck={false} maxLength={64} />
+            <p className="field-hint">{t("signin.setupCodeHint")}</p>
+          </div>
+        )}
 
         <ErrorNote>{error}</ErrorNote>
 

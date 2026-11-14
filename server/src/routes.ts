@@ -1,4 +1,4 @@
-import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
+import { createReadStream } from "node:fs";
 import path from "node:path";
 import { Readable } from "node:stream";
 import { Hono, type Context } from "hono";
@@ -13,9 +13,9 @@ import { RESPONSE_ALREADY_SENT } from "@hono/node-server/utils/response";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createRoom, dispatchToRoom, validMembers } from "./agent/team.js";
 import { retireBot } from "./agent/tools.js";
-import { createSession, dropSession, hashPassword, seal, SESSION_COOKIE, signupOpen, userForToken, verifyPassword } from "./auth.js";
+import { createSession, dropSession, hashPassword, originAllowed, seal, SESSION_COOKIE, setupCodeMatches, setupCodeRequired, signupOpen, userForToken, verifyPassword } from "./auth.js";
 import { emit, getLive, subscribe } from "./bus.js";
-import { attachmentAt, computerState, isInlineImage, listFiles, mimeOf, removeWorkspace, resolveInWorkspace, screen, storeBytes } from "./computer.js";
+import { attachmentAt, computerState, isInlineImage, listFiles, mimeOf, openLibraryFile, readLibraryFile, removeWorkspace, resolveInWorkspace, screen, storeBytes } from "./computer.js";
 import { catalogFor } from "./catalog.js";
 import { imageService } from "./images.js";
 import { config } from "./config.js";
@@ -64,7 +64,9 @@ export const site = new Hono();
 site.get("/p/:token", (c) => {
   const page = pages.byToken(c.req.param("token"), config.publicUrl);
   let html: string | null = null;
-  try { if (page) html = readFileSync(resolveInWorkspace(page.botId, page.path), "utf8"); } catch { /* the file was removed */ }
+  // Read through the library guard: a page file the bot replaced with a link (to the database, to the
+  // server's environment…) is refused, never served.
+  try { if (page) html = readLibraryFile(page.botId, page.path).toString("utf8"); } catch { /* removed, or not a plain file of the library */ }
   if (!html) return c.text("This page is no longer shared.", 404);
   return c.body(html, 200, {
     "content-type": "text/html; charset=utf-8", "x-content-type-options": "nosniff", "referrer-policy": "no-referrer", "x-robots-tag": "noindex",
@@ -74,6 +76,9 @@ site.get("/p/:token", (c) => {
 
 /** Sklubot's tools for a bot running on a subscription tool; the caller proves it is that bot's computer. */
 site.post("/mcp/:botId", async (c) => {
+  // Only the bots' computers call this, directly on the internal network (ENGINE_BASE_URL). A request that
+  // went through a reverse proxy came from the internet: it is refused (Caddy also blocks /mcp/ itself).
+  if (c.req.header("x-forwarded-for") || c.req.header("forwarded")) return c.json({ error: "not found" }, 404);
   const env = c.env as { incoming?: IncomingMessage; outgoing?: ServerResponse } | undefined;
   if (!env?.incoming || !env.outgoing) return c.json({ error: "unavailable" }, 503);
   const parsed = await c.req.json().catch(() => undefined);
@@ -87,20 +92,49 @@ api.get("/health", (c) => c.json({ ok: true, model: defaultModelRef() }));
 
 api.get("/me", (c) => {
   const user = userForToken(getCookie(c, SESSION_COOKIE));
-  return c.json({ user: user ? publicUser(user) : null, signupOpen: signupOpen(), imageGeneration: !!imageService() });
+  return c.json({ user: user ? publicUser(user) : null, signupOpen: signupOpen(), setupCodeRequired: setupCodeRequired(), imageGeneration: !!imageService() });
 });
 
-// Slows down password guessing: a handful of attempts per address and per account, per quarter hour.
+// Slows down password guessing: a handful of attempts per account, and a few dozen per client address,
+// per quarter hour. The table is bounded, so a flood of made-up addresses cannot grow it without end.
 const attempts = new Map<string, { n: number; until: number }>();
-function throttle(key: string) {
+const MAX_TRACKED = 10_000;
+function throttle(key: string, limit = 8) {
+  const t = Date.now();
   const cur = attempts.get(key);
-  if (cur && cur.until > Date.now() && cur.n >= 8) fail(403, "Too many attempts. Wait a few minutes and try again.");
-  attempts.set(key, cur && cur.until > Date.now() ? { ...cur, n: cur.n + 1 } : { n: 1, until: Date.now() + 15 * 60_000 });
+  if (cur && cur.until > t && cur.n >= limit) fail(403, "Too many attempts. Wait a few minutes and try again.");
+  attempts.delete(key); // re-inserted below, so the map stays ordered from oldest to newest
+  attempts.set(key, cur && cur.until > t ? { ...cur, n: cur.n + 1 } : { n: 1, until: t + 15 * 60_000 });
+  if (attempts.size > MAX_TRACKED) {
+    for (const [k, v] of attempts) if (v.until <= t) attempts.delete(k);
+    for (const k of attempts.keys()) { if (attempts.size <= MAX_TRACKED) break; attempts.delete(k); }
+  }
 }
+
+/**
+ * The client's address. Behind our reverse proxy (TRUST_PROXY=1) it is the last X-Forwarded-For entry,
+ * the one the proxy itself added; earlier entries come from the client and are ignored. Otherwise the
+ * address of the connection.
+ */
+function clientIp(c: Context): string {
+  if (config.trustProxy) {
+    const last = (c.req.header("x-forwarded-for") ?? "").split(",").map((s) => s.trim()).filter(Boolean).pop();
+    if (last) return last;
+  }
+  const env = c.env as { incoming?: IncomingMessage } | undefined;
+  return env?.incoming?.socket?.remoteAddress ?? "local";
+}
+
+// Checked against when the email is unknown, so a wrong address takes as long as a wrong password.
+let dummyHash: string | null = null;
+const dummyCheck = (password: string) => { dummyHash ??= hashPassword("not-a-real-password"); verifyPassword(password, dummyHash); };
 
 api.post("/auth/signup", async (c) => {
   if (!signupOpen()) fail(403, "New accounts are closed on this server.");
+  throttle(`signup:${clientIp(c)}`, 20);
   const b = await body(c);
+  // A fresh install waits for its owner: the first account needs the code the installer printed.
+  if (setupCodeRequired() && !setupCodeMatches(String(b.setupCode ?? ""))) fail(403, "The setup code is missing or wrong. It was shown at the end of the installation, and is in the server's .env file (SKLUBOT_SETUP_CODE).");
   const email = String(b.email ?? "").trim();
   const password = String(b.password ?? "");
   if (!/^[^@\s]+@[^@\s]+$/.test(email)) fail(400, "Enter a valid email address.");
@@ -121,9 +155,12 @@ api.post("/auth/signup", async (c) => {
 api.post("/auth/login", async (c) => {
   const b = await body(c);
   const email = String(b.email ?? "").trim().toLowerCase();
+  throttle(`ip:${clientIp(c)}`, 30);
   throttle(`login:${email}`);
   const user = users.byEmail(email);
-  if (!user || !verifyPassword(String(b.password ?? ""), user.passHash)) fail(401, "Wrong email or password.");
+  const password = String(b.password ?? "");
+  if (!user) { dummyCheck(password); fail(401, "Wrong email or password."); }
+  if (!verifyPassword(password, user!.passHash)) fail(401, "Wrong email or password.");
   attempts.delete(`login:${email}`);
   audit(user!.id, "account", "Signed in");
   startSession(c, user!.id);
@@ -155,7 +192,8 @@ api.post("/hooks/:token", async (c) => {
   if (raw.length > 200_000) fail(413, "Payload too large.");
   let payload: unknown = raw || undefined;
   try { payload = raw ? JSON.parse(raw) : undefined; } catch { /* keep the raw text */ }
-  fireRoutine(r!, payload);
+  // Whoever holds the hook's address can send anything: the payload is outside content for the turn it starts.
+  fireRoutine(r!, payload, { outside: true });
   return c.json({ ok: true });
 });
 
@@ -195,11 +233,8 @@ api.use("*", async (c, next) => {
   const user = userForToken(getCookie(c, SESSION_COOKIE));
   if (!user) return c.json({ error: "Please sign in." }, 401);
   // State-changing requests must come from our own pages, not from another site using the visitor's cookie.
-  if (c.req.method !== "GET") {
-    const origin = c.req.header("origin");
-    const host = c.req.header("host");
-    if (origin && host && new URL(origin).host !== host && origin !== config.publicUrl) return c.json({ error: "Cross-site request refused." }, 403);
-  }
+  // An Origin that is not a URL of this site ("null" from a sandboxed page, garbage) is refused too.
+  if (c.req.method !== "GET" && !originAllowed(c.req.header("origin"), c.req.header("host"))) return c.json({ error: "Cross-site request refused." }, 403);
   c.set("user", user);
   await next();
 });
@@ -683,26 +718,30 @@ api.get("/bots/:id/files", (c) => {
   return c.json({ entries: listFiles(bot.id, rel) });
 });
 
+/** Opens a library file for sending: only a plain file inside the library, never through a link. */
+function libraryFileFor(botId: string, rel: string) {
+  safePath(botId, rel);
+  try { return openLibraryFile(botId, rel); } catch { return fail(404, "That file does not exist."); }
+}
+
 api.get("/bots/:id/files/download", (c) => {
   const bot = ownBot(c);
-  const full = safePath(bot.id, c.req.query("path") ?? "");
-  if (!existsSync(full) || !statSync(full).isFile()) fail(404, "That file does not exist.");
-  const name = path.basename(full).replace(/[^\w. -]/g, "_");
-  return c.body(Readable.toWeb(createReadStream(full)) as unknown as ReadableStream, 200, {
-    "content-type": "application/octet-stream", "content-disposition": `attachment; filename="${name}"`, "content-length": String(statSync(full).size),
+  const f = libraryFileFor(bot.id, c.req.query("path") ?? "");
+  const name = path.basename(f.full).replace(/[^\w. -]/g, "_");
+  return c.body(Readable.toWeb(createReadStream(f.full, { fd: f.fd })) as unknown as ReadableStream, 200, {
+    "content-type": "application/octet-stream", "content-disposition": `attachment; filename="${name}"`, "content-length": String(f.size),
   });
 });
 
 /** Shows a library file in the page. Only plain pictures are served inline; everything else is a download, so an uploaded page can never run as ours. */
 api.get("/bots/:id/files/view", (c) => {
   const bot = ownBot(c);
-  const full = safePath(bot.id, c.req.query("path") ?? "");
-  if (!existsSync(full) || !statSync(full).isFile()) fail(404, "That file does not exist.");
-  const mime = mimeOf(full);
+  const f = libraryFileFor(bot.id, c.req.query("path") ?? "");
+  const mime = mimeOf(f.full);
   const inline = isInlineImage(mime);
-  return c.body(Readable.toWeb(createReadStream(full)) as unknown as ReadableStream, 200, {
-    "content-type": inline ? mime : "application/octet-stream", "content-length": String(statSync(full).size),
-    "content-disposition": `${inline ? "inline" : "attachment"}; filename="${path.basename(full).replace(/[^\w. -]/g, "_")}"`,
+  return c.body(Readable.toWeb(createReadStream(f.full, { fd: f.fd })) as unknown as ReadableStream, 200, {
+    "content-type": inline ? mime : "application/octet-stream", "content-length": String(f.size),
+    "content-disposition": `${inline ? "inline" : "attachment"}; filename="${path.basename(f.full).replace(/[^\w. -]/g, "_")}"`,
     "x-content-type-options": "nosniff", "content-security-policy": "default-src 'none'; sandbox", "cache-control": "private, max-age=300",
   });
 });
@@ -805,7 +844,7 @@ api.post("/rooms", async (c) => {
 });
 
 const ownRoom = (c: Context<Env>) => { const b = ownBot(c); return b.kind === "room" ? b : fail(404, "That group does not exist."); };
-api.get("/rooms/:id/members", (c) => c.json({ members: ownRoom(c).memberIds.map((id) => bots.byId(id)).filter((b): b is BotRecord => !!b).map(publicBot) }));
+api.get("/rooms/:id/members", (c) => { const room = ownRoom(c); return c.json({ members: room.memberIds.map((id) => bots.byId(id)).filter((b): b is BotRecord => !!b && b.userId === room.userId).map(publicBot) }); });
 
 api.put("/rooms/:id/members", async (c) => {
   const room = ownRoom(c);

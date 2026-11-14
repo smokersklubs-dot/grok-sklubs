@@ -8,6 +8,8 @@ import { after, test } from "node:test";
 process.env.DATA_DIR = mkdtempSync(path.join(tmpdir(), "sklubot-feat-"));
 process.env.SESSION_SECRET = "test-secret-test-secret-test-secret";
 process.env.NO_SCHEDULER = "1";
+// The fake outside services of these tests listen on this machine; outside tests, such addresses are refused.
+process.env.ALLOW_PRIVATE_FETCH = "1";
 process.env.COMPUTER = "browser";
 
 // A stand-in picture service and a page with a sign-in field, both on this machine.

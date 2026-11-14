@@ -1,3 +1,5 @@
+import { guardedFetch } from "./net.js";
+
 /**
  * Picture generation through any service that speaks the common "images/generations" request
  * (POST {base}/images/generations with a model and a prompt, answering with base64 data or a link).
@@ -26,7 +28,8 @@ export async function generateImage(prompt: string, signal?: AbortSignal): Promi
   const first = ((await res.json()) as { data?: { b64_json?: string; url?: string }[] }).data?.[0];
   if (first?.b64_json) return { bytes: Buffer.from(first.b64_json, "base64"), mime: sniff(Buffer.from(first.b64_json.slice(0, 16), "base64")) };
   if (first?.url) {
-    const img = await fetch(first.url, { signal: AbortSignal.timeout(60_000) });
+    // The link comes from the service's answer: fetched like any outside address, never into the local network.
+    const img = await guardedFetch(first.url, { signal: AbortSignal.timeout(60_000) });
     if (!img.ok) throw new Error(`could not download the generated image (${img.status})`);
     const bytes = Buffer.from(await img.arrayBuffer());
     return { bytes, mime: sniff(bytes) };

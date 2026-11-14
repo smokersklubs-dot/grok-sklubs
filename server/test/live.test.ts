@@ -10,6 +10,8 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 process.env.DATA_DIR = mkdtempSync(path.join(tmpdir(), "sklubot-live-"));
 process.env.SESSION_SECRET = "test-secret-test-secret-test-secret";
 process.env.NO_SCHEDULER = "1";
+// The fake outside services of these tests listen on this machine; outside tests, such addresses are refused.
+process.env.ALLOW_PRIVATE_FETCH = "1";
 process.env.COMPUTER = "browser";
 
 const { browserAvailable, closeAllDesktops, screen, computerState, initComputer } = await import("../src/computer.js");

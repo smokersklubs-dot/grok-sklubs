@@ -52,6 +52,10 @@ const server = serve({ fetch: app.fetch, port: config.port }, () => {
   console.log(`Sklubot is running at ${config.publicUrl}`);
   console.log(ready.length ? `Model providers: ${ready.join(", ")} (default ${defaultModelRef()})` : "No API key configured: bots can run on your Claude or ChatGPT subscription (bot settings → Brain), or add ANTHROPIC_API_KEY to .env.");
   console.log(computerNote);
+  // From here on the server is up: one bad request or a stray failure in the background is logged, never
+  // allowed to stop the whole server. Start-up failures above still stop it, as they should.
+  process.on("uncaughtException", (err) => console.error("[uncaught]", err));
+  process.on("unhandledRejection", (err) => console.error("[unhandled rejection]", err));
 });
 
 attachLiveScreens(server as unknown as import("node:http").Server);

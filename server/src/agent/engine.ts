@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { createHmac, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { botPathOf, computerKind, screen } from "../computer.js";
 import { config } from "../config.js";
 import { q } from "../db.js";
@@ -28,8 +28,24 @@ export const isEngineRef = (ref: string | null | undefined): boolean => !!ref &&
 export const engineOf = (ref: string): Engine => (ref.startsWith("codex:") ? "codex" : "claude-code");
 const modelOf = (ref: string) => ref.slice(ref.indexOf(":") + 1);
 
-/** The secret a bot's computer presents to this server's tool endpoint. Derived, never stored. */
-export const engineToken = (botId: string) => createHmac("sha256", config.sessionSecret).update(`mcp:${botId}`).digest("hex");
+/**
+ * The secret a bot's computer presents to this server's tool endpoint: a fresh random token for each
+ * subscription turn, kept only in this server's memory and revoked when the turn ends. Outside a turn the
+ * endpoint answers no one, and a token copied from the computer is useless once that turn is over.
+ */
+const turnTokens = new Map<string, Buffer>();
+const digest = (s: string) => createHash("sha256").update(s).digest();
+export function engineTokenValid(botId: string, given: string): boolean {
+  const want = turnTokens.get(botId);
+  return !!want && !!given && timingSafeEqual(digest(given), want);
+}
+/** For tests and tools: starts a token for a bot's turn (runEngineTurn does this itself). */
+export function issueEngineToken(botId: string): string {
+  const token = randomBytes(32).toString("hex");
+  turnTokens.set(botId, digest(token));
+  return token;
+}
+export const revokeEngineToken = (botId: string) => { turnTokens.delete(botId); };
 
 /** Subscription choices for the model picker (only when bots have Linux computers). */
 export function engineModels() {
@@ -156,6 +172,7 @@ function runInComputer(bot: BotRecord, args: string[], env: Record<string, strin
     }
   });
   child.stderr.on("data", (c: Buffer) => { stderr = (stderr + c.toString("utf8")).slice(-4000); });
+  child.stdin.on("error", () => {}); // the tool may exit before reading everything
   child.stdin.end(input);
   return new Promise((resolve) => child.on("close", (code) => { signal.removeEventListener("abort", stop); if (buffer.trim()) { try { onLine(buffer.trim()); } catch { /* ignore */ } } resolve({ code, stderr }); }));
 }
@@ -172,19 +189,21 @@ export async function runEngineTurn(turn: Turn, prompt: string, attachments: Att
   await writeFile(bot.id, "/root/.sklubot/engine-prompt.md", system);
   const t = new Transcript(turn);
   runningTurns.set(bot.id, turn);
+  const token = issueEngineToken(bot.id);
   try {
-    if (engine === "claude-code") await claudeTurn(turn, t, prompt + files);
-    else await codexTurn(turn, t, prompt + files, system);
+    if (engine === "claude-code") await claudeTurn(turn, t, prompt + files, token);
+    else await codexTurn(turn, t, prompt + files, system, token);
   } finally {
+    revokeEngineToken(bot.id);
     runningTurns.delete(bot.id);
     t.endMessage();
   }
   if (turn.signal.aborted) throw new Error("aborted");
 }
 
-async function claudeTurn(turn: Turn, t: Transcript, prompt: string, retried = false) {
+async function claudeTurn(turn: Turn, t: Transcript, prompt: string, token: string, retried = false) {
   const { bot } = turn;
-  const mcp = { mcpServers: { sklubot: { type: "http", url: `${config.engineBaseUrl}/mcp/${encodeURIComponent(bot.id)}`, headers: { Authorization: `Bearer ${engineToken(bot.id)}` } } } };
+  const mcp = { mcpServers: { sklubot: { type: "http", url: `${config.engineBaseUrl}/mcp/${encodeURIComponent(bot.id)}`, headers: { Authorization: `Bearer ${token}` } } } };
   await writeFile(bot.id, "/root/.sklubot/mcp.json", JSON.stringify(mcp));
   const resume = sessionOf(bot.id, turn.generation, "claude-code");
   const model = modelOf(bot.model);
@@ -232,13 +251,13 @@ async function claudeTurn(turn: Turn, t: Transcript, prompt: string, retried = f
       }
     }
   });
-  if (missingSession && !retried) { dropSession(bot.id, turn.generation, "claude-code"); return claudeTurn(turn, t, prompt, true); }
+  if (missingSession && !retried) { dropSession(bot.id, turn.generation, "claude-code"); return claudeTurn(turn, t, prompt, token, true); }
   if (turn.signal.aborted) return;
   if (!sawResult && !failure) failure = NOT_SIGNED_IN.test(res.stderr) ? signInHint(turn, "claude-code") : clip(res.stderr.trim() || `Claude Code stopped (code ${res.code}).`, 300);
   if (failure) t.notice(failure);
 }
 
-async function codexTurn(turn: Turn, t: Transcript, prompt: string, system: string) {
+async function codexTurn(turn: Turn, t: Transcript, prompt: string, system: string, token: string) {
   const { bot } = turn;
   // Codex reads its standing instructions from AGENTS.md in its working folder.
   await writeFile(bot.id, "/root/AGENTS.md", system);
@@ -254,7 +273,7 @@ async function codexTurn(turn: Turn, t: Transcript, prompt: string, system: stri
   ];
   const args = resume ? ["codex", "exec", "resume", ...common, resume, "-"] : ["codex", "exec", ...common, "-"];
   let failure = "", sawEnd = false;
-  const res = await runInComputer(bot, args, { SKLUBOT_MCP_TOKEN: engineToken(bot.id) }, "/root", prompt, turn.signal, (line) => {
+  const res = await runInComputer(bot, args, { SKLUBOT_MCP_TOKEN: token }, "/root", prompt, turn.signal, (line) => {
     let e: any;
     try { e = JSON.parse(line); } catch { return; }
     const it = e.item;

@@ -13,10 +13,13 @@ Il te faut un serveur Linux avec Docker, et un nom de domaine. Compte 2 Go de m�
      tapes dans le navigateur : les connexions OAuth aux applications reviennent sur
      `<adresse>/api/connectors/oauth/callback`) ;
    - `SKLUBOT_SESSION_SECRET` : le résultat de `openssl rand -hex 32` ;
-   - une clé de modèle (`ANTHROPIC_API_KEY`), ou `SKLUBOT_DEMO_MODE=1` pour essayer sans clé.
+   - une clé de modèle (`ANTHROPIC_API_KEY`), ou `SKLUBOT_DEMO_MODE=1` pour essayer sans clé ;
+   - `SKLUBOT_SETUP_CODE` : un code au hasard (par exemple le résultat de `openssl rand -hex 6`), demandé
+     pour créer le premier compte.
 3. Associe ton domaine au service `sklubot`, port `3000`. Coolify s'occupe du HTTPS.
 4. Déploie. La première fois, la construction de l'image de l'ordinateur des bots prend quelques minutes.
-5. Ouvre l'adresse : le premier compte créé est le tien, les inscriptions se ferment ensuite.
+5. Ouvre l'adresse et crée ton compte avec le code `SKLUBOT_SETUP_CODE` : le premier compte créé est le tien,
+   les inscriptions se ferment ensuite (le code ne sert plus ensuite).
 
 **Sans Coolify**
 
@@ -29,8 +32,14 @@ Sklubot écoute alors sur le port 3000 du conteneur ; place un proxy HTTPS (Cadd
 
 **À savoir**
 
-- Le fichier monte `/var/run/docker.sock` : c'est ce qui permet à Sklubot de créer l'ordinateur Linux de
-  chaque bot, et c'est un accès complet au Docker du serveur. Réserve ce serveur à Sklubot.
+- Sklubot crée l'ordinateur Linux de chaque bot à travers le service `docker-proxy`, le seul à monter
+  `/var/run/docker.sock` : il n'ouvre que la partie de l'API Docker utile (conteneurs, exec, volumes, images,
+  réseaux), sur un réseau interne que les ordinateurs des bots ne voient pas. Cela reste un accès puissant au
+  Docker du serveur : réserve ce serveur à Sklubot.
+- L'application tourne sans privilège Linux et sur un système de fichiers en lecture seule (seuls `/data` et
+  `/tmp` s'écrivent).
+- Le point d'accès `/mcp/…` sert uniquement aux ordinateurs des bots (réseau interne) : Sklubot refuse toute
+  requête qui y arrive par un proxy. Avec le fichier VPS, Caddy le bloque aussi.
 - Toutes les données sont dans le volume `sklubot_data` (base, fichiers des bots). Sauvegarde-le.
 - Le HTTPS est nécessaire pour le micro (dictée, appel vocal) et pour l'installation sur iPhone.
 

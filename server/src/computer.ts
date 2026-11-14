@@ -1,8 +1,9 @@
 import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
-import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync, rmSync, existsSync } from "node:fs";
+import { closeSync, constants as FS, fstatSync, ftruncateSync, lstatSync, mkdirSync, openSync, readdirSync, readFileSync, readlinkSync, realpathSync, rmSync, unlinkSync, writeFileSync, type Stats } from "node:fs";
 import path from "node:path";
 import { config } from "./config.js";
+import { assertPublicUrl } from "./net.js";
 import { emit } from "./bus.js";
 import { now } from "./store.js";
 import { adoptMachines, linuxMachines, linuxReady, linuxScreen, linuxShell, onMachinesChanged, sweepIdleMachines } from "./linux.js";
@@ -138,6 +139,8 @@ const browserScreen = {
   open: (botId: string, userId: string, url: string) => withDesktop(botId, userId, async (d) => {
     const target = /^[a-z][a-z0-9+.-]*:/i.test(url) ? url : `https://${url}`;
     if (!/^https?:/i.test(target)) throw new Error("only http and https addresses can be opened");
+    // This browser runs on the server itself: it must not be pointed at the server's own network.
+    await assertPublicUrl(target);
     await d.page.goto(target, { waitUntil: "domcontentloaded", timeout: 40000 });
     await settle(d.page, 800);
     announce(userId);
@@ -188,10 +191,15 @@ const browserScreen = {
   isOpen: (botId: string) => desktops.has(botId),
 };
 
+/** The page address each bot's computer last reported (shown on saved-login cards; it is the computer's word, not proof). */
+const reportedUrl = new Map<string, string>();
+export const lastKnownUrl = (botId: string) => reportedUrl.get(botId) ?? "";
+const noteUrl = <T extends { url: string }>(botId: string, r: T): T => { if (r.url) reportedUrl.set(botId, r.url); return r; };
+
 /** The bot's screen, whichever kind of computer it has. */
 export const screen = {
   view: (botId: string, userId: string) => (kind === "linux" ? linuxScreen.view(botId, userId, workspaceOf(botId)) : browserScreen.view(botId, userId)),
-  open: (botId: string, userId: string, url: string) => (kind === "linux" ? linuxScreen.open(botId, userId, workspaceOf(botId), url) : browserScreen.open(botId, userId, url)),
+  open: (botId: string, userId: string, url: string) => (kind === "linux" ? linuxScreen.open(botId, userId, workspaceOf(botId), url) : browserScreen.open(botId, userId, url)).then((r) => { reportedUrl.set(botId, r.url || url); return r; }),
   click: (botId: string, userId: string, x: number, y: number, button: "left" | "right" | "middle" = "left", double = false) =>
     kind === "linux" ? linuxScreen.click(botId, userId, workspaceOf(botId), x, y, button, double) : browserScreen.click(botId, userId, x, y, button, double),
   type: (botId: string, userId: string, text: string) => (kind === "linux" ? linuxScreen.type(botId, userId, workspaceOf(botId), text) : browserScreen.type(botId, userId, text)),
@@ -200,7 +208,7 @@ export const screen = {
     kind === "linux" ? linuxScreen.scroll(botId, userId, workspaceOf(botId), x, y, dy) : browserScreen.scroll(botId, userId, x, y, dy),
   drag: (botId: string, userId: string, x1: number, y1: number, x2: number, y2: number) =>
     kind === "linux" ? linuxScreen.drag(botId, userId, workspaceOf(botId), x1, y1, x2, y2) : browserScreen.drag(botId, userId, x1, y1, x2, y2),
-  read: (botId: string, userId: string) => (kind === "linux" ? linuxScreen.read(botId, userId, workspaceOf(botId)) : browserScreen.read(botId, userId)),
+  read: (botId: string, userId: string) => (kind === "linux" ? linuxScreen.read(botId, userId, workspaceOf(botId)) : browserScreen.read(botId, userId)).then((r) => noteUrl(botId, r)),
   peek: (botId: string) => (kind === "linux" ? linuxScreen.peek(botId) : browserScreen.peek(botId)),
   isOpen: (botId: string) => (kind === "linux" ? linuxScreen.isOpen(botId) : browserScreen.isOpen(botId)),
   /** Switches the computer on without doing anything on it (Linux computers only; a browser opens on first use). */
@@ -239,32 +247,93 @@ export async function closeAllDesktops() {
 }
 
 // ── Files ────────────────────────────────────────────────────────────────────
-/** Resolves a user- or model-supplied relative path inside the bot's folder, refusing anything that escapes it. */
+// The library is also mounted, read-write, in the bot's own computer, where the bot is root. Whatever is in
+// it may have been made by the bot (or by a page that steered it): links, pipes, devices. So a path is
+// never trusted for what it says: no part of it may be a link, and every file is opened without following
+// links, checked to be a plain file, and checked again — by where the opened file really is — to sit
+// inside the library. Otherwise a link to the database or to the server's own code would be served or
+// overwritten.
+
+/** The library's real location (a data folder reached through a link is fine; links inside the library are not). */
+const realRootOf = (botId: string) => realpathSync(workspaceOf(botId));
+const isInside = (root: string, p: string) => p === root || p.startsWith(root + path.sep);
+const NOFOLLOW = FS.O_NOFOLLOW ?? 0;
+// Opening a pipe would otherwise wait for a writer forever and freeze the server.
+const NONBLOCK = FS.O_NONBLOCK ?? 0;
+const lstatOrNull = (p: string): Stats | null => { try { return lstatSync(p); } catch { return null; } };
+
+/** Resolves a user- or model-supplied relative path inside the bot's folder, refusing anything that escapes it or goes through a link. */
 export function resolveInWorkspace(botId: string, rel: string): string {
-  const root = workspaceOf(botId);
   if (/[\0-\x1f]/.test(rel)) throw new Error("invalid path");
+  const root = realRootOf(botId);
   const full = path.resolve(root, rel.replace(/^[/\\]+/, ""));
-  if (full !== root && !full.startsWith(root + path.sep)) throw new Error("that path is outside this bot's folder");
+  if (!isInside(root, full)) throw new Error("that path is outside this bot's folder");
+  let cur = root;
+  for (const seg of path.relative(root, full).split(path.sep).filter(Boolean)) {
+    cur = path.join(cur, seg);
+    const st = lstatOrNull(cur);
+    if (!st) break; // the rest does not exist yet
+    if (st.isSymbolicLink()) throw new Error("that path goes through a link, which is not allowed in the library");
+  }
+  return full;
+}
+
+/** After opening: a plain file, really inside the library (catches a link swapped in after the path was checked). */
+function verifyOpened(botId: string, fd: number, full: string): Stats {
+  const st = fstatSync(fd);
+  if (!st.isFile()) throw new Error("that is not a regular file");
+  let actual: string;
+  try { actual = readlinkSync(`/proc/self/fd/${fd}`); } catch { actual = realpathSync(full); }
+  if (!isInside(realRootOf(botId), actual)) throw new Error("that path is outside this bot's folder");
+  return st;
+}
+
+/** Opens a library file for reading. The caller closes the descriptor (a read stream given `fd` does it). */
+export function openLibraryFile(botId: string, rel: string): { fd: number; full: string; size: number } {
+  const full = resolveInWorkspace(botId, rel);
+  const fd = openSync(full, FS.O_RDONLY | NOFOLLOW | NONBLOCK);
+  try { return { fd, full, size: verifyOpened(botId, fd, full).size }; } catch (err) { closeSync(fd); throw err; }
+}
+
+export function readLibraryFile(botId: string, rel: string): Buffer {
+  const { fd } = openLibraryFile(botId, rel);
+  try { return readFileSync(fd); } finally { closeSync(fd); }
+}
+
+/** Writes a library file. `exclusive`: fail if anything already has that name. Returns the full path. */
+function writeLibraryFile(botId: string, rel: string, data: string | Buffer, exclusive = false): string {
+  const full = resolveInWorkspace(botId, rel);
+  mkdirSync(path.dirname(full), { recursive: true });
+  resolveInWorkspace(botId, rel); // a link may have appeared while the folders were made
+  const fd = openSync(full, FS.O_WRONLY | FS.O_CREAT | NOFOLLOW | NONBLOCK | (exclusive ? FS.O_EXCL : 0), 0o644);
+  try {
+    try { verifyOpened(botId, fd, full); } catch (err) {
+      // Lost a race against a swapped-in link: nothing was written. A file this call just created is removed again.
+      if (exclusive) { try { unlinkSync(readlinkSync(`/proc/self/fd/${fd}`)); } catch { /* best effort */ } }
+      throw err;
+    }
+    ftruncateSync(fd, 0);
+    writeFileSync(fd, data);
+  } finally { closeSync(fd); }
   return full;
 }
 
 export function listFiles(botId: string, rel = ""): FileEntry[] {
   const dir = resolveInWorkspace(botId, rel);
-  if (!existsSync(dir)) return [];
+  if (!lstatOrNull(dir)?.isDirectory()) return [];
+  // Only plain files and folders are listed; links and other special files are left out.
   return readdirSync(dir, { withFileTypes: true })
-    .filter((e) => !e.name.startsWith("."))
-    .map((e) => {
-      const st = statSync(path.join(dir, e.name));
-      return { name: e.name, size: st.size, modifiedAt: st.mtimeMs, dir: e.isDirectory() };
+    .filter((e) => !e.name.startsWith(".") && (e.isFile() || e.isDirectory()))
+    .flatMap((e) => {
+      const st = lstatOrNull(path.join(dir, e.name));
+      return st && (st.isFile() || st.isDirectory()) ? [{ name: e.name, size: st.size, modifiedAt: st.mtimeMs, dir: st.isDirectory() }] : [];
     })
     .sort((a, b) => Number(b.dir) - Number(a.dir) || b.modifiedAt - a.modifiedAt);
 }
 
 export function saveFile(botId: string, name: string, content: string): string {
   const clean = name.split(/[/\\]/).map((seg) => seg.replace(/[^a-zA-Z0-9._ -]/g, "_").slice(0, 120)).filter((s) => s && s !== "." && s !== "..").join("/") || "untitled.txt";
-  const full = resolveInWorkspace(botId, clean);
-  mkdirSync(path.dirname(full), { recursive: true });
-  writeFileSync(full, content, "utf8");
+  writeLibraryFile(botId, clean, content);
   return clean;
 }
 
@@ -279,27 +348,30 @@ export const mimeOf = (name: string) => MIME[name.split(".").pop()?.toLowerCase(
 /** Picture formats that are safe to show inline and that models can look at. */
 export const isInlineImage = (mime: string) => ["image/png", "image/jpeg", "image/gif", "image/webp"].includes(mime);
 
-/** Describes a file in the bot's library for showing it in the chat, or null if it is not a readable file there. */
+/** Describes a file in the bot's library for showing it in the chat, or null if it is not a plain file there. */
 export function attachmentAt(botId: string, rel: string): Attachment | null {
   let full: string;
   try { full = resolveInWorkspace(botId, rel); } catch { return null; }
-  if (!existsSync(full) || !statSync(full).isFile()) return null;
-  const clean = path.relative(workspaceOf(botId), full).split(path.sep).join("/");
-  return { name: path.basename(full), path: clean, mime: mimeOf(full), size: statSync(full).size };
+  const st = lstatOrNull(full);
+  if (!st?.isFile()) return null;
+  const clean = path.relative(realRootOf(botId), full).split(path.sep).join("/");
+  return { name: path.basename(full), path: clean, mime: mimeOf(full), size: st.size };
 }
 
 /** Stores an uploaded or generated file in the library without ever overwriting an existing one. */
 export function storeBytes(botId: string, folder: string, name: string, bytes: Buffer): Attachment {
   const base = name.replace(/[^a-zA-Z0-9._ -]/g, "_").replace(/^\.+/, "").slice(-100) || "file";
   const dir = resolveInWorkspace(botId, folder);
-  mkdirSync(dir, { recursive: true });
-  let candidate = base;
-  for (let i = 2; existsSync(path.join(dir, candidate)); i++) {
+  const rel = path.relative(realRootOf(botId), dir).split(path.sep).join("/");
+  for (let i = 1; i < 10_000; i++) {
     const dot = base.lastIndexOf(".");
-    candidate = dot > 0 ? `${base.slice(0, dot)}-${i}${base.slice(dot)}` : `${base}-${i}`;
+    const candidate = i === 1 ? base : dot > 0 ? `${base.slice(0, dot)}-${i}${base.slice(dot)}` : `${base}-${i}`;
+    if (lstatOrNull(path.join(dir, candidate))) continue;
+    const target = rel ? `${rel}/${candidate}` : candidate;
+    try { writeLibraryFile(botId, target, bytes, true); } catch (err) { if ((err as NodeJS.ErrnoException).code === "EEXIST") continue; throw err; }
+    return attachmentAt(botId, target)!;
   }
-  writeFileSync(path.join(dir, candidate), bytes);
-  return attachmentAt(botId, `${folder}/${candidate}`)!;
+  throw new Error("could not find a free file name");
 }
 
 /** Where a library file sits from the bot's own point of view. */
@@ -308,7 +380,7 @@ export const botPathOf = (rel: string) => (kind === "linux" ? `~/files/${rel}` :
 /** Reads a library picture for a model to look at; null when it is not a picture or is too large. */
 export function imageForModel(botId: string, a: Attachment): { mediaType: string; data: string } | null {
   if (!isInlineImage(a.mime) || a.size > 5_000_000) return null;
-  try { return { mediaType: a.mime, data: readFileSync(resolveInWorkspace(botId, a.path)).toString("base64") }; } catch { return null; }
+  try { return { mediaType: a.mime, data: readLibraryFile(botId, a.path).toString("base64") }; } catch { return null; }
 }
 
 export function removeWorkspace(botId: string) {
@@ -319,8 +391,13 @@ export function removeWorkspace(botId: string) {
 const OUTPUT_TAIL = 20_000;
 
 /** Runs a command for a bot. Without a Linux computer it runs on this server, in the bot's folder, with a scrubbed environment so no server secret reaches it. */
+/** Whether bots can run commands: in their own Linux computer, or — only when explicitly switched on — on this server. */
+export const shellAvailable = () => (kind === "linux" ? config.shellEnabled : config.hostShell);
+/** Commands run on this server itself (no container runtime): every one asks the user first. */
+export const shellOnHost = () => kind !== "linux";
+
 export function runShell(botId: string, userId: string, command: string, timeoutSec: number, signal?: AbortSignal): Promise<{ code: number | null; output: string; timedOut: boolean }> {
-  if (!config.shellEnabled) return Promise.reject(new Error("shell access is switched off on this server"));
+  if (!shellAvailable()) return Promise.reject(new Error(kind === "linux" ? "shell access is switched off on this server" : "shell access needs a Linux computer per bot (Docker) on this server; it is not offered on the server itself unless SHELL_ENABLED=1 is set"));
   // On a Linux computer the command runs inside the bot's own machine, never on this server.
   if (kind === "linux") return linuxShell(botId, userId, workspaceOf(botId), command, timeoutSec, signal);
   const cwd = workspaceOf(botId);

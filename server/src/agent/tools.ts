@@ -1,24 +1,27 @@
 import { unseal } from "../auth.js";
 import { emit, getLive } from "../bus.js";
-import { attachmentAt, botPathOf, browserAvailable, computerKind, runShell, saveFile, screen, storeBytes, type Shot } from "../computer.js";
+import { attachmentAt, botPathOf, browserAvailable, computerKind, lastKnownUrl, runShell, saveFile, screen, shellAvailable, storeBytes, type Shot } from "../computer.js";
 import { generateImage, imageService } from "../images.js";
 import { config } from "../config.js";
 import { isValidTimezone, parseCron } from "../cron.js";
 import { tr } from "../i18n.js";
 import type { ImageBlock, TextBlock, ToolSpec } from "../llm/types.js";
 import { describeRoutine, routines } from "../routines.js";
-import { resolveInWorkspace } from "../computer.js";
-import { existsSync } from "node:fs";
 import { schedule, unschedule } from "../scheduler.js";
 import { GEM_KINDS, GEMS_PER_DAY, type ActivityKind, type Gem, type GemKind, type ToolGroup } from "../shared.js";
 import { q } from "../db.js";
 import { searchConfigured, searchWeb } from "../search.js";
+import { fetchProblem, guardedFetch } from "../net.js";
 import { config as appConfig } from "../config.js";
 import { bots, clip, memories, pages, rows, searchMessages, settings, skills, tasks, vault, type BotRecord, type UserRecord } from "../store.js";
 import { interrupt } from "./loop.js";
 import { createRoom, deliverBotMessage, dispatchToRoom, MAX_HELPERS, MAX_HOPS, startHelper } from "./team.js";
 
-export interface ToolContext { bot: BotRecord; user: UserRecord; depth: number; signal: AbortSignal }
+export interface ToolContext {
+  bot: BotRecord; user: UserRecord; depth: number; signal: AbortSignal;
+  /** The turn has read outside content: what this tool hands to another bot carries that mark along. */
+  tainted?: boolean;
+}
 export interface ToolOutput {
   content: string | Array<TextBlock | ImageBlock>;
   /** One short line shown next to the step in the chat. */
@@ -34,7 +37,7 @@ export interface BuiltinTool {
   /** Sensitive tools ask first unless the bot is trusted with them. */
   sensitive?: boolean;
   /** Asks permission per call under its own key (English templates; {bot} and the vars are filled in). */
-  gate?: (args: Record<string, any>) => { key: string; title: string; reason: string; source: string; vars: Record<string, string> } | null;
+  gate?: (args: Record<string, any>, ctx: { botId: string }) => { key: string; title: string; reason: string; source: string; vars: Record<string, string>; /** Extra line on the card (English template). */ note?: string } | null;
   /** Family this tool belongs to; a bot can have whole families switched off. */
   group?: ToolGroup;
   /** Its result comes from outside (a web page, a search): it is marked as such for the model, and the turn becomes more careful. */
@@ -120,7 +123,10 @@ const workTools: BuiltinTool[] = [
     run: async (a, c) => {
       const url = String(a.url);
       if (!/^https?:\/\//i.test(url)) return { content: "Only http and https addresses can be fetched.", isError: true };
-      const res = await fetch(url, { signal: AbortSignal.any([c.signal, AbortSignal.timeout(30_000)]), headers: { "user-agent": "Mozilla/5.0 (compatible; assistant)" }, redirect: "follow" });
+      // Public addresses only, every redirect checked: a page must not steer the bot into this server's own network.
+      let res: Response;
+      try { res = await guardedFetch(url, { signal: AbortSignal.any([c.signal, AbortSignal.timeout(30_000)]), headers: { "user-agent": "Mozilla/5.0 (compatible; assistant)" }, redirect: "follow" }); }
+      catch (err) { const why = fetchProblem(err); if (why) return { content: `Could not fetch ${url}: ${why}`, isError: true, summary: "not fetched" }; throw err; }
       const type = res.headers.get("content-type") ?? "";
       if (!/text|json|xml|javascript/.test(type)) return { content: `Fetched ${url} (status ${res.status}) but it is ${type || "binary"} content, not text.`, isError: !res.ok };
       const body = await res.text();
@@ -189,7 +195,18 @@ const vaultTools: BuiltinTool[] = [
   tool("vault_type", "Type a saved username or password into the field that has keyboard focus on your screen. Click the field first. You never see the password; the user is asked before it is used.",
     obj({ item: str("Name of the saved login"), field: { type: "string", enum: ["username", "password"] } }, ["item", "field"]), {
     activity: "computer", label: "Typing a saved login", audited: true, detail: (a) => String(a.item ?? ""),
-    gate: (a) => ({ key: `vault: ${String(a.item ?? "").trim()}`, title: "Allow {bot} to type the saved {field} for {item}?", reason: "type a saved login for {item}", source: "Vault", vars: { item: String(a.item ?? ""), field: a.field === "username" ? "username" : "password" } }),
+    // The site check below relies on the address the bot's computer reports for the page in front, and that
+    // computer is the bot's own (it is root there): a misbehaving one could report a false address. The card
+    // says so, and shows the address it last reported, so the user judges for themselves.
+    gate: (a, ctx) => {
+      const owner = bots.byId(ctx.botId)?.userId;
+      const item = owner ? vault.byName(owner, String(a.item ?? "")) : null;
+      return {
+        key: `vault: ${String(a.item ?? "").trim()}`, title: "Allow {bot} to type the saved {field} for {item}?", reason: "type a saved login for {item}", source: "Vault",
+        vars: { item: String(a.item ?? ""), field: a.field === "username" ? "username" : "password", site: item?.site || "—", page: lastKnownUrl(ctx.botId) || "—" },
+        note: "Saved for: {site}. Page the bot's computer says is open: {page}. Sklubot checks the page against the saved site using what that computer reports, which it cannot fully verify: only allow it if you expected this login now.",
+      };
+    },
     run: async (a, c) => {
       const item = vault.byName(c.user.id, String(a.item));
       if (!item) return { content: `No saved login is called "${a.item}". Use vault_list to see the names.`, isError: true };
@@ -422,7 +439,7 @@ const teamTools: BuiltinTool[] = [
       if (target.id === c.bot.id) return { content: "That is you.", isError: true };
       if (target.kind === "room") return { content: "That is a group chat; use room_post.", isError: true };
       if (c.depth >= MAX_HOPS) return { content: "This exchange has bounced between bots too many times. Wrap up and report to the user instead.", isError: true };
-      deliverBotMessage(c.bot, target, String(a.message), c.depth);
+      deliverBotMessage(c.bot, target, String(a.message), c.depth, c.tainted);
       return { content: `Delivered to ${target.name}. Their reply will reach you as a new message.`, summary: `to ${target.name}` };
     },
   }),
@@ -431,7 +448,7 @@ const teamTools: BuiltinTool[] = [
     run: async (a, c) => {
       if (c.bot.parentId || c.depth >= 2) return { content: "Helpers cannot start further helpers.", isError: true };
       if (bots.children(c.bot.id).length >= MAX_HELPERS) return { content: `You already have ${MAX_HELPERS} helpers. Stop one first.`, isError: true };
-      const h = startHelper(c.bot, String(a.goal), a.label ? String(a.label) : undefined, c.depth);
+      const h = startHelper(c.bot, String(a.goal), a.label ? String(a.label) : undefined, c.depth, c.tainted);
       return { content: JSON.stringify({ id: h.id, name: h.name, note: "It will report back when finished." }), summary: h.name };
     },
   }),
@@ -451,7 +468,7 @@ const teamTools: BuiltinTool[] = [
       const h = bots.byId(String(a.id));
       if (!h || h.parentId !== c.bot.id) return { content: "No helper of yours has that id.", isError: true };
       if (c.depth >= MAX_HOPS + 2) return { content: "You and this helper have gone back and forth too many times. Wrap up with what you have.", isError: true };
-      deliverBotMessage(c.bot, h, String(a.message), c.depth);
+      deliverBotMessage(c.bot, h, String(a.message), c.depth, c.tainted);
       return { content: "Delivered.", summary: h.name };
     },
   }),
@@ -487,7 +504,7 @@ const teamTools: BuiltinTool[] = [
       rows.append(room, { kind: "message", role: "assistant", text, origin: { kind: "bot", id: c.bot.id, name: c.bot.name } });
       bots.bumpUnread(room.id);
       bots.announce(room);
-      dispatchToRoom(room, c.user, text, c.bot, c.depth);
+      dispatchToRoom(room, c.user, text, c.bot, c.depth, c.tainted);
       return { content: "Posted.", summary: room.name, endTurn: true };
     },
   }),
@@ -570,7 +587,7 @@ function assemble(opts: { nativeSearch?: boolean }): BuiltinTool[] {
   return [
     ...(browserAvailable() ? inGroup("computer", screenTools) : []),
     // On its own Linux computer a bot's commands are contained, so they do not need a permission card.
-    ...workTools.filter((t) => t.spec.name !== "shell_run" || config.shellEnabled)
+    ...workTools.filter((t) => t.spec.name !== "shell_run" || shellAvailable())
       .map((t): BuiltinTool => ({ ...t, group: t.spec.name === "shell_run" ? "shell" : t.spec.name === "web_fetch" ? "web" : "files", sensitive: t.spec.name === "shell_run" && computerKind() === "linux" ? false : t.sensitive })),
     ...(searchConfigured() && !opts.nativeSearch ? searchTools : []),
     ...knowledgeTools, ...pageTools,

@@ -41,11 +41,17 @@ curl -fsSL https://raw.githubusercontent.com/smokersklubs-dot/grok-sklubs/claude
 1. **Nom de domaine** : celui de l'étape 1 (laisse vide pour essayer sans domaine).
 2. **Clé Claude** : colle-la (laisse vide pour le mode démo).
 
-L'installation dure 5 à 10 minutes. À la fin, l'adresse de ton Sklubot s'affiche en vert.
+L'installation dure 5 à 10 minutes. À la fin, l'adresse de ton Sklubot s'affiche en vert, avec un
+**code d'installation** (par exemple `3f9a-c2e1-07bd`) : note-le, il te sera demandé à l'étape 4.
 
 ## Étape 4 — Créer ton compte
 
-Ouvre l'adresse dans ton navigateur et crée ton compte. **Le premier compte créé est le tien** ; les inscriptions se ferment ensuite.
+Ouvre l'adresse dans ton navigateur et crée ton compte en saisissant le **code d'installation** affiché à la fin
+de l'étape 3. **Le premier compte créé est le tien** ; les inscriptions se ferment ensuite.
+
+Pourquoi ce code : sans lui, quelqu'un qui tomberait sur ton serveur juste après l'installation, avant toi,
+pourrait créer le premier compte et en prendre possession. Le code ne sert qu'une fois ; une fois ton compte
+créé, il ne sert plus à rien. Tu l'as perdu ? Il est dans `/opt/sklubot/.env`, à la ligne `SKLUBOT_SETUP_CODE`.
 
 Téléphone : voir [DEPLOIEMENT.md](DEPLOIEMENT.md) (iPhone : Safari → Partager → Sur l'écran d'accueil ; Android : `/download/sklubot.apk`).
 
@@ -67,6 +73,7 @@ Sur le VPS, dans `/opt/sklubot` :
 |---|---|
 | « Connection refused » ou rien à la connexion | Vérifie l'adresse IP et que le VPS est démarré chez l'hébergeur. |
 | « Permission denied » | Mauvais mot de passe ; certains hébergeurs imposent un autre utilisateur que `root` (`ubuntu`, `debian`). |
+| « Le code d'installation est manquant ou faux » | Recopie le code affiché à la fin de l'installation, ou lis-le avec `grep SETUP_CODE /opt/sklubot/.env`. |
 | La page ne s'ouvre pas en https | Le domaine ne pointe pas encore vers le VPS (étape 1), ou les ports 80 et 443 sont fermés dans le pare-feu de l'hébergeur. |
 | « Sklubot ne répond pas » en fin d'installation | Le journal s'affiche juste au-dessus : la cause y est. Le plus souvent, pas assez de mémoire. |
 | Les bots ne répondent pas | Pas de clé de modèle : ajoute `ANTHROPIC_API_KEY` dans `.env` et mets `SKLUBOT_DEMO_MODE=0`. |

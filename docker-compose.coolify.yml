@@ -9,10 +9,16 @@ services:
     depends_on:
       desktop-image:
         condition: service_completed_successfully
+      docker-proxy:
+        condition: service_started
     environment:
       PORT: "3000"
       PUBLIC_URL: "${SKLUBOT_PUBLIC_URL}"
       SESSION_SECRET: "${SKLUBOT_SESSION_SECRET}"
+      # Code à donner pour créer le premier compte. Mets une valeur au hasard avant la première mise en ligne.
+      SETUP_CODE: "${SKLUBOT_SETUP_CODE:-}"
+      # Derrière le proxy de Coolify : l'adresse du visiteur est la dernière entrée de X-Forwarded-For.
+      TRUST_PROXY: "1"
       ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
       XAI_API_KEY: "${XAI_API_KEY:-}"
       OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
@@ -30,11 +36,21 @@ services:
       ENGINE_BASE_URL: "http://sklubot:3000"
       MAX_DESKTOPS: "${SKLUBOT_MAX_DESKTOPS:-4}"
       DESKTOP_MEMORY: "${SKLUBOT_DESKTOP_MEMORY:-2g}"
+      # Docker à travers le proxy filtrant ci-dessous, jamais le socket lui-même.
+      DOCKER_HOST: "tcp://docker-proxy:2375"
     volumes:
       - sklubot_data:/data
-      # Donne à Sklubot le droit de créer les ordinateurs des bots sur ce serveur.
-      # C'est un accès complet au Docker de la machine : ne partage ce serveur qu'avec des gens de confiance.
-      - /var/run/docker.sock:/var/run/docker.sock
+    # Aucun privilège Linux, système de fichiers en lecture seule (seules /data et /tmp s'écrivent).
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - "no-new-privileges:true"
+    networks:
+      - default
+      - docker
     expose:
       - "3000"
     healthcheck:
@@ -43,6 +59,27 @@ services:
       timeout: 5s
       retries: 3
       start_period: 30s
+
+  # Donne à Sklubot le droit de créer les ordinateurs des bots sur ce serveur, et seulement cela : conteneurs, exec,
+  # volumes, images, réseaux (README officiel : github.com/Tecnativa/docker-socket-proxy). Cela reste un accès
+  # puissant au Docker de la machine : ne partage ce serveur qu'avec des gens de confiance.
+  docker-proxy:
+    image: "${DOCKER_PROXY_IMAGE:-tecnativa/docker-socket-proxy:v0.5.0}"
+    restart: unless-stopped
+    environment:
+      CONTAINERS: "1"
+      EXEC: "1"
+      IMAGES: "1"
+      VOLUMES: "1"
+      NETWORKS: "1"
+      POST: "1"
+      ALLOW_START: "1"
+      ALLOW_STOP: "1"
+      DISABLE_IPV6: "1"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - docker
 
   # Construit l'image de l'ordinateur Linux des bots sur ce serveur, puis s'arrête.
   desktop-image:
@@ -55,6 +92,10 @@ services:
 networks:
   default:
     name: sklubot_net
+  # Interne : l'application et le proxy Docker seulement (pas les ordinateurs des bots, pas Internet).
+  docker:
+    name: sklubot_docker
+    internal: true
 
 volumes:
   sklubot_data:

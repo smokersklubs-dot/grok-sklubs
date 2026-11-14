@@ -1,0 +1,10 @@
+# Caddy pour Sklubot (docker-compose.vps.yml). SITE_ADDRESS : le nom de domaine (HTTPS automatique) ou « :80 ».
+{$SITE_ADDRESS::80} {
+	# Le point d'accès des outils (/mcp/…) ne sert qu'aux ordinateurs des bots, qui joignent Sklubot
+	# directement sur le réseau interne (http://sklubot:3000). Depuis Internet, il n'existe pas.
+	@mcp path /mcp /mcp/*
+	respond @mcp 404
+
+	# Caddy remplace X-Forwarded-For par l'adresse réelle du visiteur (il ne fait confiance à aucun en-tête reçu).
+	reverse_proxy sklubot:3000
+}

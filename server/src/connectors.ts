@@ -9,6 +9,7 @@ import { config } from "./config.js";
 import { audit, newId, now, randomToken, sha256 } from "./store.js";
 import type { ToolSpec } from "./llm/types.js";
 import type { Connector, ConnectorAuth } from "./shared.js";
+import { fetchProblem, guardedFetch } from "./net.js";
 
 /**
  * A connector is a remote tool server speaking the open Model Context Protocol over HTTP.
@@ -108,6 +109,12 @@ class ConnectorOAuth implements OAuthClientProvider {
   discoveryState() { return loadOAuth(this.id).discovery; }
 }
 
+/** An OAuth failure in a few safe words: the standard error code when there is one, never the server's own text. */
+function oauthProblem(err: unknown): string {
+  const code = (err as { errorCode?: unknown })?.errorCode;
+  return typeof code === "string" && /^[a-z_]{1,40}$/.test(code) ? `the sign-in server answered "${code}"` : "the sign-in server gave an unexpected answer";
+}
+
 /** Raised by startSignIn when the app has no dynamic registration and the user has not given a client ID yet. */
 export class NeedsClientIdError extends Error {}
 
@@ -129,14 +136,15 @@ async function connect(entry: Entry) {
     if (!data.tokens) { entry.live = null; entry.needsAuth = true; entry.error = null; return; }
     provider = new ConnectorOAuth(record.id, { kind: "background" });
     if (tokenExpired(data)) {
-      try { await auth(provider, { serverUrl: record.url }); } catch { provider.needsSignIn = true; }
+      try { await auth(provider, { serverUrl: record.url, fetchFn: guardedFetch }); } catch { provider.needsSignIn = true; }
       if (provider.needsSignIn) return markNeedsAuth(entry, "the sign-in could not be renewed");
     }
-    transport = new StreamableHTTPClientTransport(new URL(record.url), { authProvider: provider });
+    // Every request to the app — and to its sign-in servers — goes through the guarded fetch: public addresses only.
+    transport = new StreamableHTTPClientTransport(new URL(record.url), { authProvider: provider, fetch: guardedFetch });
   } else {
     const token = record.tokenEnc ? unseal(record.tokenEnc) : null;
     transport = new StreamableHTTPClientTransport(new URL(record.url), {
-      requestInit: token ? { headers: { authorization: `Bearer ${token}` } } : undefined,
+      requestInit: token ? { headers: { authorization: `Bearer ${token}` } } : undefined, fetch: guardedFetch,
     });
   }
   const client = new Client({ name: "sklubot", version: "0.1.0" });
@@ -169,10 +177,22 @@ async function connect(entry: Entry) {
 
 /** RFC 9728: a server that wants OAuth publishes protected-resource metadata naming its authorization server. */
 async function wantsOAuth(url: string): Promise<boolean> {
-  try { return !!(await discoverOAuthProtectedResourceMetadata(url)).authorization_servers?.length; } catch { return false; }
+  try { return !!(await discoverOAuthProtectedResourceMetadata(url, undefined, guardedFetch)).authorization_servers?.length; } catch { return false; }
 }
 
 const RETRY_AFTER_MS = 60_000;
+
+/**
+ * What the user is told when an app cannot be reached. Never the app's own error text: it is outside
+ * content (and was a way to read pages of a private network back through this server).
+ */
+function connectionProblem(err: unknown): string {
+  const known = fetchProblem(err);
+  if (known) return known;
+  if (err instanceof StreamableHTTPError && typeof err.code === "number" && err.code > 0) return `The app answered with an error (HTTP ${err.code}).`;
+  if (err instanceof TypeError && /only http and https/.test(err.message)) return err.message;
+  return "The app could not be reached or did not answer as a tool server.";
+}
 
 function ensure(record: ConnectorRecord): Entry {
   let entry = entries.get(record.id);
@@ -183,7 +203,7 @@ function ensure(record: ConnectorRecord): Entry {
   if (!entry.live && !entry.connecting && !entry.needsAuth && !coolingDown) {
     const e = entry;
     e.connecting = connect(e)
-      .catch((err) => { e.error = String(err?.message ?? err).slice(0, 300); e.failedAt = Date.now(); })
+      .catch((err) => { e.error = connectionProblem(err); e.failedAt = Date.now(); })
       .finally(() => { e.connecting = null; emit(record.userId, { type: "connectors" }); });
   }
   return entry;
@@ -264,11 +284,11 @@ export const connectors = {
     const state = randomToken(24);
     const provider = new ConnectorOAuth(id, { kind: "start", state });
     let result;
-    try { result = await auth(provider, { serverUrl: record.url }); }
+    try { result = await auth(provider, { serverUrl: record.url, fetchFn: guardedFetch }); }
     catch (err) {
       const msg = String((err as Error)?.message ?? err);
       if (/dynamic client registration/i.test(msg)) throw new NeedsClientIdError(msg);
-      throw new Error(`The app's sign-in could not start: ${msg.slice(0, 200)}`);
+      throw new Error(`The app's sign-in could not start: ${fetchProblem(err) ?? oauthProblem(err)}`);
     }
     if (result === "AUTHORIZED") return { connector: (await connectors.refresh(userId, id))! };
     if (!provider.authorizeUrl || !provider.verifier) throw new Error("The app's sign-in could not start.");
@@ -298,8 +318,8 @@ export const connectors = {
     const verifier = unseal(row.verifier_enc);
     if (!verifier) throw fail("The sign-in could not be read back.");
     const provider = new ConnectorOAuth(record.id, { kind: "callback", verifier });
-    try { await auth(provider, { serverUrl: record.url, authorizationCode: params.code }); }
-    catch (err) { throw fail(`The app did not accept the sign-in: ${String((err as Error)?.message ?? err).slice(0, 200)}`); }
+    try { await auth(provider, { serverUrl: record.url, authorizationCode: params.code, fetchFn: guardedFetch }); }
+    catch (err) { throw fail(`The app did not accept the sign-in: ${fetchProblem(err) ?? oauthProblem(err)}`); }
     audit(row.user_id, "apps", `App signed in: ${record.name}`);
     const connector = (await connectors.refresh(row.user_id, record.id))!;
     emit(row.user_id, { type: "connectors" });
@@ -343,7 +363,7 @@ export const connectors = {
     };
     if (entry.record.auth === "oauth" && tokenExpired(loadOAuth(connectorId))) {
       const provider = new ConnectorOAuth(connectorId, { kind: "background" });
-      try { await auth(provider, { serverUrl: entry.record.url }); } catch { provider.needsSignIn = true; }
+      try { await auth(provider, { serverUrl: entry.record.url, fetchFn: guardedFetch }); } catch { provider.needsSignIn = true; }
       if (provider.needsSignIn) throw signInAgain();
     }
     const live = entry.live;

@@ -37,16 +37,41 @@ export function dropSession(token: string | undefined) {
   if (token) q.run("DELETE FROM sessions WHERE token_hash = ?", sha256(token));
 }
 
+/** Tolerant: a malformed value (e.g. "a=%") is kept as it is instead of throwing. */
 export function parseCookies(header: string | undefined | null): Record<string, string> {
   const out: Record<string, string> = {};
   for (const part of (header ?? "").split(";")) {
     const eq = part.indexOf("=");
-    if (eq > 0) out[part.slice(0, eq).trim()] = decodeURIComponent(part.slice(eq + 1).trim());
+    if (eq <= 0) continue;
+    const raw = part.slice(eq + 1).trim();
+    let value = raw;
+    try { value = decodeURIComponent(raw); } catch { /* keep the raw value */ }
+    out[part.slice(0, eq).trim()] = value;
   }
   return out;
 }
 
+/**
+ * Whether a request's Origin header is one of our own pages. No Origin (same-origin GETs, non-browser
+ * clients) is fine; anything that is not a parsable URL of this host — "null" included — is not.
+ */
+export function originAllowed(origin: string | undefined | null, host: string | undefined | null): boolean {
+  if (!origin) return true;
+  if (origin === config.publicUrl) return true;
+  try { return !!host && new URL(origin).host === host; } catch { return false; }
+}
+
 export const signupOpen = () => config.openSignup || users.count() === 0;
+
+/** The first account needs the setup code printed by the installer (when one is configured). */
+export const setupCodeRequired = () => !!config.setupCode && users.count() === 0;
+const normaliseCode = (s: string) => s.toLowerCase().replace(/[\s-]+/g, "");
+/** Constant-time comparison of the setup code (spaces, dashes and case do not matter). */
+export function setupCodeMatches(given: string): boolean {
+  const a = createHash("sha256").update(normaliseCode(given)).digest();
+  const b = createHash("sha256").update(normaliseCode(config.setupCode)).digest();
+  return !!config.setupCode && timingSafeEqual(a, b);
+}
 
 // Connector tokens are encrypted at rest with a key derived from SESSION_SECRET.
 const key = () => createHash("sha256").update("connector-tokens:" + config.sessionSecret).digest();

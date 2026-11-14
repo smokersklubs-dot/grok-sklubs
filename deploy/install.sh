@@ -22,6 +22,10 @@ info() { printf '  %s\n' "$*"; }
 die()  { printf '\n\033[31mErreur : %s\033[0m\n' "$*" >&2; exit 1; }
 
 # Les questions se lisent sur le terminal, même quand le script arrive par "curl | bash".
+# Code à usage unique pour créer le premier compte : sans lui, quelqu'un qui tomberait sur le serveur juste
+# installé (avant toi) ne pourrait pas en prendre possession. Il ne sert plus une fois le premier compte créé.
+new_setup_code() { openssl rand -hex 6 | sed 's/\(....\)\(....\)\(....\)/\1-\2-\3/'; }
+
 ask() { # ask VARIABLE "question" [secret]
   local var="$1" prompt="$2" secret="${3:-}" answer=""
   if [ -n "${!var:-}" ]; then return; fi
@@ -84,6 +88,7 @@ else
 SKLUBOT_PUBLIC_URL=$PUBLIC_URL
 SKLUBOT_SITE_ADDRESS=$SITE
 SKLUBOT_SESSION_SECRET=$(openssl rand -hex 32)
+SKLUBOT_SETUP_CODE=$(new_setup_code)
 ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
 XAI_API_KEY=${XAI_API_KEY:-}
 OPENAI_API_KEY=${OPENAI_API_KEY:-}
@@ -98,7 +103,13 @@ ENV
   chmod 600 .env
   info "Configuration écrite dans $DIR/.env (lisible par l'administrateur seulement)."
 fi
+# Une configuration écrite par une version précédente n'a pas encore de code d'installation : on l'ajoute.
+if ! grep -q '^SKLUBOT_SETUP_CODE=.' .env; then
+  umask 077
+  printf 'SKLUBOT_SETUP_CODE=%s\n' "$(new_setup_code)" >> .env
+fi
 PUBLIC_URL=$(grep '^SKLUBOT_PUBLIC_URL=' .env | cut -d= -f2-)
+SETUP_CODE=$(grep '^SKLUBOT_SETUP_CODE=' .env | cut -d= -f2-)
 
 if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q "Status: active"; then
   ufw allow 80/tcp >/dev/null; ufw allow 443/tcp >/dev/null
@@ -121,7 +132,12 @@ cat <<DONE
 
 $(printf '\033[1;32m')Sklubot est en ligne : $PUBLIC_URL$(printf '\033[0m')
 
-  • Ouvre cette adresse et crée ton compte : le premier compte est le tien, les inscriptions se ferment ensuite.
+  • Ouvre cette adresse et crée ton compte avec ce code d'installation (demandé une seule fois) :
+
+        $(printf '\033[1m')$SETUP_CODE$(printf '\033[0m')
+
+    Le premier compte est le tien, les inscriptions se ferment ensuite. Le code est aussi dans $DIR/.env
+    (SKLUBOT_SETUP_CODE) ; il ne sert plus à rien une fois ton compte créé.
   • Avec un nom de domaine, le certificat HTTPS peut mettre une minute à arriver au premier accès.
   • Téléphone : iPhone → Safari → Partager → Sur l'écran d'accueil.  Android → $PUBLIC_URL/download/sklubot.apk
 

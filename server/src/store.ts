@@ -167,7 +167,15 @@ export const bots = {
       sets.push("character = ?");
       vals.push(JSON.stringify(cleanCharacter(patch.character, cleanCharacter(JSON.parse(cur?.character || "{}")))));
     }
-    if (Array.isArray(patch.memberIds)) { sets.push("members = ?"); vals.push(JSON.stringify(patch.memberIds)); }
+    if (Array.isArray(patch.memberIds)) {
+      // Only a group chat has members, and only the owner's own visible agent bots can be members.
+      const self = q.get<{ user_id: string; kind: string }>("SELECT user_id, kind FROM bots WHERE id = ?", id);
+      const members = [...new Set(patch.memberIds.filter((m): m is string => typeof m === "string"))].filter((m) => {
+        const b = q.get<{ user_id: string; kind: string; hidden: number }>("SELECT user_id, kind, hidden FROM bots WHERE id = ?", m);
+        return !!b && !!self && b.user_id === self.user_id && b.kind === "agent" && !b.hidden;
+      });
+      if (self?.kind === "room") { sets.push("members = ?"); vals.push(JSON.stringify(members)); }
+    }
     if (patch.roomRule === "lead" || patch.roomRule === "everyone" || patch.roomRule === "mentions") { sets.push("room_rule = ?"); vals.push(patch.roomRule); }
     if (Array.isArray(patch.disabledTools)) { sets.push("disabled_tools = ?"); vals.push(JSON.stringify(patch.disabledTools.filter((g) => (TOOL_GROUPS as readonly string[]).includes(g as string)))); }
     if (!sets.length) return;

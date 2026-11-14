@@ -56,7 +56,8 @@ des mots-clés permet de parcourir toute l'application : outils, approbations, c
 
 **Sans aucune clé** : choisis « Mes abonnements » dans le Cerveau d'un bot, puis connecte-toi sur son écran.
 
-Le premier compte créé est le tien ; les inscriptions se ferment ensuite (sauf `OPEN_SIGNUP=1`).
+Le premier compte créé est le tien ; les inscriptions se ferment ensuite (sauf `OPEN_SIGNUP=1`). Sur un serveur
+public, mets un code dans `SETUP_CODE` (l'installeur VPS le fait seul) : il sera demandé pour créer ce premier compte.
 
 ### L'ordinateur Linux de chaque bot
 
@@ -103,11 +104,22 @@ Elle s'active dès qu'une clé `OPENAI_API_KEY` ou `XAI_API_KEY` est présente, 
 
 - **Avec les ordinateurs Linux**, les commandes d'un bot s'exécutent dans son conteneur, pas sur ton serveur :
   il n'y voit ni tes clés ni tes fichiers, et n'a donc pas besoin de demander avant chaque commande.
-  Le conteneur a accès à Internet et **peut joindre les services réseau de la machine hôte** (dont Sklubot
-  lui-même) : n'héberge rien de sensible sans mot de passe sur cette machine.
-- **Sans Docker**, la ligne de commande s'exécute sur la machine hôte, dans le dossier du bot, avec un
-  environnement vidé ; un bot « prudent » demande alors ton accord avant chaque commande. Tu peux couper
-  l'outil avec `SHELL_ENABLED=0`.
+  Le conteneur a accès à Internet. Il tourne avec peu de privilèges (pas de nœuds de périphérique, de sockets
+  bruts ni d'élévation par programme setuid). En local, sans `DESKTOP_NETWORK`, il **peut joindre les services
+  réseau de la machine hôte** (dont Sklubot lui-même, via `host.docker.internal`) : n'héberge rien de sensible
+  sans mot de passe sur cette machine.
+- **Sans Docker**, la ligne de commande s'exécuterait sur la machine hôte : elle n'est proposée que si tu mets
+  `SHELL_ENABLED=1`, et chaque commande demande alors ton accord, quel que soit le niveau d'autonomie du bot.
+- **Bibliothèque des bots** : un bot (root dans son ordinateur) peut y créer des liens ; le serveur ne suit
+  jamais un lien ni un fichier spécial de la bibliothèque, ni pour servir, ni pour lire, ni pour écrire.
+- **Contenu extérieur** : dès qu'un bot a lu une page, une recherche ou une application (ou qu'un tour démarre
+  d'un webhook, d'un message d'un bot qui en avait lu, d'un abonnement Claude/ChatGPT), il demande avant de
+  publier une page, créer ou modifier une routine, enregistrer une compétence ou un souvenir, écrire à un autre
+  bot ou dans un groupe, chercher dans les conversations de tous les bots, ou ouvrir un site qu'il n'a pas
+  encore lu pendant ce tour.
+- **Réseau privé** : les lectures de pages (`web_fetch`), les pages surveillées, les applications connectées
+  et leurs connexions OAuth ne joignent jamais une adresse locale ou privée (127.0.0.1, 10.x, 192.168.x,
+  169.254.169.254…), redirections comprises. Pour tester avec des serveurs locaux : `ALLOW_PRIVATE_FETCH=1`.
 - Trois niveaux d'autonomie par bot : **prudent** (demande avant les commandes et les écritures dans les
   applications), **équilibré** (demande seulement avant les écritures dans les applications), **confiance**
   (ne demande jamais).

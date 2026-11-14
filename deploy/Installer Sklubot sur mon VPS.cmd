@@ -8,6 +8,7 @@ echo.
 echo   Installation de Sklubot sur ton VPS
 echo   -----------------------------------
 echo   Il te faut : l'adresse IP du VPS et son mot de passe administrateur (donnes par ton hebergeur).
+echo   A la fin, note le code d'installation affiche : il te sera demande pour creer ton compte.
 echo.
 where ssh >nul 2>nul
 if errorlevel 1 (
@@ -29,7 +30,9 @@ echo.
 echo   Connexion a %WHO%@%HOST%. La premiere fois, reponds yes a la question sur l'empreinte, puis saisis le mot de passe
 echo   (rien ne s'affiche pendant la frappe, c'est normal).
 echo.
-ssh -t %WHO%@%HOST% "curl -fsSL https://raw.githubusercontent.com/smokersklubs-dot/grok-sklubs/%SKLUBOT_BRANCH%/deploy/install.sh -o /tmp/sklubot-install.sh && %SUDO%env SKLUBOT_BRANCH=%SKLUBOT_BRANCH% bash /tmp/sklubot-install.sh"
+rem Le script est telecharge dans un fichier temporaire au nom imprevisible (mktemp), pas a un chemin fixe de /tmp.
+rem (Pas de guillemets autour de $T : cmd les compterait et couperait la commande ; mktemp donne un chemin sans espace.)
+ssh -t %WHO%@%HOST% "T=$(mktemp) && curl -fsSL https://raw.githubusercontent.com/smokersklubs-dot/grok-sklubs/%SKLUBOT_BRANCH%/deploy/install.sh -o $T && %SUDO%env SKLUBOT_BRANCH=%SKLUBOT_BRANCH% bash $T; rm -f $T"
 echo.
 echo   Termine.
 pause

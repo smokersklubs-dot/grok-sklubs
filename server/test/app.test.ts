@@ -9,6 +9,8 @@ process.env.DATA_DIR = mkdtempSync(path.join(tmpdir(), "sklubot-test-"));
 process.env.SESSION_SECRET = "test-secret-test-secret-test-secret";
 process.env.NO_SCHEDULER = "1";
 process.env.COMPUTER = "browser";
+// No container runtime here: commands run on the server itself, which is only offered when switched on explicitly.
+process.env.SHELL_ENABLED = "1";
 
 const { registerProvider } = await import("../src/llm/index.js");
 const { api } = await import("../src/routes.js");
@@ -113,33 +115,40 @@ test("tools run and their results go back to the model", async () => {
   assert.match(requests[requests.length - 1].system, /Sam works in Lyon\./);
 });
 
-test("a careful bot asks before running a command, and remembers 'always'", async () => {
+const approveNext = async (decision: "allow" | "always" | "deny") => {
+  const card = await until(async () => (await rowsOf(primary.id)).find((r) => r.body.kind === "card" && r.body.card.type === "approval" && r.body.card.status === "pending"), "approval card");
+  const approvalId = card.body.kind === "card" && card.body.card.type === "approval" ? card.body.card.approvalId : "";
+  assert.equal((await call("POST", `/approvals/${approvalId}`, { decision })).status, 200);
+  return card;
+};
+
+test("without a Linux computer, every command on the server itself asks first — even after 'always'", async () => {
   await call("POST", `/bots/${primary.id}/messages`, { text: 'call shell_run {"command":"echo sklubot-ok"}' });
   const card = await until(async () => (await rowsOf(primary.id)).find((r) => r.body.kind === "card" && r.body.card.type === "approval" && r.body.card.status === "pending"), "approval card");
+  assert.match(card.body.kind === "card" && card.body.card.type === "approval" ? card.body.card.title : "", /on the server itself/);
   const live = (await call("GET", "/bots")).json.live[primary.id];
   assert.equal(live.running, false);
   assert.ok(live.awaiting);
-  const approvalId = card.body.kind === "card" && card.body.card.type === "approval" ? card.body.card.approvalId : "";
-  assert.equal((await call("POST", `/approvals/${approvalId}`, { decision: "always" })).status, 200);
+  await approveNext("always");
   await until(async () => { const r = lastAssistant(await rowsOf(primary.id)); return r?.body.kind === "message" && r.body.text.includes("sklubot-ok"); }, "command output");
   assert.deepEqual((await call("GET", "/policies")).json.policies, [{ tool: "shell_run", mode: "always_allow" }]);
-  // Second time: no card.
+  // Second time: asked again all the same, because the command would run on the server.
   const before = (await rowsOf(primary.id)).filter((r) => r.body.kind === "card").length;
   await call("POST", `/bots/${primary.id}/messages`, { text: 'call shell_run {"command":"echo again-ok"}' });
+  await approveNext("allow");
   await until(async () => { const r = lastAssistant(await rowsOf(primary.id)); return r?.body.kind === "message" && r.body.text.includes("again-ok"); }, "second command");
-  assert.equal((await rowsOf(primary.id)).filter((r) => r.body.kind === "card").length, before);
+  assert.equal((await rowsOf(primary.id)).filter((r) => r.body.kind === "card").length, before + 1);
   await call("DELETE", `/policies/${encodeURIComponent("shell_run")}`);
 });
 
 test("denying an approval tells the model no, and the shell never sees server secrets", async () => {
   await call("POST", `/bots/${primary.id}/messages`, { text: 'call shell_run {"command":"echo secret=$SESSION_SECRET"}' });
-  const card = await until(async () => (await rowsOf(primary.id)).find((r) => r.body.kind === "card" && r.body.card.type === "approval" && r.body.card.status === "pending"), "approval card");
-  const id = card.body.kind === "card" && card.body.card.type === "approval" ? card.body.card.approvalId : "";
-  await call("POST", `/approvals/${id}`, { decision: "deny" });
+  await approveNext("deny");
   await until(async () => { const r = lastAssistant(await rowsOf(primary.id)); return r?.body.kind === "message" && r.body.text.includes("did not allow"); }, "denial");
-  // Trusted bots run it; the environment is scrubbed.
+  // Even a trusted bot asks for a command on the server; once allowed, it runs with a scrubbed environment.
   await call("PATCH", `/bots/${primary.id}`, { autonomy: "trusted" });
   await call("POST", `/bots/${primary.id}/messages`, { text: 'call shell_run {"command":"echo secret=[$SESSION_SECRET]"}' });
+  await approveNext("allow");
   await until(async () => { const r = lastAssistant(await rowsOf(primary.id)); return r?.body.kind === "message" && r.body.text.includes("secret=[]"); }, "scrubbed env");
 });
 

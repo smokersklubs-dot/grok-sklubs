@@ -1,5 +1,16 @@
 # Sklubot sur un VPS seul : l'application, l'image des ordinateurs des bots, et Caddy pour le HTTPS automatique.
 # Lancé par deploy/install.sh ; les valeurs viennent du fichier .env à côté.
+#
+# Sécurité :
+#  - l'application n'a pas le socket Docker : elle passe par « docker-proxy », qui n'ouvre que la partie de l'API
+#    Docker dont elle a besoin (conteneurs, exec, volumes, images, réseaux) ; ce proxy est sur un réseau interne
+#    où les ordinateurs des bots n'ont pas accès ;
+#  - l'application tourne sans aucun privilège Linux (cap_drop ALL), sur un système de fichiers en lecture seule :
+#    même un bug ne pourrait pas réécrire son propre code ; seules /data et /tmp sont modifiables.
+#  Pourquoi pas un utilisateur non-root : les ordinateurs des bots (root chez eux) écrivent dans la même
+#  bibliothèque (/data) des fichiers appartenant à root ; un utilisateur non-root ne pourrait plus les gérer sans
+#  reprendre les privilèges qu'on vient de retirer. Être root sans aucune capacité ni écriture hors de /data
+#  donne la même protection, sans casser les fichiers des bots.
 services:
   sklubot:
     build:
@@ -10,10 +21,16 @@ services:
     depends_on:
       desktop-image:
         condition: service_completed_successfully
+      docker-proxy:
+        condition: service_started
     environment:
       PORT: "3000"
       PUBLIC_URL: "${SKLUBOT_PUBLIC_URL}"
       SESSION_SECRET: "${SKLUBOT_SESSION_SECRET}"
+      # Code à donner pour créer le premier compte (affiché à la fin de l'installation). Inutile ensuite.
+      SETUP_CODE: "${SKLUBOT_SETUP_CODE:-}"
+      # Derrière Caddy : l'adresse du visiteur est la dernière entrée de X-Forwarded-For (limite des tentatives de connexion).
+      TRUST_PROXY: "1"
       ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
       XAI_API_KEY: "${XAI_API_KEY:-}"
       OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
@@ -31,15 +48,49 @@ services:
       ENGINE_BASE_URL: "http://sklubot:3000"
       MAX_DESKTOPS: "${SKLUBOT_MAX_DESKTOPS:-4}"
       DESKTOP_MEMORY: "${SKLUBOT_DESKTOP_MEMORY:-2g}"
+      # Docker, à travers le proxy filtrant (voir plus bas), jamais le socket lui-même.
+      DOCKER_HOST: "tcp://docker-proxy:2375"
     volumes:
       - sklubot_data:/data
-      - /var/run/docker.sock:/var/run/docker.sock
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - "no-new-privileges:true"
+    networks:
+      - default
+      - docker
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:3000/api/health || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 30s
+
+  # Le seul à voir le socket Docker. N'autorise que ce dont Sklubot se sert pour les ordinateurs des bots :
+  # conteneurs (créer, démarrer, arrêter, exec), volumes, images, réseaux. Tout le reste (système, swarm, build,
+  # plugins, secrets, authentification aux registres…) répond 403. Options : README officiel du projet
+  # (github.com/Tecnativa/docker-socket-proxy) ; DISABLE_IPV6 évite un échec de démarrage là où IPv6 est coupé.
+  # Sur un système à SELinux (Fedora, RHEL), ajoute « privileged: true » à ce service si Sklubot ne joint pas Docker.
+  docker-proxy:
+    image: "${DOCKER_PROXY_IMAGE:-tecnativa/docker-socket-proxy:v0.5.0}"
+    restart: unless-stopped
+    environment:
+      CONTAINERS: "1"
+      EXEC: "1"
+      IMAGES: "1"
+      VOLUMES: "1"
+      NETWORKS: "1"
+      POST: "1"
+      ALLOW_START: "1"
+      ALLOW_STOP: "1"
+      DISABLE_IPV6: "1"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - docker
 
   desktop-image:
     build:
@@ -59,14 +110,21 @@ services:
       - "${SKLUBOT_HTTPS_PORT:-443}:443"
     environment:
       SITE_ADDRESS: "${SKLUBOT_SITE_ADDRESS:-:80}"
-    command: ["caddy", "reverse-proxy", "--from", "${SKLUBOT_SITE_ADDRESS:-:80}", "--to", "sklubot:3000"]
+    # deploy/Caddyfile : relaie tout vers Sklubot, sauf /mcp/ (réservé aux ordinateurs des bots, sur le réseau interne).
+    command: ["caddy", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]
     volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
 
 networks:
   default:
     name: sklubot_net
+  # Réseau interne entre l'application et le proxy Docker : pas d'accès Internet, et les ordinateurs des bots
+  # (sur sklubot_net) n'y sont pas.
+  docker:
+    name: sklubot_docker
+    internal: true
 
 volumes:
   sklubot_data:

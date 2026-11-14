@@ -11,7 +11,7 @@ process.env.NO_SCHEDULER = "1";
 process.env.COMPUTER = "auto";
 process.env.MAX_DESKTOPS = "1";
 
-const { computerKind, computerState, initComputer, runShell, saveFile, screen, workspaceOf } = await import("../src/computer.js");
+const { attachmentAt, computerKind, computerState, initComputer, listFiles, readLibraryFile, runShell, saveFile, screen, storeBytes, workspaceOf } = await import("../src/computer.js");
 await initComputer();
 const linux = computerKind() === "linux";
 const skip = !linux && "no container runtime or desktop image here (npm run computer:build)";
@@ -87,4 +87,34 @@ test("what a bot installs survives sleep, and only so many computers run at once
 test("a long command is cut off at its time limit", { skip }, async () => {
   const r = await runShell(A, USER, "sleep 30", 2);
   assert.equal(r.timedOut, true);
+});
+
+test("links a bot makes in its library never reach the server's own files", { skip }, async () => {
+  // In the bot's computer these point at its own /etc; read by the server they would be the server's.
+  const made = await runShell(A, USER, "cd ~/files && ln -sf /etc/hostname leak.txt && ln -sfn /etc etc-dir && mkfifo pipe && echo plain > plain.txt && echo ok", 30);
+  assert.match(made.output, /ok/);
+  assert.equal(attachmentAt(A, "leak.txt"), null);
+  assert.throws(() => readLibraryFile(A, "leak.txt"));
+  assert.throws(() => readLibraryFile(A, "etc-dir/hostname"));
+  assert.throws(() => readLibraryFile(A, "pipe"), "a pipe is refused at once, not waited on");
+  assert.throws(() => saveFile(A, "etc-dir/sklubot-was-here", "x"));
+  assert.throws(() => saveFile(A, "leak.txt", "overwritten"));
+  assert.throws(() => storeBytes(A, "etc-dir", "x.txt", Buffer.from("x")));
+  assert.equal(readFileSync("/etc/hostname", "utf8").includes("overwritten"), false);
+  const names = listFiles(A).map((e) => e.name);
+  assert.ok(names.includes("plain.txt"));
+  assert.equal(names.some((n) => ["leak.txt", "etc-dir", "pipe"].includes(n)), false, "links and pipes are not listed");
+  assert.equal(readLibraryFile(A, "plain.txt").toString().trim(), "plain");
+});
+
+test("a bot's computer runs with few privileges, yet installs and the desktop still work", { skip }, async () => {
+  const r = await runShell(A, USER, "grep -E '^(CapEff|NoNewPrivs)' /proc/self/status; mknod /tmp/dev c 1 3 2>&1 | head -1; touch /tmp/o && chown nobody /tmp/o && echo chown-ok; su nobody -s /bin/sh -c id", 30);
+  const capEff = BigInt("0x" + /CapEff:\s*([0-9a-f]+)/.exec(r.output)![1]);
+  // CHOWN 0, DAC_OVERRIDE 1, FOWNER 3, KILL 5, SETGID 6, SETUID 7, AUDIT_WRITE 29: nothing else.
+  assert.equal(capEff, (1n << 0n) | (1n << 1n) | (1n << 3n) | (1n << 5n) | (1n << 6n) | (1n << 7n) | (1n << 29n));
+  assert.match(r.output, /NoNewPrivs:\s*1/);
+  assert.match(r.output, /Operation not permitted/, "no device nodes");
+  assert.match(r.output, /chown-ok/);
+  assert.match(r.output, /uid=65534\(nobody\)/);
+  assert.ok(Buffer.from((await screen.view(A, USER)).data, "base64").length > 3000, "the desktop is up");
 });

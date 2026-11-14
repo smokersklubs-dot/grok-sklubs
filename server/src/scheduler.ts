@@ -6,10 +6,10 @@ import { q } from "./db.js";
 import { enqueue } from "./agent/loop.js";
 import { consolidationSweep } from "./agent/memory.js";
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
-import { resolveInWorkspace } from "./computer.js";
+import { readLibraryFile, resolveInWorkspace } from "./computer.js";
 import { routines, runs, type RoutineRecord } from "./routines.js";
 import { tr } from "./i18n.js";
+import { guardedFetch } from "./net.js";
 import { approvals, bots, clip, now, rows, settings, tasks, users } from "./store.js";
 
 /** Next due time per routine. One timer walks this map; nothing is scheduled twice. */
@@ -28,14 +28,17 @@ export function schedule(routineId: string) {
 
 export const unschedule = (routineId: string) => { due.delete(routineId); };
 
-/** Runs a routine now: notes it in the chat and queues the work behind whatever the bot is doing. */
-export function fireRoutine(r: RoutineRecord, payload?: unknown) {
+/**
+ * Runs a routine now: notes it in the chat and queues the work behind whatever the bot is doing.
+ * `outside`: the payload came from outside (a webhook call); the turn treats it as outside content.
+ */
+export function fireRoutine(r: RoutineRecord, payload?: unknown, opts: { outside?: boolean } = {}) {
   const bot = bots.byId(r.botId);
   if (!bot) return;
   routines.markRun(r.id, now());
   rows.append(bot, { kind: "event", event: "routine", text: tr(users.localeOf(bot.userId), "Running routine: {name}", { name: r.name }) });
   const extra = payload === undefined ? "" : `\n\n[Data received with this call]\n${clip(JSON.stringify(payload, null, 2), 8000)}`;
-  enqueue(bot.id, { kind: "routine", name: r.name, text: r.prompt + extra, runId: runs.start(r.id) });
+  enqueue(bot.id, { kind: "routine", name: r.name, text: r.prompt + extra, runId: runs.start(r.id), tainted: !!opts.outside && payload !== undefined });
   emit(bot.userId, { type: "routines", botId: bot.id });
 }
 
@@ -60,13 +63,13 @@ export async function checkWatch(r: RoutineRecord): Promise<boolean> {
   if (!r.watch) return false;
   let content: string;
   if (r.watch.kind === "url") {
-    const res = await fetch(r.watch.target, { signal: AbortSignal.timeout(30_000), headers: { "user-agent": "Mozilla/5.0 (compatible; assistant)" }, redirect: "follow" });
+    const res = await guardedFetch(r.watch.target, { signal: AbortSignal.timeout(30_000), headers: { "user-agent": "Mozilla/5.0 (compatible; assistant)" }, redirect: "follow" });
     if (!res.ok) { routines.setWatchState(r.id, r.watchHash, now()); return false; }
     content = (await res.text()).replace(/<(script|style)[\s\S]*?<\/\1>/gi, "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
   } else {
-    let full: string;
-    try { full = resolveInWorkspace(r.botId, r.watch.target); } catch { return false; }
-    content = existsSync(full) ? readFileSync(full).toString("base64") : "(missing)";
+    try { resolveInWorkspace(r.botId, r.watch.target); } catch { return false; }
+    // Read through the library guard: a link or a special file counts as missing.
+    try { content = readLibraryFile(r.botId, r.watch.target).toString("base64"); } catch { content = "(missing)"; }
   }
   const hash = createHash("sha256").update(content).digest("hex");
   const changed = r.watchHash !== null && r.watchHash !== hash;

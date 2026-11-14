@@ -120,6 +120,8 @@ interface Store {
   boot: "loading" | "signedOut" | "ready";
   user: User | null;
   signupOpen: boolean;
+  /** A fresh install: the first account needs the setup code printed by the installer. */
+  setupCodeRequired: boolean;
   /** Whether bots on this server can create images. */
   imageGeneration: boolean;
   locale: Locale;
@@ -224,6 +226,7 @@ export const useStore = create<Store>((set, get) => ({
   boot: "loading",
   user: null,
   signupOpen: false,
+  setupCodeRequired: false,
   imageGeneration: false,
   locale: getLocale(),
   online: true,
@@ -266,13 +269,13 @@ export const useStore = create<Store>((set, get) => ({
       if (get().boot === "ready") set({ boot: "signedOut", user: null });
     });
     try {
-      const me = await api<{ user: User | null; signupOpen: boolean; imageGeneration?: boolean }>("GET", "/me");
+      const me = await api<{ user: User | null; signupOpen: boolean; setupCodeRequired?: boolean; imageGeneration?: boolean }>("GET", "/me");
       set({ imageGeneration: me.imageGeneration === true });
       if (me.user) {
         set({ signupOpen: me.signupOpen });
         await get().signedIn(me.user);
       } else {
-        set({ boot: "signedOut", signupOpen: me.signupOpen });
+        set({ boot: "signedOut", signupOpen: me.signupOpen, setupCodeRequired: me.setupCodeRequired === true });
       }
     } catch {
       set({ boot: "signedOut" });

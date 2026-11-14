@@ -1,12 +1,11 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { timingSafeEqual } from "node:crypto";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
-import { bots, users } from "../store.js";
+import { bots } from "../store.js";
 import type { ToolUseBlock } from "../llm/types.js";
-import { engineToken, engineTurnOf, randomCallId } from "./engine.js";
-import { afterTool, DECLINED, execute, judge, newTurn, waitForApproval, type Turn } from "./loop.js";
+import { engineTokenValid, engineTurnOf, randomCallId } from "./engine.js";
+import { afterTool, DECLINED, execute, judge, waitForApproval, type Turn } from "./loop.js";
 
 /**
  * Sklubot's tools for bots that run on a subscription tool (Claude Code, Codex) inside their computer.
@@ -15,18 +14,15 @@ import { afterTool, DECLINED, execute, judge, newTurn, waitForApproval, type Tur
  */
 
 function authorised(botId: string, header: string | undefined): boolean {
-  const given = Buffer.from((header ?? "").replace(/^Bearer\s+/i, ""));
-  const wanted = Buffer.from(engineToken(botId));
-  return given.length === wanted.length && timingSafeEqual(given, wanted);
+  return engineTokenValid(botId, (header ?? "").replace(/^Bearer\s+/i, ""));
 }
 
-async function turnFor(botId: string): Promise<Turn | null> {
-  const live = engineTurnOf(botId);
-  if (live) return live;
-  const bot = bots.byId(botId);
-  const user = bot ? users.byId(bot.userId) : null;
-  return bot && user ? newTurn(bot, user, 0, new AbortController().signal, true) : null;
-}
+/**
+ * Tool calls only make sense inside the bot's running subscription turn: it carries the stop signal, the
+ * caution once outside content was read (such a turn starts out careful) and the hop count. Outside a turn
+ * there is nothing to attach a call to, so none is accepted.
+ */
+const turnFor = (botId: string): Turn | null => engineTurnOf(botId);
 
 export async function handleMcp(botId: string, req: IncomingMessage, res: ServerResponse, body: unknown) {
   if (!bots.byId(botId) || !authorised(botId, req.headers.authorization)) {
@@ -35,15 +31,15 @@ export async function handleMcp(botId: string, req: IncomingMessage, res: Server
   }
   const server = new Server({ name: "sklubot", version: "1.0.0" }, { capabilities: { tools: {} } });
   server.setRequestHandler(ListToolsRequestSchema, async () => {
-    const turn = await turnFor(botId);
+    const turn = turnFor(botId);
     if (!turn) return { tools: [] };
     return {
       tools: turn.tools.map((t) => ({ name: t.name, description: t.description, inputSchema: t.inputSchema })),
     };
   });
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
-    const turn = await turnFor(botId);
-    if (!turn) return { content: [{ type: "text", text: "This bot no longer exists." }], isError: true };
+    const turn = turnFor(botId);
+    if (!turn) return { content: [{ type: "text", text: "Sklubot's tools are only available while one of your turns is running." }], isError: true };
     const call: ToolUseBlock = { type: "tool_use", id: randomCallId(), name: request.params.name, input: (request.params.arguments ?? {}) as Record<string, unknown> };
     const verdict = judge(turn, call);
     if (verdict.kind === "block") return { content: [{ type: "text", text: DECLINED }], isError: true };

@@ -10,6 +10,10 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 process.env.DATA_DIR = mkdtempSync(path.join(tmpdir(), "sklubot-w2-"));
 process.env.SESSION_SECRET = "test-secret-test-secret-test-secret";
 process.env.NO_SCHEDULER = "1";
+// The fake outside services of these tests listen on this machine; outside tests, such addresses are refused.
+process.env.ALLOW_PRIVATE_FETCH = "1";
+// No container runtime in this test: commands would run on the server itself, which needs an explicit yes.
+process.env.SHELL_ENABLED = "1";
 process.env.COMPUTER = "browser";
 process.env.FALLBACK_MODEL = "script:script-1";
 

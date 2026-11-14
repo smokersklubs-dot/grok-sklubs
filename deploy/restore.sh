@@ -3,6 +3,8 @@
 # ATTENTION : remplace toutes les données actuelles (base, bibliothèques, ordinateurs des bots).
 # Le fichier .env doit être celui de la sauvegarde (même SKLUBOT_SESSION_SECRET), sinon le coffre et les connexions ne s'ouvrent plus.
 set -euo pipefail
+# Les archives et fichiers temporaires contiennent toutes les données : lisibles par l'administrateur seulement.
+umask 077
 cd "$(dirname "$0")/.."
 ARCHIVE="${1:-}"
 [ -f "$ARCHIVE" ] || { echo "Utilisation : deploy/restore.sh <sklubot-sauvegarde-….tar>" >&2; exit 1; }

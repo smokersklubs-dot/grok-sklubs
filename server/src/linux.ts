@@ -15,7 +15,8 @@ export interface Exec { code: number | null; stdout: Buffer; stderr: string; tim
 export function docker(args: string[], opts: { timeoutMs?: number; signal?: AbortSignal; maxBytes?: number; input?: string } = {}): Promise<Exec> {
   return new Promise((resolve) => {
     const child = spawn("docker", args, { stdio: [opts.input === undefined ? "ignore" : "pipe", "pipe", "pipe"] });
-    if (opts.input !== undefined) child.stdin!.end(opts.input);
+    // A command that exits before reading its input raises EPIPE on it; that is not worth crashing over.
+    if (opts.input !== undefined) { child.stdin!.on("error", () => {}); child.stdin!.end(opts.input); }
     const chunks: Buffer[] = [];
     let size = 0, stderr = "", timedOut = false;
     const max = opts.maxBytes ?? 20_000_000;
@@ -75,6 +76,9 @@ async function dress(botId: string) {
   else console.error(`[dress ${botId}]`, r.stderr.trim().slice(0, 300));
 }
 
+/** Capabilities a bot's computer keeps (Docker's defaults minus MKNOD, NET_RAW, SYS_CHROOT, SETPCAP, SETFCAP, FSETID, NET_BIND_SERVICE). */
+export const COMPUTER_CAPS = ["CHOWN", "DAC_OVERRIDE", "FOWNER", "SETUID", "SETGID", "KILL", "AUDIT_WRITE"];
+
 export type Power = "running" | "asleep" | "absent";
 interface Machine { botId: string; userId: string; lastUsedAt: number; busy: number; power: Power }
 const machines = new Map<string, Machine>();
@@ -118,9 +122,15 @@ async function wake(botId: string, userId: string, workspace: string): Promise<M
       } else if (power === "absent") {
         const r = await docker([
           "run", "-d", "--name", containerName(botId), "--hostname", "computer", "--init",
-          // Lets the bot's subscription tools reach this server's tool endpoint.
-          "--add-host", "host.docker.internal:host-gateway", ...(config.desktopNetwork ? ["--network", config.desktopNetwork] : []),
+          // How the bot's subscription tools reach this server's tool endpoint: on its Docker network when Sklubot
+          // runs in a container (ENGINE_BASE_URL=http://sklubot:3000); only for a server running directly on this
+          // machine (local development) does the computer get a route to the host, as host.docker.internal.
+          ...(config.desktopNetwork ? ["--network", config.desktopNetwork] : ["--add-host", "host.docker.internal:host-gateway"]),
           "--memory", config.desktopMemory, "--cpus", String(config.desktopCpus), "--shm-size", "1g", "--pids-limit", "2048",
+          // Only the privileges a desktop, a browser and package installs need (checked one by one: Xvfb,
+          // Chromium, x11vnc, apt-get, sudo, su all work with these). No device nodes, raw sockets, chroot or
+          // file capabilities, and no way to gain privileges through setuid programs.
+          "--cap-drop", "ALL", ...COMPUTER_CAPS.flatMap((cap) => ["--cap-add", cap]), "--security-opt", "no-new-privileges",
           "-e", `SCREEN_RES=${config.desktopResolution}`,
           "-v", `${volumeName(botId)}:/root`, ...libraryMount(workspace),
           "--label", "sklubot=desktop", config.desktopImage,

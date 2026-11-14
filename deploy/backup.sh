@@ -5,6 +5,8 @@
 # Sklubot est mis en pause quelques secondes pendant la copie, pour que la base soit copiée d'un seul bloc.
 # Restaurer : deploy/restore.sh <archive>
 set -euo pipefail
+# Les archives et fichiers temporaires contiennent toutes les données : lisibles par l'administrateur seulement.
+umask 077
 cd "$(dirname "$0")/.."
 DEST="$(cd "${1:-$PWD}" && pwd)"
 STAMP="$(date +%Y%m%d-%H%M%S)"

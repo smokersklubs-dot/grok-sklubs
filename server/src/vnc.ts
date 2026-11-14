@@ -2,9 +2,8 @@ import { spawn } from "node:child_process";
 import type { IncomingMessage, Server } from "node:http";
 import type { Duplex } from "node:stream";
 import { WebSocketServer, type WebSocket } from "ws";
-import { parseCookies, SESSION_COOKIE, userForToken } from "./auth.js";
+import { originAllowed, parseCookies, SESSION_COOKIE, userForToken } from "./auth.js";
 import { computerKind } from "./computer.js";
-import { config } from "./config.js";
 import { containerName, linuxScreen } from "./linux.js";
 import { bots } from "./store.js";
 
@@ -17,27 +16,36 @@ import { bots } from "./store.js";
 const PATH = /^\/api\/bots\/([^/]+)\/vnc$/;
 
 function reject(socket: Duplex, status: number, text: string) {
-  socket.write(`HTTP/1.1 ${status} ${text}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
+  try { socket.write(`HTTP/1.1 ${status} ${text}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`); } catch { /* already closed */ }
   socket.destroy();
 }
 
 export function attachLiveScreens(server: Server) {
   const wss = new WebSocketServer({ noServer: true, handleProtocols: (protocols) => (protocols.has("binary") ? "binary" : false), maxPayload: 1_000_000 });
   server.on("upgrade", (req: IncomingMessage, socket: Duplex, head: Buffer) => {
-    const url = new URL(req.url ?? "/", "http://local");
-    const match = PATH.exec(url.pathname);
-    if (!match) return reject(socket, 404, "Not Found");
-    // Only pages of this site may open the stream, with the visitor's own session.
-    const origin = req.headers.origin;
-    if (origin && new URL(origin).host !== req.headers.host && origin !== config.publicUrl) return reject(socket, 403, "Forbidden");
-    const user = userForToken(parseCookies(req.headers.cookie)[SESSION_COOKIE]);
-    if (!user) return reject(socket, 401, "Unauthorized");
-    const bot = bots.owned(user.id, decodeURIComponent(match[1]));
-    if (!bot || bot.kind !== "agent") return reject(socket, 404, "Not Found");
-    if (computerKind() !== "linux" || !linuxScreen.isOpen(bot.id)) return reject(socket, 409, "Conflict");
-    const control = url.searchParams.get("mode") === "control";
-    wss.handleUpgrade(req, socket, head, (ws) => pipe(ws, bot.id, control));
+    // A broken connection must never surface as an unhandled error event.
+    socket.on("error", () => socket.destroy());
+    // Whatever a stranger sends (bad origin, bad cookie, bad path), it is answered, never thrown.
+    try { upgrade(wss, req, socket, head); } catch (err) {
+      console.error("[live screen]", (err as Error)?.message ?? err);
+      reject(socket, 400, "Bad Request");
+    }
   });
+}
+
+function upgrade(wss: WebSocketServer, req: IncomingMessage, socket: Duplex, head: Buffer) {
+  const url = new URL(req.url ?? "/", "http://local");
+  const match = PATH.exec(url.pathname);
+  if (!match) return reject(socket, 404, "Not Found");
+  // Only pages of this site may open the stream, with the visitor's own session.
+  if (!originAllowed(req.headers.origin, req.headers.host)) return reject(socket, 403, "Forbidden");
+  const user = userForToken(parseCookies(req.headers.cookie)[SESSION_COOKIE]);
+  if (!user) return reject(socket, 401, "Unauthorized");
+  const bot = bots.owned(user.id, decodeURIComponent(match[1]));
+  if (!bot || bot.kind !== "agent") return reject(socket, 404, "Not Found");
+  if (computerKind() !== "linux" || !linuxScreen.isOpen(bot.id)) return reject(socket, 409, "Conflict");
+  const control = url.searchParams.get("mode") === "control";
+  wss.handleUpgrade(req, socket, head, (ws) => pipe(ws, bot.id, control));
 }
 
 function pipe(ws: WebSocket, botId: string, control: boolean) {
@@ -49,6 +57,9 @@ function pipe(ws: WebSocket, botId: string, control: boolean) {
   vnc.stdout!.on("data", (chunk: Buffer) => { if (ws.readyState === ws.OPEN) ws.send(chunk); });
   vnc.on("close", close);
   vnc.on("error", close);
+  // Writing to a relay that just died raises EPIPE on its input: close quietly instead of crashing.
+  vnc.stdin!.on("error", close);
+  vnc.stdout!.on("error", close);
   ws.on("message", (data: Buffer) => { if (vnc.stdin!.writable) vnc.stdin!.write(data); });
   ws.on("close", close);
   ws.on("error", close);

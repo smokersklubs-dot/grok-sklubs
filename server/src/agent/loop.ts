@@ -1,6 +1,6 @@
 import { clearLive, emit, getLive, setLive } from "../bus.js";
 import { unseal } from "../auth.js";
-import { botPathOf, browserAvailable, computerKind, imageForModel } from "../computer.js";
+import { botPathOf, browserAvailable, computerKind, imageForModel, shellAvailable, shellOnHost } from "../computer.js";
 import { config } from "../config.js";
 import { connectors } from "../connectors.js";
 import { defaultModelRef, resolveModel, validateToolInput, type Block, type ChatMessage, type Effort, type TextBlock, type ToolResultBlock, type ToolSpec, type ToolUseBlock } from "../llm/index.js";
@@ -16,12 +16,33 @@ import { buildSystemPrompt } from "./prompt.js";
 import { deliverBotMessage } from "./team.js";
 import { builtinTools, type BuiltinTool, type ToolOutput } from "./tools.js";
 
+/**
+ * What starts a turn. `tainted`: the turn starts out carrying outside content — a webhook's payload, a
+ * message from a bot (or a group chat post) written after it read outside content — so it is careful
+ * from its first step, exactly as if it had read that content itself.
+ */
 export type Trigger =
   | { kind: "user"; text: string; voice?: boolean; attachments?: Attachment[]; channel?: "telegram" }
-  | { kind: "routine"; name: string; text: string; runId?: string }
-  | { kind: "bot"; fromName: string; text: string; depth: number }
-  | { kind: "system"; text: string; depth?: number }
+  | { kind: "routine"; name: string; text: string; runId?: string; tainted?: boolean }
+  | { kind: "bot"; fromName: string; text: string; depth: number; tainted?: boolean }
+  | { kind: "system"; text: string; depth?: number; tainted?: boolean }
   | { kind: "resume" };
+
+const startsTainted = (t: Trigger) => (t.kind === "routine" || t.kind === "bot" || t.kind === "system") && !!t.tainted;
+
+/** "https://www.Example.com/x" or "example.com" → "example.com"; "" when there is no usable host. */
+export function hostOf(url: unknown): string {
+  const s = String(url ?? "").trim();
+  if (!s) return "";
+  try { return new URL(/^[a-z][a-z0-9+.-]*:/i.test(s) ? s : `https://${s}`).hostname.toLowerCase().replace(/^www\./, ""); } catch { return ""; }
+}
+/** Hosts named in a piece of text (addresses and bare domain names). */
+export function hostsIn(text: string): string[] {
+  const out = new Set<string>();
+  for (const m of text.matchAll(/\bhttps?:\/\/[^\s<>"'`)\]]+/gi)) { const h = hostOf(m[0]); if (h) out.add(h); }
+  for (const m of text.matchAll(/(?<![@\w.-])((?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,24})(?![\w-])/gi)) { const h = hostOf(m[1]); if (h) out.add(h); }
+  return [...out];
+}
 
 /** Everything needed to continue a turn that stopped to ask the user for permission. */
 interface PausedTurn {
@@ -36,6 +57,8 @@ interface PausedTurn {
   depth: number;
   endTurn: boolean;
   tainted?: boolean;
+  /** Web hosts already read in this turn (see Turn.hosts). */
+  hosts?: string[];
 }
 
 export interface Turn {
@@ -53,8 +76,14 @@ export interface Turn {
   repeats: Map<string, number>;
   spoke: boolean;
   lastText: string;
-  /** Set once the bot has read something from outside (a web page, search results, an app). From then on it asks before changing anything in an app, even when trusted. */
+  /**
+   * Set once the bot has read something from outside (a web page, search results, an app), or when the
+   * turn started from outside content. From then on it asks before changing anything in an app, even when
+   * trusted, and before anything that would carry what it read further (see taintGuard).
+   */
   tainted: boolean;
+  /** Web hosts the user named or the bot already read in this turn: opening another one after outside content asks first. */
+  hosts: Set<string>;
 }
 
 /** Things other parts of the server want to hear about (e.g. to pass them on to a phone). */
@@ -155,7 +184,7 @@ function finishEngineTurn(bot: BotRecord, user: UserRecord, trigger: Trigger, tu
   if (!turn) return;
   if (bot.parentId && turn.lastText) {
     const parent = bots.byId(bot.parentId);
-    if (parent) deliverBotMessage(bot, parent, turn.lastText, turn.depth);
+    if (parent) deliverBotMessage(bot, parent, turn.lastText, turn.depth, turn.tainted);
   }
   if (trigger.kind === "system" && bot.primary) noteCheckinOutcome(user.id, turn.spoke);
   if (turn.lastText && (trigger.kind === "routine" || trigger.kind === "system" || (trigger.kind === "user" && trigger.channel === "telegram"))) tell({ type: "reply", bot, text: turn.lastText });
@@ -197,13 +226,13 @@ export async function newTurn(bot: BotRecord, user: UserRecord, depth: number, s
   const connectorNames = [...new Set(remoteTools.map((t) => t.connectorName))];
   return {
     bot, user, depth, signal, generation: bot.generation,
-    system: buildSystemPrompt(bot, user, { connectorNames, browser: browserAvailable(), shell: config.shellEnabled, linux: computerKind() === "linux", images: !!imageService() }),
+    system: buildSystemPrompt(bot, user, { connectorNames, browser: browserAvailable(), shell: shellAvailable(), linux: computerKind() === "linux", images: !!imageService() }),
     // Sorted so the tool list is byte-identical from call to call, which keeps provider caches warm.
     tools: [...builtins.map((b) => b.spec), ...remoteTools.map((r) => r.spec)].sort((a, b) => a.name.localeCompare(b.name)),
     modelRef,
     builtin: new Map(builtins.map((b) => [b.spec.name, b])),
     remote: new Map(remoteTools.map((r) => [r.spec.name, r])),
-    repeats: new Map(), spoke: false, lastText: "", tainted: false,
+    repeats: new Map(), spoke: false, lastText: "", tainted: false, hosts: new Set(),
   };
 }
 
@@ -224,7 +253,7 @@ async function runTurn(botId: string, trigger: Trigger): Promise<void> {
       if (!held) return;
       turn = await newTurn(bot, user, held.depth, controller.signal);
       // The paused request must be continued with exactly the prompt and tools it started with.
-      turn.system = held.system; turn.tools = held.tools; turn.modelRef = held.modelRef; turn.tainted = !!held.tainted;
+      turn.system = held.system; turn.tools = held.tools; turn.modelRef = held.modelRef; turn.tainted = !!held.tainted; turn.hosts = new Set(held.hosts ?? []);
       const outcome = await processCalls(turn, held);
       if (outcome !== "continue") return;
     } else {
@@ -232,6 +261,10 @@ async function runTurn(botId: string, trigger: Trigger): Promise<void> {
       if (isEngineRef(bot.model)) {
         const depth = trigger.kind === "bot" ? trigger.depth : trigger.kind === "system" ? trigger.depth ?? 0 : 0;
         turn = await newTurn(bot, user, depth, controller.signal, true);
+        // A subscription tool reads the web and runs commands with its own tools, out of our sight: its turn
+        // is treated as having read outside content from the start.
+        turn.tainted = true;
+        if (trigger.kind === "user") for (const h of hostsIn(trigger.text)) turn.hosts.add(h);
         const extra = drainSteering(bot);
         const words = `[${new Date().toISOString().slice(0, 16).replace("T", " ")} UTC]\n${triggerMessage(trigger)}`;
         const note = handedBack.delete(botId) ? "[The user took control of your computer since your last turn and has handed it back. Look at the screen before relying on what you saw earlier.]\n" : "";
@@ -245,6 +278,8 @@ async function runTurn(botId: string, trigger: Trigger): Promise<void> {
       await compactIfNeeded(bot).catch((err) => console.error("[compaction]", err));
       const depth = trigger.kind === "bot" ? trigger.depth : trigger.kind === "system" ? trigger.depth ?? 0 : 0;
       turn = await newTurn(bot, user, depth, controller.signal);
+      turn.tainted = startsTainted(trigger);
+      if (trigger.kind === "user") for (const h of hostsIn(trigger.text)) turn.hosts.add(h);
       const extra = drainSteering(bot);
       // The time travels with each message instead of sitting in the system prompt, so that prompt stays identical and cached.
       const stamped = `[${new Date().toISOString().slice(0, 16).replace("T", " ")} UTC]\n${triggerMessage(trigger)}`;
@@ -257,7 +292,7 @@ async function runTurn(botId: string, trigger: Trigger): Promise<void> {
     if (bot.parentId && turn.lastText && !paused.get(botId)) {
       const parent = bots.byId(bot.parentId);
       // The hop count travels with the report, so a bot and its helper cannot ping-pong forever.
-      if (parent) deliverBotMessage(bot, parent, turn.lastText, turn.depth);
+      if (parent) deliverBotMessage(bot, parent, turn.lastText, turn.depth, turn.tainted);
     }
     if (trigger.kind === "system" && bot.primary) noteCheckinOutcome(user.id, turn.spoke);
     // Replies to messages that came from a phone, and anything the bot says on its own initiative, go back out there.
@@ -297,7 +332,8 @@ async function modelLoop(turn: Turn) {
       messages: trimOldImages(history.load(bot.id, turn.generation)),
       onText: (delta) => { if (!stream.started) activity(turn, "writing"); stream.push(delta); },
       onReasoning: (delta) => caption.push(delta),
-      onToolStart: (_id, name) => { if (name === "web_search") activity(turn, "searching"); },
+      // The provider's own web search brings outside content into the turn just like ours.
+      onToolStart: (_id, name) => { if (name === "web_search") { turn.tainted = true; activity(turn, "searching"); } },
     });
     const result = await call().catch(async (err: unknown) => {
       // The bot's own model is unreachable: finish this turn on the backup model, if one is set.
@@ -310,6 +346,7 @@ async function modelLoop(turn: Turn) {
       return call().catch((again: unknown) => { stream.finish(); throw again; });
     });
     record(turn.user.id, bot.id, result.model, result.usage);
+    if (result.sources?.length) { turn.tainted = true; for (const src of result.sources) { const h = hostOf(src.url); if (h) turn.hosts.add(h); } }
     const said = stream.finish(result.sources);
     if (said) { turn.spoke = true; turn.lastText = said; }
     history.append(bot.id, turn.generation, { role: "assistant", content: result.content });
@@ -406,7 +443,32 @@ export class StreamingRow {
 }
 
 // ── Tool execution, permissions, approvals ───────────────────────────────────
-export type Verdict = { kind: "allow" } | { kind: "block" } | { kind: "ask"; policyKey: string; title: string; reason: string; source: string };
+export type Verdict = { kind: "allow" } | { kind: "block" } | { kind: "ask"; policyKey: string; title: string; reason: string; source: string; /** Extra line for the card, under the arguments. */ note?: string };
+
+/** After outside content, these carry what the bot read further — to the public, to later turns, to other bots — so they ask first. */
+const CARRIES_FURTHER: Record<string, string> = {
+  page_publish: "publish a page", routine_create: "set up a routine", routine_update: "change a routine", skill_save: "save a skill",
+  memory_save: "save a memory", bot_message: "message another bot", helper_start: "start a helper", helper_message: "message a helper", room_post: "post in a group chat",
+};
+
+/**
+ * What a turn that read outside content must ask about before doing, under which permission key. The page,
+ * search result or app it read may be trying to steer it: to send data to an address of its choosing, or to
+ * plant instructions where the bot or its teammates will find them later. Null: nothing extra to ask.
+ */
+function taintGuard(turn: Turn, call: ToolUseBlock): { key: string; title: string; reason: string } | null {
+  const loc = turn.user.locale;
+  const bot = turn.bot.name;
+  if (call.name === "web_fetch" || call.name === "browser_open") {
+    const host = hostOf(call.input.url);
+    if (!host || turn.hosts.has(host)) return null;
+    return { key: `web: ${host}`, title: tr(loc, "{bot} has read outside content. Allow it to open {host}?", { bot, host }), reason: tr(loc, "open {host}", { host }) };
+  }
+  if (call.name === "conversation_search")
+    return call.input.scope === "everyone" ? { key: "conversation_search: everyone", title: tr(loc, "{bot} has read outside content. Allow it to search every bot's conversations?", { bot }), reason: tr(loc, "search every bot's conversations") } : null;
+  const action = CARRIES_FURTHER[call.name];
+  return action ? { key: call.name, title: tr(loc, "{bot} has read outside content (a page, a search, an app). Allow it to {action}?", { bot, action: tr(loc, action) }), reason: tr(loc, action) } : null;
+}
 
 export function judge(turn: Turn, call: ToolUseBlock): Verdict {
   const { bot, user } = turn;
@@ -415,17 +477,28 @@ export function judge(turn: Turn, call: ToolUseBlock): Verdict {
   if (!builtin && !remote) return { kind: "allow" }; // unknown tools fail on their own with a clear error
   const loc = user.locale;
   // Some tools decide per call what they need permission for (e.g. one saved login, not all of them).
-  const gate = builtin?.gate?.(call.input);
+  const gate = builtin?.gate?.(call.input, { botId: bot.id });
   if (gate) {
     const p = policies.get(user.id, gate.key);
     if (p === "blocked") return { kind: "block" };
     if (p === "always_allow") return { kind: "allow" };
     const vars = { ...gate.vars, ...(gate.vars.field ? { field: tr(loc, gate.vars.field) } : {}) };
-    return { kind: "ask", policyKey: gate.key, title: tr(loc, gate.title, { bot: bot.name, ...vars }), reason: tr(loc, gate.reason, vars), source: tr(loc, gate.source) };
+    return { kind: "ask", policyKey: gate.key, title: tr(loc, gate.title, { bot: bot.name, ...vars }), reason: tr(loc, gate.reason, vars), source: tr(loc, gate.source), note: gate.note ? tr(loc, gate.note, vars) : undefined };
   }
   const key = builtin ? call.name : `${remote!.connectorName}: ${remote!.remoteName}`;
   const policy = policies.get(user.id, key);
   if (policy === "blocked") return { kind: "block" };
+  // A command on the server itself (no container): always asked, whatever the bot's trust or an earlier "always".
+  if (call.name === "shell_run" && builtin && shellOnHost())
+    return { kind: "ask", policyKey: key, title: tr(loc, "Allow {bot} to run a command on the server itself?", { bot: bot.name }), reason: tr(loc, "run a command"), source: tr(loc, "This server") };
+  if (builtin && turn.tainted) {
+    const guard = taintGuard(turn, call);
+    if (guard) {
+      const p = policies.get(user.id, guard.key);
+      if (p === "blocked") return { kind: "block" };
+      if (p !== "always_allow") return { kind: "ask", policyKey: guard.key, title: guard.title, reason: guard.reason, source: tr(loc, "Outside content") };
+    }
+  }
   if (policy === "always_allow") return { kind: "allow" };
   const action = remote?.remoteName.replace(/[_-]+/g, " ") ?? "";
   const ask: Verdict = builtin
@@ -436,6 +509,8 @@ export function judge(turn: Turn, call: ToolUseBlock): Verdict {
   // After reading outside content, a trusted bot is treated as a balanced one: what it read may be trying to steer it.
   return remote!.readOnly || (bot.autonomy === "trusted" && !turn.tainted) ? { kind: "allow" } : ask;
 }
+
+const cardDetail = (call: ToolUseBlock, verdict: Extract<Verdict, { kind: "ask" }>) => clip([describeArgs(call.input), verdict.note ?? ""].filter(Boolean).join("\n\n"), 1600);
 
 export function describeArgs(input: Record<string, unknown>): string {
   const lines = Object.entries(input).filter(([, v]) => v === null || typeof v !== "object").slice(0, 6).map(([k, v]) => `${k}: ${clip(String(v), 160)}`);
@@ -461,7 +536,7 @@ export async function execute(turn: Turn, call: ToolUseBlock): Promise<ToolOutpu
     const problem = validateToolInput(builtin.spec, call.input);
     if (problem) return { content: `Invalid arguments: ${problem}.`, isError: true, summary: "invalid arguments" };
     activity(turn, builtin.activity, builtin.detail?.(call.input));
-    return builtin.run(call.input, { bot: turn.bot, user: turn.user, depth: turn.depth, signal: turn.signal });
+    return builtin.run(call.input, { bot: turn.bot, user: turn.user, depth: turn.depth, signal: turn.signal, tainted: turn.tainted });
   }
   const remote = turn.remote.get(call.name);
   if (remote) {
@@ -499,11 +574,12 @@ async function processCalls(turn: Turn, st: PausedTurn): Promise<"continue" | "e
     decided = null;
     if (verdict.kind === "ask") {
       const approvalId = newId("apr");
-      const card = rows.append(bot, { kind: "card", card: { type: "approval", approvalId, title: verdict.title, detail: describeArgs(call.input), tool: verdict.policyKey, source: verdict.source, status: "pending" } });
+      const card = rows.append(bot, { kind: "card", card: { type: "approval", approvalId, title: verdict.title, detail: cardDetail(call, verdict), tool: verdict.policyKey, source: verdict.source, status: "pending" } });
       approvals.create(bot.id, user.id, st.generation, card.seq, verdict.policyKey, approvalId);
       setStep(turn, st, call, "waiting");
       st.approvalId = approvalId;
       st.tainted = turn.tainted;
+      st.hosts = [...turn.hosts];
       paused.set(bot.id, st);
       tell({ type: "waiting", bot, text: verdict.title });
       setLive(user.id, bot.id, { running: false, activity: { kind: "waiting", since: Date.now() }, awaiting: { reason: verdict.reason, since: Date.now() } });
@@ -551,6 +627,9 @@ export function afterTool(turn: Turn, call: ToolUseBlock, out: ToolOutput): Tool
     audit(turn.user.id, "tool", `${turn.bot.name} : ${what}${out.summary ? ` — ${out.summary}` : ""}${out.isError ? ` (${tr(loc, "failed")})` : ""}`, turn.bot.id);
   }
   if (call.name === "ask_user" && !out.isError) tell({ type: "waiting", bot: turn.bot, text: [String(call.input.question ?? ""), ...(Array.isArray(call.input.options) ? call.input.options.map((o, i) => `${i + 1}. ${o}`) : [])].join("\n") });
+  // Hosts read in this turn: going back to them later in the turn needs no new permission.
+  if ((call.name === "web_fetch" || call.name === "browser_open") && !out.isError) { const h = hostOf(call.input.url); if (h) turn.hosts.add(h); }
+  if (call.name === "search_web" && !out.isError && typeof out.content === "string") for (const m of out.content.matchAll(/https?:\/\/\S+/g)) { const h = hostOf(m[0]); if (h) turn.hosts.add(h); }
   if (!(builtin?.outside || remote) || out.isError) return out;
   turn.tainted = true;
   const parts = typeof out.content === "string" ? [text(out.content)] : out.content;
@@ -612,7 +691,7 @@ const waiters = new Map<string, (status: string) => void>();
 export async function waitForApproval(turn: Turn, call: ToolUseBlock, verdict: Extract<Verdict, { kind: "ask" }>): Promise<"allowed" | "always" | "denied" | "expired"> {
   const { bot, user } = turn;
   const approvalId = newId("apr");
-  const card = rows.append(bot, { kind: "card", card: { type: "approval", approvalId, title: verdict.title, detail: describeArgs(call.input), tool: verdict.policyKey, source: verdict.source, status: "pending" } });
+  const card = rows.append(bot, { kind: "card", card: { type: "approval", approvalId, title: verdict.title, detail: cardDetail(call, verdict), tool: verdict.policyKey, source: verdict.source, status: "pending" } });
   approvals.create(bot.id, user.id, bot.generation, card.seq, verdict.policyKey, approvalId);
   setLive(user.id, bot.id, { running: false, activity: { kind: "waiting", since: Date.now() }, awaiting: { reason: verdict.reason, since: Date.now() } });
   emit(user.id, { type: "tasks", botId: bot.id });

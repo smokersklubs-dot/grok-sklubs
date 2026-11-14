@@ -41,8 +41,21 @@ export const config = {
   openSignup: flag("OPEN_SIGNUP"),
   /** When set, only these addresses may create an account (comma-separated). */
   allowedEmails: (process.env.ALLOWED_EMAILS ?? "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean),
+  /**
+   * One-time setup code (written by deploy/install.sh as SKLUBOT_SETUP_CODE): while no account exists, the
+   * first sign-up must give it, so a stranger who finds a fresh install cannot claim it. Empty = not needed.
+   */
+  setupCode: (process.env.SETUP_CODE ?? process.env.SKLUBOT_SETUP_CODE ?? "").trim(),
+  /** Behind our own reverse proxy (Caddy, Traefik): the client address is the last entry it adds to X-Forwarded-For. */
+  trustProxy: flag("TRUST_PROXY"),
   schedulerOff: flag("NO_SCHEDULER"),
+  /** Commands in the bots' own Linux computers: on unless SHELL_ENABLED=0. */
   shellEnabled: flag("SHELL_ENABLED", true),
+  /**
+   * Without a container runtime a command would run on this server itself. That is only offered when
+   * SHELL_ENABLED=1 is set explicitly, and then every command asks the user first.
+   */
+  hostShell: process.env.SHELL_ENABLED === "1" || process.env.SHELL_ENABLED === "true",
   maxSteps: num("MAX_STEPS", 60),
   maxDesktops: num("MAX_DESKTOPS", 4),
   desktopIdleMin: num("DESKTOP_IDLE_MIN", 20),
