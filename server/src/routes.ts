@@ -216,7 +216,7 @@ api.get("/bots", (c) => {
 api.post("/bots", async (c) => {
   const b = await body(c);
   if (!String(b.name ?? "").trim()) fail(400, "Give the bot a name.");
-  const bot = bots.create(c.get("user").id, { name: b.name, label: b.label, description: b.description, instructions: b.instructions, shape: b.shape, color: b.color, mode: b.mode, primary: !!b.primary });
+  const bot = bots.create(c.get("user").id, { name: b.name, label: b.label, description: b.description, instructions: b.instructions, shape: b.shape, color: b.color, mode: b.mode, primary: !!b.primary, character: b.character });
   emit(bot.userId, { type: "roster" });
   return c.json({ bot: publicBot(bot) });
 });
@@ -519,7 +519,7 @@ api.get("/export/team", (c) => {
   const user = c.get("user");
   const team = bots.list(user.id).filter((b) => b.kind === "agent").map((b) => ({
     name: b.name, label: b.label, description: b.description, instructions: b.instructions, shape: b.shape, color: b.color, mode: b.mode,
-    effort: b.effort, model: b.model, autonomy: b.autonomy, disabledTools: b.disabledTools,
+    effort: b.effort, model: b.model, autonomy: b.autonomy, disabledTools: b.disabledTools, character: b.character,
     skills: skills.list(b.id).map((s) => ({ name: s.name, description: s.description, body: s.body })),
     routines: routines.forBot(b.id).filter((r) => r.trigger === "cron").map((r) => ({ name: r.name, prompt: r.prompt, schedule: r.schedule, timezone: r.timezone })),
   }));
@@ -536,6 +536,7 @@ api.post("/import/team", async (c) => {
     // Imported bots start careful, whatever the file says: a shared file must not hand out trust.
     const bot = bots.create(user.id, { name: t.name, label: t.label, description: t.description, instructions: t.instructions, shape: t.shape, color: t.color, mode: t.mode, effort: t.effort, autonomy: "careful" });
     if (Array.isArray(t.disabledTools)) bots.patch(bot.id, { disabledTools: t.disabledTools });
+    if (t.character) bots.patch(bot.id, { character: t.character });
     for (const s of Array.isArray(t.skills) ? t.skills.slice(0, 50) : [])
       if (s && typeof s.name === "string" && typeof s.body === "string" && s.name.trim() && s.body.trim()) skills.create(bot.id, s.name.trim().slice(0, 80), String(s.description ?? "").slice(0, 300), s.body.slice(0, 20_000));
     for (const r of Array.isArray(t.routines) ? t.routines.slice(0, 20) : [])

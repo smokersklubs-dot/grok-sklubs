@@ -5,7 +5,7 @@ import { tr } from "./i18n.js";
 import type { ChatMessage } from "./llm/types.js";
 import {
   AVATAR_COLORS, AVATAR_SHAPES,
-  TOOL_GROUPS, type AuditEntry, type Bot, type Card, type CheckinSettings, type Locale, type Memory, type SearchHit, type SharedPage, type VaultItem, type Policy, type Row, type RowBody, type Skill, type Task, type User,
+  ACCESSORIES, DEFAULT_CHARACTER, EYE_STYLES, IDLE_MOTIONS, TOOL_GROUPS, type AuditEntry, type Character, type Bot, type Card, type CheckinSettings, type Locale, type Memory, type SearchHit, type SharedPage, type VaultItem, type Policy, type Row, type RowBody, type Skill, type Task, type User,
 } from "./shared.js";
 
 export const now = () => Date.now();
@@ -60,6 +60,7 @@ function toBot(r: any): BotRecord {
     id: r.id, userId: r.user_id, kind: r.kind, name: r.name, label: r.label, description: r.description,
     instructions: r.instructions, shape: r.shape, color: r.color, mode: r.mode, primary: !!r.is_primary,
     effort: r.effort, model: r.model, autonomy: r.autonomy, voice, generation: r.generation, unread: r.unread,
+    character: cleanCharacter(JSON.parse(r.character || "{}")),
     roomRule: r.room_rule === "everyone" || r.room_rule === "mentions" ? r.room_rule : "lead",
     disabledTools: JSON.parse(r.disabled_tools || "[]"), telegram: r.telegram_username ?? null,
     telegramTokenEnc: r.telegram_token_enc ?? null, telegramChatId: r.telegram_chat_id ?? null, telegramCode: r.telegram_code ?? null, telegramOffset: r.telegram_offset ?? 0,
@@ -73,6 +74,20 @@ function toBot(r: any): BotRecord {
 export function publicBot(b: BotRecord): Bot {
   const { userId, hidden, parentId, nextSeq, rev, updatedAt, telegramTokenEnc, telegramChatId, telegramCode, telegramOffset, ...rest } = b;
   return rest;
+}
+
+/** Keeps only known values; anything missing or invalid falls back to the default. */
+export function cleanCharacter(raw: unknown, base: Character = DEFAULT_CHARACTER): Character {
+  const c = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const pick = <T extends string>(v: unknown, list: readonly T[], fallback: T) => (list.includes(v as T) ? (v as T) : fallback);
+  const bool = (v: unknown, fallback: boolean) => (typeof v === "boolean" ? v : fallback);
+  const n = Number(c.intensity);
+  return {
+    eyes: pick(c.eyes, EYE_STYLES, base.eyes), mouth: bool(c.mouth, base.mouth), cheeks: bool(c.cheeks, base.cheeks),
+    accessory: pick(c.accessory, ACCESSORIES, base.accessory), idle: pick(c.idle, IDLE_MOTIONS, base.idle),
+    intensity: Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : base.intensity,
+    followCursor: bool(c.followCursor, base.followCursor), blink: bool(c.blink, base.blink),
+  };
 }
 
 function stablePick<T>(seed: string, options: readonly T[]): T {
@@ -116,6 +131,7 @@ export const bots = {
       ENUMS.autonomy.includes(input.autonomy ?? "") ? input.autonomy! : "careful",
       input.hidden ? 1 : 0, input.parentId ?? null, JSON.stringify(input.memberIds ?? []), t, t,
     );
+    if (input.character) bots.patch(id, { character: input.character });
     if (input.primary) bots.makePrimary(userId, id);
     return bots.byId(id)!;
   },
@@ -141,6 +157,11 @@ export const bots = {
         rate: Number.isFinite(rate) ? Math.min(1.5, Math.max(0.7, rate)) : 1,
         lang: typeof v.lang === "string" ? v.lang.slice(0, 20) : "auto",
       }));
+    }
+    if (patch.character && typeof patch.character === "object") {
+      const cur = q.get<{ character: string }>("SELECT character FROM bots WHERE id = ?", id);
+      sets.push("character = ?");
+      vals.push(JSON.stringify(cleanCharacter(patch.character, cleanCharacter(JSON.parse(cur?.character || "{}")))));
     }
     if (Array.isArray(patch.memberIds)) { sets.push("members = ?"); vals.push(JSON.stringify(patch.memberIds)); }
     if (patch.roomRule === "lead" || patch.roomRule === "everyone" || patch.roomRule === "mentions") { sets.push("room_rule = ?"); vals.push(patch.roomRule); }

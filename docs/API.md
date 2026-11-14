@@ -160,3 +160,9 @@ These need the bot's Linux computer: the tool runs there, signed in on that comp
 Notes:
 - `UsageSummary.subscriptions`: last known share used of the 5-hour and 7-day windows (Claude reports them; Codex does not, so its values are null). Turns on a subscription cost 0 in the usage table; their tokens are still counted.
 - Approvals still apply: when a subscription bot calls a tool that needs the user's OK, the approval card appears as usual and the bot waits (up to 25 minutes).
+
+## Additions (fifth wave: animated characters)
+
+- `Bot.character` (`Character`, see shared.ts): eye style, mouth, cheeks, accessory, idle motion, intensity (0–1), follow-cursor, blink. Always complete (defaults filled in).
+- `POST /bots` and `PATCH /bots/:id` accept `character` (partial objects are merged; unknown values are ignored).
+- Team export/import carries `character`.

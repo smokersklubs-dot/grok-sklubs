@@ -104,6 +104,7 @@ function CREATE_EXTRA() {
   const has = (table: string, column: string) => (db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).some((c) => c.name === column);
   if (!has("users", "locale")) db.exec("ALTER TABLE users ADD COLUMN locale TEXT NOT NULL DEFAULT 'en'");
   const add = (table: string, column: string, decl: string) => { if (!has(table, column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${decl}`); };
+  add("bots", "character", "TEXT NOT NULL DEFAULT '{}'");
   add("bots", "room_rule", "TEXT NOT NULL DEFAULT 'lead'");
   add("bots", "disabled_tools", "TEXT NOT NULL DEFAULT '[]'");
   add("bots", "telegram_token_enc", "TEXT");

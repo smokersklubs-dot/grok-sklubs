@@ -14,6 +14,24 @@ export type ToolGroup = (typeof TOOL_GROUPS)[number];
 /** Who answers a message nobody is mentioned in: the first member, every member, or nobody. */
 export type RoomRule = "lead" | "everyone" | "mentions";
 
+/** How a bot's animated character looks and moves. Every field has a default; old bots get them all. */
+export const EYE_STYLES = ["round", "oval", "wide", "dot", "sleepy", "visor"] as const;
+export const ACCESSORIES = ["none", "antenna", "sprout", "bow", "headset", "cap", "halo"] as const;
+export const IDLE_MOTIONS = ["breathe", "float", "sway", "bounce", "still"] as const;
+export interface Character {
+  eyes: (typeof EYE_STYLES)[number];
+  mouth: boolean;
+  cheeks: boolean;
+  accessory: (typeof ACCESSORIES)[number];
+  idle: (typeof IDLE_MOTIONS)[number];
+  /** 0 = barely moves, 1 = lively. */
+  intensity: number;
+  /** Eyes follow the mouse pointer. */
+  followCursor: boolean;
+  blink: boolean;
+}
+export const DEFAULT_CHARACTER: Character = { eyes: "round", mouth: true, cheeks: false, accessory: "none", idle: "breathe", intensity: 0.6, followCursor: true, blink: true };
+
 export type Effort = "low" | "medium" | "high" | "xhigh";
 export type BotMode = "personal" | "teammate";
 /** How a bot handles actions that change things: ask every time, ask only for connector writes, or never ask. */
@@ -41,6 +59,7 @@ export interface Bot {
   model: string;
   autonomy: Autonomy;
   voice: { name: string; rate: number; lang: string };
+  character: Character;
   /** Rooms only. */
   roomRule: RoomRule;
   /** Tool families this bot may not use. */
