@@ -89,6 +89,13 @@ export interface Bot {
   sectionId: string | null;
   /** Hidden from the sidebar by the user (still works; listed under "Hidden"). */
   listHidden: boolean;
+  /**
+   * Backup models for this bot, tried in order when its own model fails ("provider:model" refs). null: the account's
+   * list (Settings → Models) is used.
+   */
+  fallbackModels: string[] | null;
+  /** The bot that created this one with bot_create (null: created by the user). */
+  createdBy: string | null;
   generation: number;
   unread: number;
   memberIds: string[];
@@ -134,8 +141,13 @@ export type RowBody =
   | { kind: "step"; callId: string; tool: string; label: string; status: "running" | "done" | "error" | "waiting" | "denied"; args: Record<string, unknown>; summary?: string }
   | { kind: "card"; card: Card }
   /** `relay`: something happened on one of the user's own computers (Sklubot Relais): a control session started or ended, Stop was pressed, a request was refused there. */
-  | { kind: "event"; event: "routine" | "task" | "bot" | "reset" | "computer" | "call" | "members" | "cheer" | "relay"; text: string; call?: CallRecord; gem?: Gem; tone?: "info" | "warn" }
-  | { kind: "notice"; tone: "info" | "warn" | "error"; text: string };
+  /**
+   * `progress`: a short interim update the bot posted during long work (progress_update); a light line, not its reply.
+   * `selfupdate`: the bot changed its own settings (self_update); `undo` offers to put them back.
+   */
+  | { kind: "event"; event: "routine" | "task" | "bot" | "reset" | "computer" | "call" | "members" | "cheer" | "relay" | "progress" | "selfupdate"; text: string; call?: CallRecord; gem?: Gem; tone?: "info" | "warn"; undo?: { revisionId: string; status: "available" | "undone" } }
+  /** `action`: a button under the notice. "continue": the bot stopped at its step limit and can pick the work back up. */
+  | { kind: "notice"; tone: "info" | "warn" | "error"; text: string; action?: { kind: "continue"; status: "pending" | "done" } };
 
 export type Card =
   /** `once`: "Always" is not offered (e.g. a command on the user's own computer after outside content); choosing it anyway counts as allowing once. */
@@ -160,7 +172,28 @@ export interface CallRecord { id: string; phase: "started" | "ended"; durationMs
 export interface Row { botId: string; generation: number; seq: number; rev: number; createdAt: number; body: RowBody; thread?: number }
 
 export interface Memory { id: string; botId: string; text: string; source: "chat" | "learned"; createdAt: number }
-export interface Skill { id: string; botId: string; name: string; description: string; body: string; createdAt: number; updatedAt: number }
+/** `shared`: every bot of the user can read and follow it (it shows in their skill index). */
+export interface Skill { id: string; botId: string; name: string; description: string; body: string; shared: boolean; createdAt: number; updatedAt: number }
+/** A skill a bot can use: one of its own, or one another bot of the same user shared. */
+export interface SkillRef { id: string; name: string; description: string; botId: string; botName: string; own: boolean; shared: boolean }
+
+/**
+ * Facts about the user that every bot knows (injected into each bot's prompt). Edited in Settings → Profile, or by a
+ * bot with profile_update (asked first once it has read outside content).
+ */
+export interface Profile { name: string; timezone: string; company: string; preferences: string; updatedAt: number | null }
+
+/**
+ * How turns survive a failing model. `fallbackModels`: the account's backup models, tried in order (a bot can override
+ * the list). `maxRetries`: new tries of the same model on a passing error (rate limit, overload, 5xx, network) before
+ * the next model. `maxContinuations`: automatic continuations of a reply cut off by the output limit.
+ * `envFallbacks`: backups set by the server's admin (FALLBACK_MODELS), used when the account sets none.
+ */
+export interface ReliabilitySettings { fallbackModels: string[]; maxRetries: number; maxContinuations: number; envFallbacks: string[] }
+export const RELIABILITY_LIMITS = { maxRetries: 6, maxContinuations: 5, fallbackModels: 5 } as const;
+
+/** Which official API x_search uses: the X API v2 recent search (X_BEARER_TOKEN), xAI's x_search tool (XAI_API_KEY), or none. */
+export type XSearchProvider = "x" | "xai" | null;
 export interface Task { id: string; botId: string; title: string; state: "working" | "needs_input" | "done"; note: string; createdAt: number; updatedAt: number }
 
 /** Routine triggers fed by a built-in app account (see NativeAccount). */
@@ -414,4 +447,6 @@ export type ServerEvent =
   /** Vault items changed (a secret saved from a card, an import…). */
   | { type: "vault" }
   /** The user's linked computers or their live state changed (connection, session, Stop, a question on screen). */
-  | { type: "relay"; devices: RelayDevice[] };
+  | { type: "relay"; devices: RelayDevice[] }
+  /** The shared profile changed (from Settings or a bot's profile_update). */
+  | { type: "profile" };

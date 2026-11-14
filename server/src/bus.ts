@@ -37,3 +37,8 @@ export function clearLive(userId: string, botId: string) {
   live.delete(botId);
   emit(userId, { type: "live", botId, live: idle() });
 }
+
+/** Every bot with a live state right now (running, or waiting on the user). */
+export function liveEntries(): [string, Live][] {
+  return [...live.entries()];
+}

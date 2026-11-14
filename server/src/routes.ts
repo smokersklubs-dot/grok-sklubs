@@ -4,7 +4,11 @@ import { Readable } from "node:stream";
 import { Hono, type Context } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { streamSSE } from "hono/streaming";
-import { decideApproval, enqueue, inQueue, interrupt, noteHandBack, submitUserMessage } from "./agent/loop.js";
+import { continueAfterStepLimit, decideApproval, enqueue, inQueue, interrupt, noteHandBack, submitUserMessage, type ForcedSkill } from "./agent/loop.js";
+import { cleanProfile, fetchSkillMarkdown, saveImportedSkill, undoRevision } from "./agent/tools-team.js";
+import { xSearchProvider } from "./xsearch.js";
+import { cleanModelList } from "./store.js";
+import { RELIABILITY_LIMITS, type RowBody } from "./shared.js";
 import { ask, compactIfNeeded, consolidate, memoryStatus } from "./agent/memory.js";
 import { telegram } from "./telegram.js";
 import { engineLogin, engineLogout, engineModels, engineStatus } from "./agent/engine.js";
@@ -466,9 +470,68 @@ api.post("/bots/:id/messages", async (c) => {
   const thread = threadParent(bot, b.thread);
   const row = rows.append(bot, { kind: "message", role: "user", text, origin: voice ? { kind: "voice", id: "", name: "Voice" } : undefined, attachments: attachments.length ? attachments : undefined }, thread);
   if (bot.kind === "room") dispatchToRoom(bot, c.get("user"), text, null, 0, false, thread);
-  else { relayUserSpoke(bot.id); submitUserMessage(bot, text, voice, attachments, undefined, thread); }
+  else { relayUserSpoke(bot.id); submitUserMessage(bot, text, voice, attachments, undefined, thread, skillCommand(bot, text)); }
   return c.json({ row });
 });
+
+/**
+ * "/skill <name> …" at the start of a message: the bot is told to follow that skill (its own, or one a teammate shared).
+ * The longest skill name that the text starts with wins, so names with spaces work. The chat shows the text as typed.
+ */
+export function skillCommand(bot: BotRecord, text: string): ForcedSkill | undefined {
+  const m = /^\/skill\s+([\s\S]+)$/i.exec(text.trim());
+  if (!m) return undefined;
+  const rest = m[1].toLowerCase();
+  const found = skills.available(bot.id).filter((k) => rest === k.name.toLowerCase() || rest.startsWith(k.name.toLowerCase() + " ") || rest.startsWith(k.name.toLowerCase() + "\n")).sort((a, b) => b.name.length - a.name.length)[0];
+  if (found) return { name: found.name, body: found.body, from: found.own ? undefined : found.botName };
+  // An unknown name still reaches the bot, which says so instead of guessing.
+  return { name: m[1].split(/\s/)[0], body: "(There is no skill by this name: tell the user, and list the skills you do have.)" };
+}
+
+/** "Continue" under a notice that says the bot stopped at its step limit. */
+api.post("/bots/:id/rows/:seq/continue", (c) => {
+  const bot = ownAgent(c);
+  if (!continueAfterStepLimit(bot, Number(c.req.param("seq")))) fail(409, "There is nothing to continue here.");
+  return c.json({ ok: true });
+});
+
+/** "Undo" under a line saying the bot changed its own settings (self_update). */
+api.post("/bots/:id/rows/:seq/undo", (c) => {
+  const bot = ownAgent(c);
+  const row = rows.get(bot.id, bot.generation, Number(c.req.param("seq")));
+  if (!row || row.body.kind !== "event" || !row.body.undo || row.body.undo.status !== "available") fail(409, "There is nothing to undo here.");
+  const ev = row!.body as Extract<RowBody, { kind: "event" }>;
+  if (!undoRevision(bot, ev.undo!.revisionId)) fail(409, "That change was already undone.");
+  rows.rewrite(bot, row!.generation, row!.seq, { ...ev, undo: { revisionId: ev.undo!.revisionId, status: "undone" } });
+  return c.json({ bot: publicBot(bots.byId(bot.id)!) });
+});
+
+// ── Reliability (backup models, retries, continuations) and the shared profile ──
+const reliabilityOf = (userId: string) => ({ ...settings.reliability(userId), envFallbacks: config.fallbackModels });
+api.get("/reliability", (c) => c.json(reliabilityOf(c.get("user").id)));
+api.put("/reliability", async (c) => {
+  const b = await body(c);
+  const int = (v: unknown, max: number) => (v === undefined ? undefined : Number.isInteger(v) && (v as number) >= 0 && (v as number) <= max ? (v as number) : fail(400, `Pick a number from 0 to ${max}.`));
+  if (b.fallbackModels !== undefined && !Array.isArray(b.fallbackModels)) fail(400, "fallbackModels must be a list.");
+  settings.saveReliability(c.get("user").id, {
+    ...(b.fallbackModels !== undefined ? { fallbackModels: cleanModelList(b.fallbackModels) } : {}),
+    ...(b.maxRetries !== undefined ? { maxRetries: int(b.maxRetries, RELIABILITY_LIMITS.maxRetries) } : {}),
+    ...(b.maxContinuations !== undefined ? { maxContinuations: int(b.maxContinuations, RELIABILITY_LIMITS.maxContinuations) } : {}),
+  });
+  return c.json(reliabilityOf(c.get("user").id));
+});
+api.get("/profile", (c) => c.json({ profile: settings.profile(c.get("user").id) }));
+api.put("/profile", async (c) => {
+  const r = cleanProfile(await body(c));
+  if ("error" in r) fail(400, r.error);
+  const user = c.get("user");
+  const profile = settings.saveProfile(user.id, "fields" in r ? r.fields : {});
+  audit(user.id, "account", "Shared profile updated");
+  emit(user.id, { type: "profile" });
+  return c.json({ profile });
+});
+/** Which official API x_search uses here, if any. */
+api.get("/x-search", (c) => c.json({ provider: xSearchProvider() }));
 
 api.post("/bots/:id/uploads", async (c) => {
   const bot = ownAgent(c);
@@ -598,12 +661,26 @@ function skillFields(b: Record<string, any>, base?: { name: string; description:
 
 api.post("/bots/:id/skills", async (c) => {
   const bot = ownAgent(c);
-  const f = skillFields(await body(c));
-  return c.json({ skill: skills.create(bot.id, f.name, f.description, f.body) });
+  const b = await body(c);
+  const f = skillFields(b);
+  return c.json({ skill: skills.create(bot.id, f.name, f.description, f.body, b.shared === true) });
 });
 api.patch("/skills/:id", async (c) => {
   const cur = skills.owned(c.get("user").id, c.req.param("id")) ?? fail(404, "That skill does not exist.");
-  return c.json({ skill: skills.update(cur.id, skillFields(await body(c), cur)) });
+  const b = await body(c);
+  return c.json({ skill: skills.update(cur.id, { ...skillFields(b, cur), shared: typeof b.shared === "boolean" ? b.shared : undefined }) });
+});
+/** Skills a bot can follow: its own and those its teammates shared (for "/skill" in the composer). */
+api.get("/bots/:id/skills/available", (c) => c.json({ skills: skills.refs(ownAgent(c).id) }));
+/** The user imports a skill from a public markdown file (their own action: no card). */
+api.post("/bots/:id/skills/import", async (c) => {
+  const bot = ownAgent(c);
+  const b = await body(c);
+  let parsed;
+  try { parsed = await fetchSkillMarkdown(String(b.url ?? ""), AbortSignal.timeout(25_000)); } catch (err) { fail(400, (err as Error).message); }
+  const { skill, replaced } = saveImportedSkill(bot, parsed!, String(b.name ?? ""), b.shared === true);
+  audit(bot.userId, "account", `Skill imported for ${bot.name}: ${skill.name}`, bot.id);
+  return c.json({ skill, replaced });
 });
 api.delete("/skills/:id", (c) => {
   const cur = skills.owned(c.get("user").id, c.req.param("id")) ?? fail(404, "That skill does not exist.");

@@ -6,7 +6,7 @@ import { tr } from "./i18n.js";
 import type { ChatMessage } from "./llm/types.js";
 import {
   AVATAR_COLORS, AVATAR_SHAPES,
-  ACCESSORIES, CHARACTER_TYPES, DEFAULT_CHARACTER, EYE_STYLES, IDLE_MOTIONS, TOOL_GROUPS, type AuditEntry, type Character, type Bot, type Card, type CheckinSettings, type Locale, type Memory, type SearchHit, type SharedPage, type VaultItem, type VaultKind, type BotSection, type Policy, type Reaction, type Row, type RowBody, type Skill, type Task, type User,
+  ACCESSORIES, CHARACTER_TYPES, DEFAULT_CHARACTER, EYE_STYLES, IDLE_MOTIONS, TOOL_GROUPS, type AuditEntry, type Character, type Bot, type Card, type CheckinSettings, type Locale, type Memory, type SearchHit, type SharedPage, type VaultItem, type VaultKind, type BotSection, type Policy, type Reaction, type Row, type RowBody, type Skill, type SkillRef, type Task, type User, type Profile, type ReliabilitySettings, RELIABILITY_LIMITS,
 } from "./shared.js";
 
 export const now = () => Date.now();
@@ -67,6 +67,7 @@ function toBot(r: any): BotRecord {
     roomRule: r.room_rule === "everyone" || r.room_rule === "mentions" ? r.room_rule : "lead",
     disabledTools: JSON.parse(r.disabled_tools || "[]"), telegram: r.telegram_username ?? null,
     pinned: !!r.pinned, sectionId: r.section_id ?? null, listHidden: !!r.list_hidden,
+    fallbackModels: r.fallback_models ? cleanModelList(safeJson(r.fallback_models)) : null, createdBy: r.created_by ?? null,
     telegramTokenEnc: r.telegram_token_enc ?? null, telegramChatId: r.telegram_chat_id ?? null, telegramCode: r.telegram_code ?? null, telegramOffset: r.telegram_offset ?? 0,
     memberIds: JSON.parse(r.members || "[]"), hidden: !!r.hidden, parentId: r.parent_id, nextSeq: r.next_seq, rev: r.rev,
     preview: last ? clip(previewOf(JSON.parse(last.body), users.localeOf(r.user_id)).replace(/\s+/g, " "), 140) : "",
@@ -96,6 +97,23 @@ export function cleanCharacter(raw: unknown, base: Character = DEFAULT_CHARACTER
     euphoria: bool(c.euphoria, base.euphoria), shout: bool(c.shout, base.shout),
     gemThreshold: Number.isFinite(Number(c.gemThreshold)) && c.gemThreshold !== null && c.gemThreshold !== "" ? Math.min(98, Math.max(60, Math.round(Number(c.gemThreshold)))) : base.gemThreshold ?? 85,
   };
+}
+
+const safeJson = (s: string): unknown => { try { return JSON.parse(s); } catch { return null; } };
+/** A model reference as the pickers write it: "provider:model" (or a bare model name), no spaces. */
+const MODEL_REF = /^[A-Za-z0-9._-]+(:[A-Za-z0-9._:/@+-]+)?$/;
+/** Keeps valid, distinct model references, in order, at most RELIABILITY_LIMITS.fallbackModels. */
+export function cleanModelList(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  const out: string[] = [];
+  for (const v of raw) {
+    if (typeof v !== "string") continue;
+    const ref = v.trim();
+    if (!ref || ref.length > 120 || !MODEL_REF.test(ref) || out.includes(ref)) continue;
+    out.push(ref);
+    if (out.length >= RELIABILITY_LIMITS.fallbackModels) break;
+  }
+  return out;
 }
 
 function stablePick<T>(seed: string, options: readonly T[]): T {
@@ -140,6 +158,7 @@ export const bots = {
       input.hidden ? 1 : 0, input.parentId ?? null, JSON.stringify(input.memberIds ?? []), t, t,
     );
     if (input.character) bots.patch(id, { character: input.character });
+    if (input.createdBy) q.run("UPDATE bots SET created_by = ? WHERE id = ?", input.createdBy, id);
     if (input.primary) bots.makePrimary(userId, id);
     return bots.byId(id)!;
   },
@@ -189,6 +208,9 @@ export const bots = {
       const ok = typeof patch.sectionId === "string" && !!owner && !!q.get("SELECT 1 FROM bot_sections WHERE id = ? AND user_id = ?", patch.sectionId, owner);
       sets.push("section_id = ?"); vals.push(ok ? (patch.sectionId as string) : null);
     }
+    // A bot's own backup models: a list (possibly empty: no backup), or null to follow the account's list.
+    if (patch.fallbackModels === null) { sets.push("fallback_models = ?"); vals.push(null); }
+    else if (Array.isArray(patch.fallbackModels)) { sets.push("fallback_models = ?"); vals.push(JSON.stringify(cleanModelList(patch.fallbackModels))); }
     if (Array.isArray(patch.disabledTools)) { sets.push("disabled_tools = ?"); vals.push(JSON.stringify(patch.disabledTools.filter((g) => (TOOL_GROUPS as readonly string[]).includes(g as string)))); }
     if (!sets.length) return;
     q.run(`UPDATE bots SET ${sets.join(", ")}, updated_at = ? WHERE id = ?`, ...vals, now(), id);
@@ -217,7 +239,7 @@ export const bots = {
       name: (opts.name ?? "").trim() || clip(`${src.name} (copy)`, 60), label: src.label, description: src.description, instructions: src.instructions,
       shape: src.shape, color: src.color, mode: src.mode, effort: src.effort, model: src.model, autonomy: src.autonomy, character: src.character,
     });
-    bots.patch(copy.id, { voice: src.voice, disabledTools: src.disabledTools, pinned: src.pinned, sectionId: src.sectionId });
+    bots.patch(copy.id, { voice: src.voice, disabledTools: src.disabledTools, pinned: src.pinned, sectionId: src.sectionId, fallbackModels: src.fallbackModels });
     q.tx(() => {
       for (const k of skills.list(src.id)) skills.create(copy.id, k.name, k.description, k.body);
       if (opts.memories) for (const m of [...memories.list(src.id, 5000)].reverse()) memories.add(copy.id, m.text, m.source);
@@ -232,6 +254,8 @@ export const bots = {
     return bots.byId(copy.id)!;
   },
   bumpUnread(id: string) { q.run("UPDATE bots SET unread = unread + 1 WHERE id = ?", id); },
+  /** How many bots this user's bots created (bot_create) since `since`, for the daily limit. */
+  createdByBotsSince: (userId: string, since: number) => q.get<{ n: number }>("SELECT COUNT(*) AS n FROM bots WHERE user_id = ? AND created_by IS NOT NULL AND created_at > ?", userId, since)!.n,
   remove(id: string) { q.run("DELETE FROM bots WHERE id = ? OR parent_id = ?", id, id); },
   resetConversation(id: string): number {
     q.run("UPDATE bots SET generation = generation + 1, next_seq = 1, unread = 0, updated_at = ? WHERE id = ?", now(), id);
@@ -412,22 +436,41 @@ export const memories = {
   },
 };
 
-const toSkill = (r: any): Skill => ({ id: r.id, botId: r.bot_id, name: r.name, description: r.description, body: r.body, createdAt: r.created_at, updatedAt: r.updated_at });
+const toSkill = (r: any): Skill => ({ id: r.id, botId: r.bot_id, name: r.name, description: r.description, body: r.body, shared: !!r.shared, createdAt: r.created_at, updatedAt: r.updated_at });
 export const skills = {
   list: (botId: string) => q.all("SELECT * FROM skills WHERE bot_id = ? ORDER BY created_at", botId).map(toSkill),
   owned(userId: string, id: string) {
     const r = q.get("SELECT s.* FROM skills s JOIN bots b ON b.id = s.bot_id WHERE s.id = ? AND b.user_id = ?", id, userId);
     return r ? toSkill(r) : null;
   },
-  create(botId: string, name: string, description: string, body: string): Skill {
+  create(botId: string, name: string, description: string, body: string, shared = false): Skill {
     const id = newId("skl");
     const t = now();
-    q.run("INSERT INTO skills (id, bot_id, name, description, body, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)", id, botId, name, description, body, t, t);
+    q.run("INSERT INTO skills (id, bot_id, name, description, body, shared, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", id, botId, name, description, body, shared ? 1 : 0, t, t);
     return toSkill(q.get("SELECT * FROM skills WHERE id = ?", id));
   },
-  update(id: string, f: { name: string; description: string; body: string }) {
+  update(id: string, f: { name: string; description: string; body: string; shared?: boolean }) {
     q.run("UPDATE skills SET name = ?, description = ?, body = ?, updated_at = ? WHERE id = ?", f.name, f.description, f.body, now(), id);
+    if (typeof f.shared === "boolean") q.run("UPDATE skills SET shared = ? WHERE id = ?", f.shared ? 1 : 0, id);
     return toSkill(q.get("SELECT * FROM skills WHERE id = ?", id));
+  },
+  /** Skills other bots of the same user shared (never this bot's own). */
+  sharedWith(botId: string): (Skill & { botName: string })[] {
+    return q.all("SELECT s.*, b.name AS bot_name FROM skills s JOIN bots b ON b.id = s.bot_id WHERE s.shared = 1 AND s.bot_id != ? AND b.user_id = (SELECT user_id FROM bots WHERE id = ?) ORDER BY s.created_at", botId, botId)
+      .map((r: any) => ({ ...toSkill(r), botName: r.bot_name }));
+  },
+  /** Every skill a bot can follow: its own first, then the ones its teammates shared (an own skill wins on a name clash). */
+  available(botId: string): (Skill & { botName: string; own: boolean })[] {
+    const self = q.get<{ name: string }>("SELECT name FROM bots WHERE id = ?", botId)?.name ?? "";
+    const own = skills.list(botId).map((k) => ({ ...k, botName: self, own: true }));
+    const names = new Set(own.map((k) => k.name.toLowerCase()));
+    return [...own, ...skills.sharedWith(botId).filter((k) => !names.has(k.name.toLowerCase())).map((k) => ({ ...k, own: false }))];
+  },
+  refs: (botId: string): SkillRef[] => skills.available(botId).map((k) => ({ id: k.id, name: k.name, description: k.description, botId: k.botId, botName: k.botName, own: k.own, shared: k.shared })),
+  /** The skill a bot means by `name` (case-insensitive): its own, else a shared one. */
+  find(botId: string, name: string) {
+    const want = name.trim().toLowerCase();
+    return skills.available(botId).find((k) => k.name.toLowerCase() === want) ?? null;
   },
   remove: (id: string) => q.run("DELETE FROM skills WHERE id = ?", id),
 };
@@ -461,6 +504,8 @@ export const approvals = {
   byId: (id: string) => { const r = q.get("SELECT * FROM approvals WHERE id = ?", id); return r ? toApproval(r) : null; },
   resolve: (id: string, status: string) => q.run("UPDATE approvals SET status = ?, resolved_at = ? WHERE id = ?", status, now(), id),
   pendingForUser: (userId: string) => q.all("SELECT * FROM approvals WHERE user_id = ? AND status = 'pending'", userId).map(toApproval),
+  /** Approvals still waiting that were asked before `before` (for the stuck-work reminder). */
+  pendingBefore: (before: number) => q.all("SELECT * FROM approvals WHERE status = 'pending' AND created_at < ?", before).map(toApproval),
 };
 
 export const policies = {
@@ -495,6 +540,28 @@ export const settings = {
   },
   budgetWarned: (userId: string) => q.get<{ budget_warned: string }>("SELECT budget_warned FROM settings WHERE user_id = ?", userId)?.budget_warned ?? "",
   setBudgetWarned: (userId: string, month: string) => q.run("UPDATE settings SET budget_warned = ? WHERE user_id = ?", month, userId),
+  reliability(userId: string): Omit<ReliabilitySettings, "envFallbacks"> {
+    const raw = (safeJson(q.get<{ reliability: string }>("SELECT reliability FROM settings WHERE user_id = ?", userId)?.reliability ?? "{}") ?? {}) as Record<string, unknown>;
+    const int = (v: unknown, max: number, fallback: number) => (Number.isInteger(v) ? Math.min(max, Math.max(0, v as number)) : fallback);
+    return { fallbackModels: cleanModelList(raw.fallbackModels), maxRetries: int(raw.maxRetries, RELIABILITY_LIMITS.maxRetries, 3), maxContinuations: int(raw.maxContinuations, RELIABILITY_LIMITS.maxContinuations, 3) };
+  },
+  saveReliability(userId: string, f: Partial<Omit<ReliabilitySettings, "envFallbacks">>) {
+    const cur = settings.reliability(userId);
+    const next = { ...cur, ...f };
+    q.run("INSERT INTO settings (user_id, reliability) VALUES (?, ?) ON CONFLICT(user_id) DO UPDATE SET reliability = excluded.reliability", userId, JSON.stringify(next));
+    return settings.reliability(userId);
+  },
+  profile(userId: string): Profile {
+    const raw = (safeJson(q.get<{ profile: string }>("SELECT profile FROM settings WHERE user_id = ?", userId)?.profile ?? "{}") ?? {}) as Record<string, unknown>;
+    const s = (v: unknown) => (typeof v === "string" ? v : "");
+    return { name: s(raw.name), timezone: s(raw.timezone), company: s(raw.company), preferences: s(raw.preferences), updatedAt: typeof raw.updatedAt === "number" ? raw.updatedAt : null };
+  },
+  /** Merges the given fields (already checked by the caller) into the profile. */
+  saveProfile(userId: string, f: Partial<Omit<Profile, "updatedAt">>): Profile {
+    const next = { ...settings.profile(userId), ...f, updatedAt: now() };
+    q.run("INSERT INTO settings (user_id, profile) VALUES (?, ?) ON CONFLICT(user_id) DO UPDATE SET profile = excluded.profile", userId, JSON.stringify(next));
+    return settings.profile(userId);
+  },
   budget: (userId: string) => q.get<{ budget_usd: number | null }>("SELECT budget_usd FROM settings WHERE user_id = ?", userId)?.budget_usd ?? null,
   setBudget: (userId: string, usd: number | null) =>
     q.run("INSERT INTO settings (user_id, budget_usd) VALUES (?, ?) ON CONFLICT(user_id) DO UPDATE SET budget_usd = excluded.budget_usd", userId, usd),
@@ -638,6 +705,25 @@ export const activeTurns = {
   acted: (botId: string) => q.run("UPDATE active_turns SET acted = 1 WHERE bot_id = ?", botId),
   end: (botId: string) => q.run("DELETE FROM active_turns WHERE bot_id = ?", botId),
   leftover: () => q.all<{ bot_id: string; acted: number }>("SELECT bot_id, acted FROM active_turns"),
+};
+
+// ── A bot's changes to its own settings (self_update), for undo ─────────────
+export interface RevisionRecord { id: string; botId: string; before: Record<string, unknown>; after: Record<string, unknown>; createdAt: number; undoneAt: number | null }
+const toRevision = (r: any): RevisionRecord => ({ id: r.id, botId: r.bot_id, before: JSON.parse(r.before), after: JSON.parse(r.after), createdAt: r.created_at, undoneAt: r.undone_at ?? null });
+export const revisions = {
+  create(botId: string, before: Record<string, unknown>, after: Record<string, unknown>): RevisionRecord {
+    const id = newId("rev");
+    q.run("INSERT INTO bot_revisions (id, bot_id, before, after, created_at) VALUES (?, ?, ?, ?, ?)", id, botId, JSON.stringify(before), JSON.stringify(after), now());
+    return revisions.byId(id)!;
+  },
+  byId: (id: string) => { const r = q.get("SELECT * FROM bot_revisions WHERE id = ?", id); return r ? toRevision(r) : null; },
+  markUndone: (id: string) => q.run("UPDATE bot_revisions SET undone_at = ? WHERE id = ?", now(), id),
+};
+
+// ── Reminders already sent for work left waiting ─────────────────────────────
+export const stuckReminders = {
+  /** Records the reminder; false when it was already sent (so each piece of waiting work is reminded once). */
+  claim: (botId: string, key: string) => Number(q.run("INSERT OR IGNORE INTO stuck_reminders (bot_id, key, at) VALUES (?, ?, ?)", botId, key, now()).changes) > 0,
 };
 
 export const randomToken = (bytes = 32) => randomBytes(bytes).toString("base64url");

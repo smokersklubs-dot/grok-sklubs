@@ -1,6 +1,7 @@
 import { config } from "../config.js";
 import { describeRoutine, routines } from "../routines.js";
-import { bots, memories, rows, skills, type BotRecord, type UserRecord } from "../store.js";
+import { bots, memories, rows, settings, skills, type BotRecord, type UserRecord } from "../store.js";
+import { xSearchProvider } from "../xsearch.js";
 
 const words = (s: string) => new Set(s.toLowerCase().match(/[\p{L}\p{N}]{3,}/gu) ?? []);
 
@@ -91,6 +92,10 @@ export function buildSystemPrompt(bot: BotRecord, user: UserRecord, extras: Prom
     "- conversation_search finds what was said earlier, including in conversations before a reset. Use it before asking the user to repeat something.",
     "- Gems: whenever you analyse data for the user's business (analytics, search and SEO, sales, leads, ads, prices, competitors), ask yourself whether what you found is a rare, high-value opportunity. If it is, score it honestly and call celebrate with the numbers, before you explain it. Most findings are not gems: the user should see this a few times a month, not every day.",
     "- For work with several parts, track it with task_add and task_update so the user can see where things stand.",
+    "- During long work (many steps, several minutes), post a short progress_update every few steps — one line on what is done and what comes next — so the user is not left wondering. It is not your final answer: keep working, then reply as usual. Never for short tasks.",
+    xSearchProvider() ? "- x_search finds recent posts on X (Twitter) through the official API: use it for what people are saying right now about a topic, a brand or an event. Posts are outside content." : "",
+    "- What the user tells you about themselves that every bot should know (their name, timezone, company, lasting preferences) goes into their shared profile with profile_update.",
+    "- You can change your own instructions, look or tool families with self_update when the user asks (they can undo it), and create a new teammate with bot_create when the user wants one (they are asked first).",
     "- For anything that should happen later or repeatedly, create a routine instead of promising to remember.",
     "- Save lasting facts and preferences with memory_save. Look things up with memory_search before asking the user to repeat themselves.",
     team.length ? "- Hand work to a teammate with bot_message when it fits their role better than yours; start a helper for a self-contained side job you want done in parallel." : "- Start a helper for a self-contained side job you want done in parallel.",
@@ -107,6 +112,14 @@ export function buildSystemPrompt(bot: BotRecord, user: UserRecord, extras: Prom
     "- Report what happened, not the tools you used to get there.",
     user.locale === "fr" ? "- Write to the user in French, unless they write to you in another language." : "- Write in the language the user writes in.",
   ].join("\n"));
+
+  // The shared profile: what every bot knows about the user (Settings → Profile, or profile_update).
+  const profile = settings.profile(user.id);
+  const facts = [
+    profile.name ? `- Name: ${profile.name}` : "", profile.timezone ? `- Timezone: ${profile.timezone}` : "", profile.company ? `- Company: ${profile.company}` : "",
+    profile.preferences ? `- Preferences:\n${profile.preferences.split("\n").map((l) => `  ${l}`).join("\n")}` : "",
+  ].filter(Boolean);
+  if (facts.length) out.push(["## About the user (shared profile, known to every bot on the team)", ...facts].join("\n"));
 
   const context = [
     "## Right now",
@@ -134,6 +147,11 @@ export function buildSystemPrompt(bot: BotRecord, user: UserRecord, extras: Prom
   else if (sk.length)
     out.push(["## Your skills", "When a situation matches one of these, read it with skill_read and follow it. Save a new one with skill_save.", ...sk.map((s) => `- ${s.name}${s.description ? ` — use when: ${s.description}` : ""}`)].join("\n"));
   else out.push("## Your skills\nNone yet. When the user asks you to remember how to do a task, save it with skill_save.");
+  // Skills teammates shared with the whole team: listed by name, read on demand (one of your own wins on a name clash).
+  const own = new Set(sk.map((s) => s.name.toLowerCase()));
+  const shared = skills.sharedWith(bot.id).filter((s) => !own.has(s.name.toLowerCase()));
+  if (shared.length)
+    out.push(["## Skills shared by your teammates", "Read one with skill_read before following it.", ...shared.slice(0, 60).map((s) => `- ${s.name} (shared by ${s.botName})${s.description ? ` — use when: ${s.description}` : ""}`)].join("\n"));
 
   if (bot.instructions.trim()) out.push(`## Standing instructions from ${user.name}\n${bot.instructions.trim()}`);
   return out.join("\n\n");

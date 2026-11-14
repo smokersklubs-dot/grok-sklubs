@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { api, errText } from "../api";
 import { t, useT } from "../i18n";
 import { useStore, type Upload } from "../store";
-import type { Bot, Live, Row } from "../types";
+import type { Bot, Live, Row, SkillRef } from "../types";
 import { botTitle, fileSize } from "../lib/format";
 import { endCall, startCall } from "../lib/call";
 import { canCall, canRecognize, createRecognition, micErrorText, recognitionLang, type Recognition } from "../lib/speech";
@@ -112,6 +112,30 @@ function UploadChip({ upload, onRemove }: { upload: Upload; onRemove: () => void
   );
 }
 
+/**
+ * "/skill <name>" at the start of a message makes the bot follow that skill. While the draft looks like that command,
+ * the skills it can use (its own and those its teammates shared) are offered; picking one fills in the name.
+ */
+function useSkillCommand(botId: string, draft: string, enabled: boolean) {
+  const [skills, setSkills] = useState<SkillRef[] | null>(null);
+  const [active, setActive] = useState(0);
+  const m = /^\/(s|sk|ski|skil|skill)(?:\s+(.*))?$/i.exec(draft);
+  const open = enabled && !!m && !draft.includes("\n");
+  useEffect(() => { setSkills(null); }, [botId]);
+  useEffect(() => {
+    if (!open || skills) return;
+    let dead = false;
+    api<{ skills: SkillRef[] }>("GET", `/bots/${botId}/skills/available`).then((r) => !dead && setSkills(r.skills), () => !dead && setSkills([]));
+    return () => { dead = true; };
+  }, [open, skills, botId]);
+  const typed = (m?.[2] ?? "").toLowerCase();
+  const matches = open && skills ? skills.filter((k) => !typed || k.name.toLowerCase().includes(typed) || typed.startsWith(k.name.toLowerCase())).slice(0, 8) : [];
+  // Once the full name is typed (and more after it), the list steps aside.
+  const done = matches.some((k) => typed.startsWith(k.name.toLowerCase() + " "));
+  useEffect(() => { setActive(0); }, [typed]);
+  return { open: open && !done, loading: open && !skills, matches, active, setActive };
+}
+
 export function Composer({ bot, live }: { bot: Bot; live: Live }) {
   const draft = useStore((s) => s.drafts[bot.id] ?? "");
   const uploads = useStore((s) => s.uploads[bot.id]) ?? NO_UPLOADS;
@@ -153,6 +177,11 @@ export function Composer({ bot, live }: { bot: Bot; live: Live }) {
   );
 
   const dictation = useDictation(recognitionLang(bot.voice), insertAtCaret, setError);
+  const skillCmd = useSkillCommand(bot.id, draft, bot.kind === "agent");
+  const pickSkill = (name: string) => {
+    setDraft(bot.id, `/skill ${name} `);
+    requestAnimationFrame(() => { const el = area.current; if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } });
+  };
   useEscape(dictation.cancel, dictation.state === "recording");
 
   // Auto-grow up to a limit, then scroll.
@@ -299,6 +328,21 @@ export function Composer({ bot, live }: { bot: Bot; live: Live }) {
           ))}
         </ul>
       )}
+      {skillCmd.open && (
+        <div className="skill-picker" role="listbox" aria-label={t("composer.skills")}>
+          <div className="skill-picker-head"><Icon name="book" size={13} /> {t("composer.skillsHint")}</div>
+          {skillCmd.loading && <div className="skill-picker-empty">{t("common.loading")}</div>}
+          {!skillCmd.loading && skillCmd.matches.length === 0 && <div className="skill-picker-empty">{t("composer.noSkills")}</div>}
+          {skillCmd.matches.map((k, i) => (
+            <button key={k.id} type="button" role="option" aria-selected={i === skillCmd.active} className={`skill-picker-item ${i === skillCmd.active ? "is-active" : ""}`}
+              onMouseEnter={() => skillCmd.setActive(i)} onMouseDown={(e) => e.preventDefault()} onClick={() => pickSkill(k.name)}>
+              <span className="skill-picker-name">{k.name}</span>
+              {!k.own && <span className="pill is-shared">{t("skill.sharedBy", { name: k.botName })}</span>}
+              {k.description && <span className="skill-picker-desc">{k.description}</span>}
+            </button>
+          ))}
+        </div>
+      )}
       <div className="composer">
         <div className="menu-wrap">
           <button type="button" className="icon-btn composer-plus" aria-label={t("composer.more")} title={t("composer.more")} aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu((v) => !v)}>
@@ -356,11 +400,26 @@ export function Composer({ bot, live }: { bot: Bot; live: Live }) {
             addFiles(files);
           }}
           onKeyDown={(e) => {
+            if (skillCmd.open && skillCmd.matches.length) {
+              if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+                e.preventDefault();
+                const n = skillCmd.matches.length;
+                skillCmd.setActive((skillCmd.active + (e.key === "ArrowDown" ? 1 : n - 1)) % n);
+                return;
+              }
+              if ((e.key === "Enter" && !e.shiftKey) || e.key === "Tab") {
+                e.preventDefault();
+                pickSkill(skillCmd.matches[skillCmd.active]?.name ?? skillCmd.matches[0].name);
+                return;
+              }
+            }
             if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
               e.preventDefault();
               void send();
             }
           }}
+          aria-autocomplete="list"
+          aria-expanded={skillCmd.open}
         />
         <button
           type="button"

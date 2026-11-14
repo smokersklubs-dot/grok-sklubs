@@ -3,13 +3,14 @@ import { api, errText } from "../api";
 import { tn, useT } from "../i18n";
 import { useStore, type BotSettingsTab } from "../store";
 import { DEFAULT_CHARACTER, TOOL_GROUPS } from "../types";
-import type { Autonomy, AvatarColor, AvatarShape, Bot, BotBundle, Character as CharacterLook, BotMode, Effort, Memory, ModelOption, NativeTrigger, RoomRule, Routine, RoutineRun, Skill, TelegramStatus, ToolGroup } from "../types";
+import type { Autonomy, AvatarColor, AvatarShape, Bot, BotBundle, Character as CharacterLook, BotMode, Effort, Memory, ModelOption, NativeTrigger, RoomRule, Routine, RoutineRun, Skill, SkillRef, TelegramStatus, ToolGroup } from "../types";
 import { useNative } from "./NativeApps";
 import { dateTime, nextRunLabel, relTime, shortDate } from "../lib/format";
 import { BotAvatar } from "./Avatar";
 import { Character } from "./Character";
 import { CharacterEditor } from "./CharacterEditor";
 import { BrainPicker } from "./Brain";
+import { BotFallbacks } from "./Reliability";
 import { routineWhen, TriggerChip } from "./DetailsPanel";
 import { Icon, Spinner } from "./Icon";
 import { MODE_IDS } from "./Modals";
@@ -188,6 +189,7 @@ function General({ bot, onClose }: { bot: Bot; onClose: () => void }) {
             <p className="field-hint">{t("bot.instructionsHint")}</p>
           </div>
           <BrainPicker bot={bot} value={form.model} onChange={(ref) => set("model", ref)} models={models} />
+          <BotFallbacks botId={bot.id} value={bot.fallbackModels ?? null} ownModel={form.model || models?.defaultRef || ""} />
           <div className="field">
             <span className="field-label">{t("bot.thinking")}</span>
             <ChoiceList label={t("bot.thinking")} value={form.effort} options={efforts} onChange={(v) => set("effort", v)} />
@@ -375,23 +377,108 @@ function SkillEditor({ botId, skill, onDone }: { botId: string; skill: Skill | n
   );
 }
 
+/** Import a skill from a public markdown file (the user's own action, so no approval card). */
+function SkillImport({ bot, onDone }: { bot: Bot; onDone: () => void }) {
+  const t = useT();
+  const loadBundle = useStore((s) => s.loadBundle);
+  const showToast = useStore((s) => s.showToast);
+  const [url, setUrl] = useState("");
+  const [shared, setShared] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await api<{ skill: Skill; replaced: boolean }>("POST", `/bots/${bot.id}/skills/import`, { url: url.trim(), shared });
+      await loadBundle(bot.id);
+      showToast(t(r.replaced ? "skill.importReplaced" : "skill.imported", { name: r.skill.name }));
+      onDone();
+    } catch (err) {
+      setError(errText(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <form className="editor skill-import" onSubmit={submit}>
+      <div className="field">
+        <label className="field-label" htmlFor={`imp-${bot.id}`}>{t("skill.importUrl")}</label>
+        <input id={`imp-${bot.id}`} className="input" type="url" required value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://raw.githubusercontent.com/…/skill.md" autoFocus />
+        <p className="field-hint">{t("skill.importHint")}</p>
+      </div>
+      <label className="check-row"><input type="checkbox" checked={shared} onChange={(e) => setShared(e.target.checked)} /> <span>{t("skill.shareWithTeam")}</span></label>
+      <ErrorNote onDismiss={() => setError(null)}>{error}</ErrorNote>
+      <div className="row-end">
+        <button type="button" className="btn btn-small" onClick={onDone}>{t("common.cancel")}</button>
+        <button type="submit" className="btn btn-primary btn-small" disabled={busy || !url.trim()}>{t(busy ? "common.working" : "skill.import")}</button>
+      </div>
+    </form>
+  );
+}
+
+/** Skills other bots shared with the whole team (read-only here). */
+function TeamSkills({ bot, tick }: { bot: Bot; tick: unknown }) {
+  const t = useT();
+  const [list, setList] = useState<SkillRef[] | null>(null);
+  useEffect(() => {
+    let dead = false;
+    api<{ skills: SkillRef[] }>("GET", `/bots/${bot.id}/skills/available`).then((r) => !dead && setList(r.skills.filter((k) => !k.own)), () => !dead && setList([]));
+    return () => { dead = true; };
+  }, [bot.id, tick]);
+  if (!list?.length) return null;
+  return (
+    <>
+      <h3 className="pane-heading">{t("skill.teamHeading")}</h3>
+      <p className="muted small">{t("skill.teamHint", { name: bot.name })}</p>
+      <ul className="list">
+        {list.map((k) => (
+          <li key={k.id} className="list-row is-card">
+            <div className="list-row-text">
+              <span className="list-row-title">{k.name} <span className="pill is-shared">{t("skill.sharedBy", { name: k.botName })}</span></span>
+              {k.description && <span className="list-row-sub">{k.description}</span>}
+            </div>
+          </li>
+        ))}
+      </ul>
+    </>
+  );
+}
+
 function Skills({ bot, bundle }: { bot: Bot; bundle: BotBundle | undefined }) {
   const loadBundle = useStore((s) => s.loadBundle);
   const showToast = useStore((s) => s.showToast);
   const t = useT();
-  const [editing, setEditing] = useState<Skill | "new" | null>(null);
+  const [editing, setEditing] = useState<Skill | "new" | "import" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const skills = bundle?.skills;
+  const share = async (s: Skill, on: boolean) => {
+    setError(null);
+    try {
+      await api("PATCH", `/skills/${s.id}`, { shared: on });
+      await loadBundle(bot.id);
+      showToast(t(on ? "skill.nowShared" : "skill.nowPrivate", { name: s.name }));
+    } catch (e) {
+      setError(errText(e));
+    }
+  };
   return (
     <div className="settings-pane">
       <div className="pane-intro">
         <p className="muted">{t("skill.intro", { name: bot.name })}</p>
         {editing === null && (
-          <button type="button" className="btn btn-small" onClick={() => setEditing("new")}>
-            <Icon name="plus" size={14} /> {t("skill.new")}
-          </button>
+          <div className="pane-intro-actions">
+            <button type="button" className="btn btn-small" onClick={() => setEditing("import")}>
+              <Icon name="download" size={14} /> {t("skill.importButton")}
+            </button>
+            <button type="button" className="btn btn-small" onClick={() => setEditing("new")}>
+              <Icon name="plus" size={14} /> {t("skill.new")}
+            </button>
+          </div>
         )}
       </div>
+      {editing === "import" && <SkillImport bot={bot} onDone={() => setEditing(null)} />}
       {editing === "new" && <SkillEditor botId={bot.id} skill={null} onDone={() => setEditing(null)} />}
       {!skills && <Loading />}
       {skills && skills.length === 0 && editing === null && <Empty icon="book" title={t("skill.emptyTitle")}>{t("skill.emptyText", { name: bot.name })}</Empty>}
@@ -399,16 +486,20 @@ function Skills({ bot, bundle }: { bot: Bot; bundle: BotBundle | undefined }) {
       {skills && skills.length > 0 && (
         <ul className="list">
           {skills.map((s) =>
-            editing !== "new" && editing?.id === s.id ? (
+            editing !== "new" && editing !== "import" && editing?.id === s.id ? (
               <li key={s.id}>
                 <SkillEditor botId={bot.id} skill={s} onDone={() => setEditing(null)} />
               </li>
             ) : (
               <li key={s.id} className="list-row is-card">
                 <div className="list-row-text">
-                  <span className="list-row-title">{s.name}</span>
+                  <span className="list-row-title">{s.name}{s.shared && <span className="pill is-shared">{t("skill.shared")}</span>}</span>
                   <span className="list-row-sub">{s.description || s.body.split("\n").find((l) => l.trim()) || ""}</span>
                 </div>
+                <span className="skill-share">
+                  <span className="muted small">{t("skill.shareShort")}</span>
+                  <Toggle checked={s.shared} label={t("skill.shareWithTeam")} onChange={(on) => void share(s, on)} />
+                </span>
                 <IconButton icon="edit" size={16} label={t("skill.edit", { name: s.name })} onClick={() => setEditing(s)} />
                 <ConfirmButton
                   className="btn btn-small btn-ghost-danger"
@@ -438,6 +529,7 @@ function Skills({ bot, bundle }: { bot: Bot; bundle: BotBundle | undefined }) {
           )}
         </ul>
       )}
+      <TeamSkills bot={bot} tick={bundle} />
     </div>
   );
 }

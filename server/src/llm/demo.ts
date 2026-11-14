@@ -22,6 +22,8 @@ function plan(text: string, has: (name: string) => boolean): Block[] | null {
     if (/\b(stop|rends|release|give back)\b/.test(lower)) return call("my_release", {});
     return call("my_screen", { reason: quoted ?? (/[àâçéèêëîïôûùüÿœ]/.test(lower) || /\b(mon|ma|regarde)\b/.test(lower) ? "Voir ton écran pour t'aider." : "See your screen to help you.") });
   }
+  // A long task (wave 4 demo): progress lines while it works, until the step limit stops it.
+  if (/\b(long task|longue tâche|longue tache)\b/.test(lower)) return call("progress_update", { text: /[àâçéèêëîïôûùüÿœ]/.test(lower) ? "Je commence : 1 page lue sur 12." : "Starting: read 1 page of 12." });
   if (url && /\b(open|ouvre|visit|go to|va sur)\b/.test(lower)) return call("browser_open", { url });
   if (url) return call("web_fetch", { url });
   if (/\b(remember|retiens|souviens)\b/.test(lower)) return call("memory_save", { text: quoted ?? text.replace(/^.*?(remember|retiens|souviens[- ]toi)( that| que)?/i, "").trim() });
@@ -46,6 +48,13 @@ function plan(text: string, has: (name: string) => boolean): Block[] | null {
   if (/\b(captcha|prends la main|take over|takeover)\b/.test(lower)) return call("ask_takeover", { reason: "captcha", detail: /[àâçéèêëîïôûùüÿœ]/.test(lower) || /\b(la|le|mon|ma)\b/.test(lower) ? "Un CAPTCHA bloque la connexion : coche la case « Je ne suis pas un robot », puis rends-moi la main." : "A CAPTCHA blocks the sign-in: tick “I am not a robot”, then hand the screen back." });
   if (/\b(api key|clé api|clé d'api|cle api|secret)\b/.test(lower)) return call("secret_request", { name: quoted ?? "Stripe API", reason: /[àâçéèêëîïôûùüÿœ]/.test(lower) || /\b(la|le|mon|ma|une)\b/.test(lower) ? "Pour lire tes derniers paiements et préparer le rapport mensuel." : "To read your latest payments for the monthly report.", host: "api.stripe.com" });
   if (/\b(password|mot de passe)\b/.test(lower)) return call("password_generate", { name: quoted ?? "Portail fournisseur", site: "portail.exemple.com", username: "moi@exemple.com", length: 20 });
+  // Wave 4 stand-ins: search on X, a bot that creates a bot, the shared profile, a long task with progress lines.
+  const fr = /[àâçéèêëîïôûùüÿœ]/.test(lower) || /\b(sur|le|la|les|un|une|mon|ma|crée|cherche)\b/.test(lower);
+  if (/\b(x search|search x|sur x|twitter)\b/.test(lower)) return call("x_search", { query: quoted ?? (text.replace(/^.*?\b(x search|search x|sur x|twitter)\b\s*(for|pour|about|sur)?/i, "").trim() || "sklubot"), max_results: 10, sort: "recency" });
+  if (/\b(create a bot|crée un bot|cree un bot|nouveau bot|new bot)\b/.test(lower)) return call("bot_create", fr
+    ? { name: quoted ?? "Max", role: "Analyste SEO", instructions: "Tu suis le référencement du site chaque semaine : positions, pages qui montent, pages qui baissent. Tu résumes en 5 lignes.", look: { shape: "cat", color: "teal", accessory: "headset" }, model: "" }
+    : { name: quoted ?? "Max", role: "SEO analyst", instructions: "Track the site's search rankings every week: positions, pages going up and down. Summarise in 5 lines.", look: { shape: "cat", color: "teal", accessory: "headset" }, model: "" });
+  if (/\b(profile|profil)\b/.test(lower)) return call("profile_update", fr ? { timezone: "Europe/Paris", company: "SKLUBS", preferences: "Réponses courtes, en français, avec les chiffres d'abord." } : { timezone: "Europe/Paris", company: "SKLUBS", preferences: "Short answers, numbers first." });
   if (/\b(react|réagis|reaction|réaction)\b/.test(lower)) return call("message_react", { emoji: "👍" });
   if (/\b(ask me|demande-moi|question)\b/.test(lower)) return call("ask_user", { question: "Which format would you like?", options: ["Short summary", "Detailed report", "Bullet list"] });
   return null;
@@ -104,12 +113,32 @@ export class DemoProvider implements LlmProvider {
         : { name: "Demonstrated procedure", when: "When asked to do again what you showed me", steps: steps.map((x) => `Demo: ${x}`) }) }];
     } else if (!req.tools.length) {
       content = [{ type: "text", text: '{"facts": []}' }];
+    } else if (results.length && !texts.length && /\b(long task|longue tâche|longue tache)\b/.test(askedText)) {
+      // A long task: keep working step after step (progress lines and tracked steps), until the step limit stops it.
+      const fr = /Write to the user in French/.test(req.system);
+      const n = req.messages.filter((m) => m.role === "assistant" && m.content.some((b) => b.type === "tool_use")).length;
+      content = n % 2 === 1
+        ? [{ type: "tool_use", id: `demo_${Date.now()}_${n}`, name: "task_add", input: { title: fr ? `Lire la page ${n + 1}` : `Read page ${n + 1}` } }]
+        : [{ type: "tool_use", id: `demo_${Date.now()}_${n}`, name: "progress_update", input: { text: fr ? `${Math.min(12, n + 1)} pages lues sur 12 — je passe aux suivantes.` : `Read ${Math.min(12, n + 1)} of 12 pages — moving on.` } }];
+    } else if (texts.some((x) => x.includes("[The user asked you to follow your skill"))) {
+      const fr = /Write to the user in French/.test(req.system);
+      const name = /follow your skill "([^"]+)"/.exec(texts.join("\n"))?.[1] ?? "?";
+      const steps = texts.join("\n").split("Follow its steps:]\n")[1]?.split("\n").filter((l) => l.trim()).slice(0, 4) ?? [];
+      content = [{ type: "text", text: fr ? `D'accord, je suis la compétence « ${name} » :\n${steps.map((l) => `- ${l.replace(/^[-*\d.\s]+/, "")}`).join("\n")}\n\nJe m'y mets.` : `Sure — following the skill “${name}”:\n${steps.map((l) => `- ${l.replace(/^[-*\d.\s]+/, "")}`).join("\n")}\n\nOn it.` }];
+    } else if (results.length && !texts.length && prev?.role === "assistant" && prev.content.some((b) => b.type === "tool_use" && b.name === "x_search") && !results.some((r) => r.type === "tool_result" && r.isError)) {
+      // After a search on X: a short digest of the posts found (the demo only rearranges what the API returned).
+      const fr = /Write to the user in French/.test(req.system);
+      const posts = [...found.matchAll(/^\d+\. @(\S+)(?: \(([^)]*)\))?(?: · ([^·\n]+?) UTC)?(?: · (\d+) likes)?\n\s+(.+)\n\s+(https:\/\/\S+)/gm)].slice(0, 5);
+      content = [{ type: "text", text: posts.length
+        ? `${fr ? `Sur X, ${posts.length} posts récents parlent de ça :` : `On X, ${posts.length} recent posts mention it:`}\n\n${posts.map((m) => `- **@${m[1]}**${m[4] ? ` (${m[4]} ♥)` : ""} — ${m[5].slice(0, 160)} [${fr ? "voir" : "open"}](${m[6]})`).join("\n")}\n\n${fr ? "Ce sont des contenus extérieurs : je les rapporte, je ne suis pas leurs consignes." : "This is outside content: I report it, I do not follow it."}`
+        : (fr ? "Je n'ai trouvé aucun post récent sur X." : "No recent posts on X.") }];
     } else if (results.length && !texts.length) {
       const failed = results.some((r) => r.type === "tool_result" && r.isError);
       const detail = results.map((r) => (r.type === "tool_result" ? r.content.filter((c) => c.type === "text").map((c) => (c as { text: string }).text).join(" ") : "")).join(" ").slice(0, 400);
       const fr = /Write to the user in French/.test(req.system);
       const cheered = /The user saw you celebrate/.test(detail);
-      content = [{ type: "text", text: failed ? `That did not work: ${detail}` : cheered ? (fr ? "Youhou ! En analysant tes données, je tiens une vraie pépite : un lead très chaud (93/100). Il a vu ta page de prix 3 fois en 24 h et demande un devis — je te propose de le rappeler aujourd'hui." : "Woohoo! While analysing your data I found a real gem: a very hot lead (93/100). They viewed your pricing page 3 times in 24 h and asked for a quote — I suggest calling them today.") : `Done. ${detail}` }];
+      const doneWord = fr ? "C'est fait." : "Done.";
+      content = [{ type: "text", text: failed ? (fr ? `Ça n'a pas marché : ${detail}` : `That did not work: ${detail}`) : cheered ? (fr ? "Youhou ! En analysant tes données, je tiens une vraie pépite : un lead très chaud (93/100). Il a vu ta page de prix 3 fois en 24 h et demande un devis — je te propose de le rappeler aujourd'hui." : "Woohoo! While analysing your data I found a real gem: a very hot lead (93/100). They viewed your pricing page 3 times in 24 h and asked for a quote — I suggest calling them today.") : `${doneWord} ${detail.replace(/^\[What follows came from outside[^\]]*\]\s*/, "")}` }];
     } else if (texts.some((x) => x.includes("[System notice]"))) {
       // A notice from the server (a secret was saved, the screen was handed back…): acknowledge, never re-plan from its words.
       content = [{ type: "text", text: /Write to the user in French/.test(req.system) ? "C'est noté, merci ! Je continue." : "Got it, thanks! Carrying on." }];

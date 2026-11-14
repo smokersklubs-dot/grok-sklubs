@@ -12,9 +12,13 @@ import { useNative } from "./NativeApps";
 import { VaultSection } from "./VaultSection";
 import { DevicesSection } from "./MyComputer";
 import { NotificationsSection } from "./NotificationsSection";
+import { ModelsSection } from "./Reliability";
+import { ProfileSection } from "./ProfileSection";
 
 const SECTIONS: { id: AppSection; icon: IconName }[] = [
   { id: "general", icon: "settings" },
+  { id: "profile", icon: "user" },
+  { id: "models", icon: "brain" },
   { id: "notifications", icon: "bell" },
   { id: "computer", icon: "monitor" },
   { id: "devices", icon: "cursor" },
@@ -1027,6 +1031,8 @@ export function AppSettings({ section }: { section: AppSection }) {
         <IconButton icon="close" label={t("settings.close")} className="app-settings-close" onClick={closeAppSettings} />
         <div className="app-settings-content settings-pane">
           {section === "general" && <GeneralSection />}
+          {section === "profile" && <ProfileSection />}
+          {section === "models" && <ModelsSection />}
           {section === "notifications" && <NotificationsSection />}
           {section === "computer" && <ComputerSection />}
           {section === "devices" && <DevicesSection />}

@@ -6,6 +6,7 @@ import { bots } from "../store.js";
 import type { ToolUseBlock } from "../llm/types.js";
 import { engineTokenValid, engineTurnOf, randomCallId } from "./engine.js";
 import { afterTool, DECLINED, execute, judge, waitForApproval, type Turn } from "./loop.js";
+import { LoopGuard, loopStopText } from "./reliability.js";
 
 /**
  * Sklubot's tools for bots that run on a subscription tool (Claude Code, Codex) inside their computer.
@@ -49,6 +50,9 @@ export async function handleMcp(botId: string, req: IncomingMessage, res: Server
     }
     try {
       const out = afterTool(turn, call, await execute(turn, call));
+      // Going round in circles: the subscription tool runs its own loop, so it is told plainly to stop and report.
+      const why = (turn.guard ??= new LoopGuard()).check(call, out);
+      if (why) return { content: [{ type: "text", text: `Stop now: ${loopStopText(why)}. Doing it again will not help. Tell the user where you are stuck and ask how to go on.` }], isError: true };
       const parts = typeof out.content === "string" ? [{ type: "text" as const, text: out.content }] : out.content.map((p) => (p.type === "text" ? { type: "text" as const, text: p.text } : { type: "image" as const, data: p.data, mimeType: p.mediaType }));
       return { content: parts, isError: !!out.isError };
     } catch (err) {

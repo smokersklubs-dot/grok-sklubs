@@ -20,7 +20,7 @@ Le produit de base (01, 05) est presque complet ; les écarts viennent surtout d
 | 1 (en cours) | Réactions, réponses et fils · vidéo (Higgsfield en priorité, OpenAI/Google en secours) · apprendre une compétence par démonstration |
 | 2 (fait) | ✅ Gmail, Google Agenda, Drive, Outlook, Slack au catalogue · ✅ déclencheurs natifs (e-mail entrant, message Slack, événement à venir) · ✅ plusieurs comptes étiquetés par appli |
 | 3 (fait) | ✅ Notifications push (Web Push) · ✅ le bot demande la prise de main (CAPTCHA, 2FA) et attend · ✅ coffre étendu (clés API en saisie sécurisée, codes TOTP, génération de mot de passe, import CSV) · ✅ épingles, sections, masquer, dupliquer, marquer non lu · ✅ palette de commandes et recherche dans la discussion |
-| 4 | Fiabilité : modèles de secours ordonnés, nouvelles tentatives, reprise après coupure, messages de progression, rappels de travail bloqué, garde anti-boucle plus fine · pages privées/lien et éditions ciblées · bibliothèque de compétences et profil partagés entre bots · un bot qui crée des bots / se met à jour · recherche X |
+| 4 (fait, sauf pages privées) | ✅ Fiabilité : modèles de secours ordonnés, nouvelles tentatives, reprise après coupure, messages de progression, rappels de travail bloqué, garde anti-boucle plus fine · ✅ bibliothèque de compétences et profil partagés entre bots · ✅ un bot qui crée des bots / se met à jour · ✅ recherche X · ⏳ pages privées/lien et éditions ciblées (reportées) |
 | 5 | Mode « Auto » avec relecteur automatique et règles en langage naturel · routines : retard affiché, quotas, surveillance de commandes |
 | 6 | Voix temps réel avec interruption (fournisseur vocal) · e-mail propre au bot · bots partagés entre plusieurs personnes, rôles, administration |
 | 7 | Avec fournisseur externe : appels téléphoniques, réunions, paiements et cartes virtuelles · applis natives iOS / bureau |
@@ -47,6 +47,23 @@ Le produit de base (01, 05) est presque complet ; les écarts viennent surtout d
 | Organiser les bots | Fait — épingler, sections (créer/renommer/supprimer, glisser-déposer ou menu « Déplacer vers »), masquer/afficher (liste « Masqués »), dupliquer (souvenirs et discussion au choix), marquer non lu | `server/src/store.ts` (`sections`, `bots.duplicate`), `web/src/components/Sidebar.tsx`, `DuplicateBotModal.tsx` |
 | Palette de commandes | Fait — Ctrl/Cmd+K ou bouton dans l'en-tête (mobile) : aller à un bot, chercher dans tous les messages, chercher dans la discussion (surlignage + suivant/précédent), commandes (nouveau bot, réglages, thème, ordinateur, chasse aux pépites…) | `web/src/components/CommandPalette.tsx`, `FindBar.tsx` |
 | Tests | `server/test/wave3.test.ts` (faux service push et fausse API locaux, vecteurs RFC 8291 et RFC 6238) | |
+
+## Vague 4 — ce qui est fait
+
+| Élément | État | Où |
+|---|---|---|
+| Modèles de secours ordonnés | Fait — liste du compte (Réglages › Modèles, 5 au plus, réordonnable), liste propre à un bot (réglages du bot › Cerveau) ou `FALLBACK_MODELS` du serveur ; modèles non configurés écartés ; une ligne dans la discussion à chaque changement, la suite du tour reste sur le nouveau modèle | `server/src/agent/reliability.ts` (`modelChain`), `web/src/components/Reliability.tsx` |
+| Nouvelles tentatives | Fait — erreurs passagères (429, 5xx, 529 surchargé, réseau) réessayées avec attente exponentielle + gigue, `Retry-After` respecté (au-delà de 60 s : modèle suivant) ; réponse commencée puis coupée : retirée proprement avant le nouvel essai ; nouvelles tentatives silencieuses du SDK Anthropic désactivées | `server/src/llm/types.ts` (`ProviderError`), `server/src/llm/anthropic.ts`, `openai-compat.ts` |
+| Reprise après coupure | Fait — réponse coupée par la limite de sortie : suite automatique (3 par défaut, réglable) recousue dans le même message ; limite d'étapes : bouton « Continuer » (une fois) ; routine : reprend d'elle-même une fois ; réponse vide : une relance | `server/src/agent/loop.ts` |
+| Messages de progression | Fait — outil `progress_update` (lignes légères, 1 toutes les 20 s au plus, pas comptées comme réponse), encouragé par le prompt pour les longues tâches | `server/src/agent/tools-team.ts`, `web/src/components/Transcript.tsx` |
+| Rappels de travail bloqué | Fait — autorisation en attente, tour en cours ou attente de l'utilisateur > 4 h : un seul rappel (ligne + push) ; autorisations des tours sur abonnement : expirent après 30 min et dès un nouveau message | `server/src/agent/stuck.ts`, `waitForApproval` |
+| Garde anti-boucle plus fine | Fait — même outil en échec 4 fois de suite, ou même résultat 4 fois de suite → arrêt avec explication (tours sur abonnement : « arrête-toi ») | `LoopGuard` |
+| Bibliothèque de compétences partagée | Fait — compétence « partagée » visible de tous les bots (index du prompt, `skill_read`), `/skill nom` dans le champ de saisie (liste de choix), import depuis l'adresse d'un fichier markdown public (outil `skill_import` avec accord à chaque fois, ou import direct par l'utilisateur) | `server/src/store.ts` (`skills.available`), `web/src/components/Composer.tsx`, `BotSettings.tsx` |
+| Profil partagé | Fait — Réglages › Profil (nom, fuseau, entreprise, préférences), outil `profile_update` (accord après contenu extérieur), injecté dans le prompt de chaque bot | `web/src/components/ProfileSection.tsx`, `server/src/agent/prompt.ts` |
+| Un bot crée un bot / se met à jour | Fait — `bot_create` (accord toujours, 3 par jour, démarre « prudent », lien `createdBy`) ; `self_update` (consignes, apparence, familles d'outils ; jamais autonomie, modèle ni nom ; bouton « Annuler » ; accord pour réactiver un outil coupé et après contenu extérieur) | `server/src/agent/tools-team.ts`, table `bot_revisions` |
+| Recherche X | Fait — `x_search` : API X v2 « recent search » avec `X_BEARER_TOKEN` (préférée), sinon outil `x_search` de l'API xAI (Responses) avec `XAI_API_KEY` ; résultats = contenu extérieur | `server/src/xsearch.ts` |
+| Pages privées / éditions ciblées | Reporté à une vague suivante | |
+| Tests | `server/test/wave4.test.ts` (faux modèles en panne/surchargés/coupés/muets, fausse API X, fausse API xAI, faux service push) | |
 
 ## Sklubot Relais (ton propre ordinateur) — ce qui est fait
 

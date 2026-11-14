@@ -231,6 +231,25 @@ function CREATE_EXTRA() {
     token_hash TEXT NOT NULL, pending_hash TEXT, rotated_at INTEGER NOT NULL, created_at INTEGER NOT NULL, last_seen_at INTEGER
   );
   CREATE INDEX IF NOT EXISTS relay_devices_user ON relay_devices(user_id, created_at);`);
+  // Wave 4. Reliability: a bot's own ordered backup models (JSON list; NULL = the account's list), and the account's
+  // reliability settings (JSON: fallbackModels, maxRetries, maxContinuations).
+  add("bots", "fallback_models", "TEXT");
+  add("settings", "reliability", "TEXT NOT NULL DEFAULT '{}'");
+  // Team: the bot that created this bot (bot_create), skills every bot of the user may read, and the shared profile.
+  add("bots", "created_by", "TEXT");
+  add("skills", "shared", "INTEGER NOT NULL DEFAULT 0");
+  add("settings", "profile", "TEXT NOT NULL DEFAULT '{}'");
+  db.exec(`
+  -- A bot's change to its own settings (self_update): what it was before, so the user can undo it.
+  CREATE TABLE IF NOT EXISTS bot_revisions (
+    id TEXT PRIMARY KEY, bot_id TEXT NOT NULL REFERENCES bots(id) ON DELETE CASCADE, before TEXT NOT NULL, after TEXT NOT NULL,
+    created_at INTEGER NOT NULL, undone_at INTEGER
+  );
+  -- Work left waiting (an open approval, a turn still running) that the user was already reminded of: once each.
+  CREATE TABLE IF NOT EXISTS stuck_reminders (
+    bot_id TEXT NOT NULL REFERENCES bots(id) ON DELETE CASCADE, key TEXT NOT NULL, at INTEGER NOT NULL,
+    PRIMARY KEY (bot_id, key)
+  );`);
 }
 
 type Param = string | number | null | bigint;

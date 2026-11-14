@@ -286,8 +286,9 @@ test("takeover: ask_takeover shows a card, pushes, waits until the user hands ba
   assert.equal(card.status, "pending");
   assert.equal(card.reason, "captcha");
   await until(async () => (await call("GET", "/bots")).json.live[bot.id]?.awaiting, "awaiting");
-  await until(() => pushed.length >= 1, "takeover push");
-  assert.match(JSON.parse(decryptPush(pushed[0].body, phone.ecdh.getPrivateKey(), phone.auth)).body, /a besoin de toi sur son écran/);
+  // Reply pushes of the previous turns may still be on their way: look for the takeover one among them.
+  const bodies = () => pushed.filter((p) => p.path === "/push/phone").map((p) => JSON.parse(decryptPush(p.body, phone.ecdh.getPrivateKey(), phone.auth)).body as string);
+  await until(() => bodies().some((b) => /a besoin de toi sur son écran/.test(b)), "takeover push");
   // The turn really waits.
   await new Promise((r) => setTimeout(r, 200));
   assert.equal(lastAssistant(await rowsOf(bot.id))?.body.kind === "message" && /finished and handed/.test((lastAssistant(await rowsOf(bot.id))!.body as any).text), false);

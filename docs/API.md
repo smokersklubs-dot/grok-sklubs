@@ -348,3 +348,54 @@ last screenshot and are scaled to screen points (§6). Actions return a fresh sc
   answered by the server without bothering the computer. `no_session` from the relay: `session.start` (with the bot's
   reason) then the request once more, only when "Always" covers control and the turn is not tainted; otherwise the bot is
   sent back through the approval card.
+
+## Wave 4 — reliability and team
+
+### Turns that hold up (`server/src/agent/reliability.ts`, `modelLoop` in `server/src/agent/loop.ts`)
+- **Model chain.** A turn uses the bot's model, then its backups in order: `Bot.fallbackModels` when set, else the account's list (`/reliability`), else the server's `FALLBACK_MODELS` (comma-separated; the older single `FALLBACK_MODEL` is still read). Subscription engines and models whose provider is not set up are left out. Each switch writes a `notice` line and an activity-log entry; the rest of the turn (and a resumed approval) stays on the new model.
+- **New tries.** Passing errors (`ProviderError.transient`: 408/409/429/5xx, 529 overloaded, network failures) are tried again up to `maxRetries` times with exponential backoff and equal jitter (`RETRY_BASE_MS`, default 1000, doubling, capped at `RETRY_MAX_WAIT_MS`, default 60000). A `Retry-After` (seconds or HTTP date, RFC 9110 §10.2.3) or `retry-after-ms` header is honoured as given; one longer than the cap moves on to the next model at once. The Anthropic SDK's own silent retries are switched off (`maxRetries: 0`) so they do not pile up.
+- **Mid-stream failure.** What the failed call had started to write is taken back (the row becomes a light "interrupted, trying again" notice) before the next try.
+- **Cut by the output limit.** Continued automatically up to `maxContinuations` times; the pieces are written into the same chat message.
+- **Empty reply.** Nudged once (only when the turn has neither spoken nor run a tool), then a notice.
+- **Step limit (`MAX_STEPS`).** The notice carries `action: { kind: "continue" }`; a routine's turn carries on once by itself (`resumeOf: "steps"`).
+- **Anti-loop.** On top of the identical-call limit: the same tool failing `LOOP_FAIL_STREAK` times in a row (default 4), or returning exactly the same result `LOOP_SAME_RESULT` times in a row (default 4), stops the turn with an explanatory notice. Subscription turns get a "stop now" tool error instead.
+- **Stuck work.** Every minute the scheduler (`remindStuck`, `server/src/agent/stuck.ts`) sends one reminder (chat line + push of kind `needs`) for an approval left pending, a turn running, or a bot waiting on the user for more than `STUCK_REMINDER_HOURS` (default 4). Reminders already sent are kept in `stuck_reminders`.
+- **Approvals inside subscription turns** lapse after `APPROVAL_EXPIRE_MIN` (default 30) and at once when the user sends a new message to that bot.
+
+| Method | Path | Body | Returns |
+|---|---|---|---|
+| GET | `/reliability` | – | `ReliabilitySettings` (`fallbackModels`, `maxRetries` 0–6, `maxContinuations` 0–5, `envFallbacks`) |
+| PUT | `/reliability` | any of `fallbackModels: string[]` (at most 5, deduplicated, invalid refs dropped), `maxRetries`, `maxContinuations` | `ReliabilitySettings` (400 out of range) |
+| PATCH | `/bots/:id` | `fallbackModels: string[] \| null` (null: follow the account's list) | `{ bot }` |
+| POST | `/bots/:id/rows/:seq/continue` | – | `{ ok }` — resumes after a step-limit notice, once (409 otherwise) |
+
+Rows: `notice.action = { kind: "continue", status: "pending" \| "done" }`; `event.event = "progress"` (a `progress_update` line, not the reply).
+
+### Team
+| Method | Path | Body | Returns |
+|---|---|---|---|
+| POST | `/bots/:id/skills` | `{ name, description?, body, shared? }` | `{ skill }` — `Skill.shared`: every bot of the user can read it |
+| PATCH | `/skills/:id` | any of `name, description, body, shared` | `{ skill }` |
+| GET | `/bots/:id/skills/available` | – | `{ skills: SkillRef[] }` — its own, then the ones teammates shared (own wins on a name clash) |
+| POST | `/bots/:id/skills/import` | `{ url, name?, shared? }` | `{ skill, replaced }` — a public markdown file (https, 200 kB at most, `guardedFetch`); front matter `name:` / `description:` or the first heading. 400 for a web page or a bad address |
+| GET | `/profile` | – | `{ profile: Profile }` |
+| PUT | `/profile` | any of `name` (80), `timezone` (IANA, checked), `company` (120), `preferences` (2000) | `{ profile }` — emits `{ type: "profile" }` |
+| POST | `/bots/:id/rows/:seq/undo` | – | `{ bot }` — puts back what a `self_update` changed (409 if already undone) |
+| GET | `/x-search` | – | `{ provider: "x" \| "xai" \| null }` |
+
+Messages starting with `/skill <name>` make the bot follow that skill (its own or a shared one; the longest matching name wins): the chat shows the text as typed and the model gets the skill's steps alongside it. `Bot.createdBy` is the bot that created it with `bot_create`.
+
+### New bot tools
+| Tool | What it does | Permission |
+|---|---|---|
+| `progress_update` | A light interim line during long work; at most one per `PROGRESS_GAP_S` (20 s) per bot | none |
+| `profile_update` | Updates the shared profile (injected into every bot's prompt) | asked every time once the turn read outside content |
+| `skill_import` | Imports a skill from a public markdown file | asked every time (strict: "Always" does not skip it) |
+| `skill_save` | gains `shared` | as before (asked after outside content) |
+| `bot_create` | Creates a bot (name, role, instructions, look, model; starts `careful`); `BOT_CREATE_PER_DAY` (3) per user; helpers cannot | always asked (strict after outside content) |
+| `self_update` | Changes its own instructions, look, tool families on/off (never autonomy, model or name); one-click undo | asked when switching a family back on, and after outside content |
+| `x_search` | Recent posts on X (outside content), only offered with a key | none |
+
+### X search — which official API
+- **X API v2 recent search** when `X_BEARER_TOKEN` is set (preferred: the posts themselves, last 7 days): `GET https://api.x.com/2/tweets/search/recent` with `query`, `max_results` (10–100), `sort_order`, `start_time`/`end_time`, `expansions=author_id`, `user.fields=username,name`, `post.fields=created_at,author_id,public_metrics` — https://docs.x.com/x-api/posts/search-recent-posts. Handle filters become `from:` / `-from:` operators. `X_API_BASE_URL` can point elsewhere for tests.
+- **xAI `x_search` tool** when only `XAI_API_KEY` is set: `POST https://api.x.ai/v1/responses` with `tools: [{ type: "x_search", from_date?, to_date?, allowed_x_handles? | excluded_x_handles? }]` and the model `XAI_SEARCH_MODEL` (default `grok-4.7`, the model of xAI's examples); the answer and its `url_citation` annotations / `citations` are returned — https://docs.x.ai/developers/tools/x-search, https://docs.x.ai/developers/tools/citations.

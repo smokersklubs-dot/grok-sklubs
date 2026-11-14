@@ -2,7 +2,7 @@ import { clearLive, emit, getLive, setLive } from "../bus.js";
 import { botPathOf, browserAvailable, computerKind, imageForModel, shellAvailable, shellOnHost } from "../computer.js";
 import { config } from "../config.js";
 import { connectors } from "../connectors.js";
-import { defaultModelRef, resolveModel, validateToolInput, type Block, type ChatMessage, type Effort, type TextBlock, type ToolResultBlock, type ToolSpec, type ToolUseBlock } from "../llm/index.js";
+import { defaultModelRef, ProviderError, resolveModel, validateToolInput, type TurnResult, type Block, type ChatMessage, type Effort, type TextBlock, type ToolResultBlock, type ToolSpec, type ToolUseBlock } from "../llm/index.js";
 import { tr } from "../i18n.js";
 import { imageService } from "../images.js";
 import type { ActivityKind, Attachment, Row } from "../shared.js";
@@ -19,6 +19,10 @@ import { nativeToolsFor, runNativeTool, type Risk } from "../native/tools.js";
 import { accounts as nativeAccounts } from "../native/accounts.js";
 import { appVisible, pushLater } from "../push.js";
 import { devices as relayDevices } from "../relay.js";
+import { backoffDelay, errorDetail, isTransient, LoopGuard, loopStopText, modelChain, sleep, type LoopStop } from "./reliability.js";
+
+/** A skill the user asked for with "/skill <name>" in the composer. */
+export interface ForcedSkill { name: string; body: string; from?: string }
 
 /**
  * What starts a turn. `tainted`: the turn starts out carrying outside content — a webhook's payload, a
@@ -26,10 +30,12 @@ import { devices as relayDevices } from "../relay.js";
  * from its first step, exactly as if it had read that content itself.
  */
 export type Trigger =
-  | { kind: "user"; text: string; voice?: boolean; attachments?: Attachment[]; channel?: "telegram"; thread?: number }
+  /** `skill`: the user typed "/skill <name>": the bot is told to follow that skill, whose steps ride along. */
+  | { kind: "user"; text: string; voice?: boolean; attachments?: Attachment[]; channel?: "telegram"; thread?: number; skill?: ForcedSkill }
   | { kind: "routine"; name: string; text: string; runId?: string; tainted?: boolean }
   | { kind: "bot"; fromName: string; text: string; depth: number; tainted?: boolean }
-  | { kind: "system"; text: string; depth?: number; tainted?: boolean; thread?: number }
+  /** `resumeOf`: "steps" when it picks up work stopped at the step limit (a routine does that once, by itself). */
+  | { kind: "system"; text: string; depth?: number; tainted?: boolean; thread?: number; resumeOf?: "steps" }
   | { kind: "resume" };
 
 /** The thread a trigger belongs to (0: the main chat). */
@@ -105,6 +111,13 @@ export interface Turn {
   appUrls: Set<string>;
   /** The thread this turn answers in (0: the main chat). Its model history is the thread's own. */
   thread: number;
+  /** Tool calls run in this turn (an empty reply after real work is not nudged). */
+  toolsRun?: number;
+  /** A routine's turn: at the step limit it carries on once by itself instead of waiting for "Continue". */
+  autoContinue?: boolean;
+  /** Set by the loop guard: why the turn stopped (see LoopGuard). */
+  loopStop?: LoopStop;
+  guard?: LoopGuard;
 }
 
 /** Things other parts of the server want to hear about (e.g. to pass them on to a phone). */
@@ -150,17 +163,26 @@ export function enqueue(botId: string, trigger: Trigger) {
   void inQueue(botId, () => runTurn(botId, trigger)).catch(() => {});
 }
 
+/** What the model is told when the user forces a skill with "/skill <name>". */
+function forcedSkillNote(skill: ForcedSkill): string {
+  return `[The user asked you to follow your skill "${skill.name}"${skill.from ? ` (shared by ${skill.from})` : ""} for this. Follow its steps:]\n${clip(skill.body, 20_000)}`;
+}
+
 /** A user message: starts a turn, or — if the bot is already working — joins the turn in progress. */
-export function submitUserMessage(bot: BotRecord, text: string, voice = false, attachments: Attachment[] = [], channel?: "telegram", thread = 0) {
+export function submitUserMessage(bot: BotRecord, text: string, voice = false, attachments: Attachment[] = [], channel?: "telegram", thread = 0, skill?: ForcedSkill) {
+  // A subscription turn waiting inside a tool call for an approval: a new message makes that approval lapse.
+  expireEngineApprovals(bot.id);
   // Only a message for the same conversation (main chat or the same thread) joins the turn under way.
   if (controllers.has(bot.id) && !paused.get(bot.id) && (runningThread.get(bot.id) ?? 0) === thread) {
     const list = steering.get(bot.id) ?? [];
-    list.push(userBlocks(bot.id, text, attachments));
+    const blocks = userBlocks(bot.id, text, attachments);
+    if (skill) blocks.push({ type: "text", text: forcedSkillNote(skill) });
+    list.push(blocks);
     steering.set(bot.id, list);
     setLive(bot.userId, bot.id, { queued: list.length });
     return;
   }
-  enqueue(bot.id, { kind: "user", text, voice, attachments, channel, thread: thread || undefined });
+  enqueue(bot.id, { kind: "user", text, voice, attachments, channel, thread: thread || undefined, skill });
 }
 
 /** Bots whose screen the user drove since their last turn: the next turn is told to look again first. */
@@ -330,7 +352,8 @@ async function runScopedTurn(botId: string, trigger: Trigger, thread: number): P
         const heard = feedbackNote(bot, thread);
         // A subscription tool keeps one session of its own: a thread reply carries the message it hangs on every time.
         const inThread = thread ? `${threadOpening(bot, thread)}\n[Answer in this thread.]\n` : "";
-        await runEngineTurn(turn, note + (heard ? heard + "\n" : "") + inThread + words + extraText(extra), trigger.kind === "user" ? trigger.attachments ?? [] : []);
+        const forced = trigger.kind === "user" && trigger.skill ? `\n\n${forcedSkillNote(trigger.skill)}` : "";
+        await runEngineTurn(turn, note + (heard ? heard + "\n" : "") + inThread + words + forced + extraText(extra), trigger.kind === "user" ? trigger.attachments ?? [] : []);
         throw new EngineDone();
       }
       if (overBudget(user.id)) {
@@ -342,11 +365,13 @@ async function runScopedTurn(botId: string, trigger: Trigger, thread: number): P
       turn = await newTurn(bot, user, depth, controller.signal);
       turn.thread = thread;
       turn.tainted = startsTainted(trigger);
+      turn.autoContinue = trigger.kind === "routine";
       if (trigger.kind === "user") for (const h of hostsIn(trigger.text)) turn.hosts.add(h);
       const extra = drainSteering(bot);
       // The time travels with each message instead of sitting in the system prompt, so that prompt stays identical and cached.
       const stamped = `[${new Date().toISOString().slice(0, 16).replace("T", " ")} UTC]\n${triggerMessage(trigger)}`;
       const first = trigger.kind === "user" ? userBlocks(botId, stamped, trigger.attachments) : [text(stamped)];
+      if (trigger.kind === "user" && trigger.skill) first.push(text(forcedSkillNote(trigger.skill)));
       if (handedBack.delete(botId)) first.unshift(text("[The user took control of your computer since your last turn and has handed it back. Windows, pages and fields may have changed: look at the screen before relying on what you saw earlier.]"));
       const heard = feedbackNote(bot, thread);
       if (heard) first.unshift(text(heard));
@@ -389,12 +414,21 @@ async function runScopedTurn(botId: string, trigger: Trigger, thread: number): P
 /** Calls the model, runs the tools it asks for, and repeats until it has nothing more to do. */
 async function modelLoop(turn: Turn) {
   const { bot } = turn;
-  let { provider, model } = resolveModel(turn.modelRef);
-  let onBackup = false;
+  const loc = turn.user.locale;
+  // The bot's model, then its backups in order (see modelChain). A resumed turn starts on the model it paused on.
+  const chain = modelChain({ ...bot, model: turn.modelRef });
+  let at = 0;
+  let { provider, model } = resolveModel(chain[0]);
+  const rel = settings.reliability(turn.user.id);
   const caption = new Caption(turn);
+  /** A reply cut off by the output limit: its row stays open and the continuation is written into it. */
+  let carry: StreamingRow | null = null;
+  let continuations = 0;
+  let nudged = false;
   for (let step = 0; step < config.maxSteps; step++) {
     if (turn.signal.aborted) throw new Error("aborted");
-    const stream = new StreamingRow(turn);
+    const stream: StreamingRow = carry ?? new StreamingRow(turn);
+    carry = null;
     const call = () => provider.runTurn({
       model, system: turn.system, tools: turn.tools, effort: bot.effort as Effort, webSearch: !bot.disabledTools.includes("web"), signal: turn.signal,
       messages: trimOldImages(history.load(bot.id, turn.generation, turn.thread)),
@@ -403,52 +437,120 @@ async function modelLoop(turn: Turn) {
       // The provider's own web search brings outside content into the turn just like ours.
       onToolStart: (_id, name) => { if (name === "web_search") { turn.tainted = true; activity(turn, "searching"); } },
     });
-    const result = await call().catch(async (err: unknown) => {
-      // The bot's own model is unreachable: finish this turn on the backup model, if one is set.
-      const backup = !onBackup && !turn.signal.aborted && !stream.started && config.fallbackModel && config.fallbackModel !== turn.modelRef ? config.fallbackModel : "";
-      if (!backup) { stream.finish(); throw err; }
-      ({ provider, model } = resolveModel(backup));
-      onBackup = true;
-      rows.append(bot, { kind: "notice", tone: "info", text: tr(turn.user.locale, "My usual model is not answering ({detail}). I am finishing this on the backup model.", { detail: clip(String((err as Error)?.message ?? err), 160) }) });
-      audit(turn.user.id, "system", `${bot.name}: switched to the backup model for one turn`, bot.id);
-      return call().catch((again: unknown) => { stream.finish(); throw again; });
-    });
+    let result: TurnResult | null = null;
+    for (let attempt = 0; !result;) {
+      try {
+        result = await call();
+      } catch (err) {
+        if (turn.signal.aborted) { stream.finish(); throw err; }
+        // Whatever this failed call had started to write is taken back: the next try writes the reply afresh.
+        stream.rollback(tr(loc, "The reply was interrupted. Trying again…"));
+        const wait = isTransient(err) && attempt < rel.maxRetries ? backoffDelay(attempt, err instanceof ProviderError ? err.retryAfterMs : null) : null;
+        if (wait !== null) {
+          attempt++;
+          setLive(turn.user.id, bot.id, { caption: tr(loc, "The model is busy ({detail}). New try in {s} s…", { detail: errorDetail(err), s: Math.max(1, Math.round(wait / 1000)) }) });
+          await sleep(wait, turn.signal);
+          continue;
+        }
+        // Out of tries, or an error another try would not fix: on to the next model in the chain, if any.
+        const next = chain[at + 1];
+        if (!next) { stream.finish(); throw err; }
+        at++;
+        attempt = 0;
+        ({ provider, model } = resolveModel(next));
+        const from = turn.modelRef;
+        turn.modelRef = next;
+        rows.append(bot, { kind: "notice", tone: "info", text: tr(loc, "My model {model} is not answering ({detail}). I am carrying on with the backup model {next}.", { model: from, detail: errorDetail(err), next }) });
+        audit(turn.user.id, "system", `${bot.name}: ${from} failed (${errorDetail(err)}), switched to ${next}`, bot.id);
+      }
+    }
     record(turn.user.id, bot.id, result.model, result.usage);
     if (result.sources?.length) { turn.tainted = true; for (const src of result.sources) { const h = hostOf(src.url); if (h) turn.hosts.add(h); } }
-    const said = stream.finish(result.sources);
-    if (said) { turn.spoke = true; turn.lastText = said; }
+    const calls = result.content.filter((b): b is ToolUseBlock => b.type === "tool_use");
     history.append(bot.id, turn.generation, { role: "assistant", content: result.content }, turn.thread);
 
-    if (result.stopReason === "pause") continue;
-    const calls = result.content.filter((b): b is ToolUseBlock => b.type === "tool_use");
-    if (result.stopReason === "refusal") {
-      closeCalls(turn, calls, "The request was declined before this ran.");
-      rows.append(bot, { kind: "notice", tone: "warn", text: result.detail ?? tr(turn.user.locale, "The model declined this request.") });
-      return;
-    }
+    // Cut off by the output limit: carry on automatically (up to the account's limit) and stitch the pieces together.
     if (result.stopReason === "max_tokens") {
       closeCalls(turn, calls, "The reply was cut off before this call was complete, so it did not run.");
-      rows.append(bot, { kind: "notice", tone: "warn", text: tr(turn.user.locale, "The reply was cut off because it got too long. Ask me to continue.") });
+      if (continuations < rel.maxContinuations) {
+        continuations++;
+        carry = stream.hold();
+        history.append(bot.id, turn.generation, { role: "user", content: [text("[System: your reply was cut off by the output length limit. Continue exactly where it stopped — mid-sentence if need be — without repeating anything or starting over. If you were about to call a tool, call it now.]")] }, turn.thread);
+        continue;
+      }
+      const said = stream.finish(result.sources);
+      if (said) { turn.spoke = true; turn.lastText = said; }
+      rows.append(bot, { kind: "notice", tone: "warn", text: tr(loc, "The reply was cut off because it got too long. Ask me to continue.") });
+      return;
+    }
+    const said = stream.finish(result.sources);
+    if (said) { turn.spoke = true; turn.lastText = said; }
+
+    if (result.stopReason === "pause") continue;
+    if (result.stopReason === "refusal") {
+      closeCalls(turn, calls, "The request was declined before this ran.");
+      rows.append(bot, { kind: "notice", tone: "warn", text: result.detail ?? tr(loc, "The model declined this request.") });
       return;
     }
     if (!calls.length) {
       const extra = drainSteering(bot);
-      if (!extra.length) return;
-      history.append(bot.id, turn.generation, { role: "user", content: extra }, turn.thread);
-      continue;
+      if (extra.length) { history.append(bot.id, turn.generation, { role: "user", content: extra }, turn.thread); continue; }
+      // The model gave back nothing at all, before saying or doing anything this turn: nudge it once.
+      if (!said && !turn.spoke && !turn.toolsRun && !nudged) {
+        nudged = true;
+        history.append(bot.id, turn.generation, { role: "user", content: [text("[System: your last reply was empty. Answer now. If there is truly nothing worth saying, call stay_quiet instead.]")] }, turn.thread);
+        continue;
+      }
+      if (!said && !turn.spoke && !turn.toolsRun) rows.append(bot, { kind: "notice", tone: "warn", text: tr(loc, "The model sent back an empty reply, twice. Try asking again, maybe in other words.") });
+      return;
     }
     const stepSeq: Record<string, number> = {};
     for (const call of calls) {
       const b = turn.builtin.get(call.name);
       const r = turn.remote.get(call.name);
-      const label = b ? tr(turn.user.locale, b.label) : r?.native ? `${tr(turn.user.locale, r.native.label)} · ${r.connectorName}` : tr(turn.user.locale, "Using {app}", { app: r?.connectorName ?? tr(turn.user.locale, "an app") });
+      const label = b ? tr(loc, b.label) : r?.native ? `${tr(loc, r.native.label)} · ${r.connectorName}` : tr(loc, "Using {app}", { app: r?.connectorName ?? tr(loc, "an app") });
+      // A progress line is its own light row; it needs no step row as well.
+      if (call.name === "progress_update") continue;
       stepSeq[call.id] = rows.append(bot, { kind: "step", callId: call.id, tool: call.name, label, status: "running", args: redact(call.input) }).seq;
     }
     const outcome = await processCalls(turn, { system: turn.system, tools: turn.tools, modelRef: turn.modelRef, pending: calls, results: [], stepSeq, generation: turn.generation, approvalId: "", depth: turn.depth, endTurn: false, thread: turn.thread });
+    if (turn.loopStop) {
+      const w = turn.loopStop;
+      const why = tr(loc, w.kind === "fail" ? "the tool {tool} failed {n} times in a row" : "the tool {tool} returned exactly the same result {n} times in a row", { tool: w.tool, n: w.count });
+      rows.append(bot, { kind: "notice", tone: "warn", text: tr(loc, "I stopped because I was going round in circles: {why}. Tell me how you would like me to go on.", { why }) });
+      audit(turn.user.id, "system", `${bot.name}: stopped by the loop guard (${loopStopText(w)})`, bot.id);
+      return;
+    }
     if (outcome !== "continue") return;
     activity(turn, "thinking");
   }
-  rows.append(bot, { kind: "notice", tone: "warn", text: tr(turn.user.locale, "I stopped after {n} steps to avoid running away with this. Tell me to continue if it is worth it.", { n: config.maxSteps }) });
+  stepLimitReached(turn);
+}
+
+/**
+ * The turn used all its steps. A routine picks its work back up once on its own; otherwise the user gets a
+ * "Continue" button that resumes with everything done so far (the history is kept).
+ */
+function stepLimitReached(turn: Turn) {
+  const { bot } = turn;
+  const loc = turn.user.locale;
+  if (turn.autoContinue) {
+    rows.append(bot, { kind: "notice", tone: "info", text: tr(loc, "I reached {n} steps on this routine. I am carrying on once more on my own.", { n: config.maxSteps }) });
+    enqueue(bot.id, { kind: "system", text: CONTINUE_TEXT, resumeOf: "steps", thread: turn.thread || undefined, tainted: turn.tainted, depth: turn.depth });
+    return;
+  }
+  rows.append(bot, { kind: "notice", tone: "warn", text: tr(loc, "I stopped after {n} steps to avoid running away with this. Tell me to continue if it is worth it.", { n: config.maxSteps }), action: { kind: "continue", status: "pending" } });
+}
+
+const CONTINUE_TEXT = "You stopped your last turn at the step limit. Pick the work back up where you left off — do not redo what is already done — and finish it, or say plainly where things stand.";
+
+/** "Continue" pressed under a step-limit notice: resumes the work, once per notice. */
+export function continueAfterStepLimit(bot: BotRecord, seq: number): boolean {
+  const row = rows.get(bot.id, bot.generation, seq);
+  if (!row || row.body.kind !== "notice" || row.body.action?.kind !== "continue" || row.body.action.status !== "pending") return false;
+  rows.rewrite(bot, bot.generation, seq, { ...row.body, action: { kind: "continue", status: "done" } });
+  enqueue(bot.id, { kind: "system", text: CONTINUE_TEXT, resumeOf: "steps", thread: row.thread || undefined });
+  return true;
 }
 
 function closeCalls(turn: Turn, calls: ToolUseBlock[], reason: string) {
@@ -487,9 +589,27 @@ export class Caption {
 export class StreamingRow {
   private row: Row | null = null;
   private buffer = "";
+  /** Text kept from earlier pieces of the same reply (a reply cut off by the output limit and continued). */
+  private kept = "";
   private lastFlush = 0;
   constructor(private turn: Turn) {}
   get started() { return this.row !== null; }
+  /** Keeps the row open for the continuation of a reply that was cut off; returns itself. */
+  hold(): StreamingRow {
+    this.kept = this.buffer;
+    if (this.row) rows.rewrite(this.turn.bot, this.row.generation, this.row.seq, { kind: "message", role: "assistant", text: this.buffer, streaming: true });
+    return this;
+  }
+  /**
+   * Takes back what a failed call had started to write. With earlier pieces kept, the row goes back to them; with
+   * nothing kept, the row becomes a light notice saying the reply was interrupted.
+   */
+  rollback(note: string) {
+    if (!this.row || this.buffer === this.kept) return;
+    this.buffer = this.kept;
+    if (this.kept) rows.rewrite(this.turn.bot, this.row.generation, this.row.seq, { kind: "message", role: "assistant", text: this.kept, streaming: true });
+    else { rows.rewrite(this.turn.bot, this.row.generation, this.row.seq, { kind: "notice", tone: "info", text: note }); this.row = null; }
+  }
   push(delta: string) {
     this.buffer += delta;
     if (!this.row) {
@@ -707,11 +827,19 @@ async function processCalls(turn: Turn, st: PausedTurn): Promise<"continue" | "e
         out = { content: `Tool error: ${message}`, isError: true };
         setStep(turn, st, call, "error", clip(message, 200));
       }
+      turn.toolsRun = (turn.toolsRun ?? 0) + 1;
+      // Going round in circles (the same tool failing, or the same result again and again): stop the turn here.
+      const why = (turn.guard ??= new LoopGuard()).check(call, out);
+      if (why) { turn.loopStop = why; st.endTurn = true; }
     }
     const parts = typeof out.content === "string" ? [text(out.content)] : out.content;
     st.results.push({ type: "tool_result", toolUseId: call.id, isError: out.isError || undefined, content: parts.map((p) => (p.type === "text" ? text(hideSecrets(user.id, p.text)) : p)) });
     st.endTurn ||= !!out.endTurn;
     st.pending.shift();
+    if (turn.loopStop) {
+      for (const r of st.pending) { st.results.push({ type: "tool_result", toolUseId: r.id, isError: true, content: [text("Not run: the turn was stopped because it was going round in circles.")] }); setStep(turn, st, r, "denied", tr(user.locale, "not run")); }
+      st.pending = [];
+    }
   }
   // Anything the user typed meanwhile rides along with the results, so the model sees it at once.
   const extra = st.endTurn ? [] : drainSteering(bot);
@@ -795,9 +923,17 @@ function supersede(bot: BotRecord, st: PausedTurn) {
 
 /** Tool calls from a subscription bot that are waiting, inside the call, for the user's decision. */
 const waiters = new Map<string, (status: string) => void>();
+/** The bot each waiting approval belongs to. */
+const waiterBot = new Map<string, string>();
+
+/** A new message from the user lapses the approvals a subscription turn of this bot is waiting on (as supersede does for ours). */
+export function expireEngineApprovals(botId: string) {
+  for (const [id, owner] of waiterBot) if (owner === botId) waiters.get(id)?.("expired");
+}
 
 /**
- * Shows an approval card and waits for the answer (at most 25 minutes, or until the turn is stopped).
+ * Shows an approval card and waits for the answer (at most APPROVAL_EXPIRE_MIN, 30 minutes by default; until the user
+ * sends a new message; or until the turn is stopped).
  * Used when the bot runs on a subscription tool: its call simply blocks until the user decides.
  */
 export async function waitForApproval(turn: Turn, call: ToolUseBlock, verdict: Extract<Verdict, { kind: "ask" }>): Promise<"allowed" | "always" | "denied" | "expired"> {
@@ -809,11 +945,13 @@ export async function waitForApproval(turn: Turn, call: ToolUseBlock, verdict: E
   emit(user.id, { type: "tasks", botId: bot.id });
   tell({ type: "waiting", bot, text: verdict.title });
   const status = await new Promise<string>((resolve) => {
-    const finish = (s: string) => { clearTimeout(timer); turn.signal.removeEventListener("abort", onAbort); waiters.delete(approvalId); resolve(s); };
+    const finish = (s: string) => { clearTimeout(timer); turn.signal.removeEventListener("abort", onAbort); waiters.delete(approvalId); waiterBot.delete(approvalId); resolve(s); };
     const onAbort = () => finish("expired");
-    const timer = setTimeout(() => finish("expired"), 25 * 60_000);
+    // Unanswered, it lapses (30 minutes by default) — or as soon as the user sends a new message (expireEngineApprovals).
+    const timer = setTimeout(() => finish("expired"), config.approvalExpireMs);
     turn.signal.addEventListener("abort", onAbort, { once: true });
     waiters.set(approvalId, finish);
+    waiterBot.set(approvalId, bot.id);
   });
   if (status === "expired" && approvals.byId(approvalId)?.status === "pending") {
     approvals.resolve(approvalId, "expired");

@@ -94,3 +94,37 @@ export function alternate(messages: ChatMessage[]): ChatMessage[] {
   }
   return out;
 }
+
+/**
+ * A failed model call, with what the turn needs to decide what to do next. `transient`: worth another try of the same
+ * model (rate limit 429, overload 529/503, other 5xx, a network failure). `retryAfterMs`: the provider's own Retry-After
+ * header, when it sent one. Anything else (bad credentials, unknown model, a rejected request) moves on to the next model.
+ */
+export class ProviderError extends Error {
+  constructor(message: string, readonly opts: { status?: number; transient: boolean; retryAfterMs?: number | null } = { transient: false }) {
+    super(message);
+    this.name = "ProviderError";
+  }
+  get status() { return this.opts.status; }
+  get transient() { return this.opts.transient; }
+  get retryAfterMs() { return this.opts.retryAfterMs ?? null; }
+}
+
+/** HTTP statuses that mean "try again shortly": too many requests, overloaded, and server-side failures. */
+export const isTransientStatus = (status: number | undefined) => status === 408 || status === 409 || status === 429 || (!!status && status >= 500);
+
+/**
+ * Retry-After as milliseconds (RFC 9110 §10.2.3: either a number of seconds or an HTTP date). Null when absent or
+ * unreadable. Also understands the `retry-after-ms` header some providers send.
+ */
+export function retryAfterOf(headers: { get(name: string): string | null } | null | undefined, now = Date.now()): number | null {
+  if (!headers) return null;
+  const ms = Number(headers.get("retry-after-ms"));
+  if (headers.get("retry-after-ms") && Number.isFinite(ms) && ms >= 0) return ms;
+  const raw = headers.get("retry-after");
+  if (!raw) return null;
+  const secs = Number(raw);
+  if (Number.isFinite(secs) && secs >= 0) return secs * 1000;
+  const at = Date.parse(raw);
+  return Number.isFinite(at) ? Math.max(0, at - now) : null;
+}

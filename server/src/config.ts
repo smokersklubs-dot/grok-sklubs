@@ -80,8 +80,29 @@ export const config = {
   consolidateIdleMin: num("CONSOLIDATE_IDLE_MIN", 10),
   promptMemoryChars: num("PROMPT_MEMORY_CHARS", 4000),
   auxModel: process.env.AUX_MODEL ?? "",
-  /** Model to switch to for one turn when the bot's own model is unreachable. */
-  fallbackModel: process.env.FALLBACK_MODEL ?? "",
+  /**
+   * Backup models, in order, for accounts that set none of their own (Settings → Models): FALLBACK_MODELS is a
+   * comma-separated list; the older single FALLBACK_MODEL is still read and goes last.
+   */
+  fallbackModels: [...new Set([...(process.env.FALLBACK_MODELS ?? "").split(","), process.env.FALLBACK_MODEL ?? ""].map((s) => s.trim()).filter(Boolean))],
+  /** First wait before a new try of a failing model; it doubles each time (with jitter), up to retryMaxWaitMs. */
+  retryBaseMs: num("RETRY_BASE_MS", 1000),
+  /** Longest wait before a new try. A Retry-After longer than this moves on to the next model instead of waiting. */
+  retryMaxWaitMs: num("RETRY_MAX_WAIT_MS", 60_000),
+  /** Work left waiting (an open approval, a turn still running) for this long gets one reminder. */
+  stuckReminderMs: num("STUCK_REMINDER_HOURS", 4) * 3_600_000,
+  /** An approval asked inside a subscription turn lapses after this long without an answer. */
+  approvalExpireMs: num("APPROVAL_EXPIRE_MIN", 30) * 60_000,
+  /** Shortest gap between two progress updates of one bot. */
+  progressGapMs: num("PROGRESS_GAP_S", 20) * 1000,
+  /** At most this many bots created by bots (bot_create) per user in 24 hours. */
+  botCreatePerDay: num("BOT_CREATE_PER_DAY", 3),
+  /** Anti-loop: stop after this many failures in a row of the same tool, or this many identical results in a row. */
+  loopFailStreak: num("LOOP_FAIL_STREAK", 4),
+  loopSameResult: num("LOOP_SAME_RESULT", 4),
+  /** x_search: the X API v2 (with X_BEARER_TOKEN) and xAI's API (with XAI_API_KEY). Base URLs can point elsewhere for tests. */
+  xApiBaseUrl: (process.env.X_API_BASE_URL ?? "https://api.x.com").replace(/\/$/, ""),
+  xaiSearchModel: process.env.XAI_SEARCH_MODEL ?? "grok-4.7",
   telegramApi: (process.env.TELEGRAM_API_URL ?? "https://api.telegram.org").replace(/\/$/, ""),
   webDist: path.join(ROOT, "web", "dist"),
 };

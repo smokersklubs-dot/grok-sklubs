@@ -1,3 +1,4 @@
+import { remindStuck } from "./agent/stuck.js";
 import { emit } from "./bus.js";
 import { sweepIdleDesktops } from "./computer.js";
 import { config } from "./config.js";
@@ -154,4 +155,6 @@ export function startScheduler() {
   setInterval(guard(consolidationSweep), 60_000).unref();
   setInterval(guard(sweepIdleDesktops), 60_000).unref();
   setInterval(guard(syncSlackSockets), 60_000).unref();
+  // Work left waiting for hours (an approval, a running turn) gets one reminder.
+  setInterval(guard(() => { remindStuck(); }), 60_000).unref();
 }

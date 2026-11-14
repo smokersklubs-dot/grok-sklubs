@@ -26,6 +26,7 @@ import { generatePassword, parseTotp, totpNow } from "../totp.js";
 import { seal } from "../auth.js";
 import { createRoom, deliverBotMessage, dispatchToRoom, MAX_HELPERS, MAX_HOPS, startHelper } from "./team.js";
 import { myComputerTools } from "./mycomputer.js";
+import { botTools, profileTools, progressTools, skillImportTools, xSearchAvailable, xTools } from "./tools-team.js";
 
 export interface ToolContext {
   bot: BotRecord; user: UserRecord; depth: number; signal: AbortSignal;
@@ -507,21 +508,22 @@ const knowledgeTools: BuiltinTool[] = [
       return { content: hits.map((h) => `[${new Date(h.at).toISOString().slice(0, 16)} · ${h.role === "user" ? "user" : h.botName}${h.current ? "" : " · earlier conversation"}${a.scope === "everyone" ? ` · in ${h.botName}'s chat` : ""}] ${h.snippet}`).join("\n"), summary: `${hits.length}` };
     },
   }),
-  tool("skill_read", "Read the full steps of one of your skills. Your prompt lists skill names; read one before following it.", obj({ name: str("Name of the skill") }, ["name"]), {
+  tool("skill_read", "Read the full steps of one of your skills, or of a skill a teammate shared. Your prompt lists skill names; read one before following it.", obj({ name: str("Name of the skill") }, ["name"]), {
     activity: "remembering", label: "Reading a skill", group: "memory",
     run: async (a, c) => {
-      const s = skills.list(c.bot.id).find((k) => k.name.toLowerCase() === String(a.name).trim().toLowerCase());
-      return s ? { content: `# ${s.name}\n${s.description ? `Use when: ${s.description}\n` : ""}\n${s.body}`, summary: s.name } : { content: `You have no skill called "${a.name}".`, isError: true };
+      const s = skills.find(c.bot.id, String(a.name));
+      return s ? { content: `# ${s.name}${s.own ? "" : ` (shared by ${s.botName})`}\n${s.description ? `Use when: ${s.description}\n` : ""}\n${s.body}`, summary: s.name } : { content: `You have no skill called "${a.name}", and no teammate shared one by that name.`, isError: true };
     },
   }),
   tool("skill_save", "Save a way of doing something as a skill, so you do it the same way next time. Use it when the user says to remember how to do a task, or after working out a procedure worth keeping. Saving under an existing name replaces that skill.",
-    obj({ name: str("Short name"), when: str("When to use it, in one line"), steps: str("The procedure, step by step") }, ["name", "steps"]), {
+    obj({ name: str("Short name"), when: str("When to use it, in one line"), steps: str("The procedure, step by step"), shared: { type: "boolean", description: "Share it with every bot of the user (they see it in their skill list)" } }, ["name", "steps"]), {
     activity: "remembering", label: "Learning a skill", group: "memory", audited: true,
     run: async (a, c) => {
       const name = clip(String(a.name).trim(), 80), body = String(a.steps).trim().slice(0, 20_000), when = clip(String(a.when ?? "").trim(), 300);
       if (!name || !body) return { content: "A skill needs a name and steps.", isError: true };
       const existing = skills.list(c.bot.id).find((k) => k.name.toLowerCase() === name.toLowerCase());
-      if (existing) skills.update(existing.id, { name, description: when, body }); else skills.create(c.bot.id, name, when, body);
+      const shared = typeof a.shared === "boolean" ? a.shared : undefined;
+      if (existing) skills.update(existing.id, { name, description: when, body, shared }); else skills.create(c.bot.id, name, when, body, !!shared);
       emit(c.user.id, { type: "memories", botId: c.bot.id });
       return { content: existing ? "Skill updated." : "Skill saved.", summary: name };
     },
@@ -910,7 +912,8 @@ function assemble(opts: { nativeSearch?: boolean; video?: "connector" | "api" | 
     ...workTools.filter((t) => t.spec.name !== "shell_run" || shellAvailable())
       .map((t): BuiltinTool => ({ ...t, group: t.spec.name === "shell_run" ? "shell" : t.spec.name === "web_fetch" ? "web" : "files", sensitive: t.spec.name === "shell_run" && computerKind() === "linux" ? false : t.sensitive })),
     ...(searchConfigured() && !opts.nativeSearch ? searchTools : []),
-    ...knowledgeTools, ...pageTools,
+    ...knowledgeTools, ...pageTools, ...progressTools, ...profileTools, ...skillImportTools, ...botTools,
+    ...(xSearchAvailable() ? xTools : []),
     ...shareTools.filter((t) => t.spec.name !== "image_generate" || imageService()).map((t): BuiltinTool => ({ ...t, group: t.spec.name === "image_generate" ? "images" : "files" })),
     ...inGroup("vault", vaultTools),
     ...(browserAvailable() ? inGroup("vault", screenVaultTools).map(respectDriver) : []),

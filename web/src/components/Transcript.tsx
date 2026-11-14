@@ -1,5 +1,5 @@
 import { createContext, memo, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { enc } from "../api";
+import { api, enc, errText } from "../api";
 import { t, tn, useT, type Key } from "../i18n";
 import { useStore, type Thread } from "../store";
 import { REACTIONS, type ActivityKind, type Attachment, type Bot, type Live, type Origin, type Reaction, type ReactionEmoji, type Row, type RowBody } from "../types";
@@ -475,11 +475,62 @@ function WorkGroup({ item }: { item: Extract<Item, { t: "work" }> }) {
 
 /* ---------- Events and notices ---------- */
 
-function EventRow({ body, botName, seq }: { body: EventBody; botName: string; seq: number }) {
+type NoticeBody = Extract<RowBody, { kind: "notice" }>;
+
+/** A server notice. One that says the bot stopped at its step limit carries a "Continue" button. */
+function NoticeRow({ body, botId, seq, readOnly }: { body: NoticeBody; botId: string; seq: number; readOnly: boolean }) {
+  const t = useT();
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const action = body.action;
+  return (
+    <div className={`notice is-${body.tone} ${action ? "has-action" : ""}`} data-seq={seq}>
+      <span>{body.text}</span>
+      {action?.kind === "continue" && (action.status === "pending" && !readOnly ? (
+        <button type="button" className="btn btn-small notice-action" disabled={busy} onClick={async () => {
+          setBusy(true);
+          setFailed(null);
+          try { await api("POST", `/bots/${botId}/rows/${seq}/continue`); } catch (e) { setFailed(errText(e)); setBusy(false); }
+        }}>
+          <Icon name="play" size={13} /> {t(busy ? "notice.continuing" : "notice.continue")}
+        </button>
+      ) : action.status === "done" ? <em className="notice-done">{t("notice.continued")}</em> : null)}
+      {failed && <span className="notice-error" role="alert">{failed}</span>}
+    </div>
+  );
+}
+
+function EventRow({ body, botName, botId, seq }: { body: EventBody; botName: string; botId: string; seq: number }) {
   const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
   const t = useT();
   const call = body.call;
   const lines = call?.transcript ?? [];
+  if (body.event === "progress") {
+    // An interim update the bot posted during long work: a light line, not its reply.
+    return (
+      <div className="event is-progress" data-seq={seq}>
+        <span className="event-line"><Icon name="clock" size={12} /> <span>{body.text}</span></span>
+      </div>
+    );
+  }
+  if (body.event === "selfupdate") {
+    // The bot changed its own settings: one click puts them back.
+    return (
+      <div className="event is-selfupdate" data-seq={seq}>
+        <span className="event-line">
+          <Icon name="wrench" size={13} /> <span>{body.text}</span>
+          {body.undo?.status === "available" && (
+            <button type="button" className="link" disabled={busy} onClick={async () => {
+              setBusy(true);
+              try { await api("POST", `/bots/${botId}/rows/${seq}/undo`); } catch { setBusy(false); }
+            }}>{t("event.undoSelf")}</button>
+          )}
+          {body.undo?.status === "undone" && <em className="muted">{t("event.undoneSelf")}</em>}
+        </span>
+      </div>
+    );
+  }
   if (body.event === "cheer") {
     // The bot celebrated a gem it found (its character went wild at the same moment).
     return (
@@ -569,8 +620,8 @@ export function RowItems({ items, bot, readOnly, mode, all }: { items: Item[]; b
               const card = <CardView key={item.key} card={b.card} botId={bot.id} seq={item.row.seq} />;
               return readOnly ? <div key={item.key} inert>{card}</div> : card;
             }
-            if (b.kind === "event") return <EventRow key={item.key} body={b} botName={bot.name} seq={item.row.seq} />;
-            if (b.kind === "notice") return <div key={item.key} className={`notice is-${b.tone}`}><span>{b.text}</span></div>;
+            if (b.kind === "event") return <EventRow key={item.key} body={b} botName={bot.name} botId={bot.id} seq={item.row.seq} />;
+            if (b.kind === "notice") return <NoticeRow key={item.key} body={b} botId={bot.id} seq={item.row.seq} readOnly={!!readOnly} />;
             return null;
           }
         }

@@ -1,4 +1,4 @@
-import type { Block, ChatMessage, LlmProvider, StopReason, TurnRequest, TurnResult } from "./types.js";
+import { isTransientStatus, ProviderError, retryAfterOf, type Block, type ChatMessage, type LlmProvider, type StopReason, type TurnRequest, type TurnResult } from "./types.js";
 
 interface WireMessage {
   role: "system" | "user" | "assistant" | "tool";
@@ -73,15 +73,22 @@ export class OpenAiCompatProvider implements LlmProvider {
       body.tools = req.tools.map((t) => ({ type: "function", function: { name: t.name, description: t.description, parameters: t.inputSchema } }));
     if (this.opts.sendsEffort) body.reasoning_effort = req.effort === "low" ? "low" : req.effort === "medium" ? "medium" : "high";
 
-    const res = await fetch(`${this.opts.baseUrl.replace(/\/$/, "")}/chat/completions`, {
-      method: "POST",
-      headers: { "content-type": "application/json", authorization: `Bearer ${process.env[this.opts.apiKeyEnv]}` },
-      body: JSON.stringify(body),
-      signal: req.signal,
-    });
+    let res: Response;
+    try {
+      res = await fetch(`${this.opts.baseUrl.replace(/\/$/, "")}/chat/completions`, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${process.env[this.opts.apiKeyEnv]}` },
+        body: JSON.stringify(body),
+        signal: req.signal,
+      });
+    } catch (err) {
+      if (req.signal?.aborted) throw err;
+      // The request never got an answer (DNS, refused, reset, timeout): worth another try.
+      throw new ProviderError(`${this.label} could not be reached: ${(err as Error)?.message ?? err}`, { transient: true });
+    }
     if (!res.ok || !res.body) {
       const detail = (await res.text().catch(() => "")).slice(0, 400);
-      throw new Error(`${this.label} API error ${res.status}: ${detail}`);
+      throw new ProviderError(`${this.label} API error ${res.status}: ${detail}`, { status: res.status, transient: isTransientStatus(res.status), retryAfterMs: retryAfterOf(res.headers) });
     }
 
     let text = "";

@@ -52,3 +52,13 @@ export function defaultModelRef(): string {
   const first = providers.find((p) => p.available()) ?? providers[0];
   return `${first.id}:${first.models[0]}`;
 }
+
+/** Whether a reference names a model of a provider that is set up here (unlike resolveModel, never falls back). */
+export function modelAvailable(ref: string): boolean {
+  const sep = ref.indexOf(":");
+  if (sep > 0) {
+    const p = providers.find((x) => x.id === ref.slice(0, sep));
+    return !!p && p.available();
+  }
+  return providers.some((p) => p.available() && p.models.includes(ref));
+}
