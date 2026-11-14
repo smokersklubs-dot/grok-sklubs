@@ -1,12 +1,13 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
-import { api, enc, errText } from "../api";
+import { api, ApiError, enc, errText } from "../api";
 import { LOCALES, tn, useT } from "../i18n";
 import { useStore, type AppSection, type Theme } from "../store";
-import type { CheckinSettings, Locale, Policy, UsageSummary, VaultItem } from "../types";
-import { compactNumber, initials, money, relTime, toolWords } from "../lib/format";
+import type { AuditEntry, CheckinSettings, Locale, Policy, SharedPage, UsageSummary, VaultItem } from "../types";
+import { clockTime, compactNumber, dayLabel, initials, money, relTime, shortDate, toolWords } from "../lib/format";
+import { notifyEnabled, notifySupport, setNotifyEnabled } from "../lib/notify";
 import { BotAvatar } from "./Avatar";
 import { Icon, type IconName } from "./Icon";
-import { ConfirmButton, Empty, ErrorNote, IconButton, Loading, Toggle, useDialogFocus, useEscape, useTick } from "./ui";
+import { ConfirmButton, CopyButton, Empty, ErrorNote, IconButton, Loading, Toggle, useDialogFocus, useEscape, useTick } from "./ui";
 
 const SECTIONS: { id: AppSection; icon: IconName }[] = [
   { id: "general", icon: "settings" },
@@ -14,8 +15,11 @@ const SECTIONS: { id: AppSection; icon: IconName }[] = [
   { id: "permissions", icon: "shield" },
   { id: "connectors", icon: "plug" },
   { id: "vault", icon: "key" },
+  { id: "pages", icon: "globe" },
   { id: "usage", icon: "chart" },
   { id: "checkins", icon: "bell" },
+  { id: "activity", icon: "history" },
+  { id: "team", icon: "users" },
   { id: "account", icon: "user" },
 ];
 
@@ -30,6 +34,15 @@ function GeneralSection() {
   const setLocale = useStore((s) => s.setLocale);
   const t = useT();
   const [error, setError] = useState<string | null>(null);
+  const [notify, setNotify] = useState(() => notifyEnabled());
+  const [support, setSupport] = useState(() => notifySupport());
+
+  const chooseNotify = (next: boolean) => {
+    void setNotifyEnabled(next).then((on) => {
+      setNotify(on);
+      setSupport(notifySupport());
+    });
+  };
 
   const chooseLocale = (next: Locale) => {
     setError(null);
@@ -63,6 +76,17 @@ function GeneralSection() {
       </div>
       <p className="muted small">{t("general.languageHint")}</p>
       <ErrorNote onDismiss={() => setError(null)}>{error}</ErrorNote>
+
+      <h3 className="pane-heading">{t("notify.heading")}</h3>
+      <div className="action-row">
+        <div>
+          <p className="action-title">{t("notify.title")}</p>
+          <p className="muted small">
+            {t(support === "unsupported" ? "notify.unsupported" : support === "denied" ? "notify.denied" : "notify.hint")}
+          </p>
+        </div>
+        <Toggle checked={notify && support === "ok"} label={t("notify.title")} disabled={support !== "ok"} onChange={chooseNotify} />
+      </div>
 
       {!/SklubotAndroid/.test(navigator.userAgent) && (
         <>
@@ -505,7 +529,18 @@ function UsageSection() {
       {!usage && !error && <Loading />}
       {usage && (
         <>
-          <p className="muted">{t("usage.intro", { month: usage.month })}</p>
+          {usage.nearBudget && (
+            <div className="callout is-warn" role="status">
+              <Icon name="alert" size={16} />
+              <span>{t("usage.nearBudget", { budget: money(usage.budgetUsd ?? 0) })}</span>
+            </div>
+          )}
+          <div className="pane-intro">
+            <p className="muted">{t("usage.intro", { month: usage.month })}</p>
+            <a className="btn btn-small" href="/api/usage.csv" download>
+              <Icon name="download" size={14} /> {t("usage.csv")}
+            </a>
+          </div>
           <div className="stats">
             <div className="stat"><span className="stat-value">{money(usage.totals.costUsd)}</span><span className="stat-label">{t("usage.cost")}</span></div>
             <div className="stat"><span className="stat-value">{compactNumber(usage.totals.inputTokens)}</span><span className="stat-label">{t("usage.input")}</span></div>
@@ -693,7 +728,350 @@ function CheckinsSection() {
   );
 }
 
+/* ---------- Shared pages ---------- */
+
+function PagesSection() {
+  const tick = useStore((s) => s.pagesTick);
+  const bots = useStore((s) => s.bots);
+  const t = useT();
+  const [pages, setPages] = useState<SharedPage[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let dead = false;
+    api<{ pages: SharedPage[] }>("GET", "/pages").then(
+      (r) => {
+        if (dead) return;
+        setPages(Array.isArray(r?.pages) ? r.pages : []);
+        setError(null);
+      },
+      (e: unknown) => {
+        if (dead) return;
+        setError(errText(e));
+        setPages((cur) => cur ?? []);
+      },
+    );
+    return () => {
+      dead = true;
+    };
+  }, [tick]);
+
+  const stop = async (page: SharedPage) => {
+    setError(null);
+    try {
+      await api("DELETE", `/pages/${enc(page.token)}`);
+      setPages((cur) => cur?.filter((x) => x.token !== page.token) ?? null);
+    } catch (e) {
+      setError(errText(e));
+    }
+  };
+
+  return (
+    <>
+      <h2>{t("settings.section.pages")}</h2>
+      <p className="muted">{t("pages.intro")}</p>
+      <ErrorNote onDismiss={() => setError(null)}>{error}</ErrorNote>
+      {!pages && <Loading />}
+      {pages && pages.length === 0 && !error && <Empty icon="globe" title={t("pages.emptyTitle")}>{t("pages.emptyText")}</Empty>}
+      {pages && pages.length > 0 && (
+        <ul className="list">
+          {pages.map((page) => {
+            const bot = bots[page.botId];
+            return (
+              <li key={page.token} className="page-row">
+                <div className="page-row-head">
+                  {bot ? <BotAvatar bot={bot} size={30} /> : <span className="logo-tile">?</span>}
+                  <div className="list-row-text">
+                    <span className="list-row-title">{page.title || t("pages.untitled")}</span>
+                    <span className="list-row-sub">{t("pages.by", { name: bot?.name ?? t("common.removedBot"), date: shortDate(page.createdAt) })}</span>
+                  </div>
+                  <ConfirmButton className="btn btn-small btn-ghost-danger" label={t("pages.stop")} confirmLabel={t("pages.stopConfirm")} busyLabel={t("pages.stopping")} onConfirm={() => stop(page)} />
+                </div>
+                <div className="hook">
+                  <code className="truncate" title={page.url}>{page.url}</code>
+                  <CopyButton text={page.url} label={t("pages.copy")} onFail={() => setError(t("routine.copyFailed"))} />
+                  <a className="btn btn-small" href={page.url} target="_blank" rel="noopener noreferrer">
+                    <Icon name="external" size={13} /> {t("pages.open")}
+                  </a>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </>
+  );
+}
+
+/* ---------- Activity log ---------- */
+
+const AUDIT_PAGE = 50;
+const AUDIT_KINDS: AuditEntry["kind"][] = ["tool", "approval", "routine", "apps", "vault", "channel", "account", "system"];
+const AUDIT_ICON: Record<AuditEntry["kind"], IconName> = {
+  tool: "wrench", approval: "shield", account: "user", apps: "plug", vault: "key", routine: "clock", channel: "send", system: "info",
+};
+
+function ActivitySection() {
+  const bots = useStore((s) => s.bots);
+  const t = useT();
+  const [entries, setEntries] = useState<AuditEntry[] | null>(null);
+  const [more, setMore] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [kind, setKind] = useState<AuditEntry["kind"] | null>(null);
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
+
+  const load = async (before?: number) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await api<{ entries: AuditEntry[] }>("GET", `/audit?limit=${AUDIT_PAGE}${before !== undefined ? `&before=${before}` : ""}`);
+      if (!alive.current) return;
+      const page = Array.isArray(r?.entries) ? r.entries : [];
+      setEntries((cur) => {
+        if (before === undefined || !cur) return page;
+        const seen = new Set(cur.map((e) => e.id));
+        return [...cur, ...page.filter((e) => !seen.has(e.id))];
+      });
+      setMore(page.length >= AUDIT_PAGE);
+    } catch (e) {
+      if (!alive.current) return;
+      setError(errText(e));
+      setEntries((cur) => cur ?? []);
+    } finally {
+      if (alive.current) setBusy(false);
+    }
+  };
+  useEffect(() => {
+    void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const shown = entries?.filter((e) => !kind || e.kind === kind) ?? [];
+  const days: { label: string; items: AuditEntry[] }[] = [];
+  for (const e of shown) {
+    const label = dayLabel(e.at);
+    const last = days[days.length - 1];
+    if (last && last.label === label) last.items.push(e);
+    else days.push({ label, items: [e] });
+  }
+  const oldest = entries && entries.length > 0 ? entries[entries.length - 1].id : undefined;
+
+  return (
+    <>
+      <h2>{t("settings.section.activity")}</h2>
+      <p className="muted">{t("audit.intro")}</p>
+      <div className="filter-chips" role="group" aria-label={t("audit.filter")}>
+        <button type="button" className={`filter-chip ${kind === null ? "is-selected" : ""}`} aria-pressed={kind === null} onClick={() => setKind(null)}>{t("audit.all")}</button>
+        {AUDIT_KINDS.map((k) => (
+          <button key={k} type="button" className={`filter-chip ${kind === k ? "is-selected" : ""}`} aria-pressed={kind === k} onClick={() => setKind(kind === k ? null : k)}>
+            <Icon name={AUDIT_ICON[k]} size={12} /> {t(`audit.kind.${k}`)}
+          </button>
+        ))}
+      </div>
+      <ErrorNote onDismiss={() => setError(null)}>{error}</ErrorNote>
+      {!entries && <Loading />}
+      {entries && entries.length === 0 && !error && <Empty icon="history" title={t("audit.emptyTitle")}>{t("audit.emptyText")}</Empty>}
+      {entries && entries.length > 0 && shown.length === 0 && <p className="muted small">{t("audit.noneOfKind")}</p>}
+      {days.map((day) => (
+        <section key={day.label} className="audit-day" aria-label={day.label}>
+          <h3 className="audit-day-label">{day.label}</h3>
+          <ul className="audit-list">
+            {day.items.map((e) => {
+              const bot = e.botId ? bots[e.botId] : undefined;
+              return (
+                <li key={e.id} className="audit-row">
+                  <time className="audit-time" dateTime={new Date(e.at).toISOString()}>{clockTime(e.at)}</time>
+                  <span className={`audit-icon is-${e.kind}`} title={t(`audit.kind.${e.kind}`)}>
+                    <Icon name={AUDIT_ICON[e.kind] ?? "info"} size={14} />
+                    <span className="sr-only">{t(`audit.kind.${e.kind}`)}</span>
+                  </span>
+                  {bot && <span className="audit-bot" title={bot.name}><BotAvatar bot={bot} size={20} /></span>}
+                  <span className="audit-text">{e.text}</span>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      ))}
+      {entries && more && (
+        <div className="earlier">
+          <button type="button" className="btn btn-small" disabled={busy} onClick={() => void load(oldest)}>{t(busy ? "common.loading" : "audit.more")}</button>
+        </div>
+      )}
+    </>
+  );
+}
+
+/* ---------- Team (export / import) ---------- */
+
+function TeamSection() {
+  const loadBots = useStore((s) => s.loadBots);
+  const t = useT();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+  const input = useRef<HTMLInputElement>(null);
+
+  const importFile = async (file: File | undefined) => {
+    if (!file || busy) return;
+    setBusy(true);
+    setError(null);
+    setNote(null);
+    try {
+      let data: unknown;
+      try {
+        data = JSON.parse(await file.text());
+      } catch {
+        throw new Error(t("team.badFile"));
+      }
+      if (!data || typeof data !== "object") throw new Error(t("team.badFile"));
+      const r = await api<{ created: number }>("POST", "/import/team", data);
+      const n = typeof r?.created === "number" ? r.created : 0;
+      setNote(tn("team.created", n));
+      await loadBots().catch(() => undefined);
+    } catch (e) {
+      setError(errText(e));
+    } finally {
+      setBusy(false);
+      if (input.current) input.current.value = "";
+    }
+  };
+
+  return (
+    <>
+      <h2>{t("settings.section.team")}</h2>
+      <p className="muted">{t("team.intro")}</p>
+      <div className="action-row">
+        <div>
+          <p className="action-title">{t("team.export")}</p>
+          <p className="muted small">{t("team.exportHint")}</p>
+        </div>
+        <a className="btn btn-small" href="/api/export/team" download>
+          <Icon name="download" size={14} /> {t("team.export")}
+        </a>
+      </div>
+      <div className="action-row">
+        <div>
+          <p className="action-title">{t("team.import")}</p>
+          <p className="muted small">{t("team.importHint")}</p>
+        </div>
+        <button type="button" className="btn btn-small" disabled={busy} onClick={() => input.current?.click()}>
+          <Icon name="upload" size={14} /> {t(busy ? "team.importing" : "team.import")}
+        </button>
+        <input ref={input} type="file" accept="application/json,.json" className="sr-only" tabIndex={-1} aria-label={t("team.import")} onChange={(e) => void importFile(e.target.files?.[0])} />
+      </div>
+      <ErrorNote onDismiss={() => setError(null)}>{error}</ErrorNote>
+      {note && (
+        <div className="callout is-ok" role="status">
+          <Icon name="check" size={16} />
+          <span>{note}</span>
+        </div>
+      )}
+    </>
+  );
+}
+
 /* ---------- Account ---------- */
+
+function PasswordForm() {
+  const t = useT();
+  const [current, setCurrent] = useState("");
+  const [next, setNext] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
+  const uid = useId();
+  const tooShort = next.length > 0 && next.length < 8;
+  const mismatch = confirm.length > 0 && confirm !== next;
+  const ready = current.length > 0 && next.length >= 8 && confirm === next;
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!ready || busy) return;
+    setBusy(true);
+    setError(null);
+    setDone(false);
+    try {
+      await api("PUT", "/account/password", { current, next });
+      setCurrent("");
+      setNext("");
+      setConfirm("");
+      setDone(true);
+    } catch (err) {
+      setError(err instanceof ApiError && err.status === 401 ? t("account.wrongPassword") : errText(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <form className="editor" onSubmit={submit}>
+      <div className="field">
+        <label className="field-label" htmlFor={`${uid}c`}>{t("account.currentPassword")}</label>
+        <input id={`${uid}c`} className="input" type="password" value={current} onChange={(e) => setCurrent(e.target.value)} autoComplete="current-password" />
+      </div>
+      <div className="form-cols is-even">
+        <div className="field">
+          <label className="field-label" htmlFor={`${uid}n`}>{t("account.newPassword")}</label>
+          <input id={`${uid}n`} className="input" type="password" value={next} minLength={8} onChange={(e) => setNext(e.target.value)} autoComplete="new-password" aria-invalid={tooShort || undefined} />
+          <p className={`field-hint ${tooShort ? "is-error" : ""}`}>{t("account.passwordRule")}</p>
+        </div>
+        <div className="field">
+          <label className="field-label" htmlFor={`${uid}r`}>{t("account.confirmPassword")}</label>
+          <input id={`${uid}r`} className="input" type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} autoComplete="new-password" aria-invalid={mismatch || undefined} />
+          {mismatch && <p className="field-hint is-error">{t("account.mismatch")}</p>}
+        </div>
+      </div>
+      <ErrorNote>{error}</ErrorNote>
+      <div className="row-end">
+        {done && <span className="muted small" role="status">{t("account.passwordChanged")}</span>}
+        <button type="submit" className="btn btn-primary btn-small" disabled={!ready || busy}>{t(busy ? "common.saving" : "account.changePassword")}</button>
+      </div>
+    </form>
+  );
+}
+
+function DeleteAccount() {
+  const t = useT();
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const uid = useId();
+
+  const remove = async () => {
+    setError(null);
+    try {
+      await api("DELETE", "/account", { password });
+      window.location.reload();
+    } catch (err) {
+      setError(err instanceof ApiError && err.status === 401 ? t("account.wrongPassword") : errText(err));
+    }
+  };
+
+  return (
+    <div className="danger-box">
+      <div>
+        <p className="action-title">{t("account.delete")}</p>
+        <p className="muted small">{t("account.deleteHint")}</p>
+      </div>
+      <div className="field">
+        <label className="field-label" htmlFor={`${uid}p`}>{t("account.deletePassword")}</label>
+        <div className="row-gap">
+          <input id={`${uid}p`} className="input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" />
+          <ConfirmButton className="btn btn-small btn-danger" label={t("account.delete")} confirmLabel={t("account.deleteConfirm")} busyLabel={t("common.deleting")} disabled={!password} onConfirm={remove} />
+        </div>
+      </div>
+      <ErrorNote>{error}</ErrorNote>
+    </div>
+  );
+}
 
 function AccountSection() {
   const user = useStore((s) => s.user);
@@ -713,6 +1091,23 @@ function AccountSection() {
           <Icon name="logout" size={14} /> {t("account.signOut")}
         </button>
       </div>
+
+      <h3 className="pane-heading">{t("account.passwordHeading")}</h3>
+      <PasswordForm />
+
+      <h3 className="pane-heading">{t("account.dataHeading")}</h3>
+      <div className="action-row">
+        <div>
+          <p className="action-title">{t("account.export")}</p>
+          <p className="muted small">{t("account.exportHint")}</p>
+        </div>
+        <a className="btn btn-small" href="/api/export/data" download>
+          <Icon name="download" size={14} /> {t("account.export")}
+        </a>
+      </div>
+
+      <h3 className="pane-heading is-danger">{t("bot.danger")}</h3>
+      <DeleteAccount />
     </>
   );
 }
@@ -748,6 +1143,9 @@ export function AppSettings({ section }: { section: AppSection }) {
           {section === "permissions" && <PermissionsSection />}
           {section === "connectors" && <ConnectorsSection />}
           {section === "vault" && <VaultSection />}
+          {section === "pages" && <PagesSection />}
+          {section === "activity" && <ActivitySection />}
+          {section === "team" && <TeamSection />}
           {section === "usage" && <UsageSection />}
           {section === "checkins" && <CheckinsSection />}
           {section === "account" && <AccountSection />}

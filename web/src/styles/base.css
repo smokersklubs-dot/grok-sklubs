@@ -273,3 +273,20 @@ select.input { padding-right: 8px; }
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
   .shimmer { color: var(--text-2); background: none; }
 }
+
+/* Toast with an action; the empty live region stays in the page for screen readers. */
+.toast.is-empty { padding: 0; background: none; box-shadow: none; }
+.toast.has-action { display: flex; align-items: center; gap: 12px; padding: 6px 6px 6px 16px; }
+.toast-action { flex: none; height: 28px; padding: 0 12px; border-radius: 999px; background: color-mix(in srgb, var(--ink-fg) 16%, transparent); color: var(--ink-fg); font-size: 12.5px; font-weight: 650; }
+.toast-action:hover { background: color-mix(in srgb, var(--ink-fg) 28%, transparent); }
+.toast-action:focus-visible { outline: 2px solid var(--ink-fg); outline-offset: 1px; }
+
+/* Callouts */
+.callout { display: flex; align-items: flex-start; gap: 9px; padding: 10px 13px; border-radius: var(--r-md); font-size: 13px; font-weight: 550; }
+.callout .icon { flex: none; margin-top: 2px; }
+.callout.is-warn { background: var(--warn-soft); color: var(--warn); }
+.callout.is-ok { background: var(--ok-soft); color: var(--ok); }
+.field-hint.is-error { color: var(--danger); }
+.check-list.is-tall { max-height: none; }
+.check-text { display: flex; flex-direction: column; flex: 1; min-width: 0; text-align: left; }
+.check-row .check-box { flex: none; }

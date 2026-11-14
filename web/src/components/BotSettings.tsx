@@ -2,16 +2,18 @@ import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from "rea
 import { api, errText } from "../api";
 import { tn, useT } from "../i18n";
 import { useStore, type BotSettingsTab } from "../store";
-import type { Autonomy, AvatarColor, AvatarShape, Bot, BotBundle, BotMode, Effort, Memory, ModelOption, Routine, Skill } from "../types";
-import { dateTime, nextRunLabel, shortDate } from "../lib/format";
+import { TOOL_GROUPS } from "../types";
+import type { Autonomy, AvatarColor, AvatarShape, Bot, BotBundle, BotMode, Effort, Memory, ModelOption, RoomRule, Routine, RoutineRun, Skill, TelegramStatus, ToolGroup } from "../types";
+import { dateTime, nextRunLabel, relTime, shortDate } from "../lib/format";
 import { Avatar, BotAvatar } from "./Avatar";
 import { routineWhen, TriggerChip } from "./DetailsPanel";
 import { Icon } from "./Icon";
 import { LookPicker, MODE_IDS } from "./Modals";
-import { ConfirmButton, copyText, Empty, ErrorNote, IconButton, Loading, Modal, Toggle } from "./ui";
+import { ConfirmButton, CopyButton, copyText, Empty, ErrorNote, IconButton, Loading, Modal, Toggle, useTick } from "./ui";
 
 const EFFORT_IDS: Effort[] = ["low", "medium", "high", "xhigh"];
 const AUTONOMY_IDS: Autonomy[] = ["careful", "balanced", "trusted"];
+const ROOM_RULE_IDS: RoomRule[] = ["lead", "everyone", "mentions"];
 
 function ChoiceList<T extends string>({ label, value, options, onChange }: { label: string; value: T; options: { id: T; title: string; text: string }[]; onChange: (v: T) => void }) {
   return (
@@ -31,19 +33,27 @@ function ChoiceList<T extends string>({ label, value, options, onChange }: { lab
 interface Form {
   name: string; label: string; description: string; instructions: string;
   shape: AvatarShape; color: AvatarColor; mode: BotMode; effort: Effort; model: string; autonomy: Autonomy;
+  roomRule: RoomRule; disabledTools: ToolGroup[];
 }
-const FORM_KEYS: (keyof Form)[] = ["name", "label", "description", "instructions", "shape", "color", "mode", "effort", "model", "autonomy"];
+const FORM_KEYS: (keyof Form)[] = ["name", "label", "description", "instructions", "shape", "color", "mode", "effort", "model", "autonomy", "roomRule", "disabledTools"];
 const formOf = (b: Bot): Form => ({
   name: b.name, label: b.label, description: b.description, instructions: b.instructions,
   shape: b.shape, color: b.color, mode: b.mode, effort: b.effort, model: b.model, autonomy: b.autonomy,
+  roomRule: b.roomRule ?? "lead",
+  // Kept in the order of TOOL_GROUPS so two lists with the same tools compare equal.
+  disabledTools: TOOL_GROUPS.filter((g) => (b.disabledTools ?? []).includes(g)),
 });
+const sameValue = (a: Form[keyof Form], b: Form[keyof Form]): boolean =>
+  Array.isArray(a) && Array.isArray(b) ? a.length === b.length && a.every((x, i) => x === b[i]) : a === b;
+const sameForm = (a: Form, b: Form): boolean => FORM_KEYS.every((k) => sameValue(a[k], b[k]));
 
 function General({ bot, onClose }: { bot: Bot; onClose: () => void }) {
-  const { upsertBot, resetConversation, loadBots } = useStore.getState();
+  const { upsertBot, resetConversation, loadBots, showToast } = useStore.getState();
   const t = useT();
   const efforts = EFFORT_IDS.map((id) => ({ id, title: t(`effort.${id}.title`), text: t(`effort.${id}.text`) }));
   const autonomies = AUTONOMY_IDS.map((id) => ({ id, title: t(`autonomy.${id}.title`), text: t(`autonomy.${id}.text`) }));
   const modes = MODE_IDS.map((id) => ({ id, title: t(`mode.${id}.title`), text: t(`mode.${id}.text`) }));
+  const roomRules = ROOM_RULE_IDS.map((id) => ({ id, title: t(`roomRule.${id}.title`), text: t(`roomRule.${id}.text`) }));
   const [form, setForm] = useState<Form>(() => formOf(bot));
   const [lookOpen, setLookOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -71,7 +81,14 @@ function General({ bot, onClose }: { bot: Bot; onClose: () => void }) {
   }, [note]);
 
   const saved = formOf(bot);
-  const changed = FORM_KEYS.filter((k) => form[k] !== saved[k]);
+  // When the bot changes elsewhere (an undo, another tab) and nothing is being edited, show the new values.
+  const lastSaved = useRef(saved);
+  useEffect(() => {
+    const before = lastSaved.current;
+    lastSaved.current = saved;
+    if (!sameForm(before, saved)) setForm((f) => (sameForm(f, before) ? saved : f));
+  });
+  const changed = FORM_KEYS.filter((k) => !sameValue(form[k], saved[k]));
   const dirty = changed.length > 0;
   const set = <K extends keyof Form>(k: K, v: Form[K]) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -80,12 +97,24 @@ function General({ bot, onClose }: { bot: Bot; onClose: () => void }) {
     if (!dirty || !form.name.trim() || saving) return;
     const patch: Partial<Form> = {};
     for (const k of changed) Object.assign(patch, { [k]: typeof form[k] === "string" && k !== "instructions" ? (form[k] as string).trim() : form[k] });
+    // What the changed fields held before, so the save can be undone.
+    const previous: Partial<Form> = {};
+    for (const k of changed) Object.assign(previous, { [k]: saved[k] });
+    const botId = bot.id;
     setSaving(true);
     try {
-      const r = await api<{ bot: Bot }>("PATCH", `/bots/${bot.id}`, patch);
+      const r = await api<{ bot: Bot }>("PATCH", `/bots/${botId}`, patch);
       upsertBot(r.bot);
       setForm(formOf(r.bot));
-      setNote({ tone: "ok", text: t("common.saved") });
+      setNote(null);
+      showToast(t("common.saved"), {
+        label: t("common.undo"),
+        run: async () => {
+          const back = await api<{ bot: Bot }>("PATCH", `/bots/${botId}`, previous);
+          upsertBot(back.bot);
+          showToast(t("toast.undone"));
+        },
+      });
     } catch (err) {
       setNote({ tone: "error", text: errText(err) });
     } finally {
@@ -158,7 +187,40 @@ function General({ bot, onClose }: { bot: Bot; onClose: () => void }) {
             <span className="field-label">{t("bot.usedAs")}</span>
             <ChoiceList label={t("bot.usedAs")} value={form.mode} options={modes} onChange={(v) => set("mode", v)} />
           </div>
+          <div className="field">
+            <span className="field-label" id={`${uid}t`}>{t("tools.heading")}</span>
+            <ul className="check-list is-tall" role="group" aria-labelledby={`${uid}t`}>
+              {TOOL_GROUPS.map((g) => {
+                const on = !form.disabledTools.includes(g);
+                return (
+                  <li key={g}>
+                    <button
+                      type="button"
+                      role="checkbox"
+                      aria-checked={on}
+                      className={`check-row ${on ? "is-selected" : ""}`}
+                      onClick={() => set("disabledTools", TOOL_GROUPS.filter((x) => (x === g ? on : form.disabledTools.includes(x))))}
+                    >
+                      <span className="check-box">{on && <Icon name="check" size={13} />}</span>
+                      <span className="check-text">
+                        <span className="choice-title">{t(`tools.${g}.label`)}</span>
+                        <span className="choice-text">{t(`tools.${g}.text`)}</span>
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+            <p className="field-hint">{t("tools.hint", { name: bot.name })}</p>
+          </div>
         </>
+      )}
+
+      {isRoom && (
+        <div className="field">
+          <span className="field-label">{t("roomRule.heading")}</span>
+          <ChoiceList label={t("roomRule.heading")} value={form.roomRule} options={roomRules} onChange={(v) => set("roomRule", v)} />
+        </div>
       )}
 
       <div className={`save-bar ${dirty || note ? "is-visible" : ""}`}>
@@ -300,6 +362,7 @@ function SkillEditor({ botId, skill, onDone }: { botId: string; skill: Skill | n
 
 function Skills({ bot, bundle }: { bot: Bot; bundle: BotBundle | undefined }) {
   const loadBundle = useStore((s) => s.loadBundle);
+  const showToast = useStore((s) => s.showToast);
   const t = useT();
   const [editing, setEditing] = useState<Skill | "new" | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -342,6 +405,14 @@ function Skills({ bot, bundle }: { bot: Bot; bundle: BotBundle | undefined }) {
                     try {
                       await api("DELETE", `/skills/${s.id}`);
                       await loadBundle(bot.id);
+                      showToast(t("skill.deleted", { name: s.name }), {
+                        label: t("common.undo"),
+                        run: async () => {
+                          await api("POST", `/bots/${bot.id}/skills`, { name: s.name, description: s.description, body: s.body });
+                          await loadBundle(bot.id);
+                          showToast(t("skill.restored"));
+                        },
+                      });
                     } catch (e) {
                       setError(errText(e));
                     }
@@ -359,7 +430,7 @@ function Skills({ bot, bundle }: { bot: Bot; bundle: BotBundle | undefined }) {
 /* ---------- Memories ---------- */
 
 function Memories({ bot, bundle }: { bot: Bot; bundle: BotBundle | undefined }) {
-  const { mutateBundle, loadBundle } = useStore.getState();
+  const { mutateBundle, loadBundle, showToast } = useStore.getState();
   const t = useT();
   const [q, setQ] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -376,6 +447,15 @@ function Memories({ bot, bundle }: { bot: Bot; bundle: BotBundle | undefined }) 
     mutateBundle(bot.id, (b) => ({ ...b, memories: b.memories.filter((x) => x.id !== m.id) }));
     try {
       await api("DELETE", `/memories/${m.id}`);
+      showToast(t("memory.forgotten"), {
+        label: t("common.undo"),
+        run: async () => {
+          const r = await api<{ memory: Memory }>("POST", `/bots/${bot.id}/memories`, { text: m.text });
+          if (r?.memory) mutateBundle(bot.id, (b) => (b.memories.some((x) => x.id === r.memory.id) ? b : { ...b, memories: [...b.memories, r.memory].sort((a, c) => c.createdAt - a.createdAt) }));
+          else await loadBundle(bot.id);
+          showToast(t("memory.restored"));
+        },
+      });
     } catch (e) {
       mutateBundle(bot.id, (b) => (b.memories.some((x) => x.id === m.id) ? b : { ...b, memories: [...b.memories, m].sort((a, c) => c.createdAt - a.createdAt) }));
       setError(errText(e));
@@ -469,12 +549,56 @@ function Memories({ bot, bundle }: { bot: Bot; bundle: BotBundle | undefined }) 
 
 /* ---------- Routines ---------- */
 
+const RUN_STATE: Record<RoutineRun["status"], string> = { running: "state-working", done: "state-done", quiet: "", error: "state-error" };
+
+/** The last runs of one routine; reloads whenever the server says this bot's routines changed. */
+function RoutineHistory({ r }: { r: Routine }) {
+  const tick = useStore((s) => s.routineTicks[r.botId] ?? 0);
+  const t = useT();
+  const [runs, setRuns] = useState<RoutineRun[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    let dead = false;
+    api<{ runs: RoutineRun[] }>("GET", `/routines/${r.id}/runs`).then(
+      (res) => {
+        if (dead) return;
+        setRuns(Array.isArray(res?.runs) ? res.runs : []);
+        setError(null);
+      },
+      (e: unknown) => !dead && setError(errText(e)),
+    );
+    return () => {
+      dead = true;
+    };
+  }, [r.id, tick]);
+  return (
+    <div className="runs">
+      <ErrorNote>{error}</ErrorNote>
+      {!runs && !error && <Loading />}
+      {runs && runs.length === 0 && <p className="muted small">{t("routine.noRuns")}</p>}
+      {runs && runs.length > 0 && (
+        <ul className="runs-list">
+          {runs.map((run) => (
+            <li key={run.id} className="run">
+              <time className="run-time" dateTime={new Date(run.at).toISOString()}>{dateTime(run.at, r.timezone || undefined)}</time>
+              <span className={`chip ${RUN_STATE[run.status] ?? ""}`}>{t(`routine.run.${run.status}`)}</span>
+              {run.note && <span className="run-note">{run.note}</span>}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 function RoutineItem({ r, onNote, onError }: { r: Routine; onNote: (t: string) => void; onError: (t: string | null) => void }) {
   const { toggleRoutine, loadBundle } = useStore.getState();
   const t = useT();
   const [copied, setCopied] = useState(false);
   const [running, setRunning] = useState(false);
-  const next = !r.enabled ? t("routine.paused") : r.trigger === "webhook" ? null : r.nextRunAt ? t("routine.next", { when: nextRunLabel(r.nextRunAt, r.timezone || undefined) }) : null;
+  const [history, setHistory] = useState(false);
+  const now = useTick(30_000, r.trigger === "watch");
+  const next = !r.enabled ? t("routine.paused") : r.trigger === "webhook" || r.trigger === "watch" ? null : r.nextRunAt ? t("routine.next", { when: nextRunLabel(r.nextRunAt, r.timezone || undefined) }) : null;
   return (
     <li className="routine">
       <div className="routine-head">
@@ -518,7 +642,27 @@ function RoutineItem({ r, onNote, onError }: { r: Routine; onNote: (t: string) =
           </button>
         </div>
       )}
+      {r.trigger === "watch" && r.watch && (
+        <div className="watch">
+          <Icon name={r.watch.kind === "url" ? "globe" : "file"} size={15} />
+          <div className="list-row-text">
+            <span className="watch-kind">{t(r.watch.kind === "url" ? "routine.watchesPage" : "routine.watchesFile")}</span>
+            {r.watch.kind === "url" && /^https?:\/\//i.test(r.watch.target) ? (
+              <a className="watch-target" href={r.watch.target} target="_blank" rel="noopener noreferrer">{r.watch.target}</a>
+            ) : (
+              <code className="watch-target">{r.watch.target}</code>
+            )}
+            <span className="list-row-sub">
+              {tn("routine.checkedEvery", r.watch.everyMin)} · {r.watch.lastCheckedAt ? t("routine.lastChecked", { when: relTime(r.watch.lastCheckedAt, now) }) : t("routine.neverChecked")}
+            </span>
+          </div>
+        </div>
+      )}
       <div className="row-end">
+        <button type="button" className="link routine-history-toggle" onClick={() => setHistory((v) => !v)} aria-expanded={history}>
+          <Icon name="chevronRight" size={13} className={history ? "is-rotated" : ""} /> {t("routine.history")}
+        </button>
+        <span className="spacer" />
         <button
           type="button"
           className="btn btn-small"
@@ -555,6 +699,7 @@ function RoutineItem({ r, onNote, onError }: { r: Routine; onNote: (t: string) =
           }}
         />
       </div>
+      {history && <RoutineHistory r={r} />}
     </li>
   );
 }
@@ -589,6 +734,181 @@ function Routines({ bot, bundle }: { bot: Bot; bundle: BotBundle | undefined }) 
   );
 }
 
+/* ---------- Telegram ---------- */
+
+function Telegram({ bot }: { bot: Bot }) {
+  const t = useT();
+  const [status, setStatus] = useState<TelegramStatus | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [token, setToken] = useState("");
+  const [reveal, setReveal] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const uid = useId();
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
+
+  const load = () =>
+    api<TelegramStatus>("GET", `/bots/${bot.id}/telegram`).then(
+      (s) => {
+        if (!alive.current) return;
+        setStatus(s);
+        setLoadError(null);
+      },
+      (e: unknown) => alive.current && setLoadError(errText(e)),
+    );
+
+  const waiting = !!status && status.connected && !status.linked;
+  // First load, and again whenever the server reports a change to this bot's Telegram link.
+  useEffect(() => {
+    void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bot.id, bot.telegram]);
+  // While waiting for the link message: every `bot` event, and every 5 s.
+  useEffect(() => {
+    if (waiting) void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bot]);
+  useEffect(() => {
+    if (!waiting) return;
+    const timer = window.setInterval(() => void load(), 5000);
+    return () => window.clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [waiting, bot.id]);
+
+  const connect = async (e: FormEvent) => {
+    e.preventDefault();
+    const value = token.trim();
+    if (!value || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const s = await api<TelegramStatus>("PUT", `/bots/${bot.id}/telegram`, { token: value });
+      if (!alive.current) return;
+      setStatus(s);
+      setToken("");
+      setReveal(false);
+    } catch (err) {
+      if (alive.current) setError(errText(err));
+    } finally {
+      if (alive.current) setBusy(false);
+    }
+  };
+
+  const disconnect = async () => {
+    setError(null);
+    try {
+      await api("DELETE", `/bots/${bot.id}/telegram`);
+      if (alive.current) setStatus({ connected: false, username: null, linked: false, linkCode: null });
+    } catch (err) {
+      if (alive.current) setError(errText(err));
+    }
+  };
+
+  const link = status?.username ? `https://t.me/${status.username}` : null;
+  const command = `/start ${status?.linkCode ?? ""}`.trim();
+
+  return (
+    <div className="settings-pane">
+      <p className="muted">{t("telegram.intro", { name: bot.name })}</p>
+      <ol className="steps-guide">
+        <li>{t("telegram.step1")}</li>
+        <li>{t("telegram.step2")}</li>
+        <li>{t("telegram.step3")}</li>
+      </ol>
+      {loadError && !status && <ErrorNote>{loadError}</ErrorNote>}
+      {!status && !loadError && <Loading />}
+
+      {status && !status.connected && (
+        <form className="editor" onSubmit={connect} autoComplete="off">
+          <div className="field">
+            <label className="field-label" htmlFor={`${uid}k`}>{t("telegram.token")}</label>
+            <div className="input-affix">
+              <input
+                id={`${uid}k`}
+                className="input"
+                type={reveal ? "text" : "password"}
+                value={token}
+                maxLength={200}
+                onChange={(e) => setToken(e.target.value)}
+                placeholder={t("telegram.tokenPlaceholder")}
+                autoComplete="off"
+                autoCapitalize="off"
+                spellCheck={false}
+                data-1p-ignore=""
+                data-lpignore="true"
+                aria-invalid={error ? true : undefined}
+              />
+              <IconButton icon={reveal ? "eyeOff" : "eye"} size={16} label={t(reveal ? "telegram.hideToken" : "telegram.showToken")} active={reveal} onClick={() => setReveal((v) => !v)} />
+            </div>
+            <p className="field-hint">{t("telegram.tokenHint")}</p>
+          </div>
+          <ErrorNote>{error}</ErrorNote>
+          <div className="row-end">
+            <button type="submit" className="btn btn-primary btn-small" disabled={!token.trim() || busy}>{t(busy ? "common.connecting" : "telegram.connect")}</button>
+          </div>
+        </form>
+      )}
+
+      {status && status.connected && !status.linked && (
+        <div className="editor">
+          <div className="status-row">
+            <span className="dot-inline dot-pulse" />
+            <span role="status">{t("telegram.waiting")}</span>
+          </div>
+          {link && (
+            <div className="field">
+              <span className="field-label">{t("telegram.openLabel")}</span>
+              <a className="telegram-link" href={link} target="_blank" rel="noopener noreferrer">
+                <Icon name="send" size={15} /> {link} <Icon name="external" size={13} />
+              </a>
+            </div>
+          )}
+          <div className="field">
+            <span className="field-label">{t("telegram.sendLabel")}</span>
+            <div className="hook">
+              <code className="truncate">{command}</code>
+              <CopyButton text={command} label={t("telegram.copyCode")} onFail={() => setError(t("routine.copyFailed"))} />
+            </div>
+            <p className="field-hint">{t("telegram.sendHint")}</p>
+          </div>
+          <ErrorNote>{error}</ErrorNote>
+          <div className="row-end">
+            <ConfirmButton className="btn btn-small btn-ghost-danger" label={t("telegram.disconnect")} confirmLabel={t("telegram.disconnectConfirm")} busyLabel={t("telegram.disconnecting")} onConfirm={disconnect} />
+          </div>
+        </div>
+      )}
+
+      {status && status.linked && (
+        <>
+          <div className="status-row">
+            <span className="dot-inline dot-ok" />
+            <span>{t("telegram.linked")}</span>
+          </div>
+          {link && (
+            <a className="telegram-link" href={link} target="_blank" rel="noopener noreferrer">
+              <Icon name="send" size={15} /> {link} <Icon name="external" size={13} />
+            </a>
+          )}
+          <ErrorNote>{error}</ErrorNote>
+          <div className="action-row">
+            <div>
+              <p className="action-title">{t("telegram.disconnect")}</p>
+              <p className="muted small">{t("telegram.disconnectHint")}</p>
+            </div>
+            <ConfirmButton className="btn btn-small btn-danger" label={t("telegram.disconnect")} confirmLabel={t("telegram.disconnectConfirm")} busyLabel={t("telegram.disconnecting")} onConfirm={disconnect} />
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 /* ---------- Dialog ---------- */
 
 export function BotSettings({ botId, tab }: { botId: string; tab: BotSettingsTab }) {
@@ -606,13 +926,14 @@ export function BotSettings({ botId, tab }: { botId: string; tab: BotSettingsTab
   if (!bot) return null;
 
   const isRoom = bot.kind === "room";
-  const tabs: { id: BotSettingsTab; label: string; icon: "settings" | "book" | "brain" | "clock"; count?: number }[] = isRoom
+  const tabs: { id: BotSettingsTab; label: string; icon: "settings" | "book" | "brain" | "clock" | "send"; count?: number }[] = isRoom
     ? [{ id: "general", label: t("botSettings.tab.general"), icon: "settings" }]
     : [
         { id: "general", label: t("botSettings.tab.general"), icon: "settings" },
         { id: "skills", label: t("botSettings.tab.skills"), icon: "book", count: bundle?.skills.length },
         { id: "memories", label: t("botSettings.tab.memories"), icon: "brain", count: bundle?.memories.length },
         { id: "routines", label: t("botSettings.tab.routines"), icon: "clock", count: bundle?.routines.length },
+        { id: "telegram", label: t("botSettings.tab.telegram"), icon: "send" },
       ];
   const active = tabs.some((x) => x.id === tab) ? tab : "general";
 
@@ -626,6 +947,11 @@ export function BotSettings({ botId, tab }: { botId: string; tab: BotSettingsTab
         <div className="modal-head">
           <BotAvatar bot={bot} size={30} badge />
           <span className="modal-head-title truncate">{bot.name}</span>
+          {bot.telegram && (
+            <span className="chip state-working" title={t("telegram.marker", { username: bot.telegram })}>
+              <Icon name="send" size={12} /> Telegram
+            </span>
+          )}
           <IconButton icon="close" label={t("common.close")} onClick={closeBotSettings} />
         </div>
       }
@@ -645,6 +971,7 @@ export function BotSettings({ botId, tab }: { botId: string; tab: BotSettingsTab
           {active === "skills" && <Skills bot={bot} bundle={bundle} />}
           {active === "memories" && <Memories bot={bot} bundle={bundle} />}
           {active === "routines" && <Routines bot={bot} bundle={bundle} />}
+          {active === "telegram" && <Telegram key={bot.id} bot={bot} />}
         </div>
       </div>
     </Modal>

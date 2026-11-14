@@ -56,6 +56,16 @@ export function relTime(ts: number, now = Date.now()): string {
   return shortDate(ts);
 }
 
+/** "Today", "Yesterday", or a full date: the heading of one day in a log. */
+export function dayLabel(ts: number, now = Date.now()): string {
+  const d = new Date(ts);
+  if (sameDay(d, new Date(now))) return t("time.dayToday");
+  if (sameDay(d, new Date(now - 86_400_000))) return t("time.dayYesterday");
+  const opts: Intl.DateTimeFormatOptions = { weekday: "long", month: "long", day: "numeric" };
+  if (d.getFullYear() !== new Date(now).getFullYear()) opts.year = "numeric";
+  return dateFmt(opts).format(d);
+}
+
 export function shortDate(ts: number): string {
   const d = new Date(ts);
   const opts: Intl.DateTimeFormatOptions = { month: "short", day: "numeric" };

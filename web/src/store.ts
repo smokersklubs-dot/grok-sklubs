@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { api, apiUpload, errText, setUnauthorizedHandler } from "./api";
 import { getLocale, isLocale, setLocale as applyLocale, t } from "./i18n";
+import { notifyBot } from "./lib/notify";
 import type { Attachment, Bot, BotBundle, ComputerState, Connector, Live, Locale, Routine, Row, ServerEvent, Task, User } from "./types";
 
 export type Theme = "system" | "light" | "dark";
@@ -10,8 +11,15 @@ export type ModalState =
   | { kind: "createRoom" }
   | { kind: "search" }
   | { kind: "connectors"; prefill?: { name: string; botId: string; seq: number } };
-export type BotSettingsTab = "general" | "skills" | "memories" | "routines";
-export type AppSection = "general" | "computer" | "permissions" | "connectors" | "vault" | "usage" | "checkins" | "account";
+export type BotSettingsTab = "general" | "skills" | "memories" | "routines" | "telegram";
+export type AppSection = "general" | "computer" | "permissions" | "connectors" | "vault" | "pages" | "usage" | "checkins" | "activity" | "team" | "account";
+
+/** A short message at the bottom of the window, optionally with one action (usually "Undo"). */
+export interface Toast { id: number; text: string; action?: { label: string; run: () => void | Promise<void> } }
+/** A message to scroll to and flash in the open conversation. */
+export interface Jump { botId: string; seq: number; tick: number }
+/** An earlier conversation shown read-only. */
+export interface HistoryTarget { botId: string; generation: number; seq: number }
 
 export interface Thread {
   generation: number;
@@ -125,6 +133,11 @@ interface Store {
   connectors: Connector[] | null;
   connectorsError: string | null;
   usageTick: number;
+  pagesTick: number;
+  /** Bumped per bot on every `routines` event, so open run histories reload. */
+  routineTicks: Record<string, number>;
+  jump: Jump | null;
+  history: HistoryTarget | null;
 
   selectedId: string | null;
   view: "chat" | "tasks";
@@ -136,7 +149,7 @@ interface Store {
   botSettings: { botId: string; tab: BotSettingsTab } | null;
   appSettings: AppSection | null;
   viewerBotId: string | null;
-  toast: string | null;
+  toast: Toast | null;
   drafts: Record<string, string>;
   uploads: Record<string, Upload[]>;
   focusTick: number;
@@ -180,7 +193,14 @@ interface Store {
   closeAppSettings(): void;
   openViewer(botId: string): void;
   closeViewer(): void;
-  showToast(text: string): void;
+  /** Show a toast. With an action it stays about 6 s; without, about 2 s. */
+  showToast(text: string, action?: Toast["action"]): void;
+  dismissToast(): void;
+  /** Open a bot and scroll its conversation to one message. */
+  jumpTo(botId: string, seq: number): void;
+  clearJump(): void;
+  openHistory(target: HistoryTarget): void;
+  closeHistory(): void;
   setDraft(botId: string, text: string): void;
   focusComposer(): void;
 }
@@ -188,6 +208,13 @@ interface Store {
 let toastTimer: number | undefined;
 let started = false;
 let uploadSeq = 0;
+let toastSeq = 0;
+let jumpSeq = 0;
+
+const firstWords = (text: string, max = 120): string => {
+  const flat = text.replace(/\s+/g, " ").trim();
+  return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat;
+};
 
 export const useStore = create<Store>((set, get) => ({
   boot: "loading",
@@ -206,6 +233,10 @@ export const useStore = create<Store>((set, get) => ({
   connectors: null,
   connectorsError: null,
   usageTick: 0,
+  pagesTick: 0,
+  routineTicks: {},
+  jump: null,
+  history: null,
 
   selectedId: prefs.selectedId,
   view: "chat",
@@ -448,6 +479,23 @@ export const useStore = create<Store>((set, get) => ({
   applyEvent(ev) {
     switch (ev.type) {
       case "rows": {
+        // A finished reply, for a bot that isn't the open one or while the window is hidden.
+        const before = get();
+        const hidden = document.visibilityState !== "visible";
+        if (hidden || before.selectedId !== ev.botId || before.view !== "chat") {
+          const known = before.threads[ev.botId];
+          for (let i = ev.rows.length - 1; i >= 0; i--) {
+            const row = ev.rows[i];
+            const b = row.body;
+            if (b.kind !== "message" || b.role !== "assistant" || b.streaming || !b.text.trim()) continue;
+            const old = known && known.generation === ev.generation ? known.rows.find((r) => r.seq === row.seq) : undefined;
+            // Already shown as finished: this is only a later revision of the same message.
+            if (old && old.body.kind === "message" && !old.body.streaming) continue;
+            const bot = before.bots[ev.botId];
+            if (bot) notifyBot(bot.id, bot.name, firstWords(b.text), () => get().selectBot(bot.id));
+            break;
+          }
+        }
         set((s) => {
           const t = s.threads[ev.botId];
           if (!t || ev.generation < t.generation) return {};
@@ -467,9 +515,15 @@ export const useStore = create<Store>((set, get) => ({
         });
         break;
       }
-      case "live":
+      case "live": {
+        const was = get().live[ev.botId]?.awaiting ?? null;
         set((s) => ({ live: { ...s.live, [ev.botId]: ev.live } }));
+        if (!was && ev.live.awaiting && document.visibilityState !== "visible") {
+          const bot = get().bots[ev.botId];
+          if (bot) notifyBot(bot.id, bot.name, firstWords(ev.live.awaiting.reason || t("notify.waiting")), () => get().selectBot(bot.id));
+        }
         break;
+      }
       case "roster":
         void get().loadBots().catch(() => undefined);
         break;
@@ -485,6 +539,9 @@ export const useStore = create<Store>((set, get) => ({
         set({ computer: ev.computer });
         break;
       case "routines":
+        set((s) => ({ routineTicks: { ...s.routineTicks, [ev.botId]: (s.routineTicks[ev.botId] ?? 0) + 1 } }));
+        if (get().bundles[ev.botId] || get().selectedId === ev.botId) void get().loadBundle(ev.botId);
+        break;
       case "memories":
         if (get().bundles[ev.botId] || get().selectedId === ev.botId) void get().loadBundle(ev.botId);
         break;
@@ -497,6 +554,9 @@ export const useStore = create<Store>((set, get) => ({
         break;
       case "usage":
         set((s) => ({ usageTick: s.usageTick + 1 }));
+        break;
+      case "pages":
+        set((s) => ({ pagesTick: s.pagesTick + 1 }));
         break;
       default:
         break;
@@ -624,10 +684,31 @@ export const useStore = create<Store>((set, get) => ({
   closeViewer() {
     set({ viewerBotId: null });
   },
-  showToast(text) {
+  showToast(text, action) {
     window.clearTimeout(toastTimer);
-    set({ toast: text });
-    toastTimer = window.setTimeout(() => set({ toast: null }), 2000);
+    const id = ++toastSeq;
+    set({ toast: { id, text, action } });
+    toastTimer = window.setTimeout(() => {
+      if (get().toast?.id === id) set({ toast: null });
+    }, action ? 6000 : 2000);
+  },
+  dismissToast() {
+    window.clearTimeout(toastTimer);
+    set({ toast: null });
+  },
+  jumpTo(botId, seq) {
+    if (!get().bots[botId]) return;
+    get().selectBot(botId);
+    set({ jump: { botId, seq, tick: ++jumpSeq } });
+  },
+  clearJump() {
+    set({ jump: null });
+  },
+  openHistory(target) {
+    set({ history: target });
+  },
+  closeHistory() {
+    set({ history: null });
   },
   setDraft(botId, text) {
     set((s) => ({ drafts: { ...s.drafts, [botId]: text } }));

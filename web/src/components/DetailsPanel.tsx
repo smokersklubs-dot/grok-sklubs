@@ -4,7 +4,7 @@ import { t, useT } from "../i18n";
 import { useStore } from "../store";
 import type { Bot, FileEntry, Routine } from "../types";
 import { accentStyle } from "../lib/colors";
-import { botTitle, dateTime, fileSize, relTime, sortTasks } from "../lib/format";
+import { botTitle, dateTime, fileSize, hostName, relTime, sortTasks } from "../lib/format";
 import { endCall, startCall } from "../lib/call";
 import { useScreen } from "../lib/screen";
 import { canCall, canSpeak, makeUtterance, useVoices } from "../lib/speech";
@@ -17,6 +17,7 @@ type Tab = "activity" | "tasks" | "library";
 export function routineWhen(r: Routine): string {
   if (!r.enabled) return t("routine.paused");
   if (r.trigger === "webhook") return t("routine.webhookWhen");
+  if (r.trigger === "watch") return r.watch ? t(r.watch.kind === "url" ? "routine.watchUrl" : "routine.watchFile", { target: r.watch.kind === "url" ? hostName(r.watch.target) : r.watch.target }) : t("routine.watchWhen");
   if (r.trigger === "once") return r.runAt ? t("routine.once", { date: dateTime(r.runAt, r.timezone || undefined) }) : t("routine.onceNoDate");
   return r.describe || r.schedule;
 }
@@ -25,7 +26,7 @@ export function TriggerChip({ trigger }: { trigger: Routine["trigger"] }) {
   const t = useT();
   return (
     <span className="chip">
-      <Icon name={trigger === "webhook" ? "hook" : "clock"} size={12} />
+      <Icon name={trigger === "webhook" ? "hook" : trigger === "watch" ? "eye" : "clock"} size={12} />
       {t(`routine.trigger.${trigger}`)}
     </span>
   );

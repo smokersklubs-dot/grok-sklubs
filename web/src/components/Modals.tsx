@@ -1,14 +1,14 @@
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from "react";
-import { api, errText } from "../api";
+import { api, enc, errText } from "../api";
 import { tn, useT } from "../i18n";
 import { sortedBots, useStore } from "../store";
 import { AVATAR_COLORS, AVATAR_SHAPES } from "../types";
-import type { AvatarColor, AvatarShape, Bot, BotMode, CatalogApp, Connector } from "../types";
+import type { AvatarColor, AvatarShape, Bot, BotMode, CatalogApp, Connector, SearchHit } from "../types";
 import { colorOf } from "../lib/colors";
-import { botTitle } from "../lib/format";
+import { botTitle, relTime } from "../lib/format";
 import { Avatar, BotAvatar } from "./Avatar";
 import { Icon, Spinner } from "./Icon";
-import { ConfirmButton, Empty, ErrorNote, IconButton, Loading, Modal } from "./ui";
+import { ConfirmButton, Empty, ErrorNote, IconButton, Loading, Modal, useTick } from "./ui";
 
 /* ---------- Look picker (shared with bot settings) ---------- */
 
@@ -208,20 +208,62 @@ export function CreateRoomModal({ onClose }: { onClose: () => void }) {
 
 /* ---------- Search ---------- */
 
+/** Split a snippet around the searched words so they can be emphasised. React escapes every piece. */
+function highlightParts(text: string, query: string): { text: string; hit: boolean }[] {
+  const words = [...new Set(query.trim().split(/\s+/).filter(Boolean))].sort((x, y) => y.length - x.length);
+  if (words.length === 0) return [{ text, hit: false }];
+  const re = new RegExp(`(${words.map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`, "gi");
+  return text.split(re).filter((part) => part !== "").map((part, i) => ({ text: part, hit: i % 2 === 1 }));
+}
+
+function Snippet({ text, query }: { text: string; query: string }) {
+  const parts = useMemo(() => highlightParts(text, query), [text, query]);
+  return (
+    <span className="search-snippet">
+      {parts.map((p, i) => (p.hit ? <mark key={i}>{p.text}</mark> : <span key={i}>{p.text}</span>))}
+    </span>
+  );
+}
+
 export function SearchModal({ onClose }: { onClose: () => void }) {
   const bots = useStore((s) => s.bots);
-  const selectBot = useStore((s) => s.selectBot);
+  const { selectBot, jumpTo, openHistory } = useStore.getState();
   const t = useT();
   const [q, setQ] = useState("");
   const [index, setIndex] = useState(0);
+  const [found, setFound] = useState<{ q: string; hits: SearchHit[]; error: string | null } | null>(null);
   const list = useRef<HTMLUListElement>(null);
+  const now = useTick(60_000);
+  const needle = q.trim();
+  const searching = needle.length >= 2;
 
   const results = useMemo(() => {
-    const needle = q.trim().toLowerCase();
+    const lower = needle.toLowerCase();
     const all = sortedBots(bots).sort((a, b) => Number(b.primary) - Number(a.primary));
-    if (!needle) return all;
-    return all.filter((b) => `${b.name} ${b.label} ${b.description}`.toLowerCase().includes(needle));
-  }, [bots, q]);
+    if (!lower) return all;
+    return all.filter((b) => `${b.name} ${b.label} ${b.description}`.toLowerCase().includes(lower));
+  }, [bots, needle]);
+
+  // Messages: asked 250 ms after the last keystroke, and only the latest answer is kept.
+  useEffect(() => {
+    if (!searching) return;
+    let dead = false;
+    const timer = window.setTimeout(() => {
+      api<{ hits: SearchHit[] }>("GET", `/search?q=${enc(needle)}`).then(
+        (r) => !dead && setFound({ q: needle, hits: Array.isArray(r?.hits) ? r.hits : [], error: null }),
+        (e: unknown) => !dead && setFound({ q: needle, hits: [], error: errText(e) }),
+      );
+    }, 250);
+    return () => {
+      dead = true;
+      window.clearTimeout(timer);
+    };
+  }, [needle, searching]);
+
+  const loadingHits = searching && found?.q !== needle;
+  const hits = searching && found?.q === needle ? found.hits : [];
+  const hitsError = searching && found?.q === needle ? found.error : null;
+  const total = results.length + hits.length;
 
   useEffect(() => setIndex(0), [q]);
   useEffect(() => {
@@ -232,6 +274,12 @@ export function SearchModal({ onClose }: { onClose: () => void }) {
     if (!b) return;
     selectBot(b.id);
     onClose();
+  };
+  const openHit = (h: SearchHit | undefined) => {
+    if (!h) return;
+    onClose();
+    if (h.current) jumpTo(h.botId, h.seq);
+    else openHistory({ botId: h.botId, generation: h.generation, seq: h.seq });
   };
 
   return (
@@ -250,19 +298,21 @@ export function SearchModal({ onClose }: { onClose: () => void }) {
           onKeyDown={(e) => {
             if (e.key === "ArrowDown") {
               e.preventDefault();
-              setIndex((i) => Math.min(i + 1, results.length - 1));
+              setIndex((i) => Math.min(i + 1, total - 1));
             } else if (e.key === "ArrowUp") {
               e.preventDefault();
               setIndex((i) => Math.max(i - 1, 0));
             } else if (e.key === "Enter") {
               e.preventDefault();
-              open(results[index]);
+              if (index < results.length) open(results[index]);
+              else openHit(hits[index - results.length]);
             }
           }}
         />
         <kbd>Esc</kbd>
       </div>
       <ul className="search-results" id="search-results" role="listbox" ref={list}>
+        {searching && results.length > 0 && <li className="search-group" role="presentation">{t("search.groupBots")}</li>}
         {results.map((b, i) => (
           <li key={b.id} role="option" aria-selected={i === index}>
             <button type="button" tabIndex={-1} className={`search-row ${i === index ? "is-highlight" : ""}`} onMouseEnter={() => setIndex(i)} onClick={() => open(b)}>
@@ -274,7 +324,40 @@ export function SearchModal({ onClose }: { onClose: () => void }) {
             </button>
           </li>
         ))}
-        {results.length === 0 && <li className="search-none">{t("search.none", { q: q.trim() })}</li>}
+        {!searching && results.length === 0 && <li className="search-none">{t("search.none", { q: needle })}</li>}
+        {searching && (
+          <>
+            <li className="search-group" role="presentation">{t("search.groupMessages")}</li>
+            {loadingHits && (
+              <li className="search-state" role="status">
+                <Spinner size={14} /> {t("search.searching")}
+              </li>
+            )}
+            {hitsError && <li className="search-state is-error" role="alert">{hitsError}</li>}
+            {!loadingHits && !hitsError && hits.length === 0 && <li className="search-state">{t("search.noMessages", { q: needle })}</li>}
+            {hits.map((h, j) => {
+              const i = results.length + j;
+              const b = bots[h.botId];
+              return (
+                <li key={`${h.botId}:${h.generation}:${h.seq}`} role="option" aria-selected={i === index}>
+                  <button type="button" tabIndex={-1} className={`search-row is-hit ${i === index ? "is-highlight" : ""}`} onMouseEnter={() => setIndex(i)} onClick={() => openHit(h)}>
+                    {b ? <BotAvatar bot={b} size={28} /> : <Avatar shape="circle" color="slate" name={h.botName} size={28} />}
+                    <span className="bot-row-text">
+                      <span className="search-hit-head">
+                        <span className="bot-row-name truncate">{b?.name ?? h.botName}</span>
+                        <span className="search-hit-meta">
+                          {h.role === "user" ? t("common.you") : t("search.roleBot")} · {relTime(h.at, now)}
+                        </span>
+                        {!h.current && <span className="chip">{t("search.earlier")}</span>}
+                      </span>
+                      <Snippet text={h.snippet} query={needle} />
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </>
+        )}
       </ul>
     </Modal>
   );

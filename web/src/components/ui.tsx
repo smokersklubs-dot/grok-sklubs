@@ -387,6 +387,31 @@ export function useTick(ms: number, enabled = true): number {
   return now;
 }
 
+/** A small "Copy" button that shows "Copied" for a moment. */
+export function CopyButton({ text, label, className = "btn btn-small", onFail }: { text: string; label?: string; className?: string; onFail?: () => void }) {
+  const t = useT();
+  const [copied, setCopied] = useState(false);
+  const timer = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(timer.current), []);
+  return (
+    <button
+      type="button"
+      className={className}
+      aria-label={label}
+      title={label}
+      onClick={async () => {
+        if (await copyText(text)) {
+          setCopied(true);
+          window.clearTimeout(timer.current);
+          timer.current = window.setTimeout(() => setCopied(false), 1500);
+        } else onFail?.();
+      }}
+    >
+      <Icon name={copied ? "check" : "copy"} size={13} /> <span role="status">{t(copied ? "common.copied" : "common.copy")}</span>
+    </button>
+  );
+}
+
 export async function copyText(text: string): Promise<boolean> {
   try {
     await navigator.clipboard.writeText(text);

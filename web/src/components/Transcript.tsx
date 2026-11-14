@@ -3,7 +3,7 @@ import { enc } from "../api";
 import { t, tn, useT, type Key } from "../i18n";
 import { useStore, type Thread } from "../store";
 import type { ActivityKind, Attachment, Bot, Live, Origin, Row, RowBody } from "../types";
-import { clockTime, dividerLabel, duration, elapsed, fileSize, hostName } from "../lib/format";
+import { callClock, clockTime, dividerLabel, elapsed, fileSize, hostName } from "../lib/format";
 import { renderMarkdown } from "../lib/markdown";
 import { Avatar, BotAvatar } from "./Avatar";
 import { CardView } from "./Cards";
@@ -14,7 +14,7 @@ type MessageBody = Extract<RowBody, { kind: "message" }>;
 type StepBody = Extract<RowBody, { kind: "step" }>;
 type EventBody = Extract<RowBody, { kind: "event" }>;
 
-type Item =
+export type Item =
   | { t: "divider"; key: string; label: string }
   | { t: "msgs"; key: string; sender: string; mine: boolean; origin?: Origin; role: "user" | "assistant"; rows: Row[] }
   | { t: "steps"; key: string; rows: Row[] }
@@ -27,7 +27,7 @@ function isMine(b: MessageBody): boolean {
   return b.role === "user" && (!b.origin || b.origin.kind === "voice");
 }
 
-function buildItems(rows: Row[], running: boolean): Item[] {
+export function buildItems(rows: Row[], running: boolean): Item[] {
   const items: Item[] = [];
   let prevAt: number | null = null;
   for (const row of rows) {
@@ -169,7 +169,7 @@ function MessageGroup({ item }: { item: Extract<Item, { t: "msgs" }> }) {
         const b = row.body as MessageBody;
         const pos = n === 1 ? "only" : i === 0 ? "first" : i === n - 1 ? "last" : "mid";
         return (
-          <div key={row.seq} className={`msg is-${pos}`}>
+          <div key={row.seq} className={`msg is-${pos}`} data-seq={row.seq}>
             {b.attachments && b.attachments.length > 0 && <Attachments botId={row.botId} files={b.attachments} />}
             {(b.text.trim() || b.streaming) && (
               <div className={`bubble ${b.streaming ? "is-streaming" : ""}`}>
@@ -238,16 +238,30 @@ function StepGroup({ rows }: { rows: Row[] }) {
 
 /* ---------- Events and notices ---------- */
 
-function EventRow({ body, botName }: { body: EventBody; botName: string }) {
+function EventRow({ body, botName, seq }: { body: EventBody; botName: string; seq: number }) {
   const [open, setOpen] = useState(false);
   const t = useT();
   const call = body.call;
   const lines = call?.transcript ?? [];
+  if (body.event !== "call") {
+    return (
+      <div className="event" data-seq={seq}>
+        <span>{body.text}</span>
+      </div>
+    );
+  }
+  const ended = call?.phase === "ended" && typeof call.durationMs === "number";
   return (
-    <div className="event">
-      <span>
-        {body.text}
-        {call?.phase === "ended" && typeof call.durationMs === "number" ? ` · ${duration(call.durationMs)}` : ""}
+    <div className="event is-call" data-seq={seq}>
+      <span className="event-line">
+        <Icon name="phone" size={13} />
+        <span>{body.text}</span>
+        {ended && (
+          <span className="event-duration" title={t("event.callDuration")}>
+            <span className="sr-only">{t("event.callDuration")} </span>
+            {callClock(call?.durationMs ?? 0)}
+          </span>
+        )}
       </span>
       {call?.summary && <span className="event-summary">{call.summary}</span>}
       {lines.length > 0 && (
@@ -268,6 +282,46 @@ function EventRow({ body, botName }: { body: EventBody; botName: string }) {
       )}
     </div>
   );
+}
+
+/** The rows of a conversation, already grouped. `readOnly` is for earlier conversations: cards can't be answered. */
+export function RowItems({ items, bot, readOnly }: { items: Item[]; bot: Bot; readOnly?: boolean }) {
+  return (
+    <>
+      {items.map((item) => {
+        switch (item.t) {
+          case "divider":
+            return <div key={item.key} className="divider"><span>{item.label}</span></div>;
+          case "msgs":
+            return <MessageGroup key={item.key} item={item} />;
+          case "steps":
+            return <StepGroup key={item.key} rows={item.rows} />;
+          case "row": {
+            const b = item.row.body;
+            if (b.kind === "card") {
+              const card = <CardView key={item.key} card={b.card} botId={bot.id} seq={item.row.seq} />;
+              return readOnly ? <div key={item.key} inert>{card}</div> : card;
+            }
+            if (b.kind === "event") return <EventRow key={item.key} body={b} botName={bot.name} seq={item.row.seq} />;
+            if (b.kind === "notice") return <div key={item.key} className={`notice is-${b.tone}`}><span>{b.text}</span></div>;
+            return null;
+          }
+        }
+      })}
+    </>
+  );
+}
+
+/** Scroll one message into view and flash it. Returns false when it isn't on the page. */
+export function revealRow(root: HTMLElement | null, seq: number): boolean {
+  const el = root?.querySelector<HTMLElement>(`[data-seq="${seq}"]`);
+  if (!el) return false;
+  el.scrollIntoView({ block: "center" });
+  el.classList.remove("is-flash");
+  void el.offsetWidth; // restart the animation when the same row is revealed twice
+  el.classList.add("is-flash");
+  window.setTimeout(() => el.classList.remove("is-flash"), 2200);
+  return true;
 }
 
 /* ---------- Activity line ---------- */
@@ -412,6 +466,32 @@ export function Transcript({ bot, thread, live }: { bot: Bot; thread: Thread | u
 
   const loaded = !!thread?.loaded;
 
+  // A search hit: load earlier rows until the message is on the page (best effort), then scroll to it and flash it.
+  const jump = useStore((s) => s.jump);
+  const jumpTries = useRef({ tick: 0, n: 0 });
+  useEffect(() => {
+    if (!jump || jump.botId !== bot.id || !thread?.loaded) return;
+    const { clearJump, showToast } = useStore.getState();
+    if (jumpTries.current.tick !== jump.tick) jumpTries.current = { tick: jump.tick, n: 0 };
+    if (scroller.current?.querySelector(`[data-seq="${jump.seq}"]`)) {
+      pinned.current = false;
+      revealRow(scroller.current, jump.seq);
+      clearJump();
+      return;
+    }
+    const first = thread.rows[0]?.seq;
+    if (thread.hasMore && first !== undefined && first > jump.seq && jumpTries.current.n < 25) {
+      if (!thread.loadingEarlier) {
+        jumpTries.current.n++;
+        pinned.current = false;
+        void loadEarlier(bot.id);
+      }
+      return;
+    }
+    clearJump();
+    showToast(t("search.notFound"));
+  }, [jump, bot.id, thread?.loaded, thread?.rows, thread?.hasMore, thread?.loadingEarlier, loadEarlier, t]);
+
   return (
     <div className="transcript-wrap">
       <div className="transcript" ref={scroller} onScroll={onScroll} tabIndex={-1}>
@@ -433,23 +513,7 @@ export function Transcript({ bot, thread, live }: { bot: Bot; thread: Thread | u
               </button>
             </div>
           )}
-          {items.map((item) => {
-            switch (item.t) {
-              case "divider":
-                return <div key={item.key} className="divider"><span>{item.label}</span></div>;
-              case "msgs":
-                return <MessageGroup key={item.key} item={item} />;
-              case "steps":
-                return <StepGroup key={item.key} rows={item.rows} />;
-              case "row": {
-                const b = item.row.body;
-                if (b.kind === "card") return <CardView key={item.key} card={b.card} botId={bot.id} seq={item.row.seq} />;
-                if (b.kind === "event") return <EventRow key={item.key} body={b} botName={bot.name} />;
-                if (b.kind === "notice") return <div key={item.key} className={`notice is-${b.tone}`}><span>{b.text}</span></div>;
-                return null;
-              }
-            }
-          })}
+          <RowItems items={items} bot={bot} />
           {loaded && showActivity && <ActivityLine bot={bot} live={live} rows={rows} />}
           {loaded && !showActivity && live.queued > 0 && (
             <div className="activity"><span className="chip">{tn("count.queued", live.queued)}</span></div>

@@ -20,6 +20,56 @@ let speakingNow = false;
 let currentUtterance: SpeechSynthesisUtterance | null = null;
 let lineId = 0;
 
+/* ---------- Call trace: the server keeps a "call started / call ended" record with the captions ---------- */
+
+interface Trace { botId: string; callId: string | null; ended: boolean; lines: { role: "user" | "assistant"; text: string }[] | null }
+let trace: Trace | null = null;
+const MAX_TRACE_LINES = 200;
+
+/** The captions said so far: final lines only, the last 200. */
+function captionLines(): { role: "user" | "assistant"; text: string }[] {
+  const lines = getCall()?.lines ?? [];
+  return lines.filter((l) => l.final && l.text.trim()).slice(-MAX_TRACE_LINES).map((l) => ({ role: l.role, text: l.text }));
+}
+
+function beginTrace(botId: string): void {
+  const mine: Trace = { botId, callId: null, ended: false, lines: null };
+  trace = mine;
+  api<{ callId: string }>("POST", `/bots/${botId}/calls`).then(
+    (r) => {
+      mine.callId = r.callId;
+      // The call ended before the server answered: close the record now.
+      if (mine.ended) sendEnd(mine, false);
+    },
+    () => undefined, // the call itself still works without its record
+  );
+}
+
+function sendEnd(tr: Trace, beacon: boolean): void {
+  if (!tr.callId) return;
+  const path = `/bots/${tr.botId}/calls/${tr.callId}/end`;
+  const body = { transcript: tr.lines ?? [] };
+  if (beacon && typeof navigator.sendBeacon === "function") {
+    const sent = navigator.sendBeacon(`/api${path}`, new Blob([JSON.stringify(body)], { type: "application/json" }));
+    if (sent) return;
+  }
+  api("POST", path, body).catch(() => undefined);
+}
+
+/** Close the server's record of the current call, once. `beacon` is for when the page is going away. */
+function endTrace(beacon = false): void {
+  const tr = trace;
+  if (!tr || tr.ended) return;
+  tr.ended = true;
+  tr.lines = captionLines();
+  trace = null;
+  sendEnd(tr, beacon);
+}
+
+if (typeof window !== "undefined") {
+  window.addEventListener("pagehide", () => endTrace(true));
+}
+
 const getCall = (): CallState | null => useStore.getState().call;
 function patch(p: Partial<CallState>): void {
   useStore.setState((s) => (s.call ? { call: { ...s.call, ...p } } : {}));
@@ -58,6 +108,7 @@ function stopListening(): void {
 function fail(message: string): void {
   queue = [];
   if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+  endTrace();
   patch({ status: "error", error: message, listening: false, speaking: false });
   stopListening();
 }
@@ -117,6 +168,12 @@ function speakNext(): void {
 function checkReplies(): void {
   const c = getCall();
   if (!c) return;
+  // The call belongs to the open conversation: opening another bot hangs up.
+  const open = useStore.getState().selectedId;
+  if (open !== c.botId) {
+    endCall();
+    return;
+  }
   const thread = useStore.getState().threads[c.botId];
   if (thread === lastThread) return;
   lastThread = thread;
@@ -159,6 +216,7 @@ export function startCall(botId: string): void {
     return;
   }
   rec = r;
+  beginTrace(botId);
   r.continuous = true;
   r.interimResults = true;
   r.onstart = () => {
@@ -225,6 +283,7 @@ export function setMuted(muted: boolean): void {
 }
 
 export function endCall(): void {
+  endTrace();
   window.clearTimeout(restartTimer);
   unsubscribe?.();
   unsubscribe = null;
