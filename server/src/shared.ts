@@ -3,7 +3,7 @@
  * Type-only: the web app imports this file with `import type`.
  */
 
-export const AVATAR_SHAPES = ["circle", "squircle", "hexagon", "diamond", "shield", "drop", "arch", "star", "clover", "pill", "triangle", "octagon"] as const;
+export const AVATAR_SHAPES = ["pebble", "circle", "squircle", "hexagon", "diamond", "shield", "drop", "arch", "star", "clover", "pill", "triangle", "octagon"] as const;
 export const AVATAR_COLORS = ["ink", "clay", "ember", "amber", "moss", "teal", "sky", "indigo", "plum", "rose", "slate"] as const;
 export type AvatarShape = (typeof AVATAR_SHAPES)[number];
 export type AvatarColor = (typeof AVATAR_COLORS)[number];
@@ -15,7 +15,7 @@ export type ToolGroup = (typeof TOOL_GROUPS)[number];
 export type RoomRule = "lead" | "everyone" | "mentions";
 
 /** How a bot's animated character looks and moves. Every field has a default; old bots get them all. */
-export const EYE_STYLES = ["round", "oval", "wide", "dot", "sleepy", "visor"] as const;
+export const EYE_STYLES = ["googly", "round", "oval", "wide", "dot", "sleepy", "visor"] as const;
 export const ACCESSORIES = ["none", "antenna", "sprout", "bow", "headset", "cap", "halo"] as const;
 export const IDLE_MOTIONS = ["breathe", "float", "sway", "bounce", "still"] as const;
 /** mascot: a body with eyes. dots: a minimal face of a few morphing dots. muse: an abstract shape of light with a coloured halo. */
@@ -35,7 +35,7 @@ export interface Character {
   followCursor: boolean;
   blink: boolean;
 }
-export const DEFAULT_CHARACTER: Character = { type: "mascot", customColor: null, eyes: "round", mouth: true, cheeks: false, accessory: "none", idle: "breathe", intensity: 0.6, followCursor: true, blink: true };
+export const DEFAULT_CHARACTER: Character = { type: "mascot", customColor: null, eyes: "googly", mouth: true, cheeks: false, accessory: "none", idle: "breathe", intensity: 0.6, followCursor: true, blink: true };
 
 export type Effort = "low" | "medium" | "high" | "xhigh";
 export type BotMode = "personal" | "teammate";

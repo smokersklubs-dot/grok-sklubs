@@ -56,6 +56,8 @@ interface ShapeDef {
 }
 
 const SHAPES: Record<AvatarShape, ShapeDef> = {
+  // A soft, slightly squashed ball that sits on the floor: the default clay-toy body.
+  pebble: { art: <path d="M50 8 C75 8 90 29 90 54 C90 79 73 92 50 92 C27 92 10 79 10 54 C10 29 25 8 50 8 Z" />, sw: 3, fx: 50, fy: 56, s: 1.12, top: 8, hw: 41, bow: [22, 19] },
   circle: { art: <circle cx="50" cy="50" r="44" />, sw: 6, fx: 50, fy: 49, s: 1.15, top: 4, hw: 46, bow: [24, 15] },
   squircle: { art: <rect x="8" y="8" width="84" height="84" rx="27" />, sw: 6, fx: 50, fy: 49, s: 1.15, top: 5, hw: 45, bow: [19, 14] },
   hexagon: { art: <polygon points={ngon(6, 43, 30)} />, sw: 8, fx: 50, fy: 51, s: 1, top: 3, hw: 40, bow: [30, 17], pointy: true },
@@ -160,6 +162,7 @@ function palette(color: string, custom: string | null): Record<string, string> {
 type EyeStyle = CharacterLook["eyes"];
 /** Half spacing between the eyes and how far the pupils may travel (face units). */
 const EYES: Record<EyeStyle, { dx: number; tx: number; ty: number }> = {
+  googly: { dx: 11.4, tx: 4.6, ty: 4.4 },
   round: { dx: 13, tx: 3.2, ty: 3.2 },
   oval: { dx: 12, tx: 2.4, ty: 3.8 },
   wide: { dx: 14, tx: 5, ty: 5 },
@@ -171,8 +174,20 @@ const EYES: Record<EyeStyle, { dx: number; tx: number; ty: number }> = {
 const PUPIL = "#1b1d21";
 const WHITE_STROKE = "rgba(0,0,0,0.14)";
 
-function OneEye({ style }: { style: EyeStyle }) {
+function OneEye({ style, uid }: { style: EyeStyle; uid: string }) {
   switch (style) {
+    case "googly":
+      // Big glossy toy eyes: a white bead with a soft grey rim and a large dark pupil.
+      return (
+        <>
+          <circle r="10.8" fill={`url(#${uid}b)`} />
+          <g className="chr-gaze"><g className="chr-pupil">
+            <circle r="5.3" fill={PUPIL} />
+            <circle cx="-1.7" cy="-1.9" r="1.5" fill="#fff" opacity="0.9" />
+          </g></g>
+          <ellipse cx="-3.6" cy="-5.2" rx="3.2" ry="1.7" fill="#fff" opacity="0.75" transform="rotate(-28 -3.6 -5.2)" />
+        </>
+      );
     case "oval":
       return (
         <>
@@ -282,7 +297,7 @@ function Eyes({ style, state, uid }: { style: EyeStyle; state: CharacterState; u
       {[-dx, dx].map((x) => (
         <g key={x} transform={`translate(${x} 0)`}>
           <g className="chr-eye">
-            <OneEye style={style} />
+            <OneEye style={style} uid={uid} />
           </g>
         </g>
       ))}
@@ -292,16 +307,17 @@ function Eyes({ style, state, uid }: { style: EyeStyle; state: CharacterState; u
 
 /* ---------- Mouth ---------- */
 
-function Mouth({ state, mouthRef }: { state: CharacterState; mouthRef: React.Ref<SVGGElement> }) {
+function Mouth({ state, mouthRef, fine = false }: { state: CharacterState; mouthRef: React.Ref<SVGGElement>; fine?: boolean }) {
+  const sw = fine ? 1.7 : 2.5;
   const feat = { stroke: "var(--chr-feat)" };
   const fill = { fill: "var(--chr-feat)" };
   switch (state) {
     case "thinking":
       return <ellipse cx="3" cy="13.5" rx="2.2" ry="2.6" style={fill} />;
     case "working":
-      return <path d="M-3.6 13 Q0 14.6 3.6 13" fill="none" style={feat} strokeWidth="2.5" strokeLinecap="round" />;
+      return <path d="M-3.6 13 Q0 14.6 3.6 13" fill="none" style={feat} strokeWidth={sw} strokeLinecap="round" />;
     case "waiting":
-      return <path d="M-4.4 14 H4.4" fill="none" style={feat} strokeWidth="2.5" strokeLinecap="round" />;
+      return <path d="M-4.4 14 H4.4" fill="none" style={feat} strokeWidth={sw} strokeLinecap="round" />;
     case "speaking":
       return (
         <g transform="translate(0 11.5)">
@@ -321,9 +337,9 @@ function Mouth({ state, mouthRef }: { state: CharacterState; mouthRef: React.Ref
     case "sleeping":
       return <ellipse cx="0" cy="14" rx="1.7" ry="1.3" style={fill} />;
     case "listening":
-      return <path d="M-4 13 Q0 16.4 4 13" fill="none" style={feat} strokeWidth="2.5" strokeLinecap="round" />;
+      return <path d="M-4 13 Q0 16.4 4 13" fill="none" style={feat} strokeWidth={sw} strokeLinecap="round" />;
     default:
-      return <path d="M-5 12.6 Q0 16.6 5 12.6" fill="none" style={feat} strokeWidth="2.5" strokeLinecap="round" />;
+      return <path d="M-5 12.6 Q0 16.6 5 12.6" fill="none" style={feat} strokeWidth={sw} strokeLinecap="round" />;
   }
 }
 
@@ -795,18 +811,33 @@ function CharacterView({ bot, size = 36, state = "idle", level, levelSource, int
         ) : (
           <>
         <defs>
-          <linearGradient id={`${uid}h`} x1="0" y1="0" x2="0" y2="100" gradientUnits="userSpaceOnUse">
-            <stop offset="0" stopColor="#fff" stopOpacity="0.34" />
-            <stop offset="0.42" stopColor="#fff" stopOpacity="0" />
-            <stop offset="0.8" stopColor="#000" stopOpacity="0" />
-            <stop offset="1" stopColor="#000" stopOpacity="0.12" />
-          </linearGradient>
+          {/* Clay-toy material: a soft key light from the top left, shade towards the bottom right. */}
+          <radialGradient id={`${uid}h`} cx="34" cy="24" r="46" gradientUnits="userSpaceOnUse">
+            <stop offset="0" stopColor="#fff" stopOpacity="0.42" />
+            <stop offset="0.45" stopColor="#fff" stopOpacity="0.1" />
+            <stop offset="1" stopColor="#fff" stopOpacity="0" />
+          </radialGradient>
+          <radialGradient id={`${uid}d`} cx="44" cy="40" r="62" gradientUnits="userSpaceOnUse">
+            <stop offset="0.55" stopColor="#000" stopOpacity="0" />
+            <stop offset="1" stopColor="#000" stopOpacity="0.3" />
+          </radialGradient>
+          <radialGradient id={`${uid}b`} cx="-2.5" cy="-3" r="13" gradientUnits="userSpaceOnUse">
+            <stop offset="0.55" stopColor="#ffffff" />
+            <stop offset="1" stopColor="#c9ccd3" />
+          </radialGradient>
+          {!small && (
+            <filter id={`${uid}g`} x="0" y="0" width="100%" height="100%">
+              <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="7" result="n" />
+              <feColorMatrix in="n" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0.22 0 0 0 -0.07" />
+            </filter>
+          )}
           <mask id={`${uid}m`} maskUnits="userSpaceOnUse" x="-5" y="-5" width="110" height="110">
             <g fill="#fff" stroke="#fff" strokeWidth={shape.sw} strokeLinejoin="round">
               {shape.art}
             </g>
           </mask>
         </defs>
+        {!small && <ellipse className="chr-floor" cx="50" cy="96" rx="33" ry="3.6" fill="#000" opacity="0.16" />}
         <g className="chr-motion">
           <g className="chr-squash" ref={squash}>
             <AccessoryArt kind={accessory} shape={shape} front={false} />
@@ -818,7 +849,11 @@ function CharacterView({ bot, size = 36, state = "idle", level, levelSource, int
             <g style={{ fill: "var(--chr-body)", stroke: "var(--chr-body)" }} strokeWidth={shape.sw} strokeLinejoin="round">
               {shape.art}
             </g>
-            <rect x="-5" y="-5" width="110" height="110" fill={`url(#${uid}h)`} mask={`url(#${uid}m)`} />
+            <g mask={`url(#${uid}m)`}>
+              <rect x="-5" y="-5" width="110" height="110" fill={`url(#${uid}d)`} />
+              <rect x="-5" y="-5" width="110" height="110" fill={`url(#${uid}h)`} />
+              {!small && <rect x="-5" y="-5" width="110" height="110" filter={`url(#${uid}g)`} />}
+            </g>
             <g transform={`translate(${shape.fx} ${shape.fy}) scale(${shape.s})`}>
               <g className="chr-face" ref={follow} style={{ "--tx": tx, "--ty": ty } as React.CSSProperties}>
                 {look.cheeks && (
@@ -834,7 +869,7 @@ function CharacterView({ bot, size = 36, state = "idle", level, levelSource, int
                   </g>
                 )}
                 <Eyes style={eyes} state={state} uid={uid} />
-                {look.mouth && <Mouth state={state} mouthRef={mouth} />}
+                {look.mouth && (eyes === "googly" ? <g transform="translate(0 2.6)"><Mouth state={state} mouthRef={mouth} fine /></g> : <Mouth state={state} mouthRef={mouth} />)}
               </g>
             </g>
             <AccessoryArt kind={accessory} shape={shape} front />

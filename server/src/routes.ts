@@ -111,7 +111,7 @@ api.post("/auth/signup", async (c) => {
   const user = users.create(email, String(b.name ?? ""), hashPassword(password), locale);
   // Every account starts with one main bot so there is someone to talk to straight away.
   bots.create(user.id, {
-    name: "Juno", label: tr(locale, "Chief of staff"), primary: true, shape: "circle", color: "indigo",
+    name: "Juno", label: tr(locale, "Chief of staff"), primary: true, shape: "pebble", color: "indigo",
     description: tr(locale, "Your main point of contact. Keeps track of what is open, checks in when something needs you, and coordinates the other bots."),
   });
   startSession(c, user.id);
