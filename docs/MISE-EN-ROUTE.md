@@ -11,7 +11,7 @@ Tout ce qui pouvait être vérifié sans tes comptes l'a été (64 tests automat
 ## 2. Brancher ton abonnement Claude ou ChatGPT — 5 min
 Réglages du bot → **Cerveau** → choisis Claude Code ou Codex → **Se connecter sur l'ordinateur de …**. L'écran du bot s'ouvre : connecte-toi toi-même dans la fenêtre (Sklubot ne voit jamais ton mot de passe).
 - [ ] Le bot répond à un message en utilisant ton abonnement (badge d'abonnement visible).
-- [ ] Ordinateurs déjà créés avant cette version : réglages du bot → **Réinitialiser l'ordinateur** pour qu'il reçoive le nouveau cloisonnement (ce qui a été installé dedans est effacé).
+- [ ] Ordinateurs déjà créés avant cette version : panneau du bot → Ordinateur → **Réinitialiser** pour qu'il reçoive le nouveau cloisonnement (ce qui a été installé dedans est effacé).
 
 ## 3. Relier tes données business — 10 min par appli
 « Connecter des applis » → catalogue → **Ajouter** → **Se connecter**.
