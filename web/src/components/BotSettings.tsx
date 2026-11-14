@@ -60,6 +60,7 @@ const sameForm = (a: Form, b: Form): boolean => FORM_KEYS.every((k) => sameValue
 
 function General({ bot, onClose }: { bot: Bot; onClose: () => void }) {
   const { upsertBot, resetConversation, loadBots, showToast } = useStore.getState();
+  const video = useStore((s) => s.video);
   const t = useT();
   const efforts = EFFORT_IDS.map((id) => ({ id, title: t(`effort.${id}.title`), text: t(`effort.${id}.text`) }));
   const autonomies = AUTONOMY_IDS.map((id) => ({ id, title: t(`autonomy.${id}.title`), text: t(`autonomy.${id}.text`) }));
@@ -216,6 +217,8 @@ function General({ bot, onClose }: { bot: Bot; onClose: () => void }) {
                       <span className="check-text">
                         <span className="choice-title">{t(`tools.${g}.label`)}</span>
                         <span className="choice-text">{t(`tools.${g}.text`)}</span>
+                        {g === "video" && !video.provider && !video.higgsfield && <span className="choice-text is-note">{t("tools.video.off")}</span>}
+                        {g === "video" && video.higgsfield && <span className="choice-text is-note">{t("tools.video.higgsfield")}</span>}
                       </span>
                     </button>
                   </li>

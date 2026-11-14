@@ -3,7 +3,7 @@ import { api, apiUpload, errText, setUnauthorizedHandler } from "./api";
 import { getLocale, isLocale, setLocale as applyLocale, t } from "./i18n";
 import { notifyBot } from "./lib/notify";
 import { playShout, startEuphoria } from "./lib/cheer";
-import type { Attachment, Bot, BotBundle, ComputerState, Connector, Live, Locale, Routine, Row, ServerEvent, Task, User } from "./types";
+import type { Attachment, Bot, BotBundle, ComputerState, Connector, Live, Locale, ReactionEmoji, Recording, Routine, Row, ServerEvent, Task, User, VideoStatus } from "./types";
 
 export type Theme = "system" | "light" | "dark";
 export type ModalState =
@@ -124,6 +124,12 @@ interface Store {
   setupCodeRequired: boolean;
   /** Whether bots on this server can create images. */
   imageGeneration: boolean;
+  /** How bots can make videos (Higgsfield app, a video API, or neither). */
+  video: VideoStatus;
+  /** The thread open in the side panel: the bot and the seq of the message it hangs on. */
+  openThread: { botId: string; seq: number } | null;
+  /** Demonstrations being recorded on bots' screens ("Show me how"), and the skills drafted from them. */
+  recordings: Record<string, Recording | null>;
   locale: Locale;
   online: boolean;
 
@@ -209,6 +215,14 @@ interface Store {
   closeHistory(): void;
   setDraft(botId: string, text: string): void;
   focusComposer(): void;
+  /** Open the thread on one message in the side panel (and load its replies). */
+  openThreadPanel(botId: string, seq: number): void;
+  closeThread(): void;
+  loadThread(botId: string, seq: number): Promise<void>;
+  /** Put or take back one reaction on a message. */
+  react(botId: string, seq: number, emoji: ReactionEmoji): Promise<void>;
+  loadRecording(botId: string): Promise<void>;
+  setRecording(botId: string, recording: Recording | null): void;
 }
 
 let toastTimer: number | undefined;
@@ -228,6 +242,9 @@ export const useStore = create<Store>((set, get) => ({
   signupOpen: false,
   setupCodeRequired: false,
   imageGeneration: false,
+  video: { provider: null, higgsfield: false },
+  openThread: null,
+  recordings: {},
   locale: getLocale(),
   online: true,
 
@@ -269,8 +286,8 @@ export const useStore = create<Store>((set, get) => ({
       if (get().boot === "ready") set({ boot: "signedOut", user: null });
     });
     try {
-      const me = await api<{ user: User | null; signupOpen: boolean; setupCodeRequired?: boolean; imageGeneration?: boolean }>("GET", "/me");
-      set({ imageGeneration: me.imageGeneration === true });
+      const me = await api<{ user: User | null; signupOpen: boolean; setupCodeRequired?: boolean; imageGeneration?: boolean; video?: VideoStatus }>("GET", "/me");
+      set({ imageGeneration: me.imageGeneration === true, video: me.video ?? { provider: null, higgsfield: false } });
       if (me.user) {
         set({ signupOpen: me.signupOpen });
         await get().signedIn(me.user);
@@ -291,8 +308,8 @@ export const useStore = create<Store>((set, get) => ({
     }
     if (get().boot === "signedOut") {
       // Signed in from the form: /me was read before there was a session, so read the server flags again.
-      api<{ imageGeneration?: boolean }>("GET", "/me").then(
-        (me) => set({ imageGeneration: me.imageGeneration === true }),
+      api<{ imageGeneration?: boolean; video?: VideoStatus }>("GET", "/me").then(
+        (me) => set({ imageGeneration: me.imageGeneration === true, video: me.video ?? { provider: null, higgsfield: false } }),
         () => undefined,
       );
     }
@@ -344,7 +361,7 @@ export const useStore = create<Store>((set, get) => ({
     const bot = get().bots[id];
     if (!bot) return;
     writePrefs({ selectedId: id });
-    set({ selectedId: id, view: "chat", mobileNav: false });
+    set((st) => ({ selectedId: id, view: "chat", mobileNav: false, openThread: st.openThread?.botId === id ? st.openThread : null }));
     void get().loadRows(id);
     void get().loadBundle(id);
     if (bot.unread > 0) void get().markRead(id);
@@ -516,6 +533,7 @@ export const useStore = create<Store>((set, get) => ({
         break;
       }
       case "reset": {
+        if (get().openThread?.botId === ev.botId) set({ openThread: null });
         set((s) => {
           const t = s.threads[ev.botId];
           if (!t || ev.generation <= t.generation) return {};
@@ -559,6 +577,11 @@ export const useStore = create<Store>((set, get) => ({
         break;
       case "connectors":
         void get().loadConnectors();
+        // Connecting or disconnecting Higgsfield changes how videos are made.
+        api<{ video?: VideoStatus }>("GET", "/me").then((me) => me.video && set({ video: me.video }), () => undefined);
+        break;
+      case "recording":
+        get().setRecording(ev.botId, ev.recording);
         break;
       case "usage":
         set((s) => ({ usageTick: s.usageTick + 1 }));
@@ -731,6 +754,40 @@ export const useStore = create<Store>((set, get) => ({
   },
   closeHistory() {
     set({ history: null });
+  },
+  openThreadPanel(botId, seq) {
+    set({ openThread: { botId, seq } });
+    void get().loadThread(botId, seq);
+  },
+  closeThread() {
+    set({ openThread: null });
+  },
+  async loadThread(botId, seq) {
+    try {
+      const r = await api<{ generation: number; rows: Row[] }>("GET", `/bots/${botId}/rows?thread=${seq}&limit=500`);
+      // Thread replies live in the same list as the main chat (one sequence per conversation); views filter them.
+      get().addRows(botId, r.rows);
+    } catch (e) {
+      get().showToast(errText(e));
+    }
+  },
+  async react(botId, seq, emoji) {
+    try {
+      await api("POST", `/bots/${botId}/rows/${seq}/reactions`, { emoji });
+    } catch (e) {
+      get().showToast(errText(e));
+    }
+  },
+  async loadRecording(botId) {
+    try {
+      const r = await api<{ recording: Recording | null }>("GET", `/bots/${botId}/teach`);
+      get().setRecording(botId, r.recording);
+    } catch {
+      /* the viewer shows no recording */
+    }
+  },
+  setRecording(botId, recording) {
+    set((s) => ({ recordings: { ...s.recordings, [botId]: recording } }));
   },
   setDraft(botId, text) {
     set((s) => ({ drafts: { ...s.drafts, [botId]: text } }));

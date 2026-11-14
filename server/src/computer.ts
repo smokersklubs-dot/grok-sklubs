@@ -189,6 +189,16 @@ const browserScreen = {
   },
   reset: closeDesktop,
   isOpen: (botId: string) => desktops.has(botId),
+  async frame(botId: string): Promise<Buffer | null> {
+    const d = desktops.get(botId);
+    if (!d) return null;
+    try { return await d.page.screenshot({ type: "jpeg", quality: 55 }); } catch { return null; }
+  },
+  async where(botId: string): Promise<{ title: string; url: string }> {
+    const d = desktops.get(botId);
+    if (!d) return { title: "", url: "" };
+    return { url: d.page.url() as string, title: (await d.page.title().catch(() => "")) as string };
+  },
 };
 
 /** The page address each bot's computer last reported (shown on saved-login cards; it is the computer's word, not proof). */
@@ -211,6 +221,10 @@ export const screen = {
   read: (botId: string, userId: string) => (kind === "linux" ? linuxScreen.read(botId, userId, workspaceOf(botId)) : browserScreen.read(botId, userId)).then((r) => noteUrl(botId, r)),
   peek: (botId: string) => (kind === "linux" ? linuxScreen.peek(botId) : browserScreen.peek(botId)),
   isOpen: (botId: string) => (kind === "linux" ? linuxScreen.isOpen(botId) : browserScreen.isOpen(botId)),
+  /** A picture for a demonstration recording, only if the computer is already on (never wakes it). */
+  frame: (botId: string) => (kind === "linux" ? linuxScreen.frame(botId) : kind === "browser" ? browserScreen.frame(botId) : Promise.resolve(null)),
+  /** Window title and page address in front, only if the computer is already on. */
+  where: (botId: string) => (kind === "linux" ? linuxScreen.where(botId) : kind === "browser" ? browserScreen.where(botId) : Promise.resolve({ title: "", url: "" })),
   /** Switches the computer on without doing anything on it (Linux computers only; a browser opens on first use). */
   wake: async (botId: string, userId: string) => { if (kind === "linux") await linuxScreen.wake(botId, userId, workspaceOf(botId)); },
   /** Linux: close every window, keep logins, reopen the browser on the home page. Browser: close the browser. */
@@ -342,11 +356,13 @@ const MIME: Record<string, string> = {
   txt: "text/plain", md: "text/markdown", csv: "text/csv", json: "application/json", html: "text/html", zip: "application/zip",
   doc: "application/msword", docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   xls: "application/vnd.ms-excel", xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  mp3: "audio/mpeg", wav: "audio/wav", mp4: "video/mp4", mov: "video/quicktime",
+  mp3: "audio/mpeg", wav: "audio/wav", mp4: "video/mp4", mov: "video/quicktime", webm: "video/webm",
 };
 export const mimeOf = (name: string) => MIME[name.split(".").pop()?.toLowerCase() ?? ""] ?? "application/octet-stream";
 /** Picture formats that are safe to show inline and that models can look at. */
 export const isInlineImage = (mime: string) => ["image/png", "image/jpeg", "image/gif", "image/webp"].includes(mime);
+/** Video formats a browser can play in the chat's player. */
+export const isInlineVideo = (mime: string) => ["video/mp4", "video/webm"].includes(mime);
 
 /** Describes a file in the bot's library for showing it in the chat, or null if it is not a plain file there. */
 export function attachmentAt(botId: string, rel: string): Attachment | null {

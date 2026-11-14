@@ -255,7 +255,9 @@ export function SearchModal({ onClose }: { onClose: () => void }) {
   const openHit = (h: SearchHit | undefined) => {
     if (!h) return;
     onClose();
-    if (h.current) jumpTo(h.botId, h.seq);
+    // A reply in a thread: show the message it hangs on, and open the thread beside it.
+    if (h.current && h.thread) { jumpTo(h.botId, h.thread); useStore.getState().openThreadPanel(h.botId, h.thread); }
+    else if (h.current) jumpTo(h.botId, h.seq);
     else openHistory({ botId: h.botId, generation: h.generation, seq: h.seq });
   };
 

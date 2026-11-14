@@ -1,8 +1,8 @@
-import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createContext, memo, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { enc } from "../api";
 import { t, tn, useT, type Key } from "../i18n";
 import { useStore, type Thread } from "../store";
-import type { ActivityKind, Attachment, Bot, Live, Origin, Row, RowBody } from "../types";
+import { REACTIONS, type ActivityKind, type Attachment, type Bot, type Live, type Origin, type Reaction, type ReactionEmoji, type Row, type RowBody } from "../types";
 import { callClock, clockTime, dividerLabel, elapsed, fileSize, hostName, workDuration } from "../lib/format";
 import { renderMarkdown } from "../lib/markdown";
 import { Avatar, BotAvatar } from "./Avatar";
@@ -71,7 +71,8 @@ function planWork(rows: Row[], running: boolean): { folded: Set<number>; chips: 
       if (b.kind === "step") {
         picked.push(i);
         steps++;
-      } else if (finalBody && b.kind === "message" && b.role === "assistant" && i < final && senderKey(b) === senderKey(finalBody)) {
+      } else if (finalBody && b.kind === "message" && b.role === "assistant" && i < final && senderKey(b) === senderKey(finalBody) && !b.attachments?.length) {
+        // Files the bot made (a picture, a video) stay in view; only its in-between words fold away.
         // In a room only the replying bot's own earlier messages fold; other bots' replies stay visible.
         picked.push(i);
       }
@@ -95,7 +96,9 @@ function planWork(rows: Row[], running: boolean): { folded: Set<number>; chips: 
   return { folded, chips };
 }
 
-export function buildItems(rows: Row[], running: boolean): Item[] {
+/** Groups the rows of one conversation for display. Thread replies are left out unless `thread` says which thread to show. */
+export function buildItems(all: Row[], running: boolean, thread = 0): Item[] {
+  const rows = all.filter((r) => (r.thread ?? 0) === thread);
   const items: Item[] = [];
   const { folded, chips } = planWork(rows, running);
   let prevAt: number | null = null;
@@ -212,9 +215,23 @@ function Attachments({ botId, files }: { botId: string; files: Attachment[] }) {
   const [open, setOpen] = useState<Attachment | null>(null);
   const t = useT();
   const images = files.filter((f) => f.mime.startsWith("image/"));
-  const others = files.filter((f) => !f.mime.startsWith("image/"));
+  const videos = files.filter((f) => f.mime === "video/mp4" || f.mime === "video/webm");
+  const others = files.filter((f) => !f.mime.startsWith("image/") && !videos.includes(f));
   return (
     <div className="attachments">
+      {videos.map((f) => (
+        <figure key={f.path} className="attach-video">
+          <video src={viewUrl(botId, f.path)} controls preload="metadata" playsInline aria-label={t("attach.video", { name: f.name })} />
+          <figcaption>
+            <Icon name="play" size={13} />
+            <span className="truncate">{f.name}</span>
+            <span className="attach-file-size">{fileSize(f.size)}</span>
+            <a className="attach-video-dl" href={downloadUrl(botId, f.path)} download={f.name} title={t("attach.downloadName", { name: f.name })}>
+              <Icon name="download" size={14} />
+            </a>
+          </figcaption>
+        </figure>
+      ))}
       {images.map((f) => (
         <button key={f.path} type="button" className="attach-image" onClick={() => setOpen(f)} aria-label={t("attach.open", { name: f.name })} title={f.name}>
           <img src={viewUrl(botId, f.path)} alt={f.name} loading="lazy" />
@@ -237,9 +254,105 @@ function Attachments({ botId, files }: { botId: string; files: Attachment[] }) {
   );
 }
 
+/* ---------- Reactions and threads ---------- */
+
+/** Where rows are shown: the main chat, a thread panel, or a read-only earlier conversation (with every row, threads included). */
+export const RowContext = createContext<{ mode: "main" | "thread" | "readonly"; all?: Row[] }>({ mode: "main" });
+
+function ReactionBar({ row, reactions }: { row: Row; reactions: Reaction[] }) {
+  const { mode } = useContext(RowContext);
+  const bots = useStore((s) => s.bots);
+  const t = useT();
+  if (!reactions.length) return null;
+  const groups = new Map<string, Reaction[]>();
+  for (const r of reactions) groups.set(r.emoji, [...(groups.get(r.emoji) ?? []), r]);
+  return (
+    <div className="reactions" role="group" aria-label={t("react.list")}>
+      {[...groups.entries()].map(([emoji, who]) => {
+        const mine = who.some((w) => w.by === "user");
+        const names = who.map((w) => (w.by === "user" ? t("common.you") : bots[w.by]?.name ?? w.name)).join(", ");
+        return (
+          <button
+            key={emoji}
+            type="button"
+            className={`reaction ${mine ? "is-mine" : ""}`}
+            disabled={mode === "readonly"}
+            aria-pressed={mine}
+            title={t("react.who", { names, emoji })}
+            onClick={() => void useStore.getState().react(row.botId, row.seq, emoji as ReactionEmoji)}
+          >
+            <span className="reaction-emoji">{emoji}</span>
+            <span className="reaction-count">{who.length}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function MessageActions({ row, canThread }: { row: Row; canThread: boolean }) {
+  const [open, setOpen] = useState(false);
+  const t = useT();
+  const pick = (emoji: ReactionEmoji) => {
+    setOpen(false);
+    void useStore.getState().react(row.botId, row.seq, emoji);
+  };
+  return (
+    <div className={`msg-actions ${open ? "is-open" : ""}`}>
+      <button type="button" className="msg-action" aria-label={t("react.add")} title={t("react.add")} aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+        <Icon name="smile" size={15} />
+      </button>
+      {canThread && (
+        <button type="button" className="msg-action" aria-label={t("thread.reply")} title={t("thread.reply")} onClick={() => useStore.getState().openThreadPanel(row.botId, row.seq)}>
+          <Icon name="thread" size={15} />
+        </button>
+      )}
+      {open && (
+        <div className="emoji-pick" role="menu" aria-label={t("react.add")} onKeyDown={(e) => { if (e.key === "Escape") setOpen(false); }}>
+          {REACTIONS.map((e) => (
+            <button key={e} type="button" role="menuitem" className="emoji-pick-item" onClick={() => pick(e)}>{e}</button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RepliesLink({ row, count, lastAt }: { row: Row; count: number; lastAt: number }) {
+  const { mode, all } = useContext(RowContext);
+  const [open, setOpen] = useState(false);
+  const t = useT();
+  if (mode === "thread") return null;
+  if (mode === "readonly") {
+    // An earlier conversation: the thread opens in place.
+    const replies = (all ?? []).filter((r) => r.thread === row.seq && r.body.kind === "message" && r.body.text.trim());
+    return (
+      <div className="replies-inline">
+        <button type="button" className="replies" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
+          <Icon name="thread" size={13} /> {tn("count.reply", count)}
+        </button>
+        {open && replies.map((r) => (
+          <div key={r.seq} className="reply-line" data-seq={r.seq}>
+            <b>{r.body.kind === "message" && r.body.role === "user" && !r.body.origin ? t("common.you") : r.body.kind === "message" ? r.body.origin?.name ?? "" : ""}</b>
+            <Markdown text={r.body.kind === "message" ? r.body.text : ""} />
+          </div>
+        ))}
+      </div>
+    );
+  }
+  return (
+    <button type="button" className="replies" onClick={() => useStore.getState().openThreadPanel(row.botId, row.seq)}>
+      <Icon name="thread" size={13} />
+      <span>{tn("count.reply", count)}</span>
+      <span className="replies-when">{t("thread.last", { time: clockTime(lastAt) })}</span>
+    </button>
+  );
+}
+
 function MessageGroup({ item }: { item: Extract<Item, { t: "msgs" }> }) {
   const n = item.rows.length;
   const t = useT();
+  const { mode } = useContext(RowContext);
   return (
     <div className={`group ${item.mine ? "is-mine" : "is-theirs"}`}>
       {item.origin && <SenderLabel origin={item.origin} role={item.role} />}
@@ -256,6 +369,9 @@ function MessageGroup({ item }: { item: Extract<Item, { t: "msgs" }> }) {
               </div>
             )}
             <time className="msg-time" dateTime={new Date(row.createdAt).toISOString()}>{clockTime(row.createdAt)}</time>
+            {mode !== "readonly" && !b.streaming && <MessageActions row={row} canThread={mode === "main"} />}
+            {b.reactions && b.reactions.length > 0 && <ReactionBar row={row} reactions={b.reactions} />}
+            {b.replies && b.replies.count > 0 && <RepliesLink row={row} count={b.replies.count} lastAt={b.replies.lastAt} />}
             {b.sources && b.sources.length > 0 && (
               <div className="sources">
                 {b.sources.slice(0, 6).map((s, j) => (
@@ -426,9 +542,9 @@ function EventRow({ body, botName, seq }: { body: EventBody; botName: string; se
 }
 
 /** The rows of a conversation, already grouped. `readOnly` is for earlier conversations: cards can't be answered. */
-export function RowItems({ items, bot, readOnly }: { items: Item[]; bot: Bot; readOnly?: boolean }) {
+export function RowItems({ items, bot, readOnly, mode, all }: { items: Item[]; bot: Bot; readOnly?: boolean; mode?: "main" | "thread"; all?: Row[] }) {
   return (
-    <>
+    <RowContext.Provider value={{ mode: readOnly ? "readonly" : mode ?? "main", all }}>
       {items.map((item) => {
         switch (item.t) {
           case "divider":
@@ -451,7 +567,7 @@ export function RowItems({ items, bot, readOnly }: { items: Item[]; bot: Bot; re
           }
         }
       })}
-    </>
+    </RowContext.Provider>
   );
 }
 
@@ -483,6 +599,7 @@ const PHRASES: Record<ActivityKind, Key[]> = {
   saving: ["activity.saving"],
   remembering: ["activity.remembering"],
   planning: ["activity.planning"],
+  filming: ["activity.filming"],
 };
 const WORKING: Key[] = ["activity.working.0", "activity.working.1", "activity.working.2", "activity.working.3", "activity.working.4"];
 
@@ -507,11 +624,12 @@ export function activityPhrase(live: Live, rows: Row[], now: number): string {
     return who ? t("activity.checkingWith", { name: who }) : t("activity.messaging");
   }
   if (a.kind === "connector" && a.detail) return t("activity.workingIn", { name: a.detail });
+  if (a.kind === "filming" && a.detail && /^\d+$/.test(a.detail)) return t("activity.filmingAt", { pct: a.detail });
   const list = PHRASES[a.kind] ?? WORKING;
   return t(list[Math.floor(Math.max(0, now - a.since) / 6000) % list.length]);
 }
 
-function ActivityLine({ bot, live, rows }: { bot: Bot; live: Live; rows: Row[] }) {
+export function ActivityLine({ bot, live, rows }: { bot: Bot; live: Live; rows: Row[] }) {
   const now = useTick(1000);
   useT();
   const since = live.startedAt ?? live.activity?.since ?? now;
@@ -534,6 +652,7 @@ function ActivityLine({ bot, live, rows }: { bot: Bot; live: Live; rows: Row[] }
 
 function EmptyChat({ bot }: { bot: Bot }) {
   const imageGeneration = useStore((s) => s.imageGeneration);
+  const video = useStore((s) => s.video);
   const t = useT();
   const fallback = t(bot.kind === "room" ? "empty.room" : bot.mode === "teammate" ? "empty.teammate" : "empty.personal");
   return (
@@ -542,6 +661,7 @@ function EmptyChat({ bot }: { bot: Bot }) {
       <h2>{bot.name}</h2>
       <p>{bot.description || fallback}</p>
       {imageGeneration && bot.kind !== "room" && <p className="chat-empty-hint">{t("empty.images")}</p>}
+      {bot.kind !== "room" && <p className="chat-empty-hint">{t(video.higgsfield ? "empty.videoHiggsfield" : video.provider ? "empty.video" : "empty.videoOff")}</p>}
     </div>
   );
 }
@@ -559,10 +679,13 @@ export function Transcript({ bot, thread, live }: { bot: Bot; thread: Thread | u
   const rows = thread?.rows ?? [];
   // `t` changes with the language, so the date dividers are rebuilt when it does.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const items = useMemo(() => buildItems(rows, live.running), [rows, live.running, t]);
-  const lastBody = rows.length ? rows[rows.length - 1].body : null;
+  const items = useMemo(() => buildItems(rows, live.running && !live.thread), [rows, live.running, live.thread, t]);
+  const mainRows = useMemo(() => rows.filter((r) => !r.thread), [rows]);
+  const lastBody = mainRows.length ? mainRows[mainRows.length - 1].body : null;
   const streaming = lastBody?.kind === "message" && !!lastBody.streaming;
-  const showActivity = (live.running && !streaming) || !!live.awaiting;
+  // A turn answering in a thread shows its activity in the thread panel, not here.
+  const inThread = !!live.thread;
+  const showActivity = !inThread && ((live.running && !streaming) || !!live.awaiting);
 
   const toBottom = () => {
     const el = scroller.current;
@@ -661,6 +784,12 @@ export function Transcript({ bot, thread, live }: { bot: Bot; thread: Thread | u
             </div>
           )}
           <RowItems items={items} bot={bot} />
+          {loaded && inThread && live.thread && (
+            <button type="button" className="activity is-elsewhere" onClick={() => useStore.getState().openThreadPanel(bot.id, live.thread!)}>
+              <BotAvatar bot={bot} size={22} />
+              <span className="activity-text">{t("thread.working", { name: bot.name })}</span>
+            </button>
+          )}
           {loaded && showActivity && <ActivityLine bot={bot} live={live} rows={rows} />}
           {loaded && !showActivity && live.queued > 0 && (
             <div className="activity"><span className="chip">{tn("count.queued", live.queued)}</span></div>

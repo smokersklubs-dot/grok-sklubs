@@ -27,6 +27,8 @@ function plan(text: string, has: (name: string) => boolean): Block[] | null {
       ? { kind: "lead", score: 93, evidence: "démo : 3 visites de la page de prix en 24 h, entreprise de 40 personnes, demande de devis", value: "≈ 6 000 €/an", reason: quoted ?? "un nouveau lead très chaud" }
       : { kind: "lead", score: 93, evidence: "demo: 3 visits to the pricing page in 24 h, company of 40 people, asked for a quote", value: "≈ $6,000/yr", reason: quoted ?? "a very hot new lead" });
   }
+  if (/\b(video|vidéo|clip)\b/.test(lower)) return call("video_generate", { prompt: quoted ?? (text.replace(/^.*?\b(video|vidéo|clip)\b\s*(of|de|d'|sur)?/i, "").trim() || "a calm sunrise over the sea"), duration_seconds: 4, aspect_ratio: "16:9", filename: "demo-video" });
+  if (/\b(react|réagis|reaction|réaction)\b/.test(lower)) return call("message_react", { emoji: "👍" });
   if (/\b(ask me|demande-moi|question)\b/.test(lower)) return call("ask_user", { question: "Which format would you like?", options: ["Short summary", "Detailed report", "Bullet list"] });
   return null;
 }
@@ -45,7 +47,15 @@ export class DemoProvider implements LlmProvider {
     const results = last.content.filter((b) => b.type === "tool_result");
     const said = (texts[texts.length - 1] ?? "").replace(/^(\[[^\]\n]*\]\n)+/, "");
     let content: Block[];
-    if (!req.tools.length) {
+    if (!req.tools.length && /recorded demonstration/.test(req.system)) {
+      // "Show me how": a skill drafted from the recorded timeline (the demo cannot look at the screenshots).
+      const timeline = texts.join("\n").split("\n").filter((l) => /^\d\d:\d\d (clicked|double-clicked|right-clicked|typed|pressed|scrolled|dragged|opened|page:)/.test(l)).slice(0, 12);
+      const fr = /Write in French/.test(texts.join(" "));
+      const steps = timeline.length ? timeline.map((l) => l.slice(6)) : [fr ? "Refaire les gestes montrés à l'écran" : "Repeat what was shown on the screen"];
+      content = [{ type: "text", text: JSON.stringify(fr
+        ? { name: "Procédure montrée", when: "Quand on me demande de refaire ce que tu m'as montré", steps: steps.map((x) => `Démo : ${x}`) }
+        : { name: "Demonstrated procedure", when: "When asked to do again what you showed me", steps: steps.map((x) => `Demo: ${x}`) }) }];
+    } else if (!req.tools.length) {
       content = [{ type: "text", text: '{"facts": []}' }];
     } else if (results.length && !texts.length) {
       const failed = results.some((r) => r.type === "tool_result" && r.isError);

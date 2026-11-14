@@ -84,6 +84,17 @@ export const CATALOG: CatalogApp[] = [
     description: "Pages and databases of your workspace. Gems: ideas and plans left unfinished, notes that connect with today's numbers; bots can write their findings there.",
     tokenHelp: "",
   },
+  // ── Creation ──
+  {
+    // https://higgsfield.ai/creator-hub/help-center/integrations/how-do-i-connect-higgsfield-to-ai-agent (remote MCP
+    // server https://mcp.higgsfield.ai/mcp, sign-in with the Higgsfield account; "An active paid subscription is required";
+    // "Every generation through a connected agent deducts credits"). Dynamic client registration checked on the live
+    // metadata (14 Nov 2026): https://mcp.higgsfield.ai/.well-known/oauth-protected-resource/mcp names the authorization
+    // server https://clerk.higgsfield.ai, whose /.well-known/oauth-authorization-server lists a registration_endpoint, PKCE S256.
+    id: "higgsfield", name: "Higgsfield", category: "Creation", url: "https://mcp.higgsfield.ai/mcp", auth: "oauth", oauthClient: "dynamic",
+    description: "Videos, images and sound with your Higgsfield account. Once connected, bots make their videos here. Every generation spends your Higgsfield credits.",
+    tokenHelp: "Needs a paid Higgsfield subscription. Each video or image a bot makes uses your Higgsfield credits, and Higgsfield sets no cap of its own: ask your bots to check with you before making several.",
+  },
   {
     id: "context7", name: "Context7", category: "Development", url: "https://mcp.context7.com/mcp", auth: "none",
     description: "Up-to-date documentation and code examples for programming libraries.", tokenHelp: "",
@@ -112,6 +123,7 @@ const FR: Record<string, { category: string; description: string; tokenHelp: str
   supermetrics: { category: "Analytique & SEO", description: "Une seule connexion pour tes données marketing : Google Ads, Meta, LinkedIn, GA4, Search Console et plus. Pépites : campagnes qui gaspillent du budget, meilleur ROAS, chutes soudaines.", tokenHelp: "Nécessite un abonnement Supermetrics avec accès API (un essai de 14 jours est créé à la première connexion)." },
   windsor: { category: "Analytique & SEO", description: "GA4, Search Console, Google/Meta/TikTok Ads, Shopify, HubSpot et plus de 300 sources via une seule app. Pépites : requêtes proches de la première page, canaux dont le ROI monte.", tokenHelp: "Connecte d'abord tes sources (Google Analytics, Search Console, publicités…) dans Windsor.ai : les bots voient ce que tu y as connecté." },
   notion: { category: "Productivité", description: "Pages et bases de données de ton espace. Pépites : idées et projets laissés en plan, notes qui éclairent les chiffres du jour ; les bots peuvent y écrire leurs trouvailles.", tokenHelp: "" },
+  higgsfield: { category: "Création", description: "Vidéos, images et sons avec ton compte Higgsfield. Une fois connecté, les bots font leurs vidéos ici. Chaque génération utilise tes crédits Higgsfield.", tokenHelp: "Nécessite un abonnement Higgsfield payant. Chaque vidéo ou image créée par un bot utilise tes crédits Higgsfield, sans plafond côté Higgsfield : demande à tes bots de te consulter avant d'en faire plusieurs." },
   context7: { category: "Développement", description: "Documentation et exemples de code à jour pour les bibliothèques de programmation.", tokenHelp: "" },
   deepwiki: { category: "Développement", description: "Pose des questions sur n'importe quel dépôt de code public et lis sa documentation générée.", tokenHelp: "" },
   "cloudflare-docs": { category: "Développement", description: "Recherche dans la documentation développeur de Cloudflare.", tokenHelp: "" },

@@ -1,4 +1,4 @@
-import { createReadStream } from "node:fs";
+import { closeSync, createReadStream } from "node:fs";
 import path from "node:path";
 import { Readable } from "node:stream";
 import { Hono, type Context } from "hono";
@@ -15,7 +15,7 @@ import { createRoom, dispatchToRoom, validMembers } from "./agent/team.js";
 import { retireBot } from "./agent/tools.js";
 import { createSession, dropSession, hashPassword, originAllowed, seal, SESSION_COOKIE, setupCodeMatches, setupCodeRequired, signupOpen, userForToken, verifyPassword } from "./auth.js";
 import { emit, getLive, subscribe } from "./bus.js";
-import { attachmentAt, computerState, isInlineImage, listFiles, mimeOf, openLibraryFile, readLibraryFile, removeWorkspace, resolveInWorkspace, screen, storeBytes } from "./computer.js";
+import { attachmentAt, computerState, isInlineImage, isInlineVideo, listFiles, mimeOf, openLibraryFile, readLibraryFile, removeWorkspace, resolveInWorkspace, screen, storeBytes } from "./computer.js";
 import { catalogFor } from "./catalog.js";
 import { imageService } from "./images.js";
 import { config } from "./config.js";
@@ -25,8 +25,11 @@ import { pickLocale, tr } from "./i18n.js";
 import { defaultModelRef, listProviders } from "./llm/index.js";
 import { publicRoutine, routines, runs } from "./routines.js";
 import { fireCheckin, fireRoutine, schedule, unschedule } from "./scheduler.js";
-import type { CheckinSettings, ServerEvent } from "./shared.js";
-import { account, audit, auditList, bots, clip, history, memories, pages, policies, publicBot, publicVault, rows, searchMessages, settings, sha256, skills, tasks, users, vault, type BotRecord, type UserRecord } from "./store.js";
+import { REACTIONS, type CheckinSettings, type ReactionEmoji, type ServerEvent, type VideoStatus } from "./shared.js";
+import { videoService } from "./video.js";
+import { higgsfieldFor } from "./agent/tools.js";
+import { dropRecording, noteInput, recording, retryRecording, saveRecording, startRecording, stopRecording } from "./teach.js";
+import { account, audit, auditList, bots, clip, feedback, history, memories, pages, policies, publicBot, publicVault, rows, searchMessages, settings, sha256, skills, tasks, users, vault, type BotRecord, type UserRecord } from "./store.js";
 import { q } from "./db.js";
 import { connectors as connectorStore } from "./connectors.js";
 import type { Attachment } from "./shared.js";
@@ -92,7 +95,8 @@ api.get("/health", (c) => c.json({ ok: true, model: defaultModelRef() }));
 
 api.get("/me", (c) => {
   const user = userForToken(getCookie(c, SESSION_COOKIE));
-  return c.json({ user: user ? publicUser(user) : null, signupOpen: signupOpen(), setupCodeRequired: setupCodeRequired(), imageGeneration: !!imageService() });
+  const video: VideoStatus = { provider: videoService()?.id ?? null, higgsfield: !!user && !!higgsfieldFor(user.id) };
+  return c.json({ user: user ? publicUser(user) : null, signupOpen: signupOpen(), setupCodeRequired: setupCodeRequired(), imageGeneration: !!imageService(), video });
 });
 
 // Slows down password guessing: a handful of attempts per account, and a few dozen per client address,
@@ -300,6 +304,7 @@ api.delete("/bots/:id", async (c) => {
   const bot = ownBot(c);
   if (bot.primary) fail(409, "Make another bot your main contact before deleting this one.");
   await retireBot(bot);
+  dropRecording(bot.id);
   removeWorkspace(bot.id);
   emit(bot.userId, { type: "roster" });
   return c.json({ ok: true });
@@ -323,7 +328,43 @@ api.post("/bots/:id/read", (c) => {
 api.get("/bots/:id/rows", (c) => {
   const bot = ownBot(c);
   const before = Number(c.req.query("before")) || undefined;
-  return c.json({ generation: bot.generation, rows: rows.list(bot.id, bot.generation, Number(c.req.query("limit")) || 200, before) });
+  // ?thread=<seq>: the replies of the thread on that message instead of the main chat.
+  const thread = Math.max(0, Number(c.req.query("thread")) || 0);
+  return c.json({ generation: bot.generation, thread, rows: rows.list(bot.id, bot.generation, Number(c.req.query("limit")) || 200, before, thread) });
+});
+
+/** The message of the current conversation a thread hangs on: a message of the main chat. */
+function threadParent(bot: BotRecord, raw: unknown): number {
+  if (raw === undefined || raw === null || raw === "" || raw === 0) return 0;
+  const seq = Number(raw);
+  const parent = Number.isInteger(seq) && seq > 0 ? rows.get(bot.id, bot.generation, seq) : null;
+  if (!parent || parent.thread || parent.body.kind !== "message") fail(400, "That message cannot have a thread.");
+  return seq;
+}
+
+// Reactions: the user puts (or takes back) one of a few emoji under any message. A reaction on a bot's
+// message reaches that bot as a short note at the start of its next turn in that chat or thread.
+api.post("/bots/:id/rows/:seq/reactions", async (c) => {
+  const bot = ownBot(c);
+  const emoji = String((await body(c)).emoji ?? "") as ReactionEmoji;
+  if (!(REACTIONS as readonly string[]).includes(emoji)) fail(400, "That reaction is not available.");
+  const row = rows.get(bot.id, bot.generation, Number(c.req.param("seq")));
+  if (!row || row.body.kind !== "message" || row.body.streaming) return fail(400, "Only a message can get a reaction.");
+  const user = c.get("user");
+  const list = rows.react(bot, bot.generation, row.seq, { emoji, by: "user", name: user.name })!;
+  const on = list.some((r) => r.emoji === emoji && r.by === "user");
+  const b = row.body;
+  // Whose message it is: this bot's own reply, or (in a group chat) the member bot that posted it.
+  const author = b.role === "assistant" ? (b.origin?.kind === "bot" ? bots.owned(user.id, b.origin.id) : bot.kind === "agent" ? bot : null) : null;
+  if (author && author.kind === "agent") {
+    const where = bot.kind === "room" ? ` in the group chat "${bot.name}"` : "";
+    const note = `The user reacted ${emoji} to your message${where} "${clip(b.text.replace(/\s+/g, " ").trim() || "(a file)", 100)}".`;
+    // In a group chat the member hears about it in its own chat; in the bot's own chat, in the thread the message belongs to.
+    const thread = bot.kind === "room" ? 0 : row.thread ?? 0;
+    if (on) feedback.add(author.id, author.generation, thread, bot.kind === "room" ? -row.seq : row.seq, emoji, note);
+    else feedback.drop(author.id, author.generation, bot.kind === "room" ? -row.seq : row.seq, emoji);
+  }
+  return c.json({ reactions: list });
 });
 
 api.post("/bots/:id/messages", async (c) => {
@@ -337,9 +378,11 @@ api.post("/bots/:id/messages", async (c) => {
   if (!text && !attachments.length) fail(400, "Write a message first.");
   if (text.length > 100_000) fail(413, "That message is too long.");
   const voice = b.origin === "voice";
-  const row = rows.append(bot, { kind: "message", role: "user", text, origin: voice ? { kind: "voice", id: "", name: "Voice" } : undefined, attachments: attachments.length ? attachments : undefined });
-  if (bot.kind === "room") dispatchToRoom(bot, c.get("user"), text, null, 0);
-  else submitUserMessage(bot, text, voice, attachments);
+  // `thread`: a reply in the thread on that message of the main chat.
+  const thread = threadParent(bot, b.thread);
+  const row = rows.append(bot, { kind: "message", role: "user", text, origin: voice ? { kind: "voice", id: "", name: "Voice" } : undefined, attachments: attachments.length ? attachments : undefined }, thread);
+  if (bot.kind === "room") dispatchToRoom(bot, c.get("user"), text, null, 0, false, thread);
+  else submitUserMessage(bot, text, voice, attachments, undefined, thread);
   return c.json({ row });
 });
 
@@ -380,8 +423,10 @@ api.post("/bots/:id/cards/:seq/answer", async (c) => {
   if (!answer) fail(400, "Pick or write an answer.");
   const card = row!.body.kind === "card" ? row!.body.card : null;
   rows.updateCard(bot, row!.generation, row!.seq, (k) => (k.type === "question" ? { ...k, status: "answered", answer } : k));
-  rows.append(bot, { kind: "message", role: "user", text: answer });
-  submitUserMessage(bot, `(Answering your question "${card?.type === "question" ? card.question : ""}")\n${answer}`);
+  // A question asked in a thread is answered in that thread.
+  const thread = row!.thread ?? 0;
+  rows.append(bot, { kind: "message", role: "user", text: answer }, thread);
+  submitUserMessage(bot, `(Answering your question "${card?.type === "question" ? card.question : ""}")\n${answer}`, false, [], undefined, thread);
   return c.json({ ok: true });
 });
 
@@ -541,7 +586,8 @@ api.get("/bots/:id/history/:generation", (c) => {
   const bot = ownBot(c);
   const generation = Number(c.req.param("generation"));
   if (!Number.isInteger(generation) || generation < 1 || generation > bot.generation) fail(404, "That conversation does not exist.");
-  return c.json({ rows: rows.list(bot.id, generation, 500) });
+  // Threads included: each reply carries the seq of the message it hangs on.
+  return c.json({ rows: rows.all(bot.id, generation).slice(-2000) });
 });
 
 api.get("/audit", (c) => c.json({ entries: auditList(c.get("user").id, Number(c.req.query("before")) || undefined, Number(c.req.query("limit")) || 50) }));
@@ -599,7 +645,7 @@ api.get("/export/data", (c) => {
     exportedAt: new Date().toISOString(), user: publicUser(user),
     bots: mine.map((b) => ({
       ...publicBot(b),
-      conversations: Array.from({ length: b.generation }, (_, i) => ({ generation: i + 1, rows: q.all<any>("SELECT seq, created_at, body FROM rows WHERE bot_id = ? AND generation = ? ORDER BY seq", b.id, i + 1).map((r) => ({ seq: r.seq, at: r.created_at, ...JSON.parse(r.body) })) })),
+      conversations: Array.from({ length: b.generation }, (_, i) => ({ generation: i + 1, rows: q.all<any>("SELECT seq, thread, created_at, body FROM rows WHERE bot_id = ? AND generation = ? ORDER BY seq", b.id, i + 1).map((r) => ({ seq: r.seq, ...(r.thread ? { thread: r.thread } : {}), at: r.created_at, ...JSON.parse(r.body) })) })),
       memories: memories.list(b.id, 100_000), skills: skills.list(b.id), routines: routines.forBot(b.id).map((r) => publicRoutine(r, user.locale)), tasks: tasks.forBot(b.id),
     })),
     policies: policies.list(user.id), vault: vault.list(user.id).map(publicVault),
@@ -661,6 +707,8 @@ api.post("/bots/:id/screen/input", async (c) => {
   const b = await body(c);
   const uid = bot.userId;
   try {
+    // A demonstration under way records what the user does (typed text only as a count).
+    noteInput(bot.id, { type: String(b.type), x: Number(b.x), y: Number(b.y), text: typeof b.text === "string" ? b.text : undefined, key: typeof b.key === "string" ? b.key : undefined, dy: Number(b.dy), url: typeof b.url === "string" ? b.url : undefined });
     if (b.type === "goto") await screen.open(bot.id, uid, String(b.url ?? ""));
     else if (!screen.isOpen(bot.id)) fail(409, "This bot's computer is not on yet.");
     else if (b.type === "click") await screen.click(bot.id, uid, Number(b.x), Number(b.y));
@@ -686,6 +734,27 @@ api.post("/bots/:id/desktop/tidy", async (c) => {
   audit(bot.userId, "system", `${bot.name}: screen tidied`, bot.id);
   return c.json({ ok: true });
 });
+// "Show me how": record a demonstration on the bot's screen, then review the skill the bot drafts from it.
+api.get("/bots/:id/teach", (c) => c.json({ recording: recording(ownAgent(c).id) }));
+api.post("/bots/:id/teach/start", (c) => {
+  const bot = ownAgent(c);
+  try { return c.json({ recording: startRecording(bot) }); } catch (err) { return fail(409, (err as Error).message); }
+});
+api.post("/bots/:id/teach/stop", async (c) => {
+  const bot = ownAgent(c);
+  const note = String((await body(c)).note ?? "");
+  try { return c.json({ recording: await stopRecording(bot.id, note) }); } catch (err) { return fail(409, (err as Error).message); }
+});
+api.post("/bots/:id/teach/retry", (c) => {
+  const bot = ownAgent(c);
+  try { return c.json({ recording: retryRecording(bot.id) }); } catch (err) { return fail(409, (err as Error).message); }
+});
+api.post("/bots/:id/teach/save", async (c) => {
+  const bot = ownAgent(c);
+  const b = await body(c);
+  try { return c.json(saveRecording(bot, { name: String(b.name ?? ""), when: String(b.when ?? ""), steps: String(b.steps ?? "") })); } catch (err) { return fail(400, (err as Error).message); }
+});
+api.post("/bots/:id/teach/discard", (c) => { dropRecording(ownAgent(c).id); return c.json({ ok: true }); });
 api.post("/bots/:id/desktop/handback", (c) => { noteHandBack(ownAgent(c).id); return c.json({ ok: true }); });
 api.get("/bots/:id/engine", async (c) => {
   const bot = ownAgent(c);
@@ -733,14 +802,28 @@ api.get("/bots/:id/files/download", (c) => {
   });
 });
 
-/** Shows a library file in the page. Only plain pictures are served inline; everything else is a download, so an uploaded page can never run as ours. */
+/** Shows a library file in the page. Only plain pictures and videos are served inline; everything else is a download, so an uploaded page can never run as ours. */
 api.get("/bots/:id/files/view", (c) => {
   const bot = ownBot(c);
   const f = libraryFileFor(bot.id, c.req.query("path") ?? "");
   const mime = mimeOf(f.full);
-  const inline = isInlineImage(mime);
+  // Videos play in the chat's player; nothing else that could run as a page is ever served inline.
+  const inline = isInlineImage(mime) || isInlineVideo(mime);
+  // Players ask for byte ranges to seek in a video (RFC 9110 §14): one range is served, anything else gets the whole file.
+  const range = isInlineVideo(mime) ? /^bytes=(\d*)-(\d*)$/.exec(c.req.header("range") ?? "") : null;
+  if (range && (range[1] || range[2]) && f.size > 0) {
+    let start = range[1] ? Number(range[1]) : Math.max(0, f.size - Number(range[2]));
+    let end = range[1] && range[2] ? Math.min(Number(range[2]), f.size - 1) : f.size - 1;
+    if (start >= f.size || start > end) { closeSync(f.fd); return c.body(null, 416, { "content-range": `bytes */${f.size}` }); }
+    start = Math.max(0, start); end = Math.max(start, end);
+    return c.body(Readable.toWeb(createReadStream(f.full, { fd: f.fd, start, end })) as unknown as ReadableStream, 206, {
+      "content-type": mime, "content-length": String(end - start + 1), "content-range": `bytes ${start}-${end}/${f.size}`, "accept-ranges": "bytes",
+      "content-disposition": `inline; filename="${path.basename(f.full).replace(/[^\w. -]/g, "_")}"`,
+      "x-content-type-options": "nosniff", "content-security-policy": "default-src 'none'; sandbox", "cache-control": "private, max-age=300",
+    });
+  }
   return c.body(Readable.toWeb(createReadStream(f.full, { fd: f.fd })) as unknown as ReadableStream, 200, {
-    "content-type": inline ? mime : "application/octet-stream", "content-length": String(f.size),
+    "content-type": inline ? mime : "application/octet-stream", "content-length": String(f.size), ...(isInlineVideo(mime) ? { "accept-ranges": "bytes" } : {}),
     "content-disposition": `${inline ? "inline" : "attachment"}; filename="${path.basename(f.full).replace(/[^\w. -]/g, "_")}"`,
     "x-content-type-options": "nosniff", "content-security-policy": "default-src 'none'; sandbox", "cache-control": "private, max-age=300",
   });

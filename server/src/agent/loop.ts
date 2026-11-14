@@ -7,14 +7,15 @@ import { defaultModelRef, resolveModel, validateToolInput, type Block, type Chat
 import { tr } from "../i18n.js";
 import { imageService } from "../images.js";
 import type { ActivityKind, Attachment, Row } from "../shared.js";
-import { activeTurns, approvals, audit, bots, clip, history, newId, paused, policies, rows, settings, users, vault, type BotRecord, type UserRecord } from "../store.js";
+import { activeTurns, approvals, audit, bots, clip, feedback, history, newId, paused, policies, rows, rowScope, settings, users, vault, type BotRecord, type UserRecord } from "../store.js";
 import { runs } from "../routines.js";
 import { overBudget, record } from "../usage.js";
 import { compactIfNeeded } from "./memory.js";
 import { isEngineRef, runEngineTurn } from "./engine.js";
 import { buildSystemPrompt } from "./prompt.js";
 import { deliverBotMessage } from "./team.js";
-import { builtinTools, type BuiltinTool, type ToolOutput } from "./tools.js";
+import { builtinTools, higgsfieldFor, videoRoute, type BuiltinTool, type ToolOutput } from "./tools.js";
+import { videoService } from "../video.js";
 
 /**
  * What starts a turn. `tainted`: the turn starts out carrying outside content — a webhook's payload, a
@@ -22,11 +23,14 @@ import { builtinTools, type BuiltinTool, type ToolOutput } from "./tools.js";
  * from its first step, exactly as if it had read that content itself.
  */
 export type Trigger =
-  | { kind: "user"; text: string; voice?: boolean; attachments?: Attachment[]; channel?: "telegram" }
+  | { kind: "user"; text: string; voice?: boolean; attachments?: Attachment[]; channel?: "telegram"; thread?: number }
   | { kind: "routine"; name: string; text: string; runId?: string; tainted?: boolean }
   | { kind: "bot"; fromName: string; text: string; depth: number; tainted?: boolean }
-  | { kind: "system"; text: string; depth?: number; tainted?: boolean }
+  | { kind: "system"; text: string; depth?: number; tainted?: boolean; thread?: number }
   | { kind: "resume" };
+
+/** The thread a trigger belongs to (0: the main chat). */
+const threadOf = (t: Trigger) => (t.kind === "user" || t.kind === "system" ? t.thread ?? 0 : 0);
 
 const startsTainted = (t: Trigger) => (t.kind === "routine" || t.kind === "bot" || t.kind === "system") && !!t.tainted;
 
@@ -59,6 +63,10 @@ interface PausedTurn {
   tainted?: boolean;
   /** Web hosts already read in this turn (see Turn.hosts). */
   hosts?: string[];
+  /** Addresses an app gave in this turn (see Turn.appUrls). */
+  appUrls?: string[];
+  /** The thread the turn works in (0 or absent: the main chat). */
+  thread?: number;
 }
 
 export interface Turn {
@@ -84,6 +92,13 @@ export interface Turn {
   tainted: boolean;
   /** Web hosts the user named or the bot already read in this turn: opening another one after outside content asks first. */
   hosts: Set<string>;
+  /**
+   * Exact addresses an app returned in this turn (e.g. a finished video). Saving one of those is not a way to
+   * send anything out: the app chose the address, not the bot.
+   */
+  appUrls: Set<string>;
+  /** The thread this turn answers in (0: the main chat). Its model history is the thread's own. */
+  thread: number;
 }
 
 /** Things other parts of the server want to hear about (e.g. to pass them on to a phone). */
@@ -98,6 +113,8 @@ const pendingCount = new Map<string, number>();
 const controllers = new Map<string, AbortController>();
 /** Messages typed while the bot is mid-turn; folded into that turn at the next step. */
 const steering = new Map<string, Block[][]>();
+/** The thread the running turn of each bot answers in (absent: the main chat). */
+const runningThread = new Map<string, number>();
 
 export const isBusy = (botId: string) => (pendingCount.get(botId) ?? 0) > 0;
 
@@ -119,15 +136,16 @@ export function enqueue(botId: string, trigger: Trigger) {
 }
 
 /** A user message: starts a turn, or — if the bot is already working — joins the turn in progress. */
-export function submitUserMessage(bot: BotRecord, text: string, voice = false, attachments: Attachment[] = [], channel?: "telegram") {
-  if (controllers.has(bot.id) && !paused.get(bot.id)) {
+export function submitUserMessage(bot: BotRecord, text: string, voice = false, attachments: Attachment[] = [], channel?: "telegram", thread = 0) {
+  // Only a message for the same conversation (main chat or the same thread) joins the turn under way.
+  if (controllers.has(bot.id) && !paused.get(bot.id) && (runningThread.get(bot.id) ?? 0) === thread) {
     const list = steering.get(bot.id) ?? [];
     list.push(userBlocks(bot.id, text, attachments));
     steering.set(bot.id, list);
     setLive(bot.userId, bot.id, { queued: list.length });
     return;
   }
-  enqueue(bot.id, { kind: "user", text, voice, attachments, channel });
+  enqueue(bot.id, { kind: "user", text, voice, attachments, channel, thread: thread || undefined });
 }
 
 /** Bots whose screen the user drove since their last turn: the next turn is told to look again first. */
@@ -191,8 +209,8 @@ function finishEngineTurn(bot: BotRecord, user: UserRecord, trigger: Trigger, tu
 }
 
 /** A turn that was cut off can leave tool calls without results; close them so the transcript stays valid. */
-function repairDangling(botId: string, generation: number): ToolResultBlock[] {
-  const all = history.load(botId, generation);
+function repairDangling(botId: string, generation: number, thread = 0): ToolResultBlock[] {
+  const all = history.load(botId, generation, thread);
   const last = all[all.length - 1];
   if (!last || last.role !== "assistant") return [];
   return last.content.filter((b): b is ToolUseBlock => b.type === "tool_use").map((call) => ({
@@ -222,28 +240,45 @@ export async function newTurn(bot: BotRecord, user: UserRecord, depth: number, s
   try { nativeSearch = resolveModel(modelRef).provider.id === "anthropic"; } catch { /* no provider yet: the turn will say so */ }
   const remoteTools = bot.disabledTools.includes("apps") ? [] : await connectors.toolsFor(user.id).catch(() => []);
   // A subscription tool has its own shell, file and web tools; ours would only duplicate them.
-  const builtins = builtinTools({ nativeSearch: nativeSearch || forEngine, disabled: bot.disabledTools }).filter((t) => !forEngine || !["shell_run", "web_fetch", "search_web"].includes(t.spec.name));
+  // Videos go through the user's Higgsfield app when it is connected (and apps are on for this bot), else a video API.
+  const video = bot.disabledTools.includes("video") ? null : bot.disabledTools.includes("apps") ? (videoService() ? "api" : null) : videoRoute(user.id);
+  const builtins = builtinTools({ nativeSearch: nativeSearch || forEngine, disabled: bot.disabledTools, video }).filter((t) => !forEngine || !["shell_run", "web_fetch", "search_web"].includes(t.spec.name));
   const connectorNames = [...new Set(remoteTools.map((t) => t.connectorName))];
   return {
     bot, user, depth, signal, generation: bot.generation,
-    system: buildSystemPrompt(bot, user, { connectorNames, browser: browserAvailable(), shell: shellAvailable(), linux: computerKind() === "linux", images: !!imageService() }),
+    system: buildSystemPrompt(bot, user, { connectorNames, browser: browserAvailable(), shell: shellAvailable(), linux: computerKind() === "linux", images: !!imageService(), video, higgsfield: video === "connector" ? higgsfieldFor(user.id)?.name : undefined }),
     // Sorted so the tool list is byte-identical from call to call, which keeps provider caches warm.
     tools: [...builtins.map((b) => b.spec), ...remoteTools.map((r) => r.spec)].sort((a, b) => a.name.localeCompare(b.name)),
     modelRef,
     builtin: new Map(builtins.map((b) => [b.spec.name, b])),
     remote: new Map(remoteTools.map((r) => [r.spec.name, r])),
-    repeats: new Map(), spoke: false, lastText: "", tainted: false, hosts: new Set(),
+    repeats: new Map(), spoke: false, lastText: "", tainted: false, hosts: new Set(), appUrls: new Set(), thread: 0,
   };
 }
 
-async function runTurn(botId: string, trigger: Trigger): Promise<void> {
+/** Runs a turn inside its thread's scope, so whatever it writes into its chat lands in that thread. */
+function runTurn(botId: string, trigger: Trigger): Promise<void> {
+  const thread = trigger.kind === "resume" ? paused.get<PausedTurn>(botId)?.thread ?? 0 : threadOf(trigger);
+  return rowScope.run({ botId, thread }, () => runScopedTurn(botId, trigger, thread));
+}
+
+/** What the model is told about the thread it answers in, the first time it speaks there. */
+function threadOpening(bot: BotRecord, thread: number): string {
+  const parent = rows.get(bot.id, bot.generation, thread);
+  if (!parent || parent.body.kind !== "message") return "[This is a thread: a side conversation in your chat.]";
+  const who = parent.body.role === "user" ? (parent.body.origin?.kind === "bot" ? parent.body.origin.name : "the user") : "you";
+  return `[This is a thread: a side conversation on one message of your chat, written by ${who}. Keep to that subject; the main chat goes on separately. The message:]\n${clip(parent.body.text || "(a file)", 3000)}`;
+}
+
+async function runScopedTurn(botId: string, trigger: Trigger, thread: number): Promise<void> {
   const bot = bots.byId(botId);
   if (!bot || bot.kind !== "agent") return;
   const user = users.byId(bot.userId);
   if (!user) return;
   const controller = new AbortController();
   controllers.set(botId, controller);
-  setLive(user.id, botId, { running: true, activity: { kind: "thinking", since: Date.now() }, awaiting: null, startedAt: Date.now() });
+  if (thread) runningThread.set(botId, thread); else runningThread.delete(botId);
+  setLive(user.id, botId, { running: true, activity: { kind: "thinking", since: Date.now() }, awaiting: null, startedAt: Date.now(), thread });
   let turn: Turn | null = null;
   let failed = "";
   activeTurns.begin(botId);
@@ -254,6 +289,7 @@ async function runTurn(botId: string, trigger: Trigger): Promise<void> {
       turn = await newTurn(bot, user, held.depth, controller.signal);
       // The paused request must be continued with exactly the prompt and tools it started with.
       turn.system = held.system; turn.tools = held.tools; turn.modelRef = held.modelRef; turn.tainted = !!held.tainted; turn.hosts = new Set(held.hosts ?? []);
+      turn.appUrls = new Set(held.appUrls ?? []); turn.thread = held.thread ?? 0;
       const outcome = await processCalls(turn, held);
       if (outcome !== "continue") return;
     } else {
@@ -261,6 +297,7 @@ async function runTurn(botId: string, trigger: Trigger): Promise<void> {
       if (isEngineRef(bot.model)) {
         const depth = trigger.kind === "bot" ? trigger.depth : trigger.kind === "system" ? trigger.depth ?? 0 : 0;
         turn = await newTurn(bot, user, depth, controller.signal, true);
+        turn.thread = thread;
         // A subscription tool reads the web and runs commands with its own tools, out of our sight: its turn
         // is treated as having read outside content from the start.
         turn.tainted = true;
@@ -268,16 +305,20 @@ async function runTurn(botId: string, trigger: Trigger): Promise<void> {
         const extra = drainSteering(bot);
         const words = `[${new Date().toISOString().slice(0, 16).replace("T", " ")} UTC]\n${triggerMessage(trigger)}`;
         const note = handedBack.delete(botId) ? "[The user took control of your computer since your last turn and has handed it back. Look at the screen before relying on what you saw earlier.]\n" : "";
-        await runEngineTurn(turn, note + words + extraText(extra), trigger.kind === "user" ? trigger.attachments ?? [] : []);
+        const heard = feedbackNote(bot, thread);
+        // A subscription tool keeps one session of its own: a thread reply carries the message it hangs on every time.
+        const inThread = thread ? `${threadOpening(bot, thread)}\n[Answer in this thread.]\n` : "";
+        await runEngineTurn(turn, note + (heard ? heard + "\n" : "") + inThread + words + extraText(extra), trigger.kind === "user" ? trigger.attachments ?? [] : []);
         throw new EngineDone();
       }
       if (overBudget(user.id)) {
         rows.append(bot, { kind: "notice", tone: "warn", text: tr(user.locale, "This month's budget is used up, so I'm paused. Raise or clear the budget in Settings → Usage to continue.") });
         return;
       }
-      await compactIfNeeded(bot).catch((err) => console.error("[compaction]", err));
+      if (!thread) await compactIfNeeded(bot).catch((err) => console.error("[compaction]", err));
       const depth = trigger.kind === "bot" ? trigger.depth : trigger.kind === "system" ? trigger.depth ?? 0 : 0;
       turn = await newTurn(bot, user, depth, controller.signal);
+      turn.thread = thread;
       turn.tainted = startsTainted(trigger);
       if (trigger.kind === "user") for (const h of hostsIn(trigger.text)) turn.hosts.add(h);
       const extra = drainSteering(bot);
@@ -285,7 +326,10 @@ async function runTurn(botId: string, trigger: Trigger): Promise<void> {
       const stamped = `[${new Date().toISOString().slice(0, 16).replace("T", " ")} UTC]\n${triggerMessage(trigger)}`;
       const first = trigger.kind === "user" ? userBlocks(botId, stamped, trigger.attachments) : [text(stamped)];
       if (handedBack.delete(botId)) first.unshift(text("[The user took control of your computer since your last turn and has handed it back. Windows, pages and fields may have changed: look at the screen before relying on what you saw earlier.]"));
-      history.append(botId, bot.generation, { role: "user", content: [...repairDangling(botId, bot.generation), ...first, ...extra] });
+      const heard = feedbackNote(bot, thread);
+      if (heard) first.unshift(text(heard));
+      if (thread && !history.count(botId, bot.generation, thread)) first.unshift(text(threadOpening(bot, thread)));
+      history.append(botId, bot.generation, { role: "user", content: [...repairDangling(botId, bot.generation, thread), ...first, ...extra] }, thread);
     }
     await modelLoop(turn);
     // A helper's last words go back to whoever started it.
@@ -309,12 +353,13 @@ async function runTurn(botId: string, trigger: Trigger): Promise<void> {
     if (trigger.kind === "routine" && trigger.runId)
       runs.finish(trigger.runId, failed ? "error" : paused.get(botId) ? "done" : turn?.spoke ? "done" : "quiet", failed || (paused.get(botId) ? "Waiting for your approval" : clip(turn?.lastText ?? "", 200)));
     controllers.delete(botId);
+    runningThread.delete(botId);
     const leftover = drainSteering(bot);
     if (!paused.get(botId)) clearLive(user.id, botId);
     bots.announce(bots.byId(botId));
     // Anything typed in the last instant of the turn still deserves an answer.
-    if (leftover.length && bots.byId(botId) && isEngineRef(bots.byId(botId)!.model)) enqueue(botId, { kind: "user", text: extraText(leftover).trim() });
-    else if (leftover.length && bots.byId(botId)) void inQueue(botId, async () => { history.append(botId, bots.byId(botId)!.generation, { role: "user", content: leftover }); }).then(() => enqueue(botId, { kind: "system", text: "The user's message above arrived just as your last turn ended. Answer it now." }));
+    if (leftover.length && bots.byId(botId) && isEngineRef(bots.byId(botId)!.model)) enqueue(botId, { kind: "user", text: extraText(leftover).trim(), thread: thread || undefined });
+    else if (leftover.length && bots.byId(botId)) void inQueue(botId, async () => { history.append(botId, bots.byId(botId)!.generation, { role: "user", content: leftover }, thread); }).then(() => enqueue(botId, { kind: "system", text: "The user's message above arrived just as your last turn ended. Answer it now.", thread: thread || undefined }));
   }
 }
 
@@ -329,7 +374,7 @@ async function modelLoop(turn: Turn) {
     const stream = new StreamingRow(turn);
     const call = () => provider.runTurn({
       model, system: turn.system, tools: turn.tools, effort: bot.effort as Effort, webSearch: !bot.disabledTools.includes("web"), signal: turn.signal,
-      messages: trimOldImages(history.load(bot.id, turn.generation)),
+      messages: trimOldImages(history.load(bot.id, turn.generation, turn.thread)),
       onText: (delta) => { if (!stream.started) activity(turn, "writing"); stream.push(delta); },
       onReasoning: (delta) => caption.push(delta),
       // The provider's own web search brings outside content into the turn just like ours.
@@ -349,7 +394,7 @@ async function modelLoop(turn: Turn) {
     if (result.sources?.length) { turn.tainted = true; for (const src of result.sources) { const h = hostOf(src.url); if (h) turn.hosts.add(h); } }
     const said = stream.finish(result.sources);
     if (said) { turn.spoke = true; turn.lastText = said; }
-    history.append(bot.id, turn.generation, { role: "assistant", content: result.content });
+    history.append(bot.id, turn.generation, { role: "assistant", content: result.content }, turn.thread);
 
     if (result.stopReason === "pause") continue;
     const calls = result.content.filter((b): b is ToolUseBlock => b.type === "tool_use");
@@ -366,7 +411,7 @@ async function modelLoop(turn: Turn) {
     if (!calls.length) {
       const extra = drainSteering(bot);
       if (!extra.length) return;
-      history.append(bot.id, turn.generation, { role: "user", content: extra });
+      history.append(bot.id, turn.generation, { role: "user", content: extra }, turn.thread);
       continue;
     }
     const stepSeq: Record<string, number> = {};
@@ -374,7 +419,7 @@ async function modelLoop(turn: Turn) {
       const b = turn.builtin.get(call.name);
       stepSeq[call.id] = rows.append(bot, { kind: "step", callId: call.id, tool: call.name, label: b ? tr(turn.user.locale, b.label) : tr(turn.user.locale, "Using {app}", { app: turn.remote.get(call.name)?.connectorName ?? tr(turn.user.locale, "an app") }), status: "running", args: redact(call.input) }).seq;
     }
-    const outcome = await processCalls(turn, { system: turn.system, tools: turn.tools, modelRef: turn.modelRef, pending: calls, results: [], stepSeq, generation: turn.generation, approvalId: "", depth: turn.depth, endTurn: false });
+    const outcome = await processCalls(turn, { system: turn.system, tools: turn.tools, modelRef: turn.modelRef, pending: calls, results: [], stepSeq, generation: turn.generation, approvalId: "", depth: turn.depth, endTurn: false, thread: turn.thread });
     if (outcome !== "continue") return;
     activity(turn, "thinking");
   }
@@ -383,7 +428,7 @@ async function modelLoop(turn: Turn) {
 
 function closeCalls(turn: Turn, calls: ToolUseBlock[], reason: string) {
   if (!calls.length) return;
-  history.append(turn.bot.id, turn.generation, { role: "user", content: calls.map((c): ToolResultBlock => ({ type: "tool_result", toolUseId: c.id, isError: true, content: [text(reason)] })) });
+  history.append(turn.bot.id, turn.generation, { role: "user", content: calls.map((c): ToolResultBlock => ({ type: "tool_result", toolUseId: c.id, isError: true, content: [text(reason)] })) }, turn.thread);
 }
 
 /** Long arguments are shortened in the transcript; the model's own copy is untouched. */
@@ -464,6 +509,13 @@ function taintGuard(turn: Turn, call: ToolUseBlock): { key: string; title: strin
     if (!host || turn.hosts.has(host)) return null;
     return { key: `web: ${host}`, title: tr(loc, "{bot} has read outside content. Allow it to open {host}?", { bot, host }), reason: tr(loc, "open {host}", { host }) };
   }
+  if (call.name === "media_save") {
+    // Saving the exact address an app gave back (a finished video) sends nothing out; any other address could.
+    const url = String(call.input.url ?? "");
+    const host = hostOf(url);
+    if (!host || turn.hosts.has(host) || turn.appUrls.has(url)) return null;
+    return { key: `web: ${host}`, title: tr(loc, "{bot} has read outside content. Allow it to open {host}?", { bot, host }), reason: tr(loc, "open {host}", { host }) };
+  }
   if (call.name === "conversation_search")
     return call.input.scope === "everyone" ? { key: "conversation_search: everyone", title: tr(loc, "{bot} has read outside content. Allow it to search every bot's conversations?", { bot }), reason: tr(loc, "search every bot's conversations") } : null;
   const action = CARRIES_FURTHER[call.name];
@@ -536,7 +588,7 @@ export async function execute(turn: Turn, call: ToolUseBlock): Promise<ToolOutpu
     const problem = validateToolInput(builtin.spec, call.input);
     if (problem) return { content: `Invalid arguments: ${problem}.`, isError: true, summary: "invalid arguments" };
     activity(turn, builtin.activity, builtin.detail?.(call.input));
-    return builtin.run(call.input, { bot: turn.bot, user: turn.user, depth: turn.depth, signal: turn.signal, tainted: turn.tainted });
+    return builtin.run(call.input, { bot: turn.bot, user: turn.user, depth: turn.depth, signal: turn.signal, tainted: turn.tainted, thread: turn.thread, appUrls: turn.appUrls });
   }
   const remote = turn.remote.get(call.name);
   if (remote) {
@@ -565,7 +617,7 @@ async function processCalls(turn: Turn, st: PausedTurn): Promise<"continue" | "e
       // Record what we have so the next turn starts from a consistent transcript.
       for (const call of st.pending) { st.results.push({ type: "tool_result", toolUseId: call.id, isError: true, content: [text("Not run: the user stopped the turn.")] }); setStep(turn, st, call, "denied", tr(user.locale, "stopped")); }
       st.pending = [];
-      history.append(bot.id, st.generation, { role: "user", content: st.results });
+      history.append(bot.id, st.generation, { role: "user", content: st.results }, st.thread ?? 0);
       paused.clear(bot.id);
       throw new Error("aborted");
     }
@@ -580,9 +632,11 @@ async function processCalls(turn: Turn, st: PausedTurn): Promise<"continue" | "e
       st.approvalId = approvalId;
       st.tainted = turn.tainted;
       st.hosts = [...turn.hosts];
+      st.appUrls = [...turn.appUrls];
+      st.thread = turn.thread;
       paused.set(bot.id, st);
       tell({ type: "waiting", bot, text: verdict.title });
-      setLive(user.id, bot.id, { running: false, activity: { kind: "waiting", since: Date.now() }, awaiting: { reason: verdict.reason, since: Date.now() } });
+      setLive(user.id, bot.id, { running: false, activity: { kind: "waiting", since: Date.now() }, awaiting: { reason: verdict.reason, since: Date.now() }, thread: turn.thread });
       emit(user.id, { type: "tasks", botId: bot.id });
       return "paused";
     }
@@ -610,7 +664,7 @@ async function processCalls(turn: Turn, st: PausedTurn): Promise<"continue" | "e
   }
   // Anything the user typed meanwhile rides along with the results, so the model sees it at once.
   const extra = st.endTurn ? [] : drainSteering(bot);
-  history.append(bot.id, st.generation, { role: "user", content: [...st.results, ...extra] });
+  history.append(bot.id, st.generation, { role: "user", content: [...st.results, ...extra] }, st.thread ?? 0);
   paused.clear(bot.id);
   return st.endTurn ? "end" : "continue";
 }
@@ -630,10 +684,22 @@ export function afterTool(turn: Turn, call: ToolUseBlock, out: ToolOutput): Tool
   // Hosts read in this turn: going back to them later in the turn needs no new permission.
   if ((call.name === "web_fetch" || call.name === "browser_open") && !out.isError) { const h = hostOf(call.input.url); if (h) turn.hosts.add(h); }
   if (call.name === "search_web" && !out.isError && typeof out.content === "string") for (const m of out.content.matchAll(/https?:\/\/\S+/g)) { const h = hostOf(m[0]); if (h) turn.hosts.add(h); }
+  if (remote && !out.isError && typeof out.content === "string") for (const u of urlsIn(out.content)) turn.appUrls.add(u);
   if (!(builtin?.outside || remote) || out.isError) return out;
   turn.tainted = true;
   const parts = typeof out.content === "string" ? [text(out.content)] : out.content;
   return { ...out, content: [text(OUTSIDE_NOTE), ...parts] };
+}
+
+/** Full http(s) addresses in a piece of text, without trailing punctuation or quotes. */
+export function urlsIn(s: string): string[] {
+  return [...s.matchAll(/https?:\/\/[^\s<>"'`]+/gi)].map((m) => m[0].replace(/[),.;:!?\]}]+$/, "")).slice(0, 50);
+}
+
+/** The reactions the user left on this bot's messages since its last turn here, as one line for the model. */
+function feedbackNote(bot: BotRecord, thread: number): string {
+  const notes = feedback.take(bot.id, bot.generation, thread);
+  return notes.length ? `[Feedback since your last turn, for your information only: ${notes.join(" ")}]` : "";
 }
 
 /** After a restart, bots whose turn was cut off pick their work back up — carefully if they had already acted. */
@@ -677,7 +743,7 @@ function supersede(bot: BotRecord, st: PausedTurn) {
     const row = seq ? rows.get(bot.id, st.generation, seq) : null;
     if (row?.body.kind === "step") rows.rewrite(bot, st.generation, seq, { ...row.body, status: "denied", summary: tr(users.localeOf(bot.userId), "skipped") });
   }
-  if (st.generation === bot.generation) history.append(bot.id, st.generation, { role: "user", content: st.results });
+  if (st.generation === bot.generation) history.append(bot.id, st.generation, { role: "user", content: st.results }, st.thread ?? 0);
   paused.clear(bot.id);
 }
 

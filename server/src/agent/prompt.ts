@@ -32,7 +32,7 @@ export function pickMemories(bot: BotRecord): { lines: string[]; omitted: number
   return { lines: chosen.map((m) => `- ${m.text}`), omitted: all.length - chosen.length };
 }
 
-export interface PromptExtras { connectorNames: string[]; browser: boolean; shell: boolean; linux?: boolean; images?: boolean; engine?: "claude-code" | "codex" }
+export interface PromptExtras { connectorNames: string[]; browser: boolean; shell: boolean; linux?: boolean; images?: boolean; engine?: "claude-code" | "codex"; video?: "connector" | "api" | null; /** Name of the user's Higgsfield app, when videos go through it. */ higgsfield?: string }
 
 export function buildSystemPrompt(bot: BotRecord, user: UserRecord, extras: PromptExtras): string {
   const team = bots.list(user.id).filter((b) => b.id !== bot.id && b.kind === "agent");
@@ -71,6 +71,10 @@ export function buildSystemPrompt(bot: BotRecord, user: UserRecord, extras: Prom
         ]),
     "- Save anything the user should keep with file_save; saved files appear in their library. Use file_send to put a file or picture in front of them in the chat.",
     extras.images ? "- You can create pictures with image_generate when the user asks for an image, illustration or visual." : "",
+    extras.video === "connector"
+      ? `- Videos (and, when it suits, pictures) are made with the user's ${extras.higgsfield ?? "Higgsfield"} app: use its app_ tools (video_generate lists the right ones). Every generation spends the user's ${extras.higgsfield ?? "Higgsfield"} credits, so make only what was asked, one at a time. When a video is ready, save it with media_save so the user can watch it here.`
+      : extras.video === "api" ? "- You can create short videos with video_generate when the user asks for one. Each video costs money (the user is asked the first time)." : "",
+    "- React to a message with message_react when a short acknowledgement is enough. Reactions the user puts on your messages are passed to you as feedback: take them into account quietly.",
     extras.browser ? "- When a site needs signing in, check vault_list for a saved login and enter it with vault_type (click the field first). You never see passwords, and you must never ask the user to type one into the chat — ask them to save it in Settings → Vault instead." : "",
     extras.connectorNames.length
       ? `- Connected apps: ${extras.connectorNames.join(", ")}. Their tools are named app_<app>__<action>. Prefer them over driving a website by hand.`

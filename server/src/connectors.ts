@@ -221,7 +221,7 @@ const view = (e: Entry): Connector => {
 
 const recordsFor = (userId: string) => q.all("SELECT * FROM connectors WHERE user_id = ? ORDER BY created_at", userId).map(toRecord);
 const recordOf = (userId: string, id: string) => { const r = q.get("SELECT * FROM connectors WHERE id = ? AND user_id = ?", id, userId); return r ? toRecord(r) : null; };
-const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 24) || "app";
+export const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 24) || "app";
 
 export interface AddOptions { token?: string; auth?: "oauth"; clientId?: string; clientSecret?: string }
 

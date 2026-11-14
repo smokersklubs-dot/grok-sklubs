@@ -37,7 +37,9 @@ export function HistoryViewer({ target }: { target: HistoryTarget }) {
   const items = useMemo(() => (rows ? buildItems(rows, false) : []), [rows, t]);
 
   useEffect(() => {
-    if (rows && rows.length > 0) revealRow(body.current, target.seq);
+    // A thread reply is shown under the message its thread hangs on.
+    const hit = rows?.find((r) => r.seq === target.seq);
+    if (rows && rows.length > 0) revealRow(body.current, hit?.thread ?? target.seq);
   }, [rows, target.seq]);
 
   if (!bot) return null;
@@ -65,7 +67,7 @@ export function HistoryViewer({ target }: { target: HistoryTarget }) {
         {rows && rows.length === 0 && <Empty icon="history" title={t("history.emptyTitle")}>{t("history.emptyText")}</Empty>}
         {rows && rows.length > 0 && (
           <div className="transcript-inner">
-            <RowItems items={items} bot={bot} readOnly />
+            <RowItems items={items} bot={bot} readOnly all={rows} />
           </div>
         )}
       </div>

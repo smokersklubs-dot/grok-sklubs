@@ -6,7 +6,96 @@ import { useScreen } from "../lib/screen";
 import { BotAvatar } from "./Avatar";
 import { LiveScreen } from "./LiveScreen";
 import { Icon, Spinner } from "./Icon";
-import { IconButton, useDialogFocus, useEscape } from "./ui";
+import { IconButton, useDialogFocus, useEscape, useTick } from "./ui";
+import type { Recording } from "../types";
+
+const clock = (ms: number) => `${String(Math.floor(ms / 60_000)).padStart(2, "0")}:${String(Math.floor(ms / 1000) % 60).padStart(2, "0")}`;
+
+/** The red "recording" badge over the bot's screen while the user demonstrates a task. */
+function RecordingBadge({ rec }: { rec: Recording }) {
+  const now = useTick(1000);
+  const t = useT();
+  if (rec.status === "recording") {
+    return (
+      <div className="rec-badge" role="status">
+        <span className="rec-dot" aria-hidden="true" />
+        <strong>{t("teach.rec")}</strong>
+        <span className="rec-time">{clock(Math.max(0, now - rec.startedAt))} / {clock(rec.maxMs)}</span>
+        <span className="rec-count">{t("teach.counts", { events: rec.events, frames: rec.frames })}</span>
+      </div>
+    );
+  }
+  if (rec.status === "processing") {
+    return (
+      <div className="rec-badge is-processing" role="status">
+        <Spinner size={14} />
+        <span>{t("teach.processing")}</span>
+      </div>
+    );
+  }
+  return null;
+}
+
+/** The skill the bot drafted from the demonstration, for the user to check and edit before it is saved. */
+function SkillReview({ botId, rec, botName }: { botId: string; rec: Recording; botName: string }) {
+  const t = useT();
+  const [name, setName] = useState(rec.draft?.name ?? "");
+  const [when, setWhen] = useState(rec.draft?.when ?? "");
+  const [steps, setSteps] = useState(rec.draft?.steps ?? "");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const run = async (path: string, body?: unknown) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await api("POST", `/bots/${botId}/teach/${path}`, body);
+      if (path === "save") useStore.getState().showToast(t("teach.saved", { name: name.trim() }));
+      if (path !== "retry") useStore.getState().setRecording(botId, null);
+    } catch (e) {
+      setError(errText(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="skill-review" role="dialog" aria-modal="false" aria-label={t("teach.reviewTitle")}>
+      <header className="skill-review-head">
+        <Icon name="book" size={18} />
+        <div>
+          <h3>{t("teach.reviewTitle")}</h3>
+          <p>{rec.status === "error" ? t("teach.failed", { error: rec.error ?? "" }) : t("teach.reviewText", { name: botName })}</p>
+        </div>
+      </header>
+      {rec.status === "review" && (
+        <div className="skill-review-body">
+          <label className="field">
+            <span className="field-label">{t("teach.name")}</span>
+            <input className="input" value={name} onChange={(e) => setName(e.target.value)} maxLength={80} />
+          </label>
+          <label className="field">
+            <span className="field-label">{t("teach.when")}</span>
+            <input className="input" value={when} onChange={(e) => setWhen(e.target.value)} maxLength={300} />
+          </label>
+          <label className="field">
+            <span className="field-label">{t("teach.steps")}</span>
+            <textarea className="input skill-steps" value={steps} onChange={(e) => setSteps(e.target.value)} rows={9} />
+          </label>
+          <p className="field-hint">{t("teach.privacy")}</p>
+        </div>
+      )}
+      {error && <p className="viewer-error" role="alert">{error}</p>}
+      <footer className="skill-review-foot">
+        <button type="button" className="btn btn-small" disabled={busy} onClick={() => void run("discard")}>{t("teach.discard")}</button>
+        {rec.status === "error" && <button type="button" className="btn btn-small" disabled={busy} onClick={() => void run("retry")}>{t("common.tryAgain")}</button>}
+        {rec.status === "review" && (
+          <button type="button" className="btn btn-small btn-primary" disabled={busy || !name.trim() || !steps.trim()} onClick={() => void run("save", { name, when, steps })}>
+            {t(busy ? "common.saving" : "teach.save")}
+          </button>
+        )}
+      </footer>
+    </div>
+  );
+}
 
 const SPECIAL_KEYS = new Set(["Enter", "Backspace", "Tab", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Escape"]);
 type Input =
@@ -46,6 +135,23 @@ export function ComputerViewer({ botId }: { botId: string }) {
     refresh();
   };
   const { url, status, refresh } = useScreen(botId, 1000, engine);
+  const rec = useStore((s) => s.recordings[botId] ?? null);
+  const [note, setNote] = useState("");
+  const [teachError, setTeachError] = useState<string | null>(null);
+  useEffect(() => {
+    void useStore.getState().loadRecording(botId);
+  }, [botId]);
+  const teach = async (path: "start" | "stop") => {
+    setTeachError(null);
+    try {
+      const r = await api<{ recording: Recording }>("POST", `/bots/${botId}/teach/${path}`, path === "stop" ? { note } : undefined);
+      useStore.getState().setRecording(botId, r.recording);
+      if (path === "stop") setNote("");
+      stage.current?.focus();
+    } catch (e) {
+      setTeachError(errText(e));
+    }
+  };
   const desktop = computer?.desktops.find((d) => d.botId === botId);
   // On a Linux computer the screen is streamed live; screenshots remain the fallback if the stream cannot open.
   // A failed stream falls back to screenshots until the mode or the computer's state changes.
@@ -222,6 +328,8 @@ export function ComputerViewer({ botId }: { botId: string }) {
         }}
         aria-label={control ? t("viewer.remote") : undefined}
       >
+        {rec && <RecordingBadge rec={rec} />}
+        {rec && (rec.status === "review" || rec.status === "error") && <SkillReview key={rec.id + rec.status} botId={botId} rec={rec} botName={bot.name} />}
         {!engine ? (
           <div className="viewer-empty">
             <Icon name="monitor" size={40} />
@@ -279,12 +387,30 @@ export function ComputerViewer({ botId }: { botId: string }) {
                 <input id="viewer-url" className="input input-small" value={address} onChange={(e) => setAddress(e.target.value)} placeholder={t("viewer.addressPlaceholder")} spellCheck={false} autoCapitalize="off" autoCorrect="off" />
                 <button type="submit" className="btn btn-small" disabled={!address.trim()}>{t("viewer.go")}</button>
               </form>}
-              <span className="viewer-hint">{t("viewer.controlHint")}</span>
+              {rec?.status === "recording" ? (
+                <form className="teach-stop" onSubmit={(e) => { e.preventDefault(); void teach("stop"); }}>
+                  <label className="sr-only" htmlFor="teach-note">{t("teach.note")}</label>
+                  <input id="teach-note" className="input input-small" value={note} onChange={(e) => setNote(e.target.value)} placeholder={t("teach.note")} maxLength={2000} />
+                  <button type="submit" className="btn btn-small btn-danger"><Icon name="stop" size={12} /> {t("teach.stop")}</button>
+                </form>
+              ) : (
+                <>
+                  <span className="viewer-hint">{t("viewer.controlHint")}</span>
+                  {status === "ok" && !rec && (
+                    <button type="button" className="btn btn-small" onClick={() => void teach("start")} title={t("teach.startHint")}>
+                      <Icon name="record" size={14} className="rec-icon" /> {t("teach.start")}
+                    </button>
+                  )}
+                </>
+              )}
+              {teachError && <span className="viewer-error" role="alert">{teachError}</span>}
               <button
                 type="button"
                 className="btn btn-small btn-primary"
                 onClick={() => {
                   flushTyped();
+                  // Handing back ends a demonstration under way.
+                  if (rec?.status === "recording") void teach("stop");
                   setControl(false);
                   handBack();
                 }}

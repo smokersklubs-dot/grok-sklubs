@@ -1,19 +1,22 @@
 import { unseal } from "../auth.js";
-import { emit, getLive } from "../bus.js";
-import { attachmentAt, botPathOf, browserAvailable, computerKind, lastKnownUrl, runShell, saveFile, screen, shellAvailable, storeBytes, type Shot } from "../computer.js";
+import { emit, getLive, setLive } from "../bus.js";
+import { attachmentAt, botPathOf, browserAvailable, computerKind, isInlineImage, lastKnownUrl, readLibraryFile, runShell, saveFile, screen, shellAvailable, storeBytes, type Shot } from "../computer.js";
 import { generateImage, imageService } from "../images.js";
+import { generateVideo, videoService } from "../video.js";
+import { connectors, slug } from "../connectors.js";
 import { config } from "../config.js";
 import { isValidTimezone, parseCron } from "../cron.js";
 import { tr } from "../i18n.js";
 import type { ImageBlock, TextBlock, ToolSpec } from "../llm/types.js";
 import { describeRoutine, routines } from "../routines.js";
 import { schedule, unschedule } from "../scheduler.js";
-import { GEM_KINDS, GEMS_PER_DAY, type ActivityKind, type Gem, type GemKind, type ToolGroup } from "../shared.js";
+import { GEM_KINDS, GEMS_PER_DAY, REACTIONS, type ActivityKind, type Connector, type Gem, type GemKind, type ReactionEmoji, type Row, type ToolGroup } from "../shared.js";
 import { q } from "../db.js";
 import { searchConfigured, searchWeb } from "../search.js";
 import { fetchProblem, guardedFetch } from "../net.js";
 import { config as appConfig } from "../config.js";
 import { bots, clip, memories, pages, rows, searchMessages, settings, skills, tasks, vault, type BotRecord, type UserRecord } from "../store.js";
+import { record as recordUsage } from "../usage.js";
 import { interrupt } from "./loop.js";
 import { createRoom, deliverBotMessage, dispatchToRoom, MAX_HELPERS, MAX_HOPS, startHelper } from "./team.js";
 
@@ -21,6 +24,10 @@ export interface ToolContext {
   bot: BotRecord; user: UserRecord; depth: number; signal: AbortSignal;
   /** The turn has read outside content: what this tool hands to another bot carries that mark along. */
   tainted?: boolean;
+  /** The thread the turn answers in (0 or absent: the main chat). */
+  thread?: number;
+  /** Exact addresses an app returned in this turn. */
+  appUrls?: Set<string>;
 }
 export interface ToolOutput {
   content: string | Array<TextBlock | ImageBlock>;
@@ -180,6 +187,136 @@ const shareTools: BuiltinTool[] = [
       rows.append(c.bot, { kind: "message", role: "assistant", text: "", attachments: [att] });
       bots.bumpUnread(c.bot.id);
       return { content: `Created and shown to the user. Saved as ${botPathOf(att.path)}.`, summary: att.name };
+    },
+  }),
+];
+
+/** The user's Higgsfield app, when it is connected and signed in (see catalog.ts). Video work then goes through it. */
+export function higgsfieldFor(userId: string): Connector | null {
+  return connectors.list(userId).find((k) => isHiggsfield(k) && k.status === "ready" && k.tools.length > 0) ?? null;
+}
+export const isHiggsfield = (k: { name: string; url: string }) => {
+  try { if (new URL(k.url).hostname === "mcp.higgsfield.ai") return true; } catch { /* not a URL */ }
+  return k.name.trim().toLowerCase() === "higgsfield";
+};
+/** How this user's bots make videos: through Higgsfield, through a video API, or not at all. */
+export function videoRoute(userId: string): "connector" | "api" | null {
+  return higgsfieldFor(userId) ? "connector" : videoService() ? "api" : null;
+}
+/** The Higgsfield tools that look like they create or follow media, as the bot sees them (app_<app>__<tool>). Read at run time, never hard-coded. */
+function higgsfieldTools(k: Connector): string[] {
+  const prefix = `app_${slug(k.name)}__`;
+  const names = k.tools.map((t) => t.name);
+  const media = names.filter((n) => /video|image|generat|job|status|wait|result|media|model|animat|motion/i.test(n));
+  return (media.length ? media : names).slice(0, 25).map((n) => (prefix + n).replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 64));
+}
+
+const mediaKind = (mime: string) => (mime.startsWith("video/") ? "video" : mime.startsWith("image/") ? "image" : null);
+const EXT: Record<string, string> = { "video/mp4": "mp4", "video/webm": "webm", "video/quicktime": "mov", "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "image/gif": "gif" };
+
+const videoTools: BuiltinTool[] = [
+  tool("video_generate", "Create a short video from a description (a few seconds). It is saved in your library and shown to the user in the chat with a player. It costs money: make one only when the user wants a video, and one at a time.",
+    obj({
+      prompt: str("What the video should show, in detail: subject, action, camera movement, style, light, sound"),
+      duration_seconds: int("Length in seconds (usually 3 to 15; default about 8)"),
+      aspect_ratio: { type: "string", enum: ["16:9", "9:16", "1:1"], description: "16:9 landscape (default), 9:16 portrait, 1:1 square" },
+      reference_image: str("Optional: path of a picture in your library to start from"),
+      filename: str("Short file name without extension"),
+    }, ["prompt"]), {
+    activity: "filming", label: "Creating a video", audited: true, detail: () => "0",
+    // A paid action: asked the first time for each bot, and "Always" lets that bot go on without asking.
+    gate: (_a, ctx) => {
+      const owner = bots.byId(ctx.botId);
+      if (!owner || videoRoute(owner.userId) !== "api") return null;
+      return { key: `video_generate: ${owner.name}`, title: "Allow {bot} to create a video? Each video is billed by {provider}.", reason: "create a video", source: "Paid video", vars: { provider: videoService()?.label ?? "" } };
+    },
+    run: async (a, c) => {
+      const via = higgsfieldFor(c.user.id);
+      if (via) {
+        // The user's Higgsfield subscription is the preferred route: the bot works with that app's own tools.
+        return {
+          content: `Videos are made through the user's Higgsfield app (it spends their Higgsfield credits, so make one video at a time and only what they asked for). Use its tools for this: ${higgsfieldTools(via).join(", ")}. Start a generation with the tool that creates videos, follow it until it is finished, then call media_save with the finished video's address so the user can watch it here.`,
+          summary: "via Higgsfield",
+        };
+      }
+      if (!videoService()) return { content: "No video service is set up on this server. Tell the user they can connect Higgsfield in Settings → Apps, or ask the server's admin to add a video API key.", isError: true };
+      let image: { mime: string; data: Buffer } | undefined;
+      if (typeof a.reference_image === "string" && a.reference_image.trim()) {
+        const att = attachmentAt(c.bot.id, libraryPath(a.reference_image));
+        if (!att || !isInlineImage(att.mime)) return { content: `There is no picture at ${a.reference_image} in your library (PNG, JPEG or WebP).`, isError: true };
+        if (att.size > 15_000_000) return { content: "That picture is too large (15 MB at most).", isError: true };
+        image = { mime: att.mime, data: readLibraryFile(c.bot.id, att.path) };
+      }
+      const show = (pct: number | null) => setLive(c.user.id, c.bot.id, { running: true, activity: { kind: "filming", detail: pct === null ? undefined : String(Math.round(pct)), since: Date.now() }, awaiting: null });
+      const aspect = a.aspect_ratio === "9:16" || a.aspect_ratio === "1:1" ? a.aspect_ratio : a.aspect_ratio === "16:9" ? "16:9" : undefined;
+      const v = await generateVideo({ prompt: String(a.prompt), duration: Number(a.duration_seconds) || undefined, aspect, image, signal: c.signal, onProgress: show });
+      recordUsage(c.user.id, c.bot.id, v.model, { inputTokens: 0, outputTokens: 0, cachedTokens: 0 }, v.costUsd ?? 0);
+      const att = storeBytes(c.bot.id, "videos", `${String(a.filename ?? "video").trim() || "video"}.${EXT[v.mime] ?? "mp4"}`, v.bytes);
+      rows.append(c.bot, { kind: "message", role: "assistant", text: "", attachments: [att] });
+      bots.bumpUnread(c.bot.id);
+      return { content: `Created and shown to the user with a player. Saved as ${botPathOf(att.path)}.${v.costUsd ? ` It cost $${v.costUsd.toFixed(2)}.` : ""}`, summary: `${att.name}${v.costUsd ? ` · $${v.costUsd.toFixed(2)}` : ""}` };
+    },
+  }),
+  tool("media_save", "Download a finished video or picture from its address (for example one an app such as Higgsfield just made) into your library and show it to the user in the chat, with a player for videos.",
+    obj({ url: str("The http(s) address of the video or picture"), filename: str("Short file name without extension"), caption: str("A line to go with it") }, ["url"]), {
+    activity: "saving", label: "Saving a video", audited: true, detail: (a) => hostOf(a.url),
+    run: async (a, c) => {
+      const url = String(a.url);
+      if (!/^https?:\/\//i.test(url)) return { content: "Only http and https addresses can be saved.", isError: true };
+      let res: Response;
+      try { res = await guardedFetch(url, { signal: AbortSignal.any([c.signal, AbortSignal.timeout(300_000)]), redirect: "follow" }); }
+      catch (err) { const why = fetchProblem(err); if (why) return { content: `Could not download ${url}: ${why}`, isError: true, summary: "not saved" }; throw err; }
+      if (!res.ok) return { content: `Could not download it (status ${res.status}).`, isError: true, summary: `${res.status}` };
+      const type = (res.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
+      const fromName = /\.(mp4|webm|mov|png|jpe?g|webp|gif)(?:$|\?)/i.exec(new URL(url).pathname)?.[1]?.toLowerCase();
+      const mime = mediaKind(type) ? type : fromName ? ({ mp4: "video/mp4", webm: "video/webm", mov: "video/quicktime", png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp", gif: "image/gif" } as Record<string, string>)[fromName] : "";
+      if (!mime || !mediaKind(mime)) { await res.body?.cancel().catch(() => {}); return { content: `That address is not a video or a picture (${type || "unknown type"}).`, isError: true }; }
+      if (Number(res.headers.get("content-length") ?? 0) > 200_000_000) { await res.body?.cancel().catch(() => {}); return { content: "That file is too large (200 MB at most).", isError: true }; }
+      const bytes = Buffer.from(await res.arrayBuffer());
+      if (bytes.length > 200_000_000) return { content: "That file is too large (200 MB at most).", isError: true };
+      const kind = mediaKind(mime)!;
+      const att = storeBytes(c.bot.id, kind === "video" ? "videos" : "images", `${String(a.filename ?? kind).trim() || kind}.${EXT[mime] ?? (kind === "video" ? "mp4" : "png")}`, bytes);
+      rows.append(c.bot, { kind: "message", role: "assistant", text: typeof a.caption === "string" ? a.caption : "", attachments: [att] });
+      bots.bumpUnread(c.bot.id);
+      return { content: `Saved as ${botPathOf(att.path)} and shown to the user${kind === "video" ? " with a player" : ""}.`, summary: att.name };
+    },
+  }),
+];
+
+/** Recent messages a bot may react to: in its own chat (or the thread it answers in), or in a group chat. */
+function reactable(list: Row[], words: string, role: "user" | "any"): Row | null {
+  const msgs = list.filter((r) => r.body.kind === "message" && !r.body.streaming && (role === "any" || r.body.role === "user"));
+  const want = words.trim().toLowerCase();
+  if (want) for (let i = msgs.length - 1; i >= 0; i--) { const b = msgs[i].body; if (b.kind === "message" && b.text.toLowerCase().includes(want)) return msgs[i]; }
+  return msgs[msgs.length - 1] ?? null;
+}
+
+const reactTools: BuiltinTool[] = [
+  tool("message_react", `Put a small reaction under a message instead of (or as well as) answering in words: ${REACTIONS.join(" ")}. By default it goes on the user's latest message here. Cheap and quiet: use it for acknowledgements.`,
+    obj({
+      emoji: { type: "string", enum: [...REACTIONS], description: "The reaction" },
+      message: str("Optional: a few words quoted from the message to react to, when it is not the latest one"),
+      room: str("Optional: the name of a group chat you belong to, to react to a message there"),
+    }, ["emoji"]), {
+    activity: "messaging", label: "Reacting",
+    run: async (a, c) => {
+      const emoji = String(a.emoji) as ReactionEmoji;
+      if (!(REACTIONS as readonly string[]).includes(emoji)) return { content: `Use one of ${REACTIONS.join(" ")}.`, isError: true };
+      let target: { id: string; userId: string; generation: number } = c.bot;
+      let row: Row | null;
+      if (typeof a.room === "string" && a.room.trim()) {
+        const room = bots.byName(c.user.id, a.room);
+        if (!room || room.kind !== "room" || !room.memberIds.includes(c.bot.id)) return { content: `You are not in a group chat called "${a.room}".`, isError: true };
+        target = room;
+        row = reactable(rows.list(room.id, room.generation, 40), String(a.message ?? ""), "any");
+      } else {
+        const bot = bots.byId(c.bot.id)!;
+        target = bot;
+        row = reactable(rows.list(bot.id, bot.generation, 40, undefined, c.thread ?? 0), String(a.message ?? ""), "user");
+      }
+      if (!row) return { content: "There is no message to react to.", isError: true };
+      rows.react(target, target.generation, row.seq, { emoji, by: c.bot.id, name: c.bot.name }, true);
+      return { content: "Reaction added.", summary: emoji };
     },
   }),
 ];
@@ -494,18 +631,24 @@ const teamTools: BuiltinTool[] = [
       return { content: JSON.stringify({ id: room.id, missing }), summary: room.name };
     },
   }),
-  tool("room_post", "Post a message into a group chat you belong to. This ends your turn.", obj({ room: str("The group's name"), text: str("Your message") }, ["room", "text"]), {
+  tool("room_post", "Post a message into a group chat you belong to. This ends your turn. When you were brought into a thread of that group, pass its thread number so your answer goes into the thread.", obj({ room: str("The group's name"), text: str("Your message"), thread: int("The thread number you were given, to answer inside that thread") }, ["room", "text"]), {
     activity: "messaging", label: "Posting to a group", detail: (a) => String(a.room ?? ""),
     run: async (a, c) => {
       const room = bots.byName(c.user.id, String(a.room));
       if (!room || room.kind !== "room") return { content: `No group chat is called "${a.room}".`, isError: true };
       if (!room.memberIds.includes(c.bot.id)) return { content: "You are not a member of that group.", isError: true };
       const text = String(a.text);
-      rows.append(room, { kind: "message", role: "assistant", text, origin: { kind: "bot", id: c.bot.id, name: c.bot.name } });
+      let thread = 0;
+      if (a.thread !== undefined && a.thread !== null && Number(a.thread) > 0) {
+        const parent = rows.get(room.id, room.generation, Number(a.thread));
+        if (!parent || parent.thread || parent.body.kind !== "message") return { content: `That group has no thread number ${a.thread}.`, isError: true };
+        thread = parent.seq;
+      }
+      rows.append(room, { kind: "message", role: "assistant", text, origin: { kind: "bot", id: c.bot.id, name: c.bot.name } }, thread);
       bots.bumpUnread(room.id);
       bots.announce(room);
-      dispatchToRoom(room, c.user, text, c.bot, c.depth, c.tainted);
-      return { content: "Posted.", summary: room.name, endTurn: true };
+      dispatchToRoom(room, c.user, text, c.bot, c.depth, c.tainted, thread);
+      return { content: thread ? "Posted in the thread." : "Posted.", summary: room.name, endTurn: true };
     },
   }),
 ];
@@ -579,11 +722,12 @@ export async function retireBot(b: BotRecord) {
 
 const inGroup = (group: ToolGroup, list: BuiltinTool[]) => list.map((t) => ({ ...t, group: t.group ?? group }));
 
-export function builtinTools(opts: { nativeSearch?: boolean; disabled?: readonly string[] } = {}): BuiltinTool[] {
+/** `video`: how videos are made for this user (see videoRoute); without one, the video tools are not offered. */
+export function builtinTools(opts: { nativeSearch?: boolean; disabled?: readonly string[]; video?: "connector" | "api" | null } = {}): BuiltinTool[] {
   return assemble(opts).filter((t) => !t.group || !(opts.disabled ?? []).includes(t.group));
 }
 
-function assemble(opts: { nativeSearch?: boolean }): BuiltinTool[] {
+function assemble(opts: { nativeSearch?: boolean; video?: "connector" | "api" | null }): BuiltinTool[] {
   return [
     ...(browserAvailable() ? inGroup("computer", screenTools) : []),
     // On its own Linux computer a bot's commands are contained, so they do not need a permission card.
@@ -593,6 +737,7 @@ function assemble(opts: { nativeSearch?: boolean }): BuiltinTool[] {
     ...knowledgeTools, ...pageTools,
     ...shareTools.filter((t) => t.spec.name !== "image_generate" || imageService()).map((t): BuiltinTool => ({ ...t, group: t.spec.name === "image_generate" ? "images" : "files" })),
     ...(browserAvailable() ? inGroup("vault", vaultTools) : []),
-    ...inGroup("memory", memoryTools), ...inGroup("routines", routineTools), ...inGroup("tasks", taskTools), ...inGroup("team", teamTools), ...userTools,
+    ...(opts.video ? inGroup("video", videoTools) : []),
+    ...inGroup("memory", memoryTools), ...inGroup("routines", routineTools), ...inGroup("tasks", taskTools), ...inGroup("team", teamTools), ...userTools, ...reactTools,
   ];
 }

@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { q } from "./db.js";
 import { emit } from "./bus.js";
@@ -5,7 +6,7 @@ import { tr } from "./i18n.js";
 import type { ChatMessage } from "./llm/types.js";
 import {
   AVATAR_COLORS, AVATAR_SHAPES,
-  ACCESSORIES, CHARACTER_TYPES, DEFAULT_CHARACTER, EYE_STYLES, IDLE_MOTIONS, TOOL_GROUPS, type AuditEntry, type Character, type Bot, type Card, type CheckinSettings, type Locale, type Memory, type SearchHit, type SharedPage, type VaultItem, type Policy, type Row, type RowBody, type Skill, type Task, type User,
+  ACCESSORIES, CHARACTER_TYPES, DEFAULT_CHARACTER, EYE_STYLES, IDLE_MOTIONS, TOOL_GROUPS, type AuditEntry, type Character, type Bot, type Card, type CheckinSettings, type Locale, type Memory, type SearchHit, type SharedPage, type VaultItem, type Policy, type Reaction, type Row, type RowBody, type Skill, type Task, type User,
 } from "./shared.js";
 
 export const now = () => Date.now();
@@ -52,7 +53,7 @@ function previewOf(body: RowBody, locale: Locale): string {
 
 function toBot(r: any): BotRecord {
   const last = q.get<{ body: string; created_at: number }>(
-    "SELECT body, created_at FROM rows WHERE bot_id = ? AND generation = ? AND kind IN ('message','card','event') ORDER BY seq DESC LIMIT 1",
+    "SELECT body, created_at FROM rows WHERE bot_id = ? AND generation = ? AND thread = 0 AND kind IN ('message','card','event') ORDER BY seq DESC LIMIT 1",
     r.id, r.generation,
   );
   const voice = { name: "", rate: 1, lang: "auto", ...JSON.parse(r.voice || "{}") };
@@ -205,30 +206,55 @@ export const bots = {
 };
 
 // ── Transcript rows ──────────────────────────────────────────────────────────
-const toRow = (r: any): Row => ({ botId: r.bot_id, generation: r.generation, seq: r.seq, rev: r.rev, createdAt: r.created_at, body: JSON.parse(r.body) });
+const toRow = (r: any): Row => ({ botId: r.bot_id, generation: r.generation, seq: r.seq, rev: r.rev, createdAt: r.created_at, body: JSON.parse(r.body), ...(r.thread ? { thread: r.thread } : {}) });
+
+/**
+ * The thread a bot's turn is working in. Everything that turn writes into its own chat (replies, steps,
+ * cards, pictures) lands in that thread without each tool having to know about threads.
+ */
+export const rowScope = new AsyncLocalStorage<{ botId: string; thread: number }>();
+const scopedThread = (botId: string) => { const s = rowScope.getStore(); return s && s.botId === botId ? s.thread : 0; };
+
+/** What a rewrite keeps from the stored row unless it sets it itself: reactions and the thread summary live alongside the text. */
+function keepMeta(cur: RowBody, next: RowBody): RowBody {
+  if (cur.kind !== "message" || next.kind !== "message") return next;
+  return { ...next, ...(!("reactions" in next) && cur.reactions?.length ? { reactions: cur.reactions } : {}), ...(!("replies" in next) && cur.replies ? { replies: cur.replies } : {}) };
+}
 
 export const rows = {
-  append(bot: { id: string; userId: string }, body: RowBody): Row {
+  /** Adds a row. `thread`: the seq of the message a thread reply hangs on; by default, the thread of the bot's turn under way (or the main chat). */
+  append(bot: { id: string; userId: string }, body: RowBody, thread?: number): Row {
+    const th = thread ?? scopedThread(bot.id);
     const row = q.tx(() => {
       const b = q.get<{ generation: number; next_seq: number; rev: number }>("SELECT generation, next_seq, rev FROM bots WHERE id = ?", bot.id);
       if (!b) throw new Error("bot no longer exists");
       const t = now();
-      q.run("INSERT INTO rows (bot_id, generation, seq, rev, kind, body, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)", bot.id, b.generation, b.next_seq, b.rev + 1, body.kind, JSON.stringify(body), t);
+      q.run("INSERT INTO rows (bot_id, generation, seq, rev, kind, body, created_at, thread) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", bot.id, b.generation, b.next_seq, b.rev + 1, body.kind, JSON.stringify(body), t, th);
       q.run("UPDATE bots SET next_seq = next_seq + 1, rev = rev + 1, updated_at = ? WHERE id = ?", t, bot.id);
-      return { botId: bot.id, generation: b.generation, seq: b.next_seq, rev: b.rev + 1, createdAt: t, body } satisfies Row;
+      return { botId: bot.id, generation: b.generation, seq: b.next_seq, rev: b.rev + 1, createdAt: t, body, ...(th ? { thread: th } : {}) } satisfies Row;
     });
     emit(bot.userId, { type: "rows", botId: bot.id, generation: row.generation, rows: [row] });
+    if (th && body.kind === "message") rows.countReplies(bot, row.generation, th);
     return row;
   },
-  /** Rewrites a row in place with a higher revision so clients replace their copy. */
+  /** Refreshes the "N replies" line under the message a thread hangs on. */
+  countReplies(bot: { id: string; userId: string }, generation: number, parentSeq: number) {
+    const parent = rows.get(bot.id, generation, parentSeq);
+    if (!parent || parent.body.kind !== "message") return;
+    const n = q.get<{ n: number; last: number | null }>("SELECT COUNT(*) AS n, MAX(created_at) AS last FROM rows WHERE bot_id = ? AND generation = ? AND thread = ? AND kind = 'message'", bot.id, generation, parentSeq)!;
+    rows.rewrite(bot, generation, parentSeq, { ...parent.body, replies: { count: n.n, lastAt: n.last ?? now() } });
+  },
+  /** Rewrites a row in place with a higher revision so clients replace their copy. Reactions and the thread summary are kept unless `body` sets them. */
   rewrite(bot: { id: string; userId: string }, generation: number, seq: number, body: RowBody): Row | null {
     const row = q.tx(() => {
       const cur = q.get("SELECT * FROM rows WHERE bot_id = ? AND generation = ? AND seq = ?", bot.id, generation, seq);
       const b = q.get<{ rev: number }>("SELECT rev FROM bots WHERE id = ?", bot.id);
       if (!cur || !b) return null;
-      q.run("UPDATE rows SET body = ?, rev = ? WHERE bot_id = ? AND generation = ? AND seq = ?", JSON.stringify(body), b.rev + 1, bot.id, generation, seq);
+      const before = toRow(cur);
+      const next = keepMeta(before.body, body);
+      q.run("UPDATE rows SET body = ?, rev = ? WHERE bot_id = ? AND generation = ? AND seq = ?", JSON.stringify(next), b.rev + 1, bot.id, generation, seq);
       q.run("UPDATE bots SET rev = rev + 1, updated_at = ? WHERE id = ?", now(), bot.id);
-      return { ...toRow(cur), rev: b.rev + 1, body };
+      return { ...before, rev: b.rev + 1, body: next };
     });
     if (row) emit(bot.userId, { type: "rows", botId: bot.id, generation, rows: [row] });
     return row;
@@ -237,15 +263,20 @@ export const rows = {
     const r = q.get("SELECT * FROM rows WHERE bot_id = ? AND generation = ? AND seq = ?", botId, generation, seq);
     return r ? toRow(r) : null;
   },
-  list(botId: string, generation: number, limit = 200, before?: number): Row[] {
+  /** One page of the main chat, or of one thread (`thread` = the seq it hangs on). */
+  list(botId: string, generation: number, limit = 200, before?: number, thread = 0): Row[] {
     const lim = Math.min(Math.max(1, limit), 500);
     const found = before
-      ? q.all("SELECT * FROM rows WHERE bot_id = ? AND generation = ? AND seq < ? ORDER BY seq DESC LIMIT ?", botId, generation, before, lim)
-      : q.all("SELECT * FROM rows WHERE bot_id = ? AND generation = ? ORDER BY seq DESC LIMIT ?", botId, generation, lim);
+      ? q.all("SELECT * FROM rows WHERE bot_id = ? AND generation = ? AND thread = ? AND seq < ? ORDER BY seq DESC LIMIT ?", botId, generation, thread, before, lim)
+      : q.all("SELECT * FROM rows WHERE bot_id = ? AND generation = ? AND thread = ? ORDER BY seq DESC LIMIT ?", botId, generation, thread, lim);
     return found.reverse().map(toRow);
   },
-  recentMessages(botId: string, generation: number, limit: number): Row[] {
-    return q.all("SELECT * FROM rows WHERE bot_id = ? AND generation = ? AND kind = 'message' ORDER BY seq DESC LIMIT ?", botId, generation, limit).reverse().map(toRow);
+  /** Every row of a conversation, threads included, in order (exports). */
+  all(botId: string, generation: number): Row[] {
+    return q.all("SELECT * FROM rows WHERE bot_id = ? AND generation = ? ORDER BY seq", botId, generation).map(toRow);
+  },
+  recentMessages(botId: string, generation: number, limit: number, thread = 0): Row[] {
+    return q.all("SELECT * FROM rows WHERE bot_id = ? AND generation = ? AND thread = ? AND kind = 'message' ORDER BY seq DESC LIMIT ?", botId, generation, thread, limit).reverse().map(toRow);
   },
   messagesAfter(botId: string, generation: number, after: number, limit: number): Row[] {
     return q.all("SELECT * FROM rows WHERE bot_id = ? AND generation = ? AND kind = 'message' AND created_at > ? ORDER BY seq DESC LIMIT ?", botId, generation, after, limit).reverse().map(toRow);
@@ -255,24 +286,54 @@ export const rows = {
     if (!row || row.body.kind !== "card") return null;
     return rows.rewrite(bot, generation, seq, { kind: "card", card: change(row.body.card) });
   },
+  /**
+   * Adds or removes one reaction (toggle) on a message. Returns the new list, or null when the row is not a
+   * message. Each reactor has each emoji at most once.
+   */
+  react(bot: { id: string; userId: string }, generation: number, seq: number, reaction: Reaction, on?: boolean): Reaction[] | null {
+    const row = rows.get(bot.id, generation, seq);
+    if (!row || row.body.kind !== "message") return null;
+    const list = row.body.reactions ?? [];
+    const has = list.some((r) => r.emoji === reaction.emoji && r.by === reaction.by);
+    const want = on ?? !has;
+    if (want === has) return list;
+    const next = want ? [...list, reaction].slice(-40) : list.filter((r) => !(r.emoji === reaction.emoji && r.by === reaction.by));
+    rows.rewrite(bot, generation, seq, { ...row.body, reactions: next });
+    return next;
+  },
+};
+
+// ── Light feedback: reactions the bot hears about in its next turn ───────────
+export const feedback = {
+  add: (botId: string, generation: number, thread: number, seq: number, emoji: string, text: string) =>
+    q.run("INSERT INTO feedback (bot_id, generation, thread, seq, emoji, text, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)", botId, generation, thread, seq, emoji, text, now()),
+  /** A reaction taken back before the bot heard about it is forgotten. */
+  drop: (botId: string, generation: number, seq: number, emoji: string) => q.run("DELETE FROM feedback WHERE bot_id = ? AND generation = ? AND seq = ? AND emoji = ?", botId, generation, seq, emoji),
+  /** The notes waiting for this chat or thread, removed as they are handed over (at most the 10 latest). */
+  take(botId: string, generation: number, thread: number): string[] {
+    const found = q.all<{ text: string }>("SELECT text FROM feedback WHERE bot_id = ? AND generation = ? AND thread = ? ORDER BY id DESC LIMIT 10", botId, generation, thread).reverse();
+    q.run("DELETE FROM feedback WHERE bot_id = ? AND generation = ? AND thread = ?", botId, generation, thread);
+    return found.map((f) => f.text);
+  },
 };
 
 // ── Model-facing history ─────────────────────────────────────────────────────
+// `thread` 0 is the main conversation; a thread keeps its own history under the seq it hangs on.
 export const history = {
-  load(botId: string, generation: number): ChatMessage[] {
-    return q.all<{ role: string; content: string }>("SELECT role, content FROM history WHERE bot_id = ? AND generation = ? ORDER BY id", botId, generation)
+  load(botId: string, generation: number, thread = 0): ChatMessage[] {
+    return q.all<{ role: string; content: string }>("SELECT role, content FROM history WHERE bot_id = ? AND generation = ? AND thread = ? ORDER BY id", botId, generation, thread)
       .map((r) => ({ role: r.role as ChatMessage["role"], content: JSON.parse(r.content) }));
   },
-  append(botId: string, generation: number, msg: ChatMessage) {
-    q.run("INSERT INTO history (bot_id, generation, role, content) VALUES (?, ?, ?, ?)", botId, generation, msg.role, JSON.stringify(msg.content));
+  append(botId: string, generation: number, msg: ChatMessage, thread = 0) {
+    q.run("INSERT INTO history (bot_id, generation, role, content, thread) VALUES (?, ?, ?, ?, ?)", botId, generation, msg.role, JSON.stringify(msg.content), thread);
   },
-  replace(botId: string, generation: number, msgs: ChatMessage[]) {
+  replace(botId: string, generation: number, msgs: ChatMessage[], thread = 0) {
     q.tx(() => {
-      q.run("DELETE FROM history WHERE bot_id = ? AND generation = ?", botId, generation);
-      for (const m of msgs) history.append(botId, generation, m);
+      q.run("DELETE FROM history WHERE bot_id = ? AND generation = ? AND thread = ?", botId, generation, thread);
+      for (const m of msgs) history.append(botId, generation, m, thread);
     });
   },
-  count: (botId: string, generation: number) => q.get<{ n: number }>("SELECT COUNT(*) AS n FROM history WHERE bot_id = ? AND generation = ?", botId, generation)!.n,
+  count: (botId: string, generation: number, thread = 0) => q.get<{ n: number }>("SELECT COUNT(*) AS n FROM history WHERE bot_id = ? AND generation = ? AND thread = ?", botId, generation, thread)!.n,
 };
 
 // ── Memories, skills, tasks ──────────────────────────────────────────────────
@@ -421,7 +482,7 @@ export function searchMessages(userId: string, query: string, opts: { botId?: st
   const like = words.map(() => "LOWER(json_extract(r.body, '$.text')) LIKE ? ESCAPE '\\'").join(" AND ");
   const params = words.map((w) => `%${w.replace(/[\\%_]/g, (c) => "\\" + c)}%`);
   const found = q.all<any>(
-    `SELECT r.bot_id, r.generation, r.seq, r.created_at, r.body, b.name, b.generation AS cur FROM rows r JOIN bots b ON b.id = r.bot_id
+    `SELECT r.bot_id, r.generation, r.seq, r.thread, r.created_at, r.body, b.name, b.generation AS cur FROM rows r JOIN bots b ON b.id = r.bot_id
      WHERE b.user_id = ? AND b.hidden = 0 ${opts.botId ? "AND b.id = ?" : ""} AND r.kind = 'message' AND ${like} ORDER BY r.created_at DESC LIMIT ?`,
     userId, ...(opts.botId ? [opts.botId] : []), ...params, Math.min(opts.limit ?? 40, 40));
   return found.map((r) => {
@@ -429,7 +490,7 @@ export function searchMessages(userId: string, query: string, opts: { botId?: st
     const text: string = body.text ?? "";
     const at = Math.max(0, text.toLowerCase().indexOf(words[0]));
     return {
-      botId: r.bot_id, botName: r.name, generation: r.generation, current: r.generation === r.cur, seq: r.seq, at: r.created_at, role: body.role,
+      botId: r.bot_id, botName: r.name, generation: r.generation, current: r.generation === r.cur, seq: r.seq, at: r.created_at, role: body.role, ...(r.thread ? { thread: r.thread } : {}),
       snippet: (at > 80 ? "…" : "") + text.slice(Math.max(0, at - 80), at + 220).replace(/\s+/g, " ") + (text.length > at + 220 ? "…" : ""),
     };
   });

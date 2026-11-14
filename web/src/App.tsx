@@ -12,6 +12,7 @@ import { ConnectorsModal, CreateBotModal, CreateRoomModal, SearchModal } from ".
 import { Sidebar } from "./components/Sidebar";
 import { SignIn } from "./components/SignIn";
 import { TasksView } from "./components/TasksView";
+import { ThreadPanel } from "./components/ThreadPanel";
 
 function useShortcuts(): void {
   useEffect(() => {
@@ -94,13 +95,16 @@ function Shell() {
   const history = useStore((s) => s.history);
   const openModal = useStore((s) => s.openModal);
   const close = () => openModal(null);
-  const showDetails = view === "chat" && hasBot && detailsOpen;
+  const openThread = useStore((s) => (s.openThread && s.openThread.botId === s.selectedId ? s.openThread : null));
+  const showThread = view === "chat" && hasBot && !!openThread;
+  const showDetails = view === "chat" && hasBot && detailsOpen && !showThread;
 
   return (
-    <div className={`shell ${showDetails ? "has-details" : ""}`}>
+    <div className={`shell ${showDetails || showThread ? "has-details" : ""}`}>
       <Sidebar />
       {view === "tasks" ? <TasksView /> : <ChatView />}
       {showDetails && <DetailsPanel />}
+      {showThread && openThread && <ThreadPanel key={`${openThread.botId}:${openThread.seq}`} botId={openThread.botId} seq={openThread.seq} />}
 
       {appSettings && <AppSettings section={appSettings} />}
       {botSettings && <BotSettings botId={botSettings.botId} tab={botSettings.tab} />}

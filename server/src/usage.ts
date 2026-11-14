@@ -29,9 +29,10 @@ export function costOf(model: string, u: TurnUsage): number {
   return (fresh * p[0] + u.outputTokens * p[1] + u.cachedTokens * p[2]) / 1_000_000;
 }
 
-export function record(userId: string, botId: string, model: string, u: TurnUsage) {
+/** `costUsd`: the price the service itself reported (e.g. a video), used instead of our token price list. */
+export function record(userId: string, botId: string, model: string, u: TurnUsage, costUsd?: number) {
   q.run("INSERT INTO usage (user_id, bot_id, at, model, input_tokens, output_tokens, cached_tokens, cost_usd) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-    userId, botId, now(), model, u.inputTokens, u.outputTokens, u.cachedTokens, costOf(model, u));
+    userId, botId, now(), model, u.inputTokens, u.outputTokens, u.cachedTokens, costUsd ?? costOf(model, u));
   emit(userId, { type: "usage" });
   if (budgetJustNeared(userId)) {
     const main = bots.primary(userId);

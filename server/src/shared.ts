@@ -9,7 +9,7 @@ export type AvatarShape = (typeof AVATAR_SHAPES)[number];
 export type AvatarColor = (typeof AVATAR_COLORS)[number];
 
 /** Families of tools that can be switched off for a bot. */
-export const TOOL_GROUPS = ["computer", "shell", "web", "files", "memory", "routines", "tasks", "team", "apps", "vault", "images", "pages"] as const;
+export const TOOL_GROUPS = ["computer", "shell", "web", "files", "memory", "routines", "tasks", "team", "apps", "vault", "images", "video", "pages"] as const;
 export type ToolGroup = (typeof TOOL_GROUPS)[number];
 /** Who answers a message nobody is mentioned in: the first member, every member, or nobody. */
 export type RoomRule = "lead" | "everyone" | "mentions";
@@ -93,7 +93,7 @@ export interface Bot {
 
 export type ActivityKind =
   | "thinking" | "writing" | "searching" | "reading" | "browsing" | "computer" | "shell"
-  | "messaging" | "connector" | "waiting" | "saving" | "remembering" | "planning";
+  | "messaging" | "connector" | "waiting" | "saving" | "remembering" | "planning" | "filming";
 
 export interface Live {
   running: boolean;
@@ -104,12 +104,22 @@ export interface Live {
   queued: number;
   /** A short line about what the bot is thinking right now (from its reasoning), while a turn runs. */
   caption?: string | null;
+  /** The running turn is a thread reply: the seq of the message the thread hangs on (absent or 0: the main chat). */
+  thread?: number;
 }
 
 export interface Origin { kind: "bot" | "routine" | "voice" | "webhook"; id: string; name: string }
 
+/** The small set of reactions anyone (the user or a bot) can put under a message. */
+export const REACTIONS = ["👍", "❤️", "😂", "🎉", "🤔", "👀", "🙏", "👎"] as const;
+export type ReactionEmoji = (typeof REACTIONS)[number];
+/** One reaction under a message. `by`: "user", or the id of the bot that reacted (`name` is its name). */
+export interface Reaction { emoji: ReactionEmoji; by: string; name: string }
+/** Under a message that has a thread: how many replies it has, and when the last one came. */
+export interface Replies { count: number; lastAt: number }
+
 export type RowBody =
-  | { kind: "message"; role: "user" | "assistant"; text: string; streaming?: boolean; origin?: Origin; sources?: { url: string; title?: string }[]; attachments?: Attachment[] }
+  | { kind: "message"; role: "user" | "assistant"; text: string; streaming?: boolean; origin?: Origin; sources?: { url: string; title?: string }[]; attachments?: Attachment[]; reactions?: Reaction[]; replies?: Replies }
   | { kind: "step"; callId: string; tool: string; label: string; status: "running" | "done" | "error" | "waiting" | "denied"; args: Record<string, unknown>; summary?: string }
   | { kind: "card"; card: Card }
   | { kind: "event"; event: "routine" | "task" | "bot" | "reset" | "computer" | "call" | "members" | "cheer"; text: string; call?: CallRecord; gem?: Gem }
@@ -122,7 +132,8 @@ export type Card =
 
 export interface CallRecord { id: string; phase: "started" | "ended"; durationMs?: number; summary?: string; transcript?: { role: "user" | "assistant"; text: string }[] }
 
-export interface Row { botId: string; generation: number; seq: number; rev: number; createdAt: number; body: RowBody }
+/** `thread`: set on a thread reply, the seq of the message (in the main chat) that the thread hangs on. */
+export interface Row { botId: string; generation: number; seq: number; rev: number; createdAt: number; body: RowBody; thread?: number }
 
 export interface Memory { id: string; botId: string; text: string; source: "chat" | "learned"; createdAt: number }
 export interface Skill { id: string; botId: string; name: string; description: string; body: string; createdAt: number; updatedAt: number }
@@ -147,7 +158,7 @@ export interface TelegramStatus { connected: boolean; username: string | null; l
 /** A page a bot published at a public address. */
 export interface SharedPage { token: string; botId: string; title: string; url: string; createdAt: number }
 
-export interface SearchHit { botId: string; botName: string; generation: number; current: boolean; seq: number; at: number; role: "user" | "assistant"; snippet: string }
+export interface SearchHit { botId: string; botName: string; generation: number; current: boolean; seq: number; at: number; role: "user" | "assistant"; snippet: string; /** A thread reply: the seq of the message the thread hangs on. */ thread?: number }
 
 export interface MemoryStatus { lastConsolidatedAt: number | null; historyChars: number; compactAt: number; lastCompactedAt: number | null }
 export interface BotBundle { memories: Memory[]; skills: Skill[]; routines: Routine[]; tasks: Task[]; memoryStatus: MemoryStatus }
@@ -219,6 +230,26 @@ export interface UsageSummary {
   nearBudget: boolean;
 }
 
+/** How bots can make videos on this server: through the user's Higgsfield app, a video API, both or neither. */
+export interface VideoStatus { provider: "xai" | "gemini" | "demo" | null; higgsfield: boolean }
+
+/** A step-by-step skill the bot wrote from a demonstration, waiting for the user to check it. */
+export interface SkillDraft { name: string; when: string; steps: string }
+/**
+ * A demonstration the user is recording on a bot's screen ("Show me how"), then the skill drafted from it.
+ * Only counts and special keys are kept from the keyboard, never what was typed.
+ */
+export interface Recording {
+  id: string; botId: string; startedAt: number; stoppedAt: number | null;
+  status: "recording" | "processing" | "review" | "error";
+  /** Screenshots and input events captured so far. */
+  frames: number; events: number;
+  /** Longest a recording may run, in ms (10 minutes). */
+  maxMs: number;
+  error: string | null;
+  draft: SkillDraft | null;
+}
+
 /** Server → browser events on GET /api/events (one JSON object per SSE message). */
 export type ServerEvent =
   | { type: "hello"; now: number }
@@ -236,4 +267,6 @@ export type ServerEvent =
   | { type: "usage" }
   | { type: "pages" }
   /** The bot found a gem for the user (celebrate tool): play its euphoria now. */
-  | { type: "cheer"; botId: string; reason: string; gem?: Gem };
+  | { type: "cheer"; botId: string; reason: string; gem?: Gem }
+  /** A demonstration on a bot's screen started, moved on, or ended (null: nothing recorded any more). */
+  | { type: "recording"; botId: string; recording: Recording | null };

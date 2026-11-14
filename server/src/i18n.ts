@@ -6,6 +6,10 @@ import type { Locale } from "./shared.js";
  */
 const FR: Record<string, string> = {
   "Stopped.": "Arrêté.",
+  "Allow {bot} to create a video? Each video is billed by {provider}.": "Autoriser {bot} à créer une vidéo ? Chaque vidéo est facturée par {provider}.",
+  "create a video": "créer une vidéo", "Paid video": "Vidéo payante",
+  "Creating a video": "Crée une vidéo", "Saving a video": "Enregistre une vidéo", "Reacting": "Réagit",
+  "Learned a skill from your demonstration: {name}": "Nouvelle compétence apprise de ta démonstration : {name}",
   "Your Claude subscription has reached its usage limit for now. I will be able to continue once it resets.": "Ton abonnement Claude a atteint sa limite d'utilisation pour l'instant. Je pourrai continuer dès qu'elle se réinitialise.",
   "I am not signed in to ChatGPT on my computer yet. Open my settings → Brain → Sign in, then sign in on my screen.": "Je ne suis pas encore connecté à ChatGPT sur mon ordinateur. Ouvre mes réglages → Cerveau → Se connecter, puis connecte-toi sur mon écran.",
   "I am not signed in to Claude on my computer yet. Open my settings → Brain → Sign in, then sign in on my screen.": "Je ne suis pas encore connecté à Claude sur mon ordinateur. Ouvre mes réglages → Cerveau → Se connecter, puis connecte-toi sur mon écran.",

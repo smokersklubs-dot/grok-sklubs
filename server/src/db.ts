@@ -121,6 +121,19 @@ function CREATE_EXTRA() {
   // OAuth sign-in for connectors: "none" | "token" | "oauth" (empty on older rows: read from token_enc), and the sealed tokens.
   add("connectors", "auth", "TEXT NOT NULL DEFAULT ''");
   add("connectors", "oauth_enc", "TEXT");
+  // Threads: a reply in a thread carries the seq of the message it hangs on (0 = the main chat). The model-facing
+  // history of a thread is kept apart from the main one, under the same number.
+  add("rows", "thread", "INTEGER NOT NULL DEFAULT 0");
+  add("history", "thread", "INTEGER NOT NULL DEFAULT 0");
+  db.exec(`
+  CREATE INDEX IF NOT EXISTS rows_thread ON rows(bot_id, generation, thread, seq);
+  CREATE INDEX IF NOT EXISTS history_thread ON history(bot_id, generation, thread, id);
+  -- Light feedback for a bot (the user reacted to one of its messages), handed to its next turn in that chat or thread, then dropped.
+  CREATE TABLE IF NOT EXISTS feedback (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, bot_id TEXT NOT NULL REFERENCES bots(id) ON DELETE CASCADE,
+    generation INTEGER NOT NULL, thread INTEGER NOT NULL DEFAULT 0, seq INTEGER NOT NULL, emoji TEXT NOT NULL, text TEXT NOT NULL, created_at INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS feedback_bot ON feedback(bot_id, generation, thread);`);
   db.exec(`
   CREATE TABLE IF NOT EXISTS routine_runs (
     id TEXT PRIMARY KEY, routine_id TEXT NOT NULL REFERENCES routines(id) ON DELETE CASCADE,

@@ -1,3 +1,5 @@
+import { RfbClientParser } from "./rfb.js";
+import { isRecording, noteRfb } from "./teach.js";
 import { spawn } from "node:child_process";
 import type { IncomingMessage, Server } from "node:http";
 import type { Duplex } from "node:stream";
@@ -60,7 +62,15 @@ function pipe(ws: WebSocket, botId: string, control: boolean) {
   // Writing to a relay that just died raises EPIPE on its input: close quietly instead of crashing.
   vnc.stdin!.on("error", close);
   vnc.stdout!.on("error", close);
-  ws.on("message", (data: Buffer) => { if (vnc.stdin!.writable) vnc.stdin!.write(data); });
+  // In control mode the viewer's input is read on the way (never altered, never logged) so a demonstration
+  // ("Show me how") can be recorded; the parser runs from the first byte to stay in step with the protocol.
+  const reader = control ? new RfbClientParser() : null;
+  ws.on("message", (data: Buffer) => {
+    if (vnc.stdin!.writable) vnc.stdin!.write(data);
+    if (!reader || reader.lost) return;
+    const events = reader.push(Buffer.isBuffer(data) ? data : Buffer.from(data as ArrayBuffer));
+    if (events.length && isRecording(botId)) for (const ev of events) noteRfb(botId, ev);
+  });
   ws.on("close", close);
   ws.on("error", close);
 }

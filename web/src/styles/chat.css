@@ -281,3 +281,78 @@ button.captions:hover { box-shadow: 0 0 0 1px var(--border-strong); }
 .cheer-score { margin-left: 8px; padding: 1px 8px; border-radius: 999px; background: color-mix(in srgb, #ffb020 22%, var(--surface)); font-size: 11.5px; font-weight: 700; color: color-mix(in srgb, #b07a00 80%, var(--text)); white-space: nowrap; }
 .cheer-why { max-width: 560px; font-size: 12px; color: var(--text-2); text-align: center; line-height: 1.4; }
 @media (prefers-reduced-motion: reduce) { .cheer-spark, .cheer-text { animation: none; } }
+
+/* Reactions and threads */
+.msg { position: relative; }
+.msg-actions { position: relative; display: inline-flex; gap: 1px; align-self: center; opacity: 0; transition: opacity 0.12s; }
+.msg:hover .msg-actions, .msg-actions:focus-within, .msg-actions.is-open { opacity: 1; }
+.msg-action { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 8px; color: var(--text-3); }
+.msg-action:hover { background: var(--hover); color: var(--text); }
+.emoji-pick { position: absolute; z-index: 20; bottom: calc(100% + 4px); left: 0; display: flex; gap: 2px; padding: 4px; background: var(--surface); border: 1px solid var(--border); border-radius: 999px; box-shadow: var(--shadow-md); }
+.group.is-mine .emoji-pick { left: auto; right: 0; }
+.emoji-pick-item { width: 30px; height: 30px; border-radius: 999px; font-size: 17px; line-height: 1; transition: transform 0.1s, background 0.1s; }
+.emoji-pick-item:hover { background: var(--hover); transform: scale(1.18); }
+.reactions { display: flex; flex-wrap: wrap; gap: 4px; flex-basis: 100%; }
+.group.is-mine .reactions, .group.is-mine .replies { justify-content: flex-end; }
+.reaction { display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 8px 0 6px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); font-size: 12px; color: var(--text-2); }
+.reaction:hover:not(:disabled) { border-color: var(--border-strong); }
+.reaction.is-mine { border-color: color-mix(in srgb, var(--accent) 55%, var(--border)); background: color-mix(in srgb, var(--accent) 12%, var(--surface)); color: var(--text); }
+.reaction-emoji { font-size: 14px; line-height: 1; }
+.reaction-count { font-weight: 600; font-variant-numeric: tabular-nums; }
+.replies { display: inline-flex; align-items: center; gap: 6px; flex-basis: 100%; padding: 2px 2px; font-size: 12.5px; font-weight: 600; color: var(--accent); }
+.replies:hover span:first-of-type { text-decoration: underline; }
+.replies-when { font-weight: 450; color: var(--text-3); }
+.replies-inline { flex-basis: 100%; display: flex; flex-direction: column; gap: 4px; }
+.reply-line { margin-left: 14px; padding: 4px 10px; border-left: 2px solid var(--border-strong); font-size: 13px; }
+.reply-line b { font-size: 12px; color: var(--text-2); }
+.activity.is-elsewhere { color: var(--accent); }
+.activity.is-elsewhere .activity-text { color: var(--accent); }
+
+/* Videos in the chat */
+.attach-video { display: flex; flex-direction: column; gap: 6px; max-width: min(100%, 420px); margin: 0; padding: 6px; border: 1px solid var(--border); border-radius: 16px; background: var(--surface); }
+.attach-video video { display: block; width: 100%; max-height: 360px; border-radius: 11px; background: #000; }
+.attach-video figcaption { display: flex; align-items: center; gap: 6px; min-width: 0; padding: 0 4px 2px; font-size: 12.5px; color: var(--text-2); }
+.attach-video figcaption .truncate { flex: 1; font-weight: 550; color: var(--text); }
+.attach-video-dl { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 8px; color: var(--text-3); }
+.attach-video-dl:hover { background: var(--hover); color: var(--text); }
+
+/* Thread panel */
+.thread-panel { width: 380px; padding-bottom: 10px; border-left: 1px solid var(--border); }
+.thread-top { padding: 0 2px; }
+.thread-title { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.thread-sub { color: var(--text-3); font-size: 12.5px; }
+.thread-body { flex: 1; min-height: 0; overflow-y: auto; margin: 0 -12px; padding: 0 12px 8px; scrollbar-width: thin; }
+.thread-inner { max-width: none; padding: 0; }
+.thread-parent { padding: 4px 10px 10px; margin: 0 -4px; border-radius: var(--r-lg); background: var(--surface-2); }
+.thread-divider { display: flex; align-items: center; gap: 10px; margin: 12px 0 2px; font-size: 11.5px; font-weight: 600; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.04em; }
+.thread-divider::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+.thread-compose { display: flex; align-items: flex-end; gap: 8px; padding-top: 8px; border-top: 1px solid var(--border); flex: none; }
+.thread-input { flex: 1; resize: none; min-height: 42px; max-height: 160px; }
+.thread-error { color: var(--danger); font-size: 12.5px; padding-top: 4px; }
+@media (max-width: 1099px) {
+  .thread-panel { position: fixed; z-index: 40; top: 8px; right: 8px; bottom: 8px; width: min(400px, calc(100vw - 16px)); background: var(--bg); border: 1px solid var(--border); border-radius: var(--r-lg); box-shadow: var(--shadow-lg); }
+}
+
+/* "Show me how": recording indicator and the skill review */
+@keyframes rec-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+.rec-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: #e5484d; box-shadow: 0 0 0 3px rgba(229, 72, 77, 0.25); animation: rec-pulse 1.2s ease-in-out infinite; flex: none; }
+.rec-dot.is-still { animation: none; background: var(--warn); box-shadow: none; }
+.rec-badge { position: absolute; z-index: 5; top: 12px; left: 50%; transform: translateX(-50%); display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; border-radius: 999px; background: rgba(20, 20, 22, 0.86); color: #fff; font-size: 12.5px; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4); border: 1px solid rgba(229, 72, 77, 0.6); pointer-events: none; }
+.rec-badge.is-processing { border-color: rgba(255, 255, 255, 0.2); }
+.rec-time { font-variant-numeric: tabular-nums; }
+.rec-count { color: rgba(255, 255, 255, 0.65); }
+.rec-icon { color: #e5484d; }
+.rec-chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 999px; border: 1px solid rgba(229, 72, 77, 0.45); background: color-mix(in srgb, #e5484d 10%, var(--surface)); font-size: 12.5px; font-weight: 600; color: var(--text); margin-right: 6px; }
+.chat-head-right { display: flex; align-items: center; justify-content: flex-end; }
+.teach-stop { display: flex; align-items: center; gap: 8px; flex: 1; max-width: 560px; }
+.teach-stop .input { flex: 1; }
+.skill-review { position: absolute; z-index: 6; right: 24px; top: 16px; bottom: 16px; display: flex; flex-direction: column; width: min(440px, calc(100% - 48px)); background: #1c1d21; color: #eceef1; border: 1px solid rgba(255, 255, 255, 0.14); border-radius: var(--r-xl); box-shadow: 0 20px 60px rgba(0, 0, 0, 0.55); overflow: hidden; }
+.skill-review .field-label { color: #c9cdd3; }
+.skill-review .field-hint, .skill-review-head p { color: #a7adb5; }
+.skill-review-head { display: flex; gap: 10px; padding: 16px 18px 10px; align-items: flex-start; }
+.skill-review-head h3 { font-size: 15.5px; font-weight: 650; }
+.skill-review-head p { font-size: 12.5px; margin-top: 2px; }
+.skill-review-body { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding: 4px 18px 10px; }
+.skill-steps { font-family: var(--font); line-height: 1.5; resize: vertical; min-height: 160px; }
+.skill-review-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 18px 16px; border-top: 1px solid rgba(255, 255, 255, 0.12); }
+.choice-text.is-note { color: var(--warn); }

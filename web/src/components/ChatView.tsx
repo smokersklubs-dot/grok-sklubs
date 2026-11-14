@@ -15,6 +15,7 @@ export function ChatView() {
   const thread = useStore((s) => (s.selectedId ? s.threads[s.selectedId] : undefined));
   const live = useStore((s) => (s.selectedId ? s.live[s.selectedId] : undefined)) ?? IDLE_LIVE;
   const detailsOpen = useStore((s) => s.detailsOpen);
+  const recording = useStore((s) => (s.selectedId ? s.recordings[s.selectedId] : null));
   const { toggleDetails, openViewer, openBotSettings, resetConversation, showToast, setMobileNav } = useStore.getState();
   const [menu, setMenu] = useState(false);
   const [confirmNew, setConfirmNew] = useState(false);
@@ -100,6 +101,12 @@ export function ChatView() {
           </Menu>
         </div>
         <span className="chat-head-right">
+          {recording && recording.status !== "error" && (
+            <button type="button" className="rec-chip" onClick={() => openViewer(bot.id, { control: true })} title={t("teach.openViewer")}>
+              <span className={recording.status === "recording" ? "rec-dot" : "rec-dot is-still"} aria-hidden="true" />
+              {t(recording.status === "recording" ? "teach.rec" : recording.status === "processing" ? "teach.processingShort" : "teach.reviewShort")}
+            </button>
+          )}
           {!detailsOpen && <IconButton icon="panel" label={t("chat.showDetails")} onClick={() => toggleDetails(true)} />}
         </span>
       </header>

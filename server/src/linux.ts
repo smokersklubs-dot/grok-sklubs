@@ -246,6 +246,22 @@ export const linuxScreen = {
     try { return await grab(containerName(botId)); } catch { return null; }
   },
   isOpen: (botId: string) => machines.get(botId)?.power === "running",
+  /** A smaller picture of the screen for a demonstration recording (960 px wide). Never wakes the computer. */
+  async frame(botId: string): Promise<Buffer | null> {
+    if (machines.get(botId)?.power !== "running") return null;
+    const r = await docker(["exec", containerName(botId), "import", "-silent", "-window", "root", "-resize", "960x", "-quality", "60", "jpeg:-"], { timeoutMs: 20_000 });
+    return r.code === 0 && r.stdout.length > 200 ? r.stdout : null;
+  },
+  /** The window in front and, when it is the browser, its page address and title (the page's text is not kept). Never wakes the computer. */
+  async where(botId: string): Promise<{ title: string; url: string }> {
+    if (machines.get(botId)?.power !== "running") return { title: "", url: "" };
+    const name = containerName(botId);
+    const win = await docker(["exec", name, "sh", "-c", "xdotool getactivewindow getwindowname 2>/dev/null || true"], { timeoutMs: 8000 });
+    const title = win.stdout.toString("utf8").trim();
+    if (!/chrom/i.test(title)) return { title, url: "" };
+    const page = await docker(["exec", name, "python3", "/opt/sklubot/page-text.py"], { timeoutMs: 15_000 });
+    try { const p = JSON.parse(page.stdout.toString("utf8")) as { url?: string; title?: string }; return { title: p.title || title, url: p.url ?? "" }; } catch { return { title, url: "" }; }
+  },
   /** Re-applies the look after the bot was renamed or recoloured (only if its computer is on). */
   async redress(botId: string) {
     if (machines.get(botId)?.power !== "running") return;
