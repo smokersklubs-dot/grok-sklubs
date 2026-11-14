@@ -502,7 +502,7 @@ export function DetailsPanel() {
         <IconButton icon="close" label={t("chat.hideDetails")} onClick={() => toggleDetails(false)} />
       </div>
       <div className="details-id">
-        <BotAvatar bot={bot} size={72} badge />
+        <BotAvatar bot={bot} size={72} badge interactive />
         <h2>{bot.name}</h2>
         {bot.label && <p>{bot.label}</p>}
         {!isRoom && <SubscriptionBadge model={bot.model} />}

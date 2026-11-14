@@ -131,7 +131,7 @@ export function Sidebar() {
               aria-label={collapsed ? botTitle(primary) : undefined}
             >
               <span className="bot-row-avatar">
-                <BotAvatar bot={primary} size={collapsed ? 40 : 58} badge />
+                <BotAvatar bot={primary} size={collapsed ? 40 : 58} badge interactive />
                 {primaryStatus && <span className={`dot dot-${primaryStatus}`} title={statusLabel(primaryStatus)} />}
               </span>
               {!collapsed && (

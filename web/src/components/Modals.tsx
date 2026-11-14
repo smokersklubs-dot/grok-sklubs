@@ -2,57 +2,15 @@ import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from "rea
 import { api, enc, errText } from "../api";
 import { tn, useT } from "../i18n";
 import { sortedBots, useStore } from "../store";
-import { AVATAR_COLORS, AVATAR_SHAPES } from "../types";
-import type { AvatarColor, AvatarShape, Bot, BotMode, CatalogApp, Connector, SearchHit } from "../types";
-import { colorOf } from "../lib/colors";
+import { DEFAULT_CHARACTER } from "../types";
+import type { AvatarColor, AvatarShape, Bot, BotMode, CatalogApp, Character as CharacterLook, Connector, SearchHit } from "../types";
 import { botTitle, relTime } from "../lib/format";
 import { Avatar, BotAvatar } from "./Avatar";
+import { AccessoryChips, CharacterStage, EyeChips, LookPicker } from "./CharacterEditor";
+
+export { LookPicker };
 import { Icon, Spinner } from "./Icon";
 import { ConfirmButton, Empty, ErrorNote, IconButton, Loading, Modal, useTick } from "./ui";
-
-/* ---------- Look picker (shared with bot settings) ---------- */
-
-export function LookPicker({
-  name,
-  shape,
-  color,
-  onShape,
-  onColor,
-}: {
-  name: string;
-  shape: AvatarShape;
-  color: AvatarColor;
-  onShape: (s: AvatarShape) => void;
-  onColor: (c: AvatarColor) => void;
-}) {
-  const t = useT();
-  return (
-    <div className="look">
-      <div className="look-grid" role="radiogroup" aria-label={t("look.shape")}>
-        {AVATAR_SHAPES.map((s) => (
-          <button key={s} type="button" role="radio" aria-checked={shape === s} aria-label={t(`shape.${s}`)} title={t(`shape.${s}`)} className={`look-shape ${shape === s ? "is-selected" : ""}`} onClick={() => onShape(s)}>
-            <Avatar shape={s} color={color} name={name || "A"} size={36} />
-          </button>
-        ))}
-      </div>
-      <div className="look-colors" role="radiogroup" aria-label={t("look.colour")}>
-        {AVATAR_COLORS.map((c) => (
-          <button
-            key={c}
-            type="button"
-            role="radio"
-            aria-checked={color === c}
-            aria-label={t(`color.${c}`)}
-            title={t(`color.${c}`)}
-            className={`swatch ${color === c ? "is-selected" : ""}`}
-            style={{ background: colorOf(c).bg }}
-            onClick={() => onColor(c)}
-          />
-        ))}
-      </div>
-    </div>
-  );
-}
 
 /** Titles and descriptions are `mode.<id>.title` / `mode.<id>.text` in the dictionaries. */
 export const MODE_IDS: BotMode[] = ["personal", "teammate"];
@@ -65,6 +23,7 @@ export function CreateBotModal({ onClose }: { onClose: () => void }) {
   const [name, setName] = useState("");
   const [shape, setShape] = useState<AvatarShape>("squircle");
   const [color, setColor] = useState<AvatarColor>("ember");
+  const [character, setCharacter] = useState<CharacterLook>(DEFAULT_CHARACTER);
   const [mode, setMode] = useState<BotMode>("personal");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -77,7 +36,7 @@ export function CreateBotModal({ onClose }: { onClose: () => void }) {
     setBusy(true);
     setError(null);
     try {
-      const r = await api<{ bot: Bot }>("POST", "/bots", { name: n, shape, color, mode });
+      const r = await api<{ bot: Bot }>("POST", "/bots", { name: n, shape, color, mode, character });
       upsertBot(r.bot);
       selectBot(r.bot.id);
       onClose();
@@ -91,7 +50,7 @@ export function CreateBotModal({ onClose }: { onClose: () => void }) {
     <Modal title={t("createBot.title")} onClose={onClose} size="md">
       <form className="modal-body" onSubmit={submit}>
         <div className="create-preview">
-          <Avatar shape={shape} color={color} name={name || "A"} size={72} />
+          <CharacterStage shape={shape} color={color} name={name} character={character} size={96} withTry={false} />
         </div>
         <div className="field">
           <label className="field-label" htmlFor={id}>{t("common.name")}</label>
@@ -99,7 +58,15 @@ export function CreateBotModal({ onClose }: { onClose: () => void }) {
         </div>
         <div className="field">
           <span className="field-label">{t("createBot.look")}</span>
-          <LookPicker name={name} shape={shape} color={color} onShape={setShape} onColor={setColor} />
+          <LookPicker name={name} shape={shape} color={color} character={character} onShape={setShape} onColor={setColor} />
+        </div>
+        <div className="field">
+          <span className="field-label">{t("look.eyes")}</span>
+          <EyeChips shape={shape} color={color} character={character} onChange={setCharacter} />
+        </div>
+        <div className="field">
+          <span className="field-label">{t("look.accessory")}</span>
+          <AccessoryChips shape={shape} color={color} character={character} onChange={setCharacter} />
         </div>
         <div className="field">
           <span className="field-label">{t("createBot.type")}</span>

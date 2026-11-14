@@ -100,8 +100,8 @@
 .chr .chr-halo { animation: chr-halo 3s ease-in-out infinite; }
 .chr .chr-sweep { animation: chr-sweep 3.2s ease-in-out infinite; }
 .chr.st-working .chr-tip { animation-duration: 0.9s; }
-.chr.st-cheeks-happy .chr-cheeks, .chr.st-happy .chr-cheeks { opacity: 1; }
-.chr .chr-cheeks { opacity: 0.5; transition: opacity 0.3s; }
+.chr.st-happy .chr-cheeks { opacity: 0.85; }
+.chr .chr-cheeks { opacity: 0.55; transition: opacity 0.3s; }
 
 /* Small avatars (lists): calm and cheap — only a slow breathe, nothing else moves. */
 .chr.is-small .chr-motion { animation: chr-breathe 5s ease-in-out infinite !important; transform: none !important; }

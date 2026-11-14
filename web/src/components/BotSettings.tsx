@@ -2,14 +2,16 @@ import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { api, errText } from "../api";
 import { tn, useT } from "../i18n";
 import { useStore, type BotSettingsTab } from "../store";
-import { TOOL_GROUPS } from "../types";
-import type { Autonomy, AvatarColor, AvatarShape, Bot, BotBundle, BotMode, Effort, Memory, ModelOption, RoomRule, Routine, RoutineRun, Skill, TelegramStatus, ToolGroup } from "../types";
+import { DEFAULT_CHARACTER, TOOL_GROUPS } from "../types";
+import type { Autonomy, AvatarColor, AvatarShape, Bot, BotBundle, Character as CharacterLook, BotMode, Effort, Memory, ModelOption, RoomRule, Routine, RoutineRun, Skill, TelegramStatus, ToolGroup } from "../types";
 import { dateTime, nextRunLabel, relTime, shortDate } from "../lib/format";
-import { Avatar, BotAvatar } from "./Avatar";
+import { BotAvatar } from "./Avatar";
+import { Character } from "./Character";
+import { CharacterEditor } from "./CharacterEditor";
 import { BrainPicker } from "./Brain";
 import { routineWhen, TriggerChip } from "./DetailsPanel";
 import { Icon } from "./Icon";
-import { LookPicker, MODE_IDS } from "./Modals";
+import { MODE_IDS } from "./Modals";
 import { ConfirmButton, CopyButton, copyText, Empty, ErrorNote, IconButton, Loading, Modal, Toggle, useTick } from "./ui";
 
 const EFFORT_IDS: Effort[] = ["low", "medium", "high", "xhigh"];
@@ -33,19 +35,27 @@ function ChoiceList<T extends string>({ label, value, options, onChange }: { lab
 
 interface Form {
   name: string; label: string; description: string; instructions: string;
-  shape: AvatarShape; color: AvatarColor; mode: BotMode; effort: Effort; model: string; autonomy: Autonomy;
+  shape: AvatarShape; color: AvatarColor; character: CharacterLook; mode: BotMode; effort: Effort; model: string; autonomy: Autonomy;
   roomRule: RoomRule; disabledTools: ToolGroup[];
 }
-const FORM_KEYS: (keyof Form)[] = ["name", "label", "description", "instructions", "shape", "color", "mode", "effort", "model", "autonomy", "roomRule", "disabledTools"];
+const FORM_KEYS: (keyof Form)[] = ["name", "label", "description", "instructions", "shape", "color", "character", "mode", "effort", "model", "autonomy", "roomRule", "disabledTools"];
 const formOf = (b: Bot): Form => ({
   name: b.name, label: b.label, description: b.description, instructions: b.instructions,
-  shape: b.shape, color: b.color, mode: b.mode, effort: b.effort, model: b.model, autonomy: b.autonomy,
+  shape: b.shape, color: b.color, character: { ...DEFAULT_CHARACTER, ...(b.character ?? {}) }, mode: b.mode, effort: b.effort, model: b.model, autonomy: b.autonomy,
   roomRule: b.roomRule ?? "lead",
   // Kept in the order of TOOL_GROUPS so two lists with the same tools compare equal.
   disabledTools: TOOL_GROUPS.filter((g) => (b.disabledTools ?? []).includes(g)),
 });
-const sameValue = (a: Form[keyof Form], b: Form[keyof Form]): boolean =>
-  Array.isArray(a) && Array.isArray(b) ? a.length === b.length && a.every((x, i) => x === b[i]) : a === b;
+const sameValue = (a: Form[keyof Form], b: Form[keyof Form]): boolean => {
+  if (Array.isArray(a) && Array.isArray(b)) return a.length === b.length && a.every((x, i) => x === b[i]);
+  if (a && b && typeof a === "object" && typeof b === "object") {
+    const x = a as unknown as Record<string, unknown>;
+    const y = b as unknown as Record<string, unknown>;
+    const keys = new Set([...Object.keys(x), ...Object.keys(y)]);
+    return [...keys].every((k) => x[k] === y[k]);
+  }
+  return a === b;
+};
 const sameForm = (a: Form, b: Form): boolean => FORM_KEYS.every((k) => sameValue(a[k], b[k]));
 
 function General({ bot, onClose }: { bot: Bot; onClose: () => void }) {
@@ -126,12 +136,25 @@ function General({ bot, onClose }: { bot: Bot; onClose: () => void }) {
   return (
     <form className="settings-pane" onSubmit={save}>
       <div className="look-row">
-        <Avatar shape={form.shape} color={form.color} name={form.name || bot.name} size={56} primary={bot.primary} />
-        <button type="button" className="btn btn-small" onClick={() => setLookOpen((v) => !v)} aria-expanded={lookOpen}>
-          {t(lookOpen ? "bot.hideLook" : "bot.changeLook")}
-        </button>
+        {!lookOpen && <Character bot={{ shape: form.shape, color: form.color, name: form.name || bot.name, character: form.character }} size={64} badge={bot.primary} interactive />}
+        <div className="look-row-text">
+          <span className="field-label">{t("look.heading")}</span>
+          <button type="button" className="btn btn-small" onClick={() => setLookOpen((v) => !v)} aria-expanded={lookOpen}>
+            {t(lookOpen ? "bot.hideLook" : "bot.changeLook")}
+          </button>
+        </div>
       </div>
-      {lookOpen && <LookPicker name={form.name} shape={form.shape} color={form.color} onShape={(s) => set("shape", s)} onColor={(c) => set("color", c)} />}
+      {lookOpen && (
+        <CharacterEditor
+          name={form.name || bot.name}
+          shape={form.shape}
+          color={form.color}
+          character={form.character}
+          onShape={(s) => set("shape", s)}
+          onColor={(c) => set("color", c)}
+          onCharacter={(c) => set("character", c)}
+        />
+      )}
 
       <div className="field">
         <label className="field-label" htmlFor={`${uid}n`}>{t("common.name")}</label>
@@ -933,7 +956,7 @@ export function BotSettings({ botId, tab }: { botId: string; tab: BotSettingsTab
       className="bot-settings"
       header={
         <div className="modal-head">
-          <BotAvatar bot={bot} size={30} badge />
+          <BotAvatar bot={bot} size={32} badge interactive />
           <span className="modal-head-title truncate">{bot.name}</span>
           {bot.telegram && (
             <span className="chip state-working" title={t("telegram.marker", { username: bot.telegram })}>

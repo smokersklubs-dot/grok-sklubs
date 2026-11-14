@@ -518,7 +518,7 @@ function EmptyChat({ bot }: { bot: Bot }) {
   const fallback = t(bot.kind === "room" ? "empty.room" : bot.mode === "teammate" ? "empty.teammate" : "empty.personal");
   return (
     <div className="chat-empty">
-      <BotAvatar bot={bot} size={84} badge />
+      <BotAvatar bot={bot} size={84} badge interactive />
       <h2>{bot.name}</h2>
       <p>{bot.description || fallback}</p>
       {imageGeneration && bot.kind !== "room" && <p className="chat-empty-hint">{t("empty.images")}</p>}

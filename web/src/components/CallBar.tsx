@@ -45,7 +45,7 @@ export function CallBar({ botId }: { botId: string }) {
     <section className={`callbar ${call.status === "error" ? "is-error" : ""}`} aria-label={t("call.aria")}>
       <div className="callbar-main">
         <span className={`halo ${halo}`}>
-          <BotAvatar bot={bot} size={34} />
+          <BotAvatar bot={bot} size={34} interactive />
         </span>
         <div className="callbar-text">
           <span className="callbar-name">
