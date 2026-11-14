@@ -5,6 +5,7 @@ import { sortedBots, useStore } from "../store";
 import { DEFAULT_CHARACTER } from "../types";
 import type { AvatarColor, AvatarShape, Bot, BotMode, CatalogApp, Character as CharacterLook, Connector, SearchHit } from "../types";
 import { botTitle, relTime } from "../lib/format";
+import { openSignInWindow, onSignInDone, startSignIn } from "../lib/oauth";
 import { Avatar, BotAvatar } from "./Avatar";
 import { AccessoryChips, CharacterStage, EyeChips, JoyToggles, LookPicker, TypeCards } from "./CharacterEditor";
 
@@ -345,12 +346,58 @@ const logoLetter = (name: string) => (Array.from(name.trim())[0] ?? "?").toUpper
 /** Two addresses are the same app when they differ only by case or a trailing slash. */
 const sameUrl = (a: string, b: string) => a.trim().replace(/\/+$/, "").toLowerCase() === b.trim().replace(/\/+$/, "").toLowerCase();
 
+/** Redirect URL to register with the app, plus its client ID and (optional) secret. */
+function OAuthClientFields({ redirectUri, clientId, setClientId, clientSecret, setClientSecret, help }: { redirectUri: string; clientId: string; setClientId: (v: string) => void; clientSecret: string; setClientSecret: (v: string) => void; help?: string }) {
+  const t = useT();
+  const ids = { uri: useId(), id: useId(), secret: useId() };
+  const [copied, setCopied] = useState(false);
+  const copy = () => {
+    void navigator.clipboard?.writeText(redirectUri).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    }, () => {});
+  };
+  return (
+    <div className="oauth-client">
+      <p className="field-hint">{help || t("oauth.clientNeeded")}</p>
+      <div className="field">
+        <label className="field-label" htmlFor={ids.uri}>{t("oauth.redirectUri")}</label>
+        <div className="copy-row">
+          <input id={ids.uri} className="input" value={redirectUri} readOnly onFocus={(e) => e.currentTarget.select()} />
+          <button type="button" className="btn btn-small" onClick={copy}>{copied ? t("oauth.copied") : t("oauth.copy")}</button>
+        </div>
+      </div>
+      <div className="form-cols">
+        <div className="field">
+          <label className="field-label" htmlFor={ids.id}>{t("oauth.clientId")}</label>
+          <input id={ids.id} className="input" value={clientId} onChange={(e) => setClientId(e.target.value)} autoComplete="off" spellCheck={false} />
+        </div>
+        <div className="field">
+          <label className="field-label" htmlFor={ids.secret}>{t("oauth.clientSecret")} <span className="muted">{t("common.optional")}</span></label>
+          <input id={ids.secret} className="input" type="password" value={clientSecret} onChange={(e) => setClientSecret(e.target.value)} autoComplete="off" spellCheck={false} />
+        </div>
+      </div>
+      <p className="field-hint">{t("catalog.tokenStored")}</p>
+    </div>
+  );
+}
+
 function ConnectorRow({ c }: { c: Connector }) {
   const loadConnectors = useStore((s) => s.loadConnectors);
   const t = useT();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [waiting, setWaiting] = useState(false);
+  const [clientForm, setClientForm] = useState<string | null>(null);
+  const [clientId, setClientId] = useState("");
+  const [clientSecret, setClientSecret] = useState("");
+  const oauth = c.auth === "oauth";
+  const needsAuth = c.status === "needs_auth";
+
+  useEffect(() => {
+    if (c.status === "ready") setWaiting(false);
+  }, [c.status]);
 
   const refresh = async () => {
     setBusy(true);
@@ -373,7 +420,36 @@ function ConnectorRow({ c }: { c: Connector }) {
       setError(errText(e));
     }
   };
+  const signIn = async () => {
+    if (clientForm !== null && !clientId.trim()) return;
+    const win = openSignInWindow();
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await startSignIn(c.id, win, clientForm !== null ? { clientId: clientId.trim(), clientSecret: clientSecret.trim() || undefined } : {});
+      if (r.kind === "needsClientId") setClientForm(r.redirectUri);
+      else {
+        setClientForm(null);
+        setWaiting(r.kind === "opened");
+        if (r.kind === "done") await loadConnectors();
+      }
+    } catch (e) {
+      setError(errText(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const signOut = async () => {
+    setError(null);
+    try {
+      await api("POST", `/connectors/${c.id}/oauth/disconnect`);
+      await loadConnectors();
+    } catch (e) {
+      setError(errText(e));
+    }
+  };
 
+  const credential = c.hasToken ? ` · ${t("connector.tokenSaved")}` : c.oauth?.signedIn ? ` · ${t("connector.signedInOauth")}${c.oauth.customClient ? ` (${t("connector.customClient")})` : ""}` : "";
   return (
     <li className="connector">
       <div className="connector-main">
@@ -383,17 +459,29 @@ function ConnectorRow({ c }: { c: Connector }) {
             {c.name}
             <span className={`chip state-${c.status}`}>{t(`connector.status.${c.status}`)}</span>
           </span>
-          <span className="list-row-sub truncate" title={c.url}>{c.url}{c.hasToken ? ` · ${t("connector.tokenSaved")}` : ""}</span>
+          <span className="list-row-sub truncate" title={c.url}>{c.url}{credential}</span>
           {c.status === "error" && <span className="list-row-sub is-error">{c.error || t("connector.unreachable")}</span>}
         </div>
-        <IconButton icon="refresh" size={16} label={t("connector.reconnect", { name: c.name })} className={busy ? "is-spinning" : ""} disabled={busy} onClick={() => void refresh()} />
+        {oauth && (needsAuth || c.status === "error") ? (
+          <button type="button" className="btn btn-small btn-primary" disabled={busy || (clientForm !== null && !clientId.trim())} onClick={() => void signIn()} aria-label={t("connector.signInName", { name: c.name })}>
+            {busy ? <><Spinner size={13} /> {t("connector.signingIn")}</> : t("connector.signIn")}
+          </button>
+        ) : (
+          <IconButton icon="refresh" size={16} label={t("connector.reconnect", { name: c.name })} className={busy ? "is-spinning" : ""} disabled={busy} onClick={() => void refresh()} />
+        )}
+        {oauth && c.oauth?.signedIn && <button type="button" className="btn btn-small btn-ghost" onClick={() => void signOut()}>{t("connector.signOut")}</button>}
         <ConfirmButton className="btn btn-small btn-ghost-danger" label={t("connector.remove")} confirmLabel={t("connector.confirmRemove")} busyLabel={t("connector.removing")} onConfirm={remove} />
       </div>
-      <button type="button" className="connector-tools" onClick={() => setOpen((v) => !v)} aria-expanded={open} disabled={c.tools.length === 0}>
-        <Icon name="chevronRight" size={13} className={open ? "is-rotated" : ""} />
-        {c.tools.length === 0 ? t("connector.noTools") : tn("count.tool", c.tools.length)}
-      </button>
-      {open && (
+      {needsAuth && !waiting && clientForm === null && <p className="field-hint connector-note">{t("connector.needsAuthHint")}</p>}
+      {waiting && needsAuth && <p className="field-hint connector-note"><Spinner size={12} /> {t("connector.waitingSignIn")}</p>}
+      {clientForm !== null && <OAuthClientFields redirectUri={clientForm} clientId={clientId} setClientId={setClientId} clientSecret={clientSecret} setClientSecret={setClientSecret} />}
+      {!needsAuth && (
+        <button type="button" className="connector-tools" onClick={() => setOpen((v) => !v)} aria-expanded={open} disabled={c.tools.length === 0}>
+          <Icon name="chevronRight" size={13} className={open ? "is-rotated" : ""} />
+          {c.tools.length === 0 ? t("connector.noTools") : tn("count.tool", c.tools.length)}
+        </button>
+      )}
+      {open && !needsAuth && c.tools.length > 0 && (
         <ul className="tool-list">
           {c.tools.map((tool) => (
             <li key={tool.name}>
@@ -411,38 +499,62 @@ function ConnectorRow({ c }: { c: Connector }) {
 
 type Prefill = { name: string; botId: string; seq: number };
 
-/** One catalogue app: "Add" opens an inline form (token if needed), "Connect" adds it in one step. */
-function CatalogCard({ app, connected, open, onToggle, prefill, onAdded }: { app: CatalogApp; connected: boolean; open: boolean; onToggle: () => void; prefill?: Prefill; onAdded: (resolvedCard: boolean) => void }) {
+/** One catalogue app: "Add" opens an inline form (token, client ID or nothing), then connects or opens the app's sign-in page. */
+function CatalogCard({ app, existing, redirectUri, open, onToggle, prefill, onAdded }: { app: CatalogApp; existing: Connector | undefined; redirectUri: string; open: boolean; onToggle: () => void; prefill?: Prefill; onAdded: (resolvedCard: boolean) => void }) {
   const t = useT();
   const [token, setToken] = useState("");
+  const [clientId, setClientId] = useState("");
+  const [clientSecret, setClientSecret] = useState("");
+  const [askClient, setAskClient] = useState(app.oauthClient === "manual");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const id = useId();
   const needsToken = app.auth === "token";
+  const oauth = app.auth === "oauth";
+  const connected = !!existing;
   // When the modal was opened from a bot's "connect X" card, adding that same app also resolves the card.
   const answersCard = !!prefill && (app.name.toLowerCase().includes(prefill.name.trim().toLowerCase()) || prefill.name.toLowerCase().includes(app.name.toLowerCase()));
+  const card = answersCard && prefill ? { botId: prefill.botId, seq: prefill.seq } : {};
+  const blocked = busy || (needsToken && !token.trim()) || (oauth && askClient && !clientId.trim());
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
-    if (busy || (needsToken && !token.trim())) return;
+    if (blocked) return;
+    // The sign-in window must open in the click itself, before any request.
+    const win = oauth ? openSignInWindow() : null;
     setBusy(true);
     setError(null);
     try {
-      await api<{ connector: Connector }>("POST", "/connectors", {
-        name: app.name,
-        url: app.url,
-        ...(needsToken ? { token: token.trim() } : {}),
-        ...(answersCard && prefill ? { botId: prefill.botId, seq: prefill.seq } : {}),
-      });
+      const client = askClient && clientId.trim() ? { clientId: clientId.trim(), clientSecret: clientSecret.trim() || undefined } : {};
+      let target = existing;
+      if (!target) {
+        target = (await api<{ connector: Connector }>("POST", "/connectors", {
+          name: app.name,
+          url: app.url,
+          ...(needsToken ? { token: token.trim() } : {}),
+          ...(oauth ? { auth: "oauth", ...client } : {}),
+          ...(oauth ? {} : card),
+        })).connector;
+      }
+      if (oauth) {
+        const r = await startSignIn(target.id, win, { ...client, ...card });
+        if (r.kind === "needsClientId") {
+          setAskClient(true);
+          onAdded(false);
+          return;
+        }
+      }
       setToken("");
-      onAdded(answersCard);
+      onAdded(answersCard && !oauth);
     } catch (err) {
+      win?.close();
       setError(errText(err));
     } finally {
       setBusy(false);
     }
   };
 
+  const signedIn = connected && existing.status !== "needs_auth";
   return (
     <li className={`catalog-card ${open ? "is-open" : ""}`}>
       <div className="catalog-card-main">
@@ -451,17 +563,17 @@ function CatalogCard({ app, connected, open, onToggle, prefill, onAdded }: { app
           <span className="list-row-title">{app.name}</span>
           <span className="list-row-sub">{app.description}</span>
         </div>
-        {connected ? (
+        {signedIn ? (
           <span className="chip state-ready">
             <Icon name="check" size={12} /> {t("catalog.connected")}
           </span>
         ) : (
-          <button type="button" className="btn btn-small" aria-expanded={open} aria-controls={`${id}f`} aria-label={t("catalog.addName", { name: app.name })} onClick={onToggle}>
-            {open ? t("common.cancel") : t("catalog.add")}
+          <button type="button" className="btn btn-small" aria-expanded={open} aria-controls={`${id}f`} aria-label={connected ? t("connector.signInName", { name: app.name }) : t("catalog.addName", { name: app.name })} onClick={onToggle}>
+            {open ? t("common.cancel") : connected ? t("connector.signIn") : t("catalog.add")}
           </button>
         )}
       </div>
-      {open && !connected && (
+      {open && !signedIn && (
         <form id={`${id}f`} className="catalog-form" onSubmit={submit}>
           {needsToken ? (
             <div className="field">
@@ -470,13 +582,22 @@ function CatalogCard({ app, connected, open, onToggle, prefill, onAdded }: { app
               {app.tokenHelp && <p className="field-hint">{app.tokenHelp}</p>}
               <p className="field-hint">{t("catalog.tokenStored")}</p>
             </div>
+          ) : oauth ? (
+            <>
+              <p className="muted small">{t("oauth.browserNote", { name: app.name })}</p>
+              {askClient ? (
+                <OAuthClientFields redirectUri={redirectUri} clientId={clientId} setClientId={setClientId} clientSecret={clientSecret} setClientSecret={setClientSecret} help={app.oauthClient === "manual" ? app.tokenHelp : undefined} />
+              ) : (
+                app.tokenHelp && <p className="field-hint">{app.tokenHelp}</p>
+              )}
+            </>
           ) : (
             <p className="muted small">{t("catalog.noToken")}</p>
           )}
           <ErrorNote>{error}</ErrorNote>
           <div className="row-end">
-            <button type="submit" className="btn btn-primary btn-small" disabled={busy || (needsToken && !token.trim())}>
-              {busy ? <><Spinner size={13} /> {t("common.connecting")}</> : t("connect.btn")}
+            <button type="submit" className="btn btn-primary btn-small" disabled={blocked}>
+              {busy ? <><Spinner size={13} /> {t("common.connecting")}</> : oauth ? t("oauth.signInWith", { name: app.name }) : t("connect.btn")}
             </button>
           </div>
         </form>
@@ -489,14 +610,19 @@ function Catalog({ connectors, prefill, onClose }: { connectors: Connector[] | n
   const loadConnectors = useStore((s) => s.loadConnectors);
   const t = useT();
   const [apps, setApps] = useState<CatalogApp[] | null>(null);
+  const [redirectUri, setRedirectUri] = useState("");
   const [failed, setFailed] = useState(false);
   const [q, setQ] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
 
   useEffect(() => {
     let dead = false;
-    api<{ apps: CatalogApp[] }>("GET", "/connectors/catalog").then(
-      (r) => !dead && setApps(Array.isArray(r?.apps) ? r.apps : []),
+    api<{ apps: CatalogApp[]; oauthRedirectUri?: string }>("GET", "/connectors/catalog").then(
+      (r) => {
+        if (dead) return;
+        setApps(Array.isArray(r?.apps) ? r.apps : []);
+        setRedirectUri(r?.oauthRedirectUri ?? "");
+      },
       () => !dead && setFailed(true),
     );
     return () => {
@@ -536,7 +662,8 @@ function Catalog({ connectors, prefill, onClose }: { connectors: Connector[] | n
               <CatalogCard
                 key={app.id}
                 app={app}
-                connected={!!connectors?.some((c) => sameUrl(c.url, app.url))}
+                existing={connectors?.find((c) => sameUrl(c.url, app.url))}
+                redirectUri={redirectUri}
                 open={openId === app.id}
                 onToggle={() => setOpenId((cur) => (cur === app.id ? null : app.id))}
                 prefill={prefill}
@@ -569,6 +696,7 @@ export function ConnectorsModal({ onClose, prefill }: { onClose: () => void; pre
 
   useEffect(() => {
     void loadConnectors();
+    return onSignInDone(() => void loadConnectors());
   }, [loadConnectors]);
 
   const valid = name.trim().length > 0 && /^https?:\/\/\S+$/i.test(url.trim());
@@ -579,14 +707,15 @@ export function ConnectorsModal({ onClose, prefill }: { onClose: () => void; pre
     setBusy(true);
     setError(null);
     try {
-      await api<{ connector: Connector }>("POST", "/connectors", {
+      const added = await api<{ connector: Connector }>("POST", "/connectors", {
         name: name.trim(),
         url: url.trim(),
         ...(token.trim() ? { token: token.trim() } : {}),
         ...(prefill ? { botId: prefill.botId, seq: prefill.seq } : {}),
       });
       await loadConnectors();
-      if (prefill) {
+      // An app that wants a sign-in stays listed above with its "Sign in" button.
+      if (prefill && added.connector.status !== "needs_auth") {
         onClose();
         return;
       }

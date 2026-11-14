@@ -72,17 +72,29 @@ answers 401 without it. Types named below are defined in `server/src/shared.ts`.
 ## Connectors (apps) and permissions
 | Method | Path | Body | Returns |
 |---|---|---|---|
-| GET | `/connectors` | – | `{ connectors: Connector[] }` |
-| POST | `/connectors` | `{ name, url, token?, botId?, seq? }` | `{ connector }` (botId+seq resolve a connect card) |
+| GET | `/connectors` | – | `{ connectors: Connector[], oauthRedirectUri }` |
+| POST | `/connectors` | `{ name, url, token?, botId?, seq? }` or `{ name, url, auth: "oauth", clientId?, clientSecret? }` | `{ connector }` (botId+seq resolve a connect card). An OAuth app starts with `status: "needs_auth"`; an app added by URL that answers 401 and publishes OAuth metadata is switched to `auth: "oauth"` |
 | POST | `/connectors/:id/refresh` | – | `{ connector }` |
 | DELETE | `/connectors/:id` | – | `{ ok }` |
-| GET | `/connectors/catalog` | – | `{ apps: CatalogApp[] }` — one-step apps; add one with `POST /connectors {name, url, token}` |
+| GET | `/connectors/catalog` | – | `{ apps: CatalogApp[], oauthRedirectUri }` — one-step apps; add one with `POST /connectors {name, url, token}` (or `auth: "oauth"`) |
+| POST | `/connectors/:id/oauth/start` | `{ clientId?, clientSecret?, botId?, seq? }` | `{ authorizeUrl }` to open in a popup; `{ connector }` when the stored sign-in could just be renewed; `{ needsClientId: true, redirectUri }` when the app has no dynamic client registration (call again with `clientId`) |
+| GET | `/connectors/oauth/callback?code&state[&iss][&error]` | – | HTML page (no session required: the single-use `state` identifies the sign-in). Exchanges the code with the PKCE verifier, stores the tokens sealed, tells the app (BroadcastChannel `sklubot-oauth`) and closes itself |
+| POST | `/connectors/:id/oauth/disconnect` | – | `{ connector }` — forgets the tokens (a client ID the user pasted is kept) |
 | GET | `/vault` | – | `{ items: VaultItem[] }` |
 | POST | `/vault` | `{ name, site?, username?, password?, note? }` | `{ item }` |
 | PATCH | `/vault/:id` | partial (omit `password` to keep it) | `{ item }` |
 | DELETE | `/vault/:id` | – | `{ ok }` |
 | GET | `/policies` | – | `{ policies: Policy[] }` |
 | DELETE | `/policies/:tool` | – | `{ ok }` |
+
+**OAuth sign-in for connectors** follows the MCP authorization spec through the SDK's `auth()`: protected-resource
+metadata (RFC 9728) and authorization-server metadata discovery, PKCE (S256), dynamic client registration (RFC 7591)
+when offered, resource indicators (RFC 8707). The redirect URI is `${PUBLIC_URL}/api/connectors/oauth/callback`, so
+`PUBLIC_URL` must be the address the browser really uses. A pending sign-in (`oauth_pending`: hash of `state` → user,
+connector, sealed code verifier) lives 10 minutes and is used once. Access and refresh tokens, client registration and
+discovery state are sealed (AES-256-GCM, key from `SESSION_SECRET`) in `connectors.oauth_enc` and never returned by
+any route. Tokens are refreshed before they expire and on a 401; when the refresh fails the connector shows
+`status: "needs_auth"` and a "Sign in" button. Every step is written to the activity log.
 
 ## Rooms, check-ins, usage
 | Method | Path | Body | Returns |

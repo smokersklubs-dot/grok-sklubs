@@ -8,7 +8,7 @@ Tu n'as rien à installer sur ton ordinateur. Tout se passe sur le VPS ; ton ord
 |---|---|
 | **Un VPS** | Ubuntu 22.04 ou 24.04 (ou Debian 12). **4 Go de mémoire au minimum, 8 Go conseillés** : chaque ordinateur de bot éveillé en prend 2. 40 Go de disque. |
 | **Ses accès** | L'adresse IP et le mot de passe administrateur (`root`), envoyés par l'hébergeur à la commande. |
-| **Un nom de domaine** (conseillé) | Par exemple `bots.tonsite.fr`. Sans lui, pas de HTTPS : le micro et l'installation sur iPhone ne marcheront pas. |
+| **Un nom de domaine** (conseillé) | Par exemple `bots.tonsite.fr`. Sans lui, pas de HTTPS : le micro, l'installation sur iPhone et la plupart des connexions OAuth aux applications (HubSpot, Notion…) ne marcheront pas. Si tu changes de domaine plus tard, mets à jour l'adresse publique dans `.env` : c'est elle qui sert d'adresse de retour après une connexion. |
 | **Une clé Claude** (facultatif au début) | Sur console.anthropic.com. Sans clé, Sklubot démarre en mode démo, gratuit, pour tout visiter. |
 
 ## Étape 1 — Faire pointer le domaine vers le VPS

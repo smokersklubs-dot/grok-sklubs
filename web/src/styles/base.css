@@ -169,7 +169,7 @@ select.input { padding-right: 8px; }
 .chip-link:hover { background: var(--surface-2); color: var(--text); }
 .state-ready, .state-done, .state-always_allow { background: var(--ok-soft); color: var(--ok); }
 .state-error, .state-blocked { background: var(--danger-soft); color: var(--danger); }
-.state-needs_input, .state-connecting, .state-needs_approval { background: var(--warn-soft); color: var(--warn); }
+.state-needs_input, .state-connecting, .state-needs_approval, .state-needs_auth { background: var(--warn-soft); color: var(--warn); }
 .state-working { background: var(--info-soft); color: var(--info); }
 
 .dot { position: absolute; right: -2px; bottom: -2px; width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--bg); }

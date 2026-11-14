@@ -9,7 +9,9 @@ Il te faut un serveur Linux avec Docker, et un nom de domaine. Compte 2 Go de m�
 
 1. Nouveau projet → *Docker Compose* → ce dépôt, branche de ton choix, fichier `docker-compose.coolify.yml`.
 2. Dans les variables d'environnement, recopie `.env.coolify.example` et remplis :
-   - `SKLUBOT_PUBLIC_URL` : l'adresse publique, par exemple `https://bots.exemple.fr` ;
+   - `SKLUBOT_PUBLIC_URL` : l'adresse publique, par exemple `https://bots.exemple.fr` (exactement celle que tu
+     tapes dans le navigateur : les connexions OAuth aux applications reviennent sur
+     `<adresse>/api/connectors/oauth/callback`) ;
    - `SKLUBOT_SESSION_SECRET` : le résultat de `openssl rand -hex 32` ;
    - une clé de modèle (`ANTHROPIC_API_KEY`), ou `SKLUBOT_DEMO_MODE=1` pour essayer sans clé.
 3. Associe ton domaine au service `sklubot`, port `3000`. Coolify s'occupe du HTTPS.
