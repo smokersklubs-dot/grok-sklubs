@@ -132,6 +132,19 @@ test("search finds what was said before a reset, for the user and for the bot", 
   await replied(bot, "earlier conversation");
 });
 
+test("celebrate: a gem shows as a cheer row unless euphoria is turned off", async () => {
+  await say(bot, 'call celebrate {"reason":"a flight at 19 euros"}');
+  await until(async () => (await rowsOf(bot.id)).find((r) => r.body.kind === "event" && r.body.event === "cheer" && r.body.text.includes("19 euros")), "cheer row");
+  const patched = (await call("PATCH", `/bots/${bot.id}`, { character: { euphoria: false, shout: false } })).json.bot;
+  assert.equal(patched.character.euphoria, false);
+  assert.equal(patched.character.shout, false);
+  const before = (await rowsOf(bot.id)).filter((r) => r.body.kind === "event" && r.body.event === "cheer").length;
+  await say(bot, 'call celebrate {"reason":"another one"}');
+  await until(() => requests.some((r) => JSON.stringify(r.messages.at(-1)).includes("Celebrations are turned off")), "tool result");
+  assert.equal((await rowsOf(bot.id)).filter((r) => r.body.kind === "event" && r.body.event === "cheer").length, before);
+  await call("PATCH", `/bots/${bot.id}`, { character: { euphoria: true, shout: true } });
+});
+
 test("voice calls leave a trace with duration, transcript and a summary", async () => {
   const { callId } = (await call("POST", `/bots/${bot.id}/calls`)).json;
   await call("POST", `/bots/${bot.id}/calls/${callId}/end`, { transcript: [{ role: "user", text: "Book the train" }, { role: "assistant", text: "Done, 9am Tuesday." }, { role: "bogus", text: "x" }] });

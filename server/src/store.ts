@@ -89,6 +89,7 @@ export function cleanCharacter(raw: unknown, base: Character = DEFAULT_CHARACTER
     accessory: pick(c.accessory, ACCESSORIES, base.accessory), idle: pick(c.idle, IDLE_MOTIONS, base.idle),
     intensity: Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : base.intensity,
     followCursor: bool(c.followCursor, base.followCursor), blink: bool(c.blink, base.blink),
+    euphoria: bool(c.euphoria, base.euphoria), shout: bool(c.shout, base.shout),
   };
 }
 

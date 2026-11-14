@@ -509,6 +509,17 @@ const userTools: BuiltinTool[] = [
       return { content: "The user has been asked to connect it. Stop here; you will be told when it is connected or skipped.", summary: String(a.app), endTurn: true };
     },
   }),
+  tool("celebrate", "Celebrate out loud when you find a real gem for the user: something rare and valuable, such as an exceptional deal, a breakthrough, the perfect match after a long search, a big win. Your character goes wild with joy for a few seconds where the user can see it. Use it rarely (at most once per task) and never for ordinary results.",
+    obj({ reason: str("What you found, in a few words") }, ["reason"]), {
+    activity: "thinking", label: "Found a gem",
+    run: async (a, c) => {
+      const reason = clip(String(a.reason ?? "").trim(), 160);
+      if (!c.bot.character.euphoria) return { content: "Noted. (Celebrations are turned off for you; just tell the user what you found.)", summary: reason };
+      rows.append(c.bot, { kind: "event", event: "cheer", text: reason });
+      emit(c.user.id, { type: "cheer", botId: c.bot.id, reason });
+      return { content: "The user saw you celebrate. Now tell them what you found and why it matters.", summary: reason };
+    },
+  }),
   tool("stay_quiet", "End your turn without sending anything. Use it when a check-in, routine or group message leaves you with nothing worth saying.", obj({ reason: str("Why there is nothing to say") }), {
     activity: "thinking", label: "Nothing to report",
     run: async () => ({ content: "Understood.", endTurn: true }),
