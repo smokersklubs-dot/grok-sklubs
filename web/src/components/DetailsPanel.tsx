@@ -6,7 +6,7 @@ import { useCheer } from "../lib/cheer";
 import type { Bot, FileEntry, Gem, Routine } from "../types";
 import { accentStyle } from "../lib/colors";
 import { botTitle, dateTime, fileSize, hostName, relTime, sortTasks } from "../lib/format";
-import { endCall, startCall } from "../lib/call";
+import { callPossible, endCall, startCall } from "../lib/call";
 import { useScreen } from "../lib/screen";
 import { canCall, canSpeak, makeUtterance, useVoices } from "../lib/speech";
 import { BotAvatar } from "./Avatar";
@@ -367,7 +367,7 @@ function VoiceSection({ bot }: { bot: Bot }) {
   const [error, setError] = useState<string | null>(null);
   const [previewing, setPreviewing] = useState(false);
   const speech = canSpeak();
-  const callable = canCall();
+  const callable = callPossible();
   const voice = bot.voice;
 
   const names = useMemo(() => {
@@ -581,6 +581,31 @@ export function DetailsPanel() {
   const t = useT();
   if (!bot) return null;
   const isRoom = bot.kind === "room";
+  // Wave 6: a bot someone shares with you — only what you may see: who owns it, your role, the call button.
+  if (bot.access) {
+    const a = bot.access;
+    return (
+      <aside className="details" style={accentStyle(bot.color, bot.character?.customColor)} aria-label={t("details.aria", { name: bot.name })}>
+        <div className="details-top">
+          <IconButton icon="close" label={t("chat.hideDetails")} onClick={() => toggleDetails(false)} />
+        </div>
+        <div className="details-id">
+          <BotAvatar bot={bot} size={72} badge interactive />
+          <h2>{bot.name}</h2>
+          {bot.label && <p>{bot.label}</p>}
+        </div>
+        <section className="section">
+          <p className="small"><Icon name="users" size={13} /> {t("ws.sharedTitle", { owner: a.ownerName, ws: a.workspaceName })}</p>
+          <p className="muted small">{t("ws.summaryRole", { role: t(`ws.role.${a.role}`) })} — {t(`ws.perm.${a.role}`)}</p>
+          {a.canTalk && (
+            <button type="button" className="btn btn-block btn-accent" onClick={() => startCall(bot.id)}>
+              <Icon name="wave" size={16} /> {t("composer.startCall")}
+            </button>
+          )}
+        </section>
+      </aside>
+    );
+  }
   const tabs: { id: Tab; label: string }[] = [
     { id: "activity", label: t("details.tab.activity") },
     { id: "tasks", label: t("details.tab.tasks") },

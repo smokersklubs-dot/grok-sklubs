@@ -5,6 +5,18 @@ import type { Locale } from "./shared.js";
  * English is the key; French is looked up here. Anything missing falls back to English.
  */
 const FR: Record<string, string> = {
+  // Wave 6: workspaces, the bots' own email, server voice.
+  "When an email arrives at its own address": "Quand un e-mail arrive à sa propre adresse",
+  "Email from {from}: {subject}": "E-mail de {from} : {subject}",
+  "Allow {bot} to send an email from its own address?": "Autoriser {bot} à envoyer un e-mail depuis sa propre adresse ?",
+  "send an email": "envoyer un e-mail",
+  "Its email address": "Son adresse e-mail",
+  "sent": "envoyé",
+  "Reading its mailbox": "Lit sa boîte mail",
+  "No speech service is configured.": "Aucun service vocal n'est configuré.",
+  "Hello, this is a voice test.": "Bonjour, ceci est un test de voix.",
+  "New email": "Nouvel e-mail",
+  "Read the new email. If it needs an answer, draft a short reply and ask me before sending it.": "Lis le nouvel e-mail. S'il appelle une réponse, rédige une courte réponse et demande-moi avant de l'envoyer.",
   // Wave 5b: spend checkpoints, committing clicks, card payments, files on the user's computer, Telegram commands, routines, first-task ideas.
   "Routine “{name}”": "Routine « {name} »",
   "Work in {bot}'s chat": "Travail dans la discussion de {bot}",

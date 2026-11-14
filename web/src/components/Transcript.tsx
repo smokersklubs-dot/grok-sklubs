@@ -28,7 +28,9 @@ export type Item =
 const HOUR = 3_600_000;
 const GROUP_WINDOW = 5 * 60_000;
 
-function isMine(b: MessageBody): boolean {
+/** `viewer`: wave 6 — on a bot someone shares with you, only the messages you wrote (origin "member", your id) are yours. */
+function isMine(b: MessageBody, viewer?: string): boolean {
+  if (viewer) return b.role === "user" && b.origin?.kind === "member" && b.origin.id === viewer;
   return b.role === "user" && (!b.origin || b.origin.kind === "voice");
 }
 
@@ -100,7 +102,7 @@ function planWork(rows: Row[], running: boolean): { folded: Set<number>; chips: 
 }
 
 /** Groups the rows of one conversation for display. Thread replies are left out unless `thread` says which thread to show. */
-export function buildItems(all: Row[], running: boolean, thread = 0): Item[] {
+export function buildItems(all: Row[], running: boolean, thread = 0, viewer?: string, ownerName?: string): Item[] {
   const rows = all.filter((r) => (r.thread ?? 0) === thread);
   const items: Item[] = [];
   const { folded, chips } = planWork(rows, running);
@@ -132,7 +134,7 @@ export function buildItems(all: Row[], running: boolean, thread = 0): Item[] {
       if (last?.t === "msgs" && last.sender === sender && lastRow && row.createdAt - lastRow.createdAt <= GROUP_WINDOW) {
         last.rows.push(row);
       } else {
-        items.push({ t: "msgs", key: `m${row.seq}`, sender, mine: isMine(b), origin: b.origin, role: b.role, rows: [row] });
+        items.push({ t: "msgs", key: `m${row.seq}`, sender, mine: isMine(b, viewer), origin: viewer && b.role === "user" && !b.origin ? { kind: "member", id: "", name: ownerName ?? "" } : b.origin, role: b.role, rows: [row] });
       }
     } else {
       items.push({ t: "row", key: `r${row.seq}`, row });
@@ -165,6 +167,14 @@ function SenderLabel({ origin, role }: { origin: Origin; role: "user" | "assista
       <div className="sender">
         <Icon name="clock" size={14} />
         <span>{t("msg.routine", { name: origin.name })}</span>
+      </div>
+    );
+  }
+  if (origin.kind === "member") {
+    return (
+      <div className="sender">
+        <Icon name="user" size={14} />
+        <span>{origin.name}</span>
       </div>
     );
   }
@@ -811,7 +821,8 @@ export function Transcript({ bot, thread, live }: { bot: Bot; thread: Thread | u
   const rows = thread?.rows ?? [];
   // `t` changes with the language, so the date dividers are rebuilt when it does.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const items = useMemo(() => buildItems(rows, live.running && !live.thread), [rows, live.running, live.thread, t]);
+  const viewer = useStore((s) => (bot.access ? s.user?.id : undefined));
+  const items = useMemo(() => buildItems(rows, live.running && !live.thread, 0, viewer, bot.access?.ownerName), [rows, live.running, live.thread, t, viewer, bot.access?.ownerName]);
   const mainRows = useMemo(() => rows.filter((r) => !r.thread), [rows]);
   const lastBody = mainRows.length ? mainRows[mainRows.length - 1].body : null;
   const streaming = lastBody?.kind === "message" && !!lastBody.streaming;

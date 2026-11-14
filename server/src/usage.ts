@@ -31,11 +31,16 @@ export function costOf(model: string, u: TurnUsage): number {
   return (fresh * p[0] + u.outputTokens * p[1] + u.cachedTokens * p[2]) / 1_000_000;
 }
 
+/** Who started the bot's running turn (loop.ts registers it; usage.ts cannot import loop.ts). */
+let actorHook: (botId: string) => string | null = () => null;
+export const setActorHook = (fn: (botId: string) => string | null) => { actorHook = fn; };
+
 /** `costUsd`: the price the service itself reported (e.g. a video), used instead of our token price list. */
 export function record(userId: string, botId: string, model: string, u: TurnUsage, costUsd?: number) {
   const cost = costUsd ?? costOf(model, u);
-  q.run("INSERT INTO usage (user_id, bot_id, at, model, input_tokens, output_tokens, cached_tokens, cost_usd) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-    userId, botId, now(), model, u.inputTokens, u.outputTokens, u.cachedTokens, cost);
+  // actor_id (wave 6): the workspace member whose message started the turn, for per-member usage (null: the owner).
+  q.run("INSERT INTO usage (user_id, bot_id, at, model, input_tokens, output_tokens, cached_tokens, cost_usd, actor_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    userId, botId, now(), model, u.inputTokens, u.outputTokens, u.cachedTokens, cost, actorHook(botId));
   // The task's spend checkpoint (A5) and the journal's per-action cost (A14) count the same money.
   addSpend(botId, cost);
   noteCost(botId, cost);

@@ -19,8 +19,11 @@ function LogoTile({ name }: { name: string }) {
   return <span className="logo-tile" aria-hidden="true">{letter}</span>;
 }
 
-function Approval({ card }: { card: ApprovalCard }) {
+function Approval({ card, botId }: { card: ApprovalCard; botId: string }) {
   const t = useT();
+  // Wave 6: on a bot someone shares with you, only its owner (and admins, when the owner allows it) answer.
+  const access = useStore((s) => s.bots[botId]?.access);
+  const canDecide = !access || access.canApprove;
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const decide = async (decision: "allow" | "always" | "deny") => {
@@ -66,14 +69,16 @@ function Approval({ card }: { card: ApprovalCard }) {
         </div>
       )}
       {card.once && card.status === "pending" && <p className="card-note">{t("approval.onceOnly")}</p>}
-      {card.status === "pending" ? (
+      {card.status === "pending" && !canDecide ? (
+        <p className="card-note"><Icon name="users" size={13} /> {t("ws.approvalOwner", { name: access?.ownerName ?? "" })}</p>
+      ) : card.status === "pending" ? (
         <>
           <div className="card-actions">
             <button type="button" className="btn btn-ghost" disabled={busy !== null} onClick={() => void decide("deny")}>
               {t(busy === "deny" ? "approval.denying" : "approval.deny")}
             </button>
             <span className="spacer" />
-            {!card.once && (
+            {!card.once && !access && (
               <button type="button" className="btn" disabled={busy !== null} onClick={() => void decide("always")} title={t("approval.alwaysTitle")}>
                 {t(busy === "always" ? "common.saving" : "approval.alwaysBtn")}
               </button>
@@ -318,7 +323,7 @@ function Secret({ card, botId, seq }: { card: SecretCard; botId: string; seq: nu
 export function CardView({ card, botId, seq }: { card: Card; botId: string; seq: number }) {
   switch (card.type) {
     case "approval":
-      return <Approval card={card} />;
+      return <Approval card={card} botId={botId} />;
     case "question":
       return <Question card={card} botId={botId} seq={seq} />;
     case "connect":
@@ -341,7 +346,61 @@ export function CardView({ card, botId, seq }: { card: Card; botId: string; seq:
       return <ApiConnectorCardView card={card} botId={botId} seq={seq} />;
     case "memory":
       return <MemoryCardView card={card} botId={botId} seq={seq} />;
+    case "mail":
+      return <MailCardView card={card} botId={botId} />;
     default:
       return null;
   }
+}
+
+/* ---------- Wave 6: an email received at the bot's own address ---------- */
+
+type MailCard = Extract<Card, { type: "mail" }>;
+const AUTH_KEYS = ["spf", "dkim", "dmarc"] as const;
+
+function MailCardView({ card, botId }: { card: MailCard; botId: string }) {
+  const t = useT();
+  const own = useStore((s) => !s.bots[botId]?.access);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const release = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await api("POST", `/bots/${botId}/mail/${encodeURIComponent(card.mailId)}/release`);
+    } catch (e) {
+      setError(errText(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className={`card mail-card is-${card.status}`}>
+      <div className="card-head">
+        <span className="logo-tile is-mail" aria-hidden="true"><Icon name="mail" size={18} /></span>
+        <div className="card-head-text">
+          <p className="card-title">{card.subject}</p>
+          <p className="card-sub">{t("mail.from", { from: card.from })}</p>
+        </div>
+        <span className={`mail-status is-${card.status}`}>{t(`mail.status.${card.status}`)}</span>
+      </div>
+      {card.snippet && <p className="mail-snippet">{card.snippet}</p>}
+      <div className="mail-auth" aria-label={t("mail.authAria")}>
+        {AUTH_KEYS.map((k) => (
+          <span key={k} className={`auth-badge is-${card.auth[k] === "pass" ? "pass" : card.auth[k] === "fail" ? "fail" : "none"}`} title={t("mail.authTitle", { check: k.toUpperCase(), result: card.auth[k] })}>
+            {k.toUpperCase()} {card.auth[k]}
+          </span>
+        ))}
+        {card.spam > 0 && <span className={`auth-badge is-${card.spam >= 5 ? "fail" : "none"}`}>{t("mail.spam", { n: card.spam })}</span>}
+      </div>
+      <p className="card-note"><Icon name="shield" size={13} /> {card.status === "held" ? t("mail.heldNote") : t("mail.outsideNote")}</p>
+      {card.status === "held" && own && (
+        <div className="card-actions">
+          <span className="spacer" />
+          <button type="button" className="btn" disabled={busy} onClick={() => void release()}>{t(busy ? "common.saving" : "mail.release")}</button>
+        </div>
+      )}
+      {error && <p className="card-error" role="alert">{error}</p>}
+    </div>
+  );
 }

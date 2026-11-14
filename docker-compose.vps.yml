@@ -54,6 +54,17 @@ services:
       DESKTOP_MEMORY: "${SKLUBOT_DESKTOP_MEMORY:-2g}"
       # Docker, à travers le proxy filtrant (voir plus bas), jamais le socket lui-même.
       DOCKER_HOST: "tcp://docker-proxy:2375"
+      # Vague 6 — voix serveur (profil « voice » ci-dessous) : whisper.cpp + Piper sur le réseau interne. Vides = appels par le navigateur.
+      VOICE_STT_URL: "${SKLUBOT_VOICE_STT_URL:-}"
+      VOICE_TTS_URL: "${SKLUBOT_VOICE_TTS_URL:-}"
+      # Vague 6 — adresse e-mail propre aux bots : domaine dont le MX pointe vers ce serveur. Le récepteur écoute sur 2525
+      # dans le conteneur (pas de privilège pour le port 25) ; publier le port 25 : docker-compose.mail.yml.
+      MAIL_DOMAIN: "${SKLUBOT_MAIL_DOMAIN:-}"
+      MAIL_SMTP_PORT: "${SKLUBOT_MAIL_SMTP_PORT:-0}"
+      MAIL_HOSTNAME: "${SKLUBOT_MAIL_HOSTNAME:-}"
+      # Places des espaces d'équipe (par défaut, et maximum qu'un propriétaire peut choisir).
+      WORKSPACE_SEATS: "${SKLUBOT_WORKSPACE_SEATS:-10}"
+      WORKSPACE_MAX_SEATS: "${SKLUBOT_WORKSPACE_MAX_SEATS:-50}"
     volumes:
       - sklubot_data:/data
     read_only: true
@@ -103,6 +114,31 @@ services:
     command: ["true"]
     restart: "no"
 
+  # ── Vague 6 : voix serveur auto-hébergée, gratuite (facultative) ──
+  # docker compose --profile voice up -d  puis  SKLUBOT_VOICE_STT_URL=http://whisper:8080 et SKLUBOT_VOICE_TTS_URL=http://piper:5000
+  # whisper.cpp : image officielle épinglée par empreinte (ghcr.io/ggml-org/whisper.cpp, README « Docker ») ; le modèle est
+  # téléchargé une fois dans le volume. Point d'entrée de l'image : bash -c, d'où une seule chaîne de commande.
+  whisper:
+    image: "${WHISPER_IMAGE:-ghcr.io/ggml-org/whisper.cpp:main@sha256:203ed2a39087406689e78ea5a664fef7ae596ee548f3323a4ffc63169da84933}"
+    profiles: ["voice"]
+    restart: unless-stopped
+    command: ["[ -f /models/ggml-${WHISPER_MODEL:-base}.bin ] || ./models/download-ggml-model.sh ${WHISPER_MODEL:-base} /models; whisper-server --host 0.0.0.0 --port 8080 -m /models/ggml-${WHISPER_MODEL:-base}.bin -l auto"]
+    volumes:
+      - whisper_models:/models
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+  # Piper : pas d'image officielle du serveur HTTP ; construite ici (docker/piper, version de piper-tts épinglée).
+  piper:
+    build:
+      context: docker/piper
+    image: sklubot-piper
+    profiles: ["voice"]
+    restart: unless-stopped
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+
   # Reçoit le trafic web. Avec un nom de domaine, obtient et renouvelle seul le certificat HTTPS.
   caddy:
     image: "${CADDY_IMAGE:-caddy:2}"
@@ -135,3 +171,4 @@ volumes:
     name: sklubot_data
   caddy_data:
   caddy_config:
+  whisper_models:

@@ -538,3 +538,58 @@ a.btn { text-decoration: none; }
 .field-row .field { flex: 1; min-width: 120px; }
 .field-inline .input-narrow { flex: none; width: 120px; }
 .routine-rules > .link { display: inline-flex; align-items: center; gap: 4px; }
+
+/* ---------- Wave 6: voice barge-in, bot email, workspaces ---------- */
+.callbar-pipeline { font-size: 11px; font-weight: 500; color: var(--text-3); padding: 1px 6px; border: 1px solid var(--border); border-radius: 999px; }
+.callbar-barge { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 650; color: var(--warn); background: var(--warn-soft); padding: 1px 7px; border-radius: 999px; animation: barge-in 0.3s ease-out; }
+.barge-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--warn); animation: pulse 0.8s ease-in-out infinite; }
+@keyframes barge-in { from { transform: scale(0.8); opacity: 0; } to { transform: none; opacity: 1; } }
+.halo.is-barge::before { background: var(--warn); opacity: 0.35; animation: halo 0.5s ease-in-out 2; }
+.caption-cut { color: var(--warn); font-style: italic; }
+.mail-card .card-head { align-items: flex-start; }
+.logo-tile.is-mail { background: var(--info-soft); color: var(--info); }
+.mail-snippet { margin: 4px 0 8px; color: var(--text-2); font-size: 13px; line-height: 1.45; }
+.mail-auth { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+.auth-badge { font-size: 11px; font-weight: 600; padding: 2px 7px; border-radius: 999px; background: var(--surface-3); color: var(--text-2); text-transform: none; }
+.auth-badge.is-pass { background: var(--ok-soft); color: var(--ok); }
+.auth-badge.is-fail { background: var(--danger-soft); color: var(--danger); }
+.mail-status { flex: none; font-size: 11px; font-weight: 650; padding: 2px 8px; border-radius: 999px; background: var(--surface-3); color: var(--text-2); white-space: nowrap; }
+.mail-status.is-delivered, .mail-status.is-released { background: var(--info-soft); color: var(--info); }
+.mail-status.is-replied { background: var(--ok-soft); color: var(--ok); }
+.mail-status.is-held { background: var(--warn-soft); color: var(--warn); }
+.voice-status { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-radius: var(--r-md); margin: 6px 0 14px; font-size: 13px; background: var(--surface-2); color: var(--text-2); }
+.voice-status.is-server { background: var(--ok-soft); color: var(--ok); }
+.voice-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; margin: 10px 0 14px; }
+.voice-card { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface); }
+.voice-card .pane-heading { display: flex; align-items: center; gap: 6px; margin: 0; }
+.radio-row, .check-row { display: flex; align-items: center; gap: 8px; padding: 3px 0; font-size: 14px; cursor: pointer; }
+.ws-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+.ws-tab { cursor: pointer; border: 1px solid var(--border); background: var(--surface); }
+.ws-tab.is-active { background: var(--accent); color: var(--accent-fg); border-color: transparent; }
+.ws-tab.is-active .muted { color: inherit; opacity: 0.75; }
+.ws-create { margin: 8px 0 16px; max-width: 480px; }
+.ws-panel { border: 1px solid var(--border); border-radius: var(--r-lg); padding: 14px 16px; background: var(--surface); margin-bottom: 14px; }
+.ws-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+.ws-head .pane-heading { margin: 0; }
+.ws-perms { display: grid; gap: 2px; margin: 10px 0; padding: 8px 10px; border-radius: var(--r-md); background: var(--surface-2); }
+.ws-perms p { margin: 0; color: var(--text-2); }
+.pane-subheading { margin: 16px 0 6px; font-size: 13px; font-weight: 650; color: var(--text-2); text-transform: uppercase; letter-spacing: 0.03em; }
+.ws-members .ws-member-name { font-weight: 600; }
+.ws-members td, .ws-members th { vertical-align: middle; }
+.chip.role-owner { background: var(--accent); color: var(--accent-fg); }
+.chip.role-admin { background: var(--info-soft); color: var(--info); }
+.chip.role-member { background: var(--ok-soft); color: var(--ok); }
+.chip.role-viewer { background: var(--surface-3); color: var(--text-2); }
+.ws-invite { max-width: 560px; }
+.ws-link { margin: 8px 0; padding: 8px 10px; border-radius: var(--r-md); background: var(--ok-soft); }
+.ws-link p { margin: 0 0 6px; }
+.ws-seats { margin-top: 10px; align-items: center; }
+.ws-seats .field-label { margin: 0; }
+.ws-audit .list-row { gap: 6px; padding: 4px 0; flex-wrap: wrap; }
+.ws-sso { margin-top: 14px; }
+.share-members { display: flex; flex-direction: column; gap: 2px; padding: 6px 0 0 22px; }
+.shared-badge { background: var(--info-soft); color: var(--info); display: inline-flex; align-items: center; gap: 4px; }
+.composer-readonly { display: flex; align-items: center; gap: 8px; width: calc(100% - 40px); max-width: 760px; margin: 0 auto 14px; padding: 12px 14px; border-radius: var(--r-lg); background: var(--surface-2); color: var(--text-2); font-size: 14px; }
+.signin-notice.is-invite { background: var(--info-soft); color: var(--info); }
+.input-small { max-width: 130px; }
+@media (max-width: 640px) { .ws-head { flex-direction: column; } .ws-members th .muted { display: block; } }

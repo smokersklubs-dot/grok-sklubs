@@ -103,13 +103,14 @@ function BotRow({ bot, live, active, collapsed }: { bot: Bot; live: Live; active
               {bot.label && <span className="bot-row-label truncate">· {bot.label}</span>}
               {bot.kind === "room" && <Icon name="users" size={13} className="bot-row-kind" />}
               {bot.pinned && <Icon name="pin" size={12} className="bot-row-kind" />}
+              {bot.access && <Icon name="users" size={12} className="bot-row-kind" aria-label={bot.access.workspaceName} />}
             </span>
             <span className={`bot-row-preview truncate ${status === "attention" ? "is-attention" : ""}`}>{previewOf(bot, live)}</span>
           </span>
         )}
         {!collapsed && bot.unread > 0 && <span className="count-badge" aria-label={tn("sidebar.unread", bot.unread)}>{bot.unread > 99 ? "99+" : bot.unread}</span>}
       </button>
-      {!collapsed && (
+      {!collapsed && !bot.access && (
         <button type="button" className="icon-btn bot-row-more" aria-label={t("sidebar.botMenu", { name: bot.name })} aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu((v) => !v)}>
           <Icon name="more" size={16} />
         </button>
@@ -200,12 +201,14 @@ export function Sidebar() {
     try { localStorage.setItem(FOLD_KEY, JSON.stringify(next)); } catch { /* not kept */ }
     return next;
   });
-  const visible = others.filter((b) => !b.listHidden);
+  // Wave 6: bots others share with you through a workspace have their own group.
+  const sharedBots = others.filter((b) => !!b.access);
+  const visible = others.filter((b) => !b.listHidden && !b.access);
   const pinned = visible.filter((b) => b.pinned);
   const known = new Set(sections.map((x) => x.id));
   const bySection = (id: string) => visible.filter((b) => !b.pinned && b.sectionId === id);
   const team = visible.filter((b) => !b.pinned && (!b.sectionId || !known.has(b.sectionId)));
-  const hiddenBots = others.filter((b) => b.listHidden);
+  const hiddenBots = others.filter((b) => b.listHidden && !b.access);
   const { organise } = useStore.getState();
   const rowsOf = (list: Bot[]) => (
     <ul className="bot-list">
@@ -288,7 +291,7 @@ export function Sidebar() {
           )}
 
           {collapsed ? (
-            rowsOf([...pinned, ...sections.flatMap((sec) => bySection(sec.id)), ...team])
+            rowsOf([...pinned, ...sections.flatMap((sec) => bySection(sec.id)), ...team, ...sharedBots])
           ) : (
             <>
               {pinned.length > 0 && (
@@ -305,6 +308,11 @@ export function Sidebar() {
                 <Group id="team" title={t("sidebar.team")} count={0} folded={!!folds.team} onFold={() => fold("team")} onDropBot={(id) => void organise(id, { sectionId: null, pinned: false })}
                   actions={<button type="button" className="icon-btn sidebar-group-more" aria-label={t("sections.new")} title={t("sections.new")} onClick={() => void addSection()}><Icon name="plus" size={15} /></button>}>
                   {rowsOf(team)}
+                </Group>
+              )}
+              {sharedBots.length > 0 && (
+                <Group id="shared" title={t("sidebar.shared")} count={0} folded={!!folds.shared} onFold={() => fold("shared")}>
+                  {rowsOf(sharedBots)}
                 </Group>
               )}
               {hiddenBots.length > 0 && (

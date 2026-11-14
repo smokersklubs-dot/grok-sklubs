@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { api, errText } from "../api";
 import { tn, useT } from "../i18n";
 import { useStore, type BotSettingsTab } from "../store";
+import { BotEmailTab, BotSharingTab } from "./Wave6";
 import { DEFAULT_CHARACTER, TOOL_GROUPS } from "../types";
 import { BotSpendField, ConfidenceBadge, RoutineExtras } from "./Wave5b";
 import type { Autonomy, AvatarColor, AvatarShape, Bot, BotBundle, Character as CharacterLook, BotMode, Effort, Memory, MemoryStatus, ModelOption, NativeTrigger, RoomRule, Routine, RoutineRun, Skill, SkillRef, TelegramStatus, ToolGroup } from "../types";
@@ -1194,7 +1195,7 @@ export function BotSettings({ botId, tab }: { botId: string; tab: BotSettingsTab
   if (!bot) return null;
 
   const isRoom = bot.kind === "room";
-  const tabs: { id: BotSettingsTab; label: string; icon: "settings" | "book" | "brain" | "clock" | "send"; count?: number }[] = isRoom
+  const tabs: { id: BotSettingsTab; label: string; icon: "settings" | "book" | "brain" | "clock" | "send" | "mail" | "users"; count?: number }[] = isRoom
     ? [{ id: "general", label: t("botSettings.tab.general"), icon: "settings" }]
     : [
         { id: "general", label: t("botSettings.tab.general"), icon: "settings" },
@@ -1202,6 +1203,8 @@ export function BotSettings({ botId, tab }: { botId: string; tab: BotSettingsTab
         { id: "memories", label: t("botSettings.tab.memories"), icon: "brain", count: bundle?.memories.length },
         { id: "routines", label: t("botSettings.tab.routines"), icon: "clock", count: bundle?.routines.length },
         { id: "telegram", label: t("botSettings.tab.telegram"), icon: "send" },
+        { id: "email", label: t("botSettings.tab.email"), icon: "mail" },
+        { id: "sharing", label: t("botSettings.tab.sharing"), icon: "users" },
       ];
   const active = tabs.some((x) => x.id === tab) ? tab : "general";
 
@@ -1240,6 +1243,8 @@ export function BotSettings({ botId, tab }: { botId: string; tab: BotSettingsTab
           {active === "memories" && <Memories bot={bot} bundle={bundle} />}
           {active === "routines" && <Routines bot={bot} bundle={bundle} />}
           {active === "telegram" && <Telegram key={bot.id} bot={bot} />}
+          {active === "email" && <BotEmailTab key={bot.id} bot={bot} />}
+          {active === "sharing" && <BotSharingTab key={bot.id} bot={bot} />}
         </div>
       </div>
     </Modal>

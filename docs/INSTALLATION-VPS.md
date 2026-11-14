@@ -84,6 +84,79 @@ Le nom reste modifiable ensuite dans les réglages du bot.
 (les salons de groupe ne comptent pas). Au-delà, la création est refusée avec un message clair : retire un bot
 d'abord. Aucun bot n'est jamais supprimé à ta place.
 
+## Voix en temps réel (facultatif, gratuit)
+
+Par défaut, les appels vocaux utilisent la reconnaissance et la synthèse vocales du navigateur, tour par tour. Pour
+des appels à faible latence où **tu peux couper la parole au bot** (il se tait aussitôt et sa réponse en cours est
+annulée), lance les deux services vocaux auto-hébergés :
+
+```bash
+cd /opt/sklubot
+docker compose -f docker-compose.vps.yml --profile voice up -d whisper piper
+# puis dans .env :
+SKLUBOT_VOICE_STT_URL=http://whisper:8080
+SKLUBOT_VOICE_TTS_URL=http://piper:5000
+docker compose -f docker-compose.vps.yml up -d sklubot
+```
+
+- **whisper.cpp** (voix → texte) : image officielle `ghcr.io/ggml-org/whisper.cpp`, épinglée par empreinte. Le modèle
+  (`base` par défaut, `WHISPER_MODEL=small` pour mieux comprendre, plus lent) est téléchargé une fois dans le volume
+  `whisper_models`. Un VPS de 2 vCPU transcrit une phrase en moins d'une seconde avec `base`.
+- **Piper** (texte → voix) : construit depuis `docker/piper` (version de `piper-tts` épinglée, voix `fr_FR-siwis-medium`
+  par défaut ; autre voix : `docker compose build --build-arg PIPER_VOICE=en_US-lessac-medium piper`).
+- Les deux restent sur le réseau interne : rien n'est publié sur Internet, Caddy n'est pas concerné.
+- **OpenAI** (payant, facultatif) : dans Réglages → Voix, choisis OpenAI et colle une clé d'API (scellée sur le
+  serveur), ou mets `OPENAI_API_KEY` dans `.env`.
+- Réglages → Voix → **Tester** prononce une phrase puis la retranscrit. Sans service configuré, les appels repassent
+  tout seuls en mode navigateur.
+
+## Une adresse e-mail pour chaque bot (facultatif)
+
+Chaque bot peut recevoir des e-mails à sa propre adresse (`juno@bots.ton-domaine.fr`) et répondre par ton relais SMTP.
+
+1. **DNS** : crée un enregistrement `MX` pour un sous-domaine (ex. `bots.ton-domaine.fr`) qui pointe vers le nom du
+   VPS (un enregistrement `A` du même nom, ou celui de Sklubot). Utilise un sous-domaine dédié : ta boîte mail
+   habituelle n'est pas touchée.
+2. **`.env`** : `SKLUBOT_MAIL_DOMAIN=bots.ton-domaine.fr` et `SKLUBOT_MAIL_SMTP_PORT=2525`.
+3. **Ouvrir le port 25** : `docker compose -f docker-compose.vps.yml -f deploy/docker-compose.mail.yml up -d` (le port
+   25 public est relié au 2525 du conteneur, qui tourne sans privilège). Ouvre aussi le port 25 entrant dans le
+   pare-feu du VPS (`ufw allow 25/tcp`).
+4. **Le port 25 est souvent bloqué** par les hébergeurs (contre le spam), surtout en **sortie**, parfois en entrée
+   (c'est le cas par défaut chez plusieurs grands hébergeurs et clouds ; vérifie la page « port 25 / SMTP » de la
+   documentation du tien). Pour la **réception**, il faut que l'entrée soit ouverte : teste depuis une autre machine
+   avec `nc -vz bots.ton-domaine.fr 25` ; si c'est fermé, demande le déblocage au support de l'hébergeur (souvent un
+   formulaire dans sa console, parfois après une vérification du compte). Les **envois** des bots ne passent pas par le port 25 de ton
+   VPS : ils partent par ton relais SMTP (port 587 ou 465), réglé dans Réglages → E-mail.
+5. **Relais et DKIM** (Réglages → E-mail) : serveur SMTP de ton fournisseur, identifiant, mot de passe (scellé). Pour
+   signer en DKIM, génère une clé (`openssl genrsa -out dkim.pem 2048`, puis
+   `openssl rsa -in dkim.pem -pubout -outform der | base64 -w0`), publie `sklubot._domainkey.bots.ton-domaine.fr TXT
+   "v=DKIM1; k=rsa; p=<clé publique>"`, colle la clé privée et le sélecteur `sklubot`. Ajoute aussi un SPF qui inclut
+   ton relais et une politique DMARC sur le domaine d'envoi.
+6. Dans les réglages du bot → **E-mail** : choisis l'adresse, les expéditeurs autorisés (vide = tout le monde) ; la
+   réponse automatique est coupée par défaut.
+
+À l'arrivée, chaque e-mail est vérifié (SPF, DKIM, DMARC enregistrés), limité en taille (10 Mo par défaut,
+`MAIL_MAX_BYTES`) et en débit (`MAIL_PER_IP_MINUTE`, `MAIL_PER_SENDER_HOUR`), noté contre le spam, et **mis de côté**
+si l'expéditeur n'est pas autorisé, si DMARC échoue ou s'il ressemble à du spam (tu peux le libérer d'un clic). Ce que
+le bot lit d'un e-mail est du contenu extérieur : il ne peut pas lui donner d'ordres, et toute réponse demande tes mots
+ou ton accord. Les e-mails d'accès (codes, liens de réinitialisation) sont masqués.
+
+**Alternative sans port 25** : connecter une boîte Gmail ou Outlook existante (Applis) et utiliser un alias « + »
+(`toi+juno@gmail.com`) — Gmail et Outlook.com livrent ces alias dans la boîte principale, Microsoft 365 aussi quand
+l'adressage « plus » est actif sur le locataire (vérifie dans le centre d'administration Exchange) ; une routine « nouvel e-mail » filtrée sur `to:toi+juno@…` fait le tri.
+Moins cloisonné (le bot lit la même boîte que toi), mais aucun DNS ni port à ouvrir.
+
+## Espaces d'équipe (plusieurs personnes, mêmes bots)
+
+Réglages → **Espaces d'équipe** : crée un espace, invite des personnes par lien (usage unique, 7 jours, lié à leur
+adresse ; il permet de créer un compte même quand les inscriptions sont fermées), donne un rôle à chacune
+(propriétaire, admin, membre, lecteur), puis partage un bot depuis ses réglages → **Partage** (tout l'espace ou une
+liste, et qui répond aux demandes d'accord : toi seul, ou toi et les admins). Le bot garde tes applis, ton coffre et
+ton budget ; les autres ne voient jamais ses réglages, fichiers ou secrets, et leurs messages n'autorisent jamais une
+action en ton nom. La console d'admin montre les membres, les places (`SKLUBOT_WORKSPACE_SEATS`,
+`SKLUBOT_WORKSPACE_MAX_SEATS`), la consommation par membre, le journal, l'export et l'effacement des données d'un
+membre. L'usage personnel ne change pas. La connexion unique (SSO) n'est pas proposée.
+
 ## Désinstaller complètement
 
 ```bash

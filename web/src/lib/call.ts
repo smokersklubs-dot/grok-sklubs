@@ -8,6 +8,8 @@ import { useStore, type CallLine, type CallState, type Thread } from "../store";
 import type { Row } from "../types";
 import { voiceStarted, voiceStopped, voiceWord } from "./voiceLevel";
 import { canCall, createRecognition, makeUtterance, micErrorText, recognitionLang, speakable, type Recognition } from "./speech";
+import { endServerCall, serverBargeIn, serverCallActive, serverMute, startServerCall } from "./voice";
+import type { VoiceStatus } from "../types";
 
 let rec: Recognition | null = null;
 let recRunning = false;
@@ -204,15 +206,42 @@ function checkReplies(): void {
   if (added && !speakingNow) speakNext();
 }
 
+/**
+ * Starts a call. Wave 6: when the bot's owner has speech services on the server (whisper.cpp + Piper, or OpenAI), the
+ * call goes through the server (natural barge-in); otherwise the browser's own recognition and synthesis, as before.
+ */
 export function startCall(botId: string): void {
   const store = useStore.getState();
   const bot = store.bots[botId];
-  if (!bot || !canCall()) return;
+  if (!bot) return;
   endCall();
   useStore.setState({
-    call: { botId, status: "connecting", error: null, muted: false, speaking: false, listening: false, startedAt: null, lines: [] },
+    call: { botId, status: "connecting", error: null, muted: false, speaking: false, listening: false, startedAt: null, lines: [], pipeline: "browser", bargedAt: null },
   });
   void store.loadRows(botId);
+  void api<{ status: VoiceStatus }>("GET", `/bots/${botId}/voice`).then(
+    async (r) => {
+      if (getCall()?.botId !== botId) return;
+      if (r.status.mode === "server" && typeof AudioWorkletNode !== "undefined" && (await startServerCall(botId, recognitionLang(bot.voice)))) {
+        unsubscribe = useStore.subscribe(() => { if (useStore.getState().selectedId !== botId) endCall(); });
+        return;
+      }
+      startBrowserCall(botId);
+    },
+    () => startBrowserCall(botId),
+  );
+}
+
+/** Whether a call is possible at all: the browser's speech, or a server pipeline (checked when the call starts). */
+export const callPossible = (): boolean => canCall() || (typeof AudioWorkletNode !== "undefined" && !!navigator.mediaDevices);
+
+function startBrowserCall(botId: string): void {
+  const bot = useStore.getState().bots[botId];
+  if (!bot || getCall()?.botId !== botId) return;
+  if (!canCall()) {
+    fail(useStore.getState().call ? t("composer.voiceUnsupported") : "");
+    return;
+  }
 
   const r = createRecognition(recognitionLang(bot.voice));
   if (!r) {
@@ -261,6 +290,7 @@ export function startCall(botId: string): void {
 
 /** Stop the bot talking and go straight back to listening. */
 export function bargeIn(): void {
+  if (serverCallActive()) { serverBargeIn(); patch({ bargedAt: Date.now() }); return; }
   queue = [];
   if (speakingNow) {
     const had = currentUtterance;
@@ -278,6 +308,7 @@ export function bargeIn(): void {
 export function setMuted(muted: boolean): void {
   if (!getCall()) return;
   patch({ muted });
+  if (serverCallActive()) { serverMute(muted); return; }
   if (muted) {
     stopListening();
     onPartial("");
@@ -287,6 +318,7 @@ export function setMuted(muted: boolean): void {
 }
 
 export function endCall(): void {
+  endServerCall();
   endTrace();
   window.clearTimeout(restartTimer);
   unsubscribe?.();

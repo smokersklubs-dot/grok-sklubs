@@ -22,6 +22,7 @@ const APP_NAMES: Record<string, string> = { gmail: "Gmail", gcalendar: "Google C
 
 export function describeRoutine(r: { trigger: string; schedule: string; runAt: number | null; timezone: string; native?: Routine["native"] }, locale?: Locale): string {
   if (r.trigger === "webhook") return tr(locale, "When its web address is called");
+  if (r.trigger === "botmail") return tr(locale, "When an email arrives at its own address");
   if (r.native && r.trigger === "email") return r.native.query ? tr(locale, "When a new email matches “{query}” in {account}", { query: r.native.query, account: r.native.account }) : tr(locale, "When a new email arrives in {account}", { account: r.native.account });
   if (r.native && r.trigger === "slack") {
     const where = r.native.channel === "@dm" ? tr(locale, "a direct message") : r.native.channel;

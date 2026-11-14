@@ -15,6 +15,10 @@
     "@hono/node-server": "^2.1.8",
     "@modelcontextprotocol/sdk": "^1.32.2",
     "hono": "^4.13.18",
+    "mailauth": "^8.0.6",
+    "mailparser": "^3.14.3",
+    "nodemailer": "^10.5.0",
+    "smtp-server": "^3.21.4",
     "ws": "^8.23.0"
   },
   "devDependencies": {

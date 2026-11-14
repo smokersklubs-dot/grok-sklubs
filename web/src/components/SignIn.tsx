@@ -26,7 +26,14 @@ export function SignIn() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const ids = { name: useId(), email: useId(), password: useId(), setupCode: useId(), botName: useId(), botLabel: useId() };
-  const creating = mode === "signup" && signupOpen;
+  // Wave 6: a workspace invitation link (/?invite=…) lets its addressee create an account even when sign-ups are closed.
+  const [inviteToken] = useState(() => new URLSearchParams(location.search).get("invite") ?? "");
+  const [invite, setInvite] = useState<{ workspaceName: string; email: string; role: string } | null>(null);
+  useEffect(() => {
+    if (!inviteToken) return;
+    api<{ invite: { workspaceName: string; email: string; role: string } }>("GET", `/invites/${encodeURIComponent(inviteToken)}`).then((r) => { setInvite(r.invite); setEmail(r.invite.email); setMode("signup"); }, () => setInvite(null));
+  }, [inviteToken]);
+  const creating = mode === "signup" && (signupOpen || !!invite);
   // A one-time sign-in link that has expired or was already used lands here with ?link=expired.
   const [linkExpired] = useState(() => new URLSearchParams(location.search).get("link") === "expired");
   useEffect(() => {
@@ -60,8 +67,10 @@ export function SignIn() {
     setError(null);
     try {
       const r = creating
-        ? await api<{ user: User }>("POST", "/auth/signup", { email: mail, name: name.trim() || undefined, password, locale, setupCode: setupCodeRequired ? setupCode.trim() : undefined, botName: botName.trim() || undefined, botLabel: botLabel.trim() || undefined })
+        ? await api<{ user: User }>("POST", "/auth/signup", { email: mail, name: name.trim() || undefined, password, locale, invite: invite ? inviteToken : undefined, setupCode: setupCodeRequired ? setupCode.trim() : undefined, botName: botName.trim() || undefined, botLabel: botLabel.trim() || undefined })
         : await api<{ user: User }>("POST", "/auth/login", { email: mail, password });
+      // A sign-up with the invitation already joined the workspace: the link is used up.
+      if (creating && invite) history.replaceState(history.state, "", location.pathname);
       await signedIn(r.user);
     } catch (err) {
       setError(creating && setupCodeRequired && err instanceof ApiError && err.status === 403 && /setup code/i.test(err.message) ? t("signin.errSetupCodeWrong") : errText(err));
@@ -80,6 +89,12 @@ export function SignIn() {
 
         <h2 className="signin-title">{t(creating ? "signin.create" : "signin.signIn")}</h2>
 
+        {invite && (
+          <p className="signin-notice is-invite" role="status">
+            <Icon name="users" size={16} />
+            <span>{t("ws.invitedTo", { ws: invite.workspaceName, role: t(`ws.role.${invite.role as "member"}`) })}</span>
+          </p>
+        )}
         {linkExpired && (
           <p className="signin-notice" role="status">
             <Icon name="info" size={16} />

@@ -15,7 +15,7 @@ export function CallBar({ botId }: { botId: string }) {
   const rows = useStore((s) => s.threads[botId]?.rows);
   const [expanded, setExpanded] = useState(false);
   const t = useT();
-  const now = useTick(1000, !!call && call.status === "live");
+  const now = useTick(call?.bargedAt ? 250 : 1000, !!call && call.status === "live");
   const log = useRef<HTMLDivElement>(null);
   const lineCount = call?.lines.length ?? 0;
 
@@ -37,7 +37,11 @@ export function CallBar({ botId }: { botId: string }) {
   } else if (call.muted) status = t("call.muted");
   else status = t("call.listening");
 
-  const halo = call.status === "error" ? "is-error" : call.speaking ? "is-speaking" : live.running ? "is-working" : call.muted ? "" : isLive ? "is-listening" : "";
+  // Wave 6: the user just cut the bot off (barge-in) — shown for a few seconds.
+  const barged = !!call.bargedAt && now - call.bargedAt < 3000;
+  if (isLive && barged) status = t("call.bargedIn", { name: bot.name });
+  else if (isLive && call.hearing && !call.speaking) status = t("call.hearing");
+  const halo = call.status === "error" ? "is-error" : barged ? "is-barge" : call.speaking ? "is-speaking" : live.running ? "is-working" : call.muted ? "" : isLive ? "is-listening" : "";
   const finals = call.lines;
   const tail = finals.slice(-2);
 
@@ -51,6 +55,8 @@ export function CallBar({ botId }: { botId: string }) {
           <span className="callbar-name">
             {bot.name}
             {isLive && call.startedAt && <span className="callbar-clock">{callClock(now - call.startedAt)}</span>}
+            {isLive && call.pipeline === "server" && <span className="callbar-pipeline" title={t("call.serverTitle")}>{call.providers ?? t("call.server")}</span>}
+            {barged && <span className="callbar-barge" role="status"><span className="barge-dot" aria-hidden="true" />{t("call.bargeChip")}</span>}
           </span>
           <span className={`callbar-status ${shimmer ? "shimmer" : ""}`} role="status">{status}</span>
         </div>
@@ -75,7 +81,7 @@ export function CallBar({ botId }: { botId: string }) {
               {finals.length === 0 && <p className="caption is-placeholder">{t("call.nothingSaid")}</p>}
               {finals.map((l) => (
                 <p key={l.id} className={`caption ${l.final ? "" : "is-partial"}`}>
-                  <b>{l.role === "user" ? t("common.you") : bot.name}</b> {l.text}
+                  <b>{l.role === "user" ? t("common.you") : bot.name}</b> {l.text}{l.cut && <span className="caption-cut"> — {t("call.cut")}</span>}
                 </p>
               ))}
             </div>
@@ -88,7 +94,7 @@ export function CallBar({ botId }: { botId: string }) {
             ) : (
               tail.map((l) => (
                 <span key={l.id} className={`caption ${l.final ? "" : "is-partial"}`}>
-                  <b>{l.role === "user" ? t("common.you") : bot.name}</b> {l.text}
+                  <b>{l.role === "user" ? t("common.you") : bot.name}</b> {l.text}{l.cut && <span className="caption-cut"> — {t("call.cut")}</span>}
                 </span>
               ))
             )}

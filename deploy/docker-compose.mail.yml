@@ -1,0 +1,9 @@
+# Vague 6 — publie le port 25 pour l'adresse e-mail propre aux bots (facultatif).
+#   docker compose -f docker-compose.vps.yml -f deploy/docker-compose.mail.yml up -d
+# Prérequis : SKLUBOT_MAIL_DOMAIN et SKLUBOT_MAIL_SMTP_PORT=2525 dans .env, un enregistrement MX du (sous-)domaine vers ce
+# serveur, et le port 25 entrant ouvert chez l'hébergeur (souvent bloqué par défaut : voir docs/INSTALLATION-VPS.md).
+# Le récepteur écoute sur 2525 dans le conteneur (sans privilège) ; Caddy n'est pas concerné (SMTP n'est pas du HTTP).
+services:
+  sklubot:
+    ports:
+      - "${SKLUBOT_SMTP_PUBLIC_PORT:-25}:2525"

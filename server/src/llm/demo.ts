@@ -44,6 +44,14 @@ function plan(text: string, has: (name: string) => boolean): Block[] | null {
       ? { kind: "lead", score: 93, evidence: "démo : 3 visites de la page de prix en 24 h, entreprise de 40 personnes, demande de devis", value: "≈ 6 000 €/an", reason: quoted ?? "un nouveau lead très chaud" }
       : { kind: "lead", score: 93, evidence: "demo: 3 visits to the pricing page in 24 h, company of 40 people, asked for a quote", value: "≈ $6,000/yr", reason: quoted ?? "a very hot new lead" });
   }
+  // Wave 6: a mail received at the bot's own address (its "new email" routine): draft a reply with bot_email_send (it asks first).
+  const mailId = /"mailId":\s*"([^"]+)"/.exec(text)?.[1];
+  if (mailId && has("bot_email_send")) {
+    const from = /"from":\s*"(?:[^"<]*<)?([^">\s]+@[^">\s]+)>?"/.exec(text)?.[1] ?? "";
+    const subject = /"subject":\s*"([^"]*)"/.exec(text)?.[1] ?? "";
+    const fr = /[àâçéèêëîïôûùüÿœ]/.test(lower);
+    return call("bot_email_send", { to: [from], subject: `Re: ${subject}`, body: fr ? "Bonjour,\n\nBien reçu, merci. Je reviens vers vous très vite avec une réponse complète.\n\nBien à vous" : "Hello,\n\nThanks, received. I will get back to you shortly with a full answer.\n\nBest regards", reply_to_id: mailId });
+  }
   // Built-in mail accounts: "check my mail", "réponds au dernier e-mail"… searches the first mailbox it has.
   if (/\b(e-?mails?|mails?|inbox|courriels?)\b/.test(lower)) {
     const tool = mailTool(has, lower);

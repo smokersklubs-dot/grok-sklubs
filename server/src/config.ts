@@ -113,6 +113,32 @@ export const config = {
   xaiSearchModel: process.env.XAI_SEARCH_MODEL ?? "grok-4.7",
   telegramApi: (process.env.TELEGRAM_API_URL ?? "https://api.telegram.org").replace(/\/$/, ""),
   webDist: path.join(ROOT, "web", "dist"),
+  // ── Wave 6 ──
+  /** Seats a new workspace starts with, and the most an owner may set. */
+  workspaceSeats: Math.max(1, num("WORKSPACE_SEATS", 10)),
+  workspaceMaxSeats: Math.max(1, num("WORKSPACE_MAX_SEATS", 50)),
+  /**
+   * The bots' own email addresses: the (sub)domain whose MX record points to this server, and the port the embedded SMTP
+   * receiver listens on (0 = off; 25 inside the container, published only when the operator opts in).
+   */
+  mailDomain: (process.env.MAIL_DOMAIN ?? "").trim().toLowerCase(),
+  mailSmtpPort: num("MAIL_SMTP_PORT", 0),
+  mailSmtpHost: process.env.MAIL_SMTP_HOST ?? "0.0.0.0",
+  /** Host name the receiver announces (banner, Authentication-Results); defaults to the mail domain. */
+  mailHostname: (process.env.MAIL_HOSTNAME ?? process.env.MAIL_DOMAIN ?? "").trim().toLowerCase(),
+  /** Largest message accepted (bytes), and how many messages one sending address may deliver per hour. */
+  mailMaxBytes: num("MAIL_MAX_BYTES", 10 * 1024 * 1024),
+  mailPerSenderHour: num("MAIL_PER_SENDER_HOUR", 30),
+  mailPerIpMinute: num("MAIL_PER_IP_MINUTE", 20),
+  /** Optional TLS certificate and key files (PEM) for STARTTLS on the receiver. Without them, mail arrives in clear. */
+  mailTlsCert: process.env.MAIL_TLS_CERT ?? "",
+  mailTlsKey: process.env.MAIL_TLS_KEY ?? "",
+  /** Server-mediated voice: the self-hosted speech services (internal addresses, set by the operator) and OpenAI's API. */
+  voiceSttUrl: (process.env.VOICE_STT_URL ?? "").replace(/\/$/, ""),
+  voiceTtsUrl: (process.env.VOICE_TTS_URL ?? "").replace(/\/$/, ""),
+  voiceSttProvider: (process.env.VOICE_STT_PROVIDER ?? "whisper-cpp") as "whisper-cpp" | "openai",
+  voiceTtsProvider: (process.env.VOICE_TTS_PROVIDER ?? "piper") as "piper" | "openai",
+  openaiAudioUrl: (process.env.OPENAI_AUDIO_URL ?? "https://api.openai.com").replace(/\/$/, ""),
 };
 
 export function assertConfig() {

@@ -16,6 +16,7 @@ import { ModelsSection } from "./Reliability";
 import { ProfileSection } from "./ProfileSection";
 import { MemorySettingsSection, RulesSection } from "./Wave5";
 import { JournalView, PageVisibility, SpendSettingsBlock } from "./Wave5b";
+import { MailSection, VoiceSection, WorkspacesSection } from "./Wave6";
 
 const SECTIONS: { id: AppSection; icon: IconName }[] = [
   { id: "general", icon: "settings" },
@@ -34,6 +35,9 @@ const SECTIONS: { id: AppSection; icon: IconName }[] = [
   { id: "checkins", icon: "bell" },
   { id: "activity", icon: "history" },
   { id: "team", icon: "users" },
+  { id: "workspaces", icon: "users" },
+  { id: "voice", icon: "mic" },
+  { id: "email", icon: "mail" },
   { id: "account", icon: "user" },
 ];
 
@@ -1141,6 +1145,9 @@ export function AppSettings({ section }: { section: AppSection }) {
           {section === "pages" && <PagesSection />}
           {section === "activity" && <ActivitySection />}
           {section === "team" && <TeamSection />}
+          {section === "workspaces" && <WorkspacesSection />}
+          {section === "voice" && <VoiceSection />}
+          {section === "email" && <MailSection />}
           {section === "usage" && <UsageSection />}
           {section === "checkins" && <CheckinsSection />}
           {section === "account" && <AccountSection />}

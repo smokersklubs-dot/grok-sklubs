@@ -339,6 +339,60 @@ function CREATE_EXTRA() {
     bot_id TEXT, text TEXT NOT NULL, before TEXT, snapshot TEXT NOT NULL DEFAULT '{}', quote TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL, undone_at INTEGER
   );
   CREATE INDEX IF NOT EXISTS rule_changes_user ON rule_changes(user_id, created_at);`);
+  // Wave 6. Workspaces (bots shared among several people, roles), the bots' own email addresses, server-mediated voice.
+  db.exec(`
+  CREATE TABLE IF NOT EXISTS workspaces (
+    id TEXT PRIMARY KEY, name TEXT NOT NULL, owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    seats INTEGER NOT NULL DEFAULT 10, created_at INTEGER NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS workspace_members (
+    workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    role TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY (workspace_id, user_id)
+  );
+  CREATE INDEX IF NOT EXISTS workspace_members_user ON workspace_members(user_id);
+  -- An invitation by email link: only a hash of the token is kept; single use, expires.
+  CREATE TABLE IF NOT EXISTS workspace_invites (
+    id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE, email TEXT NOT NULL COLLATE NOCASE,
+    role TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE, created_by TEXT NOT NULL, expires_at INTEGER NOT NULL, used_at INTEGER, created_at INTEGER NOT NULL
+  );
+  -- One of a user's bots shared to a workspace. members: JSON list of user ids when access = 'list'.
+  CREATE TABLE IF NOT EXISTS bot_shares (
+    bot_id TEXT PRIMARY KEY REFERENCES bots(id) ON DELETE CASCADE, workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    access TEXT NOT NULL DEFAULT 'all', members TEXT NOT NULL DEFAULT '[]', approvals TEXT NOT NULL DEFAULT 'owner', created_at INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS bot_shares_ws ON bot_shares(workspace_id);
+  -- Vault items and connectors a member shared to the workspace (names only travel; values stay sealed with their owner).
+  CREATE TABLE IF NOT EXISTS workspace_resources (
+    workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE, kind TEXT NOT NULL, resource_id TEXT NOT NULL,
+    shared_by TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, created_at INTEGER NOT NULL, PRIMARY KEY (workspace_id, kind, resource_id)
+  );
+  -- Per-member record of what was done in the workspace. A record: lines are added, never changed.
+  CREATE TABLE IF NOT EXISTS workspace_audit (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE, at INTEGER NOT NULL,
+    actor_id TEXT NOT NULL, actor_name TEXT NOT NULL, kind TEXT NOT NULL, text TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS workspace_audit_ws ON workspace_audit(workspace_id, id);
+  CREATE TRIGGER IF NOT EXISTS workspace_audit_no_update BEFORE UPDATE ON workspace_audit BEGIN SELECT RAISE(ABORT, 'the workspace log cannot be edited'); END;
+  -- A bot's own address (<local>@MAIL_DOMAIN). allowed: JSON list of addresses or @domains; empty = anyone.
+  CREATE TABLE IF NOT EXISTS bot_email (
+    bot_id TEXT PRIMARY KEY REFERENCES bots(id) ON DELETE CASCADE, local_part TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    enabled INTEGER NOT NULL DEFAULT 1, allowed TEXT NOT NULL DEFAULT '[]', auto_reply INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS inbound_mail (
+    id TEXT PRIMARY KEY, bot_id TEXT NOT NULL REFERENCES bots(id) ON DELETE CASCADE, from_addr TEXT NOT NULL, to_addr TEXT NOT NULL,
+    subject TEXT NOT NULL DEFAULT '', message_id TEXT, refs TEXT NOT NULL DEFAULT '', text TEXT NOT NULL DEFAULT '', spf TEXT NOT NULL DEFAULT 'none',
+    dkim TEXT NOT NULL DEFAULT 'none', dmarc TEXT NOT NULL DEFAULT 'none', spam REAL NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT 'delivered',
+    reason TEXT NOT NULL DEFAULT '', size INTEGER NOT NULL DEFAULT 0, ip TEXT NOT NULL DEFAULT '', card_seq INTEGER, generation INTEGER, received_at INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS inbound_mail_bot ON inbound_mail(bot_id, received_at);
+  -- The user's SMTP relay for outgoing mail; password and DKIM private key sealed.
+  CREATE TABLE IF NOT EXISTS mail_relays (
+    user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, host TEXT NOT NULL, port INTEGER NOT NULL, secure INTEGER NOT NULL DEFAULT 0,
+    username TEXT NOT NULL DEFAULT '', pass_enc TEXT, from_domain TEXT NOT NULL DEFAULT '', dkim_selector TEXT NOT NULL DEFAULT '', dkim_key_enc TEXT, updated_at INTEGER NOT NULL
+  );`);
+  // Voice settings of the account (JSON; API keys sealed inside), and who started the turn a usage line belongs to.
+  add("settings", "voice", "TEXT NOT NULL DEFAULT '{}'");
+  add("usage", "actor_id", "TEXT");
   db.exec(`
   -- What a task spent since the user last spoke to it (worker bot + scope key: chat:<thread>, task:<id>, routine:<run>),
   -- and the checkpoint it stops at (NULL: the bot's or the account's setting).

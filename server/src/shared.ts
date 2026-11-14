@@ -74,7 +74,7 @@ export interface Grant { by: "words" | "reviewer" | "approval" | "retry"; quote?
  * the user's words that asked for it in `quote`.
  */
 export interface Rule { id: string; botId: string | null; text: string; enabled: boolean; createdAt: number; routineId: string | null; trigger: RuleTrigger | null; source: "user" | "chat"; quote: string }
-export const RULE_TRIGGERS = ["cron", "once", "webhook", "watch", "email", "slack", "calendar"] as const;
+export const RULE_TRIGGERS = ["cron", "once", "webhook", "watch", "email", "slack", "calendar", "botmail"] as const;
 export type RuleTrigger = (typeof RULE_TRIGGERS)[number];
 /** A change a bot made to the rules from the chat (approved by the user), undoable in one click. */
 export interface RuleChange { id: string; action: "add" | "change" | "remove"; ruleId: string; botId: string | null; text: string; before: string | null; quote: string; createdAt: number; undoneAt: number | null }
@@ -189,6 +189,13 @@ export interface Bot {
   spendCheckpointUsd: number | null;
   /** The bot that created this one with bot_create (null: created by the user). */
   createdBy: string | null;
+  /**
+   * Wave 6. Set only for a bot someone else owns and shares with you through a workspace: who owns it and what your role
+   * lets you do with it. Absent for your own bots (personal mode is unchanged).
+   */
+  access?: SharedAccess;
+  /** Wave 6: the workspace this bot (one of yours) is shared to, if any. */
+  sharing?: BotShare | null;
   generation: number;
   unread: number;
   memberIds: string[];
@@ -225,7 +232,12 @@ export interface Live {
 }
 
 /** `nudge`: the user pressed "Do it" on a nudge (the words come from a preparation pass, so they never authorise anything). */
-export interface Origin { kind: "bot" | "routine" | "voice" | "webhook" | "nudge"; id: string; name: string }
+/**
+ * `member` (wave 6): a person of a workspace the bot is shared with wrote it (`id`: their user id). Their words are never
+ * the owner's: they do not authorise actions (grounding ignores them) and the turn they start is careful from its first
+ * step. `email`: a mail received at the bot's own address (outside content).
+ */
+export interface Origin { kind: "bot" | "routine" | "voice" | "webhook" | "nudge" | "member" | "email"; id: string; name: string }
 
 /** The small set of reactions anyone (the user or a bot) can put under a message. */
 export const REACTIONS = ["👍", "❤️", "😂", "🎉", "🤔", "👀", "🙏", "👎"] as const;
@@ -292,6 +304,8 @@ export type Card =
   /** An API connector the bot proposed (api_connector_propose): the user reviews it, gives the token if needed, and approves. */
   /** The user said something that contradicts a note (wave 5b): which is right? "old" keeps the note, "new" replaces it. */
   | { type: "memory"; memoryId: string; oldText: string; newText: string; quote: string; status: "pending" | "kept" | "replaced" }
+  /** Wave 6: a mail received at the bot's own address. `held`: kept out of the bot's reach (sender not allowed, failed DMARC, spam). */
+  | { type: "mail"; mailId: string; from: string; subject: string; snippet: string; auth: MailAuth; spam: number; status: "delivered" | "held" | "released" | "replied" }
   | { type: "apiconnector"; connectorId: string; name: string; baseUrl: string; host: string; secret: string; secretSaved: boolean; endpoints: ApiEndpoint[]; status: "pending" | "approved" | "dismissed" };
 
 /** Why a bot hands its screen to the user. */
@@ -353,7 +367,7 @@ export interface Routine {
    * "cron" uses `schedule` (5 fields) and `timezone`; "webhook" fires on POST to `hookUrl`; "once" fires at `runAt`; "watch" fires when `watch.target` changes.
    * "email" / "slack" / "calendar" fire once per new item of a built-in app account (see `native`).
    */
-  trigger: "cron" | "webhook" | "once" | "watch" | NativeTrigger;
+  trigger: "cron" | "webhook" | "once" | "watch" | NativeTrigger | "botmail";
   watch: { kind: "url" | "file"; target: string; everyMin: number; lastCheckedAt: number | null } | null;
   /**
    * Built-in app triggers. email: a new message matching `query`; slack: a new message in `channel` ("@dm" = direct
@@ -610,6 +624,59 @@ export interface RelayDevice {
 /** Where to get the relay app: built files served by this server under /download/, else the project's releases page. */
 export interface RelayDownloads { files: { name: string; url: string; platform: "windows" | "mac" | "linux"; size: number }[]; releasesUrl: string }
 
+// ── Wave 6 ──────────────────────────────────────────────────────────────────
+/**
+ * Workspace roles. owner: everything, including admins, seats and deleting the workspace; admin: members below admin,
+ * every shared bot (talk, limited settings, approvals when the bot's rule allows), shared resources, usage, export;
+ * member: talk to the shared bots on their list and read those conversations; viewer: read those conversations only.
+ */
+export const WORKSPACE_ROLES = ["owner", "admin", "member", "viewer"] as const;
+export type WorkspaceRole = (typeof WORKSPACE_ROLES)[number];
+/** What each role may do. The server checks these on every route; the web app only uses them to hide buttons. */
+export const ROLE_PERMISSIONS: Record<WorkspaceRole, { view: boolean; talk: boolean; allBots: boolean; botSettings: boolean; approve: boolean; manageMembers: boolean; manageAdmins: boolean; resources: boolean; usage: boolean; export: boolean; deleteWorkspace: boolean }> = {
+  owner: { view: true, talk: true, allBots: true, botSettings: true, approve: true, manageMembers: true, manageAdmins: true, resources: true, usage: true, export: true, deleteWorkspace: true },
+  admin: { view: true, talk: true, allBots: true, botSettings: true, approve: true, manageMembers: true, manageAdmins: false, resources: true, usage: true, export: true, deleteWorkspace: false },
+  member: { view: true, talk: true, allBots: false, botSettings: false, approve: false, manageMembers: false, manageAdmins: false, resources: false, usage: false, export: false, deleteWorkspace: false },
+  viewer: { view: true, talk: false, allBots: false, botSettings: false, approve: false, manageMembers: false, manageAdmins: false, resources: false, usage: false, export: false, deleteWorkspace: false },
+};
+export interface Workspace { id: string; name: string; ownerId: string; seats: number; role: WorkspaceRole; memberCount: number; createdAt: number }
+export interface WorkspaceMember { userId: string; name: string; email: string; role: WorkspaceRole; joinedAt: number }
+export interface WorkspaceInvite { id: string; email: string; role: Exclude<WorkspaceRole, "owner">; expiresAt: number; createdAt: number; usedAt: number | null; /** Only in the answer that created it: the single-use link. */ link?: string }
+/** Who may answer an approval card of a shared bot: its owner only, or its owner and the workspace's admins. */
+export type ApprovalRule = "owner" | "owner_or_admins";
+/** One of your bots shared to a workspace. access "all": every member; "list": only `memberIds` (admins always). */
+export interface BotShare { workspaceId: string; workspaceName: string; access: "all" | "list"; memberIds: string[]; approvals: ApprovalRule }
+/** What you may do with a bot someone shared with you. */
+export interface SharedAccess { workspaceId: string; workspaceName: string; ownerName: string; role: WorkspaceRole; canTalk: boolean; canManage: boolean; canApprove: boolean }
+export interface WorkspaceResource { kind: "vault" | "connector"; id: string; name: string; sharedBy: string; sharedByName: string; createdAt: number }
+export interface WorkspaceAuditEntry { id: number; at: number; actorId: string; actorName: string; kind: string; text: string }
+export interface MemberUsage { userId: string; name: string; role: WorkspaceRole; messages: number; costUsd: number; approvals: number; lastActiveAt: number | null }
+export interface WorkspaceAdmin { workspace: Workspace; members: WorkspaceMember[]; invites: WorkspaceInvite[]; usage: MemberUsage[]; bots: { id: string; name: string; ownerName: string; share: BotShare }[]; resources: WorkspaceResource[]; audit: WorkspaceAuditEntry[] }
+
+/** SPF / DKIM / DMARC results of a received mail, as mailauth reported them ("pass", "fail", "none", "softfail"…). */
+export interface MailAuth { spf: string; dkim: string; dmarc: string }
+/** A bot's own email address (self-hosted inbound mail). */
+export interface BotEmail { address: string | null; domain: string | null; enabled: boolean; allowedSenders: string[]; autoReply: boolean; receiving: boolean }
+export interface InboundMail { id: string; botId: string; from: string; to: string; subject: string; text: string; auth: MailAuth; spam: number; status: "delivered" | "held" | "released" | "replied"; reason: string; size: number; receivedAt: number }
+/** The user's SMTP relay for the bots' outgoing mail. The password and DKIM key are sealed, never returned. */
+export interface MailRelay { host: string; port: number; secure: boolean; username: string; hasPassword: boolean; fromDomain: string; dkimSelector: string; hasDkimKey: boolean }
+
+/** Server-mediated voice (wave 6). "browser": the browser's own speech recognition and synthesis (the old mode). */
+export const STT_PROVIDERS = ["whisper-cpp", "openai"] as const;
+export const TTS_PROVIDERS = ["piper", "openai"] as const;
+export type SttProvider = (typeof STT_PROVIDERS)[number];
+export type TtsProvider = (typeof TTS_PROVIDERS)[number];
+/** `url`: the service's base address ("" = the server's own setting); `hasKey`: an API key is saved (sealed) for it. */
+export interface VoiceSettings {
+  mode: "auto" | "server" | "browser";
+  stt: { provider: SttProvider; url: string; model: string; language: string; hasKey: boolean };
+  tts: { provider: TtsProvider; url: string; model: string; voice: string; hasKey: boolean };
+  /** Barge-in sensitivity: how loud (0-1 scale) and how long (ms) the user must speak to cut the bot off. */
+  bargeIn: { enabled: boolean; minSpeechMs: number };
+}
+/** What a call will use: "server" when speech-to-text and text-to-speech are both reachable, else "browser". */
+export interface VoiceStatus { mode: "server" | "browser"; stt: string | null; tts: string | null; reason: string }
+
 /** Server → browser events on GET /api/events (one JSON object per SSE message). */
 export type ServerEvent =
   | { type: "hello"; now: number }
@@ -645,4 +712,8 @@ export type ServerEvent =
   /** Memory settings (sensitive topics, writing style) changed. */
   | { type: "memorySettings" }
   /** API connectors created on demand changed. */
-  | { type: "apiConnectors" };
+  | { type: "apiConnectors" }
+  /** Wave 6: your workspaces, their members or shared bots changed. */
+  | { type: "workspaces" }
+  /** Wave 6: a bot's mailbox changed (a mail arrived, was released…). */
+  | { type: "mail"; botId: string };

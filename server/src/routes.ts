@@ -33,6 +33,7 @@ import { REACTIONS, type CheckinSettings, type ReactionEmoji, type ServerEvent, 
 import { videoService } from "./video.js";
 import { higgsfieldFor } from "./agent/tools.js";
 import { dropRecording, noteInput, recording, retryRecording, saveRecording, startRecording, stopRecording } from "./teach.js";
+import { approvals } from "./store.js";
 import { account, audit, auditList, bots, clip, feedback, history, memories, pages, policies, publicBot, publicVault, rows, searchMessages, sections, settings, sha256, skills, tasks, users, vault, type BotRecord, type UserRecord, type VaultFields } from "./store.js";
 import { finishTakeover, holdControl, releaseControl } from "./takeover.js";
 import { deskRun, deskShot, startDeskTest } from "./desktest.js";
@@ -63,6 +64,12 @@ import { payments, sealCard } from "./agent/payments.js";
 import { apiConnectors, approveConnector } from "./apiconnectors.js";
 import { firstTaskIdeas } from "./ideas.js";
 import { guideIndex } from "./agent/guides.js";
+import { callEnded, callStarted } from "./calls.js";
+import { saveVoiceSettings, sttFor, ttsFor, voiceSettings, voiceStatus } from "./voice/providers.js";
+import { adminView, approversOf, botAccess, exportWorkspace, invites, resources, SHARED_SETTINGS, sharedBotsFor, sharedBotView, shares, workspaces, WorkspaceError, wsAudit, type BotAccess } from "./workspaces.js";
+import { invalidateAudience } from "./bus.js";
+import { botEmail, mailFor, MailError, receiving as mailReceiving, relays, releaseMail } from "./botmail.js";
+import { onTurnEvent, submitMemberMessage } from "./agent/loop.js";
 
 type Env = { Variables: { user: UserRecord } };
 export const api = new Hono<Env>();
@@ -72,6 +79,8 @@ const fail = (status: HttpError["status"], message: string): never => { throw ne
 
 api.onError((err, c) => {
   if (err instanceof HttpError) return c.json({ error: err.message }, err.status);
+  if (err instanceof WorkspaceError) return c.json({ error: err.message }, err.status);
+  if (err instanceof MailError) return c.json({ error: err.message }, 400);
   // MAX_BOTS reached: a clear refusal, never a silent eviction.
   if (err instanceof TeamFullError) {
     const loc = (c.get("user") as UserRecord | undefined)?.locale ?? pickLocale(undefined, c.req.header("accept-language"));
@@ -88,6 +97,28 @@ const body = async (c: Context): Promise<Record<string, any>> => {
 const publicUser = (u: UserRecord) => ({ id: u.id, email: u.email, name: u.name, locale: u.locale });
 const ownBot = (c: Context<Env>, id = c.req.param("id")): BotRecord => bots.owned(c.get("user").id, id ?? "") ?? fail(404, "That bot does not exist.");
 const ownAgent = (c: Context<Env>): BotRecord => { const b = ownBot(c); return b.kind === "agent" ? b : fail(400, "A group chat cannot do that."); };
+/**
+ * Wave 6: a bot the caller owns, or one shared with them through a workspace, if their role allows `need`. No access at
+ * all is a 404 (the bot's existence is not confirmed); access without the needed right is a 403. Every route that is
+ * not written with this helper stays owner-only (ownBot).
+ */
+const accessBot = (c: Context<Env>, need: "view" | "talk" | "manage", id = c.req.param("id")): BotAccess => {
+  const a = botAccess(c.get("user").id, id ?? "") ?? fail(404, "That bot does not exist.");
+  const ok = need === "view" ? a.canView : need === "talk" ? a.canTalk : a.canManage;
+  return ok ? a : fail(403, "Your role in this workspace does not allow that.");
+};
+/** A user's own bot as the app sees it, with the workspace it is shared to (wave 6). */
+const ownBotView = (b: BotRecord) => ({ ...publicBot(b), sharing: b.kind === "agent" ? shares.of(b.id) : null });
+/** After a change of members or shares: who sees what is looked up again, and the people concerned refresh. */
+function workspaceChanged(userIds: string[]) {
+  invalidateAudience();
+  for (const u of new Set(userIds)) { emit(u, { type: "workspaces" }); emit(u, { type: "roster" }); }
+}
+// An approval of a shared bot is also pushed to the workspace's admins when the bot's rule lets them answer it.
+onTurnEvent((e) => {
+  if (e.type !== "waiting" || !e.approvalId) return;
+  for (const u of approversOf(e.bot.id)) if (u !== e.bot.userId) void sendPush(u, { kind: "needs", title: e.bot.name, body: e.text, botId: e.bot.id }).catch(() => {});
+});
 
 function startSession(c: Context, userId: string) {
   const s = createSession(userId);
@@ -183,9 +214,12 @@ export function firstBotIdentity(locale: "fr" | "en", name?: unknown, label?: un
 }
 
 api.post("/auth/signup", async (c) => {
-  if (!signupOpen()) fail(403, "New accounts are closed on this server.");
-  throttle(`signup:${clientIp(c)}`, 20);
   const b = await body(c);
+  // Wave 6: a workspace invitation lets its addressee create an account even when new accounts are closed.
+  const invite = typeof b.invite === "string" && b.invite ? invites.peek(b.invite) : null;
+  const invited = !!invite && invite.email.toLowerCase() === String(b.email ?? "").trim().toLowerCase();
+  if (!signupOpen() && !invited) fail(403, "New accounts are closed on this server.");
+  throttle(`signup:${clientIp(c)}`, 20);
   // A fresh install waits for its owner: the first account needs the code the installer printed.
   if (setupCodeRequired() && !setupCodeMatches(String(b.setupCode ?? ""))) fail(403, "The setup code is missing or wrong. It was shown at the end of the installation, and is in the server's .env file (SKLUBOT_SETUP_CODE).");
   const email = String(b.email ?? "").trim();
@@ -193,7 +227,7 @@ api.post("/auth/signup", async (c) => {
   if (!/^[^@\s]+@[^@\s]+$/.test(email)) fail(400, "Enter a valid email address.");
   if (password.length < 8) fail(400, "Choose a password of at least 8 characters.");
   if (users.byEmail(email)) fail(409, "An account with this email already exists.");
-  if (config.allowedEmails.length && !config.allowedEmails.includes(email.toLowerCase())) fail(403, "This address is not allowed to create an account on this server.");
+  if (config.allowedEmails.length && !config.allowedEmails.includes(email.toLowerCase()) && !invited) fail(403, "This address is not allowed to create an account on this server.");
   const locale = pickLocale(b.locale, c.req.header("accept-language"));
   // The account's first bot needs a place in the team (MAX_BOTS): checked before anything is created.
   bots.assertRoom();
@@ -205,8 +239,15 @@ api.post("/auth/signup", async (c) => {
     name: first.name, label: first.label, primary: true, shape: "pebble", color: "indigo",
     description: tr(locale, "Your main point of contact. Keeps track of what is open, checks in when something needs you, and coordinates the other bots."),
   });
+  if (invited) { try { invites.accept(String(b.invite), user.id); invalidateAudience(); } catch { /* used or expired meanwhile: the account stays */ } }
   startSession(c, user.id);
   return c.json({ user: publicUser(user) });
+});
+
+/** What an invitation link is for, shown before signing in or up (no session needed; nothing is revealed for a bad link). */
+api.get("/invites/:token", (c) => {
+  const info = invites.peek(c.req.param("token"));
+  return info ? c.json({ invite: info }) : c.json({ error: "This invitation has expired or was already used. Ask for a new one." }, 404);
 });
 
 api.post("/auth/login", async (c) => {
@@ -363,7 +404,12 @@ api.get("/models", (c) => c.json({
 // ── Bots ─────────────────────────────────────────────────────────────────────
 api.get("/bots", (c) => {
   const list = bots.list(c.get("user").id);
-  return c.json({ bots: list.map(publicBot), live: Object.fromEntries(list.map((b) => [b.id, getLive(b.id)])) });
+  // Wave 6: bots others share with this user through a workspace come after their own, marked with what they may do.
+  const shared = sharedBotsFor(c.get("user").id);
+  return c.json({
+    bots: [...list.map(ownBotView), ...shared.map(sharedBotView)],
+    live: Object.fromEntries([...list.map((b) => [b.id, getLive(b.id)]), ...shared.map((a) => [a.bot.id, getLive(a.bot.id)])]),
+  });
 });
 
 api.post("/bots", async (c) => {
@@ -375,13 +421,20 @@ api.post("/bots", async (c) => {
 });
 
 api.patch("/bots/:id", async (c) => {
-  const bot = ownBot(c);
-  const patch = await body(c);
+  const a = accessBot(c, "manage");
+  const bot = a.bot;
+  let patch = await body(c);
+  // An admin of the workspace changes only the bot's identity and instructions — never its model, autonomy, tools or budget.
+  if (!a.owner) {
+    patch = Object.fromEntries(Object.entries(patch).filter(([k]) => (SHARED_SETTINGS as readonly string[]).includes(k)));
+    wsAudit(a.share!.workspaceId, c.get("user").id, "settings", `${bot.name}: ${Object.keys(patch).join(", ") || "nothing"} changed`);
+  }
   bots.patch(bot.id, patch);
   bots.announce(bot);
   // A new name, role, shape or colour shows on the bot's computer (only if it has one: U-005).
   if (["name", "label", "color", "shape", "character"].some((k) => patch[k] !== undefined)) void screen.redress(bot.id).catch(() => {});
-  return c.json({ bot: publicBot(bots.byId(bot.id)!) });
+  if (!a.owner) return c.json({ bot: sharedBotView(botAccess(c.get("user").id, bot.id)!) });
+  return c.json({ bot: ownBotView(bots.byId(bot.id)!) });
 });
 
 api.delete("/bots/:id", async (c) => {
@@ -401,6 +454,8 @@ api.post("/bots/:id/primary", (c) => {
 });
 
 api.post("/bots/:id/read", (c) => {
+  // The unread mark is the owner's: someone of the workspace opening the chat leaves it as it is.
+  if (!accessBot(c, "view").owner) return c.json({ ok: true });
   const bot = ownBot(c);
   bots.setUnread(bot.id, 0);
   bots.announce(bot);
@@ -457,12 +512,30 @@ api.delete("/sections/:id", (c) => {
 
 // ── Conversation ─────────────────────────────────────────────────────────────
 api.get("/bots/:id/rows", (c) => {
-  const bot = ownBot(c);
+  const bot = accessBot(c, "view").bot;
   const before = Number(c.req.query("before")) || undefined;
   // ?thread=<seq>: the replies of the thread on that message instead of the main chat.
   const thread = Math.max(0, Number(c.req.query("thread")) || 0);
   return c.json({ generation: bot.generation, thread, rows: rows.list(bot.id, bot.generation, Number(c.req.query("limit")) || 200, before, thread) });
 });
+
+/**
+ * Wave 6: someone of the workspace writes to a bot they do not own. Text only (the owner's library is not theirs to
+ * attach to), marked as theirs (origin "member": never the owner's words), and it starts its own careful turn.
+ */
+async function memberMessage(c: Context<Env>, access: BotAccess, b: Record<string, any>) {
+  const bot = access.bot;
+  const user = c.get("user");
+  const text = String(b.text ?? "").trim();
+  if (!text) fail(400, "Write a message first.");
+  if (text.length > 20_000) fail(413, "That message is too long.");
+  throttle(`member-msg:${user.id}:${bot.id}`, 60);
+  const thread = threadParent(bot, b.thread);
+  const voice = b.origin === "voice";
+  const row = rows.append(bot, { kind: "message", role: "user", text, origin: { kind: "member", id: user.id, name: user.name } }, thread);
+  submitMemberMessage(bot, text, { id: user.id, name: user.name, role: access.role!, workspace: access.share!.workspaceName }, voice, thread);
+  return c.json({ row });
+}
 
 /** The message of the current conversation a thread hangs on: a message of the main chat. */
 function threadParent(bot: BotRecord, raw: unknown): number {
@@ -499,8 +572,10 @@ api.post("/bots/:id/rows/:seq/reactions", async (c) => {
 });
 
 api.post("/bots/:id/messages", async (c) => {
-  const bot = ownBot(c);
+  const access = accessBot(c, "talk");
   const b = await body(c);
+  if (!access.owner) return memberMessage(c, access, b);
+  const bot = access.bot;
   const text = String(b.text ?? "").trim();
   // Only files this bot already holds under uploads/ can be attached; anything else is ignored.
   const attachments = (Array.isArray(b.attachments) ? b.attachments : []).slice(0, 10)
@@ -601,7 +676,17 @@ api.post("/bots/:id/reset", (c) => {
 api.post("/approvals/:approvalId", async (c) => {
   const decision = (await body(c)).decision;
   if (!["allow", "always", "deny"].includes(decision)) fail(400, "Unknown decision.");
-  if (!decideApproval(c.get("user").id, c.req.param("approvalId"), decision)) fail(404, "That request no longer exists.");
+  const user = c.get("user");
+  const approval = approvals.byId(c.req.param("approvalId"));
+  // Wave 6: an admin of the workspace answers for the owner of a shared bot, when the bot's rule allows it.
+  if (approval && approval.userId !== user.id) {
+    const a = botAccess(user.id, approval.botId);
+    if (!a || !a.canApprove) fail(404, "That request no longer exists.");
+    if (!decideApproval(approval.userId, approval.id, decision, { id: user.id, name: user.name })) fail(404, "That request no longer exists.");
+    wsAudit(a!.share!.workspaceId, user.id, "approval", `${a!.bot.name}: ${approval.tool} — ${decision === "deny" ? "refused" : "allowed once"}`);
+    return c.json({ ok: true });
+  }
+  if (!decideApproval(user.id, c.req.param("approvalId"), decision)) fail(404, "That request no longer exists.");
   return c.json({ ok: true });
 });
 
@@ -802,38 +887,15 @@ api.get("/tasks", (c) => c.json({ tasks: tasks.forUser(c.get("user").id) }));
 api.get("/bots/:id/tasks", (c) => c.json({ tasks: tasks.forBot(ownBot(c).id) }));
 
 // ── Voice calls, search, earlier conversations ───────────────────────────────
-const calls = new Map<string, { botId: string; startedAt: number }>();
 api.post("/bots/:id/calls", (c) => {
-  const bot = ownAgent(c);
-  const callId = `call_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
-  calls.set(callId, { botId: bot.id, startedAt: Date.now() });
-  rows.append(bot, { kind: "event", event: "call", text: tr(c.get("user").locale, "Voice call with {bot} started", { bot: bot.name }), call: { id: callId, phase: "started" } });
-  return c.json({ callId });
+  const bot = accessBot(c, "talk").bot;
+  if (bot.kind !== "agent") fail(400, "A group chat cannot do that.");
+  return c.json({ callId: callStarted(bot, c.get("user").locale) });
 });
 api.post("/bots/:id/calls/:callId/end", async (c) => {
-  const bot = ownAgent(c);
-  const callId = c.req.param("callId");
-  const live = calls.get(callId);
-  if (!live || live.botId !== bot.id) return c.json({ ok: true, duplicate: true });
-  calls.delete(callId);
-  const b = await body(c);
-  const transcript = (Array.isArray(b.transcript) ? b.transcript : [])
-    .filter((l: any) => l && (l.role === "user" || l.role === "assistant") && typeof l.text === "string" && l.text.trim())
-    .slice(-200).map((l: any) => ({ role: l.role as "user" | "assistant", text: clip(l.text.trim(), 2000) }));
-  const durationMs = Math.max(1000, Date.now() - live.startedAt);
-  const secs = Math.round(durationMs / 1000);
-  const duration = secs < 60 ? `${secs} s` : `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")}`;
-  const locale = c.get("user").locale;
-  const base = tr(locale, "Voice call ended · {duration}", { duration });
-  const record = { id: callId, phase: "ended" as const, durationMs, transcript };
-  const row = rows.append(bot, { kind: "event", event: "call", text: base, call: record });
-  // A one-line summary is added to the row a moment later; the call is already recorded without it.
-  if (transcript.length)
-    void ask(bot, "You summarise voice calls between a user and their AI teammate.",
-      `Write ONE sentence, past tense, third person, at most 25 words, in ${locale === "fr" ? "French" : "English"}, saying what the call was about and what was agreed.\n\n${transcript.map((l: { role: string; text: string }) => `${l.role === "user" ? "User" : bot.name}: ${l.text}`).join("\n").slice(-12_000)}`)
-      .then((summary) => { if (summary) rows.rewrite(bot, row.generation, row.seq, { kind: "event", event: "call", text: base, call: { ...record, summary: clip(summary.replace(/\s+/g, " "), 240) } }); })
-      .catch(() => {});
-  return c.json({ ok: true });
+  const bot = accessBot(c, "talk").bot;
+  const done = callEnded(bot, c.req.param("callId"), (await body(c)).transcript, c.get("user").locale);
+  return c.json(done ? { ok: true } : { ok: true, duplicate: true });
 });
 
 api.get("/search", (c) => {
@@ -1843,4 +1905,149 @@ api.post("/memory-settings/style/learn", async (c) => {
     emit(user.id, { type: "memorySettings" });
     return c.json({ settings: settings.memory(user.id), source: r.source, samples: r.samples });
   } catch (err) { return fail(502, (err as Error).message); }
+});
+
+// ── Wave 6: workspaces, roles, shared bots ───────────────────────────────────
+api.get("/workspaces", (c) => c.json({ workspaces: workspaces.listFor(c.get("user").id) }));
+api.post("/workspaces", async (c) => {
+  const user = c.get("user");
+  const ws = workspaces.create(user.id, String((await body(c)).name ?? ""));
+  workspaceChanged([user.id]);
+  return c.json({ workspace: ws });
+});
+api.patch("/workspaces/:wid", async (c) => {
+  const ws = workspaces.update(c.req.param("wid"), c.get("user").id, await body(c));
+  workspaceChanged(workspaces.memberIds(ws.id));
+  return c.json({ workspace: ws });
+});
+api.delete("/workspaces/:wid", (c) => {
+  const members = workspaces.remove(c.req.param("wid"), c.get("user").id);
+  workspaceChanged(members);
+  return c.json({ ok: true });
+});
+/** Who is in the workspace (any member may see the list: it is who they share bots with). */
+api.get("/workspaces/:wid/members", (c) => {
+  const user = c.get("user");
+  workspaces.listFor(user.id).find((w) => w.id === c.req.param("wid")) ?? fail(404, "That workspace does not exist.");
+  return c.json({ members: workspaces.members(c.req.param("wid")) });
+});
+api.put("/workspaces/:wid/members/:uid", async (c) => {
+  const wid = c.req.param("wid");
+  workspaces.setRole(wid, c.get("user").id, c.req.param("uid"), (await body(c)).role);
+  workspaceChanged(workspaces.memberIds(wid));
+  return c.json({ members: workspaces.members(wid) });
+});
+/** Removes someone (or leaves, for yourself). ?purge=1: also deletes what they wrote in the workspace's shared bots. */
+api.delete("/workspaces/:wid/members/:uid", (c) => {
+  const wid = c.req.param("wid");
+  const target = c.req.param("uid");
+  const before = workspaces.memberIds(wid);
+  workspaces.removeMember(wid, c.get("user").id, target, c.req.query("purge") === "1");
+  workspaceChanged(before.includes(target) ? before : [...before, target]);
+  return c.json({ ok: true });
+});
+api.post("/workspaces/:wid/invites", async (c) => {
+  const b = await body(c);
+  const invite = invites.create(c.req.param("wid"), c.get("user").id, b.email, b.role);
+  emit(c.get("user").id, { type: "workspaces" });
+  return c.json({ invite });
+});
+api.delete("/workspaces/:wid/invites/:iid", (c) => {
+  invites.revoke(c.req.param("wid"), c.get("user").id, c.req.param("iid"));
+  return c.json({ ok: true });
+});
+api.post("/invites/accept", async (c) => {
+  const user = c.get("user");
+  throttle(`invite:${user.id}`, 10);
+  const ws = invites.accept(String((await body(c)).token ?? ""), user.id);
+  workspaceChanged(workspaces.memberIds(ws.id));
+  return c.json({ workspace: ws });
+});
+api.get("/workspaces/:wid/admin", (c) => c.json(adminView(c.req.param("wid"), c.get("user").id)));
+api.get("/workspaces/:wid/export", (c) => {
+  const data = exportWorkspace(c.req.param("wid"), c.get("user").id);
+  return c.body(JSON.stringify(data, null, 2), 200, { "content-type": "application/json; charset=utf-8", "content-disposition": `attachment; filename="workspace-${c.req.param("wid")}.json"`, "cache-control": "no-store" });
+});
+api.post("/workspaces/:wid/resources", async (c) => {
+  const b = await body(c);
+  resources.share(c.req.param("wid"), c.get("user").id, b.kind, b.id);
+  return c.json({ resources: resources.list(c.req.param("wid")) });
+});
+api.delete("/workspaces/:wid/resources/:kind/:rid", (c) => {
+  resources.unshare(c.req.param("wid"), c.get("user").id, c.req.param("kind"), c.req.param("rid"));
+  return c.json({ resources: resources.list(c.req.param("wid")) });
+});
+/** The owner shares one of their bots to a workspace (everyone, or a list of members) and picks who answers its approvals. */
+api.put("/bots/:id/share", async (c) => {
+  const bot = ownAgent(c);
+  const before = shares.of(bot.id);
+  const share = shares.set(bot, c.get("user").id, await body(c));
+  workspaceChanged([...workspaces.memberIds(share.workspaceId), ...(before ? workspaces.memberIds(before.workspaceId) : [])]);
+  return c.json({ share });
+});
+api.delete("/bots/:id/share", (c) => {
+  const bot = ownAgent(c);
+  const before = shares.of(bot.id);
+  shares.clear(bot, c.get("user").id);
+  if (before) workspaceChanged(workspaces.memberIds(before.workspaceId));
+  return c.json({ ok: true });
+});
+
+// ── Wave 6: the bots' own email addresses ────────────────────────────────────
+/** Whether this server receives mail, for which domain, and the account's relay (secrets never returned). */
+api.get("/mail", (c) => c.json({ domain: config.mailDomain || null, receiving: mailReceiving(), relay: relays.get(c.get("user").id) }));
+api.put("/mail/relay", async (c) => c.json({ relay: relays.set(c.get("user").id, await body(c)) }));
+api.delete("/mail/relay", (c) => { relays.remove(c.get("user").id); return c.json({ ok: true }); });
+api.get("/bots/:id/email", (c) => {
+  const bot = ownAgent(c);
+  return c.json({ email: botEmail.get(bot.id), mails: mailFor(bot.id, 50), routine: routines.forBot(bot.id).some((r) => r.trigger === "botmail") });
+});
+api.put("/bots/:id/email", async (c) => {
+  const bot = ownAgent(c);
+  const email = botEmail.set(bot, await body(c));
+  return c.json({ email });
+});
+api.delete("/bots/:id/email", (c) => { botEmail.remove(ownAgent(c)); return c.json({ ok: true }); });
+/** A held mail (sender not allowed, DMARC fail, spam) is let through by the user: the bot can read it now. */
+api.post("/bots/:id/mail/:mailId/release", (c) => {
+  const bot = ownAgent(c);
+  const m = releaseMail(bot, c.req.param("mailId")) ?? fail(404, "That email does not exist or is not held.");
+  return c.json({ mail: m });
+});
+/** The "new email to this bot" routine: one per bot, with the user's instructions for what to do with each mail. */
+api.post("/bots/:id/email/routine", async (c) => {
+  const bot = ownAgent(c);
+  const b = await body(c);
+  if (routines.forBot(bot.id).some((r) => r.trigger === "botmail")) fail(409, "This bot already has a routine for its emails.");
+  const prompt = String(b.prompt ?? "").trim() || tr(c.get("user").locale, "Read the new email. If it needs an answer, draft a short reply and ask me before sending it.");
+  const r = routines.create(bot.id, { name: String(b.name ?? "").trim().slice(0, 80) || tr(c.get("user").locale, "New email"), prompt: prompt.slice(0, 4000), trigger: "botmail" });
+  emit(bot.userId, { type: "routines", botId: bot.id });
+  return c.json({ routine: publicRoutine(r, c.get("user").locale) });
+});
+
+// ── Wave 6: server-mediated voice ────────────────────────────────────────────
+/** What a call with this bot will use (the bot's owner's services): the server pipeline, or the browser's own speech. */
+api.get("/voice", (c) => c.json({ status: voiceStatus(c.get("user").id), settings: voiceSettings(c.get("user").id) }));
+api.get("/bots/:id/voice", (c) => c.json({ status: voiceStatus(accessBot(c, "talk").bot.userId) }));
+api.put("/voice", async (c) => {
+  const user = c.get("user");
+  const settings = saveVoiceSettings(user.id, await body(c));
+  audit(user.id, "account", "Voice settings changed");
+  return c.json({ settings, status: voiceStatus(user.id) });
+});
+/** Checks the services: a short sentence is spoken, then transcribed back. */
+api.post("/voice/test", async (c) => {
+  const user = c.get("user");
+  const tts = ttsFor(user.id);
+  const stt = sttFor(user.id, user.locale);
+  if (!tts || !stt) return c.json({ ok: false, error: tr(user.locale, "No speech service is configured.") });
+  const t0 = Date.now();
+  try {
+    const wav = await tts(tr(user.locale, "Hello, this is a voice test."));
+    const t1 = Date.now();
+    const text = await stt(wav);
+    return c.json({ ok: true, heard: text, ttsMs: t1 - t0, sttMs: Date.now() - t1, audioBytes: wav.length });
+  } catch (err) {
+    return c.json({ ok: false, error: clip((err as Error).message, 300) });
+  }
 });

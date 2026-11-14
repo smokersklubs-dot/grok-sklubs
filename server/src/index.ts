@@ -17,6 +17,8 @@ import { expireOrphanApprovals, recoverInterruptedTurns } from "./agent/loop.js"
 import { sweepUncertain } from "./agent/executions.js";
 import { telegram } from "./telegram.js";
 import { closeSlackSockets } from "./native/triggers.js";
+import { receiving, startMailReceiver, stopMailReceiver } from "./botmail.js";
+import { voiceUpgrade } from "./voice/session.js";
 
 try { assertConfig(); } catch (err) { console.error(`\nCannot start: ${(err as Error).message}\n`); process.exit(1); }
 
@@ -67,12 +69,15 @@ const server = serve({ fetch: app.fetch, port: config.port }, () => {
   process.on("unhandledRejection", (err) => console.error("[unhandled rejection]", err));
 });
 
-attachLiveScreens(server as unknown as import("node:http").Server, [relayUpgrade]);
+attachLiveScreens(server as unknown as import("node:http").Server, [relayUpgrade, voiceUpgrade]);
+// The bots' own email addresses (wave 6): the embedded receiver, only when the operator set MAIL_DOMAIN and MAIL_SMTP_PORT.
+if (receiving()) startMailReceiver().then((port) => console.log(`Receiving mail for @${config.mailDomain} on port ${port}.`), (err) => console.error(`[mail] receiver not started: ${(err as Error).message}`));
 
 async function shutdown() {
   server.close();
   telegram.stopAll();
   closeSlackSockets();
+  await stopMailReceiver().catch(() => {});
   await Promise.all([closeAllDesktops(), connectors.closeAll()]).catch(() => {});
   process.exit(0);
 }

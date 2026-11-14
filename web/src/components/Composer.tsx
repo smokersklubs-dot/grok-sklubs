@@ -4,7 +4,7 @@ import { t, useT } from "../i18n";
 import { useStore, type Upload } from "../store";
 import type { Bot, Live, Row, SkillRef } from "../types";
 import { botTitle, fileSize } from "../lib/format";
-import { endCall, startCall } from "../lib/call";
+import { callPossible, endCall, startCall } from "../lib/call";
 import { canCall, canRecognize, createRecognition, micErrorText, recognitionLang, type Recognition } from "../lib/speech";
 import { Icon, Spinner } from "./Icon";
 import { ErrorNote, Menu, MenuItem, useEscape } from "./ui";
@@ -210,7 +210,7 @@ export function Composer({ bot, live }: { bot: Bot; live: Live }) {
   const uploading = uploads.some((u) => u.status === "uploading");
   const inCall = callBotId === bot.id;
   const isRoom = bot.kind === "room";
-  const voiceOk = canCall() && !isRoom;
+  const voiceOk = callPossible() && !isRoom;
   const canSend = (text.length > 0 || ready.length > 0) && !uploading && !sending;
 
   const addFiles = (files: File[]) => {

@@ -16,8 +16,8 @@ export type ModalState =
   | { kind: "search"; mode?: "chat" }
   | { kind: "duplicate"; botId: string }
   | { kind: "connectors"; prefill?: { name: string; botId: string; seq: number } };
-export type BotSettingsTab = "general" | "skills" | "memories" | "routines" | "telegram";
-export type AppSection = "general" | "profile" | "models" | "notifications" | "computer" | "devices" | "permissions" | "rules" | "memory" | "connectors" | "vault" | "pages" | "usage" | "checkins" | "activity" | "team" | "account";
+export type BotSettingsTab = "general" | "skills" | "memories" | "routines" | "telegram" | "email" | "sharing";
+export type AppSection = "general" | "profile" | "models" | "notifications" | "computer" | "devices" | "permissions" | "rules" | "memory" | "connectors" | "vault" | "pages" | "usage" | "checkins" | "activity" | "team" | "workspaces" | "voice" | "email" | "account";
 
 /** A short message at the bottom of the window, optionally with one action (usually "Undo"). */
 export interface Toast { id: number; text: string; action?: { label: string; run: () => void | Promise<void> } }
@@ -36,7 +36,7 @@ export interface Thread {
   error: string | null;
 }
 
-export interface CallLine { id: number; role: "user" | "assistant"; text: string; final: boolean }
+export interface CallLine { id: number; role: "user" | "assistant"; text: string; final: boolean; /** Wave 6: the bot was cut off in this line (barge-in). */ cut?: boolean }
 export interface CallState {
   botId: string;
   status: "connecting" | "live" | "error";
@@ -46,6 +46,14 @@ export interface CallState {
   listening: boolean;
   startedAt: number | null;
   lines: CallLine[];
+  /** Wave 6: "server" when the call goes through the server's speech services, else the browser's own speech. */
+  pipeline?: "server" | "browser";
+  /** Server pipeline: the user is being heard right now (voice activity). */
+  hearing?: boolean;
+  /** When the user last cut the bot off (barge-in), for the indicator. */
+  bargedAt?: number | null;
+  /** Which speech services the server uses ("whisper-cpp · piper"). */
+  providers?: string;
 }
 
 /** A file picked for the next message: uploaded straight away, sent by its `attachment.path`. */
@@ -160,6 +168,10 @@ interface Store {
   profileTick: number;
   /** Bumped when the user's rules or the reviewer model change (wave 5). */
   rulesTick: number;
+  /** Wave 6: workspaces changed (members, roles, shares). */
+  workspacesTick: number;
+  /** Wave 6: a bot's mailbox changed. */
+  mailTick: Record<string, number>;
   /** Bumped when memory settings (sensitive topics, writing style) change. */
   memorySettingsTick: number;
   /** Bumped when vault items change on the server (a secret saved from a card, an import). */
@@ -301,6 +313,8 @@ export const useStore = create<Store>((set, get) => ({
   pagesTick: 0,
   profileTick: 0,
   rulesTick: 0,
+  workspacesTick: 0,
+  mailTick: {},
   memorySettingsTick: 0,
   vaultTick: 0,
   sections: [],
@@ -375,6 +389,15 @@ export const useStore = create<Store>((set, get) => ({
     const wanted = new URLSearchParams(window.location.search).get("bot");
     if (wanted && get().bots[wanted]) get().selectBot(wanted);
     if (wanted) window.history.replaceState(null, "", window.location.pathname);
+    // Wave 6: opened from a workspace invitation while signed in: join, then show the bots shared there.
+    const invite = new URLSearchParams(window.location.search).get("invite");
+    if (invite) {
+      window.history.replaceState(null, "", window.location.pathname);
+      api<{ workspace: { name: string } }>("POST", "/invites/accept", { token: invite }).then(
+        (r) => { get().showToast(t("ws.joined", { ws: r.workspace.name })); void get().loadBots(); },
+        (e: unknown) => get().showToast(errText(e)),
+      );
+    }
     startPresence();
     const { connectEvents } = await import("./events");
     connectEvents();
@@ -726,6 +749,12 @@ export const useStore = create<Store>((set, get) => ({
         break;
       case "rules":
         set((s) => ({ rulesTick: s.rulesTick + 1 }));
+        break;
+      case "workspaces":
+        set((s) => ({ workspacesTick: s.workspacesTick + 1 }));
+        break;
+      case "mail":
+        set((s) => ({ mailTick: { ...s.mailTick, [ev.botId]: (s.mailTick[ev.botId] ?? 0) + 1 } }));
         break;
       case "memorySettings":
         set((s) => ({ memorySettingsTick: s.memorySettingsTick + 1 }));

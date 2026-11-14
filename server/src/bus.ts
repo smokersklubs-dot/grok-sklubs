@@ -13,9 +13,42 @@ export function subscribe(userId: string, fn: Listener): () => void {
   };
 }
 
-export function emit(userId: string, event: ServerEvent) {
+function deliver(userId: string, event: ServerEvent) {
   for (const fn of listeners.get(userId) ?? []) {
     try { fn(event); } catch { /* a broken stream must not affect the others */ }
+  }
+}
+
+/**
+ * Wave 6: a bot shared to a workspace has more than one reader. Events about its conversation and state also go to the
+ * people of the workspace who may see it (workspaces.ts registers who they are and how they see the bot). Only these
+ * kinds travel: nothing about the owner's account (vault, apps, usage, settings) ever does.
+ */
+const FANOUT = new Set<ServerEvent["type"]>(["rows", "reset", "live", "bot", "cheer", "mail"]);
+let audienceOf: ((botId: string) => string[]) | null = null;
+let viewFor: ((userId: string, event: ServerEvent) => ServerEvent | null) | null = null;
+const audienceCache = new Map<string, { users: string[]; at: number }>();
+export function setAudience(fn: (botId: string) => string[], view: (userId: string, event: ServerEvent) => ServerEvent | null) { audienceOf = fn; viewFor = view; }
+/** Memberships or shares changed: who may see which bot is looked up again. */
+export const invalidateAudience = () => audienceCache.clear();
+function audience(botId: string): string[] {
+  if (!audienceOf) return [];
+  const hit = audienceCache.get(botId);
+  if (hit && Date.now() - hit.at < 5000) return hit.users;
+  const users = audienceOf(botId);
+  audienceCache.set(botId, { users, at: Date.now() });
+  return users;
+}
+
+export function emit(userId: string, event: ServerEvent) {
+  deliver(userId, event);
+  if (!FANOUT.has(event.type)) return;
+  const botId = event.type === "bot" ? event.bot.id : (event as { botId?: string }).botId;
+  if (!botId) return;
+  for (const other of audience(botId)) {
+    if (other === userId || !listeners.has(other)) continue;
+    const seen = viewFor ? viewFor(other, event) : null;
+    if (seen) deliver(other, seen);
   }
 }
 

@@ -36,6 +36,7 @@ import { cardLabel, cardTools } from "./payments.js";
 import { guideIndex, guideTools } from "./guides.js";
 import { anonymise } from "./anonymise.js";
 import { apiTools } from "../apiconnectors.js";
+import { botMailTools } from "../botmail.js";
 import { ruleTools } from "./ruletools.js";
 
 export interface ToolContext {
@@ -75,6 +76,12 @@ export interface BuiltinTool {
   outside?: boolean;
   /** Worth a line in the account's activity log. */
   audited?: boolean;
+  /**
+   * Wave 6: writes to someone outside like an app's send does (the bot's own email). Asks like a built-in app write: a
+   * card unless the user's words ground it, a trusted bot or an "always" choice — and after outside content, always,
+   * unless the user's words in this conversation ask for exactly that (authorize.ts and its floor).
+   */
+  appWrite?: { title: string; reason: string; source: string };
   /** Extra detail for the live activity line. */
   detail?: (args: Record<string, any>) => string | undefined;
   run(args: Record<string, any>, ctx: ToolContext): Promise<ToolOutput>;
@@ -1078,6 +1085,8 @@ function assemble(opts: { nativeSearch?: boolean; video?: "connector" | "api" | 
     ...(browserAvailable() ? inGroup("vault", screenVaultTools).map(respectDriver) : []),
     ...(browserAvailable() ? inGroup("vault", cardTools).map(respectDriver) : []),
     ...inGroup("apps", apiTools),
+    // A bot's own email address (wave 6): offered by newTurn only to bots that have one.
+    ...inGroup("apps", botMailTools),
     ...(opts.video ? inGroup("video", videoTools) : []),
     // The user's own computers (Sklubot Relais): offered by newTurn only to users who linked one.
     ...myComputerTools,

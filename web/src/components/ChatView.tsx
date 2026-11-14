@@ -10,6 +10,7 @@ import { Icon } from "./Icon";
 import { Transcript } from "./Transcript";
 import { FindBar } from "./FindBar";
 import { FilePreviewPanel } from "./Wave5b";
+import { SharedBadge } from "./Wave6";
 import { IconButton, Menu, MenuItem, isMac, modKey } from "./ui";
 
 export function ChatView() {
@@ -67,7 +68,7 @@ export function ChatView() {
             >
               {t(detailsOpen ? "chat.hideDetails" : "chat.showDetails")}
             </MenuItem>
-            {bot.kind !== "room" && (
+            {bot.kind !== "room" && !bot.access && (
               <MenuItem
                 icon="monitor"
                 onClick={() => {
@@ -78,7 +79,7 @@ export function ChatView() {
                 {t("chat.openComputer")}
               </MenuItem>
             )}
-            <MenuItem
+            {!bot.access && <MenuItem
               icon="edit"
               danger={confirmNew}
               onClick={() => {
@@ -94,7 +95,7 @@ export function ChatView() {
               }}
             >
               {t(confirmNew ? "chat.confirmNew" : "chat.newConversation")}
-            </MenuItem>
+            </MenuItem>}
             <MenuItem
               icon="search"
               onClick={() => {
@@ -104,7 +105,7 @@ export function ChatView() {
             >
               {t("find.inChat")}
             </MenuItem>
-            <MenuItem
+            {!bot.access && <MenuItem
               icon="settings"
               onClick={() => {
                 close();
@@ -112,10 +113,11 @@ export function ChatView() {
               }}
             >
               {t("chat.botSettings")}
-            </MenuItem>
+            </MenuItem>}
           </Menu>
         </div>
         <span className="chat-head-right">
+          <SharedBadge bot={bot} />
           {recording && recording.status !== "error" && (
             <button type="button" className="rec-chip" onClick={() => openViewer(bot.id, { control: true })} title={t("teach.openViewer")}>
               <span className={recording.status === "recording" ? "rec-dot" : "rec-dot is-still"} aria-hidden="true" />
@@ -132,7 +134,9 @@ export function ChatView() {
         <FilePreviewPanel />
       </div>
       <CallBar botId={bot.id} />
-      <Composer bot={bot} live={live} />
+      {bot.access && !bot.access.canTalk ? (
+        <div className="composer-readonly" role="note"><Icon name="eye" size={15} /> {t("ws.readOnly", { owner: bot.access.ownerName })}</div>
+      ) : <Composer bot={bot} live={live} />}
     </section>
   );
 }

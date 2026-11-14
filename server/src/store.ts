@@ -59,6 +59,7 @@ function previewOf(body: RowBody, locale: Locale): string {
     if (c.type === "skill") return tr(locale, "Skill to review: {name}", { name: c.name });
     if (c.type === "apiconnector") return tr(locale, "API connector to review: {name}", { name: c.name });
     if (c.type === "memory") return tr(locale, "Which is right? {text}", { text: c.newText });
+    if (c.type === "mail") return tr(locale, "Email from {from}: {subject}", { from: c.from, subject: c.subject });
     return tr(locale, "Connect {name}", { name: c.name });
   }
   return "";
