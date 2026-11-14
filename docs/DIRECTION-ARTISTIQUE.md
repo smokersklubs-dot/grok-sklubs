@@ -64,3 +64,13 @@ Formats : 1:1 (portrait de bot), 16:9 (l'équipe réunie), fond uni ou transpare
 - [6 Brand Mascot Design Trends for 2026 — SVG App](https://svgapp.ai/blog/mascot-design-trends-2026/)
 - [Best Brand Mascots 2026 — Ziggle](https://ziggle.art/best-brand-mascots)
 - [Rive Animation for App Development in 2026](https://uianimation.medium.com/rive-animation-for-app-development-in-2026-the-complete-developers-guide-8da6cf80ed34)
+
+## Production avec Codex (commande vérifiée le 14 novembre 2026)
+
+Codex 0.169.0 connecté à un abonnement ChatGPT (`codex login --device-auth`), fonction `image_generation` active :
+
+```bash
+codex exec --json --skip-git-repo-check --sandbox workspace-write - < prompt.txt
+```
+
+`prompt.txt` commence par « Use your image generation tool to create ONE image and save it in the current folder as <nom>.png », suivi de la description. Codex enregistre l'image dans le dossier courant. Premier essai : `characters/juno_3d.jpg` (Juno, rond indigo, yeux ronds, antenne, joues).
