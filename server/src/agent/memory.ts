@@ -1,7 +1,8 @@
 import { emit, getLive } from "../bus.js";
 import { config } from "../config.js";
 import { q } from "../db.js";
-import { defaultModelRef, resolveModel, type ChatMessage } from "../llm/index.js";
+import { defaultModelRef, listProviders, resolveModel, type ChatMessage } from "../llm/index.js";
+import { engineAsk, isEngineRef } from "./engine.js";
 import type { MemoryStatus } from "../shared.js";
 import { bots, clip, history, memories, now, paused, rows, type BotRecord } from "../store.js";
 import { record } from "../usage.js";
@@ -9,6 +10,8 @@ import { isBusy } from "./loop.js";
 
 /** A short side request to the model (summaries, fact extraction): no tools, low effort. */
 export async function ask(bot: BotRecord, system: string, prompt: string): Promise<string> {
+  // A bot on a subscription does its side work there too, unless the server has its own model for it.
+  if (isEngineRef(bot.model) && !config.auxModel && !listProviders().some((p) => p.available())) return engineAsk(bot, system, prompt);
   const { provider, model } = resolveModel(config.auxModel || bot.model || defaultModelRef());
   const res = await provider.runTurn({ model, system, tools: [], effort: "low", maxTokens: 8000, messages: [{ role: "user", content: [{ type: "text", text: prompt }] }], signal: AbortSignal.timeout(180_000) });
   record(bot.userId, bot.id, res.model, res.usage);

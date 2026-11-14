@@ -32,7 +32,7 @@ export function pickMemories(bot: BotRecord): { lines: string[]; omitted: number
   return { lines: chosen.map((m) => `- ${m.text}`), omitted: all.length - chosen.length };
 }
 
-export interface PromptExtras { connectorNames: string[]; browser: boolean; shell: boolean; linux?: boolean; images?: boolean }
+export interface PromptExtras { connectorNames: string[]; browser: boolean; shell: boolean; linux?: boolean; images?: boolean; engine?: "claude-code" | "codex" }
 
 export function buildSystemPrompt(bot: BotRecord, user: UserRecord, extras: PromptExtras): string {
   const team = bots.list(user.id).filter((b) => b.id !== bot.id && b.kind === "agent");
@@ -84,6 +84,8 @@ export function buildSystemPrompt(bot: BotRecord, user: UserRecord, extras: Prom
     "- Save lasting facts and preferences with memory_save. Look things up with memory_search before asking the user to repeat themselves.",
     team.length ? "- Hand work to a teammate with bot_message when it fits their role better than yours; start a helper for a self-contained side job you want done in parallel." : "- Start a helper for a self-contained side job you want done in parallel.",
   ];
+  if (extras.engine)
+    method.splice(1, 0, "- You are running inside your own Linux computer: your built-in shell, file and web tools act on it directly, and your working folder is ~/files, the user's library for you. The tools whose names start with mcp__sklubot__ (or that come from the server called sklubot) are your team tools: memory, routines, tasks, teammates, the user's apps, saved logins, the screen and the browser you share with the user. When a team tool says the user did not allow something, do not try to do it another way.");
   out.push(method.filter(Boolean).join("\n"));
 
   out.push([

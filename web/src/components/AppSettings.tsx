@@ -2,8 +2,9 @@ import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { api, ApiError, enc, errText } from "../api";
 import { LOCALES, tn, useT } from "../i18n";
 import { useStore, type AppSection, type Theme } from "../store";
-import type { AuditEntry, CheckinSettings, Locale, Policy, SharedPage, UsageSummary, VaultItem } from "../types";
-import { clockTime, compactNumber, dayLabel, initials, money, relTime, shortDate, toolWords } from "../lib/format";
+import type { AuditEntry, CheckinSettings, Locale, Policy, SharedPage, SubscriptionUsage, UsageSummary, VaultItem } from "../types";
+import { ENGINE_BRAND, ENGINE_TOOL } from "../lib/engines";
+import { clockTime, compactNumber, dateTime, dayLabel, initials, money, relTime, shortDate, toolWords } from "../lib/format";
 import { notifyEnabled, notifySupport, setNotifyEnabled } from "../lib/notify";
 import { BotAvatar } from "./Avatar";
 import { Icon, type IconName } from "./Icon";
@@ -472,6 +473,44 @@ function VaultSection() {
 
 /* ---------- Usage ---------- */
 
+/** Share used of each subscription's 5-hour and 7-day windows, as last reported by the provider's tool. */
+function SubscriptionUsageBlock({ subs }: { subs: SubscriptionUsage[] }) {
+  const t = useT();
+  const meter = (label: string, value: number | null) => {
+    const percent = value === null ? null : Math.max(0, Math.min(100, Math.round(value * 100)));
+    return (
+      <div className="meter-box">
+        <div className="meter-head">
+          <span>{label}</span>
+          <span className={percent === null ? "muted small" : ""}>{percent === null ? t("usage.notReported") : `${percent} %`}</span>
+        </div>
+        {percent !== null && (
+          <div className={`meter ${percent >= 90 ? "is-over" : ""}`} role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent} aria-label={label}><span style={{ width: `${percent}%` }} /></div>
+        )}
+      </div>
+    );
+  };
+  return (
+    <>
+      <h3 className="pane-heading">{t("usage.subscriptions")}</h3>
+      <p className="muted small">{t("usage.subIntro")}</p>
+      <div className="sub-usage">
+        {subs.map((s) => (
+          <div key={s.engine} className="sub-usage-card">
+            <div className="sub-usage-head">
+              <span className="choice-title">{ENGINE_BRAND[s.engine]} <span className="muted small">· {ENGINE_TOOL[s.engine]}</span></span>
+              {s.at > 0 && <span className="muted small">{t("usage.subAt", { when: relTime(s.at) })}</span>}
+            </div>
+            {meter(t("usage.fiveHour"), s.fiveHour)}
+            {meter(t("usage.sevenDay"), s.sevenDay)}
+            {s.resetsAt !== null && <p className="field-hint">{t("usage.resets", { when: dateTime(s.resetsAt) })}</p>}
+          </div>
+        ))}
+      </div>
+    </>
+  );
+}
+
 function UsageSection() {
   const tick = useStore((s) => s.usageTick);
   const t = useT();
@@ -553,6 +592,7 @@ function UsageSection() {
               <div className={`meter ${over >= 100 ? "is-over" : ""}`} role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={over} aria-label={t("usage.meterLabel")}><span style={{ width: `${over}%` }} /></div>
             </div>
           )}
+          {(usage.subscriptions ?? []).length > 0 && <SubscriptionUsageBlock subs={usage.subscriptions} />}
           <h3 className="pane-heading">{t("usage.byBot")}</h3>
           {usage.byBot.length === 0 ? (
             <p className="muted small">{t("usage.none")}</p>

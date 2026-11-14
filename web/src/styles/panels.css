@@ -206,3 +206,21 @@
 a.btn { text-decoration: none; }
 
 .viewer-control-bar { display: flex; align-items: center; justify-content: center; gap: 2px; flex: none; padding: 7px 16px; background: rgba(91, 141, 239, 0.18); border-top: 1px solid rgba(91, 141, 239, 0.35); color: #dbe5fb; font-size: 12.5px; text-align: center; }
+
+/* Brain (bot settings → General) */
+.choice-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 6px; }
+.brain-group { margin-top: 8px; font-size: 12px; font-weight: 650; color: var(--text-2); }
+.engine-box { display: flex; flex-direction: column; gap: 8px; padding: 11px 13px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); }
+.engine-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 28px; }
+.engine-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.engine-ok { display: inline-flex; align-items: center; gap: 6px; color: var(--ok); font-size: 13px; font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+.engine-actions { flex-wrap: wrap; }
+.engine-wait { display: flex; align-items: flex-start; gap: 8px; padding: 9px 11px; border-radius: var(--r-md); background: var(--info-soft); color: var(--info); font-size: 13px; line-height: 1.4; }
+.engine-wait .icon { flex: none; margin-top: 2px; }
+.sub-badge { gap: 4px; background: var(--info-soft); color: var(--info); }
+.details-id .sub-badge { margin-top: 4px; }
+
+/* Subscription usage (app settings → Usage) */
+.sub-usage { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; }
+.sub-usage-card { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--r-md); }
+.sub-usage-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; flex-wrap: wrap; }

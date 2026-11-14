@@ -13,6 +13,7 @@ Sklubot a été reconstruit **en salle blanche** : voir [docs/CLEANROOM.md](docs
 | Domaine | Fonctions |
 |---|---|
 | **Bots** | Nom, rôle, description, consignes permanentes, avatar (12 formes × 11 couleurs), mode assistant personnel ou coéquipier, bot principal, niveau de réflexion, **modèle au choix par bot**, niveau d'autonomie |
+| **Tes abonnements** | Un bot peut travailler sur **ton abonnement Claude (Pro/Max) ou ChatGPT (Plus/Pro)** au lieu d'une clé d'API : Claude Code et Codex, les outils officiels d'Anthropic et d'OpenAI, tournent dans l'ordinateur du bot ; tu t'y connectes une fois **sur l'écran du bot** (réglages du bot → Cerveau → Se connecter). Les outils de Sklubot leur sont branchés (mémoire, routines, applications, coffre, équipe, écran) et les approbations restent en place. Suivi des fenêtres d'utilisation de 5 h et 7 jours |
 | **Discussion** | Réponses en direct, résumé « a travaillé 2 min · 7 étapes » dépliable, ligne de réflexion en direct, étapes d'outils repliables, sources web, cartes d'approbation / de question / de connexion, envoi pendant que le bot travaille (le message rejoint le tour en cours), arrêt, nouvelle conversation |
 | **Ordinateur** | **Un ordinateur Linux par bot, gratuit, sur ton serveur** (aucun service payant type Orgo) : **écran en direct** (flux VNC dans le navigateur, observation en lecture seule ou prise de main, puis « rendre la main »), **bureau habillé aux couleurs du bot** (fond d'écran, dock Navigateur/Terminal/Fichiers, page d'accueil avec horloge, nom, rôle et recherche), bouton **« ranger l'écran »** (ferme les fenêtres, garde les connexions), navigateur réparé automatiquement s'il ne répond plus ; conteneur isolé : bureau graphique, navigateur Chromium, terminal, gestionnaire de fichiers, shell root, installation de logiciels ; tout est conservé entre les conversations ; **mise en veille automatique et réveil à la demande** ; capture, clic, saisie, touches, défilement, glisser ; bibliothèque de fichiers téléchargeables ; **vue en direct et prise de contrôle** depuis l'interface |
 | **Applications** | **Catalogue d'applications à ajouter en une étape** (GitHub, Stripe, Hugging Face, documentation technique…) et tout serveur d'outils au standard ouvert MCP (URL + jeton). Lectures automatiques, écritures soumises à approbation, « toujours autoriser » mémorisé et révocable |
@@ -50,6 +51,8 @@ npm start                   # http://localhost:8787
 
 **Essayer sans clé ni coût** : mets `DEMO_MODE=1` dans `.env` (sans clé de modèle). Un faux modèle qui suit
 des mots-clés permet de parcourir toute l'application : outils, approbations, cartes, routines, navigateur.
+
+**Sans aucune clé** : choisis « Mes abonnements » dans le Cerveau d'un bot, puis connecte-toi sur son écran.
 
 Le premier compte créé est le tien ; les inscriptions se ferment ensuite (sauf `OPEN_SIGNUP=1`).
 

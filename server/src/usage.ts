@@ -3,7 +3,16 @@ import { emit } from "./bus.js";
 import { tr } from "./i18n.js";
 import { audit, bots, now, rows, settings, users } from "./store.js";
 import type { TurnUsage } from "./llm/types.js";
-import type { UsageSummary } from "./shared.js";
+import type { Engine, SubscriptionUsage, UsageSummary } from "./shared.js";
+
+/** Last known use of each user's subscription windows, as reported by the tools themselves. */
+const subscriptionUse = new Map<string, Map<Engine, SubscriptionUsage>>();
+export function noteSubscription(userId: string, u: SubscriptionUsage) {
+  let m = subscriptionUse.get(userId);
+  if (!m) subscriptionUse.set(userId, (m = new Map()));
+  m.set(u.engine, u);
+  emit(userId, { type: "usage" });
+}
 
 /** USD per million tokens [input, output, cached input]. Unknown models are metered in tokens only. */
 const PRICES: Record<string, [number, number, number]> = {
@@ -45,7 +54,7 @@ export function summary(userId: string): UsageSummary {
   const totals = byBot.reduce((a, b) => ({ inputTokens: a.inputTokens + b.inputTokens, outputTokens: a.outputTokens + b.outputTokens, turns: a.turns + b.turns, costUsd: a.costUsd + b.costUsd }),
     { inputTokens: 0, outputTokens: 0, turns: 0, costUsd: 0 });
   const budgetUsd = settings.budget(userId);
-  return { month: label, totals, byBot, budgetUsd, nearBudget: budgetUsd !== null && budgetUsd > 0 && totals.costUsd >= budgetUsd * 0.8 };
+  return { month: label, totals, byBot, budgetUsd, subscriptions: [...(subscriptionUse.get(userId)?.values() ?? [])], nearBudget: budgetUsd !== null && budgetUsd > 0 && totals.costUsd >= budgetUsd * 0.8 };
 }
 
 /** Returns true exactly once per month: the first time spending passes 80% of the budget. */

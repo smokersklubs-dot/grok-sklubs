@@ -6,6 +6,10 @@ import type { Locale } from "./shared.js";
  */
 const FR: Record<string, string> = {
   "Stopped.": "Arrêté.",
+  "Your Claude subscription has reached its usage limit for now. I will be able to continue once it resets.": "Ton abonnement Claude a atteint sa limite d'utilisation pour l'instant. Je pourrai continuer dès qu'elle se réinitialise.",
+  "I am not signed in to ChatGPT on my computer yet. Open my settings → Brain → Sign in, then sign in on my screen.": "Je ne suis pas encore connecté à ChatGPT sur mon ordinateur. Ouvre mes réglages → Cerveau → Se connecter, puis connecte-toi sur mon écran.",
+  "I am not signed in to Claude on my computer yet. Open my settings → Brain → Sign in, then sign in on my screen.": "Je ne suis pas encore connecté à Claude sur mon ordinateur. Ouvre mes réglages → Cerveau → Se connecter, puis connecte-toi sur mon écran.",
+  "Reading a file": "Lit un fichier", "Planning": "Planifie", "Working": "Travaille",
   "failed": "échec", "allowed once": "autorisé une fois", "always allowed": "toujours autorisé", "refused": "refusé",
   "My usual model is not answering ({detail}). I am finishing this on the backup model.": "Mon modèle habituel ne répond pas ({detail}). Je termine avec le modèle de secours.",
   "The server restarted while I was working. I am picking this back up.": "Le serveur a redémarré pendant que je travaillais. Je reprends là où j'en étais.",

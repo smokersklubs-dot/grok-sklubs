@@ -76,3 +76,14 @@ Sur le VPS, dans `/opt/sklubot` :
 - Sklubot crée les ordinateurs des bots avec le Docker du VPS : **réserve ce VPS à Sklubot**.
 - Après l'installation, pense à remplacer la connexion par mot de passe par une clé SSH (ton hébergeur a un guide).
 - Le fichier `/opt/sklubot/.env` contient tes clés : il n'est lisible que par l'administrateur. Ne le partage pas.
+
+## Utiliser tes abonnements Claude et ChatGPT (sans clé d'API)
+
+1. Ouvre les réglages d'un bot → **Cerveau** → choisis « Claude — Sonnet (mon abonnement) » ou « ChatGPT (mon abonnement) ».
+2. Clique **Se connecter sur l'ordinateur de …** : un terminal et la page de connexion s'ouvrent sur l'écran du bot, et la vue en direct s'ouvre en mode « prise de main ».
+3. Connecte-toi avec ton compte Claude ou ChatGPT, puis **rends la main**. C'est fait : ce bot travaille désormais sur ton abonnement.
+
+À savoir :
+- La connexion est faite **par bot** (chaque bot a son propre ordinateur). Refais l'étape 2 pour chaque bot que tu veux brancher.
+- Ce sont les outils officiels (Claude Code d'Anthropic, Codex d'OpenAI) avec ton compte : les limites de ton forfait s'appliquent, et c'est prévu pour **ton usage personnel** — ne fais pas travailler les bots de quelqu'un d'autre sur ton abonnement.
+- Après une mise à jour, efface une fois l'ordinateur des bots existants (Réglages → Ordinateur → Effacer) pour qu'ils reçoivent la nouvelle image avec Claude Code et Codex.

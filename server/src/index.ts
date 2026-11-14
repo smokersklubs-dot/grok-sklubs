@@ -49,7 +49,7 @@ if (!config.schedulerOff) { telegram.start(); recoverInterruptedTurns(); }
 const server = serve({ fetch: app.fetch, port: config.port }, () => {
   const ready = listProviders().filter((p) => p.available()).map((p) => p.label);
   console.log(`Sklubot is running at ${config.publicUrl}`);
-  console.log(ready.length ? `Model providers: ${ready.join(", ")} (default ${defaultModelRef()})` : "No model provider configured yet — add ANTHROPIC_API_KEY to .env so bots can think.");
+  console.log(ready.length ? `Model providers: ${ready.join(", ")} (default ${defaultModelRef()})` : "No API key configured: bots can run on your Claude or ChatGPT subscription (bot settings → Brain), or add ANTHROPIC_API_KEY to .env.");
   console.log(computerNote);
 });
 

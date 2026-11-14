@@ -25,6 +25,9 @@ services:
       ALLOWED_EMAILS: "${SKLUBOT_ALLOWED_EMAILS:-}"
       COMPUTER: "linux"
       DATA_VOLUME: "sklubot_data"
+      # The bots' computers join this network so their subscription tools can reach Sklubot's tool endpoint.
+      DESKTOP_NETWORK: "sklubot_net"
+      ENGINE_BASE_URL: "http://sklubot:3000"
       MAX_DESKTOPS: "${SKLUBOT_MAX_DESKTOPS:-4}"
       DESKTOP_MEMORY: "${SKLUBOT_DESKTOP_MEMORY:-2g}"
     volumes:
@@ -48,6 +51,10 @@ services:
     image: sklubot-desktop
     command: ["true"]
     restart: "no"
+
+networks:
+  default:
+    name: sklubot_net
 
 volumes:
   sklubot_data:

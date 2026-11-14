@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { api, errText } from "../api";
 import { tn, useT } from "../i18n";
 import { useStore, type BotSettingsTab } from "../store";
@@ -6,6 +6,7 @@ import { TOOL_GROUPS } from "../types";
 import type { Autonomy, AvatarColor, AvatarShape, Bot, BotBundle, BotMode, Effort, Memory, ModelOption, RoomRule, Routine, RoutineRun, Skill, TelegramStatus, ToolGroup } from "../types";
 import { dateTime, nextRunLabel, relTime, shortDate } from "../lib/format";
 import { Avatar, BotAvatar } from "./Avatar";
+import { BrainPicker } from "./Brain";
 import { routineWhen, TriggerChip } from "./DetailsPanel";
 import { Icon } from "./Icon";
 import { LookPicker, MODE_IDS } from "./Modals";
@@ -122,11 +123,6 @@ function General({ bot, onClose }: { bot: Bot; onClose: () => void }) {
     }
   };
 
-  const modelOptions = useMemo(() => {
-    const list = models?.models ?? [];
-    return bot.model && !list.some((m) => m.ref === bot.model) ? [{ ref: bot.model, provider: "", model: bot.model }, ...list] : list;
-  }, [models, bot.model]);
-
   return (
     <form className="settings-pane" onSubmit={save}>
       <div className="look-row">
@@ -166,15 +162,7 @@ function General({ bot, onClose }: { bot: Bot; onClose: () => void }) {
             />
             <p className="field-hint">{t("bot.instructionsHint")}</p>
           </div>
-          <div className="field">
-            <label className="field-label" htmlFor={`${uid}m`}>{t("bot.model")}</label>
-            <select id={`${uid}m`} className="input" value={form.model} onChange={(e) => set("model", e.target.value)}>
-              <option value="">{models?.defaultRef ? t("bot.serverDefaultRef", { ref: models.defaultRef }) : t("bot.serverDefault")}</option>
-              {modelOptions.map((m) => (
-                <option key={m.ref} value={m.ref}>{m.provider ? `${m.provider} · ${m.model}` : m.model}</option>
-              ))}
-            </select>
-          </div>
+          <BrainPicker bot={bot} value={form.model} onChange={(ref) => set("model", ref)} models={models} />
           <div className="field">
             <span className="field-label">{t("bot.thinking")}</span>
             <ChoiceList label={t("bot.thinking")} value={form.effort} options={efforts} onChange={(v) => set("effort", v)} />

@@ -9,6 +9,7 @@ import { endCall, startCall } from "../lib/call";
 import { useScreen } from "../lib/screen";
 import { canCall, canSpeak, makeUtterance, useVoices } from "../lib/speech";
 import { BotAvatar } from "./Avatar";
+import { SubscriptionBadge } from "./Brain";
 import { LiveScreen } from "./LiveScreen";
 import { Icon, Spinner } from "./Icon";
 import { Empty, ErrorNote, IconButton, Loading, Toggle } from "./ui";
@@ -504,6 +505,7 @@ export function DetailsPanel() {
         <BotAvatar bot={bot} size={72} badge />
         <h2>{bot.name}</h2>
         {bot.label && <p>{bot.label}</p>}
+        {!isRoom && <SubscriptionBadge model={bot.model} />}
       </div>
       <div className="tabs" role="tablist" aria-label={t("details.tabs")}>
         {tabs.map((x) => (

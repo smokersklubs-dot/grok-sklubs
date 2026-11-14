@@ -7,6 +7,10 @@ import { streamSSE } from "hono/streaming";
 import { decideApproval, enqueue, inQueue, interrupt, noteHandBack, submitUserMessage } from "./agent/loop.js";
 import { ask, compactIfNeeded, consolidate, memoryStatus } from "./agent/memory.js";
 import { telegram } from "./telegram.js";
+import { engineLogin, engineLogout, engineModels, engineStatus } from "./agent/engine.js";
+import { handleMcp } from "./agent/mcp.js";
+import { RESPONSE_ALREADY_SENT } from "@hono/node-server/utils/response";
+import type { IncomingMessage, ServerResponse } from "node:http";
 import { createRoom, dispatchToRoom, validMembers } from "./agent/team.js";
 import { retireBot } from "./agent/tools.js";
 import { createSession, dropSession, hashPassword, seal, SESSION_COOKIE, signupOpen, userForToken, verifyPassword } from "./auth.js";
@@ -67,6 +71,16 @@ site.get("/p/:token", (c) => {
     "content-security-policy": "sandbox allow-scripts allow-popups; default-src 'self' data: blob: https: 'unsafe-inline' 'unsafe-eval'; frame-ancestors 'none'",
   });
 });
+
+/** Sklubot's tools for a bot running on a subscription tool; the caller proves it is that bot's computer. */
+site.post("/mcp/:botId", async (c) => {
+  const env = c.env as { incoming?: IncomingMessage; outgoing?: ServerResponse } | undefined;
+  if (!env?.incoming || !env.outgoing) return c.json({ error: "unavailable" }, 503);
+  const parsed = await c.req.json().catch(() => undefined);
+  await handleMcp(c.req.param("botId"), env.incoming, env.outgoing, parsed);
+  return RESPONSE_ALREADY_SENT;
+});
+site.on(["GET", "DELETE"], "/mcp/:botId", (c) => c.json({ error: "method not allowed" }, 405));
 
 // ── Public routes ────────────────────────────────────────────────────────────
 api.get("/health", (c) => c.json({ ok: true, model: defaultModelRef() }));
@@ -186,7 +200,10 @@ api.put("/prefs", async (c) => {
 });
 
 api.get("/models", (c) => c.json({
-  models: listProviders().filter((p) => p.available()).flatMap((p) => p.models.map((m) => ({ ref: `${p.id}:${m}`, provider: p.label, model: m }))),
+  models: [
+    ...listProviders().filter((p) => p.available()).flatMap((p) => p.models.map((m) => ({ ref: `${p.id}:${m}`, provider: p.label, model: m, kind: "api" as const }))),
+    ...engineModels(),
+  ],
   defaultRef: defaultModelRef(),
 }));
 
@@ -574,6 +591,25 @@ api.post("/bots/:id/desktop/tidy", async (c) => {
   return c.json({ ok: true });
 });
 api.post("/bots/:id/desktop/handback", (c) => { noteHandBack(ownAgent(c).id); return c.json({ ok: true }); });
+api.get("/bots/:id/engine", async (c) => {
+  const bot = ownAgent(c);
+  try { return c.json({ engines: await engineStatus(bot) }); }
+  catch (err) { return c.json({ engines: (["claude-code", "codex"] as const).map((engine) => ({ engine, installed: false, signedIn: null, account: null, detail: (err as Error).message })) }); }
+});
+api.post("/bots/:id/engine/login", async (c) => {
+  const bot = ownAgent(c);
+  const engine = (await body(c)).engine === "codex" ? "codex" : "claude-code";
+  try { await engineLogin(bot, engine); } catch (err) { return fail(502, (err as Error).message); }
+  audit(bot.userId, "account", `${bot.name}: sign-in to ${engine === "codex" ? "ChatGPT" : "Claude"} started on its computer`, bot.id);
+  return c.json({ ok: true });
+});
+api.post("/bots/:id/engine/logout", async (c) => {
+  const bot = ownAgent(c);
+  const engine = (await body(c)).engine === "codex" ? "codex" : "claude-code";
+  try { await engineLogout(bot, engine); } catch (err) { return fail(502, (err as Error).message); }
+  audit(bot.userId, "account", `${bot.name}: signed out of ${engine === "codex" ? "ChatGPT" : "Claude"}`, bot.id);
+  return c.json({ ok: true });
+});
 api.post("/bots/:id/desktop/sleep", async (c) => { await screen.sleep(ownBot(c).id); return c.json({ ok: true }); });
 api.post("/bots/:id/desktop/reset", async (c) => { await screen.reset(ownBot(c).id); return c.json({ ok: true }); });
 

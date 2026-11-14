@@ -118,6 +118,8 @@ async function wake(botId: string, userId: string, workspace: string): Promise<M
       } else if (power === "absent") {
         const r = await docker([
           "run", "-d", "--name", containerName(botId), "--hostname", "computer", "--init",
+          // Lets the bot's subscription tools reach this server's tool endpoint.
+          "--add-host", "host.docker.internal:host-gateway", ...(config.desktopNetwork ? ["--network", config.desktopNetwork] : []),
           "--memory", config.desktopMemory, "--cpus", String(config.desktopCpus), "--shm-size", "1g", "--pids-limit", "2048",
           "-e", `SCREEN_RES=${config.desktopResolution}`,
           "-v", `${volumeName(botId)}:/root`, ...libraryMount(workspace),

@@ -49,6 +49,14 @@ export const config = {
   /** "linux" = a container per bot, "browser" = a browser on this server, "auto" = linux when available. */
   computer: (process.env.COMPUTER ?? "auto") as "auto" | "linux" | "browser",
   desktopImage: process.env.DESKTOP_IMAGE ?? "sklubot-desktop",
+  /** Docker network the bots' computers join (set when Sklubot itself runs in a container). */
+  desktopNetwork: process.env.DESKTOP_NETWORK ?? "",
+  /** How a bot's computer reaches this server's tool endpoint (for bots running on a subscription). */
+  engineBaseUrl: (process.env.ENGINE_BASE_URL ?? `http://host.docker.internal:${num("PORT", 8787)}`).replace(/\/$/, ""),
+  /** Model choices offered for Codex (ChatGPT subscription); "default" lets Codex pick. */
+  codexModels: (process.env.CODEX_MODELS ?? "default").split(",").map((s) => s.trim()).filter(Boolean),
+  /** Model choices offered for Claude Code (Claude subscription): aliases the tool accepts. */
+  claudeCodeModels: (process.env.CLAUDE_CODE_MODELS ?? "sonnet,opus,fable,haiku").split(",").map((s) => s.trim()).filter(Boolean),
   /** When Sklubot itself runs in a container: the name of the Docker volume mounted as its data folder, so bots' computers can share their library with it. */
   dataVolume: process.env.DATA_VOLUME ?? "",
   desktopMemory: process.env.DESKTOP_MEMORY ?? "2g",
