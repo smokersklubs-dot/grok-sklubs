@@ -97,7 +97,7 @@ export function buildSystemPrompt(bot: BotRecord, user: UserRecord, extras: Prom
 
   const context = [
     "## Right now",
-    `- Time: ${new Date().toISOString()}`,
+    "- The current time is shown at the start of each message you receive.",
     `- User: ${user.name} <${user.email}>`,
     team.length
       ? `- Team: ${team.map((b) => `${b.name}${b.label ? ` (${b.label})` : ""}${b.primary ? " — main contact" : ""}`).join("; ")}`

@@ -54,6 +54,27 @@ function libraryMount(workspace: string): string[] {
   return ["--mount", `type=volume,src=${config.dataVolume},dst=/root/files,volume-subpath=${sub}`];
 }
 
+// ── Dressing: each computer looks like its bot's own ─────────────────────────
+const HEX: Record<string, string> = {
+  ink: "#3a4150", clay: "#a9634a", ember: "#dd5230", amber: "#c08310", moss: "#5a8739", teal: "#138a84",
+  sky: "#2c86cf", indigo: "#525dd6", plum: "#8c4ba6", rose: "#cf4576", slate: "#607086",
+};
+export interface Look { name: string; label: string; color: string; locale: string; owner: string }
+let lookOf: (botId: string) => Look | null = () => null;
+/** Tells this module how to find a bot's name, colour and owner (set once at start-up). */
+export const setLookSource = (fn: (botId: string) => Look | null) => { lookOf = fn; };
+const dressedWith = new Map<string, string>();
+
+/** Applies the bot's look to its computer; repeat calls with the same look only check that it is still up. */
+async function dress(botId: string) {
+  const look = lookOf(botId);
+  if (!look) return;
+  const payload = JSON.stringify({ ...look, color: HEX[look.color] ?? look.color });
+  const r = await docker(["exec", "-i", containerName(botId), "python3", "/opt/sklubot/dress.py"], { timeoutMs: 60_000, input: payload });
+  if (r.code === 0) dressedWith.set(botId, payload);
+  else console.error(`[dress ${botId}]`, r.stderr.trim().slice(0, 300));
+}
+
 export type Power = "running" | "asleep" | "absent";
 interface Machine { botId: string; userId: string; lastUsedAt: number; busy: number; power: Power }
 const machines = new Map<string, Machine>();
@@ -107,7 +128,7 @@ async function wake(botId: string, userId: string, workspace: string): Promise<M
       // The screen needs a moment before it accepts input.
       for (let i = 0; i < 60; i++) {
         const probe = await docker(["exec", containerName(botId), "xdotool", "getdisplaygeometry"], { timeoutMs: 5000 });
-        if (probe.code === 0) return;
+        if (probe.code === 0) { await dress(botId).catch(() => {}); return; }
         await new Promise((r) => setTimeout(r, 250));
       }
       throw new Error("the computer started but its screen did not come up");
@@ -123,6 +144,8 @@ async function wake(botId: string, userId: string, workspace: string): Promise<M
 
 async function onMachine<T>(botId: string, userId: string, workspace: string, fn: (name: string) => Promise<T>): Promise<T> {
   const m = await wake(botId, userId, workspace);
+  // First use since this server started (or after a restart of the container): make sure it is dressed.
+  if (!dressedWith.has(botId)) await dress(botId).catch(() => {});
   m.busy++;
   try { return await fn(containerName(botId)); } finally { m.busy--; m.lastUsedAt = now(); }
 }
@@ -211,6 +234,18 @@ export const linuxScreen = {
     try { return await grab(containerName(botId)); } catch { return null; }
   },
   isOpen: (botId: string) => machines.get(botId)?.power === "running",
+  /** Re-applies the look after the bot was renamed or recoloured (only if its computer is on). */
+  async redress(botId: string) {
+    if (machines.get(botId)?.power !== "running") return;
+    const look = lookOf(botId);
+    if (look && dressedWith.get(botId) !== JSON.stringify({ ...look, color: HEX[look.color] ?? look.color })) await dress(botId);
+  },
+  /** Closes every window except the desktop's own, keeps logins, reopens the browser on the home page. */
+  tidy: (botId: string, userId: string, ws: string) => onMachine(botId, userId, ws, async (n) => {
+    const r = await docker(["exec", n, "/opt/sklubot/tidy.sh"], { timeoutMs: 30_000 });
+    if (r.code !== 0) throw new Error(`could not tidy the screen: ${r.stderr.trim().slice(0, 200)}`);
+    await dress(botId);
+  }),
   /** Counts as use, so the idle sweep leaves the computer awake. */
   touch: (botId: string) => { const m = machines.get(botId); if (m) m.lastUsedAt = now(); },
   wake: (botId: string, userId: string, ws: string) => wake(botId, userId, ws).then(() => {}),

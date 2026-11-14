@@ -36,7 +36,7 @@ export class DemoProvider implements LlmProvider {
     const last = req.messages[req.messages.length - 1];
     const texts = last.content.filter((b) => b.type === "text").map((b) => (b as { text: string }).text);
     const results = last.content.filter((b) => b.type === "tool_result");
-    const said = (texts[texts.length - 1] ?? "").replace(/^\[[^\]]*\]\n?/, "");
+    const said = (texts[texts.length - 1] ?? "").replace(/^(\[[^\]\n]*\]\n)+/, "");
     let content: Block[];
     if (!req.tools.length) {
       content = [{ type: "text", text: '{"facts": []}' }];

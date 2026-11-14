@@ -76,7 +76,7 @@ const scripted: LlmProvider = {
       const r = results[0];
       content = queue.length ? use(queue.shift()!) : [{ type: "text", text: `Tool said: ${r.type === "tool_result" ? r.content.map((c) => (c.type === "text" ? c.text : "[image]")).join(" ") : ""}` }];
     } else {
-      const said = texts[texts.length - 1] ?? "";
+      const said = (texts[texts.length - 1] ?? "").replace(/^(\[[^\]\n]*\]\n)+/, "");
       const parse = (s: string) => { const m = /(\w+) (\{.*\})/s.exec(s)!; return { name: m[1], input: JSON.parse(m[2]) }; };
       if (said.includes("chain ")) { const steps = said.slice(said.indexOf("chain ") + 6).split(" >> ").map(parse); queue.push(...steps.slice(1)); content = use(steps[0]); }
       else if (/call \w+ \{/.test(said)) content = use(parse(said.slice(said.indexOf("call ") + 5)));
@@ -277,6 +277,24 @@ test("the activity log records what happened and cannot be rewritten", async () 
   assert.throws(() => q.run("UPDATE audit SET text = 'tampered'"), /cannot be edited/);
   const older = (await call("GET", `/audit?before=${entries[entries.length - 1].id + 3}&limit=2`)).json.entries;
   assert.equal(older.length, 2);
+});
+
+test("a one-time sign-in link works once, and the hand-back note reaches the next turn", async () => {
+  const { randomToken, sha256 } = await import("../src/store.js");
+  const token = randomToken(24);
+  const me = (await call("GET", "/me")).json.user;
+  q.run("INSERT INTO sign_in_links (token_hash, user_id, expires_at) VALUES (?, ?, ?)", sha256(token), me.id, Date.now() + 60_000);
+  const saved = cookie; cookie = "";
+  const first = await api.request(`/auth/link?token=${token}`);
+  assert.equal(first.headers.get("location"), "/");
+  assert.match(first.headers.get("set-cookie") ?? "", /sklubot_session=/);
+  assert.equal((await api.request(`/auth/link?token=${token}`)).headers.get("location"), "/?link=expired");
+  cookie = saved;
+  await call("POST", `/bots/${bot.id}/desktop/handback`);
+  await say(bot, "hello after hand-back");
+  await replied(bot, "hello after hand-back");
+  assert.match(JSON.stringify(requests[requests.length - 1].messages.at(-1)), /took control of your computer/);
+  assert.doesNotMatch(requests[requests.length - 1].system, /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/, "no clock in the system prompt");
 });
 
 test("account: password change, exports, team import, deletion", async () => {

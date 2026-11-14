@@ -4,6 +4,7 @@ import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
 import { closeAllDesktops, initComputer } from "./computer.js";
+import { setLookSource } from "./linux.js";
 import { bots, users } from "./store.js";
 import { assertConfig, config } from "./config.js";
 import { connectors } from "./connectors.js";
@@ -30,6 +31,12 @@ if (existsSync(path.join(config.webDist, "index.html"))) {
   app.use("*", serveStatic({ root: path.relative(process.cwd(), config.webDist) || "." }));
   app.get("*", (c) => c.html(index));
 }
+
+setLookSource((botId) => {
+  const bot = bots.byId(botId);
+  const owner = bot ? users.byId(bot.userId) : null;
+  return bot && owner ? { name: bot.name, label: bot.label, color: bot.color, locale: owner.locale, owner: owner.name } : null;
+});
 
 let computerNote: string;
 try {

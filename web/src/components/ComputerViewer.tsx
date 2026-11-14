@@ -22,7 +22,8 @@ export function ComputerViewer({ botId }: { botId: string }) {
   const computer = useStore((s) => s.computer);
   const closeViewer = useStore((s) => s.closeViewer);
   const t = useT();
-  const [control, setControl] = useState(false);
+  // Read once: the details panel can open the viewer straight in control mode.
+  const [control, setControl] = useState(() => useStore.getState().viewerControl);
   const [error, setError] = useState<string | null>(null);
   const [address, setAddress] = useState("");
   const root = useRef<HTMLDivElement>(null);
@@ -52,6 +53,30 @@ export function ComputerViewer({ botId }: { botId: string }) {
   const [liveFailedFor, setLiveFailedFor] = useState<string | null>(null);
   const [liveUp, setLiveUp] = useState(false);
   const live = linux && !!desktop?.open && liveFailedFor !== liveKey;
+
+  // Leaving control mode ("Hand back", closing the viewer while in control) tells the server once,
+  // so the bot looks at its screen again before relying on what it saw earlier.
+  const controlling = useRef(false);
+  const handBack = useCallback(() => {
+    if (!controlling.current) return;
+    controlling.current = false;
+    api("POST", `/bots/${botId}/desktop/handback`).catch(() => undefined);
+  }, [botId]);
+  useEffect(() => {
+    if (control) controlling.current = true;
+  }, [control]);
+  // Closing the viewer while in control hands back too. The check waits a tick so a development
+  // remount (StrictMode) doesn't count as closing.
+  const mounted = useRef(false);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      window.setTimeout(() => {
+        if (!mounted.current) handBack();
+      }, 0);
+    };
+  }, [handBack]);
 
   useDialogFocus(root);
   // In control mode Escape belongs to the remote desktop, so the overlay ignores it.
@@ -261,9 +286,10 @@ export function ComputerViewer({ botId }: { botId: string }) {
                 onClick={() => {
                   flushTyped();
                   setControl(false);
+                  handBack();
                 }}
               >
-                {t("viewer.done")}
+                {t("viewer.handBack")}
               </button>
             </>
           ) : (
@@ -278,6 +304,12 @@ export function ComputerViewer({ botId }: { botId: string }) {
           )}
           {error && <span className="viewer-error" role="alert">{error}</span>}
         </footer>
+      )}
+      {engine && control && (
+        <div className="viewer-control-bar" role="status">
+          <span className="dot-inline dot-live" />
+          {t("viewer.controlBar", { name: bot.name })}
+        </div>
       )}
     </div>
   );

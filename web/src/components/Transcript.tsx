@@ -3,7 +3,7 @@ import { enc } from "../api";
 import { t, tn, useT, type Key } from "../i18n";
 import { useStore, type Thread } from "../store";
 import type { ActivityKind, Attachment, Bot, Live, Origin, Row, RowBody } from "../types";
-import { callClock, clockTime, dividerLabel, elapsed, fileSize, hostName } from "../lib/format";
+import { callClock, clockTime, dividerLabel, elapsed, fileSize, hostName, workDuration } from "../lib/format";
 import { renderMarkdown } from "../lib/markdown";
 import { Avatar, BotAvatar } from "./Avatar";
 import { CardView } from "./Cards";
@@ -18,6 +18,8 @@ export type Item =
   | { t: "divider"; key: string; label: string }
   | { t: "msgs"; key: string; sender: string; mine: boolean; origin?: Origin; role: "user" | "assistant"; rows: Row[] }
   | { t: "steps"; key: string; rows: Row[] }
+  /** A finished turn's steps and in-between messages, folded into one "Worked for …" chip. */
+  | { t: "work"; key: string; rows: Row[]; ms: number; steps: number }
   | { t: "row"; key: string; row: Row };
 
 const HOUR = 3_600_000;
@@ -27,23 +29,99 @@ function isMine(b: MessageBody): boolean {
   return b.role === "user" && (!b.origin || b.origin.kind === "voice");
 }
 
+function senderKey(b: MessageBody): string {
+  return `${b.role}:${b.origin ? `${b.origin.kind}:${b.origin.id}` : ""}`;
+}
+
+function shown(row: Row, running: boolean): boolean {
+  const b = row.body;
+  if (b.kind === "message" && !b.text.trim() && !b.streaming && !b.attachments?.length) return false;
+  if (b.kind === "step" && running && b.status === "running") return false;
+  return true;
+}
+
+type WorkChip = { rows: Row[]; ms: number; steps: number };
+
+/**
+ * Finished turns fold their steps, and the bot's messages before its final reply, into one chip
+ * placed just before that reply. A turn starts at a user message. The turn still running (the
+ * latest one while the bot works) is left as it is, so its steps show live.
+ * Returns the row indexes that fold away and, by row index, the chips to place there.
+ */
+function planWork(rows: Row[], running: boolean): { folded: Set<number>; chips: Map<number, WorkChip> } {
+  const folded = new Set<number>();
+  const chips = new Map<number, WorkChip>();
+  const turn = (s: number, e: number) => {
+    if (s >= e || (running && e === rows.length)) return;
+    let final = -1;
+    for (let i = e - 1; i >= s; i--) {
+      const b = rows[i].body;
+      if (b.kind === "message" && b.role === "assistant" && shown(rows[i], running)) {
+        final = i;
+        break;
+      }
+    }
+    const finalBody = final >= 0 ? (rows[final].body as MessageBody) : null;
+    if (finalBody?.streaming) return;
+    const picked: number[] = [];
+    let steps = 0;
+    for (let i = s; i < e; i++) {
+      if (i === final || !shown(rows[i], running)) continue;
+      const b = rows[i].body;
+      if (b.kind === "step") {
+        picked.push(i);
+        steps++;
+      } else if (finalBody && b.kind === "message" && b.role === "assistant" && i < final && senderKey(b) === senderKey(finalBody)) {
+        // In a room only the replying bot's own earlier messages fold; other bots' replies stay visible.
+        picked.push(i);
+      }
+    }
+    if (steps === 0) return;
+    const head = rows[s].body;
+    const from = head.kind === "message" && head.role === "user" ? rows[s] : rows[picked[0]];
+    const to = final >= 0 ? rows[final] : rows[picked[picked.length - 1]];
+    for (const i of picked) folded.add(i);
+    chips.set(final >= 0 ? final : picked[0], { rows: picked.map((i) => rows[i]), ms: to.createdAt - from.createdAt, steps });
+  };
+  let start = 0;
+  rows.forEach((row, i) => {
+    const b = row.body;
+    if (i > start && b.kind === "message" && b.role === "user") {
+      turn(start, i);
+      start = i;
+    }
+  });
+  turn(start, rows.length);
+  return { folded, chips };
+}
+
 export function buildItems(rows: Row[], running: boolean): Item[] {
   const items: Item[] = [];
+  const { folded, chips } = planWork(rows, running);
   let prevAt: number | null = null;
-  for (const row of rows) {
-    const b = row.body;
-    if (b.kind === "message" && !b.text.trim() && !b.streaming && !b.attachments?.length) continue;
-    if (b.kind === "step" && running && b.status === "running") continue;
-    if (prevAt === null || row.createdAt - prevAt > HOUR) {
-      items.push({ t: "divider", key: `d${row.seq}`, label: dividerLabel(row.createdAt) });
+  const stamp = (at: number, seq: number) => {
+    if (prevAt === null || at - prevAt > HOUR) {
+      items.push({ t: "divider", key: `d${seq}`, label: dividerLabel(at) });
     }
-    prevAt = row.createdAt;
+    prevAt = at;
+  };
+  rows.forEach((row, index) => {
+    const chip = chips.get(index);
+    if (chip) {
+      const first = chip.rows[0];
+      stamp(first.createdAt, first.seq);
+      items.push({ t: "work", key: `w${first.seq}`, ...chip });
+      prevAt = chip.rows[chip.rows.length - 1].createdAt;
+    }
+    if (folded.has(index) || !shown(row, running)) return;
+    const b = row.body;
+    stamp(row.createdAt, row.seq);
     const last = items[items.length - 1];
     if (b.kind === "step") {
       if (last?.t === "steps") last.rows.push(row);
       else items.push({ t: "steps", key: `s${row.seq}`, rows: [row] });
     } else if (b.kind === "message") {
-      const sender = `${b.role}:${b.origin ? `${b.origin.kind}:${b.origin.id}` : ""}`;
+      const sender = senderKey(b);
       const lastRow = last?.t === "msgs" ? last.rows[last.rows.length - 1] : null;
       if (last?.t === "msgs" && last.sender === sender && lastRow && row.createdAt - lastRow.createdAt <= GROUP_WINDOW) {
         last.rows.push(row);
@@ -53,7 +131,7 @@ export function buildItems(rows: Row[], running: boolean): Item[] {
     } else {
       items.push({ t: "row", key: `r${row.seq}`, row });
     }
-  }
+  });
   return items;
 }
 
@@ -199,35 +277,78 @@ function MessageGroup({ item }: { item: Extract<Item, { t: "msgs" }> }) {
 
 const STEP_MARK: Partial<Record<StepBody["status"], Key>> = { error: "step.mark.error", denied: "step.mark.denied", waiting: "step.mark.waiting", running: "step.mark.running" };
 
+function StepLine({ seq, body }: { seq: number; body: StepBody }) {
+  const t = useT();
+  const mark = STEP_MARK[body.status];
+  return (
+    <li className="step" title={body.tool} data-seq={seq}>
+      <span className={`dot-inline dot-step-${body.status}`} />
+      <div className="step-text">
+        <span className="step-label">
+          {body.label || body.tool}
+          {mark && <span className={`step-mark is-${body.status}`}>{t(mark)}</span>}
+        </span>
+        {body.summary && <span className="step-summary">{body.summary}</span>}
+      </div>
+    </li>
+  );
+}
+
+const hasProblem = (rows: Row[]) => rows.some((r) => r.body.kind === "step" && (r.body.status === "error" || r.body.status === "denied"));
+
+/** The steps of the turn still running: a compact toggle with the latest step. */
 function StepGroup({ rows }: { rows: Row[] }) {
   const [open, setOpen] = useState(false);
   const t = useT();
-  const steps = rows.map((r) => ({ seq: r.seq, body: r.body as StepBody }));
-  const problem = steps.some((s) => s.body.status === "error" || s.body.status === "denied");
-  const last = steps[steps.length - 1].body;
+  const problem = hasProblem(rows);
+  const last = rows[rows.length - 1].body as StepBody;
   return (
     <div className="steps">
       <button type="button" className="steps-toggle" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
         <Icon name="chevronRight" size={14} className={open ? "is-rotated" : ""} />
-        <span>{tn("count.step", steps.length)}</span>
+        <span>{tn("count.step", rows.length)}</span>
         {!open && <span className="steps-last truncate">{last.label}</span>}
         {problem && !open && <span className="dot-inline dot-error" title={t("step.problem")} />}
       </button>
       {open && (
         <ol className="steps-list">
-          {steps.map(({ seq, body }) => {
-            const mark = STEP_MARK[body.status];
+          {rows.map((r) => <StepLine key={r.seq} seq={r.seq} body={r.body as StepBody} />)}
+        </ol>
+      )}
+    </div>
+  );
+}
+
+/** A finished turn's work: "Worked for 2 min 10 s · 7 steps". Opens into the steps and in-between messages. */
+function WorkGroup({ item }: { item: Extract<Item, { t: "work" }> }) {
+  const [open, setOpen] = useState(false);
+  const t = useT();
+  const botId = item.rows[0].botId;
+  // A search hit inside the folded rows opens the chip, so the message is on the page to scroll to.
+  const jumpSeq = useStore((s) => (s.jump?.botId === botId ? s.jump.seq : null));
+  if (!open && jumpSeq !== null && item.rows.some((r) => r.seq === jumpSeq)) setOpen(true);
+  const problem = hasProblem(item.rows);
+  return (
+    <div className="steps work">
+      <button type="button" className="steps-toggle work-toggle" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
+        <Icon name="chevronRight" size={14} className={open ? "is-rotated" : ""} />
+        <span>{t("work.summary", { time: workDuration(item.ms), steps: tn("count.step", item.steps) })}</span>
+        {problem && !open && <span className="dot-inline dot-error" title={t("step.problem")} />}
+      </button>
+      {open && (
+        <ol className="steps-list">
+          {item.rows.map((r) => {
+            const b = r.body;
+            if (b.kind === "step") return <StepLine key={r.seq} seq={r.seq} body={b} />;
+            if (b.kind !== "message") return null;
             return (
-            <li key={seq} className="step" title={body.tool}>
-              <span className={`dot-inline dot-step-${body.status}`} />
-              <div className="step-text">
-                <span className="step-label">
-                  {body.label || body.tool}
-                  {mark && <span className={`step-mark is-${body.status}`}>{t(mark)}</span>}
-                </span>
-                {body.summary && <span className="step-summary">{body.summary}</span>}
-              </div>
-            </li>
+              <li key={r.seq} className="step work-note" data-seq={r.seq}>
+                <Icon name="chat" size={13} className="work-note-icon" />
+                <div className="step-text">
+                  {b.attachments && b.attachments.length > 0 && <Attachments botId={r.botId} files={b.attachments} />}
+                  {b.text.trim() && <Markdown text={b.text} />}
+                </div>
+              </li>
             );
           })}
         </ol>
@@ -296,6 +417,8 @@ export function RowItems({ items, bot, readOnly }: { items: Item[]; bot: Bot; re
             return <MessageGroup key={item.key} item={item} />;
           case "steps":
             return <StepGroup key={item.key} rows={item.rows} />;
+          case "work":
+            return <WorkGroup key={item.key} item={item} />;
           case "row": {
             const b = item.row.body;
             if (b.kind === "card") {
@@ -373,12 +496,16 @@ function ActivityLine({ bot, live, rows }: { bot: Bot; live: Live; rows: Row[] }
   useT();
   const since = live.startedAt ?? live.activity?.since ?? now;
   const waiting = !!live.awaiting;
+  const caption = live.caption?.replace(/\s+/g, " ").trim();
   return (
     <div className={`activity ${waiting ? "is-waiting" : ""}`} role="status">
       <BotAvatar bot={bot} size={22} />
       <span className={waiting ? "activity-text" : "activity-text shimmer"}>{activityPhrase(live, rows, now)}{waiting ? "" : "…"}</span>
       {!waiting && now - since >= 1000 && <span className="activity-time">{elapsed(now - since)}</span>}
       {live.queued > 0 && <span className="chip">{tn("count.queued", live.queued)}</span>}
+      {!waiting && caption && (
+        <span key={caption} className="activity-caption truncate" title={caption}>{caption}</span>
+      )}
     </div>
   );
 }

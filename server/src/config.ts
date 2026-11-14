@@ -39,6 +39,8 @@ export const config = {
   sessionSecret: process.env.SESSION_SECRET ?? "",
   /** New accounts: always allowed while no account exists; afterwards only when this is on. */
   openSignup: flag("OPEN_SIGNUP"),
+  /** When set, only these addresses may create an account (comma-separated). */
+  allowedEmails: (process.env.ALLOWED_EMAILS ?? "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean),
   schedulerOff: flag("NO_SCHEDULER"),
   shellEnabled: flag("SHELL_ENABLED", true),
   maxSteps: num("MAX_STEPS", 60),

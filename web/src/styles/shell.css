@@ -145,3 +145,18 @@
   .tasks-head { padding: 10px 12px; }
   .tasks-body { padding: 12px 12px calc(12px + env(safe-area-inset-bottom)); }
 }
+
+/* Computer card: live thumbnail and quick actions */
+.screen-card-wrap { position: relative; }
+.screen-thumb { position: relative; }
+.screen-thumb .live-screen canvas { border-radius: 0; box-shadow: none; }
+.screen-thumb.is-live { background: #000; }
+.screen-thumb > .dot-inline { position: relative; z-index: 1; }
+.screen-actions { position: absolute; top: 37px; left: 13px; display: flex; gap: 1px; padding: 2px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); box-shadow: var(--shadow-md); opacity: 0; pointer-events: none; transform: translateY(-2px); transition: opacity 0.12s ease, transform 0.12s ease; }
+.screen-card-wrap:hover .screen-actions, .screen-card-wrap:focus-within .screen-actions { opacity: 1; pointer-events: auto; transform: none; }
+.screen-actions .icon-btn { width: 26px; height: 26px; color: var(--text-2); border-radius: 999px; }
+.screen-actions .icon-btn.is-busy { animation: pulse 1.2s ease-in-out infinite; }
+@media (hover: none) { .screen-actions { opacity: 1; pointer-events: auto; transform: none; } }
+
+.signin-notice { display: flex; align-items: flex-start; gap: 8px; padding: 9px 11px; border-radius: var(--r-md); background: var(--info-soft); color: var(--info); font-size: 13px; line-height: 1.4; }
+.signin-notice .icon { flex: none; margin-top: 1px; }

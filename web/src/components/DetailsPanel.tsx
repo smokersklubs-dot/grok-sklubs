@@ -9,6 +9,7 @@ import { endCall, startCall } from "../lib/call";
 import { useScreen } from "../lib/screen";
 import { canCall, canSpeak, makeUtterance, useVoices } from "../lib/speech";
 import { BotAvatar } from "./Avatar";
+import { LiveScreen } from "./LiveScreen";
 import { Icon, Spinner } from "./Icon";
 import { Empty, ErrorNote, IconButton, Loading, Toggle } from "./ui";
 
@@ -154,36 +155,112 @@ function Members({ room }: { room: Bot }) {
   );
 }
 
+/** True while the browser tab is visible. */
+function useTabVisible(): boolean {
+  const [visible, setVisible] = useState(() => document.visibilityState === "visible");
+  useEffect(() => {
+    const on = () => setVisible(document.visibilityState === "visible");
+    document.addEventListener("visibilitychange", on);
+    return () => document.removeEventListener("visibilitychange", on);
+  }, []);
+  return visible;
+}
+
 function ComputerSection({ bot }: { bot: Bot }) {
   const computer = useStore((s) => s.computer);
-  const openViewer = useStore((s) => s.openViewer);
+  const viewerOpen = useStore((s) => !!s.viewerBotId);
+  const { openViewer, showToast } = useStore.getState();
   const t = useT();
+  const tabVisible = useTabVisible();
   const desktop = computer?.desktops.find((d) => d.botId === bot.id);
   const engine = computer ? computer.browser : true;
-  const { url, status } = useScreen(bot.id, 4000, engine);
+  const linux = computer?.kind === "linux";
+  // A small watch-only live stream while the computer is open and the panel can be seen (this section
+  // only exists on the Activity tab). The polled screenshot stays the fallback if the stream fails.
+  const liveKey = `${bot.id}-${desktop?.open}`;
+  const [liveFailedFor, setLiveFailedFor] = useState<string | null>(null);
+  const [liveUp, setLiveUp] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+  const live = linux && !!desktop?.open && tabVisible && !viewerOpen && liveFailedFor !== liveKey;
+  const { url, status, refresh } = useScreen(bot.id, 4000, engine && !(live && liveUp));
+  const [busy, setBusy] = useState<"tidy" | "wake" | null>(null);
+
+  const tidy = async () => {
+    setBusy("tidy");
+    try {
+      await api("POST", `/bots/${bot.id}/desktop/tidy`);
+      showToast(t("details.tidied"));
+    } catch (e) {
+      showToast(t("details.tidyFailed", { error: errText(e) }));
+    }
+    setBusy(null);
+    refresh();
+  };
+  const wake = async () => {
+    setBusy("wake");
+    try { await api("POST", `/bots/${bot.id}/desktop/wake`); } catch { /* the status line shows the problem */ }
+    setBusy(null);
+    refresh();
+  };
+
+  const asleep = status === "none" && !(live && liveUp);
   const text = !engine
     ? t("computer.noneTitle")
-    : status === "ok"
-      ? desktop?.url || (computer?.kind === "linux" ? t("computer.awake") : t("details.desktopOpen"))
-      : status === "none"
-        ? computer?.kind === "linux" ? t("computer.asleep") : t("details.noDesktop")
-        : status === "error"
-          ? t("details.unreachable")
-          : t("details.checking");
+    : live && liveUp
+      ? desktop?.url || t("computer.awake")
+      : status === "ok"
+        ? desktop?.url || (linux ? t("computer.awake") : t("details.desktopOpen"))
+        : status === "none"
+          ? linux ? t("computer.asleep") : t("details.noDesktop")
+          : status === "error"
+            ? t("details.unreachable")
+            : t("details.checking");
   return (
     <section className="section">
       <div className="section-head">
         <h3>{t("details.computer")}</h3>
       </div>
-      <button type="button" className="screen-card" onClick={() => openViewer(bot.id)} aria-label={t("details.openComputer", { name: bot.name })}>
-        <span className="screen-thumb">
-          {url ? <img src={url} alt="" /> : status === "loading" && engine ? <span className="dot-inline dot-pulse" /> : <Icon name="monitor" size={22} />}
-        </span>
-        <span className="screen-card-text">
-          <span className="list-row-title">{t(computer?.kind === "linux" ? "details.linuxOf" : "details.desktopOf", { name: bot.name })}</span>
-          <span className="list-row-sub truncate">{text}</span>
-        </span>
-      </button>
+      <div className="screen-card-wrap">
+        <button type="button" className="screen-card" onClick={() => openViewer(bot.id)} aria-label={t("details.openComputer", { name: bot.name })}>
+          <span className={`screen-thumb ${live ? "is-live" : ""}`}>
+            {live && (
+              <LiveScreen
+                key={attempt}
+                botId={bot.id}
+                control={false}
+                label={t("viewer.screenAlt", { name: bot.name })}
+                onConnect={() => setLiveUp(true)}
+                onClose={() => {
+                  // A stream that drops after working reconnects once; one that never opened falls back to screenshots.
+                  if (liveUp) setAttempt((n) => n + 1);
+                  else setLiveFailedFor(liveKey);
+                  setLiveUp(false);
+                }}
+              />
+            )}
+            {live && liveUp ? null : url ? <img src={url} alt="" /> : (status === "loading" || live) && engine ? <span className="dot-inline dot-pulse" /> : <Icon name="monitor" size={22} />}
+          </span>
+          <span className="screen-card-text">
+            <span className="list-row-title">{t(linux ? "details.linuxOf" : "details.desktopOf", { name: bot.name })}</span>
+            <span className="list-row-sub truncate">
+              {live && liveUp && <span className="dot-inline dot-live" />}
+              {text}
+            </span>
+          </span>
+        </button>
+        {engine && (
+          <div className="screen-actions" role="group" aria-label={t("details.screenActions")}>
+            <IconButton icon="expand" size={14} label={t("details.watch")} onClick={() => openViewer(bot.id)} />
+            <IconButton icon="cursor" size={14} label={t("details.takeControl")} onClick={() => openViewer(bot.id, { control: true })} />
+            {linux && !asleep && (
+              <IconButton icon="tidy" size={14} label={t("details.tidy")} disabled={busy !== null} className={busy === "tidy" ? "is-busy" : ""} onClick={() => void tidy()} />
+            )}
+            {linux && asleep && (
+              <IconButton icon="bolt" size={14} label={t("details.wake")} disabled={busy !== null} className={busy === "wake" ? "is-busy" : ""} onClick={() => void wake()} />
+            )}
+          </div>
+        )}
+      </div>
     </section>
   );
 }

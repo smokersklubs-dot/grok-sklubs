@@ -100,6 +100,10 @@ export function submitUserMessage(bot: BotRecord, text: string, voice = false, a
   enqueue(bot.id, { kind: "user", text, voice, attachments, channel });
 }
 
+/** Bots whose screen the user drove since their last turn: the next turn is told to look again first. */
+const handedBack = new Set<string>();
+export const noteHandBack = (botId: string) => { handedBack.add(botId); };
+
 export function interrupt(botId: string) {
   controllers.get(botId)?.abort();
 }
@@ -216,7 +220,10 @@ async function runTurn(botId: string, trigger: Trigger): Promise<void> {
       const depth = trigger.kind === "bot" ? trigger.depth : trigger.kind === "system" ? trigger.depth ?? 0 : 0;
       turn = await newTurn(bot, user, depth, controller.signal);
       const extra = drainSteering(bot);
-      const first = trigger.kind === "user" ? userBlocks(botId, triggerMessage(trigger), trigger.attachments) : [text(triggerMessage(trigger))];
+      // The time travels with each message instead of sitting in the system prompt, so that prompt stays identical and cached.
+      const stamped = `[${new Date().toISOString().slice(0, 16).replace("T", " ")} UTC]\n${triggerMessage(trigger)}`;
+      const first = trigger.kind === "user" ? userBlocks(botId, stamped, trigger.attachments) : [text(stamped)];
+      if (handedBack.delete(botId)) first.unshift(text("[The user took control of your computer since your last turn and has handed it back. Windows, pages and fields may have changed: look at the screen before relying on what you saw earlier.]"));
       history.append(botId, bot.generation, { role: "user", content: [...repairDangling(botId, bot.generation), ...first, ...extra] });
     }
     await modelLoop(turn);
@@ -253,6 +260,7 @@ async function modelLoop(turn: Turn) {
   const { bot } = turn;
   let { provider, model } = resolveModel(turn.modelRef);
   let onBackup = false;
+  const caption = new Caption(turn);
   for (let step = 0; step < config.maxSteps; step++) {
     if (turn.signal.aborted) throw new Error("aborted");
     const stream = new StreamingRow(turn);
@@ -260,6 +268,7 @@ async function modelLoop(turn: Turn) {
       model, system: turn.system, tools: turn.tools, effort: bot.effort as Effort, webSearch: !bot.disabledTools.includes("web"), signal: turn.signal,
       messages: trimOldImages(history.load(bot.id, turn.generation)),
       onText: (delta) => { if (!stream.started) activity(turn, "writing"); stream.push(delta); },
+      onReasoning: (delta) => caption.push(delta),
       onToolStart: (_id, name) => { if (name === "web_search") activity(turn, "searching"); },
     });
     const result = await call().catch(async (err: unknown) => {
@@ -317,6 +326,27 @@ function redact(input: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(input)) out[k] = typeof v === "string" ? clip(v, 400) : v;
   return out;
+}
+
+/**
+ * A one-line glimpse of what the bot is thinking, taken from its reasoning summary: the latest bold
+ * heading if it writes them, else the start of its latest paragraph. Sent at most twice a second.
+ */
+class Caption {
+  private text = "";
+  private last = 0;
+  private shown = "";
+  constructor(private turn: Turn) {}
+  push(delta: string) {
+    this.text = (this.text + delta).slice(-4000);
+    if (Date.now() - this.last < 500) return;
+    this.last = Date.now();
+    const headings = [...this.text.matchAll(/\*\*([^*\n]{3,80})\*\*/g)];
+    const line = headings.length ? headings[headings.length - 1][1] : (this.text.split(/\n\s*\n/).pop() ?? "").replace(/\s+/g, " ").trim().slice(0, 110);
+    if (!line || line === this.shown) return;
+    this.shown = line;
+    setLive(this.turn.user.id, this.turn.bot.id, { caption: line });
+  }
 }
 
 class StreamingRow {

@@ -103,6 +103,15 @@ export function duration(ms: number): string {
   return s % 60 ? t("time.durMS", { m, s: s % 60 }) : t("time.durM", { m });
 }
 
+/** How long a bot worked on a turn: "45 s", "2 min 10 s", "1 h 5 min". */
+export function workDuration(ms: number): string {
+  const s = Math.max(0, Math.round(ms / 1000));
+  if (s < 60) return t("time.workS", { s });
+  const m = Math.floor(s / 60);
+  if (m >= 60) return t("time.workHM", { h: Math.floor(m / 60), m: m % 60 });
+  return s % 60 ? t("time.workMS", { m, s: s % 60 }) : t("time.workM", { m });
+}
+
 export function fileSize(bytes: number): string {
   if (bytes < 1024) return t("size.b", { n: bytes });
   if (bytes < 1024 * 1024) return t("size.kb", { n: numFmt({ maximumFractionDigits: bytes < 10_240 ? 1 : 0 }).format(bytes / 1024) });

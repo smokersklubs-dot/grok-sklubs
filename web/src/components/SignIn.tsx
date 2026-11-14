@@ -1,9 +1,10 @@
-import { useId, useState, type FormEvent } from "react";
+import { useEffect, useId, useState, type FormEvent } from "react";
 import { api, errText } from "../api";
 import { LOCALES, useT } from "../i18n";
 import { useStore } from "../store";
 import type { User } from "../types";
 import { Avatar } from "./Avatar";
+import { Icon } from "./Icon";
 import { ErrorNote } from "./ui";
 
 export function SignIn() {
@@ -20,6 +21,14 @@ export function SignIn() {
   const [error, setError] = useState<string | null>(null);
   const ids = { name: useId(), email: useId(), password: useId() };
   const creating = mode === "signup" && signupOpen;
+  // A one-time sign-in link that has expired or was already used lands here with ?link=expired.
+  const [linkExpired] = useState(() => new URLSearchParams(location.search).get("link") === "expired");
+  useEffect(() => {
+    if (!linkExpired) return;
+    const url = new URL(location.href);
+    url.searchParams.delete("link");
+    history.replaceState(history.state, "", `${url.pathname}${url.search}${url.hash}`);
+  }, [linkExpired]);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -60,6 +69,13 @@ export function SignIn() {
         </div>
 
         <h2 className="signin-title">{t(creating ? "signin.create" : "signin.signIn")}</h2>
+
+        {linkExpired && (
+          <p className="signin-notice" role="status">
+            <Icon name="info" size={16} />
+            <span>{t("signin.linkExpired")}</span>
+          </p>
+        )}
 
         {creating && (
           <div className="field">

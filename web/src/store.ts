@@ -149,6 +149,8 @@ interface Store {
   botSettings: { botId: string; tab: BotSettingsTab } | null;
   appSettings: AppSection | null;
   viewerBotId: string | null;
+  /** The viewer opens straight in control mode (read once when it mounts). */
+  viewerControl: boolean;
   toast: Toast | null;
   drafts: Record<string, string>;
   uploads: Record<string, Upload[]>;
@@ -191,7 +193,8 @@ interface Store {
   closeBotSettings(): void;
   openAppSettings(section?: AppSection): void;
   closeAppSettings(): void;
-  openViewer(botId: string): void;
+  /** Open a bot's computer full size; `control` opens it straight in control mode. */
+  openViewer(botId: string, opts?: { control?: boolean }): void;
   closeViewer(): void;
   /** Show a toast. With an action it stays about 6 s; without, about 2 s. */
   showToast(text: string, action?: Toast["action"]): void;
@@ -248,6 +251,7 @@ export const useStore = create<Store>((set, get) => ({
   botSettings: null,
   appSettings: null,
   viewerBotId: null,
+  viewerControl: false,
   toast: null,
   drafts: {},
   uploads: {},
@@ -678,11 +682,11 @@ export const useStore = create<Store>((set, get) => ({
   closeAppSettings() {
     set({ appSettings: null });
   },
-  openViewer(botId) {
-    set({ viewerBotId: botId });
+  openViewer(botId, opts) {
+    set({ viewerBotId: botId, viewerControl: !!opts?.control });
   },
   closeViewer() {
-    set({ viewerBotId: null });
+    set({ viewerBotId: null, viewerControl: false });
   },
   showToast(text, action) {
     window.clearTimeout(toastTimer);

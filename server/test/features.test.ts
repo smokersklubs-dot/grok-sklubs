@@ -50,7 +50,7 @@ const scripted: LlmProvider = {
       const r = results[0];
       content = [{ type: "text", text: `Tool said: ${r.type === "tool_result" ? r.content.map((c) => (c.type === "text" ? c.text : "[image]")).join(" ") : ""}` }];
     } else {
-      const said = texts[texts.length - 1] ?? "";
+      const said = (texts[texts.length - 1] ?? "").replace(/^(\[[^\]\n]*\]\n)+/, "");
       const m = /call (\w+) (\{.*\})/s.exec(said);
       content = m ? [{ type: "tool_use", id: `call_${requests.length}`, name: m[1], input: JSON.parse(m[2]) }] : [{ type: "text", text: `Echo: ${said}` }];
     }

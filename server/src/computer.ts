@@ -205,6 +205,10 @@ export const screen = {
   isOpen: (botId: string) => (kind === "linux" ? linuxScreen.isOpen(botId) : browserScreen.isOpen(botId)),
   /** Switches the computer on without doing anything on it (Linux computers only; a browser opens on first use). */
   wake: async (botId: string, userId: string) => { if (kind === "linux") await linuxScreen.wake(botId, userId, workspaceOf(botId)); },
+  /** Linux: close every window, keep logins, reopen the browser on the home page. Browser: close the browser. */
+  tidy: (botId: string, userId: string) => (kind === "linux" ? linuxScreen.tidy(botId, userId, workspaceOf(botId)) : browserScreen.reset(botId)),
+  /** Re-applies a bot's look to its computer after a rename or a new colour. */
+  redress: (botId: string) => (kind === "linux" ? linuxScreen.redress(botId) : Promise.resolve()),
   /** Linux: put the computer to sleep, keeping everything on it. Browser: close it. */
   sleep: (botId: string) => (kind === "linux" ? linuxScreen.sleep(botId) : browserScreen.reset(botId)),
   /** Linux: wipe the computer and start fresh next time. Browser: close it (logins are kept). */

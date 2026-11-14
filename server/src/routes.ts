@@ -4,7 +4,7 @@ import { Readable } from "node:stream";
 import { Hono, type Context } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { streamSSE } from "hono/streaming";
-import { decideApproval, enqueue, inQueue, interrupt, submitUserMessage } from "./agent/loop.js";
+import { decideApproval, enqueue, inQueue, interrupt, noteHandBack, submitUserMessage } from "./agent/loop.js";
 import { ask, compactIfNeeded, consolidate, memoryStatus } from "./agent/memory.js";
 import { telegram } from "./telegram.js";
 import { createRoom, dispatchToRoom, validMembers } from "./agent/team.js";
@@ -92,6 +92,7 @@ api.post("/auth/signup", async (c) => {
   if (!/^[^@\s]+@[^@\s]+$/.test(email)) fail(400, "Enter a valid email address.");
   if (password.length < 8) fail(400, "Choose a password of at least 8 characters.");
   if (users.byEmail(email)) fail(409, "An account with this email already exists.");
+  if (config.allowedEmails.length && !config.allowedEmails.includes(email.toLowerCase())) fail(403, "This address is not allowed to create an account on this server.");
   const locale = pickLocale(b.locale, c.req.header("accept-language"));
   const user = users.create(email, String(b.name ?? ""), hashPassword(password), locale);
   // Every account starts with one main bot so there is someone to talk to straight away.
@@ -113,6 +114,17 @@ api.post("/auth/login", async (c) => {
   audit(user!.id, "account", "Signed in");
   startSession(c, user!.id);
   return c.json({ user: publicUser(user!) });
+});
+
+/** One-time sign-in link printed on the server's command line (valid 15 minutes, single use). */
+api.get("/auth/link", (c) => {
+  const token = c.req.query("token") ?? "";
+  const row = token ? q.get<{ user_id: string; expires_at: number }>("SELECT user_id, expires_at FROM sign_in_links WHERE token_hash = ?", sha256(token)) : undefined;
+  if (row) q.run("DELETE FROM sign_in_links WHERE token_hash = ?", sha256(token));
+  if (!row || row.expires_at < Date.now() || !users.byId(row.user_id)) return c.redirect("/?link=expired");
+  audit(row.user_id, "account", "Signed in with a one-time link");
+  startSession(c, row.user_id);
+  return c.redirect("/");
 });
 
 api.post("/auth/logout", (c) => {
@@ -194,8 +206,10 @@ api.post("/bots", async (c) => {
 
 api.patch("/bots/:id", async (c) => {
   const bot = ownBot(c);
-  bots.patch(bot.id, await body(c));
+  const patch = await body(c);
+  bots.patch(bot.id, patch);
   bots.announce(bot);
+  if (patch.name !== undefined || patch.label !== undefined || patch.color !== undefined) void screen.redress(bot.id).catch(() => {});
   return c.json({ bot: publicBot(bots.byId(bot.id)!) });
 });
 
@@ -553,6 +567,13 @@ api.post("/bots/:id/desktop/wake", async (c) => {
   try { await screen.wake(bot.id, bot.userId); } catch (err) { return fail(502, (err as Error).message); }
   return c.json({ ok: true });
 });
+api.post("/bots/:id/desktop/tidy", async (c) => {
+  const bot = ownAgent(c);
+  try { await screen.tidy(bot.id, bot.userId); } catch (err) { return fail(502, (err as Error).message); }
+  audit(bot.userId, "system", `${bot.name}: screen tidied`, bot.id);
+  return c.json({ ok: true });
+});
+api.post("/bots/:id/desktop/handback", (c) => { noteHandBack(ownAgent(c).id); return c.json({ ok: true }); });
 api.post("/bots/:id/desktop/sleep", async (c) => { await screen.sleep(ownBot(c).id); return c.json({ ok: true }); });
 api.post("/bots/:id/desktop/reset", async (c) => { await screen.reset(ownBot(c).id); return c.json({ ok: true }); });
 

@@ -250,3 +250,18 @@ button.captions:hover { box-shadow: 0 0 0 1px var(--border-strong); }
 .live-screen canvas { border-radius: 8px; box-shadow: 0 12px 40px rgba(0, 0, 0, .35); }
 .live-screen:not(.is-control) canvas { cursor: default !important; }
 .live-wait { position: absolute; inset: 0; pointer-events: none; }
+
+/* Finished turn: "Worked for … · N steps" */
+.work { margin: 4px 0 2px; }
+.work-toggle { color: var(--text-3); font-weight: 500; }
+.work-note { color: var(--text-2); }
+.work-note .work-note-icon { flex: none; margin-top: 3px; color: var(--text-3); }
+.work-note .md { font-size: 13px; color: var(--text-2); }
+.work-note .md > :first-child { margin-top: 0; }
+.work-note .md > :last-child { margin-bottom: 0; }
+.work-note .attachments { margin-bottom: 4px; }
+
+/* Live thinking line under the activity phrase */
+.activity-caption { flex-basis: 100%; min-width: 0; margin: -4px 0 0 30px; font-size: 12.5px; color: var(--text-3); animation: caption-in 0.45s ease; }
+@keyframes caption-in { from { opacity: 0; transform: translateY(2px); } }
+@media (prefers-reduced-motion: reduce) { .activity-caption { animation: none; } }

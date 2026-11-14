@@ -22,6 +22,7 @@ services:
       BRAVE_API_KEY: "${BRAVE_API_KEY:-}"
       SEARXNG_URL: "${SEARXNG_URL:-}"
       OPEN_SIGNUP: "${SKLUBOT_OPEN_SIGNUP:-0}"
+      ALLOWED_EMAILS: "${SKLUBOT_ALLOWED_EMAILS:-}"
       COMPUTER: "linux"
       DATA_VOLUME: "sklubot_data"
       MAX_DESKTOPS: "${SKLUBOT_MAX_DESKTOPS:-4}"
