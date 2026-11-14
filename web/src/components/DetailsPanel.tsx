@@ -496,7 +496,7 @@ export function DetailsPanel() {
     { id: "library", label: t("details.tab.library") },
   ];
   return (
-    <aside className="details" style={accentStyle(bot.color)} aria-label={t("details.aria", { name: bot.name })}>
+    <aside className="details" style={accentStyle(bot.color, bot.character?.customColor)} aria-label={t("details.aria", { name: bot.name })}>
       <div className="details-top">
         <IconButton icon="settings" label={t("chat.botSettings")} onClick={() => openBotSettings(bot.id)} />
         <IconButton icon="close" label={t("chat.hideDetails")} onClick={() => toggleDetails(false)} />

@@ -40,7 +40,7 @@ export function ChatView() {
   };
 
   return (
-    <section className="main chat" style={accentStyle(bot.color)} aria-label={t("chat.with", { name: bot.name })}>
+    <section className="main chat" style={accentStyle(bot.color, bot.character?.customColor)} aria-label={t("chat.with", { name: bot.name })}>
       <header className="chat-head">
         <IconButton icon="menu" label={t("common.openMenu")} className="only-mobile" onClick={() => setMobileNav(true)} />
         <div className="menu-wrap chat-head-center">

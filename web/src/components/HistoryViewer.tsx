@@ -59,7 +59,7 @@ export function HistoryViewer({ target }: { target: HistoryTarget }) {
       <p className="history-banner" role="note">
         <Icon name="lock" size={14} /> {t("history.banner")}
       </p>
-      <div className="history-body" ref={body} style={accentStyle(bot.color)} tabIndex={-1}>
+      <div className="history-body" ref={body} style={accentStyle(bot.color, bot.character?.customColor)} tabIndex={-1}>
         {error && <div className="history-pad"><ErrorNote>{error}</ErrorNote></div>}
         {!rows && !error && <Loading />}
         {rows && rows.length === 0 && <Empty icon="history" title={t("history.emptyTitle")}>{t("history.emptyText")}</Empty>}

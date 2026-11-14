@@ -20,8 +20,17 @@ export function colorOf(color: string): { bg: string; fg: string } {
   return COLORS[color as AvatarColor] ?? COLORS.slate;
 }
 
-/** CSS custom properties that tint a subtree with a bot's colour. */
-export function accentStyle(color: string): CSSProperties {
+/** Readable text on a "#rrggbb" background: dark on light colours, white otherwise. */
+function textOn(hex: string): string {
+  const n = parseInt(hex.slice(1), 16);
+  const lin = (c: number) => { const x = c / 255; return x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4; };
+  const l = 0.2126 * lin((n >> 16) & 255) + 0.7152 * lin((n >> 8) & 255) + 0.0722 * lin(n & 255);
+  return l > 0.45 ? "#17181b" : "#ffffff";
+}
+
+/** CSS custom properties that tint a subtree with a bot's colour (its free colour when it has one). */
+export function accentStyle(color: string, custom?: string | null): CSSProperties {
+  if (custom && /^#[0-9a-f]{6}$/i.test(custom)) return { "--accent": custom, "--accent-fg": textOn(custom) } as CSSProperties;
   const c = colorOf(color);
   return { "--accent": c.bg, "--accent-fg": c.fg } as CSSProperties;
 }
