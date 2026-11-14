@@ -3,8 +3,10 @@ import { config } from "../config.js";
 import { q } from "../db.js";
 import { defaultModelRef, listProviders, resolveModel, type ChatMessage } from "../llm/index.js";
 import { engineAsk, isEngineRef } from "./engine.js";
-import type { MemoryStatus } from "../shared.js";
-import { bots, clip, history, memories, now, paused, rows, type BotRecord } from "../store.js";
+import type { MemoryBookkeeping, SensitiveCategory } from "../shared.js";
+import { bots, clip, history, memories, now, paused, rows, settings, type BotRecord } from "../store.js";
+import { findQuote, typedByUser } from "./grounding.js";
+import { looksSecret, memoryVerdict, sensitiveCategory } from "./sensitive.js";
 import { record } from "../usage.js";
 import { isBusy } from "./loop.js";
 
@@ -89,7 +91,7 @@ export async function compactIfNeeded(bot: BotRecord, force = false): Promise<{ 
   return { before: all.length, after: next.length, changed: true };
 }
 
-export function memoryStatus(bot: BotRecord): MemoryStatus {
+export function memoryStatus(bot: BotRecord): MemoryBookkeeping {
   const mark = q.get<{ mark: number }>("SELECT mark FROM consolidation WHERE bot_id = ?", bot.id)?.mark ?? 0;
   const last = q.get<{ at: number }>("SELECT at FROM compactions WHERE bot_id = ? ORDER BY id DESC LIMIT 1", bot.id);
   return { lastConsolidatedAt: mark || null, historyChars: historyChars(history.load(bot.id, bot.generation)), compactAt: config.compactChars, lastCompactedAt: last?.at ?? null };
@@ -112,7 +114,12 @@ export function similar(a: string, b: string): boolean {
 const consolidating = new Set<string>();
 const setMark = (botId: string, mark: number) => q.run("INSERT INTO consolidation (bot_id, mark) VALUES (?, ?) ON CONFLICT(bot_id) DO UPDATE SET mark = excluded.mark", botId, mark);
 
-/** Reads the recent chat and keeps the few facts worth remembering for weeks. */
+/**
+ * Reads the recent chat and keeps the few facts worth remembering for weeks — learned only from the user's own messages
+ * (spec 07 A8): never from the bot's replies, other bots, routines, webhooks, pages, mails or tool results. Each fact
+ * must come with an excerpt, word for word, of the user message it is based on, and the server checks that the excerpt
+ * is really there. Sensitive topics and anything that looks like a secret are left out (sensitive.ts).
+ */
 export async function consolidate(bot: BotRecord): Promise<{ added: string[]; considered: number }> {
   if (consolidating.has(bot.id)) return { added: [], considered: 0 };
   consolidating.add(bot.id);
@@ -121,31 +128,35 @@ export async function consolidate(bot: BotRecord): Promise<{ added: string[]; co
     const recent = rows.messagesAfter(bot.id, bot.generation, mark, 60).filter((r) => r.body.kind === "message" && r.body.text.trim() && !r.body.streaming);
     if (!recent.length) return { added: [], considered: 0 };
     const newest = recent[recent.length - 1].createdAt;
-    const typedByUser = recent.some((r) => r.body.kind === "message" && r.body.role === "user" && (!r.body.origin || r.body.origin.kind === "voice"));
-    if (!typedByUser) { setMark(bot.id, newest); return { added: [], considered: recent.length }; }
+    // Only what the user typed (or said on a call) can teach anything; long pastes are skipped.
+    const own = recent.filter((r) => typedByUser(r) && r.body.kind === "message" && r.body.text.length <= 4000);
+    if (!own.length || !settings.memory(bot.userId).autoCapture) { setMark(bot.id, newest); return { added: [], considered: recent.length }; }
 
-    const transcript = recent.map((r) => {
-      if (r.body.kind !== "message") return "";
-      const who = r.body.role === "assistant" ? bot.name : r.body.origin && r.body.origin.kind !== "voice" ? r.body.origin.name : "User";
-      return `${who}: ${clip(r.body.text, 2000)}`;
-    }).join("\n").slice(-24_000);
+    const transcript = own.map((r) => `- ${r.body.kind === "message" ? clip(r.body.text, 2000) : ""}`).join("\n").slice(-24_000);
     const existing = memories.list(bot.id, 200);
     const answer = await ask(bot,
-      "You maintain the long-term memory of an AI teammate. From a conversation you pick out only what will still matter in weeks.",
-      `Keep: facts about the user (role, company, team, location, timezone, key people, accounts and tools), their preferences and standing instructions, lasting facts about ongoing projects.\n` +
-      `Skip: one-off requests, small talk, passing states, things the teammate said about itself, secrets of any kind, and anything the existing memories already cover even in other words.\n` +
-      `Write each fact as one short stand-alone sentence in the third person, under 200 characters. At most 8. If nothing qualifies, return an empty list.\n` +
-      `Answer with JSON only, in the form {"facts": ["…"]}.\n\nExisting memories:\n${existing.map((m) => `- ${m.text}`).join("\n") || "(none)"}\n\nConversation:\n${transcript}`);
-    let facts: string[] = [];
+      "You maintain the long-term memory of an AI teammate. You read only the user's own messages and pick out what will still matter in weeks.",
+      `Keep: facts about the user (role, company, team, timezone, key people, accounts and tools), their preferences and standing instructions, lasting facts about ongoing projects.\n` +
+      `Skip: one-off requests, small talk, passing states, secrets of any kind, health, religion, politics, sexuality, origin, precise addresses, account or card numbers, and anything the existing memories already cover even in other words.\n` +
+      `Write each fact as one short stand-alone sentence in the third person, under 200 characters, and give with it an excerpt copied word for word from the user message it comes from. At most 8. If nothing qualifies, return an empty list.\n` +
+      `Answer with JSON only, in the form {"facts": [{"text": "…", "quote": "…"}]}.\n\nExisting memories:\n${existing.map((m) => `- ${m.text}`).join("\n") || "(none)"}\n\nThe user's messages:\n${transcript}`);
+    let facts: { text: string; quote: string }[] = [];
     try {
       const parsed = JSON.parse(answer.slice(answer.indexOf("{"), answer.lastIndexOf("}") + 1));
-      if (Array.isArray(parsed.facts)) facts = parsed.facts.filter((f: unknown): f is string => typeof f === "string");
+      if (Array.isArray(parsed.facts)) facts = parsed.facts.map((f: unknown) => (typeof f === "string" ? { text: f, quote: "" } : f && typeof f === "object" ? { text: String((f as any).text ?? ""), quote: String((f as any).quote ?? "") } : { text: "", quote: "" }));
     } catch { /* unusable answer: learn nothing this time */ }
+    const words = own.map((r) => ({ seq: r.seq, text: r.body.kind === "message" ? r.body.text : "", at: r.createdAt }));
     const added: string[] = [];
     for (const fact of facts.slice(0, 8)) {
-      const t = clip(fact.trim(), 300);
+      const t = clip(fact.text.trim(), 300);
       if (!t || existing.some((m) => similar(m.text, t)) || added.some((a) => similar(a, t))) continue;
-      memories.add(bot.id, t, "learned");
+      // The excerpt must really be in one of the user's messages: otherwise the fact may come from somewhere else.
+      const source = findQuote(fact.quote, words);
+      if (!source) continue;
+      // Sensitive topics are learned only when the user allowed them; secrets never (an explicit "remember" goes through memory_save).
+      const v = memoryVerdict(bot.userId, `${t}\n${fact.quote}`, false);
+      if (!v.ok) continue;
+      memories.add(bot.id, t, "learned", { quote: clip(fact.quote, 300), category: v.category });
       added.push(t);
     }
     setMark(bot.id, newest);
@@ -154,6 +165,96 @@ export async function consolidate(bot: BotRecord): Promise<{ added: string[]; co
   } finally {
     consolidating.delete(bot.id);
   }
+}
+
+// ── Import and export ────────────────────────────────────────────────────────
+export interface ImportCandidate { text: string; skip: "duplicate" | "secret" | "sensitive" | "empty" | null; category: SensitiveCategory | null }
+
+/** Lines of a memory export (ours in JSON or Markdown, or a list pasted from another assistant), checked one by one. */
+export function importCandidates(bot: BotRecord, raw: string): ImportCandidate[] {
+  let texts: string[] = [];
+  const trimmed = raw.trim();
+  try {
+    const parsed = JSON.parse(trimmed);
+    const list = Array.isArray(parsed) ? parsed : Array.isArray(parsed?.memories) ? parsed.memories : [];
+    texts = list.map((m: unknown) => (typeof m === "string" ? m : m && typeof m === "object" ? String((m as any).text ?? "") : ""));
+  } catch {
+    texts = trimmed.split(/\r?\n/).map((l) => l.replace(/^\s*(?:[-*•]|\d+[.)])\s+/, "").replace(/^\[[ x]\]\s*/i, "").trim()).filter((l) => l && !/^#{1,6}\s/.test(l));
+  }
+  const existing = memories.list(bot.id, 2000).map((m) => m.text);
+  const seen: string[] = [];
+  return texts.slice(0, 300).map((t) => {
+    const text = clip(t.replace(/\s+/g, " ").trim(), 500);
+    if (!text) return { text, skip: "empty" as const, category: null };
+    if (looksSecret(text)) return { text, skip: "secret" as const, category: null };
+    if ([...existing, ...seen].some((e) => similar(e, text))) return { text, skip: "duplicate" as const, category: null };
+    seen.push(text);
+    const v = memoryVerdict(bot.userId, text, false);
+    return v.ok ? { text, skip: null, category: v.category } : { text, skip: "sensitive" as const, category: sensitiveCategory(text) };
+  });
+}
+
+/** Adds the chosen lines; sensitive ones only when the user ticked them (`allowSensitive`), secrets never. */
+export function importMemories(bot: BotRecord, raw: string, chosen: string[] | null, allowSensitive: boolean): { imported: number; skipped: number } {
+  const want = chosen ? new Set(chosen.map((c) => c.trim())) : null;
+  let imported = 0, skipped = 0;
+  for (const c of importCandidates(bot, raw)) {
+    const picked = want ? want.has(c.text) : c.skip === null;
+    const ok = picked && (c.skip === null || (c.skip === "sensitive" && allowSensitive && !!want));
+    if (!ok) { if (c.skip !== "empty") skipped++; continue; }
+    memories.add(bot.id, c.text, "import", { category: c.category ?? sensitiveCategory(c.text) });
+    imported++;
+  }
+  if (imported) emit(bot.userId, { type: "memories", botId: bot.id });
+  return { imported, skipped };
+}
+
+export function exportMemories(bot: BotRecord, format: "md" | "json", locale: "fr" | "en"): string {
+  const list = memories.list(bot.id, 5000).reverse();
+  if (format === "json") return JSON.stringify({ bot: bot.name, exportedAt: new Date().toISOString(), memories: list.map(({ botId: _b, ...m }) => m) }, null, 2);
+  const head = locale === "fr" ? `# Mémoire de ${bot.name}` : `# ${bot.name}'s memory`;
+  const groups: [string, string][] = locale === "fr" ? [["active", "Utilisées"], ["contested", "Contestées"], ["archived", "Archivées"]] : [["active", "Active"], ["contested", "Contested"], ["archived", "Archived"]];
+  return [head, "", ...groups.flatMap(([st, title]) => { const l = list.filter((m) => m.status === st); return l.length ? [`## ${title}`, "", ...l.map((m) => `- ${m.text}`), ""] : []; })].join("\n");
+}
+
+// ── Writing style ─────────────────────────────────────────────────────────────
+/** Marker the demo model looks for. */
+export const STYLE_MARK = "You describe how a person writes, from samples of messages they sent.";
+
+/** Strips quoted replies and signatures from a sent message, so only the user's own writing is kept. */
+export function ownWriting(body: string): string {
+  const lines: string[] = [];
+  for (const l of body.split(/\r?\n/)) {
+    if (/^\s*>/.test(l)) continue;
+    if (/^(On .+ wrote:|Le .+ a écrit\s?:|-----Original Message-----|-----Message d'origine-----|From: .+)$/i.test(l.trim())) break;
+    if (/^--\s*$/.test(l)) break;
+    lines.push(l);
+  }
+  return lines.join("\n").trim();
+}
+
+/**
+ * Learns the user's writing style (opt-in) from messages they sent: their sent mail when a Gmail or Outlook mailbox is
+ * connected, else what they typed to their bots. The profile describes tone, length, greetings and sign-offs — never
+ * quotes, names or facts — and replaces the previous one. Bots use it when they draft messages for the user.
+ */
+export async function learnStyle(userId: string, bot: BotRecord, sentMail: string[]): Promise<{ profile: string; source: "mail" | "chat"; samples: number }> {
+  let samples = sentMail.map(ownWriting).filter((t) => t.length >= 20).slice(0, 20);
+  let source: "mail" | "chat" = "mail";
+  if (samples.length < 3) {
+    source = "chat";
+    samples = q.all<{ body: string }>(
+      `SELECT r.body FROM rows r JOIN bots b ON b.id = r.bot_id WHERE b.user_id = ? AND r.kind = 'message' AND json_extract(r.body, '$.role') = 'user' AND json_extract(r.body, '$.origin') IS NULL ORDER BY r.created_at DESC LIMIT 60`, userId)
+      .map((r) => String(JSON.parse(r.body).text ?? "")).filter((t) => t.length >= 20 && !looksSecret(t)).slice(0, 30);
+  }
+  if (!samples.length) throw new Error("There is nothing written by you to learn from yet.");
+  const profile = await ask(bot, STYLE_MARK,
+    `Describe this person's writing style in at most 8 short bullet points: tone and formality (tu/vous, first names), typical length, greetings and sign-offs they use, punctuation and emoji habits, language. ` +
+    `Never quote them, never name anyone, never mention any fact, place, number or subject from the samples. Write the bullets in the language most samples use.\n\nSamples (one per block):\n${samples.map((t) => clip(t, 1200)).join("\n---\n")}`);
+  const clean = clip(profile.replace(/^```\w*|```$/g, "").trim(), 2000);
+  if (!clean) throw new Error("The model gave back nothing.");
+  settings.saveMemory(userId, { style: { enabled: true, profile: clean, updatedAt: now(), source, samples: samples.length } });
+  return { profile: clean, source, samples: samples.length };
 }
 
 /** Periodic pass: bots that have been quiet for a while get their recent chat distilled into memories. */

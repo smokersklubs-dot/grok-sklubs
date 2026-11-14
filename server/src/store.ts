@@ -6,7 +6,7 @@ import { tr } from "./i18n.js";
 import type { ChatMessage } from "./llm/types.js";
 import {
   AVATAR_COLORS, AVATAR_SHAPES,
-  ACCESSORIES, CHARACTER_TYPES, DEFAULT_CHARACTER, EYE_STYLES, IDLE_MOTIONS, TOOL_GROUPS, type AuditEntry, type Character, type Bot, type Card, type CheckinSettings, type Locale, type Memory, type SearchHit, type SharedPage, type VaultItem, type VaultKind, type BotSection, type Policy, type Reaction, type Row, type RowBody, type Skill, type SkillRef, type Task, type User, type Profile, type ReliabilitySettings, RELIABILITY_LIMITS,
+  ACCESSORIES, CHARACTER_TYPES, DEFAULT_CHARACTER, DEFAULT_NUDGES, SENSITIVE_CATEGORIES, type NudgeSettings, type MemorySettings, type MemoryStatus, type SensitiveCategory, EYE_STYLES, IDLE_MOTIONS, TOOL_GROUPS, type AuditEntry, type Character, type Bot, type Card, type CheckinSettings, type Locale, type Memory, type SearchHit, type SharedPage, type VaultItem, type VaultKind, type BotSection, type Policy, type Reaction, type Row, type RowBody, type Skill, type SkillRef, type Task, type User, type Profile, type ReliabilitySettings, RELIABILITY_LIMITS,
 } from "./shared.js";
 
 export const now = () => Date.now();
@@ -52,6 +52,9 @@ function previewOf(body: RowBody, locale: Locale): string {
     if (c.type === "question") return c.question;
     if (c.type === "takeover") return tr(locale, "Needs you on its screen");
     if (c.type === "secret") return tr(locale, "Asks for a secret: {name}", { name: c.name });
+    if (c.type === "uncertain") return tr(locale, "Did it go through? {title}", { title: c.title });
+    if (c.type === "task") return tr(locale, "Background task: {title}", { title: c.title });
+    if (c.type === "nudge") return c.title;
     return tr(locale, "Connect {name}", { name: c.name });
   }
   return "";
@@ -72,6 +75,7 @@ function toBot(r: any): BotRecord {
     disabledTools: JSON.parse(r.disabled_tools || "[]"), telegram: r.telegram_username ?? null,
     pinned: !!r.pinned, sectionId: r.section_id ?? null, listHidden: !!r.list_hidden,
     fallbackModels: r.fallback_models ? cleanModelList(safeJson(r.fallback_models)) : null, createdBy: r.created_by ?? null,
+    nudges: cleanNudges(safeJson(r.nudges || "{}")),
     telegramTokenEnc: r.telegram_token_enc ?? null, telegramChatId: r.telegram_chat_id ?? null, telegramCode: r.telegram_code ?? null, telegramOffset: r.telegram_offset ?? 0,
     memberIds: JSON.parse(r.members || "[]"), hidden: !!r.hidden, parentId: r.parent_id, nextSeq: r.next_seq, rev: r.rev,
     preview: last ? clip(previewOf(JSON.parse(last.body), users.localeOf(r.user_id)).replace(/\s+/g, " "), 140) : "",
@@ -104,6 +108,17 @@ export function cleanCharacter(raw: unknown, base: Character = DEFAULT_CHARACTER
 }
 
 const safeJson = (s: string): unknown => { try { return JSON.parse(s); } catch { return null; } };
+/** Keeps known nudge settings within bounds; anything missing falls back to the default (off). */
+export function cleanNudges(raw: unknown, base: NudgeSettings = DEFAULT_NUDGES): NudgeSettings {
+  const c = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const num = (v: unknown, min: number, max: number, fallback: number) => (typeof v === "number" && Number.isFinite(v) ? Math.min(max, Math.max(min, v)) : fallback);
+  return {
+    enabled: typeof c.enabled === "boolean" ? c.enabled : base.enabled,
+    perDay: Math.round(num(c.perDay, 1, 10, base.perDay)),
+    budgetUsd: Math.round(num(c.budgetUsd, 0.01, 5, base.budgetUsd) * 100) / 100,
+    everyMin: Math.round(num(c.everyMin, 15, 24 * 60, base.everyMin)),
+  };
+}
 /** A model reference as the pickers write it: "provider:model" (or a bare model name), no spaces. */
 const MODEL_REF = /^[A-Za-z0-9._-]+(:[A-Za-z0-9._:/@+-]+)?$/;
 /** Keeps valid, distinct model references, in order, at most RELIABILITY_LIMITS.fallbackModels. */
@@ -131,7 +146,7 @@ const BOT_COLUMNS: Record<string, string> = {
 };
 const ENUMS: Record<string, readonly string[]> = {
   shape: AVATAR_SHAPES, color: AVATAR_COLORS, mode: ["personal", "teammate"],
-  effort: ["low", "medium", "high", "xhigh"], autonomy: ["careful", "balanced", "trusted"],
+  effort: ["low", "medium", "high", "xhigh"], autonomy: ["careful", "balanced", "trusted", "auto"],
 };
 const LIMITS: Record<string, number> = { name: 60, label: 60, description: 500, instructions: 8000, model: 120 };
 
@@ -231,6 +246,10 @@ export const bots = {
     // A bot's own backup models: a list (possibly empty: no backup), or null to follow the account's list.
     if (patch.fallbackModels === null) { sets.push("fallback_models = ?"); vals.push(null); }
     else if (Array.isArray(patch.fallbackModels)) { sets.push("fallback_models = ?"); vals.push(JSON.stringify(cleanModelList(patch.fallbackModels))); }
+    if (patch.nudges && typeof patch.nudges === "object") {
+      const cur = q.get<{ nudges: string }>("SELECT nudges FROM bots WHERE id = ?", id);
+      sets.push("nudges = ?"); vals.push(JSON.stringify(cleanNudges(patch.nudges, cleanNudges(safeJson(cur?.nudges || "{}")))));
+    }
     if (Array.isArray(patch.disabledTools)) { sets.push("disabled_tools = ?"); vals.push(JSON.stringify(patch.disabledTools.filter((g) => (TOOL_GROUPS as readonly string[]).includes(g as string)))); }
     if (!sets.length) return;
     q.run(`UPDATE bots SET ${sets.join(", ")}, updated_at = ? WHERE id = ?`, ...vals, now(), id);
@@ -262,7 +281,7 @@ export const bots = {
     bots.patch(copy.id, { voice: src.voice, disabledTools: src.disabledTools, pinned: src.pinned, sectionId: src.sectionId, fallbackModels: src.fallbackModels });
     q.tx(() => {
       for (const k of skills.list(src.id)) skills.create(copy.id, k.name, k.description, k.body);
-      if (opts.memories) for (const m of [...memories.list(src.id, 5000)].reverse()) memories.add(copy.id, m.text, m.source);
+      if (opts.memories) for (const m of [...memories.list(src.id, 5000)].reverse()) memories.add(copy.id, m.text, m.source, { quote: m.quote, category: m.category, status: m.status });
       if (opts.conversation) {
         const g = q.get<{ next_seq: number; generation: number }>("SELECT next_seq, generation FROM bots WHERE id = ?", src.id)!;
         q.run("INSERT INTO rows (bot_id, generation, seq, rev, kind, body, created_at, thread) SELECT ?, 1, seq, rev, kind, body, created_at, thread FROM rows WHERE bot_id = ? AND generation = ?", copy.id, src.id, g.generation);
@@ -443,14 +462,25 @@ export const history = {
 };
 
 // ── Memories, skills, tasks ──────────────────────────────────────────────────
-const toMemory = (r: any): Memory => ({ id: r.id, botId: r.bot_id, text: r.text, source: r.source, createdAt: r.created_at });
+const toMemory = (r: any): Memory => ({
+  id: r.id, botId: r.bot_id, text: r.text, source: r.source === "learned" || r.source === "import" ? r.source : "chat", createdAt: r.created_at,
+  status: r.status === "archived" || r.status === "contested" ? r.status : "active", quote: r.quote ?? "",
+  category: (SENSITIVE_CATEGORIES as readonly string[]).includes(r.category) ? r.category : null,
+});
 export const memories = {
   list: (botId: string, limit = 500) => q.all("SELECT * FROM memories WHERE bot_id = ? ORDER BY created_at DESC, rowid DESC LIMIT ?", botId, limit).map(toMemory),
-  add(botId: string, text: string, source: Memory["source"] = "chat"): Memory {
+  /** Notes a bot may use: active ones, then contested ones (used with caution); archived ones never. */
+  usable: (botId: string, limit = 500) => q.all("SELECT * FROM memories WHERE bot_id = ? AND status != 'archived' ORDER BY created_at DESC, rowid DESC LIMIT ?", botId, limit).map(toMemory),
+  add(botId: string, text: string, source: Memory["source"] = "chat", extra: { quote?: string; category?: SensitiveCategory | null; status?: MemoryStatus } = {}): Memory {
     const id = newId("mem");
-    q.run("INSERT INTO memories (id, bot_id, text, source, created_at) VALUES (?, ?, ?, ?, ?)", id, botId, text.trim(), source, now());
+    q.run("INSERT INTO memories (id, bot_id, text, source, created_at, status, quote, category) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", id, botId, text.trim(), source, now(), extra.status ?? "active", clip(extra.quote ?? "", 500), extra.category ?? null);
     return toMemory(q.get("SELECT * FROM memories WHERE id = ?", id));
   },
+  owned(userId: string, id: string) {
+    const r = q.get("SELECT m.* FROM memories m JOIN bots b ON b.id = m.bot_id WHERE m.id = ? AND b.user_id = ?", id, userId);
+    return r ? toMemory(r) : null;
+  },
+  setStatus: (id: string, status: MemoryStatus) => q.run("UPDATE memories SET status = ? WHERE id = ?", status, id),
   removeOwned(userId: string, id: string) {
     q.run("DELETE FROM memories WHERE id = ? AND bot_id IN (SELECT id FROM bots WHERE user_id = ?)", id, userId);
   },
@@ -514,12 +544,20 @@ export const tasks = {
 };
 
 // ── Approvals and policies ───────────────────────────────────────────────────
-export interface ApprovalRecord { id: string; botId: string; userId: string; seq: number; generation: number; tool: string; status: string }
-const toApproval = (r: any): ApprovalRecord => ({ id: r.id, botId: r.bot_id, userId: r.user_id, seq: r.seq, generation: r.generation, tool: r.tool, status: r.status });
+/** `actionHash`: the exact action the approval is bound to (see actionHash in agent/executions.ts); `consumedAt`: when it ran. */
+export interface ApprovalRecord { id: string; botId: string; userId: string; seq: number; generation: number; tool: string; status: string; actionHash: string | null; consumedAt: number | null }
+const toApproval = (r: any): ApprovalRecord => ({ id: r.id, botId: r.bot_id, userId: r.user_id, seq: r.seq, generation: r.generation, tool: r.tool, status: r.status, actionHash: r.action_hash ?? null, consumedAt: r.consumed_at ?? null });
 export const approvals = {
-  create(botId: string, userId: string, generation: number, seq: number, tool: string, id = newId("apr")): ApprovalRecord {
-    q.run("INSERT INTO approvals (id, bot_id, user_id, seq, generation, tool, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)", id, botId, userId, seq, generation, tool, now());
+  create(botId: string, userId: string, generation: number, seq: number, tool: string, id = newId("apr"), actionHash: string | null = null): ApprovalRecord {
+    q.run("INSERT INTO approvals (id, bot_id, user_id, seq, generation, tool, created_at, action_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", id, botId, userId, seq, generation, tool, now(), actionHash);
     return approvals.byId(id)!;
+  },
+  /**
+   * Uses an allowed approval for the action it is bound to: true once, for that exact action. A second use, or a
+   * different action, gets false (it then needs a new approval).
+   */
+  consume(id: string, actionHash: string): boolean {
+    return Number(q.run("UPDATE approvals SET consumed_at = ? WHERE id = ? AND consumed_at IS NULL AND status IN ('allowed','always') AND (action_hash IS NULL OR action_hash = ?)", now(), id, actionHash).changes) > 0;
   },
   byId: (id: string) => { const r = q.get("SELECT * FROM approvals WHERE id = ?", id); return r ? toApproval(r) : null; },
   resolve: (id: string, status: string) => q.run("UPDATE approvals SET status = ?, resolved_at = ? WHERE id = ?", status, now(), id),
@@ -581,6 +619,39 @@ export const settings = {
     const next = { ...settings.profile(userId), ...f, updatedAt: now() };
     q.run("INSERT INTO settings (user_id, profile) VALUES (?, ?) ON CONFLICT(user_id) DO UPDATE SET profile = excluded.profile", userId, JSON.stringify(next));
     return settings.profile(userId);
+  },
+  memory(userId: string): MemorySettings {
+    const raw = (safeJson(q.get<{ memory: string }>("SELECT memory FROM settings WHERE user_id = ?", userId)?.memory ?? "{}") ?? {}) as Record<string, any>;
+    const allow = (raw.allowSensitive && typeof raw.allowSensitive === "object" ? raw.allowSensitive : {}) as Record<string, unknown>;
+    const st = (raw.style && typeof raw.style === "object" ? raw.style : {}) as Record<string, unknown>;
+    return {
+      autoCapture: raw.autoCapture !== false,
+      allowSensitive: Object.fromEntries(SENSITIVE_CATEGORIES.map((c) => [c, allow[c] === true])) as Record<SensitiveCategory, boolean>,
+      style: {
+        enabled: st.enabled === true, profile: typeof st.profile === "string" ? st.profile.slice(0, 3000) : "",
+        updatedAt: typeof st.updatedAt === "number" ? st.updatedAt : null, source: st.source === "mail" || st.source === "chat" ? st.source : null,
+        samples: typeof st.samples === "number" ? st.samples : 0,
+      },
+    };
+  },
+  saveMemory(userId: string, f: { autoCapture?: boolean; allowSensitive?: Partial<Record<SensitiveCategory, boolean>>; style?: Partial<MemorySettings["style"]> }): MemorySettings {
+    const cur = settings.memory(userId);
+    const next: MemorySettings = {
+      autoCapture: typeof f.autoCapture === "boolean" ? f.autoCapture : cur.autoCapture,
+      allowSensitive: { ...cur.allowSensitive, ...Object.fromEntries(Object.entries(f.allowSensitive ?? {}).filter(([k, v]) => (SENSITIVE_CATEGORIES as readonly string[]).includes(k) && typeof v === "boolean")) },
+      style: { ...cur.style, ...(f.style ?? {}) },
+    };
+    q.run("INSERT INTO settings (user_id, memory) VALUES (?, ?) ON CONFLICT(user_id) DO UPDATE SET memory = excluded.memory", userId, JSON.stringify(next));
+    return settings.memory(userId);
+  },
+  /** The reviewer of "auto" mode: its model ("" = AUX_MODEL, else the bot's own). */
+  review(userId: string): { model: string } {
+    const raw = (safeJson(q.get<{ review: string }>("SELECT review FROM settings WHERE user_id = ?", userId)?.review ?? "{}") ?? {}) as Record<string, unknown>;
+    return { model: typeof raw.model === "string" && (raw.model === "" || MODEL_REF.test(raw.model)) ? raw.model : "" };
+  },
+  saveReview(userId: string, f: { model: string }) {
+    q.run("INSERT INTO settings (user_id, review) VALUES (?, ?) ON CONFLICT(user_id) DO UPDATE SET review = excluded.review", userId, JSON.stringify({ model: f.model }));
+    return settings.review(userId);
   },
   budget: (userId: string) => q.get<{ budget_usd: number | null }>("SELECT budget_usd FROM settings WHERE user_id = ?", userId)?.budget_usd ?? null,
   setBudget: (userId: string, usd: number | null) =>
@@ -646,10 +717,22 @@ function secretsOf(userId: string): string[] {
   return list;
 }
 /** Exact-match redaction of every vault value of this user. */
+/**
+ * Short-lived secrets that are not in the vault, e.g. a sign-in code fetched from the mailbox and typed by the server
+ * (email_code_type): hidden from anything a model sees for a while, like vault values.
+ */
+const transient = new Map<string, { value: string; until: number }[]>();
+export function hideForAWhile(userId: string, value: string, ms = 30 * 60_000) {
+  if (!value || value.length < 4) return;
+  const list = (transient.get(userId) ?? []).filter((e) => e.until > now());
+  list.push({ value, until: now() + ms });
+  transient.set(userId, list);
+}
 export function redactSecrets(userId: string, text: string): string {
   if (!text) return text;
   let out = text;
   for (const secret of secretsOf(userId)) if (out.includes(secret)) out = out.split(secret).join("[hidden]");
+  for (const e of transient.get(userId) ?? []) if (e.until > now() && out.includes(e.value)) out = out.split(e.value).join("[hidden]");
   return out;
 }
 /** A chat row with any vault value replaced, wherever text can appear in it. */

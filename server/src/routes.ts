@@ -50,6 +50,12 @@ import { syncSlackSockets } from "./native/triggers.js";
 import { isNativeTrigger } from "./routines.js";
 import type { NativeVendor, NativeVendorSetup } from "./shared.js";
 import { confirmPairing, lastFrame, listDevices, relayDownloads, revokeDevice, stopSession, userSpoke as relayUserSpoke } from "./relay.js";
+import { MAX_RULES, rules } from "./rules.js";
+import { executions, grants } from "./agent/executions.js";
+import { bgTasks, publicTask, replyToTask, stopTask } from "./agent/bgtasks.js";
+import { actOnNudge, nudges, nudgeStats, preparationPass } from "./agent/nudges.js";
+import { exportMemories, importCandidates, importMemories, learnStyle } from "./agent/memory.js";
+import { sentMail } from "./native/access.js";
 
 type Env = { Variables: { user: UserRecord } };
 export const api = new Hono<Env>();
@@ -672,7 +678,7 @@ api.post("/bots/:id/takeover/:takeoverId/done", (c) => {
 // ── Knowledge and automation ─────────────────────────────────────────────────
 api.get("/bots/:id/bundle", (c) => {
   const bot = ownBot(c);
-  return c.json({ memories: memories.list(bot.id), skills: skills.list(bot.id), routines: routines.forBot(bot.id).map((r) => publicRoutine(r, c.get("user").locale)), tasks: tasks.forBot(bot.id), memoryStatus: memoryStatus(bot) });
+  return c.json({ memories: memories.list(bot.id), skills: skills.list(bot.id), routines: routines.forBot(bot.id).map((r) => publicRoutine(r, c.get("user").locale)), tasks: tasks.forBot(bot.id), memoryStatus: memoryStatus(bot), bgTasks: bot.kind === "agent" ? bgTasks.forBot(bot.id).map(publicTask) : [] });
 });
 
 function skillFields(b: Record<string, any>, base?: { name: string; description: string; body: string }) {
@@ -1501,4 +1507,150 @@ api.put("/usage/budget", async (c) => {
   settings.setBudget(c.get("user").id, v);
   emit(c.get("user").id, { type: "usage" });
   return c.json(usageSummary(c.get("user").id));
+});
+
+// ── Wave 5: rules and the reviewer, uncertain actions, background tasks, nudges, memory ──────────────────
+api.get("/rules", (c) => c.json(rulesState(c.get("user").id)));
+api.post("/rules", async (c) => {
+  const user = c.get("user");
+  const b = await body(c);
+  const text = String(b.text ?? "").trim();
+  if (!text) fail(400, "Write the rule.");
+  if (rules.count(user.id) >= MAX_RULES) fail(409, `At most ${MAX_RULES} rules.`);
+  const botId = typeof b.botId === "string" && b.botId ? ownBot(c, b.botId).id : null;
+  const rule = rules.create(user.id, text, botId);
+  audit(user.id, "account", `Rule added${botId ? ` for ${bots.byId(botId)?.name}` : ""}: ${clip(rule.text, 200)}`, botId);
+  emit(user.id, { type: "rules" });
+  return c.json({ rule });
+});
+api.patch("/rules/:id", async (c) => {
+  const user = c.get("user");
+  const cur = rules.owned(user.id, c.req.param("id")) ?? fail(404, "That rule does not exist.");
+  const b = await body(c);
+  const rule = rules.update(cur.id, { text: typeof b.text === "string" ? b.text : undefined, enabled: typeof b.enabled === "boolean" ? b.enabled : undefined });
+  audit(user.id, "account", `Rule changed: ${clip(rule.text, 200)}${rule.enabled ? "" : " (off)"}`, rule.botId);
+  emit(user.id, { type: "rules" });
+  return c.json({ rule });
+});
+api.delete("/rules/:id", (c) => {
+  const user = c.get("user");
+  const cur = rules.owned(user.id, c.req.param("id")) ?? fail(404, "That rule does not exist.");
+  rules.remove(cur.id);
+  audit(user.id, "account", `Rule removed: ${clip(cur.text, 200)}`, cur.botId);
+  emit(user.id, { type: "rules" });
+  return c.json({ ok: true });
+});
+api.put("/rules/reviewer", async (c) => {
+  const user = c.get("user");
+  const model = String((await body(c)).model ?? "").trim();
+  if (model && cleanModelList([model]).length !== 1) fail(400, "That is not a model reference (provider:model).");
+  settings.saveReview(user.id, { model });
+  emit(user.id, { type: "rules" });
+  return c.json(rulesState(user.id));
+});
+function rulesState(userId: string) { return { rules: rules.all(userId), reviewerModel: settings.review(userId).model, auxModel: config.auxModel }; }
+
+/** An action whose outcome is unknown: it went through (done), the bot checks (check), or it is retried once (retry). */
+api.post("/executions/:id", async (c) => {
+  const user = c.get("user");
+  const exec = executions.owned(user.id, c.req.param("id")) ?? fail(404, "That action does not exist.");
+  const action = String((await body(c)).action ?? "");
+  if (!["done", "check", "retry", "dismiss"].includes(action)) fail(400, "Unknown action.");
+  const bot = bots.byId(exec.botId) ?? fail(404, "That bot does not exist.");
+  const status = action === "done" ? "done" : action === "check" ? "checking" : action === "retry" ? "retried" : "dismissed";
+  if (exec.cardSeq !== null && exec.generation === bot.generation) {
+    const row = rows.get(bot.id, exec.generation, exec.cardSeq);
+    if (row?.body.kind === "card" && row.body.card.type === "uncertain" && row.body.card.status !== "pending") fail(409, "This was already answered.");
+    rows.updateCard(bot, exec.generation, exec.cardSeq, (k) => (k.type === "uncertain" ? { ...k, status } : k));
+  }
+  const thread = exec.thread || undefined;
+  if (action === "done") enqueue(bot.id, { kind: "system", thread, text: `The user confirmed that this action went through: ${exec.label} (${clip(exec.detail.replace(/\n/g, "; "), 400)}). Do not do it again.` });
+  if (action === "check") enqueue(bot.id, { kind: "system", thread, text: `The outcome of this action is unknown: ${exec.label} (${clip(exec.detail.replace(/\n/g, "; "), 400)}). Check whether it went through — look, list or read — WITHOUT doing it again, then tell the user plainly.` });
+  if (action === "retry") {
+    // One single-use grant for exactly this action (same tool, same arguments), valid 30 minutes.
+    grants.create(bot.id, exec.actionHash);
+    enqueue(bot.id, { kind: "system", thread, text: `The user asked you to retry this action once, exactly as before: ${exec.tool} with ${clip(exec.detail.replace(/\n/g, "; "), 800)}. First check quickly whether it already went through; if it did not, call ${exec.tool} again with exactly the same arguments.` });
+  }
+  audit(user.id, "approval", `${bot.name} : ${exec.label} — ${tr(user.locale, action === "done" ? "went through (user)" : action === "check" ? "check asked" : action === "retry" ? "retry allowed once" : "dismissed")}`, bot.id);
+  return c.json({ ok: true });
+});
+
+// Background tasks.
+const ownTask = (c: Context<Env>) => { const bot = ownAgent(c); const t = bgTasks.byId(c.req.param("taskId") ?? ""); return t && t.botId === bot.id ? t : fail(404, "That task does not exist."); };
+api.get("/bots/:id/bgtasks", (c) => c.json({ tasks: bgTasks.forBot(ownAgent(c).id).map(publicTask) }));
+api.post("/bots/:id/bgtasks/:taskId/stop", async (c) => c.json({ task: publicTask(await stopTask(ownTask(c))) }));
+api.post("/bots/:id/bgtasks/:taskId/reply", async (c) => {
+  const t = ownTask(c);
+  const text = String((await body(c)).text ?? "").trim();
+  if (!text) fail(400, "Write a message first.");
+  try { return c.json({ task: publicTask(await replyToTask(t, clip(text, 20_000))) }); } catch (err) { return fail(409, (err as Error).message); }
+});
+
+// Nudges.
+api.get("/bots/:id/nudges", (c) => { const bot = ownAgent(c); return c.json({ settings: bot.nudges, stats: nudgeStats(bot.id), nudges: nudges.forBot(bot.id).map(({ generation: _g, cardSeq: _c, ...n }) => n) }); });
+api.post("/bots/:id/nudges/run", async (c) => {
+  const bot = ownAgent(c);
+  try { return c.json({ result: await preparationPass(bot.id, true), stats: nudgeStats(bot.id) }); } catch (err) { return fail(502, `Could not reach the model: ${(err as Error).message}`); }
+});
+api.post("/bots/:id/nudges/:nudgeId", async (c) => {
+  const bot = ownAgent(c);
+  const n = nudges.byId(c.req.param("nudgeId")) ?? fail(404, "That nudge does not exist.");
+  if (n.botId !== bot.id) fail(404, "That nudge does not exist.");
+  const action = String((await body(c)).action ?? "");
+  if (!["do", "later", "never"].includes(action)) fail(400, "Unknown action.");
+  if (n.status !== "pending") fail(409, "This nudge was already answered.");
+  return c.json({ nudge: actOnNudge(bot, n, action as "do" | "later" | "never") });
+});
+
+// Memory: statuses, import / export, settings (sensitive topics, writing style).
+api.patch("/memories/:id", async (c) => {
+  const user = c.get("user");
+  const m = memories.owned(user.id, c.req.param("id")) ?? fail(404, "That memory does not exist.");
+  const status = (await body(c)).status;
+  if (!["active", "archived", "contested"].includes(status)) fail(400, "Unknown status.");
+  memories.setStatus(m.id, status);
+  emit(user.id, { type: "memories", botId: m.botId });
+  return c.json({ memory: memories.owned(user.id, m.id) });
+});
+api.get("/bots/:id/memories/export", (c) => {
+  const bot = ownAgent(c);
+  const format = c.req.query("format") === "json" ? "json" : "md";
+  const text = exportMemories(bot, format, c.get("user").locale);
+  return download(c, `${bot.name.replace(/[^\p{L}\p{N}_-]+/gu, "-")}-memories.${format === "json" ? "json" : "md"}`, format === "json" ? "application/json; charset=utf-8" : "text/markdown; charset=utf-8", text);
+});
+api.post("/bots/:id/memories/import", async (c) => {
+  const bot = ownAgent(c);
+  const b = await body(c);
+  const text = String(b.text ?? "");
+  if (!text.trim()) fail(400, "Paste the memories to import.");
+  if (text.length > 200_000) fail(413, "That is too long.");
+  if (b.commit !== true) return c.json({ candidates: importCandidates(bot, text) });
+  const chosen = Array.isArray(b.chosen) ? b.chosen.filter((x: unknown): x is string => typeof x === "string") : null;
+  const r = importMemories(bot, text, chosen, b.allowSensitive === true);
+  audit(bot.userId, "account", `Memories imported for ${bot.name}: ${r.imported}`, bot.id);
+  return c.json(r);
+});
+api.get("/memory-settings", (c) => c.json({ settings: settings.memory(c.get("user").id) }));
+api.put("/memory-settings", async (c) => {
+  const user = c.get("user");
+  const b = await body(c);
+  const next = settings.saveMemory(user.id, {
+    autoCapture: typeof b.autoCapture === "boolean" ? b.autoCapture : undefined,
+    allowSensitive: b.allowSensitive && typeof b.allowSensitive === "object" ? b.allowSensitive : undefined,
+    style: b.style && typeof b.style === "object" ? { ...(typeof b.style.enabled === "boolean" ? { enabled: b.style.enabled } : {}), ...(b.style.clear === true ? { profile: "", updatedAt: null, source: null, samples: 0 } : {}) } : undefined,
+  });
+  emit(user.id, { type: "memorySettings" });
+  return c.json({ settings: next });
+});
+api.post("/memory-settings/style/learn", async (c) => {
+  const user = c.get("user");
+  const bot = bots.primary(user.id) ?? bots.list(user.id).find((b) => b.kind === "agent") ?? fail(400, "Create a bot first.");
+  let mail: string[] = [];
+  try { mail = await sentMail(user.id); } catch { /* no mailbox, or it failed: learn from the chat */ }
+  try {
+    const r = await learnStyle(user.id, bot, mail);
+    audit(user.id, "account", `Writing style learned from ${r.samples} ${r.source === "mail" ? "sent emails" : "chat messages"}`);
+    emit(user.id, { type: "memorySettings" });
+    return c.json({ settings: settings.memory(user.id), source: r.source, samples: r.samples });
+  } catch (err) { return fail(502, (err as Error).message); }
 });

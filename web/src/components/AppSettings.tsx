@@ -14,6 +14,7 @@ import { DevicesSection } from "./MyComputer";
 import { NotificationsSection } from "./NotificationsSection";
 import { ModelsSection } from "./Reliability";
 import { ProfileSection } from "./ProfileSection";
+import { MemorySettingsSection, RulesSection } from "./Wave5";
 
 const SECTIONS: { id: AppSection; icon: IconName }[] = [
   { id: "general", icon: "settings" },
@@ -23,6 +24,8 @@ const SECTIONS: { id: AppSection; icon: IconName }[] = [
   { id: "computer", icon: "monitor" },
   { id: "devices", icon: "cursor" },
   { id: "permissions", icon: "shield" },
+  { id: "rules", icon: "book" },
+  { id: "memory", icon: "brain" },
   { id: "connectors", icon: "plug" },
   { id: "vault", icon: "key" },
   { id: "pages", icon: "globe" },
@@ -1112,6 +1115,8 @@ export function AppSettings({ section }: { section: AppSection }) {
           {section === "computer" && <ComputerSection />}
           {section === "devices" && <DevicesSection />}
           {section === "permissions" && <PermissionsSection />}
+          {section === "rules" && <RulesSection />}
+          {section === "memory" && <MemorySettingsSection />}
           {section === "connectors" && <ConnectorsSection />}
           {section === "vault" && <VaultSection />}
           {section === "pages" && <PagesSection />}

@@ -8,6 +8,7 @@ import { accentStyle } from "../lib/colors";
 import { renderMarkdown } from "../lib/markdown";
 import { Avatar, BotAvatar } from "./Avatar";
 import { CardView } from "./Cards";
+import { GrantLine } from "./Wave5";
 import { Icon, Spinner } from "./Icon";
 import { IconButton, useDialogFocus, useEscape, useTick } from "./ui";
 
@@ -406,6 +407,7 @@ function StepLine({ seq, body }: { seq: number; body: StepBody }) {
           {mark && <span className={`step-mark is-${body.status}`}>{t(mark)}</span>}
         </span>
         {body.summary && <span className="step-summary">{body.summary}</span>}
+        {body.grant && <GrantLine grant={body.grant} />}
       </div>
     </li>
   );

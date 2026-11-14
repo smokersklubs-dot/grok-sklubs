@@ -1,7 +1,8 @@
 import WebSocket from "ws";
 import { assertPublicUrl, guardedFetch } from "../net.js";
 import { routines, type NativeState, type RoutineRecord } from "../routines.js";
-import { clip, now } from "../store.js";
+import { clip, now, users } from "../store.js";
+import { maskIfAccess } from "./access.js";
 import { accounts, callApi, apiProblem, clients, type AccountRecord } from "./accounts.js";
 import { eventLine, eventStart, gcalEvents, gmailList, isAllDay, outlookEvents, slack, slackChannelId, slackChannels } from "./tools.js";
 import { isVendorUrl, vendorUrl } from "./vendors.js";
@@ -57,7 +58,7 @@ async function checkGmail(r: RoutineRecord, acc: AccountRecord, state: NativeSta
     if (routines.seen(r.id, m.id)) continue;
     if (fired >= PER_CHECK) { capped = true; break; }
     if (!routines.claim(r.id, m.id)) continue;
-    fireItem(r, acc, "New email", { id: m.id, thread: m.threadId, from: header(m, "From"), to: header(m, "To"), subject: header(m, "Subject"), date: header(m, "Date"), snippet: clip(String(m.snippet ?? ""), 500) });
+    fireItem(r, acc, "New email", { id: m.id, thread: m.threadId, from: header(m, "From"), to: header(m, "To"), subject: header(m, "Subject"), date: header(m, "Date"), snippet: maskIfAccess(header(m, "Subject"), clip(String(m.snippet ?? ""), 500), users.localeOf(acc.userId)) });
     fired++;
   }
   if (!capped) state.since = started;
@@ -93,7 +94,7 @@ async function checkOutlook(r: RoutineRecord, acc: AccountRecord, state: NativeS
     if (routines.seen(r.id, m.id)) continue;
     if (fired >= PER_CHECK) { capped = true; break; }
     if (!routines.claim(r.id, m.id)) continue;
-    fireItem(r, acc, "New email", { id: m.id, thread: m.conversationId, from, subject: m.subject ?? "", date: m.receivedDateTime, snippet: clip(String(m.bodyPreview ?? ""), 500) });
+    fireItem(r, acc, "New email", { id: m.id, thread: m.conversationId, from, subject: m.subject ?? "", date: m.receivedDateTime, snippet: maskIfAccess(String(m.subject ?? ""), clip(String(m.bodyPreview ?? ""), 500), users.localeOf(acc.userId)) });
     fired++;
   }
   // Capped: the same round is read again next time (what already fired is skipped).

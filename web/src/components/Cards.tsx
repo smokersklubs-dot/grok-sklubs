@@ -5,6 +5,7 @@ import { useT } from "../i18n";
 import { useStore } from "../store";
 import type { Card } from "../types";
 import { Icon } from "./Icon";
+import { NudgeCardView, TaskCardView, Uncertain } from "./Wave5";
 
 type ApprovalCard = Extract<Card, { type: "approval" }>;
 type QuestionCard = Extract<Card, { type: "question" }>;
@@ -57,6 +58,12 @@ function Approval({ card }: { card: ApprovalCard }) {
         </div>
       </div>
       {card.detail && <pre className="card-detail">{card.detail}</pre>}
+      {(card.why || card.quote) && (
+        <div className="approval-why">
+          {card.quote && <p className="approval-quote"><Icon name="chat" size={13} /> <span>{t("approval.quote", { quote: card.quote })}</span></p>}
+          {card.why && <p className="approval-reason"><Icon name="info" size={13} /> <span>{t("approval.why", { why: card.why })}</span></p>}
+        </div>
+      )}
       {card.once && card.status === "pending" && <p className="card-note">{t("approval.onceOnly")}</p>}
       {card.status === "pending" ? (
         <>
@@ -80,6 +87,7 @@ function Approval({ card }: { card: ApprovalCard }) {
         <p className={`card-outcome is-${card.status}`}>
           <Icon name={card.status === "allowed" || card.status === "always" ? "check" : card.status === "denied" ? "close" : "clock"} size={14} />
           {t(`approval.${card.status}`)}
+          {card.outcome && (card.status === "allowed" || card.status === "always") && <span className={`approval-outcome is-${card.outcome}`}> · {t(`approval.outcome.${card.outcome}`)}</span>}
         </p>
       )}
     </div>
@@ -318,6 +326,12 @@ export function CardView({ card, botId, seq }: { card: Card; botId: string; seq:
       return <Takeover card={card} botId={botId} />;
     case "secret":
       return <Secret card={card} botId={botId} seq={seq} />;
+    case "uncertain":
+      return <Uncertain card={card} />;
+    case "task":
+      return <TaskCardView card={card} botId={botId} />;
+    case "nudge":
+      return <NudgeCardView card={card} botId={botId} />;
     default:
       return null;
   }

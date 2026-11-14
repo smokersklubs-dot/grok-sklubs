@@ -67,11 +67,12 @@ test("the bot can open a page in its browser, read it and click on it", { skip }
 });
 
 test("typed text arrives exactly, including awkward characters", { skip }, async () => {
-  await runShell(A, USER, "pkill chromium; rm -f /tmp/typed.txt; (xterm -e 'read -r line; printf %s \"$line\" > /tmp/typed.txt' &) ; sleep 2", 30);
+  // Wait for the terminal window to really be there (a fixed pause was flaky on a busy machine), and focus it.
+  await runShell(A, USER, "pkill chromium; rm -f /tmp/typed.txt; (xterm -title typetest -e 'read -r line; printf %s \"$line\" > /tmp/typed.txt' &) ; for i in $(seq 1 100); do DISPLAY=:1 wmctrl -l | grep -q typetest && break; sleep 0.1; done; DISPLAY=:1 wmctrl -a typetest; sleep 0.3", 30);
   await screen.click(A, USER, 600, 400);
   await screen.type(A, USER, `p@ss "w0rd" $HOME & it's`);
   await screen.key(A, USER, "Enter");
-  assert.equal((await runShell(A, USER, "sleep 1; cat /tmp/typed.txt", 30)).output, `p@ss "w0rd" $HOME & it's`);
+  assert.equal((await runShell(A, USER, "for i in $(seq 1 50); do [ -s /tmp/typed.txt ] && break; sleep 0.1; done; cat /tmp/typed.txt", 30)).output, `p@ss "w0rd" $HOME & it's`);
 });
 
 test("what a bot installs survives sleep, and only so many computers run at once", { skip }, async () => {

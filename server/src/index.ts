@@ -14,6 +14,7 @@ import { startScheduler } from "./scheduler.js";
 import { attachLiveScreens } from "./vnc.js";
 import { relayUpgrade } from "./relay.js";
 import { expireOrphanApprovals, recoverInterruptedTurns } from "./agent/loop.js";
+import { sweepUncertain } from "./agent/executions.js";
 import { telegram } from "./telegram.js";
 import { closeSlackSockets } from "./native/triggers.js";
 
@@ -50,6 +51,9 @@ try {
 // Approvals a subscription turn was waiting on lived in memory: after a restart nobody waits for them any more.
 const lapsed = expireOrphanApprovals();
 if (lapsed) console.log(`${lapsed} approval(s) left from before the restart are marked expired.`);
+// Actions that were running when the server stopped: their outcome is unknown. They are never replayed; the user gets a card.
+const uncertain = sweepUncertain();
+if (uncertain) console.log(`${uncertain} action(s) cut off by the restart are marked uncertain.`);
 startScheduler();
 if (!config.schedulerOff) { telegram.start(); recoverInterruptedTurns(); }
 const server = serve({ fetch: app.fetch, port: config.port }, () => {

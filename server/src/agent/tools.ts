@@ -27,6 +27,10 @@ import { seal } from "../auth.js";
 import { createRoom, deliverBotMessage, dispatchToRoom, MAX_HELPERS, MAX_HOPS, startHelper } from "./team.js";
 import { myComputerTools } from "./mycomputer.js";
 import { botTools, profileTools, progressTools, skillImportTools, xSearchAvailable, xTools } from "./tools-team.js";
+import { bgTasks, bgTaskToolSpecs, publicTask, startTask, stopTask, TaskLimitError } from "./bgtasks.js";
+import { findCode, mailAccounts } from "../native/access.js";
+import { hideForAWhile } from "../store.js";
+import { explicitRemember, memoryVerdict } from "./sensitive.js";
 
 export interface ToolContext {
   bot: BotRecord; user: UserRecord; depth: number; signal: AbortSignal;
@@ -441,8 +445,16 @@ const vaultTools: BuiltinTool[] = [
   }),
 ];
 
+/** How email_code_type reads the page in front and types (replaceable in tests); how long it waits for the email. */
+export const codeScreen = {
+  pageUrl: async (botId: string, userId: string) => (await screen.read(botId, userId)).url,
+  type: async (botId: string, userId: string, text: string) => { await screen.type(botId, userId, text); },
+  waitMs: () => Number(process.env.CODE_WAIT_MS ?? 60_000),
+  everyMs: () => Number(process.env.CODE_POLL_MS ?? 5_000),
+};
+
 /** Vault tools that work on the bot's screen: they check the page in front against the item's site. */
-const screenVaultTools: BuiltinTool[] = [
+export const screenVaultTools: BuiltinTool[] = [
   tool("vault_type", "Type a saved username or password into the field that has keyboard focus on your screen. Click the field first. You never see the password; the user is asked before it is used.",
     obj({ item: str("Name of the saved login"), field: { type: "string", enum: ["username", "password"] } }, ["item", "field"]), {
     activity: "computer", label: "Typing a saved login", audited: true, detail: (a) => String(a.item ?? ""),
@@ -472,6 +484,33 @@ const screenVaultTools: BuiltinTool[] = [
       }
       const s = await screen.type(c.bot.id, c.user.id, value);
       return { ...shot(s, `Typed the saved ${a.field} into the focused field.`), summary: `${item.name} · ${a.field}` };
+    },
+  }),
+  tool("email_code_type", "When a site you are signing in to sends a verification code by email, this fetches it from the user's connected mailbox (Gmail or Outlook) and types it into the field that has keyboard focus on your screen. You never see the code. Click the code field first. It waits up to a minute for the email.",
+    obj({ site: str("The site the code is for, e.g. example.com (the page in front must be on it)"), from: str("Part of the sender's address, if you know it (e.g. no-reply@example.com)"), mailbox: str("Which connected mailbox, if the user has several (e.g. 'Gmail — perso')") }, ["site"]), {
+    activity: "computer", label: "Typing a code from the mailbox", audited: true, detail: (a) => String(a.site ?? ""),
+    // No card in a normal turn (the site and sender checks are the guard); after outside content it asks every time.
+    gate: (a, ctx) => ctx.tainted ? {
+      key: `email code: ${siteHost(String(a.site ?? ""))}`, strict: true, title: "{bot} has read outside content. Allow it to fetch the sign-in code for {site} from your mailbox and type it?", reason: "type the sign-in code for {site}", source: "Vault",
+      vars: { site: siteHost(String(a.site ?? "")) || "—", page: lastKnownUrl(ctx.botId) || "—" }, note: "Page the bot's computer says is open: {page}.",
+    } : null,
+    run: async (a, c) => {
+      const wanted = siteHost(String(a.site ?? ""));
+      if (!wanted) return { content: "Say which site the code is for (e.g. example.com).", isError: true };
+      if (!mailAccounts(c.user.id, String(a.mailbox ?? "")).length) return { content: "No connected Gmail or Outlook mailbox can be used. Ask the user to connect one (Settings → Apps), or use ask_takeover so they type the code.", isError: true };
+      const here = await codeScreen.pageUrl(c.bot.id, c.user.id).then(siteHost).catch(() => "");
+      if (!here) return { content: `I could not tell which page is open, so no code was fetched. Open ${wanted} first.`, isError: true };
+      if (!sameSite(here, wanted)) return { content: `The code is for ${wanted}, but the page in front is ${here}. No code was fetched. Do not try to use it anywhere else.`, isError: true };
+      // Only emails that arrived after the turn started (with a small margin) count.
+      const since = (getLive(c.bot.id).startedAt ?? Date.now()) - 2 * 60_000;
+      let found;
+      try { found = await findCode(c.user.id, { site: wanted, from: String(a.from ?? ""), account: String(a.mailbox ?? ""), since, waitMs: codeScreen.waitMs(), everyMs: codeScreen.everyMs(), signal: c.signal }); }
+      catch (err) { return { content: (err as Error).message, isError: true }; }
+      if (!found) return { content: `No email with a code from ${wanted} arrived in the last minute. Ask the site to send it again, or use ask_takeover so the user types it.`, isError: true };
+      // From here on the code is hidden from anything a model sees (page text, tool output…).
+      hideForAWhile(c.user.id, found.code);
+      await codeScreen.type(c.bot.id, c.user.id, found.code);
+      return { content: `Typed the code from the email "${found.subject}" (${found.from}, ${new Date(found.at).toISOString().slice(11, 16)} UTC, ${found.account}) into the focused field. The code itself is kept from you. Submit the form if the site needs it, then check the result.`, summary: `${wanted} · ${found.account}` };
     },
   }),
   tool("totp_code", "Get the current two-factor code from a code generator the user saved in the vault, to type into the login page of its own site. It only works while that site is open in your browser.",
@@ -567,7 +606,11 @@ const memoryTools: BuiltinTool[] = [
     run: async (a, c) => {
       const text = clip(String(a.text).trim(), 500);
       if (!text) return { content: "Nothing to remember.", isError: true };
-      memories.add(c.bot.id, text, "chat");
+      // Sensitive topics (health, religion, politics…) and anything that looks like a secret are not kept, unless the user
+      // turned that topic on or explicitly asked, in their own last message, to remember (sensitive.ts).
+      const v = memoryVerdict(c.user.id, text, explicitRemember(c.bot, c.thread ?? 0));
+      if (!v.ok) return { content: v.reason, isError: true, summary: "not kept" };
+      memories.add(c.bot.id, text, "chat", { category: v.category });
       emit(c.user.id, { type: "memories", botId: c.bot.id });
       return { content: "Remembered.", summary: clip(text, 80) };
     },
@@ -718,6 +761,36 @@ const taskTools: BuiltinTool[] = [
     },
   }),
 ];
+
+const bgTaskTools: BuiltinTool[] = [
+  tool(bgTaskToolSpecs.start.name, bgTaskToolSpecs.start.description, bgTaskToolSpecs.start.inputSchema, {
+    activity: "planning", label: "Starting a background task", audited: true, detail: (a) => String(a.title ?? ""),
+    run: async (a, c) => {
+      if (!String(a.goal ?? "").trim()) return { content: "Describe the goal of the task.", isError: true };
+      try {
+        const t = startTask(c.bot, String(a.title ?? ""), String(a.goal), c.depth, c.tainted);
+        return { content: JSON.stringify({ id: t.id, note: "Started. The user follows it on its card; its report will reach you when it is done. Tell the user in one line that you started it, then carry on." }), summary: t.title };
+      } catch (err) { return { content: (err as Error).message, isError: true }; }
+    },
+  }),
+  tool(bgTaskToolSpecs.list.name, bgTaskToolSpecs.list.description, bgTaskToolSpecs.list.inputSchema, {
+    activity: "planning", label: "Checking background tasks",
+    run: async (_a, c) => {
+      const list = bgTasks.forBot(c.bot.id).slice(0, 20).map((t) => ({ ...publicTask(t), result: clip(t.result, 300) }));
+      return { content: list.length ? JSON.stringify(list) : "You have no background tasks.", summary: `${list.length}` };
+    },
+  }),
+  tool(bgTaskToolSpecs.stop.name, bgTaskToolSpecs.stop.description, bgTaskToolSpecs.stop.inputSchema, {
+    activity: "planning", label: "Stopping a background task",
+    run: async (a, c) => {
+      const t = bgTasks.byId(String(a.id));
+      if (!t || t.botId !== c.bot.id) return { content: "No background task of yours has that id.", isError: true };
+      await stopTask(t);
+      return { content: "Stopped.", summary: t.title };
+    },
+  }),
+];
+void TaskLimitError;
 
 const teamTools: BuiltinTool[] = [
   tool("bot_message", "Send a message to another bot on the team. Their answer arrives later as a message to you.", obj({ bot: str("The bot's name"), message: str("What you need, with all the context they need") }, ["bot", "message"]), {
@@ -898,11 +971,11 @@ export async function retireBot(b: BotRecord) {
 const inGroup = (group: ToolGroup, list: BuiltinTool[]) => list.map((t) => ({ ...t, group: t.group ?? group }));
 
 /** `video`: how videos are made for this user (see videoRoute); without one, the video tools are not offered. */
-export function builtinTools(opts: { nativeSearch?: boolean; disabled?: readonly string[]; video?: "connector" | "api" | null } = {}): BuiltinTool[] {
+export function builtinTools(opts: { nativeSearch?: boolean; disabled?: readonly string[]; video?: "connector" | "api" | null; bgTasks?: boolean } = {}): BuiltinTool[] {
   return assemble(opts).filter((t) => !t.group || !(opts.disabled ?? []).includes(t.group));
 }
 
-function assemble(opts: { nativeSearch?: boolean; video?: "connector" | "api" | null }): BuiltinTool[] {
+function assemble(opts: { nativeSearch?: boolean; video?: "connector" | "api" | null; bgTasks?: boolean }): BuiltinTool[] {
   return [
     ...(browserAvailable() ? inGroup("computer", screenTools).map(respectDriver) : []),
     // On its own Linux computer a bot's commands are contained, so they do not need a permission card.
@@ -917,6 +990,6 @@ function assemble(opts: { nativeSearch?: boolean; video?: "connector" | "api" | 
     ...(opts.video ? inGroup("video", videoTools) : []),
     // The user's own computers (Sklubot Relais): offered by newTurn only to users who linked one.
     ...myComputerTools,
-    ...inGroup("memory", memoryTools), ...inGroup("routines", routineTools), ...inGroup("tasks", taskTools), ...inGroup("team", teamTools), ...userTools.filter((t) => t.spec.name !== "ask_takeover" || browserAvailable()), ...reactTools,
+    ...inGroup("memory", memoryTools), ...inGroup("routines", routineTools), ...inGroup("tasks", taskTools), ...(opts.bgTasks === false ? [] : inGroup("tasks", bgTaskTools)), ...inGroup("team", teamTools), ...userTools.filter((t) => t.spec.name !== "ask_takeover" || browserAvailable()), ...reactTools,
   ];
 }

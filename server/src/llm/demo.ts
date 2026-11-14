@@ -22,6 +22,12 @@ function plan(text: string, has: (name: string) => boolean): Block[] | null {
     if (/\b(stop|rends|release|give back)\b/.test(lower)) return call("my_release", {});
     return call("my_screen", { reason: quoted ?? (/[àâçéèêëîïôûùüÿœ]/.test(lower) || /\b(mon|ma|regarde)\b/.test(lower) ? "Voir ton écran pour t'aider." : "See your screen to help you.") });
   }
+  // Wave 5: long research becomes a background task the user follows on a card.
+  if (/\b(recherche approfondie|longue recherche|deep research|background task|tâche de fond|tache de fond)\b/.test(lower)) {
+    const fr5 = /[àâçéèêëîïôûùüÿœ]/.test(lower) || /\b(une|sur|les|des)\b/.test(lower);
+    const topic = quoted ?? (text.replace(/^.*?\b(recherche approfondie|longue recherche|deep research|background task|tâche de fond|tache de fond)\b\s*(sur|on|about|:)?/i, "").trim() || (fr5 ? "les concurrents" : "competitors"));
+    return call("task_start", fr5 ? { title: `Recherche : ${topic}`.slice(0, 60), goal: `Fais une recherche approfondie sur ${topic} : sources, chiffres clés, comparaison. Rapport en 5 points.` } : { title: `Research: ${topic}`.slice(0, 60), goal: `Do deep research on ${topic}: sources, key figures, comparison. Report in 5 points.` });
+  }
   // A long task (wave 4 demo): progress lines while it works, until the step limit stops it.
   if (/\b(long task|longue tâche|longue tache)\b/.test(lower)) return call("progress_update", { text: /[àâçéèêëîïôûùüÿœ]/.test(lower) ? "Je commence : 1 page lue sur 12." : "Starting: read 1 page of 12." });
   if (url && /\b(open|ouvre|visit|go to|va sur)\b/.test(lower)) return call("browser_open", { url });
@@ -67,6 +73,66 @@ function mailTool(has: (name: string) => boolean, lower: string): string | null 
   return all.find((n) => lower.includes(n.split("__")[0].split("_").slice(1).join(" "))) ?? all[0] ?? null;
 }
 
+/**
+ * Wave 5 stand-ins: the automatic reviewer (allow / ask / deny from the rules' words), a quiet preparation pass (reads the
+ * mail, then raises one nudge), the writing-style profile, and a background task's worker (a few steps, then a report).
+ */
+function demoWave5(req: TurnRequest, texts: string[], results: Block[]): Block[] | null {
+  const fr = /French/.test(req.system) || /Write to the user in French/.test(req.system);
+  const id = () => `demo_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const prompt = texts.join("\n");
+  if (req.system.includes("You review one action that an AI assistant wants to take")) {
+    const rulesPart = (/Rules the user wrote[^\n]*\n([\s\S]*?)\n\nAction:/.exec(prompt)?.[1] ?? "").toLowerCase();
+    const action = (/Action: ([\s\S]*?)\n\n/.exec(prompt)?.[1] ?? "").toLowerCase();
+    const quoteOk = /found in a user message and within scope/.test(prompt);
+    const toClient = /client/.test(action) && /client/.test(rulesPart);
+    const french = /in French/.test(prompt);
+    const decision = toClient && /(jamais|never)/.test(rulesPart) ? "ask" : quoteOk ? "allow" : /(jamais|never)/.test(rulesPart) && /send/.test(action) ? "ask" : "ask";
+    const ruleOk = /camille/.test(rulesPart) && /camille/.test(action);
+    const reason = decision === "allow"
+      ? (ruleOk ? (french ? "Tu l'as demandé toi-même, et ta règle sur les devis de Camille le permet." : "You asked for it yourself, and your rule about Camille's quotes allows it.")
+        : (french ? "Tu as demandé cette réponse toi-même, au bon destinataire, et aucune règle ne l'interdit." : "You asked for this reply yourself, to the right person, and no rule forbids it."))
+      : (french ? "Ta règle demande de te consulter avant d'écrire à un client." : "Your rule says to ask you before writing to a client.");
+    return [{ type: "text", text: JSON.stringify({ decision, reason }) }];
+  }
+  if (req.system.includes("You are preparing, quietly and in private")) {
+    const mail = req.tools.find((t) => t.name.endsWith("__mail_search"));
+    const french = /in French\.?/.test(req.system.split("Matters already raised")[0]);
+    if (!results.length && mail) return [{ type: "tool_use", id: id(), name: mail.name, input: { query: "", max: 5 } }];
+    const found = results.map((r) => (r.type === "tool_result" ? r.content.map((c) => (c.type === "text" ? c.text : "")).join("\n") : "")).join("\n");
+    const subject = /Subject: ([^\n]*devis[^\n]*)/i.exec(found)?.[1]?.trim() ?? /Subject: ([^\n]*)/.exec(found)?.[1]?.trim() ?? (french ? "Demande en attente" : "Request waiting");
+    const from = /From: ([^<\n]*)</.exec(found)?.[1]?.trim() ?? "";
+    return [{ type: "tool_use", id: id(), name: "nudge_raise", input: french
+      ? { matter_key: `reponse:${subject}`, title: `${from || "Un contact"} attend ta réponse : « ${subject} »`, body: `Son e-mail est arrivé ce matin et reste sans réponse. J'ai préparé une réponse courte qui confirme le devis. Je l'envoie ?` }
+      : { matter_key: `reply:${subject}`, title: `${from || "A contact"} is waiting for your answer: “${subject}”`, body: "Their email came in this morning and has no answer yet. I prepared a short reply confirming the quote. Shall I send it?" } }];
+  }
+  if (req.system.includes("You describe how a person writes, from samples")) {
+    return [{ type: "text", text: fr || /\b(je|tu|merci|bonjour)\b/i.test(prompt)
+      ? "- Tutoie ses proches, vouvoie les clients\n- Messages courts : 2 à 4 phrases\n- Commence par « Bonjour » ou le prénom, finit par « Merci ! » ou « Bonne journée »\n- Va droit au but, le chiffre ou la décision d'abord\n- Peu d'emoji, ponctuation simple\n- Écrit en français"
+      : "- Informal with colleagues, formal with clients\n- Short messages: 2 to 4 sentences\n- Opens with “Hi” and the first name, signs off with “Thanks!”\n- Gets to the point: the number or decision first\n- Few emoji\n- Writes in English" }];
+  }
+  // A background task finished: its main conclusion, in one line.
+  const finished = /Your background task "([^"]+)" is finished\.[^\n]*\n([\s\S]*?)\n\nTell the user/.exec(prompt);
+  if (finished) {
+    const first = finished[2].replace(/^(Rapport|Report)\s*:\s*/, "").split(/;\s*\d\)|\n/)[0].replace(/^1\)\s*/, "").trim();
+    return [{ type: "text", text: fr || /Rapport/.test(finished[2]) ? `La tâche « ${finished[1]} » est terminée. En bref : ${first}… Le rapport complet est sur la carte.` : `The task “${finished[1]}” is done. In short: ${first}… The full report is on the card.` }];
+  }
+  // Right after starting a background task: one line to the user, the card does the rest.
+  const prevMsg = req.messages[req.messages.length - 2];
+  if (results.length && !texts.length && prevMsg?.role === "assistant" && prevMsg.content.some((b) => b.type === "tool_use" && b.name === "task_start") && !results.some((r) => r.type === "tool_result" && r.isError))
+    return [{ type: "text", text: fr ? "C'est lancé en tâche de fond : tu peux suivre l'avancement sur la carte, l'arrêter ou lui répondre. Je te donne la conclusion dès qu'elle a fini." : "Started as a background task: follow it on the card, stop it or reply to it there. I'll give you the conclusion when it is done." }];
+  const everything = req.messages.filter((m) => m.role === "user").flatMap((m) => m.content.filter((b) => b.type === "text").map((b) => (b as { text: string }).text)).join("\n");
+  if (everything.includes("[You are working on this as a background task") && !/^\[System notice\]/m.test(prompt.replace(/^(\[[^\]\n]*\]\n)+/, ""))) {
+    const n = req.messages.filter((m) => m.role === "assistant" && m.content.some((b) => b.type === "tool_use")).length;
+    const steps = Number(process.env.DEMO_TASK_STEPS ?? 8);
+    const french = /recherche|Rapport/.test(everything);
+    // Each step tracks a source it reads (results differ, so the loop guard sees progress).
+    if (n < steps) return [{ type: "tool_use", id: id(), name: "task_add", input: { title: french ? `Lire la source ${n + 1}` : `Read source ${n + 1}` } }];
+    return [{ type: "text", text: french ? "Rapport : 1) trois concurrents principaux ; 2) prix 20 à 30 % au-dessus des nôtres ; 3) aucun n'a d'appli mobile ; 4) avis clients moyens 3,9/5 ; 5) opportunité : une offre d'entrée de gamme." : "Report: 1) three main competitors; 2) prices 20-30% above ours; 3) none has a mobile app; 4) average reviews 3.9/5; 5) opportunity: an entry-level offer." }];
+  }
+  return null;
+}
+
 export class DemoProvider implements LlmProvider {
   readonly id = "demo";
   readonly label = "Demo (no model)";
@@ -82,6 +148,13 @@ export class DemoProvider implements LlmProvider {
     const said = (texts[texts.length - 1] ?? "").replace(/^(\[[^\]\n]*\]\n)+/, "");
     demoTools = req.tools.map((t) => t.name);
     let content: Block[];
+    const wave5 = demoWave5(req, texts, results);
+    if (wave5) {
+      for (const b of wave5) if (b.type === "text") req.onText?.(b.text);
+      if (wave5.some((b) => b.type === "tool_use") && !process.env.NODE_TEST_CONTEXT) await sleep(Number(process.env.DEMO_STEP_MS ?? 900));
+      if (req.signal?.aborted) throw new Error("aborted");
+      return { content: wave5, stopReason: wave5.some((b) => b.type === "tool_use") ? "tool_use" : "end", model: "demo", usage: { inputTokens: 0, outputTokens: 0, cachedTokens: 0 } };
+    }
     // After a mail search, when the user asked for a reply: draft one and send it (the user is asked first).
     const prev = req.messages[req.messages.length - 2];
     const searched = prev?.role === "assistant" ? prev.content.find((b) => b.type === "tool_use" && b.name.endsWith("__mail_search")) : undefined;
@@ -89,15 +162,24 @@ export class DemoProvider implements LlmProvider {
     const askedText = asked?.content.filter((b) => b.type === "text").map((b) => (b as { text: string }).text).join(" ").toLowerCase() ?? "";
     const found = results.map((r) => (r.type === "tool_result" ? r.content.filter((c) => c.type === "text").map((c) => (c as { text: string }).text).join("\n") : "")).join("\n");
     if (searched && searched.type === "tool_use" && /\b(reply|answer|réponds|répondre|réponse)\b/.test(askedText) && /From: /.test(found)) {
-      const to = /From: [^\n]*?<([^>\s]+@[^>\s]+)>/.exec(found)?.[1] ?? /From: ([^\s]+@[^\s]+)/.exec(found)?.[1] ?? "";
-      const id = /- id (\S+)/.exec(found)?.[1];
-      const subject = /Subject: ([^\n]*)/.exec(found)?.[1]?.trim() ?? "";
+      // The message from the person the user named, if any ("réponds à Camille"), else the first one.
+      const named = /\b(?:[Rr]éponds?|[Rr]eponds?|[Rr]eply|[Aa]nswer)\s+(?:à|a|to)\s+([A-ZÀ-Ý][\p{L}-]+)/u.exec(asked?.content.filter((b) => b.type === "text").map((b) => (b as { text: string }).text).join(" ") ?? "")?.[1]?.toLowerCase();
+      const blocks = found.split(/\n(?=- id )/);
+      const pick = (named && blocks.find((b) => b.toLowerCase().includes(named))) || found;
+      const to = /From: [^\n]*?<([^>\s]+@[^>\s]+)>/.exec(pick)?.[1] ?? /From: ([^\s]+@[^\s]+)/.exec(pick)?.[1] ?? "";
+      const id = /- id (\S+)/.exec(pick)?.[1];
+      const subject = /Subject: ([^\n]*)/.exec(pick)?.[1]?.trim() ?? "";
       const fr = /Write to the user in French/.test(req.system);
       const sendTool = searched.name.replace(/__mail_search$/, "__mail_send");
       if (to && req.tools.some((t) => t.name === sendTool)) {
+        // Wave 5: the user's own words that ask for this reply, word for word ("réponds à Camille"), when they named someone.
+        const askedRaw = asked?.content.filter((b) => b.type === "text").map((b) => (b as { text: string }).text).join(" ") ?? "";
+        const quote = /\b((?:[Rr]éponds?|[Rr]eponds?|[Rr]eply|[Aa]nswer)\s+(?:à|a|to)\s+[A-ZÀ-Ý][\p{L}-]+)/u.exec(askedRaw)?.[1];
         content = [
-          { type: "text", text: fr ? `J'ai trouvé l'e-mail « ${subject} ». Je prépare une réponse — je te demande avant de l'envoyer.` : `I found “${subject}”. I'm replying — I'll ask you before it goes out.` },
-          { type: "tool_use", id: `demo_${Date.now()}`, name: sendTool, input: { to, subject: /^re:/i.test(subject) ? subject : `Re: ${subject}`, body: fr ? "Bonjour,\n\nMerci pour votre message, c'est bien noté. Je reviens vers vous très vite.\n\nBien à vous" : "Hello,\n\nThanks for your message, noted. I'll get back to you shortly.\n\nBest regards", ...(id ? { reply_to_id: id } : {}) } },
+          { type: "text", text: quote
+            ? (fr ? `J'ai trouvé l'e-mail « ${subject} ». Tu m'as demandé d'y répondre : j'envoie la réponse.` : `I found “${subject}”. You asked me to answer it: sending the reply.`)
+            : (fr ? `J'ai trouvé l'e-mail « ${subject} ». Je prépare une réponse — je te demande avant de l'envoyer.` : `I found “${subject}”. I'm replying — I'll ask you before it goes out.`) },
+          { type: "tool_use", id: `demo_${Date.now()}`, name: sendTool, input: { to, subject: /^re:/i.test(subject) ? subject : `Re: ${subject}`, body: fr ? "Bonjour,\n\nMerci pour votre message, c'est bien noté. Je reviens vers vous très vite.\n\nBien à vous" : "Hello,\n\nThanks for your message, noted. I'll get back to you shortly.\n\nBest regards", ...(id ? { reply_to_id: id } : {}), ...(quote ? { user_quote: quote } : {}) } },
         ];
         for (const word of (content[0] as { text: string }).text.split(/(?<=\s)/)) { req.onText?.(word); await sleep(18); }
         return { content, stopReason: "tool_use", model: "demo", usage: { inputTokens: 0, outputTokens: 0, cachedTokens: 0 } };

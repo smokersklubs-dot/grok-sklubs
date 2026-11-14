@@ -7,7 +7,10 @@ import type { ToolUseBlock } from "../llm/types.js";
 import { claimStep, engineTokenValid, engineTurnOf, markStep, ownToolName, randomCallId } from "./engine.js";
 import { clip } from "../store.js";
 import { tr } from "../i18n.js";
-import { afterTool, DECLINED, execute, judge, waitForApproval, type Turn } from "./loop.js";
+import { DECLINED, runReserved, waitForApproval, type Turn } from "./loop.js";
+import { authorize } from "./authorize.js";
+import { actionHash } from "./executions.js";
+import type { Grant } from "../shared.js";
 import { LoopGuard, loopStopText } from "./reliability.js";
 
 /**
@@ -51,31 +54,29 @@ export async function handleMcp(botId: string, req: IncomingMessage, res: Server
     const call: ToolUseBlock = { type: "tool_use", id: randomCallId(), name, input: (request.params.arguments ?? {}) as Record<string, unknown> };
     const step = await claimStep(botId, name);
     const loc = turn.user.locale;
-    const verdict = judge(turn, call);
-    if (verdict.kind === "block") { markStep(botId, step, "denied", tr(loc, "not allowed")); return { content: [{ type: "text", text: DECLINED }], isError: true }; }
+    const verdict = await authorize(turn, call);
+    if (verdict.kind === "block") { markStep(botId, step, "denied", verdict.reason ? clip(verdict.reason, 200) : tr(loc, "not allowed")); return { content: [{ type: "text", text: verdict.reason ? `${DECLINED} Why: ${verdict.reason}` : DECLINED }], isError: true }; }
+    let grant: Grant | undefined = verdict.kind === "allow" ? verdict.grant : undefined;
+    const asked: { approvalId?: string } = {};
     if (verdict.kind === "ask") {
       markStep(botId, step, "waiting");
-      const status = await waitForApproval(turn, call, verdict);
+      const status = await waitForApproval(turn, call, verdict, asked);
       if (status !== "allowed" && status !== "always") {
         markStep(botId, step, "denied", tr(loc, status === "expired" ? "skipped" : "not allowed"));
         return { content: [{ type: "text", text: status === "expired" ? EXPIRED : DECLINED }], isError: true };
       }
-      markStep(botId, step, "running");
+      grant = { by: "approval" };
     }
-    try {
-      const out = afterTool(turn, call, await execute(turn, call));
-      // Going round in circles: the subscription tool runs its own loop, so it is told plainly to stop and report.
-      const why = (turn.guard ??= new LoopGuard()).check(call, out);
-      if (why) { markStep(botId, step, "error", loopStopText(why)); return { content: [{ type: "text", text: `Stop now: ${loopStopText(why)}. Doing it again will not help. Tell the user where you are stuck and ask how to go on.` }], isError: true }; }
-      const remote = turn.remote.get(name);
-      markStep(botId, step, out.isError ? "error" : "done", out.isError && remote ? tr(loc, "failed") : out.summary ?? (out.isError ? tr(loc, "failed") : undefined));
-      const parts = typeof out.content === "string" ? [{ type: "text" as const, text: out.content }] : out.content.map((p) => (p.type === "text" ? { type: "text" as const, text: p.text } : { type: "image" as const, data: p.data, mimeType: p.mediaType }));
-      return { content: parts, isError: !!out.isError };
-    } catch (err) {
-      const message = String((err as Error)?.message ?? err);
-      markStep(botId, step, "error", clip(message, 200));
-      return { content: [{ type: "text", text: `Tool error: ${message}` }], isError: true };
-    }
+    // Reserved, executed once, logged with what allowed it; an unknown outcome becomes an "uncertain" card (runReserved).
+    const out = await runReserved(turn, call, grant, asked.approvalId ?? "", actionHash(call.name, call.input), (status, summary) => {
+      if (status === "running") markStep(botId, step, "running");
+      else markStep(botId, step, status, summary ?? (status === "error" ? tr(loc, "failed") : undefined));
+    });
+    // Going round in circles: the subscription tool runs its own loop, so it is told plainly to stop and report.
+    const why = (turn.guard ??= new LoopGuard()).check(call, out);
+    if (why) { markStep(botId, step, "error", loopStopText(why)); return { content: [{ type: "text", text: `Stop now: ${loopStopText(why)}. Doing it again will not help. Tell the user where you are stuck and ask how to go on.` }], isError: true }; }
+    const parts = typeof out.content === "string" ? [{ type: "text" as const, text: out.content }] : out.content.map((p) => (p.type === "text" ? { type: "text" as const, text: p.text } : { type: "image" as const, data: p.data, mimeType: p.mediaType }));
+    return { content: parts, isError: !!out.isError };
   });
   const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
   res.on("close", () => { void transport.close(); void server.close(); });

@@ -51,8 +51,47 @@ export const DEFAULT_CHARACTER: Character = { type: "mascot", customColor: null,
 
 export type Effort = "low" | "medium" | "high" | "xhigh";
 export type BotMode = "personal" | "teammate";
-/** How a bot handles actions that change things: ask every time, ask only for connector writes, or never ask. */
-export type Autonomy = "careful" | "balanced" | "trusted";
+/**
+ * How a bot handles actions that change things: ask every time, ask only for connector writes, or never ask.
+ * "auto" (wave 5): a reviewer model checks each sensitive action against the user's rules, their own words and whether
+ * outside content was read, and answers allow / ask / deny (see server/src/agent/authorize.ts). Some actions always ask.
+ */
+export type Autonomy = "careful" | "balanced" | "trusted" | "auto";
+export const AUTONOMIES = ["careful", "balanced", "trusted", "auto"] as const;
+
+/**
+ * Why a state-changing action ran without a card (or with one): "words" — the bot cited the user's own words and the
+ * server found them in a message of this conversation, within scope; "reviewer" — the automatic reviewer allowed it
+ * ("auto" mode); "approval" — the user said yes on a card; "retry" — the user asked to retry an action whose outcome
+ * was uncertain. `quote`: the user's exact words; `reason`: the reviewer's or the server's short reason.
+ */
+export interface Grant { by: "words" | "reviewer" | "approval" | "retry"; quote?: string; reason?: string }
+
+/** A rule in the user's own words ("ne jamais envoyer d'e-mail à un client sans me demander"). `botId` null: every bot. */
+export interface Rule { id: string; botId: string | null; text: string; enabled: boolean; createdAt: number }
+/** Rules and the automatic reviewer. `reviewerModel`: "provider:model", "" = AUX_MODEL, else the bot's own model. */
+export interface RulesState { rules: Rule[]; reviewerModel: string; auxModel: string }
+
+/** Topics never learned into memory unless the user turns them on (or explicitly asks to remember one thing). */
+export const SENSITIVE_CATEGORIES = ["health", "religion", "politics", "sexuality", "origin", "location", "financial", "legal"] as const;
+export type SensitiveCategory = (typeof SENSITIVE_CATEGORIES)[number];
+/**
+ * Account memory settings. `autoCapture`: notes learned from the user's own messages. `allowSensitive`: categories the
+ * user agreed to have learned. `style`: the writing-style profile learned (opt-in) from the user's sent messages.
+ */
+export interface MemorySettings {
+  autoCapture: boolean;
+  allowSensitive: Record<SensitiveCategory, boolean>;
+  style: { enabled: boolean; profile: string; updatedAt: number | null; source: "mail" | "chat" | null; samples: number };
+}
+
+/** Proactive nudges of one bot: a quiet read-only preparation pass that may raise at most `perDay` nudges a day. */
+export interface NudgeSettings { enabled: boolean; perDay: number; budgetUsd: number; everyMin: number }
+export const DEFAULT_NUDGES: NudgeSettings = { enabled: false, perDay: 3, budgetUsd: 0.2, everyMin: 60 };
+
+/** A background task a bot started from the chat (task_start). It runs in its own hidden helper. */
+export type BgTaskState = "running" | "waiting" | "done" | "failed" | "stopped";
+export interface BgTask { id: string; botId: string; title: string; state: BgTaskState; steps: number; result: string; createdAt: number; updatedAt: number }
 
 export type Locale = "fr" | "en";
 export interface User { id: string; email: string; name: string; locale: Locale }
@@ -94,6 +133,8 @@ export interface Bot {
    * list (Settings → Models) is used.
    */
   fallbackModels: string[] | null;
+  /** Proactive nudges (wave 5): off by default. */
+  nudges: NudgeSettings;
   /** The bot that created this one with bot_create (null: created by the user). */
   createdBy: string | null;
   generation: number;
@@ -131,7 +172,8 @@ export interface Live {
   steps?: number;
 }
 
-export interface Origin { kind: "bot" | "routine" | "voice" | "webhook"; id: string; name: string }
+/** `nudge`: the user pressed "Do it" on a nudge (the words come from a preparation pass, so they never authorise anything). */
+export interface Origin { kind: "bot" | "routine" | "voice" | "webhook" | "nudge"; id: string; name: string }
 
 /** The small set of reactions anyone (the user or a bot) can put under a message. */
 export const REACTIONS = ["👍", "❤️", "😂", "🎉", "🤔", "👀", "🙏", "👎"] as const;
@@ -143,7 +185,8 @@ export interface Replies { count: number; lastAt: number }
 
 export type RowBody =
   | { kind: "message"; role: "user" | "assistant"; text: string; streaming?: boolean; origin?: Origin; sources?: { url: string; title?: string }[]; attachments?: Attachment[]; reactions?: Reaction[]; replies?: Replies }
-  | { kind: "step"; callId: string; tool: string; label: string; status: "running" | "done" | "error" | "waiting" | "denied"; args: Record<string, unknown>; summary?: string }
+  /** `grant`: what allowed this state-changing action (the user's quote, the reviewer's reason, a card). */
+  | { kind: "step"; callId: string; tool: string; label: string; status: "running" | "done" | "error" | "waiting" | "denied"; args: Record<string, unknown>; summary?: string; grant?: Grant }
   | { kind: "card"; card: Card }
   /** `relay`: something happened on one of the user's own computers (Sklubot Relais): a control session started or ended, Stop was pressed, a request was refused there. */
   /**
@@ -156,7 +199,24 @@ export type RowBody =
 
 export type Card =
   /** `once`: "Always" is not offered (e.g. a command on the user's own computer after outside content); choosing it anyway counts as allowing once. */
-  | { type: "approval"; approvalId: string; title: string; detail: string; tool: string; source: string; status: "pending" | "allowed" | "always" | "denied" | "expired"; once?: boolean }
+  /**
+   * `why`: why the server asks instead of going ahead (no quote of the user's words, a quote not found, out of scope,
+   * the reviewer's reason, an action that always asks). `quote`: the words the bot cited, when it cited any.
+   * `outcome`: once allowed, what became of the single execution this approval is bound to.
+   */
+  | { type: "approval"; approvalId: string; title: string; detail: string; tool: string; source: string; status: "pending" | "allowed" | "always" | "denied" | "expired"; once?: boolean; why?: string; quote?: string; outcome?: "done" | "failed" | "uncertain" }
+  /**
+   * An action whose outcome is unknown (the server stopped, or the call timed out, while it ran). It is never replayed on
+   * its own: the user says it went through, asks the bot to check, or retries it once.
+   */
+  | { type: "uncertain"; executionId: string; title: string; detail: string; status: "pending" | "done" | "checking" | "retried" | "dismissed" }
+  /**
+   * A background task (task_start). `helperId`: the hidden helper doing the work (its live state gives the step counter).
+   * `question`: what it asks the user while waiting; `approval`: an approval it waits on, answered from this card.
+   */
+  | { type: "task"; taskId: string; helperId: string; title: string; state: BgTaskState; steps: number; now?: string; result?: string; question?: string; approval?: { approvalId: string; title: string; detail: string } }
+  /** A nudge from a quiet preparation pass: "Do it", "Later" (snoozed) or "Never for this" (the matter never comes back). */
+  | { type: "nudge"; nudgeId: string; title: string; body: string; status: "pending" | "doing" | "later" | "never" }
   | { type: "question"; question: string; options: string[]; status: "pending" | "answered" | "dismissed"; answer?: string }
   | { type: "connect"; name: string; hint: string; reason: string; status: "pending" | "connected" | "skipped" }
   /** The bot needs the user on its screen (CAPTCHA, 2FA code, login, payment…) and waits until they hand it back, or `expiresAt`. */
@@ -176,7 +236,13 @@ export interface CallRecord { id: string; phase: "started" | "ended"; durationMs
 /** `thread`: set on a thread reply, the seq of the message (in the main chat) that the thread hangs on. */
 export interface Row { botId: string; generation: number; seq: number; rev: number; createdAt: number; body: RowBody; thread?: number }
 
-export interface Memory { id: string; botId: string; text: string; source: "chat" | "learned"; createdAt: number }
+/**
+ * `status`: "active" notes are used; "contested" ones are used with caution (the user doubted them, or a newer note says
+ * otherwise); "archived" ones are kept but never used. `quote`: the user's own words a learned note came from.
+ * `category`: a sensitive category the note touches (null: none), kept only because the user allowed it.
+ */
+export type MemoryStatus = "active" | "archived" | "contested";
+export interface Memory { id: string; botId: string; text: string; source: "chat" | "learned" | "import"; createdAt: number; status: MemoryStatus; quote: string; category: SensitiveCategory | null }
 /** `shared`: every bot of the user can read and follow it (it shows in their skill index). */
 export interface Skill { id: string; botId: string; name: string; description: string; body: string; shared: boolean; createdAt: number; updatedAt: number }
 /** A skill a bot can use: one of its own, or one another bot of the same user shared. */
@@ -237,8 +303,8 @@ export interface SharedPage { token: string; botId: string; title: string; url: 
 
 export interface SearchHit { botId: string; botName: string; generation: number; current: boolean; seq: number; at: number; role: "user" | "assistant"; snippet: string; /** A thread reply: the seq of the message the thread hangs on. */ thread?: number }
 
-export interface MemoryStatus { lastConsolidatedAt: number | null; historyChars: number; compactAt: number; lastCompactedAt: number | null }
-export interface BotBundle { memories: Memory[]; skills: Skill[]; routines: Routine[]; tasks: Task[]; memoryStatus: MemoryStatus }
+export interface MemoryBookkeeping { lastConsolidatedAt: number | null; historyChars: number; compactAt: number; lastCompactedAt: number | null }
+export interface BotBundle { memories: Memory[]; skills: Skill[]; routines: Routine[]; tasks: Task[]; memoryStatus: MemoryBookkeeping; bgTasks: BgTask[] }
 
 /** How a connector proves who we are: nothing, a pasted access token, or an OAuth sign-in in the browser. */
 export type ConnectorAuth = "none" | "token" | "oauth";
@@ -312,7 +378,7 @@ export interface VaultImportResult { imported: number; skipped: number; totp: nu
 
 // ── Push notifications (Web Push) ──────────────────────────────────────────
 /** What can be pushed: a bot needs the user, a gem, a reply finished while the app was hidden, a routine's result. */
-export const PUSH_KINDS = ["needs", "gem", "reply", "routine", "computer"] as const;
+export const PUSH_KINDS = ["needs", "gem", "reply", "routine", "computer", "nudge"] as const;
 export type PushKind = (typeof PUSH_KINDS)[number];
 /** One browser or phone that receives push notifications. Its keys never leave the server. */
 export interface PushDevice { id: string; label: string; enabled: boolean; createdAt: number; lastOkAt: number | null; failures: number }
@@ -479,4 +545,8 @@ export type ServerEvent =
   /** The user's linked computers or their live state changed (connection, session, Stop, a question on screen). */
   | { type: "relay"; devices: RelayDevice[] }
   /** The shared profile changed (from Settings or a bot's profile_update). */
-  | { type: "profile" };
+  | { type: "profile" }
+  /** The user's rules or the reviewer model changed. */
+  | { type: "rules" }
+  /** Memory settings (sensitive topics, writing style) changed. */
+  | { type: "memorySettings" };

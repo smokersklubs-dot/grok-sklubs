@@ -17,7 +17,7 @@ export type ModalState =
   | { kind: "duplicate"; botId: string }
   | { kind: "connectors"; prefill?: { name: string; botId: string; seq: number } };
 export type BotSettingsTab = "general" | "skills" | "memories" | "routines" | "telegram";
-export type AppSection = "general" | "profile" | "models" | "notifications" | "computer" | "devices" | "permissions" | "connectors" | "vault" | "pages" | "usage" | "checkins" | "activity" | "team" | "account";
+export type AppSection = "general" | "profile" | "models" | "notifications" | "computer" | "devices" | "permissions" | "rules" | "memory" | "connectors" | "vault" | "pages" | "usage" | "checkins" | "activity" | "team" | "account";
 
 /** A short message at the bottom of the window, optionally with one action (usually "Undo"). */
 export interface Toast { id: number; text: string; action?: { label: string; run: () => void | Promise<void> } }
@@ -158,6 +158,10 @@ interface Store {
   pagesTick: number;
   /** Bumped when the shared profile changes (Settings or a bot's profile_update). */
   profileTick: number;
+  /** Bumped when the user's rules or the reviewer model change (wave 5). */
+  rulesTick: number;
+  /** Bumped when memory settings (sensitive topics, writing style) change. */
+  memorySettingsTick: number;
   /** Bumped when vault items change on the server (a secret saved from a card, an import). */
   vaultTick: number;
   /** The user's own sidebar sections. */
@@ -296,6 +300,8 @@ export const useStore = create<Store>((set, get) => ({
   usageTick: 0,
   pagesTick: 0,
   profileTick: 0,
+  rulesTick: 0,
+  memorySettingsTick: 0,
   vaultTick: 0,
   sections: [],
   find: null,
@@ -717,6 +723,12 @@ export const useStore = create<Store>((set, get) => ({
         break;
       case "profile":
         set((s) => ({ profileTick: s.profileTick + 1 }));
+        break;
+      case "rules":
+        set((s) => ({ rulesTick: s.rulesTick + 1 }));
+        break;
+      case "memorySettings":
+        set((s) => ({ memorySettingsTick: s.memorySettingsTick + 1 }));
         break;
       case "cheer": {
         // The bot found a gem: its character goes wild for a few seconds (and may shout, once per cheer).

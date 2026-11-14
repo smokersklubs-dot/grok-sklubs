@@ -1,8 +1,9 @@
 import { randomBytes } from "node:crypto";
 import { mimeOf, readLibraryFile } from "../computer.js";
 import type { ToolSpec } from "../llm/types.js";
-import type { NativeAppId } from "../shared.js";
-import { clip } from "../store.js";
+import type { Locale, NativeAppId } from "../shared.js";
+import { bots, clip, users } from "../store.js";
+import { maskIfAccess } from "./access.js";
 import { fetchProblem } from "../net.js";
 import { accounts, apiProblem, callApi, labelKey, type AccountRecord, type ApiAnswer } from "./accounts.js";
 import { vendorUrl } from "./vendors.js";
@@ -18,7 +19,8 @@ import { vendorUrl } from "./vendors.js";
  */
 
 export type Risk = "read" | "safe" | "write";
-interface Ctx { botId: string }
+/** `locale`: the user's language, for the notice that replaces the body of an email that grants account access. */
+interface Ctx { botId: string; locale?: Locale }
 export interface NativeToolDef {
   action: string; risk: Risk; label: string; description: string; schema: ToolSpec["inputSchema"];
   run(acc: AccountRecord, args: Record<string, any>, ctx: Ctx): Promise<{ text: string; summary: string }>;
@@ -65,7 +67,8 @@ function gmailBody(part: any): string {
   const html = walk(part, "text/html");
   return html ? html2text(html) : part?.body?.data ? decode(part.body.data) : "";
 }
-const gmailLine = (m: any) => `- id ${m.id} · thread ${m.threadId} · ${header(m, "Date")}\n  From: ${header(m, "From")}\n  Subject: ${header(m, "Subject")}\n  ${clip(String(m.snippet ?? "").replace(/\s+/g, " "), 240)}`;
+/** Emails that grant account access (codes, magic links, password resets) keep their subject; their text is masked (access.ts). */
+const gmailLine = (m: any, loc: Locale = "en") => `- id ${m.id} · thread ${m.threadId} · ${header(m, "Date")}\n  From: ${header(m, "From")}\n  Subject: ${header(m, "Subject")}\n  ${maskIfAccess(header(m, "Subject"), clip(String(m.snippet ?? "").replace(/\s+/g, " "), 240), loc)}`;
 async function gmailMeta(acc: AccountRecord, id: string) {
   // format=metadata with only the headers we show (users.messages.get).
   return check(await callApi(acc, "GET", gmail(`/messages/${encodeURIComponent(id)}?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date&metadataHeaders=Message-ID&metadataHeaders=References&metadataHeaders=To`))).json;
@@ -104,7 +107,7 @@ async function gmailCompose(acc: AccountRecord, a: Record<string, any>) {
 const graph = (path: string) => vendorUrl("microsoft", `https://graph.microsoft.com/v1.0/me${path}`);
 const SELECT = "id,conversationId,subject,from,receivedDateTime,bodyPreview";
 const who = (r: any) => (r?.emailAddress ? `${r.emailAddress.name ?? ""} <${r.emailAddress.address ?? ""}>`.trim() : "");
-const outlookLine = (m: any) => `- id ${m.id} · thread ${m.conversationId} · ${m.receivedDateTime ?? ""}\n  From: ${who(m.from)}\n  Subject: ${m.subject ?? ""}\n  ${clip(String(m.bodyPreview ?? "").replace(/\s+/g, " "), 240)}`;
+const outlookLine = (m: any, loc: Locale = "en") => `- id ${m.id} · thread ${m.conversationId} · ${m.receivedDateTime ?? ""}\n  From: ${who(m.from)}\n  Subject: ${m.subject ?? ""}\n  ${maskIfAccess(String(m.subject ?? ""), clip(String(m.bodyPreview ?? "").replace(/\s+/g, " "), 240), loc)}`;
 const recipients = (list: string[]) => list.map((address) => ({ emailAddress: { address } }));
 // Prefer: outlook.body-content-type="text" returns bodies as text (https://learn.microsoft.com/en-us/graph/api/message-get).
 const TEXT_BODY = { prefer: 'outlook.body-content-type="text"' };
@@ -194,47 +197,47 @@ const MAIL: NativeToolDef[] = [
     action: "mail_search", risk: "read", label: "Searching mail",
     description: "Search this mailbox and list matching messages (id, thread, from, subject, date, snippet). Gmail: Gmail search syntax (from:, subject:, is:unread, newer_than:2d…). Outlook: words, or from:/subject: keywords. Empty query: the latest messages in the inbox.",
     schema: obj({ query: str("What to look for"), max: int("At most this many messages (1-20, default 10)") }),
-    async run(acc, a) {
+    async run(acc, a, ctx) {
       const max = limit(a.max, 10, 20);
       const query = String(a.query ?? "").trim();
       if (isGoogle(acc)) {
         const list = await gmailList(acc, query || "in:inbox", max);
-        return out(list.length ? list.map(gmailLine).join("\n") : "No messages match.", count(list.length, "message", "messages"));
+        return out(list.length ? list.map((m) => gmailLine(m, ctx.locale)).join("\n") : "No messages match.", count(list.length, "message", "messages"));
       }
       // $search on messages (https://learn.microsoft.com/en-us/graph/search-query-parameter); without a query, the inbox newest first.
       const url = query ? graph(`/messages?$search=${encodeURIComponent(`"${query.replace(/"/g, "")}"`)}&$top=${max}&$select=${SELECT}`) : graph(`/mailFolders/inbox/messages?$top=${max}&$orderby=receivedDateTime%20desc&$select=${SELECT}`);
       const list = check(await callApi(acc, "GET", url)).json?.value ?? [];
-      return out(list.length ? list.map(outlookLine).join("\n") : "No messages match.", count(list.length, "message", "messages"));
+      return out(list.length ? list.map((m: any) => outlookLine(m, ctx.locale)).join("\n") : "No messages match.", count(list.length, "message", "messages"));
     },
   },
   {
     action: "mail_read", risk: "read", label: "Reading an email",
     description: "Read one message in full (headers and text body).",
     schema: obj({ id: str("Message id from mail_search") }, ["id"]),
-    async run(acc, a) {
+    async run(acc, a, ctx) {
       if (isGoogle(acc)) {
         const m = check(await callApi(acc, "GET", gmail(`/messages/${encodeURIComponent(String(a.id))}?format=full`))).json;
-        return out(`From: ${header(m, "From")}\nTo: ${header(m, "To")}\nDate: ${header(m, "Date")}\nSubject: ${header(m, "Subject")}\nLabels: ${(m.labelIds ?? []).join(", ")}\nThread: ${m.threadId}\n\n${gmailBody(m.payload)}`, clip(header(m, "Subject") || "(no subject)", 80));
+        return out(`From: ${header(m, "From")}\nTo: ${header(m, "To")}\nDate: ${header(m, "Date")}\nSubject: ${header(m, "Subject")}\nLabels: ${(m.labelIds ?? []).join(", ")}\nThread: ${m.threadId}\n\n${maskIfAccess(header(m, "Subject"), gmailBody(m.payload), ctx.locale ?? "en")}`, clip(header(m, "Subject") || "(no subject)", 80));
       }
       const m = check(await callApi(acc, "GET", graph(`/messages/${encodeURIComponent(String(a.id))}?$select=subject,from,toRecipients,ccRecipients,receivedDateTime,body,conversationId,categories`), { headers: TEXT_BODY })).json;
-      return out(`From: ${who(m.from)}\nTo: ${(m.toRecipients ?? []).map(who).join(", ")}\nDate: ${m.receivedDateTime}\nSubject: ${m.subject ?? ""}\nCategories: ${(m.categories ?? []).join(", ")}\nThread: ${m.conversationId}\n\n${m.body?.contentType === "html" ? html2text(m.body?.content ?? "") : m.body?.content ?? ""}`, clip(m.subject || "(no subject)", 80));
+      return out(`From: ${who(m.from)}\nTo: ${(m.toRecipients ?? []).map(who).join(", ")}\nDate: ${m.receivedDateTime}\nSubject: ${m.subject ?? ""}\nCategories: ${(m.categories ?? []).join(", ")}\nThread: ${m.conversationId}\n\n${maskIfAccess(String(m.subject ?? ""), m.body?.contentType === "html" ? html2text(m.body?.content ?? "") : m.body?.content ?? "", ctx.locale ?? "en")}`, clip(m.subject || "(no subject)", 80));
     },
   },
   {
     action: "mail_thread", risk: "read", label: "Reading a conversation",
     description: "Read a whole conversation (every message of a thread), oldest first.",
     schema: obj({ thread_id: str("Thread id from mail_search") }, ["thread_id"]),
-    async run(acc, a) {
+    async run(acc, a, ctx) {
       if (isGoogle(acc)) {
         // users.threads.get
         const t = check(await callApi(acc, "GET", gmail(`/threads/${encodeURIComponent(String(a.thread_id))}?format=full`))).json;
         const msgs = t.messages ?? [];
-        return out(msgs.map((m: any) => `── id ${m.id} · ${header(m, "Date")}\nFrom: ${header(m, "From")}\nSubject: ${header(m, "Subject")}\n${clip(gmailBody(m.payload), 3000)}`).join("\n\n") || "Empty thread.", count(msgs.length, "message", "messages"));
+        return out(msgs.map((m: any) => `── id ${m.id} · ${header(m, "Date")}\nFrom: ${header(m, "From")}\nSubject: ${header(m, "Subject")}\n${maskIfAccess(header(m, "Subject"), clip(gmailBody(m.payload), 3000), ctx.locale ?? "en")}`).join("\n\n") || "Empty thread.", count(msgs.length, "message", "messages"));
       }
       const id = String(a.thread_id).replace(/'/g, "''");
       const list = check(await callApi(acc, "GET", graph(`/messages?$filter=${encodeURIComponent(`conversationId eq '${id}'`)}&$top=25&$select=id,subject,from,receivedDateTime,body`), { headers: TEXT_BODY })).json?.value ?? [];
       list.sort((x: any, y: any) => String(x.receivedDateTime).localeCompare(String(y.receivedDateTime)));
-      return out(list.map((m: any) => `── id ${m.id} · ${m.receivedDateTime}\nFrom: ${who(m.from)}\nSubject: ${m.subject ?? ""}\n${clip(m.body?.content ?? "", 3000)}`).join("\n\n") || "Empty thread.", count(list.length, "message", "messages"));
+      return out(list.map((m: any) => `── id ${m.id} · ${m.receivedDateTime}\nFrom: ${who(m.from)}\nSubject: ${m.subject ?? ""}\n${maskIfAccess(String(m.subject ?? ""), clip(m.body?.content ?? "", 3000), ctx.locale ?? "en")}`).join("\n\n") || "Empty thread.", count(list.length, "message", "messages"));
     },
   },
   {
@@ -538,6 +541,8 @@ export async function runNativeTool(accountId: string, action: string, args: Rec
   if (!acc) throw new Error("this account was disconnected");
   const def = toolsOfApp(acc.app).find((t) => t.action === action);
   if (!def) throw new Error(`there is no ${action} for ${acc.name}`);
-  try { return await def.run(acc, args, ctx); }
-  catch (err) { throw new Error(fetchProblem(err) ?? (err as Error).message); }
+  const owner = bots.byId(ctx.botId)?.userId;
+  try { return await def.run(acc, args, { ...ctx, locale: ctx.locale ?? (owner ? users.localeOf(owner) : "en") }); }
+  // The original error rides along as the cause: whether the request may have reached the vendor matters (executions.ts).
+  catch (err) { throw new Error(fetchProblem(err) ?? (err as Error).message, { cause: err }); }
 }

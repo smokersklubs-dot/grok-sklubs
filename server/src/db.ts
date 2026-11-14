@@ -250,6 +250,62 @@ function CREATE_EXTRA() {
     bot_id TEXT NOT NULL REFERENCES bots(id) ON DELETE CASCADE, key TEXT NOT NULL, at INTEGER NOT NULL,
     PRIMARY KEY (bot_id, key)
   );`);
+  // Wave 5. Authorisation grounded in the user's words, action-bound single-use approvals, rules and the reviewer,
+  // background tasks, nudges, better-scoped memory.
+  // An approval binds to a hash of the exact action (tool + canonical arguments) and executes at most once.
+  add("approvals", "action_hash", "TEXT");
+  add("approvals", "consumed_at", "INTEGER");
+  // Memory notes: status (active | archived | contested), the user's words a learned note came from, a sensitive category.
+  add("memories", "status", "TEXT NOT NULL DEFAULT 'active'");
+  add("memories", "quote", "TEXT NOT NULL DEFAULT ''");
+  add("memories", "category", "TEXT");
+  // Account settings: memory (JSON: autoCapture, allowSensitive, style) and the reviewer (JSON: model).
+  add("settings", "memory", "TEXT NOT NULL DEFAULT '{}'");
+  add("settings", "review", "TEXT NOT NULL DEFAULT '{}'");
+  // Per-bot nudges (JSON: enabled, perDay, budgetUsd, everyMin).
+  add("bots", "nudges", "TEXT NOT NULL DEFAULT '{}'");
+  db.exec(`
+  -- One execution of a state-changing action (a "reservation"): written before it runs, closed after. Left "running" by a
+  -- restart, it becomes "uncertain" and is never replayed automatically.
+  CREATE TABLE IF NOT EXISTS executions (
+    id TEXT PRIMARY KEY, bot_id TEXT NOT NULL REFERENCES bots(id) ON DELETE CASCADE, user_id TEXT NOT NULL,
+    approval_id TEXT, tool TEXT NOT NULL, label TEXT NOT NULL DEFAULT '', detail TEXT NOT NULL DEFAULT '', action_hash TEXT NOT NULL,
+    grant_by TEXT NOT NULL DEFAULT '', quote TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'running',
+    generation INTEGER NOT NULL DEFAULT 0, thread INTEGER NOT NULL DEFAULT 0, card_seq INTEGER,
+    started_at INTEGER NOT NULL, finished_at INTEGER
+  );
+  CREATE INDEX IF NOT EXISTS executions_status ON executions(status);
+  -- A single-use permission for one exact action (the user pressed "Retry" on an uncertain card). Used at most once.
+  CREATE TABLE IF NOT EXISTS action_grants (
+    id TEXT PRIMARY KEY, bot_id TEXT NOT NULL REFERENCES bots(id) ON DELETE CASCADE, action_hash TEXT NOT NULL,
+    created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, used_at INTEGER
+  );
+  -- Rules in the user's own words. bot_id NULL: every bot of the user.
+  CREATE TABLE IF NOT EXISTS rules (
+    id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, bot_id TEXT REFERENCES bots(id) ON DELETE CASCADE,
+    text TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS rules_user ON rules(user_id, created_at);
+  -- Background tasks started from the chat: the hidden helper doing the work and the card that follows it.
+  CREATE TABLE IF NOT EXISTS bg_tasks (
+    id TEXT PRIMARY KEY, bot_id TEXT NOT NULL REFERENCES bots(id) ON DELETE CASCADE, helper_id TEXT,
+    title TEXT NOT NULL, goal TEXT NOT NULL, state TEXT NOT NULL DEFAULT 'running', steps INTEGER NOT NULL DEFAULT 0,
+    result TEXT NOT NULL DEFAULT '', generation INTEGER NOT NULL, card_seq INTEGER, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS bg_tasks_bot ON bg_tasks(bot_id, created_at);
+  -- Nudges: one record per matter (a stable key), never raised twice; snoozed or refused for good.
+  CREATE TABLE IF NOT EXISTS nudges (
+    id TEXT PRIMARY KEY, bot_id TEXT NOT NULL REFERENCES bots(id) ON DELETE CASCADE, matter TEXT NOT NULL,
+    title TEXT NOT NULL, body TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', snooze_until INTEGER,
+    generation INTEGER NOT NULL DEFAULT 0, card_seq INTEGER, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
+    UNIQUE (bot_id, matter)
+  );
+  -- What the preparation passes of a bot spent and raised, per UTC day (their own small budget and daily cap).
+  CREATE TABLE IF NOT EXISTS nudge_days (
+    bot_id TEXT NOT NULL REFERENCES bots(id) ON DELETE CASCADE, day TEXT NOT NULL, spent_usd REAL NOT NULL DEFAULT 0,
+    raised INTEGER NOT NULL DEFAULT 0, passes INTEGER NOT NULL DEFAULT 0, last_pass_at INTEGER,
+    PRIMARY KEY (bot_id, day)
+  );`);
 }
 
 type Param = string | number | null | bigint;

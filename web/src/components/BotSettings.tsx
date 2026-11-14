@@ -3,7 +3,7 @@ import { api, errText } from "../api";
 import { tn, useT } from "../i18n";
 import { useStore, type BotSettingsTab } from "../store";
 import { DEFAULT_CHARACTER, TOOL_GROUPS } from "../types";
-import type { Autonomy, AvatarColor, AvatarShape, Bot, BotBundle, Character as CharacterLook, BotMode, Effort, Memory, ModelOption, NativeTrigger, RoomRule, Routine, RoutineRun, Skill, SkillRef, TelegramStatus, ToolGroup } from "../types";
+import type { Autonomy, AvatarColor, AvatarShape, Bot, BotBundle, Character as CharacterLook, BotMode, Effort, Memory, MemoryStatus, ModelOption, NativeTrigger, RoomRule, Routine, RoutineRun, Skill, SkillRef, TelegramStatus, ToolGroup } from "../types";
 import { useNative } from "./NativeApps";
 import { dateTime, nextRunLabel, relTime, shortDate } from "../lib/format";
 import { BotAvatar } from "./Avatar";
@@ -15,9 +15,10 @@ import { routineWhen, TriggerChip } from "./DetailsPanel";
 import { Icon, Spinner } from "./Icon";
 import { MODE_IDS } from "./Modals";
 import { ConfirmButton, CopyButton, copyText, Empty, ErrorNote, IconButton, Loading, Modal, Toggle, useTick } from "./ui";
+import { BotRulesAndNudges } from "./Wave5";
 
 const EFFORT_IDS: Effort[] = ["low", "medium", "high", "xhigh"];
-const AUTONOMY_IDS: Autonomy[] = ["careful", "balanced", "trusted"];
+const AUTONOMY_IDS: Autonomy[] = ["careful", "balanced", "trusted", "auto"];
 const ROOM_RULE_IDS: RoomRule[] = ["lead", "everyone", "mentions"];
 
 function ChoiceList<T extends string>({ label, value, options, onChange }: { label: string; value: T; options: { id: T; title: string; text: string }[]; onChange: (v: T) => void }) {
@@ -197,7 +198,9 @@ function General({ bot, onClose }: { bot: Bot; onClose: () => void }) {
           <div className="field">
             <span className="field-label">{t("bot.autonomy")}</span>
             <ChoiceList label={t("bot.autonomy")} value={form.autonomy} options={autonomies} onChange={(v) => set("autonomy", v)} />
+            <p className="field-hint">{t("autonomy.groundingHint")}</p>
           </div>
+          <BotRulesAndNudges bot={bot} />
           <div className="field">
             <span className="field-label">{t("bot.usedAs")}</span>
             <ChoiceList label={t("bot.usedAs")} value={form.mode} options={modes} onChange={(v) => set("mode", v)} />
@@ -543,10 +546,16 @@ function Memories({ bot, bundle }: { bot: Bot; bundle: BotBundle | undefined }) 
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [busy, setBusy] = useState<"consolidate" | "compact" | null>(null);
+  const [filter, setFilter] = useState<"all" | MemoryStatus>("all");
   const memories = bundle?.memories;
   const status = bundle?.memoryStatus;
   const needle = q.trim().toLowerCase();
-  const shown = memories?.filter((m) => !needle || m.text.toLowerCase().includes(needle));
+  const shown = memories?.filter((m) => (!needle || m.text.toLowerCase().includes(needle)) && (filter === "all" || m.status === filter));
+  const setStatus = async (m: Memory, next: MemoryStatus) => {
+    setError(null);
+    mutateBundle(bot.id, (b) => ({ ...b, memories: b.memories.map((x) => (x.id === m.id ? { ...x, status: next } : x)) }));
+    try { await api("PATCH", `/memories/${m.id}`, { status: next }); } catch (e) { setError(errText(e)); await loadBundle(bot.id); }
+  };
   const percent = status && status.compactAt > 0 ? Math.min(100, Math.round((status.historyChars / status.compactAt) * 100)) : 0;
 
   const forget = async (m: Memory) => {
@@ -604,6 +613,17 @@ function Memories({ bot, bundle }: { bot: Bot; bundle: BotBundle | undefined }) 
           {t(busy === "consolidate" ? "memory.reviewing" : "memory.review")}
         </button>
       </div>
+      {memories && memories.length > 0 && (
+        <div className="memory-filter" role="group" aria-label={t("memory.filterLabel")}>
+          {(["all", "active", "contested", "archived"] as const).map((f) => (
+            <button key={f} type="button" className={`chip chip-link ${filter === f ? "is-active" : ""}`} aria-pressed={filter === f} onClick={() => setFilter(f)}>
+              {t(`memory.filter.${f}`)} <span className="muted">{f === "all" ? memories.length : memories.filter((m) => m.status === f).length}</span>
+            </button>
+          ))}
+          <span className="spacer" />
+          <a className="link small" href={`/api/bots/${bot.id}/memories/export?format=md`} download>{t("memory.export")}</a>
+        </div>
+      )}
       {memories && memories.length > 6 && (
         <div className="search-field is-inline">
           <Icon name="search" size={16} />
@@ -620,11 +640,17 @@ function Memories({ bot, bundle }: { bot: Bot; bundle: BotBundle | undefined }) 
           {shown.map((m) => (
             <li key={m.id} className="list-row is-card">
               <div className="list-row-text">
-                <span className="memory-text">{m.text}</span>
+                <span className={`memory-text ${m.status !== "active" ? `is-${m.status}` : ""}`}>{m.text}</span>
+                {m.quote && <span className="memory-quote">« {m.quote} »</span>}
                 <span className="list-row-sub">
-                  <span className="chip">{t(m.source === "learned" ? "memory.source.learned" : "memory.source.chat")}</span> {shortDate(m.createdAt)}
+                  <span className="chip">{t(m.source === "learned" ? "memory.source.learned" : m.source === "import" ? "memory.source.import" : "memory.source.chat")}</span>
+                  {m.status !== "active" && <span className={`chip memory-status is-${m.status}`}>{t(`memory.filter.${m.status}`)}</span>}
+                  {m.category && <span className="chip chip-quiet">{t(`memset.cat.${m.category}`)}</span>} {shortDate(m.createdAt)}
                 </span>
               </div>
+              <select className="input input-small memory-status-select" value={m.status} onChange={(e) => void setStatus(m, e.target.value as MemoryStatus)} aria-label={t("memory.statusLabel")}>
+                {(["active", "contested", "archived"] as const).map((st) => <option key={st} value={st}>{t(`memory.filter.${st}`)}</option>)}
+              </select>
               <button type="button" className="btn btn-small btn-ghost" onClick={() => void forget(m)} aria-label={t("memory.forgetLabel", { text: m.text.slice(0, 60) })}>{t("memory.forget")}</button>
             </li>
           ))}

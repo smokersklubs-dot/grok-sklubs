@@ -6,6 +6,7 @@ import { isValidTimezone, localParts, nextRun } from "./cron.js";
 import { q } from "./db.js";
 import { enqueue } from "./agent/loop.js";
 import { consolidationSweep } from "./agent/memory.js";
+import { nudgeSweep } from "./agent/nudges.js";
 import { createHash } from "node:crypto";
 import { readLibraryFile, resolveInWorkspace } from "./computer.js";
 import { isNativeTrigger, routines, runs, type RoutineRecord } from "./routines.js";
@@ -157,4 +158,6 @@ export function startScheduler() {
   setInterval(guard(syncSlackSockets), 60_000).unref();
   // Work left waiting for hours (an approval, a running turn) gets one reminder.
   setInterval(guard(() => { remindStuck(); }), 60_000).unref();
+  // Proactive nudges: quiet read-only preparation passes for the bots that have them on, and snoozed nudges coming back.
+  setInterval(guard(nudgeSweep), 5 * 60_000).unref();
 }

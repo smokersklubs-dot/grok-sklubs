@@ -454,3 +454,70 @@ Steps, in order, each failure logged in the activity log and never blocking the 
 turn (its approvals lapse); routines off the schedule and their triggers dropped (a Slack live connection with no
 routine left closes); its helpers; its engine (processes stopped, saved sessions forgotten); its screen (computer and
 home volume deleted); its library (only for ids that are safe folder names); the record.
+
+## Wave 5 — authorisation from the user's words, single-use actions, rules and "Auto", background tasks, nudges, memory, private codes
+
+Spec: `docs/cleanroom/07-n8n-nod.md` (A1, A2, A3, A4, A6, A8, A11). Contract: `server/src/shared.ts`.
+
+### Authorisation grounded in the user's words (`server/src/agent/grounding.ts`, `authorize.ts`)
+- Every tool that changes something (app writes, connector writes, built-in sensitive/gated tools, `routine_*`, `page_publish`, `self_update`, `bot_create`, the user's-computer actions…) gets an extra string argument **`user_quote`**: the user's exact words that ask for the action. It is stripped before the tool runs and is never one of the tool's arguments in the transcript.
+- The server checks the quote against the messages the user typed in that conversation (no `origin`, or `voice`; the last 8 within 24 h; a background task's helper also counts its parent's main chat) after normalisation (case, accents, punctuation, spacing). Never tool results, mails, pages, other bots, routines, webhooks or the bot's own text.
+- Scope (deterministic): the action's kind (from the tool's name: send, draft, post, organize, calendar, delete, pay, publish, routine, command, upload, settings) must be asked by a verb of the quote (French and English lists); every recipient/target argument (`to`, `cc`, `bcc`, `attendees`, `channel`, `bot`…) must be named in the quote (whole address, or a meaningful part of its name: `camille.martin@…` is named by "Camille"); an amount may not exceed one the quote states. A reply covers its draft. Unknown action kind, an amount the quote does not mention, a send whose recipient cannot be read from the call (`reply_to_id` only) → **ambiguous**.
+- The layer runs only where the existing `judge` would ask (policies, autonomy, taint, strict gates unchanged). Asks from a per-call gate, an explicit "needs approval" policy, a command on the server itself or a new web host after outside content are never lifted.
+- **Floor** (always asks, any mode): payments, deletions, writing to someone the user never named once the turn read outside content (or to an unreadable recipient), actions on the user's own computer after outside content.
+- `careful` → card. `balanced` / `trusted` → valid and in scope: runs without a card; ambiguous: the reviewer (below) if one is available; otherwise the card. `auto` → the reviewer.
+- Rows: `step.grant = { by: "words" | "reviewer" | "approval" | "retry", quote?, reason? }`; approval cards gain `why` (why it asks) and `quote` (the words the bot cited). Activity log: `… — parce que tu as dit « … »` / `autorisé par le relecteur : …`.
+
+### Rules and the automatic reviewer ("Auto" mode)
+`Autonomy` gains `"auto"`. The reviewer model is `settings.review.model`, else `AUX_MODEL`, else the bot's own model (never a subscription tool). It receives the rules that apply to the bot, the action (tool + arguments), the user's own recent messages, the quote and how it checked out, and only **whether** outside content was read — never that content — and must answer JSON `{decision: allow|ask|deny, reason}`. Unavailable or unusable answer → ask. Deny → nothing runs; the bot gets `… Why: <reason>`; the step shows the reason.
+
+| Method | Path | Body | Returns |
+|---|---|---|---|
+| GET | `/rules` | – | `RulesState` (`rules`, `reviewerModel`, `auxModel`) |
+| POST | `/rules` | `{ text, botId? }` (null/absent: every bot) | `{ rule }` — 60 at most; emits `{ type: "rules" }` |
+| PATCH | `/rules/:id` | `{ text?, enabled? }` | `{ rule }` |
+| DELETE | `/rules/:id` | – | `{ ok }` |
+| PUT | `/rules/reviewer` | `{ model }` (`""` = AUX_MODEL / the bot's model) | `RulesState` |
+
+Rules also go into every concerned bot's system prompt ("a rule that says to ask first wins over everything").
+
+### Action-bound, single-use approvals and uncertain outcomes (`server/src/agent/executions.ts`)
+- An approval stores `action_hash` = sha256(tool + canonical JSON of the arguments, keys sorted, `user_quote` left out). Executing needs `approvals.consume(id, hash)`: true once, only for that exact action (two tabs pressing "Allow" run it once). The card shows `outcome: done | failed | uncertain`.
+- Every external action (app/connector writes, `page_publish`, `vault_type`, `email_code_type`, `secret_use`, `video_generate`, `my_*` actions) gets a reservation in `executions` (running → done / failed / **uncertain**). Uncertain = a timeout, a connection dropped mid-way (`ECONNRESET`, `UND_ERR_SOCKET`…), the turn stopped while it ran, or the server restarted (`sweepUncertain()` at start-up). Never replayed; the chat gets a card `{ type: "uncertain", executionId, title, detail, status }`.
+
+| Method | Path | Body | Returns |
+|---|---|---|---|
+| POST | `/executions/:id` | `{ action: "done" \| "check" \| "retry" \| "dismiss" }` | `{ ok }` — once (409 after). `check`: the bot looks without redoing; `retry`: one single-use grant (30 min) for exactly that action, then the bot is told to check and call it again |
+
+### Background tasks (`server/src/agent/bgtasks.ts`)
+Tool `task_start { title, goal }` (also `task_list`, `task_stop`): a hidden helper does the work in its own conversation; a card `{ type: "task", taskId, helperId, title, state: running|waiting|done|failed|stopped, steps, result?, question?, approval? }` in the main chat follows it (live step counter from `live[helperId]`). At most **3** running or waiting per bot. Its question (`ask_user`) and its approval are answered on the card; the report comes back as a system turn to the parent ("tell the user the main conclusion"). After outside content, `task_start` asks first.
+
+| Method | Path | Body | Returns |
+|---|---|---|---|
+| GET | `/bots/:id/bgtasks` | – | `{ tasks: BgTask[] }` (also in `/bots/:id/bundle` as `bgTasks`) |
+| POST | `/bots/:id/bgtasks/:taskId/stop` | – | `{ task }` |
+| POST | `/bots/:id/bgtasks/:taskId/reply` | `{ text }` | `{ task }` — routed to the task (reopens a finished one; counts as the user's words) |
+
+### Proactive nudges (`server/src/agent/nudges.ts`)
+`Bot.nudges: { enabled, perDay (1–10), budgetUsd (0.01–5 a day), everyMin (15–1440) }`, off by default, set with `PATCH /bots/:id { nudges }`. Every 5 min the scheduler runs due passes: read-only tools only (reads of the user's app accounts, the bot's memory) plus `nudge_raise { matter_key, title, body }`; at most 6 model calls; its own daily budget (`nudge_days`); nothing during push quiet hours; one nudge per matter key, ever. Card `{ type: "nudge", nudgeId, title, body, status: pending|doing|later|never }`; push kind `nudge`. "Do it" starts a turn marked as having read outside content (the nudge's words authorise nothing); "Later" snoozes 3 h (it comes back outside quiet hours); "Never for this" closes the matter.
+
+| Method | Path | Body | Returns |
+|---|---|---|---|
+| GET | `/bots/:id/nudges` | – | `{ settings, stats: { spentUsd, raised, passes, lastPassAt }, nudges }` |
+| POST | `/bots/:id/nudges/run` | – | `{ result: { status: raised \| nothing \| skipped, … }, stats }` — "Try now" (still within cap, budget, quiet hours) |
+| POST | `/bots/:id/nudges/:nudgeId` | `{ action: "do" \| "later" \| "never" }` | `{ nudge }` (409 once answered) |
+
+### Memory (`server/src/agent/memory.ts`, `sensitive.ts`)
+`Memory` gains `status: active | archived | contested`, `quote` (the user's words a learned note came from), `category` (a sensitive category it touches, kept only when allowed), `source: chat | learned | import`. Automatic learning reads only messages the user typed; each fact must cite an excerpt that is really in one of them. Sensitive categories (`SENSITIVE_CATEGORIES`: health, religion, politics, sexuality, origin, location, financial, legal) are excluded unless allowed in settings or (for `memory_save`) the user's last message explicitly asks to remember; secrets (passwords, keys, Luhn-valid card numbers, IBAN-like tokens) never. Archived notes are not used; contested ones are shown to the bot as uncertain.
+
+| Method | Path | Body | Returns |
+|---|---|---|---|
+| PATCH | `/memories/:id` | `{ status }` | `{ memory }` |
+| GET | `/bots/:id/memories/export?format=md\|json` | – | a download |
+| POST | `/bots/:id/memories/import` | `{ text }` → preview; `{ text, commit: true, chosen?: string[], allowSensitive? }` | `{ candidates: { text, skip: duplicate\|secret\|sensitive\|null, category }[] }` / `{ imported, skipped }` |
+| GET / PUT | `/memory-settings` | `{ autoCapture?, allowSensitive?: { <category>: bool }, style?: { enabled?, clear? } }` | `{ settings: MemorySettings }` — emits `{ type: "memorySettings" }` |
+| POST | `/memory-settings/style/learn` | – | `{ settings, source: "mail" \| "chat", samples }` — writing style from the user's sent mail (Gmail `in:sent`, Outlook `sentitems`; quoted replies and signatures stripped), else from their chat messages; no quotes, names or facts; replaced each time; injected into prompts when enabled |
+
+### Private verification codes and masked access emails (`server/src/native/access.ts`)
+- Mail reads (`mail_search`, `mail_read`, `mail_thread`, and the email trigger's snippet) replace the body of an email that grants account access (one-time codes, magic links, password resets, temporary passwords, backup codes, API keys) by `[contenu masqué : accès à un compte]` / `[content hidden: account access]`; the subject stays.
+- Tool `email_code_type { site, from?, mailbox? }` (vault group, needs the bot's browser): checks the page in front is on `site`, waits up to `CODE_WAIT_MS` (60 s, polling `CODE_POLL_MS` 5 s) for an access email from that site's domain (or `from`) received after the turn started (2 min margin), extracts the code and types it; the model only learns that it was typed. The code is then hidden from anything the model reads for 30 min (`hideForAWhile`). After outside content it asks every time (strict).
