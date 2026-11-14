@@ -143,3 +143,20 @@ Notes:
 Notes:
 - `Live.caption` (optional): a short line taken from the bot's reasoning while it works; show it under the activity line, muted.
 - `POST /bots/:id/desktop/reset` still erases the whole Linux computer; "tidy" is the gentle fix.
+
+## Additions (fourth wave: subscriptions)
+
+A bot can run on the user's own subscription instead of an API key. `GET /models` lists, next to API
+models (`kind: "api"`), subscription entries (`kind: "subscription"`, `engine: "claude-code" | "codex"`),
+e.g. `claude-code:sonnet`, `claude-code:opus`, `codex:gpt-5`. Choosing one sets `bot.model` to that ref.
+These need the bot's Linux computer: the tool runs there, signed in on that computer.
+
+| Method | Path | Body | Returns |
+|---|---|---|---|
+| GET | `/bots/:id/engine` | – | `{ engines: EngineStatus[] }` — wakes the bot's computer to check |
+| POST | `/bots/:id/engine/login` | `{ engine }` | `{ ok }` — opens a terminal on the bot's screen running the provider's sign-in; the page to sign in opens in the bot's browser. The UI then opens the viewer in control mode so the user can finish signing in and hand back |
+| POST | `/bots/:id/engine/logout` | `{ engine }` | `{ ok }` |
+
+Notes:
+- `UsageSummary.subscriptions`: last known share used of the 5-hour and 7-day windows (Claude reports them; Codex does not, so its values are null). Turns on a subscription cost 0 in the usage table; their tokens are still counted.
+- Approvals still apply: when a subscription bot calls a tool that needs the user's OK, the approval card appears as usual and the bot waits (up to 25 minutes).

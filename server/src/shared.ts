@@ -147,12 +147,31 @@ export interface ComputerState {
 }
 
 export interface CheckinSettings { enabled: boolean; times: string[]; timezone: string }
-export interface ModelOption { ref: string; provider: string; model: string }
+/**
+ * "api": billed per token through an API key on the server.
+ * "subscription": runs through the official command-line tool of the provider inside the bot's own
+ * computer, signed in with the user's personal subscription (Claude Pro/Max, ChatGPT Plus/Pro).
+ */
+export interface ModelOption { ref: string; provider: string; model: string; kind: "api" | "subscription"; engine?: Engine }
+export type Engine = "claude-code" | "codex";
+export interface EngineStatus {
+  engine: Engine;
+  /** The tool is present on the bot's computer. */
+  installed: boolean;
+  /** Signed in with a subscription on this bot's computer. null = could not be checked (computer off). */
+  signedIn: boolean | null;
+  /** Account shown by the tool when it says so (e.g. an e-mail or plan), else null. */
+  account: string | null;
+  detail: string | null;
+}
+export interface SubscriptionUsage { engine: Engine; fiveHour: number | null; sevenDay: number | null; resetsAt: number | null; at: number }
 export interface UsageSummary {
   month: string;
   totals: { inputTokens: number; outputTokens: number; turns: number; costUsd: number };
   byBot: { botId: string; name: string; inputTokens: number; outputTokens: number; turns: number; costUsd: number }[];
   budgetUsd: number | null;
+  /** Latest known use of the subscription windows (fractions 0–1), per engine. */
+  subscriptions: SubscriptionUsage[];
   /** True once this month's spend has passed 80% of the budget. */
   nearBudget: boolean;
 }
