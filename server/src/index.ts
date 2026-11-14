@@ -36,7 +36,7 @@ setLookSource((botId) => {
   const bot = bots.byId(botId);
   const owner = bot ? users.byId(bot.userId) : null;
   // A custom character colour also tints the bot's computer.
-  return bot && owner ? { name: bot.name, label: bot.label, color: bot.character.customColor ?? bot.color, locale: owner.locale, owner: owner.name } : null;
+  return bot && owner ? { name: bot.name, label: bot.label, color: bot.character.customColor ?? bot.color, locale: owner.locale, owner: owner.name, kind: bot.character.type } : null;
 });
 
 let computerNote: string;

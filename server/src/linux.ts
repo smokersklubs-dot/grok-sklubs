@@ -59,7 +59,7 @@ const HEX: Record<string, string> = {
   ink: "#3a4150", clay: "#a9634a", ember: "#dd5230", amber: "#c08310", moss: "#5a8739", teal: "#138a84",
   sky: "#2c86cf", indigo: "#525dd6", plum: "#8c4ba6", rose: "#cf4576", slate: "#607086",
 };
-export interface Look { name: string; label: string; color: string; locale: string; owner: string }
+export interface Look { name: string; label: string; color: string; locale: string; owner: string; /** Character type, drawn on the home page. */ kind?: string }
 let lookOf: (botId: string) => Look | null = () => null;
 /** Tells this module how to find a bot's name, colour and owner (set once at start-up). */
 export const setLookSource = (fn: (botId: string) => Look | null) => { lookOf = fn; };
