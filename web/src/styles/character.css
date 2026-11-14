@@ -137,3 +137,62 @@
   .chr-stage { position: static; }
   .chr-stage-view { max-width: 200px; }
 }
+
+/* ---------- Type "dots" ---------- */
+.chr { --chr-dot: var(--chr-dot-l); }
+:root[data-theme="dark"] .chr { --chr-dot: var(--chr-dot-d); }
+@property --x { syntax: "<number>"; inherits: false; initial-value: 0; }
+@property --y { syntax: "<number>"; inherits: false; initial-value: 0; }
+@property --s { syntax: "<number>"; inherits: false; initial-value: 1; }
+.chr .dt-back { fill: color-mix(in srgb, var(--chr-body) 14%, var(--surface)); stroke: color-mix(in srgb, var(--chr-body) 22%, transparent); stroke-width: 1; }
+.chr .dt-level { transform-box: view-box; transform-origin: 50px 55px; }
+.chr .dt-m { transform: translate(calc(var(--x) * 1px), calc(var(--y) * 1px)) scale(var(--s)); transition: --x 0.45s cubic-bezier(0.3, 1.4, 0.5, 1), --y 0.45s cubic-bezier(0.3, 1.4, 0.5, 1), --s 0.45s ease; }
+.chr.type-dots .chr-eye { transition: transform 0.18s ease-out; }
+.chr.type-dots.st-sleeping .dt-eye { transform: scaleY(0.2); }
+.chr.type-dots.st-happy .dt-eye { transform: translateY(-1px) scaleY(0.5); }
+.chr.type-dots.st-listening .dt-eye { transform: scale(1.15); }
+.chr.type-dots.st-waiting .dt-eye { transform: scaleY(0.82); }
+.chr.type-dots.is-blink .dt-eye { transform: scaleY(0.16); }
+@keyframes dt-wave { 0%, 100% { transform: translate(calc(var(--x) * 1px), calc(var(--y) * 1px)) scale(var(--s)); } 50% { transform: translate(calc(var(--x) * 1px), calc((var(--y) - var(--wv)) * 1px)) scale(var(--s)); } }
+@keyframes dt-pulse { 0%, 100% { transform: translate(calc(var(--x) * 1px), calc(var(--y) * 1px)) scale(var(--s)); } 50% { transform: translate(calc(var(--x) * 1px), calc(var(--y) * 1px)) scale(calc(var(--s) * 1.3)); } }
+@keyframes dt-orbit {
+  0%, 100% { transform: translate(8px, 0) scale(var(--s)); }
+  25% { transform: translate(0, 4px) scale(calc(var(--s) * 1.2)); }
+  50% { transform: translate(-8px, 0) scale(var(--s)); }
+  75% { transform: translate(0, -4px) scale(calc(var(--s) * 0.75)); }
+}
+@keyframes dt-drift { 0% { transform: translate(calc(var(--x) * 1px), calc(var(--y) * 1px)) scale(var(--s)); opacity: 0; } 25% { opacity: 1; } 100% { transform: translate(calc(var(--x) * 1px + 12px), calc(var(--y) * 1px - 16px)) scale(calc(var(--s) * 1.4)); opacity: 0; } }
+.chr.type-dots.st-speaking .dt-m { --wv: calc(1 + var(--lv, 0.5) * 7 * var(--amp)); animation: dt-wave 0.42s ease-in-out infinite; }
+.chr.type-dots.st-working .dt-m { --wv: calc(2.5 * var(--amp)); animation: dt-wave 0.6s ease-in-out infinite; }
+.chr.type-dots .dt-m1 { animation-delay: -0.08s; } .chr.type-dots .dt-m2 { animation-delay: -0.16s; }
+.chr.type-dots .dt-m3 { animation-delay: -0.24s; } .chr.type-dots .dt-m4 { animation-delay: -0.32s; }
+.chr.type-dots.st-listening .dt-m { animation: dt-pulse 2.2s ease-in-out infinite; }
+.chr.type-dots.st-thinking .dt-m0, .chr.type-dots.st-thinking .dt-m1, .chr.type-dots.st-thinking .dt-m2 { animation: dt-orbit 1.6s linear infinite; }
+.chr.type-dots.st-thinking .dt-m1 { animation-delay: -0.53s; } .chr.type-dots.st-thinking .dt-m2 { animation-delay: -1.07s; }
+.chr.type-dots.st-sleeping .dt-m2, .chr.type-dots.st-sleeping .dt-m3, .chr.type-dots.st-sleeping .dt-m4 { animation: dt-drift 3.6s ease-out infinite; }
+.chr.type-dots.st-sleeping .dt-m3 { animation-delay: -1.2s; } .chr.type-dots.st-sleeping .dt-m4 { animation-delay: -2.4s; }
+
+/* ---------- Type "muse" ---------- */
+.chr .mu-halo-size, .chr .mu-halo-breathe, .chr .mu-level, .chr .mu-swirl, .chr .mu-ripple { transform-box: view-box; transform-origin: 50px 52px; }
+.chr .mu-halo-size { transition: transform 0.6s ease; }
+.chr .mu-blob { animation: chr-mu-flow var(--flow, 9s) ease-in-out infinite; }
+.chr .mu-warm, .chr .mu-cool, .chr .mu-glow { opacity: 0; transition: opacity 0.6s ease; }
+.chr .mu-core { transition: opacity 0.6s ease; }
+@keyframes mu-breathe { 0%, 100% { transform: scale(1); opacity: 0.85; } 50% { transform: scale(calc(1 + 0.09 * var(--amp))); opacity: 1; } }
+@keyframes mu-ripple { 0% { transform: scale(0.85); opacity: 0.7; } 100% { transform: scale(1.6); opacity: 0; } }
+@keyframes mu-spin { to { transform: rotate(360deg); } }
+.chr .mu-halo-breathe { animation: mu-breathe 4.5s ease-in-out infinite; }
+.chr .mu-ripple { opacity: 0; animation: mu-ripple 1.1s ease-out 2; }
+.chr .mu-ripple-2 { animation-delay: 0.35s; }
+.chr.type-muse .chr-eye { transition: transform 0.2s ease-out; }
+.chr.type-muse.st-thinking { --flow: 4s; } .chr.type-muse.st-thinking .mu-swirl { animation: mu-spin 7s linear infinite; } .chr.type-muse.st-thinking .mu-cool { opacity: 0.22; }
+.chr.type-muse.st-working { --flow: 3s; } .chr.type-muse.st-working .mu-warm { opacity: 0.16; }
+.chr.type-muse.st-speaking { --flow: 2.2s; } .chr.type-muse.st-speaking .mu-halo-size { transform: scale(1.08); } .chr.type-muse.st-speaking .mu-warm { opacity: 0.12; }
+.chr.type-muse.st-listening { --flow: 6s; } .chr.type-muse.st-listening .mu-halo-size { transform: scale(1.12); } .chr.type-muse.st-listening .mu-eye { transform: scaleY(1.15); }
+.chr.type-muse.st-happy { --flow: 3s; } .chr.type-muse.st-happy .mu-halo-size { transform: scale(1.14); } .chr.type-muse.st-happy .mu-warm { opacity: 0.2; } .chr.type-muse.st-happy .mu-eye { transform: translateY(-1px) scaleY(0.45); }
+.chr.type-muse.st-waiting { --flow: 7s; } .chr.type-muse.st-waiting .mu-halo-size { transform: scale(0.95); }
+.chr.type-muse.st-sleeping { --flow: 16s; } .chr.type-muse.st-sleeping .mu-halo-size { transform: scale(0.84); } .chr.type-muse.st-sleeping .mu-halo-breathe { animation-duration: 7.5s; }
+.chr.type-muse.st-sleeping .mu-core { opacity: 0.72; } .chr.type-muse.st-sleeping .mu-cool { opacity: 0.26; } .chr.type-muse.st-sleeping .mu-eye { transform: scaleY(0.22); opacity: 0.7; }
+.chr.type-muse.is-blink .mu-eye { transform: scaleY(0.15); }
+/* Muse bodies don't hop like mascots; they glide. */
+.chr.type-muse.st-working .chr-motion { animation-duration: 0.9s; }

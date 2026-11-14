@@ -95,18 +95,61 @@ const ACCENT: Record<string, string> = {
   sky: "#ffd166", indigo: "#ffb3cf", plum: "#ffd166", rose: "#ffe08a", slate: "#ffb3cf",
 };
 
-function palette(color: string): Record<string, string> {
-  const bg = colorOf(color).bg;
-  const ink = color === "ink";
+const HEX = /^#[0-9a-f]{6}$/i;
+
+/** A valid "#rrggbb" or null. */
+export function validHex(v: unknown): string | null {
+  return typeof v === "string" && HEX.test(v) ? v.toLowerCase() : null;
+}
+
+function rgbOf(hex: string): [number, number, number] {
+  const n = parseInt(hex.slice(1), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+/** Relative luminance (WCAG), 0 = black, 1 = white. */
+function luminance(hex: string): number {
+  const lin = (c: number) => {
+    const x = c / 255;
+    return x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4;
+  };
+  const [r, g, b] = rgbOf(hex).map(lin);
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+function hueOf(hex: string): number {
+  const [r, g, b] = rgbOf(hex).map((c) => c / 255);
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  if (max === min) return -1;
+  const d = max - min;
+  const h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return (h * 60 + 360) % 360;
+}
+
+function palette(color: string, custom: string | null): Record<string, string> {
+  const named = !custom;
+  const bg = custom ?? colorOf(color).bg;
+  const ink = named && color === "ink";
+  // Custom colours: features switch to light on very dark bodies; very light bodies get a darker shade.
+  const lum = custom ? luminance(custom) : 0.2;
+  const dark = custom ? lum < 0.06 : false;
+  const hue = custom ? hueOf(custom) : -1;
+  const acc = named ? ACCENT[color] ?? ACCENT.slate : hue >= 25 && hue <= 75 ? "#ff7aa2" : "#ffd166";
   return {
     "--chr-body": bg,
     // Features drawn straight on the body (dot eyes, mouth, brows): a deep shade of the body.
-    "--chr-feat": ink ? "var(--ink-fg)" : `color-mix(in srgb, ${bg} 22%, #111215)`,
-    "--chr-shade": ink ? "color-mix(in srgb, var(--ink) 70%, var(--ink-fg))" : `color-mix(in srgb, ${bg} 70%, #111215)`,
+    "--chr-feat": ink ? "var(--ink-fg)" : dark ? `color-mix(in srgb, ${bg} 25%, #ffffff)` : `color-mix(in srgb, ${bg} ${lum > 0.6 ? 12 : 22}%, #111215)`,
+    "--chr-shade": ink ? "color-mix(in srgb, var(--ink) 70%, var(--ink-fg))" : dark ? `color-mix(in srgb, ${bg} 65%, #ffffff)` : `color-mix(in srgb, ${bg} 70%, #111215)`,
     "--chr-light": `color-mix(in srgb, ${bg} 30%, #ffffff)`,
-    "--chr-acc": ACCENT[color] ?? ACCENT.slate,
+    // Dots on a light backdrop: very light colours are deepened so the face stays readable.
+    "--chr-dot-l": ink ? "var(--ink)" : lum > 0.5 ? `color-mix(in srgb, ${bg} 55%, #111215)` : bg,
+    "--chr-dot-d": ink ? "var(--ink)" : lum < 0.08 ? `color-mix(in srgb, ${bg} 45%, #ffffff)` : bg,
+    // A thin outline so very dark or very light custom colours never melt into the page.
+    "--chr-rim": custom && lum < 0.06 ? "rgba(255,255,255,0.22)" : custom && lum > 0.75 ? "rgba(0,0,0,0.14)" : "transparent",
+    "--chr-acc": acc,
     // The cap's brim: a deeper shade of the accent.
-    "--chr-cap": `color-mix(in srgb, ${ACCENT[color] ?? ACCENT.slate} 72%, #3a2a20)`,
+    "--chr-cap": `color-mix(in srgb, ${acc} 72%, #3a2a20)`,
   };
 }
 
@@ -412,6 +455,157 @@ function Overlay({ state, shape }: { state: CharacterState; shape: ShapeDef }) {
   }
 }
 
+/* ---------- Type "dots": a minimal face of a few soft dots ---------- */
+
+type Arrangement = [number, number, number][];
+/** Mouth dots per state: x, y offset and scale (left to right). Morphs are CSS transitions on registered properties. */
+const DOT_MOUTH: Record<CharacterState, Arrangement> = {
+  idle: [[-13, -2, 0.8], [-6.5, 2, 0.9], [0, 3.4, 0.95], [6.5, 2, 0.9], [13, -2, 0.8]],
+  happy: [[-15, -5, 1], [-8, 3, 1.05], [0, 6, 1.1], [8, 3, 1.05], [15, -5, 1]],
+  waiting: [[-12, 1, 0.75], [-6, 1, 0.75], [0, 1, 0.75], [6, 1, 0.75], [12, 1, 0.75]],
+  working: [[-11, 1, 0.75], [-5.5, 1, 0.75], [0, 1, 0.75], [5.5, 1, 0.75], [11, 1, 0.75]],
+  thinking: [[0, 0, 0.8], [0, 0, 0.7], [0, 0, 0.6], [0, 0, 0], [0, 0, 0]],
+  speaking: [[-12, 0, 0.85], [-6, 0, 0.9], [0, 0, 0.95], [6, 0, 0.9], [12, 0, 0.85]],
+  listening: [[-10, 1, 0.8], [-5, 2, 0.85], [0, 2.6, 0.9], [5, 2, 0.85], [10, 1, 0.8]],
+  sleeping: [[0, 0, 0], [0, 0, 0], [-3, 0, 0.6], [1, -1, 0.5], [5, -2, 0.42]],
+};
+
+/** A soft organic outline: 8 points around (cx, cy), joined by smooth cubic curves. */
+function blobPath(r: number, wob: number[], cx = 50, cy = 52): string {
+  const pts = wob.map((w, i) => {
+    const a = (Math.PI * 2 * i) / wob.length - Math.PI / 2;
+    return [cx + r * (1 + w) * Math.cos(a), cy + r * (1 + w) * Math.sin(a)];
+  });
+  const n = pts.length;
+  const f = (v: number) => v.toFixed(2);
+  let d = `M${f(pts[0][0])} ${f(pts[0][1])}`;
+  for (let i = 0; i < n; i++) {
+    const p0 = pts[(i - 1 + n) % n];
+    const p1 = pts[i];
+    const p2 = pts[(i + 1) % n];
+    const p3 = pts[(i + 2) % n];
+    const c1 = [p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6];
+    const c2 = [p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6];
+    d += ` C${f(c1[0])} ${f(c1[1])} ${f(c2[0])} ${f(c2[1])} ${f(p2[0])} ${f(p2[1])}`;
+  }
+  return `${d} Z`;
+}
+
+const BLOBS = [
+  blobPath(30, [0.02, -0.04, 0.05, -0.02, 0.04, -0.05, 0.03, -0.03]),
+  blobPath(30, [-0.05, 0.04, -0.02, 0.06, -0.04, 0.03, -0.05, 0.04]),
+  blobPath(30, [0.05, 0.01, -0.05, 0.02, 0.06, -0.02, -0.03, 0.05]),
+];
+
+/** CSS that is easier to generate than to write: dot arrangements and the flowing blob keyframes. */
+function generatedCss(): string {
+  const rules: string[] = [];
+  for (const [state, arr] of Object.entries(DOT_MOUTH)) {
+    arr.forEach(([x, y, k], i) => rules.push(`.chr.type-dots.st-${state} .dt-m${i}{--x:${x};--y:${y};--s:${k}}`));
+  }
+  rules.push(`@keyframes chr-mu-flow{0%,100%{d:path("${BLOBS[0]}")}33%{d:path("${BLOBS[1]}")}66%{d:path("${BLOBS[2]}")}}`);
+  return rules.join("\n");
+}
+if (typeof document !== "undefined" && !document.getElementById("chr-generated")) {
+  const el = document.createElement("style");
+  el.id = "chr-generated";
+  el.textContent = generatedCss();
+  document.head.appendChild(el);
+}
+
+type GRef = React.Ref<SVGGElement>;
+
+function DotsArt({ state, faceRef, mouthRef, levelRef, tx, ty, backdrop }: { state: CharacterState; faceRef: GRef; mouthRef: GRef; levelRef: GRef; tx: number; ty: number; backdrop: boolean }) {
+  const dot = { fill: "var(--chr-dot)" };
+  return (
+    <>
+      {backdrop && <circle cx="50" cy="50" r="46" className="dt-back" />}
+      <g className="chr-motion">
+        <g ref={levelRef} className="dt-level">
+          <g className="chr-face" ref={faceRef} style={{ "--tx": tx, "--ty": ty } as React.CSSProperties}>
+            <g className="chr-gaze">
+              <g className="chr-pupil">
+                {[36, 64].map((x) => (
+                  <g key={x} transform={`translate(${x} 44)`}>
+                    <g className="chr-eye dt-eye">
+                      <ellipse rx="6" ry="6.8" style={dot} />
+                    </g>
+                  </g>
+                ))}
+              </g>
+            </g>
+            <g transform="translate(50 67)">
+              <g ref={mouthRef} className="dt-mouth">
+                {DOT_MOUTH.idle.map((_, i) => (
+                  <circle key={i} className={`dt-m dt-m${i}`} r="3.1" style={dot} />
+                ))}
+              </g>
+            </g>
+          </g>
+        </g>
+      </g>
+    </>
+  );
+}
+
+/* ---------- Type "muse": a soft shape of light with a breathing halo ---------- */
+
+function MuseArt({ state, uid, faceRef, glowRef, levelRef, tx, ty }: { state: CharacterState; uid: string; faceRef: GRef; glowRef: GRef; levelRef: GRef; tx: number; ty: number }) {
+  return (
+    <>
+      <defs>
+        <radialGradient id={`${uid}mg`} cx="0.42" cy="0.36" r="0.75">
+          <stop offset="0" style={{ stopColor: "color-mix(in srgb, var(--chr-body) 30%, #ffffff)" }} />
+          <stop offset="0.55" style={{ stopColor: "var(--chr-body)" }} />
+          <stop offset="1" style={{ stopColor: "color-mix(in srgb, var(--chr-body) 78%, #101114)" }} />
+        </radialGradient>
+        <radialGradient id={`${uid}mh`} cx="0.5" cy="0.5" r="0.5">
+          <stop offset="0.45" style={{ stopColor: "var(--chr-body)" }} stopOpacity="0.5" />
+          <stop offset="0.75" style={{ stopColor: "var(--chr-body)" }} stopOpacity="0.16" />
+          <stop offset="1" style={{ stopColor: "var(--chr-body)" }} stopOpacity="0" />
+        </radialGradient>
+      </defs>
+      <g className="mu-halo-size">
+        <g className="mu-halo-breathe">
+          <g ref={levelRef} className="mu-level">
+            <circle cx="50" cy="52" r="49" fill={`url(#${uid}mh)`} />
+          </g>
+        </g>
+      </g>
+      {state === "happy" && (
+        <g className="mu-ripples" style={{ stroke: "var(--chr-body)" }} fill="none" strokeWidth="2">
+          <circle className="mu-ripple" cx="50" cy="52" r="32" />
+          <circle className="mu-ripple mu-ripple-2" cx="50" cy="52" r="32" />
+        </g>
+      )}
+      <g className="chr-motion">
+        <g className="mu-swirl">
+          <path className="mu-blob mu-core" d={BLOBS[0]} fill={`url(#${uid}mg)`} />
+          <path className="mu-blob mu-warm" d={BLOBS[0]} fill="#ffc48a" />
+          <g ref={glowRef} className="mu-glow">
+            <path className="mu-blob" d={BLOBS[0]} fill="#fff1d6" />
+          </g>
+          <path className="mu-blob mu-cool" d={BLOBS[0]} fill="#8fb4ff" />
+          <ellipse cx="41" cy="37" rx="11" ry="6" fill="#fff" opacity="0.22" transform="rotate(-24 41 37)" />
+        </g>
+        <g className="chr-face" ref={faceRef} style={{ "--tx": tx, "--ty": ty } as React.CSSProperties}>
+          <g className="chr-gaze">
+            <g className="chr-pupil">
+              {[42.5, 57.5].map((x) => (
+                <g key={x} transform={`translate(${x} 51)`}>
+                  <g className="chr-eye mu-eye">
+                    <rect x="-1.7" y="-5" width="3.4" height="10" rx="1.7" fill="#fff" opacity="0.92" />
+                  </g>
+                </g>
+              ))}
+            </g>
+          </g>
+        </g>
+      </g>
+    </>
+  );
+}
+
 /* ---------- The component ---------- */
 
 export interface CharacterBot {
@@ -450,6 +644,8 @@ function CharacterView({ bot, size = 36, state = "idle", level, levelSource, int
   const look: CharacterLook = { ...DEFAULT_CHARACTER, ...(bot.character ?? {}) };
   const shape = SHAPES[bot.shape as AvatarShape] ?? SHAPES.circle;
   const eyes = EYES[look.eyes] ? look.eyes : "round";
+  const type = look.type === "dots" || look.type === "muse" ? look.type : "mascot";
+  const custom = validHex(look.customColor);
   const small = size < SMALL;
   const amp = Math.max(0.08, Math.min(1, look.intensity ?? 0.6));
   const uid = useId().replace(/[^a-zA-Z0-9_-]/g, "");
@@ -490,7 +686,7 @@ function CharacterView({ bot, size = 36, state = "idle", level, levelSource, int
 
   // Eyes follow the pointer: one shared listener for the whole app.
   const canFollow = interactive && look.followCursor && !small && FOLLOW_STATES.includes(state);
-  const { tx, ty } = EYES[eyes];
+  const { tx, ty } = type === "dots" ? { tx: 5, ty: 4 } : type === "muse" ? { tx: 4, ty: 3 } : EYES[eyes];
   useEffect(() => {
     const g = follow.current;
     const el = root.current;
@@ -534,14 +730,27 @@ function CharacterView({ bot, size = 36, state = "idle", level, levelSource, int
     if (!speaking) return;
     const apply = (lvl: number) => {
       const v = Math.max(0, Math.min(1, lvl));
-      if (m) m.style.transform = `scale(${(0.85 + 0.25 * v).toFixed(3)}, ${(0.18 + 0.95 * v).toFixed(3)})`;
-      if (sq && !small) sq.style.transform = `scale(${(1 - 0.035 * v * amp).toFixed(4)}, ${(1 + 0.055 * v * amp).toFixed(4)})`;
+      if (type === "dots") {
+        if (m) m.style.setProperty("--lv", v.toFixed(3));
+        if (sq && !small) sq.style.transform = `scale(${(1 + 0.03 * v * amp).toFixed(4)})`;
+      } else if (type === "muse") {
+        if (m) m.style.opacity = (0.06 + 0.34 * v).toFixed(3);
+        if (sq && !small) sq.style.transform = `scale(${(1 + 0.22 * v * amp).toFixed(4)})`;
+      } else {
+        if (m) m.style.transform = `scale(${(0.85 + 0.25 * v).toFixed(3)}, ${(0.18 + 0.95 * v).toFixed(3)})`;
+        if (sq && !small) sq.style.transform = `scale(${(1 - 0.035 * v * amp).toFixed(4)}, ${(1 + 0.055 * v * amp).toFixed(4)})`;
+      }
+    };
+    const clear = () => {
+      if (sq) sq.style.transform = "";
+      if (m) {
+        m.style.removeProperty("--lv");
+        m.style.opacity = "";
+      }
     };
     if (!levelSource || small || reducedMotion()) {
       apply(level ?? 0.55);
-      return () => {
-        if (sq) sq.style.transform = "";
-      };
+      return clear;
     }
     let frame = requestAnimationFrame(function loop() {
       apply(levelSource());
@@ -549,15 +758,16 @@ function CharacterView({ bot, size = 36, state = "idle", level, levelSource, int
     });
     return () => {
       cancelAnimationFrame(frame);
-      if (sq) sq.style.transform = "";
+      clear();
     };
-  }, [speaking, level, levelSource, small, amp]);
+  }, [speaking, level, levelSource, small, amp, type]);
 
   const name = bot.name?.trim() || "";
   const aria = label === null ? undefined : label ?? (name ? t("character.aria", { name, state: t(`character.state.${state}`) }) : t(`character.state.${state}`));
   const cls = [
     "avatar",
     "chr",
+    `type-${type}`,
     `st-${state}`,
     `idle-${look.idle}`,
     small ? "is-small" : "",
@@ -570,12 +780,18 @@ function CharacterView({ bot, size = 36, state = "idle", level, levelSource, int
     <span
       ref={root}
       className={cls}
-      style={{ width: size, height: size, "--amp": amp, ...palette(bot.color) } as React.CSSProperties}
+      style={{ width: size, height: size, "--amp": amp, ...palette(bot.color, custom) } as React.CSSProperties}
       role={aria ? "img" : undefined}
       aria-label={aria}
       aria-hidden={aria ? undefined : true}
     >
       <svg viewBox="0 0 100 100" width={size} height={size} focusable="false" aria-hidden="true">
+        {type === "dots" ? (
+          <DotsArt state={state} faceRef={follow} mouthRef={mouth} levelRef={squash} tx={tx} ty={ty} backdrop={size >= 20} />
+        ) : type === "muse" ? (
+          <MuseArt state={state} uid={uid} faceRef={follow} glowRef={mouth} levelRef={squash} tx={tx} ty={ty} />
+        ) : (
+          <>
         <defs>
           <linearGradient id={`${uid}h`} x1="0" y1="0" x2="0" y2="100" gradientUnits="userSpaceOnUse">
             <stop offset="0" stopColor="#fff" stopOpacity="0.34" />
@@ -592,6 +808,11 @@ function CharacterView({ bot, size = 36, state = "idle", level, levelSource, int
         <g className="chr-motion">
           <g className="chr-squash" ref={squash}>
             <AccessoryArt kind={accessory} shape={shape} front={false} />
+            {custom && (
+              <g fill="none" style={{ stroke: "var(--chr-rim)" }} strokeWidth={shape.sw + 2.4} strokeLinejoin="round">
+                {shape.art}
+              </g>
+            )}
             <g style={{ fill: "var(--chr-body)", stroke: "var(--chr-body)" }} strokeWidth={shape.sw} strokeLinejoin="round">
               {shape.art}
             </g>
@@ -617,7 +838,9 @@ function CharacterView({ bot, size = 36, state = "idle", level, levelSource, int
             <AccessoryArt kind={accessory} shape={shape} front />
           </g>
         </g>
-        {size >= OVERLAY_MIN && <Overlay state={state} shape={shape} />}
+          </>
+        )}
+        {size >= OVERLAY_MIN && (type === "mascot" || state === "waiting") && <Overlay state={state} shape={shape} />}
       </svg>
       {badge && (
         <span className="avatar-badge" style={{ width: Math.max(14, size * 0.36), height: Math.max(14, size * 0.36) }}>
