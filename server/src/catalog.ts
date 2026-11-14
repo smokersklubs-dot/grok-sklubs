@@ -97,6 +97,17 @@ export const CATALOG: CatalogApp[] = [
     tokenHelp: "Needs a paid Higgsfield subscription. Each video or image a bot makes uses your Higgsfield credits, and Higgsfield sets no cap of its own: ask your bots to check with you before making several.",
   },
   {
+    // https://github.com/superdesigndev/treg (README, 14 Nov 2026): hosted at https://treg.to, "Point an agent at one base URL
+    // with one token"; the /mcp/ surface carries catalog endpoints (incl. image, video and audio generation), team-owned tools
+    // and imported skills, while /mcp/v2/ (Claude Connectors Directory) excludes generation. Live metadata (14 Nov 2026):
+    // https://treg.to/.well-known/oauth-protected-resource names the authorization server https://treg.to, whose
+    // /.well-known/oauth-authorization-server lists registration_endpoint /oauth/register, PKCE S256, auth method "none".
+    // We only call the hosted service as a client; treg's own code is source-available and is not reused here.
+    id: "treg", name: "Treg", category: "Tools", url: "https://treg.to/mcp/", auth: "oauth", oauthClient: "dynamic",
+    description: "One account for thousands of paid tool APIs: SEO and backlinks, social media data, company and people search, page extraction, ads, image, video and voice generation. Bots find the right tool and call it through Treg.",
+    tokenHelp: "Needs a Treg account (treg.to). Calls are paid from your Treg balance, per call: ask your bots to tell you the price before expensive or repeated calls, and set a spending checkpoint in Sklubot.",
+  },
+  {
     // https://docs.slack.dev/ai/slack-mcp-server/ — Streamable HTTP at https://mcp.slack.com/mcp; no dynamic client registration;
     // confidential OAuth with the client ID and secret of a Slack app ("Only directory-published apps or internal apps may
     // use MCP"); user-token scopes per tool. Live metadata (14 Nov 2026): https://mcp.slack.com/.well-known/oauth-authorization-server
@@ -134,6 +145,7 @@ const FR: Record<string, { category: string; description: string; tokenHelp: str
   windsor: { category: "Analytique & SEO", description: "GA4, Search Console, Google/Meta/TikTok Ads, Shopify, HubSpot et plus de 300 sources via une seule app. Pépites : requêtes proches de la première page, canaux dont le ROI monte.", tokenHelp: "Connecte d'abord tes sources (Google Analytics, Search Console, publicités…) dans Windsor.ai : les bots voient ce que tu y as connecté." },
   notion: { category: "Productivité", description: "Pages et bases de données de ton espace. Pépites : idées et projets laissés en plan, notes qui éclairent les chiffres du jour ; les bots peuvent y écrire leurs trouvailles.", tokenHelp: "" },
   higgsfield: { category: "Création", description: "Vidéos, images et sons avec ton compte Higgsfield. Une fois connecté, les bots font leurs vidéos ici. Chaque génération utilise tes crédits Higgsfield.", tokenHelp: "Nécessite un abonnement Higgsfield payant. Chaque vidéo ou image créée par un bot utilise tes crédits Higgsfield, sans plafond côté Higgsfield : demande à tes bots de te consulter avant d'en faire plusieurs." },
+  treg: { category: "Outils", description: "Un seul compte pour des milliers d'API d'outils payants : SEO et liens entrants, données des réseaux sociaux, recherche d'entreprises et de personnes, extraction de pages, publicité, génération d'images, de vidéos et de voix. Les bots trouvent le bon outil et l'appellent via Treg.", tokenHelp: "Nécessite un compte Treg (treg.to). Les appels sont payés sur ton solde Treg, à l'appel : demande à tes bots de t'annoncer le prix avant les appels chers ou répétés, et règle un plafond de dépense dans Sklubot." },
   context7: { category: "Développement", description: "Documentation et exemples de code à jour pour les bibliothèques de programmation.", tokenHelp: "" },
   deepwiki: { category: "Développement", description: "Pose des questions sur n'importe quel dépôt de code public et lis sa documentation générée.", tokenHelp: "" },
   "slack-mcp": { category: "Communication", description: "Le serveur d'outils de Slack : chercher des messages et fichiers, lire canaux et fils, envoyer des messages et gérer des canevas, en ton nom. Pas de déclencheurs : pour des routines sur les nouveaux messages, utilise l'app Slack intégrée.", tokenHelp: "Crée une app sur api.slack.com/apps (From scratch, dans ton espace ; elle reste une app interne — Slack refuse les apps distribuées non listées). Dans OAuth & Permissions, ajoute l'adresse de retour affichée ci-dessous et les User Token Scopes correspondant à ce que les bots pourront faire (par ex. search:read.public, channels:history, chat:write, users:read). Copie ensuite le Client ID et le Client Secret depuis Basic Information → App Credentials dans les champs ci-dessous. L'administrateur de ton espace devra peut-être approuver l'app." },
