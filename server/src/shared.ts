@@ -3,7 +3,7 @@
  * Type-only: the web app imports this file with `import type`.
  */
 
-export const AVATAR_SHAPES = ["pebble", "circle", "squircle", "hexagon", "diamond", "shield", "drop", "arch", "star", "clover", "pill", "triangle", "octagon"] as const;
+export const AVATAR_SHAPES = ["pebble", "egg", "mochi", "bean", "cloud", "cat", "bear", "ghost", "circle", "squircle", "hexagon", "diamond", "shield", "drop", "arch", "star", "clover", "pill", "triangle", "octagon"] as const;
 export const AVATAR_COLORS = ["ink", "clay", "ember", "amber", "moss", "teal", "sky", "indigo", "plum", "rose", "slate"] as const;
 export type AvatarShape = (typeof AVATAR_SHAPES)[number];
 export type AvatarColor = (typeof AVATAR_COLORS)[number];

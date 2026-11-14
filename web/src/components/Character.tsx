@@ -58,6 +58,41 @@ interface ShapeDef {
 const SHAPES: Record<AvatarShape, ShapeDef> = {
   // A soft, slightly squashed ball that sits on the floor: the default clay-toy body.
   pebble: { art: <path d="M50 8 C75 8 90 29 90 54 C90 79 73 92 50 92 C27 92 10 79 10 54 C10 29 25 8 50 8 Z" />, sw: 3, fx: 50, fy: 56, s: 1.12, top: 8, hw: 41, bow: [22, 19] },
+  egg: { art: <path d="M50 6 C70 6 86 34 86 58 C86 80 70 93 50 93 C30 93 14 80 14 58 C14 34 30 6 50 6 Z" />, sw: 3, fx: 50, fy: 60, s: 1.02, top: 6, hw: 36, bow: [28, 18] },
+  mochi: { art: <path d="M50 26 C80 26 96 46 96 66 C96 84 80 92 50 92 C20 92 4 84 4 66 C4 46 20 26 50 26 Z" />, sw: 3, fx: 50, fy: 62, s: 1.05, top: 26, hw: 46, bow: [18, 34] },
+  bean: { art: <path d="M30 14 C48 6 66 14 72 28 C76 38 88 44 90 60 C92 80 74 94 52 92 C30 90 10 78 10 52 C10 34 16 20 30 14 Z" />, sw: 3, fx: 50, fy: 57, s: 1.02, top: 10, hw: 40, bow: [20, 22] },
+  cloud: {
+    art: (
+      <>
+        <circle cx="27" cy="60" r="18" />
+        <circle cx="48" cy="45" r="21" />
+        <circle cx="70" cy="50" r="18" />
+        <rect x="9" y="58" width="82" height="33" rx="16" />
+      </>
+    ),
+    sw: 3, fx: 50, fy: 67, s: 0.98, top: 24, hw: 41, bow: [14, 44],
+  },
+  cat: {
+    art: (
+      <>
+        <path d="M16 46 L20 9 L46 26 Z" />
+        <path d="M84 46 L80 9 L54 26 Z" />
+        <circle cx="50" cy="56" r="37" />
+      </>
+    ),
+    sw: 6, fx: 50, fy: 60, s: 1.05, top: 19, hw: 38, bow: [31, 24],
+  },
+  bear: {
+    art: (
+      <>
+        <circle cx="23" cy="26" r="13" />
+        <circle cx="77" cy="26" r="13" />
+        <circle cx="50" cy="56" r="37" />
+      </>
+    ),
+    sw: 3, fx: 50, fy: 60, s: 1.05, top: 19, hw: 38, bow: [16, 14],
+  },
+  ghost: { art: <path d="M14 50 A36 36 0 0 1 86 50 V86 Q79 95 71 86 Q64 78 57 86 Q50 95 43 86 Q36 78 29 86 Q21 95 14 86 Z" />, sw: 4, fx: 50, fy: 52, s: 1.05, top: 14, hw: 38, bow: [22, 22] },
   circle: { art: <circle cx="50" cy="50" r="44" />, sw: 6, fx: 50, fy: 49, s: 1.15, top: 4, hw: 46, bow: [24, 15] },
   squircle: { art: <rect x="8" y="8" width="84" height="84" rx="27" />, sw: 6, fx: 50, fy: 49, s: 1.15, top: 5, hw: 45, bow: [19, 14] },
   hexagon: { art: <polygon points={ngon(6, 43, 30)} />, sw: 8, fx: 50, fy: 51, s: 1, top: 3, hw: 40, bow: [30, 17], pointy: true },
