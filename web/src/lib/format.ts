@@ -91,6 +91,15 @@ export function elapsed(ms: number): string {
   return t("time.elapsedHM", { h: Math.floor(m / 60), m: m % 60 });
 }
 
+/** A running duration: "8 s", "1 min 23 s", "1 h 4 min" (the thinking block's meta line). */
+export function liveDuration(ms: number): string {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  if (s < 60) return t("time.liveS", { s });
+  const m = Math.floor(s / 60);
+  if (m < 60) return t("time.liveMS", { m, s: s % 60 });
+  return t("time.liveHM", { h: Math.floor(m / 60), m: m % 60 });
+}
+
 export function callClock(ms: number): string {
   const s = Math.max(0, Math.floor(ms / 1000));
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;

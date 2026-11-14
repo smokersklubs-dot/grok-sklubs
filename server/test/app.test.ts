@@ -96,7 +96,7 @@ test("a message gets a streamed reply and is metered", async () => {
   const reply = await until(async () => lastAssistant(await rowsOf(primary.id)), "reply");
   assert.equal(reply.body.kind === "message" && reply.body.text, "Echo: hello there");
   const sys = requests[requests.length - 1].system;
-  assert.match(sys, /You are Juno/);
+  assert.ok(sys.includes(`You are ${primary.name}`), "the main bot's name is read from the server (U-010)");
   assert.match(sys, /Sam/);
   const usage = (await call("GET", "/usage")).json;
   assert.equal(usage.totals.turns >= 1, true);
@@ -192,7 +192,7 @@ test("bots message each other, helpers report back, rooms route by mention", asy
   const scout = (await call("POST", "/bots", { name: "Scout", label: "Researcher" })).json.bot as Bot;
   await call("POST", `/bots/${primary.id}/messages`, { text: 'call bot_message {"bot":"scout","message":"Find the Q3 numbers."}' });
   const got = await until(async () => (await rowsOf(scout.id)).find((r) => r.body.kind === "message" && r.body.role === "user"), "delivery");
-  assert.equal(got.body.kind === "message" && got.body.origin?.name, "Juno");
+  assert.equal(got.body.kind === "message" && got.body.origin?.name, primary.name);
 
   await call("POST", `/bots/${primary.id}/messages`, { text: 'call helper_start {"goal":"Count the files.","label":"count"}' });
   await until(async () => (await rowsOf(primary.id)).some((r) => r.body.kind === "message" && r.body.origin?.kind === "bot" && r.body.text.startsWith("Echo:") && r.body.text.includes("Count the files.")), "helper report");
@@ -203,7 +203,7 @@ test("bots message each other, helpers report back, rooms route by mention", asy
   const seen = requests.length;
   await call("POST", `/bots/${roomId}/messages`, { text: "@Scout what do you think?" });
   await until(async () => requests.slice(seen).some((r) => r.system.includes("You are Scout") && JSON.stringify(r.messages).includes("War room")), "room dispatch to the mentioned bot");
-  assert.equal(requests.slice(seen).some((r) => r.system.includes("You are Juno") && JSON.stringify(r.messages.slice(-1)).includes("what do you think")), false);
+  assert.equal(requests.slice(seen).some((r) => r.system.includes(`You are ${primary.name}`) && JSON.stringify(r.messages.slice(-1)).includes("what do you think")), false);
   assert.equal((await call("DELETE", `/bots/${primary.id}`)).status, 409);
   assert.equal((await call("DELETE", `/bots/${scout.id}`)).status, 200);
 });

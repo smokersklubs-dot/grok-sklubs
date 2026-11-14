@@ -47,6 +47,10 @@ services:
       DESKTOP_NETWORK: "sklubot_net"
       ENGINE_BASE_URL: "http://sklubot:3000"
       MAX_DESKTOPS: "${SKLUBOT_MAX_DESKTOPS:-4}"
+      # Nombre de bots au plus sur toute l'installation (0 = sans limite) ; nom et rôle du premier bot de chaque compte.
+      MAX_BOTS: "${SKLUBOT_MAX_BOTS:-0}"
+      FIRST_BOT_NAME: "${SKLUBOT_FIRST_BOT_NAME:-}"
+      FIRST_BOT_LABEL: "${SKLUBOT_FIRST_BOT_LABEL:-}"
       DESKTOP_MEMORY: "${SKLUBOT_DESKTOP_MEMORY:-2g}"
       # Docker, à travers le proxy filtrant (voir plus bas), jamais le socket lui-même.
       DOCKER_HOST: "tcp://docker-proxy:2375"

@@ -180,6 +180,10 @@ const FR: Record<string, string> = {
   "{bot} created this bot.": "{bot} a créé ce bot.", "{bot} created a new bot: {name} ({role}).": "{bot} a créé un nouveau bot : {name} ({role}).",
   "instructions": "consignes", "look": "apparence", "tools": "outils",
   "{bot} changed its own settings: {what}.": "{bot} a modifié ses propres réglages : {what}.",
+  // Spec 06: bot HQ update
+  "The team is full: this installation holds at most {n} bots. Remove one to create another.": "L'équipe est pleine : cette installation accueille {n} bots au plus. Retire un bot pour en créer un autre.",
+  "This sign-in link has expired or was already used. Ask for a new one (it is valid 15 minutes and works once).": "Ce lien de connexion a expiré ou a déjà servi. Demandes-en un nouveau (il vaut 15 minutes et ne sert qu'une fois).",
+  "Finding the right tool": "Cherche le bon outil", "did not finish": "pas terminé",
   // Schedules
   "Every day at {time}": "Tous les jours à {time}", "Weekdays at {time}": "En semaine à {time}", "Every {day} at {time}": "Chaque {day} à {time}",
   "Every hour": "Toutes les heures", "Every {n} minutes": "Toutes les {n} minutes", "Every {n} hours": "Toutes les {n} heures",

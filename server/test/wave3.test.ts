@@ -204,7 +204,7 @@ test("push: a bot that needs the user is pushed (with the bot to open); kinds, q
   assert.equal(p.kind, "needs");
   assert.equal(p.botId, bot.id);
   assert.equal(p.url, `/?bot=${bot.id}`);
-  assert.equal(p.title, "Juno");
+  assert.equal(p.title, bot.name);
   const card = await pendingApproval(bot);
   await call("POST", `/approvals/${card.approvalId}`, { decision: "deny" });
   await idle(bot);
@@ -455,7 +455,7 @@ test("organise: duplicate copies settings, look, instructions and skills; memori
   await call("POST", `/bots/${bot.id}/skills`, { name: "Relance", description: "Relancer un client", body: "1. Ouvrir le CRM" });
   await call("POST", `/bots/${bot.id}/memories`, { text: "Nina préfère le matin." });
   const plain = (await call("POST", `/bots/${bot.id}/duplicate`, {})).json.bot as Bot;
-  assert.equal(plain.name, "Juno (copy)");
+  assert.equal(plain.name, `${bot.name} (copy)`);
   assert.equal(plain.primary, false);
   assert.equal(plain.instructions, "Toujours vouvoyer les clients.");
   assert.deepEqual([plain.character.eyes, plain.character.accessory, plain.disabledTools], ["visor", "halo", ["video"]]);
@@ -464,8 +464,8 @@ test("organise: duplicate copies settings, look, instructions and skills; memori
   assert.equal(bundle.memories.length, 0);
   assert.equal((await rowsOf(plain.id)).length, 0);
 
-  const full = (await call("POST", `/bots/${bot.id}/duplicate`, { name: "Juno bis", memories: true, conversation: true })).json.bot as Bot;
-  assert.equal(full.name, "Juno bis");
+  const full = (await call("POST", `/bots/${bot.id}/duplicate`, { name: `${bot.name} bis`, memories: true, conversation: true })).json.bot as Bot;
+  assert.equal(full.name, `${bot.name} bis`);
   assert.deepEqual((await call("GET", `/bots/${full.id}/bundle`)).json.memories.map((m: any) => m.text), ["Nina préfère le matin."]);
   const copied = await rowsOf(full.id);
   assert.ok(copied.some((r) => r.body.kind === "message" && r.body.text === "Bonjour"));

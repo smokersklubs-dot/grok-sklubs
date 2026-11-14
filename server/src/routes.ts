@@ -7,11 +7,11 @@ import { streamSSE } from "hono/streaming";
 import { continueAfterStepLimit, decideApproval, enqueue, inQueue, interrupt, noteHandBack, submitUserMessage, type ForcedSkill } from "./agent/loop.js";
 import { cleanProfile, fetchSkillMarkdown, saveImportedSkill, undoRevision } from "./agent/tools-team.js";
 import { xSearchProvider } from "./xsearch.js";
-import { cleanModelList } from "./store.js";
+import { cleanModelList, TeamFullError } from "./store.js";
 import { RELIABILITY_LIMITS, type RowBody } from "./shared.js";
 import { ask, compactIfNeeded, consolidate, memoryStatus } from "./agent/memory.js";
 import { telegram } from "./telegram.js";
-import { engineLogin, engineLogout, engineModels, engineStatus } from "./agent/engine.js";
+import { EngineRestartRefused, engineLogin, engineLogout, engineModels, engineRuntime, engineStatus, restartEngine } from "./agent/engine.js";
 import { handleMcp } from "./agent/mcp.js";
 import { RESPONSE_ALREADY_SENT } from "@hono/node-server/utils/response";
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -19,7 +19,7 @@ import { createRoom, dispatchToRoom, validMembers } from "./agent/team.js";
 import { retireBot } from "./agent/tools.js";
 import { createSession, dropSession, hashPassword, originAllowed, seal, SESSION_COOKIE, setupCodeMatches, setupCodeRequired, signupOpen, userForToken, verifyPassword } from "./auth.js";
 import { emit, getLive, subscribe } from "./bus.js";
-import { attachmentAt, computerState, isInlineImage, isInlineVideo, listFiles, mimeOf, openLibraryFile, readLibraryFile, removeWorkspace, resolveInWorkspace, screen, storeBytes } from "./computer.js";
+import { attachmentAt, computerKind, computerState, isInlineImage, isInlineVideo, listFiles, mimeOf, openLibraryFile, readLibraryFile, removeWorkspace, resolveInWorkspace, screen, storeBytes } from "./computer.js";
 import { catalogFor } from "./catalog.js";
 import { imageService } from "./images.js";
 import { config } from "./config.js";
@@ -35,6 +35,7 @@ import { higgsfieldFor } from "./agent/tools.js";
 import { dropRecording, noteInput, recording, retryRecording, saveRecording, startRecording, stopRecording } from "./teach.js";
 import { account, audit, auditList, bots, clip, feedback, history, memories, pages, policies, publicBot, publicVault, rows, searchMessages, sections, settings, sha256, skills, tasks, users, vault, type BotRecord, type UserRecord, type VaultFields } from "./store.js";
 import { finishTakeover, holdControl, releaseControl } from "./takeover.js";
+import { deskRun, deskShot, startDeskTest } from "./desktest.js";
 import { notePresence, push, pushSettings, savePushSettings, sendPush } from "./push.js";
 import { parseTotp } from "./totp.js";
 import { detectMapping, loginsFrom, parseCsv, type Mapping } from "./vault-import.js";
@@ -58,6 +59,11 @@ const fail = (status: HttpError["status"], message: string): never => { throw ne
 
 api.onError((err, c) => {
   if (err instanceof HttpError) return c.json({ error: err.message }, err.status);
+  // MAX_BOTS reached: a clear refusal, never a silent eviction.
+  if (err instanceof TeamFullError) {
+    const loc = (c.get("user") as UserRecord | undefined)?.locale ?? pickLocale(undefined, c.req.header("accept-language"));
+    return c.json({ error: tr(loc, "The team is full: this installation holds at most {n} bots. Remove one to create another.", { n: err.max }) }, 409);
+  }
   console.error("[api]", err);
   return c.json({ error: "Something went wrong on the server." }, 500);
 });
@@ -111,7 +117,8 @@ api.get("/health", (c) => c.json({ ok: true, model: defaultModelRef() }));
 api.get("/me", (c) => {
   const user = userForToken(getCookie(c, SESSION_COOKIE));
   const video: VideoStatus = { provider: videoService()?.id ?? null, higgsfield: !!user && !!higgsfieldFor(user.id) };
-  return c.json({ user: user ? publicUser(user) : null, signupOpen: signupOpen(), setupCodeRequired: setupCodeRequired(), imageGeneration: !!imageService(), video });
+  const locale = user?.locale ?? pickLocale(c.req.query("locale"), c.req.header("accept-language"));
+  return c.json({ user: user ? publicUser(user) : null, signupOpen: signupOpen(), setupCodeRequired: setupCodeRequired(), imageGeneration: !!imageService(), video, firstBot: firstBotIdentity(locale) });
 });
 
 // Slows down password guessing: a handful of attempts per account, and a few dozen per client address,
@@ -148,6 +155,15 @@ function clientIp(c: Context): string {
 let dummyHash: string | null = null;
 const dummyCheck = (password: string) => { dummyHash ??= hashPassword("not-a-real-password"); verifyPassword(password, dummyHash); };
 
+/** The first bot's name and role: chosen at sign-up, else the server's settings, else "Juno" / "Chief of staff". */
+export function firstBotIdentity(locale: "fr" | "en", name?: unknown, label?: unknown): { name: string; label: string } {
+  const pick = (v: unknown) => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, 60) : "");
+  return {
+    name: pick(name) || config.firstBotName || "Juno",
+    label: pick(label) || config.firstBotLabel || tr(locale, "Chief of staff"),
+  };
+}
+
 api.post("/auth/signup", async (c) => {
   if (!signupOpen()) fail(403, "New accounts are closed on this server.");
   throttle(`signup:${clientIp(c)}`, 20);
@@ -161,10 +177,14 @@ api.post("/auth/signup", async (c) => {
   if (users.byEmail(email)) fail(409, "An account with this email already exists.");
   if (config.allowedEmails.length && !config.allowedEmails.includes(email.toLowerCase())) fail(403, "This address is not allowed to create an account on this server.");
   const locale = pickLocale(b.locale, c.req.header("accept-language"));
+  // The account's first bot needs a place in the team (MAX_BOTS): checked before anything is created.
+  bots.assertRoom();
   const user = users.create(email, String(b.name ?? ""), hashPassword(password), locale);
-  // Every account starts with one main bot so there is someone to talk to straight away.
+  // Every account starts with one main bot so there is someone to talk to straight away. Its name and role: what the
+  // person chose on the sign-up form, else the server's settings (FIRST_BOT_NAME / FIRST_BOT_LABEL), else the defaults.
+  const first = firstBotIdentity(locale, b.botName, b.botLabel);
   bots.create(user.id, {
-    name: "Juno", label: tr(locale, "Chief of staff"), primary: true, shape: "pebble", color: "indigo",
+    name: first.name, label: first.label, primary: true, shape: "pebble", color: "indigo",
     description: tr(locale, "Your main point of contact. Keeps track of what is open, checks in when something needs you, and coordinates the other bots."),
   });
   startSession(c, user.id);
@@ -191,7 +211,12 @@ api.get("/auth/link", (c) => {
   const token = c.req.query("token") ?? "";
   const row = token ? q.get<{ user_id: string; expires_at: number }>("SELECT user_id, expires_at FROM sign_in_links WHERE token_hash = ?", sha256(token)) : undefined;
   if (row) q.run("DELETE FROM sign_in_links WHERE token_hash = ?", sha256(token));
-  if (!row || row.expires_at < Date.now() || !users.byId(row.user_id)) return c.redirect("/?link=expired");
+  // Used, expired or unknown: 410 with a plain page asking for a new link (the link was already deleted above).
+  if (!row || row.expires_at < Date.now() || !users.byId(row.user_id)) {
+    const loc = pickLocale(undefined, c.req.header("accept-language"));
+    const text = tr(loc, "This sign-in link has expired or was already used. Ask for a new one (it is valid 15 minutes and works once).");
+    return c.html(`<!doctype html><html lang="${loc}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>Sklubot</title><style>body{font-family:system-ui,sans-serif;display:grid;place-items:center;min-height:100vh;margin:0;padding:16px;background:#f6f6f8;color:#1d1d24}main{max-width:420px;text-align:center;line-height:1.5}a{color:#4f46e5}</style></head><body><main><p>${escHtml(text)}</p><p><a href="/?link=expired">${escHtml(tr(loc, "Back to Sklubot"))}</a></p></main></body></html>`, 410, { "cache-control": "no-store", "referrer-policy": "no-referrer" });
+  }
   audit(row.user_id, "account", "Signed in with a one-time link");
   startSession(c, row.user_id);
   return c.redirect("/");
@@ -336,16 +361,16 @@ api.patch("/bots/:id", async (c) => {
   const patch = await body(c);
   bots.patch(bot.id, patch);
   bots.announce(bot);
-  if (patch.name !== undefined || patch.label !== undefined || patch.color !== undefined) void screen.redress(bot.id).catch(() => {});
+  // A new name, role, shape or colour shows on the bot's computer (only if it has one: U-005).
+  if (["name", "label", "color", "shape", "character"].some((k) => patch[k] !== undefined)) void screen.redress(bot.id).catch(() => {});
   return c.json({ bot: publicBot(bots.byId(bot.id)!) });
 });
 
 api.delete("/bots/:id", async (c) => {
   const bot = ownBot(c);
   if (bot.primary) fail(409, "Make another bot your main contact before deleting this one.");
+  // Interrupt, routines and triggers, engine, screen, files, then the record: each failure logged, none blocking (U-003).
   await retireBot(bot);
-  dropRecording(bot.id);
-  removeWorkspace(bot.id);
   emit(bot.userId, { type: "roster" });
   return c.json({ ok: true });
 });
@@ -950,6 +975,22 @@ api.get("/relay/devices/:id/last", (c) => {
 
 // ── Computer and files ───────────────────────────────────────────────────────
 api.get("/computer", (c) => c.json(computerState(c.get("user").id)));
+/**
+ * The desk test (B-10): an end-to-end check of a bot computer on two computers of invented bots (no real bot, no user
+ * data). One run at a time on the server; the latest result stays until the server restarts.
+ */
+api.get("/computer/desk-test", (c) => c.json({ run: deskRun() }));
+api.post("/computer/desk-test", (c) => {
+  if (computerKind() !== "linux") fail(409, "The desk test needs the bots' Linux computers (Docker and the desktop image) on this server.");
+  const run = startDeskTest(c.get("user").id);
+  audit(c.get("user").id, "computer", "Desk test started");
+  return c.json({ run });
+});
+api.get("/computer/desk-test/shots/:name", (c) => {
+  const shot = deskShot(c.req.param("name"));
+  if (!shot) return fail(404, "No such picture.");
+  return c.body(new Uint8Array(shot), 200, { "content-type": "image/jpeg", "cache-control": "no-store" });
+});
 
 api.get("/bots/:id/screen", async (c) => {
   const shot = await screen.peek(ownBot(c).id);
@@ -1019,8 +1060,25 @@ api.post("/bots/:id/desktop/control", async (c) => {
 });
 api.get("/bots/:id/engine", async (c) => {
   const bot = ownAgent(c);
-  try { return c.json({ engines: await engineStatus(bot) }); }
-  catch (err) { return c.json({ engines: (["claude-code", "codex"] as const).map((engine) => ({ engine, installed: false, signedIn: null, account: null, detail: (err as Error).message })) }); }
+  // ?runtime=1: only the engine's state (cheap; the panel polls it every 3 s during a restart).
+  if (c.req.query("runtime")) return c.json({ runtime: engineRuntime(bot) });
+  try { return c.json({ engines: await engineStatus(bot), runtime: engineRuntime(bot) }); }
+  catch (err) { return c.json({ engines: (["claude-code", "codex"] as const).map((engine) => ({ engine, installed: false, signedIn: null, account: null, detail: (err as Error).message })), runtime: engineRuntime(bot) }); }
+});
+/**
+ * "Restart the engine" (B-4): stops its turn and processes, lets its pending approvals lapse, and starts it again in the
+ * background. Answers at once with the engine's state (usually "starting").
+ */
+api.post("/bots/:id/engine/restart", async (c) => {
+  const bot = ownAgent(c);
+  try {
+    const runtime = await restartEngine(bot);
+    audit(bot.userId, "system", `${bot.name}: engine restarted`, bot.id);
+    return c.json({ runtime });
+  } catch (err) {
+    if (err instanceof EngineRestartRefused) return fail(409, err.message);
+    return fail(502, clip(String((err as Error)?.message ?? err), 300));
+  }
 });
 api.post("/bots/:id/engine/login", async (c) => {
   const bot = ownAgent(c);

@@ -153,7 +153,7 @@ test("the vault lets a bot type a password it never sees", { skip: !browserAvail
   await say(bot, 'call vault_type {"item":"Banque","field":"password"}');
   const card = await until(async () => (await rowsOf(bot.id)).find((r) => r.body.kind === "card" && r.body.card.type === "approval" && r.body.card.status === "pending"), "vault approval");
   const c = card.body.kind === "card" && card.body.card.type === "approval" ? card.body.card : null;
-  assert.equal(c!.title, "Autoriser Juno à saisir le mot de passe enregistré pour Banque ?");
+  assert.equal(c!.title, `Autoriser ${bot.name} à saisir le mot de passe enregistré pour Banque ?`);
   assert.equal(c!.source, "Coffre");
   assert.equal(c!.tool, "vault: Banque");
   await call("POST", `/approvals/${c!.approvalId}`, { decision: "allow" });

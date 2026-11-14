@@ -8,7 +8,7 @@ ENV DEBIAN_FRONTEND=noninteractive LANG=C.UTF-8 DISPLAY=:1 HOME=/root \
     BROWSER=/opt/sklubot/open-browser.sh
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      xvfb x11vnc socat openbox tint2 xdotool wmctrl imagemagick x11-xserver-utils dbus-x11 \
+      xvfb x11vnc socat openbox tint2 xdotool wmctrl imagemagick feh x11-xserver-utils dbus-x11 \
       chromium xterm xfonts-base pcmanfm mousepad \
       fonts-dejavu fonts-liberation fonts-noto-color-emoji \
       ca-certificates curl wget git jq unzip zip nano less procps sudo \

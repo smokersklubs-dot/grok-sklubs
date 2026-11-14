@@ -10,6 +10,7 @@ import { ErrorNote } from "./ui";
 export function SignIn() {
   const signupOpen = useStore((s) => s.signupOpen);
   const setupCodeRequired = useStore((s) => s.setupCodeRequired);
+  const firstBot = useStore((s) => s.firstBot);
   const signedIn = useStore((s) => s.signedIn);
   const locale = useStore((s) => s.locale);
   const setLocale = useStore((s) => s.setLocale);
@@ -19,9 +20,12 @@ export function SignIn() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [setupCode, setSetupCode] = useState("");
+  // The first bot's name and role (B-9): the server's defaults are shown as placeholders; empty keeps them.
+  const [botName, setBotName] = useState("");
+  const [botLabel, setBotLabel] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const ids = { name: useId(), email: useId(), password: useId(), setupCode: useId() };
+  const ids = { name: useId(), email: useId(), password: useId(), setupCode: useId(), botName: useId(), botLabel: useId() };
   const creating = mode === "signup" && signupOpen;
   // A one-time sign-in link that has expired or was already used lands here with ?link=expired.
   const [linkExpired] = useState(() => new URLSearchParams(location.search).get("link") === "expired");
@@ -56,7 +60,7 @@ export function SignIn() {
     setError(null);
     try {
       const r = creating
-        ? await api<{ user: User }>("POST", "/auth/signup", { email: mail, name: name.trim() || undefined, password, locale, setupCode: setupCodeRequired ? setupCode.trim() : undefined })
+        ? await api<{ user: User }>("POST", "/auth/signup", { email: mail, name: name.trim() || undefined, password, locale, setupCode: setupCodeRequired ? setupCode.trim() : undefined, botName: botName.trim() || undefined, botLabel: botLabel.trim() || undefined })
         : await api<{ user: User }>("POST", "/auth/login", { email: mail, password });
       await signedIn(r.user);
     } catch (err) {
@@ -111,6 +115,24 @@ export function SignIn() {
             <input id={ids.setupCode} className="input" value={setupCode} onChange={(e) => setSetupCode(e.target.value)} autoComplete="one-time-code" spellCheck={false} maxLength={64} />
             <p className="field-hint">{t("signin.setupCodeHint")}</p>
           </div>
+        )}
+
+        {creating && (
+          <fieldset className="signin-firstbot">
+            <legend>{t("signin.firstBot")}</legend>
+            <p className="field-hint">{t("signin.firstBotHint")}</p>
+            <div className="signin-firstbot-row">
+              <Avatar shape="pebble" color="indigo" name={(botName.trim() || firstBot.name).slice(0, 1)} size={40} />
+              <div className="field">
+                <label className="field-label" htmlFor={ids.botName}>{t("signin.firstBotName")}</label>
+                <input id={ids.botName} className="input" value={botName} onChange={(e) => setBotName(e.target.value)} maxLength={60} placeholder={firstBot.name} autoComplete="off" />
+              </div>
+              <div className="field">
+                <label className="field-label" htmlFor={ids.botLabel}>{t("signin.firstBotLabel")}</label>
+                <input id={ids.botLabel} className="input" value={botLabel} onChange={(e) => setBotLabel(e.target.value)} maxLength={60} placeholder={firstBot.label || t("signin.firstBotLabelDefault")} autoComplete="off" />
+              </div>
+            </div>
+          </fieldset>
         )}
 
         <ErrorNote>{error}</ErrorNote>

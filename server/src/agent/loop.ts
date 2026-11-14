@@ -1,5 +1,5 @@
 import { clearLive, emit, getLive, setLive } from "../bus.js";
-import { botPathOf, browserAvailable, computerKind, imageForModel, shellAvailable, shellOnHost } from "../computer.js";
+import { botPathOf, browserAvailable, computerKind, imageForModel, screen, shellAvailable, shellOnHost } from "../computer.js";
 import { config } from "../config.js";
 import { connectors } from "../connectors.js";
 import { defaultModelRef, ProviderError, resolveModel, validateToolInput, type TurnResult, type Block, type ChatMessage, type Effort, type TextBlock, type ToolResultBlock, type ToolSpec, type ToolUseBlock } from "../llm/index.js";
@@ -10,7 +10,7 @@ import { activeTurns, approvals, audit, bots, clip, feedback, history, newId, pa
 import { runs } from "../routines.js";
 import { overBudget, record } from "../usage.js";
 import { compactIfNeeded } from "./memory.js";
-import { isEngineRef, runEngineTurn } from "./engine.js";
+import { engineTurnOf, isEngineRef, runEngineTurn } from "./engine.js";
 import { buildSystemPrompt } from "./prompt.js";
 import { deliverBotMessage } from "./team.js";
 import { builtinTools, higgsfieldFor, videoRoute, type BuiltinTool, type ToolOutput } from "./tools.js";
@@ -322,7 +322,7 @@ async function runScopedTurn(botId: string, trigger: Trigger, thread: number): P
   const controller = new AbortController();
   controllers.set(botId, controller);
   if (thread) runningThread.set(botId, thread); else runningThread.delete(botId);
-  setLive(user.id, botId, { running: true, activity: { kind: "thinking", since: Date.now() }, awaiting: null, startedAt: Date.now(), thread });
+  setLive(user.id, botId, { running: true, activity: { kind: "thinking", since: Date.now() }, awaiting: null, startedAt: Date.now(), thread, steps: 0, caption: null });
   let turn: Turn | null = null;
   let failed = "";
   activeTurns.begin(botId);
@@ -360,6 +360,10 @@ async function runScopedTurn(botId: string, trigger: Trigger, thread: number): P
         rows.append(bot, { kind: "notice", tone: "warn", text: tr(user.locale, "This month's budget is used up, so I'm paused. Raise or clear the budget in Settings → Usage to continue.") });
         return;
       }
+      // B-2 for turns of ours: the screen tools wake and dress the computer themselves when the turn needs it, so the
+      // turn never waits here; a computer that is already on is checked in the background (look, browser answering).
+      if (computerKind() === "linux" && !bot.disabledTools.includes("computer") && screen.isOpen(botId))
+        void screen.ready(botId, user.id).catch((err) => console.error(`[screen ready ${botId}]`, (err as Error)?.message ?? err));
       if (!thread) await compactIfNeeded(bot).catch((err) => console.error("[compaction]", err));
       const depth = trigger.kind === "bot" ? trigger.depth : trigger.kind === "system" ? trigger.depth ?? 0 : 0;
       turn = await newTurn(bot, user, depth, controller.signal);
@@ -509,9 +513,11 @@ async function modelLoop(turn: Turn) {
       const b = turn.builtin.get(call.name);
       const r = turn.remote.get(call.name);
       const label = b ? tr(loc, b.label) : r?.native ? `${tr(loc, r.native.label)} · ${r.connectorName}` : tr(loc, "Using {app}", { app: r?.connectorName ?? tr(loc, "an app") });
-      // A progress line is its own light row; it needs no step row as well.
-      if (call.name === "progress_update") continue;
+      // A progress line is its own light row; it needs no step row as well (it still counts as a step below).
+      if (call.name === "progress_update") { setLive(turn.user.id, bot.id, { steps: (getLive(bot.id).steps ?? 0) + 1 }); continue; }
       stepSeq[call.id] = rows.append(bot, { kind: "step", callId: call.id, tool: call.name, label, status: "running", args: redact(call.input) }).seq;
+      // The live step counter (B-7): every tool call announced in this turn.
+      setLive(turn.user.id, bot.id, { steps: (getLive(bot.id).steps ?? 0) + 1 });
     }
     const outcome = await processCalls(turn, { system: turn.system, tools: turn.tools, modelRef: turn.modelRef, pending: calls, results: [], stepSeq, generation: turn.generation, approvalId: "", depth: turn.depth, endTurn: false, thread: turn.thread });
     if (turn.loopStop) {
@@ -925,15 +931,48 @@ function supersede(bot: BotRecord, st: PausedTurn) {
 const waiters = new Map<string, (status: string) => void>();
 /** The bot each waiting approval belongs to. */
 const waiterBot = new Map<string, string>();
+const waitingFor = (botId: string) => [...waiterBot.values()].filter((b) => b === botId).length;
 
-/** A new message from the user lapses the approvals a subscription turn of this bot is waiting on (as supersede does for ours). */
+/**
+ * Lapses the approvals a subscription turn of this bot is waiting on (B-5). Called for a new message from the user (not
+ * for a routine, a message from another bot or a system notice), for "restart the engine", and when the bot is deleted.
+ */
 export function expireEngineApprovals(botId: string) {
-  for (const [id, owner] of waiterBot) if (owner === botId) waiters.get(id)?.("expired");
+  for (const [id, owner] of [...waiterBot]) if (owner === botId) waiters.get(id)?.("expired");
+}
+
+/** Every approval of this bot still waiting lapses: the subscription ones and a paused turn of ours (bot deleted). */
+export function expireAllApprovals(botId: string) {
+  expireEngineApprovals(botId);
+  const bot = bots.byId(botId);
+  const held = paused.get<PausedTurn>(botId);
+  if (bot && held) supersede(bot, held);
 }
 
 /**
- * Shows an approval card and waits for the answer (at most APPROVAL_EXPIRE_MIN, 30 minutes by default; until the user
- * sends a new message; or until the turn is stopped).
+ * At start-up: approvals asked inside a subscription turn were waiting in memory, which a restart lost. They are marked
+ * expired and their cards say so. An approval that holds a paused turn of ours is kept: that turn resumes on the answer.
+ */
+export function expireOrphanApprovals(): number {
+  let n = 0;
+  for (const u of users.all()) for (const a of approvals.pendingForUser(u.id)) {
+    if (paused.get<PausedTurn>(a.botId)?.approvalId === a.id) continue;
+    lapse(a.id);
+    n++;
+  }
+  return n;
+}
+function lapse(approvalId: string) {
+  const a = approvals.byId(approvalId);
+  if (!a || a.status !== "pending") return;
+  approvals.resolve(a.id, "expired");
+  const bot = bots.byId(a.botId);
+  if (bot) rows.updateCard(bot, a.generation, a.seq, (c) => (c.type === "approval" ? { ...c, status: "expired" } : c));
+}
+
+/**
+ * Shows an approval card and waits for the answer (at most APPROVAL_EXPIRE_MIN, 25 minutes by default; until the user
+ * sends a new message; until the engine is restarted; or until the turn is stopped).
  * Used when the bot runs on a subscription tool: its call simply blocks until the user decides.
  */
 export async function waitForApproval(turn: Turn, call: ToolUseBlock, verdict: Extract<Verdict, { kind: "ask" }>): Promise<"allowed" | "always" | "denied" | "expired"> {
@@ -941,23 +980,28 @@ export async function waitForApproval(turn: Turn, call: ToolUseBlock, verdict: E
   const approvalId = newId("apr");
   const card = rows.append(bot, { kind: "card", card: { type: "approval", approvalId, title: verdict.title, detail: cardDetail(call, verdict), tool: verdict.policyKey, source: verdict.source, status: "pending", ...(verdict.once ? { once: true } : {}) } });
   approvals.create(bot.id, user.id, bot.generation, card.seq, verdict.policyKey, approvalId);
+  bots.bumpUnread(bot.id);
   setLive(user.id, bot.id, { running: false, activity: { kind: "waiting", since: Date.now() }, awaiting: { reason: verdict.reason, since: Date.now() } });
   emit(user.id, { type: "tasks", botId: bot.id });
   tell({ type: "waiting", bot, text: verdict.title });
   const status = await new Promise<string>((resolve) => {
     const finish = (s: string) => { clearTimeout(timer); turn.signal.removeEventListener("abort", onAbort); waiters.delete(approvalId); waiterBot.delete(approvalId); resolve(s); };
     const onAbort = () => finish("expired");
-    // Unanswered, it lapses (30 minutes by default) — or as soon as the user sends a new message (expireEngineApprovals).
+    // Unanswered, it lapses (25 minutes by default) — or as soon as the user sends a new message (expireEngineApprovals).
     const timer = setTimeout(() => finish("expired"), config.approvalExpireMs);
     turn.signal.addEventListener("abort", onAbort, { once: true });
     waiters.set(approvalId, finish);
     waiterBot.set(approvalId, bot.id);
   });
-  if (status === "expired" && approvals.byId(approvalId)?.status === "pending") {
-    approvals.resolve(approvalId, "expired");
-    rows.updateCard(bot, card.generation, card.seq, (c) => (c.type === "approval" ? { ...c, status: "expired" } : c));
+  if (status === "expired") lapse(approvalId);
+  // Back to work only once nothing else of this bot waits for the user (B-5.5).
+  if (!waitingFor(bot.id)) {
+    const remote = turn.remote.get(call.name);
+    const allowed = status === "allowed" || status === "always";
+    if (engineTurnOf(bot.id) === turn && !turn.signal.aborted)
+      setLive(user.id, bot.id, { running: true, awaiting: null, activity: allowed && remote ? { kind: "connector", detail: remote.connectorName, since: Date.now() } : { kind: "thinking", since: Date.now() } });
+    else clearLive(user.id, bot.id);
   }
-  setLive(user.id, bot.id, { running: true, awaiting: null, activity: { kind: "thinking", since: Date.now() } });
   return status as "allowed" | "always" | "denied" | "expired";
 }
 
@@ -967,6 +1011,8 @@ export function decideApproval(userId: string, approvalId: string, decision: "al
   if (approval.status !== "pending") return true;
   const bot = bots.byId(approval.botId);
   if (!bot) return false;
+  // Nobody waits for this answer any more (the server restarted while a subscription turn waited): the card lapses.
+  if (!waiters.has(approvalId) && paused.get<PausedTurn>(bot.id)?.approvalId !== approvalId) { lapse(approvalId); return true; }
   // A card that does not offer "Always" (e.g. a command on the user's computer after outside content) counts it as once.
   const card = rows.get(bot.id, approval.generation, approval.seq);
   if (decision === "always" && card?.body.kind === "card" && card.body.card.type === "approval" && card.body.card.once) decision = "allow";

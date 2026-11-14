@@ -14,7 +14,8 @@
     "start": "npm run start -w server",
     "typecheck": "npm run typecheck -w server && npm run typecheck -w web",
     "test": "npm run test -w server",
-    "computer:build": "docker build -t sklubot-desktop docker/desktop"
+    "computer:build": "docker build -t sklubot-desktop docker/desktop",
+    "desk:test": "npm run desk:test -w server --"
   },
   "engines": {
     "node": ">=22.13"

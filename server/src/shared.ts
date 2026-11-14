@@ -124,6 +124,11 @@ export interface Live {
   thread?: number;
   /** The user is driving this bot's screen (control mode open): the bot's own screen actions are refused meanwhile. */
   driving?: boolean;
+  /**
+   * Tool calls announced since the running turn started (progress lines included; the engine's own tool-finding calls
+   * do not count). Reset to 0 at the start of each turn; updated on each new call, even while the bot waits for the user.
+   */
+  steps?: number;
 }
 
 export interface Origin { kind: "bot" | "routine" | "voice" | "webhook"; id: string; name: string }
@@ -362,6 +367,31 @@ export interface EngineStatus {
   /** Account shown by the tool when it says so (e.g. an e-mail or plan), else null. */
   account: string | null;
   detail: string | null;
+}
+/**
+ * The state of a bot's subscription engine as the engine panel shows it. "ready": signed-in tool, nothing running;
+ * "working": a turn runs on it; "starting": a restart is under way; "error": the last turn or restart failed (`error`
+ * says why); "stopped": the bot's computer is asleep or gone (a restart wakes it).
+ */
+export interface EngineRuntime {
+  engine: Engine | null;
+  /** The model alias the bot uses ("default" when the tool picks). */
+  model: string;
+  status: "ready" | "working" | "starting" | "error" | "stopped";
+  error: string | null;
+  since: number;
+}
+/** One check of the desk test (an end-to-end run on a real bot computer). */
+export interface DeskCheck { id: string; label: string; ok: boolean; detail: string; ms: number }
+/** A desk test run: started from Settings → Computer, or from the operator command (npm run desk:test). */
+export interface DeskTestRun {
+  id: string;
+  status: "running" | "passed" | "failed" | "error";
+  startedAt: number; finishedAt: number | null;
+  checks: DeskCheck[];
+  /** Pictures taken during the run, served by GET /computer/desk-test/shots/:name. */
+  shots: string[];
+  error: string | null;
 }
 export interface SubscriptionUsage { engine: Engine; fiveHour: number | null; sevenDay: number | null; resetsAt: number | null; at: number }
 export interface UsageSummary {

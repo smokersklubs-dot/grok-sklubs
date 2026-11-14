@@ -1,8 +1,8 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { api, ApiError, enc, errText } from "../api";
-import { LOCALES, tn, useT } from "../i18n";
+import { LOCALES, tn, useT, type Key } from "../i18n";
 import { useStore, type AppSection, type Theme } from "../store";
-import type { AuditEntry, CheckinSettings, Locale, Policy, SharedPage, SubscriptionUsage, UsageSummary } from "../types";
+import type { AuditEntry, CheckinSettings, DeskTestRun, Locale, Policy, SharedPage, SubscriptionUsage, UsageSummary } from "../types";
 import { ENGINE_BRAND, ENGINE_TOOL } from "../lib/engines";
 import { clockTime, compactNumber, dateTime, dayLabel, initials, money, relTime, shortDate, toolWords } from "../lib/format";
 import { BotAvatar } from "./Avatar";
@@ -198,9 +198,84 @@ function ComputerSection() {
           <p className="muted small">
             {tn(computer.kind === "linux" ? "computer.footLinux" : "computer.footBrowser", computer.maxDesktops)}
           </p>
+          {computer.kind === "linux" && <DeskTest />}
         </>
       )}
     </>
+  );
+}
+
+/**
+ * The desk test (B-10): an end-to-end check of a bot computer, on two computers of invented bots (no real bot, no data
+ * of yours). Each check shows passed or failed with its time; the pictures taken along the way open in a new tab.
+ */
+function DeskTest() {
+  const t = useT();
+  const [run, setRun] = useState<DeskTestRun | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [starting, setStarting] = useState(false);
+  useEffect(() => {
+    api<{ run: DeskTestRun | null }>("GET", "/computer/desk-test").then((r) => setRun(r.run), () => undefined);
+  }, []);
+  // While it runs, the result is refreshed every 2 s.
+  useEffect(() => {
+    if (run?.status !== "running") return;
+    const timer = window.setInterval(() => {
+      api<{ run: DeskTestRun | null }>("GET", "/computer/desk-test").then((r) => setRun(r.run), () => undefined);
+    }, 2000);
+    return () => window.clearInterval(timer);
+  }, [run?.status]);
+  const start = async () => {
+    setStarting(true);
+    setError(null);
+    try {
+      setRun((await api<{ run: DeskTestRun }>("POST", "/computer/desk-test")).run);
+    } catch (e) {
+      setError(errText(e));
+    } finally {
+      setStarting(false);
+    }
+  };
+  const running = run?.status === "running";
+  const failed = run?.checks.filter((c) => !c.ok).length ?? 0;
+  return (
+    <div className="desk-test">
+      <h3 className="pane-heading">{t("desk.title")}</h3>
+      <p className="muted small">{t("desk.intro")}</p>
+      <div className="row-gap">
+        <button type="button" className="btn btn-small btn-primary" disabled={running || starting} onClick={() => void start()}>
+          <Icon name="play" size={12} /> {t(running ? "desk.running" : run ? "desk.again" : "desk.start")}
+        </button>
+        {run && !running && (
+          <span className={`desk-verdict is-${run.status}`} role="status">
+            {run.status === "passed" ? t("desk.passed", { n: run.checks.length, s: Math.round(((run.finishedAt ?? run.startedAt) - run.startedAt) / 1000) }) : run.status === "error" ? t("desk.error", { error: run.error ?? "" }) : t("desk.failed", { n: failed })}
+          </span>
+        )}
+      </div>
+      <ErrorNote>{error}</ErrorNote>
+      {run && run.checks.length > 0 && (
+        <ol className="desk-checks">
+          {run.checks.map((c) => (
+            <li key={c.id} className={c.ok ? "is-ok" : "is-fail"}>
+              <span className={`desk-mark ${c.ok ? "is-ok" : "is-fail"}`}>{t(c.ok ? "desk.ok" : "desk.fail")}</span>
+              <span className="desk-label">{t(`desk.check.${c.id}` as Key)}</span>
+              <span className="desk-detail truncate" title={c.detail}>{c.detail}</span>
+              <span className="desk-ms">{c.ms < 1000 ? `${c.ms} ms` : `${(c.ms / 1000).toFixed(1)} s`}</span>
+            </li>
+          ))}
+          {running && <li className="is-pending"><span className="dot-inline dot-pulse" /> {t("desk.next")}</li>}
+        </ol>
+      )}
+      {run && run.shots.length > 0 && (
+        <div className="desk-shots">
+          {run.shots.map((name) => (
+            <a key={name} href={`/api/computer/desk-test/shots/${enc(name)}`} target="_blank" rel="noreferrer" title={name}>
+              <img src={`/api/computer/desk-test/shots/${enc(name)}`} alt={name} loading="lazy" />
+            </a>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 

@@ -5,6 +5,7 @@ import { useStore } from "../store";
 import { useScreen } from "../lib/screen";
 import { BotAvatar } from "./Avatar";
 import { LiveScreen } from "./LiveScreen";
+import { ScreenFrame } from "./ScreenFrame";
 import { Icon, Spinner } from "./Icon";
 import { IconButton, useDialogFocus, useEscape, useTick } from "./ui";
 import type { Recording } from "../types";
@@ -213,8 +214,32 @@ export function ComputerViewer({ botId }: { botId: string }) {
   }, [handBack]);
 
   useDialogFocus(root);
-  // In control mode Escape belongs to the remote desktop, so the overlay ignores it.
-  useEscape(control ? () => undefined : closeViewer);
+  // Escape closes the viewer only in watch mode and outside full screen: while driving it belongs to the remote desktop,
+  // and in full screen the browser uses it to leave full screen.
+  useEscape(() => { if (!control && !document.fullscreenElement) closeViewer(); });
+
+  // Opened while the computer sleeps: wake it, once (U-007).
+  const wokeOnce = useRef(false);
+  useEffect(() => {
+    if (wokeOnce.current || !linux || desktop?.open !== false) return;
+    wokeOnce.current = true;
+    void wakeUp();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [linux, desktop?.open]);
+  // A successful reset reconnects the stream (U-007).
+  const [liveAttempt, setLiveAttempt] = useState(0);
+  const resetScreen = async () => {
+    await api("POST", `/bots/${botId}/desktop/tidy`);
+    setLiveUp(false);
+    setLiveAttempt((n) => n + 1);
+  };
+  const leaveControl = () => {
+    flushTyped();
+    // Handing back ends a demonstration under way.
+    if (rec?.status === "recording") void teach("stop");
+    setControl(false);
+    handBack();
+  };
 
   useEffect(() => {
     if (!bot) closeViewer();
@@ -366,8 +391,11 @@ export function ComputerViewer({ botId }: { botId: string }) {
           </div>
         ) : live ? (
           <>
-            <LiveScreen botId={botId} control={control} label={t("viewer.screenAlt", { name: bot.name })} onConnect={() => setLiveUp(true)} onClose={() => { if (!liveUp) setLiveFailedFor(liveKey); setLiveUp(false); }} />
-            {!liveUp && <div className="viewer-empty live-wait"><Spinner size={28} /><p>{t("common.connecting")}</p></div>}
+            <ScreenFrame bot={bot} variant="stage" live={liveUp} control={control} hint={takeover ? t("takeover.bar", { name: bot.name }) : null}
+              onTakeControl={() => setControl(true)} onHandBack={leaveControl} onReset={resetScreen}>
+              <LiveScreen key={liveAttempt} botId={botId} control={control} label={t("viewer.screenAlt", { name: bot.name })} onConnect={() => setLiveUp(true)} onClose={() => { if (!liveUp) setLiveFailedFor(liveKey); setLiveUp(false); }} />
+              {!liveUp && <div className="viewer-empty live-wait"><Spinner size={28} /><p>{t("common.connecting")}</p></div>}
+            </ScreenFrame>
           </>
         ) : url ? (
           <img
@@ -437,19 +465,11 @@ export function ComputerViewer({ botId }: { botId: string }) {
                   <Icon name="check" size={14} /> {t("takeover.done")}
                 </button>
               )}
-              <button
-                type="button"
-                className={`btn btn-small ${takeover ? "" : "btn-primary"}`}
-                onClick={() => {
-                  flushTyped();
-                  // Handing back ends a demonstration under way.
-                  if (rec?.status === "recording") void teach("stop");
-                  setControl(false);
-                  handBack();
-                }}
-              >
-                {t("viewer.handBack")}
-              </button>
+              {!live && (
+                <button type="button" className={`btn btn-small ${takeover ? "" : "btn-primary"}`} onClick={leaveControl}>
+                  {t("viewer.handBack")}
+                </button>
+              )}
             </>
           ) : (
             <>
@@ -464,7 +484,7 @@ export function ComputerViewer({ botId }: { botId: string }) {
           {error && <span className="viewer-error" role="alert">{error}</span>}
         </footer>
       )}
-      {engine && control && (
+      {engine && control && !live && (
         <div className="viewer-control-bar" role="status">
           <span className="dot-inline dot-live" />
           {takeover ? t("takeover.bar", { name: bot.name }) : t("viewer.controlBar", { name: bot.name })}

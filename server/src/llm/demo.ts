@@ -150,6 +150,11 @@ export class DemoProvider implements LlmProvider {
           : `This is demo mode, so I am following keywords rather than thinking. You said: “${said.slice(0, 200)}”.\n\nTry: **open https://example.com**, **remember "I prefer short answers"**, **run "ls -la"**, **save "a note"**, **set up a routine**, **add a task "Call the bank"**, **analyze my sales**, or **ask me a question**. Add a model key to .env to get a real teammate.`,
       }];
     }
+    // A short pause before each tool call, as a real model takes: the thinking block and its step counter can be seen.
+    if (content.some((b) => b.type === "tool_use") && !process.env.NODE_TEST_CONTEXT) {
+      await sleep(Number(process.env.DEMO_STEP_MS ?? 900));
+      if (req.signal?.aborted) throw new Error("aborted");
+    }
     for (const b of content) {
       if (b.type !== "text") continue;
       for (const word of b.text.split(/(?<=\s)/)) {

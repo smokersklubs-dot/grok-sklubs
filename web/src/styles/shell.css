@@ -160,3 +160,19 @@
 
 .signin-notice { display: flex; align-items: flex-start; gap: 8px; padding: 9px 11px; border-radius: var(--r-md); background: var(--info-soft); color: var(--info); font-size: 13px; line-height: 1.4; }
 .signin-notice .icon { flex: none; margin-top: 1px; }
+
+/* Panel hero: the live screen of the bot, with its control pill (B-8) */
+.screen-hero { width: 100%; aspect-ratio: 16 / 10; margin-bottom: 8px; background: #000; border-radius: 14px; }
+.screen-hero .screen-frame { border-radius: 14px; }
+.screen-hero .live-screen canvas { border-radius: 0; box-shadow: none; }
+.screen-hero-open { position: absolute; inset: 0; z-index: 2; background: transparent; cursor: zoom-in; }
+.screen-hero-wait { position: absolute; inset: 0; display: grid; place-items: center; }
+.screen-hero.is-driving { aspect-ratio: auto; }
+.screen-hero.is-driving .screen-frame { aspect-ratio: 16 / 10; }
+
+/* Sign-up: the first bot's name and role (B-9) */
+.signin-firstbot { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 12px; border: 1px solid var(--border); border-radius: var(--r-md); }
+.signin-firstbot legend { padding: 0 4px; font-size: 13px; font-weight: 650; }
+.signin-firstbot .field-hint { margin: 0; }
+.signin-firstbot-row { display: grid; grid-template-columns: auto 1fr 1fr; gap: 10px; align-items: end; }
+@media (max-width: 420px) { .signin-firstbot-row { grid-template-columns: auto 1fr; } .signin-firstbot-row .field:last-child { grid-column: 1 / -1; } }

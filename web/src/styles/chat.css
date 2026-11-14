@@ -376,3 +376,34 @@ button.captions:hover { box-shadow: 0 0 0 1px var(--border-strong); }
 .skill-picker-name { font-weight: 600; font-size: 13.5px; }
 .skill-picker-desc { flex-basis: 100%; font-size: 12px; color: var(--text-3); }
 .skill-picker .pill { margin-left: 0; }
+
+/* ── Thinking block (B-7): avatar on a dark pill, caption, "working for … · N steps" ── */
+.thinking { display: flex; align-items: center; gap: 14px; margin-top: 12px; min-height: 52px; }
+.thinking-badge { position: relative; flex: none; display: flex; flex-direction: column; align-items: center; }
+.thinking-avatar { position: relative; z-index: 1; margin-bottom: -8px; animation: thinking-bob 2.6s ease-in-out infinite; }
+.thinking-bulb { position: absolute; top: -4px; right: -8px; display: grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; background: #fff6cf; color: #b98500; box-shadow: 0 0 0 2px var(--bg), 0 0 10px 2px rgba(255, 205, 60, 0.75); animation: thinking-glow 1.8s ease-in-out infinite; }
+.thinking-alert { position: absolute; top: -2px; right: -4px; width: 11px; height: 11px; border-radius: 50%; background: #f0a020; box-shadow: 0 0 0 2px var(--bg); }
+.thinking-pill { display: flex; flex-direction: column; align-items: center; min-width: 88px; max-width: 260px; padding: 11px 14px 6px; border-radius: 20px; background: #1c1c1c; color: #fff; line-height: 1.2; }
+.thinking-name { max-width: 100%; font-size: 14px; font-weight: 550; }
+.thinking-status { font-size: 12px; color: rgba(255, 255, 255, 0.6); animation: thinking-pulse 1.6s ease-in-out infinite; }
+.thinking.is-waiting .thinking-avatar, .thinking.is-waiting .thinking-status { animation: none; }
+.thinking.is-waiting .thinking-status { color: #f4b545; }
+.thinking-body { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1; }
+.thinking-caption { font-size: 13.5px; color: var(--text-2); animation: thinking-caption 0.32s ease both; }
+.thinking.is-waiting .thinking-caption { color: var(--warn); font-weight: 550; }
+.thinking-meta { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.thinking-queued { margin-left: 4px; }
+@keyframes thinking-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+@keyframes thinking-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+@keyframes thinking-glow { 0%, 100% { box-shadow: 0 0 0 2px var(--bg), 0 0 6px 1px rgba(255, 205, 60, 0.55); } 50% { box-shadow: 0 0 0 2px var(--bg), 0 0 14px 4px rgba(255, 205, 60, 0.85); } }
+@keyframes thinking-caption { from { opacity: 0; transform: translateY(6px); } }
+/* The open steps chip of the running turn: spinner, the step under way, the count. */
+.steps-live { height: 26px; padding: 0 10px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); }
+.steps-current { max-width: 320px; font-weight: 450; color: var(--text-2); animation: thinking-caption 0.25s ease both; }
+.steps-sep { width: 1px; height: 12px; background: var(--border-strong, var(--border)); }
+.steps-count { font-family: var(--mono, ui-monospace, monospace); font-size: 11px; color: var(--text-3); }
+.steps-waiting { border: 1px solid var(--border); border-radius: 999px; }
+.dot-waiting { background: #f0a020; }
+@media (prefers-reduced-motion: reduce) {
+  .thinking-avatar, .thinking-status, .thinking-bulb, .thinking-caption, .steps-current { animation: none; }
+}

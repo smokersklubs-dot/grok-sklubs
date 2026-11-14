@@ -10,6 +10,10 @@ import {
 } from "./shared.js";
 
 export const now = () => Date.now();
+/** MAX_BOTS, read here so the store does not depend on the whole configuration module at load. */
+let maxBotsOf = () => Math.max(0, Math.floor(Number(process.env.MAX_BOTS) || 0));
+/** For tests: change the team limit without restarting. */
+export const setMaxBots = (n: number) => { maxBotsOf = () => n; };
 export const newId = (prefix: string) => `${prefix}_${randomUUID().replace(/-/g, "").slice(0, 20)}`;
 export const clip = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1) + "…" : s);
 
@@ -131,7 +135,22 @@ const ENUMS: Record<string, readonly string[]> = {
 };
 const LIMITS: Record<string, number> = { name: 60, label: 60, description: 500, instructions: 8000, model: 120 };
 
+/**
+ * The installation is full (MAX_BOTS): no agent bot is created, nothing is evicted to make room. Rooms and hidden
+ * helpers are not counted.
+ */
+export class TeamFullError extends Error {
+  constructor(public max: number) { super(`The team is full: this installation holds at most ${max} bots. Remove one to create another.`); }
+}
+
 export const bots = {
+  /** Agent bots across every account (group chats and hidden helpers excluded): what MAX_BOTS limits. */
+  teamCount: () => q.get<{ n: number }>("SELECT COUNT(*) AS n FROM bots WHERE kind = 'agent' AND hidden = 0")!.n,
+  /** Throws TeamFullError when `extra` more agent bots would not fit (MAX_BOTS; 0 = no limit). */
+  assertRoom(extra = 1) {
+    const max = maxBotsOf();
+    if (max > 0 && bots.teamCount() + extra > max) throw new TeamFullError(max);
+  },
   byId: (id: string) => { const r = q.get("SELECT * FROM bots WHERE id = ?", id); return r ? toBot(r) : null; },
   owned(userId: string, id: string) { const b = bots.byId(id); return b && b.userId === userId ? b : null; },
   list: (userId: string, includeHidden = false) =>
@@ -143,6 +162,7 @@ export const bots = {
     return r ? toBot(r) : null;
   },
   create(userId: string, input: Partial<Bot> & { hidden?: boolean; parentId?: string | null }): BotRecord {
+    if ((input.kind ?? "agent") === "agent" && !input.hidden) bots.assertRoom();
     const id = newId("bot");
     const name = (input.name ?? "").trim().slice(0, 60) || "New bot";
     const shape = AVATAR_SHAPES.includes(input.shape as any) ? input.shape! : stablePick(id + "s", AVATAR_SHAPES);

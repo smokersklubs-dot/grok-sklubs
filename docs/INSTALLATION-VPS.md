@@ -66,6 +66,45 @@ Sur le VPS, dans `/opt/sklubot` :
 | Sauvegarder les données | `bash deploy/backup.sh` |
 | Voir ce qui se passe | `docker compose -f docker-compose.vps.yml logs -f sklubot` |
 | Arrêter | `docker compose -f docker-compose.vps.yml down` |
+| Recevoir un lien de connexion (mot de passe perdu) | `docker compose -f docker-compose.vps.yml exec sklubot node server/dist/sign-in-link.js ton@adresse.fr` |
+| Vérifier un ordinateur de bot de bout en bout | `docker compose -f docker-compose.vps.yml exec sklubot node server/dist/desk-cli.js` (ou Réglages → Ordinateur → **Lancer le banc d'essai**) |
+| Tout désinstaller | `sudo bash deploy/uninstall.sh` (voir plus bas) |
+
+**Lien de connexion.** La commande affiche une adresse valable **15 minutes**, utilisable **une seule fois** : ouvre-la
+et tu es connecté. Déjà utilisée ou expirée, elle répond « ce lien a expiré ou a déjà servi » : relance la commande
+pour en avoir un nouveau.
+
+**Nom du premier bot.** À la création du compte, tu choisis le nom et le rôle de ton premier bot (par défaut
+« Juno », « Bras droit »). Pour changer ces valeurs par défaut sur tout le serveur, lance l'installation avec
+`SKLUBOT_FIRST_BOT_NAME=Maya SKLUBOT_FIRST_BOT_LABEL="Associée"` (écrit dans `.env` seulement si tu les fournis).
+Le nom reste modifiable ensuite dans les réglages du bot.
+
+**Nombre de bots.** Par défaut il n'y a pas de limite. `SKLUBOT_MAX_BOTS=6` dans `.env` (puis
+`docker compose -f docker-compose.vps.yml up -d`) limite toute l'installation à 6 bots, tous comptes confondus
+(les salons de groupe ne comptent pas). Au-delà, la création est refusée avec un message clair : retire un bot
+d'abord. Aucun bot n'est jamais supprimé à ta place.
+
+## Désinstaller complètement
+
+```bash
+sudo bash /opt/sklubot/deploy/uninstall.sh --dry-run   # montre ce qui serait supprimé, sans rien toucher
+sudo bash /opt/sklubot/deploy/uninstall.sh             # propose une sauvegarde, puis demande « OUI »
+```
+
+Le script commence par **proposer une sauvegarde** (base, bibliothèques des bots, dossiers de leurs ordinateurs,
+plus une copie de `.env`) dans ton dossier personnel, hors du dossier qui va être effacé. Il demande ensuite de
+taper **OUI**, puis retire, dans cet ordre :
+
+1. les ordinateurs des bots (arrêtés d'abord : les outils Claude Code / Codex qui y tournent s'arrêtent avec eux) ;
+2. les conteneurs de l'application : Sklubot, le proxy Docker filtrant, Caddy ;
+3. les volumes : données, dossiers des ordinateurs des bots (profils de navigateur, connexions), certificats Caddy ;
+4. les réseaux `sklubot_net` et `sklubot_docker` ;
+5. les images construites ou téléchargées pour Sklubot (une image utilisée par un autre conteneur est gardée) ;
+6. le dossier `/opt/sklubot` (code et `.env`).
+
+À la fin, il affiche ce qui a été retiré et ce qui reste. Rien ne tourne plus. Docker lui-même, les règles du
+pare-feu et tes autres conteneurs ne sont pas touchés. Le script peut être relancé sans risque.
+Options : `--no-backup`, `--keep-images` ; sans terminal : `SKLUBOT_CONFIRM=OUI` et `SKLUBOT_BACKUP=1` ou `0`.
 
 ## Connecter Google / Microsoft / Slack
 
@@ -114,3 +153,9 @@ tant que l'app est en mode Test, seuls les « Test users » ajoutés peuvent se 
 - La connexion est faite **par bot** (chaque bot a son propre ordinateur). Refais l'étape 2 pour chaque bot que tu veux brancher.
 - Ce sont les outils officiels (Claude Code d'Anthropic, Codex d'OpenAI) avec ton compte : les limites de ton forfait s'appliquent, et c'est prévu pour **ton usage personnel** — ne fais pas travailler les bots de quelqu'un d'autre sur ton abonnement.
 - Après une mise à jour, efface une fois l'ordinateur des bots existants (Réglages → Ordinateur → Effacer) pour qu'ils reçoivent la nouvelle image avec Claude Code et Codex.
+- **Un bot coincé ?** Réglages du bot → Cerveau → **Redémarrer le moteur** : ce qu'il faisait s'arrête, ses demandes
+  d'accord en attente expirent, et son moteur repart. La conversation est gardée.
+- **Pourquoi mes bots n'apparaissent pas dans l'appli Claude ou ChatGPT ?** C'est voulu : chaque bot a son propre
+  ordinateur et lance l'outil officiel (Claude Code ou Codex) pour chaque tour, avec ses propres routines et sa
+  propre messagerie entre bots, gérées par Sklubot. Nous n'utilisons pas le mode « plusieurs bots » intégré à ces
+  outils : les bots créés dans Sklubot ne s'affichent donc pas dans leurs applications de bureau, et inversement.

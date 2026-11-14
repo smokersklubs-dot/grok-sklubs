@@ -64,29 +64,61 @@ export interface Look { name: string; label: string; color: string; locale: stri
 let lookOf: (botId: string) => Look | null = () => null;
 /** Tells this module how to find a bot's name, colour and owner (set once at start-up). */
 export const setLookSource = (fn: (botId: string) => Look | null) => { lookOf = fn; };
-const dressedWith = new Map<string, string>();
+/** Looks given directly, for computers of bots that are not in the database (the desk test's invented bots). */
+const lookOverrides = new Map<string, Look>();
+export const setLookOverride = (botId: string, look: Look | null) => { if (look) lookOverrides.set(botId, look); else lookOverrides.delete(botId); };
+const currentLook = (botId: string) => lookOverrides.get(botId) ?? lookOf(botId);
+/**
+ * What dress.py receives. The bot's id travels along: the wallpaper's doodles are laid out from it (B-1), so a renamed
+ * bot keeps the same arrangement and only a new colour changes the tints.
+ */
+const lookPayload = (botId: string, look: Look) => JSON.stringify({ ...look, color: HEX[look.color] ?? look.color, id: botId });
 
-/** Applies the bot's look to its computer; repeat calls with the same look only check that it is still up. */
-async function dress(botId: string) {
-  const look = lookOf(botId);
-  if (!look) return;
-  const payload = JSON.stringify({ ...look, color: HEX[look.color] ?? look.color });
-  const r = await docker(["exec", "-i", containerName(botId), "python3", "/opt/sklubot/dress.py"], { timeoutMs: 60_000, input: payload });
-  if (r.code === 0) dressedWith.set(botId, payload);
-  else console.error(`[dress ${botId}]`, r.stderr.trim().slice(0, 300));
+/** The look last applied to each computer by this server process. */
+const dressedWith = new Map<string, string>();
+/** A dressing under way per bot: every caller waits for the same attempt (U-005). */
+const dressing = new Map<string, Promise<void>>();
+type DressRunner = (botId: string, payload: string) => Promise<{ code: number | null; stderr: string }>;
+let dressRunner: DressRunner = (botId, payload) => docker(["exec", "-i", containerName(botId), "python3", "/opt/sklubot/dress.py"], { timeoutMs: 60_000, input: payload });
+/** For tests: replace what applies a look (null puts the real one back). */
+export const setDressRunner = (fn: DressRunner | null) => { dressRunner = fn ?? ((botId, payload) => docker(["exec", "-i", containerName(botId), "python3", "/opt/sklubot/dress.py"], { timeoutMs: 60_000, input: payload })); };
+
+/**
+ * Applies the bot's look to its computer, once per bot and per server run (U-005): concurrent callers share one
+ * attempt; a success is remembered (until the look changes or the computer sleeps); a failure is logged and forgotten,
+ * so the next request tries again. `force`: apply even if this look was applied already (dress.py still only redoes
+ * what changed or died, see its fast path).
+ */
+export function ensureDressed(botId: string, force = false): Promise<void> {
+  const look = currentLook(botId);
+  if (!look) return Promise.resolve();
+  const payload = lookPayload(botId, look);
+  const inflight = dressing.get(botId);
+  if (inflight) return force ? inflight.catch(() => {}).then(() => ensureDressed(botId, true)) : inflight;
+  if (!force && dressedWith.get(botId) === payload) return Promise.resolve();
+  const job = (async () => {
+    const r = await dressRunner(botId, payload);
+    if (r.code !== 0) throw new Error(`could not dress the screen: ${r.stderr.trim().slice(0, 300) || `exit ${r.code}`}`);
+    dressedWith.set(botId, payload);
+  })();
+  dressing.set(botId, job);
+  job.catch((err) => { dressedWith.delete(botId); console.error(`[dress ${botId}]`, (err as Error).message); })
+    .finally(() => { if (dressing.get(botId) === job) dressing.delete(botId); });
+  return job;
 }
+const dress = (botId: string) => ensureDressed(botId);
 
 /** Capabilities a bot's computer keeps (Docker's defaults minus MKNOD, NET_RAW, SYS_CHROOT, SETPCAP, SETFCAP, FSETID, NET_BIND_SERVICE). */
 export const COMPUTER_CAPS = ["CHOWN", "DAC_OVERRIDE", "FOWNER", "SETUID", "SETGID", "KILL", "AUDIT_WRITE"];
 
 export type Power = "running" | "asleep" | "absent";
-interface Machine { botId: string; userId: string; lastUsedAt: number; busy: number; power: Power }
+interface Machine { botId: string; userId: string; lastUsedAt: number; busy: number; power: Power; /** When the container was last seen running (checked again after 120 s). */ verifiedAt?: number }
 const machines = new Map<string, Machine>();
 const starting = new Map<string, Promise<void>>();
 let changed: (userId: string) => void = () => {};
 export const onMachinesChanged = (fn: (userId: string) => void) => { changed = fn; };
 
-async function powerOf(botId: string): Promise<Power> {
+export async function powerOf(botId: string): Promise<Power> {
   const r = await docker(["inspect", "--format", "{{.State.Running}}", containerName(botId)], { timeoutMs: 8000 });
   return r.code !== 0 ? "absent" : r.stdout.toString().trim() === "true" ? "running" : "asleep";
 }
@@ -101,13 +133,20 @@ function note(botId: string, userId: string, power: Power): Machine {
 async function sleepMachine(botId: string) {
   const m = machines.get(botId);
   await docker(["stop", "-t", "3", containerName(botId)], { timeoutMs: 30_000 });
+  dressedWith.delete(botId);
   if (m) note(botId, m.userId, "asleep");
 }
 
 /** Makes sure the bot's computer is on. Only a few may run at once; the least recently used idle one goes to sleep. */
 async function wake(botId: string, userId: string, workspace: string): Promise<Machine> {
   const known = machines.get(botId);
-  if (known?.power === "running") { known.lastUsedAt = now(); return known; }
+  // A computer believed on is checked with Docker at most every 120 s: one removed or stopped behind our back is started again.
+  if (known?.power === "running" && now() - (known.verifiedAt ?? 0) < 120_000) { known.lastUsedAt = now(); return known; }
+  if (known?.power === "running" && !starting.has(botId)) {
+    if ((await powerOf(botId)) === "running") { known.verifiedAt = now(); known.lastUsedAt = now(); return known; }
+    note(botId, userId, "asleep");
+    dressedWith.delete(botId);
+  }
   let pending = starting.get(botId);
   if (!pending) {
     pending = (async () => {
@@ -140,7 +179,7 @@ async function wake(botId: string, userId: string, workspace: string): Promise<M
       // The screen needs a moment before it accepts input.
       for (let i = 0; i < 60; i++) {
         const probe = await docker(["exec", containerName(botId), "xdotool", "getdisplaygeometry"], { timeoutMs: 5000 });
-        if (probe.code === 0) { await dress(botId).catch(() => {}); return; }
+        if (probe.code === 0) { dressedWith.delete(botId); await dress(botId).catch(() => {}); return; }
         await new Promise((r) => setTimeout(r, 250));
       }
       throw new Error("the computer started but its screen did not come up");
@@ -151,13 +190,14 @@ async function wake(botId: string, userId: string, workspace: string): Promise<M
   await pending;
   const m = note(botId, userId, "running");
   m.lastUsedAt = now();
+  m.verifiedAt = now();
   return m;
 }
 
 async function onMachine<T>(botId: string, userId: string, workspace: string, fn: (name: string) => Promise<T>): Promise<T> {
   const m = await wake(botId, userId, workspace);
   // First use since this server started (or after a restart of the container): make sure it is dressed.
-  if (!dressedWith.has(botId)) await dress(botId).catch(() => {});
+  await dress(botId).catch(() => {});
   m.busy++;
   try { return await fn(containerName(botId)); } finally { m.busy--; m.lastUsedAt = now(); }
 }
@@ -262,17 +302,41 @@ export const linuxScreen = {
     const page = await docker(["exec", name, "python3", "/opt/sklubot/page-text.py"], { timeoutMs: 15_000 });
     try { const p = JSON.parse(page.stdout.toString("utf8")) as { url?: string; title?: string }; return { title: p.title || title, url: p.url ?? "" }; } catch { return { title, url: "" }; }
   },
-  /** Re-applies the look after the bot was renamed or recoloured (only if its computer is on). */
+  /**
+   * The bot was renamed, relabelled or got a new shape or colour (U-005): a computer that is on is dressed again now;
+   * an asleep one will be on its next wake; a bot without a computer gets nothing.
+   */
   async redress(botId: string) {
-    if (machines.get(botId)?.power !== "running") return;
-    const look = lookOf(botId);
-    if (look && dressedWith.get(botId) !== JSON.stringify({ ...look, color: HEX[look.color] ?? look.color })) await dress(botId);
+    const m = machines.get(botId);
+    if (!m || m.power === "absent") return;
+    if (m.power !== "running") { dressedWith.delete(botId); return; }
+    await ensureDressed(botId);
+  },
+  /**
+   * The screen check before a turn (B-2): the computer is on (checked with Docker at most every 120 s), its look is
+   * applied (once per server run), and the bot's browser answers on its debugging port within 1.5 s — otherwise the
+   * browser is (re)started on the bot's profile and home page.
+   */
+  async ready(botId: string, userId: string, ws: string) {
+    await wake(botId, userId, ws);
+    await ensureDressed(botId);
+    const name = containerName(botId);
+    const probe = await docker(["exec", name, "curl", "-fsS", "-m", "1.5", "-o", "/dev/null", "http://127.0.0.1:9222/json/version"], { timeoutMs: 8000 });
+    if (probe.code === 0) return;
+    const r = await docker(["exec", "-d", name, "/opt/sklubot/open-browser.sh"], { timeoutMs: 20_000 });
+    if (r.code !== 0) throw new Error(`could not start the browser: ${r.stderr.trim().slice(0, 200)}`);
+  },
+  /** Whether the bot's browser answers on its debugging port right now (1.5 s at most). Never wakes the computer. */
+  async browserAnswers(botId: string): Promise<boolean> {
+    if (machines.get(botId)?.power !== "running") return false;
+    const probe = await docker(["exec", containerName(botId), "curl", "-fsS", "-m", "1.5", "-o", "/dev/null", "http://127.0.0.1:9222/json/version"], { timeoutMs: 8000 });
+    return probe.code === 0;
   },
   /** Closes every window except the desktop's own, keeps logins, reopens the browser on the home page. */
   tidy: (botId: string, userId: string, ws: string) => onMachine(botId, userId, ws, async (n) => {
     const r = await docker(["exec", n, "/opt/sklubot/tidy.sh"], { timeoutMs: 30_000 });
     if (r.code !== 0) throw new Error(`could not tidy the screen: ${r.stderr.trim().slice(0, 200)}`);
-    await dress(botId);
+    await ensureDressed(botId, true);
   }),
   /** Counts as use, so the idle sweep leaves the computer awake. */
   touch: (botId: string) => { const m = machines.get(botId); if (m) m.lastUsedAt = now(); },
@@ -284,6 +348,7 @@ export const linuxScreen = {
     await docker(["rm", "-f", containerName(botId)], { timeoutMs: 30_000 });
     await docker(["volume", "rm", "-f", volumeName(botId)], { timeoutMs: 30_000 });
     machines.delete(botId);
+    dressedWith.delete(botId);
     if (m) changed(m.userId);
   },
 };

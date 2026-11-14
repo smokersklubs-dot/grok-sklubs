@@ -126,6 +126,8 @@ interface Store {
   signupOpen: boolean;
   /** A fresh install: the first account needs the setup code printed by the installer. */
   setupCodeRequired: boolean;
+  /** The first bot a new account gets, as the server would name it (the sign-up form lets the person change it). */
+  firstBot: { name: string; label: string };
   /** Whether bots on this server can create images. */
   imageGeneration: boolean;
   /** How bots can make videos (Higgsfield app, a video API, or neither). */
@@ -271,6 +273,7 @@ export const useStore = create<Store>((set, get) => ({
   user: null,
   signupOpen: false,
   setupCodeRequired: false,
+  firstBot: { name: "Juno", label: "" },
   imageGeneration: false,
   video: { provider: null, higgsfield: false },
   openThread: null,
@@ -324,8 +327,8 @@ export const useStore = create<Store>((set, get) => ({
       if (get().boot === "ready") set({ boot: "signedOut", user: null });
     });
     try {
-      const me = await api<{ user: User | null; signupOpen: boolean; setupCodeRequired?: boolean; imageGeneration?: boolean; video?: VideoStatus }>("GET", "/me");
-      set({ imageGeneration: me.imageGeneration === true, video: me.video ?? { provider: null, higgsfield: false } });
+      const me = await api<{ user: User | null; signupOpen: boolean; setupCodeRequired?: boolean; imageGeneration?: boolean; video?: VideoStatus; firstBot?: { name: string; label: string } }>("GET", `/me?locale=${get().locale}`);
+      set({ imageGeneration: me.imageGeneration === true, video: me.video ?? { provider: null, higgsfield: false }, ...(me.firstBot ? { firstBot: me.firstBot } : {}) });
       if (me.user) {
         set({ signupOpen: me.signupOpen });
         await get().signedIn(me.user);

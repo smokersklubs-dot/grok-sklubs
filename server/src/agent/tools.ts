@@ -890,12 +890,9 @@ const userTools: BuiltinTool[] = [
 ];
 
 /** Stops a bot's work and removes it together with its files and browser. */
+/** Deletes a bot, step by step (see retire.ts). */
 export async function retireBot(b: BotRecord) {
-  interrupt(b.id);
-  for (const r of routines.forBot(b.id)) unschedule(r.id);
-  for (const child of bots.children(b.id)) await retireBot(child);
-  await screen.reset(b.id);
-  bots.remove(b.id);
+  return (await import("./retire.js")).retireBot(b);
 }
 
 const inGroup = (group: ToolGroup, list: BuiltinTool[]) => list.map((t) => ({ ...t, group: t.group ?? group }));

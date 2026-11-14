@@ -10,6 +10,9 @@
 #
 # Sans questions (pour automatiser), fournis les réponses en variables :
 #   SKLUBOT_DOMAIN=bots.exemple.fr ANTHROPIC_API_KEY=... bash install.sh
+# Facultatif : SKLUBOT_FIRST_BOT_NAME / SKLUBOT_FIRST_BOT_LABEL (nom et rôle du premier bot de chaque compte ;
+# écrits dans .env seulement s'ils sont fournis, sinon « Juno » / « Bras droit »), SKLUBOT_MAX_BOTS (nombre de bots
+# au plus sur toute l'installation ; 0 = sans limite).
 set -euo pipefail
 
 REPO="${SKLUBOT_REPO:-https://github.com/smokersklubs-dot/grok-sklubs.git}"
@@ -108,6 +111,16 @@ if ! grep -q '^SKLUBOT_SETUP_CODE=.' .env; then
   umask 077
   printf 'SKLUBOT_SETUP_CODE=%s\n' "$(new_setup_code)" >> .env
 fi
+# Réglages facultatifs : écrits (ou remplacés) seulement quand ils sont fournis à cette exécution.
+set_env() { # set_env CLÉ valeur
+  local key="$1" value="$2"
+  umask 077
+  if grep -q "^$key=" .env; then grep -v "^$key=" .env > .env.tmp && cat .env.tmp > .env && rm -f .env.tmp; fi
+  printf '%s=%s\n' "$key" "$value" >> .env
+}
+[ -n "${SKLUBOT_FIRST_BOT_NAME:-}" ] && set_env SKLUBOT_FIRST_BOT_NAME "$SKLUBOT_FIRST_BOT_NAME" && info "Premier bot de chaque compte : $SKLUBOT_FIRST_BOT_NAME."
+[ -n "${SKLUBOT_FIRST_BOT_LABEL:-}" ] && set_env SKLUBOT_FIRST_BOT_LABEL "$SKLUBOT_FIRST_BOT_LABEL"
+[ -n "${SKLUBOT_MAX_BOTS:-}" ] && set_env SKLUBOT_MAX_BOTS "$SKLUBOT_MAX_BOTS"
 PUBLIC_URL=$(grep '^SKLUBOT_PUBLIC_URL=' .env | cut -d= -f2-)
 SETUP_CODE=$(grep '^SKLUBOT_SETUP_CODE=' .env | cut -d= -f2-)
 
@@ -117,7 +130,14 @@ if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q "Status: a
 fi
 
 say "4/5  Construction et démarrage (5 à 10 minutes la première fois)"
-if [ "${SKLUBOT_SKIP_BUILD:-0}" = "1" ]; then $COMPOSE up -d --no-build; else $COMPOSE up -d --build; fi
+# Le détail de la construction va dans un journal ; en cas d'échec, ses 20 dernières lignes s'affichent.
+LOG="$DIR/install.log"
+info "Journal détaillé : $LOG"
+if [ "${SKLUBOT_SKIP_BUILD:-0}" = "1" ]; then UP=(up -d --no-build); else UP=(up -d --build); fi
+if ! $COMPOSE "${UP[@]}" >"$LOG" 2>&1; then
+  tail -n 20 "$LOG" | sed 's/^/  | /'
+  die "la construction ou le démarrage a échoué (journal complet : $LOG). Corrige la cause, puis relance ce script."
+fi
 
 say "5/5  Vérification"
 ok=0
@@ -147,4 +167,8 @@ $(printf '\033[1;32m')Sklubot est en ligne : $PUBLIC_URL$(printf '\033[0m')
     Arrêter            $COMPOSE down
     Sauvegarder        bash deploy/backup.sh
     Changer un réglage nano .env   puis   $COMPOSE up -d
+    Lien de connexion  $COMPOSE exec sklubot node server/dist/sign-in-link.js ton@adresse.fr
+                       (si tu as perdu ton mot de passe : un lien valable 15 minutes, une seule fois)
+    Tester un ordinateur de bot  $COMPOSE exec sklubot node server/dist/desk-cli.js
+    Tout désinstaller  bash deploy/uninstall.sh   (propose une sauvegarde, demande « OUI »)
 DONE

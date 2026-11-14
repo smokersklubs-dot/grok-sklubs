@@ -13,7 +13,7 @@ import { api, site } from "./routes.js";
 import { startScheduler } from "./scheduler.js";
 import { attachLiveScreens } from "./vnc.js";
 import { relayUpgrade } from "./relay.js";
-import { recoverInterruptedTurns } from "./agent/loop.js";
+import { expireOrphanApprovals, recoverInterruptedTurns } from "./agent/loop.js";
 import { telegram } from "./telegram.js";
 import { closeSlackSockets } from "./native/triggers.js";
 
@@ -47,6 +47,9 @@ try {
   computerNote = await initComputer(owners);
 } catch (err) { console.error(`\nCannot start: ${(err as Error).message}\n`); process.exit(1); }
 
+// Approvals a subscription turn was waiting on lived in memory: after a restart nobody waits for them any more.
+const lapsed = expireOrphanApprovals();
+if (lapsed) console.log(`${lapsed} approval(s) left from before the restart are marked expired.`);
 startScheduler();
 if (!config.schedulerOff) { telegram.start(); recoverInterruptedTurns(); }
 const server = serve({ fetch: app.fetch, port: config.port }, () => {

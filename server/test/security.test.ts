@@ -305,7 +305,7 @@ test("another account's bot cannot be put in a group chat or woken by it", async
   who = "a";
   const before = (await rowsOf(bot.id)).length;
   who = "b";
-  await call("POST", `/bots/${room.id}/messages`, { text: "@Juno @everyone hello" });
+  await call("POST", `/bots/${room.id}/messages`, { text: `@${bot.name} @everyone hello` });
   who = "a";
   await new Promise((r) => setTimeout(r, 400));
   assert.equal((await rowsOf(bot.id)).length, before);

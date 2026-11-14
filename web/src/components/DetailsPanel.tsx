@@ -12,6 +12,7 @@ import { canCall, canSpeak, makeUtterance, useVoices } from "../lib/speech";
 import { BotAvatar } from "./Avatar";
 import { SubscriptionBadge } from "./Brain";
 import { LiveScreen } from "./LiveScreen";
+import { ScreenFrame } from "./ScreenFrame";
 import { MyComputerSection } from "./MyComputer";
 import { Icon, Spinner } from "./Icon";
 import { Empty, ErrorNote, IconButton, Loading, Toggle } from "./ui";
@@ -268,6 +269,24 @@ function ComputerSection({ bot }: { bot: Bot }) {
   };
 
   const asleep = status === "none" && !(live && liveUp);
+  // Driving from the panel: only in the panel's own full screen (B-8.3). Outside it, "take control" opens the large view.
+  const [panelControl, setPanelControl] = useState(false);
+  useEffect(() => {
+    if (!panelControl) return;
+    const hold = () => api("POST", `/bots/${bot.id}/desktop/control`, { on: true }).catch(() => undefined);
+    void hold();
+    const timer = window.setInterval(hold, 30_000);
+    return () => window.clearInterval(timer);
+  }, [panelControl, bot.id]);
+  const handBackFromPanel = useCallback(() => {
+    setPanelControl(false);
+    api("POST", `/bots/${bot.id}/desktop/handback`).catch(() => undefined);
+  }, [bot.id]);
+  const resetFromPanel = async () => {
+    await api("POST", `/bots/${bot.id}/desktop/tidy`);
+    setLiveUp(false);
+    setAttempt((n) => n + 1);
+  };
   const text = !engine
     ? t("computer.noneTitle")
     : live && liveUp
@@ -285,25 +304,34 @@ function ComputerSection({ bot }: { bot: Bot }) {
         <h3>{t("details.computer")}</h3>
       </div>
       <div className="screen-card-wrap">
+        {live && (
+          <ScreenFrame bot={bot} variant="panel" live={liveUp} control={panelControl} className="screen-hero"
+            onTakeControl={(full) => (full ? setPanelControl(true) : openViewer(bot.id, { control: true }))}
+            onHandBack={handBackFromPanel} onReset={resetFromPanel}>
+            <LiveScreen
+              key={attempt}
+              botId={bot.id}
+              control={panelControl}
+              label={t("viewer.screenAlt", { name: bot.name })}
+              onConnect={() => setLiveUp(true)}
+              onClose={() => {
+                // A stream that drops after working reconnects once; one that never opened falls back to screenshots.
+                if (liveUp) setAttempt((n) => n + 1);
+                else setLiveFailedFor(liveKey);
+                setLiveUp(false);
+              }}
+            />
+            {!liveUp && <span className="screen-hero-wait"><span className="dot-inline dot-pulse" /></span>}
+            {/* The picture swallows clicks: a clear layer over it opens the large view (not while driving). */}
+            {liveUp && !panelControl && <button type="button" className="screen-hero-open" onClick={() => openViewer(bot.id)} aria-label={t("details.openComputer", { name: bot.name })} />}
+          </ScreenFrame>
+        )}
         <button type="button" className="screen-card" onClick={() => openViewer(bot.id)} aria-label={t("details.openComputer", { name: bot.name })}>
-          <span className={`screen-thumb ${live ? "is-live" : ""}`}>
-            {live && (
-              <LiveScreen
-                key={attempt}
-                botId={bot.id}
-                control={false}
-                label={t("viewer.screenAlt", { name: bot.name })}
-                onConnect={() => setLiveUp(true)}
-                onClose={() => {
-                  // A stream that drops after working reconnects once; one that never opened falls back to screenshots.
-                  if (liveUp) setAttempt((n) => n + 1);
-                  else setLiveFailedFor(liveKey);
-                  setLiveUp(false);
-                }}
-              />
-            )}
-            {live && liveUp ? null : url ? <img src={url} alt="" /> : (status === "loading" || live) && engine ? <span className="dot-inline dot-pulse" /> : <Icon name="monitor" size={22} />}
-          </span>
+          {!live && (
+            <span className="screen-thumb">
+              {url ? <img src={url} alt="" /> : status === "loading" && engine ? <span className="dot-inline dot-pulse" /> : <Icon name="monitor" size={22} />}
+            </span>
+          )}
           <span className="screen-card-text">
             <span className="list-row-title">{t(linux ? "details.linuxOf" : "details.desktopOf", { name: bot.name })}</span>
             <span className="list-row-sub truncate">
@@ -312,7 +340,7 @@ function ComputerSection({ bot }: { bot: Bot }) {
             </span>
           </span>
         </button>
-        {engine && (
+        {engine && !live && (
           <div className="screen-actions" role="group" aria-label={t("details.screenActions")}>
             <IconButton icon="expand" size={14} label={t("details.watch")} onClick={() => openViewer(bot.id)} />
             <IconButton icon="cursor" size={14} label={t("details.takeControl")} onClick={() => openViewer(bot.id, { control: true })} />

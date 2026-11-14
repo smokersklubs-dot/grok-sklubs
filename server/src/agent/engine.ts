@@ -5,10 +5,11 @@ import { config } from "../config.js";
 import { q } from "../db.js";
 import { tr } from "../i18n.js";
 import { containerName, docker } from "../linux.js";
-import type { Attachment, Engine, EngineStatus } from "../shared.js";
+import type { Attachment, Engine, EngineRuntime, EngineStatus } from "../shared.js";
 import { bots, clip, rows, type BotRecord } from "../store.js";
 import { noteSubscription, record } from "../usage.js";
-import { activity, Caption, StreamingRow, type Turn } from "./loop.js";
+import { activity, Caption, expireEngineApprovals, interrupt, StreamingRow, type Turn } from "./loop.js";
+import { getLive, setLive } from "../bus.js";
 import { buildSystemPrompt } from "./prompt.js";
 import { imageService } from "../images.js";
 import { browserAvailable } from "../computer.js";
@@ -71,22 +72,130 @@ const dropSession = (botId: string, generation: number, engine: Engine) =>
   q.run("DELETE FROM engine_sessions WHERE bot_id = ? AND generation = ? AND engine = ?", botId, generation, engine);
 
 // ── Talking to the bot's computer ────────────────────────────────────────────
-async function writeFile(botId: string, path: string, content: string) {
-  const r = await docker(["exec", "-i", containerName(botId), "sh", "-c", `umask 077; mkdir -p "$(dirname '${path}')"; cat > '${path}'`], { timeoutMs: 20_000, input: content });
-  if (r.code !== 0) throw new Error(`could not prepare the bot's computer: ${r.stderr.trim().slice(0, 200)}`);
+/**
+ * Everything the subscription engine needs from the bot's computer. The real one talks to its container; tests put a
+ * fake in its place (setEngineHost) to play the tool's event stream and its calls to our tool endpoint.
+ */
+export interface EngineHost {
+  /** Makes sure the computer is on (and its screen ready, see readyForTurn). */
+  ensure(bot: BotRecord): Promise<void>;
+  writeFile(botId: string, path: string, content: string): Promise<void>;
+  exec(bot: BotRecord, args: string[], env: Record<string, string>, cwd: string, input: string, signal: AbortSignal, onLine: (line: string) => void): Promise<{ code: number | null; stderr: string }>;
+  /** Stops every engine process on the computer (a stuck tool, a helper it left behind). */
+  kill(botId: string): Promise<void>;
+  /** The screen check before a turn (B-2). Errors are the caller's to log. */
+  ready(bot: BotRecord): Promise<void>;
+  /** Whether the computer is on right now (never wakes it). */
+  awake(botId: string): boolean;
 }
 
-async function ensureComputer(bot: BotRecord) {
-  if (computerKind() !== "linux") throw new Error("Subscriptions need the bots' Linux computers (Docker and the desktop image) on this server.");
-  await screen.wake(bot.id, bot.userId);
+const dockerHost: EngineHost = {
+  async ensure(bot) {
+    if (computerKind() !== "linux") throw new Error("Subscriptions need the bots' Linux computers (Docker and the desktop image) on this server.");
+    await screen.wake(bot.id, bot.userId);
+  },
+  async writeFile(botId, path, content) {
+    const r = await docker(["exec", "-i", containerName(botId), "sh", "-c", `umask 077; mkdir -p "$(dirname '${path}')"; cat > '${path}'`], { timeoutMs: 20_000, input: content });
+    if (r.code !== 0) throw new Error(`could not prepare the bot's computer: ${r.stderr.trim().slice(0, 200)}`);
+  },
+  exec: (bot, args, env, cwd, input, signal, onLine) => runInComputer(bot, args, env, cwd, input, signal, onLine),
+  async kill(botId) {
+    // The tools' own processes only (and the one whose id the last turn wrote down); the desktop keeps running.
+    await docker(["exec", containerName(botId), "sh", "-c", "kill -TERM $(cat /tmp/sklubot-engine.pid 2>/dev/null) 2>/dev/null; pkill -TERM -f '^(node .*)?claude( |$)' ; pkill -TERM -f '^(node .*)?codex( |$)'; sleep 1; pkill -KILL -f '^(node .*)?claude( |$)'; pkill -KILL -f '^(node .*)?codex( |$)'; rm -f /tmp/sklubot-engine.pid; true"], { timeoutMs: 20_000 });
+  },
+  ready: (bot) => screen.ready(bot.id, bot.userId),
+  awake: (botId) => screen.isOpen(botId),
+};
+let host: EngineHost = dockerHost;
+/** For tests: replace the computer the engine talks to (null puts the real one back). */
+export const setEngineHost = (h: EngineHost | null) => { host = h ?? dockerHost; };
+const writeFile = (botId: string, path: string, content: string) => host.writeFile(botId, path, content);
+const ensureComputer = (bot: BotRecord) => host.ensure(bot);
+
+// ── The engine's state, for the engine panel (B-4) ──────────────────────────
+const runtime = new Map<string, { status: EngineRuntime["status"]; error: string | null; since: number }>();
+const restarting = new Map<string, Promise<void>>();
+const noteRuntime = (botId: string, status: EngineRuntime["status"], error: string | null = null) => { runtime.set(botId, { status, error, since: Date.now() }); };
+
+/** What the engine panel shows: working while a turn runs, starting during a restart, the last failure, or ready / stopped. */
+export function engineRuntime(bot: BotRecord): EngineRuntime {
+  const engine = isEngineRef(bot.model) ? engineOf(bot.model) : null;
+  const model = isEngineRef(bot.model) ? modelOf(bot.model) || "default" : "";
+  const known = runtime.get(bot.id);
+  if (restarting.has(bot.id)) return { engine, model, status: "starting", error: null, since: known?.since ?? Date.now() };
+  if (runningTurns.has(bot.id)) return { engine, model, status: "working", error: null, since: known?.since ?? Date.now() };
+  if (known?.status === "error") return { engine, model, ...known };
+  if (computerKind() === "linux" && !host.awake(bot.id)) return { engine, model, status: "stopped", error: null, since: known?.since ?? Date.now() };
+  return { engine, model, status: "ready", error: null, since: known?.since ?? Date.now() };
 }
 
-function toolLabel(name: string, turn: Turn): string {
+/**
+ * "Restart the engine" (B-4): stops the turn under way and every engine process on the bot's computer, lets the
+ * approvals it was waiting on lapse (the source keeps them; we do not, see B-5), then wakes the computer and checks the
+ * tool in the background. The bot's conversation with the tool is kept (its session is resumed on the next turn).
+ * Returns at once with the new state (usually "starting").
+ */
+export async function restartEngine(bot: BotRecord): Promise<EngineRuntime> {
+  if (!isEngineRef(bot.model)) throw new EngineRestartRefused("This bot does not run on a subscription engine, so there is nothing to restart.");
+  const pending = restarting.get(bot.id);
+  if (pending) return engineRuntime(bot);
+  interrupt(bot.id);
+  expireEngineApprovals(bot.id);
+  const job = (async () => {
+    try {
+      await host.kill(bot.id).catch((err) => console.error(`[engine restart ${bot.id}] kill`, err));
+      // The stopped turn winds down (its process is gone): wait for it, 10 s at most.
+      for (let i = 0; i < 100 && runningTurns.has(bot.id); i++) await pause(100);
+      await host.ensure(bot);
+      await host.ready(bot).catch((err) => console.error(`[engine restart ${bot.id}] screen`, err));
+      noteRuntime(bot.id, "ready");
+    } catch (err) {
+      noteRuntime(bot.id, "error", clip(String((err as Error)?.message ?? err), 300));
+    }
+  })();
+  restarting.set(bot.id, job);
+  void job.finally(() => restarting.delete(bot.id));
+  return engineRuntime(bot);
+}
+export class EngineRestartRefused extends Error {}
+/** For tests: waits for a restart under way to finish. */
+export const restartSettled = (botId: string) => restarting.get(botId) ?? Promise.resolve();
+
+/** A bot is deleted: its engine processes stop and its saved sessions are forgotten (U-003). */
+export async function retireEngine(botId: string) {
+  q.run("DELETE FROM engine_sessions WHERE bot_id = ?", botId);
+  runtime.delete(botId);
+  if (host.awake(botId)) await host.kill(botId);
+}
+
+/** The engine's own "find the right tool" calls: no row, no step, only a caption (B-3.2, B-7.1). */
+const TOOL_SEARCH = /^(ToolSearch|tool_search|search_tools?)$/i;
+
+/**
+ * The engine names tools from an MCP server "mcp" + underscores + server + underscores + tool. For our own server the
+ * prefix goes and the tool is found among ours without regard to case (an engine may lower-case names); a tool of
+ * another server keeps its own name, and the server is remembered for the activity shown.
+ */
+export function normalizeToolName(turn: Turn, raw: string): { name: string; server: string | null } {
+  const m = /^mcp_+(.+?)_+(.+)$/i.exec(raw);
+  if (!m) return { name: raw, server: null };
+  if (m[1].toLowerCase() === "sklubot") return { name: ownToolName(turn, m[2]), server: null };
+  return { name: m[2], server: m[1] };
+}
+/** One of our tools, by its name in any case; unknown names are returned as they are. */
+export function ownToolName(turn: Turn, raw: string): string {
+  if (turn.builtin.has(raw) || turn.remote.has(raw)) return raw;
+  const low = raw.toLowerCase();
+  for (const k of [...turn.builtin.keys(), ...turn.remote.keys()]) if (k.toLowerCase() === low) return k;
+  return raw;
+}
+
+function toolLabel(name: string, server: string | null, turn: Turn): string {
   const loc = turn.user.locale;
-  const ours = name.replace(/^mcp__sklubot__/, "");
-  const builtin = turn.builtin.get(ours);
+  if (server) return tr(loc, "Using {app}", { app: server });
+  const builtin = turn.builtin.get(name);
   if (builtin) return tr(loc, builtin.label);
-  const remote = turn.remote.get(ours);
+  const remote = turn.remote.get(name);
   if (remote) return tr(loc, "Using {app}", { app: remote.connectorName });
   const own: Record<string, string> = {
     Bash: "Running a command", command_execution: "Running a command", Read: "Reading a file", Write: "Saving a file", Edit: "Saving a file",
@@ -96,7 +205,11 @@ function toolLabel(name: string, turn: Turn): string {
   return tr(loc, own[name] ?? "Working");
 }
 
-function activityOf(name: string) {
+function activityOf(name: string, server: string | null, turn: Turn) {
+  if (server) return "connector" as const;
+  const builtin = turn.builtin.get(name);
+  if (builtin) return builtin.activity;
+  if (turn.remote.has(name)) return "connector" as const;
   if (/Bash|command/.test(name)) return "shell" as const;
   if (/WebSearch|web_search/.test(name)) return "searching" as const;
   if (/WebFetch/.test(name)) return "reading" as const;
@@ -106,17 +219,73 @@ function activityOf(name: string) {
   return "thinking" as const;
 }
 
-/** Turns the tool's own events into chat rows: streamed replies, steps, and the thinking caption. */
+type StepStatus = "running" | "done" | "error" | "waiting" | "denied";
+/** A tool row of the running engine turn, waiting to be matched with the call our tool endpoint receives (B-3). */
+export interface EngineStep {
+  seq: number; callId: string; name: string; claimed: boolean; done: boolean;
+  /** What our side knew about the call when it ended (status and summary); it wins over a guess from the raw output. */
+  declared: { status: StepStatus; summary?: string } | null;
+}
+const turnSteps = new Map<string, EngineStep[]>();
+const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Our tool endpoint received a call: the oldest row of this bot's running turn with that tool name, not claimed yet
+ * and not finished, is this call's row (first in, first out: of two parallel calls of one tool, the first call
+ * received takes the first row announced). The stream announces a call just before the engine runs it, so this looks
+ * again every 40 ms for up to 600 ms. No row (or no turn: a session of the engine outside the app): null.
+ */
+export async function claimStep(botId: string, name: string, waitMs = 600): Promise<EngineStep | null> {
+  const deadline = Date.now() + waitMs;
+  for (;;) {
+    const step = turnSteps.get(botId)?.find((x) => x.name === name && !x.claimed && !x.done);
+    if (step) { step.claimed = true; return step; }
+    if (Date.now() >= deadline || !runningTurns.has(botId)) return null;
+    await pause(40);
+  }
+}
+
+/**
+ * Sets a claimed row's status from our side: "waiting" while an approval is open, "running" once allowed, or the
+ * result (done / error / denied, with a short summary), which is remembered and shown at once.
+ */
+export function markStep(botId: string, step: EngineStep | null, status: StepStatus, summary?: string) {
+  if (!step) return;
+  const turn = runningTurns.get(botId);
+  if (!turn) return;
+  if (status === "done" || status === "error" || status === "denied") step.declared = { status, summary };
+  const row = rows.get(turn.bot.id, turn.generation, step.seq);
+  if (row?.body.kind === "step") rows.rewrite(turn.bot, turn.generation, step.seq, { ...row.body, status, summary: summary !== undefined ? clip(summary, 200) : row.body.summary });
+}
+
+/** A guess at how a call went, from the tool's raw output, when our side said nothing about it. */
+export function guessOutcome(raw: string, ok: boolean): { status: StepStatus; summary: string } {
+  const text = raw.trim();
+  try {
+    const j = JSON.parse(text);
+    if (j && typeof j === "object") {
+      if (j.error) return { status: "error", summary: clip(typeof j.error === "string" ? j.error : JSON.stringify(j.error), 200) };
+      const code = j.exit_code ?? j.exitCode;
+      if (typeof code === "number" && code !== 0) return { status: "error", summary: `exit code ${code}` };
+      if (j.success === false) return { status: "error", summary: clip(String(j.message ?? "failed"), 200) };
+    }
+  } catch { /* not JSON */ }
+  if (/^(tool )?error\b/i.test(text) || !ok) return { status: "error", summary: clip(text.replace(/\s+/g, " "), 200) };
+  return { status: "done", summary: clip(text.replace(/\s+/g, " "), 80) };
+}
+
+/** Turns the tool's own events into chat rows: streamed replies, steps, the thinking caption and the step counter. */
 class Transcript {
   readonly stream: StreamingRow;
   readonly caption: Caption;
-  private steps = new Map<string, number>();
+  readonly steps: EngineStep[] = [];
   constructor(private turn: Turn) {
     this.stream = new StreamingRow(turn);
     this.caption = new Caption(turn);
+    turnSteps.set(turn.bot.id, this.steps);
   }
   text(delta: string) {
-    if (!this.stream.started) activity(this.turn, "writing");
+    if (!this.stream.started && !getLive(this.turn.bot.id).awaiting) activity(this.turn, "writing");
     this.stream.push(delta);
   }
   endMessage() {
@@ -129,25 +298,54 @@ class Transcript {
     this.text(text);
     this.endMessage();
   }
-  stepStart(id: string, name: string, args: Record<string, unknown>) {
-    if (this.steps.has(id)) return;
+  stepStart(id: string, raw: string, args: Record<string, unknown>) {
+    const { user, bot } = this.turn;
+    if (TOOL_SEARCH.test(raw)) { setLive(user.id, bot.id, { caption: tr(user.locale, "Finding the right tool") }); return; }
+    if (this.steps.some((x) => x.callId === id)) return;
     this.endMessage();
-    activity(this.turn, activityOf(name), name.replace(/^mcp__sklubot__/, "").replace(/_/g, " "));
+    const { name, server } = normalizeToolName(this.turn, raw);
     const short: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(args ?? {})) short[k] = typeof v === "string" ? clip(v, 400) : v;
-    this.steps.set(id, rows.append(this.turn.bot, { kind: "step", callId: id, tool: name, label: toolLabel(name, this.turn), status: "running", args: short }).seq);
+    const seq = rows.append(bot, { kind: "step", callId: id, tool: name, label: toolLabel(name, server, this.turn), status: "running", args: short }).seq;
+    this.steps.push({ seq, callId: id, name, claimed: false, done: false, declared: null });
+    // The counter moves on even while the bot waits for the user; only then the activity stays as it is.
+    const count = this.steps.length;
+    if (getLive(bot.id).awaiting) setLive(user.id, bot.id, { steps: count });
+    else setLive(user.id, bot.id, { running: true, awaiting: null, steps: count, caption: null, activity: { kind: activityOf(name, server, this.turn), detail: server ?? this.turn.remote.get(name)?.connectorName ?? name.replace(/_/g, " "), since: Date.now() } });
   }
-  stepEnd(id: string, ok: boolean, summary: string) {
-    const seq = this.steps.get(id);
-    if (!seq) return;
-    const row = rows.get(this.turn.bot.id, this.turn.generation, seq);
-    if (row?.body.kind === "step") rows.rewrite(this.turn.bot, this.turn.generation, seq, { ...row.body, status: ok ? "done" : "error", summary: clip(summary.replace(/\s+/g, " ").trim(), 80) });
-    activity(this.turn, "thinking");
+  /** The tool's result arrived in the stream (once per call id): found by call id, never by name. */
+  stepEnd(id: string, ok: boolean, raw: string) {
+    const step = this.steps.find((x) => x.callId === id);
+    if (!step || step.done) return;
+    step.done = true;
+    const row = rows.get(this.turn.bot.id, this.turn.generation, step.seq);
+    if (row?.body.kind === "step") {
+      const guess = guessOutcome(raw, ok);
+      const d = step.declared;
+      const status = d && d.status !== "running" ? d.status : guess.status;
+      const summary = d?.summary ?? guess.summary;
+      rows.rewrite(this.turn.bot, this.turn.generation, step.seq, { ...row.body, status, summary: clip(summary, 200) });
+    }
+    if (!getLive(this.turn.bot.id).awaiting) activity(this.turn, "thinking");
+  }
+  /** End of the turn: rows still running or waiting become done (success) or error, "stopped" / "did not finish". */
+  close(success: boolean, aborted: boolean) {
+    const loc = this.turn.user.locale;
+    for (const step of this.steps) {
+      const row = rows.get(this.turn.bot.id, this.turn.generation, step.seq);
+      if (row?.body.kind !== "step" || (row.body.status !== "running" && row.body.status !== "waiting")) continue;
+      rows.rewrite(this.turn.bot, this.turn.generation, step.seq, success ? { ...row.body, status: "done" } : { ...row.body, status: "error", summary: tr(loc, aborted ? "stopped" : "did not finish") });
+    }
+    if (turnSteps.get(this.turn.bot.id) === this.steps) turnSteps.delete(this.turn.bot.id);
   }
   notice(text: string, tone: "info" | "warn" | "error" = "warn") {
     this.endMessage();
     rows.append(this.turn.bot, { kind: "notice", tone, text });
+    this.failed = true;
+    this.lastFailure = clip(text, 300);
   }
+  failed = false;
+  lastFailure = "";
 }
 
 const textOf = (content: unknown): string =>
@@ -183,27 +381,48 @@ const NOT_SIGNED_IN = /not logged in|please run \/login|login required|not authe
 export async function runEngineTurn(turn: Turn, prompt: string, attachments: Attachment[]) {
   const { bot } = turn;
   await ensureComputer(bot);
+  // B-2: before the message goes to the engine, the screen must be ready (computer up, look applied, the bot's own
+  // browser answering). Otherwise a tool that finds no browser may start one of its own, out of the user's sight.
+  // A failure here is logged and the turn goes on; a stop pressed meanwhile ends the turn before anything is sent.
+  try { await host.ready(bot); } catch (err) { console.error(`[screen ready ${bot.id}]`, (err as Error)?.message ?? err); }
+  if (turn.signal.aborted) throw new Error("aborted");
   const engine = engineOf(bot.model);
   const files = attachments.length ? `\n\n[Files the user attached, in your library:]\n${attachments.map((a) => `- ${botPathOf(a.path)} (${a.mime})`).join("\n")}` : "";
   const system = buildSystemPrompt(bot, turn.user, { connectorNames: [...new Set([...turn.remote.values()].map((r) => r.connectorName))], browser: browserAvailable(), shell: true, linux: true, images: !!imageService(), engine });
   await writeFile(bot.id, "/root/.sklubot/engine-prompt.md", system);
   const t = new Transcript(turn);
   runningTurns.set(bot.id, turn);
+  setLive(turn.user.id, bot.id, { steps: 0 });
   const token = issueEngineToken(bot.id);
+  let threw = false;
   try {
     if (engine === "claude-code") await claudeTurn(turn, t, prompt + files, token);
     else await codexTurn(turn, t, prompt + files, system, token);
-  } finally {
+  } catch (err) { threw = true; throw err; } finally {
     revokeEngineToken(bot.id);
     runningTurns.delete(bot.id);
     t.endMessage();
+    const aborted = turn.signal.aborted;
+    t.close(!aborted && !threw && !t.failed, aborted);
+    if (aborted) noteRuntime(bot.id, "ready");
+    else if (threw || t.failed) noteRuntime(bot.id, "error", t.lastFailure || null);
+    else noteRuntime(bot.id, "ready");
   }
   if (turn.signal.aborted) throw new Error("aborted");
 }
 
+/**
+ * How long our tool endpoint may hold a call: 30 minutes, so an approval (at most 25 minutes, config.approvalExpireMs)
+ * always answers first. Claude Code: the per-server "timeout" field of the MCP config, in ms ("A per-server timeout field
+ * in .mcp.json overrides [MCP_TOOL_TIMEOUT] for that server", which also raises the 60 s per-request limit of HTTP servers
+ * and the idle window — code.claude.com/docs/en/env-vars, MCP_TOOL_TIMEOUT). Codex: mcp_servers.<id>.tool_timeout_sec
+ * ("Override the default 60s per-tool timeout for an MCP server" — the Codex configuration reference).
+ */
+const TOOL_TIMEOUT_MS = 30 * 60_000;
+
 async function claudeTurn(turn: Turn, t: Transcript, prompt: string, token: string, retried = false) {
   const { bot } = turn;
-  const mcp = { mcpServers: { sklubot: { type: "http", url: `${config.engineBaseUrl}/mcp/${encodeURIComponent(bot.id)}`, headers: { Authorization: `Bearer ${token}` } } } };
+  const mcp = { mcpServers: { sklubot: { type: "http", url: `${config.engineBaseUrl}/mcp/${encodeURIComponent(bot.id)}`, headers: { Authorization: `Bearer ${token}` }, timeout: TOOL_TIMEOUT_MS } } };
   await writeFile(bot.id, "/root/.sklubot/mcp.json", JSON.stringify(mcp));
   const resume = sessionOf(bot.id, turn.generation, "claude-code");
   const model = modelOf(bot.model);
@@ -219,7 +438,7 @@ async function claudeTurn(turn: Turn, t: Transcript, prompt: string, token: stri
     ...(resume ? ["--resume", resume] : []),
   ];
   let failure = "", sawResult = false, missingSession = false;
-  const res = await runInComputer(bot, args, { IS_SANDBOX: "1" }, "/root/files", prompt, turn.signal, (line) => {
+  const res = await host.exec(bot, args, { IS_SANDBOX: "1", MCP_TOOL_TIMEOUT: String(TOOL_TIMEOUT_MS) }, "/root/files", prompt, turn.signal, (line) => {
     let e: any;
     try { e = JSON.parse(line); } catch { return; }
     if (e.type === "system" && e.subtype === "init" && e.session_id) saveSession(bot.id, turn.generation, "claude-code", e.session_id);
@@ -269,18 +488,19 @@ async function codexTurn(turn: Turn, t: Transcript, prompt: string, system: stri
     "--dangerously-bypass-approvals-and-sandbox",
     "-c", `mcp_servers.sklubot.url="${config.engineBaseUrl}/mcp/${encodeURIComponent(bot.id)}"`,
     "-c", 'mcp_servers.sklubot.bearer_token_env_var="SKLUBOT_MCP_TOKEN"',
+    "-c", `mcp_servers.sklubot.tool_timeout_sec=${TOOL_TIMEOUT_MS / 1000}`,
     ...(model && model !== "default" ? ["-m", model] : []),
   ];
   const args = resume ? ["codex", "exec", "resume", ...common, resume, "-"] : ["codex", "exec", ...common, "-"];
   let failure = "", sawEnd = false;
-  const res = await runInComputer(bot, args, { SKLUBOT_MCP_TOKEN: token }, "/root", prompt, turn.signal, (line) => {
+  const res = await host.exec(bot, args, { SKLUBOT_MCP_TOKEN: token }, "/root", prompt, turn.signal, (line) => {
     let e: any;
     try { e = JSON.parse(line); } catch { return; }
     const it = e.item;
     if (e.type === "thread.started" && e.thread_id) saveSession(bot.id, turn.generation, "codex", e.thread_id);
     else if (e.type === "item.started" && it) {
       if (it.type === "command_execution") t.stepStart(it.id, "command_execution", { command: it.command });
-      else if (it.type === "mcp_tool_call") t.stepStart(it.id, it.server === "sklubot" ? `mcp__sklubot__${it.tool}` : `${it.server}__${it.tool}`, it.arguments ?? {});
+      else if (it.type === "mcp_tool_call") t.stepStart(it.id, `mcp__${it.server}__${it.tool}`, it.arguments ?? {});
       else if (it.type === "web_search") t.stepStart(it.id, "web_search", { query: it.query });
       else if (it.type === "file_change") t.stepStart(it.id, "file_change", { files: (it.changes ?? []).map((c: any) => c.path).join(", ") });
     } else if (e.type === "item.updated" && it?.type === "reasoning") t.caption.push(it.text ?? "");
@@ -320,10 +540,10 @@ export async function engineAsk(bot: BotRecord, system: string, prompt: string):
   const ctrl = AbortSignal.timeout(180_000);
   if (engine === "claude-code") {
     await writeFile(bot.id, "/root/.sklubot/side-prompt.md", system);
-    await runInComputer(bot, ["claude", "-p", "--output-format", "stream-json", "--verbose", "--tools", "", "--no-session-persistence", "--append-system-prompt-file", "/root/.sklubot/side-prompt.md", ...(modelOf(bot.model) !== "default" ? ["--model", modelOf(bot.model)] : [])],
+    await host.exec(bot, ["claude", "-p", "--output-format", "stream-json", "--verbose", "--tools", "", "--no-session-persistence", "--append-system-prompt-file", "/root/.sklubot/side-prompt.md", ...(modelOf(bot.model) !== "default" ? ["--model", modelOf(bot.model)] : [])],
       { IS_SANDBOX: "1" }, "/root", prompt, ctrl, (line) => { try { const e = JSON.parse(line); if (e.type === "result" && !e.is_error) out = String(e.result ?? ""); } catch { /* ignore */ } });
   } else {
-    await runInComputer(bot, ["codex", "exec", "--json", "--skip-git-repo-check", "--ephemeral", "--sandbox", "read-only", "-"], {}, "/tmp", `${system}\n\n${prompt}`, ctrl,
+    await host.exec(bot, ["codex", "exec", "--json", "--skip-git-repo-check", "--ephemeral", "--sandbox", "read-only", "-"], {}, "/tmp", `${system}\n\n${prompt}`, ctrl,
       (line) => { try { const e = JSON.parse(line); if (e.type === "item.completed" && e.item?.type === "agent_message") out = String(e.item.text ?? ""); } catch { /* ignore */ } });
   }
   return out.trim();

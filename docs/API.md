@@ -399,3 +399,58 @@ Messages starting with `/skill <name>` make the bot follow that skill (its own o
 ### X search — which official API
 - **X API v2 recent search** when `X_BEARER_TOKEN` is set (preferred: the posts themselves, last 7 days): `GET https://api.x.com/2/tweets/search/recent` with `query`, `max_results` (10–100), `sort_order`, `start_time`/`end_time`, `expansions=author_id`, `user.fields=username,name`, `post.fields=created_at,author_id,public_metrics` — https://docs.x.com/x-api/posts/search-recent-posts. Handle filters become `from:` / `-from:` operators. `X_API_BASE_URL` can point elsewhere for tests.
 - **xAI `x_search` tool** when only `XAI_API_KEY` is set: `POST https://api.x.ai/v1/responses` with `tools: [{ type: "x_search", from_date?, to_date?, allowed_x_handles? | excluded_x_handles? }]` and the model `XAI_SEARCH_MODEL` (default `grok-4.7`, the model of xAI's examples); the answer and its `url_citation` annotations / `citations` are returned — https://docs.x.ai/developers/tools/x-search, https://docs.x.ai/developers/tools/citations.
+
+## Spec 06 — bot HQ update
+
+### Accounts
+- `GET /api/me` also returns `firstBot: { name, label }`: what a new account's first bot will be called (server
+  settings `FIRST_BOT_NAME` / `FIRST_BOT_LABEL`, defaults "Juno" and "Chief of staff", translated). `?locale=fr|en`
+  picks the language before sign-in.
+- `POST /api/auth/signup` accepts `botName` and `botLabel` (optional, 60 characters each): the first bot's name and
+  role; empty → the defaults above.
+- `GET /api/auth/link?token=…` (one-time sign-in link, 15 minutes, single use, deleted at the first visit): a used,
+  expired or unknown link answers **410** with a plain page asking for a new link (was a redirect).
+- `MAX_BOTS` (0 = no limit): agent bots across every account, rooms and hidden helpers not counted. Past it, any
+  creation (`POST /bots`, duplicate, team import, `bot_create`, sign-up) answers **409** "the team is full: this
+  installation holds at most N bots. Remove one to create another." Nothing is ever evicted.
+
+### Live state (`live` events, `GET /bots`)
+- `Live.steps`: tool calls announced since the running turn started (0 at the start; progress lines count, the engine's own
+  tool-finding calls do not). Updated on each call, also while the bot waits for the user.
+
+### Subscription engine (Claude Code / Codex)
+- `GET /api/bots/:id/engine` → `{ engines, runtime }`; `?runtime=1` → `{ runtime }` only (cheap, for polling).
+  `runtime: { engine, model, status: "ready" | "working" | "starting" | "error" | "stopped", error, since }`.
+- `POST /api/bots/:id/engine/restart` → `{ runtime }` (usually `starting`): stops the running turn and every engine
+  process on the bot's computer, lets the bot's pending approvals lapse, then wakes the computer and checks it in the
+  background (the panel polls every 3 s). 409 for a bot that does not run on a subscription engine; 502 on failure
+  (message ≤ 300 characters). The conversation (engine session) is kept.
+- Tool endpoint `/mcp/:botId`: each call is matched with the oldest unclaimed, unfinished tool row of the bot's
+  running turn with that tool name (FIFO; looked for every 40 ms for 600 ms; names compared without regard to case,
+  the engine's `mcp__<server>__` prefix removed). The row shows "waiting for your OK" during an approval and the
+  result our side knows (done + summary, denied "not allowed" / "skipped", error + message ≤ 200 characters), which
+  wins over a guess from the raw output when the stream's result arrives. A call with no row still runs.
+- Approvals inside an engine call lapse on: a new message from the user (not a routine, a bot's message or a system
+  notice), "restart the engine", stopping or deleting the bot, 25 minutes without an answer (`APPROVAL_EXPIRE_MIN`),
+  and a server restart (pending ones are marked expired at start-up; a click on such a card expires it). The tool
+  timeout given to the engines is 30 minutes (Claude Code: per-server `timeout` in its MCP config; Codex:
+  `mcp_servers.sklubot.tool_timeout_sec`).
+
+### Computer
+- Before each engine turn the screen is checked (computer on — re-checked with Docker at most every 120 s —, look
+  applied once per server run, the bot's browser answering on its debugging port within 1.5 s, else restarted). For a
+  turn of our own loop this runs in the background, only when the computer is already on.
+- `GET /api/computer/desk-test` → `{ run: DeskTestRun | null }` (the latest run since the server started).
+- `POST /api/computer/desk-test` → `{ run }`: starts the desk test (one at a time per server; 409 without Linux
+  computers). `DeskTestRun: { id, status: "running" | "passed" | "failed" | "error", startedAt, finishedAt, checks:
+  [{ id, label, ok, detail, ms }], shots: string[], error }`. Check ids: `create`, `screen`, `dress`, `browser`,
+  `greeting`, `redress`, `rename`, `read`, `click`, `typing`, `files`, `reset`, `sleep`.
+- `GET /api/computer/desk-test/shots/:name` → a JPEG picture of the latest run.
+- Operator command: `npm run desk:test [-- --keep] [-- --shots <folder>]`, or `node server/dist/desk-cli.js` in the
+  production container. Exit code 0 = all passed, 1 = a check failed, 2 = stopped on an error.
+
+### Deleting a bot (`DELETE /api/bots/:id`)
+Steps, in order, each failure logged in the activity log and never blocking the next ones or the deletion: stop its
+turn (its approvals lapse); routines off the schedule and their triggers dropped (a Slack live connection with no
+routine left closes); its helpers; its engine (processes stopped, saved sessions forgotten); its screen (computer and
+home volume deleted); its library (only for ids that are safe folder names); the record.

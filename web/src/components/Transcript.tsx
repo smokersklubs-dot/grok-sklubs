@@ -3,7 +3,8 @@ import { api, enc, errText } from "../api";
 import { t, tn, useT, type Key } from "../i18n";
 import { useStore, type Thread } from "../store";
 import { REACTIONS, type ActivityKind, type Attachment, type Bot, type Live, type Origin, type Reaction, type ReactionEmoji, type Row, type RowBody } from "../types";
-import { callClock, clockTime, dividerLabel, elapsed, fileSize, hostName, workDuration } from "../lib/format";
+import { callClock, clockTime, dividerLabel, elapsed, fileSize, hostName, liveDuration, workDuration } from "../lib/format";
+import { accentStyle } from "../lib/colors";
 import { renderMarkdown } from "../lib/markdown";
 import { Avatar, BotAvatar } from "./Avatar";
 import { CardView } from "./Cards";
@@ -412,19 +413,40 @@ function StepLine({ seq, body }: { seq: number; body: StepBody }) {
 
 const hasProblem = (rows: Row[]) => rows.some((r) => r.body.kind === "step" && (r.body.status === "error" || r.body.status === "denied"));
 
-/** The steps of the turn still running: a compact toggle with the latest step. */
-function StepGroup({ rows }: { rows: Row[] }) {
+/**
+ * The steps of the turn still running: a compact toggle with the latest step. While it is the last thing in the chat
+ * and the bot works (`active`), it shows a spinner, the label of the step under way (sliding in when it changes) and
+ * the count, including steps the server already counted that have no row here yet (B-7.5); while the bot waits for the
+ * user it is a closed pill with an amber dot.
+ */
+function StepGroup({ rows, active }: { rows: Row[]; active?: { surplus: number; waiting: boolean } }) {
   const [open, setOpen] = useState(false);
   const t = useT();
   const problem = hasProblem(rows);
-  const last = rows[rows.length - 1].body as StepBody;
+  const steps = rows.map((r) => r.body as StepBody);
+  const last = steps[steps.length - 1];
+  const current = [...steps].reverse().find((b) => b.status === "running") ?? last;
+  const count = rows.length + (active?.surplus ?? 0);
+  if (active && !active.waiting && !open) {
+    return (
+      <div className="steps">
+        <button type="button" className="steps-toggle steps-live" onClick={() => setOpen(true)} aria-expanded={false}>
+          <Spinner size={13} />
+          <span key={`${current.callId}-${current.label}`} className="steps-current truncate">{current.label || current.tool}</span>
+          <span className="steps-sep" aria-hidden="true" />
+          <span className="steps-count">{tn("count.step", count)}</span>
+        </button>
+      </div>
+    );
+  }
   return (
     <div className="steps">
-      <button type="button" className="steps-toggle" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
+      <button type="button" className={`steps-toggle ${active?.waiting ? "steps-waiting" : ""}`} onClick={() => setOpen((v) => !v)} aria-expanded={open}>
         <Icon name="chevronRight" size={14} className={open ? "is-rotated" : ""} />
-        <span>{tn("count.step", rows.length)}</span>
+        <span>{tn("count.step", count)}</span>
         {!open && <span className="steps-last truncate">{last.label}</span>}
-        {problem && !open && <span className="dot-inline dot-error" title={t("step.problem")} />}
+        {active?.waiting && !open && <span className="dot-inline dot-waiting" title={t("thinking.waitingDot")} />}
+        {problem && !open && !active?.waiting && <span className="dot-inline dot-error" title={t("step.problem")} />}
       </button>
       {open && (
         <ol className="steps-list">
@@ -601,7 +623,7 @@ function EventRow({ body, botName, botId, seq }: { body: EventBody; botName: str
 }
 
 /** The rows of a conversation, already grouped. `readOnly` is for earlier conversations: cards can't be answered. */
-export function RowItems({ items, bot, readOnly, mode, all }: { items: Item[]; bot: Bot; readOnly?: boolean; mode?: "main" | "thread"; all?: Row[] }) {
+export function RowItems({ items, bot, readOnly, mode, all, openSteps }: { items: Item[]; bot: Bot; readOnly?: boolean; mode?: "main" | "thread"; all?: Row[]; /** The open steps group of the running turn (the last item), with its live extras. */ openSteps?: { key: string; surplus: number; waiting: boolean } | null }) {
   return (
     <RowContext.Provider value={{ mode: readOnly ? "readonly" : mode ?? "main", all }}>
       {items.map((item) => {
@@ -611,7 +633,7 @@ export function RowItems({ items, bot, readOnly, mode, all }: { items: Item[]; b
           case "msgs":
             return <MessageGroup key={item.key} item={item} />;
           case "steps":
-            return <StepGroup key={item.key} rows={item.rows} />;
+            return <StepGroup key={item.key} rows={item.rows} active={openSteps?.key === item.key ? openSteps : undefined} />;
           case "work":
             return <WorkGroup key={item.key} item={item} />;
           case "row": {
@@ -688,21 +710,64 @@ export function activityPhrase(live: Live, rows: Row[], now: number): string {
   return t(list[Math.floor(Math.max(0, now - a.since) / 6000) % list.length]);
 }
 
-export function ActivityLine({ bot, live, rows }: { bot: Bot; live: Live; rows: Row[] }) {
+/** The short status word under the bot's name in the thinking block. */
+const STATUS: Record<ActivityKind, Key> = {
+  thinking: "thinking.status.thinking", writing: "thinking.status.writing", searching: "thinking.status.searching", reading: "thinking.status.reading",
+  browsing: "thinking.status.browsing", computer: "thinking.status.computer", shell: "thinking.status.shell", messaging: "thinking.status.messaging",
+  connector: "thinking.status.connector", waiting: "thinking.status.waiting", saving: "thinking.status.saving", remembering: "thinking.status.remembering",
+  planning: "thinking.status.planning", filming: "thinking.status.filming",
+};
+
+/** Tool rows since the user's last message: what the server's step counter is compared with (B-7.5). */
+export function toolRowsSinceUser(rows: Row[]): number {
+  let n = 0;
+  for (let i = rows.length - 1; i >= 0; i--) {
+    const b = rows[i].body;
+    if (b.kind === "message" && b.role === "user" && !b.origin) break;
+    if (b.kind === "step") n++;
+  }
+  return n;
+}
+
+/**
+ * The "thinking" block at the end of the chat while a turn runs (B-7): the bot's avatar floating over a dark pill with
+ * its name and a pulsing status word, a small glowing bulb while it works (an amber dot while it waits for the user),
+ * the caption on the right (why it waits, else a line from its reasoning, else a friendly phrase that changes every
+ * 6 s, fading up when it changes), and a meta line "working for 1 min 23 s · 7 steps". When an open steps group is the
+ * last thing in the chat, that group shows the count and this block does not (no double counting).
+ */
+export function ActivityLine({ bot, live, rows, stepsShownAbove = false }: { bot: Bot; live: Live; rows: Row[]; stepsShownAbove?: boolean }) {
   const now = useTick(1000);
-  useT();
-  const since = live.startedAt ?? live.activity?.since ?? now;
+  const t = useT();
   const waiting = !!live.awaiting;
-  const caption = live.caption?.replace(/\s+/g, " ").trim();
+  const since = waiting ? live.awaiting!.since : live.startedAt ?? live.activity?.since ?? now;
+  const caption = (live.awaiting?.reason || live.caption || activityPhrase(live, rows, now)).replace(/\s+/g, " ").trim();
+  const kind: ActivityKind = waiting ? "waiting" : live.activity?.kind ?? "thinking";
+  const status = kind === "connector" && live.activity?.detail && !/_|^[a-z0-9-]+$/.test(live.activity.detail) ? t("thinking.status.connectorIn", { name: live.activity.detail }) : t(STATUS[kind]);
+  const steps = live.steps ?? 0;
+  const elapsedMs = Math.max(0, now - since);
+  const showTime = waiting || elapsedMs >= 1000;
+  const style = accentStyle(bot.color, bot.character.customColor);
   return (
-    <div className={`activity ${waiting ? "is-waiting" : ""}`} role="status">
-      <BotAvatar bot={bot} size={22} />
-      <span className={waiting ? "activity-text" : "activity-text shimmer"}>{activityPhrase(live, rows, now)}{waiting ? "" : "…"}</span>
-      {!waiting && now - since >= 1000 && <span className="activity-time">{elapsed(now - since)}</span>}
-      {live.queued > 0 && <span className="chip">{tn("count.queued", live.queued)}</span>}
-      {!waiting && caption && (
-        <span key={caption} className="activity-caption truncate" title={caption}>{caption}</span>
-      )}
+    <div className={`thinking ${waiting ? "is-waiting" : ""}`} role="status" aria-live="polite" style={style}>
+      <div className="thinking-badge">
+        <span className="thinking-avatar">
+          <BotAvatar bot={bot} size={36} />
+          {waiting ? <span className="thinking-alert" aria-hidden="true" /> : <span className="thinking-bulb" aria-hidden="true"><Icon name="bulb" size={13} /></span>}
+        </span>
+        <span className="thinking-pill">
+          <span className="thinking-name truncate">{bot.name}</span>
+          <span className="thinking-status">{status}</span>
+        </span>
+      </div>
+      <div className="thinking-body">
+        <span key={caption} className="thinking-caption truncate" title={caption}>{caption}{waiting ? "" : "…"}</span>
+        <span className="thinking-meta">
+          {showTime && t(waiting ? "thinking.waitingFor" : "thinking.workingFor", { time: liveDuration(elapsedMs) })}
+          {!stepsShownAbove && steps > 0 && <>{showTime ? " · " : ""}{tn("count.step", steps)}</>}
+          {live.queued > 0 && <span className="chip thinking-queued">{tn("count.queued", live.queued)}</span>}
+        </span>
+      </div>
     </div>
   );
 }
@@ -745,6 +810,10 @@ export function Transcript({ bot, thread, live }: { bot: Bot; thread: Thread | u
   // A turn answering in a thread shows its activity in the thread panel, not here.
   const inThread = !!live.thread;
   const showActivity = !inThread && ((live.running && !streaming) || !!live.awaiting);
+  // The running turn's steps group, when it is the last thing in the chat, carries the live count (B-7.4).
+  const lastItem = items[items.length - 1];
+  const turnOn = !inThread && (live.running || !!live.awaiting);
+  const openSteps = turnOn && lastItem?.t === "steps" ? { key: lastItem.key, surplus: Math.max(0, (live.steps ?? 0) - toolRowsSinceUser(mainRows)), waiting: !!live.awaiting } : null;
 
   const toBottom = () => {
     const el = scroller.current;
@@ -842,14 +911,14 @@ export function Transcript({ bot, thread, live }: { bot: Bot; thread: Thread | u
               </button>
             </div>
           )}
-          <RowItems items={items} bot={bot} />
+          <RowItems items={items} bot={bot} openSteps={openSteps} />
           {loaded && inThread && live.thread && (
             <button type="button" className="activity is-elsewhere" onClick={() => useStore.getState().openThreadPanel(bot.id, live.thread!)}>
               <BotAvatar bot={bot} size={22} />
               <span className="activity-text">{t("thread.working", { name: bot.name })}</span>
             </button>
           )}
-          {loaded && showActivity && <ActivityLine bot={bot} live={live} rows={rows} />}
+          {loaded && showActivity && <ActivityLine bot={bot} live={live} rows={rows} stepsShownAbove={!!openSteps} />}
           {loaded && !showActivity && live.queued > 0 && (
             <div className="activity"><span className="chip">{tn("count.queued", live.queued)}</span></div>
           )}

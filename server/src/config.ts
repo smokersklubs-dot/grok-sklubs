@@ -91,8 +91,16 @@ export const config = {
   retryMaxWaitMs: num("RETRY_MAX_WAIT_MS", 60_000),
   /** Work left waiting (an open approval, a turn still running) for this long gets one reminder. */
   stuckReminderMs: num("STUCK_REMINDER_HOURS", 4) * 3_600_000,
-  /** An approval asked inside a subscription turn lapses after this long without an answer. */
-  approvalExpireMs: num("APPROVAL_EXPIRE_MIN", 30) * 60_000,
+  /**
+   * An approval asked inside a subscription turn lapses after this long without an answer: 25 minutes by default, kept
+   * under the 30-minute tool timeout given to the subscription tools (see engine.ts).
+   */
+  approvalExpireMs: num("APPROVAL_EXPIRE_MIN", 25) * 60_000,
+  /** The first bot every new account gets: its name and role (empty = the defaults, "Juno" and "Chief of staff"). */
+  firstBotName: (process.env.FIRST_BOT_NAME ?? "").trim().slice(0, 60),
+  firstBotLabel: (process.env.FIRST_BOT_LABEL ?? "").trim().slice(0, 60),
+  /** Most agent bots this installation holds, all accounts together (group chats and hidden helpers not counted). 0 = no limit. */
+  maxBots: Math.max(0, Math.floor(num("MAX_BOTS", 0))),
   /** Shortest gap between two progress updates of one bot. */
   progressGapMs: num("PROGRESS_GAP_S", 20) * 1000,
   /** At most this many bots created by bots (bot_create) per user in 24 hours. */

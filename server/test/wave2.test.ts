@@ -293,7 +293,7 @@ test("rooms: with the 'everyone' rule every member is brought in", async () => {
   await call("PATCH", `/bots/${roomId}`, { roomRule: "everyone" });
   const seen = requests.length;
   await call("POST", `/bots/${roomId}/messages`, { text: "status please" });
-  await until(() => ["You are Juno", "You are Scout"].every((who) => requests.slice(seen).some((r) => r.system.includes(who) && JSON.stringify(r.messages).includes("status please"))), "both members dispatched");
+  await until(() => [`You are ${bot.name}`, "You are Scout"].every((who) => requests.slice(seen).some((r) => r.system.includes(who) && JSON.stringify(r.messages).includes("status please"))), "both members dispatched");
   await call("PATCH", `/bots/${roomId}`, { roomRule: "mentions" });
   const seen2 = requests.length;
   await call("POST", `/bots/${roomId}/messages`, { text: "anyone?" });
@@ -330,7 +330,9 @@ test("a one-time sign-in link works once, and the hand-back note reaches the nex
   const first = await api.request(`/auth/link?token=${token}`);
   assert.equal(first.headers.get("location"), "/");
   assert.match(first.headers.get("set-cookie") ?? "", /sklubot_session=/);
-  assert.equal((await api.request(`/auth/link?token=${token}`)).headers.get("location"), "/?link=expired");
+  const reused = await api.request(`/auth/link?token=${token}`);
+  assert.equal(reused.status, 410, "a used link answers 410 with a plain page");
+  assert.match(await reused.text(), /expired or was already used/);
   cookie = saved;
   await call("POST", `/bots/${bot.id}/desktop/handback`);
   await say(bot, "hello after hand-back");
@@ -367,10 +369,10 @@ test("account: password change, exports, team import, deletion", async () => {
   assert.match((await call("GET", "/usage.csv")).text, /^time,bot,model,input_tokens/);
 
   const team = (await call("GET", "/export/team")).json;
-  assert.ok(team.bots.find((b: any) => b.name === "Juno").skills.length >= 1);
+  assert.ok(team.bots.find((b: any) => b.name === bot.name).skills.length >= 1);
   team.bots = team.bots.map((b: any) => ({ ...b, name: b.name + " copy", autonomy: "trusted" }));
   assert.equal((await call("POST", "/import/team", team)).json.created, team.bots.length);
-  const copy = (await call("GET", "/bots")).json.bots.find((b: Bot) => b.name === "Juno copy");
+  const copy = (await call("GET", "/bots")).json.bots.find((b: Bot) => b.name === `${bot.name} copy`);
   assert.equal(copy.autonomy, "careful", "imported bots never arrive trusted");
   assert.equal((await call("GET", `/bots/${copy.id}/routines`)).json.routines.every((r: any) => r.enabled === false), true, "imported routines start paused");
   assert.equal((await call("POST", "/import/team", { bots: [] })).status, 400);

@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { api, errText } from "../api";
-import { t as tNow, useT } from "../i18n";
+import { t as tNow, useT, type Key } from "../i18n";
 import { ENGINE_BRAND, ENGINE_TOOL, engineOf, engineOfRef, prettyModel } from "../lib/engines";
 import { useStore } from "../store";
-import type { Bot, Engine, EngineStatus, ModelOption } from "../types";
+import type { Bot, Engine, EngineRuntime, EngineStatus, ModelOption } from "../types";
 import { Icon } from "./Icon";
 import { ConfirmButton, ErrorNote } from "./ui";
 
@@ -102,6 +102,10 @@ function EngineStatusBox({ bot, engine }: { bot: Bot; engine: Engine }) {
   const [waitStopped, setWaitStopped] = useState(false);
   const alive = useRef(true);
   const seq = useRef(0);
+  /** The engine's state (B-4): ready, working, starting, error or stopped; and the restart under way. */
+  const [runtime, setRuntime] = useState<EngineRuntime | null>(null);
+  const [restarting, setRestarting] = useState(false);
+  const [restartError, setRestartError] = useState<string | null>(null);
 
   useEffect(() => {
     alive.current = true;
@@ -114,9 +118,10 @@ function EngineStatusBox({ bot, engine }: { bot: Bot; engine: Engine }) {
     const mine = ++seq.current;
     setChecking(true);
     try {
-      const r = await api<{ engines: EngineStatus[] }>("GET", `/bots/${bot.id}/engine`);
+      const r = await api<{ engines: EngineStatus[]; runtime?: EngineRuntime }>("GET", `/bots/${bot.id}/engine`);
       if (!alive.current || mine !== seq.current) return;
       setStatus(r.engines.find((e) => e.engine === engine) ?? null);
+      if (r.runtime) setRuntime(r.runtime);
       setError(null);
     } catch (e) {
       if (alive.current && mine === seq.current) setError(tNow("engine.checkFailed", { error: errText(e) }));
@@ -128,6 +133,31 @@ function EngineStatusBox({ bot, engine }: { bot: Bot; engine: Engine }) {
   useEffect(() => {
     void check();
   }, [check]);
+
+  // While the engine starts again, its state is refreshed quietly every 3 s until it is ready (or failed).
+  useEffect(() => {
+    if (runtime?.status !== "starting") return;
+    const timer = window.setInterval(async () => {
+      try {
+        const r = await api<{ runtime: EngineRuntime }>("GET", `/bots/${bot.id}/engine?runtime=1`);
+        if (alive.current) setRuntime(r.runtime);
+      } catch { /* the next tick tries again */ }
+    }, 3000);
+    return () => window.clearInterval(timer);
+  }, [runtime?.status, bot.id]);
+
+  const restart = async () => {
+    setRestarting(true);
+    setRestartError(null);
+    try {
+      const r = await api<{ runtime: EngineRuntime }>("POST", `/bots/${bot.id}/engine/restart`);
+      if (alive.current) setRuntime(r.runtime);
+    } catch (e) {
+      if (alive.current) setRestartError(tNow("engine.restartFailed", { error: errText(e) }));
+    } finally {
+      if (alive.current) setRestarting(false);
+    }
+  };
 
   // Signed in: stop waiting.
   useEffect(() => {
@@ -271,6 +301,19 @@ function EngineStatusBox({ bot, engine }: { bot: Bot; engine: Engine }) {
       {error && status === undefined && (
         <button type="button" className="btn btn-small" disabled={checking} onClick={() => void check()}>{t("common.tryAgain")}</button>
       )}
+      {runtime && (
+        <div className={`engine-foot is-${runtime.status}`}>
+          <span className="engine-state">
+            <span className={`dot-inline engine-dot is-${runtime.status}`} />
+            <span className="truncate">{[tool, runtime.model || "default", t(`engine.state.${runtime.status}` as Key)].join(" · ")}</span>
+          </span>
+          <button type="button" className={`btn btn-small ${runtime.status === "error" || runtime.status === "stopped" ? "btn-primary" : "btn-ghost"}`} disabled={restarting || runtime.status === "starting"} onClick={() => void restart()} title={t("engine.restartHint")}>
+            <Icon name="refresh" size={13} /> {t(restarting || runtime.status === "starting" ? "engine.restarting" : "engine.restart")}
+          </button>
+        </div>
+      )}
+      {runtime?.status === "error" && runtime.error && <p className="engine-error small" role="alert">{runtime.error}</p>}
+      {restartError && <p className="engine-error small" role="alert">{restartError}</p>}
     </div>
   );
 }

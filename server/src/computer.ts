@@ -231,6 +231,10 @@ export const screen = {
   tidy: (botId: string, userId: string) => (kind === "linux" ? linuxScreen.tidy(botId, userId, workspaceOf(botId)) : browserScreen.reset(botId)),
   /** Re-applies a bot's look to its computer after a rename or a new colour. */
   redress: (botId: string) => (kind === "linux" ? linuxScreen.redress(botId) : Promise.resolve()),
+  /** Before a turn that uses the computer (B-2): on, dressed, browser answering. Nothing to do without a Linux computer. */
+  ready: (botId: string, userId: string) => (kind === "linux" ? linuxScreen.ready(botId, userId, workspaceOf(botId)) : Promise.resolve()),
+  /** Whether the bot's browser answers right now (Linux computers; never wakes one). */
+  browserAnswers: (botId: string) => (kind === "linux" ? linuxScreen.browserAnswers(botId) : Promise.resolve(false)),
   /** Linux: put the computer to sleep, keeping everything on it. Browser: close it. */
   sleep: (botId: string) => (kind === "linux" ? linuxScreen.sleep(botId) : browserScreen.reset(botId)),
   /** Linux: wipe the computer and start fresh next time. Browser: close it (logins are kept). */
