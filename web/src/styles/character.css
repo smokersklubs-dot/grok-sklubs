@@ -364,3 +364,5 @@
 
 .chr-bar { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
 .chr-bar-label { font-size: 13px; color: var(--text); }
+.gem-star { display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; flex: none; color: #e8a500; background: color-mix(in srgb, #ffd84a 18%, var(--surface)); margin-right: 10px; }
+.gem-hunt-btn { margin-top: 8px; gap: 6px; }

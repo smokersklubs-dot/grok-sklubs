@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, enc, errText } from "../api";
 import { t, useT } from "../i18n";
 import { useStore } from "../store";
-import type { Bot, FileEntry, Routine } from "../types";
+import { useCheer } from "../lib/cheer";
+import type { Bot, FileEntry, Gem, Routine } from "../types";
 import { accentStyle } from "../lib/colors";
 import { botTitle, dateTime, fileSize, hostName, relTime, sortTasks } from "../lib/format";
 import { endCall, startCall } from "../lib/call";
@@ -71,6 +72,66 @@ function Upcoming({ bot }: { bot: Bot }) {
           ))}
         </ul>
       )}
+      <ErrorNote>{error}</ErrorNote>
+    </section>
+  );
+}
+
+interface GemEntry { botId: string; botName: string; at: number; reason: string; gem: Gem | null }
+
+/** Gems this bot found (its euphoric moments), and the daily gem hunt that looks for them. */
+function GemsSection({ bot }: { bot: Bot }) {
+  const t = useT();
+  const routines = useStore((s) => s.bundles[bot.id]?.routines);
+  const cheerTick = useCheer((c) => c.until[bot.id] ?? 0);
+  const [gems, setGems] = useState<GemEntry[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    api<{ gems: GemEntry[] }>("GET", "/gems").then((r) => { if (live) setGems(r.gems.filter((g) => g.botId === bot.id)); }).catch(() => { if (live) setGems([]); });
+    return () => { live = false; };
+  }, [bot.id, cheerTick]);
+  const hunting = routines?.some((r) => r.prompt.startsWith("Gem hunt."));
+  const start = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await api("POST", `/bots/${enc(bot.id)}/gem-hunt`, { timezone: Intl.DateTimeFormat().resolvedOptions().timeZone, time: "08:40" });
+      await useStore.getState().loadBundle(bot.id);
+    } catch (e) {
+      setError(errText(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <section className="section">
+      <div className="section-head">
+        <h3>{t("gems.title")}</h3>
+      </div>
+      {gems && gems.length === 0 && <p className="muted small">{t("gems.none")}</p>}
+      {gems && gems.length > 0 && (
+        <ul className="list gem-list">
+          {gems.slice(0, 6).map((g) => (
+            <li key={g.at} className="list-row" title={g.gem?.why ?? ""}>
+              <span className="gem-star" aria-hidden="true"><Icon name="star" size={13} /></span>
+              <div className="list-row-text">
+                <span className="list-row-title truncate">{g.reason}</span>
+                <span className="list-row-sub truncate">
+                  {g.gem ? `${t(`gem.kind.${g.gem.kind}`)} · ${g.gem.score}/100${g.gem.value ? ` · ${g.gem.value}` : ""} · ` : ""}{relTime(g.at)}
+                </span>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+      {routines && !hunting && (
+        <button type="button" className="btn btn-ghost btn-small gem-hunt-btn" disabled={busy} onClick={start}>
+          <Icon name="star" size={14} /> {t(busy ? "gems.starting" : "gems.start")}
+        </button>
+      )}
+      {hunting && <p className="muted small">{t("gems.hunting")}</p>}
       <ErrorNote>{error}</ErrorNote>
     </section>
   );
@@ -518,6 +579,7 @@ export function DetailsPanel() {
         {tab === "activity" && (
           <>
             <Upcoming bot={bot} />
+            {!isRoom && <GemsSection key={`g${bot.id}`} bot={bot} />}
             {isRoom && <Members room={bot} />}
             {!isRoom && <ComputerSection key={`c${bot.id}`} bot={bot} />}
             {!isRoom && <VoiceSection key={`v${bot.id}`} bot={bot} />}

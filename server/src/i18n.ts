@@ -39,6 +39,7 @@ const FR: Record<string, string> = {
   "Group": "Groupe", "Helper": "Assistant", "Group chat with {n} bots.": "Discussion de groupe avec {n} bots.",
   "Temporary helper working for {name}.": "Assistant temporaire au service de {name}.",
   "Chief of staff": "Bras droit",
+  "Gem hunt": "Chasse aux pépites", "Found a gem": "A trouvé une pépite",
   "Your main point of contact. Keeps track of what is open, checks in when something needs you, and coordinates the other bots.": "Ton interlocuteur principal. Suit ce qui est en cours, te fait signe quand quelque chose demande ton attention et coordonne les autres bots.",
   // Step labels
   "Looking at the screen": "Regarde l'écran", "Opening a page": "Ouvre une page", "Reading the page": "Lit la page", "Clicking": "Clique",

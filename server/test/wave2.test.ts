@@ -155,6 +155,17 @@ test("celebrate: only a data-backed gem above the bar, at most twice a day, make
   await call("PATCH", `/bots/${bot.id}`, { character: { euphoria: true, gemThreshold: 85 } });
 });
 
+test("gem hunt: one daily routine per bot, and found gems are listed", async () => {
+  const first = (await call("POST", `/bots/${bot.id}/gem-hunt`, { timezone: "Europe/Paris", time: "07:15" })).json;
+  assert.equal(first.created, true);
+  assert.equal(first.routine.schedule, "15 7 * * *");
+  assert.equal(first.routine.timezone, "Europe/Paris");
+  assert.match(first.routine.prompt, /stay_quiet/);
+  assert.equal((await call("POST", `/bots/${bot.id}/gem-hunt`, {})).json.created, false, "only one hunt per bot");
+  const gems = (await call("GET", "/gems")).json.gems;
+  assert.ok(gems.length >= 2 && gems.every((g: any) => g.botId === bot.id && g.gem && g.gem.score >= 85));
+});
+
 test("voice calls leave a trace with duration, transcript and a summary", async () => {
   const { callId } = (await call("POST", `/bots/${bot.id}/calls`)).json;
   await call("POST", `/bots/${bot.id}/calls/${callId}/end`, { transcript: [{ role: "user", text: "Book the train" }, { role: "assistant", text: "Done, 9am Tuesday." }, { role: "bogus", text: "x" }] });

@@ -167,3 +167,10 @@ Notes:
 - `POST /bots` and `PATCH /bots/:id` accept `character` (partial objects are merged; unknown values are ignored).
 - Team export/import carries `character`.
 - `Character.type`: "mascot" | "dots" | "muse". `Character.customColor`: "#rrggbb" or null; when set it replaces the named colour for the character (and tints the bot's computer).
+
+## Pépites (euphorie)
+
+- Outil du bot `celebrate { kind, score, evidence, value?, reason }` : le bot l'appelle lui-même quand son analyse de données révèle une opportunité rare. Le serveur ne déclenche l'euphorie que si `evidence` contient des chiffres, si `score` ≥ `character.gemThreshold` (60–98, 85 par défaut), si `character.euphoria` est actif, et au plus `GEMS_PER_DAY` (2) fois par bot sur 24 h. Sinon la trouvaille est seulement notée.
+- Événement SSE `{ type: "cheer", botId, reason, gem }` et ligne `{ kind: "event", event: "cheer", text, gem: { kind, score, why, value } }`.
+- `GET /api/gems` : les 100 dernières pépites de l'utilisateur (`botId`, `botName`, `at`, `reason`, `gem`).
+- `POST /api/bots/:id/gem-hunt { timezone?, time? "HH:MM" }` : crée la routine quotidienne « Chasse aux pépites » (une seule par bot ; `created: false` si elle existe déjà). Sans pépite, le bot termine en silence (`stay_quiet`).

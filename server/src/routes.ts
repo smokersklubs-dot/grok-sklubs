@@ -381,6 +381,35 @@ api.post("/bots/:id/compact", async (c) => {
   try { return c.json(await inQueue(bot.id, () => compactIfNeeded(bots.byId(bot.id)!, true))); } catch (err) { return fail(502, `Could not reach the model: ${(err as Error).message}`); }
 });
 
+// Gem hunt: a daily routine where the bot goes through the business data it can reach and celebrates only real gems.
+const GEM_HUNT = "Gem hunt";
+const GEM_HUNT_PROMPT = [
+  "Gem hunt. Go through the business data you can reach: connected apps (analytics, search console, CRM, sales, ads, mailbox, shop), the user's sites and pages you know, files in your library, and what you remember about the business.",
+  "Look for rare, high-value opportunities: a qualified lead ready to buy, a search query or page with large traffic upside and weak competition, a sharp change in a key metric, a deal or saving far above normal, an untapped market signal.",
+  "Compare with what you noted after earlier hunts (memory_search \"gem hunt\") so you judge what is really unusual for this business.",
+  "If you find a gem, call celebrate with the numbers, then explain it and suggest the next step. Save one short memory with today's key figures for the next hunt.",
+  "If nothing stands out, do not invent anything: end with stay_quiet.",
+].join("\n");
+api.get("/gems", (c) => {
+  const list = q.all<{ bot_id: string; name: string; body: string; created_at: number }>(
+    "SELECT r.bot_id, b.name, r.body, r.created_at FROM rows r JOIN bots b ON b.id = r.bot_id WHERE b.user_id = ? AND r.kind = 'event' AND r.body LIKE '%\"event\":\"cheer\"%' ORDER BY r.created_at DESC LIMIT 100",
+    c.get("user").id);
+  return c.json({ gems: list.map((r) => { const b = JSON.parse(r.body); return { botId: r.bot_id, botName: r.name, at: r.created_at, reason: b.text, gem: b.gem ?? null }; }) });
+});
+api.post("/bots/:id/gem-hunt", async (c) => {
+  const bot = ownAgent(c);
+  const b = await body(c);
+  const existing = routines.forBot(bot.id).find((r) => r.prompt.startsWith("Gem hunt."));
+  if (existing) return c.json({ routine: publicRoutine(existing, c.get("user").locale), created: false });
+  const tz = typeof b.timezone === "string" && isValidTimezone(b.timezone) ? b.timezone : "UTC";
+  const m = /^(\d{1,2}):(\d{2})$/.exec(String(b.time ?? "08:40"));
+  const hh = m ? Math.min(23, Number(m[1])) : 8, mm = m ? Math.min(59, Number(m[2])) : 40;
+  const r = routines.create(bot.id, { name: tr(c.get("user").locale, GEM_HUNT), prompt: GEM_HUNT_PROMPT, trigger: "cron", schedule: `${mm} ${hh} * * *`, timezone: tz });
+  schedule(r.id);
+  emit(c.get("user").id, { type: "routines", botId: bot.id });
+  audit(c.get("user").id, "routine", `${bot.name}: gem hunt turned on`, bot.id);
+  return c.json({ routine: publicRoutine(r, c.get("user").locale), created: true });
+});
 api.get("/bots/:id/routines", (c) => c.json({ routines: routines.forBot(ownBot(c).id).map((r) => publicRoutine(r, c.get("user").locale)) }));
 const ownRoutine = (c: Context<Env>) => routines.owned(c.get("user").id, c.req.param("id") ?? "") ?? fail(404, "That routine does not exist.");
 api.patch("/routines/:id", async (c) => {
