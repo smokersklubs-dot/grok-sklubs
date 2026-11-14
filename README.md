@@ -1,5 +1,7 @@
 # Sklubot
 
+![L’équipe Sklubot](docs/characters/team_16x9.jpg)
+
 Une équipe de bots IA auto-hébergée. Chaque bot a un nom, un rôle, sa mémoire, ses compétences, son
 **propre ordinateur Linux**, ses fichiers, ses routines — et ils travaillent ensemble. Tout tourne sur ta machine,
 avec tes clés ; les données restent dans un fichier SQLite local.
