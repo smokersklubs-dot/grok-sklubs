@@ -135,7 +135,7 @@ export function playShout(locale: Locale, opts: { speak?: boolean } = {}): void 
     try {
       const t0 = ac.currentTime + 0.03;
       const master = ac.createGain();
-      master.gain.value = 0.22;
+      master.gain.value = 0.9;
       master.connect(ac.destination);
       // "Whoo…" rising, then a higher "…hoo!".
       syllable(ac, master, t0, 0.34, 300, 640, 0.5);
