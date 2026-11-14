@@ -14,6 +14,7 @@ import { startScheduler } from "./scheduler.js";
 import { attachLiveScreens } from "./vnc.js";
 import { recoverInterruptedTurns } from "./agent/loop.js";
 import { telegram } from "./telegram.js";
+import { closeSlackSockets } from "./native/triggers.js";
 
 try { assertConfig(); } catch (err) { console.error(`\nCannot start: ${(err as Error).message}\n`); process.exit(1); }
 
@@ -63,6 +64,7 @@ attachLiveScreens(server as unknown as import("node:http").Server);
 async function shutdown() {
   server.close();
   telegram.stopAll();
+  closeSlackSockets();
   await Promise.all([closeAllDesktops(), connectors.closeAll()]).catch(() => {});
   process.exit(0);
 }

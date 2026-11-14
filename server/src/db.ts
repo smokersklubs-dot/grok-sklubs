@@ -118,6 +118,12 @@ function CREATE_EXTRA() {
   add("routines", "watch_hash", "TEXT");
   add("routines", "watch_checked_at", "INTEGER");
   add("settings", "budget_warned", "TEXT NOT NULL DEFAULT ''");
+  // Built-in app triggers: the account, what to look for (JSON), how often, and where the last check stopped (JSON).
+  add("routines", "native_account_id", "TEXT");
+  add("routines", "native_config", "TEXT");
+  add("routines", "native_every_min", "INTEGER");
+  add("routines", "native_state", "TEXT");
+  add("routines", "native_checked_at", "INTEGER");
   // OAuth sign-in for connectors: "none" | "token" | "oauth" (empty on older rows: read from token_enc), and the sealed tokens.
   add("connectors", "auth", "TEXT NOT NULL DEFAULT ''");
   add("connectors", "oauth_enc", "TEXT");
@@ -159,6 +165,29 @@ function CREATE_EXTRA() {
     state_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     connector_id TEXT NOT NULL REFERENCES connectors(id) ON DELETE CASCADE, verifier_enc TEXT NOT NULL,
     bot_id TEXT, seq INTEGER, expires_at INTEGER NOT NULL
+  );
+  -- Built-in apps. The OAuth client the user created in the vendor's console (secret and Slack app-level token sealed).
+  CREATE TABLE IF NOT EXISTS native_clients (
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, vendor TEXT NOT NULL, client_id TEXT NOT NULL,
+    secret_enc TEXT, tenant TEXT NOT NULL DEFAULT '', app_token_enc TEXT, updated_at INTEGER NOT NULL,
+    PRIMARY KEY (user_id, vendor)
+  );
+  -- One signed-in account of a built-in app ("Gmail — perso"). tokens_enc: sealed JSON, never sent anywhere but the vendor.
+  CREATE TABLE IF NOT EXISTS native_accounts (
+    id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, app TEXT NOT NULL, label TEXT NOT NULL,
+    identity TEXT, tokens_enc TEXT, meta TEXT NOT NULL DEFAULT '{}', status TEXT NOT NULL DEFAULT 'needs_auth', error TEXT,
+    created_at INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS native_accounts_user ON native_accounts(user_id, created_at);
+  -- Sign-ins waiting for the browser to come back: one row per state, single use, 10 minutes.
+  CREATE TABLE IF NOT EXISTS native_pending (
+    state_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    account_id TEXT NOT NULL REFERENCES native_accounts(id) ON DELETE CASCADE, verifier_enc TEXT, expires_at INTEGER NOT NULL
+  );
+  -- Items a built-in app trigger already fired for (message id, event id + start, channel + ts): never twice.
+  CREATE TABLE IF NOT EXISTS native_seen (
+    routine_id TEXT NOT NULL REFERENCES routines(id) ON DELETE CASCADE, item TEXT NOT NULL, at INTEGER NOT NULL,
+    PRIMARY KEY (routine_id, item)
   );
   -- A turn that is under way. Rows left here after a restart are turns that were cut off.
   CREATE TABLE IF NOT EXISTS active_turns (

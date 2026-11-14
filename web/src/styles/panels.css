@@ -234,3 +234,22 @@ a.btn { text-decoration: none; }
 .sub-usage { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; }
 .sub-usage-card { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--r-md); }
 .sub-usage-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+
+/* Built-in apps: client set-up steps, scopes, accounts and app triggers */
+.native-setup, .native-add, .native-trigger-form { display: flex; flex-direction: column; gap: 10px; }
+.native-steps { list-style: decimal; margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; line-height: 1.45; color: var(--text-2); }
+.native-steps li::marker { color: var(--text-3); font-weight: 650; }
+.native-scopes { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.native-scopes code { display: inline-block; padding: 2px 7px; border-radius: 6px; background: var(--surface); border: 1px solid var(--border); font-size: 11.5px; word-break: break-all; }
+.native-docs a { white-space: nowrap; }
+.native-client-line { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.native-trigger-form { margin-top: 10px; padding: 12px; border-radius: var(--r-md); background: var(--surface-2); }
+.native-trigger-form .input { background: var(--surface-1, var(--surface)); }
+.check-row { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-2); align-self: end; padding-bottom: 8px; }
+.chip.chip-quiet { background: transparent; border: 1px solid var(--border); color: var(--text-3); font-weight: 600; }
+.logo-tile.native-gmail { background: color-mix(in srgb, #d94a3d 16%, var(--surface-3)); color: #b83a2e; }
+.logo-tile.native-gcalendar { background: color-mix(in srgb, #2f6fdb 16%, var(--surface-3)); color: #2a5fbd; }
+.logo-tile.native-gdrive { background: color-mix(in srgb, #1f9d61 16%, var(--surface-3)); color: #1a7f4f; }
+.logo-tile.native-outlook { background: color-mix(in srgb, #1b6fc2 16%, var(--surface-3)); color: #1760a8; }
+.logo-tile.native-slack { background: color-mix(in srgb, #7a3f86 16%, var(--surface-3)); color: #6b3576; }
+@media (max-width: 640px) { .oauth-client .form-cols, .native-setup .form-cols, .native-trigger-form .form-cols { grid-template-columns: 1fr; } }

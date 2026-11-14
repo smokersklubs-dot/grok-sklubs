@@ -16,6 +16,8 @@ import { buildSystemPrompt } from "./prompt.js";
 import { deliverBotMessage } from "./team.js";
 import { builtinTools, higgsfieldFor, videoRoute, type BuiltinTool, type ToolOutput } from "./tools.js";
 import { videoService } from "../video.js";
+import { nativeToolsFor, runNativeTool, type Risk } from "../native/tools.js";
+import { accounts as nativeAccounts } from "../native/accounts.js";
 
 /**
  * What starts a turn. `tainted`: the turn starts out carrying outside content — a webhook's payload, a
@@ -69,6 +71,8 @@ interface PausedTurn {
   thread?: number;
 }
 
+export interface RemoteTool { connectorId: string; connectorName: string; remoteName: string; readOnly: boolean; native?: { accountId: string; risk: Risk; label: string } }
+
 export interface Turn {
   bot: BotRecord;
   user: UserRecord;
@@ -79,7 +83,8 @@ export interface Turn {
   signal: AbortSignal;
   generation: number;
   builtin: Map<string, BuiltinTool>;
-  remote: Map<string, { connectorId: string; connectorName: string; remoteName: string; readOnly: boolean }>;
+  /** App tools: from connectors, or from a built-in app account (`native`: the account and how risky the action is). */
+  remote: Map<string, RemoteTool>;
   /** How often each exact call was made this turn, to stop a bot going round in circles. */
   repeats: Map<string, number>;
   spoke: boolean;
@@ -238,7 +243,11 @@ export async function newTurn(bot: BotRecord, user: UserRecord, depth: number, s
   const modelRef = bot.model || defaultModelRef();
   let nativeSearch = false;
   try { nativeSearch = resolveModel(modelRef).provider.id === "anthropic"; } catch { /* no provider yet: the turn will say so */ }
-  const remoteTools = bot.disabledTools.includes("apps") ? [] : await connectors.toolsFor(user.id).catch(() => []);
+  const appsOff = bot.disabledTools.includes("apps");
+  const remoteTools = appsOff ? [] : await connectors.toolsFor(user.id).catch(() => []);
+  // Built-in app accounts (Gmail, Outlook, Slack…): one set of tools per signed-in account.
+  const nativeTools = appsOff ? [] : nativeToolsFor(user.id).map((t) => ({ spec: t.spec, connectorId: "", connectorName: t.accountName, remoteName: t.action, readOnly: t.risk === "read", native: { accountId: t.accountId, risk: t.risk, label: t.label } }));
+  const nativeAll = appsOff ? [] : nativeAccounts.list(user.id);
   // A subscription tool has its own shell, file and web tools; ours would only duplicate them.
   // Videos go through the user's Higgsfield app when it is connected (and apps are on for this bot), else a video API.
   const video = bot.disabledTools.includes("video") ? null : bot.disabledTools.includes("apps") ? (videoService() ? "api" : null) : videoRoute(user.id);
@@ -246,12 +255,12 @@ export async function newTurn(bot: BotRecord, user: UserRecord, depth: number, s
   const connectorNames = [...new Set(remoteTools.map((t) => t.connectorName))];
   return {
     bot, user, depth, signal, generation: bot.generation,
-    system: buildSystemPrompt(bot, user, { connectorNames, browser: browserAvailable(), shell: shellAvailable(), linux: computerKind() === "linux", images: !!imageService(), video, higgsfield: video === "connector" ? higgsfieldFor(user.id)?.name : undefined }),
+    system: buildSystemPrompt(bot, user, { connectorNames, nativeAccounts: nativeAll.filter((a) => a.status === "ready").map((a) => `${a.name}${a.identity ? ` (${a.identity})` : ""}`), nativeNeedsSignIn: nativeAll.filter((a) => a.status !== "ready").map((a) => a.name), browser: browserAvailable(), shell: shellAvailable(), linux: computerKind() === "linux", images: !!imageService(), video, higgsfield: video === "connector" ? higgsfieldFor(user.id)?.name : undefined }),
     // Sorted so the tool list is byte-identical from call to call, which keeps provider caches warm.
-    tools: [...builtins.map((b) => b.spec), ...remoteTools.map((r) => r.spec)].sort((a, b) => a.name.localeCompare(b.name)),
+    tools: [...builtins.map((b) => b.spec), ...remoteTools.map((r) => r.spec), ...nativeTools.map((r) => r.spec)].sort((a, b) => a.name.localeCompare(b.name)),
     modelRef,
     builtin: new Map(builtins.map((b) => [b.spec.name, b])),
-    remote: new Map(remoteTools.map((r) => [r.spec.name, r])),
+    remote: new Map<string, RemoteTool>([...remoteTools.map((r) => [r.spec.name, r] as const), ...nativeTools.map(({ spec, ...r }) => [spec.name, r] as const)]),
     repeats: new Map(), spoke: false, lastText: "", tainted: false, hosts: new Set(), appUrls: new Set(), thread: 0,
   };
 }
@@ -417,7 +426,9 @@ async function modelLoop(turn: Turn) {
     const stepSeq: Record<string, number> = {};
     for (const call of calls) {
       const b = turn.builtin.get(call.name);
-      stepSeq[call.id] = rows.append(bot, { kind: "step", callId: call.id, tool: call.name, label: b ? tr(turn.user.locale, b.label) : tr(turn.user.locale, "Using {app}", { app: turn.remote.get(call.name)?.connectorName ?? tr(turn.user.locale, "an app") }), status: "running", args: redact(call.input) }).seq;
+      const r = turn.remote.get(call.name);
+      const label = b ? tr(turn.user.locale, b.label) : r?.native ? `${tr(turn.user.locale, r.native.label)} · ${r.connectorName}` : tr(turn.user.locale, "Using {app}", { app: r?.connectorName ?? tr(turn.user.locale, "an app") });
+      stepSeq[call.id] = rows.append(bot, { kind: "step", callId: call.id, tool: call.name, label, status: "running", args: redact(call.input) }).seq;
     }
     const outcome = await processCalls(turn, { system: turn.system, tools: turn.tools, modelRef: turn.modelRef, pending: calls, results: [], stepSeq, generation: turn.generation, approvalId: "", depth: turn.depth, endTurn: false, thread: turn.thread });
     if (outcome !== "continue") return;
@@ -539,6 +550,7 @@ export function judge(turn: Turn, call: ToolUseBlock): Verdict {
   }
   const key = builtin ? call.name : `${remote!.connectorName}: ${remote!.remoteName}`;
   const policy = policies.get(user.id, key);
+  if (remote?.native) return judgeNative(turn, key, policy, remote.connectorName, remote.remoteName, remote.native.risk);
   if (policy === "blocked") return { kind: "block" };
   // A command on the server itself (no container): always asked, whatever the bot's trust or an earlier "always".
   if (call.name === "shell_run" && builtin && shellOnHost())
@@ -560,6 +572,25 @@ export function judge(turn: Turn, call: ToolUseBlock): Verdict {
   if (builtin) return builtin.sensitive && bot.autonomy === "careful" ? ask : { kind: "allow" };
   // After reading outside content, a trusted bot is treated as a balanced one: what it read may be trying to steer it.
   return remote!.readOnly || (bot.autonomy === "trusted" && !turn.tainted) ? { kind: "allow" } : ask;
+}
+
+/**
+ * Built-in app accounts. Reads run freely (what they bring back is outside content). A draft or a reaction asks only a
+ * careful bot. Sending, labelling, archiving, creating, moving, deleting, uploading and posting ask like a connector
+ * write — a trusted bot may go ahead — but once the turn has read outside content they always ask, whatever was allowed
+ * before: an email or a message the bot just read may be trying to make it send something.
+ */
+function judgeNative(turn: Turn, key: string, policy: string | null, account: string, action: string, risk: Risk): Verdict {
+  const { bot, user } = turn;
+  const loc = user.locale;
+  if (policy === "blocked") return { kind: "block" };
+  const what = action.replace(/_/g, " ");
+  const ask: Verdict = { kind: "ask", policyKey: key, title: tr(loc, "Allow {bot} to use {app}: {action}?", { bot: bot.name, app: account, action: what }), reason: tr(loc, "use {app}: {action}", { app: account, action: what }), source: account };
+  if (risk === "read") return policy === "needs_approval" ? ask : { kind: "allow" };
+  if (risk === "safe") return policy === "needs_approval" || (bot.autonomy === "careful" && policy !== "always_allow") ? ask : { kind: "allow" };
+  if (turn.tainted) return { ...ask, title: tr(loc, "{bot} has read outside content. Allow it to use {app}: {action}?", { bot: bot.name, app: account, action: what }), source: tr(loc, "Outside content") };
+  if (policy === "always_allow") return { kind: "allow" };
+  return bot.autonomy === "trusted" && policy !== "needs_approval" ? { kind: "allow" } : ask;
 }
 
 const cardDetail = (call: ToolUseBlock, verdict: Extract<Verdict, { kind: "ask" }>) => clip([describeArgs(call.input), verdict.note ?? ""].filter(Boolean).join("\n\n"), 1600);
@@ -591,6 +622,11 @@ export async function execute(turn: Turn, call: ToolUseBlock): Promise<ToolOutpu
     return builtin.run(call.input, { bot: turn.bot, user: turn.user, depth: turn.depth, signal: turn.signal, tainted: turn.tainted, thread: turn.thread, appUrls: turn.appUrls });
   }
   const remote = turn.remote.get(call.name);
+  if (remote?.native) {
+    activity(turn, "connector", remote.connectorName);
+    const r = await runNativeTool(remote.native.accountId, remote.remoteName, call.input, { botId: turn.bot.id });
+    return { content: r.text, summary: r.summary };
+  }
   if (remote) {
     activity(turn, "connector", remote.connectorName);
     const r = await connectors.call(remote.connectorId, remote.remoteName, call.input);

@@ -7,7 +7,8 @@ import { enqueue } from "./agent/loop.js";
 import { consolidationSweep } from "./agent/memory.js";
 import { createHash } from "node:crypto";
 import { readLibraryFile, resolveInWorkspace } from "./computer.js";
-import { routines, runs, type RoutineRecord } from "./routines.js";
+import { isNativeTrigger, routines, runs, type RoutineRecord } from "./routines.js";
+import { checkNative, setFire, syncSlackSockets } from "./native/triggers.js";
 import { tr } from "./i18n.js";
 import { guardedFetch } from "./net.js";
 import { approvals, bots, clip, now, rows, settings, tasks, users } from "./store.js";
@@ -24,6 +25,7 @@ export function schedule(routineId: string) {
     if (next) due.set(r.id, next);
   } else if (r.trigger === "once" && r.runAt && !r.lastRunAt) due.set(r.id, r.runAt);
   else if (r.trigger === "watch" && r.watch) due.set(r.id, (r.watch.lastCheckedAt ?? 0) + r.watch.everyMin * 60_000);
+  else if (isNativeTrigger(r.trigger) && r.native) due.set(r.id, (r.native.lastCheckedAt ?? 0) + r.native.everyMin * 60_000);
 }
 
 export const unschedule = (routineId: string) => { due.delete(routineId); };
@@ -32,12 +34,12 @@ export const unschedule = (routineId: string) => { due.delete(routineId); };
  * Runs a routine now: notes it in the chat and queues the work behind whatever the bot is doing.
  * `outside`: the payload came from outside (a webhook call); the turn treats it as outside content.
  */
-export function fireRoutine(r: RoutineRecord, payload?: unknown, opts: { outside?: boolean } = {}) {
+export function fireRoutine(r: RoutineRecord, payload?: unknown, opts: { outside?: boolean; label?: string } = {}) {
   const bot = bots.byId(r.botId);
   if (!bot) return;
   routines.markRun(r.id, now());
   rows.append(bot, { kind: "event", event: "routine", text: tr(users.localeOf(bot.userId), "Running routine: {name}", { name: r.name }) });
-  const extra = payload === undefined ? "" : `\n\n[Data received with this call]\n${clip(JSON.stringify(payload, null, 2), 8000)}`;
+  const extra = payload === undefined ? "" : `\n\n${opts.label ?? "[Data received with this call]"}\n${clip(JSON.stringify(payload, null, 2), 8000)}`;
   enqueue(bot.id, { kind: "routine", name: r.name, text: r.prompt + extra, runId: runs.start(r.id), tainted: !!opts.outside && payload !== undefined });
   emit(bot.userId, { type: "routines", botId: bot.id });
 }
@@ -49,6 +51,7 @@ function tickRoutines() {
     const r = routines.byId(id);
     due.delete(id);
     if (!r || !r.enabled) continue;
+    if (isNativeTrigger(r.trigger)) { void checkNative(r).catch((e) => console.error("[app trigger]", e?.message ?? e)).finally(() => schedule(id)); continue; }
     if (r.trigger === "watch") { void checkWatch(r).catch((e) => console.error("[watch]", e?.message ?? e)).finally(() => schedule(id)); continue; }
     fireRoutine(r);
     if (r.trigger === "cron") schedule(id);
@@ -138,8 +141,11 @@ function tickCheckins() {
   }
 }
 
+setFire((r, payload, opts) => fireRoutine(r, payload, opts));
+
 export function startScheduler() {
   if (config.schedulerOff) return;
+  syncSlackSockets();
   catchUp();
   for (const r of routines.allEnabled()) schedule(r.id);
   const guard = (fn: () => unknown) => () => { try { void Promise.resolve(fn()).catch((e) => console.error("[scheduler]", e)); } catch (e) { console.error("[scheduler]", e); } };
@@ -147,4 +153,5 @@ export function startScheduler() {
   setInterval(guard(tickCheckins), 60_000).unref();
   setInterval(guard(consolidationSweep), 60_000).unref();
   setInterval(guard(sweepIdleDesktops), 60_000).unref();
+  setInterval(guard(syncSlackSockets), 60_000).unref();
 }

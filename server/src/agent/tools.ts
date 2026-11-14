@@ -9,6 +9,8 @@ import { isValidTimezone, parseCron } from "../cron.js";
 import { tr } from "../i18n.js";
 import type { ImageBlock, TextBlock, ToolSpec } from "../llm/types.js";
 import { describeRoutine, routines } from "../routines.js";
+import { accounts as nativeAccounts } from "../native/accounts.js";
+import { appOf } from "../native/vendors.js";
 import { schedule, unschedule } from "../scheduler.js";
 import { GEM_KINDS, GEMS_PER_DAY, REACTIONS, type ActivityKind, type Connector, type Gem, type GemKind, type ReactionEmoji, type Row, type ToolGroup } from "../shared.js";
 import { q } from "../db.js";
@@ -458,20 +460,36 @@ function checkSchedule(scheduleExpr: string, tz: string): string | null {
 
 const routineTools: BuiltinTool[] = [
   tool("routine_create",
-    "Create a routine: an instruction you will carry out later without being asked. Four kinds — 'cron' repeats on a schedule (use it for 'every N minutes' too), 'once' runs a single time, 'webhook' runs whenever an outside system calls its web address, 'watch' runs only when a web page or a file changes (checking costs nothing while nothing changes).",
+    "Create a routine: an instruction you will carry out later without being asked. Kinds — 'cron' repeats on a schedule (use it for 'every N minutes' too), 'once' runs a single time, 'webhook' runs whenever an outside system calls its web address, 'watch' runs only when a web page or a file changes (checking costs nothing while nothing changes). With a built-in app account: 'email' runs once per new email matching `query`, 'slack' once per new Slack message in `channel` (or '@dm' for direct messages; mentions_only for mentions of the app), 'calendar' a few minutes (`lead_minutes`) before each event.",
     obj({
       name: str("Short name"), prompt: str("What to do on each run, written as a complete instruction to yourself"),
-      kind: { type: "string", enum: ["cron", "once", "webhook", "watch"] },
+      kind: { type: "string", enum: ["cron", "once", "webhook", "watch", "email", "slack", "calendar"] },
+      account: str("For email, slack and calendar: the account's exact name, e.g. \"Gmail — perso\""),
+      query: str("For email: which emails (Gmail search syntax; for Outlook words, from: and subject:). Empty: every new email in the inbox"),
+      channel: str("For slack: #channel or channel id, or @dm"),
+      mentions_only: { type: "boolean", description: "For slack: only messages that mention the app" },
+      lead_minutes: int("For calendar: minutes before the event (1 to 1440, default 10)"),
       watch_url: str("For watch: a web address to check regularly; the routine runs when its content changes"),
       watch_file: str("For watch: instead of a web address, a file in your library to check"),
-      every_minutes: int("For watch: minutes between checks (5 to 1440, default 30)"),
+      every_minutes: int("For watch: minutes between checks (5 to 1440, default 30). For email, slack and calendar: 2 to 1440, default 5"),
       schedule: str("For cron: five fields — minute hour day-of-month month day-of-week, e.g. '0 9 * * 1-5'"),
       run_at: str("For once: ISO 8601 date and time with offset, e.g. 2030-01-31T09:00:00+01:00"),
       timezone: str("IANA timezone for cron schedules, e.g. Europe/Paris. Ask the user if you do not know it."),
     }, ["name", "prompt", "kind"]), {
     activity: "planning", label: "Setting up a routine", audited: true,
     run: async (a, c) => {
-      const kind = a.kind as "cron" | "once" | "webhook" | "watch";
+      const kind = a.kind as "cron" | "once" | "webhook" | "watch" | "email" | "slack" | "calendar";
+      if (kind === "email" || kind === "slack" || kind === "calendar") {
+        const all = nativeAccounts.list(c.user.id);
+        const acc = all.find((x) => x.name.toLowerCase() === String(a.account ?? "").trim().toLowerCase());
+        const fits = all.filter((x) => appOf(x.app)?.triggers.includes(kind)).map((x) => x.name);
+        if (!acc || !appOf(acc.app)!.triggers.includes(kind)) return { content: `Name the account exactly: one of ${fits.join(", ") || "(none connected — ask the user to connect one in Settings → Apps)"}.`, isError: true };
+        if (kind === "slack" && !String(a.channel ?? "").trim()) return { content: "A slack routine needs channel (#name, id or @dm).", isError: true };
+        const r = routines.create(c.bot.id, { name: String(a.name), prompt: String(a.prompt), trigger: kind, native: { accountId: acc.id, query: String(a.query ?? "").trim(), channel: String(a.channel ?? "").trim(), mentionsOnly: !!a.mentions_only, leadMin: Math.min(1440, Math.max(1, Number(a.lead_minutes) || 10)), everyMin: Math.min(1440, Math.max(2, Number(a.every_minutes) || 5)) } });
+        schedule(r.id);
+        announceRoutine(c, tr(c.user.locale, "Routine created: {name} — {when}", { name: r.name, when: describeRoutine(r, c.user.locale) }));
+        return { content: JSON.stringify({ id: r.id, when: describeRoutine(r) }), summary: r.name };
+      }
       let watch: { kind: string; target: string; everyMin: number } | undefined;
       const tz = a.timezone ? String(a.timezone) : "UTC";
       let runAt: number | null = null;

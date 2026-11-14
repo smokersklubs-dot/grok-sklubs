@@ -139,11 +139,26 @@ export interface Memory { id: string; botId: string; text: string; source: "chat
 export interface Skill { id: string; botId: string; name: string; description: string; body: string; createdAt: number; updatedAt: number }
 export interface Task { id: string; botId: string; title: string; state: "working" | "needs_input" | "done"; note: string; createdAt: number; updatedAt: number }
 
+/** Routine triggers fed by a built-in app account (see NativeAccount). */
+export const NATIVE_TRIGGERS = ["email", "slack", "calendar"] as const;
+export type NativeTrigger = (typeof NATIVE_TRIGGERS)[number];
+
 export interface Routine {
   id: string; botId: string; name: string; prompt: string;
-  /** "cron" uses `schedule` (5 fields) and `timezone`; "webhook" fires on POST to `hookUrl`; "once" fires at `runAt`; "watch" fires when `watch.target` changes. */
-  trigger: "cron" | "webhook" | "once" | "watch";
+  /**
+   * "cron" uses `schedule` (5 fields) and `timezone`; "webhook" fires on POST to `hookUrl`; "once" fires at `runAt`; "watch" fires when `watch.target` changes.
+   * "email" / "slack" / "calendar" fire once per new item of a built-in app account (see `native`).
+   */
+  trigger: "cron" | "webhook" | "once" | "watch" | NativeTrigger;
   watch: { kind: "url" | "file"; target: string; everyMin: number; lastCheckedAt: number | null } | null;
+  /**
+   * Built-in app triggers. email: a new message matching `query`; slack: a new message in `channel` ("@dm" = direct
+   * messages to the app), only mentions of the app when `mentionsOnly`; calendar: an event starting in `leadMin` minutes.
+   */
+  native: {
+    accountId: string; account: string; accountStatus: NativeAccount["status"] | "missing";
+    query: string; channel: string; mentionsOnly: boolean; leadMin: number; everyMin: number; lastCheckedAt: number | null;
+  } | null;
   schedule: string; timezone: string; runAt: number | null; hookUrl: string | null;
   enabled: boolean; lastRunAt: number | null; nextRunAt: number | null; describe: string; createdAt: number;
 }
@@ -173,6 +188,45 @@ export interface Connector {
   /** OAuth apps only. Tokens themselves never leave the server. */
   oauth?: { signedIn: boolean; customClient: boolean };
 }
+// ── Built-in apps ("native" integrations through the vendors' own REST APIs) ──────────────────────────
+/** Who issues the OAuth client the user creates in their own console. */
+export type NativeVendor = "google" | "microsoft" | "slack";
+export type NativeAppId = "gmail" | "gcalendar" | "gdrive" | "outlook" | "slack";
+/** What a built-in app offers, and how to create the OAuth client it needs (steps verified against the vendor's docs). */
+export interface NativeApp {
+  id: NativeAppId; vendor: NativeVendor; name: string; category: string; description: string;
+  /** Exact OAuth scopes requested (Slack: bot scopes). */
+  scopes: string[];
+  /** What the bots can do with it, and which routine triggers it feeds. */
+  capabilities: string[]; triggers: NativeTrigger[];
+}
+export interface NativeVendorSetup {
+  vendor: NativeVendor; name: string;
+  /** The redirect URI to register in the vendor's console, exactly. */
+  redirectUri: string;
+  /** Step-by-step instructions to create the OAuth client, in the user's language. */
+  steps: string[];
+  /** Official documentation the steps come from. */
+  docs: { label: string; url: string }[];
+  /** The client is saved (the secret itself is never sent back). */
+  configured: boolean; clientId: string | null;
+  /** Microsoft: the directory to sign in with ("common" by default). */
+  tenant?: string;
+  /** Slack: an app-level token is saved (instant triggers through Socket Mode). */
+  hasAppToken?: boolean;
+}
+/** One signed-in account of a built-in app, e.g. "Gmail — perso". Tokens never leave the server. */
+export interface NativeAccount {
+  id: string; app: NativeAppId; label: string;
+  /** "<App> — <label>": how bots, approvals and routines name it. */
+  name: string;
+  /** The address (or Slack workspace) it is signed in as, once known. */
+  identity: string | null;
+  /** "needs_auth": never signed in, or the sign-in could not be renewed: the user signs in again. */
+  status: "ready" | "needs_auth";
+  error: string | null; createdAt: number;
+}
+
 /** A saved login. The password itself is never sent to the browser or to a model. */
 export interface VaultItem { id: string; name: string; site: string; username: string; hasPassword: boolean; note: string; createdAt: number }
 
@@ -181,6 +235,8 @@ export interface CatalogApp {
   id: string; name: string; category: string; description: string; url: string;
   /** "token": the user pastes an access token. "none": no credential needed. "oauth": the user signs in on the app's own page. */
   auth: ConnectorAuth;
+  /** Set for a built-in app: it is connected through Settings → Apps → Built-in apps, not as a tool server. */
+  native?: NativeAppId;
   /** OAuth apps: "dynamic" = Sklubot registers itself; "manual" = the user creates an app/connector there and pastes its client ID (and secret). */
   oauthClient?: "dynamic" | "manual";
   /** Where to get the token (or the client ID), in plain words. */
@@ -264,6 +320,8 @@ export type ServerEvent =
   | { type: "tasks"; botId: string }
   | { type: "memories"; botId: string }
   | { type: "connectors" }
+  /** Built-in app accounts or their OAuth clients changed. */
+  | { type: "native" }
   | { type: "usage" }
   | { type: "pages" }
   /** The bot found a gem for the user (celebrate tool): play its euphoria now. */

@@ -3,14 +3,15 @@ import { api, errText } from "../api";
 import { tn, useT } from "../i18n";
 import { useStore, type BotSettingsTab } from "../store";
 import { DEFAULT_CHARACTER, TOOL_GROUPS } from "../types";
-import type { Autonomy, AvatarColor, AvatarShape, Bot, BotBundle, Character as CharacterLook, BotMode, Effort, Memory, ModelOption, RoomRule, Routine, RoutineRun, Skill, TelegramStatus, ToolGroup } from "../types";
+import type { Autonomy, AvatarColor, AvatarShape, Bot, BotBundle, Character as CharacterLook, BotMode, Effort, Memory, ModelOption, NativeTrigger, RoomRule, Routine, RoutineRun, Skill, TelegramStatus, ToolGroup } from "../types";
+import { useNative } from "./NativeApps";
 import { dateTime, nextRunLabel, relTime, shortDate } from "../lib/format";
 import { BotAvatar } from "./Avatar";
 import { Character } from "./Character";
 import { CharacterEditor } from "./CharacterEditor";
 import { BrainPicker } from "./Brain";
 import { routineWhen, TriggerChip } from "./DetailsPanel";
-import { Icon } from "./Icon";
+import { Icon, Spinner } from "./Icon";
 import { MODE_IDS } from "./Modals";
 import { ConfirmButton, CopyButton, copyText, Empty, ErrorNote, IconButton, Loading, Modal, Toggle, useTick } from "./ui";
 
@@ -611,7 +612,7 @@ function RoutineItem({ r, onNote, onError }: { r: Routine; onNote: (t: string) =
   const [copied, setCopied] = useState(false);
   const [running, setRunning] = useState(false);
   const [history, setHistory] = useState(false);
-  const now = useTick(30_000, r.trigger === "watch");
+  const now = useTick(30_000, r.trigger === "watch" || !!r.native);
   const next = !r.enabled ? t("routine.paused") : r.trigger === "webhook" || r.trigger === "watch" ? null : r.nextRunAt ? t("routine.next", { when: nextRunLabel(r.nextRunAt, r.timezone || undefined) }) : null;
   return (
     <li className="routine">
@@ -672,6 +673,22 @@ function RoutineItem({ r, onNote, onError }: { r: Routine; onNote: (t: string) =
           </div>
         </div>
       )}
+      {r.native && (
+        <div className="watch native-trigger">
+          <Icon name={r.trigger === "email" ? "mail" : r.trigger === "slack" ? "chat" : "calendar"} size={15} />
+          <div className="list-row-text">
+            <span className="watch-kind">
+              {r.native.account}{" "}
+              {r.native.accountStatus !== "ready" && <span className="chip state-needs_auth">{t(r.native.accountStatus === "missing" ? "routine.accountMissing" : "connector.status.needs_auth")}</span>}
+            </span>
+            {r.trigger === "email" && <code className="watch-target">{r.native.query || t("routine.anyEmail")}</code>}
+            {r.trigger === "slack" && <code className="watch-target">{r.native.channel === "@dm" ? t("routine.slackDm") : r.native.channel}{r.native.mentionsOnly ? ` · ${t("routine.mentionsOnly")}` : ""}</code>}
+            <span className="list-row-sub">
+              {tn("routine.checkedEvery", r.native.everyMin)} · {r.native.lastCheckedAt ? t("routine.lastChecked", { when: relTime(r.native.lastCheckedAt, now) }) : t("routine.neverChecked")}
+            </span>
+          </div>
+        </div>
+      )}
       <div className="row-end">
         <button type="button" className="link routine-history-toggle" onClick={() => setHistory((v) => !v)} aria-expanded={history}>
           <Icon name="chevronRight" size={13} className={history ? "is-rotated" : ""} /> {t("routine.history")}
@@ -718,6 +735,114 @@ function RoutineItem({ r, onNote, onError }: { r: Routine; onNote: (t: string) =
   );
 }
 
+/** A routine fed by a built-in app account: a new email, a new Slack message, an event about to start. */
+function NewAppTrigger({ bot, onDone }: { bot: Bot; onDone: (msg: string) => void }) {
+  const t = useT();
+  const native = useNative();
+  const { loadBundle, openModal, closeBotSettings } = useStore.getState();
+  const ids = { kind: useId(), acc: useId(), q: useId(), ch: useId(), lead: useId(), every: useId(), name: useId(), prompt: useId() };
+  const ready = (native?.accounts ?? []).filter((a) => a.status === "ready");
+  const triggersOf = (app: string) => native?.apps.find((x) => x.id === app)?.triggers ?? [];
+  const kinds = (["email", "slack", "calendar"] as NativeTrigger[]).filter((k) => ready.some((a) => triggersOf(a.app).includes(k)));
+  const [kind, setKind] = useState<NativeTrigger | "">("");
+  const k = kind || kinds[0] || "";
+  const fits = ready.filter((a) => k && triggersOf(a.app).includes(k));
+  const [accountId, setAccountId] = useState("");
+  const acc = fits.find((a) => a.id === accountId) ?? fits[0];
+  const [query, setQuery] = useState("");
+  const [channel, setChannel] = useState("");
+  const [mentions, setMentions] = useState(false);
+  const [lead, setLead] = useState(10);
+  const [every, setEvery] = useState(5);
+  const [name, setName] = useState("");
+  const [prompt, setPrompt] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  if (native && !kinds.length) {
+    return (
+      <div className="native-trigger-form">
+        <p className="muted small">{t("routine.appTriggerNone")}</p>
+        <button type="button" className="btn btn-small" onClick={() => { closeBotSettings(); openModal({ kind: "connectors" }); }}>{t("apps.manage")}</button>
+      </div>
+    );
+  }
+  const valid = !!acc && !!name.trim() && !!prompt.trim() && (k !== "slack" || !!channel.trim());
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!valid || busy || !acc) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api("POST", `/bots/${bot.id}/routines`, { kind: k, accountId: acc.id, query, channel, mentionsOnly: mentions, leadMin: lead, everyMin: every, name: name.trim(), prompt: prompt.trim() });
+      await loadBundle(bot.id);
+      onDone(t("routine.appTriggerCreated"));
+    } catch (err) {
+      setError(errText(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <form className="native-trigger-form" onSubmit={submit}>
+      <div className="form-cols">
+        <div className="field">
+          <label className="field-label" htmlFor={ids.kind}>{t("routine.appTriggerKind")}</label>
+          <select id={ids.kind} className="input" value={k} onChange={(e) => setKind(e.target.value as NativeTrigger)}>
+            {kinds.map((x) => <option key={x} value={x}>{t(`routine.kind.${x}`)}</option>)}
+          </select>
+        </div>
+        <div className="field">
+          <label className="field-label" htmlFor={ids.acc}>{t("routine.appTriggerAccount")}</label>
+          <select id={ids.acc} className="input" value={acc?.id ?? ""} onChange={(e) => setAccountId(e.target.value)}>
+            {fits.map((a) => <option key={a.id} value={a.id}>{a.name}{a.identity ? ` (${a.identity})` : ""}</option>)}
+          </select>
+        </div>
+      </div>
+      {k === "email" && (
+        <div className="field">
+          <label className="field-label" htmlFor={ids.q}>{t("routine.appTriggerQuery")} <span className="muted">{t("common.optional")}</span></label>
+          <input id={ids.q} className="input" value={query} onChange={(e) => setQuery(e.target.value)} placeholder={acc?.app === "outlook" ? "from:client subject:invoice" : "from:client subject:invoice is:unread"} autoComplete="off" />
+          <p className="field-hint">{t(acc?.app === "outlook" ? "routine.appTriggerQueryOutlook" : "routine.appTriggerQueryGmail")}</p>
+        </div>
+      )}
+      {k === "slack" && (
+        <div className="form-cols">
+          <div className="field">
+            <label className="field-label" htmlFor={ids.ch}>{t("routine.appTriggerChannel")}</label>
+            <input id={ids.ch} className="input" value={channel} onChange={(e) => setChannel(e.target.value)} placeholder="#general · @dm" autoComplete="off" />
+          </div>
+          <label className="check-row"><input type="checkbox" checked={mentions} onChange={(e) => setMentions(e.target.checked)} /> {t("routine.mentionsOnly")}</label>
+        </div>
+      )}
+      <div className="form-cols">
+        {k === "calendar" && (
+          <div className="field">
+            <label className="field-label" htmlFor={ids.lead}>{t("routine.appTriggerLead")}</label>
+            <input id={ids.lead} className="input" type="number" min={1} max={1440} value={lead} onChange={(e) => setLead(Number(e.target.value))} />
+          </div>
+        )}
+        <div className="field">
+          <label className="field-label" htmlFor={ids.every}>{t("routine.appTriggerEvery")}</label>
+          <input id={ids.every} className="input" type="number" min={2} max={1440} value={every} onChange={(e) => setEvery(Number(e.target.value))} />
+        </div>
+      </div>
+      <div className="field">
+        <label className="field-label" htmlFor={ids.name}>{t("common.name")}</label>
+        <input id={ids.name} className="input" value={name} onChange={(e) => setName(e.target.value)} maxLength={80} placeholder={t(`routine.appTriggerNamePh.${k || "email"}`)} />
+      </div>
+      <div className="field">
+        <label className="field-label" htmlFor={ids.prompt}>{t("routine.appTriggerPrompt")}</label>
+        <textarea id={ids.prompt} className="input" rows={3} value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder={t(`routine.appTriggerPromptPh.${k || "email"}`)} />
+        <p className="field-hint">{t("routine.appTriggerOutside")}</p>
+      </div>
+      <ErrorNote>{error}</ErrorNote>
+      <div className="row-end">
+        <button type="submit" className="btn btn-primary btn-small" disabled={!valid || busy}>{busy ? <><Spinner size={13} /> {t("common.creating")}</> : t("routine.appTriggerCreate")}</button>
+      </div>
+    </form>
+  );
+}
+
 function Routines({ bot, bundle }: { bot: Bot; bundle: BotBundle | undefined }) {
   const t = useT();
   const [note, setNote] = useState<string | null>(null);
@@ -728,11 +853,18 @@ function Routines({ bot, bundle }: { bot: Bot; bundle: BotBundle | undefined }) 
     return () => window.clearTimeout(timer);
   }, [note]);
   const routines = bundle?.routines;
+  const [adding, setAdding] = useState(false);
   return (
     <div className="settings-pane">
       <div className="pane-intro">
         <p className="muted">{t("routine.intro", { name: bot.name })}</p>
         {note && <span className="chip state-ready" role="status">{note}</span>}
+      </div>
+      <div className="disclosure">
+        <button type="button" className="disclosure-toggle" aria-expanded={adding} onClick={() => setAdding((v) => !v)}>
+          <Icon name="chevronRight" size={14} className={adding ? "is-rotated" : ""} /> {t("routine.appTrigger")}
+        </button>
+        {adding && <NewAppTrigger bot={bot} onDone={(msg) => { setAdding(false); setNote(msg); }} />}
       </div>
       <ErrorNote>{error}</ErrorNote>
       {!routines && <Loading />}

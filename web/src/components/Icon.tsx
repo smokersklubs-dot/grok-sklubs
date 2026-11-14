@@ -69,6 +69,8 @@ const PATHS = {
   chat: <path d="M5.5 5h13a2 2 0 012 2v8a2 2 0 01-2 2H11l-4.5 3.5V17h-1a2 2 0 01-2-2V7a2 2 0 012-2z" />,
   tidy: <><path d="M14.5 3.5l-4 8M7 11.5h7.5l1.5 9H5.5z" /><path d="M9 15.5l-.5 5M12.5 15.5l.3 5M18.5 4.5v3M17 6h3M19.5 11v2M18.5 12h2" /></>,
   expand: <path d="M14 4.5h5.5V10M10 19.5H4.5V14M19.5 4.5L13.5 10.5M4.5 19.5l6-6" />,
+  mail: <><rect x="3.5" y="5.5" width="17" height="13" rx="2.5" /><path d="M4.5 7.5l7.5 5.5 7.5-5.5" /></>,
+  calendar: <><rect x="3.5" y="5" width="17" height="15" rx="2.5" /><path d="M3.5 10h17M8 3v4M16 3v4" /></>,
   image: <><rect x="3.5" y="4.5" width="17" height="15" rx="3" /><circle cx="9" cy="10" r="1.7" /><path d="M4.5 17l4.5-4.2 3.5 3.2 2.5-2.2 4.5 4" /></>,
 } satisfies Record<string, ReactNode>;
 

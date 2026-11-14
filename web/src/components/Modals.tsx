@@ -11,6 +11,7 @@ import { AccessoryChips, CharacterStage, EyeChips, JoyToggles, LookPicker, TypeC
 
 export { LookPicker };
 import { Icon, Spinner } from "./Icon";
+import { NativeAccountRow, NativeCatalogCard, useNative } from "./NativeApps";
 import { ConfirmButton, Empty, ErrorNote, IconButton, Loading, Modal, useTick } from "./ui";
 
 /** Titles and descriptions are `mode.<id>.title` / `mode.<id>.text` in the dictionaries. */
@@ -660,7 +661,9 @@ function Catalog({ connectors, prefill, onClose }: { connectors: Connector[] | n
         <div key={category} className="catalog-group">
           <h4>{category}</h4>
           <ul className="catalog-grid">
-            {list.map((app) => (
+            {list.map((app) => app.native ? (
+              <NativeCatalogCard key={app.id} entry={app} open={openId === app.id} onToggle={() => setOpenId((cur) => (cur === app.id ? null : app.id))} />
+            ) : (
               <CatalogCard
                 key={app.id}
                 app={app}
@@ -695,6 +698,7 @@ export function ConnectorsModal({ onClose, prefill }: { onClose: () => void; pre
   const [error, setError] = useState<string | null>(null);
   const [formOpen, setFormOpen] = useState(!!prefill);
   const ids = { name: useId(), url: useId(), token: useId(), form: useId() };
+  const nativeAccounts = useNative()?.accounts ?? [];
 
   useEffect(() => {
     void loadConnectors();
@@ -739,19 +743,22 @@ export function ConnectorsModal({ onClose, prefill }: { onClose: () => void; pre
 
         {connectors === null && !loadError && <Loading label={t("connectors.loading")} />}
         {loadError && connectors === null && <ErrorNote>{loadError}</ErrorNote>}
-        {connectors && connectors.length > 0 && (
+        {connectors && connectors.length + nativeAccounts.length > 0 && (
           <section className="catalog" aria-labelledby="connected-title">
             <div className="catalog-head">
               <h3 id="connected-title">{t("connectors.connected")}</h3>
             </div>
             <ul className="connector-list">
+              {nativeAccounts.map((a) => (
+                <NativeAccountRow key={a.id} acc={a} />
+              ))}
               {connectors.map((c) => (
                 <ConnectorRow key={c.id} c={c} />
               ))}
             </ul>
           </section>
         )}
-        {connectors && connectors.length === 0 && !prefill && <Empty icon="plug" title={t("connectors.emptyTitle")}>{t("connectors.emptyText")}</Empty>}
+        {connectors && connectors.length + nativeAccounts.length === 0 && !prefill && <Empty icon="plug" title={t("connectors.emptyTitle")}>{t("connectors.emptyText")}</Empty>}
 
         <Catalog connectors={connectors} prefill={prefill} onClose={onClose} />
 

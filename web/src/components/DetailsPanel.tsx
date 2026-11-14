@@ -20,6 +20,7 @@ type Tab = "activity" | "tasks" | "library";
 export function routineWhen(r: Routine): string {
   if (!r.enabled) return t("routine.paused");
   if (r.trigger === "webhook") return t("routine.webhookWhen");
+  if (r.native) return r.describe;
   if (r.trigger === "watch") return r.watch ? t(r.watch.kind === "url" ? "routine.watchUrl" : "routine.watchFile", { target: r.watch.kind === "url" ? hostName(r.watch.target) : r.watch.target }) : t("routine.watchWhen");
   if (r.trigger === "once") return r.runAt ? t("routine.once", { date: dateTime(r.runAt, r.timezone || undefined) }) : t("routine.onceNoDate");
   return r.describe || r.schedule;
@@ -29,7 +30,7 @@ export function TriggerChip({ trigger }: { trigger: Routine["trigger"] }) {
   const t = useT();
   return (
     <span className="chip">
-      <Icon name={trigger === "webhook" ? "hook" : trigger === "watch" ? "eye" : "clock"} size={12} />
+      <Icon name={trigger === "webhook" ? "hook" : trigger === "watch" ? "eye" : trigger === "email" ? "mail" : trigger === "slack" ? "chat" : trigger === "calendar" ? "calendar" : "clock"} size={12} />
       {t(`routine.trigger.${trigger}`)}
     </span>
   );

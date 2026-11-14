@@ -3,7 +3,9 @@ import { api, apiUpload, errText, setUnauthorizedHandler } from "./api";
 import { getLocale, isLocale, setLocale as applyLocale, t } from "./i18n";
 import { notifyBot } from "./lib/notify";
 import { playShout, startEuphoria } from "./lib/cheer";
-import type { Attachment, Bot, BotBundle, ComputerState, Connector, Live, Locale, ReactionEmoji, Recording, Routine, Row, ServerEvent, Task, User, VideoStatus } from "./types";
+import type { Attachment, Bot, BotBundle, ComputerState, Connector, Live, Locale, NativeAccount, NativeApp, NativeVendorSetup, ReactionEmoji, Recording, Routine, Row, ServerEvent, Task, User, VideoStatus } from "./types";
+
+export interface NativeState { apps: NativeApp[]; vendors: NativeVendorSetup[]; accounts: NativeAccount[] }
 
 export type Theme = "system" | "light" | "dark";
 export type ModalState =
@@ -141,6 +143,8 @@ interface Store {
   computer: ComputerState | null;
   connectors: Connector[] | null;
   connectorsError: string | null;
+  /** Built-in apps (Gmail, Outlook, Slack…): what they offer, the user's OAuth clients and signed-in accounts. */
+  native: NativeState | null;
   usageTick: number;
   pagesTick: number;
   /** Bumped per bot on every `routines` event, so open run histories reload. */
@@ -181,6 +185,7 @@ interface Store {
   loadTasks(): Promise<void>;
   loadComputer(): Promise<void>;
   loadConnectors(): Promise<void>;
+  loadNative(): Promise<void>;
   upsertBot(bot: Bot): void;
   resetConversation(id: string): Promise<void>;
   applyEvent(ev: ServerEvent): void;
@@ -256,6 +261,7 @@ export const useStore = create<Store>((set, get) => ({
   computer: null,
   connectors: null,
   connectorsError: null,
+  native: null,
   usageTick: 0,
   pagesTick: 0,
   routineTicks: {},
@@ -479,6 +485,14 @@ export const useStore = create<Store>((set, get) => ({
     }
   },
 
+  async loadNative() {
+    try {
+      set({ native: await api<NativeState>("GET", "/native") });
+    } catch {
+      /* keep the previous state */
+    }
+  },
+
   async loadConnectors() {
     try {
       const r = await api<{ connectors: Connector[] }>("GET", "/connectors");
@@ -574,6 +588,9 @@ export const useStore = create<Store>((set, get) => ({
       case "tasks":
         if (get().bundles[ev.botId] || get().selectedId === ev.botId) void get().loadBundle(ev.botId);
         void get().loadTasks();
+        break;
+      case "native":
+        void get().loadNative();
         break;
       case "connectors":
         void get().loadConnectors();

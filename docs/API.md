@@ -187,3 +187,47 @@ Notes:
 - Quand le bot est relié à Telegram, la pépite y est aussi annoncée (« 💎 … a trouvé une pépite … », type, note, valeur, preuves). Dans le navigateur, une notification système apparaît si l’onglet est caché ou si un autre bot est ouvert.
 - `GET /api/gems` : les 100 dernières pépites de l'utilisateur (`botId`, `botName`, `at`, `reason`, `gem`).
 - `POST /api/bots/:id/gem-hunt { timezone?, time? "HH:MM" }` : crée la routine quotidienne « Chasse aux pépites » (une seule par bot ; `created: false` si elle existe déjà). Sans pépite, le bot termine en silence (`stay_quiet`).
+
+## Built-in apps (Gmail, Google Calendar, Google Drive, Outlook, Slack)
+
+Reached through the vendors' own REST APIs with an OAuth client the user creates in their own console (Google Cloud,
+Microsoft Entra, Slack app settings). Several accounts per app, each with a label ("Gmail — perso", "Gmail — pro").
+
+| Method | Path | Body | Returns |
+|---|---|---|---|
+| GET | `/native` | – | `{ apps: NativeApp[], vendors: NativeVendorSetup[], accounts: NativeAccount[] }` — `vendors[]` carries the step-by-step client set-up, the exact `redirectUri`, the official docs, `configured`, `clientId` (never the secret), `tenant` (Microsoft), `hasAppToken` (Slack) |
+| PUT | `/native/clients/:vendor` | `{ clientId, clientSecret?, tenant?, appToken? }` | `{ vendor }` — `vendor` is `google`, `microsoft` or `slack`. Secret and Slack app-level token (`xapp-…`, optional, for Socket Mode) are sealed; an empty secret keeps the saved one; `appToken: null` removes it |
+| DELETE | `/native/clients/:vendor` | – | `{ ok }` |
+| POST | `/native/accounts` | `{ app, label }` | `{ account, authorizeUrl }` — `app`: `gmail`, `gcalendar`, `gdrive`, `outlook`, `slack`. Labels are unique per app. Open `authorizeUrl` in a popup |
+| POST | `/native/accounts/:id/signin` | – | `{ authorizeUrl }` — sign in again (label, routines and permissions are kept) |
+| PATCH | `/native/accounts/:id` | `{ label }` | `{ account }` |
+| DELETE | `/native/accounts/:id` | – | `{ ok }` — revokes the token at Google (`/revoke`) or Slack (`auth.revoke`), forgets it locally, pauses the routines bound to it |
+| GET | `/native/:vendor/callback?code&state[&error]` | – | HTML page (no session required: the single-use `state` identifies the sign-in). Redirect URI to register: `${PUBLIC_URL}/api/native/google/callback`, `…/microsoft/callback`, `…/slack/callback` |
+| POST | `/bots/:id/routines` | `{ kind: "email" \| "slack" \| "calendar", accountId, name, prompt, query?, channel?, mentionsOnly?, leadMin?, everyMin? }` | `{ routine }` — a routine fed by an account: a new email matching `query`; a new Slack message in `channel` (`#name`, an id, or `@dm`), optionally only mentions of the app; an event starting in `leadMin` minutes. `everyMin` ≥ 2 |
+
+**Sign-in.** Google and Microsoft: authorization code with PKCE (S256) and the client secret (web clients);
+Google asks `access_type=offline` and `prompt=consent select_account`, Microsoft uses `{tenant}` (default `common`)
+and `offline_access`. Slack: OAuth v2 with bot scopes and the client secret through HTTP Basic, without PKCE (turning
+PKCE on in a Slack app makes it a public client for good). A pending sign-in (`native_pending`) lives 10 minutes and
+is used once. Tokens are sealed in `native_accounts.tokens_enc`, refreshed a minute before they expire and once on a 401;
+a refused refresh puts the account in `status: "needs_auth"` with a "Sign in again" button.
+
+**Tools.** Each signed-in account gets its own tools, `<app>_<label>__<action>` (e.g. `gmail_pro__mail_send`):
+`mail_search`, `mail_read`, `mail_thread`, `mail_draft`, `mail_send`, `mail_label` (Gmail, Outlook);
+`calendar_events`, `calendar_freebusy`, `calendar_create`, `calendar_update`, `calendar_delete` (Google Calendar,
+Outlook); `drive_search`, `drive_read`, `drive_upload` (Drive); `slack_channels`, `slack_history`, `slack_post`,
+`slack_react` (Slack). Reads run freely and their results are outside content (the turn becomes tainted); drafts and
+reactions ask only a careful bot; send, label/archive, create/update/delete, upload and post ask like a connector
+write (a trusted bot may go ahead) and always ask once the turn is tainted. Permission keys are per account:
+`"Gmail — pro: mail_send"`.
+
+**Triggers.** `Routine.trigger` can be `email`, `slack` or `calendar`, with `Routine.native` (account, query, channel,
+mentionsOnly, leadMin, everyMin, lastCheckedAt, accountStatus). Each check asks only for what came after the previous
+one (Gmail `after:<epoch>`, Outlook mail delta link, Slack `conversations.history?oldest=`), so items that arrived
+while the server was off are caught up; every item is claimed in `native_seen` before it fires, so it never fires
+twice. With a Slack app-level token, Socket Mode delivers messages within seconds (envelopes acknowledged) and a
+reconnect runs a catch-up. The fired turn starts tainted, with the item as outside content; each run is in
+`/routines/:id/runs`.
+
+Test overrides: `GOOGLE_API_URL`, `MICROSOFT_API_URL`, `SLACK_API_URL` replace the scheme and host of every URL of
+that vendor (with `ALLOW_PRIVATE_FETCH=1` for local fakes).

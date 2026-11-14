@@ -1,4 +1,5 @@
 import type { CatalogApp, Locale } from "./shared.js";
+import { appsFor } from "./native/vendors.js";
 
 /**
  * Apps that can be added in one step. Each entry is a public tool server whose address and sign-in
@@ -96,6 +97,15 @@ export const CATALOG: CatalogApp[] = [
     tokenHelp: "Needs a paid Higgsfield subscription. Each video or image a bot makes uses your Higgsfield credits, and Higgsfield sets no cap of its own: ask your bots to check with you before making several.",
   },
   {
+    // https://docs.slack.dev/ai/slack-mcp-server/ — Streamable HTTP at https://mcp.slack.com/mcp; no dynamic client registration;
+    // confidential OAuth with the client ID and secret of a Slack app ("Only directory-published apps or internal apps may
+    // use MCP"); user-token scopes per tool. Live metadata (14 Nov 2026): https://mcp.slack.com/.well-known/oauth-authorization-server
+    // lists client_secret_post and PKCE S256.
+    id: "slack-mcp", name: "Slack (MCP)", category: "Communication", url: "https://mcp.slack.com/mcp", auth: "oauth", oauthClient: "manual",
+    description: "Slack's own tool server: search messages and files, read channels and threads, send messages and manage canvases, as you. No triggers: for routines on new messages, use the built-in Slack app.",
+    tokenHelp: "Create an app at api.slack.com/apps (From scratch, in your workspace; it stays an internal app — Slack refuses unlisted distributed apps). Under OAuth & Permissions, add the redirect URL shown below and the User Token Scopes for what the bots may do (e.g. search:read.public, channels:history, chat:write, users:read). Then copy the Client ID and Client Secret from Basic Information → App Credentials into the fields below. Your workspace admin may need to approve the app.",
+  },
+  {
     id: "context7", name: "Context7", category: "Development", url: "https://mcp.context7.com/mcp", auth: "none",
     description: "Up-to-date documentation and code examples for programming libraries.", tokenHelp: "",
   },
@@ -126,7 +136,10 @@ const FR: Record<string, { category: string; description: string; tokenHelp: str
   higgsfield: { category: "Création", description: "Vidéos, images et sons avec ton compte Higgsfield. Une fois connecté, les bots font leurs vidéos ici. Chaque génération utilise tes crédits Higgsfield.", tokenHelp: "Nécessite un abonnement Higgsfield payant. Chaque vidéo ou image créée par un bot utilise tes crédits Higgsfield, sans plafond côté Higgsfield : demande à tes bots de te consulter avant d'en faire plusieurs." },
   context7: { category: "Développement", description: "Documentation et exemples de code à jour pour les bibliothèques de programmation.", tokenHelp: "" },
   deepwiki: { category: "Développement", description: "Pose des questions sur n'importe quel dépôt de code public et lis sa documentation générée.", tokenHelp: "" },
+  "slack-mcp": { category: "Communication", description: "Le serveur d'outils de Slack : chercher des messages et fichiers, lire canaux et fils, envoyer des messages et gérer des canevas, en ton nom. Pas de déclencheurs : pour des routines sur les nouveaux messages, utilise l'app Slack intégrée.", tokenHelp: "Crée une app sur api.slack.com/apps (From scratch, dans ton espace ; elle reste une app interne — Slack refuse les apps distribuées non listées). Dans OAuth & Permissions, ajoute l'adresse de retour affichée ci-dessous et les User Token Scopes correspondant à ce que les bots pourront faire (par ex. search:read.public, channels:history, chat:write, users:read). Copie ensuite le Client ID et le Client Secret depuis Basic Information → App Credentials dans les champs ci-dessous. L'administrateur de ton espace devra peut-être approuver l'app." },
   "cloudflare-docs": { category: "Développement", description: "Recherche dans la documentation développeur de Cloudflare.", tokenHelp: "" },
 };
 
-export const catalogFor = (locale: Locale): CatalogApp[] => (locale === "fr" ? CATALOG.map((a) => ({ ...a, ...FR[a.id] })) : CATALOG);
+/** Built-in apps come first: they are connected through their own setup (an OAuth client of the user's), not by an address. */
+const builtIn = (locale: Locale): CatalogApp[] => appsFor(locale).map((a) => ({ id: `native-${a.id}`, name: a.name, category: a.category, description: a.description, url: "", auth: "oauth", tokenHelp: "", native: a.id }));
+export const catalogFor = (locale: Locale): CatalogApp[] => [...builtIn(locale), ...(locale === "fr" ? CATALOG.map((a) => ({ ...a, ...FR[a.id] })) : CATALOG)];

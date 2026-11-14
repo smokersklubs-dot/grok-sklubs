@@ -34,6 +34,11 @@ import { q } from "./db.js";
 import { connectors as connectorStore } from "./connectors.js";
 import type { Attachment } from "./shared.js";
 import { csv as usageCsv, summary as usageSummary } from "./usage.js";
+import { accounts as nativeAccounts, clients as nativeClients, disconnect as nativeDisconnect, finishSignIn as nativeFinish, publicAccount, startSignIn as nativeStart } from "./native/accounts.js";
+import { appOf, appsFor, nativeRedirectUri, setupDocs, setupSteps, VENDOR_NAMES, VENDORS } from "./native/vendors.js";
+import { syncSlackSockets } from "./native/triggers.js";
+import { isNativeTrigger } from "./routines.js";
+import type { NativeVendor, NativeVendorSetup } from "./shared.js";
 
 type Env = { Variables: { user: UserRecord } };
 export const api = new Hono<Env>();
@@ -223,6 +228,11 @@ api.get("/connectors/oauth/callback", async (c) => {
   } catch (err) {
     message = tr(locale, "The sign-in did not finish: {detail}", { detail: /[{}]/.test((err as Error).message) ? (err as Error).message : tr(locale, (err as Error).message) });
   }
+  return signInPage(c, locale, ok, message);
+});
+
+/** The page the browser lands on after an app's sign-in: says how it went, tells the app's other tabs, then closes. */
+function signInPage(c: Context, locale: "fr" | "en", ok: boolean, message: string) {
   const back = tr(locale, "Back to Sklubot");
   // Tell the app (any open tab, via BroadcastChannel; the opener when it still exists), then close or go back to the app.
   const script = `try{new BroadcastChannel("sklubot-oauth").postMessage({ok:${ok}})}catch(e){}try{window.opener&&window.opener.postMessage({type:"sklubot-oauth",ok:${ok}},${JSON.stringify(config.publicUrl)})}catch(e){}${ok ? 'setTimeout(function(){window.close();setTimeout(function(){location.replace("/")},400)},1200)' : ""}`;
@@ -230,6 +240,26 @@ api.get("/connectors/oauth/callback", async (c) => {
 <style>body{font-family:system-ui,sans-serif;background:#f6f6f8;color:#1d1d24;display:grid;place-items:center;min-height:100vh;margin:0;padding:16px}main{max-width:420px;background:#fff;border-radius:14px;padding:28px;box-shadow:0 6px 30px rgba(0,0,0,.08);text-align:center}p{line-height:1.5}.ok{color:#137a3f}.ko{color:#b3261e}a{color:#4f46e5}@media(prefers-color-scheme:dark){body{background:#15151a;color:#ececf1}main{background:#1f1f26}}</style></head>
 <body><main><p class="${ok ? "ok" : "ko"}">${escHtml(message)}</p><p><a href="/">${escHtml(back)}</a></p></main><script>${script}</script></body></html>`;
   return c.html(html, ok ? 200 : 400, { "referrer-policy": "no-referrer", "cache-control": "no-store" });
+}
+
+// Built-in apps: the vendor sends the browser back here (the redirect URI the user registered in their console).
+api.get("/native/:vendor/callback", async (c) => {
+  const vendor = c.req.param("vendor") as NativeVendor;
+  const session = userForToken(getCookie(c, SESSION_COOKIE));
+  let locale = pickLocale(session?.locale, c.req.header("accept-language"));
+  if (!VENDORS.includes(vendor)) return c.json({ error: "No such endpoint." }, 404);
+  let ok = false;
+  let message: string;
+  try {
+    const acc = await nativeFinish(vendor, { state: c.req.query("state") ?? "", code: c.req.query("code"), error: c.req.query("error") }, session?.id);
+    locale = users.localeOf(acc.userId);
+    ok = true;
+    message = tr(locale, "Signed in to {name}. You can close this window.", { name: acc.name });
+    syncSlackSockets();
+  } catch (err) {
+    message = tr(locale, "The sign-in did not finish: {detail}", { detail: /[{}]/.test((err as Error).message) ? (err as Error).message : tr(locale, (err as Error).message) });
+  }
+  return signInPage(c, locale, ok, message);
 });
 
 // ── Everything below needs a session ─────────────────────────────────────────
@@ -911,6 +941,94 @@ api.post("/connectors/:id/oauth/start", async (c) => {
   }
 });
 api.post("/connectors/:id/oauth/disconnect", async (c) => c.json({ connector: (await connectors.signOut(c.get("user").id, c.req.param("id"))) ?? fail(404, "That connector does not exist.") }));
+
+// ── Built-in apps (Gmail, Google Calendar, Google Drive, Outlook, Slack) ─────
+const vendorParam = (c: Context<Env>): NativeVendor => { const v = c.req.param("vendor") as NativeVendor; return VENDORS.includes(v) ? v : fail(404, "Unknown app vendor."); };
+function vendorSetup(userId: string, locale: "fr" | "en", vendor: NativeVendor): NativeVendorSetup {
+  const client = nativeClients.get(userId, vendor);
+  return {
+    vendor, name: VENDOR_NAMES[vendor], redirectUri: nativeRedirectUri(vendor), steps: setupSteps(vendor, locale), docs: setupDocs(vendor),
+    configured: !!client, clientId: client?.clientId ?? null,
+    ...(vendor === "microsoft" ? { tenant: client?.tenant ?? "common" } : {}),
+    ...(vendor === "slack" ? { hasAppToken: !!client?.appToken } : {}),
+  };
+}
+api.get("/native", (c) => {
+  const user = c.get("user");
+  return c.json({ apps: appsFor(user.locale), vendors: VENDORS.map((v) => vendorSetup(user.id, user.locale, v)), accounts: nativeAccounts.list(user.id).map(publicAccount) });
+});
+// The OAuth client the user created. The secret and the Slack app-level token are sealed and never sent back.
+api.put("/native/clients/:vendor", async (c) => {
+  const user = c.get("user");
+  const vendor = vendorParam(c);
+  const b = await body(c);
+  try {
+    nativeClients.set(user.id, vendor, { clientId: String(b.clientId ?? ""), clientSecret: typeof b.clientSecret === "string" ? b.clientSecret : undefined, tenant: typeof b.tenant === "string" ? b.tenant : undefined, appToken: b.appToken === null ? null : typeof b.appToken === "string" ? b.appToken : undefined });
+  } catch (err) { return fail(400, (err as Error).message); }
+  syncSlackSockets();
+  return c.json({ vendor: vendorSetup(user.id, user.locale, vendor) });
+});
+api.delete("/native/clients/:vendor", (c) => {
+  const user = c.get("user");
+  nativeClients.remove(user.id, vendorParam(c));
+  syncSlackSockets();
+  return c.json({ ok: true });
+});
+// A new labelled account ("Gmail — pro"): returns the vendor's sign-in page to open in a popup.
+api.post("/native/accounts", async (c) => {
+  const user = c.get("user");
+  const b = await body(c);
+  const app = appOf(String(b.app ?? ""));
+  if (!app) return fail(400, "Unknown app.");
+  if (!nativeClients.get(user.id, app.vendor)) return fail(400, `Set up your ${VENDOR_NAMES[app.vendor]} OAuth client first.`);
+  let acc;
+  try { acc = nativeAccounts.create(user.id, app.id, String(b.label ?? "")); } catch (err) { return fail(400, (err as Error).message); }
+  return c.json({ account: publicAccount(acc), authorizeUrl: nativeStart(user.id, acc.id) });
+});
+// Sign in again (never a dead end): a new sign-in for the same account keeps its label, routines and permissions.
+api.post("/native/accounts/:id/signin", (c) => {
+  const user = c.get("user");
+  try { return c.json({ authorizeUrl: nativeStart(user.id, c.req.param("id")) }); } catch (err) { return fail(400, (err as Error).message); }
+});
+api.patch("/native/accounts/:id", async (c) => {
+  const user = c.get("user");
+  try { return c.json({ account: publicAccount(nativeAccounts.rename(user.id, c.req.param("id"), String((await body(c)).label ?? ""))) }); } catch (err) { return fail(400, (err as Error).message); }
+});
+// Disconnect: the vendor is asked to revoke the token where it can, then everything is forgotten here.
+api.delete("/native/accounts/:id", async (c) => {
+  const user = c.get("user");
+  if (!(await nativeDisconnect(user.id, c.req.param("id")))) return fail(404, "That account does not exist.");
+  syncSlackSockets();
+  for (const b of bots.list(user.id)) emit(user.id, { type: "routines", botId: b.id });
+  return c.json({ ok: true });
+});
+
+// A routine fed by a built-in app account (new email, new Slack message, upcoming event), set up from the routines screen.
+api.post("/bots/:id/routines", async (c) => {
+  const user = c.get("user");
+  const bot = ownAgent(c);
+  const b = await body(c);
+  const kind = String(b.kind ?? "");
+  if (!isNativeTrigger(kind)) return fail(400, "kind must be email, slack or calendar.");
+  const acc = nativeAccounts.owned(user.id, String(b.accountId ?? ""));
+  if (!acc) return fail(400, "Pick one of your connected accounts.");
+  if (!appOf(acc.app)!.triggers.includes(kind)) return fail(400, `${acc.name} cannot be used for this kind of trigger.`);
+  const prompt = String(b.prompt ?? "").trim();
+  const name = String(b.name ?? "").trim();
+  if (!name || !prompt) return fail(400, "A routine needs a name and an instruction.");
+  const channel = String(b.channel ?? "").trim();
+  if (kind === "slack" && !channel) return fail(400, "Choose a channel (#name or id), or @dm for direct messages.");
+  const r = routines.create(bot.id, {
+    name, prompt, trigger: kind,
+    native: { accountId: acc.id, query: String(b.query ?? "").trim().slice(0, 300), channel: channel.slice(0, 100), mentionsOnly: !!b.mentionsOnly, leadMin: Math.min(1440, Math.max(1, Math.round(Number(b.leadMin) || 10))), everyMin: Math.min(1440, Math.max(2, Math.round(Number(b.everyMin) || 5))) },
+  });
+  schedule(r.id);
+  syncSlackSockets();
+  audit(user.id, "routine", `${bot.name}: routine created — ${r.name} (${publicRoutine(r, "en").describe})`, bot.id);
+  rows.append(bot, { kind: "event", event: "routine", text: tr(user.locale, "Routine created: {name} — {when}", { name: r.name, when: publicRoutine(r, user.locale).describe }) });
+  emit(user.id, { type: "routines", botId: bot.id });
+  return c.json({ routine: publicRoutine(r, user.locale) });
+});
 
 api.get("/policies", (c) => c.json({ policies: policies.list(c.get("user").id) }));
 api.delete("/policies/:tool", (c) => { policies.remove(c.get("user").id, decodeURIComponent(c.req.param("tool"))); return c.json({ ok: true }); });

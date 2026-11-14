@@ -27,10 +27,22 @@ function plan(text: string, has: (name: string) => boolean): Block[] | null {
       ? { kind: "lead", score: 93, evidence: "démo : 3 visites de la page de prix en 24 h, entreprise de 40 personnes, demande de devis", value: "≈ 6 000 €/an", reason: quoted ?? "un nouveau lead très chaud" }
       : { kind: "lead", score: 93, evidence: "demo: 3 visits to the pricing page in 24 h, company of 40 people, asked for a quote", value: "≈ $6,000/yr", reason: quoted ?? "a very hot new lead" });
   }
+  // Built-in mail accounts: "check my mail", "réponds au dernier e-mail"… searches the first mailbox it has.
+  if (/\b(e-?mails?|mails?|inbox|courriels?)\b/.test(lower)) {
+    const tool = mailTool(has, lower);
+    if (tool) return call(tool, { query: quoted ?? "", max: 5 });
+  }
   if (/\b(video|vidéo|clip)\b/.test(lower)) return call("video_generate", { prompt: quoted ?? (text.replace(/^.*?\b(video|vidéo|clip)\b\s*(of|de|d'|sur)?/i, "").trim() || "a calm sunrise over the sea"), duration_seconds: 4, aspect_ratio: "16:9", filename: "demo-video" });
   if (/\b(react|réagis|reaction|réaction)\b/.test(lower)) return call("message_react", { emoji: "👍" });
   if (/\b(ask me|demande-moi|question)\b/.test(lower)) return call("ask_user", { question: "Which format would you like?", options: ["Short summary", "Detailed report", "Bullet list"] });
   return null;
+}
+
+/** The first mailbox's search tool (<app>_<label>__mail_search), preferring the label named in the text. */
+let demoTools: string[] = [];
+function mailTool(has: (name: string) => boolean, lower: string): string | null {
+  const all = demoTools.filter((n) => n.endsWith("__mail_search") && has(n));
+  return all.find((n) => lower.includes(n.split("__")[0].split("_").slice(1).join(" "))) ?? all[0] ?? null;
 }
 
 export class DemoProvider implements LlmProvider {
@@ -46,7 +58,29 @@ export class DemoProvider implements LlmProvider {
     const texts = last.content.filter((b) => b.type === "text").map((b) => (b as { text: string }).text);
     const results = last.content.filter((b) => b.type === "tool_result");
     const said = (texts[texts.length - 1] ?? "").replace(/^(\[[^\]\n]*\]\n)+/, "");
+    demoTools = req.tools.map((t) => t.name);
     let content: Block[];
+    // After a mail search, when the user asked for a reply: draft one and send it (the user is asked first).
+    const prev = req.messages[req.messages.length - 2];
+    const searched = prev?.role === "assistant" ? prev.content.find((b) => b.type === "tool_use" && b.name.endsWith("__mail_search")) : undefined;
+    const asked = [...req.messages].reverse().find((x) => x.role === "user" && x.content.some((b) => b.type === "text" && !b.text.startsWith("[What follows")));
+    const askedText = asked?.content.filter((b) => b.type === "text").map((b) => (b as { text: string }).text).join(" ").toLowerCase() ?? "";
+    const found = results.map((r) => (r.type === "tool_result" ? r.content.filter((c) => c.type === "text").map((c) => (c as { text: string }).text).join("\n") : "")).join("\n");
+    if (searched && searched.type === "tool_use" && /\b(reply|answer|réponds|répondre|réponse)\b/.test(askedText) && /From: /.test(found)) {
+      const to = /From: [^\n]*?<([^>\s]+@[^>\s]+)>/.exec(found)?.[1] ?? /From: ([^\s]+@[^\s]+)/.exec(found)?.[1] ?? "";
+      const id = /- id (\S+)/.exec(found)?.[1];
+      const subject = /Subject: ([^\n]*)/.exec(found)?.[1]?.trim() ?? "";
+      const fr = /Write to the user in French/.test(req.system);
+      const sendTool = searched.name.replace(/__mail_search$/, "__mail_send");
+      if (to && req.tools.some((t) => t.name === sendTool)) {
+        content = [
+          { type: "text", text: fr ? `J'ai trouvé l'e-mail « ${subject} ». Je prépare une réponse — je te demande avant de l'envoyer.` : `I found “${subject}”. I'm replying — I'll ask you before it goes out.` },
+          { type: "tool_use", id: `demo_${Date.now()}`, name: sendTool, input: { to, subject: /^re:/i.test(subject) ? subject : `Re: ${subject}`, body: fr ? "Bonjour,\n\nMerci pour votre message, c'est bien noté. Je reviens vers vous très vite.\n\nBien à vous" : "Hello,\n\nThanks for your message, noted. I'll get back to you shortly.\n\nBest regards", ...(id ? { reply_to_id: id } : {}) } },
+        ];
+        for (const word of (content[0] as { text: string }).text.split(/(?<=\s)/)) { req.onText?.(word); await sleep(18); }
+        return { content, stopReason: "tool_use", model: "demo", usage: { inputTokens: 0, outputTokens: 0, cachedTokens: 0 } };
+      }
+    }
     if (!req.tools.length && /recorded demonstration/.test(req.system)) {
       // "Show me how": a skill drafted from the recorded timeline (the demo cannot look at the screenshots).
       const timeline = texts.join("\n").split("\n").filter((l) => /^\d\d:\d\d (clicked|double-clicked|right-clicked|typed|pressed|scrolled|dragged|opened|page:)/.test(l)).slice(0, 12);

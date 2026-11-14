@@ -67,6 +67,26 @@ Sur le VPS, dans `/opt/sklubot` :
 | Voir ce qui se passe | `docker compose -f docker-compose.vps.yml logs -f sklubot` |
 | Arrêter | `docker compose -f docker-compose.vps.yml down` |
 
+## Connecter Google / Microsoft / Slack
+
+Gmail, Google Agenda, Google Drive, Outlook et Slack sont intégrés : tes données vont directement du fournisseur à ton
+serveur, avec un « client OAuth » que tu crées une fois dans ton propre compte.
+
+1. Dans Sklubot : **Connecter des applis** → choisis l'app (par ex. Gmail) → **Ajouter**.
+2. Suis les étapes affichées (elles reprennent les guides officiels de Google, Microsoft ou Slack). Copie l'**adresse de
+   retour** affichée et colle-la telle quelle dans la console du fournisseur :
+   `https://<ton-domaine>/api/native/google/callback`, `…/microsoft/callback` ou `…/slack/callback`.
+   Elle doit correspondre exactement à `PUBLIC_URL` (https, sans barre finale). Slack exige https.
+3. Colle l'identifiant et le secret du client, puis **Enregistrer le client**.
+4. Donne un libellé au compte (« perso », « pro »…) et clique **Se connecter avec …**. Recommence avec un autre libellé
+   pour connecter un deuxième compte de la même app.
+5. Slack : invite l'app dans les canaux qu'elle doit lire (`/invite @ton-app`). Pour des déclencheurs instantanés sans
+   ouvrir de port, ajoute le jeton d'app `xapp-…` (Socket Mode, autorisation `connections:write`).
+
+Ensuite, dans les réglages d'un bot → **Routines** → **Nouveau déclencheur depuis une app** : nouvel e-mail, nouveau
+message Slack ou événement à venir. Si un compte affiche « Connexion requise », clique **Se reconnecter**. Google :
+tant que l'app est en mode Test, seuls les « Test users » ajoutés peuvent se connecter.
+
 ## Si ça coince
 
 | Symptôme | Que faire |

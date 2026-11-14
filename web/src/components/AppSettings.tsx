@@ -9,6 +9,7 @@ import { notifyEnabled, notifySupport, setNotifyEnabled } from "../lib/notify";
 import { BotAvatar } from "./Avatar";
 import { Icon, type IconName } from "./Icon";
 import { ConfirmButton, CopyButton, Empty, ErrorNote, IconButton, Loading, Toggle, useDialogFocus, useEscape, useTick } from "./ui";
+import { useNative } from "./NativeApps";
 
 const SECTIONS: { id: AppSection; icon: IconName }[] = [
   { id: "general", icon: "settings" },
@@ -270,6 +271,7 @@ function PermissionsSection() {
 
 function ConnectorsSection() {
   const connectors = useStore((s) => s.connectors);
+  const native = useNative();
   const { loadConnectors, closeAppSettings, openModal } = useStore.getState();
   const t = useT();
   useEffect(() => {
@@ -284,12 +286,26 @@ function ConnectorsSection() {
       <h2>{t("settings.section.connectors")}</h2>
       <div className="action-row">
         <div>
-          <p className="action-title">{connectors ? tn("count.app", connectors.length) : t("settings.section.connectors")}</p>
+          <p className="action-title">{connectors ? tn("count.app", connectors.length + (native?.accounts.length ?? 0)) : t("settings.section.connectors")}</p>
           <p className="muted small">{t("apps.hint")}</p>
         </div>
         <button type="button" className="btn btn-small" onClick={manage}>{t("apps.manage")}</button>
       </div>
       {!connectors && <Loading />}
+      {native && native.accounts.length > 0 && (
+        <ul className="list">
+          {native.accounts.map((a) => (
+            <li key={a.id} className="list-row is-card">
+              <span className={`logo-tile native-${a.app}`}>{(Array.from(a.name.trim())[0] ?? "?").toUpperCase()}</span>
+              <div className="list-row-text">
+                <span className="list-row-title">{a.name}</span>
+                <span className="list-row-sub truncate">{a.identity ?? t("native.notSignedYet")} · {t("native.builtIn")}</span>
+              </div>
+              <span className={`chip state-${a.status}`}>{t(`connector.status.${a.status}`)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
       {connectors && connectors.length > 0 && (
         <ul className="list">
           {connectors.map((c) => (
