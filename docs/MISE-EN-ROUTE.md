@@ -1,0 +1,45 @@
+# Mise en route : les essais en vrai
+
+Tout ce qui pouvait être vérifié sans tes comptes l'a été (64 tests automatiques, audit de sécurité corrigé). Ces étapes-ci ne peuvent être faites que par toi. Coche au fur et à mesure et note ce qui coince.
+
+## 1. Installer (ou mettre à jour) sur le VPS — 15 min
+- Première installation : suis [INSTALLATION-VPS.md](INSTALLATION-VPS.md). **Note le code d'installation** affiché en vert à la fin.
+- Déjà installé : `cd /opt/sklubot && bash deploy/update.sh`. Le script ajoute le code d'installation s'il manque et active les protections (proxy Docker, conteneur en lecture seule).
+- Vérifie que `PUBLIC_URL` (dans `.env`) est bien `https://ton-domaine` : les connexions aux applis reviennent à cette adresse.
+- [ ] Le site s'ouvre en HTTPS et tu as créé ton compte avec le code d'installation.
+
+## 2. Brancher ton abonnement Claude ou ChatGPT — 5 min
+Réglages du bot → **Cerveau** → choisis Claude Code ou Codex → **Se connecter sur l'ordinateur de …**. L'écran du bot s'ouvre : connecte-toi toi-même dans la fenêtre (Sklubot ne voit jamais ton mot de passe).
+- [ ] Le bot répond à un message en utilisant ton abonnement (badge d'abonnement visible).
+- [ ] Ordinateurs déjà créés avant cette version : réglages du bot → **Réinitialiser l'ordinateur** pour qu'il reçoive le nouveau cloisonnement (ce qui a été installé dedans est effacé).
+
+## 3. Relier tes données business — 10 min par appli
+« Connecter des applis » → catalogue → **Ajouter** → **Se connecter**.
+- Commence par **Windsor.ai** (Google Analytics + Search Console + pubs) ou **Supermetrics**, puis ton CRM (**HubSpot** : suis l'aide affichée pour créer le connecteur et coller l'adresse de retour).
+- [ ] Au moins une appli est « Prête » avec ses outils.
+
+## 4. Lancer la chasse aux pépites
+Panneau du bot → **Pépites** → **Lancer la chasse aux pépites** (chaque jour à 8 h 40). Pour un premier essai tout de suite : réglages du bot → Routines → **Lancer maintenant**.
+- [ ] Le bot analyse tes données. S'il ne trouve rien, il ne dit rien ; s'il trouve, euphorie + ligne dorée « Pépite trouvée » avec la note et les chiffres.
+- Trop ou pas assez souvent ? Réglages du bot → Apparence → Joie → **Exigence** (Très rare / Rare / Plus souvent). Dis-moi ce que tu observes : on ajuste ses consignes.
+
+## 5. Être prévenu
+- Réglages → Notifications → active-les (le navigateur te demande l'autorisation).
+- Réglages du bot → **Telegram** → relie ton Telegram : les pépites y arrivent aussi.
+- [ ] Une pépite (ou un message) t'a été notifiée hors de l'onglet.
+
+## 6. Téléphones
+- **iPhone** : Safari → ton adresse → Partager → **Sur l'écran d'accueil**.
+- **Android** : ouvre `https://ton-domaine/download/sklubot.apk` et installe.
+- [ ] Discussion, personnages et pépites s'affichent bien ; le micro marche.
+
+## 7. Le cri de joie
+Réglages du bot → Apparence → **Essayer : Euphorique** (clique d'abord une fois dans la page pour autoriser le son).
+- [ ] Le cri te plaît (sinon dis-moi : plus long, plus aigu, plus discret…).
+
+## 8. Sauvegarde automatique
+`crontab -e` sur le VPS, puis ajoute la ligne de [SAUVEGARDE.md](SAUVEGARDE.md). Garde une copie de `.env` ailleurs.
+- [ ] Une première sauvegarde existe.
+
+## Ce que je fais de tes retours
+Pour chaque point qui coince : copie le message exact affiché (ou une capture) et envoie-le-moi. Je corrige, je teste, et tu relances `bash deploy/update.sh`.
