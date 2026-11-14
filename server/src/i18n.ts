@@ -6,6 +6,7 @@ import type { Locale } from "./shared.js";
  */
 const FR: Record<string, string> = {
   "Stopped.": "Arrêté.",
+  "failed": "échec", "allowed once": "autorisé une fois", "always allowed": "toujours autorisé", "refused": "refusé",
   "My usual model is not answering ({detail}). I am finishing this on the backup model.": "Mon modèle habituel ne répond pas ({detail}). Je termine avec le modèle de secours.",
   "The server restarted while I was working. I am picking this back up.": "Le serveur a redémarré pendant que je travaillais. Je reprends là où j'en étais.",
   "You have used 80% of this month's budget.": "Tu as utilisé 80 % du budget de ce mois.",

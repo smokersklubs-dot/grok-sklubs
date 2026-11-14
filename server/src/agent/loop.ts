@@ -488,8 +488,9 @@ function afterTool(turn: Turn, call: ToolUseBlock, out: ToolOutput): ToolOutput 
   const builtin = turn.builtin.get(call.name);
   const remote = turn.remote.get(call.name);
   if (builtin?.audited || remote) {
-    const what = builtin ? builtin.label : `${remote!.connectorName}: ${remote!.remoteName}`;
-    audit(turn.user.id, "tool", `${turn.bot.name}: ${what}${out.summary ? ` — ${out.summary}` : ""}${out.isError ? " (failed)" : ""}`, turn.bot.id);
+    const loc = turn.user.locale;
+    const what = builtin ? tr(loc, builtin.label) : `${remote!.connectorName}: ${remote!.remoteName}`;
+    audit(turn.user.id, "tool", `${turn.bot.name} : ${what}${out.summary ? ` — ${out.summary}` : ""}${out.isError ? ` (${tr(loc, "failed")})` : ""}`, turn.bot.id);
   }
   if (call.name === "ask_user" && !out.isError) tell({ type: "waiting", bot: turn.bot, text: [String(call.input.question ?? ""), ...(Array.isArray(call.input.options) ? call.input.options.map((o, i) => `${i + 1}. ${o}`) : [])].join("\n") });
   if (!(builtin?.outside || remote) || out.isError) return out;
@@ -552,7 +553,8 @@ export function decideApproval(userId: string, approvalId: string, decision: "al
   const status = decision === "allow" ? "allowed" : decision === "always" ? "always" : "denied";
   approvals.resolve(approvalId, status);
   if (decision === "always") policies.set(userId, approval.tool, "always_allow");
-  audit(userId, "approval", `${bot.name}: ${approval.tool} — ${decision === "allow" ? "allowed once" : decision === "always" ? "always allowed" : "refused"}`, bot.id);
+  const loc = users.localeOf(userId);
+  audit(userId, "approval", `${bot.name} : ${approval.tool} — ${tr(loc, decision === "allow" ? "allowed once" : decision === "always" ? "always allowed" : "refused")}`, bot.id);
   rows.updateCard(bot, approval.generation, approval.seq, (c) => (c.type === "approval" ? { ...c, status } : c));
   enqueue(bot.id, { kind: "resume" });
   return true;
