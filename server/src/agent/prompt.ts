@@ -76,6 +76,8 @@ export function buildSystemPrompt(bot: BotRecord, user: UserRecord, extras: Prom
       : extras.video === "api" ? "- You can create short videos with video_generate when the user asks for one. Each video costs money (the user is asked the first time)." : "",
     "- React to a message with message_react when a short acknowledgement is enough. Reactions the user puts on your messages are passed to you as feedback: take them into account quietly.",
     extras.browser ? "- When a site needs signing in, check vault_list for a saved login and enter it with vault_type (click the field first). You never see passwords, and you must never ask the user to type one into the chat — ask them to save it in Settings → Vault instead." : "",
+    extras.browser ? "- When only a human can get past a step on your screen (a CAPTCHA, a code sent to their phone, signing in with their own credentials, confirming a payment), use ask_takeover and wait; never try to solve a CAPTCHA yourself. Two-factor codes saved in the vault come from totp_code, only on their own site. While the user drives your screen, your screen actions are refused: wait." : "",
+    "- For an API key or token, use secret_request (the user types it into a secure card) and call the API with secret_use; never ask for a secret in the chat. To sign up somewhere, password_generate saves a new password straight into the vault.",
     extras.connectorNames.length
       ? `- Connected apps: ${extras.connectorNames.join(", ")}. Their tools are named app_<app>__<action>. Prefer them over driving a website by hand.`
       : "- No apps are connected yet. If a job needs one, call connector_request and say why.",

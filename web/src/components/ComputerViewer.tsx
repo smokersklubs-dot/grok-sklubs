@@ -171,6 +171,34 @@ export function ComputerViewer({ botId }: { botId: string }) {
   useEffect(() => {
     if (control) controlling.current = true;
   }, [control]);
+  // While in control mode the server is told so (and reminded every 30 s): the bot's own screen actions wait.
+  useEffect(() => {
+    if (!control) return;
+    const hold = () => api("POST", `/bots/${botId}/desktop/control`, { on: true }).catch(() => undefined);
+    void hold();
+    const timer = window.setInterval(hold, 30_000);
+    return () => window.clearInterval(timer);
+  }, [control, botId]);
+  // The bot asked for the user (ask_takeover): "I'm done" hands the screen back and lets it carry on.
+  const takeover = useStore((s) => {
+    const rows = s.threads[botId]?.rows ?? [];
+    for (let i = rows.length - 1; i >= 0; i--) {
+      const b = rows[i].body;
+      if (b.kind === "card" && b.card.type === "takeover") return b.card.status === "pending" ? b.card : null;
+    }
+    return null;
+  });
+  const finishTakeover = async () => {
+    if (!takeover) return;
+    flushTyped();
+    controlling.current = false;
+    try {
+      await api("POST", `/bots/${botId}/takeover/${encodeURIComponent(takeover.takeoverId)}/done`);
+      closeViewer();
+    } catch (e) {
+      setError(errText(e));
+    }
+  };
   // Closing the viewer while in control hands back too. The check waits a tick so a development
   // remount (StrictMode) doesn't count as closing.
   const mounted = useRef(false);
@@ -404,9 +432,14 @@ export function ComputerViewer({ botId }: { botId: string }) {
                 </>
               )}
               {teachError && <span className="viewer-error" role="alert">{teachError}</span>}
+              {takeover && (
+                <button type="button" className="btn btn-small btn-accent" onClick={() => void finishTakeover()}>
+                  <Icon name="check" size={14} /> {t("takeover.done")}
+                </button>
+              )}
               <button
                 type="button"
-                className="btn btn-small btn-primary"
+                className={`btn btn-small ${takeover ? "" : "btn-primary"}`}
                 onClick={() => {
                   flushTyped();
                   // Handing back ends a demonstration under way.
@@ -434,7 +467,12 @@ export function ComputerViewer({ botId }: { botId: string }) {
       {engine && control && (
         <div className="viewer-control-bar" role="status">
           <span className="dot-inline dot-live" />
-          {t("viewer.controlBar", { name: bot.name })}
+          {takeover ? t("takeover.bar", { name: bot.name }) : t("viewer.controlBar", { name: bot.name })}
+        </div>
+      )}
+      {engine && !control && takeover && (
+        <div className="viewer-control-bar is-ask" role="status">
+          <Icon name="hand" size={14} /> {t("takeover.title", { name: bot.name })}
         </div>
       )}
     </div>

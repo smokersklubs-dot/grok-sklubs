@@ -1,7 +1,7 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import { config } from "./config.js";
 import { q } from "./db.js";
-import { now, randomToken, sha256, users, type UserRecord } from "./store.js";
+import { now, randomToken, setUnsealer, sha256, users, type UserRecord } from "./store.js";
 
 export const SESSION_COOKIE = "sklubot_session";
 const SESSION_MS = 30 * 24 * 3600 * 1000;
@@ -93,3 +93,6 @@ export function unseal(sealed: string): string | null {
     return null;
   }
 }
+
+// The store checks chat rows against vault values; it needs to open them.
+setUnsealer(unseal);

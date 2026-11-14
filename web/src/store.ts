@@ -2,8 +2,9 @@ import { create } from "zustand";
 import { api, apiUpload, errText, setUnauthorizedHandler } from "./api";
 import { getLocale, isLocale, setLocale as applyLocale, t } from "./i18n";
 import { notifyBot } from "./lib/notify";
+import { startPresence } from "./lib/push";
 import { playShout, startEuphoria } from "./lib/cheer";
-import type { Attachment, Bot, BotBundle, ComputerState, Connector, Live, Locale, NativeAccount, NativeApp, NativeVendorSetup, ReactionEmoji, Recording, Routine, Row, ServerEvent, Task, User, VideoStatus } from "./types";
+import type { Attachment, Bot, BotBundle, BotSection, ComputerState, Connector, Live, Locale, NativeAccount, NativeApp, NativeVendorSetup, ReactionEmoji, Recording, Routine, Row, ServerEvent, Task, User, VideoStatus } from "./types";
 
 export interface NativeState { apps: NativeApp[]; vendors: NativeVendorSetup[]; accounts: NativeAccount[] }
 
@@ -12,10 +13,11 @@ export type ModalState =
   | null
   | { kind: "createBot" }
   | { kind: "createRoom" }
-  | { kind: "search" }
+  | { kind: "search"; mode?: "chat" }
+  | { kind: "duplicate"; botId: string }
   | { kind: "connectors"; prefill?: { name: string; botId: string; seq: number } };
 export type BotSettingsTab = "general" | "skills" | "memories" | "routines" | "telegram";
-export type AppSection = "general" | "computer" | "permissions" | "connectors" | "vault" | "pages" | "usage" | "checkins" | "activity" | "team" | "account";
+export type AppSection = "general" | "notifications" | "computer" | "permissions" | "connectors" | "vault" | "pages" | "usage" | "checkins" | "activity" | "team" | "account";
 
 /** A short message at the bottom of the window, optionally with one action (usually "Undo"). */
 export interface Toast { id: number; text: string; action?: { label: string; run: () => void | Promise<void> } }
@@ -147,6 +149,12 @@ interface Store {
   native: NativeState | null;
   usageTick: number;
   pagesTick: number;
+  /** Bumped when vault items change on the server (a secret saved from a card, an import). */
+  vaultTick: number;
+  /** The user's own sidebar sections. */
+  sections: BotSection[];
+  /** Find in the open chat: highlighted matches, and the one shown (next / previous). */
+  find: { botId: string; query: string; index: number } | null;
   /** Bumped per bot on every `routines` event, so open run histories reload. */
   routineTicks: Record<string, number>;
   jump: Jump | null;
@@ -186,6 +194,13 @@ interface Store {
   loadComputer(): Promise<void>;
   loadConnectors(): Promise<void>;
   loadNative(): Promise<void>;
+  loadSections(): Promise<void>;
+  /** Change a bot's place in the sidebar (pin, section, hidden) or mark it unread. */
+  organise(botId: string, patch: { pinned?: boolean; sectionId?: string | null; listHidden?: boolean }): Promise<void>;
+  markUnread(botId: string): Promise<void>;
+  openFind(botId: string, query?: string): void;
+  setFind(patch: Partial<{ query: string; index: number }>): void;
+  closeFind(): void;
   upsertBot(bot: Bot): void;
   resetConversation(id: string): Promise<void>;
   applyEvent(ev: ServerEvent): void;
@@ -264,6 +279,9 @@ export const useStore = create<Store>((set, get) => ({
   native: null,
   usageTick: 0,
   pagesTick: 0,
+  vaultTick: 0,
+  sections: [],
+  find: null,
   routineTicks: {},
   jump: null,
   history: null,
@@ -328,6 +346,12 @@ export const useStore = create<Store>((set, get) => ({
     void get().loadTasks();
     void get().loadComputer();
     void get().loadConnectors();
+    void get().loadSections();
+    // Opened from a push notification (/?bot=<id>): show that bot, then tidy the address.
+    const wanted = new URLSearchParams(window.location.search).get("bot");
+    if (wanted && get().bots[wanted]) get().selectBot(wanted);
+    if (wanted) window.history.replaceState(null, "", window.location.pathname);
+    startPresence();
     const { connectEvents } = await import("./events");
     connectEvents();
   },
@@ -367,7 +391,7 @@ export const useStore = create<Store>((set, get) => ({
     const bot = get().bots[id];
     if (!bot) return;
     writePrefs({ selectedId: id });
-    set((st) => ({ selectedId: id, view: "chat", mobileNav: false, openThread: st.openThread?.botId === id ? st.openThread : null }));
+    set((st) => ({ selectedId: id, view: "chat", mobileNav: false, openThread: st.openThread?.botId === id ? st.openThread : null, find: st.find?.botId === id ? st.find : null }));
     void get().loadRows(id);
     void get().loadBundle(id);
     if (bot.unread > 0) void get().markRead(id);
@@ -493,6 +517,47 @@ export const useStore = create<Store>((set, get) => ({
     }
   },
 
+  async loadSections() {
+    try {
+      const r = await api<{ sections: BotSection[] }>("GET", "/sections");
+      set({ sections: r.sections });
+    } catch {
+      /* keep the previous list */
+    }
+  },
+
+  async organise(botId, patch) {
+    const before = get().bots[botId];
+    if (!before) return;
+    set((s) => ({ bots: { ...s.bots, [botId]: { ...before, ...patch } } }));
+    try {
+      const r = await api<{ bot: Bot }>("PATCH", `/bots/${botId}`, patch);
+      get().upsertBot(r.bot);
+    } catch (e) {
+      get().upsertBot(before);
+      get().showToast(errText(e));
+    }
+  },
+
+  async markUnread(botId) {
+    try {
+      const r = await api<{ bot: Bot }>("POST", `/bots/${botId}/unread`);
+      get().upsertBot(r.bot);
+    } catch (e) {
+      get().showToast(errText(e));
+    }
+  },
+
+  openFind(botId, query = "") {
+    set({ find: { botId, query, index: 0 } });
+  },
+  setFind(patch) {
+    set((s) => (s.find ? { find: { ...s.find, ...patch, ...(patch.query !== undefined && patch.index === undefined ? { index: 0 } : {}) } } : {}));
+  },
+  closeFind() {
+    set({ find: null });
+  },
+
   async loadConnectors() {
     try {
       const r = await api<{ connectors: Connector[] }>("GET", "/connectors");
@@ -591,6 +656,12 @@ export const useStore = create<Store>((set, get) => ({
         break;
       case "native":
         void get().loadNative();
+        break;
+      case "sections":
+        void get().loadSections();
+        break;
+      case "vault":
+        set((s) => ({ vaultTick: s.vaultTick + 1 }));
         break;
       case "connectors":
         void get().loadConnectors();

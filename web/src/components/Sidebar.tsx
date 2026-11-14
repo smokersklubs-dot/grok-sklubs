@@ -1,7 +1,8 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
+import { api, errText } from "../api";
 import { IDLE_LIVE, primaryBot, sortedBots, useStore } from "../store";
-import type { Bot, Live } from "../types";
-import { t, tn, useT } from "../i18n";
+import type { Bot, BotSection, Live } from "../types";
+import { tn, useT, t as tt } from "../i18n";
 import { botTitle, initials } from "../lib/format";
 import { BotAvatar } from "./Avatar";
 import { Icon } from "./Icon";
@@ -14,26 +15,79 @@ function statusOf(bot: Bot, live: Live): "attention" | "working" | "unread" | nu
   return null;
 }
 
-const statusLabel = (status: "attention" | "working" | "unread"): string => t(`sidebar.status.${status}`);
+const statusLabel = (status: "attention" | "working" | "unread"): string => tt(`sidebar.status.${status}`);
 
 function previewOf(bot: Bot, live: Live): string {
-  if (live.awaiting) return t("sidebar.waitingReason", { reason: live.awaiting.reason });
+  if (live.awaiting) return tt("sidebar.waitingReason", { reason: live.awaiting.reason });
   if (bot.preview) return bot.preview;
-  if (live.running) return t("sidebar.workingPreview");
-  return t("sidebar.noMessages");
+  if (live.running) return tt("sidebar.workingPreview");
+  return tt("sidebar.noMessages");
+}
+
+const DRAG_TYPE = "application/x-sklubot-bot";
+const FOLD_KEY = "sklubot.sidebarFolds";
+function readFolds(): Record<string, boolean> {
+  try { return JSON.parse(localStorage.getItem(FOLD_KEY) ?? "{}") as Record<string, boolean>; } catch { return {}; }
+}
+
+/** Where a bot can be filed from its menu: pinned, a section, back to the team, hidden. */
+function BotMenu({ bot, open, onClose }: { bot: Bot; open: boolean; onClose: () => void }) {
+  const sections = useStore((s) => s.sections);
+  const { organise, markUnread, openModal, openBotSettings, showToast } = useStore.getState();
+  const [moving, setMoving] = useState(false);
+  const t = useT();
+  const close = () => { setMoving(false); onClose(); };
+  const newSection = async () => {
+    const name = window.prompt(t("sections.newPrompt"))?.trim();
+    if (!name) return;
+    try {
+      const r = await api<{ section: BotSection }>("POST", "/sections", { name });
+      await useStore.getState().loadSections();
+      await organise(bot.id, { sectionId: r.section.id });
+    } catch (e) { showToast(errText(e)); }
+  };
+  return (
+    <Menu open={open} onClose={close} align="right" label={t("sidebar.botMenu", { name: bot.name })} className="bot-menu">
+      {moving ? (
+        <>
+          <div className="menu-head">{t("sidebar.moveTo")}</div>
+          <MenuItem icon={bot.sectionId === null ? "check" : "users"} onClick={() => { close(); void organise(bot.id, { sectionId: null }); }}>{t("sidebar.team")}</MenuItem>
+          {sections.map((sec) => (
+            <MenuItem key={sec.id} icon={bot.sectionId === sec.id ? "check" : "folder"} onClick={() => { close(); void organise(bot.id, { sectionId: sec.id }); }}>{sec.name}</MenuItem>
+          ))}
+          <div className="menu-sep" />
+          <MenuItem icon="plus" onClick={() => { close(); void newSection(); }}>{t("sections.new")}</MenuItem>
+        </>
+      ) : (
+        <>
+          <MenuItem icon="pin" onClick={() => { close(); void organise(bot.id, { pinned: !bot.pinned }); }}>{t(bot.pinned ? "sidebar.unpin" : "sidebar.pin")}</MenuItem>
+          <MenuItem icon="folder" onClick={() => setMoving(true)}>{t("sidebar.moveTo")}…</MenuItem>
+          {bot.kind === "agent" && <MenuItem icon="copy" onClick={() => { close(); openModal({ kind: "duplicate", botId: bot.id }); }}>{t("sidebar.duplicate")}…</MenuItem>}
+          {bot.unread === 0 && <MenuItem icon="ring" onClick={() => { close(); void markUnread(bot.id); }}>{t("sidebar.markUnread")}</MenuItem>}
+          {!bot.primary && <MenuItem icon={bot.listHidden ? "eye" : "eyeOff"} onClick={() => { close(); void organise(bot.id, { listHidden: !bot.listHidden }); }}>{t(bot.listHidden ? "sidebar.unhide" : "sidebar.hide")}</MenuItem>}
+          <div className="menu-sep" />
+          <MenuItem icon="settings" onClick={() => { close(); openBotSettings(bot.id); }}>{t("chat.botSettings")}</MenuItem>
+        </>
+      )}
+    </Menu>
+  );
 }
 
 function BotRow({ bot, live, active, collapsed }: { bot: Bot; live: Live; active: boolean; collapsed: boolean }) {
   const selectBot = useStore((s) => s.selectBot);
-  useT();
+  const [menu, setMenu] = useState(false);
+  const t = useT();
   const status = statusOf(bot, live);
   const title = botTitle(bot);
   return (
-    <li>
+    <li className={`bot-row-wrap menu-wrap ${menu ? "has-menu" : ""}`}>
       <button
         type="button"
         className={`bot-row ${active ? "is-active" : ""}`}
         onClick={() => selectBot(bot.id)}
+        onContextMenu={(e) => { if (collapsed) return; e.preventDefault(); setMenu(true); }}
+        draggable={!collapsed}
+        onDragStart={(e) => { e.dataTransfer.setData(DRAG_TYPE, bot.id); e.dataTransfer.effectAllowed = "move"; }}
         aria-current={active ? "true" : undefined}
         title={collapsed ? title : undefined}
         aria-label={collapsed ? `${title}${status ? ` — ${statusLabel(status)}` : ""}` : undefined}
@@ -48,13 +102,77 @@ function BotRow({ bot, live, active, collapsed }: { bot: Bot; live: Live; active
               <span className="truncate">{bot.name}</span>
               {bot.label && <span className="bot-row-label truncate">· {bot.label}</span>}
               {bot.kind === "room" && <Icon name="users" size={13} className="bot-row-kind" />}
+              {bot.pinned && <Icon name="pin" size={12} className="bot-row-kind" />}
             </span>
             <span className={`bot-row-preview truncate ${status === "attention" ? "is-attention" : ""}`}>{previewOf(bot, live)}</span>
           </span>
         )}
         {!collapsed && bot.unread > 0 && <span className="count-badge" aria-label={tn("sidebar.unread", bot.unread)}>{bot.unread > 99 ? "99+" : bot.unread}</span>}
       </button>
+      {!collapsed && (
+        <button type="button" className="icon-btn bot-row-more" aria-label={t("sidebar.botMenu", { name: bot.name })} aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu((v) => !v)}>
+          <Icon name="more" size={16} />
+        </button>
+      )}
+      {menu && <BotMenu bot={bot} open={menu} onClose={() => setMenu(false)} />}
     </li>
+  );
+}
+
+/** A heading with its list. Bots dragged onto it are filed there. */
+function Group({ id, title, count, folded, onFold, onDropBot, actions, children }: {
+  id: string; title: string; count: number; folded: boolean; onFold: () => void; onDropBot?: (botId: string) => void; actions?: ReactNode; children: ReactNode;
+}) {
+  const [over, setOver] = useState(false);
+  const t = useT();
+  const drop = onDropBot
+    ? {
+        onDragOver: (e: React.DragEvent) => { if (e.dataTransfer.types.includes(DRAG_TYPE)) { e.preventDefault(); setOver(true); } },
+        onDragLeave: () => setOver(false),
+        onDrop: (e: React.DragEvent) => { e.preventDefault(); setOver(false); const botId = e.dataTransfer.getData(DRAG_TYPE); if (botId) onDropBot(botId); },
+      }
+    : {};
+  return (
+    <section className={`sidebar-group ${over ? "is-drop" : ""}`} {...drop} aria-labelledby={`grp-${id}`}>
+      <div className="sidebar-group-head">
+        <button type="button" className="sidebar-heading sidebar-fold" id={`grp-${id}`} aria-expanded={!folded} onClick={onFold} title={t(folded ? "sidebar.expandGroup" : "sidebar.collapseGroup")}>
+          <Icon name={folded ? "chevronRight" : "chevronDown"} size={12} />
+          <span className="truncate">{title}</span>
+          {count > 0 && <span className="sidebar-group-count">{count}</span>}
+        </button>
+        {actions}
+      </div>
+      {!folded && children}
+    </section>
+  );
+}
+
+/** The menu of a section of the user's: rename, delete (its bots go back to the team). */
+function SectionActions({ section }: { section: BotSection }) {
+  const [open, setOpen] = useState(false);
+  const t = useT();
+  const { showToast, loadSections } = useStore.getState();
+  const rename = async () => {
+    setOpen(false);
+    const name = window.prompt(t("sections.renamePrompt"), section.name)?.trim();
+    if (!name || name === section.name) return;
+    try { await api("PATCH", `/sections/${section.id}`, { name }); await loadSections(); } catch (e) { showToast(errText(e)); }
+  };
+  const remove = async () => {
+    setOpen(false);
+    if (!window.confirm(t("sections.deleteConfirm", { name: section.name }))) return;
+    try { await api("DELETE", `/sections/${section.id}`); await loadSections(); } catch (e) { showToast(errText(e)); }
+  };
+  return (
+    <span className="menu-wrap">
+      <button type="button" className="icon-btn sidebar-group-more" aria-label={t("sections.menu", { name: section.name })} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+        <Icon name="more" size={15} />
+      </button>
+      <Menu open={open} onClose={() => setOpen(false)} align="right" label={t("sections.menu", { name: section.name })}>
+        <MenuItem icon="edit" onClick={() => void rename()}>{t("sections.rename")}</MenuItem>
+        <MenuItem icon="trash" danger onClick={() => void remove()}>{t("sections.delete")}</MenuItem>
+      </Menu>
+    </span>
   );
 }
 
@@ -70,11 +188,35 @@ export function Sidebar() {
   const online = useStore((s) => s.online);
   const { toggleSidebar, openModal, setView, selectBot, openAppSettings, logout, setMobileNav } = useStore.getState();
   const [menuOpen, setMenuOpen] = useState(false);
-  useT();
+  const t = useT();
 
   const collapsed = collapsedPref && !mobileNav;
   const primary = useMemo(() => primaryBot(bots), [bots]);
+  const sections = useStore((s) => s.sections);
   const others = useMemo(() => sortedBots(bots).filter((b) => !b.primary), [bots]);
+  const [folds, setFolds] = useState<Record<string, boolean>>(readFolds);
+  const fold = (id: string) => setFolds((f) => {
+    const next = { ...f, [id]: !f[id] };
+    try { localStorage.setItem(FOLD_KEY, JSON.stringify(next)); } catch { /* not kept */ }
+    return next;
+  });
+  const visible = others.filter((b) => !b.listHidden);
+  const pinned = visible.filter((b) => b.pinned);
+  const known = new Set(sections.map((x) => x.id));
+  const bySection = (id: string) => visible.filter((b) => !b.pinned && b.sectionId === id);
+  const team = visible.filter((b) => !b.pinned && (!b.sectionId || !known.has(b.sectionId)));
+  const hiddenBots = others.filter((b) => b.listHidden);
+  const { organise } = useStore.getState();
+  const rowsOf = (list: Bot[]) => (
+    <ul className="bot-list">
+      {list.map((b) => <BotRow key={b.id} bot={b} live={live[b.id] ?? IDLE_LIVE} active={chatActive && selectedId === b.id} collapsed={collapsed} />)}
+    </ul>
+  );
+  const addSection = async () => {
+    const name = window.prompt(t("sections.newPrompt"))?.trim();
+    if (!name) return;
+    try { await api("POST", "/sections", { name }); await useStore.getState().loadSections(); } catch (e) { useStore.getState().showToast(errText(e)); }
+  };
   const waiting = tasks?.filter((t) => t.state === "needs_input").length ?? 0;
   const chatActive = view === "chat";
   const primaryLive = primary ? (live[primary.id] ?? IDLE_LIVE) : IDLE_LIVE;
@@ -89,7 +231,7 @@ export function Sidebar() {
           <span className="sidebar-top-actions">
             {!collapsed && (
               <>
-                <IconButton icon="search" label={t("sidebar.search")} title={`${t("sidebar.search")} (${modKey}K)`} onClick={() => openModal({ kind: "search" })} />
+                <IconButton icon="search" label={t("palette.open")} title={`${t("palette.open")} (${modKey}K)`} onClick={() => openModal({ kind: "search" })} />
                 <IconButton icon="plus" label={t("sidebar.newBot")} onClick={() => openModal({ kind: "createBot" })} />
               </>
             )}
@@ -145,12 +287,33 @@ export function Sidebar() {
             </button>
           )}
 
-          {!collapsed && others.length > 0 && <h2 className="sidebar-heading">{t("sidebar.team")}</h2>}
-          <ul className="bot-list">
-            {others.map((b) => (
-              <BotRow key={b.id} bot={b} live={live[b.id] ?? IDLE_LIVE} active={chatActive && selectedId === b.id} collapsed={collapsed} />
-            ))}
-          </ul>
+          {collapsed ? (
+            rowsOf([...pinned, ...sections.flatMap((sec) => bySection(sec.id)), ...team])
+          ) : (
+            <>
+              {pinned.length > 0 && (
+                <Group id="pinned" title={t("sidebar.pinned")} count={0} folded={!!folds.pinned} onFold={() => fold("pinned")} onDropBot={(id) => void organise(id, { pinned: true })}>
+                  {rowsOf(pinned)}
+                </Group>
+              )}
+              {sections.map((sec) => (
+                <Group key={sec.id} id={sec.id} title={sec.name} count={bySection(sec.id).length} folded={!!folds[sec.id]} onFold={() => fold(sec.id)} onDropBot={(id) => void organise(id, { sectionId: sec.id, pinned: false })} actions={<SectionActions section={sec} />}>
+                  {bySection(sec.id).length ? rowsOf(bySection(sec.id)) : <p className="sidebar-drop-hint">{t("sections.empty")}</p>}
+                </Group>
+              ))}
+              {(team.length > 0 || sections.length > 0) && others.length > 0 && (
+                <Group id="team" title={t("sidebar.team")} count={0} folded={!!folds.team} onFold={() => fold("team")} onDropBot={(id) => void organise(id, { sectionId: null, pinned: false })}
+                  actions={<button type="button" className="icon-btn sidebar-group-more" aria-label={t("sections.new")} title={t("sections.new")} onClick={() => void addSection()}><Icon name="plus" size={15} /></button>}>
+                  {rowsOf(team)}
+                </Group>
+              )}
+              {hiddenBots.length > 0 && (
+                <Group id="hidden" title={t("sidebar.hiddenCount", { n: hiddenBots.length })} count={0} folded={folds.hidden !== false} onFold={() => setFolds((f) => { const next = { ...f, hidden: f.hidden === false }; try { localStorage.setItem(FOLD_KEY, JSON.stringify(next)); } catch { /* not kept */ } return next; })}>
+                  <div className="is-hidden-list">{rowsOf(hiddenBots)}</div>
+                </Group>
+              )}
+            </>
+          )}
 
           {others.length === 0 && !collapsed && (
             <button type="button" className="cta-row" onClick={() => openModal({ kind: "createBot" })}>

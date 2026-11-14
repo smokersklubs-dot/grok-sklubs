@@ -2,17 +2,19 @@ import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { api, ApiError, enc, errText } from "../api";
 import { LOCALES, tn, useT } from "../i18n";
 import { useStore, type AppSection, type Theme } from "../store";
-import type { AuditEntry, CheckinSettings, Locale, Policy, SharedPage, SubscriptionUsage, UsageSummary, VaultItem } from "../types";
+import type { AuditEntry, CheckinSettings, Locale, Policy, SharedPage, SubscriptionUsage, UsageSummary } from "../types";
 import { ENGINE_BRAND, ENGINE_TOOL } from "../lib/engines";
 import { clockTime, compactNumber, dateTime, dayLabel, initials, money, relTime, shortDate, toolWords } from "../lib/format";
-import { notifyEnabled, notifySupport, setNotifyEnabled } from "../lib/notify";
 import { BotAvatar } from "./Avatar";
 import { Icon, type IconName } from "./Icon";
 import { ConfirmButton, CopyButton, Empty, ErrorNote, IconButton, Loading, Toggle, useDialogFocus, useEscape, useTick } from "./ui";
 import { useNative } from "./NativeApps";
+import { VaultSection } from "./VaultSection";
+import { NotificationsSection } from "./NotificationsSection";
 
 const SECTIONS: { id: AppSection; icon: IconName }[] = [
   { id: "general", icon: "settings" },
+  { id: "notifications", icon: "bell" },
   { id: "computer", icon: "monitor" },
   { id: "permissions", icon: "shield" },
   { id: "connectors", icon: "plug" },
@@ -36,15 +38,6 @@ function GeneralSection() {
   const setLocale = useStore((s) => s.setLocale);
   const t = useT();
   const [error, setError] = useState<string | null>(null);
-  const [notify, setNotify] = useState(() => notifyEnabled());
-  const [support, setSupport] = useState(() => notifySupport());
-
-  const chooseNotify = (next: boolean) => {
-    void setNotifyEnabled(next).then((on) => {
-      setNotify(on);
-      setSupport(notifySupport());
-    });
-  };
 
   const chooseLocale = (next: Locale) => {
     setError(null);
@@ -81,13 +74,10 @@ function GeneralSection() {
 
       <h3 className="pane-heading">{t("notify.heading")}</h3>
       <div className="action-row">
-        <div>
-          <p className="action-title">{t("notify.title")}</p>
-          <p className="muted small">
-            {t(support === "unsupported" ? "notify.unsupported" : support === "denied" ? "notify.denied" : "notify.hint")}
-          </p>
-        </div>
-        <Toggle checked={notify && support === "ok"} label={t("notify.title")} disabled={support !== "ok"} onChange={chooseNotify} />
+        <p className="muted small">{t("push.moved")}</p>
+        <button type="button" className="btn btn-small" onClick={() => useStore.getState().openAppSettings("notifications")}>
+          <Icon name="bell" size={14} /> {t("settings.section.notifications")}
+        </button>
       </div>
 
       {!/SklubotAndroid/.test(navigator.userAgent) && (
@@ -326,166 +316,6 @@ function ConnectorsSection() {
 }
 
 /* ---------- Vault (saved logins) ---------- */
-
-interface VaultForm { name: string; site: string; username: string; password: string; note: string }
-const EMPTY_LOGIN: VaultForm = { name: "", site: "", username: "", password: "", note: "" };
-
-/** Add or edit one saved login. The password field starts empty: the server never sends a password back. */
-function VaultEditor({ item, onSaved, onCancel }: { item: VaultItem | null; onSaved: (item: VaultItem) => void; onCancel: () => void }) {
-  const t = useT();
-  const [form, setForm] = useState<VaultForm>(item ? { name: item.name, site: item.site, username: item.username, password: "", note: item.note } : EMPTY_LOGIN);
-  const [reveal, setReveal] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const uid = useId();
-  const first = useRef<HTMLInputElement>(null);
-  useEffect(() => first.current?.focus(), []);
-  const set = <K extends keyof VaultForm>(k: K, v: string) => setForm((f) => ({ ...f, [k]: v }));
-
-  const submit = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!form.name.trim() || busy) return;
-    setBusy(true);
-    setError(null);
-    // An empty password is left out, so editing keeps the one already saved.
-    const body = {
-      name: form.name.trim(),
-      site: form.site.trim(),
-      username: form.username.trim(),
-      note: form.note.trim(),
-      ...(form.password ? { password: form.password } : {}),
-    };
-    try {
-      const r = item ? await api<{ item: VaultItem }>("PATCH", `/vault/${enc(item.id)}`, body) : await api<{ item: VaultItem }>("POST", "/vault", body);
-      onSaved(r.item);
-    } catch (err) {
-      setError(errText(err));
-      setBusy(false);
-    }
-  };
-
-  return (
-    <form className="editor" onSubmit={submit} autoComplete="off" aria-label={t(item ? "vault.editTitle" : "vault.newTitle")}>
-      <div className="field">
-        <label className="field-label" htmlFor={`${uid}n`}>{t("common.name")}</label>
-        <input ref={first} id={`${uid}n`} className="input" value={form.name} maxLength={80} required onChange={(e) => set("name", e.target.value)} placeholder={t("vault.namePlaceholder")} autoComplete="off" />
-      </div>
-      <div className="form-cols is-even">
-        <div className="field">
-          <label className="field-label" htmlFor={`${uid}s`}>{t("vault.site")} <span className="muted">{t("common.optional")}</span></label>
-          <input id={`${uid}s`} className="input" value={form.site} maxLength={300} onChange={(e) => set("site", e.target.value)} placeholder={t("vault.sitePlaceholder")} autoComplete="off" autoCapitalize="off" spellCheck={false} inputMode="url" />
-        </div>
-        <div className="field">
-          <label className="field-label" htmlFor={`${uid}u`}>{t("vault.username")} <span className="muted">{t("common.optional")}</span></label>
-          <input id={`${uid}u`} className="input" value={form.username} maxLength={200} onChange={(e) => set("username", e.target.value)} autoComplete="off" autoCapitalize="off" spellCheck={false} />
-        </div>
-      </div>
-      <div className="field">
-        <label className="field-label" htmlFor={`${uid}p`}>{t("vault.password")}{!item && <> <span className="muted">{t("common.optional")}</span></>}</label>
-        <div className="input-affix">
-          <input id={`${uid}p`} className="input" type={reveal ? "text" : "password"} value={form.password} maxLength={500} onChange={(e) => set("password", e.target.value)} autoComplete="off" autoCapitalize="off" spellCheck={false} data-1p-ignore="" data-lpignore="true" />
-          <IconButton icon={reveal ? "eyeOff" : "eye"} size={16} label={t(reveal ? "vault.hide" : "vault.show")} active={reveal} onClick={() => setReveal((v) => !v)} />
-        </div>
-        <p className="field-hint">{item?.hasPassword ? t("vault.passwordKeep") : t("vault.passwordNever")}</p>
-      </div>
-      <div className="field">
-        <label className="field-label" htmlFor={`${uid}o`}>{t("vault.note")} <span className="muted">{t("common.optional")}</span></label>
-        <textarea id={`${uid}o`} className="input" rows={2} value={form.note} maxLength={1000} onChange={(e) => set("note", e.target.value)} placeholder={t("vault.notePlaceholder")} />
-      </div>
-      <ErrorNote>{error}</ErrorNote>
-      <div className="row-end">
-        <button type="button" className="btn btn-ghost btn-small" onClick={onCancel}>{t("common.cancel")}</button>
-        <button type="submit" className="btn btn-primary btn-small" disabled={!form.name.trim() || busy}>{t(busy ? "common.saving" : item ? "common.save" : "vault.saveNew")}</button>
-      </div>
-    </form>
-  );
-}
-
-function VaultSection() {
-  const t = useT();
-  const [items, setItems] = useState<VaultItem[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [editing, setEditing] = useState<string | "new" | null>(null);
-
-  useEffect(() => {
-    let dead = false;
-    api<{ items: VaultItem[] }>("GET", "/vault").then(
-      (r) => !dead && setItems(Array.isArray(r?.items) ? r.items : []),
-      (e: unknown) => {
-        if (dead) return;
-        setError(errText(e));
-        setItems((cur) => cur ?? []);
-      },
-    );
-    return () => {
-      dead = true;
-    };
-  }, []);
-
-  const saved = (item: VaultItem) => {
-    setItems((cur) => {
-      const list = cur ?? [];
-      return list.some((x) => x.id === item.id) ? list.map((x) => (x.id === item.id ? item : x)) : [...list, item];
-    });
-    setEditing(null);
-  };
-  const remove = async (item: VaultItem) => {
-    setError(null);
-    try {
-      await api("DELETE", `/vault/${enc(item.id)}`);
-      setItems((cur) => cur?.filter((x) => x.id !== item.id) ?? null);
-    } catch (e) {
-      setError(errText(e));
-    }
-  };
-
-  return (
-    <>
-      <h2>{t("settings.section.vault")}</h2>
-      <div className="pane-intro">
-        <p className="muted">{t("vault.intro")}</p>
-        {editing === null && items && (
-          <button type="button" className="btn btn-small" onClick={() => setEditing("new")}>
-            <Icon name="plus" size={14} /> {t("vault.add")}
-          </button>
-        )}
-      </div>
-      <ErrorNote onDismiss={() => setError(null)}>{error}</ErrorNote>
-      {editing === "new" && <VaultEditor item={null} onSaved={saved} onCancel={() => setEditing(null)} />}
-      {!items && <Loading />}
-      {items && items.length === 0 && editing === null && <Empty icon="key" title={t("vault.emptyTitle")}>{t("vault.emptyText")}</Empty>}
-      {items && items.length > 0 && (
-        <ul className="list">
-          {items.map((item) =>
-            editing === item.id ? (
-              <li key={item.id}>
-                <VaultEditor item={item} onSaved={saved} onCancel={() => setEditing(null)} />
-              </li>
-            ) : (
-              <li key={item.id} className="list-row is-card vault-row">
-                <span className="logo-tile is-vault" aria-hidden="true">
-                  <Icon name="key" size={17} />
-                </span>
-                <div className="list-row-text">
-                  <span className="list-row-title">
-                    {item.name}
-                    <span className={`chip ${item.hasPassword ? "state-ready" : ""}`}>{t(item.hasPassword ? "vault.hasPassword" : "vault.noPassword")}</span>
-                  </span>
-                  {(item.site || item.username) && (
-                    <span className="list-row-sub">{[item.site, item.username].filter(Boolean).join(" · ")}</span>
-                  )}
-                  {item.note && <span className="list-row-sub">{item.note}</span>}
-                </div>
-                <IconButton icon="edit" size={16} label={t("vault.edit", { name: item.name })} onClick={() => setEditing(item.id)} />
-                <ConfirmButton className="btn btn-small btn-ghost-danger" label={t("common.delete")} confirmLabel={t("common.confirmDelete")} busyLabel={t("common.deleting")} onConfirm={() => remove(item)} />
-              </li>
-            ),
-          )}
-        </ul>
-      )}
-    </>
-  );
-}
 
 /* ---------- Usage ---------- */
 
@@ -1195,6 +1025,7 @@ export function AppSettings({ section }: { section: AppSection }) {
         <IconButton icon="close" label={t("settings.close")} className="app-settings-close" onClick={closeAppSettings} />
         <div className="app-settings-content settings-pane">
           {section === "general" && <GeneralSection />}
+          {section === "notifications" && <NotificationsSection />}
           {section === "computer" && <ComputerSection />}
           {section === "permissions" && <PermissionsSection />}
           {section === "connectors" && <ConnectorsSection />}

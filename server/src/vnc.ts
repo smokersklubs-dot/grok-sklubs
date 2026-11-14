@@ -8,6 +8,7 @@ import { originAllowed, parseCookies, SESSION_COOKIE, userForToken } from "./aut
 import { computerKind } from "./computer.js";
 import { containerName, linuxScreen } from "./linux.js";
 import { bots } from "./store.js";
+import { controlSocket } from "./takeover.js";
 
 /**
  * Live view of a bot's Linux computer. The browser speaks the standard remote-screen protocol (RFB, as
@@ -55,7 +56,15 @@ function pipe(ws: WebSocket, botId: string, control: boolean) {
   // While someone is looking, the computer counts as in use and does not go to sleep.
   const keepAwake = setInterval(() => linuxScreen.touch(botId), 30_000);
   linuxScreen.touch(botId);
-  const close = () => { clearInterval(keepAwake); vnc.kill("SIGKILL"); if (ws.readyState === ws.OPEN) ws.close(); };
+  // A stream in control mode means the user is driving: the bot's own screen actions wait (takeover.ts).
+  if (control) controlSocket(botId, true);
+  let closed = false;
+  const close = () => {
+    if (closed) return;
+    closed = true;
+    if (control) controlSocket(botId, false);
+    clearInterval(keepAwake); vnc.kill("SIGKILL"); if (ws.readyState === ws.OPEN) ws.close();
+  };
   vnc.stdout!.on("data", (chunk: Buffer) => { if (ws.readyState === ws.OPEN) ws.send(chunk); });
   vnc.on("close", close);
   vnc.on("error", close);

@@ -8,7 +8,9 @@ import { ChatView } from "./components/ChatView";
 import { ComputerViewer } from "./components/ComputerViewer";
 import { HistoryViewer } from "./components/HistoryViewer";
 import { DetailsPanel } from "./components/DetailsPanel";
-import { ConnectorsModal, CreateBotModal, CreateRoomModal, SearchModal } from "./components/Modals";
+import { ConnectorsModal, CreateBotModal, CreateRoomModal } from "./components/Modals";
+import { CommandPalette } from "./components/CommandPalette";
+import { DuplicateBotModal } from "./components/DuplicateBotModal";
 import { Sidebar } from "./components/Sidebar";
 import { SignIn } from "./components/SignIn";
 import { TasksView } from "./components/TasksView";
@@ -110,7 +112,8 @@ function Shell() {
       {botSettings && <BotSettings botId={botSettings.botId} tab={botSettings.tab} />}
       {modal?.kind === "createBot" && <CreateBotModal onClose={close} />}
       {modal?.kind === "createRoom" && <CreateRoomModal onClose={close} />}
-      {modal?.kind === "search" && <SearchModal onClose={close} />}
+      {modal?.kind === "search" && <CommandPalette onClose={close} />}
+      {modal?.kind === "duplicate" && <DuplicateBotModal key={modal.botId} botId={modal.botId} onClose={close} />}
       {modal?.kind === "connectors" && <ConnectorsModal key={modal.prefill ? `${modal.prefill.botId}:${modal.prefill.seq}` : "all"} onClose={close} prefill={modal.prefill} />}
       {viewerBotId && <ComputerViewer key={viewerBotId} botId={viewerBotId} />}
 

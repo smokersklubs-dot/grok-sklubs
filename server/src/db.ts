@@ -193,6 +193,34 @@ function CREATE_EXTRA() {
   CREATE TABLE IF NOT EXISTS active_turns (
     bot_id TEXT PRIMARY KEY REFERENCES bots(id) ON DELETE CASCADE, started_at INTEGER NOT NULL, acted INTEGER NOT NULL DEFAULT 0
   );`);
+  // Wave 3. Organising bots: pinned, filed under a section of the user's, hidden from the list by the user
+  // (distinct from `hidden`, which marks helpers that never show in the sidebar).
+  add("bots", "pinned", "INTEGER NOT NULL DEFAULT 0");
+  add("bots", "section_id", "TEXT");
+  add("bots", "list_hidden", "INTEGER NOT NULL DEFAULT 0");
+  // Vault items of several kinds ("login" | "secret" | "totp"); `meta` holds the kind's settings as JSON
+  // (secret: hosts, header, prefix; totp: digits, period). The value itself stays in password_enc, sealed.
+  add("vault", "kind", "TEXT NOT NULL DEFAULT 'login'");
+  add("vault", "meta", "TEXT NOT NULL DEFAULT '{}'");
+  // Push notification preferences (kinds and quiet hours), JSON.
+  add("settings", "push", "TEXT NOT NULL DEFAULT '{}'");
+  db.exec(`
+  CREATE TABLE IF NOT EXISTS bot_sections (
+    id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, name TEXT NOT NULL,
+    position INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS bot_sections_user ON bot_sections(user_id, position);
+  -- Keys this server generates once and keeps (the VAPID key pair for push). The private half is sealed.
+  CREATE TABLE IF NOT EXISTS server_keys (
+    name TEXT PRIMARY KEY, public TEXT NOT NULL, private_enc TEXT NOT NULL, created_at INTEGER NOT NULL
+  );
+  -- One browser or phone subscribed to push notifications. p256dh and auth are the subscription's own keys (RFC 8291).
+  CREATE TABLE IF NOT EXISTS push_subscriptions (
+    id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, endpoint TEXT NOT NULL UNIQUE,
+    p256dh TEXT NOT NULL, auth_enc TEXT NOT NULL, label TEXT NOT NULL DEFAULT '', enabled INTEGER NOT NULL DEFAULT 1,
+    created_at INTEGER NOT NULL, last_ok_at INTEGER, failures INTEGER NOT NULL DEFAULT 0
+  );
+  CREATE INDEX IF NOT EXISTS push_subscriptions_user ON push_subscriptions(user_id);`);
 }
 
 type Param = string | number | null | bigint;

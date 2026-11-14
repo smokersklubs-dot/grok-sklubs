@@ -231,3 +231,69 @@ reconnect runs a catch-up. The fired turn starts tainted, with the item as outsi
 
 Test overrides: `GOOGLE_API_URL`, `MICROSOFT_API_URL`, `SLACK_API_URL` replace the scheme and host of every URL of
 that vendor (with `ALLOW_PRIVATE_FETCH=1` for local fakes).
+
+## Wave 3 — comfort (push, takeover, vault, organising, palette)
+
+### Push notifications (Web Push)
+Implemented from RFC 8030 (delivery), RFC 8291 + RFC 8188 (`aes128gcm` encryption) and RFC 8292 (VAPID, ES256) in
+`server/src/push.ts`, without a third-party library; delivery goes through `guardedFetch`. The VAPID key pair is made
+once (table `server_keys`, private half sealed). `VAPID_SUBJECT` (`mailto:` or `https:`) sets the contact sent to push
+services; default: `PUBLIC_URL` when it is https.
+
+| Method | Path | Body | Returns |
+|---|---|---|---|
+| GET | `/push?endpoint=` | – | `PushState & { currentId }` — `publicKey` to subscribe with; `currentId`: the device holding that endpoint |
+| POST | `/push/subscribe` | `{ subscription: PushSubscriptionJSON, label }` | `{ device: PushDevice }` (400 on a non-https endpoint or bad keys) |
+| POST | `/push/unsubscribe` | `{ endpoint }` | `{ ok }` |
+| PATCH | `/push/devices/:id` | `{ enabled?, label? }` | `{ device }` — per-device on/off |
+| DELETE | `/push/devices/:id` | – | `{ ok }` |
+| PUT | `/push/settings` | `{ kinds?: Partial<Record<PushKind, boolean>>, quiet?: { enabled?, start?, end?, timezone? } }` | `{ settings: PushSettings }` |
+| POST | `/push/test` | – | `{ sent }` — ignores kinds and quiet hours |
+| POST | `/presence` | `{ clientId, visible }` | `{ ok }` — open windows report visibility; a finished reply is pushed only when none is visible |
+
+Pushed: `needs` (approval, question, `ask_takeover`, `secret_request`), `gem` (celebrate), `reply` (a reply to the user
+while no window is visible), `routine` (a routine's result). Payload (encrypted): `{ kind, title, body, botId, tag, url }`;
+`sw.js` shows it and opens `/?bot=<id>` (or focuses an open window and posts `{ type: "sklubot-open-bot", botId }`).
+A subscription answered 404/410 by its push service is deleted.
+
+### The bot asks for help and waits
+| Method | Path | Body | Returns |
+|---|---|---|---|
+| POST | `/bots/:id/takeover/:takeoverId/done` | – | `{ ok }` — "I'm done, hand it back": the waiting `ask_takeover` call returns; after a restart a new turn is started instead |
+| POST | `/bots/:id/desktop/control` | `{ on: boolean }` | `{ ok }` — the viewer is in control mode (renew every 30 s; lease 75 s) |
+| POST | `/bots/:id/desktop/handback` | – | `{ ok }` — also ends the control lease |
+
+Card `{ type: "takeover", takeoverId, reason: TakeoverReason, detail, status, expiresAt }`. The tool waits up to 30 min
+(`TAKEOVER_TIMEOUT_MS` overrides it). While the user drives the screen — a live screen open in control mode (counted in
+`vnc.ts`) or a control lease — the bot's screen actions (`browser_open`, `screen_click/type/key/scroll/drag`,
+`vault_type`) are refused server-side; `Live.driving` tells the UI.
+
+### Vault
+`VaultItem` now has `kind: "login" | "secret" | "totp"`, plus `hosts`, `header`, `prefix` (secret) and `digits`, `period` (totp).
+
+| Method | Path | Body | Returns |
+|---|---|---|---|
+| POST/PATCH | `/vault`, `/vault/:id` | `{ kind, name, site?, username?, password?, note?, hosts?, header?, prefix? }` — `password` is the value (password, key, base32 seed or `otpauth://` URI) | `{ item }` — values are never returned |
+| POST | `/vault/import` | `{ csv, mapping?: { name, url, username, password, note, totp } }` (column indexes) | `VaultImportResult` — `{ needsMapping: true, headers }` when columns are unknown (header names only) |
+| POST | `/bots/:id/cards/:seq/secret` | `{ value, host?, header?, prefix? }` | `{ ok }` — the secure card of `secret_request`; the value is sealed, never written to the chat, history or log |
+
+Tools: `secret_request` (card, ends the turn), `secret_use` (HTTP request with the secret injected into its header, only
+to its bound hosts, https only, redirects not followed; asks before the first use of each secret and every time after
+outside content), `totp_code` (current code, only while the bound site is open; asks every time after outside content),
+`password_generate` (saves a new login, returns only its name). Every vault value is redacted (exact match) from tool
+results and from chat rows. Secrets are not offered to shell commands: an environment variable can be copied anywhere,
+so it cannot be bound to a host.
+
+### Organising bots
+`Bot` has `pinned`, `sectionId`, `listHidden`. `PATCH /bots/:id` accepts them (`sectionId` must be one of the user's).
+
+| Method | Path | Body | Returns |
+|---|---|---|---|
+| GET | `/sections` | – | `{ sections: BotSection[] }` |
+| POST | `/sections` | `{ name }` | `{ section }` |
+| PATCH | `/sections/:id` | `{ name?, position? }` | `{ section }` |
+| DELETE | `/sections/:id` | – | `{ ok }` — its bots go back to the default list |
+| POST | `/bots/:id/unread` | – | `{ bot }` — mark as unread |
+| POST | `/bots/:id/duplicate` | `{ name?, memories?: boolean, conversation?: boolean }` | `{ bot }` — copies settings, look, instructions, tools, skills; memories and the current conversation only when asked |
+
+Server events: `{ type: "sections" }`, `{ type: "vault" }`.

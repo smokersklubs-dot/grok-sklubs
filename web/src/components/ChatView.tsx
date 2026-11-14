@@ -8,7 +8,8 @@ import { CallBar } from "./CallBar";
 import { Composer } from "./Composer";
 import { Icon } from "./Icon";
 import { Transcript } from "./Transcript";
-import { IconButton, Menu, MenuItem, isMac } from "./ui";
+import { FindBar } from "./FindBar";
+import { IconButton, Menu, MenuItem, isMac, modKey } from "./ui";
 
 export function ChatView() {
   const bot = useStore((s) => (s.selectedId ? s.bots[s.selectedId] : undefined));
@@ -16,7 +17,8 @@ export function ChatView() {
   const live = useStore((s) => (s.selectedId ? s.live[s.selectedId] : undefined)) ?? IDLE_LIVE;
   const detailsOpen = useStore((s) => s.detailsOpen);
   const recording = useStore((s) => (s.selectedId ? s.recordings[s.selectedId] : null));
-  const { toggleDetails, openViewer, openBotSettings, resetConversation, showToast, setMobileNav } = useStore.getState();
+  const { toggleDetails, openViewer, openBotSettings, resetConversation, showToast, setMobileNav, openModal, openFind } = useStore.getState();
+  const finding = useStore((s) => !!s.find && s.find.botId === s.selectedId);
   const [menu, setMenu] = useState(false);
   const [confirmNew, setConfirmNew] = useState(false);
   const t = useT();
@@ -26,6 +28,9 @@ export function ChatView() {
       <section className="main">
         <header className="chat-head">
           <IconButton icon="menu" label={t("common.openMenu")} className="only-mobile" onClick={() => setMobileNav(true)} />
+          <span className="chat-head-right">
+            <IconButton icon="command" label={t("palette.open")} onClick={() => openModal({ kind: "search" })} />
+          </span>
         </header>
         <div className="chat-empty">
           <h2>{t("chat.noBot")}</h2>
@@ -90,6 +95,15 @@ export function ChatView() {
               {t(confirmNew ? "chat.confirmNew" : "chat.newConversation")}
             </MenuItem>
             <MenuItem
+              icon="search"
+              onClick={() => {
+                close();
+                openFind(bot.id);
+              }}
+            >
+              {t("find.inChat")}
+            </MenuItem>
+            <MenuItem
               icon="settings"
               onClick={() => {
                 close();
@@ -107,9 +121,11 @@ export function ChatView() {
               {t(recording.status === "recording" ? "teach.rec" : recording.status === "processing" ? "teach.processingShort" : "teach.reviewShort")}
             </button>
           )}
+          <IconButton icon="command" label={t("palette.open")} title={`${t("palette.open")} (${modKey}K)`} onClick={() => openModal({ kind: "search" })} />
           {!detailsOpen && <IconButton icon="panel" label={t("chat.showDetails")} onClick={() => toggleDetails(true)} />}
         </span>
       </header>
+      {finding && <FindBar key={bot.id} botId={bot.id} />}
       <Transcript bot={bot} thread={thread} live={live} />
       <CallBar botId={bot.id} />
       <Composer bot={bot} live={live} />

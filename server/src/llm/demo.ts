@@ -33,6 +33,10 @@ function plan(text: string, has: (name: string) => boolean): Block[] | null {
     if (tool) return call(tool, { query: quoted ?? "", max: 5 });
   }
   if (/\b(video|vidéo|clip)\b/.test(lower)) return call("video_generate", { prompt: quoted ?? (text.replace(/^.*?\b(video|vidéo|clip)\b\s*(of|de|d'|sur)?/i, "").trim() || "a calm sunrise over the sea"), duration_seconds: 4, aspect_ratio: "16:9", filename: "demo-video" });
+  // Wave 3 stand-ins: the bot asks for the user's hand on its screen, for a secret, or makes a password.
+  if (/\b(captcha|prends la main|take over|takeover)\b/.test(lower)) return call("ask_takeover", { reason: "captcha", detail: /[àâçéèêëîïôûùüÿœ]/.test(lower) || /\b(la|le|mon|ma)\b/.test(lower) ? "Un CAPTCHA bloque la connexion : coche la case « Je ne suis pas un robot », puis rends-moi la main." : "A CAPTCHA blocks the sign-in: tick “I am not a robot”, then hand the screen back." });
+  if (/\b(api key|clé api|clé d'api|cle api|secret)\b/.test(lower)) return call("secret_request", { name: quoted ?? "Stripe API", reason: /[àâçéèêëîïôûùüÿœ]/.test(lower) || /\b(la|le|mon|ma|une)\b/.test(lower) ? "Pour lire tes derniers paiements et préparer le rapport mensuel." : "To read your latest payments for the monthly report.", host: "api.stripe.com" });
+  if (/\b(password|mot de passe)\b/.test(lower)) return call("password_generate", { name: quoted ?? "Portail fournisseur", site: "portail.exemple.com", username: "moi@exemple.com", length: 20 });
   if (/\b(react|réagis|reaction|réaction)\b/.test(lower)) return call("message_react", { emoji: "👍" });
   if (/\b(ask me|demande-moi|question)\b/.test(lower)) return call("ask_user", { question: "Which format would you like?", options: ["Short summary", "Detailed report", "Bullet list"] });
   return null;
@@ -97,6 +101,9 @@ export class DemoProvider implements LlmProvider {
       const fr = /Write to the user in French/.test(req.system);
       const cheered = /The user saw you celebrate/.test(detail);
       content = [{ type: "text", text: failed ? `That did not work: ${detail}` : cheered ? (fr ? "Youhou ! En analysant tes données, je tiens une vraie pépite : un lead très chaud (93/100). Il a vu ta page de prix 3 fois en 24 h et demande un devis — je te propose de le rappeler aujourd'hui." : "Woohoo! While analysing your data I found a real gem: a very hot lead (93/100). They viewed your pricing page 3 times in 24 h and asked for a quote — I suggest calling them today.") : `Done. ${detail}` }];
+    } else if (texts.some((x) => x.includes("[System notice]"))) {
+      // A notice from the server (a secret was saved, the screen was handed back…): acknowledge, never re-plan from its words.
+      content = [{ type: "text", text: /Write to the user in French/.test(req.system) ? "C'est noté, merci ! Je continue." : "Got it, thanks! Carrying on." }];
     } else {
       content = plan(said, (name) => req.tools.some((t) => t.name === name)) ?? [{
         type: "text",

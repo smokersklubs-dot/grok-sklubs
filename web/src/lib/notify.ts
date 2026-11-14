@@ -2,6 +2,8 @@
  * Browser notifications for "a bot needs you" and "a bot finished a reply".
  * The on/off choice lives on this device (localStorage); the browser's own permission still decides.
  */
+import { pushActiveHere } from "./push";
+
 const KEY = "sklubot.notify";
 const GAP_MS = 20_000;
 const lastAt = new Map<string, number>();
@@ -55,6 +57,8 @@ export async function setNotifyEnabled(on: boolean): Promise<boolean> {
 /** Show one notification for a bot; at most one per bot every 20 s. Clicking it focuses the window. */
 export function notifyBot(botId: string, title: string, body: string, onClick: () => void): void {
   if (!notifyEnabled()) return;
+  // In the background with push on, the server's push notification says it (once, even if the app is closed).
+  if (pushActiveHere() && document.visibilityState !== "visible") return;
   const now = Date.now();
   if (now - (lastAt.get(botId) ?? 0) < GAP_MS) return;
   lastAt.set(botId, now);

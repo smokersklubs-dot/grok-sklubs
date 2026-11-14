@@ -12,14 +12,18 @@ import { describeRoutine, routines } from "../routines.js";
 import { accounts as nativeAccounts } from "../native/accounts.js";
 import { appOf } from "../native/vendors.js";
 import { schedule, unschedule } from "../scheduler.js";
-import { GEM_KINDS, GEMS_PER_DAY, REACTIONS, type ActivityKind, type Connector, type Gem, type GemKind, type ReactionEmoji, type Row, type ToolGroup } from "../shared.js";
+import { GEM_KINDS, GEMS_PER_DAY, REACTIONS, TAKEOVER_REASONS, type TakeoverReason, type ActivityKind, type Connector, type Gem, type GemKind, type ReactionEmoji, type Row, type ToolGroup } from "../shared.js";
 import { q } from "../db.js";
 import { searchConfigured, searchWeb } from "../search.js";
 import { fetchProblem, guardedFetch } from "../net.js";
 import { config as appConfig } from "../config.js";
-import { bots, clip, memories, pages, rows, searchMessages, settings, skills, tasks, vault, type BotRecord, type UserRecord } from "../store.js";
+import { audit, bots, clip, memories, newId, pages, rows, searchMessages, settings, skills, tasks, vault, type BotRecord, type UserRecord } from "../store.js";
 import { record as recordUsage } from "../usage.js";
-import { interrupt } from "./loop.js";
+import { interrupt, tell } from "./loop.js";
+import { DRIVING, releaseControl, takeoverTimeoutMs, userDriving, waitForUser } from "../takeover.js";
+import { pushLater } from "../push.js";
+import { generatePassword, parseTotp, totpNow } from "../totp.js";
+import { seal } from "../auth.js";
 import { createRoom, deliverBotMessage, dispatchToRoom, MAX_HELPERS, MAX_HOPS, startHelper } from "./team.js";
 
 export interface ToolContext {
@@ -46,7 +50,7 @@ export interface BuiltinTool {
   /** Sensitive tools ask first unless the bot is trusted with them. */
   sensitive?: boolean;
   /** Asks permission per call under its own key (English templates; {bot} and the vars are filled in). */
-  gate?: (args: Record<string, any>, ctx: { botId: string }) => { key: string; title: string; reason: string; source: string; vars: Record<string, string>; /** Extra line on the card (English template). */ note?: string } | null;
+  gate?: (args: Record<string, any>, ctx: { botId: string; tainted: boolean }) => { key: string; title: string; reason: string; source: string; vars: Record<string, string>; /** Extra line on the card (English template). */ note?: string; /** Ask even when "Always" was chosen before. */ strict?: boolean } | null;
   /** Family this tool belongs to; a bot can have whole families switched off. */
   group?: ToolGroup;
   /** Its result comes from outside (a web page, a search): it is marked as such for the model, and the turn becomes more careful. */
@@ -111,6 +115,13 @@ const screenTools: BuiltinTool[] = [
     run: async (a, c) => shot(await screen.drag(c.bot.id, c.user.id, +a.from_x, +a.from_y, +a.to_x, +a.to_y), "Dragged."),
   }),
 ];
+
+/** Screen actions (not looking) wait while the user drives the screen: the server refuses them, whatever the bot says. */
+const ACTS_ON_SCREEN = new Set(["browser_open", "screen_click", "screen_type", "screen_key", "screen_scroll", "screen_drag", "vault_type"]);
+function respectDriver(t: BuiltinTool): BuiltinTool {
+  if (!ACTS_ON_SCREEN.has(t.spec.name)) return t;
+  return { ...t, run: async (a, c) => (userDriving(c.bot.id) ? { content: DRIVING, isError: true, summary: "the user is driving" } : t.run(a, c)) };
+}
 
 function hostOf(url: unknown): string | undefined {
   try { return new URL(/^[a-z]+:/i.test(String(url)) ? String(url) : `https://${url}`).hostname.replace(/^www\./, ""); } catch { return undefined; }
@@ -323,14 +334,113 @@ const reactTools: BuiltinTool[] = [
   }),
 ];
 
+/** A vault item may only go to its own site: the host in front, or one of its subdomains. */
+const sameSite = (here: string, wanted: string) => here === wanted || here.endsWith("." + wanted);
+const HEADER_NAME = /^[A-Za-z0-9!#$%&'*+.^_`|~-]{1,64}$/;
+/** Headers a bot may not set on a request that carries a secret (they would change where or how it goes). */
+const FORBIDDEN_HEADERS = new Set(["host", "cookie", "content-length", "connection", "transfer-encoding", "proxy-authorization", "te", "upgrade", "keep-alive"]);
+const allowHttp = () => process.env.ALLOW_PRIVATE_FETCH === "1" || process.env.ALLOW_PRIVATE_FETCH === "true";
+
+/**
+ * Vault tools that do not need a screen. The model never sees a value: secrets are typed by the user into a card
+ * (secret_request), used by the server inside one request (secret_use), and generated passwords go straight in.
+ */
 const vaultTools: BuiltinTool[] = [
-  tool("vault_list", "List the logins the user has saved for you to use: names, sites and usernames. Passwords are never shown to you.", obj({}), {
+  tool("vault_list", "List what the user saved in the vault for you: logins (name, site, username), secrets such as API keys (name and the hosts they may be sent to) and two-factor code generators (name and site). Values are never shown to you.", obj({}), {
     activity: "remembering", label: "Checking saved logins",
     run: async (_a, c) => {
       const items = vault.list(c.user.id);
-      return { content: items.length ? JSON.stringify(items.map((i) => ({ name: i.name, site: i.site, username: i.username, has_password: i.hasPassword, note: i.note || undefined }))) : "No logins are saved. Ask the user to add one in Settings → Vault.", summary: `${items.length}` };
+      return {
+        content: items.length ? JSON.stringify(items.map((i) => i.kind === "secret"
+          ? { kind: "secret", name: i.name, hosts: i.hosts, saved: i.hasPassword, note: i.note || undefined }
+          : i.kind === "totp" ? { kind: "totp", name: i.name, site: i.site, note: i.note || undefined }
+          : { kind: "login", name: i.name, site: i.site, username: i.username, has_password: i.hasPassword, note: i.note || undefined })) : "Nothing is saved. Ask the user to add it in Settings → Vault, or use secret_request for an API key.",
+        summary: `${items.length}`,
+      };
     },
   }),
+  tool("password_generate", "Create a strong random password and save it straight into the vault as a login, for example while signing up somewhere. You never see the password: you get the login's name back, and type it with vault_type.",
+    obj({ name: str("Name for the new login, e.g. \"Supplier portal\""), site: str("The site it is for, e.g. portal.example.com"), username: str("The username or email used there"), length: int("Length, 12 to 64 (default 20)"), symbols: { type: "boolean", description: "Include symbols (default true)" }, digits: { type: "boolean", description: "Include digits (default true)" } }, ["name", "site"]), {
+    activity: "saving", label: "Generating a password", audited: true, detail: (a) => String(a.name ?? ""),
+    run: async (a, c) => {
+      const name = clip(String(a.name).trim(), 80);
+      const site = String(a.site ?? "").trim().slice(0, 300);
+      if (!name) return { content: "Give the login a name.", isError: true };
+      if (!siteHost(site)) return { content: "Say which site this password is for (e.g. portal.example.com).", isError: true };
+      if (vault.byName(c.user.id, name)) return { content: `A vault item is already called "${name}". Pick another name; an existing password is never replaced this way.`, isError: true };
+      const password = generatePassword({ length: Math.min(64, Math.max(12, Number(a.length) || 20)), symbols: a.symbols !== false, digits: a.digits !== false });
+      vault.create(c.user.id, { kind: "login", name, site, username: String(a.username ?? "").trim().slice(0, 300), passwordEnc: seal(password), note: tr(c.user.locale, "Generated by {bot}", { bot: c.bot.name }) });
+      audit(c.user.id, "vault", `${c.bot.name}: password generated for ${name}`, c.bot.id);
+      emit(c.user.id, { type: "vault" });
+      return { content: `Saved a new ${password.length}-character password in the vault as the login "${name}" (${siteHost(site)}). Type it with vault_type (item "${name}", field password) — you will never see it.`, summary: name };
+    },
+  }),
+  tool("secret_request", "Ask the user for a secret you need, such as an API key or a token, by name. They type it into a secure card that goes straight to the server: you never see it, and it can only be sent to the host you name. This ends your turn; you are told when it is saved. Then call the API with secret_use.",
+    obj({ name: str("Short name, e.g. \"Acme API key\""), reason: str("Why you need it, in one sentence"), host: str("The API host it will be sent to, e.g. api.acme.com"), header: str("The HTTP header it goes in (default Authorization)"), prefix: str("Text before the value in that header, e.g. \"Bearer \" (default for Authorization)") }, ["name", "reason", "host"]), {
+    activity: "waiting", label: "Asking for a secret", detail: (a) => String(a.name ?? ""),
+    run: async (a, c) => {
+      const name = clip(String(a.name).trim(), 80);
+      const host = siteHost(String(a.host ?? ""));
+      if (!name || !host) return { content: "A secret request needs a name and the host it is for.", isError: true };
+      const header = String(a.header ?? "").trim() || "Authorization";
+      if (!HEADER_NAME.test(header) || FORBIDDEN_HEADERS.has(header.toLowerCase())) return { content: `"${header}" cannot be used as the header for a secret.`, isError: true };
+      const prefix = typeof a.prefix === "string" ? a.prefix.slice(0, 40) : header.toLowerCase() === "authorization" ? "Bearer " : "";
+      rows.append(c.bot, { kind: "card", card: { type: "secret", name, reason: clip(String(a.reason ?? ""), 300), host, header, prefix, status: "pending" } });
+      bots.bumpUnread(c.bot.id);
+      tell({ type: "waiting", bot: c.bot, text: tr(c.user.locale, "{bot} asks for a secret: {name}", { bot: c.bot.name, name }) });
+      return { content: "A secure card is in front of the user. Stop here; you will be told when they saved it (or chose not to).", summary: name, endTurn: true };
+    },
+  }),
+  tool("secret_use", "Call an HTTP API with one of the user's saved secrets. The server puts the secret into the request header it was saved with, and only sends it to the hosts it is bound to; you never see it. Returns the response's status and text.",
+    obj({
+      secret: str("Name of the saved secret"), url: str("Full https address on one of the secret's hosts"),
+      method: { type: "string", enum: ["GET", "POST", "PUT", "PATCH", "DELETE"], description: "Default GET" },
+      headers: { type: "object", description: "Other headers to send, as name → value (not the secret's own header)", additionalProperties: { type: "string" } },
+      body: str("Request body (for POST, PUT, PATCH)"),
+    }, ["secret", "url"]), {
+    activity: "connector", label: "Calling an API with a secret", audited: true, outside: true, detail: (a) => hostOf(a.url),
+    // Each secret asks before its first use; once the turn has read outside content it asks every time, so a page
+    // cannot quietly steer the bot into using it.
+    gate: (a, ctx) => ({
+      key: `secret: ${String(a.secret ?? "").trim()}`, strict: ctx.tainted,
+      title: ctx.tainted ? "{bot} has read outside content. Allow it to use the secret {item} with {host}?" : "Allow {bot} to use the secret {item} with {host}?",
+      reason: "use the secret {item}", source: "Vault", vars: { item: String(a.secret ?? ""), host: hostOf(a.url) ?? "—" },
+      note: "The bot never sees the secret: the server adds it to this one request, and only to the hosts it is saved for.",
+    }),
+    run: async (a, c) => {
+      const item = vault.byName(c.user.id, String(a.secret));
+      if (!item || item.kind !== "secret") return { content: `No secret is called "${a.secret}". Use vault_list, or ask for it with secret_request.`, isError: true };
+      const value = item.passwordEnc ? unseal(item.passwordEnc) : null;
+      if (!value) return { content: "That secret has no value saved.", isError: true };
+      let url: URL;
+      try { url = new URL(String(a.url)); } catch { return { content: "That is not a full address.", isError: true }; }
+      if (url.protocol !== "https:" && !(allowHttp() && url.protocol === "http:")) return { content: "Secrets are only sent over https.", isError: true };
+      const host = url.hostname.toLowerCase().replace(/^www\./, "");
+      if (!item.hosts.some((h) => sameSite(host, h))) return { content: `The secret "${item.name}" may only be sent to ${item.hosts.join(", ") || "(no host)"}, not ${host}. It was not sent.`, isError: true };
+      const headers = new Headers();
+      if (a.headers && typeof a.headers === "object") for (const [k, v] of Object.entries(a.headers as Record<string, unknown>)) {
+        if (typeof v !== "string" || !HEADER_NAME.test(k) || FORBIDDEN_HEADERS.has(k.toLowerCase()) || k.toLowerCase() === item.header.toLowerCase()) continue;
+        headers.set(k, v.slice(0, 2000));
+      }
+      headers.set(item.header || "Authorization", `${item.prefix}${value}`);
+      const method = ["GET", "POST", "PUT", "PATCH", "DELETE"].includes(String(a.method)) ? String(a.method) : "GET";
+      const body = method !== "GET" && typeof a.body === "string" ? a.body : undefined;
+      if (body && body.length > 1_000_000) return { content: "That body is too large (1 MB at most).", isError: true };
+      if (body && !headers.has("content-type")) headers.set("content-type", /^\s*[[{]/.test(body) ? "application/json" : "text/plain");
+      let res: Response;
+      // Redirects are not followed: the secret's header must not travel to another address.
+      try { res = await guardedFetch(url.toString(), { method, headers, body, redirect: "manual", signal: AbortSignal.any([c.signal, AbortSignal.timeout(30_000)]) }); }
+      catch (err) { const why = fetchProblem(err); if (why) return { content: `Could not reach ${host}: ${why}`, isError: true, summary: "not reached" }; throw err; }
+      const type = res.headers.get("content-type") ?? "";
+      const where = res.headers.get("location");
+      const text = /text|json|xml|javascript|html/.test(type) || !type ? await res.text() : `(${type} content, ${res.headers.get("content-length") ?? "?"} bytes, not shown)`;
+      return { content: `Status ${res.status}${where ? ` (redirect to ${where}, not followed)` : ""}\n\n${clip(text, 40_000)}`, summary: `${res.status} · ${host}`, isError: res.status >= 400 };
+    },
+  }),
+];
+
+/** Vault tools that work on the bot's screen: they check the page in front against the item's site. */
+const screenVaultTools: BuiltinTool[] = [
   tool("vault_type", "Type a saved username or password into the field that has keyboard focus on your screen. Click the field first. You never see the password; the user is asked before it is used.",
     obj({ item: str("Name of the saved login"), field: { type: "string", enum: ["username", "password"] } }, ["item", "field"]), {
     activity: "computer", label: "Typing a saved login", audited: true, detail: (a) => String(a.item ?? ""),
@@ -360,6 +470,28 @@ const vaultTools: BuiltinTool[] = [
       }
       const s = await screen.type(c.bot.id, c.user.id, value);
       return { ...shot(s, `Typed the saved ${a.field} into the focused field.`), summary: `${item.name} · ${a.field}` };
+    },
+  }),
+  tool("totp_code", "Get the current two-factor code from a code generator the user saved in the vault, to type into the login page of its own site. It only works while that site is open in your browser.",
+    obj({ item: str("Name of the saved code generator") }, ["item"]), {
+    activity: "computer", label: "Reading a two-factor code", audited: true, detail: (a) => String(a.item ?? ""),
+    // No card in a normal turn (the site check below is the guard); after outside content it asks every time.
+    gate: (a, ctx) => ctx.tainted ? {
+      key: `totp: ${String(a.item ?? "").trim()}`, strict: true, title: "{bot} has read outside content. Allow it to read the two-factor code for {item}?", reason: "read the two-factor code for {item}", source: "Vault",
+      vars: { item: String(a.item ?? ""), page: lastKnownUrl(ctx.botId) || "—" }, note: "Page the bot's computer says is open: {page}.",
+    } : null,
+    run: async (a, c) => {
+      const item = vault.byName(c.user.id, String(a.item));
+      if (!item || item.kind !== "totp") return { content: `No code generator is called "${a.item}". Use vault_list to see the names.`, isError: true };
+      const seed = item.passwordEnc ? unseal(item.passwordEnc) : null;
+      const wanted = siteHost(item.site);
+      if (!seed || !wanted) return { content: "That code generator is incomplete (it needs its key and its site). Ask the user to fix it in Settings → Vault.", isError: true };
+      const here = await screen.read(c.bot.id, c.user.id).then((p) => siteHost(p.url)).catch(() => "");
+      if (!here) return { content: `I could not tell which page is open, so no code was given. Open ${item.site} first.`, isError: true };
+      if (!sameSite(here, wanted)) return { content: `This code is for ${item.site}, but the page in front is ${here}. No code was given. Do not try to use it anywhere else.`, isError: true };
+      let now: { code: string; remaining: number };
+      try { now = totpNow({ ...parseTotp(seed), digits: item.digits === 8 ? 8 : 6, period: item.period }); } catch (err) { return { content: (err as Error).message, isError: true }; }
+      return { content: `Current code for ${item.name}: ${now.code} (valid for ${now.remaining} more seconds). Type it into the code field now.`, summary: `${item.name} · ${now.remaining}s` };
     },
   }),
 ];
@@ -690,6 +822,30 @@ const userTools: BuiltinTool[] = [
       return { content: "The user has been asked to connect it. Stop here; you will be told when it is connected or skipped.", summary: String(a.app), endTurn: true };
     },
   }),
+  tool("ask_takeover", "Ask the user to take over your screen for something only a human can do: a CAPTCHA, a two-factor code sent to their phone, a login with their own credentials, a payment confirmation. They get a card and a notification; you wait (up to 30 minutes) until they hand the screen back, then look at it again before carrying on.",
+    obj({ reason: { type: "string", enum: [...TAKEOVER_REASONS], description: "captcha, 2fa, login, payment or other" }, detail: str("What exactly they should do, in one or two sentences") }, ["reason", "detail"]), {
+    activity: "waiting", label: "Waiting for you on the screen", group: "computer",
+    run: async (a, c) => {
+      const reason: TakeoverReason = (TAKEOVER_REASONS as readonly string[]).includes(String(a.reason)) ? (String(a.reason) as TakeoverReason) : "other";
+      const detail = clip(String(a.detail ?? "").trim(), 400);
+      const takeoverId = newId("tko");
+      const card = rows.append(c.bot, { kind: "card", card: { type: "takeover", takeoverId, reason, detail, status: "pending", expiresAt: Date.now() + takeoverTimeoutMs() } });
+      bots.bumpUnread(c.bot.id);
+      const loc = c.user.locale;
+      const title = tr(loc, "{bot} needs you on its screen", { bot: c.bot.name });
+      setLive(c.user.id, c.bot.id, { running: true, activity: { kind: "waiting", since: Date.now() }, awaiting: { reason: tr(loc, "take over its screen"), since: Date.now() } });
+      tell({ type: "waiting", bot: c.bot, text: detail ? `${title} — ${detail}` : title });
+      emit(c.user.id, { type: "tasks", botId: c.bot.id });
+      const outcome = await waitForUser(takeoverId, c.bot.id, c.signal);
+      rows.updateCard(c.bot, card.generation, card.seq, (k) => (k.type === "takeover" ? { ...k, status: outcome === "done" ? "done" : outcome === "timeout" ? "timeout" : "cancelled" } : k));
+      releaseControl(c.bot.id);
+      setLive(c.user.id, c.bot.id, { running: true, awaiting: null, activity: { kind: "thinking", since: Date.now() } });
+      emit(c.user.id, { type: "tasks", botId: c.bot.id });
+      if (outcome === "done") return { content: "The user finished and handed the screen back. Windows, pages and fields may have changed: take a screenshot before carrying on.", summary: tr(loc, "handed back") };
+      if (outcome === "timeout") return { content: "The user did not come back within 30 minutes. Do not try to get past this step yourself: tell them where things stand and what they need to do when they are back.", isError: true, summary: tr(loc, "no answer") };
+      return { content: "Stopped while waiting for the user.", isError: true, summary: tr(loc, "stopped") };
+    },
+  }),
   tool("celebrate", "Go euphoric when your own analysis shows a real gem for the user's business: a rare, high-value opportunity backed by data. Examples: a qualified lead ready to buy, a search query or page with large traffic upside and weak competition, a sharp jump in a key metric, a deal or saving far above normal, an untapped market signal. Score it honestly from 0 to 100 against what is normal for this business and give the numbers that prove it. Ordinary results, routine progress and things the user asked you to find are not gems. If it passes the user's bar, your character goes wild with joy where the user sees it; otherwise it is simply noted.",
     obj({
       kind: { type: "string", enum: [...GEM_KINDS], description: "lead, seo, data (a metric or trend), opportunity, deal, saving or other" },
@@ -720,6 +876,7 @@ const userTools: BuiltinTool[] = [
       const loc = c.user.locale;
       const alert = [tr(loc, "💎 {bot} found a gem: {reason}", { bot: c.bot.name, reason }), `${tr(loc, GEM_LABEL[kind])} · ${score}/100${value ? ` · ${value}` : ""}`, why].join("\n");
       void import("../telegram.js").then((m) => m.send(c.bot, alert)).catch(() => undefined);
+      pushLater(c.user.id, { kind: "gem", title: tr(loc, "💎 {bot} found a gem", { bot: c.bot.name }), body: `${reason} · ${score}/100${value ? ` · ${value}` : ""}`, botId: c.bot.id });
       return { content: "The user saw you celebrate. Now explain the gem: what you found, the numbers, what it could bring and the next step you suggest.", summary: `${reason} · ${score}/100` };
     },
   }),
@@ -747,15 +904,16 @@ export function builtinTools(opts: { nativeSearch?: boolean; disabled?: readonly
 
 function assemble(opts: { nativeSearch?: boolean; video?: "connector" | "api" | null }): BuiltinTool[] {
   return [
-    ...(browserAvailable() ? inGroup("computer", screenTools) : []),
+    ...(browserAvailable() ? inGroup("computer", screenTools).map(respectDriver) : []),
     // On its own Linux computer a bot's commands are contained, so they do not need a permission card.
     ...workTools.filter((t) => t.spec.name !== "shell_run" || shellAvailable())
       .map((t): BuiltinTool => ({ ...t, group: t.spec.name === "shell_run" ? "shell" : t.spec.name === "web_fetch" ? "web" : "files", sensitive: t.spec.name === "shell_run" && computerKind() === "linux" ? false : t.sensitive })),
     ...(searchConfigured() && !opts.nativeSearch ? searchTools : []),
     ...knowledgeTools, ...pageTools,
     ...shareTools.filter((t) => t.spec.name !== "image_generate" || imageService()).map((t): BuiltinTool => ({ ...t, group: t.spec.name === "image_generate" ? "images" : "files" })),
-    ...(browserAvailable() ? inGroup("vault", vaultTools) : []),
+    ...inGroup("vault", vaultTools),
+    ...(browserAvailable() ? inGroup("vault", screenVaultTools).map(respectDriver) : []),
     ...(opts.video ? inGroup("video", videoTools) : []),
-    ...inGroup("memory", memoryTools), ...inGroup("routines", routineTools), ...inGroup("tasks", taskTools), ...inGroup("team", teamTools), ...userTools, ...reactTools,
+    ...inGroup("memory", memoryTools), ...inGroup("routines", routineTools), ...inGroup("tasks", taskTools), ...inGroup("team", teamTools), ...userTools.filter((t) => t.spec.name !== "ask_takeover" || browserAvailable()), ...reactTools,
   ];
 }

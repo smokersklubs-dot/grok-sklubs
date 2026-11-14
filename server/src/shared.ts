@@ -83,6 +83,12 @@ export interface Bot {
   disabledTools: ToolGroup[];
   /** Username of the Telegram bot wired to this bot, if any. */
   telegram: string | null;
+  /** Shown in the pinned section at the top of the sidebar. */
+  pinned: boolean;
+  /** The user's own sidebar section it is filed under (null: the default "Team" list). */
+  sectionId: string | null;
+  /** Hidden from the sidebar by the user (still works; listed under "Hidden"). */
+  listHidden: boolean;
   generation: number;
   unread: number;
   memberIds: string[];
@@ -90,6 +96,9 @@ export interface Bot {
   lastActivityAt: number;
   createdAt: number;
 }
+
+/** A sidebar section the user created to file bots under. */
+export interface BotSection { id: string; name: string; position: number; createdAt: number }
 
 export type ActivityKind =
   | "thinking" | "writing" | "searching" | "reading" | "browsing" | "computer" | "shell"
@@ -106,6 +115,8 @@ export interface Live {
   caption?: string | null;
   /** The running turn is a thread reply: the seq of the message the thread hangs on (absent or 0: the main chat). */
   thread?: number;
+  /** The user is driving this bot's screen (control mode open): the bot's own screen actions are refused meanwhile. */
+  driving?: boolean;
 }
 
 export interface Origin { kind: "bot" | "routine" | "voice" | "webhook"; id: string; name: string }
@@ -128,7 +139,18 @@ export type RowBody =
 export type Card =
   | { type: "approval"; approvalId: string; title: string; detail: string; tool: string; source: string; status: "pending" | "allowed" | "always" | "denied" | "expired" }
   | { type: "question"; question: string; options: string[]; status: "pending" | "answered" | "dismissed"; answer?: string }
-  | { type: "connect"; name: string; hint: string; reason: string; status: "pending" | "connected" | "skipped" };
+  | { type: "connect"; name: string; hint: string; reason: string; status: "pending" | "connected" | "skipped" }
+  /** The bot needs the user on its screen (CAPTCHA, 2FA code, login, payment…) and waits until they hand it back, or `expiresAt`. */
+  | { type: "takeover"; takeoverId: string; reason: TakeoverReason; detail: string; status: "pending" | "done" | "timeout" | "cancelled"; expiresAt: number }
+  /**
+   * The bot asks for a secret (an API key…) by name. The user types it into this card, which posts it straight to the
+   * server: it is sealed in the vault and never shown to the model, in the chat or by any API.
+   */
+  | { type: "secret"; name: string; reason: string; host: string; header: string; prefix: string; status: "pending" | "saved" | "dismissed" };
+
+/** Why a bot hands its screen to the user. */
+export const TAKEOVER_REASONS = ["captcha", "2fa", "login", "payment", "other"] as const;
+export type TakeoverReason = (typeof TAKEOVER_REASONS)[number];
 
 export interface CallRecord { id: string; phase: "started" | "ended"; durationMs?: number; summary?: string; transcript?: { role: "user" | "assistant"; text: string }[] }
 
@@ -227,8 +249,40 @@ export interface NativeAccount {
   error: string | null; createdAt: number;
 }
 
-/** A saved login. The password itself is never sent to the browser or to a model. */
-export interface VaultItem { id: string; name: string; site: string; username: string; hasPassword: boolean; note: string; createdAt: number }
+/**
+ * What a vault item holds. login: a username and password typed into a site. secret: an API key or token, sent only
+ * in one HTTP header to the hosts bound to it. totp: the seed of a two-factor code generator, for one site.
+ */
+export const VAULT_KINDS = ["login", "secret", "totp"] as const;
+export type VaultKind = (typeof VAULT_KINDS)[number];
+/** A vault item. The secret value itself (password, key, TOTP seed) is never sent to the browser or to a model. */
+export interface VaultItem {
+  id: string; kind: VaultKind; name: string;
+  /** login, totp: the site it belongs to. */
+  site: string; username: string;
+  /** A value is saved (password, key or seed). */
+  hasPassword: boolean; note: string; createdAt: number;
+  /** secret: the hosts it may be sent to, the header it goes in and the text before it (e.g. "Bearer "). */
+  hosts: string[]; header: string; prefix: string;
+  /** totp: code length and period in seconds. */
+  digits: number; period: number;
+}
+/** Result of a CSV import of logins. `needsMapping`: the columns were not recognised; only the header names are sent back. */
+export interface VaultImportResult { imported: number; skipped: number; totp: number; needsMapping?: boolean; headers?: string[] }
+
+// ── Push notifications (Web Push) ──────────────────────────────────────────
+/** What can be pushed: a bot needs the user, a gem, a reply finished while the app was hidden, a routine's result. */
+export const PUSH_KINDS = ["needs", "gem", "reply", "routine"] as const;
+export type PushKind = (typeof PUSH_KINDS)[number];
+/** One browser or phone that receives push notifications. Its keys never leave the server. */
+export interface PushDevice { id: string; label: string; enabled: boolean; createdAt: number; lastOkAt: number | null; failures: number }
+export interface PushSettings {
+  kinds: Record<PushKind, boolean>;
+  /** Nothing is pushed between `start` and `end` (HH:MM, local time in `timezone`); the window may span midnight. */
+  quiet: { enabled: boolean; start: string; end: string; timezone: string };
+}
+/** `publicKey`: the server's VAPID key (base64url, uncompressed P-256 point) to subscribe with. */
+export interface PushState { publicKey: string; devices: PushDevice[]; settings: PushSettings }
 
 /** A well-known app that can be added as a connector in one step. */
 export interface CatalogApp {
@@ -327,4 +381,8 @@ export type ServerEvent =
   /** The bot found a gem for the user (celebrate tool): play its euphoria now. */
   | { type: "cheer"; botId: string; reason: string; gem?: Gem }
   /** A demonstration on a bot's screen started, moved on, or ended (null: nothing recorded any more). */
-  | { type: "recording"; botId: string; recording: Recording | null };
+  | { type: "recording"; botId: string; recording: Recording | null }
+  /** The user's sidebar sections changed. */
+  | { type: "sections" }
+  /** Vault items changed (a secret saved from a card, an import…). */
+  | { type: "vault" };

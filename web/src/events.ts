@@ -55,6 +55,11 @@ export function connectEvents(): void {
   open();
   if (!listening) {
     listening = true;
+    // A click on a push notification while the app is open: the service worker says which bot to show.
+    navigator.serviceWorker?.addEventListener("message", (e: MessageEvent) => {
+      const data = e.data as { type?: string; botId?: string } | null;
+      if (data?.type === "sklubot-open-bot" && data.botId) useStore.getState().selectBot(data.botId);
+    });
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState !== "visible") return;
       const s = useStore.getState();

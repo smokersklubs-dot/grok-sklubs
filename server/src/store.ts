@@ -6,7 +6,7 @@ import { tr } from "./i18n.js";
 import type { ChatMessage } from "./llm/types.js";
 import {
   AVATAR_COLORS, AVATAR_SHAPES,
-  ACCESSORIES, CHARACTER_TYPES, DEFAULT_CHARACTER, EYE_STYLES, IDLE_MOTIONS, TOOL_GROUPS, type AuditEntry, type Character, type Bot, type Card, type CheckinSettings, type Locale, type Memory, type SearchHit, type SharedPage, type VaultItem, type Policy, type Reaction, type Row, type RowBody, type Skill, type Task, type User,
+  ACCESSORIES, CHARACTER_TYPES, DEFAULT_CHARACTER, EYE_STYLES, IDLE_MOTIONS, TOOL_GROUPS, type AuditEntry, type Character, type Bot, type Card, type CheckinSettings, type Locale, type Memory, type SearchHit, type SharedPage, type VaultItem, type VaultKind, type BotSection, type Policy, type Reaction, type Row, type RowBody, type Skill, type Task, type User,
 } from "./shared.js";
 
 export const now = () => Date.now();
@@ -46,6 +46,8 @@ function previewOf(body: RowBody, locale: Locale): string {
     const c = body.card;
     if (c.type === "approval") return tr(locale, "Waiting for you: {title}", { title: c.title });
     if (c.type === "question") return c.question;
+    if (c.type === "takeover") return tr(locale, "Needs you on its screen");
+    if (c.type === "secret") return tr(locale, "Asks for a secret: {name}", { name: c.name });
     return tr(locale, "Connect {name}", { name: c.name });
   }
   return "";
@@ -64,6 +66,7 @@ function toBot(r: any): BotRecord {
     character: cleanCharacter(JSON.parse(r.character || "{}")),
     roomRule: r.room_rule === "everyone" || r.room_rule === "mentions" ? r.room_rule : "lead",
     disabledTools: JSON.parse(r.disabled_tools || "[]"), telegram: r.telegram_username ?? null,
+    pinned: !!r.pinned, sectionId: r.section_id ?? null, listHidden: !!r.list_hidden,
     telegramTokenEnc: r.telegram_token_enc ?? null, telegramChatId: r.telegram_chat_id ?? null, telegramCode: r.telegram_code ?? null, telegramOffset: r.telegram_offset ?? 0,
     memberIds: JSON.parse(r.members || "[]"), hidden: !!r.hidden, parentId: r.parent_id, nextSeq: r.next_seq, rev: r.rev,
     preview: last ? clip(previewOf(JSON.parse(last.body), users.localeOf(r.user_id)).replace(/\s+/g, " "), 140) : "",
@@ -143,7 +146,7 @@ export const bots = {
   /** Applies a validated partial update; unknown fields and invalid enum values are ignored. */
   patch(id: string, patch: Record<string, unknown>) {
     const sets: string[] = [];
-    const vals: (string | number)[] = [];
+    const vals: (string | number | null)[] = [];
     for (const [key, col] of Object.entries(BOT_COLUMNS)) {
       const v = patch[key];
       if (typeof v !== "string") continue;
@@ -178,6 +181,14 @@ export const bots = {
       if (self?.kind === "room") { sets.push("members = ?"); vals.push(JSON.stringify(members)); }
     }
     if (patch.roomRule === "lead" || patch.roomRule === "everyone" || patch.roomRule === "mentions") { sets.push("room_rule = ?"); vals.push(patch.roomRule); }
+    if (typeof patch.pinned === "boolean") { sets.push("pinned = ?"); vals.push(patch.pinned ? 1 : 0); }
+    if (typeof patch.listHidden === "boolean") { sets.push("list_hidden = ?"); vals.push(patch.listHidden ? 1 : 0); }
+    if (patch.sectionId === null || typeof patch.sectionId === "string") {
+      // Only one of the owner's own sections; anything else files the bot back under the default list.
+      const owner = q.get<{ user_id: string }>("SELECT user_id FROM bots WHERE id = ?", id)?.user_id;
+      const ok = typeof patch.sectionId === "string" && !!owner && !!q.get("SELECT 1 FROM bot_sections WHERE id = ? AND user_id = ?", patch.sectionId, owner);
+      sets.push("section_id = ?"); vals.push(ok ? (patch.sectionId as string) : null);
+    }
     if (Array.isArray(patch.disabledTools)) { sets.push("disabled_tools = ?"); vals.push(JSON.stringify(patch.disabledTools.filter((g) => (TOOL_GROUPS as readonly string[]).includes(g as string)))); }
     if (!sets.length) return;
     q.run(`UPDATE bots SET ${sets.join(", ")}, updated_at = ? WHERE id = ?`, ...vals, now(), id);
@@ -195,6 +206,31 @@ export const bots = {
   setTelegramOffset: (id: string, offset: number) => q.run("UPDATE bots SET telegram_offset = ? WHERE id = ?", offset, id),
   withTelegram: () => q.all("SELECT * FROM bots WHERE telegram_token_enc IS NOT NULL").map(toBot),
   setUnread(id: string, n: number) { q.run("UPDATE bots SET unread = ? WHERE id = ?", n, id); },
+  /** "Mark as unread": at least one unread message, without inventing a count. */
+  markUnread(id: string) { q.run("UPDATE bots SET unread = MAX(unread, 1) WHERE id = ?", id); },
+  /**
+   * A copy of a bot: its settings, look, instructions and skills. Its conversation (current one, threads included) and
+   * its memories only when asked. Never its Telegram link, routines, computer or files.
+   */
+  duplicate(src: BotRecord, opts: { name?: string; memories?: boolean; conversation?: boolean } = {}): BotRecord {
+    const copy = bots.create(src.userId, {
+      name: (opts.name ?? "").trim() || clip(`${src.name} (copy)`, 60), label: src.label, description: src.description, instructions: src.instructions,
+      shape: src.shape, color: src.color, mode: src.mode, effort: src.effort, model: src.model, autonomy: src.autonomy, character: src.character,
+    });
+    bots.patch(copy.id, { voice: src.voice, disabledTools: src.disabledTools, pinned: src.pinned, sectionId: src.sectionId });
+    q.tx(() => {
+      for (const k of skills.list(src.id)) skills.create(copy.id, k.name, k.description, k.body);
+      if (opts.memories) for (const m of [...memories.list(src.id, 5000)].reverse()) memories.add(copy.id, m.text, m.source);
+      if (opts.conversation) {
+        const g = q.get<{ next_seq: number; generation: number }>("SELECT next_seq, generation FROM bots WHERE id = ?", src.id)!;
+        q.run("INSERT INTO rows (bot_id, generation, seq, rev, kind, body, created_at, thread) SELECT ?, 1, seq, rev, kind, body, created_at, thread FROM rows WHERE bot_id = ? AND generation = ?", copy.id, src.id, g.generation);
+        q.run("INSERT INTO history (bot_id, generation, role, content, thread) SELECT ?, 1, role, content, thread FROM history WHERE bot_id = ? AND generation = ? ORDER BY id", copy.id, src.id, g.generation);
+        // Cards copied from the original are records only: nothing waits on them in the copy.
+        q.run("UPDATE bots SET next_seq = ?, rev = (SELECT COALESCE(MAX(rev), 0) FROM rows WHERE bot_id = ?) WHERE id = ?", g.next_seq, copy.id, copy.id);
+      }
+    });
+    return bots.byId(copy.id)!;
+  },
   bumpUnread(id: string) { q.run("UPDATE bots SET unread = unread + 1 WHERE id = ?", id); },
   remove(id: string) { q.run("DELETE FROM bots WHERE id = ? OR parent_id = ?", id, id); },
   resetConversation(id: string): number {
@@ -203,6 +239,30 @@ export const bots = {
     return bots.byId(id)!.generation;
   },
   announce(b: BotRecord | null) { if (b && !b.hidden) emit(b.userId, { type: "bot", bot: publicBot(bots.byId(b.id)!) }); },
+};
+
+// ── Sidebar sections ─────────────────────────────────────────────────────────
+const toSection = (r: any): BotSection => ({ id: r.id, name: r.name, position: r.position, createdAt: r.created_at });
+export const sections = {
+  list: (userId: string) => q.all("SELECT * FROM bot_sections WHERE user_id = ? ORDER BY position, created_at", userId).map(toSection),
+  owned(userId: string, id: string) { const r = q.get("SELECT * FROM bot_sections WHERE id = ? AND user_id = ?", id, userId); return r ? toSection(r) : null; },
+  create(userId: string, name: string): BotSection {
+    const id = newId("sec");
+    const pos = (q.get<{ p: number | null }>("SELECT MAX(position) AS p FROM bot_sections WHERE user_id = ?", userId)?.p ?? -1) + 1;
+    q.run("INSERT INTO bot_sections (id, user_id, name, position, created_at) VALUES (?, ?, ?, ?, ?)", id, userId, clip(name.trim(), 40), pos, now());
+    return sections.owned(userId, id)!;
+  },
+  update(id: string, f: { name?: string; position?: number }) {
+    if (f.name !== undefined) q.run("UPDATE bot_sections SET name = ? WHERE id = ?", clip(f.name.trim(), 40), id);
+    if (f.position !== undefined) q.run("UPDATE bot_sections SET position = ? WHERE id = ?", Math.max(0, Math.round(f.position)), id);
+  },
+  /** Removing a section keeps its bots: they go back to the default list. */
+  remove(userId: string, id: string) {
+    q.tx(() => {
+      q.run("UPDATE bots SET section_id = NULL WHERE user_id = ? AND section_id = ?", userId, id);
+      q.run("DELETE FROM bot_sections WHERE id = ? AND user_id = ?", id, userId);
+    });
+  },
 };
 
 // ── Transcript rows ──────────────────────────────────────────────────────────
@@ -223,8 +283,9 @@ function keepMeta(cur: RowBody, next: RowBody): RowBody {
 
 export const rows = {
   /** Adds a row. `thread`: the seq of the message a thread reply hangs on; by default, the thread of the bot's turn under way (or the main chat). */
-  append(bot: { id: string; userId: string }, body: RowBody, thread?: number): Row {
+  append(bot: { id: string; userId: string }, raw: RowBody, thread?: number): Row {
     const th = thread ?? scopedThread(bot.id);
+    const body = scrub(bot.userId, raw);
     const row = q.tx(() => {
       const b = q.get<{ generation: number; next_seq: number; rev: number }>("SELECT generation, next_seq, rev FROM bots WHERE id = ?", bot.id);
       if (!b) throw new Error("bot no longer exists");
@@ -245,7 +306,8 @@ export const rows = {
     rows.rewrite(bot, generation, parentSeq, { ...parent.body, replies: { count: n.n, lastAt: n.last ?? now() } });
   },
   /** Rewrites a row in place with a higher revision so clients replace their copy. Reactions and the thread summary are kept unless `body` sets them. */
-  rewrite(bot: { id: string; userId: string }, generation: number, seq: number, body: RowBody): Row | null {
+  rewrite(bot: { id: string; userId: string }, generation: number, seq: number, raw: RowBody): Row | null {
+    const body = scrub(bot.userId, raw);
     const row = q.tx(() => {
       const cur = q.get("SELECT * FROM rows WHERE bot_id = ? AND generation = ? AND seq = ?", bot.id, generation, seq);
       const b = q.get<{ rev: number }>("SELECT rev FROM bots WHERE id = ?", bot.id);
@@ -438,24 +500,82 @@ export const settings = {
     q.run("INSERT INTO settings (user_id, budget_usd) VALUES (?, ?) ON CONFLICT(user_id) DO UPDATE SET budget_usd = excluded.budget_usd", userId, usd),
 };
 
-// ── Vault: saved logins ──────────────────────────────────────────────────────
+// ── Vault: saved logins, secrets (API keys) and TOTP seeds ──────────────────
 export interface VaultRecord extends VaultItem { userId: string; passwordEnc: string | null }
-const toVault = (r: any): VaultRecord => ({ id: r.id, userId: r.user_id, name: r.name, site: r.site, username: r.username, hasPassword: !!r.password_enc, passwordEnc: r.password_enc, note: r.note, createdAt: r.created_at });
+export interface VaultFields { kind?: VaultKind; name: string; site: string; username: string; passwordEnc: string | null; note: string; hosts?: string[]; header?: string; prefix?: string; digits?: number; period?: number }
+const toVault = (r: any): VaultRecord => {
+  const meta = (() => { try { return JSON.parse(r.meta || "{}"); } catch { return {}; } })();
+  const kind: VaultKind = r.kind === "secret" || r.kind === "totp" ? r.kind : "login";
+  return {
+    id: r.id, kind, userId: r.user_id, name: r.name, site: r.site, username: r.username, hasPassword: !!r.password_enc, passwordEnc: r.password_enc, note: r.note, createdAt: r.created_at,
+    hosts: Array.isArray(meta.hosts) ? meta.hosts.filter((h: unknown) => typeof h === "string") : [], header: typeof meta.header === "string" ? meta.header : "", prefix: typeof meta.prefix === "string" ? meta.prefix : "",
+    digits: meta.digits === 8 ? 8 : 6, period: Number.isInteger(meta.period) && meta.period >= 15 && meta.period <= 120 ? meta.period : 30,
+  };
+};
+const metaOf = (f: VaultFields) => JSON.stringify(f.kind === "secret" ? { hosts: f.hosts ?? [], header: f.header ?? "", prefix: f.prefix ?? "" } : f.kind === "totp" ? { digits: f.digits ?? 6, period: f.period ?? 30 } : {});
 export const publicVault = ({ userId, passwordEnc, ...rest }: VaultRecord): VaultItem => rest;
 export const vault = {
   list: (userId: string) => q.all("SELECT * FROM vault WHERE user_id = ? ORDER BY name COLLATE NOCASE", userId).map(toVault),
   owned(userId: string, id: string) { const r = q.get("SELECT * FROM vault WHERE id = ? AND user_id = ?", id, userId); return r ? toVault(r) : null; },
   byName(userId: string, name: string) { const r = q.get("SELECT * FROM vault WHERE user_id = ? AND name = ? COLLATE NOCASE", userId, name.trim()); return r ? toVault(r) : null; },
-  create(userId: string, f: { name: string; site: string; username: string; passwordEnc: string | null; note: string }): VaultRecord {
+  create(userId: string, f: VaultFields): VaultRecord {
     const id = newId("vlt");
-    q.run("INSERT INTO vault (id, user_id, name, site, username, password_enc, note, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", id, userId, f.name, f.site, f.username, f.passwordEnc, f.note, now());
+    q.run("INSERT INTO vault (id, user_id, kind, name, site, username, password_enc, note, meta, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", id, userId, f.kind ?? "login", f.name, f.site, f.username, f.passwordEnc, f.note, metaOf(f), now());
+    forgetSecrets(userId);
     return vault.owned(userId, id)!;
   },
-  update(id: string, f: { name: string; site: string; username: string; passwordEnc: string | null; note: string }) {
-    q.run("UPDATE vault SET name = ?, site = ?, username = ?, password_enc = ?, note = ? WHERE id = ?", f.name, f.site, f.username, f.passwordEnc, f.note, id);
+  update(id: string, f: VaultFields) {
+    const owner = q.get<{ user_id: string; kind: string }>("SELECT user_id, kind FROM vault WHERE id = ?", id);
+    const kind = f.kind ?? (owner?.kind as VaultKind | undefined) ?? "login";
+    q.run("UPDATE vault SET kind = ?, name = ?, site = ?, username = ?, password_enc = ?, note = ?, meta = ? WHERE id = ?", kind, f.name, f.site, f.username, f.passwordEnc, f.note, metaOf({ ...f, kind }), id);
+    if (owner) forgetSecrets(owner.user_id);
   },
-  remove: (id: string) => q.run("DELETE FROM vault WHERE id = ?", id),
+  remove: (id: string) => {
+    const owner = q.get<{ user_id: string }>("SELECT user_id FROM vault WHERE id = ?", id);
+    q.run("DELETE FROM vault WHERE id = ?", id);
+    if (owner) forgetSecrets(owner.user_id);
+  },
 };
+
+/**
+ * Every value saved in a user's vault (passwords, keys, TOTP seeds), unsealed once and kept in memory until the vault
+ * changes, so that whatever is written to a chat or handed to a model can be checked against them cheaply.
+ */
+const secretCache = new Map<string, string[]>();
+let unsealFn: ((s: string) => string | null) | null = null;
+/** auth.ts registers its unseal() here (store.ts cannot import auth.ts, which imports it). */
+export const setUnsealer = (fn: (s: string) => string | null) => { unsealFn = fn; };
+function forgetSecrets(userId: string) { secretCache.delete(userId); }
+function secretsOf(userId: string): string[] {
+  let list = secretCache.get(userId);
+  if (!list) {
+    list = q.all<{ password_enc: string | null }>("SELECT password_enc FROM vault WHERE user_id = ? AND password_enc IS NOT NULL", userId)
+      .map((r) => (r.password_enc && unsealFn ? unsealFn(r.password_enc) : null))
+      .filter((v): v is string => !!v && v.length >= 4)
+      // Longest first, so a value that contains another is hidden whole.
+      .sort((a, b) => b.length - a.length);
+    secretCache.set(userId, list);
+  }
+  return list;
+}
+/** Exact-match redaction of every vault value of this user. */
+export function redactSecrets(userId: string, text: string): string {
+  if (!text) return text;
+  let out = text;
+  for (const secret of secretsOf(userId)) if (out.includes(secret)) out = out.split(secret).join("[hidden]");
+  return out;
+}
+/** A chat row with any vault value replaced, wherever text can appear in it. */
+function scrub(userId: string, body: RowBody): RowBody {
+  if (!secretsOf(userId).length) return body;
+  const r = (s: string) => redactSecrets(userId, s);
+  switch (body.kind) {
+    case "message": return { ...body, text: r(body.text) };
+    case "notice": case "event": return { ...body, text: r(body.text) };
+    case "step": return { ...body, summary: body.summary === undefined ? undefined : r(body.summary), args: Object.fromEntries(Object.entries(body.args).map(([k, v]) => [k, typeof v === "string" ? r(v) : v])) };
+    case "card": return body.card.type === "approval" ? { ...body, card: { ...body.card, detail: r(body.card.detail) } } : body;
+  }
+}
 
 export const account = {
   setPassword: (userId: string, passHash: string) => q.run("UPDATE users SET pass_hash = ? WHERE id = ?", passHash, userId),

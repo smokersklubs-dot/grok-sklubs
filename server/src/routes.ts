@@ -29,7 +29,12 @@ import { REACTIONS, type CheckinSettings, type ReactionEmoji, type ServerEvent, 
 import { videoService } from "./video.js";
 import { higgsfieldFor } from "./agent/tools.js";
 import { dropRecording, noteInput, recording, retryRecording, saveRecording, startRecording, stopRecording } from "./teach.js";
-import { account, audit, auditList, bots, clip, feedback, history, memories, pages, policies, publicBot, publicVault, rows, searchMessages, settings, sha256, skills, tasks, users, vault, type BotRecord, type UserRecord } from "./store.js";
+import { account, audit, auditList, bots, clip, feedback, history, memories, pages, policies, publicBot, publicVault, rows, searchMessages, sections, settings, sha256, skills, tasks, users, vault, type BotRecord, type UserRecord, type VaultFields } from "./store.js";
+import { finishTakeover, holdControl, releaseControl } from "./takeover.js";
+import { notePresence, push, pushSettings, savePushSettings, sendPush } from "./push.js";
+import { parseTotp } from "./totp.js";
+import { detectMapping, loginsFrom, parseCsv, type Mapping } from "./vault-import.js";
+import { PUSH_KINDS, VAULT_KINDS, type VaultKind } from "./shared.js";
 import { q } from "./db.js";
 import { connectors as connectorStore } from "./connectors.js";
 import type { Attachment } from "./shared.js";
@@ -354,6 +359,54 @@ api.post("/bots/:id/read", (c) => {
   return c.json({ ok: true });
 });
 
+/** "Mark as unread": the bot shows an unread badge until it is opened again. */
+api.post("/bots/:id/unread", (c) => {
+  const bot = ownBot(c);
+  bots.markUnread(bot.id);
+  bots.announce(bot);
+  return c.json({ bot: publicBot(bots.byId(bot.id)!) });
+});
+
+/** A copy of a bot: settings, look, instructions and skills; its memories and current conversation only when asked. */
+api.post("/bots/:id/duplicate", async (c) => {
+  const bot = ownAgent(c);
+  const b = await body(c);
+  const copy = bots.duplicate(bot, { name: typeof b.name === "string" ? b.name : undefined, memories: b.memories === true, conversation: b.conversation === true });
+  audit(bot.userId, "account", `Bot duplicated: ${bot.name} → ${copy.name}`, copy.id);
+  emit(bot.userId, { type: "roster" });
+  return c.json({ bot: publicBot(copy) });
+});
+
+// ── Sidebar sections ─────────────────────────────────────────────────────────
+api.get("/sections", (c) => c.json({ sections: sections.list(c.get("user").id) }));
+api.post("/sections", async (c) => {
+  const user = c.get("user");
+  const name = String((await body(c)).name ?? "").trim();
+  if (!name) fail(400, "Give the section a name.");
+  if (sections.list(user.id).length >= 30) fail(409, "You already have 30 sections.");
+  const section = sections.create(user.id, name);
+  emit(user.id, { type: "sections" });
+  return c.json({ section });
+});
+api.patch("/sections/:id", async (c) => {
+  const user = c.get("user");
+  const cur = sections.owned(user.id, c.req.param("id")) ?? fail(404, "That section does not exist.");
+  const b = await body(c);
+  if (b.name !== undefined && !String(b.name).trim()) fail(400, "Give the section a name.");
+  const pos = b.position === undefined || b.position === null ? undefined : Number(b.position);
+  sections.update(cur.id, { name: b.name === undefined ? undefined : String(b.name), position: pos !== undefined && Number.isFinite(pos) ? pos : undefined });
+  emit(user.id, { type: "sections" });
+  return c.json({ section: sections.owned(user.id, cur.id) });
+});
+api.delete("/sections/:id", (c) => {
+  const user = c.get("user");
+  const cur = sections.owned(user.id, c.req.param("id")) ?? fail(404, "That section does not exist.");
+  sections.remove(user.id, cur.id);
+  emit(user.id, { type: "sections" });
+  emit(user.id, { type: "roster" });
+  return c.json({ ok: true });
+});
+
 // ── Conversation ─────────────────────────────────────────────────────────────
 api.get("/bots/:id/rows", (c) => {
   const bot = ownBot(c);
@@ -470,6 +523,59 @@ api.post("/bots/:id/cards/:seq/dismiss", (c) => {
     enqueue(bot.id, { kind: "system", text: `The user chose not to connect ${card.name}. Carry on without it, or say what cannot be done.` });
   } else if (card?.type === "question" && card.status === "pending") {
     rows.updateCard(bot, row!.generation, row!.seq, (k) => (k.type === "question" ? { ...k, status: "dismissed" } : k));
+  } else if (card?.type === "secret" && card.status === "pending") {
+    rows.updateCard(bot, row!.generation, row!.seq, (k) => (k.type === "secret" ? { ...k, status: "dismissed" } : k));
+    enqueue(bot.id, { kind: "system", text: `The user chose not to give the secret "${card.name}". Carry on without it, or say what cannot be done.`, thread: row!.thread || undefined });
+  }
+  return c.json({ ok: true });
+});
+
+/**
+ * The secure card of secret_request: the value goes from the user's browser straight into the vault, sealed. It is
+ * never written to the chat, the bot's history or the activity log, and no API returns it.
+ */
+api.post("/bots/:id/cards/:seq/secret", async (c) => {
+  const bot = ownAgent(c);
+  const user = c.get("user");
+  const row = rows.get(bot.id, bot.generation, Number(c.req.param("seq")));
+  const card = row?.body.kind === "card" && row.body.card.type === "secret" ? row.body.card : fail(400, "That is not a secret request.");
+  if (card.status !== "pending") fail(409, "This request was already answered.");
+  const b = await body(c);
+  const value = typeof b.value === "string" ? b.value.trim() : "";
+  if (!value) fail(400, "Type the secret first.");
+  if (value.length > 8000) fail(400, "That secret is too long.");
+  const host = siteOf(typeof b.host === "string" && b.host.trim() ? b.host : card.host);
+  if (!host) fail(400, "Say which host the secret may be sent to.");
+  const header = typeof b.header === "string" && b.header.trim() ? b.header.trim() : card.header;
+  if (!HEADER_OK(header)) fail(400, "That header name cannot carry a secret.");
+  const prefix = typeof b.prefix === "string" ? b.prefix.slice(0, 40) : card.prefix;
+  const existing = vault.byName(user.id, card.name);
+  if (existing && existing.kind !== "secret") fail(409, "A vault item with this name already exists and is not a secret.");
+  const fields: VaultFields = { kind: "secret", name: card.name, site: "", username: "", passwordEnc: seal(value), note: existing?.note ?? clip(card.reason, 500), hosts: [host], header, prefix };
+  if (existing) vault.update(existing.id, fields); else vault.create(user.id, fields);
+  audit(user.id, "vault", `Secret saved from ${bot.name}'s request: ${card.name} (for ${host})`, bot.id);
+  emit(user.id, { type: "vault" });
+  rows.updateCard(bot, row!.generation, row!.seq, (k) => (k.type === "secret" ? { ...k, host, header, prefix, status: "saved" } : k));
+  enqueue(bot.id, { kind: "system", text: `The user saved the secret "${card.name}" for ${host}. Use it with secret_use (secret: "${card.name}") — you will not see its value. Continue with what you were doing.`, thread: row!.thread || undefined });
+  return c.json({ ok: true });
+});
+
+/** "I'm done, hand it back": the bot that asked for the user (ask_takeover) carries on. */
+api.post("/bots/:id/takeover/:takeoverId/done", (c) => {
+  const bot = ownAgent(c);
+  const id = c.req.param("takeoverId");
+  const row = rows.all(bot.id, bot.generation).reverse().find((r) => r.body.kind === "card" && r.body.card.type === "takeover" && r.body.card.takeoverId === id);
+  if (!row) fail(404, "That request no longer exists.");
+  releaseControl(bot.id);
+  noteHandBack(bot.id);
+  audit(bot.userId, "system", `${bot.name}: screen handed back by the user`, bot.id);
+  if (!finishTakeover(id, bot.id)) {
+    // Nothing waits any more (a restart, or it timed out): the bot hears about it in a new turn.
+    const card = row!.body.kind === "card" && row!.body.card.type === "takeover" ? row!.body.card : null;
+    if (card?.status === "pending") {
+      rows.updateCard(bot, row!.generation, row!.seq, (k) => (k.type === "takeover" ? { ...k, status: "done" } : k));
+      enqueue(bot.id, { kind: "system", text: "The user finished what you asked them to do on your screen and handed it back. Look at the screen, then carry on.", thread: row!.thread || undefined });
+    }
   }
   return c.json({ ok: true });
 });
@@ -785,7 +891,13 @@ api.post("/bots/:id/teach/save", async (c) => {
   try { return c.json(saveRecording(bot, { name: String(b.name ?? ""), when: String(b.when ?? ""), steps: String(b.steps ?? "") })); } catch (err) { return fail(400, (err as Error).message); }
 });
 api.post("/bots/:id/teach/discard", (c) => { dropRecording(ownAgent(c).id); return c.json({ ok: true }); });
-api.post("/bots/:id/desktop/handback", (c) => { noteHandBack(ownAgent(c).id); return c.json({ ok: true }); });
+api.post("/bots/:id/desktop/handback", (c) => { const bot = ownAgent(c); releaseControl(bot.id); noteHandBack(bot.id); return c.json({ ok: true }); });
+/** The viewer is in control mode ({ on: true }, renewed every 30 s) or left it: the bot's screen actions wait meanwhile. */
+api.post("/bots/:id/desktop/control", async (c) => {
+  const bot = ownAgent(c);
+  if ((await body(c)).on === false) releaseControl(bot.id); else holdControl(bot.id);
+  return c.json({ ok: true });
+});
 api.get("/bots/:id/engine", async (c) => {
   const bot = ownAgent(c);
   try { return c.json({ engines: await engineStatus(bot) }); }
@@ -860,20 +972,52 @@ api.get("/bots/:id/files/view", (c) => {
 });
 
 // ── Vault ────────────────────────────────────────────────────────────────────
-function vaultFields(b: Record<string, any>, base?: { name: string; site: string; username: string; passwordEnc: string | null; note: string }) {
+const siteOf = (raw: unknown) => {
+  const t = String(raw ?? "").trim();
+  if (!t) return "";
+  try { return new URL(/^[a-z][a-z0-9+.-]*:/i.test(t) ? t : `https://${t}`).hostname.toLowerCase().replace(/^www\./, ""); } catch { return ""; }
+};
+/** A header name that may carry a secret (RFC 9110 token, and not one that would change where the request goes). */
+const HEADER_OK = (h: string) => /^[A-Za-z0-9!#$%&'*+.^_`|~-]{1,64}$/.test(h) && !["host", "cookie", "content-length", "connection", "transfer-encoding"].includes(h.toLowerCase());
+function vaultFields(b: Record<string, any>, base?: VaultFields): VaultFields {
+  const kind: VaultKind = (VAULT_KINDS as readonly string[]).includes(b.kind) ? b.kind : base?.kind ?? "login";
   const pick = (key: "name" | "site" | "username" | "note", max: number) => (b[key] === undefined ? base?.[key] ?? "" : String(b[key])).trim().slice(0, max);
   const name = pick("name", 80);
-  if (!name) fail(400, "Give this login a name.");
+  if (!name) fail(400, "Give this item a name.");
   const password = typeof b.password === "string" && b.password ? b.password : null;
-  if (password && password.length > 1000) fail(400, "That password is too long.");
-  return { name, site: pick("site", 300), username: pick("username", 300), note: pick("note", 500), passwordEnc: password ? seal(password) : base?.passwordEnc ?? null };
+  if (password && password.length > 8000) fail(400, "That value is too long.");
+  const f: VaultFields = { kind, name, site: pick("site", 300), username: kind === "login" ? pick("username", 300) : "", note: pick("note", 500), passwordEnc: base?.passwordEnc ?? null };
+  if (kind === "secret") {
+    const raw: unknown[] = Array.isArray(b.hosts) ? b.hosts : b.hosts === undefined ? base?.hosts ?? [] : String(b.hosts).split(/[\s,]+/);
+    const hosts = raw.map(siteOf).filter(Boolean).slice(0, 10);
+    if (!hosts.length) fail(400, "Say which host this secret may be sent to.");
+    const header = (b.header === undefined ? base?.header ?? "" : String(b.header)).trim() || "Authorization";
+    if (!HEADER_OK(header)) fail(400, "That header name cannot carry a secret.");
+    const prefix = (b.prefix === undefined ? base?.prefix ?? (header.toLowerCase() === "authorization" ? "Bearer " : "") : String(b.prefix)).slice(0, 40);
+    Object.assign(f, { site: "", hosts, header, prefix });
+  }
+  if (kind === "totp") {
+    let digits = base?.digits ?? 6, period = base?.period ?? 30;
+    if (password) {
+      // A pasted otpauth:// URI brings its own settings; only the base32 key is stored.
+      try { const seed = parseTotp(password); digits = seed.digits; period = seed.period; f.passwordEnc = seal(seed.secret); }
+      catch (err) { return fail(400, (err as Error).message); }
+    }
+    if (!siteOf(f.site)) fail(400, "Say which site these codes are for.");
+    if (!f.passwordEnc) fail(400, "Paste the key or the otpauth:// address the site gave you.");
+    Object.assign(f, { digits, period });
+    return f;
+  }
+  if (password) f.passwordEnc = seal(password);
+  return f;
 }
 api.get("/vault", (c) => c.json({ items: vault.list(c.get("user").id).map(publicVault) }));
 api.post("/vault", async (c) => {
   const user = c.get("user");
   const f = vaultFields(await body(c));
   if (vault.byName(user.id, f.name)) fail(409, "A login with this name already exists.");
-  audit(user.id, "vault", `Saved login added: ${f.name}`);
+  audit(user.id, "vault", `Vault item added (${f.kind}): ${f.name}`);
+  emit(user.id, { type: "vault" });
   return c.json({ item: publicVault(vault.create(user.id, f)) });
 });
 api.patch("/vault/:id", async (c) => {
@@ -888,8 +1032,105 @@ api.patch("/vault/:id", async (c) => {
 api.delete("/vault/:id", (c) => {
   const cur = vault.owned(c.get("user").id, c.req.param("id")) ?? fail(404, "That login does not exist.");
   vault.remove(cur.id);
-  audit(c.get("user").id, "vault", `Saved login removed: ${cur.name}`);
-  policies.remove(c.get("user").id, `vault: ${cur.name}`);
+  audit(c.get("user").id, "vault", `Vault item removed: ${cur.name}`);
+  for (const key of [`vault: ${cur.name}`, `secret: ${cur.name}`, `totp: ${cur.name}`]) policies.remove(c.get("user").id, key);
+  return c.json({ ok: true });
+});
+
+/**
+ * CSV import of logins (see vault-import.ts for the formats). Body: { csv, mapping? }. Without a recognisable header
+ * the answer is { needsMapping: true, headers } — header names only, never a value — and the browser sends a mapping.
+ * Names already in the vault are skipped, never overwritten.
+ */
+api.post("/vault/import", async (c) => {
+  const user = c.get("user");
+  if (Number(c.req.header("content-length") ?? 0) > 5_000_000) fail(413, "That file is too large (5 MB at most).");
+  const b = await body(c);
+  const text = typeof b.csv === "string" ? b.csv : "";
+  if (!text.trim()) fail(400, "That file is empty.");
+  const all = parseCsv(text);
+  if (all.length < 2) fail(400, "No logins were found in that file.");
+  const headers = all[0].map((h) => clip(h.trim(), 60));
+  let map: Mapping | null = null;
+  if (b.mapping && typeof b.mapping === "object") {
+    map = {};
+    for (const k of ["name", "url", "username", "password", "note", "totp"] as const) {
+      const raw = b.mapping[k];
+      const v = Number(raw);
+      if (raw !== null && raw !== undefined && raw !== "" && Number.isInteger(v) && v >= 0 && v < headers.length) map[k] = v;
+    }
+    if (map.password === undefined || (map.name === undefined && map.url === undefined)) fail(400, "Choose at least the password column and a name or address column.");
+  } else map = detectMapping(headers);
+  if (!map) return c.json({ imported: 0, skipped: 0, totp: 0, needsMapping: true, headers });
+  const { logins, skipped } = loginsFrom(all.slice(1, 5001), map);
+  let imported = 0, totp = 0, dupes = 0;
+  for (const l of logins) {
+    if (vault.byName(user.id, l.name)) { dupes++; continue; }
+    vault.create(user.id, { kind: "login", name: l.name, site: l.url, username: l.username, passwordEnc: seal(l.password), note: l.note });
+    imported++;
+    if (l.totp && siteOf(l.url)) {
+      const name = clip(`${l.name} (2FA)`, 80);
+      try {
+        const seed = parseTotp(l.totp);
+        if (!vault.byName(user.id, name)) { vault.create(user.id, { kind: "totp", name, site: l.url, username: "", passwordEnc: seal(seed.secret), note: "", digits: seed.digits, period: seed.period }); totp++; }
+      } catch { /* not a usable seed: the login is kept without it */ }
+    }
+  }
+  audit(user.id, "vault", `Logins imported from a file: ${imported}${totp ? ` (+${totp} two-factor)` : ""}`);
+  emit(user.id, { type: "vault" });
+  return c.json({ imported, skipped: skipped + dupes, totp });
+});
+
+// ── Push notifications ───────────────────────────────────────────────────────
+api.get("/push", (c) => {
+  const user = c.get("user");
+  const endpoint = c.req.query("endpoint");
+  return c.json({ ...push.state(user.id), currentId: endpoint ? push.byEndpoint(user.id, endpoint)?.id ?? null : null });
+});
+api.post("/push/subscribe", async (c) => {
+  const user = c.get("user");
+  const b = await body(c);
+  let device;
+  try { device = push.subscribe(user.id, b.subscription ?? {}, typeof b.label === "string" ? b.label : ""); }
+  catch (err) { return fail(400, (err as Error).message); }
+  audit(user.id, "account", `Push notifications on for ${device.label}`);
+  return c.json({ device });
+});
+api.post("/push/unsubscribe", async (c) => {
+  push.removeEndpoint(c.get("user").id, String((await body(c)).endpoint ?? ""));
+  return c.json({ ok: true });
+});
+api.patch("/push/devices/:id", async (c) => {
+  const b = await body(c);
+  const device = push.update(c.get("user").id, c.req.param("id"), { enabled: typeof b.enabled === "boolean" ? b.enabled : undefined, label: typeof b.label === "string" ? b.label : undefined }) ?? fail(404, "That device does not exist.");
+  return c.json({ device });
+});
+api.delete("/push/devices/:id", (c) => {
+  if (!push.remove(c.get("user").id, c.req.param("id"))) fail(404, "That device does not exist.");
+  return c.json({ ok: true });
+});
+api.put("/push/settings", async (c) => {
+  const user = c.get("user");
+  const b = await body(c);
+  const cur = pushSettings(user.id);
+  const kinds = { ...cur.kinds };
+  for (const k of PUSH_KINDS) if (typeof b.kinds?.[k] === "boolean") kinds[k] = b.kinds[k];
+  const qt = b.quiet ?? {};
+  const hhmm = (v: unknown, d: string) => (typeof v === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(v) ? v : d);
+  if (qt.timezone !== undefined && !isValidTimezone(String(qt.timezone))) fail(400, "Unknown timezone.");
+  const next = { kinds, quiet: { enabled: typeof qt.enabled === "boolean" ? qt.enabled : cur.quiet.enabled, start: hhmm(qt.start, cur.quiet.start), end: hhmm(qt.end, cur.quiet.end), timezone: qt.timezone ? String(qt.timezone) : cur.quiet.timezone } };
+  savePushSettings(user.id, next);
+  return c.json({ settings: next });
+});
+api.post("/push/test", async (c) => {
+  const user = c.get("user");
+  const sent = await sendPush(user.id, { kind: "test", title: "Sklubot", body: tr(user.locale, "Notifications work on this device.") });
+  return c.json({ sent });
+});
+/** Open app windows say whether they are visible, so a finished reply is pushed only when nobody is looking. */
+api.post("/presence", async (c) => {
+  const b = await body(c);
+  notePresence(c.get("user").id, String(b.clientId ?? "default"), b.visible === true);
   return c.json({ ok: true });
 });
 

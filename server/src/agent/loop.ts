@@ -1,5 +1,4 @@
 import { clearLive, emit, getLive, setLive } from "../bus.js";
-import { unseal } from "../auth.js";
 import { botPathOf, browserAvailable, computerKind, imageForModel, shellAvailable, shellOnHost } from "../computer.js";
 import { config } from "../config.js";
 import { connectors } from "../connectors.js";
@@ -7,7 +6,7 @@ import { defaultModelRef, resolveModel, validateToolInput, type Block, type Chat
 import { tr } from "../i18n.js";
 import { imageService } from "../images.js";
 import type { ActivityKind, Attachment, Row } from "../shared.js";
-import { activeTurns, approvals, audit, bots, clip, feedback, history, newId, paused, policies, rows, rowScope, settings, users, vault, type BotRecord, type UserRecord } from "../store.js";
+import { activeTurns, approvals, audit, bots, clip, feedback, history, newId, paused, policies, rows, redactSecrets, rowScope, settings, users, type BotRecord, type UserRecord } from "../store.js";
 import { runs } from "../routines.js";
 import { overBudget, record } from "../usage.js";
 import { compactIfNeeded } from "./memory.js";
@@ -18,6 +17,7 @@ import { builtinTools, higgsfieldFor, videoRoute, type BuiltinTool, type ToolOut
 import { videoService } from "../video.js";
 import { nativeToolsFor, runNativeTool, type Risk } from "../native/tools.js";
 import { accounts as nativeAccounts } from "../native/accounts.js";
+import { appVisible, pushLater } from "../push.js";
 
 /**
  * What starts a turn. `tainted`: the turn starts out carrying outside content — a webhook's payload, a
@@ -111,6 +111,15 @@ export type TurnEvent = { type: "reply"; bot: BotRecord; text: string } | { type
 const listeners: ((e: TurnEvent) => void)[] = [];
 export const onTurnEvent = (fn: (e: TurnEvent) => void) => { listeners.push(fn); };
 export const tell = (e: TurnEvent) => { for (const fn of listeners) { try { fn(e); } catch (err) { console.error("[turn event]", err); } } };
+// A bot that needs the user (approval, question, hand on its screen, a secret) also reaches their phone and desktop.
+onTurnEvent((e) => { if (e.type === "waiting") pushLater(e.bot.userId, { kind: "needs", title: e.bot.name, body: e.text, botId: e.bot.id }); });
+
+/** After a turn: a routine's result always goes out as a push; a reply to the user only when no app window is visible. */
+function pushOutcome(bot: BotRecord, user: UserRecord, trigger: Trigger, said: string) {
+  if (!said || paused.get(bot.id)) return;
+  if (trigger.kind === "routine") pushLater(user.id, { kind: "routine", title: `${bot.name} · ${trigger.name}`, body: said, botId: bot.id });
+  else if (trigger.kind === "user" && trigger.channel !== "telegram" && !appVisible(user.id)) pushLater(user.id, { kind: "reply", title: bot.name, body: said, botId: bot.id });
+}
 
 // ── Per-bot serial queue ─────────────────────────────────────────────────────
 const queues = new Map<string, Promise<void>>();
@@ -211,6 +220,7 @@ function finishEngineTurn(bot: BotRecord, user: UserRecord, trigger: Trigger, tu
   }
   if (trigger.kind === "system" && bot.primary) noteCheckinOutcome(user.id, turn.spoke);
   if (turn.lastText && (trigger.kind === "routine" || trigger.kind === "system" || (trigger.kind === "user" && trigger.channel === "telegram"))) tell({ type: "reply", bot, text: turn.lastText });
+  pushOutcome(bot, user, trigger, turn.lastText);
 }
 
 /** A turn that was cut off can leave tool calls without results; close them so the transcript stays valid. */
@@ -350,6 +360,7 @@ async function runScopedTurn(botId: string, trigger: Trigger, thread: number): P
     if (trigger.kind === "system" && bot.primary) noteCheckinOutcome(user.id, turn.spoke);
     // Replies to messages that came from a phone, and anything the bot says on its own initiative, go back out there.
     if (turn.lastText && !paused.get(botId) && (trigger.kind === "routine" || trigger.kind === "system" || (trigger.kind === "user" && trigger.channel === "telegram"))) tell({ type: "reply", bot, text: turn.lastText });
+    pushOutcome(bot, user, trigger, turn.lastText);
   } catch (err) {
     if (err instanceof EngineDone) { finishEngineTurn(bot, user, trigger, turn); return; }
     const stopped = controller.signal.aborted;
@@ -540,11 +551,12 @@ export function judge(turn: Turn, call: ToolUseBlock): Verdict {
   if (!builtin && !remote) return { kind: "allow" }; // unknown tools fail on their own with a clear error
   const loc = user.locale;
   // Some tools decide per call what they need permission for (e.g. one saved login, not all of them).
-  const gate = builtin?.gate?.(call.input, { botId: bot.id });
+  const gate = builtin?.gate?.(call.input, { botId: bot.id, tainted: turn.tainted });
   if (gate) {
     const p = policies.get(user.id, gate.key);
     if (p === "blocked") return { kind: "block" };
-    if (p === "always_allow") return { kind: "allow" };
+    // A strict gate asks every time, whatever was allowed before (e.g. a secret after reading outside content).
+    if (p === "always_allow" && !gate.strict) return { kind: "allow" };
     const vars = { ...gate.vars, ...(gate.vars.field ? { field: tr(loc, gate.vars.field) } : {}) };
     return { kind: "ask", policyKey: gate.key, title: tr(loc, gate.title, { bot: bot.name, ...vars }), reason: tr(loc, gate.reason, vars), source: tr(loc, gate.source), note: gate.note ? tr(loc, gate.note, vars) : undefined };
   }
@@ -756,14 +768,9 @@ export function recoverInterruptedTurns() {
   }
 }
 
-/** Saved passwords must never reach a model, whatever a page or a command prints back. */
+/** Vault values (passwords, keys, TOTP seeds) must never reach a model, whatever a page or a command prints back. */
 function hideSecrets(userId: string, s: string): string {
-  let out = s;
-  for (const item of vault.list(userId)) {
-    const secret = item.passwordEnc ? unseal(item.passwordEnc) : null;
-    if (secret && secret.length >= 4 && out.includes(secret)) out = out.split(secret).join("[hidden]");
-  }
-  return out;
+  return redactSecrets(userId, s);
 }
 
 /** A new message arrived while an approval was open: the old request lapses and its calls are closed. */
