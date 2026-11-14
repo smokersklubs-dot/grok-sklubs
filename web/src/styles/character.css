@@ -1,0 +1,113 @@
+/* Animated bot characters (see components/Character.tsx). Transforms and opacity only. */
+
+.chr { --amp: 0.6; --fx: 0; --fy: 0; }
+.chr svg { overflow: visible; }
+.chr.is-ring::after { content: ""; position: absolute; inset: -4px; border-radius: 50%; box-shadow: 0 0 0 2px var(--text); pointer-events: none; }
+
+/* Pivots: the body moves around its feet; eyes, mouth and decorations around their own centre. */
+.chr .chr-motion, .chr .chr-squash { transform-box: view-box; transform-origin: 50px 94px; }
+.chr .chr-eye, .chr .chr-eyes, .chr .chr-mouth-open, .chr .chr-halo, .chr .chr-tip, .chr .chr-tip-glow, .chr .chr-ask, .chr .chr-spark, .chr .chr-z { transform-box: fill-box; transform-origin: center; }
+.chr .chr-mouth-open { transform-origin: 50% 15%; }
+
+/* Pupils: pointer offset (set from JS as --fx/--fy on the face) inside a state-driven gaze. */
+.chr .chr-pupil { transform: translate(calc(var(--fx) * 1px), calc(var(--fy) * 1px)); }
+.chr .chr-eye { transition: transform 70ms ease-out; }
+.chr.is-blink .chr-eye { transform: scaleY(0.08); }
+.chr .chr-eyes { transition: transform 0.25s ease; }
+
+/* ---------- Idle motions ---------- */
+@keyframes chr-breathe { 0%, 100% { transform: scale(1, 1); } 50% { transform: scale(calc(1 + 0.014 * var(--amp)), calc(1 + 0.04 * var(--amp))); } }
+@keyframes chr-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(calc(var(--amp) * -4px)); } }
+@keyframes chr-sway { 0%, 100% { transform: rotate(calc(var(--amp) * -4deg)); } 50% { transform: rotate(calc(var(--amp) * 4deg)); } }
+@keyframes chr-bounce {
+  0%, 55%, 100% { transform: translateY(0) scale(1, 1); }
+  10% { transform: translateY(0) scale(calc(1 + 0.05 * var(--amp)), calc(1 - 0.06 * var(--amp))); }
+  28% { transform: translateY(calc(var(--amp) * -8px)) scale(calc(1 - 0.03 * var(--amp)), calc(1 + 0.05 * var(--amp))); }
+  45% { transform: translateY(0) scale(calc(1 + 0.04 * var(--amp)), calc(1 - 0.05 * var(--amp))); }
+}
+.chr.st-idle.idle-breathe .chr-motion { animation: chr-breathe 3.6s ease-in-out infinite; }
+.chr.st-idle.idle-float .chr-motion { animation: chr-float 3.4s ease-in-out infinite; }
+.chr.st-idle.idle-sway .chr-motion { animation: chr-sway 4.2s ease-in-out infinite; }
+.chr.st-idle.idle-bounce .chr-motion { animation: chr-bounce 1.9s ease-in-out infinite; }
+
+/* ---------- States ---------- */
+@keyframes chr-ponder { 0%, 100% { transform: rotate(calc(var(--amp) * -6deg)); } 50% { transform: rotate(calc(var(--amp) * -2deg)) translateY(calc(var(--amp) * -1.5px)); } }
+@keyframes chr-look-up { 0%, 100% { transform: translate(calc(var(--tx) * 0.75px), calc(var(--ty) * -0.85px)); } 50% { transform: translate(calc(var(--tx) * 0.3px), calc(var(--ty) * -1px)); } }
+.chr.st-thinking .chr-motion { animation: chr-ponder 3.2s ease-in-out infinite; }
+.chr.st-thinking .chr-gaze { animation: chr-look-up 3.2s ease-in-out infinite; transform: translate(calc(var(--tx) * 0.6px), calc(var(--ty) * -0.9px)); }
+
+@keyframes chr-busy { 0%, 100% { transform: translateY(0) scale(1, 1); } 50% { transform: translateY(calc(var(--amp) * -3px)) scale(calc(1 - 0.015 * var(--amp)), calc(1 + 0.025 * var(--amp))); } }
+@keyframes chr-look-down { 0%, 100% { transform: translate(calc(var(--tx) * -0.3px), calc(var(--ty) * 0.8px)); } 50% { transform: translate(calc(var(--tx) * 0.3px), calc(var(--ty) * 0.8px)); } }
+@keyframes chr-flicker { 0%, 100% { opacity: 0.25; } 50% { opacity: 1; } }
+.chr.st-working .chr-motion { animation: chr-busy 0.46s ease-in-out infinite; }
+.chr.st-working .chr-gaze { animation: chr-look-down 1.4s ease-in-out infinite; transform: translate(0, calc(var(--ty) * 0.8px)); }
+.chr .chr-line-a { animation: chr-flicker 0.46s linear infinite; }
+.chr .chr-line-b { animation: chr-flicker 0.46s linear infinite; animation-delay: -0.23s; }
+
+@keyframes chr-lean { 0%, 100% { transform: rotate(calc(var(--amp) * -6deg)); } 50% { transform: rotate(calc(var(--amp) * 6deg)); } }
+@keyframes chr-look-side { 0%, 100% { transform: translate(calc(var(--tx) * -0.6px), calc(var(--ty) * -0.2px)); } 50% { transform: translate(calc(var(--tx) * 0.6px), calc(var(--ty) * -0.2px)); } }
+@keyframes chr-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-2px); } }
+.chr.st-waiting .chr-motion { animation: chr-lean 2.8s ease-in-out infinite; }
+.chr.st-waiting .chr-gaze { animation: chr-look-side 2.8s ease-in-out infinite; }
+.chr .chr-ask { animation: chr-bob 1.8s ease-in-out infinite; }
+
+@keyframes chr-lean-in { 0%, 100% { transform: translateY(1px) rotate(calc(var(--amp) * 4deg)) scale(1.03); } 50% { transform: translateY(0) rotate(calc(var(--amp) * 2.5deg)) scale(1.045); } }
+.chr.st-listening .chr-motion { animation: chr-lean-in 2.6s ease-in-out infinite; transform: rotate(calc(var(--amp) * 4deg)) scale(1.03); }
+.chr.st-listening .chr-eyes { transform: scale(1.12); }
+
+@keyframes chr-hop {
+  0% { transform: translateY(0) scale(1, 1); }
+  15% { transform: translateY(0) scale(calc(1 + 0.06 * var(--amp)), calc(1 - 0.08 * var(--amp))); }
+  40% { transform: translateY(calc(var(--amp) * -11px)) scale(calc(1 - 0.04 * var(--amp)), calc(1 + 0.06 * var(--amp))); }
+  65% { transform: translateY(0) scale(calc(1 + 0.05 * var(--amp)), calc(1 - 0.06 * var(--amp))); }
+  85%, 100% { transform: translateY(0) scale(1, 1); }
+}
+@keyframes chr-pop { 0% { transform: scale(0.2); opacity: 0; } 40% { transform: scale(1.15); opacity: 1; } 100% { transform: scale(0.9); opacity: 0.9; } }
+.chr.st-happy .chr-motion { animation: chr-hop 0.72s ease-out 2; }
+.chr .chr-spark { animation: chr-pop 0.75s ease-out both; }
+.chr .chr-spark-1 { animation-delay: 0.18s; }
+
+@keyframes chr-sleep { 0%, 100% { transform: rotate(-3deg) scale(1, 1); } 50% { transform: rotate(-3deg) scale(calc(1 + 0.01 * var(--amp)), calc(1 + 0.035 * var(--amp))); } }
+@keyframes chr-z { 0% { transform: translate(0, 0) scale(0.6); opacity: 0; } 25% { opacity: 1; } 100% { transform: translate(8px, -14px) scale(1.1); opacity: 0; } }
+.chr.st-sleeping .chr-motion { animation: chr-sleep 4.6s ease-in-out infinite; transform: rotate(-3deg); }
+.chr .chr-z { animation: chr-z 3s ease-out infinite; }
+.chr .chr-z-1 { animation-delay: -1.5s; }
+
+/* Thinking dots orbit above the head (an ellipse seen slightly from above). */
+@keyframes chr-orbit {
+  0% { transform: translate(10px, 0) scale(0.9); }
+  12.5% { transform: translate(7px, 2.8px) scale(1.05); }
+  25% { transform: translate(0, 4px) scale(1.2); }
+  37.5% { transform: translate(-7px, 2.8px) scale(1.05); }
+  50% { transform: translate(-10px, 0) scale(0.9); }
+  62.5% { transform: translate(-7px, -2.8px) scale(0.75); }
+  75% { transform: translate(0, -4px) scale(0.65); }
+  87.5% { transform: translate(7px, -2.8px) scale(0.75); }
+  100% { transform: translate(10px, 0) scale(0.9); }
+}
+.chr .chr-dot { animation: chr-orbit 1.8s linear infinite; }
+.chr .chr-dot-0 { transform: translate(10px, 0); }
+.chr .chr-dot-1 { animation-delay: -0.6s; transform: translate(-5px, 3.5px); }
+.chr .chr-dot-2 { animation-delay: -1.2s; transform: translate(-5px, -3.5px); }
+
+/* Accessories that move on their own. */
+@keyframes chr-tip { 0%, 72%, 100% { opacity: 1; } 80% { opacity: 0.35; } }
+@keyframes chr-glow { 0%, 100% { opacity: 0.15; transform: scale(0.8); } 50% { opacity: 0.45; transform: scale(1.15); } }
+@keyframes chr-halo { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-2px); } }
+@keyframes chr-sweep { 0%, 35% { transform: translateX(-34px) skewX(-18deg); } 75%, 100% { transform: translateX(34px) skewX(-18deg); } }
+.chr .chr-tip { animation: chr-tip 2.6s ease-in-out infinite; }
+.chr .chr-tip-glow { animation: chr-glow 2.6s ease-in-out infinite; }
+.chr .chr-halo { animation: chr-halo 3s ease-in-out infinite; }
+.chr .chr-sweep { animation: chr-sweep 3.2s ease-in-out infinite; }
+.chr.st-working .chr-tip { animation-duration: 0.9s; }
+.chr.st-cheeks-happy .chr-cheeks, .chr.st-happy .chr-cheeks { opacity: 1; }
+.chr .chr-cheeks { opacity: 0.5; transition: opacity 0.3s; }
+
+/* Small avatars (lists): calm and cheap — only a slow breathe, nothing else moves. */
+.chr.is-small .chr-motion { animation: chr-breathe 5s ease-in-out infinite !important; transform: none !important; }
+.chr.is-small *:not(.chr-motion) { animation: none !important; }
+
+@media (prefers-reduced-motion: reduce) {
+  .chr, .chr * { animation: none !important; transition: none !important; }
+  .chr .chr-sweep { opacity: 0; }
+}

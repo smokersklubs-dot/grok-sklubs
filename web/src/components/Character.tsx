@@ -1,0 +1,623 @@
+/**
+ * The bots' animated characters: the bot's silhouette with a face, an optional accessory, and a
+ * motion for each state. Pure SVG on a 100×100 grid (drawn with overflow visible, so accessories
+ * and bubbles may reach outside it) + CSS animations; JS only for blinking, pointer-following eyes
+ * and the speaking level.
+ */
+import { memo, useEffect, useId, useRef, type ReactNode } from "react";
+import { DEFAULT_CHARACTER } from "../types";
+import type { AvatarShape, Character as CharacterLook } from "../types";
+import { colorOf } from "../lib/colors";
+import { followPointer, reducedMotion } from "../lib/pointer";
+import type { CharacterState } from "../lib/botState";
+import { useT } from "../i18n";
+import { Icon } from "./Icon";
+import "../styles/character.css";
+
+export type { CharacterState };
+
+/* ---------- Silhouettes ---------- */
+
+function ngon(n: number, r: number, rotateDeg: number, cx = 50, cy = 50): string {
+  const pts: string[] = [];
+  for (let i = 0; i < n; i++) {
+    const a = ((rotateDeg + (360 / n) * i) * Math.PI) / 180;
+    pts.push(`${(cx + r * Math.cos(a)).toFixed(1)},${(cy + r * Math.sin(a)).toFixed(1)}`);
+  }
+  return pts.join(" ");
+}
+
+function starPoints(outer: number, inner: number, cx = 50, cy = 52): string {
+  const pts: string[] = [];
+  for (let i = 0; i < 10; i++) {
+    const r = i % 2 === 0 ? outer : inner;
+    const a = ((-90 + 36 * i) * Math.PI) / 180;
+    pts.push(`${(cx + r * Math.cos(a)).toFixed(1)},${(cy + r * Math.sin(a)).toFixed(1)}`);
+  }
+  return pts.join(" ");
+}
+
+interface ShapeDef {
+  art: ReactNode;
+  /** Rounding stroke (same colour as the fill): bigger = friendlier corners. */
+  sw: number;
+  /** Face centre and scale. */
+  fx: number;
+  fy: number;
+  s: number;
+  /** Visual top of the head at x = 50 (where antenna, sprout, cap and halo sit). */
+  top: number;
+  /** Half width of the head at eye level (for the headset). */
+  hw: number;
+  /** Where the bow sits (upper left of the outline). */
+  bow: [number, number];
+  /** A pointed top: hats are drawn smaller. */
+  pointy?: boolean;
+}
+
+const SHAPES: Record<AvatarShape, ShapeDef> = {
+  circle: { art: <circle cx="50" cy="50" r="44" />, sw: 6, fx: 50, fy: 50, s: 1, top: 4, hw: 46, bow: [24, 15] },
+  squircle: { art: <rect x="8" y="8" width="84" height="84" rx="27" />, sw: 6, fx: 50, fy: 50, s: 1, top: 5, hw: 45, bow: [19, 14] },
+  hexagon: { art: <polygon points={ngon(6, 43, 30)} />, sw: 8, fx: 50, fy: 51, s: 0.9, top: 3, hw: 40, bow: [30, 17], pointy: true },
+  diamond: { art: <polygon points="50,9 91,50 50,91 9,50" />, sw: 11, fx: 50, fy: 51, s: 0.78, top: 3, hw: 42, bow: [29, 27], pointy: true },
+  shield: { art: <path d="M50 8 L88 20 V50 C88 72 71 86 50 93 C29 86 12 72 12 50 V20 Z" />, sw: 7, fx: 50, fy: 46, s: 0.92, top: 5, hw: 41, bow: [20, 17] },
+  drop: { art: <path d="M50 7 C62 22 85 44 85 61 A35 35 0 0 1 15 61 C15 44 38 22 50 7 Z" />, sw: 7, fx: 50, fy: 61, s: 0.88, top: 4, hw: 38, bow: [33, 26], pointy: true },
+  arch: { art: <path d="M13 91 V46 A37 37 0 0 1 87 46 V91 Z" />, sw: 7, fx: 50, fy: 55, s: 0.92, top: 6, hw: 40, bow: [22, 20] },
+  star: { art: <polygon points={starPoints(44, 27)} />, sw: 11, fx: 50, fy: 56, s: 0.6, top: 3, hw: 30, bow: [35, 29], pointy: true },
+  clover: {
+    art: (
+      <>
+        <circle cx="31" cy="31" r="24" />
+        <circle cx="69" cy="31" r="24" />
+        <circle cx="31" cy="69" r="24" />
+        <circle cx="69" cy="69" r="24" />
+        <rect x="30" y="30" width="40" height="40" />
+      </>
+    ),
+    sw: 6,
+    fx: 50,
+    fy: 50,
+    s: 1,
+    top: 13,
+    hw: 48,
+    bow: [14, 15],
+  },
+  pill: { art: <rect x="20" y="6" width="60" height="88" rx="30" />, sw: 6, fx: 50, fy: 45, s: 0.8, top: 3, hw: 33, bow: [27, 13] },
+  triangle: { art: <polygon points="50,17 87,82 13,82" />, sw: 13, fx: 50, fy: 63, s: 0.64, top: 10, hw: 33, bow: [37, 38], pointy: true },
+  octagon: { art: <polygon points={ngon(8, 45, 22.5)} />, sw: 6, fx: 50, fy: 50, s: 1, top: 5, hw: 44, bow: [23, 15] },
+};
+
+/* ---------- Colours derived from the bot's palette entry ---------- */
+
+/** A friendly accent per body colour, for antenna tips and bows. */
+const ACCENT: Record<string, string> = {
+  ink: "#ff7aa2", clay: "#ffd166", ember: "#ffd166", amber: "#ff7aa2", moss: "#ff9fb8", teal: "#ffc09f",
+  sky: "#ffd166", indigo: "#ffb3cf", plum: "#ffd166", rose: "#ffe08a", slate: "#ffb3cf",
+};
+
+function palette(color: string): Record<string, string> {
+  const bg = colorOf(color).bg;
+  const ink = color === "ink";
+  return {
+    "--chr-body": bg,
+    // Features drawn straight on the body (dot eyes, mouth, brows): a deep shade of the body.
+    "--chr-feat": ink ? "var(--ink-fg)" : `color-mix(in srgb, ${bg} 22%, #111215)`,
+    "--chr-shade": ink ? "color-mix(in srgb, var(--ink) 70%, var(--ink-fg))" : `color-mix(in srgb, ${bg} 70%, #111215)`,
+    "--chr-light": `color-mix(in srgb, ${bg} 30%, #ffffff)`,
+    "--chr-cap": ink ? "color-mix(in srgb, var(--ink) 55%, #ff7aa2)" : `color-mix(in srgb, ${bg} 45%, #ffffff)`,
+    "--chr-acc": ACCENT[color] ?? ACCENT.slate,
+  };
+}
+
+/* ---------- Eyes ---------- */
+
+type EyeStyle = CharacterLook["eyes"];
+/** Half spacing between the eyes and how far the pupils may travel (face units). */
+const EYES: Record<EyeStyle, { dx: number; tx: number; ty: number }> = {
+  round: { dx: 13, tx: 3.2, ty: 3.2 },
+  oval: { dx: 12, tx: 2.4, ty: 3.8 },
+  wide: { dx: 14, tx: 5, ty: 5 },
+  dot: { dx: 12, tx: 2.4, ty: 2.4 },
+  sleepy: { dx: 13, tx: 3, ty: 1.4 },
+  visor: { dx: 11, tx: 5.5, ty: 1.5 },
+};
+
+const PUPIL = "#1b1d21";
+const WHITE_STROKE = "rgba(0,0,0,0.14)";
+
+function OneEye({ style }: { style: EyeStyle }) {
+  switch (style) {
+    case "oval":
+      return (
+        <>
+          <ellipse rx="6.6" ry="9.4" fill="#fff" stroke={WHITE_STROKE} strokeWidth="0.8" />
+          <g className="chr-gaze"><g className="chr-pupil">
+            <ellipse rx="3.6" ry="4.9" fill={PUPIL} />
+            <circle cx="-1.2" cy="-2" r="1.3" fill="#fff" />
+          </g></g>
+        </>
+      );
+    case "wide":
+      return (
+        <>
+          <circle r="10.4" fill="#fff" stroke={WHITE_STROKE} strokeWidth="0.8" />
+          <g className="chr-gaze"><g className="chr-pupil">
+            <circle r="3.9" fill={PUPIL} />
+            <circle cx="-1.3" cy="-1.4" r="1.2" fill="#fff" />
+          </g></g>
+        </>
+      );
+    case "dot":
+      return (
+        <g className="chr-gaze"><g className="chr-pupil">
+          <ellipse rx="3.7" ry="4.7" style={{ fill: "var(--chr-feat)" }} />
+          <circle cx="-1" cy="-1.8" r="1.1" fill="#fff" opacity="0.85" />
+        </g></g>
+      );
+    case "sleepy":
+      return (
+        <>
+          <circle r="8.5" fill="#fff" stroke={WHITE_STROKE} strokeWidth="0.8" />
+          <g className="chr-gaze"><g className="chr-pupil">
+            <circle cy="2" r="4.3" fill={PUPIL} />
+            <circle cx="-1.2" cy="1.2" r="1.2" fill="#fff" />
+          </g></g>
+          {/* Heavy upper lid */}
+          <path d="M-9.4 -0.6 A9.4 9.4 0 0 1 9.4 -0.6 Z" style={{ fill: "var(--chr-body)" }} />
+          <path d="M-8.8 -0.6 Q0 1.2 8.8 -0.6" fill="none" style={{ stroke: "var(--chr-feat)" }} strokeWidth="1.8" strokeLinecap="round" />
+        </>
+      );
+    default:
+      return (
+        <>
+          <circle r="8.5" fill="#fff" stroke={WHITE_STROKE} strokeWidth="0.8" />
+          <g className="chr-gaze"><g className="chr-pupil">
+            <circle r="4.4" fill={PUPIL} />
+            <circle cx="-1.4" cy="-1.7" r="1.35" fill="#fff" />
+          </g></g>
+        </>
+      );
+  }
+}
+
+const CLOSED = "M-5.6 -0.5 Q0 4.2 5.6 -0.5";
+const SQUINT = "M-5.8 2 Q0 -5 5.8 2";
+
+function Eyes({ style, state, uid }: { style: EyeStyle; state: CharacterState; uid: string }) {
+  const { dx } = EYES[style];
+  const closed = state === "sleeping";
+  const squint = state === "happy";
+  if (style === "visor") {
+    const lineColor = "var(--chr-light)";
+    return (
+      <g className="chr-eyes">
+        <defs>
+          <clipPath id={`${uid}v`}>
+            <rect x="-25" y="-7.5" width="50" height="15" rx="7.5" />
+          </clipPath>
+        </defs>
+        <rect x="-25" y="-7.5" width="50" height="15" rx="7.5" fill="#17191d" stroke="rgba(255,255,255,0.14)" strokeWidth="0.8" />
+        {closed || squint ? (
+          <g fill="none" style={{ stroke: lineColor }} strokeWidth="2.4" strokeLinecap="round" opacity={closed ? 0.55 : 1}>
+            {[-dx, dx].map((x) => (
+              <path key={x} transform={`translate(${x} ${closed ? -0.5 : 0}) scale(0.8)`} d={closed ? CLOSED : SQUINT} />
+            ))}
+          </g>
+        ) : (
+          <g clipPath={`url(#${uid}v)`}>
+            <g className="chr-gaze">
+              <g className="chr-pupil">
+                {[-dx, dx].map((x) => (
+                  <g key={x} transform={`translate(${x} 0)`}>
+                    <g className="chr-eye">
+                      <rect x="-4.6" y="-2.6" width="9.2" height="5.2" rx="2.6" style={{ fill: lineColor }} />
+                    </g>
+                  </g>
+                ))}
+              </g>
+            </g>
+            <rect className="chr-sweep" x="-3" y="-9" width="4" height="18" fill="#fff" opacity="0.22" transform="skewX(-18)" />
+          </g>
+        )}
+      </g>
+    );
+  }
+  if (closed || squint) {
+    return (
+      <g className="chr-eyes" fill="none" style={{ stroke: "var(--chr-feat)" }} strokeWidth="2.7" strokeLinecap="round">
+        {[-dx, dx].map((x) => (
+          <path key={x} transform={`translate(${x} 0)`} d={closed ? CLOSED : SQUINT} />
+        ))}
+      </g>
+    );
+  }
+  return (
+    <g className="chr-eyes">
+      {[-dx, dx].map((x) => (
+        <g key={x} transform={`translate(${x} 0)`}>
+          <g className="chr-eye">
+            <OneEye style={style} />
+          </g>
+        </g>
+      ))}
+    </g>
+  );
+}
+
+/* ---------- Mouth ---------- */
+
+function Mouth({ state, mouthRef }: { state: CharacterState; mouthRef: React.Ref<SVGGElement> }) {
+  const feat = { stroke: "var(--chr-feat)" };
+  const fill = { fill: "var(--chr-feat)" };
+  switch (state) {
+    case "thinking":
+      return <ellipse cx="3" cy="13.5" rx="2.2" ry="2.6" style={fill} />;
+    case "working":
+      return <path d="M-3.6 13 Q0 14.6 3.6 13" fill="none" style={feat} strokeWidth="2.5" strokeLinecap="round" />;
+    case "waiting":
+      return <path d="M-4.4 14 H4.4" fill="none" style={feat} strokeWidth="2.5" strokeLinecap="round" />;
+    case "speaking":
+      return (
+        <g transform="translate(0 11.5)">
+          <g ref={mouthRef} className="chr-mouth-open">
+            <ellipse cx="0" cy="3" rx="4.6" ry="3.8" style={fill} />
+            <ellipse cx="0" cy="5.2" rx="2.6" ry="1.4" fill="#ff8fa3" opacity="0.85" />
+          </g>
+        </g>
+      );
+    case "happy":
+      return (
+        <g>
+          <path d="M-7 11.5 Q0 21 7 11.5 Z" style={{ ...fill, ...feat }} strokeWidth="1.6" strokeLinejoin="round" />
+          <path d="M-3.2 16.6 Q0 15 3.2 16.6 Q0 18.6 -3.2 16.6 Z" fill="#ff8fa3" />
+        </g>
+      );
+    case "sleeping":
+      return <ellipse cx="0" cy="14" rx="1.7" ry="1.3" style={fill} />;
+    case "listening":
+      return <path d="M-4 13 Q0 16.4 4 13" fill="none" style={feat} strokeWidth="2.5" strokeLinecap="round" />;
+    default:
+      return <path d="M-5 12.6 Q0 16.6 5 12.6" fill="none" style={feat} strokeWidth="2.5" strokeLinecap="round" />;
+  }
+}
+
+/* ---------- Accessories (viewBox coordinates) ---------- */
+
+type Accessory = CharacterLook["accessory"];
+
+function AccessoryArt({ kind, shape, front }: { kind: Accessory; shape: ShapeDef; front: boolean }) {
+  const { top, fy, hw, bow, pointy, s } = shape;
+  switch (kind) {
+    case "antenna":
+      return front ? (
+        <g className="chr-antenna">
+          <path d={`M50 ${top + 4} V${top - 8}`} style={{ stroke: "var(--chr-shade)" }} strokeWidth="3" strokeLinecap="round" />
+          <circle className="chr-tip-glow" cx="50" cy={top - 11.5} r="7" style={{ fill: "var(--chr-acc)" }} opacity="0.3" />
+          <circle className="chr-tip" cx="50" cy={top - 11.5} r="4" style={{ fill: "var(--chr-acc)" }} />
+        </g>
+      ) : null;
+    case "sprout":
+      return front ? (
+        <g className="chr-sprout">
+          <path d={`M50 ${top + 4} Q49 ${top - 2} 50 ${top - 7}`} fill="none" stroke="#3f8f3a" strokeWidth="2.6" strokeLinecap="round" />
+          <path d={`M50 ${top - 6} C46 ${top - 13} 38 ${top - 14} 35 ${top - 10} C39 ${top - 5} 46 ${top - 4} 50 ${top - 6} Z`} fill="#6cc04a" stroke="#3f8f3a" strokeWidth="1.2" strokeLinejoin="round" />
+          <path d={`M50 ${top - 7} C53 ${top - 16} 62 ${top - 18} 66 ${top - 14} C62 ${top - 8} 55 ${top - 6} 50 ${top - 7} Z`} fill="#86d65e" stroke="#3f8f3a" strokeWidth="1.2" strokeLinejoin="round" />
+        </g>
+      ) : null;
+    case "bow":
+      return front ? (
+        <g transform={`translate(${bow[0]} ${bow[1]}) rotate(-24)`} style={{ fill: "var(--chr-acc)" }} stroke="rgba(0,0,0,0.18)" strokeWidth="1" strokeLinejoin="round">
+          <path d="M0 0 C-4 -8 -13 -8.5 -13 0 C-13 8.5 -4 8 0 0 Z" />
+          <path d="M0 0 C4 -8 13 -8.5 13 0 C13 8.5 4 8 0 0 Z" />
+          <path d="M-2 2 L-6 10 L-2.5 9 L0 3 M2 2 L6 10 L2.5 9 L0 3" />
+          <circle r="3.3" />
+        </g>
+      ) : null;
+    case "cap": {
+      if (!front) return null;
+      const k = pointy ? 0.78 : 1;
+      const base = top + (pointy ? 5 : 9);
+      return (
+        <g transform={`translate(50 ${base}) scale(${k})`}>
+          <path d="M-19 0 C-19 -21 19 -21 19 0 Z" style={{ fill: "var(--chr-cap)" }} stroke="rgba(0,0,0,0.18)" strokeWidth="1" />
+          <path d="M-6 -16 Q0 -8 0 0 M6 -16 Q2 -8 2 0" fill="none" stroke="rgba(0,0,0,0.12)" strokeWidth="1" />
+          <path d="M8 -1 Q22 -5 30 0.5 Q22 3.5 8 2 Z" style={{ fill: "var(--chr-cap)" }} stroke="rgba(0,0,0,0.22)" strokeWidth="1" strokeLinejoin="round" />
+          <circle cy="-15.6" r="2.4" style={{ fill: "var(--chr-acc)" }} />
+        </g>
+      );
+    }
+    case "halo":
+      return front ? (
+        <g className="chr-halo">
+          <ellipse cx="50" cy={top - 9} rx="17" ry="4.6" fill="none" stroke="#ffd45c" strokeWidth="6" opacity="0.25" />
+          <ellipse cx="50" cy={top - 9} rx="17" ry="4.6" fill="none" stroke="#f5c22e" strokeWidth="2.8" />
+        </g>
+      ) : null;
+    case "headset": {
+      const x1 = 50 - hw;
+      const x2 = 50 + hw;
+      const dark = "#30333a";
+      if (!front) {
+        return <path d={`M${x1} ${fy - 4} C${x1} ${top - 14} ${x2} ${top - 14} ${x2} ${fy - 4}`} fill="none" stroke={dark} strokeWidth="3.6" strokeLinecap="round" />;
+      }
+      const my = fy + 14 * s;
+      return (
+        <g>
+          <path d={`M${x1 + 1} ${fy + 6} Q${x1 + 3} ${my + 6} ${50 - 10 * s} ${my + 1}`} fill="none" stroke={dark} strokeWidth="2.2" strokeLinecap="round" />
+          <circle cx={50 - 10 * s} cy={my + 1} r="2.8" fill={dark} />
+          <circle cx={50 - 10 * s} cy={my + 1} r="1.1" style={{ fill: "var(--chr-acc)" }} />
+          {[x1, x2].map((x) => (
+            <g key={x}>
+              <rect x={x - 5} y={fy - 10} width="10" height="18" rx="4.6" fill={dark} />
+              <rect x={x - 2.2} y={fy - 6} width="4.4" height="10" rx="2.2" style={{ fill: "var(--chr-acc)" }} opacity="0.9" />
+            </g>
+          ))}
+        </g>
+      );
+    }
+    default:
+      return null;
+  }
+}
+
+/* ---------- State overlays (only on avatars large enough to animate) ---------- */
+
+function Overlay({ state, shape }: { state: CharacterState; shape: ShapeDef }) {
+  switch (state) {
+    case "thinking":
+      return (
+        <g className="chr-orbit" transform="translate(86 8)">
+          {[0, 1, 2].map((i) => (
+            <circle key={i} className={`chr-dot chr-dot-${i}`} r={2.6 - i * 0.3} style={{ fill: "var(--chr-body)" }} />
+          ))}
+        </g>
+      );
+    case "waiting":
+      return (
+        <g className="chr-ask" transform="translate(88 6)">
+          <path d="M-10 -9 H10 A5 5 0 0 1 15 -4 V5 A5 5 0 0 1 10 10 H-3 L-8 15 L-7 10 H-10 A5 5 0 0 1 -15 5 V-4 A5 5 0 0 1 -10 -9 Z" style={{ fill: "var(--surface)", stroke: "var(--border-strong)" }} strokeWidth="1.4" strokeLinejoin="round" />
+          <text x="0" y="1" textAnchor="middle" dominantBaseline="central" fontSize="15" fontWeight="800" style={{ fill: "var(--text)", fontFamily: "inherit" }}>?</text>
+        </g>
+      );
+    case "sleeping":
+      return (
+        <g className="chr-zz" style={{ fill: "var(--text-2)", fontFamily: "inherit" }} fontWeight="800">
+          <text className="chr-z chr-z-0" x="80" y="14" fontSize="13">z</text>
+          <text className="chr-z chr-z-1" x="90" y="2" fontSize="10">z</text>
+        </g>
+      );
+    case "working": {
+      const l = 50 - shape.hw - 6;
+      const r = 50 + shape.hw + 6;
+      const y = shape.fy;
+      return (
+        <g className="chr-lines" style={{ stroke: "var(--text-3)" }} strokeWidth="2.4" strokeLinecap="round">
+          <path className="chr-line-a" d={`M${l} ${y - 6} h-6 M${l + 1} ${y + 3} h-8`} />
+          <path className="chr-line-b" d={`M${r} ${y - 6} h6 M${r - 1} ${y + 3} h8`} />
+        </g>
+      );
+    }
+    case "happy":
+      return (
+        <g style={{ fill: "var(--chr-acc)" }}>
+          <path className="chr-spark chr-spark-0" transform="translate(12 10)" d="M0 -6 Q1 -1 6 0 Q1 1 0 6 Q-1 1 -6 0 Q-1 -1 0 -6 Z" />
+          <path className="chr-spark chr-spark-1" transform="translate(90 18) scale(0.75)" d="M0 -6 Q1 -1 6 0 Q1 1 0 6 Q-1 1 -6 0 Q-1 -1 0 -6 Z" />
+        </g>
+      );
+    default:
+      return null;
+  }
+}
+
+/* ---------- The component ---------- */
+
+export interface CharacterBot {
+  shape: string;
+  color: string;
+  name?: string;
+  character?: Partial<CharacterLook> | null;
+}
+
+export interface CharacterProps {
+  bot: CharacterBot;
+  size?: number;
+  state?: CharacterState;
+  /** 0–1 output level while speaking (static). */
+  level?: number;
+  /** Read every frame while speaking, for a live level (voice call, editor preview). */
+  levelSource?: () => number;
+  /** Eyes may follow the pointer (when the character allows it). */
+  interactive?: boolean;
+  /** Primary star. */
+  badge?: boolean;
+  /** Selection ring. */
+  ring?: boolean;
+  className?: string;
+  /** Accessible label; defaults to "<name>, <state>". `null` hides the image from assistive tech. */
+  label?: string | null;
+}
+
+const FOLLOW_STATES: CharacterState[] = ["idle", "listening", "happy"];
+const SMALL = 32;
+
+function CharacterView({ bot, size = 36, state = "idle", level, levelSource, interactive = false, badge = false, ring = false, className, label }: CharacterProps) {
+  const t = useT();
+  const look: CharacterLook = { ...DEFAULT_CHARACTER, ...(bot.character ?? {}) };
+  const shape = SHAPES[bot.shape as AvatarShape] ?? SHAPES.circle;
+  const eyes = EYES[look.eyes] ? look.eyes : "round";
+  const small = size < SMALL;
+  const amp = Math.max(0.08, Math.min(1, look.intensity ?? 0.6));
+  const uid = useId().replace(/[^a-zA-Z0-9_-]/g, "");
+
+  const root = useRef<HTMLSpanElement>(null);
+  const follow = useRef<SVGGElement>(null);
+  const mouth = useRef<SVGGElement>(null);
+  const squash = useRef<SVGGElement>(null);
+
+  // Blinking: random 2.5–6 s, sometimes twice.
+  const canBlink = look.blink && !small && state !== "sleeping" && state !== "happy";
+  useEffect(() => {
+    if (!canBlink || reducedMotion()) return;
+    const el = root.current;
+    if (!el) return;
+    let timer = 0;
+    const blinkOnce = (then: () => void) => {
+      el.classList.add("is-blink");
+      timer = window.setTimeout(() => {
+        el.classList.remove("is-blink");
+        then();
+      }, 120);
+    };
+    const schedule = () => {
+      timer = window.setTimeout(() => {
+        blinkOnce(() => {
+          if (Math.random() < 0.22) timer = window.setTimeout(() => blinkOnce(schedule), 140);
+          else schedule();
+        });
+      }, 2500 + Math.random() * 3500);
+    };
+    schedule();
+    return () => {
+      window.clearTimeout(timer);
+      el.classList.remove("is-blink");
+    };
+  }, [canBlink]);
+
+  // Eyes follow the pointer: one shared listener for the whole app.
+  const canFollow = interactive && look.followCursor && !small && FOLLOW_STATES.includes(state);
+  const { tx, ty } = EYES[eyes];
+  useEffect(() => {
+    const g = follow.current;
+    const el = root.current;
+    if (!canFollow || !g || !el || reducedMotion()) return;
+    let cx = 0;
+    let cy = 0;
+    let gx = 0;
+    let gy = 0;
+    const stop = followPointer({
+      read(x, y) {
+        const r = el.getBoundingClientRect();
+        const dx = x - (r.left + r.width / 2);
+        const dy = y - (r.top + r.height / 2);
+        const d = Math.hypot(dx, dy) || 1;
+        const k = Math.min(1, d / (r.width * 2 + 140));
+        gx = (dx / d) * k * tx;
+        gy = (dy / d) * k * ty;
+        const ox = cx;
+        const oy = cy;
+        cx += (gx - cx) * 0.16;
+        cy += (gy - cy) * 0.16;
+        return Math.abs(cx - ox) + Math.abs(cy - oy) > 0.01;
+      },
+      write() {
+        g.style.setProperty("--fx", cx.toFixed(2));
+        g.style.setProperty("--fy", cy.toFixed(2));
+      },
+    });
+    return () => {
+      stop();
+      g.style.removeProperty("--fx");
+      g.style.removeProperty("--fy");
+    };
+  }, [canFollow, tx, ty]);
+
+  // Speaking: mouth and squash follow the level.
+  const speaking = state === "speaking";
+  useEffect(() => {
+    const m = mouth.current;
+    const sq = squash.current;
+    if (!speaking) return;
+    const apply = (lvl: number) => {
+      const v = Math.max(0, Math.min(1, lvl));
+      if (m) m.style.transform = `scale(${(0.85 + 0.25 * v).toFixed(3)}, ${(0.18 + 0.95 * v).toFixed(3)})`;
+      if (sq && !small) sq.style.transform = `scale(${(1 - 0.035 * v * amp).toFixed(4)}, ${(1 + 0.055 * v * amp).toFixed(4)})`;
+    };
+    if (!levelSource || small || reducedMotion()) {
+      apply(level ?? 0.55);
+      return () => {
+        if (sq) sq.style.transform = "";
+      };
+    }
+    let frame = requestAnimationFrame(function loop() {
+      apply(levelSource());
+      frame = requestAnimationFrame(loop);
+    });
+    return () => {
+      cancelAnimationFrame(frame);
+      if (sq) sq.style.transform = "";
+    };
+  }, [speaking, level, levelSource, small, amp]);
+
+  const name = bot.name?.trim() || "";
+  const aria = label === null ? undefined : label ?? (name ? t("character.aria", { name, state: t(`character.state.${state}`) }) : t(`character.state.${state}`));
+  const cls = [
+    "avatar",
+    "chr",
+    `st-${state}`,
+    `idle-${look.idle}`,
+    small ? "is-small" : "",
+    ring ? "is-ring" : "",
+    className ?? "",
+  ].filter(Boolean).join(" ");
+  const accessory = look.accessory;
+
+  return (
+    <span
+      ref={root}
+      className={cls}
+      style={{ width: size, height: size, "--amp": amp, ...palette(bot.color) } as React.CSSProperties}
+      role={aria ? "img" : undefined}
+      aria-label={aria}
+      aria-hidden={aria ? undefined : true}
+    >
+      <svg viewBox="0 0 100 100" width={size} height={size} focusable="false" aria-hidden="true">
+        <defs>
+          <linearGradient id={`${uid}h`} x1="0" y1="0" x2="0" y2="100" gradientUnits="userSpaceOnUse">
+            <stop offset="0" stopColor="#fff" stopOpacity="0.34" />
+            <stop offset="0.42" stopColor="#fff" stopOpacity="0" />
+            <stop offset="0.8" stopColor="#000" stopOpacity="0" />
+            <stop offset="1" stopColor="#000" stopOpacity="0.12" />
+          </linearGradient>
+        </defs>
+        <g className="chr-motion">
+          <g className="chr-squash" ref={squash}>
+            <AccessoryArt kind={accessory} shape={shape} front={false} />
+            <g style={{ fill: "var(--chr-body)", stroke: "var(--chr-body)" }} strokeWidth={shape.sw} strokeLinejoin="round">
+              {shape.art}
+            </g>
+            <g style={{ fill: `url(#${uid}h)`, stroke: `url(#${uid}h)` }} strokeWidth={shape.sw} strokeLinejoin="round">
+              {shape.art}
+            </g>
+            <g transform={`translate(${shape.fx} ${shape.fy}) scale(${shape.s})`}>
+              <g className="chr-face" ref={follow} style={{ "--tx": tx, "--ty": ty } as React.CSSProperties}>
+                {look.cheeks && (
+                  <g className="chr-cheeks" fill="#ff8fa8">
+                    <ellipse cx={-(EYES[eyes].dx + 8)} cy="9.5" rx="5" ry="3.1" />
+                    <ellipse cx={EYES[eyes].dx + 8} cy="9.5" rx="5" ry="3.1" />
+                  </g>
+                )}
+                {state === "waiting" && (
+                  <g fill="none" style={{ stroke: "var(--chr-feat)" }} strokeWidth="2.3" strokeLinecap="round">
+                    <path d={`M${-EYES[eyes].dx - 6} ${eyes === "visor" ? -12 : -13.5} Q${-EYES[eyes].dx} ${eyes === "visor" ? -17 : -19} ${-EYES[eyes].dx + 5} ${eyes === "visor" ? -13 : -15}`} />
+                    <path d={`M${EYES[eyes].dx - 5} ${eyes === "visor" ? -12 : -13} Q${EYES[eyes].dx} ${eyes === "visor" ? -13 : -14} ${EYES[eyes].dx + 6} ${eyes === "visor" ? -11.5 : -12.5}`} />
+                  </g>
+                )}
+                <Eyes style={eyes} state={state} uid={uid} />
+                {look.mouth && <Mouth state={state} mouthRef={mouth} />}
+              </g>
+            </g>
+            <AccessoryArt kind={accessory} shape={shape} front />
+          </g>
+        </g>
+        {!small && <Overlay state={state} shape={shape} />}
+      </svg>
+      {badge && (
+        <span className="avatar-badge" style={{ width: Math.max(14, size * 0.36), height: Math.max(14, size * 0.36) }}>
+          <Icon name="star" size={Math.max(9, size * 0.24)} />
+        </span>
+      )}
+    </span>
+  );
+}
+
+export const Character = memo(CharacterView);

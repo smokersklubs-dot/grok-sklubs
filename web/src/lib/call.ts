@@ -6,6 +6,7 @@ import { api, errText } from "../api";
 import { t } from "../i18n";
 import { useStore, type CallLine, type CallState, type Thread } from "../store";
 import type { Row } from "../types";
+import { voiceStarted, voiceStopped, voiceWord } from "./voiceLevel";
 import { canCall, createRecognition, makeUtterance, micErrorText, recognitionLang, speakable, type Recognition } from "./speech";
 
 let rec: Recognition | null = null;
@@ -144,6 +145,7 @@ function speakNext(): void {
   if (text === undefined) {
     speakingNow = false;
     currentUtterance = null;
+    voiceStopped();
     patch({ speaking: false });
     startListening();
     return;
@@ -162,6 +164,8 @@ function speakNext(): void {
   };
   u.onend = done;
   u.onerror = done;
+  u.onstart = voiceStarted;
+  u.onboundary = voiceWord;
   window.speechSynthesis.speak(u);
 }
 
@@ -290,6 +294,7 @@ export function endCall(): void {
   queue = [];
   speakingNow = false;
   currentUtterance = null;
+  voiceStopped();
   if (rec) {
     const r = rec;
     rec = null;
