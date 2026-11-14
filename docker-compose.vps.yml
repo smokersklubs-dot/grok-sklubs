@@ -1,0 +1,64 @@
+# Sklubot sur un VPS seul : l'application, l'image des ordinateurs des bots, et Caddy pour le HTTPS automatique.
+# Lancé par deploy/install.sh ; les valeurs viennent du fichier .env à côté.
+services:
+  sklubot:
+    build:
+      context: .
+      dockerfile: Dockerfile.production
+    image: sklubot-server
+    restart: unless-stopped
+    depends_on:
+      desktop-image:
+        condition: service_completed_successfully
+    environment:
+      PORT: "3000"
+      PUBLIC_URL: "${SKLUBOT_PUBLIC_URL}"
+      SESSION_SECRET: "${SKLUBOT_SESSION_SECRET}"
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
+      XAI_API_KEY: "${XAI_API_KEY:-}"
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+      DEFAULT_MODEL: "${SKLUBOT_DEFAULT_MODEL:-}"
+      DEMO_MODE: "${SKLUBOT_DEMO_MODE:-0}"
+      OPEN_SIGNUP: "${SKLUBOT_OPEN_SIGNUP:-0}"
+      COMPUTER: "linux"
+      DATA_VOLUME: "sklubot_data"
+      MAX_DESKTOPS: "${SKLUBOT_MAX_DESKTOPS:-4}"
+      DESKTOP_MEMORY: "${SKLUBOT_DESKTOP_MEMORY:-2g}"
+    volumes:
+      - sklubot_data:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:3000/api/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  desktop-image:
+    build:
+      context: docker/desktop
+    image: sklubot-desktop
+    command: ["true"]
+    restart: "no"
+
+  # Reçoit le trafic web. Avec un nom de domaine, obtient et renouvelle seul le certificat HTTPS.
+  caddy:
+    image: "${CADDY_IMAGE:-caddy:2}"
+    restart: unless-stopped
+    depends_on:
+      - sklubot
+    ports:
+      - "${SKLUBOT_HTTP_PORT:-80}:80"
+      - "${SKLUBOT_HTTPS_PORT:-443}:443"
+    environment:
+      SITE_ADDRESS: "${SKLUBOT_SITE_ADDRESS:-:80}"
+    command: ["caddy", "reverse-proxy", "--from", "${SKLUBOT_SITE_ADDRESS:-:80}", "--to", "sklubot:3000"]
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  sklubot_data:
+    name: sklubot_data
+  caddy_data:
+  caddy_config:
