@@ -131,3 +131,15 @@ Notes:
 - Event rows with `event: "call"` carry `call` (`CallRecord`): show duration, summary, and the transcript on demand.
 - Published pages appear in chat as ordinary assistant messages containing the link.
 - Routines with `trigger: "watch"` have `watch` set; show what is watched and how often.
+
+## Additions (third wave: screens)
+
+| Method | Path | Body | Returns |
+|---|---|---|---|
+| POST | `/bots/:id/desktop/tidy` | – | `{ ok }` — closes every window on the bot's screen, keeps logins and files, reopens the browser on the home page |
+| POST | `/bots/:id/desktop/handback` | – | `{ ok }` — call when the user stops controlling the screen; the bot's next turn is told to look before relying on what it saw earlier |
+| GET | `/auth/link?token=` | – | one-time sign-in link printed by the server's command line; signs in and redirects to `/` (expired or used: redirects to `/?link=expired`) |
+
+Notes:
+- `Live.caption` (optional): a short line taken from the bot's reasoning while it works; show it under the activity line, muted.
+- `POST /bots/:id/desktop/reset` still erases the whole Linux computer; "tidy" is the gentle fix.

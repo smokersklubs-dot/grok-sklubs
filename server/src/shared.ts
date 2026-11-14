@@ -66,6 +66,8 @@ export interface Live {
   startedAt: number | null;
   /** Messages typed while the bot was busy, waiting to be folded into the running turn. */
   queued: number;
+  /** A short line about what the bot is thinking right now (from its reasoning), while a turn runs. */
+  caption?: string | null;
 }
 
 export interface Origin { kind: "bot" | "routine" | "voice" | "webhook"; id: string; name: string }
