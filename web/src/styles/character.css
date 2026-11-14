@@ -115,6 +115,7 @@
 /* ---------- Look editor ---------- */
 .look-row-text { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
 .chr-editor { display: grid; grid-template-columns: minmax(200px, 240px) minmax(0, 1fr); gap: 20px; align-items: start; padding: 16px; border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface); }
+.chr-editor-type { grid-column: 1 / -1; }
 .chr-editor-controls { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 .chr-stage { position: sticky; top: 0; display: flex; flex-direction: column; align-items: center; gap: 14px; }
 .chr-stage-view { display: grid; place-items: center; width: 100%; aspect-ratio: 1; max-width: 240px; padding: 34px 26px 22px; border-radius: var(--r-lg); background: radial-gradient(circle at 50% 42%, var(--surface) 0%, var(--surface-2) 72%); box-shadow: inset 0 0 0 1px var(--border); }
@@ -196,3 +197,20 @@
 .chr.type-muse.is-blink .mu-eye { transform: scaleY(0.15); }
 /* Muse bodies don't hop like mascots; they glide. */
 .chr.type-muse.st-working .chr-motion { animation-duration: 0.9s; }
+
+/* Type cards and the custom colour swatch */
+.type-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.type-card { display: flex; flex-direction: row; align-items: center; gap: 12px; padding: 12px 14px; text-align: left; border-radius: var(--r-md); border: 1px solid var(--border); background: var(--surface); }
+.type-card:hover { background: var(--surface-2); }
+.type-card.is-selected { border-color: var(--text); box-shadow: inset 0 0 0 1px var(--text); background: var(--surface-2); }
+.type-card-text { display: flex; flex-direction: column; gap: 2px; }
+.type-card .chr { flex: none; margin: 4px 0; }
+.swatch-custom-wrap { display: inline-flex; align-items: center; gap: 8px; }
+.swatch-custom { position: relative; display: inline-block; cursor: pointer; background: conic-gradient(from 0deg, #ff5f6d, #ffc371, #f9f871, #5ee7a0, #4fb6ff, #8f7cff, #ff6ad5, #ff5f6d); }
+.swatch-custom:not(.is-set)::after { content: "+"; position: absolute; inset: 0; display: grid; place-items: center; color: #fff; font-weight: 800; font-size: 15px; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35); }
+.swatch-custom input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; border: 0; padding: 0; }
+.swatch-custom:focus-within { outline: 2px solid var(--focus); outline-offset: 2px; }
+.swatch-hex { font-family: var(--mono); font-size: 12px; color: var(--text-2); }
+@media (max-width: 620px) { .type-cards { grid-template-columns: 1fr; } }
+.type-cards.is-compact .type-card { flex-direction: column; text-align: center; gap: 6px; padding: 12px 8px 10px; }
+@media (max-width: 620px) { .type-cards.is-compact { grid-template-columns: repeat(3, minmax(0, 1fr)); } }

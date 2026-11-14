@@ -6,7 +6,7 @@ import { DEFAULT_CHARACTER } from "../types";
 import type { AvatarColor, AvatarShape, Bot, BotMode, CatalogApp, Character as CharacterLook, Connector, SearchHit } from "../types";
 import { botTitle, relTime } from "../lib/format";
 import { Avatar, BotAvatar } from "./Avatar";
-import { AccessoryChips, CharacterStage, EyeChips, LookPicker } from "./CharacterEditor";
+import { AccessoryChips, CharacterStage, EyeChips, LookPicker, TypeCards } from "./CharacterEditor";
 
 export { LookPicker };
 import { Icon, Spinner } from "./Icon";
@@ -57,17 +57,25 @@ export function CreateBotModal({ onClose }: { onClose: () => void }) {
           <input id={id} className="input" value={name} maxLength={60} onChange={(e) => setName(e.target.value)} placeholder={t("createBot.namePlaceholder")} autoComplete="off" />
         </div>
         <div className="field">
+          <span className="field-label">{t("look.type")}</span>
+          <TypeCards shape={shape} color={color} character={character} onChange={setCharacter} compact />
+        </div>
+        <div className="field">
           <span className="field-label">{t("createBot.look")}</span>
-          <LookPicker name={name} shape={shape} color={color} character={character} onShape={setShape} onColor={setColor} />
+          <LookPicker name={name} shape={shape} color={color} character={character} onShape={setShape} onColor={setColor} onCharacter={setCharacter} />
         </div>
-        <div className="field">
-          <span className="field-label">{t("look.eyes")}</span>
-          <EyeChips shape={shape} color={color} character={character} onChange={setCharacter} />
-        </div>
-        <div className="field">
-          <span className="field-label">{t("look.accessory")}</span>
-          <AccessoryChips shape={shape} color={color} character={character} onChange={setCharacter} />
-        </div>
+        {character.type === "mascot" && (
+          <>
+            <div className="field">
+              <span className="field-label">{t("look.eyes")}</span>
+              <EyeChips shape={shape} color={color} character={character} onChange={setCharacter} />
+            </div>
+            <div className="field">
+              <span className="field-label">{t("look.accessory")}</span>
+              <AccessoryChips shape={shape} color={color} character={character} onChange={setCharacter} />
+            </div>
+          </>
+        )}
         <div className="field">
           <span className="field-label">{t("createBot.type")}</span>
           <div className="choice-list" role="radiogroup" aria-label={t("createBot.type")}>

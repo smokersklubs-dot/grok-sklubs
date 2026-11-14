@@ -1,12 +1,12 @@
 /** The "Look" editor: a live character preview, its states, and every look option. */
 import { useEffect, useState } from "react";
 import { useT } from "../i18n";
-import { ACCESSORIES, AVATAR_COLORS, AVATAR_SHAPES, EYE_STYLES, IDLE_MOTIONS } from "../types";
+import { ACCESSORIES, AVATAR_COLORS, AVATAR_SHAPES, CHARACTER_TYPES, EYE_STYLES, IDLE_MOTIONS } from "../types";
 import { colorOf } from "../lib/colors";
 import type { AvatarColor, AvatarShape, Character as CharacterLook } from "../types";
 import type { CharacterState } from "../lib/botState";
 import { reducedMotion } from "../lib/pointer";
-import { Character } from "./Character";
+import { Character, validHex } from "./Character";
 import { Toggle } from "./ui";
 
 /** States offered on the preview, in the order shown. */
@@ -29,6 +29,7 @@ export function LookPicker({
   character,
   onShape,
   onColor,
+  onCharacter,
 }: {
   name: string;
   shape: AvatarShape;
@@ -36,32 +37,73 @@ export function LookPicker({
   character?: CharacterLook;
   onShape: (s: AvatarShape) => void;
   onColor: (c: AvatarColor) => void;
+  /** When given, a custom colour swatch is offered (stored in `character.customColor`). */
+  onCharacter?: (c: CharacterLook) => void;
 }) {
   const t = useT();
+  const custom = validHex(character?.customColor);
+  const showShapes = (character?.type ?? "mascot") === "mascot";
+  const mascot = character ? { ...character, type: "mascot" as const } : undefined;
   return (
     <div className="look">
-      <div className="look-grid" role="radiogroup" aria-label={t("look.shape")}>
-        {AVATAR_SHAPES.map((s) => (
-          <button key={s} type="button" role="radio" aria-checked={shape === s} aria-label={t(`shape.${s}`)} title={t(`shape.${s}`)} className={`look-shape ${shape === s ? "is-selected" : ""}`} onClick={() => onShape(s)}>
-            <Character bot={{ shape: s, color, name, character }} size={36} label={null} />
-          </button>
-        ))}
-      </div>
+      {showShapes && (
+        <div className="look-grid" role="radiogroup" aria-label={t("look.shape")}>
+          {AVATAR_SHAPES.map((s) => (
+            <button key={s} type="button" role="radio" aria-checked={shape === s} aria-label={t(`shape.${s}`)} title={t(`shape.${s}`)} className={`look-shape ${shape === s ? "is-selected" : ""}`} onClick={() => onShape(s)}>
+              <Character bot={{ shape: s, color, name, character: mascot }} size={36} label={null} />
+            </button>
+          ))}
+        </div>
+      )}
       <div className="look-colors" role="radiogroup" aria-label={t("look.colour")}>
         {AVATAR_COLORS.map((c) => (
           <button
             key={c}
             type="button"
             role="radio"
-            aria-checked={color === c}
+            aria-checked={!custom && color === c}
             aria-label={t(`color.${c}`)}
             title={t(`color.${c}`)}
-            className={`swatch ${color === c ? "is-selected" : ""}`}
+            className={`swatch ${!custom && color === c ? "is-selected" : ""}`}
             style={{ background: colorOf(c).bg }}
-            onClick={() => onColor(c)}
+            onClick={() => {
+              onColor(c);
+              if (character && onCharacter && custom) onCharacter({ ...character, customColor: null });
+            }}
           />
         ))}
+        {character && onCharacter && (
+          <span className="swatch-custom-wrap">
+            <label className={`swatch swatch-custom ${custom ? "is-selected is-set" : ""}`} title={t("look.custom")} style={custom ? { background: custom } : undefined}>
+              <input
+                type="color"
+                aria-label={t("look.custom")}
+                value={custom ?? "#7a5cff"}
+                onChange={(e) => onCharacter({ ...character, customColor: validHex(e.target.value) })}
+              />
+            </label>
+            {custom && <code className="swatch-hex">{custom}</code>}
+          </span>
+        )}
       </div>
+    </div>
+  );
+}
+
+/** Mascot, dots or muse: three cards, each with a small live preview. */
+export function TypeCards({ shape, color, character, onChange, compact = false }: { shape: AvatarShape; color: AvatarColor; character: CharacterLook; onChange: (c: CharacterLook) => void; compact?: boolean }) {
+  const t = useT();
+  return (
+    <div className={`type-cards ${compact ? "is-compact" : ""}`} role="radiogroup" aria-label={t("look.type")}>
+      {CHARACTER_TYPES.map((ty) => (
+        <button key={ty} type="button" role="radio" aria-checked={character.type === ty} title={compact ? t(`type.${ty}.text`) : undefined} className={`type-card ${character.type === ty ? "is-selected" : ""}`} onClick={() => onChange({ ...character, type: ty })}>
+          <Character bot={{ shape, color, character: { ...character, type: ty } }} size={52} label={null} />
+          <span className="type-card-text">
+            <span className="choice-title">{t(`type.${ty}.title`)}</span>
+            {!compact && <span className="choice-text">{t(`type.${ty}.text`)}</span>}
+          </span>
+        </button>
+      ))}
     </div>
   );
 }
@@ -102,7 +144,7 @@ export function EyeChips({ shape, color, character, onChange }: { shape: AvatarS
     <div className="opt-chips" role="radiogroup" aria-label={t("look.eyes")}>
       {EYE_STYLES.map((e) => (
         <button key={e} type="button" role="radio" aria-checked={character.eyes === e} className={`opt-chip ${character.eyes === e ? "is-selected" : ""}`} onClick={() => onChange({ ...character, eyes: e })}>
-          <Character bot={{ shape, color, character: { ...character, eyes: e } }} size={28} label={null} />
+          <Character bot={{ shape, color, character: { ...character, type: "mascot", eyes: e } }} size={28} label={null} />
           <span>{t(`eyes.${e}`)}</span>
         </button>
       ))}
@@ -117,7 +159,7 @@ export function AccessoryChips({ shape, color, character, onChange }: { shape: A
     <div className="opt-chips" role="radiogroup" aria-label={t("look.accessory")}>
       {ACCESSORIES.map((a) => (
         <button key={a} type="button" role="radio" aria-checked={character.accessory === a} className={`opt-chip ${character.accessory === a ? "is-selected" : ""}`} onClick={() => onChange({ ...character, accessory: a })}>
-          <Character bot={{ shape, color, character: { ...character, accessory: a } }} size={28} label={null} />
+          <Character bot={{ shape, color, character: { ...character, type: "mascot", accessory: a } }} size={28} label={null} />
           <span>{t(`accessory.${a}`)}</span>
         </button>
       ))}
@@ -146,15 +188,22 @@ export function CharacterEditor({
   const t = useT();
   const set = <K extends keyof CharacterLook>(k: K, v: CharacterLook[K]) => onCharacter({ ...character, [k]: v });
   const [calmSystem] = useState(reducedMotion);
+  const mascot = character.type === "mascot";
   return (
     <div className="chr-editor">
+      <div className="field chr-editor-type">
+        <span className="field-label">{t("look.type")}</span>
+        <TypeCards shape={shape} color={color} character={character} onChange={onCharacter} />
+      </div>
       <CharacterStage shape={shape} color={color} name={name} character={character} />
       <div className="chr-editor-controls">
         {calmSystem && <p className="field-hint">{t("look.reducedMotion")}</p>}
         <div className="field">
-          <span className="field-label">{t("look.shape")} · {t("look.colour")}</span>
-          <LookPicker name={name} shape={shape} color={color} character={character} onShape={onShape} onColor={onColor} />
+          <span className="field-label">{mascot ? `${t("look.shape")} · ${t("look.colour")}` : t("look.colour")}</span>
+          <LookPicker name={name} shape={shape} color={color} character={character} onShape={onShape} onColor={onColor} onCharacter={onCharacter} />
         </div>
+        {mascot && (
+        <>
         <div className="field">
           <span className="field-label">{t("look.eyes")}</span>
           <EyeChips shape={shape} color={color} character={character} onChange={onCharacter} />
@@ -170,6 +219,8 @@ export function CharacterEditor({
           <span className="field-label">{t("look.accessory")}</span>
           <AccessoryChips shape={shape} color={color} character={character} onChange={onCharacter} />
         </div>
+        </>
+        )}
         <div className="field">
           <span className="field-label">{t("look.idle")}</span>
           <div className="segmented chr-idle" role="radiogroup" aria-label={t("look.idle")}>

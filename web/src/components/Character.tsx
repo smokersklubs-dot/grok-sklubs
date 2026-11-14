@@ -143,8 +143,10 @@ function palette(color: string, custom: string | null): Record<string, string> {
     "--chr-shade": ink ? "color-mix(in srgb, var(--ink) 70%, var(--ink-fg))" : dark ? `color-mix(in srgb, ${bg} 65%, #ffffff)` : `color-mix(in srgb, ${bg} 70%, #111215)`,
     "--chr-light": `color-mix(in srgb, ${bg} 30%, #ffffff)`,
     // Dots on a light backdrop: very light colours are deepened so the face stays readable.
+    // Muse eye marks: light on the glow, dark when the body itself is very light.
+    "--chr-eye": ink ? "var(--ink-fg)" : lum > 0.6 ? "#2a2c31" : "#ffffff",
     "--chr-dot-l": ink ? "var(--ink)" : lum > 0.5 ? `color-mix(in srgb, ${bg} 55%, #111215)` : bg,
-    "--chr-dot-d": ink ? "var(--ink)" : lum < 0.08 ? `color-mix(in srgb, ${bg} 45%, #ffffff)` : bg,
+    "--chr-dot-d": ink ? "var(--ink)" : lum < 0.08 ? `color-mix(in srgb, ${bg} 45%, #ffffff)` : lum > 0.5 ? bg : `color-mix(in srgb, ${bg} 72%, #ffffff)`,
     // A thin outline so very dark or very light custom colours never melt into the page.
     "--chr-rim": custom && lum < 0.06 ? "rgba(255,255,255,0.22)" : custom && lum > 0.75 ? "rgba(0,0,0,0.14)" : "transparent",
     "--chr-acc": acc,
@@ -594,7 +596,7 @@ function MuseArt({ state, uid, faceRef, glowRef, levelRef, tx, ty }: { state: Ch
               {[42.5, 57.5].map((x) => (
                 <g key={x} transform={`translate(${x} 51)`}>
                   <g className="chr-eye mu-eye">
-                    <rect x="-1.7" y="-5" width="3.4" height="10" rx="1.7" fill="#fff" opacity="0.92" />
+                    <rect x="-1.7" y="-5" width="3.4" height="10" rx="1.7" style={{ fill: "var(--chr-eye)" }} opacity="0.92" />
                   </g>
                 </g>
               ))}
