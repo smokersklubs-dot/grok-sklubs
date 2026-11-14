@@ -30,6 +30,14 @@ Aucune installation de Node.js n'est nécessaire.
 4. Dans l'application Sklubot : **Réglages › Ordinateurs › Relier un ordinateur**, tape ce code.
 5. C'est relié. La prochaine fois, le Relais se reconnecte tout seul quand tu le lances.
 
+### Relier le Relais à ton serveur Sklubot
+
+- **Adresse** : celle que tu ouvres dans ton navigateur pour Sklubot, par exemple `https://sklubot.mondomaine.fr` (elle est aussi affichée dans **Réglages › Ordinateurs**, avec un bouton **Copier**). Derrière Caddy ou Coolify, rien à configurer : le Relais passe par la même adresse `https://` (WebSocket `wss://…/api/relay/connect`).
+- **Le code** se tape dans **Réglages › Ordinateurs**, champ « Code affiché sur ton ordinateur ». Il vaut 10 minutes et ne sert qu'une fois ; s'il expire, le Relais en affiche un nouveau tout seul. Ne tape jamais un code que quelqu'un t'a donné.
+- Une fois relié, l'ordinateur apparaît dans **Réglages › Ordinateurs** (connecté, en pause, verrouillé, bot aux commandes) et dans le panneau de chaque bot, section **Mon ordinateur**. **Retirer** le déconnecte aussitôt : le Relais efface son accès et propose « Relier à nouveau ».
+- Côté Sklubot, un bot doit aussi obtenir **ton accord dans l'appli** (une carte dans la discussion) pour prendre le contrôle et pour chaque commande — en plus de la fenêtre du Relais. Le bouton **Stop** de l'appli (panneau ou vue en direct) termine la session à distance.
+- Tu peux couper les outils « Mon ordinateur » pour un bot dans ses réglages (Outils).
+
 Quand un bot demande la main, une fenêtre s'ouvre : **Autoriser cette fois**, **Toujours autoriser ce bot** ou **Refuser**. Sans réponse en 60 secondes, c'est refusé. Tu peux retirer une autorisation à tout moment dans la fenêtre du Relais (section « Bots »).
 
 Pour tout effacer : **Oublier ce serveur** (l'adresse, l'accès et les autorisations des bots sont supprimés de cet ordinateur).
@@ -86,6 +94,7 @@ node test/fake-server.js 8787  # faux serveur Sklubot local ; adresse : http://1
 npm test                       # tests unitaires (Node)
 npm run typecheck
 npm run test:e2e               # bout en bout sous Xvfb (Linux) : Xvfb, ImageMagick ; openbox + wmctrl conseillés
+npm run test:e2e:server        # le vrai Relais face au vrai serveur Sklubot (../server, lancé avec tsx, modèle démo)
 npm run dist:linux             # AppImage + .deb + .tar.gz dans dist/
 npm run dist:linux:dir && npm run test:packaged   # bout en bout sur la version empaquetée
 npm run dist:win               # sur Windows (ou Linux avec Wine 32+64 bits pour NSIS)

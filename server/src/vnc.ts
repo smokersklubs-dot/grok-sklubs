@@ -23,13 +23,20 @@ function reject(socket: Duplex, status: number, text: string) {
   socket.destroy();
 }
 
-export function attachLiveScreens(server: Server) {
+/** Another WebSocket endpoint on the same server: returns true when the request was its own (handled or refused). */
+export type UpgradeRoute = (req: IncomingMessage, socket: Duplex, head: Buffer) => boolean;
+
+/** One upgrade listener for the whole server: the routes given (e.g. Sklubot Relais) first, then the live screens. */
+export function attachLiveScreens(server: Server, routes: UpgradeRoute[] = []) {
   const wss = new WebSocketServer({ noServer: true, handleProtocols: (protocols) => (protocols.has("binary") ? "binary" : false), maxPayload: 1_000_000 });
   server.on("upgrade", (req: IncomingMessage, socket: Duplex, head: Buffer) => {
     // A broken connection must never surface as an unhandled error event.
     socket.on("error", () => socket.destroy());
     // Whatever a stranger sends (bad origin, bad cookie, bad path), it is answered, never thrown.
-    try { upgrade(wss, req, socket, head); } catch (err) {
+    try {
+      for (const route of routes) if (route(req, socket, head)) return;
+      upgrade(wss, req, socket, head);
+    } catch (err) {
       console.error("[live screen]", (err as Error)?.message ?? err);
       reject(socket, 400, "Bad Request");
     }

@@ -16,6 +16,7 @@ export DISPLAY="$DISPLAY_NUM"
 # A window manager makes window.list/window.focus testable (desktopCapturer and wmctrl rely on it).
 if command -v openbox >/dev/null; then openbox >/dev/null 2>&1 & WM_PID=$!; trap 'kill $XVFB_PID ${WM_PID:-} 2>/dev/null || true' EXIT; sleep 0.5; fi
 export RELAIS_MODE="$MODE"
-RUN=(node --test --test-concurrency=1 "test/e2e/*.test.js")
+# RELAIS_E2E_FILES picks some files only (e.g. test/e2e/sklubot-server.e2e.test.js); default: all of them.
+RUN=(node --test --test-concurrency=1 "${RELAIS_E2E_FILES:-test/e2e/*.test.js}")
 if command -v dbus-run-session >/dev/null; then RUN=(dbus-run-session -- "${RUN[@]}"); fi
 "${RUN[@]}"

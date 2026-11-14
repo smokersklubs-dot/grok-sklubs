@@ -10,12 +10,14 @@ import { Icon, type IconName } from "./Icon";
 import { ConfirmButton, CopyButton, Empty, ErrorNote, IconButton, Loading, Toggle, useDialogFocus, useEscape, useTick } from "./ui";
 import { useNative } from "./NativeApps";
 import { VaultSection } from "./VaultSection";
+import { DevicesSection } from "./MyComputer";
 import { NotificationsSection } from "./NotificationsSection";
 
 const SECTIONS: { id: AppSection; icon: IconName }[] = [
   { id: "general", icon: "settings" },
   { id: "notifications", icon: "bell" },
   { id: "computer", icon: "monitor" },
+  { id: "devices", icon: "cursor" },
   { id: "permissions", icon: "shield" },
   { id: "connectors", icon: "plug" },
   { id: "vault", icon: "key" },
@@ -692,9 +694,9 @@ function PagesSection() {
 /* ---------- Activity log ---------- */
 
 const AUDIT_PAGE = 50;
-const AUDIT_KINDS: AuditEntry["kind"][] = ["tool", "approval", "routine", "apps", "vault", "channel", "account", "system"];
+const AUDIT_KINDS: AuditEntry["kind"][] = ["tool", "approval", "computer", "routine", "apps", "vault", "channel", "account", "system"];
 const AUDIT_ICON: Record<AuditEntry["kind"], IconName> = {
-  tool: "wrench", approval: "shield", account: "user", apps: "plug", vault: "key", routine: "clock", channel: "send", system: "info",
+  tool: "wrench", approval: "shield", computer: "cursor", account: "user", apps: "plug", vault: "key", routine: "clock", channel: "send", system: "info",
 };
 
 function ActivitySection() {
@@ -1002,7 +1004,7 @@ function AccountSection() {
 
 export function AppSettings({ section }: { section: AppSection }) {
   const { closeAppSettings, openAppSettings } = useStore.getState();
-  const blocked = useStore((s) => !!(s.modal || s.botSettings || s.viewerBotId));
+  const blocked = useStore((s) => !!(s.modal || s.botSettings || s.viewerBotId || s.relayViewerId));
   const root = useRef<HTMLDivElement>(null);
   const t = useT();
   useEscape(closeAppSettings, !blocked);
@@ -1027,6 +1029,7 @@ export function AppSettings({ section }: { section: AppSection }) {
           {section === "general" && <GeneralSection />}
           {section === "notifications" && <NotificationsSection />}
           {section === "computer" && <ComputerSection />}
+          {section === "devices" && <DevicesSection />}
           {section === "permissions" && <PermissionsSection />}
           {section === "connectors" && <ConnectorsSection />}
           {section === "vault" && <VaultSection />}

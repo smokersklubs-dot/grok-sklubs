@@ -221,6 +221,16 @@ function CREATE_EXTRA() {
     created_at INTEGER NOT NULL, last_ok_at INTEGER, failures INTEGER NOT NULL DEFAULT 0
   );
   CREATE INDEX IF NOT EXISTS push_subscriptions_user ON push_subscriptions(user_id);`);
+  // Sklubot Relais (docs/RELAIS-PROTOCOLE.md): the user's own computers. Only hashes of the device token are kept: the
+  // current one and, while a rotation waits for the relay's acknowledgement, the next one. Pending pairings live in
+  // memory only: each is bound to one open connection and lapses with it.
+  db.exec(`
+  CREATE TABLE IF NOT EXISTS relay_devices (
+    id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, name TEXT NOT NULL,
+    platform TEXT NOT NULL DEFAULT '', arch TEXT NOT NULL DEFAULT '', os_release TEXT NOT NULL DEFAULT '', app_version TEXT NOT NULL DEFAULT '',
+    token_hash TEXT NOT NULL, pending_hash TEXT, rotated_at INTEGER NOT NULL, created_at INTEGER NOT NULL, last_seen_at INTEGER
+  );
+  CREATE INDEX IF NOT EXISTS relay_devices_user ON relay_devices(user_id, created_at);`);
 }
 
 type Param = string | number | null | bigint;

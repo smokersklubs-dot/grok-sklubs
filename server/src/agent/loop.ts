@@ -18,6 +18,7 @@ import { videoService } from "../video.js";
 import { nativeToolsFor, runNativeTool, type Risk } from "../native/tools.js";
 import { accounts as nativeAccounts } from "../native/accounts.js";
 import { appVisible, pushLater } from "../push.js";
+import { devices as relayDevices } from "../relay.js";
 
 /**
  * What starts a turn. `tainted`: the turn starts out carrying outside content — a webhook's payload, a
@@ -261,7 +262,9 @@ export async function newTurn(bot: BotRecord, user: UserRecord, depth: number, s
   // A subscription tool has its own shell, file and web tools; ours would only duplicate them.
   // Videos go through the user's Higgsfield app when it is connected (and apps are on for this bot), else a video API.
   const video = bot.disabledTools.includes("video") ? null : bot.disabledTools.includes("apps") ? (videoService() ? "api" : null) : videoRoute(user.id);
-  const builtins = builtinTools({ nativeSearch: nativeSearch || forEngine, disabled: bot.disabledTools, video }).filter((t) => !forEngine || !["shell_run", "web_fetch", "search_web"].includes(t.spec.name));
+  const builtins = builtinTools({ nativeSearch: nativeSearch || forEngine, disabled: bot.disabledTools, video }).filter((t) => !forEngine || !["shell_run", "web_fetch", "search_web"].includes(t.spec.name))
+    // The user's own computers: only for users who linked one with Sklubot Relais.
+    .filter((t) => t.group !== "mycomputer" || relayDevices.count(user.id) > 0);
   const connectorNames = [...new Set(remoteTools.map((t) => t.connectorName))];
   return {
     bot, user, depth, signal, generation: bot.generation,
@@ -510,7 +513,7 @@ export class StreamingRow {
 }
 
 // ── Tool execution, permissions, approvals ───────────────────────────────────
-export type Verdict = { kind: "allow" } | { kind: "block" } | { kind: "ask"; policyKey: string; title: string; reason: string; source: string; /** Extra line for the card, under the arguments. */ note?: string };
+export type Verdict = { kind: "allow" } | { kind: "block" } | { kind: "ask"; policyKey: string; title: string; reason: string; source: string; /** Extra line for the card, under the arguments. */ note?: string; /** "Always" is not offered. */ once?: boolean };
 
 /** After outside content, these carry what the bot read further — to the public, to later turns, to other bots — so they ask first. */
 const CARRIES_FURTHER: Record<string, string> = {
@@ -558,7 +561,7 @@ export function judge(turn: Turn, call: ToolUseBlock): Verdict {
     // A strict gate asks every time, whatever was allowed before (e.g. a secret after reading outside content).
     if (p === "always_allow" && !gate.strict) return { kind: "allow" };
     const vars = { ...gate.vars, ...(gate.vars.field ? { field: tr(loc, gate.vars.field) } : {}) };
-    return { kind: "ask", policyKey: gate.key, title: tr(loc, gate.title, { bot: bot.name, ...vars }), reason: tr(loc, gate.reason, vars), source: tr(loc, gate.source), note: gate.note ? tr(loc, gate.note, vars) : undefined };
+    return { kind: "ask", policyKey: gate.key, title: tr(loc, gate.title, { bot: bot.name, ...vars }), reason: tr(loc, gate.reason, vars), source: tr(loc, gate.source), note: gate.note ? tr(loc, gate.note, vars) : undefined, once: gate.once || undefined };
   }
   const key = builtin ? call.name : `${remote!.connectorName}: ${remote!.remoteName}`;
   const policy = policies.get(user.id, key);
@@ -674,7 +677,7 @@ async function processCalls(turn: Turn, st: PausedTurn): Promise<"continue" | "e
     decided = null;
     if (verdict.kind === "ask") {
       const approvalId = newId("apr");
-      const card = rows.append(bot, { kind: "card", card: { type: "approval", approvalId, title: verdict.title, detail: cardDetail(call, verdict), tool: verdict.policyKey, source: verdict.source, status: "pending" } });
+      const card = rows.append(bot, { kind: "card", card: { type: "approval", approvalId, title: verdict.title, detail: cardDetail(call, verdict), tool: verdict.policyKey, source: verdict.source, status: "pending", ...(verdict.once ? { once: true } : {}) } });
       approvals.create(bot.id, user.id, st.generation, card.seq, verdict.policyKey, approvalId);
       setStep(turn, st, call, "waiting");
       st.approvalId = approvalId;
@@ -800,7 +803,7 @@ const waiters = new Map<string, (status: string) => void>();
 export async function waitForApproval(turn: Turn, call: ToolUseBlock, verdict: Extract<Verdict, { kind: "ask" }>): Promise<"allowed" | "always" | "denied" | "expired"> {
   const { bot, user } = turn;
   const approvalId = newId("apr");
-  const card = rows.append(bot, { kind: "card", card: { type: "approval", approvalId, title: verdict.title, detail: cardDetail(call, verdict), tool: verdict.policyKey, source: verdict.source, status: "pending" } });
+  const card = rows.append(bot, { kind: "card", card: { type: "approval", approvalId, title: verdict.title, detail: cardDetail(call, verdict), tool: verdict.policyKey, source: verdict.source, status: "pending", ...(verdict.once ? { once: true } : {}) } });
   approvals.create(bot.id, user.id, bot.generation, card.seq, verdict.policyKey, approvalId);
   setLive(user.id, bot.id, { running: false, activity: { kind: "waiting", since: Date.now() }, awaiting: { reason: verdict.reason, since: Date.now() } });
   emit(user.id, { type: "tasks", botId: bot.id });
@@ -826,6 +829,9 @@ export function decideApproval(userId: string, approvalId: string, decision: "al
   if (approval.status !== "pending") return true;
   const bot = bots.byId(approval.botId);
   if (!bot) return false;
+  // A card that does not offer "Always" (e.g. a command on the user's computer after outside content) counts it as once.
+  const card = rows.get(bot.id, approval.generation, approval.seq);
+  if (decision === "always" && card?.body.kind === "card" && card.body.card.type === "approval" && card.body.card.once) decision = "allow";
   const status = decision === "allow" ? "allowed" : decision === "always" ? "always" : "denied";
   approvals.resolve(approvalId, status);
   if (decision === "always") policies.set(userId, approval.tool, "always_allow");

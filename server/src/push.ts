@@ -91,7 +91,7 @@ export function vapidHeader(endpoint: string, at = Date.now()): string {
 interface SubRow { id: string; user_id: string; endpoint: string; p256dh: string; auth_enc: string; label: string; enabled: number; created_at: number; last_ok_at: number | null; failures: number }
 const toDevice = (r: SubRow): PushDevice => ({ id: r.id, label: r.label, enabled: !!r.enabled, createdAt: r.created_at, lastOkAt: r.last_ok_at, failures: r.failures });
 
-export const DEFAULT_PUSH: PushSettings = { kinds: { needs: true, gem: true, reply: true, routine: true }, quiet: { enabled: false, start: "22:00", end: "07:00", timezone: "UTC" } };
+export const DEFAULT_PUSH: PushSettings = { kinds: { needs: true, gem: true, reply: true, routine: true, computer: true }, quiet: { enabled: false, start: "22:00", end: "07:00", timezone: "UTC" } };
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 export function pushSettings(userId: string): PushSettings {

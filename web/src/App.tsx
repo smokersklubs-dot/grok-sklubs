@@ -6,6 +6,7 @@ import { AppSettings } from "./components/AppSettings";
 import { BotSettings } from "./components/BotSettings";
 import { ChatView } from "./components/ChatView";
 import { ComputerViewer } from "./components/ComputerViewer";
+import { RelayViewer } from "./components/MyComputer";
 import { HistoryViewer } from "./components/HistoryViewer";
 import { DetailsPanel } from "./components/DetailsPanel";
 import { ConnectorsModal, CreateBotModal, CreateRoomModal } from "./components/Modals";
@@ -21,7 +22,7 @@ function useShortcuts(): void {
     const onKey = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
       const s = useStore.getState();
-      if (s.boot !== "ready" || s.viewerBotId || s.history) return;
+      if (s.boot !== "ready" || s.viewerBotId || s.relayViewerId || s.history) return;
       const key = e.key.toLowerCase();
       const comma = e.code === "Comma" || key === "," || key === "<";
       if (key === "k" && !e.shiftKey) {
@@ -93,6 +94,7 @@ function Shell() {
   const botSettings = useStore((s) => s.botSettings);
   const appSettings = useStore((s) => s.appSettings);
   const viewerBotId = useStore((s) => s.viewerBotId);
+  const relayViewerId = useStore((s) => s.relayViewerId);
   const toast = useStore((s) => s.toast);
   const history = useStore((s) => s.history);
   const openModal = useStore((s) => s.openModal);
@@ -116,6 +118,7 @@ function Shell() {
       {modal?.kind === "duplicate" && <DuplicateBotModal key={modal.botId} botId={modal.botId} onClose={close} />}
       {modal?.kind === "connectors" && <ConnectorsModal key={modal.prefill ? `${modal.prefill.botId}:${modal.prefill.seq}` : "all"} onClose={close} prefill={modal.prefill} />}
       {viewerBotId && <ComputerViewer key={viewerBotId} botId={viewerBotId} />}
+      {relayViewerId && <RelayViewer key={relayViewerId} deviceId={relayViewerId} />}
 
       {history && <HistoryViewer key={`${history.botId}:${history.generation}:${history.seq}`} target={history} />}
 

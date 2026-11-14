@@ -35,10 +35,16 @@ function Approval({ card }: { card: ApprovalCard }) {
   const source = card.source || card.tool;
   // Saved logins: the server sends source "Vault" and tool "vault: <item name>".
   const vault = card.source === "Vault";
+  // The user's own computer (Sklubot Relais): tool "mycomputer: control|command|url: <bot>".
+  const relay = card.tool.startsWith("mycomputer:");
   return (
     <div className="card">
       <div className="card-head">
-        {vault ? (
+        {relay ? (
+          <span className="logo-tile is-relay" aria-hidden="true">
+            <Icon name="monitor" size={18} />
+          </span>
+        ) : vault ? (
           <span className="logo-tile is-vault" role="img" aria-label={t("approval.vault")} title={t("approval.vault")}>
             <Icon name="key" size={18} />
           </span>
@@ -51,6 +57,7 @@ function Approval({ card }: { card: ApprovalCard }) {
         </div>
       </div>
       {card.detail && <pre className="card-detail">{card.detail}</pre>}
+      {card.once && card.status === "pending" && <p className="card-note">{t("approval.onceOnly")}</p>}
       {card.status === "pending" ? (
         <>
           <div className="card-actions">
@@ -58,9 +65,11 @@ function Approval({ card }: { card: ApprovalCard }) {
               {t(busy === "deny" ? "approval.denying" : "approval.deny")}
             </button>
             <span className="spacer" />
-            <button type="button" className="btn" disabled={busy !== null} onClick={() => void decide("always")} title={t("approval.alwaysTitle")}>
-              {t(busy === "always" ? "common.saving" : "approval.alwaysBtn")}
-            </button>
+            {!card.once && (
+              <button type="button" className="btn" disabled={busy !== null} onClick={() => void decide("always")} title={t("approval.alwaysTitle")}>
+                {t(busy === "always" ? "common.saving" : "approval.alwaysBtn")}
+              </button>
+            )}
             <button type="button" className="btn btn-accent" disabled={busy !== null} onClick={() => void decide("allow")}>
               {t(busy === "allow" ? "approval.allowing" : "approval.allow")}
             </button>

@@ -316,3 +316,32 @@ a.btn { text-decoration: none; }
 .callout.is-info { background: var(--info-soft); color: var(--info); margin-bottom: 10px; }
 .duplicate-head { display: flex; align-items: center; gap: 12px; }
 .duplicate-head p { margin: 0; }
+
+/* Sklubot Relais: the user's own computers */
+.logo-tile.is-relay { background: var(--accent-soft, var(--surface-2)); color: var(--accent, var(--text)); }
+.audit-icon.is-computer { background: var(--warn-soft); color: var(--warn); }
+.relay-dot { display: inline-block; width: 7px; height: 7px; margin-right: 3px; border-radius: 50%; vertical-align: 1px; background: var(--text-3); }
+.relay-dot.is-on { background: var(--ok); }
+.relay-dot.is-busy { background: var(--danger); animation: pulse 1.4s ease-in-out infinite; }
+.relay-dot.is-locked { background: var(--warn); }
+.relay-list { display: flex; flex-direction: column; gap: 8px; }
+.relay-card-stop { display: flex; justify-content: flex-end; margin-top: 6px; }
+.relay-empty { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.relay-stop { gap: 5px; }
+.viewer .btn-danger, .viewer .btn.relay-stop { background: var(--danger); border-color: transparent; color: #fff; }
+.viewer .btn-danger:hover:not(:disabled) { background: color-mix(in srgb, var(--danger) 86%, #000); }
+.relay-stage .relay-frame.is-still { filter: brightness(0.4) grayscale(0.5); }
+.relay-stage .viewer-empty.relay-over { position: absolute; inset: 0; margin: auto; height: fit-content; background: rgba(12, 13, 15, 0.72); border-radius: 14px; }
+.viewer-control-bar.is-relay { background: rgba(229, 72, 77, 0.2); border-top-color: rgba(229, 72, 77, 0.45); color: #fbd5d6; gap: 6px; }
+.relay-pair { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; margin: 12px 0 18px; border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface); }
+.relay-pair .pane-heading { margin: 0; padding-top: 0; border-top: 0; }
+.relay-downloads { display: inline-flex; flex-wrap: wrap; gap: 6px; vertical-align: middle; }
+.relay-address { margin-top: 6px; max-width: 460px; }
+.relay-code-form { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.relay-code { width: 190px; font-family: var(--mono); font-size: 20px; font-weight: 650; letter-spacing: 0.14em; text-align: center; text-transform: uppercase; }
+.relay-linked { display: inline-flex; align-items: center; gap: 6px; color: var(--ok); font-weight: 600; font-size: 13.5px; }
+.relay-row .page-row-head { flex-wrap: wrap; }
+.relay-row .list-row-text { flex: 1; min-width: 180px; }
+.event.is-relay .event-line { padding: 3px 11px; border-radius: 999px; background: var(--surface-2); color: var(--text-2); font-weight: 550; max-width: 560px; }
+.event.is-relay.is-warn .event-line { background: var(--warn-soft); color: var(--warn); }
+.card-note { font-size: 12.5px; color: var(--text-3); }

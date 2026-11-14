@@ -12,6 +12,7 @@ import { canCall, canSpeak, makeUtterance, useVoices } from "../lib/speech";
 import { BotAvatar } from "./Avatar";
 import { SubscriptionBadge } from "./Brain";
 import { LiveScreen } from "./LiveScreen";
+import { MyComputerSection } from "./MyComputer";
 import { Icon, Spinner } from "./Icon";
 import { Empty, ErrorNote, IconButton, Loading, Toggle } from "./ui";
 
@@ -583,6 +584,7 @@ export function DetailsPanel() {
             {!isRoom && <GemsSection key={`g${bot.id}`} bot={bot} />}
             {isRoom && <Members room={bot} />}
             {!isRoom && <ComputerSection key={`c${bot.id}`} bot={bot} />}
+            {!isRoom && !bot.disabledTools.includes("mycomputer") && <MyComputerSection />}
             {!isRoom && <VoiceSection key={`v${bot.id}`} bot={bot} />}
           </>
         )}

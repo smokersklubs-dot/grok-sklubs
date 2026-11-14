@@ -12,6 +12,7 @@ import { defaultModelRef, listProviders } from "./llm/index.js";
 import { api, site } from "./routes.js";
 import { startScheduler } from "./scheduler.js";
 import { attachLiveScreens } from "./vnc.js";
+import { relayUpgrade } from "./relay.js";
 import { recoverInterruptedTurns } from "./agent/loop.js";
 import { telegram } from "./telegram.js";
 import { closeSlackSockets } from "./native/triggers.js";
@@ -59,7 +60,7 @@ const server = serve({ fetch: app.fetch, port: config.port }, () => {
   process.on("unhandledRejection", (err) => console.error("[unhandled rejection]", err));
 });
 
-attachLiveScreens(server as unknown as import("node:http").Server);
+attachLiveScreens(server as unknown as import("node:http").Server, [relayUpgrade]);
 
 async function shutdown() {
   server.close();

@@ -9,7 +9,7 @@ import { relTime } from "../lib/format";
 import { Icon } from "./Icon";
 import { ConfirmButton, ErrorNote, Loading, Toggle } from "./ui";
 
-const KINDS: PushKind[] = ["needs", "gem", "reply", "routine"];
+const KINDS: PushKind[] = ["needs", "gem", "reply", "routine", "computer"];
 const browserZone = () => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"; } catch { return "UTC"; } };
 
 export function NotificationsSection() {

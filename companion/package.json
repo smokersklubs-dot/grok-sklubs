@@ -24,6 +24,7 @@
     "dev": "SKLUBOT_RELAIS_DEBUG=1 electron .",
     "test": "node --test \"test/unit/*.test.js\"",
     "test:e2e": "bash test/run-e2e.sh",
+    "test:e2e:server": "RELAIS_E2E_FILES=test/e2e/sklubot-server.e2e.test.js bash test/run-e2e.sh",
     "test:packaged": "bash test/run-e2e.sh packaged",
     "typecheck": "tsc -p jsconfig.json",
     "dist:linux": "electron-builder --linux --publish never",

@@ -4,7 +4,7 @@ import { getLocale, isLocale, setLocale as applyLocale, t } from "./i18n";
 import { notifyBot } from "./lib/notify";
 import { startPresence } from "./lib/push";
 import { playShout, startEuphoria } from "./lib/cheer";
-import type { Attachment, Bot, BotBundle, BotSection, ComputerState, Connector, Live, Locale, NativeAccount, NativeApp, NativeVendorSetup, ReactionEmoji, Recording, Routine, Row, ServerEvent, Task, User, VideoStatus } from "./types";
+import type { Attachment, Bot, BotBundle, BotSection, ComputerState, Connector, Live, Locale, NativeAccount, NativeApp, NativeVendorSetup, ReactionEmoji, Recording, RelayDevice, RelayDownloads, Routine, Row, ServerEvent, Task, User, VideoStatus } from "./types";
 
 export interface NativeState { apps: NativeApp[]; vendors: NativeVendorSetup[]; accounts: NativeAccount[] }
 
@@ -17,7 +17,7 @@ export type ModalState =
   | { kind: "duplicate"; botId: string }
   | { kind: "connectors"; prefill?: { name: string; botId: string; seq: number } };
 export type BotSettingsTab = "general" | "skills" | "memories" | "routines" | "telegram";
-export type AppSection = "general" | "notifications" | "computer" | "permissions" | "connectors" | "vault" | "pages" | "usage" | "checkins" | "activity" | "team" | "account";
+export type AppSection = "general" | "notifications" | "computer" | "devices" | "permissions" | "connectors" | "vault" | "pages" | "usage" | "checkins" | "activity" | "team" | "account";
 
 /** A short message at the bottom of the window, optionally with one action (usually "Undo"). */
 export interface Toast { id: number; text: string; action?: { label: string; run: () => void | Promise<void> } }
@@ -143,6 +143,11 @@ interface Store {
   bundles: Record<string, BotBundle>;
   tasks: Task[] | null;
   computer: ComputerState | null;
+  /** The user's own computers linked with Sklubot Relais (null until loaded), and where to download the app. */
+  relay: RelayDevice[] | null;
+  relayDownloads: RelayDownloads | null;
+  /** The user's computer shown full size (live view), by device id. */
+  relayViewerId: string | null;
   connectors: Connector[] | null;
   connectorsError: string | null;
   /** Built-in apps (Gmail, Outlook, Slack…): what they offer, the user's OAuth clients and signed-in accounts. */
@@ -192,6 +197,9 @@ interface Store {
   toggleRoutine(routine: Routine, enabled: boolean): Promise<void>;
   loadTasks(): Promise<void>;
   loadComputer(): Promise<void>;
+  loadRelay(): Promise<void>;
+  openRelayViewer(deviceId: string): void;
+  closeRelayViewer(): void;
   loadConnectors(): Promise<void>;
   loadNative(): Promise<void>;
   loadSections(): Promise<void>;
@@ -274,6 +282,9 @@ export const useStore = create<Store>((set, get) => ({
   bundles: {},
   tasks: null,
   computer: null,
+  relay: null,
+  relayDownloads: null,
+  relayViewerId: null,
   connectors: null,
   connectorsError: null,
   native: null,
@@ -345,6 +356,7 @@ export const useStore = create<Store>((set, get) => ({
     set({ boot: "ready" });
     void get().loadTasks();
     void get().loadComputer();
+    void get().loadRelay();
     void get().loadConnectors();
     void get().loadSections();
     // Opened from a push notification (/?bot=<id>): show that bot, then tidy the address.
@@ -501,6 +513,23 @@ export const useStore = create<Store>((set, get) => ({
     }
   },
 
+  async loadRelay() {
+    try {
+      const r = await api<{ devices: RelayDevice[]; downloads: RelayDownloads }>("GET", "/relay/devices");
+      set({ relay: r.devices, relayDownloads: r.downloads });
+    } catch {
+      set((s) => ({ relay: s.relay ?? [] }));
+    }
+  },
+
+  openRelayViewer(deviceId) {
+    set({ relayViewerId: deviceId });
+  },
+
+  closeRelayViewer() {
+    set({ relayViewerId: null });
+  },
+
   async loadComputer() {
     try {
       set({ computer: await api<ComputerState>("GET", "/computer") });
@@ -640,6 +669,9 @@ export const useStore = create<Store>((set, get) => ({
         }
         break;
       }
+      case "relay":
+        set({ relay: ev.devices });
+        break;
       case "computer":
         set({ computer: ev.computer });
         break;
@@ -700,6 +732,7 @@ export const useStore = create<Store>((set, get) => ({
     const s = get();
     void s.loadBots().catch(() => undefined);
     void s.loadComputer();
+    void s.loadRelay();
     void s.loadTasks();
     void s.loadConnectors();
     const id = s.selectedId;

@@ -297,3 +297,54 @@ so it cannot be bound to a host.
 | POST | `/bots/:id/duplicate` | `{ name?, memories?: boolean, conversation?: boolean }` | `{ bot }` — copies settings, look, instructions, tools, skills; memories and the current conversation only when asked |
 
 Server events: `{ type: "sections" }`, `{ type: "vault" }`.
+
+## Sklubot Relais — the user's own computers
+
+Server side of protocol v1 ([`RELAIS-PROTOCOLE.md`](RELAIS-PROTOCOLE.md)), in `server/src/relay.ts`; the bots' tools in
+`server/src/agent/mycomputer.ts`. Table `relay_devices` (owner, name/OS/version from the relay's `hello`, last seen,
+SHA-256 of the current token and of the token being rotated). Pending pairings live in memory: each is bound to its open
+connection and lapses with it.
+
+### WebSocket endpoints (same server, one upgrade listener in `vnc.ts`)
+| Path | Who | Notes |
+|---|---|---|
+| `GET /api/relay/connect` | the relay app | Refused (403) when an `Origin` header is present: browsers always send one, the relay never does. `maxPayload` 5 MiB (over it: 1009), pings every 30 s (dead peers cut), `hello` within 10 s, >200 messages/s → 4008, binary/bad JSON/missing `type`/anything before `hello` → 4400, `v` ≠ 1 → 4009, unknown or wrong token → 4001, revoked → `revoke` then 4003, a newer connection of the same device closes the older with 4010, at most 10 connections not yet authenticated per address (and 5 pairings) → 1013. Unknown types and stray answers are ignored. Works through Caddy/Coolify (`wss://`); set `TRUST_PROXY=1` there so limits apply per client. |
+| `GET /api/relay/devices/:id/view` | the web app (session cookie, same origin) | Live view: `{type:"status", view:"idle"|"starting"|"live"|"stopped"|"offline"}` and `{type:"frame", seq, width, height, data(base64 JPEG), still?}`; the browser answers `{type:"ack", seq}`. The server sends `view.start` (as the session's bot, 3 fps, ≤ 1280 px) when the first viewer joins during a control session, acknowledges each frame to the relay once every viewer has shown it (5 s at most), and sends `view.stop` when the last viewer leaves. |
+
+Pairing: `hello` with `auth: null` → `pair.code` (8 characters from `ABCDEFGHJKMNPQRSTUVWXYZ23456789`, CSPRNG, shown
+`XXXX-XXXX`, 10 min, single use; a new code on the same connection when it expires, 3 at most, then 4004). Once typed in
+the web app: the device is created with the token's hash, `paired { deviceId, token, serverName }` is sent, then
+`welcome` on `token.ack`. A known device gets `welcome` then `token.rotate` on every connection (and every 24 h on a
+long one); the old token stays valid until `token.ack`, and a relay that saved the new token but lost its ack is let in
+with it.
+
+### HTTP
+| Method | Path | Body | Returns |
+|---|---|---|---|
+| GET | `/relay/devices` | – | `{ devices: RelayDevice[], downloads: RelayDownloads }` — `downloads.files`: `Sklubot-Relais-*` files under `web/dist/download/` (served at `/download/…`), `releasesUrl`: the project's GitHub releases page |
+| POST | `/relay/pairings` | `{ code }` (case, spaces and dash ignored) | `{ device }` — 400 when no pending code matches (compared in constant time), 429 after 5 tries per account (20 per address) in 10 min; audited, pushed |
+| DELETE | `/relay/devices/:id` | – | `{ ok }` — sends `revoke`, closes 4003, deletes the device (its token stops working) |
+| POST | `/relay/devices/:id/stop` | – | `{ ok }` — "Stop": cancels running commands, sends `session.end` as the session's bot, and keeps that bot from taking control of that computer on its own for 10 min (until the user writes to it) |
+| GET | `/relay/devices/:id/last` | – | the last picture seen (a bot's screenshot or the live view), `image/jpeg`, or 204 |
+
+`RelayDevice`: `{ id, name, platform, arch, osRelease, appVersion, status: "online"|"offline"|"paused", locked, session: { botId, botName, grant, since } | null, asking: { botId, botName, kind, since } | null, screen, capabilities, createdAt, lastSeenAt }`.
+Server event `{ type: "relay", devices }` on every change. Chat rows `{ kind: "event", event: "relay", text, tone }` for
+session started/ended (with the reason, or "you stopped it from Sklubot"), Stop pressed on the computer (`relay.locked`),
+and refusals on the computer. Push kind `computer` (linked, control asked/taken/ended, Stop, a command ran) and audit
+kind `computer` (pairing, wrong codes, sessions, every command with its text, removal).
+
+### Bot tools (group `mycomputer`, offered only once the user has linked a computer; can be switched off per bot)
+`my_computers`, `my_screen` (screenshot as an image to the model), `my_click`, `my_drag`, `my_scroll`, `my_type`,
+`my_key`, `my_open` (URL or app), `my_windows`, `my_window_focus`, `my_command` (`shell.run`), `my_release`
+(`session.end`). Optional `device` (name) when several computers are connected. Coordinates are in the pixels of the
+last screenshot and are scaled to screen points (§6). Actions return a fresh screenshot.
+- Approval cards, on top of the relay's own questions: taking control (`mycomputer: control: <bot>`) when the bot has no
+  session on that computer; every command (`mycomputer: command: <bot>`); both ask every time after outside content
+  (strict), and a command after outside content gets a card without "Always" (`Card.once`; choosing it anyway counts as
+  once). Opening a URL after outside content asks every time (`mycomputer: url: <bot>`).
+- Results from the computer (screenshots, window titles, command output) are outside content: the turn becomes careful.
+- No automatic retry on `consent_*`, `command_refused`, `locked`, `rate_limited`, `busy`, `permission_missing`: the bot
+  is told not to insist (with `retryAfterMs` when given) and the user sees a line in the chat. `locked` and `busy` are
+  answered by the server without bothering the computer. `no_session` from the relay: `session.start` (with the bot's
+  reason) then the request once more, only when "Always" covers control and the turn is not tainted; otherwise the bot is
+  sent back through the approval card.

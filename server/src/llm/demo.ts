@@ -13,6 +13,15 @@ function plan(text: string, has: (name: string) => boolean): Block[] | null {
   const url = /https?:\/\/\S+/.exec(text)?.[0];
   const quoted = /"([^"]+)"/.exec(text)?.[1];
   const lower = text.toLowerCase();
+  // The user's own computer (Sklubot Relais): "look at my screen", "run "ls" on my computer", "click 200 120 on my computer".
+  if (/\b(my computer|my screen|my pc|mon ordinateur|mon ordi|mon écran|mon pc)\b/.test(lower)) {
+    if (/\b(run|lance|exécute|execute)\b/.test(lower) && quoted) return call("my_command", { command: quoted });
+    const at = /\b(\d{1,4})\D{1,3}(\d{1,4})\b/.exec(text);
+    if (/\b(click|clique)\b/.test(lower) && at) return call("my_click", { x: Number(at[1]), y: Number(at[2]) });
+    if (url && /\b(open|ouvre)\b/.test(lower)) return call("my_open", { url });
+    if (/\b(stop|rends|release|give back)\b/.test(lower)) return call("my_release", {});
+    return call("my_screen", { reason: quoted ?? (/[àâçéèêëîïôûùüÿœ]/.test(lower) || /\b(mon|ma|regarde)\b/.test(lower) ? "Voir ton écran pour t'aider." : "See your screen to help you.") });
+  }
   if (url && /\b(open|ouvre|visit|go to|va sur)\b/.test(lower)) return call("browser_open", { url });
   if (url) return call("web_fetch", { url });
   if (/\b(remember|retiens|souviens)\b/.test(lower)) return call("memory_save", { text: quoted ?? text.replace(/^.*?(remember|retiens|souviens[- ]toi)( that| que)?/i, "").trim() });

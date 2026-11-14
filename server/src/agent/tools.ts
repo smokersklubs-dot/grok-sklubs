@@ -25,6 +25,7 @@ import { pushLater } from "../push.js";
 import { generatePassword, parseTotp, totpNow } from "../totp.js";
 import { seal } from "../auth.js";
 import { createRoom, deliverBotMessage, dispatchToRoom, MAX_HELPERS, MAX_HOPS, startHelper } from "./team.js";
+import { myComputerTools } from "./mycomputer.js";
 
 export interface ToolContext {
   bot: BotRecord; user: UserRecord; depth: number; signal: AbortSignal;
@@ -50,7 +51,7 @@ export interface BuiltinTool {
   /** Sensitive tools ask first unless the bot is trusted with them. */
   sensitive?: boolean;
   /** Asks permission per call under its own key (English templates; {bot} and the vars are filled in). */
-  gate?: (args: Record<string, any>, ctx: { botId: string; tainted: boolean }) => { key: string; title: string; reason: string; source: string; vars: Record<string, string>; /** Extra line on the card (English template). */ note?: string; /** Ask even when "Always" was chosen before. */ strict?: boolean } | null;
+  gate?: (args: Record<string, any>, ctx: { botId: string; tainted: boolean }) => { key: string; title: string; reason: string; source: string; vars: Record<string, string>; /** Extra line on the card (English template). */ note?: string; /** Ask even when "Always" was chosen before. */ strict?: boolean; /** Do not offer "Always" on the card. */ once?: boolean } | null;
   /** Family this tool belongs to; a bot can have whole families switched off. */
   group?: ToolGroup;
   /** Its result comes from outside (a web page, a search): it is marked as such for the model, and the turn becomes more careful. */
@@ -914,6 +915,8 @@ function assemble(opts: { nativeSearch?: boolean; video?: "connector" | "api" | 
     ...inGroup("vault", vaultTools),
     ...(browserAvailable() ? inGroup("vault", screenVaultTools).map(respectDriver) : []),
     ...(opts.video ? inGroup("video", videoTools) : []),
+    // The user's own computers (Sklubot Relais): offered by newTurn only to users who linked one.
+    ...myComputerTools,
     ...inGroup("memory", memoryTools), ...inGroup("routines", routineTools), ...inGroup("tasks", taskTools), ...inGroup("team", teamTools), ...userTools.filter((t) => t.spec.name !== "ask_takeover" || browserAvailable()), ...reactTools,
   ];
 }

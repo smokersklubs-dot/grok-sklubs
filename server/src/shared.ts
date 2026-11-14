@@ -9,7 +9,7 @@ export type AvatarShape = (typeof AVATAR_SHAPES)[number];
 export type AvatarColor = (typeof AVATAR_COLORS)[number];
 
 /** Families of tools that can be switched off for a bot. */
-export const TOOL_GROUPS = ["computer", "shell", "web", "files", "memory", "routines", "tasks", "team", "apps", "vault", "images", "video", "pages"] as const;
+export const TOOL_GROUPS = ["computer", "shell", "web", "files", "memory", "routines", "tasks", "team", "apps", "vault", "images", "video", "pages", "mycomputer"] as const;
 export type ToolGroup = (typeof TOOL_GROUPS)[number];
 /** Who answers a message nobody is mentioned in: the first member, every member, or nobody. */
 export type RoomRule = "lead" | "everyone" | "mentions";
@@ -133,11 +133,13 @@ export type RowBody =
   | { kind: "message"; role: "user" | "assistant"; text: string; streaming?: boolean; origin?: Origin; sources?: { url: string; title?: string }[]; attachments?: Attachment[]; reactions?: Reaction[]; replies?: Replies }
   | { kind: "step"; callId: string; tool: string; label: string; status: "running" | "done" | "error" | "waiting" | "denied"; args: Record<string, unknown>; summary?: string }
   | { kind: "card"; card: Card }
-  | { kind: "event"; event: "routine" | "task" | "bot" | "reset" | "computer" | "call" | "members" | "cheer"; text: string; call?: CallRecord; gem?: Gem }
+  /** `relay`: something happened on one of the user's own computers (Sklubot Relais): a control session started or ended, Stop was pressed, a request was refused there. */
+  | { kind: "event"; event: "routine" | "task" | "bot" | "reset" | "computer" | "call" | "members" | "cheer" | "relay"; text: string; call?: CallRecord; gem?: Gem; tone?: "info" | "warn" }
   | { kind: "notice"; tone: "info" | "warn" | "error"; text: string };
 
 export type Card =
-  | { type: "approval"; approvalId: string; title: string; detail: string; tool: string; source: string; status: "pending" | "allowed" | "always" | "denied" | "expired" }
+  /** `once`: "Always" is not offered (e.g. a command on the user's own computer after outside content); choosing it anyway counts as allowing once. */
+  | { type: "approval"; approvalId: string; title: string; detail: string; tool: string; source: string; status: "pending" | "allowed" | "always" | "denied" | "expired"; once?: boolean }
   | { type: "question"; question: string; options: string[]; status: "pending" | "answered" | "dismissed"; answer?: string }
   | { type: "connect"; name: string; hint: string; reason: string; status: "pending" | "connected" | "skipped" }
   /** The bot needs the user on its screen (CAPTCHA, 2FA code, login, payment…) and waits until they hand it back, or `expiresAt`. */
@@ -188,7 +190,7 @@ export interface Routine {
 export interface RoutineRun { id: string; routineId: string; at: number; status: "running" | "done" | "quiet" | "error"; note: string }
 
 /** One line of the account's activity log. Never edited or deleted. */
-export interface AuditEntry { id: number; at: number; botId: string | null; kind: "tool" | "approval" | "account" | "apps" | "vault" | "routine" | "channel" | "system"; text: string }
+export interface AuditEntry { id: number; at: number; botId: string | null; kind: "tool" | "approval" | "account" | "apps" | "vault" | "routine" | "channel" | "system" | "computer"; text: string }
 
 export interface TelegramStatus { connected: boolean; username: string | null; linked: boolean; linkCode: string | null }
 
@@ -272,7 +274,7 @@ export interface VaultImportResult { imported: number; skipped: number; totp: nu
 
 // ── Push notifications (Web Push) ──────────────────────────────────────────
 /** What can be pushed: a bot needs the user, a gem, a reply finished while the app was hidden, a routine's result. */
-export const PUSH_KINDS = ["needs", "gem", "reply", "routine"] as const;
+export const PUSH_KINDS = ["needs", "gem", "reply", "routine", "computer"] as const;
 export type PushKind = (typeof PUSH_KINDS)[number];
 /** One browser or phone that receives push notifications. Its keys never leave the server. */
 export interface PushDevice { id: string; label: string; enabled: boolean; createdAt: number; lastOkAt: number | null; failures: number }
@@ -360,6 +362,31 @@ export interface Recording {
   draft: SkillDraft | null;
 }
 
+// ── Sklubot Relais: the user's own computers (docs/RELAIS-PROTOCOLE.md) ─────────────
+/**
+ * One of the user's own computers, linked through the Sklubot Relais app. The device token is stored only as a hash
+ * and never leaves the server. Live fields (status, locked, session, asking, screen) come from its open connection.
+ */
+export interface RelayDevice {
+  id: string; name: string;
+  /** From the relay's hello: "darwin" | "win32" | "linux"…, the CPU, the OS release and the relay's version. */
+  platform: string; arch: string; osRelease: string; appVersion: string;
+  /** "paused": the user paused the relay on that computer (it said bye); "offline": no connection. */
+  status: "online" | "offline" | "paused";
+  /** The user pressed Stop on the computer: everything is refused until they re-allow control there. */
+  locked: boolean;
+  /** The bot that has the control session on that computer, if any. */
+  session: { botId: string; botName: string; grant: "once" | "always" | "test"; since: number } | null;
+  /** A consent question is open on the computer right now. */
+  asking: { botId: string; botName: string; kind: "session" | "command"; since: number } | null;
+  /** Main screen size in logical points, from the hello. */
+  screen: { width: number; height: number } | null;
+  capabilities: string[];
+  createdAt: number; lastSeenAt: number | null;
+}
+/** Where to get the relay app: built files served by this server under /download/, else the project's releases page. */
+export interface RelayDownloads { files: { name: string; url: string; platform: "windows" | "mac" | "linux"; size: number }[]; releasesUrl: string }
+
 /** Server → browser events on GET /api/events (one JSON object per SSE message). */
 export type ServerEvent =
   | { type: "hello"; now: number }
@@ -385,4 +412,6 @@ export type ServerEvent =
   /** The user's sidebar sections changed. */
   | { type: "sections" }
   /** Vault items changed (a secret saved from a card, an import…). */
-  | { type: "vault" };
+  | { type: "vault" }
+  /** The user's linked computers or their live state changed (connection, session, Stop, a question on screen). */
+  | { type: "relay"; devices: RelayDevice[] };

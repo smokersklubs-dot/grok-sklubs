@@ -44,11 +44,12 @@ import { appOf, appsFor, nativeRedirectUri, setupDocs, setupSteps, VENDOR_NAMES,
 import { syncSlackSockets } from "./native/triggers.js";
 import { isNativeTrigger } from "./routines.js";
 import type { NativeVendor, NativeVendorSetup } from "./shared.js";
+import { confirmPairing, lastFrame, listDevices, relayDownloads, revokeDevice, stopSession, userSpoke as relayUserSpoke } from "./relay.js";
 
 type Env = { Variables: { user: UserRecord } };
 export const api = new Hono<Env>();
 
-class HttpError extends Error { constructor(public status: 400 | 401 | 403 | 404 | 409 | 413 | 502, message: string) { super(message); } }
+class HttpError extends Error { constructor(public status: 400 | 401 | 403 | 404 | 409 | 413 | 429 | 502, message: string) { super(message); } }
 const fail = (status: HttpError["status"], message: string): never => { throw new HttpError(status, message); };
 
 api.onError((err, c) => {
@@ -465,7 +466,7 @@ api.post("/bots/:id/messages", async (c) => {
   const thread = threadParent(bot, b.thread);
   const row = rows.append(bot, { kind: "message", role: "user", text, origin: voice ? { kind: "voice", id: "", name: "Voice" } : undefined, attachments: attachments.length ? attachments : undefined }, thread);
   if (bot.kind === "room") dispatchToRoom(bot, c.get("user"), text, null, 0, false, thread);
-  else submitUserMessage(bot, text, voice, attachments, undefined, thread);
+  else { relayUserSpoke(bot.id); submitUserMessage(bot, text, voice, attachments, undefined, thread); }
   return c.json({ row });
 });
 
@@ -828,6 +829,47 @@ api.post("/import/team", async (c) => {
 });
 
 api.get("/usage.csv", (c) => download(c, "sklubot-usage.csv", "text/csv; charset=utf-8", usageCsv(c.get("user").id)));
+
+// ── The user's own computers (Sklubot Relais, docs/RELAIS-PROTOCOLE.md) ──────
+api.get("/relay/devices", (c) => c.json({ devices: listDevices(c.get("user").id), downloads: relayDownloads() }));
+/** Pairing: the user types the code their computer shows. A few tries per account and per address, then a pause. */
+const pairTries = new Map<string, number[]>();
+function pairThrottle(key: string, limit: number) {
+  const t = Date.now();
+  const recent = (pairTries.get(key) ?? []).filter((at) => at > t - 10 * 60_000);
+  if (recent.length >= limit) fail(429, "Too many attempts. Wait a few minutes and try again.");
+  recent.push(t);
+  pairTries.set(key, recent);
+  if (pairTries.size > 10_000) for (const [k, v] of pairTries) if (!v.some((at) => at > t - 10 * 60_000)) pairTries.delete(k);
+}
+api.post("/relay/pairings", async (c) => {
+  const user = c.get("user");
+  const code = String((await body(c)).code ?? "");
+  pairThrottle(`user:${user.id}`, 5);
+  pairThrottle(`ip:${clientIp(c)}`, 20);
+  const device = confirmPairing(user, code);
+  if (!device) {
+    audit(user.id, "computer", tr(user.locale, "Wrong or expired pairing code"));
+    fail(400, "That code is not valid, or it has expired. Check the code shown on your computer.");
+  }
+  return c.json({ device });
+});
+api.delete("/relay/devices/:id", (c) => {
+  if (!revokeDevice(c.get("user").id, c.req.param("id"))) fail(404, "That computer is not linked.");
+  return c.json({ ok: true });
+});
+/** "Stop": ends the bot's control session on that computer, cancels its commands, and keeps the bot from taking it back on its own. */
+api.post("/relay/devices/:id/stop", (c) => {
+  if (!stopSession(c.get("user").id, c.req.param("id"))) fail(409, "That computer is not connected.");
+  return c.json({ ok: true });
+});
+/** The last picture seen of the computer (a bot's screenshot or the live view), for when no live view runs. */
+api.get("/relay/devices/:id/last", (c) => {
+  const id = c.req.param("id");
+  const frame = listDevices(c.get("user").id).some((d) => d.id === id) ? lastFrame(id) : null;
+  if (!frame) return c.body(null, 204);
+  return c.body(new Uint8Array(Buffer.from(frame.data, "base64")), 200, { "content-type": "image/jpeg", "cache-control": "no-store", "x-frame-at": String(frame.at) });
+});
 
 // ── Computer and files ───────────────────────────────────────────────────────
 api.get("/computer", (c) => c.json(computerState(c.get("user").id)));

@@ -500,6 +500,14 @@ function EventRow({ body, botName, seq }: { body: EventBody; botName: string; se
       </div>
     );
   }
+  if (body.event === "relay") {
+    // Something happened on the user's own computer (Sklubot Relais): control taken or ended, Stop, a refusal there.
+    return (
+      <div className={`event is-relay ${body.tone === "warn" ? "is-warn" : ""}`} data-seq={seq}>
+        <span className="event-line"><Icon name={body.tone === "warn" ? "alert" : "monitor"} size={13} /> <span>{body.text}</span></span>
+      </div>
+    );
+  }
   if (body.event !== "call") {
     return (
       <div className="event" data-seq={seq}>
