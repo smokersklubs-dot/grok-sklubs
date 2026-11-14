@@ -127,6 +127,11 @@ export const bgTaskHooks = {
       return;
     }
     if (t.state === "stopped" || info.failed === "stopped") { refreshCard(bgTasks.set(t.id, { state: "stopped", steps })!); return; }
+    // Stopped at a spend checkpoint (spend.ts): it waits for the user's answer on the checkpoint card.
+    if (q.get("SELECT 1 FROM spend_checkpoints WHERE worker_id = ? AND status = 'pending'", bot.id)) {
+      refreshCard(bgTasks.set(t.id, { state: "waiting", steps })!, { question: tr(loc, "Spend checkpoint reached: answer on the card in the chat (continue, raise or stop).") });
+      return;
+    }
     if (info.failed) {
       refreshCard(bgTasks.set(t.id, { state: "failed", steps, result: tr(loc, "Failed: {detail}", { detail: info.failed }) })!);
       const parent = bots.byId(t.botId);

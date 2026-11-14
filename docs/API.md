@@ -521,3 +521,61 @@ Tool `task_start { title, goal }` (also `task_list`, `task_stop`): a hidden help
 ### Private verification codes and masked access emails (`server/src/native/access.ts`)
 - Mail reads (`mail_search`, `mail_read`, `mail_thread`, and the email trigger's snippet) replace the body of an email that grants account access (one-time codes, magic links, password resets, temporary passwords, backup codes, API keys) by `[contenu masqué : accès à un compte]` / `[content hidden: account access]`; the subject stays.
 - Tool `email_code_type { site, from?, mailbox? }` (vault group, needs the bot's browser): checks the page in front is on `site`, waits up to `CODE_WAIT_MS` (60 s, polling `CODE_POLL_MS` 5 s) for an access email from that site's domain (or `from`) received after the turn started (2 min margin), extracts the code and types it; the model only learns that it was typed. The code is then hidden from anything the model reads for 30 min (`hideForAWhile`). After outside content it asks every time (strict).
+
+
+## Wave 5b — spend checkpoints, cheaper routines, learned skills, guides, card payments, committing clicks, usage journal, files on the user's computer, API connectors, Telegram commands, first-task ideas, rich replies, private pages, rules from the chat, memory confidence
+
+All routes are under `/api` and need the session cookie.
+
+### Spend checkpoints (`server/src/agent/spend.ts`)
+- `GET /spend` → `{ settings: { checkpointUsd } }` (default 5; 0 = off). `PUT /spend { checkpointUsd }` (0–10 000).
+- `PATCH /bots/:id { spendCheckpointUsd: number | null }` — the bot's own checkpoint (null: the account's).
+- Card `{ type: "spend", checkpointId, title, scope: "chat" | "task" | "routine", spentUsd, thresholdUsd, status }`.
+- `POST /spend/:checkpointId { action: "continue" | "raise" | "stop" }` → 409 when already answered.
+
+### Routines
+- `Routine` gains `skipUnchanged`, `inputs` (labels), `failures`, `pausedReason`, `running`, `projectedMonthlyUsd`. `RoutineRun.status` may be `"skipped"`; runs carry `costUsd`.
+- Tool `routine_create` takes `only_if_new: string[]` (mail account names or http(s) addresses) for cron routines.
+- `POST /routines/:id/run` → 409 while a run is under way.
+
+### Learned skills and guides
+- Tool `skill_propose { name, when?, steps }` → card `{ type: "skill", name, when, steps, outside, status }`; `POST /bots/:id/cards/:seq/skill { action: "save" | "dismiss", name?, when?, steps? }`. `Skill` gains `learned`, `outside`.
+- `GET /guides` → `{ guides: Guide[] }`; tool `guide_read { name }`.
+
+### Vault cards and payments (`server/src/agent/payments.ts`)
+- `POST /vault { kind: "card", name, number, expiry: "MM/YY", cvc, holder?, dailyCapUsd?, monthlyCapUsd?, note? }`; `PATCH /vault/:id` (number etc. only to replace the card; caps alone otherwise). `VaultItem.card = { brand, last4, dailyCapUsd, monthlyCapUsd, spentTodayUsd, spentMonthUsd }`; nothing else of the card is ever returned.
+- `GET /payments` → `{ payments: Payment[] }`.
+- Tool `card_fill { card, amount, currency, merchant, fields: [{ field, x, y }], submit?: { x, y } }` — always an approval (`card: <name>`, once), bound to the page host the server read (`seen_host`).
+
+### Committing clicks (`server/src/agent/bind.ts`)
+- `screen_click` gets `user_quote`; the server adds `seen_target: { label, host, form }` read in the page. Committing words → grounding/reviewer/card with policy key `click: <host>`; payments and deletions always ask, once.
+
+### Usage journal (`server/src/journal.ts`)
+- `GET /journal?bot=&decision=&tool=&days=&from=&to=&limit=&before=` → `{ entries: JournalEntry[], totals: { lines, costUsd, byDecision } }`.
+- `GET /journal.csv?…` → `time,bot,tool,action,decision,quote,reason,status,cost_usd,origin`.
+
+### Files on the user's computer (relay protocol 1.1 — `docs/RELAIS-PROTOCOLE.md` §12)
+- Tools (group `mycomputer`): `my_files { folder?, path?, device? }`, `my_file_read { folder, path }`, `my_file_write { folder, path, text, mode? }`, `my_file_trash { folder, path }`. Writes and trash: approval `myfiles: write: <bot>`, once. Only in turns the user started.
+
+### API connectors (`server/src/apiconnectors.ts`)
+- Tools `api_connector_propose { name, base_url, secret, header?, prefix?, endpoints?, openapi? }`, `api_get { connector, path, query? }`, `api_send { connector, method, path, body? }`.
+- Card `{ type: "apiconnector", connectorId, name, baseUrl, host, secret, secretSaved, endpoints, status }`; `POST /bots/:id/cards/:seq/apiconnector { action: "approve", token? } | { action: "dismiss" }`.
+- `GET /api-connectors`, `DELETE /api-connectors/:id`. Server event `{ type: "apiConnectors" }`.
+
+### Telegram (linked chat)
+- Commands `/taches`, `/etat`, `/stop`, `/usage`, `/memoire`, `/aide` (answered by the server). Reactions: 👍/👎 on an approval message answer it (not for `card:`, `myfiles:`, `mycomputer:`, vault keys); other reactions on replies become feedback. Bot API: `getUpdates` with `allowed_updates: ["message", "message_reaction"]`, `setMessageReaction`.
+
+### First-task ideas
+- `GET /ideas?mail=1` → `{ ideas: TaskIdea[], source: "mail" | "default", sampled }` (subjects only, matched on the server, no model call).
+
+### Pages
+- `SharedPage.visibility: "link" | "private"`; `PATCH /pages/:token { visibility }`; `GET /p/:token` of a private page → 404 unless the owner's session cookie. Tools: `page_publish { …, visibility? }`, `page_edit { name, edits: [{ find, replace }] }`.
+
+### Rules from the chat and scoped rules (`server/src/rules.ts`, `agent/ruletools.ts`)
+- `Rule` gains `routineId`, `trigger` (`cron | once | webhook | watch | email | slack | calendar`), `source: "user" | "chat"`, `quote`. `POST /rules { text, botId? | routineId? | trigger? }`, `PATCH /rules/:id { …, routineId?, trigger? }`.
+- `GET /rules` adds `changes: RuleChange[]`; `POST /rules/changes/:id/undo` → the new state (409 when already undone).
+- Tool `rule_propose { action: "add" | "change" | "remove", text?, rule?, scope?: "account" | "bot" | "routine" | "trigger", bot?, routine?, trigger?, user_quote }` — always a card (`rules: <bot>`, once); refused without the user's own words (`seen_quote`).
+
+### Memory confidence
+- `Memory` gains `confidence: "once" | "confirmed"`, `confirmedAt`, `lastUsedAt`. `PATCH /memories/:id { confidence }`.
+- Card `{ type: "memory", memoryId, oldText, newText, quote, status }`; `POST /bots/:id/cards/:seq/memory { choice: "old" | "new" }`.

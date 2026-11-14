@@ -16,9 +16,10 @@ const { Store } = require('./store');
 const { ActionLog } = require('./action-log');
 const { RelayCore } = require('./relay-core');
 const { RelayConnection } = require('./connection');
-const { normalizeServer, OPS, LIMITS, PROTOCOL_VERSION } = require('./protocol');
+const { normalizeServer, OPS, LIMITS, PROTOCOL_REVISION } = require('./protocol');
 const { createDesktopCaps } = require('./capabilities/desktop');
 const { runShell } = require('./capabilities/shell');
+const { createFileCaps, shareProblem } = require('./capabilities/files');
 const i18n = require('./i18n');
 
 // ───────────────────────── process-level setup (before "ready") ─────────────────────────
@@ -70,6 +71,7 @@ let lang = /** @type {'fr'|'en'} */ ('fr');
 /** @type {Map<string, { kind: 'session'|'command', bot: { id: string, name: string }, data: any, resolve: (v: any) => void, win: Electron.BrowserWindow, shownAt: number, deadline: number }>} */
 const prompts = new Map();
 /** @type {string | null} */ let setupError = null;
+/** @type {string | null} */ let folderError = null;
 
 /** @param {string} key @param {Record<string, string|number>} [vars] */
 const tr = (key, vars) => i18n.t(dict, key, vars);
@@ -97,7 +99,8 @@ async function boot() {
   const desktop = createDesktopCaps(electron);
   core = new RelayCore({
     send: (msg) => (conn ? conn.send(msg) : false),
-    caps: { ...desktop, runShell },
+    // Files: only in the folders the user shares below; the previous version of a file goes to the OS trash.
+    caps: { ...desktop, runShell, ...createFileCaps({ getFolders: () => store.folders(), trash: (p) => shell.trashItem(p) }) },
     ui: consentUI,
     store,
     log,
@@ -149,6 +152,7 @@ function startConnection() {
     hello: () => ({
       app: { name: 'sklubot-relais', version: app.getVersion() },
       device: { name: os.hostname().slice(0, 64), platform: process.platform, arch: process.arch, osRelease: os.release(), locale: app.getLocale() },
+      protocol: PROTOCOL_REVISION,
       capabilities: capabilityList(),
       screen: safeScreenInfo(),
       limits: { maxInboundBytes: LIMITS.MAX_INBOUND_BYTES, maxViewFps: LIMITS.MAX_VIEW_FPS },
@@ -453,6 +457,8 @@ function uiState() {
     session: core.session ? { botName: core.session.botName, grant: core.session.grant, startedAt: core.session.startedAt } : null,
     locked: store.isLocked(),
     bots: Object.entries(s.bots).map(([id, b]) => ({ id, name: b.name, control: b.control === 'always', commands: b.commands === true })),
+    folders: store.folders().map((f) => ({ id: f.id, name: f.name, path: f.path, write: f.write === true })),
+    folderError,
     autostart: s.autostart,
     hotkey: hotkeyLabel(),
     hotkeyOk,
@@ -461,7 +467,7 @@ function uiState() {
     testMode: TEST_AUTOCONFIRM,
     logPath: actionLog.file,
     version: app.getVersion(),
-    protocol: PROTOCOL_VERSION,
+    protocol: PROTOCOL_REVISION,
   };
 }
 
@@ -551,6 +557,37 @@ function registerIpc() {
     if (!fromMain(ev) || typeof id !== 'string') return false;
     store.removeBot(id);
     log({ kind: 'permission.removed', botId: id });
+    pushState();
+    return true;
+  });
+  // Shared folders: chosen here in the system's folder dialog, never by the server.
+  ipcMain.handle('folder:add', async (ev) => {
+    if (!fromMain(ev) || !mainWin) return false;
+    // Sharing more is refused while a bot controls the mouse: it could click this itself.
+    if (core.session || prompts.size) return false;
+    const r = await dialog.showOpenDialog(mainWin, { properties: ['openDirectory'] });
+    if (r.canceled || !r.filePaths[0]) return false;
+    const dir = r.filePaths[0];
+    const why = shareProblem(dir);
+    if (why) { folderError = tr('folders.refused', { why }); pushState(); return false; }
+    folderError = null;
+    const f = store.addFolder(fs.realpathSync(dir), path.basename(dir));
+    log({ kind: 'folder.shared', folder: f.path });
+    pushState();
+    return true;
+  });
+  ipcMain.handle('folder:write', (ev, id, on) => {
+    if (!fromMain(ev) || typeof id !== 'string') return false;
+    if (on === true && (core.session || prompts.size)) return false;
+    const ok = store.setFolderWrite(id, on === true);
+    if (ok) log({ kind: 'folder.write', id, write: on === true });
+    pushState();
+    return ok;
+  });
+  ipcMain.handle('folder:remove', (ev, id) => {
+    if (!fromMain(ev) || typeof id !== 'string') return false;
+    store.removeFolder(id);
+    log({ kind: 'folder.removed', id });
     pushState();
     return true;
   });

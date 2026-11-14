@@ -1,4 +1,6 @@
-# Protocole Sklubot Relais — version 1
+# Protocole Sklubot Relais — version 1 (révision 1.1)
+
+> **Révision 1.1 (compatible)** : ajoute les opérations de fichiers `fs.*` (§12). `hello.v` reste `1` ; le Relais envoie en plus `"protocol": "1.1"` et liste les nouvelles opérations dans `capabilities`. Un serveur 1.0 les ignore ; un serveur 1.1 ne les utilise que si elles sont annoncées.
 
 Ce document décrit comment le **Relais** (le petit programme installé sur l'ordinateur de l'utilisateur, dossier `companion/`) parle au **serveur Sklubot**. Le client est déjà écrit ; le serveur doit implémenter la partie décrite ici. Un faux serveur de référence existe : `companion/test/fake-server.js`.
 
@@ -278,3 +280,31 @@ Limite à connaître : accepter une session de contrôle revient à prêter son 
 6. **Stockage :** appareils (`deviceId`, propriétaire, nom, plateforme, hachage du jeton courant et du jeton en rotation, dates), appairages en attente (code, expiration, essais).
 
 Le faux serveur `companion/test/fake-server.js` implémente tout cela en ~200 lignes et peut servir de modèle.
+
+
+## 12. Fichiers (révision 1.1)
+
+Le Relais peut donner accès à des **dossiers que l'utilisateur a choisis lui-même** dans sa fenêtre (« Dossiers partagés », boîte de dialogue du système). Le serveur ne peut ni ajouter un dossier, ni cocher « Écriture » : aucune opération n'existe pour cela.
+
+| `op` | Session requise | `args` | `result` |
+|---|---|---|---|
+| `fs.roots` | non | `{}` | `{ roots: [{ id, name, path, write }] }` (`path` affiché avec `~`) |
+| `fs.list` | non | `{ root, path? }` | `{ entries: [{ name, dir, size, modifiedAt }], truncated }` (500 entrées max) |
+| `fs.read` | non | `{ root, path, maxBytes?: 1–262144 (65536) }` | `{ text, size, truncated }` |
+| `fs.write` | non | `{ root, path, text (≤ 200 Kio), mode?: "create" \| "replace" ("create") }` | `{ written, previous: "trashed" \| null }` |
+| `fs.trash` | non | `{ root, path }` | `{ trashed: true }` |
+
+`root` : l'`id` ou le nom d'un dossier partagé. `path` : chemin relatif avec `/`.
+
+Règles imposées par le Relais :
+- dossiers partagés seulement **dans le dossier personnel** (pas le dossier personnel lui-même) ou sur un **disque externe** ; jamais un dossier caché, système, de données d'applications (`Library`, `AppData`…) ou de sauvegarde ;
+- chemins sans `..`, sans segment caché (`.xxx`) ; les liens sont résolus et doivent rester dans le dossier ;
+- fichiers à secrets refusés partout (`.env*`, clés `id_rsa`…, `*.pem`, `*.key`, `*.p12`, `*.kdbx`, trousseaux, `credentials`, `.netrc`…) et absents des listes ;
+- lecture : texte seulement (un octet nul dans les 8 premiers Kio → `binary`) ;
+- écriture : seulement si le dossier est coché « Écriture » (`read_only` sinon) ; pas de programmes ni de raccourcis (`.exe`, `.sh`, `.lnk`, `.desktop`, `.ps1`…) ; un fichier existant n'est remplacé qu'en mode `replace`, **après** avoir mis l'ancienne version à la corbeille du système ; écriture atomique (fichier temporaire puis renommage) ;
+- `fs.trash` : corbeille du système uniquement (Electron `shell.trashItem`), jamais de suppression définitive ; pas le dossier partagé lui-même ;
+- Stop verrouille aussi les fichiers (`locked`) ; le journal local garde le chemin et la taille d'une écriture, jamais son contenu.
+
+Nouveaux codes d'erreur : `forbidden` (hors des dossiers partagés, caché, système, à secrets, programme), `read_only`, `not_found`, `exists`, `binary` (et `too_large`, `invalid_args` comme avant).
+
+Côté serveur Sklubot : outils `my_files`, `my_file_read`, `my_file_write`, `my_file_trash` ; l'écriture et la corbeille demandent l'accord de l'utilisateur à chaque fois ; aucune opération de fichiers depuis une routine, un coup de coude, une tâche de fond ou un message d'un autre bot.

@@ -306,6 +306,77 @@ function CREATE_EXTRA() {
     raised INTEGER NOT NULL DEFAULT 0, passes INTEGER NOT NULL DEFAULT 0, last_pass_at INTEGER,
     PRIMARY KEY (bot_id, day)
   );`);
+  // Wave 5b. Spend checkpoints (A5), cheaper routines (A7), learned skills (A9), card payments (A12), the detailed usage
+  // journal (A14), API connectors on demand (A16), Telegram commands and reactions (A17), private pages.
+  add("bots", "spend_checkpoint_usd", "REAL");
+  add("settings", "spend", "TEXT NOT NULL DEFAULT '{}'");
+  add("skills", "learned", "INTEGER NOT NULL DEFAULT 0");
+  add("skills", "outside", "INTEGER NOT NULL DEFAULT 0");
+  // Routines: skip a run when nothing changed in what it waits for (inputs JSON, fingerprint of the last look), failed
+  // runs in a row and why the server paused it, and the due slot already fired (never twice).
+  add("routines", "skip_unchanged", "INTEGER NOT NULL DEFAULT 0");
+  add("routines", "inputs", "TEXT NOT NULL DEFAULT '[]'");
+  add("routines", "inputs_hash", "TEXT");
+  add("routines", "failures", "INTEGER NOT NULL DEFAULT 0");
+  add("routines", "paused_reason", "TEXT");
+  add("routines", "last_slot", "TEXT");
+  add("routine_runs", "cost_usd", "REAL NOT NULL DEFAULT 0");
+  add("pages", "visibility", "TEXT NOT NULL DEFAULT 'link'");
+  // Rules scoped to a routine or a trigger kind, and rules added from the chat (with the user's words).
+  add("rules", "routine_id", "TEXT");
+  add("rules", "trigger_kind", "TEXT");
+  add("rules", "source", "TEXT NOT NULL DEFAULT 'user'");
+  add("rules", "quote", "TEXT NOT NULL DEFAULT ''");
+  // Memory confidence: mentioned once / confirmed by the user saying it again; when it was last found relevant.
+  add("memories", "confidence", "TEXT NOT NULL DEFAULT 'once'");
+  add("memories", "confirmed_at", "INTEGER");
+  add("memories", "last_used_at", "INTEGER");
+  db.exec(`
+  CREATE TABLE IF NOT EXISTS rule_changes (
+    id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, action TEXT NOT NULL, rule_id TEXT NOT NULL,
+    bot_id TEXT, text TEXT NOT NULL, before TEXT, snapshot TEXT NOT NULL DEFAULT '{}', quote TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL, undone_at INTEGER
+  );
+  CREATE INDEX IF NOT EXISTS rule_changes_user ON rule_changes(user_id, created_at);`);
+  db.exec(`
+  -- What a task spent since the user last spoke to it (worker bot + scope key: chat:<thread>, task:<id>, routine:<run>),
+  -- and the checkpoint it stops at (NULL: the bot's or the account's setting).
+  CREATE TABLE IF NOT EXISTS spend_scopes (
+    worker_id TEXT NOT NULL REFERENCES bots(id) ON DELETE CASCADE, scope_key TEXT NOT NULL, spent_usd REAL NOT NULL DEFAULT 0,
+    threshold_usd REAL, updated_at INTEGER NOT NULL, PRIMARY KEY (worker_id, scope_key)
+  );
+  -- A checkpoint card: which worker stopped, where the card is (card_bot_id: the worker, or a task's parent).
+  CREATE TABLE IF NOT EXISTS spend_checkpoints (
+    id TEXT PRIMARY KEY, worker_id TEXT NOT NULL REFERENCES bots(id) ON DELETE CASCADE, card_bot_id TEXT NOT NULL, scope_key TEXT NOT NULL,
+    generation INTEGER NOT NULL, thread INTEGER NOT NULL DEFAULT 0, card_seq INTEGER, spent_usd REAL NOT NULL, threshold_usd REAL NOT NULL,
+    tainted INTEGER NOT NULL DEFAULT 0, origin TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'pending', created_at INTEGER NOT NULL
+  );
+  -- Payments made with a vault card: bound to amount, merchant, page host and card; counted against the card's caps.
+  CREATE TABLE IF NOT EXISTS payments (
+    id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, bot_id TEXT NOT NULL, card_id TEXT NOT NULL,
+    card_name TEXT NOT NULL, amount REAL NOT NULL, currency TEXT NOT NULL, merchant TEXT NOT NULL, host TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'approved', execution_id TEXT, created_at INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS payments_card ON payments(card_id, created_at);
+  -- The detailed usage journal: one line per tool call. A record: lines are added, never changed.
+  CREATE TABLE IF NOT EXISTS action_journal (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, bot_id TEXT NOT NULL,
+    at INTEGER NOT NULL, tool TEXT NOT NULL, label TEXT NOT NULL DEFAULT '', decision TEXT NOT NULL, quote TEXT NOT NULL DEFAULT '',
+    reason TEXT NOT NULL DEFAULT '', status TEXT NOT NULL, cost_usd REAL NOT NULL DEFAULT 0, origin TEXT NOT NULL DEFAULT ''
+  );
+  CREATE INDEX IF NOT EXISTS action_journal_user ON action_journal(user_id, at);
+  CREATE TRIGGER IF NOT EXISTS action_journal_no_update BEFORE UPDATE ON action_journal BEGIN SELECT RAISE(ABORT, 'the usage journal cannot be edited'); END;
+  -- HTTP API connectors a bot proposed and the user approved. endpoints: JSON list of {method, path, description}.
+  CREATE TABLE IF NOT EXISTS api_connectors (
+    id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, bot_id TEXT, name TEXT NOT NULL,
+    base_url TEXT NOT NULL, host TEXT NOT NULL, secret TEXT NOT NULL, endpoints TEXT NOT NULL DEFAULT '[]',
+    status TEXT NOT NULL DEFAULT 'pending', created_at INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS api_connectors_user ON api_connectors(user_id, created_at);
+  -- Telegram messages the bot sent that mean something on a reaction: an approval it asked, or one of its replies.
+  CREATE TABLE IF NOT EXISTS telegram_messages (
+    bot_id TEXT NOT NULL REFERENCES bots(id) ON DELETE CASCADE, message_id INTEGER NOT NULL, kind TEXT NOT NULL, ref TEXT NOT NULL,
+    created_at INTEGER NOT NULL, PRIMARY KEY (bot_id, message_id)
+  );`);
 }
 
 type Param = string | number | null | bigint;

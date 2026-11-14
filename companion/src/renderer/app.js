@@ -93,6 +93,29 @@ function render(s) {
     list.append(el);
   }
 
+  // shared folders (protocol 1.1)
+  const fl = $('folders');
+  fl.replaceChildren();
+  if (!s.folders.length) { const p = document.createElement('p'); p.className = 'muted small'; p.textContent = t('folders.empty'); fl.append(p); }
+  for (const f of s.folders) {
+    const el = document.createElement('div'); el.className = 'bot';
+    const name = document.createElement('div'); name.className = 'name'; name.textContent = f.name;
+    const where = document.createElement('div'); where.className = 'small muted'; where.textContent = f.path;
+    const lab = document.createElement('label'); lab.className = 'toggle';
+    const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = f.write; cb.disabled = busy && !f.write;
+    cb.onchange = async () => { const ok = await window.relais.setFolderWrite(f.id, cb.checked); if (!ok) cb.checked = !cb.checked; };
+    const sp = document.createElement('span'); sp.textContent = t('folders.write');
+    lab.append(cb, sp);
+    const rm = document.createElement('button'); rm.className = 'link'; rm.textContent = t('folders.remove');
+    rm.onclick = () => window.relais.removeFolder(f.id);
+    el.append(name, where, lab, rm);
+    fl.append(el);
+  }
+  const fe = $('folder-error');
+  fe.textContent = s.folderError || '';
+  show(fe, !!s.folderError);
+  $('btn-folder-add').disabled = busy;
+
   // settings
   $('autostart').checked = s.autostart;
   $('hotkey').textContent = s.hotkeyOk ? t('settings.hotkey', { key: s.hotkey }) : t('settings.hotkeyFailed', { key: s.hotkey });
@@ -110,6 +133,7 @@ async function main() {
   $('btn-stop').onclick = () => window.relais.stopSession();
   $('btn-unlock').onclick = () => window.relais.unlock();
   $('btn-log').onclick = () => window.relais.openLog();
+  $('btn-folder-add').onclick = () => window.relais.addFolder();
   $('btn-forget').onclick = () => window.relais.forget();
   $('autostart').onchange = async (e) => { const ok = await window.relais.setAutostart(e.target.checked); if (!ok) e.target.checked = !e.target.checked; };
   window.relais.onState(render);

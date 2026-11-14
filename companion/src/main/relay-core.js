@@ -424,12 +424,19 @@ const CAP_FOR_OP = /** @type {Record<string, string>} */ ({
   'app.open': 'openApp',
   'window.list': 'listWindows',
   'window.focus': 'focusWindow',
+  'fs.roots': 'fsRoots',
+  'fs.list': 'fsList',
+  'fs.read': 'fsRead',
+  'fs.write': 'fsWrite',
+  'fs.trash': 'fsTrash',
 });
 
 /** What goes into the local action log (never image data). @param {string} op @param {Record<string, any>} args */
 function summarize(op, args) {
   if (op === 'keyboard.type') return { text: args.text.length > 200 ? args.text.slice(0, 200) + '…' : args.text, length: args.text.length };
   if (op === 'shell.run') return { command: args.command.slice(0, 1000), timeoutMs: args.timeoutMs, cwd: args.cwd };
+  // A file written by a bot: where and how much, never its content.
+  if (op === 'fs.write') return { root: args.root, path: args.path, mode: args.mode, bytes: Buffer.byteLength(args.text, 'utf8') };
   return args;
 }
 

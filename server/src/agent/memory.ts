@@ -3,7 +3,7 @@ import { config } from "../config.js";
 import { q } from "../db.js";
 import { defaultModelRef, listProviders, resolveModel, type ChatMessage } from "../llm/index.js";
 import { engineAsk, isEngineRef } from "./engine.js";
-import type { MemoryBookkeeping, SensitiveCategory } from "../shared.js";
+import type { Memory, MemoryBookkeeping, SensitiveCategory } from "../shared.js";
 import { bots, clip, history, memories, now, paused, rows, settings, type BotRecord } from "../store.js";
 import { findQuote, typedByUser } from "./grounding.js";
 import { looksSecret, memoryVerdict, sensitiveCategory } from "./sensitive.js";
@@ -132,6 +132,16 @@ export async function consolidate(bot: BotRecord): Promise<{ added: string[]; co
     const own = recent.filter((r) => typedByUser(r) && r.body.kind === "message" && r.body.text.length <= 4000);
     if (!own.length || !settings.memory(bot.userId).autoCapture) { setMark(bot.id, newest); return { added: [], considered: recent.length }; }
 
+    // Confidence that grows by itself (wave 5b): a note the user states again, word for word, in a later message of their
+    // own becomes "confirmed". Only the user's messages count; never the bot's text or outside content.
+    const before = memories.list(bot.id, 200);
+    let confirmed = 0;
+    for (const m of before) {
+      if (m.confidence === "confirmed" || m.status === "archived" || !m.quote.trim()) continue;
+      const later = own.filter((r) => r.createdAt > m.createdAt).map((r) => ({ seq: r.seq, text: r.body.kind === "message" ? r.body.text : "", at: r.createdAt }));
+      if (later.length && findQuote(m.quote, later)) { memories.confirm(m.id); confirmed++; }
+    }
+
     const transcript = own.map((r) => `- ${r.body.kind === "message" ? clip(r.body.text, 2000) : ""}`).join("\n").slice(-24_000);
     const existing = memories.list(bot.id, 200);
     const answer = await ask(bot,
@@ -139,17 +149,33 @@ export async function consolidate(bot: BotRecord): Promise<{ added: string[]; co
       `Keep: facts about the user (role, company, team, timezone, key people, accounts and tools), their preferences and standing instructions, lasting facts about ongoing projects.\n` +
       `Skip: one-off requests, small talk, passing states, secrets of any kind, health, religion, politics, sexuality, origin, precise addresses, account or card numbers, and anything the existing memories already cover even in other words.\n` +
       `Write each fact as one short stand-alone sentence in the third person, under 200 characters, and give with it an excerpt copied word for word from the user message it comes from. At most 8. If nothing qualifies, return an empty list.\n` +
-      `Answer with JSON only, in the form {"facts": [{"text": "…", "quote": "…"}]}.\n\nExisting memories:\n${existing.map((m) => `- ${m.text}`).join("\n") || "(none)"}\n\nThe user's messages:\n${transcript}`);
-    let facts: { text: string; quote: string }[] = [];
+      `When the user restates a fact an existing memory already holds, list it again with its new excerpt (it confirms it). When the user says something that contradicts an existing memory, add the new fact with "contradicts" set to that memory, word for word.\n` +
+      `Answer with JSON only, in the form {"facts": [{"text": "…", "quote": "…", "contradicts": "…(optional)"}]}.\n\nExisting memories:\n${existing.map((m) => `- ${m.text}`).join("\n") || "(none)"}\n\nThe user's messages:\n${transcript}`);
+    let facts: { text: string; quote: string; contradicts?: string }[] = [];
     try {
       const parsed = JSON.parse(answer.slice(answer.indexOf("{"), answer.lastIndexOf("}") + 1));
-      if (Array.isArray(parsed.facts)) facts = parsed.facts.map((f: unknown) => (typeof f === "string" ? { text: f, quote: "" } : f && typeof f === "object" ? { text: String((f as any).text ?? ""), quote: String((f as any).quote ?? "") } : { text: "", quote: "" }));
+      if (Array.isArray(parsed.facts)) facts = parsed.facts.map((f: unknown) => (typeof f === "string" ? { text: f, quote: "" } : f && typeof f === "object" ? { text: String((f as any).text ?? ""), quote: String((f as any).quote ?? ""), contradicts: typeof (f as any).contradicts === "string" ? (f as any).contradicts : undefined } : { text: "", quote: "" }));
     } catch { /* unusable answer: learn nothing this time */ }
     const words = own.map((r) => ({ seq: r.seq, text: r.body.kind === "message" ? r.body.text : "", at: r.createdAt }));
     const added: string[] = [];
     for (const fact of facts.slice(0, 8)) {
       const t = clip(fact.text.trim(), 300);
-      if (!t || existing.some((m) => similar(m.text, t)) || added.some((a) => similar(a, t))) continue;
+      if (!t) continue;
+      // A contradiction of an existing note, in the user's own later words: the note is contested and the user is asked.
+      const old = fact.contradicts ? existing.find((m) => m.status !== "archived" && (m.text === fact.contradicts || similar(m.text, fact.contradicts!))) : undefined;
+      if (old) {
+        const src = findQuote(fact.quote, words);
+        if (src && src.at > old.createdAt && memoryVerdict(bot.userId, `${t}\n${fact.quote}`, false).ok) askWhichIsRight(bot, old, t, fact.quote);
+        continue;
+      }
+      // The same fact again, in a later message of the user's: confirmed.
+      const same = existing.find((m) => similar(m.text, t));
+      if (same) {
+        const src = findQuote(fact.quote, words);
+        if (src && src.at > same.createdAt && same.confidence !== "confirmed") { memories.confirm(same.id); confirmed++; }
+        continue;
+      }
+      if (added.some((a) => similar(a, t))) continue;
       // The excerpt must really be in one of the user's messages: otherwise the fact may come from somewhere else.
       const source = findQuote(fact.quote, words);
       if (!source) continue;
@@ -160,11 +186,20 @@ export async function consolidate(bot: BotRecord): Promise<{ added: string[]; co
       added.push(t);
     }
     setMark(bot.id, newest);
-    if (added.length) emit(bot.userId, { type: "memories", botId: bot.id });
+    if (added.length || confirmed) emit(bot.userId, { type: "memories", botId: bot.id });
     return { added, considered: recent.length };
   } finally {
     consolidating.delete(bot.id);
   }
+}
+
+/** The user contradicted a note: it becomes "contested" and a small card asks which is right (once per note). */
+export function askWhichIsRight(bot: BotRecord, old: Memory, newText: string, quote: string) {
+  const open = rows.list(bot.id, bot.generation, 200).some((r) => r.body.kind === "card" && r.body.card.type === "memory" && r.body.card.memoryId === old.id && r.body.card.status === "pending");
+  if (open) return;
+  memories.setStatus(old.id, "contested");
+  rows.append(bot, { kind: "card", card: { type: "memory", memoryId: old.id, oldText: old.text, newText: clip(newText, 300), quote: clip(quote, 300), status: "pending" } }, 0);
+  bots.bumpUnread(bot.id);
 }
 
 // ── Import and export ────────────────────────────────────────────────────────

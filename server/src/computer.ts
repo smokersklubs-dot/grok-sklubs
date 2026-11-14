@@ -129,6 +129,26 @@ async function withDesktop<T>(botId: string, userId: string, fn: (d: Desktop) =>
 const settle = (page: any, ms = 600) => page.waitForLoadState("domcontentloaded", { timeout: 8000 }).catch(() => {}).then(() => page.waitForTimeout(ms));
 
 export interface Shot { data: string; mediaType: "image/jpeg"; url: string; title: string }
+
+/** What a click would hit on the page in front: the control's own words (label, text, value), what it is, and its form. */
+export interface ClickTarget { label: string; tag: string; role: string; type: string; formAction: string; formMethod: string; url: string }
+
+/**
+ * The script that reads the control under a point (document.elementFromPoint, then the closest clickable ancestor).
+ * `fromScreen`: the point is on the whole screen (a Linux desktop), so the browser window's position and its toolbars
+ * are taken off first (window.screenX/screenY and outer − inner sizes: an approximation, good for a maximised window).
+ */
+export function targetScript(x: number, y: number, fromScreen: boolean): string {
+  const px = Math.round(Number(x) || 0), py = Math.round(Number(y) || 0);
+  return `(() => { let x = ${px}, y = ${py};
+${fromScreen ? "const side = Math.max(0, (window.outerWidth - window.innerWidth) / 2); x -= window.screenX + side; y -= window.screenY + Math.max(0, window.outerHeight - window.innerHeight - side);" : ""}
+const el = document.elementFromPoint(x, y); if (!el) return null;
+const c = el.closest('button, a[href], input, select, textarea, summary, label, [role="button"], [role="link"], [role="menuitem"], [role="option"], [role="checkbox"], [role="tab"], [onclick]') || el;
+const words = (c.getAttribute('aria-label') || (c.tagName === 'INPUT' ? (c.value || c.getAttribute('placeholder') || '') : '') || c.innerText || c.getAttribute('title') || c.getAttribute('alt') || '').replace(/\s+/g, ' ').trim().slice(0, 120);
+const form = c.form || c.closest('form');
+return { label: words, tag: c.tagName.toLowerCase(), role: c.getAttribute('role') || '', type: (c.getAttribute('type') || '').toLowerCase(), formAction: form ? String(form.action || '') : '', formMethod: form ? String(form.method || 'get') : '', url: location.href };
+})()`;
+}
 async function capture(d: Desktop): Promise<Shot> {
   const buf: Buffer = await d.page.screenshot({ type: "jpeg", quality: 70 });
   return { data: buf.toString("base64"), mediaType: "image/jpeg", url: d.page.url(), title: await d.page.title().catch(() => "") };
@@ -176,6 +196,12 @@ const browserScreen = {
     await d.page.waitForTimeout(300);
     return capture(d);
   }),
+  /** The control under a point of the page in front, if a browser is open (never opens one). */
+  async targetAt(botId: string, x: number, y: number): Promise<ClickTarget | null> {
+    const d = desktops.get(botId);
+    if (!d) return null;
+    try { return (await d.page.evaluate(targetScript(x, y, false))) as ClickTarget | null; } catch { return null; }
+  },
   /** Visible text of the current page — far cheaper than a screenshot when the bot only needs to read. */
   read: (botId: string, userId: string) => withDesktop(botId, userId, async (d) => {
     const text: string = await d.page.evaluate("document.body ? document.body.innerText : ''");
@@ -219,6 +245,16 @@ export const screen = {
   drag: (botId: string, userId: string, x1: number, y1: number, x2: number, y2: number) =>
     kind === "linux" ? linuxScreen.drag(botId, userId, workspaceOf(botId), x1, y1, x2, y2) : browserScreen.drag(botId, userId, x1, y1, x2, y2),
   read: (botId: string, userId: string) => (kind === "linux" ? linuxScreen.read(botId, userId, workspaceOf(botId)) : browserScreen.read(botId, userId)).then((r) => noteUrl(botId, r)),
+  /**
+   * What a click at (x, y) would hit, read in the page itself through the existing page-text helper (Linux) or the
+   * browser (browser mode). null when it cannot be told (computer off, no page, not a browser window in front). Never
+   * wakes the computer.
+   */
+  targetAt: async (botId: string, x: number, y: number): Promise<ClickTarget | null> => {
+    if (kind === "linux") { const r = await linuxScreen.targetAt(botId, targetScript(x, y, true)).catch(() => null); return r?.target ? { ...r.target, url: r.target.url || r.url } : null; }
+    if (kind === "browser") return browserScreen.targetAt(botId, x, y);
+    return null;
+  },
   peek: (botId: string) => (kind === "linux" ? linuxScreen.peek(botId) : browserScreen.peek(botId)),
   isOpen: (botId: string) => (kind === "linux" ? linuxScreen.isOpen(botId) : browserScreen.isOpen(botId)),
   /** A picture for a demonstration recording, only if the computer is already on (never wakes it). */

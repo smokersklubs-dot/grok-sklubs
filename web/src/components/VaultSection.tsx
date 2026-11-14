@@ -5,8 +5,9 @@ import { useStore } from "../store";
 import type { VaultImportResult, VaultItem, VaultKind } from "../types";
 import { Icon, type IconName } from "./Icon";
 import { ConfirmButton, Empty, ErrorNote, IconButton, Loading, Menu, MenuItem } from "./ui";
+import { CardVaultEditor, cardSub, PaymentsList } from "./Wave5b";
 
-const KIND_ICON: Record<VaultKind, IconName> = { login: "key", secret: "lock", totp: "clock" };
+const KIND_ICON: Record<VaultKind, IconName> = { login: "key", secret: "lock", totp: "clock", card: "bolt" };
 
 interface VaultForm { name: string; site: string; username: string; password: string; note: string; hosts: string; header: string; prefix: string }
 const EMPTY: VaultForm = { name: "", site: "", username: "", password: "", note: "", hosts: "", header: "Authorization", prefix: "Bearer " };
@@ -226,7 +227,7 @@ export function VaultSection() {
     }
   };
   const subOf = (item: VaultItem) =>
-    item.kind === "secret"
+    item.kind === "card" ? cardSub(item, t) : item.kind === "secret"
       ? t("vault.secretSub", { hosts: item.hosts.join(", "), header: item.header })
       : item.kind === "totp"
         ? t("vault.totpSub", { site: item.site, digits: item.digits, period: item.period })
@@ -243,7 +244,7 @@ export function VaultSection() {
               <Icon name="plus" size={14} /> {t("vault.addAny")}
             </button>
             <Menu open={menu} onClose={() => setMenu(false)} align="right" label={t("vault.addAny")}>
-              {(["login", "secret", "totp"] as const).map((k) => (
+              {(["login", "secret", "totp", "card"] as const).map((k) => (
                 <MenuItem key={k} icon={KIND_ICON[k]} onClick={() => { setMenu(false); setEditing({ kind: k }); }}>{t(`vault.new.${k}`)}</MenuItem>
               ))}
               <div className="menu-sep" />
@@ -253,7 +254,7 @@ export function VaultSection() {
         )}
       </div>
       <ErrorNote onDismiss={() => setError(null)}>{error}</ErrorNote>
-      {editing && typeof editing === "object" && <VaultEditor item={null} kind={editing.kind} onSaved={saved} onCancel={() => setEditing(null)} />}
+      {editing && typeof editing === "object" && (editing.kind === "card" ? <CardVaultEditor item={null} onSaved={saved} onCancel={() => setEditing(null)} /> : <VaultEditor item={null} kind={editing.kind} onSaved={saved} onCancel={() => setEditing(null)} />)}
       {editing === "import" && (
         <VaultImport
           onCancel={() => setEditing(null)}
@@ -271,7 +272,7 @@ export function VaultSection() {
           {items.map((item) =>
             editing === item.id ? (
               <li key={item.id}>
-                <VaultEditor item={item} kind={item.kind} onSaved={saved} onCancel={() => setEditing(null)} />
+                {item.kind === "card" ? <CardVaultEditor item={item} onSaved={saved} onCancel={() => setEditing(null)} /> : <VaultEditor item={item} kind={item.kind} onSaved={saved} onCancel={() => setEditing(null)} />}
               </li>
             ) : (
               <li key={item.id} className="list-row is-card vault-row">
@@ -294,6 +295,7 @@ export function VaultSection() {
           )}
         </ul>
       )}
+      <PaymentsList />
     </>
   );
 }

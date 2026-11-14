@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import path from "node:path";
 import { config } from "./config.js";
 import { now } from "./store.js";
+import type { ClickTarget } from "./computer.js";
 
 /**
  * A real Linux computer per bot: one container each, with a graphical desktop, a browser, a terminal
@@ -280,6 +281,12 @@ export const linuxScreen = {
     if (parsed.error) throw new Error(parsed.error);
     return { url: parsed.url ?? "", title: parsed.title ?? "", text: parsed.text ?? "" };
   }),
+  /** What is under a point of the screen, read in the browser's front tab (null: computer off, no browser, nothing there). Never wakes it. */
+  async targetAt(botId: string, expression: string): Promise<{ url: string; target: ClickTarget | null } | null> {
+    if (machines.get(botId)?.power !== "running") return null;
+    const r = await docker(["exec", containerName(botId), "python3", "/opt/sklubot/page-text.py", "--eval", expression], { timeoutMs: 15_000 });
+    try { const p = JSON.parse(r.stdout.toString("utf8")) as { url?: string; target?: ClickTarget | null; error?: string }; return p.error ? null : { url: p.url ?? "", target: p.target ?? null }; } catch { return null; }
+  },
   /** For the live viewer: a picture of the screen if the computer is on. Never wakes it. */
   async peek(botId: string): Promise<Buffer | null> {
     if (machines.get(botId)?.power !== "running") return null;

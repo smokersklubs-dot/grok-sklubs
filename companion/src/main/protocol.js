@@ -7,6 +7,11 @@
  */
 
 const PROTOCOL_VERSION = 1;
+/**
+ * Minor revision, sent as hello.protocol (informational). 1.1 adds the fs.* operations (files in folders the user
+ * shared on this computer); a 1.0 server ignores the new capabilities, a 1.1 server only uses them when listed.
+ */
+const PROTOCOL_REVISION = '1.1';
 const CONNECT_PATH = '/api/relay/connect';
 
 /** Size limits (bytes). Server → client messages above MAX_INBOUND are rejected by `ws` (close 1009). */
@@ -24,6 +29,12 @@ const LIMITS = Object.freeze({
   MAX_CAPTURE_WIDTH: 2560,
   MAX_VIEW_FPS: 5,
   MAX_VIEW_WIDTH: 1600,
+  // Files (1.1). Reads come back in a relay → server message (4 MiB), writes arrive in a server → relay one (256 KiB).
+  DEFAULT_READ_BYTES: 64 * 1024,
+  MAX_READ_BYTES: 256 * 1024,
+  MAX_WRITE_BYTES: 200 * 1024,
+  MAX_LIST_ENTRIES: 500,
+  MAX_PATH: 1024,
 });
 
 /** WebSocket close codes used by the protocol (4000–4999 is the application range, RFC 6455 §7.4.2). */
@@ -57,6 +68,12 @@ const OPS = Object.freeze({
   'window.list': { session: true, input: false },
   'window.focus': { session: true, input: true },
   'shell.run': { session: true, input: true },
+  // Files (1.1): only inside folders the user shared in this app; no control session (no mouse, no keyboard).
+  'fs.roots': { session: false, input: false },
+  'fs.list': { session: false, input: false },
+  'fs.read': { session: false, input: false },
+  'fs.write': { session: false, input: true },
+  'fs.trash': { session: false, input: true },
 });
 
 const ERR = Object.freeze({
@@ -76,6 +93,12 @@ const ERR = Object.freeze({
   INTERNAL: 'internal',
   CANCELLED: 'cancelled',
   PERMISSION_MISSING: 'permission_missing',
+  // Files (1.1).
+  FORBIDDEN: 'forbidden',
+  READ_ONLY: 'read_only',
+  NOT_FOUND: 'not_found',
+  EXISTS: 'exists',
+  BINARY: 'binary',
 });
 
 /** Keys accepted by keyboard.press (names follow @jitsi/robotjs' key table, src/robotjs.cc). */
@@ -273,6 +296,19 @@ function validateArgs(op, rawArgs) {
         cwd: args.cwd === undefined ? null : str(args.cwd, 'cwd', 1024),
       };
     }
+    case 'fs.roots':
+      return {};
+    case 'fs.list':
+      return { root: str(args.root, 'root', 200), path: args.path === undefined ? '' : str(args.path, 'path', LIMITS.MAX_PATH) };
+    case 'fs.read':
+      return { root: str(args.root, 'root', 200), path: str(args.path, 'path', LIMITS.MAX_PATH), maxBytes: optNum(args.maxBytes, LIMITS.DEFAULT_READ_BYTES, 1, LIMITS.MAX_READ_BYTES) };
+    case 'fs.write': {
+      const mode = args.mode === undefined ? 'create' : str(args.mode, 'mode', 10);
+      if (mode !== 'create' && mode !== 'replace') throw new ProtocolError(ERR.INVALID_ARGS, 'mode must be create or replace');
+      return { root: str(args.root, 'root', 200), path: str(args.path, 'path', LIMITS.MAX_PATH), text: str(args.text, 'text', LIMITS.MAX_WRITE_BYTES), mode };
+    }
+    case 'fs.trash':
+      return { root: str(args.root, 'root', 200), path: str(args.path, 'path', LIMITS.MAX_PATH) };
     default:
       throw new ProtocolError(ERR.UNKNOWN_OP, `unknown op ${op}`);
   }
@@ -295,6 +331,6 @@ function parseBot(bot) {
 }
 
 module.exports = {
-  PROTOCOL_VERSION, CONNECT_PATH, LIMITS, CLOSE, OPS, ERR, ProtocolError,
+  PROTOCOL_VERSION, PROTOCOL_REVISION, CONNECT_PATH, LIMITS, CLOSE, OPS, ERR, ProtocolError,
   normalizeServer, validateArgs, parseBot, parseKey, isObj,
 };

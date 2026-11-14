@@ -15,6 +15,7 @@ import { NotificationsSection } from "./NotificationsSection";
 import { ModelsSection } from "./Reliability";
 import { ProfileSection } from "./ProfileSection";
 import { MemorySettingsSection, RulesSection } from "./Wave5";
+import { JournalView, PageVisibility, SpendSettingsBlock } from "./Wave5b";
 
 const SECTIONS: { id: AppSection; icon: IconName }[] = [
   { id: "general", icon: "settings" },
@@ -546,6 +547,8 @@ function UsageSection() {
               </table>
             </div>
           )}
+          <h3 className="pane-heading">{t("spend.heading")}</h3>
+          <SpendSettingsBlock />
           <h3 className="pane-heading">{t("usage.monthly")}</h3>
           <div className="field">
             <label className="field-label" htmlFor={id}>{t("usage.budgetLabel")}</label>
@@ -755,6 +758,7 @@ function PagesSection() {
                     <span className="list-row-title">{page.title || t("pages.untitled")}</span>
                     <span className="list-row-sub">{t("pages.by", { name: bot?.name ?? t("common.removedBot"), date: shortDate(page.createdAt) })}</span>
                   </div>
+                  <PageVisibility page={page} onChanged={(v) => setPages((cur) => cur?.map((x) => (x.token === page.token ? { ...x, visibility: v } : x)) ?? null)} />
                   <ConfirmButton className="btn btn-small btn-ghost-danger" label={t("pages.stop")} confirmLabel={t("pages.stopConfirm")} busyLabel={t("pages.stopping")} onConfirm={() => stop(page)} />
                 </div>
                 <div className="hook">
@@ -781,7 +785,23 @@ const AUDIT_ICON: Record<AuditEntry["kind"], IconName> = {
   tool: "wrench", approval: "shield", computer: "cursor", account: "user", apps: "plug", vault: "key", routine: "clock", channel: "send", system: "info",
 };
 
+/** Settings → Activity: the detailed usage journal (one line per action, with what allowed it) and the activity log. */
 function ActivitySection() {
+  const t = useT();
+  const [view, setView] = useState<"journal" | "log">("journal");
+  return (
+    <>
+      <h2>{t("settings.section.activity")}</h2>
+      <div className="seg-tabs" role="tablist" aria-label={t("settings.section.activity")}>
+        <button type="button" role="tab" aria-selected={view === "journal"} className={`seg-tab ${view === "journal" ? "is-active" : ""}`} onClick={() => setView("journal")}><Icon name="chart" size={13} /> {t("journal.title")}</button>
+        <button type="button" role="tab" aria-selected={view === "log"} className={`seg-tab ${view === "log" ? "is-active" : ""}`} onClick={() => setView("log")}><Icon name="history" size={13} /> {t("audit.title")}</button>
+      </div>
+      {view === "journal" ? <><p className="muted">{t("journal.intro")}</p><JournalView /></> : <ActivityLog />}
+    </>
+  );
+}
+
+function ActivityLog() {
   const bots = useStore((s) => s.bots);
   const t = useT();
   const [entries, setEntries] = useState<AuditEntry[] | null>(null);
@@ -835,7 +855,6 @@ function ActivitySection() {
 
   return (
     <>
-      <h2>{t("settings.section.activity")}</h2>
       <p className="muted">{t("audit.intro")}</p>
       <div className="filter-chips" role="group" aria-label={t("audit.filter")}>
         <button type="button" className={`filter-chip ${kind === null ? "is-selected" : ""}`} aria-pressed={kind === null} onClick={() => setKind(null)}>{t("audit.all")}</button>

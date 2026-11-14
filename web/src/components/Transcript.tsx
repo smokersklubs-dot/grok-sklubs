@@ -6,6 +6,7 @@ import { REACTIONS, type ActivityKind, type Attachment, type Bot, type Live, typ
 import { callClock, clockTime, dividerLabel, elapsed, fileSize, hostName, liveDuration, workDuration } from "../lib/format";
 import { accentStyle } from "../lib/colors";
 import { renderMarkdown } from "../lib/markdown";
+import { FirstTaskIdeas, MentionedFiles, previewable, usePreview } from "./Wave5b";
 import { Avatar, BotAvatar } from "./Avatar";
 import { CardView } from "./Cards";
 import { GrantLine } from "./Wave5";
@@ -240,7 +241,9 @@ function Attachments({ botId, files }: { botId: string; files: Attachment[] }) {
         </button>
       ))}
       {others.map((f) => (
-        <a key={f.path} className="attach-file" href={downloadUrl(botId, f.path)} download={f.name} title={t("attach.downloadName", { name: f.name })}>
+        <span key={f.path} className="attach-file-wrap">
+        {previewable(f.mime, f.name) && <button type="button" className="attach-preview" onClick={() => usePreview.getState().open(botId, f)} aria-label={t("preview.open", { name: f.name })} title={t("preview.open", { name: f.name })}><Icon name="eye" size={15} /></button>}
+        <a className="attach-file" href={downloadUrl(botId, f.path)} download={f.name} title={t("attach.downloadName", { name: f.name })}>
           <span className="attach-file-icon">
             <Icon name="file" size={18} />
           </span>
@@ -250,6 +253,7 @@ function Attachments({ botId, files }: { botId: string; files: Attachment[] }) {
           </span>
           <Icon name="download" size={15} className="attach-file-dl" />
         </a>
+        </span>
       ))}
       {open && <Lightbox botId={botId} file={open} onClose={() => setOpen(null)} />}
     </div>
@@ -370,6 +374,7 @@ function MessageGroup({ item }: { item: Extract<Item, { t: "msgs" }> }) {
                 {b.streaming && <span className="stream-dots" aria-label={t("msg.stillWriting")}><i /><i /><i /></span>}
               </div>
             )}
+            {!item.mine && !b.streaming && b.text.includes("~/files/") && <MentionedFiles botId={row.botId} text={b.text} />}
             <time className="msg-time" dateTime={new Date(row.createdAt).toISOString()}>{clockTime(row.createdAt)}</time>
             {mode !== "readonly" && !b.streaming && <MessageActions row={row} canThread={mode === "main"} />}
             {b.reactions && b.reactions.length > 0 && <ReactionBar row={row} reactions={b.reactions} />}
@@ -788,6 +793,7 @@ function EmptyChat({ bot }: { bot: Bot }) {
       <p>{bot.description || fallback}</p>
       {imageGeneration && bot.kind !== "room" && <p className="chat-empty-hint">{t("empty.images")}</p>}
       {bot.kind !== "room" && <p className="chat-empty-hint">{t(video.higgsfield ? "empty.videoHiggsfield" : video.provider ? "empty.video" : "empty.videoOff")}</p>}
+      {bot.kind === "agent" && bot.primary && <FirstTaskIdeas bot={bot} />}
     </div>
   );
 }

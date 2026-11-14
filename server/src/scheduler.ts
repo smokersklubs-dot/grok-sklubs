@@ -9,7 +9,11 @@ import { consolidationSweep } from "./agent/memory.js";
 import { nudgeSweep } from "./agent/nudges.js";
 import { createHash } from "node:crypto";
 import { readLibraryFile, resolveInWorkspace } from "./computer.js";
-import { isNativeTrigger, routines, runs, type RoutineRecord } from "./routines.js";
+import { isNativeTrigger, onRunEnded, ROUTINE_FAIL_PAUSE, ROUTINE_FAIL_PUSH, routines, runs, type RoutineRecord } from "./routines.js";
+import { accounts as nativeAccounts } from "./native/accounts.js";
+import { inboxFingerprint } from "./native/access.js";
+import { pushLater } from "./push.js";
+import { audit } from "./store.js";
 import { checkNative, setFire, syncSlackSockets } from "./native/triggers.js";
 import { tr } from "./i18n.js";
 import { guardedFetch } from "./net.js";
@@ -36,14 +40,72 @@ export const unschedule = (routineId: string) => { due.delete(routineId); };
  * Runs a routine now: notes it in the chat and queues the work behind whatever the bot is doing.
  * `outside`: the payload came from outside (a webhook call); the turn treats it as outside content.
  */
-export function fireRoutine(r: RoutineRecord, payload?: unknown, opts: { outside?: boolean; label?: string } = {}) {
+export function fireRoutine(r: RoutineRecord, payload?: unknown, opts: { outside?: boolean; label?: string; note?: string } = {}): "fired" | "busy" {
   const bot = bots.byId(r.botId);
-  if (!bot) return;
+  if (!bot) return "busy";
+  // One run at a time (spec 07 A7): a due time that comes while a run is still under way is skipped (a one-off
+  // routine is tried again a minute later).
+  if (runs.active(r.id)) {
+    runs.skipped(r.id, "Still running from the previous time: skipped.");
+    if (r.trigger === "once") due.set(r.id, now() + 60_000);
+    emit(bot.userId, { type: "routines", botId: bot.id });
+    return "busy";
+  }
   routines.markRun(r.id, now());
   rows.append(bot, { kind: "event", event: "routine", text: tr(users.localeOf(bot.userId), "Running routine: {name}", { name: r.name }) });
   const extra = payload === undefined ? "" : `\n\n${opts.label ?? "[Data received with this call]"}\n${clip(JSON.stringify(payload, null, 2), 8000)}`;
-  enqueue(bot.id, { kind: "routine", name: r.name, text: r.prompt + extra, runId: runs.start(r.id), tainted: !!opts.outside && payload !== undefined });
+  enqueue(bot.id, { kind: "routine", name: r.name, text: r.prompt + extra + (opts.note ? `\n\n${opts.note}` : ""), runId: runs.start(r.id), tainted: !!opts.outside && payload !== undefined });
   emit(bot.userId, { type: "routines", botId: bot.id });
+  return "fired";
+}
+
+/**
+ * A fingerprint of what an "only when something is new" routine waits for: its mail accounts' latest messages and its
+ * web addresses' text. Null when it cannot be told (the run then happens).
+ */
+export async function inputsFingerprint(r: RoutineRecord): Promise<string | null> {
+  if (!r.rawInputs.length) return null;
+  const parts: string[] = [];
+  for (const i of r.rawInputs) {
+    if (i.kind === "account") {
+      const acc = nativeAccounts.byId(i.accountId);
+      if (!acc || acc.status !== "ready") return null;
+      parts.push(`${i.accountId}:${await inboxFingerprint(acc)}`);
+    } else {
+      const res = await guardedFetch(i.url, { signal: AbortSignal.timeout(30_000), headers: { "user-agent": "Mozilla/5.0 (compatible; assistant)" }, redirect: "follow" });
+      if (!res.ok) return null;
+      parts.push(`${i.url}:${(await res.text()).replace(/<(script|style)[\s\S]*?<\/\1>/gi, "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ")}`);
+    }
+  }
+  return createHash("sha256").update(parts.join("\n")).digest("hex");
+}
+
+/**
+ * A due time of a cron routine. The slot is claimed first (never fired twice). An "only when something is new"
+ * routine checks its inputs: unchanged since the last run → skipped, no model call. Its first run and the run after a
+ * failure always happen. Running more than 10 minutes late is said in the instruction.
+ */
+export async function dueRoutine(r: RoutineRecord, slot: number): Promise<"fired" | "skipped" | "busy" | "claimed"> {
+  if (!routines.claimSlot(r.id, String(slot))) return "claimed";
+  let note = "";
+  const late = now() - slot;
+  if (late > 10 * 60_000) {
+    const missed = Math.max(0, (() => { let n = 0, t = slot; while (n < 500) { const nx = nextRun(r.schedule, r.timezone, t); if (!nx || nx > now()) break; n++; t = nx; } return n; })());
+    note = `[This run was due at ${new Date(slot).toISOString().slice(0, 16).replace("T", " ")} UTC and starts at ${new Date().toISOString().slice(0, 16).replace("T", " ")} UTC${missed ? `; ${missed} later due times were skipped` : ""}.]`;
+  }
+  if (r.skipUnchanged && r.rawInputs.length) {
+    let fp: string | null = null;
+    try { fp = await inputsFingerprint(r); } catch { fp = null; }
+    const firstOrAfterFailure = r.inputsHash === null || r.failures > 0 || runs.list(r.id).find((x) => x.status !== "skipped")?.status === "error";
+    if (fp && fp === r.inputsHash && !firstOrAfterFailure) {
+      runs.skipped(r.id, "Nothing new since the last run: skipped without calling the model.");
+      const bot = bots.byId(r.botId);
+      if (bot) emit(bot.userId, { type: "routines", botId: bot.id });
+      return "skipped";
+    }
+    if (fp) routines.setInputsHash(r.id, fp);
+  }
+  return fireRoutine(routines.byId(r.id) ?? r, undefined, { note });
 }
 
 function tickRoutines() {
@@ -55,8 +117,8 @@ function tickRoutines() {
     if (!r || !r.enabled) continue;
     if (isNativeTrigger(r.trigger)) { void checkNative(r).catch((e) => console.error("[app trigger]", e?.message ?? e)).finally(() => schedule(id)); continue; }
     if (r.trigger === "watch") { void checkWatch(r).catch((e) => console.error("[watch]", e?.message ?? e)).finally(() => schedule(id)); continue; }
+    if (r.trigger === "cron") { void dueRoutine(r, at).catch((e) => console.error("[routine]", e?.message ?? e)).finally(() => schedule(id)); continue; }
     fireRoutine(r);
-    if (r.trigger === "cron") schedule(id);
   }
 }
 
@@ -91,7 +153,7 @@ function catchUp() {
       const since = r.lastRunAt ?? r.createdAt;
       const missed = nextRun(r.schedule, r.timezone, since);
       // Only make up runs missed in the last day; older ones are stale.
-      if (missed && missed <= now() && missed >= now() - 24 * 3600_000) fireRoutine(r);
+      if (missed && missed <= now() && missed >= now() - 24 * 3600_000) void dueRoutine(r, missed).catch((e) => console.error("[routine]", e?.message ?? e));
     }
   }
 }
@@ -143,7 +205,30 @@ function tickCheckins() {
   }
 }
 
-setFire((r, payload, opts) => fireRoutine(r, payload, opts));
+setFire((r, payload, opts) => { fireRoutine(r, payload, opts); });
+
+/**
+ * How a run ended (spec 07 A7): a failure is said in the bot's chat, naming the routine and the cause; after
+ * ROUTINE_FAIL_PUSH failures in a row the user is pushed; after ROUTINE_FAIL_PAUSE the server pauses the routine. A
+ * run that works again resets the count.
+ */
+onRunEnded((r, status, note) => {
+  const bot = bots.byId(r.botId);
+  if (!bot) return;
+  const loc = users.localeOf(bot.userId);
+  if (status === "done" || status === "quiet") { if (r.failures) routines.succeeded(r.id); return; }
+  if (status !== "error") return;
+  const n = routines.failed(r.id);
+  rows.append(bot, { kind: "notice", tone: "warn", text: tr(loc, "The routine “{name}” failed: {detail}", { name: r.name, detail: clip(note || "?", 200) }) });
+  if (n >= ROUTINE_FAIL_PAUSE) {
+    routines.pauseFor(r.id, tr(loc, "Paused after {n} failed runs in a row", { n }));
+    unschedule(r.id);
+    rows.append(bot, { kind: "notice", tone: "error", text: tr(loc, "I paused the routine “{name}” after {n} failed runs in a row. Fix it, then turn it back on.", { name: r.name, n }) });
+    audit(bot.userId, "routine", `${bot.name}: routine paused after ${n} failures — ${r.name}`, bot.id);
+  }
+  if (n === ROUTINE_FAIL_PUSH || n >= ROUTINE_FAIL_PAUSE) pushLater(bot.userId, { kind: "routine", title: `${bot.name} · ${r.name}`, body: tr(loc, "Failed {n} times in a row: {detail}", { n, detail: clip(note || "?", 120) }), botId: bot.id });
+  emit(bot.userId, { type: "routines", botId: bot.id });
+});
 
 export function startScheduler() {
   if (config.schedulerOff) return;

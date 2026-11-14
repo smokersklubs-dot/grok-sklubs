@@ -4,6 +4,8 @@ import { tr } from "./i18n.js";
 import { audit, bots, now, rows, settings, users } from "./store.js";
 import type { TurnUsage } from "./llm/types.js";
 import type { Engine, SubscriptionUsage, UsageSummary } from "./shared.js";
+import { addSpend } from "./agent/spend.js";
+import { noteCost } from "./journal.js";
 
 /** Last known use of each user's subscription windows, as reported by the tools themselves. */
 const subscriptionUse = new Map<string, Map<Engine, SubscriptionUsage>>();
@@ -31,8 +33,12 @@ export function costOf(model: string, u: TurnUsage): number {
 
 /** `costUsd`: the price the service itself reported (e.g. a video), used instead of our token price list. */
 export function record(userId: string, botId: string, model: string, u: TurnUsage, costUsd?: number) {
+  const cost = costUsd ?? costOf(model, u);
   q.run("INSERT INTO usage (user_id, bot_id, at, model, input_tokens, output_tokens, cached_tokens, cost_usd) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-    userId, botId, now(), model, u.inputTokens, u.outputTokens, u.cachedTokens, costUsd ?? costOf(model, u));
+    userId, botId, now(), model, u.inputTokens, u.outputTokens, u.cachedTokens, cost);
+  // The task's spend checkpoint (A5) and the journal's per-action cost (A14) count the same money.
+  addSpend(botId, cost);
+  noteCost(botId, cost);
   emit(userId, { type: "usage" });
   if (budgetJustNeared(userId)) {
     const main = bots.primary(userId);

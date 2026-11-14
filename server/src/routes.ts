@@ -50,12 +50,19 @@ import { syncSlackSockets } from "./native/triggers.js";
 import { isNativeTrigger } from "./routines.js";
 import type { NativeVendor, NativeVendorSetup } from "./shared.js";
 import { confirmPairing, lastFrame, listDevices, relayDownloads, revokeDevice, stopSession, userSpoke as relayUserSpoke } from "./relay.js";
-import { MAX_RULES, rules } from "./rules.js";
+import { isRuleTrigger, MAX_RULES, ruleChanges, rules } from "./rules.js";
+import type { RuleTrigger } from "./shared.js";
 import { executions, grants } from "./agent/executions.js";
 import { bgTasks, publicTask, replyToTask, stopTask } from "./agent/bgtasks.js";
 import { actOnNudge, nudges, nudgeStats, preparationPass } from "./agent/nudges.js";
 import { exportMemories, importCandidates, importMemories, learnStyle } from "./agent/memory.js";
 import { sentMail } from "./native/access.js";
+import { answerCheckpoint, checkpoints } from "./agent/spend.js";
+import { journalCsv, journalTotals, listJournal, type JournalFilter } from "./journal.js";
+import { payments, sealCard } from "./agent/payments.js";
+import { apiConnectors, approveConnector } from "./apiconnectors.js";
+import { firstTaskIdeas } from "./ideas.js";
+import { guideIndex } from "./agent/guides.js";
 
 type Env = { Variables: { user: UserRecord } };
 export const api = new Hono<Env>();
@@ -93,13 +100,18 @@ export const site = new Hono();
 // site — no cookies, no access to the app or its API.
 site.get("/p/:token", (c) => {
   const page = pages.byToken(c.req.param("token"), config.publicUrl);
+  // A private page is only for its owner, signed in to this Sklubot (the session cookie); anyone else gets a 404.
+  if (page?.visibility === "private") {
+    const viewer = userForToken(getCookie(c, SESSION_COOKIE));
+    if (!viewer || viewer.id !== page.userId) return c.text("This page is private. Sign in to Sklubot as its owner to open it.", 404, { "cache-control": "no-store", "x-robots-tag": "noindex" });
+  }
   let html: string | null = null;
   // Read through the library guard: a page file the bot replaced with a link (to the database, to the
   // server's environment…) is refused, never served.
   try { if (page) html = readLibraryFile(page.botId, page.path).toString("utf8"); } catch { /* removed, or not a plain file of the library */ }
   if (!html) return c.text("This page is no longer shared.", 404);
   return c.body(html, 200, {
-    "content-type": "text/html; charset=utf-8", "x-content-type-options": "nosniff", "referrer-policy": "no-referrer", "x-robots-tag": "noindex",
+    "content-type": "text/html; charset=utf-8", "x-content-type-options": "nosniff", "referrer-policy": "no-referrer", "x-robots-tag": "noindex", ...(page?.visibility === "private" ? { "cache-control": "private, no-store" } : {}),
     "content-security-policy": "sandbox allow-scripts allow-popups; default-src 'self' data: blob: https: 'unsafe-inline' 'unsafe-eval'; frame-ancestors 'none'",
   });
 });
@@ -776,7 +788,8 @@ api.patch("/routines/:id", async (c) => {
   return c.json({ routine: publicRoutine(updated, c.get("user").locale) });
 });
 api.get("/routines/:id/runs", (c) => c.json({ runs: runs.list(ownRoutine(c).id) }));
-api.post("/routines/:id/run", (c) => { fireRoutine(ownRoutine(c)); return c.json({ ok: true }); });
+// "Run now" does not move the next due time and does not turn a paused routine back on; a run under way is not doubled.
+api.post("/routines/:id/run", (c) => { const r = fireRoutine(ownRoutine(c)); return r === "busy" ? fail(409, "This routine is already running.") : c.json({ ok: true }); });
 api.delete("/routines/:id", (c) => {
   const r = ownRoutine(c);
   unschedule(r.id);
@@ -849,6 +862,17 @@ api.delete("/bots/:id/telegram", (c) => { telegram.disconnect(ownAgent(c)); retu
 
 // ── Shared pages ─────────────────────────────────────────────────────────────
 api.get("/pages", (c) => c.json({ pages: pages.list(c.get("user").id, config.publicUrl).map(({ userId, path: _p, ...rest }) => rest) }));
+api.patch("/pages/:token", async (c) => {
+  const user = c.get("user");
+  const page = pages.byToken(c.req.param("token"), config.publicUrl);
+  if (!page || page.userId !== user.id) fail(404, "That page does not exist.");
+  const v = String((await body(c)).visibility ?? "");
+  if (v !== "link" && v !== "private") fail(400, "Visibility is link or private.");
+  pages.setVisibility(page!.token, v as "link" | "private");
+  audit(user.id, "account", `Page ${page!.title}: ${v === "private" ? "private" : "anyone with the link"}`, page!.botId);
+  emit(user.id, { type: "pages" });
+  return c.json({ ok: true });
+});
 api.delete("/pages/:token", (c) => {
   pages.remove(c.get("user").id, c.req.param("token"));
   emit(c.get("user").id, { type: "pages" });
@@ -1162,7 +1186,7 @@ const siteOf = (raw: unknown) => {
 };
 /** A header name that may carry a secret (RFC 9110 token, and not one that would change where the request goes). */
 const HEADER_OK = (h: string) => /^[A-Za-z0-9!#$%&'*+.^_`|~-]{1,64}$/.test(h) && !["host", "cookie", "content-length", "connection", "transfer-encoding"].includes(h.toLowerCase());
-function vaultFields(b: Record<string, any>, base?: VaultFields): VaultFields {
+function vaultFields(b: Record<string, any>, base?: VaultFields & { card?: { dailyCapUsd: number | null; monthlyCapUsd: number | null; brand: string; last4: string } | null }): VaultFields {
   const kind: VaultKind = (VAULT_KINDS as readonly string[]).includes(b.kind) ? b.kind : base?.kind ?? "login";
   const pick = (key: "name" | "site" | "username" | "note", max: number) => (b[key] === undefined ? base?.[key] ?? "" : String(b[key])).trim().slice(0, max);
   const name = pick("name", 80);
@@ -1178,6 +1202,18 @@ function vaultFields(b: Record<string, any>, base?: VaultFields): VaultFields {
     if (!HEADER_OK(header)) fail(400, "That header name cannot carry a secret.");
     const prefix = (b.prefix === undefined ? base?.prefix ?? (header.toLowerCase() === "authorization" ? "Bearer " : "") : String(b.prefix)).slice(0, 40);
     Object.assign(f, { site: "", hosts, header, prefix });
+  }
+  if (kind === "card") {
+    // A payment card (spec 07 A12): number, expiry, CVC and the name on it are sealed together; only the network and
+    // the last 4 digits are kept in the clear. Changing the card means typing all of it again.
+    const cap = (v: unknown, cur: number | null | undefined) => (v === undefined ? cur ?? null : v === null || v === "" ? null : Number.isFinite(Number(v)) && Number(v) >= 0 ? Math.round(Number(v) * 100) / 100 : fail(400, "A spending cap is an amount, or empty for none."));
+    Object.assign(f, { site: "", dailyCapUsd: cap(b.dailyCapUsd, base?.card?.dailyCapUsd), monthlyCapUsd: cap(b.monthlyCapUsd, base?.card?.monthlyCapUsd), brand: base?.card?.brand ?? "", last4: base?.card?.last4 ?? "" });
+    if (b.number !== undefined && String(b.number).trim()) {
+      try { const sealed = sealCard({ number: b.number, expiry: b.expiry, cvc: b.cvc, holder: b.holder }); Object.assign(f, { passwordEnc: sealed.enc, brand: sealed.brand, last4: sealed.last4 }); }
+      catch (err) { return fail(400, (err as Error).message); }
+    }
+    if (!f.passwordEnc) fail(400, "Type the card number, expiry and security code.");
+    return f;
   }
   if (kind === "totp") {
     let digits = base?.digits ?? 6, period = base?.period ?? 30;
@@ -1216,7 +1252,7 @@ api.delete("/vault/:id", (c) => {
   const cur = vault.owned(c.get("user").id, c.req.param("id")) ?? fail(404, "That login does not exist.");
   vault.remove(cur.id);
   audit(c.get("user").id, "vault", `Vault item removed: ${cur.name}`);
-  for (const key of [`vault: ${cur.name}`, `secret: ${cur.name}`, `totp: ${cur.name}`]) policies.remove(c.get("user").id, key);
+  for (const key of [`vault: ${cur.name}`, `secret: ${cur.name}`, `totp: ${cur.name}`, `card: ${cur.name}`]) policies.remove(c.get("user").id, key);
   return c.json({ ok: true });
 });
 
@@ -1518,7 +1554,8 @@ api.post("/rules", async (c) => {
   if (!text) fail(400, "Write the rule.");
   if (rules.count(user.id) >= MAX_RULES) fail(409, `At most ${MAX_RULES} rules.`);
   const botId = typeof b.botId === "string" && b.botId ? ownBot(c, b.botId).id : null;
-  const rule = rules.create(user.id, text, botId);
+  const scope = ruleScopeOf(user.id, b);
+  const rule = rules.create(user.id, text, scope.routineBot ?? botId, { routineId: scope.routineId, trigger: scope.trigger });
   audit(user.id, "account", `Rule added${botId ? ` for ${bots.byId(botId)?.name}` : ""}: ${clip(rule.text, 200)}`, botId);
   emit(user.id, { type: "rules" });
   return c.json({ rule });
@@ -1527,7 +1564,8 @@ api.patch("/rules/:id", async (c) => {
   const user = c.get("user");
   const cur = rules.owned(user.id, c.req.param("id")) ?? fail(404, "That rule does not exist.");
   const b = await body(c);
-  const rule = rules.update(cur.id, { text: typeof b.text === "string" ? b.text : undefined, enabled: typeof b.enabled === "boolean" ? b.enabled : undefined });
+  const scope = "routineId" in b || "trigger" in b ? ruleScopeOf(user.id, b) : null;
+  const rule = rules.update(cur.id, { text: typeof b.text === "string" ? b.text : undefined, enabled: typeof b.enabled === "boolean" ? b.enabled : undefined, ...(scope ? { routineId: scope.routineId, trigger: scope.trigger, ...(scope.routineBot ? { botId: scope.routineBot } : {}) } : {}) });
   audit(user.id, "account", `Rule changed: ${clip(rule.text, 200)}${rule.enabled ? "" : " (off)"}`, rule.botId);
   emit(user.id, { type: "rules" });
   return c.json({ rule });
@@ -1548,7 +1586,155 @@ api.put("/rules/reviewer", async (c) => {
   emit(user.id, { type: "rules" });
   return c.json(rulesState(user.id));
 });
-function rulesState(userId: string) { return { rules: rules.all(userId), reviewerModel: settings.review(userId).model, auxModel: config.auxModel }; }
+function rulesState(userId: string) { return { rules: rules.all(userId), reviewerModel: settings.review(userId).model, auxModel: config.auxModel, changes: ruleChanges.list(userId) }; }
+/** A rule's scope from a request: one of the user's routines (then it belongs to that routine's bot), or a trigger kind. */
+function ruleScopeOf(userId: string, b: Record<string, any>): { routineId: string | null; trigger: RuleTrigger | null; routineBot: string | null } {
+  if (typeof b.routineId === "string" && b.routineId) {
+    const r = routines.owned(userId, b.routineId) ?? fail(404, "That routine does not exist.");
+    return { routineId: r.id, trigger: null, routineBot: r.botId };
+  }
+  if (b.trigger !== undefined && b.trigger !== null && b.trigger !== "") {
+    if (!isRuleTrigger(b.trigger)) fail(400, "Unknown trigger kind.");
+    return { routineId: null, trigger: b.trigger as RuleTrigger, routineBot: null };
+  }
+  return { routineId: null, trigger: null, routineBot: null };
+}
+/** Undoes a rule change a bot made from the chat (one click in Settings → Rules or on the chat line). */
+api.post("/rules/changes/:id/undo", (c) => {
+  const user = c.get("user");
+  const ch = ruleChanges.owned(user.id, c.req.param("id")) ?? fail(404, "That change does not exist.");
+  if (!ruleChanges.undo(user.id, ch.id)) fail(409, "This change was already undone.");
+  audit(user.id, "account", `Rule change undone (${ch.action}): ${clip(ch.text, 200)}`, ch.botId);
+  emit(user.id, { type: "rules" });
+  return c.json(rulesState(user.id));
+});
+
+// ── Wave 5b ──────────────────────────────────────────────────────────────────
+// Spend checkpoints (A5): the account's default, and the answer on a checkpoint card.
+api.get("/spend", (c) => c.json({ settings: settings.spend(c.get("user").id) }));
+api.put("/spend", async (c) => {
+  const user = c.get("user");
+  const n = Number((await body(c)).checkpointUsd);
+  if (!Number.isFinite(n) || n < 0 || n > 10_000) fail(400, "The checkpoint is an amount between 0 (off) and 10 000.");
+  const next = settings.saveSpend(user.id, { checkpointUsd: n });
+  audit(user.id, "account", `Spend checkpoint set to ${next.checkpointUsd.toFixed(2)} $`);
+  emit(user.id, { type: "usage" });
+  return c.json({ settings: next });
+});
+api.post("/spend/:id", async (c) => {
+  const user = c.get("user");
+  const cp = checkpoints.byId(c.req.param("id"));
+  const worker = cp ? bots.byId(cp.workerId) : null;
+  if (!cp || !worker || worker.userId !== user.id) return fail(404, "That checkpoint does not exist.");
+  const action = String((await body(c)).action ?? "");
+  if (action !== "continue" && action !== "raise" && action !== "stop") fail(400, "Unknown action.");
+  if (!(await answerCheckpoint(cp, action as "continue" | "raise" | "stop"))) fail(409, "This was already answered.");
+  return c.json({ ok: true });
+});
+
+// The detailed usage journal (A14): filterable, exportable.
+function journalFilter(c: Context<Env>): JournalFilter {
+  const n = (k: string) => { const v = Number(c.req.query(k)); return Number.isFinite(v) && v > 0 ? v : undefined; };
+  const days = n("days");
+  return { from: n("from") ?? (days ? Date.now() - days * 86400_000 : undefined), to: n("to"), botId: c.req.query("bot") || undefined, tool: c.req.query("tool") || undefined, decision: c.req.query("decision") || undefined, limit: n("limit"), before: n("before") };
+}
+api.get("/journal", (c) => { const user = c.get("user"); const f = journalFilter(c); return c.json({ entries: listJournal(user.id, f), totals: journalTotals(user.id, f) }); });
+api.get("/journal.csv", (c) => download(c, "sklubot-journal.csv", "text/csv; charset=utf-8", journalCsv(c.get("user").id, journalFilter(c))));
+
+// Card payments (A12): the list, for the vault page.
+api.get("/payments", (c) => c.json({ payments: payments.list(c.get("user").id) }));
+
+// Task guides (A10): the built-in index.
+api.get("/guides", (c) => c.json({ guides: guideIndex() }));
+
+// First-task ideas (A19). ?mail=1: the user opted in to a sample of recent email subjects (read-only, matched here).
+api.get("/ideas", async (c) => {
+  const user = c.get("user");
+  const r = await firstTaskIdeas(user.id, user.locale, c.req.query("mail") === "1");
+  if (r.source === "mail") audit(user.id, "apps", `First-task ideas from ${r.sampled} email subjects (read-only)`);
+  return c.json(r);
+});
+
+// A learned skill the bot proposed (A9): saved (as reviewed, maybe edited, by the user) or dismissed.
+api.post("/bots/:id/cards/:seq/skill", async (c) => {
+  const bot = ownAgent(c);
+  const row = rows.get(bot.id, bot.generation, Number(c.req.param("seq")));
+  const card = row?.body.kind === "card" && row.body.card.type === "skill" ? row.body.card : fail(400, "That is not a proposed skill.");
+  if (card.status !== "pending") fail(409, "This was already answered.");
+  const b = await body(c);
+  if (b.action === "dismiss") {
+    rows.updateCard(bot, row!.generation, row!.seq, (k) => (k.type === "skill" ? { ...k, status: "dismissed" } : k));
+    return c.json({ ok: true });
+  }
+  if (b.action !== "save") fail(400, "Unknown action.");
+  const name = clip(String(b.name ?? card.name).trim(), 80), when = clip(String(b.when ?? card.when).trim(), 300), steps = String(b.steps ?? card.steps).trim().slice(0, 20_000);
+  if (!name || !steps) fail(400, "A skill needs a name and steps.");
+  const existing = skills.list(bot.id).find((k) => k.name.toLowerCase() === name.toLowerCase());
+  if (existing) fail(409, "A skill with this name already exists.");
+  // Kept as outside content when the task had read outside content: it then never authorises anything.
+  skills.create(bot.id, name, when, steps, false, { learned: true, outside: card.outside });
+  rows.updateCard(bot, row!.generation, row!.seq, (k) => (k.type === "skill" ? { ...k, name, when, steps, status: "saved" } : k));
+  audit(c.get("user").id, "account", `${bot.name}: learned skill saved — ${name}${card.outside ? " (outside content)" : ""}`, bot.id);
+  emit(c.get("user").id, { type: "memories", botId: bot.id });
+  return c.json({ ok: true });
+});
+
+// A contradicted note (memory confidence): the user says which is right. "old" keeps the note (confirmed), "new"
+// archives it and keeps the new fact, confirmed, with the user's words.
+api.post("/bots/:id/cards/:seq/memory", async (c) => {
+  const bot = ownAgent(c);
+  const row = rows.get(bot.id, bot.generation, Number(c.req.param("seq")));
+  const card = row?.body.kind === "card" && row.body.card.type === "memory" ? row.body.card : fail(400, "That is not a memory question.");
+  if (card.status !== "pending") fail(409, "This was already answered.");
+  const choice = String((await body(c)).choice ?? "");
+  if (choice !== "old" && choice !== "new") fail(400, "Choose old or new.");
+  const m = memories.owned(c.get("user").id, card.memoryId);
+  if (choice === "old") { if (m) { memories.setStatus(m.id, "active"); memories.confirm(m.id); } }
+  else {
+    if (m) memories.setStatus(m.id, "archived");
+    const fresh = memories.add(bot.id, card.newText, "learned", { quote: card.quote, category: m?.category ?? null });
+    memories.confirm(fresh.id);
+  }
+  rows.updateCard(bot, row!.generation, row!.seq, (k) => (k.type === "memory" ? { ...k, status: choice === "old" ? "kept" : "replaced" } : k));
+  emit(c.get("user").id, { type: "memories", botId: bot.id });
+  return c.json({ ok: true });
+});
+
+// API connectors on demand (A16).
+api.get("/api-connectors", (c) => c.json({ connectors: apiConnectors.list(c.get("user").id) }));
+api.delete("/api-connectors/:id", (c) => {
+  const user = c.get("user");
+  const conn = apiConnectors.owned(user.id, c.req.param("id")) ?? fail(404, "That connector does not exist.");
+  apiConnectors.remove(user.id, conn.id);
+  audit(user.id, "apps", `API connector removed: ${conn.name}`);
+  emit(user.id, { type: "apiConnectors" });
+  return c.json({ ok: true });
+});
+/** The card of api_connector_propose: approve (with the token typed there when the vault has none) or dismiss. */
+api.post("/bots/:id/cards/:seq/apiconnector", async (c) => {
+  const bot = ownAgent(c);
+  const user = c.get("user");
+  const row = rows.get(bot.id, bot.generation, Number(c.req.param("seq")));
+  const card = row?.body.kind === "card" && row.body.card.type === "apiconnector" ? row.body.card : fail(400, "That is not an API connector.");
+  if (card.status !== "pending") fail(409, "This was already answered.");
+  const conn = apiConnectors.owned(user.id, card.connectorId) ?? fail(404, "That connector does not exist.");
+  const b = await body(c);
+  if (b.action === "dismiss") {
+    apiConnectors.remove(user.id, conn.id);
+    rows.updateCard(bot, row!.generation, row!.seq, (k) => (k.type === "apiconnector" ? { ...k, status: "dismissed" } : k));
+    enqueue(bot.id, { kind: "system", text: `The user did not approve the API connector "${conn.name}". Carry on without it, or say what cannot be done.`, thread: row!.thread || undefined });
+    emit(user.id, { type: "apiConnectors" });
+    return c.json({ ok: true });
+  }
+  if (b.action !== "approve") fail(400, "Unknown action.");
+  const token = typeof b.token === "string" ? b.token.trim() : "";
+  if (token.length > 8000) fail(400, "That token is too long.");
+  const r = approveConnector(user.id, conn, token ? seal(token) : null);
+  if (!r.ok) return fail(400, r.error);
+  rows.updateCard(bot, row!.generation, row!.seq, (k) => (k.type === "apiconnector" ? { ...k, secretSaved: true, status: "approved" } : k));
+  enqueue(bot.id, { kind: "system", text: `The user approved the API connector "${conn.name}" (${conn.endpoints.length} endpoints). Use api_get to read and api_send to change things — you will not see the token. Continue with what you were doing.`, thread: row!.thread || undefined });
+  return c.json({ ok: true });
+});
 
 /** An action whose outcome is unknown: it went through (done), the bot checks (check), or it is retried once (retry). */
 api.post("/executions/:id", async (c) => {
@@ -1606,9 +1792,13 @@ api.post("/bots/:id/nudges/:nudgeId", async (c) => {
 api.patch("/memories/:id", async (c) => {
   const user = c.get("user");
   const m = memories.owned(user.id, c.req.param("id")) ?? fail(404, "That memory does not exist.");
-  const status = (await body(c)).status;
-  if (!["active", "archived", "contested"].includes(status)) fail(400, "Unknown status.");
-  memories.setStatus(m.id, status);
+  const b = await body(c);
+  // The user confirms a note themselves (or takes the confirmation back).
+  if (b.confidence === "confirmed" || b.confidence === "once") memories.setConfidence(m.id, b.confidence);
+  if (b.status !== undefined) {
+    if (!["active", "archived", "contested"].includes(b.status)) fail(400, "Unknown status.");
+    memories.setStatus(m.id, b.status);
+  } else if (b.confidence === undefined) fail(400, "Unknown status.");
   emit(user.id, { type: "memories", botId: m.botId });
   return c.json({ memory: memories.owned(user.id, m.id) });
 });

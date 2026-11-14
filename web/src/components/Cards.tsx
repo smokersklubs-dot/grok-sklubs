@@ -6,6 +6,7 @@ import { useStore } from "../store";
 import type { Card } from "../types";
 import { Icon } from "./Icon";
 import { NudgeCardView, TaskCardView, Uncertain } from "./Wave5";
+import { ApiConnectorCardView, MemoryCardView, SkillCardView, SpendCardView } from "./Wave5b";
 
 type ApprovalCard = Extract<Card, { type: "approval" }>;
 type QuestionCard = Extract<Card, { type: "question" }>;
@@ -332,6 +333,14 @@ export function CardView({ card, botId, seq }: { card: Card; botId: string; seq:
       return <TaskCardView card={card} botId={botId} />;
     case "nudge":
       return <NudgeCardView card={card} botId={botId} />;
+    case "spend":
+      return <SpendCardView card={card} />;
+    case "skill":
+      return <SkillCardView card={card} botId={botId} seq={seq} />;
+    case "apiconnector":
+      return <ApiConnectorCardView card={card} botId={botId} seq={seq} />;
+    case "memory":
+      return <MemoryCardView card={card} botId={botId} seq={seq} />;
     default:
       return null;
   }

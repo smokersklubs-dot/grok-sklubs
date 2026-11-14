@@ -67,10 +67,19 @@ export const AUTONOMIES = ["careful", "balanced", "trusted", "auto"] as const;
  */
 export interface Grant { by: "words" | "reviewer" | "approval" | "retry"; quote?: string; reason?: string }
 
-/** A rule in the user's own words ("ne jamais envoyer d'e-mail à un client sans me demander"). `botId` null: every bot. */
-export interface Rule { id: string; botId: string | null; text: string; enabled: boolean; createdAt: number }
+/**
+ * A rule in the user's own words ("ne jamais envoyer d'e-mail à un client sans me demander"). `botId` null: every bot.
+ * Wave 5b: `routineId` — only for turns started by that routine; `trigger` — only for turns started by a routine of that
+ * kind ("email": when an email arrives…). `source` "chat": added from the chat (rule_propose, approved on a card), with
+ * the user's words that asked for it in `quote`.
+ */
+export interface Rule { id: string; botId: string | null; text: string; enabled: boolean; createdAt: number; routineId: string | null; trigger: RuleTrigger | null; source: "user" | "chat"; quote: string }
+export const RULE_TRIGGERS = ["cron", "once", "webhook", "watch", "email", "slack", "calendar"] as const;
+export type RuleTrigger = (typeof RULE_TRIGGERS)[number];
+/** A change a bot made to the rules from the chat (approved by the user), undoable in one click. */
+export interface RuleChange { id: string; action: "add" | "change" | "remove"; ruleId: string; botId: string | null; text: string; before: string | null; quote: string; createdAt: number; undoneAt: number | null }
 /** Rules and the automatic reviewer. `reviewerModel`: "provider:model", "" = AUX_MODEL, else the bot's own model. */
-export interface RulesState { rules: Rule[]; reviewerModel: string; auxModel: string }
+export interface RulesState { rules: Rule[]; reviewerModel: string; auxModel: string; changes: RuleChange[] }
 
 /** Topics never learned into memory unless the user turns them on (or explicitly asks to remember one thing). */
 export const SENSITIVE_CATEGORIES = ["health", "religion", "politics", "sexuality", "origin", "location", "financial", "legal"] as const;
@@ -92,6 +101,43 @@ export const DEFAULT_NUDGES: NudgeSettings = { enabled: false, perDay: 3, budget
 /** A background task a bot started from the chat (task_start). It runs in its own hidden helper. */
 export type BgTaskState = "running" | "waiting" | "done" | "failed" | "stopped";
 export interface BgTask { id: string; botId: string; title: string; state: BgTaskState; steps: number; result: string; createdAt: number; updatedAt: number }
+
+// ── Wave 5b ─────────────────────────────────────────────────────────────────
+/** Account spend settings (spec 07 A5): the default checkpoint in USD for every bot (0: off). */
+export interface SpendSettings { checkpointUsd: number }
+export const DEFAULT_SPEND_CHECKPOINT_USD = 5;
+/** Where a spend checkpoint stopped: a chat (or thread) turn, a background task, a routine run. */
+export type SpendScope = "chat" | "task" | "routine";
+
+/** A built-in task guide (spec 07 A10): a short procedure we wrote, read by the bot only when the job matches. */
+export interface Guide { id: string; name: string; description: string }
+
+/** One endpoint of an API connector the bot proposed and the user approved (spec 07 A16). `path` may hold {placeholders}. */
+export interface ApiEndpoint { method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE"; path: string; description: string }
+/**
+ * An HTTP API connector created on demand. `secret`: the vault secret (sent only to `host`, in its own header) the
+ * server adds to every call; the bot never sees it. "pending": proposed, waiting for the user's review.
+ */
+export interface ApiConnector { id: string; name: string; baseUrl: string; host: string; secret: string; endpoints: ApiEndpoint[]; status: "pending" | "active"; createdAt: number }
+
+/**
+ * One line of the detailed usage journal (spec 07 A14): every tool call a bot made, with what allowed it.
+ * `decision`: "words" (the user's quote checked out), "reviewer", "approval" (a card), "retry" (single-use grant),
+ * "policy" (an "always" rule, a trusted bot), "free" (a read or a harmless step), "denied" (refused or blocked).
+ * `costUsd`: the model spend since the bot's previous action (the call that led to this one). `origin`: what started
+ * the turn (user, routine, bot, system, nudge, resume).
+ */
+export interface JournalEntry {
+  id: number; at: number; botId: string; botName: string; tool: string; label: string;
+  decision: "words" | "reviewer" | "approval" | "retry" | "policy" | "free" | "denied";
+  quote: string; reason: string; status: "done" | "failed" | "uncertain" | "denied"; costUsd: number; origin: string;
+}
+
+/** A payment a bot made with a vault card (spec 07 A12). "filled": the card was typed on the page, which is not proof of payment. */
+export interface Payment { id: string; botId: string; cardId: string; cardName: string; amount: number; currency: string; merchant: string; host: string; status: "approved" | "filled" | "submitted" | "failed" | "uncertain"; createdAt: number }
+
+/** A first task the user could give a bot (spec 07 A19). */
+export interface TaskIdea { title: string; prompt: string; kind: "once" | "recurring"; why: string }
 
 export type Locale = "fr" | "en";
 export interface User { id: string; email: string; name: string; locale: Locale }
@@ -135,6 +181,12 @@ export interface Bot {
   fallbackModels: string[] | null;
   /** Proactive nudges (wave 5): off by default. */
   nudges: NudgeSettings;
+  /**
+   * Spend checkpoint of this bot (wave 5b, spec 07 A5), in USD: once a task (a chat turn and what follows it, a
+   * background task, a routine run) has spent this much since the user last spoke to it, it stops before its next step
+   * and asks. null: the account's setting (Settings → Usage). 0: never stops.
+   */
+  spendCheckpointUsd: number | null;
   /** The bot that created this one with bot_create (null: created by the user). */
   createdBy: string | null;
   generation: number;
@@ -225,7 +277,22 @@ export type Card =
    * The bot asks for a secret (an API key…) by name. The user types it into this card, which posts it straight to the
    * server: it is sealed in the vault and never shown to the model, in the chat or by any API.
    */
-  | { type: "secret"; name: string; reason: string; host: string; header: string; prefix: string; status: "pending" | "saved" | "dismissed" };
+  | { type: "secret"; name: string; reason: string; host: string; header: string; prefix: string; status: "pending" | "saved" | "dismissed" }
+  /**
+   * A spend checkpoint (wave 5b): the task spent `spentUsd` since the user last spoke to it, past `thresholdUsd`. It
+   * stopped before its next step (nothing done is lost): "continue" (up to the next checkpoint), "raise" (doubles the
+   * checkpoint for this task, then continues) or "stop". `title`: what the task is.
+   */
+  | { type: "spend"; checkpointId: string; title: string; scope: SpendScope; spentUsd: number; thresholdUsd: number; status: "pending" | "continued" | "raised" | "stopped" }
+  /**
+   * A procedure the bot learned from a task it just did (skill_propose), anonymised, for the user to review before it
+   * is saved. `outside`: the task read outside content, so the skill is kept as outside content (it never authorises).
+   */
+  | { type: "skill"; name: string; when: string; steps: string; outside: boolean; status: "pending" | "saved" | "dismissed" }
+  /** An API connector the bot proposed (api_connector_propose): the user reviews it, gives the token if needed, and approves. */
+  /** The user said something that contradicts a note (wave 5b): which is right? "old" keeps the note, "new" replaces it. */
+  | { type: "memory"; memoryId: string; oldText: string; newText: string; quote: string; status: "pending" | "kept" | "replaced" }
+  | { type: "apiconnector"; connectorId: string; name: string; baseUrl: string; host: string; secret: string; secretSaved: boolean; endpoints: ApiEndpoint[]; status: "pending" | "approved" | "dismissed" };
 
 /** Why a bot hands its screen to the user. */
 export const TAKEOVER_REASONS = ["captcha", "2fa", "login", "payment", "other"] as const;
@@ -242,9 +309,18 @@ export interface Row { botId: string; generation: number; seq: number; rev: numb
  * `category`: a sensitive category the note touches (null: none), kept only because the user allowed it.
  */
 export type MemoryStatus = "active" | "archived" | "contested";
-export interface Memory { id: string; botId: string; text: string; source: "chat" | "learned" | "import"; createdAt: number; status: MemoryStatus; quote: string; category: SensitiveCategory | null }
+/**
+ * `confidence` (wave 5b): "once" — mentioned once; "confirmed" — the user said it again in a later message (a verified
+ * quote of their own words) or confirmed it. Confirmed notes come first in the prompt; a "once" note neither confirmed
+ * nor used for 90 days drops in priority (never deleted). `lastUsedAt`: last time it was found relevant.
+ */
+export interface Memory { id: string; botId: string; text: string; source: "chat" | "learned" | "import"; createdAt: number; status: MemoryStatus; quote: string; category: SensitiveCategory | null; confidence: "once" | "confirmed"; confirmedAt: number | null; lastUsedAt: number | null }
 /** `shared`: every bot of the user can read and follow it (it shows in their skill index). */
-export interface Skill { id: string; botId: string; name: string; description: string; body: string; shared: boolean; createdAt: number; updatedAt: number }
+/**
+ * `learned`: proposed by the bot after a task and approved by the user (spec 07 A9). `outside`: it came from a turn that
+ * read outside content: treated as outside content (information, never an authorisation).
+ */
+export interface Skill { id: string; botId: string; name: string; description: string; body: string; shared: boolean; learned: boolean; outside: boolean; createdAt: number; updatedAt: number }
 /** A skill a bot can use: one of its own, or one another bot of the same user shared. */
 export interface SkillRef { id: string; name: string; description: string; botId: string; botName: string; own: boolean; shared: boolean }
 
@@ -289,9 +365,18 @@ export interface Routine {
   } | null;
   schedule: string; timezone: string; runAt: number | null; hookUrl: string | null;
   enabled: boolean; lastRunAt: number | null; nextRunAt: number | null; describe: string; createdAt: number;
+  /**
+   * Wave 5b (spec 07 A7). `skipUnchanged`: a cron routine that waits for something new in `inputs` (mail accounts,
+   * web addresses): the server checks them first and skips the run without calling the model when nothing changed (the
+   * first run and the one after a failure always happen). `failures`: failed runs in a row; `pausedReason`: why the
+   * server paused it (too many failures). `running`: a run is under way (a new due time is skipped meanwhile).
+   * `projectedMonthlyUsd`: what it should cost a month at its schedule (null: cannot be told).
+   */
+  skipUnchanged: boolean; inputs: string[]; failures: number; pausedReason: string | null; running: boolean; projectedMonthlyUsd: number | null;
 }
 
-export interface RoutineRun { id: string; routineId: string; at: number; status: "running" | "done" | "quiet" | "error"; note: string }
+/** `skipped`: nothing new in its inputs, or still running from the previous due time: no model call. */
+export interface RoutineRun { id: string; routineId: string; at: number; status: "running" | "done" | "quiet" | "error" | "skipped"; note: string; costUsd: number }
 
 /** One line of the account's activity log. Never edited or deleted. */
 export interface AuditEntry { id: number; at: number; botId: string | null; kind: "tool" | "approval" | "account" | "apps" | "vault" | "routine" | "channel" | "system" | "computer"; text: string }
@@ -299,7 +384,8 @@ export interface AuditEntry { id: number; at: number; botId: string | null; kind
 export interface TelegramStatus { connected: boolean; username: string | null; linked: boolean; linkCode: string | null }
 
 /** A page a bot published at a public address. */
-export interface SharedPage { token: string; botId: string; title: string; url: string; createdAt: number }
+/** `visibility`: "link" — anyone with the address; "private" — only the owner, signed in to this Sklubot. */
+export interface SharedPage { token: string; botId: string; title: string; url: string; createdAt: number; visibility: "link" | "private" }
 
 export interface SearchHit { botId: string; botName: string; generation: number; current: boolean; seq: number; at: number; role: "user" | "assistant"; snippet: string; /** A thread reply: the seq of the message the thread hangs on. */ thread?: number }
 
@@ -359,7 +445,7 @@ export interface NativeAccount {
  * What a vault item holds. login: a username and password typed into a site. secret: an API key or token, sent only
  * in one HTTP header to the hosts bound to it. totp: the seed of a two-factor code generator, for one site.
  */
-export const VAULT_KINDS = ["login", "secret", "totp"] as const;
+export const VAULT_KINDS = ["login", "secret", "totp", "card"] as const;
 export type VaultKind = (typeof VAULT_KINDS)[number];
 /** A vault item. The secret value itself (password, key, TOTP seed) is never sent to the browser or to a model. */
 export interface VaultItem {
@@ -372,6 +458,12 @@ export interface VaultItem {
   hosts: string[]; header: string; prefix: string;
   /** totp: code length and period in seconds. */
   digits: number; period: number;
+  /**
+   * card (wave 5b, spec 07 A12): only the network and the last 4 digits are ever shown (to the user and the model);
+   * number, expiry, CVC and the name on it stay sealed. Spending caps per day and per month (null: none), and what was
+   * spent with it today and this month (UTC).
+   */
+  card: { brand: string; last4: string; dailyCapUsd: number | null; monthlyCapUsd: number | null; spentTodayUsd: number; spentMonthUsd: number } | null;
 }
 /** Result of a CSV import of logins. `needsMapping`: the columns were not recognised; only the header names are sent back. */
 export interface VaultImportResult { imported: number; skipped: number; totp: number; needsMapping?: boolean; headers?: string[] }
@@ -549,4 +641,6 @@ export type ServerEvent =
   /** The user's rules or the reviewer model changed. */
   | { type: "rules" }
   /** Memory settings (sensitive topics, writing style) changed. */
-  | { type: "memorySettings" };
+  | { type: "memorySettings" }
+  /** API connectors created on demand changed. */
+  | { type: "apiConnectors" };

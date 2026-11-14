@@ -3,7 +3,9 @@ import { tr } from "../i18n.js";
 import { defaultModelRef, resolveModel, type ToolUseBlock } from "../llm/index.js";
 import { rules } from "../rules.js";
 import type { Grant } from "../shared.js";
-import { clip, settings } from "../store.js";
+import { clip, policies, settings } from "../store.js";
+import { committingKind, seenTarget } from "./bind.js";
+import { capProblem } from "./payments.js";
 import { record } from "../usage.js";
 import { isEngineRef } from "./engine.js";
 import { actionHash, grants } from "./executions.js";
@@ -28,9 +30,9 @@ import { CARRIES_FURTHER, describeArgs, judge, type Turn, type Verdict } from ".
  */
 
 /** Built-in tools whose effect lasts or reaches others, beyond those judge already treats as sensitive. */
-const EXTRA_GROUNDABLE = new Set(["routine_delete", "self_update", "bot_create", "profile_update", "checkins_set", "page_publish", "video_generate", "email_code_type"]);
+const EXTRA_GROUNDABLE = new Set(["rule_propose", "routine_delete", "self_update", "bot_create", "profile_update", "checkins_set", "page_publish", "page_edit", "video_generate", "email_code_type", "screen_click", "card_fill", "api_send", "my_file_write", "my_file_trash"]);
 /** Built-in tools that act outside Sklubot (or type something private): each run gets a reservation (executions.ts). */
-const EXTERNAL_BUILTINS = new Set(["page_publish", "vault_type", "email_code_type", "video_generate", "secret_use", "my_command", "my_click", "my_type", "my_key", "my_open", "my_drag", "my_scroll"]);
+const EXTERNAL_BUILTINS = new Set(["page_publish", "page_edit", "vault_type", "email_code_type", "video_generate", "secret_use", "card_fill", "api_send", "my_command", "my_click", "my_type", "my_key", "my_open", "my_drag", "my_scroll", "my_file_write", "my_file_trash"]);
 
 /** Tools that change something: they get the `user_quote` argument. */
 export function groundable(turn: Pick<Turn, "builtin" | "remote">, name: string): boolean {
@@ -38,12 +40,13 @@ export function groundable(turn: Pick<Turn, "builtin" | "remote">, name: string)
   if (r) return r.native ? r.native.risk !== "read" : !r.readOnly;
   const b = turn.builtin.get(name);
   if (!b) return false;
-  return !!b.sensitive || !!b.gate || name in CARRIES_FURTHER || EXTRA_GROUNDABLE.has(name) || (b.group === "mycomputer" && !["my_screen", "my_windows", "my_computers", "my_release", "my_window_focus"].includes(name));
+  return !!b.sensitive || !!b.gate || name in CARRIES_FURTHER || EXTRA_GROUNDABLE.has(name) || (b.group === "mycomputer" && !["my_screen", "my_windows", "my_computers", "my_release", "my_window_focus", "my_files", "my_file_read"].includes(name));
 }
-/** Tools whose run is reserved before it starts and can end up "uncertain". */
-export function external(turn: Pick<Turn, "builtin" | "remote">, name: string): boolean {
+/** Tools whose run is reserved before it starts and can end up "uncertain". A click is, when it commits something. */
+export function external(turn: Pick<Turn, "builtin" | "remote">, name: string, input?: Record<string, unknown>): boolean {
   const r = turn.remote.get(name);
   if (r) return r.native ? r.native.risk !== "read" : !r.readOnly;
+  if (name === "screen_click" && input) { const t = seenTarget(input); return !!t && !!committingKind(t.label); }
   return EXTERNAL_BUILTINS.has(name);
 }
 
@@ -54,8 +57,15 @@ export function withoutQuote(input: Record<string, unknown>): Record<string, unk
   return rest;
 }
 
-/** The name the grounding and the floor reason about: an app tool's own action name, else the tool's. */
-export function actionName(turn: Pick<Turn, "remote">, name: string): string {
+/**
+ * The name the grounding and the floor reason about: an app tool's own action name, else the tool's. A call to an API
+ * connector with DELETE is a deletion; a payment with a vault card is a payment; the user's file moved to the trash is
+ * a deletion.
+ */
+export function actionName(turn: Pick<Turn, "remote">, name: string, input: Record<string, unknown> = {}): string {
+  if (name === "api_send" && String(input.method ?? "").toUpperCase() === "DELETE") return "api_delete";
+  if (name === "card_fill") return "card_payment";
+  if (name === "my_file_trash") return "file_trash";
   return turn.remote.get(name)?.remoteName ?? name;
 }
 
@@ -65,10 +75,37 @@ export type Decision = { kind: "allow"; grant?: Grant } | { kind: "block"; reaso
 export interface ReviewAnswer { decision: "allow" | "ask" | "deny"; reason: string }
 
 export async function authorize(turn: Turn, call: ToolUseBlock): Promise<Decision> {
-  const verdict = judge(turn, call);
+  let verdict = judge(turn, call);
   const loc = turn.user.locale;
-  const name = actionName(turn, call.name);
+  let name = actionName(turn, call.name, call.input);
   const isGroundable = groundable(turn, call.name);
+  // A rule change needs the user's own words asking for it, checked by the server (bind.ts) — after outside content too.
+  if (call.name === "rule_propose" && verdict.kind !== "block" && !String(call.input.seen_quote ?? "").trim())
+    return { kind: "block", reason: tr(loc, turn.tainted ? "After outside content, a rule can only change when your own words in this conversation ask for it." : "A rule only changes when your own words ask for it: the bot must quote them.") };
+  // A payment over a card's daily or monthly cap never reaches a card: it is refused (spec 07 A12).
+  if (call.name === "card_fill" && verdict.kind !== "block") {
+    const over = capProblem(turn.user.id, call.input);
+    if (over) return { kind: "block", reason: tr(loc, over.reason, over.vars) };
+  }
+  // A click whose words commit something (spec 07 A13) is judged like any state-changing action.
+  if (call.name === "screen_click" && verdict.kind !== "block") {
+    const seen = seenTarget(call.input);
+    const kind = seen ? committingKind(seen.label) : null;
+    if (seen && kind) {
+      const key = `click: ${seen.host || "?"}`;
+      const p = policies.get(turn.user.id, key);
+      if (p === "blocked") return { kind: "block" };
+      name = `click_${kind}`;
+      const strong = kind === "pay" || kind === "delete";
+      if (p === "always_allow" && !strong && !turn.tainted) return { kind: "allow" };
+      verdict = {
+        kind: "ask", policyKey: key, title: tr(loc, "Allow {bot} to click “{label}” on {host}?", { bot: turn.bot.name, label: clip(seen.label, 60), host: seen.host || "?" }),
+        reason: tr(loc, "click “{label}”", { label: clip(seen.label, 60) }), source: seen.host || tr(loc, "This computer"),
+        note: [tr(loc, "This click commits something (its words: “{label}”).", { label: clip(seen.label, 80) }), seen.form ? tr(loc, "Form: {form}", { form: seen.form }) : ""].filter(Boolean).join("\n"),
+        ...(strong || turn.tainted ? { once: true } : {}),
+      };
+    }
+  }
   const quote = String(call.input[QUOTE_ARG] ?? "").trim();
   if (verdict.kind === "block") return verdict;
   if (verdict.kind === "allow") {
@@ -80,7 +117,12 @@ export async function authorize(turn: Turn, call: ToolUseBlock): Promise<Decisio
     return { kind: "allow" };
   }
   if (grants.take(turn.bot.id, actionHash(call.name, call.input))) return { kind: "allow", grant: { by: "retry" } };
-  if (verdict.fixed || !isGroundable) return { ...verdict, ...(quote ? { quote } : {}) };
+  if (verdict.fixed || !isGroundable) {
+    // A per-call gate still says when the deterministic floor is why it asks (a payment, a deletion…).
+    const floor = isGroundable ? floorReason(name, withoutQuote(call.input), turn.tainted, userWordsFor(turn.bot, turn.thread)) : null;
+    return { ...verdict, ...(quote ? { quote } : {}), ...(floor ? { why: tr(loc, floor.reason, floor.vars) } : {}) };
+  }
+  // From here, the action's name may be a committing click's (click_pay, click_send…).
   const words = userWordsFor(turn.bot, turn.thread);
   const args = withoutQuote(call.input);
   const g = ground(name, call.input, words);
@@ -130,8 +172,8 @@ export async function review(turn: Turn, call: ToolUseBlock, g: Grounding, words
   try { resolved = resolveModel(ref); } catch { return null; }
   if (!resolved.provider.available()) return null;
   const args = withoutQuote(call.input);
-  const facts = actionFacts(actionName(turn, call.name), args);
-  const list = rules.forBot(turn.user.id, turn.bot.id);
+  const facts = actionFacts(actionName(turn, call.name, call.input), args);
+  const list = rules.forBot(turn.user.id, turn.bot.id, turn.ruleScope ?? {});
   const remote = turn.remote.get(call.name);
   const prompt = [
     `Rules the user wrote (their own words; a rule that says to ask first wins over everything):\n${list.length ? list.map((r) => `- ${r.text}`).join("\n") : "(none)"}`,

@@ -407,3 +407,67 @@ button.captions:hover { box-shadow: 0 0 0 1px var(--border-strong); }
 @media (prefers-reduced-motion: reduce) {
   .thinking-avatar, .thinking-status, .thinking-bulb, .thinking-caption, .steps-current { animation: none; }
 }
+
+/* ---------- Wave 5b ---------- */
+/* Rich replies: tables and callouts */
+.md .md-table table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+.md .md-table th { background: var(--surface-2); font-weight: 650; text-align: left; }
+.md .md-table th, .md .md-table td { padding: 6px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.md .md-table tbody tr:nth-child(even) td { background: color-mix(in srgb, var(--surface-2) 45%, transparent); }
+.md .md-table tbody tr:last-child td { border-bottom: 0; }
+.md blockquote.md-callout { padding: 9px 12px; border-left: 3px solid var(--info); border-radius: var(--r-md); background: var(--info-soft); color: var(--text); }
+.md blockquote.md-callout p:last-child { margin-bottom: 0; }
+.md .md-callout-title { display: inline-block; margin-bottom: 2px; font-size: 12.5px; letter-spacing: .02em; color: var(--info); }
+.md blockquote.md-callout.is-tip { border-color: var(--ok); background: var(--ok-soft); }
+.md blockquote.md-callout.is-tip .md-callout-title { color: var(--ok); }
+.md blockquote.md-callout.is-warning, .md blockquote.md-callout.is-important { border-color: var(--warn); background: var(--warn-soft); }
+.md blockquote.md-callout.is-warning .md-callout-title, .md blockquote.md-callout.is-important .md-callout-title { color: var(--warn); }
+.md blockquote.md-callout.is-caution { border-color: var(--danger); background: var(--danger-soft); }
+.md blockquote.md-callout.is-caution .md-callout-title { color: var(--danger); }
+
+/* Cards */
+.logo-tile.is-spend { background: var(--warn-soft); color: var(--warn); }
+.logo-tile.is-skill { background: var(--info-soft); color: var(--info); }
+.spend-meter { height: 6px; border-radius: 99px; background: var(--surface-2); overflow: hidden; }
+.spend-meter span { display: block; height: 100%; background: var(--warn); border-radius: inherit; }
+.skill-steps { font-family: var(--mono); font-size: 12.5px; resize: vertical; }
+.api-endpoints { display: flex; flex-direction: column; gap: 5px; padding: 8px 10px; border-radius: var(--r-md); background: var(--surface-2); font-size: 12.5px; }
+.api-endpoints code { font-family: var(--mono); }
+.chip.method { font-family: var(--mono); font-size: 10.5px; padding: 1px 6px; }
+.chip.method.is-get { background: var(--ok-soft); color: var(--ok); }
+.chip.method.is-post, .chip.method.is-put, .chip.method.is-patch { background: var(--info-soft); color: var(--info); }
+.chip.method.is-delete { background: var(--danger-soft); color: var(--danger); }
+.memory-choice { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.memory-option { display: flex; flex-direction: column; gap: 4px; padding: 10px; text-align: left; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); color: var(--text); cursor: pointer; }
+.memory-option:hover:not(:disabled) { border-color: var(--accent); background: var(--hover); }
+.memory-option.is-chosen { border-color: var(--ok); background: var(--ok-soft); }
+.memory-option:disabled { cursor: default; }
+.note-line { display: flex; align-items: flex-start; gap: 6px; }
+.note-line svg { flex: none; margin-top: 2px; }
+
+/* First-task ideas on an empty chat */
+.ideas { width: 100%; max-width: 640px; margin-top: 18px; text-align: left; }
+.ideas-title { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; font-weight: 650; font-size: 13.5px; color: var(--text-2); }
+.ideas-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; }
+.idea { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; padding: 12px; border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface); color: var(--text); text-align: left; cursor: pointer; box-shadow: var(--shadow-sm); transition: border-color .15s, transform .15s; }
+.idea:hover:not(:disabled) { border-color: var(--accent); transform: translateY(-1px); }
+.idea-title { font-weight: 650; font-size: 14px; }
+.idea-kind { font-size: 10.5px; }
+.ideas-mail { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+
+/* File preview */
+.chat-body-row { flex: 1; min-height: 0; display: flex; }
+.preview-panel { flex: none; width: min(460px, 42%); display: flex; flex-direction: column; border-left: 1px solid var(--border); background: var(--surface); }
+.preview-head { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+.preview-name { flex: 1; min-width: 0; font-weight: 600; }
+.preview-body { flex: 1; min-height: 0; overflow: auto; padding: 12px; }
+.preview-body img { max-width: 100%; border-radius: var(--r-md); }
+.preview-pdf { width: 100%; height: 100%; min-height: 70vh; border: 0; border-radius: var(--r-md); background: #fff; }
+.preview-text { white-space: pre-wrap; font-family: var(--mono); font-size: 12.5px; }
+.mentioned-files { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.chip-button { cursor: pointer; border: 1px solid var(--border); background: var(--surface); }
+.chip-button:hover { border-color: var(--accent); }
+.attach-file-wrap { display: inline-flex; align-items: stretch; gap: 4px; }
+.attach-preview { display: grid; place-items: center; width: 34px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); color: var(--text-2); cursor: pointer; }
+.attach-preview:hover { color: var(--accent); border-color: var(--accent); }
+@media (max-width: 900px) { .preview-panel { position: absolute; inset: 0; width: auto; z-index: 20; } .chat-body-row { position: relative; } }

@@ -152,3 +152,50 @@ export async function sentMail(userId: string, max = 15): Promise<string[]> {
   }
   return out.slice(0, max);
 }
+
+/**
+ * A fingerprint of what is new in a mailbox: the ids of its latest inbox messages (Gmail users.messages.list
+ * q=in:inbox — https://developers.google.com/gmail/api/reference/rest/v1/users.messages/list ; Outlook: the inbox
+ * well-known folder's messages, newest first — https://learn.microsoft.com/en-us/graph/api/user-list-messages).
+ * Used by "only when something is new" routines (spec 07 A7) to skip a run without calling the model.
+ */
+export async function inboxFingerprint(acc: AccountRecord): Promise<string> {
+  if (acc.app === "gmail") {
+    const r = await callApi(acc, "GET", vendorUrl("google", `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=10&q=${encodeURIComponent("in:inbox")}`));
+    if (r.status >= 400) throw new Error(`Gmail answered ${r.status}`);
+    return (r.json?.messages ?? []).map((m: { id: string }) => m.id).join(",");
+  }
+  if (acc.app === "outlook") {
+    const r = await callApi(acc, "GET", vendorUrl("microsoft", "https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages?$top=10&$select=id&$orderby=receivedDateTime desc"));
+    if (r.status >= 400) throw new Error(`Outlook answered ${r.status}`);
+    return (r.json?.value ?? []).map((m: { id: string }) => m.id).join(",");
+  }
+  throw new Error("not a mailbox");
+}
+
+/**
+ * Subjects of a few recent inbox emails (read-only, for first-task ideas — spec 07 A19). Gmail: users.messages.get
+ * with format=metadata and metadataHeaders=Subject, so no body is fetched
+ * (https://developers.google.com/gmail/api/reference/rest/v1/users.messages/get). Outlook: $select=subject.
+ * Emails that grant account access are left out.
+ */
+export async function recentSubjects(userId: string, max = 12): Promise<string[]> {
+  const out: string[] = [];
+  for (const acc of mailAccounts(userId)) {
+    if (acc.app === "gmail") {
+      const list = await callApi(acc, "GET", vendorUrl("google", `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=${max}&q=${encodeURIComponent("in:inbox")}`));
+      if (list.status >= 400) continue;
+      for (const { id } of (list.json?.messages ?? []).slice(0, max)) {
+        const m = await callApi(acc, "GET", vendorUrl("google", `https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(id)}?format=metadata&metadataHeaders=Subject`));
+        const subject = m.status < 400 ? header(m.json, "Subject") : "";
+        if (subject && !isAccessEmail(subject, "")) out.push(subject);
+      }
+    } else {
+      const r = await callApi(acc, "GET", vendorUrl("microsoft", `https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages?$top=${max}&$select=subject`));
+      if (r.status >= 400) continue;
+      for (const m of r.json?.value ?? []) { const subject = String(m.subject ?? ""); if (subject && !isAccessEmail(subject, "")) out.push(subject); }
+    }
+    if (out.length >= max) break;
+  }
+  return out.slice(0, max);
+}

@@ -14,6 +14,7 @@ const path = require('node:path');
 
 /**
  * @typedef {{ name: string, control?: 'always', commands?: boolean, firstSeen?: string }} BotPerm
+ * @typedef {{ id: string, name: string, path: string, write: boolean }} SharedFolder
  * @typedef {{
  *   version: 1,
  *   server: string | null,
@@ -24,13 +25,14 @@ const path = require('node:path');
  *   autostart: boolean,
  *   locked: boolean,
  *   language: 'auto' | 'fr' | 'en',
+ *   folders: SharedFolder[],
  * }} Settings
  * @typedef {{ available(): Promise<boolean>, encrypt(s: string): Promise<Buffer>, decrypt(b: Buffer): Promise<string> }} Crypto
  */
 
 /** @returns {Settings} */
 function defaults() {
-  return { version: 1, server: null, serverName: '', deviceId: null, token: null, bots: {}, autostart: false, locked: false, language: 'auto' };
+  return { version: 1, server: null, serverName: '', deviceId: null, token: null, bots: {}, autostart: false, locked: false, language: 'auto', folders: [] };
 }
 
 class Store {
@@ -52,7 +54,7 @@ class Store {
     if (process.platform !== 'win32') { try { fs.chmodSync(this.dir, 0o700); } catch { /* ignore */ } }
     try {
       const raw = JSON.parse(fs.readFileSync(this.file, 'utf8'));
-      this.s = { ...defaults(), ...raw, bots: raw && typeof raw.bots === 'object' && raw.bots ? raw.bots : {} };
+      this.s = { ...defaults(), ...raw, bots: raw && typeof raw.bots === 'object' && raw.bots ? raw.bots : {}, folders: Array.isArray(raw && raw.folders) ? raw.folders.filter((/** @type {any} */ f) => f && typeof f.id === 'string' && typeof f.path === 'string') : [] };
     } catch {
       this.s = defaults();
     }
@@ -152,6 +154,25 @@ class Store {
     delete this.s.bots[id];
     this.save();
   }
+
+  /** Folders the user shared with Sklubot (protocol 1.1). Only the local UI changes this list. */
+  folders() { return this.s.folders; }
+  /** @param {string} dir @param {string} name */
+  addFolder(dir, name) {
+    const existing = this.s.folders.find((f) => f.path === dir);
+    if (existing) return existing;
+    let n = name || 'Dossier', i = 2;
+    const taken = new Set(this.s.folders.map((f) => f.name.toLowerCase()));
+    while (taken.has(n.toLowerCase())) n = `${name} ${i++}`;
+    const f = { id: `f${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, name: n.slice(0, 80), path: dir, write: false };
+    this.s.folders.push(f);
+    this.save();
+    return f;
+  }
+  /** @param {string} id @param {boolean} write */
+  setFolderWrite(id, write) { const f = this.s.folders.find((x) => x.id === id); if (f) { f.write = write === true; this.save(); } return !!f; }
+  /** @param {string} id */
+  removeFolder(id) { this.s.folders = this.s.folders.filter((f) => f.id !== id); this.save(); }
 
   isLocked() { return this.s.locked === true; }
   /** @param {boolean} v */

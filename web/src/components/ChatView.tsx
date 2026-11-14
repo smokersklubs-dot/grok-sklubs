@@ -9,6 +9,7 @@ import { Composer } from "./Composer";
 import { Icon } from "./Icon";
 import { Transcript } from "./Transcript";
 import { FindBar } from "./FindBar";
+import { FilePreviewPanel } from "./Wave5b";
 import { IconButton, Menu, MenuItem, isMac, modKey } from "./ui";
 
 export function ChatView() {
@@ -126,7 +127,10 @@ export function ChatView() {
         </span>
       </header>
       {finding && <FindBar key={bot.id} botId={bot.id} />}
-      <Transcript bot={bot} thread={thread} live={live} />
+      <div className="chat-body-row">
+        <Transcript bot={bot} thread={thread} live={live} />
+        <FilePreviewPanel />
+      </div>
       <CallBar botId={bot.id} />
       <Composer bot={bot} live={live} />
     </section>

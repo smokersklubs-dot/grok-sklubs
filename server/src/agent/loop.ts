@@ -23,8 +23,13 @@ import { backoffDelay, errorDetail, isTransient, LoopGuard, loopStopText, modelC
 import { authorize, external, groundable, withoutQuote, type Decision } from "./authorize.js";
 import { actionHash, executions, markUncertain, outcomeUnknown } from "./executions.js";
 import { QUOTE_ARG, QUOTE_SCHEMA } from "./grounding.js";
-import { bgTaskHooks } from "./bgtasks.js";
+import { bgTaskHooks, bgTasks } from "./bgtasks.js";
 import type { Grant } from "../shared.js";
+import { activeScope, beginScope, endScope, overCheckpoint, raiseCheckpoint, resetScope, scopeKey } from "./spend.js";
+import { addJournal } from "../journal.js";
+import { bindCall } from "./bind.js";
+import { rules, type RuleScope } from "../rules.js";
+import { q } from "../db.js";
 
 /** A skill the user asked for with "/skill <name>" in the composer. */
 export interface ForcedSkill { name: string; body: string; from?: string }
@@ -39,8 +44,11 @@ export type Trigger =
   | { kind: "user"; text: string; voice?: boolean; attachments?: Attachment[]; channel?: "telegram"; thread?: number; skill?: ForcedSkill }
   | { kind: "routine"; name: string; text: string; runId?: string; tainted?: boolean }
   | { kind: "bot"; fromName: string; text: string; depth: number; tainted?: boolean }
-  /** `resumeOf`: "steps" when it picks up work stopped at the step limit (a routine does that once, by itself). */
-  | { kind: "system"; text: string; depth?: number; tainted?: boolean; thread?: number; resumeOf?: "steps" }
+  /**
+   * `resumeOf`: "steps" when it picks up work stopped at the step limit (a routine does that once, by itself); "spend"
+   * when the user chose to continue at a spend checkpoint. `spendScope`: the piece of work it goes on billing to.
+   */
+  | { kind: "system"; text: string; depth?: number; tainted?: boolean; thread?: number; resumeOf?: "steps" | "spend"; spendScope?: string; /** The origin of the work it continues (see Turn.origin). */ origin?: string }
   | { kind: "resume" };
 
 /** The thread a trigger belongs to (0: the main chat). */
@@ -81,6 +89,12 @@ interface PausedTurn {
   appUrls?: string[];
   /** The thread the turn works in (0 or absent: the main chat). */
   thread?: number;
+  /** What started the turn (Turn.origin) and the spend scope it bills to. */
+  origin?: string;
+  spendKey?: string;
+  /** The turn answers a message from a phone channel: its reply goes back there after an approval too. */
+  channel?: "telegram";
+  ruleScope?: RuleScope;
 }
 
 export interface RemoteTool { connectorId: string; connectorName: string; remoteName: string; readOnly: boolean; native?: { accountId: string; risk: Risk; label: string } }
@@ -123,10 +137,22 @@ export interface Turn {
   /** Set by the loop guard: why the turn stopped (see LoopGuard). */
   loopStop?: LoopStop;
   guard?: LoopGuard;
+  /**
+   * What started the turn: "user" (the user's own message, typed or said), "routine", "bot", "system", "nudge",
+   * "resume". Some tools (the user's own files) only work in a turn the user started.
+   */
+  origin?: string;
+  /** The spend scope this turn bills to (spend.ts). */
+  spendKey?: string;
+  /** The message that started it came from a phone channel (its reply goes back there, even after an approval). */
+  channel?: "telegram";
+  /** The routine (and its kind) that started the turn: rules tied to it apply (rules.ts). */
+  ruleScope?: RuleScope;
 }
 
 /** Things other parts of the server want to hear about (e.g. to pass them on to a phone). */
-export type TurnEvent = { type: "reply"; bot: BotRecord; text: string } | { type: "waiting"; bot: BotRecord; text: string };
+/** `approvalId`/`tool`: the approval a "waiting" event is about (a phone channel may answer it, except payments and file writes). */
+export type TurnEvent = { type: "reply"; bot: BotRecord; text: string } | { type: "waiting"; bot: BotRecord; text: string; approvalId?: string; tool?: string };
 const listeners: ((e: TurnEvent) => void)[] = [];
 export const onTurnEvent = (fn: (e: TurnEvent) => void) => { listeners.push(fn); };
 export const tell = (e: TurnEvent) => { for (const fn of listeners) { try { fn(e); } catch (err) { console.error("[turn event]", err); } } };
@@ -177,6 +203,9 @@ function forcedSkillNote(skill: ForcedSkill): string {
 export function submitUserMessage(bot: BotRecord, text: string, voice = false, attachments: Attachment[] = [], channel?: "telegram", thread = 0, skill?: ForcedSkill) {
   // A subscription turn waiting inside a tool call for an approval: a new message makes that approval lapse.
   expireEngineApprovals(bot.id);
+  // The user spoke to this work: its spend checkpoint counts from here (spec 07 A5). A task's card reply resets the task.
+  const task = bot.parentId ? bgTasks.byHelper(bot.id) : null;
+  resetScope(bot.id, task ? scopeKey.task(task.id) : scopeKey.chat(thread));
   // Only a message for the same conversation (main chat or the same thread) joins the turn under way.
   if (controllers.has(bot.id) && !paused.get(bot.id) && (runningThread.get(bot.id) ?? 0) === thread) {
     const list = steering.get(bot.id) ?? [];
@@ -346,6 +375,8 @@ async function runScopedTurn(botId: string, trigger: Trigger, thread: number): P
       // The paused request must be continued with exactly the prompt and tools it started with.
       turn.system = held.system; turn.tools = held.tools; turn.modelRef = held.modelRef; turn.tainted = !!held.tainted; turn.hosts = new Set(held.hosts ?? []);
       turn.appUrls = new Set(held.appUrls ?? []); turn.thread = held.thread ?? 0;
+      turn.origin = held.origin ?? "resume"; turn.spendKey = held.spendKey; turn.channel = held.channel; turn.ruleScope = held.ruleScope;
+      if (turn.spendKey) beginScope(botId, turn.spendKey);
       const outcome = await processCalls(turn, held);
       if (outcome !== "continue") return;
     } else {
@@ -382,10 +413,17 @@ async function runScopedTurn(botId: string, trigger: Trigger, thread: number): P
       turn.thread = thread;
       turn.tainted = startsTainted(trigger);
       turn.autoContinue = trigger.kind === "routine";
+      turn.origin = originOf(trigger);
+      if (trigger.kind === "user" && trigger.channel) turn.channel = trigger.channel;
+      turn.spendKey = spendKeyOf(bot, trigger, thread);
+      beginScope(botId, turn.spendKey);
+      turn.ruleScope = ruleScopeOf(turn.spendKey);
+      const scoped = turn.ruleScope.routineId ? rules.scopedFor(user.id, bot.id, turn.ruleScope) : [];
       if (trigger.kind === "user") for (const h of hostsIn(trigger.text)) turn.hosts.add(h);
       const extra = drainSteering(bot);
       // The time travels with each message instead of sitting in the system prompt, so that prompt stays identical and cached.
-      const stamped = `[${new Date().toISOString().slice(0, 16).replace("T", " ")} UTC]\n${triggerMessage(trigger)}`;
+      const ruleNote = scoped.length ? `[Rules ${user.name} set for this routine (their own words — follow them; a rule that says to ask first wins):\n${scoped.map((r) => `- ${r.text}`).join("\n")}]\n` : "";
+      const stamped = `[${new Date().toISOString().slice(0, 16).replace("T", " ")} UTC]\n${ruleNote}${triggerMessage(trigger)}`;
       const first = trigger.kind === "user" ? userBlocks(botId, stamped, trigger.attachments) : [text(stamped)];
       if (trigger.kind === "user" && trigger.skill) first.push(text(forcedSkillNote(trigger.skill)));
       if (handedBack.delete(botId)) first.unshift(text("[The user took control of your computer since your last turn and has handed it back. Windows, pages and fields may have changed: look at the screen before relying on what you saw earlier.]"));
@@ -403,7 +441,7 @@ async function runScopedTurn(botId: string, trigger: Trigger, thread: number): P
     }
     if (trigger.kind === "system" && bot.primary) noteCheckinOutcome(user.id, turn.spoke);
     // Replies to messages that came from a phone, and anything the bot says on its own initiative, go back out there.
-    if (turn.lastText && !paused.get(botId) && (trigger.kind === "routine" || trigger.kind === "system" || (trigger.kind === "user" && trigger.channel === "telegram"))) tell({ type: "reply", bot, text: turn.lastText });
+    if (turn.lastText && !paused.get(botId) && (trigger.kind === "routine" || trigger.kind === "system" || turn.channel === "telegram")) tell({ type: "reply", bot, text: turn.lastText });
     pushOutcome(bot, user, trigger, turn.lastText);
   } catch (err) {
     if (err instanceof EngineDone) { finishEngineTurn(bot, user, trigger, turn); return; }
@@ -413,6 +451,7 @@ async function runScopedTurn(botId: string, trigger: Trigger, thread: number): P
       rows.append(bot, stopped ? { kind: "notice", tone: "info", text: tr(user.locale, "Stopped.") } : { kind: "notice", tone: "error", text: tr(user.locale, "Something went wrong: {detail}", { detail: clip(String((err as Error)?.message ?? err), 400) }) });
     if (!stopped) console.error(`[turn ${bot.name}]`, err);
   } finally {
+    endScope(botId);
     activeTurns.end(botId);
     if (trigger.kind === "routine" && trigger.runId)
       runs.finish(trigger.runId, failed ? "error" : paused.get(botId) ? "done" : turn?.spoke ? "done" : "quiet", failed || (paused.get(botId) ? "Waiting for your approval" : clip(turn?.lastText ?? "", 200)));
@@ -426,6 +465,29 @@ async function runScopedTurn(botId: string, trigger: Trigger, thread: number): P
     if (leftover.length && bots.byId(botId) && isEngineRef(bots.byId(botId)!.model)) enqueue(botId, { kind: "user", text: extraText(leftover).trim(), thread: thread || undefined });
     else if (leftover.length && bots.byId(botId)) void inQueue(botId, async () => { history.append(botId, bots.byId(botId)!.generation, { role: "user", content: leftover }, thread); }).then(() => enqueue(botId, { kind: "system", text: "The user's message above arrived just as your last turn ended. Answer it now.", thread: thread || undefined }));
   }
+}
+
+/** What started a turn, as the journal and the tools see it. */
+function originOf(trigger: Exclude<Trigger, { kind: "resume" }>): string {
+  if (trigger.kind === "user") return "user";
+  if (trigger.kind === "system" && trigger.resumeOf) return trigger.origin ?? "resume";
+  return trigger.kind;
+}
+
+/** The routine behind a turn (from the routine run it bills to), for rules tied to a routine or a trigger kind. */
+function ruleScopeOf(spendKey: string | undefined): RuleScope {
+  if (!spendKey?.startsWith("routine:")) return {};
+  const r = q.get<{ id: string; trigger: string }>("SELECT r.id, r.trigger FROM routine_runs x JOIN routines r ON r.id = x.routine_id WHERE x.id = ?", spendKey.slice(8));
+  return r ? { routineId: r.id, trigger: r.trigger } : {};
+}
+
+/** The spend scope a turn bills to: the piece of work it continues, a background task, a routine run, else its chat. */
+function spendKeyOf(bot: BotRecord, trigger: Exclude<Trigger, { kind: "resume" }>, thread: number): string {
+  if (trigger.kind === "system" && trigger.spendScope) return trigger.spendScope;
+  const task = bot.parentId ? bgTasks.byHelper(bot.id) : null;
+  if (task) return scopeKey.task(task.id);
+  if (trigger.kind === "routine" && trigger.runId) return scopeKey.routine(trigger.runId);
+  return scopeKey.chat(thread);
 }
 
 /** Calls the model, runs the tools it asks for, and repeats until it has nothing more to do. */
@@ -444,6 +506,14 @@ async function modelLoop(turn: Turn) {
   let nudged = false;
   for (let step = 0; step < config.maxSteps; step++) {
     if (turn.signal.aborted) throw new Error("aborted");
+    // A spend checkpoint (spec 07 A5): before the next step, never in the middle of one. The history is kept as it is.
+    const key = turn.spendKey ?? activeScope(bot.id);
+    const over = key && !carry ? overCheckpoint(bot, key) : null;
+    if (over && key) {
+      raiseCheckpoint(bot, key, over, { thread: turn.thread, tainted: turn.tainted, origin: turn.origin });
+      tell({ type: "waiting", bot, text: tr(loc, "Spend checkpoint: {spent} $ spent on this work. Continue?", { spent: over.spent.toFixed(2) }) });
+      return;
+    }
     const stream: StreamingRow = carry ?? new StreamingRow(turn);
     carry = null;
     const call = () => provider.runTurn({
@@ -555,7 +625,7 @@ function stepLimitReached(turn: Turn) {
   const loc = turn.user.locale;
   if (turn.autoContinue) {
     rows.append(bot, { kind: "notice", tone: "info", text: tr(loc, "I reached {n} steps on this routine. I am carrying on once more on my own.", { n: config.maxSteps }) });
-    enqueue(bot.id, { kind: "system", text: CONTINUE_TEXT, resumeOf: "steps", thread: turn.thread || undefined, tainted: turn.tainted, depth: turn.depth });
+    enqueue(bot.id, { kind: "system", text: CONTINUE_TEXT, resumeOf: "steps", thread: turn.thread || undefined, tainted: turn.tainted, depth: turn.depth, origin: turn.origin, spendScope: turn.spendKey });
     return;
   }
   rows.append(bot, { kind: "notice", tone: "warn", text: tr(loc, "I stopped after {n} steps to avoid running away with this. Tell me to continue if it is worth it.", { n: config.maxSteps }), action: { kind: "continue", status: "pending" } });
@@ -568,7 +638,8 @@ export function continueAfterStepLimit(bot: BotRecord, seq: number): boolean {
   const row = rows.get(bot.id, bot.generation, seq);
   if (!row || row.body.kind !== "notice" || row.body.action?.kind !== "continue" || row.body.action.status !== "pending") return false;
   rows.rewrite(bot, bot.generation, seq, { ...row.body, action: { kind: "continue", status: "done" } });
-  enqueue(bot.id, { kind: "system", text: CONTINUE_TEXT, resumeOf: "steps", thread: row.thread || undefined });
+  // The user pressed "Continue" themselves: the work goes on as theirs.
+  enqueue(bot.id, { kind: "system", text: CONTINUE_TEXT, resumeOf: "steps", thread: row.thread || undefined, origin: "user" });
   return true;
 }
 
@@ -777,7 +848,7 @@ export async function execute(turn: Turn, raw: ToolUseBlock): Promise<ToolOutput
     const problem = validateToolInput(builtin.spec, call.input);
     if (problem) return { content: `Invalid arguments: ${problem}.`, isError: true, summary: "invalid arguments" };
     activity(turn, builtin.activity, builtin.detail?.(call.input));
-    return builtin.run(call.input, { bot: turn.bot, user: turn.user, depth: turn.depth, signal: turn.signal, tainted: turn.tainted, thread: turn.thread, appUrls: turn.appUrls });
+    return builtin.run(call.input, { bot: turn.bot, user: turn.user, depth: turn.depth, signal: turn.signal, tainted: turn.tainted, thread: turn.thread, appUrls: turn.appUrls, origin: turn.origin, toolsRun: turn.toolsRun ?? 0 });
   }
   const remote = turn.remote.get(call.name);
   if (remote?.native) {
@@ -819,6 +890,9 @@ async function processCalls(turn: Turn, st: PausedTurn): Promise<"continue" | "e
       throw new Error("aborted");
     }
     const call = st.pending[0];
+    // What the server itself sees of a click target or a payment page is bound into the action (and its approval):
+    // the model's own values for those fields are replaced. On a resumed approval, the bound values are kept.
+    if (decided === null) await bindCall(turn, call);
     const hash = actionHash(call.name, call.input);
     let approvalUsed = "";
     let verdict: Decision;
@@ -839,8 +913,12 @@ async function processCalls(turn: Turn, st: PausedTurn): Promise<"continue" | "e
       st.hosts = [...turn.hosts];
       st.appUrls = [...turn.appUrls];
       st.thread = turn.thread;
+      st.origin = turn.origin;
+      st.spendKey = turn.spendKey;
+      st.channel = turn.channel;
+      st.ruleScope = turn.ruleScope;
       paused.set(bot.id, st);
-      tell({ type: "waiting", bot, text: verdict.title });
+      tell({ type: "waiting", bot, text: verdict.title, approvalId, tool: verdict.policyKey });
       setLive(user.id, bot.id, { running: false, activity: { kind: "waiting", since: Date.now() }, awaiting: { reason: verdict.reason, since: Date.now() }, thread: turn.thread });
       emit(user.id, { type: "tasks", botId: bot.id });
       return "paused";
@@ -850,6 +928,7 @@ async function processCalls(turn: Turn, st: PausedTurn): Promise<"continue" | "e
       out = { content: verdict.reason ? `${DECLINED} Why: ${verdict.reason}` : DECLINED, isError: true };
       setStep(turn, st, call, "denied", verdict.reason ? clip(verdict.reason, 200) : tr(user.locale, "not allowed"));
       if (verdict.reason) audit(user.id, "approval", `${bot.name} : ${call.name} — ${tr(user.locale, "refused")} (${clip(verdict.reason, 200)})`, bot.id);
+      addJournal({ userId: user.id, botId: bot.id, tool: call.name, label: labelOf(turn, call.name), decision: "denied", reason: verdict.reason ?? "", status: "denied", origin: turn.origin ?? "" });
     } else {
       out = await runReserved(turn, call, verdict.grant, approvalUsed, hash, (status, summary) => setStep(turn, st, call, status, summary, verdict.grant));
       // Going round in circles (the same tool failing, or the same result again and again): stop the turn here.
@@ -882,8 +961,9 @@ export async function runReserved(turn: Turn, call: ToolUseBlock, grant: Grant |
   const loc = user.locale;
   onStatus("running");
   if (grant?.quote || grant?.reason) setLive(user.id, bot.id, { caption: grant.quote ? tr(loc, "Because you said: “{quote}”", { quote: clip(grant.quote, 120) }) : tr(loc, "Reviewer: {reason}", { reason: clip(grant.reason ?? "", 120) }) });
-  const reserved = external(turn, call.name);
-  const label = (() => { const b = turn.builtin.get(call.name); const r = turn.remote.get(call.name); return b ? tr(loc, b.label) : r ? `${r.connectorName}: ${r.remoteName.replace(/_/g, " ")}` : call.name; })();
+  const reserved = external(turn, call.name, call.input);
+  const label = labelOf(turn, call.name);
+  const decision = journalDecision(turn, call.name, grant);
   const exec = reserved ? executions.begin(bot, { tool: call.name, label, detail: describeArgs(withoutQuote(call.input)), hash, approvalId: approvalId || null, grant, thread: turn.thread }) : "";
   let out: ToolOutput;
   try {
@@ -894,6 +974,7 @@ export async function runReserved(turn: Turn, call: ToolUseBlock, grant: Grant |
     out = afterTool(turn, call, out);
     onStatus(out.isError ? "error" : "done", out.summary);
     if (approvalId) noteOutcome(bot, approvalId, out.isError ? "failed" : "done");
+    addJournal({ userId: user.id, botId: bot.id, tool: call.name, label: out.summary ? `${label} — ${out.summary}` : label, decision, quote: grant?.quote, reason: grant?.reason, status: out.isError ? "failed" : "done", origin: turn.origin ?? "" });
   } catch (err) {
     const message = String((err as Error)?.message ?? err);
     const unknown = !!exec && outcomeUnknown(err, turn.signal.aborted);
@@ -903,9 +984,24 @@ export async function runReserved(turn: Turn, call: ToolUseBlock, grant: Grant |
       ? { content: `Tool error: ${message}. The outcome is UNKNOWN: it may or may not have gone through. Do not try it again; the user was asked to check.`, isError: true }
       : { content: `Tool error: ${message}`, isError: true };
     onStatus("error", clip(unknown ? tr(loc, "outcome unknown") : message, 200));
+    addJournal({ userId: user.id, botId: bot.id, tool: call.name, label, decision, quote: grant?.quote, reason: clip(message, 200), status: unknown ? "uncertain" : "failed", origin: turn.origin ?? "" });
   }
   turn.toolsRun = (turn.toolsRun ?? 0) + 1;
   return out;
+}
+
+/** How a tool call is named for the user (step labels, the journal, reservations). */
+function labelOf(turn: Turn, name: string): string {
+  const loc = turn.user.locale;
+  const b = turn.builtin.get(name);
+  const r = turn.remote.get(name);
+  return b ? tr(loc, b.label) : r ? `${r.connectorName}: ${r.remoteName.replace(/_/g, " ")}` : name;
+}
+
+/** What allowed a call that ran, for the journal: the grant if any, else a policy for something that changes things, else nothing needed. */
+function journalDecision(turn: Turn, name: string, grant: Grant | undefined): "words" | "reviewer" | "approval" | "retry" | "policy" | "free" {
+  if (grant) return grant.by;
+  return groundable(turn, name) ? "policy" : "free";
 }
 
 /** The approval card says what became of the single execution it allowed. */
@@ -930,7 +1026,7 @@ export function afterTool(turn: Turn, call: ToolUseBlock, out: ToolOutput): Tool
   if ((call.name === "web_fetch" || call.name === "browser_open") && !out.isError) { const h = hostOf(call.input.url); if (h) turn.hosts.add(h); }
   if (call.name === "search_web" && !out.isError && typeof out.content === "string") for (const m of out.content.matchAll(/https?:\/\/\S+/g)) { const h = hostOf(m[0]); if (h) turn.hosts.add(h); }
   if (remote && !out.isError && typeof out.content === "string") for (const u of urlsIn(out.content)) turn.appUrls.add(u);
-  if (!(builtin?.outside || remote) || out.isError) return out;
+  if (!(builtin?.outside || remote || out.outside) || out.isError) return out;
   turn.tainted = true;
   const parts = typeof out.content === "string" ? [text(out.content)] : out.content;
   return { ...out, content: [text(OUTSIDE_NOTE), ...parts] };
@@ -1045,7 +1141,7 @@ export async function waitForApproval(turn: Turn, call: ToolUseBlock, verdict: E
   bots.bumpUnread(bot.id);
   setLive(user.id, bot.id, { running: false, activity: { kind: "waiting", since: Date.now() }, awaiting: { reason: verdict.reason, since: Date.now() } });
   emit(user.id, { type: "tasks", botId: bot.id });
-  tell({ type: "waiting", bot, text: verdict.title });
+  tell({ type: "waiting", bot, text: verdict.title, approvalId, tool: verdict.policyKey });
   const status = await new Promise<string>((resolve) => {
     const finish = (s: string) => { clearTimeout(timer); turn.signal.removeEventListener("abort", onAbort); waiters.delete(approvalId); waiterBot.delete(approvalId); resolve(s); };
     const onAbort = () => finish("expired");

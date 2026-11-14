@@ -8,7 +8,7 @@ import { config } from "../config.js";
 import { isValidTimezone, parseCron } from "../cron.js";
 import { tr } from "../i18n.js";
 import type { ImageBlock, TextBlock, ToolSpec } from "../llm/types.js";
-import { describeRoutine, routines } from "../routines.js";
+import { describeRoutine, routines, type RoutineInput } from "../routines.js";
 import { accounts as nativeAccounts } from "../native/accounts.js";
 import { appOf } from "../native/vendors.js";
 import { schedule, unschedule } from "../scheduler.js";
@@ -31,6 +31,12 @@ import { bgTasks, bgTaskToolSpecs, publicTask, startTask, stopTask, TaskLimitErr
 import { findCode, mailAccounts } from "../native/access.js";
 import { hideForAWhile } from "../store.js";
 import { explicitRemember, memoryVerdict } from "./sensitive.js";
+import { committingKind, probe, seenOf, seenTarget } from "./bind.js";
+import { cardLabel, cardTools } from "./payments.js";
+import { guideIndex, guideTools } from "./guides.js";
+import { anonymise } from "./anonymise.js";
+import { apiTools } from "../apiconnectors.js";
+import { ruleTools } from "./ruletools.js";
 
 export interface ToolContext {
   bot: BotRecord; user: UserRecord; depth: number; signal: AbortSignal;
@@ -40,6 +46,10 @@ export interface ToolContext {
   thread?: number;
   /** Exact addresses an app returned in this turn. */
   appUrls?: Set<string>;
+  /** What started the turn ("user", "routine", "bot", "system", "nudge", "resume"): see Turn.origin. */
+  origin?: string;
+  /** Tool calls already run in this turn (a learned skill needs real multi-step work behind it). */
+  toolsRun?: number;
 }
 export interface ToolOutput {
   content: string | Array<TextBlock | ImageBlock>;
@@ -48,6 +58,8 @@ export interface ToolOutput {
   isError?: boolean;
   /** Stop the turn once this batch of calls is finished. */
   endTurn?: boolean;
+  /** This result is outside content even though the tool is not always (e.g. a learned skill from a tainted turn). */
+  outside?: boolean;
 }
 export interface BuiltinTool {
   spec: ToolSpec;
@@ -102,7 +114,17 @@ const screenTools: BuiltinTool[] = [
   tool("screen_click", "Click at a position on the screen. Take a screenshot first so the coordinates are current.",
     obj({ x: int("Pixels from the left edge"), y: int("Pixels from the top edge"), button: { type: "string", enum: ["left", "right", "middle"] }, double: { type: "boolean", description: "Double-click" } }, ["x", "y"]), {
     activity: "computer", label: "Clicking",
-    run: async (a, c) => shot(await screen.click(c.bot.id, c.user.id, +a.x, +a.y, a.button ?? "left", !!a.double), `Clicked at (${a.x}, ${a.y}).`),
+    run: async (a, c) => {
+      // A click that commits something was judged (and maybe approved) for one control on one site (bind.ts): if the
+      // page changed since, nothing is clicked.
+      const seen = seenTarget(a);
+      if (seen && committingKind(seen.label)) {
+        const now = await probe.target(c.bot.id, +a.x, +a.y).catch(() => null);
+        const still = now ? seenOf(now) : null;
+        if (!still || still.label !== seen.label || still.host !== seen.host) return { content: `The page changed since this click was checked (it was “${seen.label}” on ${seen.host || "?"}; now ${still ? `“${still.label}” on ${still.host || "?"}` : "nothing readable"}). Nothing was clicked. Look at the screen again.`, isError: true, summary: "page changed" };
+      }
+      return shot(await screen.click(c.bot.id, c.user.id, +a.x, +a.y, a.button ?? "left", !!a.double), `Clicked at (${a.x}, ${a.y}).`);
+    },
   }),
   tool("screen_type", "Type text into whatever currently has keyboard focus.", obj({ text: str("Text to type") }, ["text"]), {
     activity: "computer", label: "Typing",
@@ -123,7 +145,7 @@ const screenTools: BuiltinTool[] = [
 ];
 
 /** Screen actions (not looking) wait while the user drives the screen: the server refuses them, whatever the bot says. */
-const ACTS_ON_SCREEN = new Set(["browser_open", "screen_click", "screen_type", "screen_key", "screen_scroll", "screen_drag", "vault_type"]);
+const ACTS_ON_SCREEN = new Set(["browser_open", "screen_click", "screen_type", "screen_key", "screen_scroll", "screen_drag", "vault_type", "card_fill"]);
 function respectDriver(t: BuiltinTool): BuiltinTool {
   if (!ACTS_ON_SCREEN.has(t.spec.name)) return t;
   return { ...t, run: async (a, c) => (userDriving(c.bot.id) ? { content: DRIVING, isError: true, summary: "the user is driving" } : t.run(a, c)) };
@@ -352,12 +374,15 @@ const allowHttp = () => process.env.ALLOW_PRIVATE_FETCH === "1" || process.env.A
  * (secret_request), used by the server inside one request (secret_use), and generated passwords go straight in.
  */
 const vaultTools: BuiltinTool[] = [
-  tool("vault_list", "List what the user saved in the vault for you: logins (name, site, username), secrets such as API keys (name and the hosts they may be sent to) and two-factor code generators (name and site). Values are never shown to you.", obj({}), {
+  tool("vault_list", "List what the user saved in the vault for you: logins (name, site, username), secrets such as API keys (name and the hosts they may be sent to), two-factor code generators (name and site) and payment cards (name, network, last 4 digits). Values are never shown to you.", obj({}), {
     activity: "remembering", label: "Checking saved logins",
     run: async (_a, c) => {
       const items = vault.list(c.user.id);
       return {
-        content: items.length ? JSON.stringify(items.map((i) => i.kind === "secret"
+        content: items.length ? JSON.stringify(items.map((i) => i.kind === "card"
+          // A card: its name, network and last 4 digits only. Pay with card_fill.
+          ? { kind: "card", name: i.name, label: cardLabel(i), note: i.note || undefined }
+          : i.kind === "secret"
           ? { kind: "secret", name: i.name, hosts: i.hosts, saved: i.hasPassword, note: i.note || undefined }
           : i.kind === "totp" ? { kind: "totp", name: i.name, site: i.site, note: i.note || undefined }
           : { kind: "login", name: i.name, site: i.site, username: i.username, has_password: i.hasPassword, note: i.note || undefined })) : "Nothing is saved. Ask the user to add it in Settings → Vault, or use secret_request for an API key.",
@@ -551,7 +576,9 @@ const knowledgeTools: BuiltinTool[] = [
     activity: "remembering", label: "Reading a skill", group: "memory",
     run: async (a, c) => {
       const s = skills.find(c.bot.id, String(a.name));
-      return s ? { content: `# ${s.name}${s.own ? "" : ` (shared by ${s.botName})`}\n${s.description ? `Use when: ${s.description}\n` : ""}\n${s.body}`, summary: s.name } : { content: `You have no skill called "${a.name}", and no teammate shared one by that name.`, isError: true };
+      if (!s) return { content: `You have no skill called "${a.name}", and no teammate shared one by that name.`, isError: true };
+      // A skill learned in a turn that had read outside content is itself outside content: a page may have shaped it.
+      return { content: `# ${s.name}${s.own ? "" : ` (shared by ${s.botName})`}${s.learned ? " (learned from an earlier task)" : ""}\n${s.description ? `Use when: ${s.description}\n` : ""}\n${s.body}`, summary: s.name, outside: s.outside };
     },
   }),
   tool("skill_save", "Save a way of doing something as a skill, so you do it the same way next time. Use it when the user says to remember how to do a task, or after working out a procedure worth keeping. Saving under an existing name replaces that skill.",
@@ -567,6 +594,22 @@ const knowledgeTools: BuiltinTool[] = [
       return { content: existing ? "Skill updated." : "Skill saved.", summary: name };
     },
   }),
+  tool("skill_propose", "After finishing a task that took several steps (or a workaround), offer to keep the procedure as a learned skill for next time: the steps on the site or app, the pitfalls, the final check. Names, addresses, contact details, order or account numbers, amounts and message contents are replaced by placeholders before the user sees it; the user reviews and edits it before it is saved. Do not use it when the user said not to remember this task.",
+    obj({ name: str("Short name"), when: str("When to use it, in one line"), steps: str("The procedure, step by step, with pitfalls and the final check") }, ["name", "steps"]), {
+    activity: "remembering", label: "Proposing a skill", group: "memory",
+    run: async (a, c) => {
+      if (!settings.memory(c.user.id).autoCapture) return { content: "The user switched learning off (Settings → Memory): do not propose skills.", isError: true, summary: "learning off" };
+      if ((c.toolsRun ?? 0) < 3) return { content: "Only propose a skill after a task that really took several steps.", isError: true, summary: "too early" };
+      const known = [c.user.name, settings.profile(c.user.id).name, ...bots.list(c.user.id).map((b) => b.name)].filter(Boolean);
+      const name = clip(anonymise(String(a.name ?? "").trim(), known), 80);
+      const steps = anonymise(String(a.steps ?? "").trim(), known).slice(0, 8000);
+      const when = clip(anonymise(String(a.when ?? "").trim(), known), 300);
+      if (!name || !steps) return { content: "A skill needs a name and steps.", isError: true };
+      rows.append(c.bot, { kind: "card", card: { type: "skill", name, when, steps, outside: !!c.tainted, status: "pending" } });
+      bots.bumpUnread(c.bot.id);
+      return { content: "The user has the proposed skill in front of them (anonymised) and decides whether to keep it. Do not save it yourself.", summary: name };
+    },
+  }),
 ];
 
 const searchTools: BuiltinTool[] = [
@@ -580,22 +623,49 @@ const searchTools: BuiltinTool[] = [
 ];
 
 const pageTools: BuiltinTool[] = [
-  tool("page_publish", "Publish a web page (a report, a dashboard, a tracker) at a public address anyone with the link can open. Write complete, self-contained HTML: inline styles and scripts only. Publishing again under the same name updates the page at the same address.",
-    obj({ name: str("Short file name without extension, e.g. weekly-report"), title: str("Page title"), html: str("The full HTML document") }, ["name", "title", "html"]), {
+  tool("page_publish", "Publish a web page (a report, a dashboard, a tracker) at an address: by default anyone with the link can open it; \"private\" means only the user, signed in to Sklubot. Write complete, self-contained HTML: inline styles and scripts only. Publishing again under the same name updates the page at the same address; for small changes to a page already published, use page_edit instead of rewriting it.",
+    obj({ name: str("Short file name without extension, e.g. weekly-report"), title: str("Page title"), html: str("The full HTML document"), visibility: { type: "string", enum: ["link", "private"], description: "link (default): anyone with the address; private: only the user, signed in" } }, ["name", "title", "html"]), {
     activity: "saving", label: "Publishing a page", group: "pages", audited: true, detail: (a) => String(a.title ?? ""),
     run: async (a, c) => {
       const html = String(a.html);
       if (html.length > 2_000_000) return { content: "That page is too large (2 MB at most).", isError: true };
       const rel = saveFile(c.bot.id, `pages/${String(a.name).replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 60) || "page"}.html`, html);
       const existing = pages.forPath(c.bot.id, rel, appConfig.publicUrl);
-      if (existing) pages.retitle(existing.token, String(a.title));
-      const page = existing ?? pages.create(c.bot, String(a.title), rel, appConfig.publicUrl);
+      const visibility = a.visibility === "private" ? "private" : a.visibility === "link" ? "link" : undefined;
+      if (existing) { pages.retitle(existing.token, String(a.title)); if (visibility) pages.setVisibility(existing.token, visibility); }
+      const page = existing ?? pages.create(c.bot, String(a.title), rel, appConfig.publicUrl, visibility ?? "link");
       if (!existing) {
         rows.append(c.bot, { kind: "message", role: "assistant", text: `[${String(a.title)}](${page.url})` });
         bots.bumpUnread(c.bot.id);
       }
       emit(c.user.id, { type: "pages" });
-      return { content: `${existing ? "Updated" : "Published"} at ${page.url}${existing ? "" : " — the link is in the chat"}.`, summary: String(a.title) };
+      const vis = visibility ?? existing?.visibility ?? "link";
+      return { content: `${existing ? "Updated" : "Published"} at ${page.url}${existing ? "" : " — the link is in the chat"}. ${vis === "private" ? "Private: only the user, signed in, can open it." : "Anyone with the link can open it."}`, summary: String(a.title) };
+    },
+  }),
+  tool("page_edit", "Change a page you already published with targeted edits instead of rewriting it: each edit replaces one exact piece of its HTML (which must appear exactly once) with new text. The address stays the same.",
+    obj({ name: str("The page's file name, as given to page_publish"), edits: { type: "array", description: "[{\"find\": \"exact old text\", \"replace\": \"new text\"}], applied in order (at most 20)", items: { type: "object", properties: { find: { type: "string" }, replace: { type: "string" } }, required: ["find", "replace"] } } }, ["name", "edits"]), {
+    activity: "saving", label: "Editing a page", group: "pages", audited: true, detail: (a) => String(a.name ?? ""),
+    run: async (a, c) => {
+      const rel = `pages/${String(a.name).replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 60) || "page"}.html`;
+      const page = pages.forPath(c.bot.id, rel, appConfig.publicUrl);
+      if (!page) return { content: `You have no published page called "${a.name}". Publish it first with page_publish.`, isError: true };
+      let html: string;
+      try { html = readLibraryFile(c.bot.id, rel).toString("utf8"); } catch { return { content: "That page's file is gone. Publish it again with page_publish.", isError: true }; }
+      const edits = (Array.isArray(a.edits) ? a.edits : []).slice(0, 20);
+      if (!edits.length) return { content: "Give at least one edit.", isError: true };
+      // All or nothing: every edit must find its text exactly once (in the page as the previous edits left it).
+      for (const [i, e] of edits.entries()) {
+        const find = String(e?.find ?? "");
+        if (!find) return { content: `Edit ${i + 1} has no text to find. Nothing was changed.`, isError: true };
+        const count = html.split(find).length - 1;
+        if (count !== 1) return { content: `Edit ${i + 1}: the text to find appears ${count} times (it must appear exactly once). Nothing was changed.`, isError: true, summary: "not applied" };
+        html = html.replace(find, () => String(e?.replace ?? ""));
+      }
+      if (html.length > 2_000_000) return { content: "The page would be too large (2 MB at most). Nothing was changed.", isError: true };
+      saveFile(c.bot.id, rel, html);
+      emit(c.user.id, { type: "pages" });
+      return { content: `Applied ${edits.length} edit${edits.length > 1 ? "s" : ""} to ${page.url}.`, summary: `${page.title} · ${edits.length}` };
     },
   }),
 ];
@@ -621,6 +691,7 @@ const memoryTools: BuiltinTool[] = [
       const terms = String(a.query).toLowerCase().split(/\s+/).filter((w) => w.length > 2);
       const all = memories.list(c.bot.id, 2000);
       const hits = (terms.length ? all.filter((m) => terms.some((t) => m.text.toLowerCase().includes(t))) : all).slice(0, 20);
+      if (terms.length) memories.touch(hits.map((m) => m.id));
       return { content: hits.length ? hits.map((m) => `- ${m.text} (${new Date(m.createdAt).toISOString().slice(0, 10)})`).join("\n") : "No matching memories.", summary: `${hits.length} found` };
     },
   }),
@@ -651,11 +722,14 @@ const routineTools: BuiltinTool[] = [
       watch_file: str("For watch: instead of a web address, a file in your library to check"),
       every_minutes: int("For watch: minutes between checks (5 to 1440, default 30). For email, slack and calendar: 2 to 1440, default 5"),
       schedule: str("For cron: five fields — minute hour day-of-month month day-of-week, e.g. '0 9 * * 1-5'"),
+      only_if_new: { type: "array", items: { type: "string" }, description: "For cron routines that wait for something new (a reply, a new email, a page change): the mail accounts (exact names) or web addresses to check first. When nothing changed since the last run, the run is skipped without calling the model. Not for reminders or summaries, which must run every time." },
       run_at: str("For once: ISO 8601 date and time with offset, e.g. 2030-01-31T09:00:00+01:00"),
       timezone: str("IANA timezone for cron schedules, e.g. Europe/Paris. Ask the user if you do not know it."),
     }, ["name", "prompt", "kind"]), {
     activity: "planning", label: "Setting up a routine", audited: true,
     run: async (a, c) => {
+      // A routine cannot create routines (spec 07 A7): only work the user started can set one up.
+      if (c.origin === "routine") return { content: "A routine cannot create other routines. Tell the user what you would set up, and let them ask for it.", isError: true };
       const kind = a.kind as "cron" | "once" | "webhook" | "watch" | "email" | "slack" | "calendar";
       if (kind === "email" || kind === "slack" || kind === "calendar") {
         const all = nativeAccounts.list(c.user.id);
@@ -685,10 +759,25 @@ const routineTools: BuiltinTool[] = [
         } else if (a.watch_file) watch = { kind: "file", target: libraryPath(String(a.watch_file)), everyMin };
         else return { content: "A watch needs watch_url or watch_file.", isError: true };
       } else if (kind !== "webhook") return { content: "kind must be cron, once, webhook or watch.", isError: true };
-      const r = routines.create(c.bot.id, { name: String(a.name), prompt: String(a.prompt), trigger: kind, schedule: kind === "cron" ? String(a.schedule) : "", timezone: tz, runAt, watch });
+      // "Only when something is new": the mail accounts or web addresses the routine waits for (cron routines only).
+      const inputs: RoutineInput[] = [];
+      if (kind === "cron" && Array.isArray(a.only_if_new)) {
+        const all = nativeAccounts.list(c.user.id);
+        for (const ref of a.only_if_new.map(String).slice(0, 5)) {
+          if (/^https?:\/\//i.test(ref)) { inputs.push({ kind: "url", url: ref.trim() }); continue; }
+          const acc = all.find((x) => x.name.toLowerCase() === ref.trim().toLowerCase());
+          if (!acc || (acc.app !== "gmail" && acc.app !== "outlook")) return { content: `only_if_new takes mail accounts (${all.filter((x) => x.app === "gmail" || x.app === "outlook").map((x) => x.name).join(", ") || "none connected"}) or http(s) addresses; "${ref}" is neither.`, isError: true };
+          inputs.push({ kind: "account", accountId: acc.id });
+        }
+      }
+      // No duplicates: an identical routine already set up is kept instead of a copy.
+      const twin = routines.twin(c.bot.id, { prompt: String(a.prompt), trigger: kind, schedule: kind === "cron" ? String(a.schedule) : "", timezone: tz, runAt, watchTarget: watch?.target });
+      if (twin) return { content: JSON.stringify({ id: twin.id, note: "An identical routine already exists; it was kept and no copy was made." }), summary: twin.name };
+      const r = routines.create(c.bot.id, { name: String(a.name), prompt: String(a.prompt), trigger: kind, schedule: kind === "cron" ? String(a.schedule) : "", timezone: tz, runAt, watch, inputs });
       schedule(r.id);
-      announceRoutine(c, tr(c.user.locale, "Routine created: {name} — {when}", { name: r.name, when: describeRoutine(r, c.user.locale) }));
-      return { content: JSON.stringify({ id: r.id, when: describeRoutine(r), webhook_url: r.hookUrl ?? undefined }), summary: r.name };
+      const cost = r.projectedMonthlyUsd ? tr(c.user.locale, " · about {usd} $ a month", { usd: r.projectedMonthlyUsd.toFixed(2) }) : "";
+      announceRoutine(c, tr(c.user.locale, "Routine created: {name} — {when}", { name: r.name, when: describeRoutine(r, c.user.locale) }) + (r.skipUnchanged ? tr(c.user.locale, " (skipped when nothing is new)") : "") + cost);
+      return { content: JSON.stringify({ id: r.id, when: describeRoutine(r), webhook_url: r.hookUrl ?? undefined, projected_monthly_usd: r.projectedMonthlyUsd ?? undefined, skips_when_unchanged: r.skipUnchanged || undefined }), summary: r.name };
     },
   }),
   tool("routine_list", "List your routines with their ids, schedules and state.", obj({}), {
@@ -982,11 +1071,13 @@ function assemble(opts: { nativeSearch?: boolean; video?: "connector" | "api" | 
     ...workTools.filter((t) => t.spec.name !== "shell_run" || shellAvailable())
       .map((t): BuiltinTool => ({ ...t, group: t.spec.name === "shell_run" ? "shell" : t.spec.name === "web_fetch" ? "web" : "files", sensitive: t.spec.name === "shell_run" && computerKind() === "linux" ? false : t.sensitive })),
     ...(searchConfigured() && !opts.nativeSearch ? searchTools : []),
-    ...knowledgeTools, ...pageTools, ...progressTools, ...profileTools, ...skillImportTools, ...botTools,
+    ...knowledgeTools, ...guideTools, ...ruleTools, ...pageTools, ...progressTools, ...profileTools, ...skillImportTools, ...botTools,
     ...(xSearchAvailable() ? xTools : []),
     ...shareTools.filter((t) => t.spec.name !== "image_generate" || imageService()).map((t): BuiltinTool => ({ ...t, group: t.spec.name === "image_generate" ? "images" : "files" })),
     ...inGroup("vault", vaultTools),
     ...(browserAvailable() ? inGroup("vault", screenVaultTools).map(respectDriver) : []),
+    ...(browserAvailable() ? inGroup("vault", cardTools).map(respectDriver) : []),
+    ...inGroup("apps", apiTools),
     ...(opts.video ? inGroup("video", videoTools) : []),
     // The user's own computers (Sklubot Relais): offered by newTurn only to users who linked one.
     ...myComputerTools,

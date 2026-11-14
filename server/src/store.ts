@@ -6,7 +6,7 @@ import { tr } from "./i18n.js";
 import type { ChatMessage } from "./llm/types.js";
 import {
   AVATAR_COLORS, AVATAR_SHAPES,
-  ACCESSORIES, CHARACTER_TYPES, DEFAULT_CHARACTER, DEFAULT_NUDGES, SENSITIVE_CATEGORIES, type NudgeSettings, type MemorySettings, type MemoryStatus, type SensitiveCategory, EYE_STYLES, IDLE_MOTIONS, TOOL_GROUPS, type AuditEntry, type Character, type Bot, type Card, type CheckinSettings, type Locale, type Memory, type SearchHit, type SharedPage, type VaultItem, type VaultKind, type BotSection, type Policy, type Reaction, type Row, type RowBody, type Skill, type SkillRef, type Task, type User, type Profile, type ReliabilitySettings, RELIABILITY_LIMITS,
+  ACCESSORIES, CHARACTER_TYPES, DEFAULT_CHARACTER, DEFAULT_NUDGES, SENSITIVE_CATEGORIES, type NudgeSettings, type MemorySettings, type MemoryStatus, type SensitiveCategory, EYE_STYLES, IDLE_MOTIONS, TOOL_GROUPS, type AuditEntry, type Character, type Bot, type Card, type CheckinSettings, type Locale, type Memory, type SearchHit, type SharedPage, type VaultItem, type VaultKind, type BotSection, type Policy, type Reaction, type Row, type RowBody, type Skill, type SkillRef, type Task, type User, type Profile, type ReliabilitySettings, RELIABILITY_LIMITS, DEFAULT_SPEND_CHECKPOINT_USD, type SpendSettings,
 } from "./shared.js";
 
 export const now = () => Date.now();
@@ -55,6 +55,10 @@ function previewOf(body: RowBody, locale: Locale): string {
     if (c.type === "uncertain") return tr(locale, "Did it go through? {title}", { title: c.title });
     if (c.type === "task") return tr(locale, "Background task: {title}", { title: c.title });
     if (c.type === "nudge") return c.title;
+    if (c.type === "spend") return tr(locale, "Spend checkpoint: {title}", { title: c.title });
+    if (c.type === "skill") return tr(locale, "Skill to review: {name}", { name: c.name });
+    if (c.type === "apiconnector") return tr(locale, "API connector to review: {name}", { name: c.name });
+    if (c.type === "memory") return tr(locale, "Which is right? {text}", { text: c.newText });
     return tr(locale, "Connect {name}", { name: c.name });
   }
   return "";
@@ -76,6 +80,7 @@ function toBot(r: any): BotRecord {
     pinned: !!r.pinned, sectionId: r.section_id ?? null, listHidden: !!r.list_hidden,
     fallbackModels: r.fallback_models ? cleanModelList(safeJson(r.fallback_models)) : null, createdBy: r.created_by ?? null,
     nudges: cleanNudges(safeJson(r.nudges || "{}")),
+    spendCheckpointUsd: typeof r.spend_checkpoint_usd === "number" ? r.spend_checkpoint_usd : null,
     telegramTokenEnc: r.telegram_token_enc ?? null, telegramChatId: r.telegram_chat_id ?? null, telegramCode: r.telegram_code ?? null, telegramOffset: r.telegram_offset ?? 0,
     memberIds: JSON.parse(r.members || "[]"), hidden: !!r.hidden, parentId: r.parent_id, nextSeq: r.next_seq, rev: r.rev,
     preview: last ? clip(previewOf(JSON.parse(last.body), users.localeOf(r.user_id)).replace(/\s+/g, " "), 140) : "",
@@ -250,6 +255,9 @@ export const bots = {
       const cur = q.get<{ nudges: string }>("SELECT nudges FROM bots WHERE id = ?", id);
       sets.push("nudges = ?"); vals.push(JSON.stringify(cleanNudges(patch.nudges, cleanNudges(safeJson(cur?.nudges || "{}")))));
     }
+    // The bot's own spend checkpoint (USD, 0 = never stops), or null to follow the account's setting.
+    if (patch.spendCheckpointUsd === null) { sets.push("spend_checkpoint_usd = ?"); vals.push(null); }
+    else if (typeof patch.spendCheckpointUsd === "number" && Number.isFinite(patch.spendCheckpointUsd)) { sets.push("spend_checkpoint_usd = ?"); vals.push(Math.round(Math.min(10_000, Math.max(0, patch.spendCheckpointUsd)) * 100) / 100); }
     if (Array.isArray(patch.disabledTools)) { sets.push("disabled_tools = ?"); vals.push(JSON.stringify(patch.disabledTools.filter((g) => (TOOL_GROUPS as readonly string[]).includes(g as string)))); }
     if (!sets.length) return;
     q.run(`UPDATE bots SET ${sets.join(", ")}, updated_at = ? WHERE id = ?`, ...vals, now(), id);
@@ -466,6 +474,7 @@ const toMemory = (r: any): Memory => ({
   id: r.id, botId: r.bot_id, text: r.text, source: r.source === "learned" || r.source === "import" ? r.source : "chat", createdAt: r.created_at,
   status: r.status === "archived" || r.status === "contested" ? r.status : "active", quote: r.quote ?? "",
   category: (SENSITIVE_CATEGORIES as readonly string[]).includes(r.category) ? r.category : null,
+  confidence: r.confidence === "confirmed" ? "confirmed" : "once", confirmedAt: r.confirmed_at ?? null, lastUsedAt: r.last_used_at ?? null,
 });
 export const memories = {
   list: (botId: string, limit = 500) => q.all("SELECT * FROM memories WHERE bot_id = ? ORDER BY created_at DESC, rowid DESC LIMIT ?", botId, limit).map(toMemory),
@@ -481,22 +490,28 @@ export const memories = {
     return r ? toMemory(r) : null;
   },
   setStatus: (id: string, status: MemoryStatus) => q.run("UPDATE memories SET status = ? WHERE id = ?", status, id),
+  /** The user said it again (a verified quote of their own words), or confirmed it: confidence grows, never shrinks here. */
+  confirm: (id: string) => q.run("UPDATE memories SET confidence = 'confirmed', confirmed_at = ? WHERE id = ?", now(), id),
+  setConfidence: (id: string, c: Memory["confidence"]) => q.run("UPDATE memories SET confidence = ?, confirmed_at = ? WHERE id = ?", c, c === "confirmed" ? now() : null, id),
+  /** Found relevant (in the prompt for what the user is talking about, or by memory_search). */
+  touch: (ids: string[]) => { const t = now(); for (const id of ids) q.run("UPDATE memories SET last_used_at = ? WHERE id = ?", t, id); },
   removeOwned(userId: string, id: string) {
     q.run("DELETE FROM memories WHERE id = ? AND bot_id IN (SELECT id FROM bots WHERE user_id = ?)", id, userId);
   },
 };
 
-const toSkill = (r: any): Skill => ({ id: r.id, botId: r.bot_id, name: r.name, description: r.description, body: r.body, shared: !!r.shared, createdAt: r.created_at, updatedAt: r.updated_at });
+const toSkill = (r: any): Skill => ({ id: r.id, botId: r.bot_id, name: r.name, description: r.description, body: r.body, shared: !!r.shared, learned: !!r.learned, outside: !!r.outside, createdAt: r.created_at, updatedAt: r.updated_at });
 export const skills = {
   list: (botId: string) => q.all("SELECT * FROM skills WHERE bot_id = ? ORDER BY created_at", botId).map(toSkill),
   owned(userId: string, id: string) {
     const r = q.get("SELECT s.* FROM skills s JOIN bots b ON b.id = s.bot_id WHERE s.id = ? AND b.user_id = ?", id, userId);
     return r ? toSkill(r) : null;
   },
-  create(botId: string, name: string, description: string, body: string, shared = false): Skill {
+  /** `learned`/`outside`: a procedure the bot proposed and the user approved; outside: it came from a turn that read outside content. */
+  create(botId: string, name: string, description: string, body: string, shared = false, origin: { learned?: boolean; outside?: boolean } = {}): Skill {
     const id = newId("skl");
     const t = now();
-    q.run("INSERT INTO skills (id, bot_id, name, description, body, shared, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", id, botId, name, description, body, shared ? 1 : 0, t, t);
+    q.run("INSERT INTO skills (id, bot_id, name, description, body, shared, learned, outside, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", id, botId, name, description, body, shared ? 1 : 0, origin.learned ? 1 : 0, origin.outside ? 1 : 0, t, t);
     return toSkill(q.get("SELECT * FROM skills WHERE id = ?", id));
   },
   update(id: string, f: { name: string; description: string; body: string; shared?: boolean }) {
@@ -653,6 +668,17 @@ export const settings = {
     q.run("INSERT INTO settings (user_id, review) VALUES (?, ?) ON CONFLICT(user_id) DO UPDATE SET review = excluded.review", userId, JSON.stringify({ model: f.model }));
     return settings.review(userId);
   },
+  /** Spend checkpoint of the account (spec 07 A5): USD a task may spend since the user last spoke to it (0: off). */
+  spend(userId: string): SpendSettings {
+    const raw = (safeJson(q.get<{ spend: string }>("SELECT spend FROM settings WHERE user_id = ?", userId)?.spend ?? "{}") ?? {}) as Record<string, unknown>;
+    const n = Number(raw.checkpointUsd);
+    return { checkpointUsd: raw.checkpointUsd !== undefined && Number.isFinite(n) && n >= 0 ? n : DEFAULT_SPEND_CHECKPOINT_USD };
+  },
+  saveSpend(userId: string, f: { checkpointUsd: number }): SpendSettings {
+    const v = Math.round(Math.min(10_000, Math.max(0, f.checkpointUsd)) * 100) / 100;
+    q.run("INSERT INTO settings (user_id, spend) VALUES (?, ?) ON CONFLICT(user_id) DO UPDATE SET spend = excluded.spend", userId, JSON.stringify({ checkpointUsd: v }));
+    return settings.spend(userId);
+  },
   budget: (userId: string) => q.get<{ budget_usd: number | null }>("SELECT budget_usd FROM settings WHERE user_id = ?", userId)?.budget_usd ?? null,
   setBudget: (userId: string, usd: number | null) =>
     q.run("INSERT INTO settings (user_id, budget_usd) VALUES (?, ?) ON CONFLICT(user_id) DO UPDATE SET budget_usd = excluded.budget_usd", userId, usd),
@@ -660,17 +686,29 @@ export const settings = {
 
 // ── Vault: saved logins, secrets (API keys) and TOTP seeds ──────────────────
 export interface VaultRecord extends VaultItem { userId: string; passwordEnc: string | null }
-export interface VaultFields { kind?: VaultKind; name: string; site: string; username: string; passwordEnc: string | null; note: string; hosts?: string[]; header?: string; prefix?: string; digits?: number; period?: number }
+export interface VaultFields { kind?: VaultKind; name: string; site: string; username: string; passwordEnc: string | null; note: string; hosts?: string[]; header?: string; prefix?: string; digits?: number; period?: number; brand?: string; last4?: string; dailyCapUsd?: number | null; monthlyCapUsd?: number | null }
 const toVault = (r: any): VaultRecord => {
   const meta = (() => { try { return JSON.parse(r.meta || "{}"); } catch { return {}; } })();
-  const kind: VaultKind = r.kind === "secret" || r.kind === "totp" ? r.kind : "login";
+  const kind: VaultKind = r.kind === "secret" || r.kind === "totp" || r.kind === "card" ? r.kind : "login";
   return {
     id: r.id, kind, userId: r.user_id, name: r.name, site: r.site, username: r.username, hasPassword: !!r.password_enc, passwordEnc: r.password_enc, note: r.note, createdAt: r.created_at,
     hosts: Array.isArray(meta.hosts) ? meta.hosts.filter((h: unknown) => typeof h === "string") : [], header: typeof meta.header === "string" ? meta.header : "", prefix: typeof meta.prefix === "string" ? meta.prefix : "",
     digits: meta.digits === 8 ? 8 : 6, period: Number.isInteger(meta.period) && meta.period >= 15 && meta.period <= 120 ? meta.period : 30,
+    card: kind === "card" ? {
+      brand: typeof meta.brand === "string" ? meta.brand : "", last4: typeof meta.last4 === "string" ? meta.last4 : "",
+      dailyCapUsd: typeof meta.dailyCapUsd === "number" ? meta.dailyCapUsd : null, monthlyCapUsd: typeof meta.monthlyCapUsd === "number" ? meta.monthlyCapUsd : null,
+      spentTodayUsd: cardSpent(r.id, "day"), spentMonthUsd: cardSpent(r.id, "month"),
+    } : null,
   };
 };
-const metaOf = (f: VaultFields) => JSON.stringify(f.kind === "secret" ? { hosts: f.hosts ?? [], header: f.header ?? "", prefix: f.prefix ?? "" } : f.kind === "totp" ? { digits: f.digits ?? 6, period: f.period ?? 30 } : {});
+/** What was spent with a card today or this month (UTC): payments filled, submitted or of unknown outcome. */
+export function cardSpent(cardId: string, period: "day" | "month"): number {
+  const d = new Date();
+  const since = period === "day" ? Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) : Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1);
+  return q.get<{ s: number | null }>("SELECT SUM(amount) AS s FROM payments WHERE card_id = ? AND created_at >= ? AND status IN ('approved','filled','submitted','uncertain')", cardId, since)?.s ?? 0;
+}
+const metaOf = (f: VaultFields) => JSON.stringify(f.kind === "secret" ? { hosts: f.hosts ?? [], header: f.header ?? "", prefix: f.prefix ?? "" } : f.kind === "totp" ? { digits: f.digits ?? 6, period: f.period ?? 30 }
+  : f.kind === "card" ? { brand: f.brand ?? "", last4: f.last4 ?? "", dailyCapUsd: f.dailyCapUsd ?? null, monthlyCapUsd: f.monthlyCapUsd ?? null } : {});
 export const publicVault = ({ userId, passwordEnc, ...rest }: VaultRecord): VaultItem => rest;
 export const vault = {
   list: (userId: string) => q.all("SELECT * FROM vault WHERE user_id = ? ORDER BY name COLLATE NOCASE", userId).map(toVault),
@@ -709,6 +747,8 @@ function secretsOf(userId: string): string[] {
   if (!list) {
     list = q.all<{ password_enc: string | null }>("SELECT password_enc FROM vault WHERE user_id = ? AND password_enc IS NOT NULL", userId)
       .map((r) => (r.password_enc && unsealFn ? unsealFn(r.password_enc) : null))
+      // A card is sealed as JSON: its number (as typed, and without spaces) is what must never be shown.
+      .flatMap((v): (string | null)[] => { const card = v && v.startsWith("{\"card\"") ? safeJson(v) as { number?: string } | null : null; return card?.number ? [card.number, card.number.replace(/\D/g, "")] : [v]; })
       .filter((v): v is string => !!v && v.length >= 4)
       // Longest first, so a value that contains another is hidden whole.
       .sort((a, b) => b.length - a.length);
@@ -788,16 +828,17 @@ export function searchMessages(userId: string, query: string, opts: { botId?: st
 
 // ── Pages published at a public address ──────────────────────────────────────
 export interface PageRecord extends SharedPage { userId: string; path: string }
-const toPage = (r: any, base: string): PageRecord => ({ token: r.token, botId: r.bot_id, userId: r.user_id, title: r.title, path: r.path, url: `${base}/p/${r.token}`, createdAt: r.created_at });
+const toPage = (r: any, base: string): PageRecord => ({ token: r.token, botId: r.bot_id, userId: r.user_id, title: r.title, path: r.path, url: `${base}/p/${r.token}`, createdAt: r.created_at, visibility: r.visibility === "private" ? "private" : "link" });
 export const pages = {
   list: (userId: string, base: string) => q.all("SELECT * FROM pages WHERE user_id = ? ORDER BY created_at DESC", userId).map((r) => toPage(r, base)),
   byToken: (token: string, base: string) => { const r = q.get("SELECT * FROM pages WHERE token = ?", token); return r ? toPage(r, base) : null; },
   forPath: (botId: string, path: string, base: string) => { const r = q.get("SELECT * FROM pages WHERE bot_id = ? AND path = ?", botId, path); return r ? toPage(r, base) : null; },
-  create(bot: { id: string; userId: string }, title: string, path: string, base: string): PageRecord {
+  create(bot: { id: string; userId: string }, title: string, path: string, base: string, visibility: SharedPage["visibility"] = "link"): PageRecord {
     const token = randomToken(18);
-    q.run("INSERT INTO pages (token, bot_id, user_id, title, path, created_at) VALUES (?, ?, ?, ?, ?, ?)", token, bot.id, bot.userId, clip(title, 120), path, now());
+    q.run("INSERT INTO pages (token, bot_id, user_id, title, path, created_at, visibility) VALUES (?, ?, ?, ?, ?, ?, ?)", token, bot.id, bot.userId, clip(title, 120), path, now(), visibility);
     return pages.byToken(token, base)!;
   },
+  setVisibility: (token: string, visibility: SharedPage["visibility"]) => q.run("UPDATE pages SET visibility = ? WHERE token = ?", visibility, token),
   retitle: (token: string, title: string) => q.run("UPDATE pages SET title = ? WHERE token = ?", clip(title, 120), token),
   remove: (userId: string, token: string) => q.run("DELETE FROM pages WHERE token = ? AND user_id = ?", token, userId),
 };

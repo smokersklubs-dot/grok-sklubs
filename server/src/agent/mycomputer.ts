@@ -108,6 +108,13 @@ const REFUSALS: Record<string, { model: string; user?: string; summary: string }
   offline: { model: "That computer is not connected right now (the Sklubot Relais app is closed, paused, or the computer is off). Do not retry in a loop: tell the user.", summary: "computer offline" },
   timeout: { model: "The computer did not answer in time. Check its state (look again) before doing anything else; do not repeat an action that may have gone through.", summary: "no answer in time" },
   stopped: { model: "Stopped.", summary: "stopped" },
+  // Files (protocol 1.1): refusals decided by the relay on the computer, from the folders the user shared there.
+  forbidden: { model: "The relay refused: that file or folder is not in a folder the user shared with Sklubot, or it is hidden, a system or backup folder, a file that typically holds secrets, or a program. Do not try another path to it.", summary: "refused by the computer" },
+  read_only: { model: "The user shared that folder for reading only, on their computer. Do not try to write there: tell them, or save the file in your own library instead.", summary: "read-only folder" },
+  not_found: { model: "No such file or folder there.", summary: "not found" },
+  exists: { model: "A file of that name already exists: nothing was written. Pick another name, or use mode \"replace\" if the user asked to change that file (its old version goes to the trash).", summary: "already exists" },
+  too_large: { model: "Too large for the relay (reading: 256 KiB of text at most; writing: 200 KiB).", summary: "too large" },
+  binary: { model: "That file is not text: it cannot be read this way.", summary: "not text" },
 };
 
 const seconds = (ms?: number) => (ms && ms > 0 ? `${Math.ceil(ms / 1000)} s` : "a minute");
@@ -212,7 +219,105 @@ async function done(c: ToolContext, t: Target, said: string, summary: string): P
 
 const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : Number(v));
 
+// ── The user's own files (spec 07 A15, relay protocol 1.1) ──────────────────
+export const FILE_OPS = ["fs.roots", "fs.list", "fs.read", "fs.write", "fs.trash"];
+const filesKey = (botName: string) => `myfiles: write: ${botName}`;
+const FOLDER = str("The shared folder, by the name my_files lists (e.g. \"Documents\")");
+const FILE_PATH = str("Path inside that folder, with / between folders (e.g. \"factures/2026/mars.txt\")");
+
+/** Writing or trashing a file: asked every time, never "Always" (the relay also needs the folder shared for writing). */
+const filesWriteGate: Gate = (a, ctx) => {
+  const bot = bots.byId(ctx.botId);
+  if (!bot) return null;
+  const { target } = pick(bot.userId, a.device);
+  if (!target) return null;
+  const trash = a.mode === undefined && a.text === undefined;
+  return {
+    key: filesKey(bot.name), strict: true, once: true, source: SOURCE, vars: { device: target.label, path: clip(String(a.path ?? ""), 200), folder: clip(String(a.folder ?? ""), 80) },
+    title: trash ? "Allow {bot} to move {path} (in {folder}) to the trash on {device}?" : "Allow {bot} to write {path} in {folder} on {device}?",
+    reason: trash ? "move a file to the trash on {device}" : "write a file on {device}",
+    note: trash ? "It goes to the computer's trash, never deleted for good." : "If the file exists, its previous version goes to the computer's trash first.",
+  };
+};
+
+/**
+ * Finds the computer for a file operation. The user's files are only for work the user started themselves in this
+ * chat: never from a routine, a nudge, a background task, a helper or a message from another bot (an email from a
+ * stranger must not make the bot read the user's documents).
+ */
+function filesTarget(c: ToolContext, a: Record<string, any>): { target: Target } | { out: ToolOutput } {
+  if (c.origin !== "user" || c.bot.parentId) return { out: { content: "The user's own files can only be used in work the user started themselves in this chat — not from a routine, a background task, a nudge or a message from another bot. Ask the user in the chat.", isError: true, summary: tr(c.user.locale, "not from background work") } };
+  const p = pick(c.user.id, a.device);
+  if (!p.target) return { out: { content: p.error!, isError: true, summary: tr(c.user.locale, "no computer") } };
+  const live = liveDevice(c.user.id, p.target.id);
+  if (!live) return { out: refusal(c, p.target, { ok: false, code: "offline", message: "" }) };
+  if (live.locked) return { out: refusal(c, p.target, { ok: false, code: "locked", message: "" }) };
+  if (!FILE_OPS.every((op) => live.capabilities.includes(op))) return { out: { content: `The Sklubot Relais app on ${p.target.label} is too old for files (it needs protocol 1.1). Ask the user to update it.`, isError: true, summary: tr(c.user.locale, "relay too old") } };
+  return { target: p.target };
+}
+
+const fileTools: BuiltinTool[] = [
+  tool("my_files", "List the folders the user shared with Sklubot on their own computer (in the Sklubot Relais app), or the content of one of them. Hidden, system and secret files are never shown.",
+    obj({ folder: str("Optional: a shared folder to list (by name); without it, the shared folders themselves"), path: str("Optional: a subfolder inside it"), device: DEVICE }), {
+    activity: "reading", label: "Listing your files", outside: true, audited: true, detail: (a) => clip(String(a.folder ?? ""), 40),
+    run: async (a, c) => {
+      const f = filesTarget(c, a);
+      if ("out" in f) return f.out;
+      const t = f.target;
+      if (!a.folder) {
+        const r = await call(c, t, "fs.roots", {});
+        if (!r.ok) return failed(c, t, r);
+        const roots = Array.isArray(r.result.roots) ? (r.result.roots as { name?: unknown; write?: unknown }[]).slice(0, 50) : [];
+        return { content: roots.length ? `Folders the user shared on ${t.label}:\n${roots.map((x) => `- ${clip(String(x.name ?? ""), 80)}${x.write ? " (read and write)" : " (read only)"}`).join("\n")}` : `The user has not shared any folder on ${t.label}. They can add one in the Sklubot Relais app (Shared folders).`, summary: `${roots.length}` };
+      }
+      const r = await call(c, t, "fs.list", { root: clip(String(a.folder), 80), path: clip(String(a.path ?? ""), 1000) });
+      if (!r.ok) return failed(c, t, r);
+      const entries = Array.isArray(r.result.entries) ? (r.result.entries as { name?: unknown; dir?: unknown; size?: unknown; modifiedAt?: unknown }[]).slice(0, 500) : [];
+      const lines = entries.map((e) => `- ${clip(String(e.name ?? ""), 200)}${e.dir ? "/" : ` (${Number(e.size) || 0} bytes)`}`);
+      return { content: `${a.folder}/${a.path ?? ""} on ${t.label}:\n${lines.join("\n") || "(empty)"}${r.result.truncated ? "\n(more entries not shown)" : ""}`, summary: `${entries.length}` };
+    },
+  }),
+  tool("my_file_read", "Read a text file from a folder the user shared on their own computer (256 KiB at most). Only when the user asked for it.",
+    obj({ folder: FOLDER, path: FILE_PATH, device: DEVICE }, ["folder", "path"]), {
+    activity: "reading", label: "Reading one of your files", outside: true, audited: true, detail: (a) => clip(String(a.path ?? ""), 60),
+    run: async (a, c) => {
+      const f = filesTarget(c, a);
+      if ("out" in f) return f.out;
+      const r = await call(c, f.target, "fs.read", { root: clip(String(a.folder), 80), path: clip(String(a.path ?? ""), 1000) });
+      if (!r.ok) return failed(c, f.target, r);
+      return { content: `${a.folder}/${a.path} (${Number(r.result.size) || 0} bytes${r.result.truncated ? ", only the start" : ""}):\n\n${clip(String(r.result.text ?? ""), 60_000)}`, summary: clip(String(a.path), 60) };
+    },
+  }),
+  tool("my_file_write", "Write a text file in a folder the user shared for writing on their own computer. mode \"create\" (default) never overwrites; \"replace\" changes an existing file, whose previous version goes to the computer's trash. The user is asked every time. No programs or shortcuts.",
+    obj({ folder: FOLDER, path: FILE_PATH, text: str("The full text of the file"), mode: { type: "string", enum: ["create", "replace"] }, device: DEVICE }, ["folder", "path", "text"]), {
+    activity: "saving", label: "Writing one of your files", audited: true, gate: filesWriteGate, detail: (a) => clip(String(a.path ?? ""), 60),
+    run: async (a, c) => {
+      const f = filesTarget(c, a);
+      if ("out" in f) return f.out;
+      const text = String(a.text ?? "");
+      if (Buffer.byteLength(text) > 200 * 1024) return { content: "That is too long to write on the computer (200 KiB at most).", isError: true };
+      const r = await call(c, f.target, "fs.write", { root: clip(String(a.folder), 80), path: clip(String(a.path ?? ""), 1000), text, mode: a.mode === "replace" ? "replace" : "create" });
+      if (!r.ok) return failed(c, f.target, r);
+      audit(c.user.id, "computer", `${c.bot.name} → ${f.target.label} : ${tr(c.user.locale, "file written")} ${clip(`${a.folder}/${a.path}`, 200)}`, c.bot.id);
+      return { content: `Wrote ${a.folder}/${a.path} on ${f.target.label}${r.result.previous === "trashed" ? " (its previous version is in the computer's trash)" : ""}.`, summary: clip(String(a.path), 60) };
+    },
+  }),
+  tool("my_file_trash", "Move a file from a folder the user shared for writing to the computer's trash (never deleted for good). The user is asked every time.",
+    obj({ folder: FOLDER, path: FILE_PATH, device: DEVICE }, ["folder", "path"]), {
+    activity: "saving", label: "Moving one of your files to the trash", audited: true, gate: filesWriteGate, detail: (a) => clip(String(a.path ?? ""), 60),
+    run: async (a, c) => {
+      const f = filesTarget(c, a);
+      if ("out" in f) return f.out;
+      const r = await call(c, f.target, "fs.trash", { root: clip(String(a.folder), 80), path: clip(String(a.path ?? ""), 1000) });
+      if (!r.ok) return failed(c, f.target, r);
+      audit(c.user.id, "computer", `${c.bot.name} → ${f.target.label} : ${tr(c.user.locale, "file moved to the trash")} ${clip(`${a.folder}/${a.path}`, 200)}`, c.bot.id);
+      return { content: `Moved ${a.folder}/${a.path} to the trash on ${f.target.label}.`, summary: clip(String(a.path), 60) };
+    },
+  }),
+];
+
 export const myComputerTools: BuiltinTool[] = [
+  ...fileTools,
   tool("my_computers", "List the user's own computers linked through Sklubot Relais (not your own computer): whether each is connected, locked by the user, or controlled by a bot right now.", obj({}), {
     activity: "computer", label: "Checking your computers",
     run: async (_a, c) => {

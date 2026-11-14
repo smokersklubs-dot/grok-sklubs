@@ -6,6 +6,9 @@ import { relTime } from "../lib/format";
 import type { Bot, Card, Grant, MemorySettings, ModelOption, NudgeSettings, Rule, RulesState, SensitiveCategory } from "../types";
 import { Icon } from "./Icon";
 import { ConfirmButton, ErrorNote, Loading, Toggle } from "./ui";
+import { RuleChanges, RuleScopeChip } from "./Wave5b";
+
+const RULE_TRIGGER_LIST = ["email", "slack", "calendar", "cron", "watch", "webhook", "once"] as const;
 
 /* ---------- Shared bits ---------- */
 
@@ -191,7 +194,7 @@ function RuleList({ rules, onChange }: { rules: Rule[]; onChange: () => void }) 
           <li key={r.id} className="list-row is-card">
             <div className="list-row-text">
               <span className={`rule-text ${r.enabled ? "" : "is-off"}`}>« {r.text} »</span>
-              <span className="list-row-sub">{relTime(r.createdAt)}</span>
+              <span className="list-row-sub"><RuleScopeChip rule={r} /> {relTime(r.createdAt)}{r.source === "chat" && r.quote ? ` · ${t("rules.changeQuote", { quote: r.quote })}` : ""}</span>
             </div>
             <Toggle checked={r.enabled} label={t("rules.enabled")} onChange={(on) => void run("t", async () => { await api("PATCH", `/rules/${enc(r.id)}`, { enabled: on }); onChange(); })} />
             <ConfirmButton className="btn btn-small btn-ghost-danger" label={t("rules.remove")} confirmLabel={t("common.confirmDelete")} onConfirm={async () => { await api("DELETE", `/rules/${enc(r.id)}`); onChange(); }} />
@@ -203,15 +206,39 @@ function RuleList({ rules, onChange }: { rules: Rule[]; onChange: () => void }) 
   );
 }
 
+/**
+ * Adds a rule. In Settings → Rules (botId null) a scope can be picked: every bot, one bot, one routine, or a trigger
+ * kind (e.g. "when an email arrives") — a scoped rule only applies to turns that routine / kind started.
+ */
 function AddRule({ botId, onAdded }: { botId: string | null; onAdded: () => void }) {
   const t = useT();
   const uid = useId();
   const [text, setText] = useState("");
+  const [scope, setScope] = useState("all");
+  const bots = useStore((s) => s.bots);
+  const bundles = useStore((s) => s.bundles);
   const { busy, error, run } = useBusy();
+  const agents = Object.values(bots).filter((b) => b.kind === "agent");
+  const routines = Object.values(bundles).flatMap((b) => b?.routines ?? []);
+  // Routines are listed from the bundles already loaded; load them all once so every routine can be picked.
+  useEffect(() => { if (botId === null) for (const b of agents) if (!bundles[b.id]) void useStore.getState().loadBundle(b.id).catch(() => undefined); }, [botId, agents.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  const target = (): Record<string, unknown> => {
+    if (botId !== null) return { botId };
+    const [kind, id] = scope.split(":");
+    return kind === "bot" ? { botId: id } : kind === "routine" ? { routineId: id } : kind === "trigger" ? { trigger: id } : { botId: null };
+  };
   return (
-    <form className="rule-add" onSubmit={(e) => { e.preventDefault(); if (text.trim()) void run("add", async () => { await api("POST", "/rules", { text: text.trim(), botId }); setText(""); onAdded(); }); }}>
+    <form className="rule-add" onSubmit={(e) => { e.preventDefault(); if (text.trim()) void run("add", async () => { await api("POST", "/rules", { text: text.trim(), ...target() }); setText(""); onAdded(); }); }}>
       <label className="sr-only" htmlFor={uid}>{t("rules.addLabel")}</label>
       <div className="field-inline">
+        {botId === null && (
+          <select className="input input-small rule-scope" value={scope} onChange={(e) => setScope(e.target.value)} aria-label={t("rules.scope.label")}>
+            <option value="all">{t("rules.scope.all")}</option>
+            <optgroup label={t("rules.scope.bots")}>{agents.map((b) => <option key={b.id} value={`bot:${b.id}`}>{b.name}</option>)}</optgroup>
+            {routines.length > 0 && <optgroup label={t("rules.scope.routines")}>{routines.map((r) => <option key={r.id} value={`routine:${r.id}`}>{r.name}</option>)}</optgroup>}
+            <optgroup label={t("rules.scope.triggers")}>{RULE_TRIGGER_LIST.map((k) => <option key={k} value={`trigger:${k}`}>{t(`rules.trigger.${k}` as Key)}</option>)}</optgroup>
+          </select>
+        )}
         <input id={uid} className="input" value={text} onChange={(e) => setText(e.target.value)} placeholder={t("rules.placeholder")} maxLength={500} />
         <button type="submit" className="btn btn-primary btn-small" disabled={busy !== null || !text.trim()}><Icon name="plus" size={14} /> {t("rules.add")}</button>
       </div>
@@ -230,7 +257,8 @@ export function RulesSection() {
   const load = () => api<RulesState>("GET", "/rules").then(setState, (e) => setError(errText(e)));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { void load(); }, [tick]);
-  const account = state?.rules.filter((r) => !r.botId) ?? [];
+  const account = state?.rules.filter((r) => !r.botId && !r.routineId && !r.trigger) ?? [];
+  const scoped = state?.rules.filter((r) => !r.botId && (r.routineId || r.trigger)) ?? [];
   const perBot = useMemo(() => {
     const m = new Map<string, Rule[]>();
     for (const r of state?.rules ?? []) if (r.botId) m.set(r.botId, [...(m.get(r.botId) ?? []), r]);
@@ -247,6 +275,8 @@ export function RulesSection() {
           <h3 className="pane-heading">{t("rules.account")}</h3>
           <RuleList rules={account} onChange={() => void load()} />
           <AddRule botId={null} onAdded={() => void load()} />
+          {scoped.length > 0 && <><h3 className="pane-heading">{t("rules.scoped")}</h3><RuleList rules={scoped} onChange={() => void load()} /></>}
+          <RuleChanges state={state} onChange={setState} />
           <p className="muted small rule-tips note-line"><Icon name="bulb" size={13} /> <span>{t("rules.tips")}</span></p>
           {perBot.length > 0 && <h3 className="pane-heading">{t("rules.perBot")}</h3>}
           {perBot.map(([botId, list]) => (

@@ -3,6 +3,7 @@ import { api, errText } from "../api";
 import { tn, useT } from "../i18n";
 import { useStore, type BotSettingsTab } from "../store";
 import { DEFAULT_CHARACTER, TOOL_GROUPS } from "../types";
+import { BotSpendField, ConfidenceBadge, RoutineExtras } from "./Wave5b";
 import type { Autonomy, AvatarColor, AvatarShape, Bot, BotBundle, Character as CharacterLook, BotMode, Effort, Memory, MemoryStatus, ModelOption, NativeTrigger, RoomRule, Routine, RoutineRun, Skill, SkillRef, TelegramStatus, ToolGroup } from "../types";
 import { useNative } from "./NativeApps";
 import { dateTime, nextRunLabel, relTime, shortDate } from "../lib/format";
@@ -201,6 +202,7 @@ function General({ bot, onClose }: { bot: Bot; onClose: () => void }) {
             <p className="field-hint">{t("autonomy.groundingHint")}</p>
           </div>
           <BotRulesAndNudges bot={bot} />
+          <BotSpendField bot={bot} />
           <div className="field">
             <span className="field-label">{t("bot.usedAs")}</span>
             <ChoiceList label={t("bot.usedAs")} value={form.mode} options={modes} onChange={(v) => set("mode", v)} />
@@ -644,6 +646,7 @@ function Memories({ bot, bundle }: { bot: Bot; bundle: BotBundle | undefined }) 
                 {m.quote && <span className="memory-quote">« {m.quote} »</span>}
                 <span className="list-row-sub">
                   <span className="chip">{t(m.source === "learned" ? "memory.source.learned" : m.source === "import" ? "memory.source.import" : "memory.source.chat")}</span>
+                  <ConfidenceBadge confidence={m.confidence ?? "once"} />
                   {m.status !== "active" && <span className={`chip memory-status is-${m.status}`}>{t(`memory.filter.${m.status}`)}</span>}
                   {m.category && <span className="chip chip-quiet">{t(`memset.cat.${m.category}`)}</span>} {shortDate(m.createdAt)}
                 </span>
@@ -682,7 +685,7 @@ function Memories({ bot, bundle }: { bot: Bot; bundle: BotBundle | undefined }) 
 
 /* ---------- Routines ---------- */
 
-const RUN_STATE: Record<RoutineRun["status"], string> = { running: "state-working", done: "state-done", quiet: "", error: "state-error" };
+const RUN_STATE: Record<RoutineRun["status"], string> = { running: "state-working", done: "state-done", quiet: "", error: "state-error", skipped: "" };
 
 /** The last runs of one routine; reloads whenever the server says this bot's routines changed. */
 function RoutineHistory({ r }: { r: Routine }) {
@@ -758,6 +761,7 @@ function RoutineItem({ r, onNote, onError }: { r: Routine; onNote: (t: string) =
         />
       </div>
       <p className="routine-prompt">{r.prompt}</p>
+      <RoutineExtras r={r} />
       {r.trigger === "webhook" && r.hookUrl && (
         <div className="hook">
           <code className="truncate" title={r.hookUrl}>{r.hookUrl}</code>
