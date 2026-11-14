@@ -335,6 +335,21 @@ test("a one-time sign-in link works once, and the hand-back note reaches the nex
   assert.doesNotMatch(requests[requests.length - 1].system, /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/, "no clock in the system prompt");
 });
 
+test("an app that fails is not retried on every list (no reconnect loop)", async () => {
+  let hits = 0;
+  const broken = createServer((_req, res) => { hits++; res.statusCode = 500; res.end("down"); });
+  await new Promise<void>((r) => broken.listen(0, "127.0.0.1", () => r()));
+  const url = `http://127.0.0.1:${(broken.address() as { port: number }).port}/mcp`;
+  const added = (await call("POST", "/connectors", { name: "Broken", url })).json.connector;
+  assert.equal(added.status, "error");
+  const after = hits;
+  for (let i = 0; i < 5; i++) await call("GET", "/connectors");
+  await new Promise((r) => setTimeout(r, 300));
+  assert.equal(hits, after, "listing apps does not hammer a failing app");
+  await call("DELETE", `/connectors/${added.id}`);
+  broken.close();
+});
+
 test("account: password change, exports, team import, deletion", async () => {
   assert.equal((await call("PUT", "/account/password", { current: "wrong", next: "newpassword1" })).status, 401);
   assert.equal((await call("PUT", "/account/password", { current: "password123", next: "short" })).status, 400);

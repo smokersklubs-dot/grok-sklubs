@@ -21,7 +21,7 @@ import type { Connector, ConnectorAuth } from "./shared.js";
  */
 
 interface LiveConnector { client: Client; provider: ConnectorOAuth | null; tools: { name: string; description: string; readOnly: boolean; schema: ToolSpec["inputSchema"] }[] }
-interface Entry { record: ConnectorRecord; live: LiveConnector | null; error: string | null; connecting: Promise<void> | null; needsAuth: boolean }
+interface Entry { record: ConnectorRecord; live: LiveConnector | null; error: string | null; connecting: Promise<void> | null; needsAuth: boolean; failedAt?: number }
 interface ConnectorRecord { id: string; userId: string; name: string; url: string; tokenEnc: string | null; auth: ConnectorAuth }
 
 const entries = new Map<string, Entry>();
@@ -172,14 +172,18 @@ async function wantsOAuth(url: string): Promise<boolean> {
   try { return !!(await discoverOAuthProtectedResourceMetadata(url)).authorization_servers?.length; } catch { return false; }
 }
 
+const RETRY_AFTER_MS = 60_000;
+
 function ensure(record: ConnectorRecord): Entry {
   let entry = entries.get(record.id);
   if (!entry) entries.set(record.id, (entry = { record, live: null, error: null, connecting: null, needsAuth: false }));
-  // A connector waiting for a sign-in stays put until the user signs in (or asks to retry).
-  if (!entry.live && !entry.connecting && !entry.needsAuth) {
+  // A connector waiting for a sign-in stays put until the user signs in (or asks to retry). One that just
+  // failed waits a minute before trying again on its own, so that listing apps never loops on reconnects.
+  const coolingDown = !!entry.error && Date.now() - (entry.failedAt ?? 0) < RETRY_AFTER_MS;
+  if (!entry.live && !entry.connecting && !entry.needsAuth && !coolingDown) {
     const e = entry;
     e.connecting = connect(e)
-      .catch((err) => { e.error = String(err?.message ?? err).slice(0, 300); })
+      .catch((err) => { e.error = String(err?.message ?? err).slice(0, 300); e.failedAt = Date.now(); })
       .finally(() => { e.connecting = null; emit(record.userId, { type: "connectors" }); });
   }
   return entry;
