@@ -335,6 +335,8 @@ a.btn { text-decoration: none; }
 .viewer-control-bar.is-relay { background: rgba(229, 72, 77, 0.2); border-top-color: rgba(229, 72, 77, 0.45); color: #fbd5d6; gap: 6px; }
 .relay-pair { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; margin: 12px 0 18px; border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface); }
 .relay-pair .pane-heading { margin: 0; padding-top: 0; border-top: 0; }
+.relay-phone { display: flex; gap: 10px; align-items: flex-start; margin-top: 14px; padding: 10px 12px; border-radius: 12px; background: var(--surface-2); }
+.relay-phone p { margin: 2px 0 8px; }
 .relay-downloads { display: inline-flex; flex-wrap: wrap; gap: 6px; vertical-align: middle; }
 .relay-address { margin-top: 6px; max-width: 460px; }
 .relay-code-form { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }

@@ -61,13 +61,52 @@ L'application Android affiche ton Sklubot en plein écran et gère l'envoi de fi
 et le bouton retour. La dictée et l'appel vocal n'y fonctionnent pas (la reconnaissance vocale du
 navigateur n'existe pas dans ce type d'application) : utilise Chrome pour cela.
 
+### Laisser tes bots utiliser ton téléphone (facultatif)
+
+L'application Android peut aussi relier **ton téléphone** à Sklubot, comme un ordinateur avec Sklubot Relais : tes bots
+peuvent alors le regarder et s'en servir pour toi, avec ton accord sur le téléphone.
+
+1. Mets à jour l'application (même lien que ci-dessus), puis ouvre-la une fois pour choisir ton serveur. **Le relais exige
+   une adresse en `https`.**
+2. Appui long sur l'icône → **Contrôle du téléphone** (ou dans Sklubot : Réglages → Ordinateurs → **Relier ce téléphone**).
+3. **Active le service d'accessibilité** : bouton « Ouvrir les réglages d'accessibilité », choisis « Sklubot — contrôle du
+   téléphone » et active-le. Sur Android 13 et plus récent, si l'interrupteur est grisé (« Paramètre restreint ») :
+   infos de l'appli → ⋮ en haut à droite → **Autoriser les paramètres restreints**, puis recommence (c'est normal pour une
+   appli installée depuis un fichier).
+4. Autorise les notifications (Android 13+) : le bouton **Stop** est dans la notification.
+5. Touche **Allumer le relais** : un code de 8 caractères s'affiche. Tape-le dans Sklubot → Réglages → **Ordinateurs**.
+   Le téléphone apparaît dans la liste (« Téléphone · Android »).
+6. Facultatif : **Choisir les applis bloquées** (tes applis de banque, de paiement…). Android ne peut pas savoir
+   lesquelles c'est : coche-les toi-même.
+
+**Ce que les bots peuvent faire** : captures d'écran (Android 11 ou plus récent), lire le texte à l'écran, appuyer,
+appuyer longuement, glisser et faire défiler, écrire dans le champ où tu es, Retour, Accueil, Applis récentes,
+notifications, ouvrir une appli ou une adresse web.
+
+**Ce qu'ils ne peuvent pas faire** : lancer des commandes, agir sans ton « oui » sur le téléphone (Autoriser cette fois /
+Toujours autoriser ce bot / Refuser ; sans réponse en 60 s, c'est refusé), voir ou toucher les applis que tu as bloquées,
+agir sur l'écran de verrouillage, appuyer ou écrire dans Sklubot lui-même, changer les réglages du relais. Pas de vue en
+direct : Sklubot montre la dernière capture prise par un bot.
+
+**Stop à tout moment** : le bandeau rouge en haut de l'écran, la notification, ou la vignette « Stop Sklubot » des réglages
+rapides (à ajouter une fois en modifiant les réglages rapides). Stop verrouille le relais jusqu'à ce que tu touches
+« Réautoriser le contrôle » dans l'appli. L'appli garde un journal de ce que les bots ont fait.
+
+Il faut Android 7 au minimum pour l'application, **Android 11** pour que les bots voient l'écran. Le relais tourne dans un
+service de premier plan (notification permanente) tant que tu le laisses allumé ; « Éteindre le relais » le coupe.
+
+**iPhone : impossible.** iOS n'autorise aucune application à voir l'écran ni à appuyer à ta place dans les autres
+applications.
+
 ### Recompiler l'APK
 
-Il faut le kit de développement Android (plateforme 35) et Java 17 ou plus récent.
+Il faut le kit de développement Android (plateforme 35) et Java 17 ou plus récent. Le relais téléphone est écrit en
+Kotlin (greffon Gradle `org.jetbrains.kotlin.android`) et utilise OkHttp ; Gradle les télécharge.
 
 ```bash
 cd android
 echo "sdk.dir=/chemin/vers/android-sdk" > local.properties
+gradle testDebugUnitTest      # tests JVM du relais (règles d'accord, protocole) et rendu des écrans (Robolectric)
 gradle assembleRelease
 cp app/build/outputs/apk/release/app-release.apk ../web/public/download/sklubot.apk
 ```

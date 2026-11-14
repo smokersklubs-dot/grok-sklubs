@@ -54,7 +54,7 @@ const BOT_ID = /^[A-Za-z0-9_.:-]{1,64}$/;
 
 // ── Stored devices ───────────────────────────────────────────────────────────
 interface DeviceRow {
-  id: string; user_id: string; name: string; platform: string; arch: string; os_release: string; app_version: string;
+  id: string; user_id: string; name: string; platform: string; arch: string; os_release: string; app_version: string; kind: string;
   token_hash: string; pending_hash: string | null; rotated_at: number; created_at: number; last_seen_at: number | null;
 }
 export const devices = {
@@ -82,6 +82,9 @@ export const normaliseCode = (raw: string) => String(raw ?? "").toUpperCase().re
 
 // ── Live connections ─────────────────────────────────────────────────────────
 export interface RelayBot { id: string; name: string }
+/** Protocol 1.2 (§13): the Android app says `device.kind: "phone"`; everything else is a computer. */
+export type DeviceKind = "computer" | "phone";
+const kindOf = (v: unknown): DeviceKind => (v === "phone" ? "phone" : "computer");
 export type RelayResult = { ok: true; result: Json } | { ok: false; code: string; message: string; retryAfterMs?: number };
 interface Pending { op: string; bot: RelayBot; finish: (r: RelayResult) => void }
 interface Session { botId: string; botName: string; grant: "once" | "always" | "test"; since: number; sessionId: string }
@@ -102,7 +105,7 @@ class Conn {
   phase: "hello" | "pairing" | "paired" | "online" | "closed" = "hello";
   deviceId = "";
   userId = "";
-  info = { name: "", platform: "", arch: "", osRelease: "", appVersion: "", capabilities: [] as string[], screen: null as { width: number; height: number } | null };
+  info = { name: "", platform: "", arch: "", osRelease: "", appVersion: "", kind: "computer" as DeviceKind, capabilities: [] as string[], screen: null as { width: number; height: number } | null };
   locked = false;
   session: Session | null = null;
   asking: RelayDevice["asking"] = null;
@@ -238,7 +241,7 @@ function onHello(conn: Conn, msg: Json) {
   const w = num(screen.width, 1, 100_000);
   const h = num(screen.height, 1, 100_000);
   conn.info = {
-    name: str(device.name, 60) || "?", platform: str(device.platform, 20), arch: str(device.arch, 20), osRelease: str(device.osRelease, 40), appVersion: str(app.version, 20),
+    name: str(device.name, 60) || "?", platform: str(device.platform, 20), arch: str(device.arch, 20), osRelease: str(device.osRelease, 40), appVersion: str(app.version, 20), kind: kindOf(device.kind),
     capabilities: Array.isArray(msg.capabilities) ? msg.capabilities.filter((c): c is string => typeof c === "string" && /^[a-z.]{1,40}$/.test(c)).slice(0, 64) : [],
     screen: w && h ? { width: Math.round(w), height: Math.round(h) } : null,
   };
@@ -269,6 +272,8 @@ function goOnline(conn: Conn, row: DeviceRow, rotate: boolean) {
   online.set(row.id, conn);
   pausedAt.delete(row.id);
   if (older && older !== conn) older.close(CLOSE.REPLACED, "replaced by a newer connection");
+  // The kind stays what it was at pairing: a computer's token cannot turn it into a phone, or the reverse.
+  conn.info.kind = kindOf(row.kind);
   q.run("UPDATE relay_devices SET name = ?, platform = ?, arch = ?, os_release = ?, app_version = ?, last_seen_at = ? WHERE id = ?",
     conn.info.name, conn.info.platform, conn.info.arch, conn.info.osRelease, conn.info.appVersion, now(), row.id);
   conn.send({ type: "welcome", v: 1, deviceId: row.id, serverName: serverName(row.user_id) });
@@ -324,8 +329,8 @@ export function confirmPairing(user: UserRecord, typed: string): RelayDevice | n
   const t = now();
   // The device exists from now on with this token: if the acknowledgement is lost, the relay (which saves the token
   // before acknowledging) can still come back with it.
-  q.run("INSERT INTO relay_devices (id, user_id, name, platform, arch, os_release, app_version, token_hash, rotated_at, created_at, last_seen_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-    id, user.id, found.info.name, found.info.platform, found.info.arch, found.info.osRelease, found.info.appVersion, sha256(token), t, t, t);
+  q.run("INSERT INTO relay_devices (id, user_id, name, platform, arch, os_release, app_version, kind, token_hash, rotated_at, created_at, last_seen_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    id, user.id, found.info.name, found.info.platform, found.info.arch, found.info.osRelease, found.info.appVersion, found.info.kind, sha256(token), t, t, t);
   found.phase = "paired";
   found.deviceId = id;
   found.userId = user.id;
@@ -334,13 +339,14 @@ export function confirmPairing(user: UserRecord, typed: string): RelayDevice | n
   conn.timer = setTimeout(() => { if (conn.phase === "paired") conn.close(CLOSE.NORMAL, "no acknowledgement"); }, ACK_TIMEOUT_MS);
   conn.timer.unref();
   const label = deviceLabel(found.info.name, found.info.platform);
-  audit(user.id, "computer", `${tr(user.locale, "Computer linked")}: ${label}`);
-  pushLater(user.id, { kind: "computer", title: tr(user.locale, "Computer linked"), body: tr(user.locale, "{device} is now linked to your Sklubot. Remove it in Settings → Computers if it wasn't you.", { device: label }), tag: `relay-${id}` });
+  const linked = found.info.kind === "phone" ? "Phone linked" : "Computer linked";
+  audit(user.id, "computer", `${tr(user.locale, linked)}: ${label}`);
+  pushLater(user.id, { kind: "computer", title: tr(user.locale, linked), body: tr(user.locale, "{device} is now linked to your Sklubot. Remove it in Settings → Computers if it wasn't you.", { device: label }), tag: `relay-${id}` });
   announce(user.id);
   return listDevices(user.id).find((d) => d.id === id) ?? null;
 }
 
-const PLATFORMS: Record<string, string> = { darwin: "macOS", win32: "Windows", linux: "Linux" };
+const PLATFORMS: Record<string, string> = { darwin: "macOS", win32: "Windows", linux: "Linux", android: "Android" };
 const deviceLabel = (name: string, platform: string) => `${name}${PLATFORMS[platform] ? ` (${PLATFORMS[platform]})` : platform ? ` (${platform})` : ""}`;
 
 function onTokenAck(conn: Conn, msg: Json) {
@@ -396,7 +402,12 @@ function noteCapture(conn: Conn, r: Json) {
   const width = num(r.width, 1, 100_000), height = num(r.height, 1, 100_000);
   const sw = num(r.screenWidth, 1, 100_000), sh = num(r.screenHeight, 1, 100_000);
   if (width && height) conn.lastCapture = { width, height, screenWidth: sw ?? width, screenHeight: sh ?? height };
-  if (typeof r.data === "string" && r.format !== "png" && width && height && BASE64.test(r.data)) lastFrames.set(conn.deviceId, { seq: 0, width, height, data: r.data, at: now() });
+  if (typeof r.data === "string" && r.format !== "png" && width && height && BASE64.test(r.data)) {
+    const at = now();
+    lastFrames.set(conn.deviceId, { seq: 0, width, height, data: r.data, at });
+    // Without a live view (a phone has none), whoever watches sees each screenshot the bot takes.
+    if (!conn.view) tellViewers(conn.deviceId, { type: "frame", seq: 0, width, height, data: r.data, at, still: true });
+  }
 }
 
 /**
@@ -550,7 +561,8 @@ function onViewer(ws: WebSocket, device: DeviceRow) {
   const conn = online.get(device.id);
   const last = lastFrames.get(device.id);
   const sendTo = (m: Json) => { try { if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(m)); } catch { /* gone */ } };
-  sendTo({ type: "status", view: conn?.view?.id ? "live" : conn?.session ? "starting" : "idle" });
+  // A phone (protocol 1.2) offers no live view: its viewers get the last screenshot a bot took.
+  sendTo({ type: "status", view: conn?.view?.id ? "live" : conn?.session && conn.info.capabilities.includes("view.start") ? "starting" : "idle" });
   if (last) sendTo({ type: "frame", seq: 0, width: last.width, height: last.height, data: last.data, at: last.at, still: true });
   ws.on("message", (data: RawData, isBinary: boolean) => {
     if (isBinary) return;
@@ -688,7 +700,7 @@ export function listDevices(userId: string): RelayDevice[] {
   return devices.list(userId).map((r) => {
     const c = online.get(r.id);
     return {
-      id: r.id, name: r.name, platform: r.platform, arch: r.arch, osRelease: r.os_release, appVersion: r.app_version,
+      id: r.id, name: r.name, platform: r.platform, arch: r.arch, osRelease: r.os_release, appVersion: r.app_version, kind: kindOf(r.kind),
       status: c ? "online" : pausedAt.has(r.id) ? "paused" : "offline",
       locked: !!c?.locked,
       session: c?.session ? { botId: c.session.botId, botName: c.session.botName, grant: c.session.grant, since: c.session.since } : null,
@@ -705,11 +717,14 @@ export function announce(userId: string) {
 }
 
 /** The live connection of one of the user's devices (null when offline or not theirs). */
-export function liveDevice(userId: string, deviceId: string): { session: Session | null; locked: boolean; screen: { width: number; height: number } | null; lastCapture: Conn["lastCapture"]; capabilities: string[] } | null {
+export function liveDevice(userId: string, deviceId: string): { session: Session | null; locked: boolean; screen: { width: number; height: number } | null; lastCapture: Conn["lastCapture"]; capabilities: string[]; kind: DeviceKind } | null {
   const c = online.get(deviceId);
   if (!c || c.userId !== userId || c.phase !== "online") return null;
-  return { session: c.session, locked: c.locked, screen: c.info.screen, lastCapture: c.lastCapture, capabilities: c.info.capabilities };
+  return { session: c.session, locked: c.locked, screen: c.info.screen, lastCapture: c.lastCapture, capabilities: c.info.capabilities, kind: c.info.kind };
 }
+
+/** True when every linked device of the user is a phone (no commands, files or window switching to offer then). */
+export const onlyPhones = (userId: string) => { const all = devices.list(userId); return all.length > 0 && all.every((d) => kindOf(d.kind) === "phone"); };
 
 /** The user removed a computer: the relay is told (revoke, then close 4003) and its token stops working. */
 export function revokeDevice(userId: string, deviceId: string): boolean {
@@ -779,6 +794,7 @@ export function relayDownloads(): RelayDownloads {
 
 /** For a localised label of the device in the bots' tools and cards. */
 export const labelOf = (row: { name: string; platform: string }) => deviceLabel(row.name, row.platform);
+export const deviceKindOf = (row: { kind?: string }) => kindOf(row.kind);
 export const localeOfUser = (userId: string): Locale => users.localeOf(userId);
 
 /** Tests: drop every connection at once. */

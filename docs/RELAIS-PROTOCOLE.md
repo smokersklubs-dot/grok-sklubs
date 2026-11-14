@@ -1,4 +1,6 @@
-# Protocole Sklubot Relais — version 1 (révision 1.1)
+# Protocole Sklubot Relais — version 1 (révision 1.2)
+
+> **Révision 1.2 (compatible)** : un **téléphone** peut être un Relais (l'appli Sklubot pour Android, §13). Son `hello` porte `"device": { …, "kind": "phone", "platform": "android" }` et `"protocol": "1.2"`, et il annonce ses propres opérations. Un serveur 1.1 le voit comme un ordinateur sans souris ; un serveur 1.2 lui envoie les opérations du §13.
 
 > **Révision 1.1 (compatible)** : ajoute les opérations de fichiers `fs.*` (§12). `hello.v` reste `1` ; le Relais envoie en plus `"protocol": "1.1"` et liste les nouvelles opérations dans `capabilities`. Un serveur 1.0 les ignore ; un serveur 1.1 ne les utilise que si elles sont annoncées.
 
@@ -308,3 +310,42 @@ Règles imposées par le Relais :
 Nouveaux codes d'erreur : `forbidden` (hors des dossiers partagés, caché, système, à secrets, programme), `read_only`, `not_found`, `exists`, `binary` (et `too_large`, `invalid_args` comme avant).
 
 Côté serveur Sklubot : outils `my_files`, `my_file_read`, `my_file_write`, `my_file_trash` ; l'écriture et la corbeille demandent l'accord de l'utilisateur à chaque fois ; aucune opération de fichiers depuis une routine, un coup de coude, une tâche de fond ou un message d'un autre bot.
+
+
+## 13. Téléphones (révision 1.2)
+
+L'appli Sklubot pour Android (`android/app/src/main/java/app/sklubot/android/relay/`) parle ce protocole tel quel (§1 à §9 : `hello`, appairage par code affiché sur le téléphone, jeton, rotation, révocation, reconnexion, codes de fermeture). Elle annonce :
+
+```json
+{ "type": "hello", "v": 1, "protocol": "1.2", "auth": null,
+  "app": { "name": "sklubot-android", "version": "1.1.0" },
+  "device": { "name": "Pixel de Léa", "platform": "android", "kind": "phone", "arch": "arm64-v8a", "osRelease": "15 (API 35)", "model": "Google Pixel 8", "locale": "fr-FR" },
+  "capabilities": ["session.start", "session.end", "screen.info", "screen.capture", "screen.read", "touch.tap", "touch.swipe", "keyboard.type", "global.action", "app.open", "url.open"],
+  "screen": { "width": 1080, "height": 2400, "scaleFactor": 2.625 },
+  "limits": { "maxInboundBytes": 262144, "maxViewFps": 0 },
+  "state": { "locked": false, "accessibility": true } }
+```
+
+Le serveur enregistre le genre (`kind`) à l'appairage et ne le change plus ensuite. Coordonnées : **pixels réels** de l'écran (comme `screen.width/height`) ; une capture renvoie `screenWidth/screenHeight`.
+
+| `op` | Session requise | `args` | `result` |
+|---|---|---|---|
+| `screen.capture` | oui | comme §6 (Android 11+ ; sinon absent de `capabilities`) | comme §6 |
+| `screen.read` | oui | `{ maxNodes?: 1–400 (200) }` | `{ app: { package, label }, nodes: [{ text?, desc?, id?, class?, bounds: [x, y, w, h], click?, edit?, focused?, checked? }], truncated, screenWidth, screenHeight }` — champs mot de passe masqués (`••••`) |
+| `touch.tap` | oui | `{ x, y, long?: bool, double?: bool }` (pas les deux) | `{}` |
+| `touch.swipe` | oui | `{ fromX, fromY, toX, toY, durationMs?: 50–3000 (300), hold?: bool }` — `hold` : appui maintenu puis déplacement (faire glisser un élément) | `{}` |
+| `keyboard.type` | oui | `{ text ≤ 2000 }` — dans le champ qui a le focus | `{ typed, method: "set_text" \| "paste" }` |
+| `global.action` | oui | `{ action: "back" \| "home" \| "recents" \| "notifications" \| "quick_settings" \| "enter" }` | `{}` |
+| `app.open` | oui | `{ name }` — nom affiché ou nom de paquet | `{ launched, package }` |
+| `url.open` | oui | `{ url }` (`http`, `https`, `mailto`) | `{}` |
+
+Pas de `shell.run` (réponse `unknown_op`), pas de `fs.*`, pas de vue en direct (`view.start` absent ; `view.stop` accepté sans effet), pas de `mouse.*`, `keyboard.press`, `window.*`.
+
+Règles imposées par le téléphone (en plus de celles du §7, reprises à l'identique : question Autoriser cette fois / Toujours / Refuser, 60 s, 1 min puis 10 min d'attente, 6 questions par 10 min, 30 req/s, 15 min d'inactivité, Stop + verrou, journal local) :
+- rien ne se passe tant que l'utilisateur n'a pas **allumé le relais** dans l'appli et **activé le service d'accessibilité** dans les réglages d'Android (sinon `permission_missing`) ;
+- **applis bloquées** (liste choisie par l'utilisateur, interrupteur « Bloquer les applis de paiement et banque que je choisis », activé par défaut) : si l'une est à l'écran (même en écran partagé), `screen.capture`, `screen.read`, `touch.*`, `keyboard.type` et `global.action enter` répondent `blocked_app` ; `app.open` d'une appli bloquée aussi ;
+- jamais d'appui ni de saisie dans **Sklubot lui-même** (`blocked_app`) : l'appli affiche les cartes d'accord du serveur ;
+- **écran de verrouillage** : `screen_locked` ;
+- Stop : bandeau rouge en haut de l'écran (fenêtre d'accessibilité), bouton de la notification permanente, vignette des réglages rapides « Stop Sklubot ».
+
+Nouveaux codes d'erreur : `blocked_app`, `screen_locked`.

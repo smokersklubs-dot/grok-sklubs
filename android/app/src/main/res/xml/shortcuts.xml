@@ -10,4 +10,14 @@
             android:targetClass="app.sklubot.android.MainActivity"
             android:targetPackage="app.sklubot.android" />
     </shortcut>
+    <shortcut
+        android:shortcutId="phone_relay"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/relay_shortcut">
+        <intent
+            android:action="app.sklubot.android.PHONE_RELAY"
+            android:targetClass="app.sklubot.android.MainActivity"
+            android:targetPackage="app.sklubot.android" />
+    </shortcut>
 </shortcuts>

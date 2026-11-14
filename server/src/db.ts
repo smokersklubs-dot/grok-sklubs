@@ -231,6 +231,8 @@ function CREATE_EXTRA() {
     token_hash TEXT NOT NULL, pending_hash TEXT, rotated_at INTEGER NOT NULL, created_at INTEGER NOT NULL, last_seen_at INTEGER
   );
   CREATE INDEX IF NOT EXISTS relay_devices_user ON relay_devices(user_id, created_at);`);
+  // Relay protocol 1.2: a linked device is a computer (Sklubot Relais) or a phone (the Android app).
+  add("relay_devices", "kind", "TEXT NOT NULL DEFAULT 'computer'");
   // Wave 4. Reliability: a bot's own ordered backup models (JSON list; NULL = the account's list), and the account's
   // reliability settings (JSON: fallbackModels, maxRetries, maxContinuations).
   add("bots", "fallback_models", "TEXT");

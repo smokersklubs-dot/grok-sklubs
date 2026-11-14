@@ -4,6 +4,23 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <!-- Phone relay (relay/): a foreground service with a persistent notification while the user keeps it on.
+         https://developer.android.com/develop/background-work/services/fgs/declare
+         https://developer.android.com/develop/background-work/services/fgs/service-types#special-use -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <!-- Android 13+: runtime permission for that notification (asked in the relay screen).
+         https://developer.android.com/develop/ui/views/notifications/notification-permission -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- Android 11 package visibility: the launchable apps, to open one by name and to pick the blocked apps.
+         https://developer.android.com/training/package-visibility/declaring -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
 
     <application
         android:allowBackup="false"
@@ -25,5 +42,50 @@
             </intent-filter>
             <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />
         </activity>
+
+        <!-- The relay's own screens: not exported, only this app opens them. -->
+        <activity android:name=".relay.RelayActivity" android:exported="false" android:label="@string/relay_title" />
+        <activity android:name=".relay.BlockListActivity" android:exported="false" android:label="@string/block_title" />
+        <activity
+            android:name=".relay.ConsentActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTop"
+            android:taskAffinity="app.sklubot.android.consent"
+            android:theme="@style/ConsentTheme" />
+
+        <!-- Enabled by the user in Settings → Accessibility, never by the app.
+             https://developer.android.com/guide/topics/ui/accessibility/service#manifest -->
+        <service
+            android:name=".relay.PhoneAccessibilityService"
+            android:exported="false"
+            android:label="@string/a11y_label"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data android:name="android.accessibilityservice" android:resource="@xml/relay_accessibility" />
+        </service>
+
+        <service
+            android:name=".relay.RelayService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Keeps the user's own Sklubot server connected so that the bots they allowed can see and control this phone, with an always-visible Stop." />
+        </service>
+
+        <!-- Quick-settings tile "Stop Sklubot". https://developer.android.com/develop/ui/views/quicksettings-tiles -->
+        <service
+            android:name=".relay.StopTileService"
+            android:exported="true"
+            android:icon="@android:drawable/ic_media_pause"
+            android:label="@string/tile_label"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
     </application>
 </manifest>

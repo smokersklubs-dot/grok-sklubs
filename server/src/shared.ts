@@ -590,8 +590,10 @@ export interface Recording {
  */
 export interface RelayDevice {
   id: string; name: string;
-  /** From the relay's hello: "darwin" | "win32" | "linux"…, the CPU, the OS release and the relay's version. */
+  /** From the relay's hello: "darwin" | "win32" | "linux" | "android"…, the CPU, the OS release and the relay's version. */
   platform: string; arch: string; osRelease: string; appVersion: string;
+  /** "phone": the Sklubot Android app (protocol 1.2, taps instead of a mouse, no commands); "computer": Sklubot Relais. */
+  kind: "computer" | "phone";
   /** "paused": the user paused the relay on that computer (it said bye); "offline": no connection. */
   status: "online" | "offline" | "paused";
   /** The user pressed Stop on the computer: everything is refused until they re-allow control there. */

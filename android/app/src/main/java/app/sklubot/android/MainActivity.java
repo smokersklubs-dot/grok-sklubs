@@ -49,6 +49,8 @@ public class MainActivity extends Activity {
     private static final String PREFS = "sklubot";
     private static final String KEY_SERVER = "server";
     private static final String ACTION_CHANGE_SERVER = "app.sklubot.android.CHANGE_SERVER";
+    /** Launcher shortcut "Phone control", and the web app's "Link this phone" link (sklubot://relay). */
+    private static final String ACTION_PHONE_RELAY = "app.sklubot.android.PHONE_RELAY";
     private static final int REQUEST_FILES = 1;
     private static final int REQUEST_MIC = 2;
 
@@ -80,12 +82,18 @@ public class MainActivity extends Activity {
         server = prefs().getString(KEY_SERVER, null);
         if (server == null || ACTION_CHANGE_SERVER.equals(getIntent().getAction())) showSetup(server);
         else showWeb(state);
+        if (server != null && ACTION_PHONE_RELAY.equals(getIntent().getAction())) openRelay();
+    }
+
+    private void openRelay() {
+        startActivity(new Intent(this, app.sklubot.android.relay.RelayActivity.class));
     }
 
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         if (ACTION_CHANGE_SERVER.equals(intent.getAction())) showSetup(server);
+        else if (ACTION_PHONE_RELAY.equals(intent.getAction()) && server != null) openRelay();
     }
 
     private SharedPreferences prefs() {
@@ -182,6 +190,9 @@ public class MainActivity extends Activity {
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 Uri uri = request.getUrl();
                 if (uri.toString().startsWith(server + "/") || uri.toString().equals(server)) return false;
+                // The web app's "Link this phone" (Settings → Computers, shown only inside this app): our own screen,
+                // opened explicitly. It only shows the relay screen; turning the relay on stays a tap of the user there.
+                if ("sklubot".equals(uri.getScheme()) && "relay".equals(uri.getHost())) { openRelay(); return true; }
                 // Anything outside our server belongs in the phone's own browser.
                 try { startActivity(new Intent(Intent.ACTION_VIEW, uri)); } catch (ActivityNotFoundException ignored) { }
                 return true;

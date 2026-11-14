@@ -31,6 +31,7 @@ const PATHS = {
   wave: <path d="M4 10v4M8 6.5v11M12 4v16M16 7.5v9M20 10v4" />,
   phoneOff: <><path d="M3.5 14.5c5-4.6 12-4.6 17 0l-1.6 2.6-3.6-1.3-.4-2.5c-1.9-.6-3.9-.6-5.8 0l-.4 2.5-3.6 1.3z" /></>,
   monitor: <><rect x="3" y="4.5" width="18" height="12" rx="2.5" /><path d="M8.5 20h7M12 16.5V20" /></>,
+  smartphone: <><rect x="6.5" y="2.5" width="11" height="19" rx="2.5" /><path d="M10.5 18.5h3" /></>,
   refresh: <><path d="M19.5 12a7.5 7.5 0 11-2.3-5.4" /><path d="M19.5 4.5v4.2h-4.2" /></>,
   download: <path d="M12 4v11M7 10.5l5 5 5-5M5 19.5h14" />,
   folder: <path d="M3.5 7.5a2 2 0 012-2h3.6l2 2.3h7.4a2 2 0 012 2v7.7a2 2 0 01-2 2h-13a2 2 0 01-2-2z" />,

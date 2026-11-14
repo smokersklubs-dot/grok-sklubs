@@ -253,7 +253,10 @@ const FR: Record<string, string> = {
   "read the two-factor code for {item}": "lire le code de double authentification de {item}",
   "Page the bot's computer says is open: {page}.": "Page que l'ordinateur du bot dit avoir ouverte : {page}.",
   // Sklubot Relais: the user's own computers
-  "{name}'s Sklubot": "Sklubot de {name}", "Computer linked": "Ordinateur relié", "Computer removed": "Ordinateur retiré", "Wrong or expired pairing code": "Code d'appairage faux ou expiré",
+  "{name}'s Sklubot": "Sklubot de {name}", "Computer linked": "Ordinateur relié", "Phone linked": "Téléphone relié", "not on a phone": "impossible sur un téléphone", "blocked app on the phone": "appli bloquée sur le téléphone", "phone locked": "téléphone verrouillé", "accessibility service off": "service d'accessibilité désactivé",
+  "{bot} was refused on {device}: the app on screen is blocked there.": "{bot} a été refusé sur {device} : l'appli à l'écran y est bloquée.",
+  "{bot} is waiting: {device} is locked.": "{bot} attend : {device} est verrouillé.",
+  "{device} needs the Sklubot accessibility service (Android settings → Accessibility).": "{device} a besoin du service d'accessibilité Sklubot (réglages Android → Accessibilité).", "Computer removed": "Ordinateur retiré", "Wrong or expired pairing code": "Code d'appairage faux ou expiré",
   "{device} is now linked to your Sklubot. Remove it in Settings → Computers if it wasn't you.": "{device} est maintenant relié à ton Sklubot. Retire-le dans Réglages → Ordinateurs si ce n'est pas toi.",
   "{bot} asks to run a command: answer on that computer.": "{bot} demande à exécuter une commande : réponds sur cet ordinateur.",
   "{bot} asks to control this computer: answer on that computer.": "{bot} demande à piloter cet ordinateur : réponds sur cet ordinateur.",

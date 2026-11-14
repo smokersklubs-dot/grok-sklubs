@@ -58,8 +58,12 @@ export function useRelayFrames(deviceId: string, enabled: boolean): { src: strin
   return { src, view, still };
 }
 
-const PLATFORM: Record<string, string> = { darwin: "macOS", win32: "Windows", linux: "Linux" };
+const PLATFORM: Record<string, string> = { darwin: "macOS", win32: "Windows", linux: "Linux", android: "Android" };
 export const platformName = (p: string) => PLATFORM[p] ?? p;
+/** A phone (the Sklubot Android app, relay protocol 1.2) or a computer (Sklubot Relais). */
+export const deviceIcon = (d: Pick<RelayDevice, "kind">) => (d.kind === "phone" ? "smartphone" : "monitor");
+/** Inside the Sklubot Android app (its WebView adds this to the user agent): it can open its own phone-relay screen. */
+const inAndroidApp = () => typeof navigator !== "undefined" && /SklubotAndroid\//.test(navigator.userAgent);
 
 function useStatusText(): (d: RelayDevice) => string {
   const t = useT();
@@ -118,7 +122,7 @@ function Thumb({ d, live }: { d: RelayDevice; live: boolean }) {
   const shown = live ? src : last;
   return (
     <span className={`screen-thumb ${live && view === "live" ? "is-live" : ""}`}>
-      {shown ? <img src={shown} alt="" /> : live && view !== "offline" ? <span className="dot-inline dot-pulse" /> : <Icon name="monitor" size={22} />}
+      {shown ? <img src={shown} alt="" /> : live && view !== "offline" ? <span className="dot-inline dot-pulse" /> : <Icon name={deviceIcon(d)} size={22} />}
     </span>
   );
 }
@@ -194,7 +198,7 @@ export function RelayViewer({ deviceId }: { deviceId: string }) {
   return (
     <div className="viewer relay-viewer" ref={root} role="dialog" aria-modal="true" aria-label={t("relay.viewerTitle", { name: d.name })} tabIndex={-1} onMouseDown={(e) => { if (e.target === e.currentTarget) close(); }}>
       <header className="viewer-bar">
-        <span className="logo-tile is-relay" aria-hidden="true"><Icon name="monitor" size={16} /></span>
+        <span className="logo-tile is-relay" aria-hidden="true"><Icon name={deviceIcon(d)} size={16} /></span>
         <div className="viewer-title">
           <strong>{t("relay.viewerTitle", { name: d.name })}</strong>
           <span>
@@ -208,15 +212,15 @@ export function RelayViewer({ deviceId }: { deviceId: string }) {
         {src ? <img className={`relay-frame ${still || !live ? "is-still" : ""}`} src={src} alt={t("relay.screenAlt", { name: d.name })} /> : null}
         {!live && (
           <div className={`viewer-empty ${src ? "relay-over" : ""}`}>
-            <Icon name={d.locked ? "lock" : "monitor"} size={40} />
-            <h3>{d.status === "offline" ? t("relay.offlineTitle") : d.status === "paused" ? t("relay.paused") : d.locked ? t("relay.locked") : t("relay.noSessionTitle")}</h3>
-            <p>{d.status !== "online" ? t("relay.offlineText") : d.locked ? t("relay.lockedText") : t("relay.noSessionText")}</p>
+            <Icon name={d.locked ? "lock" : deviceIcon(d)} size={40} />
+            <h3>{d.status === "offline" ? t(d.kind === "phone" ? "relay.phoneOfflineTitle" : "relay.offlineTitle") : d.status === "paused" ? t("relay.paused") : d.locked ? t("relay.locked") : t("relay.noSessionTitle")}</h3>
+            <p>{d.status !== "online" ? t(d.kind === "phone" ? "relay.phoneOfflineText" : "relay.offlineText") : d.locked ? t(d.kind === "phone" ? "relay.phoneLockedText" : "relay.lockedText") : t(d.kind === "phone" ? "relay.phoneNoSessionText" : "relay.noSessionText")}</p>
           </div>
         )}
         {live && !src && (
           <div className="viewer-empty">
-            <Spinner size={28} />
-            <p>{t("common.connecting")}</p>
+            {d.kind === "phone" ? <Icon name="smartphone" size={40} /> : <Spinner size={28} />}
+            <p>{d.kind === "phone" ? t("relay.phoneNoSessionText") : t("common.connecting")}</p>
           </div>
         )}
       </div>
@@ -323,6 +327,14 @@ export function DevicesSection() {
           </button>
         </form>
         <p className="field-hint">{t("relay.codeHint")}</p>
+        <div className="relay-phone" role="note">
+          <Icon name="smartphone" size={16} />
+          <div>
+            <strong>{t("relay.phoneTitle")}</strong>
+            <p className="muted small">{t("relay.phoneSteps")}</p>
+            {inAndroidApp() && <a className="btn btn-small" href="sklubot://relay">{t("relay.phoneOpen")}</a>}
+          </div>
+        </div>
         {linked && (
           <p className="relay-linked" role="status"><Icon name="check" size={14} /> {t("relay.linked", { name: linked.name, platform: platformName(linked.platform) })}</p>
         )}
@@ -337,9 +349,9 @@ export function DevicesSection() {
           {devices.map((d) => (
             <li key={d.id} className="page-row relay-row">
               <div className="page-row-head">
-                <span className="logo-tile is-relay" aria-hidden="true"><Icon name="monitor" size={16} /></span>
+                <span className="logo-tile is-relay" aria-hidden="true"><Icon name={deviceIcon(d)} size={16} /></span>
                 <div className="list-row-text">
-                  <span className="list-row-title">{d.name} <span className="chip chip-quiet">{platformName(d.platform)}</span></span>
+                  <span className="list-row-title">{d.name} <span className="chip chip-quiet">{d.kind === "phone" ? t("relay.phoneChip", { platform: platformName(d.platform) }) : platformName(d.platform)}</span></span>
                   <span className="list-row-sub"><StatusDot d={d} /> {statusText(d)}{d.appVersion ? ` · ${t("relay.version", { v: d.appVersion })}` : ""} · {t("relay.since", { when: relTime(d.createdAt) })}</span>
                 </div>
                 <StopButton d={d} />

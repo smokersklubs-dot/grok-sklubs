@@ -1,1 +1,5 @@
-plugins { id "com.android.application" version "8.11.1" apply false }
+plugins {
+    id "com.android.application" version "8.11.1" apply false
+    // Kotlin for the phone relay (app/src/main/java/app/sklubot/android/relay). https://kotlinlang.org/docs/gradle-configure-project.html
+    id "org.jetbrains.kotlin.android" version "2.2.0" apply false
+}

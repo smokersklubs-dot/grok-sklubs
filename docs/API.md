@@ -327,7 +327,7 @@ with it.
 | POST | `/relay/devices/:id/stop` | – | `{ ok }` — "Stop": cancels running commands, sends `session.end` as the session's bot, and keeps that bot from taking control of that computer on its own for 10 min (until the user writes to it) |
 | GET | `/relay/devices/:id/last` | – | the last picture seen (a bot's screenshot or the live view), `image/jpeg`, or 204 |
 
-`RelayDevice`: `{ id, name, platform, arch, osRelease, appVersion, status: "online"|"offline"|"paused", locked, session: { botId, botName, grant, since } | null, asking: { botId, botName, kind, since } | null, screen, capabilities, createdAt, lastSeenAt }`.
+`RelayDevice`: `{ id, name, platform, arch, osRelease, appVersion, kind: "computer"|"phone", status: "online"|"offline"|"paused", locked, session: { botId, botName, grant, since } | null, asking: { botId, botName, kind, since } | null, screen, capabilities, createdAt, lastSeenAt }`.
 Server event `{ type: "relay", devices }` on every change. Chat rows `{ kind: "event", event: "relay", text, tone }` for
 session started/ended (with the reason, or "you stopped it from Sklubot"), Stop pressed on the computer (`relay.locked`),
 and refusals on the computer. Push kind `computer` (linked, control asked/taken/ended, Stop, a command ran) and audit
@@ -348,6 +348,28 @@ last screenshot and are scaled to screen points (§6). Actions return a fresh sc
   answered by the server without bothering the computer. `no_session` from the relay: `session.start` (with the bot's
   reason) then the request once more, only when "Always" covers control and the turn is not tainted; otherwise the bot is
   sent back through the approval card.
+
+### Phones (relay protocol 1.2 — `docs/RELAIS-PROTOCOLE.md` §13)
+The Sklubot Android app is a relay client too: its `hello` says `device.kind: "phone"` and `platform: "android"`. The
+kind is stored at pairing (`relay_devices.kind`, default `computer`) and never changed by a later `hello`. The same tools
+are mapped to the phone's operations:
+
+| Tool | Phone operation |
+|---|---|
+| `my_screen` | `screen.capture` (≤ 720 px wide) |
+| `my_click` (`long_press`, `double`; `button: "right"` = long press) | `touch.tap { x, y, long, double }` |
+| `my_scroll` | `touch.swipe` the other way (`down` → finger moves up; `amount` 1–10, 3 ≈ half a screen) |
+| `my_drag` | `touch.swipe { …, hold: true }` |
+| `my_type` | `keyboard.type` |
+| `my_key` (`back`, `home`, `recents`, `notifications`, `quick_settings`, `enter`; `escape` = back) | `global.action { action }` — anything else is refused without a request |
+| `my_open` (`app` = shown name or package; `url`) | `app.open` / `url.open` |
+| `my_windows` | `screen.read` → the app in front and its on-screen text and controls, positions converted to the last screenshot's pixels |
+| `my_command`, `my_files`, `my_file_*`, `my_window_focus` | not offered when every linked device is a phone; refused (nothing sent, no card) for a phone otherwise |
+
+New refusals from the phone: `blocked_app` (an app the user blocked is on screen, or a tap/typing in Sklubot itself) and
+`screen_locked`; `permission_missing` means the accessibility service is off. All are told to the bot (never retried)
+and to the user in the chat. A phone has no live view: viewers of `/api/relay/devices/:id/view` get `view: "idle"` and
+each screenshot a bot takes as a `still` frame.
 
 ## Wave 4 — reliability and team
 

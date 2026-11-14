@@ -18,7 +18,9 @@ import { videoService } from "../video.js";
 import { nativeToolsFor, runNativeTool, type Risk } from "../native/tools.js";
 import { accounts as nativeAccounts } from "../native/accounts.js";
 import { appVisible, pushLater } from "../push.js";
-import { devices as relayDevices } from "../relay.js";
+import { onlyPhones, devices as relayDevices } from "../relay.js";
+/** "My computer" tools a phone cannot serve (relay protocol 1.2): hidden when every linked device is a phone. */
+const PHONE_LESS = new Set(["my_command", "my_window_focus", "my_files", "my_file_read", "my_file_write", "my_file_trash"]);
 import { backoffDelay, errorDetail, isTransient, LoopGuard, loopStopText, modelChain, sleep, type LoopStop } from "./reliability.js";
 import { authorize, external, groundable, withoutQuote, type Decision } from "./authorize.js";
 import { actionHash, executions, markUncertain, outcomeUnknown } from "./executions.js";
@@ -320,7 +322,9 @@ export async function newTurn(bot: BotRecord, user: UserRecord, depth: number, s
   const video = bot.disabledTools.includes("video") ? null : bot.disabledTools.includes("apps") ? (videoService() ? "api" : null) : videoRoute(user.id);
   const builtins = builtinTools({ nativeSearch: nativeSearch || forEngine, disabled: bot.disabledTools, video }).filter((t) => !forEngine || !["shell_run", "web_fetch", "search_web"].includes(t.spec.name))
     // The user's own computers: only for users who linked one with Sklubot Relais.
-    .filter((t) => t.group !== "mycomputer" || relayDevices.count(user.id) > 0);
+    .filter((t) => t.group !== "mycomputer" || relayDevices.count(user.id) > 0)
+    // Phones only (protocol 1.2): no commands, shared files or windows to offer.
+    .filter((t) => !PHONE_LESS.has(t.spec.name) || !onlyPhones(user.id));
   const connectorNames = [...new Set(remoteTools.map((t) => t.connectorName))];
   const builtinMap = new Map(builtins.map((b) => [b.spec.name, b]));
   const remoteMap = new Map<string, RemoteTool>([...remoteTools.map((r) => [r.spec.name, r] as const), ...nativeTools.map(({ spec, ...r }) => [spec.name, r] as const)]);
