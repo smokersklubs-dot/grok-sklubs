@@ -56,14 +56,14 @@ interface ShapeDef {
 }
 
 const SHAPES: Record<AvatarShape, ShapeDef> = {
-  circle: { art: <circle cx="50" cy="50" r="44" />, sw: 6, fx: 50, fy: 50, s: 1, top: 4, hw: 46, bow: [24, 15] },
-  squircle: { art: <rect x="8" y="8" width="84" height="84" rx="27" />, sw: 6, fx: 50, fy: 50, s: 1, top: 5, hw: 45, bow: [19, 14] },
-  hexagon: { art: <polygon points={ngon(6, 43, 30)} />, sw: 8, fx: 50, fy: 51, s: 0.9, top: 3, hw: 40, bow: [30, 17], pointy: true },
-  diamond: { art: <polygon points="50,9 91,50 50,91 9,50" />, sw: 11, fx: 50, fy: 51, s: 0.78, top: 3, hw: 42, bow: [29, 27], pointy: true },
-  shield: { art: <path d="M50 8 L88 20 V50 C88 72 71 86 50 93 C29 86 12 72 12 50 V20 Z" />, sw: 7, fx: 50, fy: 46, s: 0.92, top: 5, hw: 41, bow: [20, 17] },
-  drop: { art: <path d="M50 7 C62 22 85 44 85 61 A35 35 0 0 1 15 61 C15 44 38 22 50 7 Z" />, sw: 7, fx: 50, fy: 61, s: 0.88, top: 4, hw: 38, bow: [33, 26], pointy: true },
-  arch: { art: <path d="M13 91 V46 A37 37 0 0 1 87 46 V91 Z" />, sw: 7, fx: 50, fy: 55, s: 0.92, top: 6, hw: 40, bow: [22, 20] },
-  star: { art: <polygon points={starPoints(44, 27)} />, sw: 11, fx: 50, fy: 56, s: 0.6, top: 3, hw: 30, bow: [35, 29], pointy: true },
+  circle: { art: <circle cx="50" cy="50" r="44" />, sw: 6, fx: 50, fy: 49, s: 1.15, top: 4, hw: 46, bow: [24, 15] },
+  squircle: { art: <rect x="8" y="8" width="84" height="84" rx="27" />, sw: 6, fx: 50, fy: 49, s: 1.15, top: 5, hw: 45, bow: [19, 14] },
+  hexagon: { art: <polygon points={ngon(6, 43, 30)} />, sw: 8, fx: 50, fy: 51, s: 1, top: 3, hw: 40, bow: [30, 17], pointy: true },
+  diamond: { art: <polygon points="50,9 91,50 50,91 9,50" />, sw: 11, fx: 50, fy: 50, s: 0.84, top: 3, hw: 42, bow: [29, 27], pointy: true },
+  shield: { art: <path d="M50 8 L88 20 V50 C88 72 71 86 50 93 C29 86 12 72 12 50 V20 Z" />, sw: 7, fx: 50, fy: 45, s: 1.02, top: 5, hw: 41, bow: [20, 17] },
+  drop: { art: <path d="M50 7 C62 22 85 44 85 61 A35 35 0 0 1 15 61 C15 44 38 22 50 7 Z" />, sw: 7, fx: 50, fy: 61, s: 0.98, top: 4, hw: 38, bow: [33, 26], pointy: true },
+  arch: { art: <path d="M13 91 V46 A37 37 0 0 1 87 46 V91 Z" />, sw: 7, fx: 50, fy: 54, s: 1.04, top: 6, hw: 40, bow: [22, 20] },
+  star: { art: <polygon points={starPoints(44, 27)} />, sw: 11, fx: 50, fy: 56, s: 0.68, top: 3, hw: 30, bow: [35, 29], pointy: true },
   clover: {
     art: (
       <>
@@ -76,15 +76,15 @@ const SHAPES: Record<AvatarShape, ShapeDef> = {
     ),
     sw: 6,
     fx: 50,
-    fy: 50,
-    s: 1,
+    fy: 52,
+    s: 1.12,
     top: 13,
     hw: 48,
     bow: [14, 15],
   },
-  pill: { art: <rect x="20" y="6" width="60" height="88" rx="30" />, sw: 6, fx: 50, fy: 45, s: 0.8, top: 3, hw: 33, bow: [27, 13] },
-  triangle: { art: <polygon points="50,17 87,82 13,82" />, sw: 13, fx: 50, fy: 63, s: 0.64, top: 10, hw: 33, bow: [37, 38], pointy: true },
-  octagon: { art: <polygon points={ngon(8, 45, 22.5)} />, sw: 6, fx: 50, fy: 50, s: 1, top: 5, hw: 44, bow: [23, 15] },
+  pill: { art: <rect x="20" y="6" width="60" height="88" rx="30" />, sw: 6, fx: 50, fy: 44, s: 0.9, top: 3, hw: 33, bow: [27, 13] },
+  triangle: { art: <polygon points="50,17 87,82 13,82" />, sw: 13, fx: 50, fy: 63, s: 0.74, top: 10, hw: 33, bow: [37, 38], pointy: true },
+  octagon: { art: <polygon points={ngon(8, 45, 22.5)} />, sw: 6, fx: 50, fy: 49, s: 1.15, top: 5, hw: 44, bow: [23, 15] },
 };
 
 /* ---------- Colours derived from the bot's palette entry ---------- */
@@ -104,8 +104,9 @@ function palette(color: string): Record<string, string> {
     "--chr-feat": ink ? "var(--ink-fg)" : `color-mix(in srgb, ${bg} 22%, #111215)`,
     "--chr-shade": ink ? "color-mix(in srgb, var(--ink) 70%, var(--ink-fg))" : `color-mix(in srgb, ${bg} 70%, #111215)`,
     "--chr-light": `color-mix(in srgb, ${bg} 30%, #ffffff)`,
-    "--chr-cap": ink ? "color-mix(in srgb, var(--ink) 55%, #ff7aa2)" : `color-mix(in srgb, ${bg} 45%, #ffffff)`,
     "--chr-acc": ACCENT[color] ?? ACCENT.slate,
+    // The cap's brim: a deeper shade of the accent.
+    "--chr-cap": `color-mix(in srgb, ${ACCENT[color] ?? ACCENT.slate} 72%, #3a2a20)`,
   };
 }
 
@@ -260,8 +261,8 @@ function Mouth({ state, mouthRef }: { state: CharacterState; mouthRef: React.Ref
       return (
         <g transform="translate(0 11.5)">
           <g ref={mouthRef} className="chr-mouth-open">
-            <ellipse cx="0" cy="3" rx="4.6" ry="3.8" style={fill} />
-            <ellipse cx="0" cy="5.2" rx="2.6" ry="1.4" fill="#ff8fa3" opacity="0.85" />
+            <ellipse cx="0" cy="3.4" rx="5.4" ry="4.6" style={fill} />
+            <ellipse cx="0" cy="6" rx="3" ry="1.6" fill="#ff8fa3" opacity="0.85" />
           </g>
         </g>
       );
@@ -306,7 +307,7 @@ function AccessoryArt({ kind, shape, front }: { kind: Accessory; shape: ShapeDef
       ) : null;
     case "bow":
       return front ? (
-        <g transform={`translate(${bow[0]} ${bow[1]}) rotate(-24)`} style={{ fill: "var(--chr-acc)" }} stroke="rgba(0,0,0,0.18)" strokeWidth="1" strokeLinejoin="round">
+        <g transform={`translate(${bow[0]} ${bow[1]}) rotate(-24) scale(1.2)`} style={{ fill: "var(--chr-acc)" }} stroke="rgba(0,0,0,0.18)" strokeWidth="1" strokeLinejoin="round">
           <path d="M0 0 C-4 -8 -13 -8.5 -13 0 C-13 8.5 -4 8 0 0 Z" />
           <path d="M0 0 C4 -8 13 -8.5 13 0 C13 8.5 4 8 0 0 Z" />
           <path d="M-2 2 L-6 10 L-2.5 9 L0 3 M2 2 L6 10 L2.5 9 L0 3" />
@@ -315,14 +316,14 @@ function AccessoryArt({ kind, shape, front }: { kind: Accessory; shape: ShapeDef
       ) : null;
     case "cap": {
       if (!front) return null;
-      const k = pointy ? 0.78 : 1;
-      const base = top + (pointy ? 5 : 9);
+      const k = pointy ? 0.95 : 1.3;
+      const base = top + (pointy ? 7 : 13);
       return (
         <g transform={`translate(50 ${base}) scale(${k})`}>
-          <path d="M-19 0 C-19 -21 19 -21 19 0 Z" style={{ fill: "var(--chr-cap)" }} stroke="rgba(0,0,0,0.18)" strokeWidth="1" />
+          <path d="M-19 0 C-19 -21 19 -21 19 0 Z" style={{ fill: "var(--chr-acc)" }} stroke="rgba(0,0,0,0.2)" strokeWidth="1" />
           <path d="M-6 -16 Q0 -8 0 0 M6 -16 Q2 -8 2 0" fill="none" stroke="rgba(0,0,0,0.12)" strokeWidth="1" />
-          <path d="M8 -1 Q22 -5 30 0.5 Q22 3.5 8 2 Z" style={{ fill: "var(--chr-cap)" }} stroke="rgba(0,0,0,0.22)" strokeWidth="1" strokeLinejoin="round" />
-          <circle cy="-15.6" r="2.4" style={{ fill: "var(--chr-acc)" }} />
+          <path d="M8 -1 Q22 -5 30 0.5 Q22 3.5 8 2 Z" style={{ fill: "var(--chr-cap)" }} stroke="rgba(0,0,0,0.25)" strokeWidth="1" strokeLinejoin="round" />
+          <circle cy="-15.6" r="2.4" style={{ fill: "var(--chr-cap)" }} stroke="rgba(0,0,0,0.2)" strokeWidth="0.8" />
         </g>
       );
     }
@@ -368,22 +369,24 @@ function Overlay({ state, shape }: { state: CharacterState; shape: ShapeDef }) {
       return (
         <g className="chr-orbit" transform="translate(86 8)">
           {[0, 1, 2].map((i) => (
-            <circle key={i} className={`chr-dot chr-dot-${i}`} r={2.6 - i * 0.3} style={{ fill: "var(--chr-body)" }} />
+            <circle key={i} className={`chr-dot chr-dot-${i}`} r={3.3 - i * 0.4} style={{ fill: "var(--chr-body)" }} />
           ))}
         </g>
       );
     case "waiting":
       return (
-        <g className="chr-ask" transform="translate(88 6)">
+        <g transform="translate(88 6)">
+         <g className="chr-ask">
           <path d="M-10 -9 H10 A5 5 0 0 1 15 -4 V5 A5 5 0 0 1 10 10 H-3 L-8 15 L-7 10 H-10 A5 5 0 0 1 -15 5 V-4 A5 5 0 0 1 -10 -9 Z" style={{ fill: "var(--surface)", stroke: "var(--border-strong)" }} strokeWidth="1.4" strokeLinejoin="round" />
           <text x="0" y="1" textAnchor="middle" dominantBaseline="central" fontSize="15" fontWeight="800" style={{ fill: "var(--text)", fontFamily: "inherit" }}>?</text>
+         </g>
         </g>
       );
     case "sleeping":
       return (
         <g className="chr-zz" style={{ fill: "var(--text-2)", fontFamily: "inherit" }} fontWeight="800">
-          <text className="chr-z chr-z-0" x="80" y="14" fontSize="13">z</text>
-          <text className="chr-z chr-z-1" x="90" y="2" fontSize="10">z</text>
+          <text className="chr-z chr-z-0" x="79" y="15" fontSize="16">z</text>
+          <text className="chr-z chr-z-1" x="90" y="2" fontSize="12">z</text>
         </g>
       );
     case "working": {
@@ -400,8 +403,8 @@ function Overlay({ state, shape }: { state: CharacterState; shape: ShapeDef }) {
     case "happy":
       return (
         <g style={{ fill: "var(--chr-acc)" }}>
-          <path className="chr-spark chr-spark-0" transform="translate(12 10)" d="M0 -6 Q1 -1 6 0 Q1 1 0 6 Q-1 1 -6 0 Q-1 -1 0 -6 Z" />
-          <path className="chr-spark chr-spark-1" transform="translate(90 18) scale(0.75)" d="M0 -6 Q1 -1 6 0 Q1 1 0 6 Q-1 1 -6 0 Q-1 -1 0 -6 Z" />
+          <g transform="translate(12 10)"><path className="chr-spark chr-spark-0" d="M0 -6 Q1 -1 6 0 Q1 1 0 6 Q-1 1 -6 0 Q-1 -1 0 -6 Z" /></g>
+          <g transform="translate(90 18) scale(0.75)"><path className="chr-spark chr-spark-1" d="M0 -6 Q1 -1 6 0 Q1 1 0 6 Q-1 1 -6 0 Q-1 -1 0 -6 Z" /></g>
         </g>
       );
     default:
@@ -439,6 +442,8 @@ export interface CharacterProps {
 
 const FOLLOW_STATES: CharacterState[] = ["idle", "listening", "happy"];
 const SMALL = 32;
+/** Bubbles, dots and "z"s only where they can be read. */
+const OVERLAY_MIN = 44;
 
 function CharacterView({ bot, size = 36, state = "idle", level, levelSource, interactive = false, badge = false, ring = false, className, label }: CharacterProps) {
   const t = useT();
@@ -578,6 +583,11 @@ function CharacterView({ bot, size = 36, state = "idle", level, levelSource, int
             <stop offset="0.8" stopColor="#000" stopOpacity="0" />
             <stop offset="1" stopColor="#000" stopOpacity="0.12" />
           </linearGradient>
+          <mask id={`${uid}m`} maskUnits="userSpaceOnUse" x="-5" y="-5" width="110" height="110">
+            <g fill="#fff" stroke="#fff" strokeWidth={shape.sw} strokeLinejoin="round">
+              {shape.art}
+            </g>
+          </mask>
         </defs>
         <g className="chr-motion">
           <g className="chr-squash" ref={squash}>
@@ -585,9 +595,7 @@ function CharacterView({ bot, size = 36, state = "idle", level, levelSource, int
             <g style={{ fill: "var(--chr-body)", stroke: "var(--chr-body)" }} strokeWidth={shape.sw} strokeLinejoin="round">
               {shape.art}
             </g>
-            <g style={{ fill: `url(#${uid}h)`, stroke: `url(#${uid}h)` }} strokeWidth={shape.sw} strokeLinejoin="round">
-              {shape.art}
-            </g>
+            <rect x="-5" y="-5" width="110" height="110" fill={`url(#${uid}h)`} mask={`url(#${uid}m)`} />
             <g transform={`translate(${shape.fx} ${shape.fy}) scale(${shape.s})`}>
               <g className="chr-face" ref={follow} style={{ "--tx": tx, "--ty": ty } as React.CSSProperties}>
                 {look.cheeks && (
@@ -609,7 +617,7 @@ function CharacterView({ bot, size = 36, state = "idle", level, levelSource, int
             <AccessoryArt kind={accessory} shape={shape} front />
           </g>
         </g>
-        {!small && <Overlay state={state} shape={shape} />}
+        {size >= OVERLAY_MIN && <Overlay state={state} shape={shape} />}
       </svg>
       {badge && (
         <span className="avatar-badge" style={{ width: Math.max(14, size * 0.36), height: Math.max(14, size * 0.36) }}>

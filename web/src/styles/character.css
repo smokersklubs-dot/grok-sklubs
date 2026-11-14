@@ -111,3 +111,29 @@
   .chr, .chr * { animation: none !important; transition: none !important; }
   .chr .chr-sweep { opacity: 0; }
 }
+
+/* ---------- Look editor ---------- */
+.look-row-text { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.chr-editor { display: grid; grid-template-columns: minmax(200px, 240px) minmax(0, 1fr); gap: 20px; align-items: start; padding: 16px; border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface); }
+.chr-editor-controls { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.chr-stage { position: sticky; top: 0; display: flex; flex-direction: column; align-items: center; gap: 14px; }
+.chr-stage-view { display: grid; place-items: center; width: 100%; aspect-ratio: 1; max-width: 240px; padding: 34px 26px 22px; border-radius: var(--r-lg); background: radial-gradient(circle at 50% 42%, var(--surface) 0%, var(--surface-2) 72%); box-shadow: inset 0 0 0 1px var(--border); }
+.create-preview .chr-stage-view { width: 168px; max-width: 168px; padding: 30px 30px 18px; }
+.chr-try { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
+.chr-try-label { width: 100%; text-align: center; font-size: 12px; font-weight: 600; color: var(--text-3); }
+.opt-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.opt-chip { display: inline-flex; align-items: center; gap: 7px; min-height: 36px; padding: 4px 11px 4px 6px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); color: var(--text-2); font-size: 12.5px; font-weight: 600; white-space: nowrap; }
+.opt-chip.is-text { min-height: 28px; padding: 3px 10px; }
+.opt-chip .chr { margin: 1px 0; }
+.opt-chip:hover { background: var(--surface-2); color: var(--text); }
+.opt-chip.is-selected { border-color: var(--text); color: var(--text); background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--text); }
+.chr-toggles { display: flex; flex-wrap: wrap; gap: 8px 22px; }
+.chr-toggle-row { display: inline-flex; align-items: center; gap: 10px; font-size: 13px; color: var(--text); cursor: pointer; }
+.chr-slider { display: flex; align-items: center; gap: 10px; max-width: 360px; }
+.chr-slider input[type="range"] { flex: 1; accent-color: var(--accent); }
+.chr-idle { flex-wrap: wrap; align-self: flex-start; }
+@media (max-width: 720px) {
+  .chr-editor { grid-template-columns: 1fr; }
+  .chr-stage { position: static; }
+  .chr-stage-view { max-width: 200px; }
+}

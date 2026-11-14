@@ -18,7 +18,12 @@ export type RoomRule = "lead" | "everyone" | "mentions";
 export const EYE_STYLES = ["round", "oval", "wide", "dot", "sleepy", "visor"] as const;
 export const ACCESSORIES = ["none", "antenna", "sprout", "bow", "headset", "cap", "halo"] as const;
 export const IDLE_MOTIONS = ["breathe", "float", "sway", "bounce", "still"] as const;
+/** mascot: a body with eyes. dots: a minimal face of a few morphing dots. muse: an abstract shape of light with a coloured halo. */
+export const CHARACTER_TYPES = ["mascot", "dots", "muse"] as const;
 export interface Character {
+  type: (typeof CHARACTER_TYPES)[number];
+  /** Any colour as #RRGGBB; when set it replaces the bot's named colour for the character. */
+  customColor: string | null;
   eyes: (typeof EYE_STYLES)[number];
   mouth: boolean;
   cheeks: boolean;
@@ -30,7 +35,7 @@ export interface Character {
   followCursor: boolean;
   blink: boolean;
 }
-export const DEFAULT_CHARACTER: Character = { eyes: "round", mouth: true, cheeks: false, accessory: "none", idle: "breathe", intensity: 0.6, followCursor: true, blink: true };
+export const DEFAULT_CHARACTER: Character = { type: "mascot", customColor: null, eyes: "round", mouth: true, cheeks: false, accessory: "none", idle: "breathe", intensity: 0.6, followCursor: true, blink: true };
 
 export type Effort = "low" | "medium" | "high" | "xhigh";
 export type BotMode = "personal" | "teammate";

@@ -5,7 +5,7 @@ import { tr } from "./i18n.js";
 import type { ChatMessage } from "./llm/types.js";
 import {
   AVATAR_COLORS, AVATAR_SHAPES,
-  ACCESSORIES, DEFAULT_CHARACTER, EYE_STYLES, IDLE_MOTIONS, TOOL_GROUPS, type AuditEntry, type Character, type Bot, type Card, type CheckinSettings, type Locale, type Memory, type SearchHit, type SharedPage, type VaultItem, type Policy, type Row, type RowBody, type Skill, type Task, type User,
+  ACCESSORIES, CHARACTER_TYPES, DEFAULT_CHARACTER, EYE_STYLES, IDLE_MOTIONS, TOOL_GROUPS, type AuditEntry, type Character, type Bot, type Card, type CheckinSettings, type Locale, type Memory, type SearchHit, type SharedPage, type VaultItem, type Policy, type Row, type RowBody, type Skill, type Task, type User,
 } from "./shared.js";
 
 export const now = () => Date.now();
@@ -82,7 +82,9 @@ export function cleanCharacter(raw: unknown, base: Character = DEFAULT_CHARACTER
   const pick = <T extends string>(v: unknown, list: readonly T[], fallback: T) => (list.includes(v as T) ? (v as T) : fallback);
   const bool = (v: unknown, fallback: boolean) => (typeof v === "boolean" ? v : fallback);
   const n = Number(c.intensity);
+  const hex = typeof c.customColor === "string" && /^#[0-9a-fA-F]{6}$/.test(c.customColor) ? c.customColor.toLowerCase() : c.customColor === null ? null : base.customColor;
   return {
+    type: pick(c.type, CHARACTER_TYPES, base.type), customColor: hex,
     eyes: pick(c.eyes, EYE_STYLES, base.eyes), mouth: bool(c.mouth, base.mouth), cheeks: bool(c.cheeks, base.cheeks),
     accessory: pick(c.accessory, ACCESSORIES, base.accessory), idle: pick(c.idle, IDLE_MOTIONS, base.idle),
     intensity: Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : base.intensity,

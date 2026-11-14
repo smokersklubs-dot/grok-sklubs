@@ -166,3 +166,4 @@ Notes:
 - `Bot.character` (`Character`, see shared.ts): eye style, mouth, cheeks, accessory, idle motion, intensity (0–1), follow-cursor, blink. Always complete (defaults filled in).
 - `POST /bots` and `PATCH /bots/:id` accept `character` (partial objects are merged; unknown values are ignored).
 - Team export/import carries `character`.
+- `Character.type`: "mascot" | "dots" | "muse". `Character.customColor`: "#rrggbb" or null; when set it replaces the named colour for the character (and tints the bot's computer).

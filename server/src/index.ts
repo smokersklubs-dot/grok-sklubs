@@ -35,7 +35,8 @@ if (existsSync(path.join(config.webDist, "index.html"))) {
 setLookSource((botId) => {
   const bot = bots.byId(botId);
   const owner = bot ? users.byId(bot.userId) : null;
-  return bot && owner ? { name: bot.name, label: bot.label, color: bot.color, locale: owner.locale, owner: owner.name } : null;
+  // A custom character colour also tints the bot's computer.
+  return bot && owner ? { name: bot.name, label: bot.label, color: bot.character.customColor ?? bot.color, locale: owner.locale, owner: owner.name } : null;
 });
 
 let computerNote: string;
