@@ -3,12 +3,13 @@ import { config } from "./config.js";
 import { describeCron, nextRun } from "./cron.js";
 import { newId, now, randomToken } from "./store.js";
 import { tr } from "./i18n.js";
-import type { Locale, Routine } from "./shared.js";
+import type { Locale, Routine, RoutineRun } from "./shared.js";
 
-export interface RoutineRecord extends Routine { hookToken: string | null }
+export interface RoutineRecord extends Routine { hookToken: string | null; watchHash: string | null }
 
 export function describeRoutine(r: { trigger: string; schedule: string; runAt: number | null; timezone: string }, locale?: Locale): string {
   if (r.trigger === "webhook") return tr(locale, "When its web address is called");
+  if (r.trigger === "watch") return tr(locale, "When what it watches changes");
   if (r.trigger === "once")
     return r.runAt ? tr(locale, "Once on {date}", { date: new Date(r.runAt).toLocaleString(locale === "fr" ? "fr-FR" : "en-US", { timeZone: r.timezone, dateStyle: "medium", timeStyle: "short" }) }) : tr(locale, "Once");
   return describeCron(r.schedule, locale);
@@ -19,13 +20,14 @@ function toRoutine(r: any): RoutineRecord {
   const next = !enabled ? null : r.trigger === "cron" ? nextRun(r.schedule, r.timezone, now()) : r.trigger === "once" && r.run_at > now() ? r.run_at : null;
   return {
     id: r.id, botId: r.bot_id, name: r.name, prompt: r.prompt, trigger: r.trigger, schedule: r.schedule, timezone: r.timezone,
-    runAt: r.run_at, hookToken: r.hook_token, hookUrl: r.hook_token ? `${config.publicUrl}/api/hooks/${r.hook_token}` : null,
+    runAt: r.run_at, hookToken: r.hook_token, watchHash: r.watch_hash ?? null,
+    watch: r.trigger === "watch" ? { kind: r.watch_kind, target: r.watch_target, everyMin: r.watch_every_min, lastCheckedAt: r.watch_checked_at ?? null } : null, hookUrl: r.hook_token ? `${config.publicUrl}/api/hooks/${r.hook_token}` : null,
     enabled, lastRunAt: r.last_run_at, nextRunAt: next, describe: describeRoutine({ trigger: r.trigger, schedule: r.schedule, runAt: r.run_at, timezone: r.timezone }),
     createdAt: r.created_at,
   };
 }
 
-export const publicRoutine = ({ hookToken, ...rest }: RoutineRecord, locale?: Locale): Routine => ({ ...rest, describe: describeRoutine(rest, locale) });
+export const publicRoutine = ({ hookToken, watchHash, ...rest }: RoutineRecord, locale?: Locale): Routine => ({ ...rest, describe: describeRoutine(rest, locale) });
 
 export const routines = {
   forBot: (botId: string) => q.all("SELECT * FROM routines WHERE bot_id = ? ORDER BY created_at", botId).map(toRoutine),
@@ -38,12 +40,14 @@ export const routines = {
   allEnabled: () => q.all("SELECT * FROM routines WHERE enabled = 1").map(toRoutine),
   ranSince: (userId: string, since: number) =>
     q.all("SELECT r.* FROM routines r JOIN bots b ON b.id = r.bot_id WHERE b.user_id = ? AND r.last_run_at >= ?", userId, since).map(toRoutine),
-  create(botId: string, f: { name: string; prompt: string; trigger: Routine["trigger"]; schedule?: string; timezone?: string; runAt?: number | null }): RoutineRecord {
+  create(botId: string, f: { name: string; prompt: string; trigger: Routine["trigger"]; schedule?: string; timezone?: string; runAt?: number | null; watch?: { kind: string; target: string; everyMin: number } }): RoutineRecord {
     const id = newId("rtn");
     q.run("INSERT INTO routines (id, bot_id, name, prompt, trigger, schedule, timezone, run_at, hook_token, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       id, botId, f.name.trim().slice(0, 80), f.prompt.trim(), f.trigger, f.schedule ?? "", f.timezone ?? "UTC", f.runAt ?? null, f.trigger === "webhook" ? randomToken(24) : null, now());
+    if (f.watch) q.run("UPDATE routines SET watch_kind = ?, watch_target = ?, watch_every_min = ? WHERE id = ?", f.watch.kind, f.watch.target, f.watch.everyMin, id);
     return routines.byId(id)!;
   },
+  setWatchState: (id: string, hash: string | null, at: number) => q.run("UPDATE routines SET watch_hash = ?, watch_checked_at = ? WHERE id = ?", hash, at, id),
   update(id: string, f: Partial<{ name: string; prompt: string; schedule: string; timezone: string; runAt: number | null; enabled: boolean }>) {
     const cur = routines.byId(id);
     if (!cur) return null;
@@ -53,4 +57,18 @@ export const routines = {
   },
   markRun: (id: string, at: number) => q.run("UPDATE routines SET last_run_at = ? WHERE id = ?", at, id),
   remove: (id: string) => q.run("DELETE FROM routines WHERE id = ?", id),
+};
+
+/** A short history of each routine's runs: when it fired and how it ended. */
+export const runs = {
+  start(routineId: string): string {
+    const id = newId("run");
+    q.run("INSERT INTO routine_runs (id, routine_id, at) VALUES (?, ?, ?)", id, routineId, now());
+    // Keep the newest 30 per routine.
+    q.run("DELETE FROM routine_runs WHERE routine_id = ? AND id NOT IN (SELECT id FROM routine_runs WHERE routine_id = ? ORDER BY at DESC, rowid DESC LIMIT 30)", routineId, routineId);
+    return id;
+  },
+  finish: (id: string, status: RoutineRun["status"], note: string) => q.run("UPDATE routine_runs SET status = ?, note = ? WHERE id = ?", status, note.slice(0, 300), id),
+  list: (routineId: string): RoutineRun[] =>
+    q.all<any>("SELECT * FROM routine_runs WHERE routine_id = ? ORDER BY at DESC, rowid DESC LIMIT 30", routineId).map((r) => ({ id: r.id, routineId: r.routine_id, at: r.at, status: r.status, note: r.note })),
 };

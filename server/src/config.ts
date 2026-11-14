@@ -57,6 +57,9 @@ export const config = {
   consolidateIdleMin: num("CONSOLIDATE_IDLE_MIN", 10),
   promptMemoryChars: num("PROMPT_MEMORY_CHARS", 4000),
   auxModel: process.env.AUX_MODEL ?? "",
+  /** Model to switch to for one turn when the bot's own model is unreachable. */
+  fallbackModel: process.env.FALLBACK_MODEL ?? "",
+  telegramApi: (process.env.TELEGRAM_API_URL ?? "https://api.telegram.org").replace(/\/$/, ""),
   webDist: path.join(ROOT, "web", "dist"),
 };
 

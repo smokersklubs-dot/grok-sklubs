@@ -103,6 +103,41 @@ function CREATE_EXTRA() {
   // Columns added after the first release: add them only where they are missing.
   const has = (table: string, column: string) => (db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).some((c) => c.name === column);
   if (!has("users", "locale")) db.exec("ALTER TABLE users ADD COLUMN locale TEXT NOT NULL DEFAULT 'en'");
+  const add = (table: string, column: string, decl: string) => { if (!has(table, column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${decl}`); };
+  add("bots", "room_rule", "TEXT NOT NULL DEFAULT 'lead'");
+  add("bots", "disabled_tools", "TEXT NOT NULL DEFAULT '[]'");
+  add("bots", "telegram_token_enc", "TEXT");
+  add("bots", "telegram_username", "TEXT");
+  add("bots", "telegram_chat_id", "TEXT");
+  add("bots", "telegram_code", "TEXT");
+  add("bots", "telegram_offset", "INTEGER NOT NULL DEFAULT 0");
+  add("routines", "watch_kind", "TEXT");
+  add("routines", "watch_target", "TEXT");
+  add("routines", "watch_every_min", "INTEGER");
+  add("routines", "watch_hash", "TEXT");
+  add("routines", "watch_checked_at", "INTEGER");
+  add("settings", "budget_warned", "TEXT NOT NULL DEFAULT ''");
+  db.exec(`
+  CREATE TABLE IF NOT EXISTS routine_runs (
+    id TEXT PRIMARY KEY, routine_id TEXT NOT NULL REFERENCES routines(id) ON DELETE CASCADE,
+    at INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'running', note TEXT NOT NULL DEFAULT ''
+  );
+  CREATE INDEX IF NOT EXISTS routine_runs_routine ON routine_runs(routine_id, at);
+  CREATE TABLE IF NOT EXISTS audit (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    at INTEGER NOT NULL, bot_id TEXT, kind TEXT NOT NULL, text TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS audit_user ON audit(user_id, id);
+  -- The activity log is a record: lines can be added, never changed.
+  CREATE TRIGGER IF NOT EXISTS audit_no_update BEFORE UPDATE ON audit BEGIN SELECT RAISE(ABORT, 'the activity log cannot be edited'); END;
+  CREATE TABLE IF NOT EXISTS pages (
+    token TEXT PRIMARY KEY, bot_id TEXT NOT NULL REFERENCES bots(id) ON DELETE CASCADE, user_id TEXT NOT NULL,
+    title TEXT NOT NULL, path TEXT NOT NULL, created_at INTEGER NOT NULL
+  );
+  -- A turn that is under way. Rows left here after a restart are turns that were cut off.
+  CREATE TABLE IF NOT EXISTS active_turns (
+    bot_id TEXT PRIMARY KEY REFERENCES bots(id) ON DELETE CASCADE, started_at INTEGER NOT NULL, acted INTEGER NOT NULL DEFAULT 0
+  );`);
 }
 
 type Param = string | number | null | bigint;

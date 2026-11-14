@@ -5,7 +5,10 @@ import { isValidTimezone, localParts, nextRun } from "./cron.js";
 import { q } from "./db.js";
 import { enqueue } from "./agent/loop.js";
 import { consolidationSweep } from "./agent/memory.js";
-import { routines, type RoutineRecord } from "./routines.js";
+import { createHash } from "node:crypto";
+import { existsSync, readFileSync } from "node:fs";
+import { resolveInWorkspace } from "./computer.js";
+import { routines, runs, type RoutineRecord } from "./routines.js";
 import { tr } from "./i18n.js";
 import { approvals, bots, clip, now, rows, settings, tasks, users } from "./store.js";
 
@@ -20,6 +23,7 @@ export function schedule(routineId: string) {
     const next = nextRun(r.schedule, r.timezone, now());
     if (next) due.set(r.id, next);
   } else if (r.trigger === "once" && r.runAt && !r.lastRunAt) due.set(r.id, r.runAt);
+  else if (r.trigger === "watch" && r.watch) due.set(r.id, (r.watch.lastCheckedAt ?? 0) + r.watch.everyMin * 60_000);
 }
 
 export const unschedule = (routineId: string) => { due.delete(routineId); };
@@ -31,7 +35,7 @@ export function fireRoutine(r: RoutineRecord, payload?: unknown) {
   routines.markRun(r.id, now());
   rows.append(bot, { kind: "event", event: "routine", text: tr(users.localeOf(bot.userId), "Running routine: {name}", { name: r.name }) });
   const extra = payload === undefined ? "" : `\n\n[Data received with this call]\n${clip(JSON.stringify(payload, null, 2), 8000)}`;
-  enqueue(bot.id, { kind: "routine", name: r.name, text: r.prompt + extra });
+  enqueue(bot.id, { kind: "routine", name: r.name, text: r.prompt + extra, runId: runs.start(r.id) });
   emit(bot.userId, { type: "routines", botId: bot.id });
 }
 
@@ -42,8 +46,45 @@ function tickRoutines() {
     const r = routines.byId(id);
     due.delete(id);
     if (!r || !r.enabled) continue;
+    if (r.trigger === "watch") { void checkWatch(r).catch((e) => console.error("[watch]", e?.message ?? e)).finally(() => schedule(id)); continue; }
     fireRoutine(r);
     if (r.trigger === "cron") schedule(id);
+  }
+}
+
+/**
+ * Looks at what a routine watches and compares it with last time. Nothing changed: nothing happens and no
+ * model is called. The first look only records the starting point.
+ */
+export async function checkWatch(r: RoutineRecord): Promise<boolean> {
+  if (!r.watch) return false;
+  let content: string;
+  if (r.watch.kind === "url") {
+    const res = await fetch(r.watch.target, { signal: AbortSignal.timeout(30_000), headers: { "user-agent": "Mozilla/5.0 (compatible; assistant)" }, redirect: "follow" });
+    if (!res.ok) { routines.setWatchState(r.id, r.watchHash, now()); return false; }
+    content = (await res.text()).replace(/<(script|style)[\s\S]*?<\/\1>/gi, "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+  } else {
+    let full: string;
+    try { full = resolveInWorkspace(r.botId, r.watch.target); } catch { return false; }
+    content = existsSync(full) ? readFileSync(full).toString("base64") : "(missing)";
+  }
+  const hash = createHash("sha256").update(content).digest("hex");
+  const changed = r.watchHash !== null && r.watchHash !== hash;
+  routines.setWatchState(r.id, hash, now());
+  if (changed) fireRoutine(routines.byId(r.id)!, { changed: r.watch.target });
+  return changed;
+}
+
+/** Runs that fell due while the server was off are made up once at start, not once per missed slot. */
+function catchUp() {
+  for (const r of routines.allEnabled()) {
+    // One-off routines that fell due are picked up by the normal timer; only repeating ones need this.
+    if (r.trigger === "cron") {
+      const since = r.lastRunAt ?? r.createdAt;
+      const missed = nextRun(r.schedule, r.timezone, since);
+      // Only make up runs missed in the last day; older ones are stale.
+      if (missed && missed <= now() && missed >= now() - 24 * 3600_000) fireRoutine(r);
+    }
   }
 }
 
@@ -96,6 +137,7 @@ function tickCheckins() {
 
 export function startScheduler() {
   if (config.schedulerOff) return;
+  catchUp();
   for (const r of routines.allEnabled()) schedule(r.id);
   const guard = (fn: () => unknown) => () => { try { void Promise.resolve(fn()).catch((e) => console.error("[scheduler]", e)); } catch (e) { console.error("[scheduler]", e); } };
   setInterval(guard(tickRoutines), 15_000).unref();

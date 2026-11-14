@@ -37,7 +37,8 @@ function mentioned(text: string, members: BotRecord[]): BotRecord[] {
 export function dispatchToRoom(room: BotRecord, user: UserRecord, text: string, fromBot: BotRecord | null, depth: number) {
   const members = room.memberIds.map((id) => bots.byId(id)).filter((b): b is BotRecord => !!b && b.kind === "agent");
   let targets = mentioned(text, members).filter((m) => m.id !== fromBot?.id);
-  if (!targets.length && !fromBot) targets = members.slice(0, 1);
+  // Nobody mentioned: the room's rule decides. "lead" = the first member; "everyone" = all of them; "mentions" = nobody.
+  if (!targets.length && !fromBot) targets = room.roomRule === "everyone" ? members : room.roomRule === "mentions" ? [] : members.slice(0, 1);
   if (depth >= MAX_HOPS) return;
   const roster = members.map((m) => m.name).join(", ");
   for (const target of targets) {

@@ -1,11 +1,12 @@
-import { createReadStream, existsSync, statSync } from "node:fs";
+import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { Readable } from "node:stream";
 import { Hono, type Context } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { streamSSE } from "hono/streaming";
 import { decideApproval, enqueue, inQueue, interrupt, submitUserMessage } from "./agent/loop.js";
-import { compactIfNeeded, consolidate, memoryStatus } from "./agent/memory.js";
+import { ask, compactIfNeeded, consolidate, memoryStatus } from "./agent/memory.js";
+import { telegram } from "./telegram.js";
 import { createRoom, dispatchToRoom, validMembers } from "./agent/team.js";
 import { retireBot } from "./agent/tools.js";
 import { createSession, dropSession, hashPassword, seal, SESSION_COOKIE, signupOpen, userForToken, verifyPassword } from "./auth.js";
@@ -18,12 +19,14 @@ import { connectors } from "./connectors.js";
 import { isValidTimezone } from "./cron.js";
 import { pickLocale, tr } from "./i18n.js";
 import { defaultModelRef, listProviders } from "./llm/index.js";
-import { publicRoutine, routines } from "./routines.js";
+import { publicRoutine, routines, runs } from "./routines.js";
 import { fireCheckin, fireRoutine, schedule, unschedule } from "./scheduler.js";
 import type { CheckinSettings, ServerEvent } from "./shared.js";
-import { bots, memories, policies, publicBot, publicVault, rows, settings, skills, tasks, users, vault, type BotRecord, type UserRecord } from "./store.js";
+import { account, audit, auditList, bots, clip, history, memories, pages, policies, publicBot, publicVault, rows, searchMessages, settings, sha256, skills, tasks, users, vault, type BotRecord, type UserRecord } from "./store.js";
+import { q } from "./db.js";
+import { connectors as connectorStore } from "./connectors.js";
 import type { Attachment } from "./shared.js";
-import { summary as usageSummary } from "./usage.js";
+import { csv as usageCsv, summary as usageSummary } from "./usage.js";
 
 type Env = { Variables: { user: UserRecord } };
 export const api = new Hono<Env>();
@@ -49,6 +52,21 @@ function startSession(c: Context, userId: string) {
   const s = createSession(userId);
   setCookie(c, SESSION_COOKIE, s.token, { httpOnly: true, sameSite: "Lax", path: "/", maxAge: s.maxAgeSec, secure: config.publicUrl.startsWith("https://") });
 }
+
+/** Routes outside /api. */
+export const site = new Hono();
+// Pages published by bots. They are served in a sandbox: their scripts run, but as a stranger to this
+// site — no cookies, no access to the app or its API.
+site.get("/p/:token", (c) => {
+  const page = pages.byToken(c.req.param("token"), config.publicUrl);
+  let html: string | null = null;
+  try { if (page) html = readFileSync(resolveInWorkspace(page.botId, page.path), "utf8"); } catch { /* the file was removed */ }
+  if (!html) return c.text("This page is no longer shared.", 404);
+  return c.body(html, 200, {
+    "content-type": "text/html; charset=utf-8", "x-content-type-options": "nosniff", "referrer-policy": "no-referrer", "x-robots-tag": "noindex",
+    "content-security-policy": "sandbox allow-scripts allow-popups; default-src 'self' data: blob: https: 'unsafe-inline' 'unsafe-eval'; frame-ancestors 'none'",
+  });
+});
 
 // ── Public routes ────────────────────────────────────────────────────────────
 api.get("/health", (c) => c.json({ ok: true, model: defaultModelRef() }));
@@ -92,6 +110,7 @@ api.post("/auth/login", async (c) => {
   const user = users.byEmail(email);
   if (!user || !verifyPassword(String(b.password ?? ""), user.passHash)) fail(401, "Wrong email or password.");
   attempts.delete(`login:${email}`);
+  audit(user!.id, "account", "Signed in");
   startSession(c, user!.id);
   return c.json({ user: publicUser(user!) });
 });
@@ -312,6 +331,14 @@ api.delete("/skills/:id", (c) => {
   skills.remove(cur.id);
   return c.json({ ok: true });
 });
+api.post("/bots/:id/memories", async (c) => {
+  const bot = ownAgent(c);
+  const text = clip(String((await body(c)).text ?? "").trim(), 500);
+  if (!text) fail(400, "Write what to remember.");
+  const memory = memories.add(bot.id, text, "chat");
+  emit(bot.userId, { type: "memories", botId: bot.id });
+  return c.json({ memory });
+});
 api.delete("/memories/:id", (c) => { memories.removeOwned(c.get("user").id, c.req.param("id")); return c.json({ ok: true }); });
 
 api.post("/bots/:id/consolidate", async (c) => {
@@ -332,6 +359,7 @@ api.patch("/routines/:id", async (c) => {
   emit(c.get("user").id, { type: "routines", botId: r.botId });
   return c.json({ routine: publicRoutine(updated, c.get("user").locale) });
 });
+api.get("/routines/:id/runs", (c) => c.json({ runs: runs.list(ownRoutine(c).id) }));
 api.post("/routines/:id/run", (c) => { fireRoutine(ownRoutine(c)); return c.json({ ok: true }); });
 api.delete("/routines/:id", (c) => {
   const r = ownRoutine(c);
@@ -343,6 +371,154 @@ api.delete("/routines/:id", (c) => {
 
 api.get("/tasks", (c) => c.json({ tasks: tasks.forUser(c.get("user").id) }));
 api.get("/bots/:id/tasks", (c) => c.json({ tasks: tasks.forBot(ownBot(c).id) }));
+
+// ── Voice calls, search, earlier conversations ───────────────────────────────
+const calls = new Map<string, { botId: string; startedAt: number }>();
+api.post("/bots/:id/calls", (c) => {
+  const bot = ownAgent(c);
+  const callId = `call_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+  calls.set(callId, { botId: bot.id, startedAt: Date.now() });
+  rows.append(bot, { kind: "event", event: "call", text: tr(c.get("user").locale, "Voice call with {bot} started", { bot: bot.name }), call: { id: callId, phase: "started" } });
+  return c.json({ callId });
+});
+api.post("/bots/:id/calls/:callId/end", async (c) => {
+  const bot = ownAgent(c);
+  const callId = c.req.param("callId");
+  const live = calls.get(callId);
+  if (!live || live.botId !== bot.id) return c.json({ ok: true, duplicate: true });
+  calls.delete(callId);
+  const b = await body(c);
+  const transcript = (Array.isArray(b.transcript) ? b.transcript : [])
+    .filter((l: any) => l && (l.role === "user" || l.role === "assistant") && typeof l.text === "string" && l.text.trim())
+    .slice(-200).map((l: any) => ({ role: l.role as "user" | "assistant", text: clip(l.text.trim(), 2000) }));
+  const durationMs = Math.max(1000, Date.now() - live.startedAt);
+  const secs = Math.round(durationMs / 1000);
+  const duration = secs < 60 ? `${secs} s` : `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")}`;
+  const locale = c.get("user").locale;
+  const base = tr(locale, "Voice call ended · {duration}", { duration });
+  const record = { id: callId, phase: "ended" as const, durationMs, transcript };
+  const row = rows.append(bot, { kind: "event", event: "call", text: base, call: record });
+  // A one-line summary is added to the row a moment later; the call is already recorded without it.
+  if (transcript.length)
+    void ask(bot, "You summarise voice calls between a user and their AI teammate.",
+      `Write ONE sentence, past tense, third person, at most 25 words, in ${locale === "fr" ? "French" : "English"}, saying what the call was about and what was agreed.\n\n${transcript.map((l: { role: string; text: string }) => `${l.role === "user" ? "User" : bot.name}: ${l.text}`).join("\n").slice(-12_000)}`)
+      .then((summary) => { if (summary) rows.rewrite(bot, row.generation, row.seq, { kind: "event", event: "call", text: base, call: { ...record, summary: clip(summary.replace(/\s+/g, " "), 240) } }); })
+      .catch(() => {});
+  return c.json({ ok: true });
+});
+
+api.get("/search", (c) => {
+  const query = (c.req.query("q") ?? "").trim();
+  return c.json({ hits: query.length >= 2 ? searchMessages(c.get("user").id, query) : [] });
+});
+api.get("/bots/:id/history/:generation", (c) => {
+  const bot = ownBot(c);
+  const generation = Number(c.req.param("generation"));
+  if (!Number.isInteger(generation) || generation < 1 || generation > bot.generation) fail(404, "That conversation does not exist.");
+  return c.json({ rows: rows.list(bot.id, generation, 500) });
+});
+
+api.get("/audit", (c) => c.json({ entries: auditList(c.get("user").id, Number(c.req.query("before")) || undefined, Number(c.req.query("limit")) || 50) }));
+
+// ── Telegram ─────────────────────────────────────────────────────────────────
+api.get("/bots/:id/telegram", (c) => c.json(telegram.status(ownAgent(c))));
+api.put("/bots/:id/telegram", async (c) => {
+  const bot = ownAgent(c);
+  const token = String((await body(c)).token ?? "").trim();
+  if (!/^\d+:[\w-]{20,}$/.test(token)) fail(400, "That does not look like a Telegram bot token.");
+  try { return c.json(await telegram.connect(bot, token)); } catch (err) { return fail(400, `Telegram refused this token: ${(err as Error).message}`); }
+});
+api.delete("/bots/:id/telegram", (c) => { telegram.disconnect(ownAgent(c)); return c.json({ ok: true }); });
+
+// ── Shared pages ─────────────────────────────────────────────────────────────
+api.get("/pages", (c) => c.json({ pages: pages.list(c.get("user").id, config.publicUrl).map(({ userId, path: _p, ...rest }) => rest) }));
+api.delete("/pages/:token", (c) => {
+  pages.remove(c.get("user").id, c.req.param("token"));
+  emit(c.get("user").id, { type: "pages" });
+  return c.json({ ok: true });
+});
+
+// ── Account and data ─────────────────────────────────────────────────────────
+api.put("/account/password", async (c) => {
+  const user = c.get("user");
+  const b = await body(c);
+  throttle(`pw:${user.id}`);
+  if (!verifyPassword(String(b.current ?? ""), user.passHash)) fail(401, "The current password is wrong.");
+  if (String(b.next ?? "").length < 8) fail(400, "Choose a password of at least 8 characters.");
+  account.setPassword(user.id, hashPassword(String(b.next)));
+  // Every other device is signed out; this one stays in.
+  account.dropOtherSessions(user.id, sha256(getCookie(c, SESSION_COOKIE) ?? ""));
+  audit(user.id, "account", "Password changed");
+  return c.json({ ok: true });
+});
+
+api.delete("/account", async (c) => {
+  const user = c.get("user");
+  throttle(`pw:${user.id}`);
+  if (!verifyPassword(String((await body(c)).password ?? ""), user.passHash)) fail(401, "The password is wrong.");
+  for (const bot of bots.list(user.id, true)) { if (bots.byId(bot.id)) { telegram.disconnect(bot); await retireBot(bot); removeWorkspace(bot.id); } }
+  for (const con of connectorStore.list(user.id)) await connectorStore.remove(user.id, con.id);
+  account.remove(user.id);
+  deleteCookie(c, SESSION_COOKIE, { path: "/" });
+  return c.json({ ok: true });
+});
+
+const download = (c: Context, name: string, type: string, content: string) =>
+  c.body(content, 200, { "content-type": type, "content-disposition": `attachment; filename="${name}"` });
+
+api.get("/export/data", (c) => {
+  const user = c.get("user");
+  const mine = bots.list(user.id, true);
+  const data = {
+    exportedAt: new Date().toISOString(), user: publicUser(user),
+    bots: mine.map((b) => ({
+      ...publicBot(b),
+      conversations: Array.from({ length: b.generation }, (_, i) => ({ generation: i + 1, rows: q.all<any>("SELECT seq, created_at, body FROM rows WHERE bot_id = ? AND generation = ? ORDER BY seq", b.id, i + 1).map((r) => ({ seq: r.seq, at: r.created_at, ...JSON.parse(r.body) })) })),
+      memories: memories.list(b.id, 100_000), skills: skills.list(b.id), routines: routines.forBot(b.id).map((r) => publicRoutine(r, user.locale)), tasks: tasks.forBot(b.id),
+    })),
+    policies: policies.list(user.id), vault: vault.list(user.id).map(publicVault),
+    connectors: connectorStore.list(user.id).map((k) => ({ name: k.name, url: k.url })),
+    checkins: publicCheckins(user.id), usage: usageSummary(user.id), activity: auditList(user.id, undefined, 200),
+  };
+  audit(user.id, "account", "Data exported");
+  return download(c, "sklubot-data.json", "application/json", JSON.stringify(data, null, 2));
+});
+
+api.get("/export/team", (c) => {
+  const user = c.get("user");
+  const team = bots.list(user.id).filter((b) => b.kind === "agent").map((b) => ({
+    name: b.name, label: b.label, description: b.description, instructions: b.instructions, shape: b.shape, color: b.color, mode: b.mode,
+    effort: b.effort, model: b.model, autonomy: b.autonomy, disabledTools: b.disabledTools,
+    skills: skills.list(b.id).map((s) => ({ name: s.name, description: s.description, body: s.body })),
+    routines: routines.forBot(b.id).filter((r) => r.trigger === "cron").map((r) => ({ name: r.name, prompt: r.prompt, schedule: r.schedule, timezone: r.timezone })),
+  }));
+  return download(c, "sklubot-team.json", "application/json", JSON.stringify({ sklubotTeam: 1, bots: team }, null, 2));
+});
+
+api.post("/import/team", async (c) => {
+  const user = c.get("user");
+  const b = await body(c);
+  if (b.sklubotTeam !== 1 || !Array.isArray(b.bots)) fail(400, "This is not a Sklubot team file.");
+  let created = 0;
+  for (const t of b.bots.slice(0, 30)) {
+    if (!t || typeof t.name !== "string" || !t.name.trim()) continue;
+    // Imported bots start careful, whatever the file says: a shared file must not hand out trust.
+    const bot = bots.create(user.id, { name: t.name, label: t.label, description: t.description, instructions: t.instructions, shape: t.shape, color: t.color, mode: t.mode, effort: t.effort, autonomy: "careful" });
+    if (Array.isArray(t.disabledTools)) bots.patch(bot.id, { disabledTools: t.disabledTools });
+    for (const s of Array.isArray(t.skills) ? t.skills.slice(0, 50) : [])
+      if (s && typeof s.name === "string" && typeof s.body === "string" && s.name.trim() && s.body.trim()) skills.create(bot.id, s.name.trim().slice(0, 80), String(s.description ?? "").slice(0, 300), s.body.slice(0, 20_000));
+    for (const r of Array.isArray(t.routines) ? t.routines.slice(0, 20) : [])
+      if (r && typeof r.name === "string" && typeof r.prompt === "string" && typeof r.schedule === "string") {
+        // Imported routines start paused, so nothing runs before you have looked at it.
+        try { const made = routines.create(bot.id, { name: r.name, prompt: r.prompt, trigger: "cron", schedule: r.schedule, timezone: isValidTimezone(String(r.timezone)) ? r.timezone : "UTC" }); routines.update(made.id, { enabled: false }); } catch { /* skip a routine that cannot be read */ }
+      }
+    created++;
+  }
+  if (created) { emit(user.id, { type: "roster" }); audit(user.id, "account", `Team imported: ${created} bots`); }
+  return c.json({ created });
+});
+
+api.get("/usage.csv", (c) => download(c, "sklubot-usage.csv", "text/csv; charset=utf-8", usageCsv(c.get("user").id)));
 
 // ── Computer and files ───────────────────────────────────────────────────────
 api.get("/computer", (c) => c.json(computerState(c.get("user").id)));
@@ -427,6 +603,7 @@ api.post("/vault", async (c) => {
   const user = c.get("user");
   const f = vaultFields(await body(c));
   if (vault.byName(user.id, f.name)) fail(409, "A login with this name already exists.");
+  audit(user.id, "vault", `Saved login added: ${f.name}`);
   return c.json({ item: publicVault(vault.create(user.id, f)) });
 });
 api.patch("/vault/:id", async (c) => {
@@ -441,6 +618,7 @@ api.patch("/vault/:id", async (c) => {
 api.delete("/vault/:id", (c) => {
   const cur = vault.owned(c.get("user").id, c.req.param("id")) ?? fail(404, "That login does not exist.");
   vault.remove(cur.id);
+  audit(c.get("user").id, "vault", `Saved login removed: ${cur.name}`);
   policies.remove(c.get("user").id, `vault: ${cur.name}`);
   return c.json({ ok: true });
 });
@@ -456,6 +634,7 @@ api.post("/connectors", async (c) => {
   try { connector = await connectors.add(user.id, String(b.name ?? ""), String(b.url ?? ""), b.token ? String(b.token) : undefined); }
   catch (err) { return fail(400, (err as Error).message); }
   emit(user.id, { type: "connectors" });
+  audit(user.id, "apps", `App connected: ${connector.name}`);
   const bot = typeof b.botId === "string" ? bots.owned(user.id, b.botId) : null;
   if (bot && connector.status === "ready") {
     if (Number.isInteger(b.seq)) rows.updateCard(bot, bot.generation, b.seq, (k) => (k.type === "connect" ? { ...k, status: "connected" } : k));

@@ -5,7 +5,7 @@ import { tr } from "./i18n.js";
 import type { ChatMessage } from "./llm/types.js";
 import {
   AVATAR_COLORS, AVATAR_SHAPES,
-  type Bot, type Card, type CheckinSettings, type Locale, type Memory, type VaultItem, type Policy, type Row, type RowBody, type Skill, type Task, type User,
+  TOOL_GROUPS, type AuditEntry, type Bot, type Card, type CheckinSettings, type Locale, type Memory, type SearchHit, type SharedPage, type VaultItem, type Policy, type Row, type RowBody, type Skill, type Task, type User,
 } from "./shared.js";
 
 export const now = () => Date.now();
@@ -36,7 +36,7 @@ export const users = {
 };
 
 // ── Bots ─────────────────────────────────────────────────────────────────────
-export interface BotRecord extends Bot { userId: string; hidden: boolean; parentId: string | null; nextSeq: number; rev: number; updatedAt: number }
+export interface BotRecord extends Bot { userId: string; hidden: boolean; parentId: string | null; nextSeq: number; rev: number; updatedAt: number; telegramTokenEnc: string | null; telegramChatId: string | null; telegramCode: string | null; telegramOffset: number }
 
 function previewOf(body: RowBody, locale: Locale): string {
   if (body.kind === "message") return body.text || (body.attachments?.length ? `📎 ${body.attachments.map((a) => a.name).join(", ")}` : "");
@@ -60,6 +60,9 @@ function toBot(r: any): BotRecord {
     id: r.id, userId: r.user_id, kind: r.kind, name: r.name, label: r.label, description: r.description,
     instructions: r.instructions, shape: r.shape, color: r.color, mode: r.mode, primary: !!r.is_primary,
     effort: r.effort, model: r.model, autonomy: r.autonomy, voice, generation: r.generation, unread: r.unread,
+    roomRule: r.room_rule === "everyone" || r.room_rule === "mentions" ? r.room_rule : "lead",
+    disabledTools: JSON.parse(r.disabled_tools || "[]"), telegram: r.telegram_username ?? null,
+    telegramTokenEnc: r.telegram_token_enc ?? null, telegramChatId: r.telegram_chat_id ?? null, telegramCode: r.telegram_code ?? null, telegramOffset: r.telegram_offset ?? 0,
     memberIds: JSON.parse(r.members || "[]"), hidden: !!r.hidden, parentId: r.parent_id, nextSeq: r.next_seq, rev: r.rev,
     preview: last ? clip(previewOf(JSON.parse(last.body), users.localeOf(r.user_id)).replace(/\s+/g, " "), 140) : "",
     lastActivityAt: last?.created_at ?? r.updated_at, createdAt: r.created_at, updatedAt: r.updated_at,
@@ -68,7 +71,7 @@ function toBot(r: any): BotRecord {
 
 /** Client-facing projection (drops server-only bookkeeping). */
 export function publicBot(b: BotRecord): Bot {
-  const { userId, hidden, parentId, nextSeq, rev, updatedAt, ...rest } = b;
+  const { userId, hidden, parentId, nextSeq, rev, updatedAt, telegramTokenEnc, telegramChatId, telegramCode, telegramOffset, ...rest } = b;
   return rest;
 }
 
@@ -140,6 +143,8 @@ export const bots = {
       }));
     }
     if (Array.isArray(patch.memberIds)) { sets.push("members = ?"); vals.push(JSON.stringify(patch.memberIds)); }
+    if (patch.roomRule === "lead" || patch.roomRule === "everyone" || patch.roomRule === "mentions") { sets.push("room_rule = ?"); vals.push(patch.roomRule); }
+    if (Array.isArray(patch.disabledTools)) { sets.push("disabled_tools = ?"); vals.push(JSON.stringify(patch.disabledTools.filter((g) => (TOOL_GROUPS as readonly string[]).includes(g as string)))); }
     if (!sets.length) return;
     q.run(`UPDATE bots SET ${sets.join(", ")}, updated_at = ? WHERE id = ?`, ...vals, now(), id);
   },
@@ -149,6 +154,12 @@ export const bots = {
       q.run("UPDATE bots SET is_primary = 1 WHERE id = ? AND user_id = ?", id, userId);
     });
   },
+  setTelegram(id: string, f: { tokenEnc: string | null; username: string | null; chatId?: string | null; code?: string | null }) {
+    q.run("UPDATE bots SET telegram_token_enc = ?, telegram_username = ?, telegram_chat_id = ?, telegram_code = ?, telegram_offset = 0 WHERE id = ?", f.tokenEnc, f.username, f.chatId ?? null, f.code ?? null, id);
+  },
+  linkTelegram: (id: string, chatId: string) => q.run("UPDATE bots SET telegram_chat_id = ?, telegram_code = NULL WHERE id = ?", chatId, id),
+  setTelegramOffset: (id: string, offset: number) => q.run("UPDATE bots SET telegram_offset = ? WHERE id = ?", offset, id),
+  withTelegram: () => q.all("SELECT * FROM bots WHERE telegram_token_enc IS NOT NULL").map(toBot),
   setUnread(id: string, n: number) { q.run("UPDATE bots SET unread = ? WHERE id = ?", n, id); },
   bumpUnread(id: string) { q.run("UPDATE bots SET unread = unread + 1 WHERE id = ?", id); },
   remove(id: string) { q.run("DELETE FROM bots WHERE id = ? OR parent_id = ?", id, id); },
@@ -326,6 +337,8 @@ export const settings = {
   saveCheckins(userId: string, state: CheckinState) {
     q.run("INSERT INTO settings (user_id, checkins) VALUES (?, ?) ON CONFLICT(user_id) DO UPDATE SET checkins = excluded.checkins", userId, JSON.stringify(state));
   },
+  budgetWarned: (userId: string) => q.get<{ budget_warned: string }>("SELECT budget_warned FROM settings WHERE user_id = ?", userId)?.budget_warned ?? "",
+  setBudgetWarned: (userId: string, month: string) => q.run("UPDATE settings SET budget_warned = ? WHERE user_id = ?", month, userId),
   budget: (userId: string) => q.get<{ budget_usd: number | null }>("SELECT budget_usd FROM settings WHERE user_id = ?", userId)?.budget_usd ?? null,
   setBudget: (userId: string, usd: number | null) =>
     q.run("INSERT INTO settings (user_id, budget_usd) VALUES (?, ?) ON CONFLICT(user_id) DO UPDATE SET budget_usd = excluded.budget_usd", userId, usd),
@@ -348,6 +361,69 @@ export const vault = {
     q.run("UPDATE vault SET name = ?, site = ?, username = ?, password_enc = ?, note = ? WHERE id = ?", f.name, f.site, f.username, f.passwordEnc, f.note, id);
   },
   remove: (id: string) => q.run("DELETE FROM vault WHERE id = ?", id),
+};
+
+export const account = {
+  setPassword: (userId: string, passHash: string) => q.run("UPDATE users SET pass_hash = ? WHERE id = ?", passHash, userId),
+  dropOtherSessions: (userId: string, keepHash: string) => q.run("DELETE FROM sessions WHERE user_id = ? AND token_hash != ?", userId, keepHash),
+  remove: (userId: string) => q.run("DELETE FROM users WHERE id = ?", userId),
+};
+
+// ── Activity log ─────────────────────────────────────────────────────────────
+export function audit(userId: string, kind: AuditEntry["kind"], text: string, botId: string | null = null) {
+  try { q.run("INSERT INTO audit (user_id, at, bot_id, kind, text) VALUES (?, ?, ?, ?, ?)", userId, now(), botId, kind, clip(text, 500)); } catch { /* logging must never break the action it records */ }
+}
+export function auditList(userId: string, before?: number, limit = 50): AuditEntry[] {
+  const lim = Math.min(Math.max(1, limit), 200);
+  const found = before
+    ? q.all("SELECT * FROM audit WHERE user_id = ? AND id < ? ORDER BY id DESC LIMIT ?", userId, before, lim)
+    : q.all("SELECT * FROM audit WHERE user_id = ? ORDER BY id DESC LIMIT ?", userId, lim);
+  return found.map((r: any) => ({ id: r.id, at: r.at, botId: r.bot_id, kind: r.kind, text: r.text }));
+}
+
+// ── Search across every conversation, current and earlier ────────────────────
+export function searchMessages(userId: string, query: string, opts: { botId?: string; limit?: number } = {}): SearchHit[] {
+  const words = query.toLowerCase().split(/\s+/).filter((w) => w.length > 1).slice(0, 6);
+  if (!words.length) return [];
+  const like = words.map(() => "LOWER(json_extract(r.body, '$.text')) LIKE ? ESCAPE '\\'").join(" AND ");
+  const params = words.map((w) => `%${w.replace(/[\\%_]/g, (c) => "\\" + c)}%`);
+  const found = q.all<any>(
+    `SELECT r.bot_id, r.generation, r.seq, r.created_at, r.body, b.name, b.generation AS cur FROM rows r JOIN bots b ON b.id = r.bot_id
+     WHERE b.user_id = ? AND b.hidden = 0 ${opts.botId ? "AND b.id = ?" : ""} AND r.kind = 'message' AND ${like} ORDER BY r.created_at DESC LIMIT ?`,
+    userId, ...(opts.botId ? [opts.botId] : []), ...params, Math.min(opts.limit ?? 40, 40));
+  return found.map((r) => {
+    const body = JSON.parse(r.body);
+    const text: string = body.text ?? "";
+    const at = Math.max(0, text.toLowerCase().indexOf(words[0]));
+    return {
+      botId: r.bot_id, botName: r.name, generation: r.generation, current: r.generation === r.cur, seq: r.seq, at: r.created_at, role: body.role,
+      snippet: (at > 80 ? "…" : "") + text.slice(Math.max(0, at - 80), at + 220).replace(/\s+/g, " ") + (text.length > at + 220 ? "…" : ""),
+    };
+  });
+}
+
+// ── Pages published at a public address ──────────────────────────────────────
+export interface PageRecord extends SharedPage { userId: string; path: string }
+const toPage = (r: any, base: string): PageRecord => ({ token: r.token, botId: r.bot_id, userId: r.user_id, title: r.title, path: r.path, url: `${base}/p/${r.token}`, createdAt: r.created_at });
+export const pages = {
+  list: (userId: string, base: string) => q.all("SELECT * FROM pages WHERE user_id = ? ORDER BY created_at DESC", userId).map((r) => toPage(r, base)),
+  byToken: (token: string, base: string) => { const r = q.get("SELECT * FROM pages WHERE token = ?", token); return r ? toPage(r, base) : null; },
+  forPath: (botId: string, path: string, base: string) => { const r = q.get("SELECT * FROM pages WHERE bot_id = ? AND path = ?", botId, path); return r ? toPage(r, base) : null; },
+  create(bot: { id: string; userId: string }, title: string, path: string, base: string): PageRecord {
+    const token = randomToken(18);
+    q.run("INSERT INTO pages (token, bot_id, user_id, title, path, created_at) VALUES (?, ?, ?, ?, ?, ?)", token, bot.id, bot.userId, clip(title, 120), path, now());
+    return pages.byToken(token, base)!;
+  },
+  retitle: (token: string, title: string) => q.run("UPDATE pages SET title = ? WHERE token = ?", clip(title, 120), token),
+  remove: (userId: string, token: string) => q.run("DELETE FROM pages WHERE token = ? AND user_id = ?", token, userId),
+};
+
+// ── Turns under way (to notice the ones a restart cut off) ───────────────────
+export const activeTurns = {
+  begin: (botId: string) => q.run("INSERT INTO active_turns (bot_id, started_at) VALUES (?, ?) ON CONFLICT(bot_id) DO UPDATE SET started_at = excluded.started_at, acted = 0", botId, now()),
+  acted: (botId: string) => q.run("UPDATE active_turns SET acted = 1 WHERE bot_id = ?", botId),
+  end: (botId: string) => q.run("DELETE FROM active_turns WHERE bot_id = ?", botId),
+  leftover: () => q.all<{ bot_id: string; acted: number }>("SELECT bot_id, acted FROM active_turns"),
 };
 
 export const randomToken = (bytes = 32) => randomBytes(bytes).toString("base64url");

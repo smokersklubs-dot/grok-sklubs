@@ -6,6 +6,11 @@ import type { Locale } from "./shared.js";
  */
 const FR: Record<string, string> = {
   "Stopped.": "Arrêté.",
+  "My usual model is not answering ({detail}). I am finishing this on the backup model.": "Mon modèle habituel ne répond pas ({detail}). Je termine avec le modèle de secours.",
+  "The server restarted while I was working. I am picking this back up.": "Le serveur a redémarré pendant que je travaillais. Je reprends là où j'en étais.",
+  "You have used 80% of this month's budget.": "Tu as utilisé 80 % du budget de ce mois.",
+  "Voice call with {bot} started": "Appel vocal avec {bot} commencé", "Voice call ended · {duration}": "Appel vocal terminé · {duration}",
+  "Searching conversations": "Cherche dans les conversations", "Reading a skill": "Lit une compétence", "Learning a skill": "Apprend une compétence", "Searching the web": "Cherche sur le web", "Publishing a page": "Publie une page",
   "Something went wrong: {detail}": "Un problème est survenu : {detail}",
   "This month's budget is used up, so I'm paused. Raise or clear the budget in Settings → Usage to continue.": "Le budget du mois est épuisé, je suis donc en pause. Augmente ou retire le budget dans Réglages → Usage pour continuer.",
   "The reply was cut off because it got too long. Ask me to continue.": "La réponse a été coupée car elle devenait trop longue. Demande-moi de continuer.",
@@ -46,7 +51,7 @@ const FR: Record<string, string> = {
   // Schedules
   "Every day at {time}": "Tous les jours à {time}", "Weekdays at {time}": "En semaine à {time}", "Every {day} at {time}": "Chaque {day} à {time}",
   "Every hour": "Toutes les heures", "Every {n} minutes": "Toutes les {n} minutes", "Every {n} hours": "Toutes les {n} heures",
-  "When its web address is called": "Quand son adresse web est appelée", "Once on {date}": "Une fois, le {date}", "Once": "Une fois",
+  "When its web address is called": "Quand son adresse web est appelée", "When what it watches changes": "Quand ce qu'elle surveille change", "Once on {date}": "Une fois, le {date}", "Once": "Une fois",
   "Sunday": "dimanche", "Monday": "lundi", "Tuesday": "mardi", "Wednesday": "mercredi", "Thursday": "jeudi", "Friday": "vendredi", "Saturday": "samedi",
 };
 

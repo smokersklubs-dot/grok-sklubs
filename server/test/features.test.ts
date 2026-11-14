@@ -135,7 +135,7 @@ test("a bot can send a file and create a picture", async () => {
 test("the vault lets a bot type a password it never sees", { skip: !browserAvailable() && "no browser engine installed" }, async () => {
   const SECRET = "Tr0ub4dor&3-very-secret";
   assert.equal((await call("POST", "/vault", { name: "", password: "x" })).status, 400);
-  const made = await call("POST", "/vault", { name: "Banque", site: "banque.example", username: "lea", password: SECRET });
+  const made = await call("POST", "/vault", { name: "Banque", site: "http://127.0.0.1/login", username: "lea", password: SECRET });
   assert.equal(JSON.stringify(made.json).includes(SECRET), false);
   assert.equal(made.json.item.hasPassword, true);
   assert.equal(JSON.stringify((await call("GET", "/vault")).json).includes(SECRET), false);
@@ -161,6 +161,15 @@ test("the vault lets a bot type a password it never sees", { skip: !browserAvail
   const read = await replied(bot, "You typed:");
   assert.match(read.body.kind === "message" ? read.body.text : "", /You typed: \[hidden\]/);
   assert.equal(JSON.stringify(requests).includes(SECRET), false, "the password never appeared in anything sent to the model");
+  // A login saved for another site is refused on this page, even with the user's OK.
+  await call("POST", "/vault", { name: "Autre", site: "https://ailleurs.example", username: "lea", password: "autre-secret-123" });
+  await say(bot, 'call vault_type {"item":"Autre","field":"password"}');
+  const card2 = await until(async () => (await rowsOf(bot.id)).find((r) => r.body.kind === "card" && r.body.card.type === "approval" && r.body.card.status === "pending"), "second vault approval");
+  await call("POST", `/approvals/${card2.body.kind === "card" && card2.body.card.type === "approval" ? card2.body.card.approvalId : ""}`, { decision: "allow" });
+  await replied(bot, "saved for https://ailleurs.example");
+  await say(bot, "call page_read {}");
+  const again = await replied(bot, "You typed:");
+  assert.equal((again.body.kind === "message" ? again.body.text : "").includes("autre-secret"), false);
   assert.equal(JSON.stringify(await rowsOf(bot.id)).includes(SECRET), false, "nor in the chat");
 });
 

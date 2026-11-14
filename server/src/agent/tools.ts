@@ -7,9 +7,13 @@ import { isValidTimezone, parseCron } from "../cron.js";
 import { tr } from "../i18n.js";
 import type { ImageBlock, TextBlock, ToolSpec } from "../llm/types.js";
 import { describeRoutine, routines } from "../routines.js";
+import { resolveInWorkspace } from "../computer.js";
+import { existsSync } from "node:fs";
 import { schedule, unschedule } from "../scheduler.js";
-import type { ActivityKind } from "../shared.js";
-import { bots, clip, memories, rows, settings, tasks, vault, type BotRecord, type UserRecord } from "../store.js";
+import type { ActivityKind, ToolGroup } from "../shared.js";
+import { searchConfigured, searchWeb } from "../search.js";
+import { config as appConfig } from "../config.js";
+import { bots, clip, memories, pages, rows, searchMessages, settings, skills, tasks, vault, type BotRecord, type UserRecord } from "../store.js";
 import { interrupt } from "./loop.js";
 import { createRoom, deliverBotMessage, dispatchToRoom, MAX_HELPERS, MAX_HOPS, startHelper } from "./team.js";
 
@@ -30,6 +34,12 @@ export interface BuiltinTool {
   sensitive?: boolean;
   /** Asks permission per call under its own key (English templates; {bot} and the vars are filled in). */
   gate?: (args: Record<string, any>) => { key: string; title: string; reason: string; source: string; vars: Record<string, string> } | null;
+  /** Family this tool belongs to; a bot can have whole families switched off. */
+  group?: ToolGroup;
+  /** Its result comes from outside (a web page, a search): it is marked as such for the model, and the turn becomes more careful. */
+  outside?: boolean;
+  /** Worth a line in the account's activity log. */
+  audited?: boolean;
   /** Extra detail for the live activity line. */
   detail?: (args: Record<string, any>) => string | undefined;
   run(args: Record<string, any>, ctx: ToolContext): Promise<ToolOutput>;
@@ -56,11 +66,11 @@ const screenTools: BuiltinTool[] = [
     run: async (_a, c) => shot(await screen.view(c.bot.id, c.user.id), "Current screen."),
   }),
   tool("browser_open", "Open a web address in your browser and return a screenshot of the loaded page.", obj({ url: str("Address to open, e.g. https://example.com") }, ["url"]), {
-    activity: "browsing", label: "Opening a page", detail: (a) => hostOf(a.url),
+    activity: "browsing", label: "Opening a page", detail: (a) => hostOf(a.url), outside: true,
     run: async (a, c) => shot(await screen.open(c.bot.id, c.user.id, String(a.url)), `Opened ${a.url}.`),
   }),
   tool("page_read", "Return the visible text of the page currently open in your browser. Use this to read; use screen_view when layout or images matter.", obj({}), {
-    activity: "reading", label: "Reading the page",
+    activity: "reading", label: "Reading the page", outside: true,
     run: async (_a, c) => {
       const p = await screen.read(c.bot.id, c.user.id);
       return { content: `${p.title}\n${p.url}\n\n${clip(p.text, 40_000)}`, summary: clip(p.title || p.url, 80) };
@@ -105,7 +115,7 @@ function htmlToText(html: string): string {
 
 const workTools: BuiltinTool[] = [
   tool("web_fetch", "Download a web page or text file and return its readable text. No browser needed.", obj({ url: str("http(s) address") }, ["url"]), {
-    activity: "reading", label: "Reading a page", detail: (a) => hostOf(a.url),
+    activity: "reading", label: "Reading a page", detail: (a) => hostOf(a.url), outside: true,
     run: async (a, c) => {
       const url = String(a.url);
       if (!/^https?:\/\//i.test(url)) return { content: "Only http and https addresses can be fetched.", isError: true };
@@ -117,7 +127,7 @@ const workTools: BuiltinTool[] = [
     },
   }),
   tool("shell_run", "Run a shell command on your computer and return its exit code and output.", obj({ command: str("Command line to run with bash"), timeout_seconds: int("Give up after this many seconds (default 120, max 290)") }, ["command"]), {
-    activity: "shell", label: "Running a command", sensitive: true, detail: (a) => clip(String(a.command ?? ""), 60),
+    activity: "shell", label: "Running a command", sensitive: true, audited: true, detail: (a) => clip(String(a.command ?? ""), 60),
     run: async (a, c) => {
       const timeout = Math.min(290, Math.max(1, Number(a.timeout_seconds) || 120));
       const r = await runShell(c.bot.id, c.user.id, String(a.command), timeout, c.signal);
@@ -125,13 +135,20 @@ const workTools: BuiltinTool[] = [
     },
   }),
   tool("file_save", "Save a text file into your library so the user can open or download it. Use for reports, notes, drafts, data.", obj({ filename: str("File name, optionally with folders, e.g. reports/weekly.md"), content: str("Full text content") }, ["filename", "content"]), {
-    activity: "saving", label: "Saving a file", detail: (a) => String(a.filename ?? ""),
+    activity: "saving", label: "Saving a file", audited: true, detail: (a) => String(a.filename ?? ""),
     run: async (a, c) => {
       const saved = saveFile(c.bot.id, String(a.filename), String(a.content));
       return { content: `Saved as ${saved}.`, summary: saved };
     },
   }),
 ];
+
+/** "https://www.Example.com/login" → "example.com". Empty when there is no usable host. */
+function siteHost(site: string): string {
+  const s = site.trim();
+  if (!s) return "";
+  try { return new URL(/^[a-z][a-z0-9+.-]*:/i.test(s) ? s : `https://${s}`).hostname.toLowerCase().replace(/^www\./, ""); } catch { return ""; }
+}
 
 /** Library paths as the bot writes them ("~/files/x", "/root/files/x" or "x") → path inside the library. */
 const libraryPath = (p: string) => p.trim().replace(/^(~|\/root)\/files\//, "").replace(/^\.\//, "");
@@ -148,7 +165,7 @@ const shareTools: BuiltinTool[] = [
     },
   }),
   tool("image_generate", "Create a picture from a description. It is saved in your library and shown to the user in the chat.", obj({ prompt: str("What the picture should show, in detail: subject, style, colours, framing"), filename: str("Short file name without extension") }, ["prompt"]), {
-    activity: "saving", label: "Creating an image",
+    activity: "saving", label: "Creating an image", audited: true,
     run: async (a, c) => {
       const img = await generateImage(String(a.prompt), c.signal);
       const ext = img.mime === "image/jpeg" ? "jpg" : img.mime === "image/webp" ? "webp" : "png";
@@ -170,15 +187,84 @@ const vaultTools: BuiltinTool[] = [
   }),
   tool("vault_type", "Type a saved username or password into the field that has keyboard focus on your screen. Click the field first. You never see the password; the user is asked before it is used.",
     obj({ item: str("Name of the saved login"), field: { type: "string", enum: ["username", "password"] } }, ["item", "field"]), {
-    activity: "computer", label: "Typing a saved login", detail: (a) => String(a.item ?? ""),
+    activity: "computer", label: "Typing a saved login", audited: true, detail: (a) => String(a.item ?? ""),
     gate: (a) => ({ key: `vault: ${String(a.item ?? "").trim()}`, title: "Allow {bot} to type the saved {field} for {item}?", reason: "type a saved login for {item}", source: "Vault", vars: { item: String(a.item ?? ""), field: a.field === "username" ? "username" : "password" } }),
     run: async (a, c) => {
       const item = vault.byName(c.user.id, String(a.item));
       if (!item) return { content: `No saved login is called "${a.item}". Use vault_list to see the names.`, isError: true };
       const value = a.field === "username" ? item.username : item.passwordEnc ? unseal(item.passwordEnc) : null;
       if (!value) return { content: `That login has no ${a.field} saved.`, isError: true };
+      // A saved login only goes into the site it was saved for.
+      const wanted = siteHost(item.site);
+      if (wanted) {
+        const here = await screen.read(c.bot.id, c.user.id).then((p) => siteHost(p.url)).catch(() => "");
+        if (!here) return { content: `I could not tell which page is open, so the login for ${item.site} was not typed. Open ${item.site} in the browser first.`, isError: true };
+        if (here !== wanted && !here.endsWith("." + wanted)) return { content: `This login is saved for ${item.site}, but the page in front is ${here}. It was not typed. Do not try to enter it anywhere else.`, isError: true };
+      }
       const s = await screen.type(c.bot.id, c.user.id, value);
       return { ...shot(s, `Typed the saved ${a.field} into the focused field.`), summary: `${item.name} · ${a.field}` };
+    },
+  }),
+];
+
+const knowledgeTools: BuiltinTool[] = [
+  tool("conversation_search", "Search what was said before — in this chat, in your earlier conversations (before a reset), or in every bot's chat. Use it instead of asking the user to repeat themselves.",
+    obj({ query: str("Words to look for"), scope: { type: "string", enum: ["mine", "everyone"], description: "mine (default): your own chats, current and earlier. everyone: all the user's bots." } }, ["query"]), {
+    activity: "remembering", label: "Searching conversations", group: "memory",
+    run: async (a, c) => {
+      const hits = searchMessages(c.user.id, String(a.query), { botId: a.scope === "everyone" ? undefined : c.bot.id, limit: 12 });
+      if (!hits.length) return { content: "Nothing matching was said.", summary: "0" };
+      return { content: hits.map((h) => `[${new Date(h.at).toISOString().slice(0, 16)} · ${h.role === "user" ? "user" : h.botName}${h.current ? "" : " · earlier conversation"}${a.scope === "everyone" ? ` · in ${h.botName}'s chat` : ""}] ${h.snippet}`).join("\n"), summary: `${hits.length}` };
+    },
+  }),
+  tool("skill_read", "Read the full steps of one of your skills. Your prompt lists skill names; read one before following it.", obj({ name: str("Name of the skill") }, ["name"]), {
+    activity: "remembering", label: "Reading a skill", group: "memory",
+    run: async (a, c) => {
+      const s = skills.list(c.bot.id).find((k) => k.name.toLowerCase() === String(a.name).trim().toLowerCase());
+      return s ? { content: `# ${s.name}\n${s.description ? `Use when: ${s.description}\n` : ""}\n${s.body}`, summary: s.name } : { content: `You have no skill called "${a.name}".`, isError: true };
+    },
+  }),
+  tool("skill_save", "Save a way of doing something as a skill, so you do it the same way next time. Use it when the user says to remember how to do a task, or after working out a procedure worth keeping. Saving under an existing name replaces that skill.",
+    obj({ name: str("Short name"), when: str("When to use it, in one line"), steps: str("The procedure, step by step") }, ["name", "steps"]), {
+    activity: "remembering", label: "Learning a skill", group: "memory", audited: true,
+    run: async (a, c) => {
+      const name = clip(String(a.name).trim(), 80), body = String(a.steps).trim().slice(0, 20_000), when = clip(String(a.when ?? "").trim(), 300);
+      if (!name || !body) return { content: "A skill needs a name and steps.", isError: true };
+      const existing = skills.list(c.bot.id).find((k) => k.name.toLowerCase() === name.toLowerCase());
+      if (existing) skills.update(existing.id, { name, description: when, body }); else skills.create(c.bot.id, name, when, body);
+      emit(c.user.id, { type: "memories", botId: c.bot.id });
+      return { content: existing ? "Skill updated." : "Skill saved.", summary: name };
+    },
+  }),
+];
+
+const searchTools: BuiltinTool[] = [
+  tool("search_web", "Search the web and get a list of results (title, address, excerpt). Open a result with web_fetch or the browser to read it.", obj({ query: str("What to search for") }, ["query"]), {
+    activity: "searching", label: "Searching the web", group: "web", outside: true,
+    run: async (a, c) => {
+      const results = await searchWeb(String(a.query), c.signal);
+      return { content: results.length ? results.map((r, i) => `${i + 1}. ${r.title}\n   ${r.url}\n   ${clip(r.snippet, 300)}`).join("\n") : "No results.", summary: `${results.length}` };
+    },
+  }),
+];
+
+const pageTools: BuiltinTool[] = [
+  tool("page_publish", "Publish a web page (a report, a dashboard, a tracker) at a public address anyone with the link can open. Write complete, self-contained HTML: inline styles and scripts only. Publishing again under the same name updates the page at the same address.",
+    obj({ name: str("Short file name without extension, e.g. weekly-report"), title: str("Page title"), html: str("The full HTML document") }, ["name", "title", "html"]), {
+    activity: "saving", label: "Publishing a page", group: "pages", audited: true, detail: (a) => String(a.title ?? ""),
+    run: async (a, c) => {
+      const html = String(a.html);
+      if (html.length > 2_000_000) return { content: "That page is too large (2 MB at most).", isError: true };
+      const rel = saveFile(c.bot.id, `pages/${String(a.name).replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 60) || "page"}.html`, html);
+      const existing = pages.forPath(c.bot.id, rel, appConfig.publicUrl);
+      if (existing) pages.retitle(existing.token, String(a.title));
+      const page = existing ?? pages.create(c.bot, String(a.title), rel, appConfig.publicUrl);
+      if (!existing) {
+        rows.append(c.bot, { kind: "message", role: "assistant", text: `[${String(a.title)}](${page.url})` });
+        bots.bumpUnread(c.bot.id);
+      }
+      emit(c.user.id, { type: "pages" });
+      return { content: `${existing ? "Updated" : "Published"} at ${page.url}${existing ? "" : " — the link is in the chat"}.`, summary: String(a.title) };
     },
   }),
 ];
@@ -217,17 +303,21 @@ function checkSchedule(scheduleExpr: string, tz: string): string | null {
 
 const routineTools: BuiltinTool[] = [
   tool("routine_create",
-    "Create a routine: an instruction you will carry out later without being asked. Three kinds — 'cron' repeats on a schedule, 'once' runs a single time, 'webhook' runs whenever an outside system calls its web address.",
+    "Create a routine: an instruction you will carry out later without being asked. Four kinds — 'cron' repeats on a schedule (use it for 'every N minutes' too), 'once' runs a single time, 'webhook' runs whenever an outside system calls its web address, 'watch' runs only when a web page or a file changes (checking costs nothing while nothing changes).",
     obj({
       name: str("Short name"), prompt: str("What to do on each run, written as a complete instruction to yourself"),
-      kind: { type: "string", enum: ["cron", "once", "webhook"] },
+      kind: { type: "string", enum: ["cron", "once", "webhook", "watch"] },
+      watch_url: str("For watch: a web address to check regularly; the routine runs when its content changes"),
+      watch_file: str("For watch: instead of a web address, a file in your library to check"),
+      every_minutes: int("For watch: minutes between checks (5 to 1440, default 30)"),
       schedule: str("For cron: five fields — minute hour day-of-month month day-of-week, e.g. '0 9 * * 1-5'"),
       run_at: str("For once: ISO 8601 date and time with offset, e.g. 2030-01-31T09:00:00+01:00"),
       timezone: str("IANA timezone for cron schedules, e.g. Europe/Paris. Ask the user if you do not know it."),
     }, ["name", "prompt", "kind"]), {
-    activity: "planning", label: "Setting up a routine",
+    activity: "planning", label: "Setting up a routine", audited: true,
     run: async (a, c) => {
-      const kind = a.kind as "cron" | "once" | "webhook";
+      const kind = a.kind as "cron" | "once" | "webhook" | "watch";
+      let watch: { kind: string; target: string; everyMin: number } | undefined;
       const tz = a.timezone ? String(a.timezone) : "UTC";
       let runAt: number | null = null;
       if (kind === "cron") {
@@ -236,8 +326,15 @@ const routineTools: BuiltinTool[] = [
       } else if (kind === "once") {
         runAt = Date.parse(String(a.run_at ?? ""));
         if (!Number.isFinite(runAt) || runAt <= Date.now()) return { content: "run_at must be a valid date and time in the future.", isError: true };
-      } else if (kind !== "webhook") return { content: "kind must be cron, once or webhook.", isError: true };
-      const r = routines.create(c.bot.id, { name: String(a.name), prompt: String(a.prompt), trigger: kind, schedule: kind === "cron" ? String(a.schedule) : "", timezone: tz, runAt });
+      } else if (kind === "watch") {
+        const everyMin = Math.min(1440, Math.max(5, Number(a.every_minutes) || 30));
+        if (a.watch_url) {
+          if (!/^https?:\/\//i.test(String(a.watch_url))) return { content: "watch_url must be an http(s) address.", isError: true };
+          watch = { kind: "url", target: String(a.watch_url), everyMin };
+        } else if (a.watch_file) watch = { kind: "file", target: libraryPath(String(a.watch_file)), everyMin };
+        else return { content: "A watch needs watch_url or watch_file.", isError: true };
+      } else if (kind !== "webhook") return { content: "kind must be cron, once, webhook or watch.", isError: true };
+      const r = routines.create(c.bot.id, { name: String(a.name), prompt: String(a.prompt), trigger: kind, schedule: kind === "cron" ? String(a.schedule) : "", timezone: tz, runAt, watch });
       schedule(r.id);
       announceRoutine(c, tr(c.user.locale, "Routine created: {name} — {when}", { name: r.name, when: describeRoutine(r, c.user.locale) }));
       return { content: JSON.stringify({ id: r.id, when: describeRoutine(r), webhook_url: r.hookUrl ?? undefined }), summary: r.name };
@@ -267,7 +364,7 @@ const routineTools: BuiltinTool[] = [
     },
   }),
   tool("routine_delete", "Delete one of your routines for good.", obj({ id: str("Routine id") }, ["id"]), {
-    activity: "planning", label: "Removing a routine",
+    activity: "planning", label: "Removing a routine", audited: true,
     run: async (a, c) => {
       const cur = routines.byId(String(a.id));
       if (!cur || cur.botId !== c.bot.id) return { content: "No routine of yours has that id.", isError: true };
@@ -316,7 +413,7 @@ const taskTools: BuiltinTool[] = [
 
 const teamTools: BuiltinTool[] = [
   tool("bot_message", "Send a message to another bot on the team. Their answer arrives later as a message to you.", obj({ bot: str("The bot's name"), message: str("What you need, with all the context they need") }, ["bot", "message"]), {
-    activity: "messaging", label: "Messaging a teammate", detail: (a) => String(a.bot ?? ""),
+    activity: "messaging", label: "Messaging a teammate", audited: true, detail: (a) => String(a.bot ?? ""),
     run: async (a, c) => {
       const target = bots.byName(c.user.id, String(a.bot));
       const names = bots.list(c.user.id).filter((b) => b.kind === "agent" && b.id !== c.bot.id).map((b) => b.name);
@@ -427,13 +524,22 @@ export async function retireBot(b: BotRecord) {
   bots.remove(b.id);
 }
 
-export function builtinTools(): BuiltinTool[] {
+const inGroup = (group: ToolGroup, list: BuiltinTool[]) => list.map((t) => ({ ...t, group: t.group ?? group }));
+
+export function builtinTools(opts: { nativeSearch?: boolean; disabled?: readonly string[] } = {}): BuiltinTool[] {
+  return assemble(opts).filter((t) => !t.group || !(opts.disabled ?? []).includes(t.group));
+}
+
+function assemble(opts: { nativeSearch?: boolean }): BuiltinTool[] {
   return [
-    ...(browserAvailable() ? screenTools : []),
+    ...(browserAvailable() ? inGroup("computer", screenTools) : []),
     // On its own Linux computer a bot's commands are contained, so they do not need a permission card.
-    ...workTools.filter((t) => t.spec.name !== "shell_run" || config.shellEnabled).map((t) => (t.spec.name === "shell_run" && computerKind() === "linux" ? { ...t, sensitive: false } : t)),
-    ...shareTools.filter((t) => t.spec.name !== "image_generate" || imageService()),
-    ...(browserAvailable() ? vaultTools : []),
-    ...memoryTools, ...routineTools, ...taskTools, ...teamTools, ...userTools,
+    ...workTools.filter((t) => t.spec.name !== "shell_run" || config.shellEnabled)
+      .map((t): BuiltinTool => ({ ...t, group: t.spec.name === "shell_run" ? "shell" : t.spec.name === "web_fetch" ? "web" : "files", sensitive: t.spec.name === "shell_run" && computerKind() === "linux" ? false : t.sensitive })),
+    ...(searchConfigured() && !opts.nativeSearch ? searchTools : []),
+    ...knowledgeTools, ...pageTools,
+    ...shareTools.filter((t) => t.spec.name !== "image_generate" || imageService()).map((t): BuiltinTool => ({ ...t, group: t.spec.name === "image_generate" ? "images" : "files" })),
+    ...(browserAvailable() ? inGroup("vault", vaultTools) : []),
+    ...inGroup("memory", memoryTools), ...inGroup("routines", routineTools), ...inGroup("tasks", taskTools), ...inGroup("team", teamTools), ...userTools,
   ];
 }

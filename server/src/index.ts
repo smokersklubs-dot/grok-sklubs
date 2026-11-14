@@ -8,14 +8,18 @@ import { bots, users } from "./store.js";
 import { assertConfig, config } from "./config.js";
 import { connectors } from "./connectors.js";
 import { defaultModelRef, listProviders } from "./llm/index.js";
-import { api } from "./routes.js";
+import { api, site } from "./routes.js";
 import { startScheduler } from "./scheduler.js";
+import { recoverInterruptedTurns } from "./agent/loop.js";
+import { telegram } from "./telegram.js";
 
 try { assertConfig(); } catch (err) { console.error(`\nCannot start: ${(err as Error).message}\n`); process.exit(1); }
 
 const app = new Hono();
 app.route("/api", api);
 app.all("/api/*", (c) => c.json({ error: "No such endpoint." }, 404));
+
+app.route("/", site);
 
 // In production the server also serves the built web app; unknown paths fall back to its index page.
 if (existsSync(path.join(config.webDist, "index.html"))) {
@@ -33,6 +37,7 @@ try {
 } catch (err) { console.error(`\nCannot start: ${(err as Error).message}\n`); process.exit(1); }
 
 startScheduler();
+if (!config.schedulerOff) { telegram.start(); recoverInterruptedTurns(); }
 const server = serve({ fetch: app.fetch, port: config.port }, () => {
   const ready = listProviders().filter((p) => p.available()).map((p) => p.label);
   console.log(`Sklubot is running at ${config.publicUrl}`);
@@ -42,6 +47,7 @@ const server = serve({ fetch: app.fetch, port: config.port }, () => {
 
 async function shutdown() {
   server.close();
+  telegram.stopAll();
   await Promise.all([closeAllDesktops(), connectors.closeAll()]).catch(() => {});
   process.exit(0);
 }

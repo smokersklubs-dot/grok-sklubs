@@ -8,7 +8,7 @@ import { record } from "../usage.js";
 import { isBusy } from "./loop.js";
 
 /** A short side request to the model (summaries, fact extraction): no tools, low effort. */
-async function ask(bot: BotRecord, system: string, prompt: string): Promise<string> {
+export async function ask(bot: BotRecord, system: string, prompt: string): Promise<string> {
   const { provider, model } = resolveModel(config.auxModel || bot.model || defaultModelRef());
   const res = await provider.runTurn({ model, system, tools: [], effort: "low", maxTokens: 8000, messages: [{ role: "user", content: [{ type: "text", text: prompt }] }], signal: AbortSignal.timeout(180_000) });
   record(bot.userId, bot.id, res.model, res.usage);
