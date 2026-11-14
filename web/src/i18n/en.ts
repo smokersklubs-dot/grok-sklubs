@@ -651,6 +651,12 @@ export const en = {
   "time.nextTomorrow": "tomorrow {time}",
   "time.nextWeekday": "{weekday} {time}",
   "size.b": "{n} B",
+  "general.phone": "On your phone",
+  "general.phone.android": "Android app",
+  "general.phone.androidHint": "Download the file, open it and allow the installation. On first launch, enter this server's address.",
+  "general.phone.androidGet": "Download APK",
+  "general.phone.iphone": "iPhone and iPad",
+  "general.phone.iphoneHint": "Open this address in Safari, tap Share, then “Add to Home Screen”. Sklubot then opens full screen like an app.",
   "size.kb": "{n} KB",
   "size.mb": "{n} MB",
 } as const;

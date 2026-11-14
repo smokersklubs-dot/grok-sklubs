@@ -653,6 +653,12 @@ export const fr: Dict = {
   "time.nextTomorrow": "demain à {time}",
   "time.nextWeekday": "{weekday} à {time}",
   "size.b": "{n} o",
+  "general.phone": "Sur ton téléphone",
+  "general.phone.android": "Application Android",
+  "general.phone.androidHint": "Télécharge le fichier, ouvre-le et autorise l'installation. Au premier lancement, saisis l'adresse de ce serveur.",
+  "general.phone.androidGet": "Télécharger l'APK",
+  "general.phone.iphone": "iPhone et iPad",
+  "general.phone.iphoneHint": "Ouvre cette adresse dans Safari, touche Partager, puis « Sur l'écran d'accueil ». Sklubot s'ouvre alors en plein écran, comme une application.",
   "size.kb": "{n} Ko",
   "size.mb": "{n} Mo",
 };

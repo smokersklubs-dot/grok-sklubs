@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="brand">#E0502F</color>
+    <color name="surface">#F3F2EE</color>
+    <color name="ink">#1D1E22</color>
+    <style name="AppTheme" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:colorAccent">@color/brand</item>
+        <item name="android:windowBackground">@color/surface</item>
+        <item name="android:statusBarColor">@color/surface</item>
+        <item name="android:navigationBarColor">@color/surface</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
+</resources>

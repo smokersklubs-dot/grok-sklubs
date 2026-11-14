@@ -19,7 +19,8 @@ Sklubot a été reconstruit **en salle blanche** : voir [docs/CLEANROOM.md](docs
 | **Coffre** | Identifiants enregistrés et chiffrés ; le bot les saisit sur son ordinateur **sans jamais voir le mot de passe**, après ton accord ; tout ce qui revient vers le modèle est nettoyé |
 | **Fichiers et images** | Pièces jointes dans la discussion (le bot voit les images, les autres fichiers arrivent sur son ordinateur), envoi de fichiers par le bot, **génération d'images** |
 | **Langue** | Interface, textes du serveur et réponses des bots en **français ou en anglais** |
-| **Téléphone** | Application web installable sur l'écran d'accueil (iOS, Android) |
+| **Téléphone** | Version mobile installable sur l'écran d'accueil (iPhone, iPad) et **application Android (APK)** à télécharger depuis ton serveur |
+| **Mise en ligne** | Image de production et fichier Docker Compose prêts pour Coolify — voir [docs/DEPLOIEMENT.md](docs/DEPLOIEMENT.md) |
 | **Mémoire** | Souvenirs enregistrés par le bot, **apprentissage automatique** après les conversations (avec dédoublonnage), sélection des souvenirs pertinents à chaque tour, **résumé automatique** des longues conversations |
 | **Compétences** | Procédures rédigées par toi, injectées dans le bot |
 | **Automatisation** | Routines créées en discutant : planifiées (cron + fuseau), ponctuelles, ou **déclenchées par webhook** ; points réguliers proactifs du bot principal |
@@ -100,6 +101,8 @@ server/src/llm/        fournisseurs de modèles (Claude, compatible OpenAI/xAI)
 server/src/agent/      boucle d'agent, outils, mémoire, équipe, prompt
 server/src/            base, routes HTTP, ordinateur, connecteurs, planificateur, usage
 docker/desktop/        image de l'ordinateur Linux des bots
+android/               application Android
+Dockerfile.production, docker-compose.coolify.yml   mise en ligne
 server/test/           tests de bout en bout
 web/src/               interface React
 docs/API.md            référence de l'API

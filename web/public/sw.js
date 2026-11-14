@@ -39,7 +39,7 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
   // Network only: the API (data, files, the event stream) is never cached or answered from here.
-  if (url.pathname === "/api" || url.pathname.startsWith("/api/")) return;
+  if (url.pathname === "/api" || url.pathname.startsWith("/api/") || url.pathname.startsWith("/download/")) return;
 
   // Opening the app: try the network for a fresh page, fall back to the cached shell when offline.
   if (request.mode === "navigate") {

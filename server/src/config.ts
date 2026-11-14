@@ -47,6 +47,8 @@ export const config = {
   /** "linux" = a container per bot, "browser" = a browser on this server, "auto" = linux when available. */
   computer: (process.env.COMPUTER ?? "auto") as "auto" | "linux" | "browser",
   desktopImage: process.env.DESKTOP_IMAGE ?? "sklubot-desktop",
+  /** When Sklubot itself runs in a container: the name of the Docker volume mounted as its data folder, so bots' computers can share their library with it. */
+  dataVolume: process.env.DATA_VOLUME ?? "",
   desktopMemory: process.env.DESKTOP_MEMORY ?? "2g",
   desktopCpus: num("DESKTOP_CPUS", 2),
   desktopResolution: process.env.DESKTOP_RESOLUTION ?? "1280x800x24",

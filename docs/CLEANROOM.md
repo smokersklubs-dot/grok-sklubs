@@ -66,7 +66,7 @@ Par rapport à la documentation publique du produit d'origine, Sklubot **ne couv
 - moyens de paiement, cartes virtuelles, achats ; import d'identifiants en masse ;
 - voix temps réel avec interruption naturelle ; appels téléphoniques ; participation à des réunions ;
 - adresse e-mail propre au bot ; présence dans des messageries tierces ;
-- applications natives iOS, Android et de bureau (Sklubot s'installe comme application web) ; notifications poussées ;
+- application native iOS et applications de bureau (sur iPhone, Sklubot s'installe comme application web ; sur Android, une APK affiche le serveur en plein écran) ; notifications poussées ;
 - génération de vidéos, pages hébergées partageables ;
 - fils, réactions, recherche dans les messages (la recherche porte sur les bots) ;
 - bots partagés entre plusieurs personnes, rôles, modèles de bots publiables, administration d'entreprise

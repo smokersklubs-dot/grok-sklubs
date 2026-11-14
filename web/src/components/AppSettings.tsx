@@ -63,6 +63,27 @@ function GeneralSection() {
       </div>
       <p className="muted small">{t("general.languageHint")}</p>
       <ErrorNote onDismiss={() => setError(null)}>{error}</ErrorNote>
+
+      {!/SklubotAndroid/.test(navigator.userAgent) && (
+        <>
+          <h3 className="pane-heading">{t("general.phone")}</h3>
+          <ul className="list">
+            <li className="list-row is-card">
+              <div className="list-row-text">
+                <span className="list-row-title">{t("general.phone.android")}</span>
+                <span className="list-row-sub">{t("general.phone.androidHint")}</span>
+              </div>
+              <a className="btn btn-small" href="/download/sklubot.apk" download="sklubot.apk">{t("general.phone.androidGet")}</a>
+            </li>
+            <li className="list-row is-card">
+              <div className="list-row-text">
+                <span className="list-row-title">{t("general.phone.iphone")}</span>
+                <span className="list-row-sub">{t("general.phone.iphoneHint")}</span>
+              </div>
+            </li>
+          </ul>
+        </>
+      )}
     </>
   );
 }

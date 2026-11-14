@@ -1,0 +1,50 @@
+# Mise en ligne de Sklubot (Coolify, ou tout serveur avec Docker Compose).
+# Coolify se charge du domaine et du HTTPS ; il suffit de pointer le domaine vers le port 3000 du service "sklubot".
+services:
+  sklubot:
+    build:
+      context: .
+      dockerfile: Dockerfile.production
+    restart: unless-stopped
+    depends_on:
+      desktop-image:
+        condition: service_completed_successfully
+    environment:
+      PORT: "3000"
+      PUBLIC_URL: "${SKLUBOT_PUBLIC_URL}"
+      SESSION_SECRET: "${SKLUBOT_SESSION_SECRET}"
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
+      XAI_API_KEY: "${XAI_API_KEY:-}"
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+      DEFAULT_MODEL: "${SKLUBOT_DEFAULT_MODEL:-}"
+      DEMO_MODE: "${SKLUBOT_DEMO_MODE:-0}"
+      OPEN_SIGNUP: "${SKLUBOT_OPEN_SIGNUP:-0}"
+      COMPUTER: "linux"
+      DATA_VOLUME: "sklubot_data"
+      MAX_DESKTOPS: "${SKLUBOT_MAX_DESKTOPS:-4}"
+      DESKTOP_MEMORY: "${SKLUBOT_DESKTOP_MEMORY:-2g}"
+    volumes:
+      - sklubot_data:/data
+      # Donne à Sklubot le droit de créer les ordinateurs des bots sur ce serveur.
+      # C'est un accès complet au Docker de la machine : ne partage ce serveur qu'avec des gens de confiance.
+      - /var/run/docker.sock:/var/run/docker.sock
+    expose:
+      - "3000"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:3000/api/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  # Construit l'image de l'ordinateur Linux des bots sur ce serveur, puis s'arrête.
+  desktop-image:
+    build:
+      context: docker/desktop
+    image: sklubot-desktop
+    command: ["true"]
+    restart: "no"
+
+volumes:
+  sklubot_data:
+    name: sklubot_data

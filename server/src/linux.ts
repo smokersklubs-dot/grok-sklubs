@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import path from "node:path";
 import { config } from "./config.js";
 import { now } from "./store.js";
 
@@ -40,6 +41,17 @@ export async function linuxReady(): Promise<{ ok: boolean; reason: string }> {
   const image = await docker(["image", "inspect", config.desktopImage, "--format", "{{.Id}}"], { timeoutMs: 8000 });
   if (image.code !== 0) return { ok: false, reason: `the desktop image "${config.desktopImage}" has not been built yet (run: npm run computer:build)` };
   return { ok: true, reason: "" };
+}
+
+/**
+ * How the bot's library folder reaches its computer. Normally it is a plain folder on this machine.
+ * When Sklubot runs in a container, that folder only exists inside a Docker volume, so the same
+ * sub-folder of that volume is mounted instead.
+ */
+function libraryMount(workspace: string): string[] {
+  if (!config.dataVolume) return ["-v", `${workspace}:/root/files`];
+  const sub = path.relative(config.dataDir, workspace).split(path.sep).join("/");
+  return ["--mount", `type=volume,src=${config.dataVolume},dst=/root/files,volume-subpath=${sub}`];
 }
 
 export type Power = "running" | "asleep" | "absent";
@@ -87,7 +99,7 @@ async function wake(botId: string, userId: string, workspace: string): Promise<M
           "run", "-d", "--name", containerName(botId), "--hostname", "computer", "--init",
           "--memory", config.desktopMemory, "--cpus", String(config.desktopCpus), "--shm-size", "1g", "--pids-limit", "2048",
           "-e", `SCREEN_RES=${config.desktopResolution}`,
-          "-v", `${volumeName(botId)}:/root`, "-v", `${workspace}:/root/files`,
+          "-v", `${volumeName(botId)}:/root`, ...libraryMount(workspace),
           "--label", "sklubot=desktop", config.desktopImage,
         ], { timeoutMs: 120_000 });
         if (r.code !== 0) throw new Error(`could not create the computer: ${r.stderr.trim().slice(0, 300)}`);

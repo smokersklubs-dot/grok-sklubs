@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="change_server"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/change_server">
+        <intent
+            android:action="app.sklubot.android.CHANGE_SERVER"
+            android:targetClass="app.sklubot.android.MainActivity"
+            android:targetPackage="app.sklubot.android" />
+    </shortcut>
+</shortcuts>

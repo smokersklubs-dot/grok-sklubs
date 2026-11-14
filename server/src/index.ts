@@ -20,6 +20,8 @@ app.all("/api/*", (c) => c.json({ error: "No such endpoint." }, 404));
 // In production the server also serves the built web app; unknown paths fall back to its index page.
 if (existsSync(path.join(config.webDist, "index.html"))) {
   const index = readFileSync(path.join(config.webDist, "index.html"), "utf8");
+  // Phones only offer to install the Android app when the file is announced as one.
+  app.use("/download/*", async (c, next) => { await next(); if (c.req.path.endsWith(".apk")) c.header("content-type", "application/vnd.android.package-archive"); });
   app.use("*", serveStatic({ root: path.relative(process.cwd(), config.webDist) || "." }));
   app.get("*", (c) => c.html(index));
 }
