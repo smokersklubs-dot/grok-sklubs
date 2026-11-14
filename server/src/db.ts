@@ -118,6 +118,9 @@ function CREATE_EXTRA() {
   add("routines", "watch_hash", "TEXT");
   add("routines", "watch_checked_at", "INTEGER");
   add("settings", "budget_warned", "TEXT NOT NULL DEFAULT ''");
+  // OAuth sign-in for connectors: "none" | "token" | "oauth" (empty on older rows: read from token_enc), and the sealed tokens.
+  add("connectors", "auth", "TEXT NOT NULL DEFAULT ''");
+  add("connectors", "oauth_enc", "TEXT");
   db.exec(`
   CREATE TABLE IF NOT EXISTS routine_runs (
     id TEXT PRIMARY KEY, routine_id TEXT NOT NULL REFERENCES routines(id) ON DELETE CASCADE,
@@ -137,6 +140,12 @@ function CREATE_EXTRA() {
   CREATE TABLE IF NOT EXISTS pages (
     token TEXT PRIMARY KEY, bot_id TEXT NOT NULL REFERENCES bots(id) ON DELETE CASCADE, user_id TEXT NOT NULL,
     title TEXT NOT NULL, path TEXT NOT NULL, created_at INTEGER NOT NULL
+  );
+  -- OAuth sign-ins waiting for the browser to come back: one row per state, single use, 10 minutes.
+  CREATE TABLE IF NOT EXISTS oauth_pending (
+    state_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    connector_id TEXT NOT NULL REFERENCES connectors(id) ON DELETE CASCADE, verifier_enc TEXT NOT NULL,
+    bot_id TEXT, seq INTEGER, expires_at INTEGER NOT NULL
   );
   -- A turn that is under way. Rows left here after a restart are turns that were cut off.
   CREATE TABLE IF NOT EXISTS active_turns (

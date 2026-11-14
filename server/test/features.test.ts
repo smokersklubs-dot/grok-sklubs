@@ -176,5 +176,5 @@ test("the vault lets a bot type a password it never sees", { skip: !browserAvail
 test("the catalogue lists one-step apps", async () => {
   const apps = (await call("GET", "/connectors/catalog")).json.apps;
   assert.ok(apps.length >= 5);
-  assert.ok(apps.every((a: any) => /^https:\/\//.test(a.url) && (a.auth === "none" || a.tokenHelp)));
+  assert.ok(apps.every((a: any) => /^https:\/\//.test(a.url) && (a.auth !== "token" || a.tokenHelp) && (a.oauthClient !== "manual" || a.tokenHelp)));
 });

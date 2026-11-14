@@ -19,7 +19,7 @@ import { attachmentAt, computerState, isInlineImage, listFiles, mimeOf, removeWo
 import { catalogFor } from "./catalog.js";
 import { imageService } from "./images.js";
 import { config } from "./config.js";
-import { connectors } from "./connectors.js";
+import { connectors, NeedsClientIdError, oauthRedirectUri } from "./connectors.js";
 import { isValidTimezone } from "./cron.js";
 import { pickLocale, tr } from "./i18n.js";
 import { defaultModelRef, listProviders } from "./llm/index.js";
@@ -157,6 +157,37 @@ api.post("/hooks/:token", async (c) => {
   try { payload = raw ? JSON.parse(raw) : undefined; } catch { /* keep the raw text */ }
   fireRoutine(r!, payload);
   return c.json({ ok: true });
+});
+
+// The browser comes back here from an app's OAuth sign-in page (the redirect URI shown in the app).
+// The state parameter alone identifies the sign-in (single use, 10 minutes); a session, when present, must match it.
+const escHtml = (s: string) => s.replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch]!);
+api.get("/connectors/oauth/callback", async (c) => {
+  const session = userForToken(getCookie(c, SESSION_COOKIE));
+  let locale = pickLocale(session?.locale, c.req.header("accept-language"));
+  let ok = false;
+  let message: string;
+  try {
+    const r = await connectors.finishSignIn({ state: c.req.query("state") ?? "", code: c.req.query("code"), error: c.req.query("error"), iss: c.req.query("iss") }, session?.id);
+    const owner = users.byId(r.userId);
+    if (owner) locale = owner.locale;
+    ok = r.connector.status === "ready";
+    message = ok ? tr(locale, "Signed in to {name}. You can close this window.", { name: r.connector.name }) : tr(locale, "Signed in to {name}, but it does not answer yet: {detail}", { name: r.connector.name, detail: r.connector.error ?? "" });
+    const bot = r.botId ? bots.owned(r.userId, r.botId) : null;
+    if (bot && ok) {
+      if (r.seq !== null) rows.updateCard(bot, bot.generation, r.seq, (k) => (k.type === "connect" ? { ...k, status: "connected" } : k));
+      enqueue(bot.id, { kind: "system", text: `The user signed in to ${r.connector.name}. Its tools are available now — continue with what you were doing.` });
+    }
+  } catch (err) {
+    message = tr(locale, "The sign-in did not finish: {detail}", { detail: /[{}]/.test((err as Error).message) ? (err as Error).message : tr(locale, (err as Error).message) });
+  }
+  const back = tr(locale, "Back to Sklubot");
+  // Tell the app (any open tab, via BroadcastChannel; the opener when it still exists), then close or go back to the app.
+  const script = `try{new BroadcastChannel("sklubot-oauth").postMessage({ok:${ok}})}catch(e){}try{window.opener&&window.opener.postMessage({type:"sklubot-oauth",ok:${ok}},${JSON.stringify(config.publicUrl)})}catch(e){}${ok ? 'setTimeout(function(){window.close();setTimeout(function(){location.replace("/")},400)},1200)' : ""}`;
+  const html = `<!doctype html><html lang="${locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>Sklubot</title>
+<style>body{font-family:system-ui,sans-serif;background:#f6f6f8;color:#1d1d24;display:grid;place-items:center;min-height:100vh;margin:0;padding:16px}main{max-width:420px;background:#fff;border-radius:14px;padding:28px;box-shadow:0 6px 30px rgba(0,0,0,.08);text-align:center}p{line-height:1.5}.ok{color:#137a3f}.ko{color:#b3261e}a{color:#4f46e5}@media(prefers-color-scheme:dark){body{background:#15151a;color:#ececf1}main{background:#1f1f26}}</style></head>
+<body><main><p class="${ok ? "ok" : "ko"}">${escHtml(message)}</p><p><a href="/">${escHtml(back)}</a></p></main><script>${script}</script></body></html>`;
+  return c.html(html, ok ? 200 : 400, { "referrer-policy": "no-referrer", "cache-control": "no-store" });
 });
 
 // ── Everything below needs a session ─────────────────────────────────────────
@@ -711,17 +742,20 @@ api.delete("/vault/:id", (c) => {
 });
 
 // ── Connectors and permissions ───────────────────────────────────────────────
-api.get("/connectors/catalog", (c) => c.json({ apps: catalogFor(c.get("user").locale) }));
-api.get("/connectors", (c) => c.json({ connectors: connectors.list(c.get("user").id) }));
+api.get("/connectors/catalog", (c) => c.json({ apps: catalogFor(c.get("user").locale), oauthRedirectUri: oauthRedirectUri() }));
+api.get("/connectors", (c) => c.json({ connectors: connectors.list(c.get("user").id), oauthRedirectUri: oauthRedirectUri() }));
 
 api.post("/connectors", async (c) => {
   const user = c.get("user");
   const b = await body(c);
   let connector;
-  try { connector = await connectors.add(user.id, String(b.name ?? ""), String(b.url ?? ""), b.token ? String(b.token) : undefined); }
+  const opts = b.auth === "oauth"
+    ? { auth: "oauth" as const, clientId: b.clientId ? String(b.clientId) : undefined, clientSecret: b.clientSecret ? String(b.clientSecret) : undefined }
+    : { token: b.token ? String(b.token) : undefined };
+  try { connector = await connectors.add(user.id, String(b.name ?? ""), String(b.url ?? ""), opts); }
   catch (err) { return fail(400, (err as Error).message); }
   emit(user.id, { type: "connectors" });
-  audit(user.id, "apps", `App connected: ${connector.name}`);
+  audit(user.id, "apps", connector.status === "needs_auth" ? `App added, waiting for sign-in: ${connector.name}` : `App connected: ${connector.name}`);
   const bot = typeof b.botId === "string" ? bots.owned(user.id, b.botId) : null;
   if (bot && connector.status === "ready") {
     if (Number.isInteger(b.seq)) rows.updateCard(bot, bot.generation, b.seq, (k) => (k.type === "connect" ? { ...k, status: "connected" } : k));
@@ -731,7 +765,30 @@ api.post("/connectors", async (c) => {
 });
 
 api.post("/connectors/:id/refresh", async (c) => c.json({ connector: (await connectors.refresh(c.get("user").id, c.req.param("id"))) ?? fail(404, "That connector does not exist.") }));
-api.delete("/connectors/:id", async (c) => { await connectors.remove(c.get("user").id, c.req.param("id")); return c.json({ ok: true }); });
+api.delete("/connectors/:id", async (c) => {
+  const user = c.get("user");
+  const con = connectors.list(user.id).find((k) => k.id === c.req.param("id"));
+  await connectors.remove(user.id, c.req.param("id"));
+  if (con) audit(user.id, "apps", `App removed: ${con.name}`);
+  return c.json({ ok: true });
+});
+
+// OAuth sign-in: returns the app's page to open in a popup (or the connector when the sign-in could just be renewed).
+// { needsClientId: true } when the app has no dynamic registration: the user then pastes a client ID (and secret).
+api.post("/connectors/:id/oauth/start", async (c) => {
+  const user = c.get("user");
+  const b = await body(c);
+  try {
+    return c.json(await connectors.startSignIn(user.id, c.req.param("id"), {
+      clientId: typeof b.clientId === "string" ? b.clientId : undefined, clientSecret: typeof b.clientSecret === "string" ? b.clientSecret : undefined,
+      botId: typeof b.botId === "string" && bots.owned(user.id, b.botId) ? b.botId : undefined, seq: Number.isInteger(b.seq) ? b.seq : undefined,
+    }));
+  } catch (err) {
+    if (err instanceof NeedsClientIdError) return c.json({ needsClientId: true, redirectUri: oauthRedirectUri() });
+    return fail(400, (err as Error).message);
+  }
+});
+api.post("/connectors/:id/oauth/disconnect", async (c) => c.json({ connector: (await connectors.signOut(c.get("user").id, c.req.param("id"))) ?? fail(404, "That connector does not exist.") }));
 
 api.get("/policies", (c) => c.json({ policies: policies.list(c.get("user").id) }));
 api.delete("/policies/:tool", (c) => { policies.remove(c.get("user").id, decodeURIComponent(c.req.param("tool"))); return c.json({ ok: true }); });

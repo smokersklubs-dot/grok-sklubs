@@ -152,10 +152,15 @@ export interface SearchHit { botId: string; botName: string; generation: number;
 export interface MemoryStatus { lastConsolidatedAt: number | null; historyChars: number; compactAt: number; lastCompactedAt: number | null }
 export interface BotBundle { memories: Memory[]; skills: Skill[]; routines: Routine[]; tasks: Task[]; memoryStatus: MemoryStatus }
 
+/** How a connector proves who we are: nothing, a pasted access token, or an OAuth sign-in in the browser. */
+export type ConnectorAuth = "none" | "token" | "oauth";
 export interface Connector {
-  id: string; name: string; url: string; hasToken: boolean;
-  status: "ready" | "error" | "connecting";
+  id: string; name: string; url: string; hasToken: boolean; auth: ConnectorAuth;
+  /** "needs_auth": an OAuth app that is not signed in, or whose sign-in could not be renewed. */
+  status: "ready" | "error" | "connecting" | "needs_auth";
   error: string | null; tools: { name: string; description: string; readOnly: boolean }[];
+  /** OAuth apps only. Tokens themselves never leave the server. */
+  oauth?: { signedIn: boolean; customClient: boolean };
 }
 /** A saved login. The password itself is never sent to the browser or to a model. */
 export interface VaultItem { id: string; name: string; site: string; username: string; hasPassword: boolean; note: string; createdAt: number }
@@ -163,9 +168,11 @@ export interface VaultItem { id: string; name: string; site: string; username: s
 /** A well-known app that can be added as a connector in one step. */
 export interface CatalogApp {
   id: string; name: string; category: string; description: string; url: string;
-  /** "token": the user pastes an access token. "none": no credential needed. */
-  auth: "token" | "none";
-  /** Where to get the token, in plain words. */
+  /** "token": the user pastes an access token. "none": no credential needed. "oauth": the user signs in on the app's own page. */
+  auth: ConnectorAuth;
+  /** OAuth apps: "dynamic" = Sklubot registers itself; "manual" = the user creates an app/connector there and pastes its client ID (and secret). */
+  oauthClient?: "dynamic" | "manual";
+  /** Where to get the token (or the client ID), in plain words. */
   tokenHelp: string;
 }
 
