@@ -1,0 +1,12 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Cible de test</title>
+<style>html,body{margin:0;height:100%;background:#f4f1e8;font:16px sans-serif}textarea{box-sizing:border-box;width:100%;height:100%;border:0;padding:16px;font:20px monospace;background:#fffdf6}</style></head>
+<body><textarea id="t" placeholder="Zone de saisie de test"></textarea>
+<script>
+const t = document.getElementById('t');
+t.addEventListener('mousedown', (e) => log({ type: 'mousedown', button: e.button, screenX: e.screenX, screenY: e.screenY }));
+t.addEventListener('dblclick', () => log({ type: 'dblclick' }));
+t.addEventListener('contextmenu', (e) => { e.preventDefault(); log({ type: 'contextmenu' }); });
+t.addEventListener('wheel', (e) => log({ type: 'wheel', deltaY: e.deltaY }));
+t.addEventListener('keydown', (e) => log({ type: 'keydown', key: e.key, ctrl: e.ctrlKey }));
+t.addEventListener('input', () => log({ type: 'value', value: t.value }));
+</script></body></html>

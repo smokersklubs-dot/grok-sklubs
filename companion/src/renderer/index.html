@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sklubot Relais</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="wrap">
+  <div class="brand"><div class="dot"></div><b data-i18n="app.name"></b><span class="spacer"></span><span id="testmode" class="testmode hidden" data-i18n="banner.test"></span></div>
+
+  <!-- 1. setup -->
+  <section id="v-setup" class="hidden">
+    <h1 data-i18n="setup.title"></h1>
+    <p class="muted" data-i18n="setup.intro"></p>
+    <form id="setup-form" class="card">
+      <label for="server" data-i18n="setup.label"></label>
+      <input id="server" type="url" autocomplete="url" spellcheck="false" required>
+      <div id="setup-error" class="error hidden" role="alert"></div>
+      <div class="row end" style="margin-top:14px"><button class="primary" type="submit" data-i18n="setup.connect"></button></div>
+    </form>
+  </section>
+
+  <!-- 2. pairing -->
+  <section id="v-pairing" class="hidden">
+    <h1 data-i18n="pair.title"></h1>
+    <p class="muted" data-i18n="pair.steps"></p>
+    <div id="pair-code" class="code" aria-live="polite">· · · ·</div>
+    <p id="pair-status" class="muted small"></p>
+    <div class="row end"><button id="pair-cancel" data-i18n="pair.cancel"></button></div>
+  </section>
+
+  <!-- 3. main -->
+  <section id="v-main" class="hidden">
+    <div class="card">
+      <div class="status"><span id="pill" class="pill"></span><span id="status-text"></span></div>
+      <div class="row" style="margin-top:14px">
+        <button id="btn-pause" data-i18n="btn.pause"></button>
+        <button id="btn-resume" class="primary hidden" data-i18n="btn.resume"></button>
+        <button id="btn-repair" class="primary hidden" data-i18n="btn.repair"></button>
+      </div>
+    </div>
+
+    <div id="session-card" class="card">
+      <div class="row"><span id="session-text"></span><span class="spacer"></span><button id="btn-stop" class="danger hidden" data-i18n="btn.stop"></button></div>
+    </div>
+
+    <div id="locked-card" class="card locked hidden">
+      <h1 data-i18n="locked.title"></h1>
+      <p class="muted" data-i18n="locked.text"></p>
+      <button id="btn-unlock" data-i18n="locked.unlock"></button>
+    </div>
+
+    <div id="perm-card" class="card hidden">
+      <h2 data-i18n="perm.title"></h2>
+      <div id="perm-list"></div>
+      <p id="wayland" class="small hidden" data-i18n="perm.wayland"></p>
+    </div>
+
+    <div class="card">
+      <h2 data-i18n="bots.title"></h2>
+      <p id="bots-hint" class="small muted hidden" data-i18n="bots.lockedDuringSession"></p>
+      <div id="bots"></div>
+    </div>
+
+    <div class="card">
+      <h2 data-i18n="settings.title"></h2>
+      <label class="toggle"><input id="autostart" type="checkbox"><span data-i18n="settings.autostart"></span></label>
+      <p id="hotkey" class="small muted" style="margin-top:8px"></p>
+      <div class="row"><button id="btn-log" data-i18n="btn.openLog"></button><span class="spacer"></span><button id="btn-forget" class="link" data-i18n="btn.forget"></button></div>
+    </div>
+    <p id="version" class="small muted"></p>
+  </section>
+</div>
+<script src="common.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

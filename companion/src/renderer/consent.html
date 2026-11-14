@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'">
+<title>Sklubot Relais</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="consent">
+  <div class="who"><div id="avatar" class="avatar">?</div><div><div class="small muted" data-i18n="app.name"></div><h1 id="title"></h1></div></div>
+  <p id="text" class="muted"></p>
+  <p id="reason" class="small hidden"></p>
+  <pre id="command" class="hidden"></pre>
+  <p id="cwd" class="small muted hidden"></p>
+  <label id="always-wrap" class="toggle small hidden"><input id="always" type="checkbox"><span data-i18n="consent.command.always"></span></label>
+  <div class="timer" id="timer"></div>
+  <div class="actions" id="actions"></div>
+</div>
+<script src="common.js"></script>
+<script src="consent.js"></script>
+</body>
+</html>
