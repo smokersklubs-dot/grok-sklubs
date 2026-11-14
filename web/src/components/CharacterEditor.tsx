@@ -177,6 +177,22 @@ export function AccessoryChips({ shape, color, character, onChange }: { shape: A
 }
 
 /** The full editor used in bot settings → General. */
+/** "Joy": euphoria when the bot finds a gem, and whether it shouts. Used in the editor and the create-bot modal. */
+export function JoyToggles({ character, onChange }: { character: CharacterLook; onChange: (c: CharacterLook) => void }) {
+  const t = useT();
+  const on = character.euphoria !== false;
+  return (
+    <div className="field">
+      <span className="field-label">{t("look.joy")}</span>
+      <div className="chr-toggles is-stacked">
+        <label className="chr-toggle-row"><span>{t("look.euphoria")}</span><Toggle checked={on} onChange={(v) => onChange({ ...character, euphoria: v })} label={t("look.euphoria")} /></label>
+        <label className={`chr-toggle-row ${on ? "" : "is-disabled"}`}><span>{t("look.shout")}</span><Toggle checked={on && character.shout !== false} disabled={!on} onChange={(v) => onChange({ ...character, shout: v })} label={t("look.shout")} /></label>
+      </div>
+      <p className="field-hint">{t("look.euphoriaHint")}</p>
+    </div>
+  );
+}
+
 export function CharacterEditor({
   name,
   shape,
@@ -260,14 +276,7 @@ export function CharacterEditor({
           <label className="chr-toggle-row"><span>{t("look.follow")}</span><Toggle checked={character.followCursor} onChange={(v) => set("followCursor", v)} label={t("look.follow")} /></label>
           <label className="chr-toggle-row"><span>{t("look.blink")}</span><Toggle checked={character.blink} onChange={(v) => set("blink", v)} label={t("look.blink")} /></label>
         </div>
-        <div className="field">
-          <span className="field-label">{t("look.joy")}</span>
-          <div className="chr-toggles is-stacked">
-            <label className="chr-toggle-row"><span>{t("look.euphoria")}</span><Toggle checked={character.euphoria !== false} onChange={(v) => set("euphoria", v)} label={t("look.euphoria")} /></label>
-            <label className={`chr-toggle-row ${character.euphoria === false ? "is-disabled" : ""}`}><span>{t("look.shout")}</span><Toggle checked={character.euphoria !== false && character.shout !== false} disabled={character.euphoria === false} onChange={(v) => set("shout", v)} label={t("look.shout")} /></label>
-          </div>
-          <p className="field-hint">{t("look.euphoriaHint")}</p>
-        </div>
+        <JoyToggles character={character} onChange={onCharacter} />
       </div>
     </div>
   );

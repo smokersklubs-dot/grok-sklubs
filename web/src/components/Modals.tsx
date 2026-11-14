@@ -6,7 +6,7 @@ import { DEFAULT_CHARACTER } from "../types";
 import type { AvatarColor, AvatarShape, Bot, BotMode, CatalogApp, Character as CharacterLook, Connector, SearchHit } from "../types";
 import { botTitle, relTime } from "../lib/format";
 import { Avatar, BotAvatar } from "./Avatar";
-import { AccessoryChips, CharacterStage, EyeChips, LookPicker, TypeCards } from "./CharacterEditor";
+import { AccessoryChips, CharacterStage, EyeChips, JoyToggles, LookPicker, TypeCards } from "./CharacterEditor";
 
 export { LookPicker };
 import { Icon, Spinner } from "./Icon";
@@ -76,6 +76,7 @@ export function CreateBotModal({ onClose }: { onClose: () => void }) {
             </div>
           </>
         )}
+        <JoyToggles character={character} onChange={setCharacter} />
         <div className="field">
           <span className="field-label">{t("createBot.type")}</span>
           <div className="choice-list" role="radiogroup" aria-label={t("createBot.type")}>
