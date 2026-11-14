@@ -188,6 +188,22 @@ export function JoyToggles({ character, onChange }: { character: CharacterLook; 
         <label className="chr-toggle-row"><span>{t("look.euphoria")}</span><Toggle checked={on} onChange={(v) => onChange({ ...character, euphoria: v })} label={t("look.euphoria")} /></label>
         <label className={`chr-toggle-row ${on ? "" : "is-disabled"}`}><span>{t("look.shout")}</span><Toggle checked={on && character.shout !== false} disabled={!on} onChange={(v) => onChange({ ...character, shout: v })} label={t("look.shout")} /></label>
       </div>
+      {on && (
+        <div className="chr-bar">
+          <span className="chr-bar-label">{t("look.gemBar")}</span>
+          <div className="segmented chr-idle" role="radiogroup" aria-label={t("look.gemBar")}>
+            {([[92, "veryRare"], [85, "rare"], [75, "often"]] as const).map(([v, k]) => {
+              const cur = character.gemThreshold ?? 85;
+              const sel = k === "veryRare" ? cur >= 90 : k === "rare" ? cur >= 80 && cur < 90 : cur < 80;
+              return (
+                <button key={k} type="button" role="radio" aria-checked={sel} className={sel ? "is-active" : ""} onClick={() => onChange({ ...character, gemThreshold: v })}>
+                  {t(`look.gemBar.${k}`)}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
       <p className="field-hint">{t("look.euphoriaHint")}</p>
     </div>
   );

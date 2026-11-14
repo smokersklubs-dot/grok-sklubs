@@ -90,6 +90,7 @@ export function cleanCharacter(raw: unknown, base: Character = DEFAULT_CHARACTER
     intensity: Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : base.intensity,
     followCursor: bool(c.followCursor, base.followCursor), blink: bool(c.blink, base.blink),
     euphoria: bool(c.euphoria, base.euphoria), shout: bool(c.shout, base.shout),
+    gemThreshold: Number.isFinite(Number(c.gemThreshold)) && c.gemThreshold !== null && c.gemThreshold !== "" ? Math.min(98, Math.max(60, Math.round(Number(c.gemThreshold)))) : base.gemThreshold ?? 85,
   };
 }
 

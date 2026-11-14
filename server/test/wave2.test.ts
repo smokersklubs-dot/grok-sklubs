@@ -132,17 +132,27 @@ test("search finds what was said before a reset, for the user and for the bot", 
   await replied(bot, "earlier conversation");
 });
 
-test("celebrate: a gem shows as a cheer row unless euphoria is turned off", async () => {
-  await say(bot, 'call celebrate {"reason":"a flight at 19 euros"}');
-  await until(async () => (await rowsOf(bot.id)).find((r) => r.body.kind === "event" && r.body.event === "cheer" && r.body.text.includes("19 euros")), "cheer row");
-  const patched = (await call("PATCH", `/bots/${bot.id}`, { character: { euphoria: false, shout: false } })).json.bot;
+test("celebrate: only a data-backed gem above the bar, at most twice a day, makes the bot euphoric", async () => {
+  const cheers = async () => (await rowsOf(bot.id)).filter((r) => r.body.kind === "event" && r.body.event === "cheer");
+  const lastResult = () => JSON.stringify(requests[requests.length - 1].messages.at(-1));
+  const gem = (o: Record<string, unknown>) => say(bot, `call celebrate ${JSON.stringify({ kind: "seo", score: 92, evidence: "volume 4400/month, we rank 14th", reason: "an easy SEO win", ...o })}`);
+  await gem({ evidence: "looks great" });
+  await until(() => lastResult().includes("a gem needs data"), "no numbers");
+  await gem({ score: 70 });
+  await until(() => lastResult().includes("Below the user's bar (70 < 85)"), "below bar");
+  assert.equal((await cheers()).length, 0);
+  await gem({});
+  const row = await until(async () => (await cheers())[0], "cheer row");
+  assert.ok(row.body.kind === "event" && row.body.gem?.score === 92 && row.body.gem.kind === "seo");
+  await gem({ reason: "second" });
+  await until(async () => (await cheers()).length === 2, "second cheer");
+  await gem({ reason: "third" });
+  await until(() => lastResult().includes("already went euphoric 2 times"), "daily limit");
+  assert.equal((await cheers()).length, 2);
+  const patched = (await call("PATCH", `/bots/${bot.id}`, { character: { euphoria: false, gemThreshold: 200 } })).json.bot;
   assert.equal(patched.character.euphoria, false);
-  assert.equal(patched.character.shout, false);
-  const before = (await rowsOf(bot.id)).filter((r) => r.body.kind === "event" && r.body.event === "cheer").length;
-  await say(bot, 'call celebrate {"reason":"another one"}');
-  await until(() => requests.some((r) => JSON.stringify(r.messages.at(-1)).includes("Celebrations are turned off")), "tool result");
-  assert.equal((await rowsOf(bot.id)).filter((r) => r.body.kind === "event" && r.body.event === "cheer").length, before);
-  await call("PATCH", `/bots/${bot.id}`, { character: { euphoria: true, shout: true } });
+  assert.equal(patched.character.gemThreshold, 98, "the bar is clamped");
+  await call("PATCH", `/bots/${bot.id}`, { character: { euphoria: true, gemThreshold: 85 } });
 });
 
 test("voice calls leave a trace with duration, transcript and a summary", async () => {

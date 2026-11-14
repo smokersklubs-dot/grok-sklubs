@@ -373,7 +373,14 @@ function EventRow({ body, botName, seq }: { body: EventBody; botName: string; se
             <Icon name="star" size={13} />
           </span>
           <span className="cheer-text">{t("event.cheer", { reason: body.text })}</span>
+          {body.gem && <span className="cheer-score">{t(`gem.kind.${body.gem.kind}`)} · {body.gem.score}/100</span>}
         </span>
+        {body.gem && (body.gem.why || body.gem.value) && (
+          <span className="cheer-why">
+            {body.gem.why}
+            {body.gem.value ? <b> · {body.gem.value}</b> : null}
+          </span>
+        )}
       </div>
     );
   }

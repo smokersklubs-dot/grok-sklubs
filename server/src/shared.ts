@@ -38,8 +38,16 @@ export interface Character {
   euphoria: boolean;
   /** During euphoria the bot also shouts with joy (a sound in the browser). */
   shout: boolean;
+  /** How good an opportunity must be (its own score, 0-100) before the bot goes euphoric. */
+  gemThreshold: number;
 }
-export const DEFAULT_CHARACTER: Character = { type: "mascot", customColor: null, eyes: "googly", mouth: true, cheeks: false, accessory: "none", idle: "breathe", intensity: 0.6, followCursor: true, blink: true, euphoria: true, shout: true };
+/** What kind of gem the bot found while working on the user's business. */
+export const GEM_KINDS = ["lead", "seo", "data", "opportunity", "deal", "saving", "other"] as const;
+export type GemKind = (typeof GEM_KINDS)[number];
+export interface Gem { kind: GemKind; score: number; why: string; value: string }
+/** At most this many euphorias per bot in 24 hours: gems are rare. */
+export const GEMS_PER_DAY = 2;
+export const DEFAULT_CHARACTER: Character = { type: "mascot", customColor: null, eyes: "googly", mouth: true, cheeks: false, accessory: "none", idle: "breathe", intensity: 0.6, followCursor: true, blink: true, euphoria: true, shout: true, gemThreshold: 85 };
 
 export type Effort = "low" | "medium" | "high" | "xhigh";
 export type BotMode = "personal" | "teammate";
@@ -104,7 +112,7 @@ export type RowBody =
   | { kind: "message"; role: "user" | "assistant"; text: string; streaming?: boolean; origin?: Origin; sources?: { url: string; title?: string }[]; attachments?: Attachment[] }
   | { kind: "step"; callId: string; tool: string; label: string; status: "running" | "done" | "error" | "waiting" | "denied"; args: Record<string, unknown>; summary?: string }
   | { kind: "card"; card: Card }
-  | { kind: "event"; event: "routine" | "task" | "bot" | "reset" | "computer" | "call" | "members" | "cheer"; text: string; call?: CallRecord }
+  | { kind: "event"; event: "routine" | "task" | "bot" | "reset" | "computer" | "call" | "members" | "cheer"; text: string; call?: CallRecord; gem?: Gem }
   | { kind: "notice"; tone: "info" | "warn" | "error"; text: string };
 
 export type Card =
@@ -221,4 +229,4 @@ export type ServerEvent =
   | { type: "usage" }
   | { type: "pages" }
   /** The bot found a gem for the user (celebrate tool): play its euphoria now. */
-  | { type: "cheer"; botId: string; reason: string };
+  | { type: "cheer"; botId: string; reason: string; gem?: Gem };

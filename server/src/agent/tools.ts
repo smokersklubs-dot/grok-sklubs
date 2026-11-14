@@ -10,7 +10,8 @@ import { describeRoutine, routines } from "../routines.js";
 import { resolveInWorkspace } from "../computer.js";
 import { existsSync } from "node:fs";
 import { schedule, unschedule } from "../scheduler.js";
-import type { ActivityKind, ToolGroup } from "../shared.js";
+import { GEM_KINDS, GEMS_PER_DAY, type ActivityKind, type Gem, type GemKind, type ToolGroup } from "../shared.js";
+import { q } from "../db.js";
 import { searchConfigured, searchWeb } from "../search.js";
 import { config as appConfig } from "../config.js";
 import { bots, clip, memories, pages, rows, searchMessages, settings, skills, tasks, vault, type BotRecord, type UserRecord } from "../store.js";
@@ -509,15 +510,33 @@ const userTools: BuiltinTool[] = [
       return { content: "The user has been asked to connect it. Stop here; you will be told when it is connected or skipped.", summary: String(a.app), endTurn: true };
     },
   }),
-  tool("celebrate", "Celebrate out loud when you find a real gem for the user: something rare and valuable, such as an exceptional deal, a breakthrough, the perfect match after a long search, a big win. Your character goes wild with joy for a few seconds where the user can see it. Use it rarely (at most once per task) and never for ordinary results.",
-    obj({ reason: str("What you found, in a few words") }, ["reason"]), {
+  tool("celebrate", "Go euphoric when your own analysis shows a real gem for the user's business: a rare, high-value opportunity backed by data. Examples: a qualified lead ready to buy, a search query or page with large traffic upside and weak competition, a sharp jump in a key metric, a deal or saving far above normal, an untapped market signal. Score it honestly from 0 to 100 against what is normal for this business and give the numbers that prove it. Ordinary results, routine progress and things the user asked you to find are not gems. If it passes the user's bar, your character goes wild with joy where the user sees it; otherwise it is simply noted.",
+    obj({
+      kind: { type: "string", enum: [...GEM_KINDS], description: "lead, seo, data (a metric or trend), opportunity, deal, saving or other" },
+      score: int("How rare and valuable it is, 0-100 (90+ = exceptional, seen a few times a year)"),
+      evidence: str("The data that shows it, with numbers (for example: 'volume 4 400/month, top results weak, we rank 14th')"),
+      value: str("What it could be worth, if you can estimate it (for example: '≈ 3 000 €/month')"),
+      reason: str("The gem in a few words"),
+    }, ["kind", "score", "evidence", "reason"]), {
     activity: "thinking", label: "Found a gem",
     run: async (a, c) => {
+      const kind = (GEM_KINDS as readonly string[]).includes(String(a.kind)) ? (String(a.kind) as GemKind) : "other";
+      const score = Math.max(0, Math.min(100, Math.round(Number(a.score) || 0)));
+      const why = clip(String(a.evidence ?? "").trim(), 400);
+      const value = clip(String(a.value ?? "").trim(), 80);
       const reason = clip(String(a.reason ?? "").trim(), 160);
-      if (!c.bot.character.euphoria) return { content: "Noted. (Celebrations are turned off for you; just tell the user what you found.)", summary: reason };
-      rows.append(c.bot, { kind: "event", event: "cheer", text: reason });
-      emit(c.user.id, { type: "cheer", botId: c.bot.id, reason });
-      return { content: "The user saw you celebrate. Now tell them what you found and why it matters.", summary: reason };
+      const look = c.bot.character;
+      const noted = (msg: string) => ({ content: `${msg} Tell the user what you found as a normal finding.`, summary: `${reason} · ${score}/100` });
+      if (!reason) return { content: "Say what the gem is.", isError: true };
+      if (!/\d/.test(why)) return noted("Not celebrated: a gem needs data. Give the numbers that show it.");
+      if (!look.euphoria) return noted("Noted (celebrations are turned off for you).");
+      if (score < look.gemThreshold) return noted(`Below the user's bar (${score} < ${look.gemThreshold}): good, but not a gem.`);
+      const today = q.get<{ n: number }>("SELECT COUNT(*) AS n FROM rows WHERE bot_id = ? AND kind = 'event' AND body LIKE '%\"event\":\"cheer\"%' AND created_at > ?", c.bot.id, Date.now() - 86_400_000)?.n ?? 0;
+      if (today >= GEMS_PER_DAY) return noted(`Not celebrated: you already went euphoric ${today} times in the last 24 hours, and gems must stay rare.`);
+      const gem: Gem = { kind, score, why, value };
+      rows.append(c.bot, { kind: "event", event: "cheer", text: reason, gem });
+      emit(c.user.id, { type: "cheer", botId: c.bot.id, reason, gem });
+      return { content: "The user saw you celebrate. Now explain the gem: what you found, the numbers, what it could bring and the next step you suggest.", summary: `${reason} · ${score}/100` };
     },
   }),
   tool("stay_quiet", "End your turn without sending anything. Use it when a check-in, routine or group message leaves you with nothing worth saying.", obj({ reason: str("Why there is nothing to say") }), {
