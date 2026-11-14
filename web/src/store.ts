@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { api, apiUpload, errText, setUnauthorizedHandler } from "./api";
 import { getLocale, isLocale, setLocale as applyLocale, t } from "./i18n";
 import { notifyBot } from "./lib/notify";
+import { playShout, startEuphoria } from "./lib/cheer";
 import type { Attachment, Bot, BotBundle, ComputerState, Connector, Live, Locale, Routine, Row, ServerEvent, Task, User } from "./types";
 
 export type Theme = "system" | "light" | "dark";
@@ -562,6 +563,15 @@ export const useStore = create<Store>((set, get) => ({
       case "pages":
         set((s) => ({ pagesTick: s.pagesTick + 1 }));
         break;
+      case "cheer": {
+        // The bot found a gem: its character goes wild for a few seconds (and may shout, once per cheer).
+        const s = get();
+        const look = s.bots[ev.botId]?.character;
+        if (!look || look.euphoria === false) break;
+        startEuphoria(ev.botId);
+        if (look.shout !== false && document.visibilityState === "visible") playShout(s.locale, { speak: !s.call });
+        break;
+      }
       default:
         break;
     }

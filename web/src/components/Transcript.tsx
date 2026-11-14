@@ -364,6 +364,19 @@ function EventRow({ body, botName, seq }: { body: EventBody; botName: string; se
   const t = useT();
   const call = body.call;
   const lines = call?.transcript ?? [];
+  if (body.event === "cheer") {
+    // The bot celebrated a gem it found (its character went wild at the same moment).
+    return (
+      <div className="event is-cheer" data-seq={seq}>
+        <span className="event-line">
+          <span className="cheer-spark" aria-hidden="true">
+            <Icon name="star" size={13} />
+          </span>
+          <span className="cheer-text">{t("event.cheer", { reason: body.text })}</span>
+        </span>
+      </div>
+    );
+  }
   if (body.event !== "call") {
     return (
       <div className="event" data-seq={seq}>

@@ -1,14 +1,15 @@
 /**
  * What a bot's character is doing right now, derived from the live store:
- * waiting > speaking (voice call) > working/thinking > listening (voice call) > happy (just replied)
+ * euphoric (it just found a gem, see cheer.ts) > waiting > speaking (voice call) > working/thinking > listening (voice call) > happy (just replied)
  * > sleeping (its Linux computer is asleep) > idle.
  */
 import { useEffect, useState } from "react";
 import { create } from "zustand";
 import { useStore } from "../store";
+import { useCheer } from "./cheer";
 import type { Row } from "../types";
 
-export const CHARACTER_STATES = ["idle", "thinking", "working", "waiting", "speaking", "happy", "sleeping", "listening"] as const;
+export const CHARACTER_STATES = ["idle", "thinking", "working", "waiting", "speaking", "happy", "sleeping", "listening", "euphoric"] as const;
 export type CharacterState = (typeof CHARACTER_STATES)[number];
 
 const HAPPY_MS = 1500;
@@ -80,13 +81,19 @@ export function useBotState(botId: string | undefined): CharacterState {
   watchTurns();
   const base = useStore((s) => (botId ? baseState(s, botId) : "idle"));
   const happyUntil = useHappy((h) => (botId ? h.until[botId] ?? 0 : 0));
+  const cheerUntil = useCheer((c) => (botId ? c.until[botId] ?? 0 : 0));
   const [, setNow] = useState(0);
-  const happy = happyUntil > Date.now();
+  const now = Date.now();
+  const happy = happyUntil > now;
+  const euphoric = cheerUntil > now;
   useEffect(() => {
-    if (!happy) return;
-    const timer = window.setTimeout(() => setNow(Date.now()), happyUntil - Date.now() + 10);
+    const ends = [happy ? happyUntil : 0, euphoric ? cheerUntil : 0].filter(Boolean);
+    if (!ends.length) return;
+    const timer = window.setTimeout(() => setNow(Date.now()), Math.min(...ends) - Date.now() + 10);
     return () => window.clearTimeout(timer);
-  }, [happy, happyUntil]);
+  }, [happy, happyUntil, euphoric, cheerUntil]);
+  // Euphoria wins over everything while it lasts.
+  if (euphoric) return "euphoric";
   if (happy && (base === "idle" || base === "sleeping" || base === "listening")) return "happy";
   return base;
 }

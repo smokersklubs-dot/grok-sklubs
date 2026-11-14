@@ -1,14 +1,15 @@
 /**
  * The bots' animated characters: the bot's silhouette with a face, an optional accessory, and a
  * motion for each state. Pure SVG on a 100×100 grid (drawn with overflow visible, so accessories
- * and bubbles may reach outside it) + CSS animations; JS only for blinking, pointer-following eyes
- * and the speaking level.
+ * and bubbles may reach outside it) + CSS animations; JS only for blinking, pointer-following eyes,
+ * small "signs of life" (glances, eye squeezes, jelly jiggles) and the speaking level.
+ * Body distortion lives on its own `.chr-jelly` layer, between the state motion and the speaking squash.
  */
 import { memo, useEffect, useId, useRef, type ReactNode } from "react";
 import { DEFAULT_CHARACTER } from "../types";
 import type { AvatarShape, Character as CharacterLook } from "../types";
 import { colorOf } from "../lib/colors";
-import { followPointer, reducedMotion } from "../lib/pointer";
+import { followPointer, pointerMovedAt, reducedMotion } from "../lib/pointer";
 import type { CharacterState } from "../lib/botState";
 import { useT } from "../i18n";
 import { Icon } from "./Icon";
@@ -192,6 +193,74 @@ function palette(color: string, custom: string | null): Record<string, string> {
   };
 }
 
+/* ---------- Euphoria: rainbow, star eyes, a burst of stars ---------- */
+
+const RAINBOW = ["#ff4d6d", "#ff9f1c", "#ffe14d", "#3ddc84", "#36b9ff", "#8b6cff", "#ff5fd2"];
+
+/** A repeating rainbow (period 60 user units), moved along by CSS. */
+function RainbowGradient({ id }: { id: string }) {
+  return (
+    <linearGradient id={id} gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="60" y2="0" spreadMethod="repeat">
+      {[...RAINBOW, RAINBOW[0]].map((c, i, all) => (
+        <stop key={i} offset={i / (all.length - 1)} stopColor={c} />
+      ))}
+    </linearGradient>
+  );
+}
+
+/** A diagonal rainbow that slides forever (inside a body mask). */
+function RainbowFill({ id }: { id: string }) {
+  return (
+    <g transform="rotate(-32 50 50)">
+      <g className="chr-rainbow">
+        <rect x="-90" y="-90" width="300" height="280" fill={`url(#${id})`} />
+      </g>
+    </g>
+  );
+}
+
+const STAR_EYE = starPoints(10.5, 4.6, 0, 0);
+const STAR_SMALL = starPoints(6, 2.6, 0, 0);
+
+/** Sparkling star eyes (euphoria). */
+function StarEyes({ dx, r = 1, cy = 0 }: { dx: number; r?: number; cy?: number }) {
+  return (
+    <g className="chr-eyes">
+      {[-dx, dx].map((x, i) => (
+        <g key={x} transform={`translate(${x} ${cy}) scale(${r})`}>
+          <g className={`chr-star-eye chr-star-eye-${i}`}>
+            <polygon points={STAR_EYE} fill="#ffd84a" stroke="#4a2c00" strokeWidth="1.3" strokeLinejoin="round" />
+            <circle cx="-2" cy="-2.6" r="1.7" fill="#fff" />
+          </g>
+        </g>
+      ))}
+    </g>
+  );
+}
+
+/** Stars and confetti bursting out from the character, in rainbow colours. */
+function Burst() {
+  const rays = 12;
+  return (
+    <g className="chr-burst">
+      {Array.from({ length: rays }, (_, i) => {
+        const deg = (360 / rays) * i + (i % 2 ? 9 : 0);
+        const star = i % 3 !== 1;
+        return (
+          <g key={i} transform={`translate(50 54) rotate(${deg})`}>
+            <g className={`chr-ray chr-ray-${i % 4}`} style={{ fill: RAINBOW[i % RAINBOW.length] }}>
+              {star ? <polygon points={STAR_SMALL} transform={`scale(${i % 2 ? 0.75 : 1})`} /> : <circle r="2.6" />}
+            </g>
+          </g>
+        );
+      })}
+      <g className="chr-flash">
+        <circle cx="50" cy="54" r="40" fill="none" stroke="#fff6c8" strokeWidth="3" />
+      </g>
+    </g>
+  );
+}
+
 /* ---------- Eyes ---------- */
 
 type EyeStyle = CharacterLook["eyes"];
@@ -281,6 +350,12 @@ const SQUINT = "M-5.8 2 Q0 -5 5.8 2";
 
 function Eyes({ style, state, uid }: { style: EyeStyle; state: CharacterState; uid: string }) {
   const { dx } = EYES[style];
+  if (state === "euphoric") return style === "visor" ? (
+    <g>
+      <rect x="-25" y="-7.5" width="50" height="15" rx="7.5" fill="#17191d" stroke="rgba(255,255,255,0.14)" strokeWidth="0.8" />
+      <StarEyes dx={dx} r={0.62} />
+    </g>
+  ) : <StarEyes dx={dx} r={style === "googly" ? 1.05 : 0.95} />;
   const closed = state === "sleeping";
   const squint = state === "happy";
   if (style === "visor") {
@@ -371,6 +446,17 @@ function Mouth({ state, mouthRef, fine = false }: { state: CharacterState; mouth
       );
     case "sleeping":
       return <ellipse cx="0" cy="14" rx="1.7" ry="1.3" style={fill} />;
+    case "euphoric":
+      // Wide open, shouting with joy (always dark, so it reads on the rainbow body).
+      return (
+        <g transform="translate(0 10.5)">
+          <g className="chr-shout">
+            <path d="M-9 0 Q0 -2.2 9 0 Q8.6 13 0 14 Q-8.6 13 -9 0 Z" fill="#2a1220" stroke="#2a1220" strokeWidth="1.2" strokeLinejoin="round" />
+            <path d="M-6.4 0.4 Q0 -1 6.4 0.4 L6 2.6 Q0 1.4 -6 2.6 Z" fill="#fff" opacity="0.92" />
+            <ellipse cx="0" cy="9.6" rx="4.8" ry="2.8" fill="#ff8fa3" />
+          </g>
+        </g>
+      );
     case "listening":
       return <path d="M-4 13 Q0 16.4 4 13" fill="none" style={feat} strokeWidth={sw} strokeLinecap="round" />;
     default:
@@ -496,6 +582,8 @@ function Overlay({ state, shape }: { state: CharacterState; shape: ShapeDef }) {
         </g>
       );
     }
+    case "euphoric":
+      return <Burst />;
     case "happy":
       return (
         <g style={{ fill: "var(--chr-acc)" }}>
@@ -521,6 +609,7 @@ const DOT_MOUTH: Record<CharacterState, Arrangement> = {
   speaking: [[-12, 0, 0.85], [-6, 0, 0.9], [0, 0, 0.95], [6, 0, 0.9], [12, 0, 0.85]],
   listening: [[-10, 1, 0.8], [-5, 2, 0.85], [0, 2.6, 0.9], [5, 2, 0.85], [10, 1, 0.8]],
   sleeping: [[0, 0, 0], [0, 0, 0], [-3, 0, 0.6], [1, -1, 0.5], [5, -2, 0.42]],
+  euphoric: [[-17, -7, 1.15], [-9.5, 4, 1.25], [0, 8, 1.35], [9.5, 4, 1.25], [17, -7, 1.15]],
 };
 
 /** A soft organic outline: 8 points around (cx, cy), joined by smooth cubic curves. */
@@ -568,21 +657,43 @@ if (typeof document !== "undefined" && !document.getElementById("chr-generated")
 
 type GRef = React.Ref<SVGGElement>;
 
-function DotsArt({ state, faceRef, mouthRef, levelRef, tx, ty, backdrop }: { state: CharacterState; faceRef: GRef; mouthRef: GRef; levelRef: GRef; tx: number; ty: number; backdrop: boolean }) {
+function DotsArt({ state, uid, faceRef, mouthRef, levelRef, tx, ty, backdrop }: { state: CharacterState; uid: string; faceRef: GRef; mouthRef: GRef; levelRef: GRef; tx: number; ty: number; backdrop: boolean }) {
   const dot = { fill: "var(--chr-dot)" };
+  const euphoric = state === "euphoric";
   return (
     <>
+      {euphoric && (
+        <defs>
+          <RainbowGradient id={`${uid}r`} />
+          <clipPath id={`${uid}c`}>
+            <circle cx="50" cy="50" r="46" />
+          </clipPath>
+        </defs>
+      )}
       {backdrop && <circle cx="50" cy="50" r="46" className="dt-back" />}
+      {euphoric && (
+        <g clipPath={`url(#${uid}c)`} className="dt-rainbow">
+          <RainbowFill id={`${uid}r`} />
+        </g>
+      )}
       <g className="chr-motion">
+       <g className="chr-jelly">
         <g ref={levelRef} className="dt-level">
           <g className="chr-face" ref={faceRef} style={{ "--tx": tx, "--ty": ty } as React.CSSProperties}>
             <g className="chr-gaze">
               <g className="chr-pupil">
-                {[36, 64].map((x) => (
+                {[36, 64].map((x, i) => (
                   <g key={x} transform={`translate(${x} 44)`}>
-                    <g className="chr-eye dt-eye">
-                      <ellipse rx="6" ry="6.8" style={dot} />
-                    </g>
+                    {euphoric ? (
+                      <g className={`chr-star-eye chr-star-eye-${i}`}>
+                        <polygon points={STAR_EYE} fill="#ffd84a" stroke="#4a2c00" strokeWidth="1.3" strokeLinejoin="round" />
+                        <circle cx="-2" cy="-2.6" r="1.7" fill="#fff" />
+                      </g>
+                    ) : (
+                      <g className="chr-eye dt-eye">
+                        <ellipse rx="6" ry="6.8" style={dot} />
+                      </g>
+                    )}
                   </g>
                 ))}
               </g>
@@ -596,6 +707,7 @@ function DotsArt({ state, faceRef, mouthRef, levelRef, tx, ty, backdrop }: { sta
             </g>
           </g>
         </g>
+       </g>
       </g>
     </>
   );
@@ -617,6 +729,7 @@ function MuseArt({ state, uid, faceRef, glowRef, levelRef, tx, ty }: { state: Ch
           <stop offset="0.75" style={{ stopColor: "var(--chr-body)" }} stopOpacity="0.16" />
           <stop offset="1" style={{ stopColor: "var(--chr-body)" }} stopOpacity="0" />
         </radialGradient>
+        {state === "euphoric" && <RainbowGradient id={`${uid}r`} />}
       </defs>
       <g className="mu-halo-size">
         <g className="mu-halo-breathe">
@@ -632,8 +745,10 @@ function MuseArt({ state, uid, faceRef, glowRef, levelRef, tx, ty }: { state: Ch
         </g>
       )}
       <g className="chr-motion">
+       <g className="chr-jelly">
         <g className="mu-swirl">
           <path className="mu-blob mu-core" d={BLOBS[0]} fill={`url(#${uid}mg)`} />
+          {state === "euphoric" && <path className="mu-blob mu-rainbow" d={BLOBS[0]} fill={`url(#${uid}r)`} />}
           <path className="mu-blob mu-warm" d={BLOBS[0]} fill="#ffc48a" />
           <g ref={glowRef} className="mu-glow">
             <path className="mu-blob" d={BLOBS[0]} fill="#fff1d6" />
@@ -644,16 +759,25 @@ function MuseArt({ state, uid, faceRef, glowRef, levelRef, tx, ty }: { state: Ch
         <g className="chr-face" ref={faceRef} style={{ "--tx": tx, "--ty": ty } as React.CSSProperties}>
           <g className="chr-gaze">
             <g className="chr-pupil">
-              {[42.5, 57.5].map((x) => (
+              {[42.5, 57.5].map((x, i) => (
                 <g key={x} transform={`translate(${x} 51)`}>
-                  <g className="chr-eye mu-eye">
-                    <rect x="-1.7" y="-5" width="3.4" height="10" rx="1.7" style={{ fill: "var(--chr-eye)" }} opacity="0.92" />
-                  </g>
+                  {state === "euphoric" ? (
+                    <g transform="scale(0.8)">
+                      <g className={`chr-star-eye chr-star-eye-${i}`}>
+                        <polygon points={STAR_EYE} fill="#fff6c8" stroke="#4a2c00" strokeWidth="1.4" strokeLinejoin="round" />
+                      </g>
+                    </g>
+                  ) : (
+                    <g className="chr-eye mu-eye">
+                      <rect x="-1.7" y="-5" width="3.4" height="10" rx="1.7" style={{ fill: "var(--chr-eye)" }} opacity="0.92" />
+                    </g>
+                  )}
                 </g>
               ))}
             </g>
           </g>
         </g>
+       </g>
       </g>
     </>
   );
@@ -688,6 +812,9 @@ export interface CharacterProps {
 }
 
 const FOLLOW_STATES: CharacterState[] = ["idle", "listening", "happy"];
+/** States with small random signs of life: glances, eye squeezes and (some) jelly jiggles. */
+const GLANCE_STATES: CharacterState[] = ["idle", "listening", "waiting"];
+const JIGGLE_STATES: CharacterState[] = ["idle", "listening"];
 const SMALL = 32;
 /** Bubbles, dots and "z"s only where they can be read. */
 const OVERLAY_MIN = 44;
@@ -709,7 +836,7 @@ function CharacterView({ bot, size = 36, state = "idle", level, levelSource, int
   const squash = useRef<SVGGElement>(null);
 
   // Blinking: random 2.5–6 s, sometimes twice.
-  const canBlink = look.blink && !small && state !== "sleeping" && state !== "happy";
+  const canBlink = look.blink && !small && state !== "sleeping" && state !== "happy" && state !== "euphoric";
   useEffect(() => {
     if (!canBlink || reducedMotion()) return;
     const el = root.current;
@@ -740,6 +867,8 @@ function CharacterView({ bot, size = 36, state = "idle", level, levelSource, int
   // Eyes follow the pointer: one shared listener for the whole app.
   const canFollow = interactive && look.followCursor && !small && FOLLOW_STATES.includes(state);
   const { tx, ty } = type === "dots" ? { tx: 5, ty: 4 } : type === "muse" ? { tx: 4, ty: 3 } : EYES[eyes];
+  /** Where the pointer-following eyes last looked, so a glance can come back to it. */
+  const followed = useRef<{ x: number; y: number } | null>(null);
   useEffect(() => {
     const g = follow.current;
     const el = root.current;
@@ -764,16 +893,82 @@ function CharacterView({ bot, size = 36, state = "idle", level, levelSource, int
         return Math.abs(cx - ox) + Math.abs(cy - oy) > 0.01;
       },
       write() {
+        followed.current = { x: cx, y: cy };
         g.style.setProperty("--fx", cx.toFixed(2));
         g.style.setProperty("--fy", cy.toFixed(2));
       },
     });
     return () => {
       stop();
+      followed.current = null;
       g.style.removeProperty("--fx");
       g.style.removeProperty("--fy");
     };
   }, [canFollow, tx, ty]);
+
+  // Signs of life: every 1.4–4 s a glance (pupils dart somewhere, then come back), an eye squeeze or a
+  // jelly jiggle. One timer per avatar large enough to see it, paused while off screen or hidden.
+  const glances = !small && size >= OVERLAY_MIN && GLANCE_STATES.includes(state);
+  const jiggles = glances && JIGGLE_STATES.includes(state) && !(state === "idle" && look.idle === "still");
+  useEffect(() => {
+    const el = root.current;
+    const face = follow.current;
+    if (!glances || !el || !face || reducedMotion()) return;
+    let timer = 0;
+    let classTimer = 0;
+    let onScreen = true;
+    let away = false;
+    const io = typeof IntersectionObserver !== "undefined" ? new IntersectionObserver((entries) => { onScreen = entries[entries.length - 1]?.isIntersecting ?? true; }) : null;
+    io?.observe(el);
+    const flash = (cls: string, ms: number) => {
+      el.classList.add(cls);
+      window.clearTimeout(classTimer);
+      classTimer = window.setTimeout(() => el.classList.remove(cls), ms);
+    };
+    const back = () => {
+      away = false;
+      const f = followed.current;
+      if (canFollow && f) {
+        face.style.setProperty("--fx", f.x.toFixed(2));
+        face.style.setProperty("--fy", f.y.toFixed(2));
+      } else {
+        face.style.removeProperty("--fx");
+        face.style.removeProperty("--fy");
+      }
+    };
+    const step = () => {
+      let next = 1400 + Math.random() * 2600;
+      if (onScreen && document.visibilityState === "visible") {
+        // The pointer leads while it moves; glances only when it rests (or the eyes don't follow it).
+        const pointerBusy = canFollow && Date.now() - pointerMovedAt() < 2200;
+        const r = Math.random();
+        if (away) {
+          back();
+          next = 900 + Math.random() * 2400;
+        } else if (r < 0.55 && !pointerBusy) {
+          const a = Math.random() * Math.PI * 2;
+          const k = 0.45 + Math.random() * 0.5;
+          face.style.setProperty("--fx", (Math.cos(a) * k * tx).toFixed(2));
+          face.style.setProperty("--fy", (Math.sin(a) * k * ty * 0.8).toFixed(2));
+          away = true;
+          next = 350 + Math.random() * 1100;
+        } else if (r < 0.78 && jiggles) {
+          flash("is-jiggle", 900);
+        } else if (r < 0.9) {
+          flash("is-squeeze", 260);
+        }
+      }
+      timer = window.setTimeout(step, next);
+    };
+    timer = window.setTimeout(step, 600 + Math.random() * 2000);
+    return () => {
+      window.clearTimeout(timer);
+      window.clearTimeout(classTimer);
+      io?.disconnect();
+      el.classList.remove("is-jiggle", "is-squeeze");
+      if (away) back();
+    };
+  }, [glances, jiggles, canFollow, tx, ty]);
 
   // Speaking: mouth and squash follow the level.
   const speaking = state === "speaking";
@@ -833,14 +1028,14 @@ function CharacterView({ bot, size = 36, state = "idle", level, levelSource, int
     <span
       ref={root}
       className={cls}
-      style={{ width: size, height: size, "--amp": amp, ...palette(bot.color, custom) } as React.CSSProperties}
+      style={{ width: size, height: size, "--amp": amp, "--chr-size": `${size}px`, ...palette(bot.color, custom) } as React.CSSProperties}
       role={aria ? "img" : undefined}
       aria-label={aria}
       aria-hidden={aria ? undefined : true}
     >
       <svg viewBox="0 0 100 100" width={size} height={size} focusable="false" aria-hidden="true">
         {type === "dots" ? (
-          <DotsArt state={state} faceRef={follow} mouthRef={mouth} levelRef={squash} tx={tx} ty={ty} backdrop={size >= 20} />
+          <DotsArt state={state} uid={uid} faceRef={follow} mouthRef={mouth} levelRef={squash} tx={tx} ty={ty} backdrop={size >= 20} />
         ) : type === "muse" ? (
           <MuseArt state={state} uid={uid} faceRef={follow} glowRef={mouth} levelRef={squash} tx={tx} ty={ty} />
         ) : (
@@ -866,6 +1061,7 @@ function CharacterView({ bot, size = 36, state = "idle", level, levelSource, int
               <feColorMatrix in="n" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0.22 0 0 0 -0.07" />
             </filter>
           )}
+          {state === "euphoric" && <RainbowGradient id={`${uid}r`} />}
           <mask id={`${uid}m`} maskUnits="userSpaceOnUse" x="-5" y="-5" width="110" height="110">
             <g fill="#fff" stroke="#fff" strokeWidth={shape.sw} strokeLinejoin="round">
               {shape.art}
@@ -874,6 +1070,7 @@ function CharacterView({ bot, size = 36, state = "idle", level, levelSource, int
         </defs>
         {!small && <ellipse className="chr-floor" cx="50" cy="96" rx="33" ry="3.6" fill="#000" opacity="0.16" />}
         <g className="chr-motion">
+         <g className="chr-jelly">
           <g className="chr-squash" ref={squash}>
             <AccessoryArt kind={accessory} shape={shape} front={false} />
             {custom && (
@@ -885,6 +1082,7 @@ function CharacterView({ bot, size = 36, state = "idle", level, levelSource, int
               {shape.art}
             </g>
             <g mask={`url(#${uid}m)`}>
+              {state === "euphoric" && <RainbowFill id={`${uid}r`} />}
               <rect x="-5" y="-5" width="110" height="110" fill={`url(#${uid}d)`} />
               <rect x="-5" y="-5" width="110" height="110" fill={`url(#${uid}h)`} />
               {!small && <rect x="-5" y="-5" width="110" height="110" filter={`url(#${uid}g)`} />}
@@ -904,15 +1102,22 @@ function CharacterView({ bot, size = 36, state = "idle", level, levelSource, int
                   </g>
                 )}
                 <Eyes style={eyes} state={state} uid={uid} />
-                {look.mouth && (eyes === "googly" ? <g transform="translate(0 2.6)"><Mouth state={state} mouthRef={mouth} fine /></g> : <Mouth state={state} mouthRef={mouth} />)}
+                {(look.mouth || state === "euphoric") && (
+                  <g transform={eyes === "googly" ? "translate(0 2.6)" : undefined}>
+                    <g className="chr-mouth">
+                      <Mouth state={state} mouthRef={mouth} fine={eyes === "googly"} />
+                    </g>
+                  </g>
+                )}
               </g>
             </g>
             <AccessoryArt kind={accessory} shape={shape} front />
           </g>
+         </g>
         </g>
           </>
         )}
-        {size >= OVERLAY_MIN && (type === "mascot" || state === "waiting") && <Overlay state={state} shape={shape} />}
+        {size >= OVERLAY_MIN && (type === "mascot" || state === "waiting" || state === "euphoric") && <Overlay state={state} shape={shape} />}
       </svg>
       {badge && (
         <span className="avatar-badge" style={{ width: Math.max(14, size * 0.36), height: Math.max(14, size * 0.36) }}>

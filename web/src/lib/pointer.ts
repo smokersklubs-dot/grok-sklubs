@@ -16,8 +16,15 @@ let px = Number.NaN;
 let py = Number.NaN;
 let frame = 0;
 let listening = false;
+let movedAt = 0;
+
+/** When the pointer last moved (ms since epoch; 0 = not yet, or nobody follows it). */
+export function pointerMovedAt(): number {
+  return movedAt;
+}
 
 function onMove(e: PointerEvent): void {
+  movedAt = Date.now();
   px = e.clientX;
   py = e.clientY;
   wake();

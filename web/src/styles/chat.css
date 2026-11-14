@@ -265,3 +265,16 @@ button.captions:hover { box-shadow: 0 0 0 1px var(--border-strong); }
 .activity-caption { flex-basis: 100%; min-width: 0; margin: -4px 0 0 30px; font-size: 12.5px; color: var(--text-3); animation: caption-in 0.45s ease; }
 @keyframes caption-in { from { opacity: 0; transform: translateY(2px); } }
 @media (prefers-reduced-motion: reduce) { .activity-caption { animation: none; } }
+
+/* A gem the bot found (celebrate tool): a festive line with a short rainbow shimmer. */
+.event.is-cheer .event-line { padding: 4px 13px 4px 9px; border-radius: 999px; background: color-mix(in srgb, #ffd84a 16%, var(--surface)); box-shadow: inset 0 0 0 1px color-mix(in srgb, #ffb020 35%, transparent); color: var(--text); font-weight: 650; }
+.cheer-spark { display: inline-grid; place-items: center; color: #e8a500; animation: cheer-spin 1.2s cubic-bezier(0.3, 1.6, 0.5, 1) 2; }
+.cheer-text {
+  background: linear-gradient(90deg, var(--text) 0%, var(--text) 35%, #ff4d6d 39%, #ff9f1c 43%, #e0b800 47%, #2fbf6f 51%, #2a9ee8 55%, #8b6cff 59%, #ff5fd2 62%, var(--text) 65%, var(--text) 100%);
+  background-size: 300% 100%; background-position: 100% 0;
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  animation: cheer-shimmer 1.6s ease-in-out 3;
+}
+@keyframes cheer-shimmer { from { background-position: 100% 0; } to { background-position: 0% 0; } }
+@keyframes cheer-spin { 0% { transform: scale(0.4) rotate(-90deg); } 60% { transform: scale(1.35) rotate(20deg); } 100% { transform: scale(1) rotate(0); } }
+@media (prefers-reduced-motion: reduce) { .cheer-spark, .cheer-text { animation: none; } }

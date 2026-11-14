@@ -1,16 +1,21 @@
 /* Animated bot characters (see components/Character.tsx). Transforms and opacity only. */
 
-.chr { --amp: 0.6; --fx: 0; --fy: 0; }
+.chr { --amp: 0.6; --fx: 0; --fy: 0; --dil: 1; /* Euphoria is always big, even on calm characters. */ --eu: max(0.75, var(--amp)); }
 .chr svg { overflow: visible; }
 .chr.is-ring::after { content: ""; position: absolute; inset: -4px; border-radius: 50%; box-shadow: 0 0 0 2px var(--text); pointer-events: none; }
 
 /* Pivots: the body moves around its feet; eyes, mouth and decorations around their own centre. */
-.chr .chr-motion, .chr .chr-squash { transform-box: view-box; transform-origin: 50px 94px; }
-.chr .chr-eye, .chr .chr-eyes, .chr .chr-mouth-open, .chr .chr-halo, .chr .chr-tip, .chr .chr-tip-glow, .chr .chr-ask, .chr .chr-spark, .chr .chr-z { transform-box: fill-box; transform-origin: center; }
+.chr .chr-motion, .chr .chr-jelly, .chr .chr-squash { transform-box: view-box; transform-origin: 50px 94px; }
+.chr.type-dots .chr-jelly { transform-origin: 50px 76px; }
+.chr.type-muse .chr-jelly { transform-origin: 50px 82px; }
+.chr .chr-mouth, .chr .chr-star-eye, .chr .chr-ray, .chr .chr-flash, .chr .chr-eye, .chr .chr-eyes, .chr .chr-mouth-open, .chr .chr-halo, .chr .chr-tip, .chr .chr-tip-glow, .chr .chr-ask, .chr .chr-spark, .chr .chr-z { transform-box: fill-box; transform-origin: center; }
 .chr .chr-mouth-open { transform-origin: 50% 15%; }
 
 /* Pupils: pointer offset (set from JS as --fx/--fy on the face) inside a state-driven gaze. */
-.chr .chr-pupil { transform: translate(calc(var(--fx) * 1px), calc(var(--fy) * 1px)); }
+.chr .chr-pupil { transform: translate(calc(var(--fx) * 1px), calc(var(--fy) * 1px)); transition: transform 0.14s cubic-bezier(0.3, 0.8, 0.4, 1); }
+/* Mascot pupils (one per eye) dilate a little when the character is happy or listening. */
+.chr .chr-eye .chr-pupil { transform: translate(calc(var(--fx) * 1px), calc(var(--fy) * 1px)) scale(var(--dil)); }
+.chr.st-listening, .chr.st-happy { --dil: 1.2; }
 .chr .chr-eye { transition: transform 70ms ease-out; }
 .chr.is-blink .chr-eye { transform: scaleY(0.08); }
 .chr .chr-eyes { transition: transform 0.25s ease; }
@@ -103,12 +108,151 @@
 .chr.st-happy .chr-cheeks { opacity: 0.85; }
 .chr .chr-cheeks { opacity: 0.55; transition: opacity 0.3s; }
 
+
+/* ---------- Signs of life: jelly distortion, mouth micro-movements, eye squeezes ---------- */
+/* The body deforms on its own layer (.chr-jelly): skew + uneven scale around the feet, springy. */
+@keyframes chr-jelly-idle {
+  0%, 100% { transform: skewX(0deg) scale(1, 1); }
+  22% { transform: skewX(calc(var(--amp) * 1.8deg)) scale(calc(1 + 0.018 * var(--amp)), calc(1 - 0.016 * var(--amp))); }
+  48% { transform: skewX(calc(var(--amp) * -0.4deg)) scale(calc(1 - 0.012 * var(--amp)), calc(1 + 0.018 * var(--amp))); }
+  74% { transform: skewX(calc(var(--amp) * -1.8deg)) scale(calc(1 + 0.012 * var(--amp)), calc(1 - 0.01 * var(--amp))); }
+}
+@keyframes chr-jelly-squish { 0%, 100% { transform: scale(1, 1) skewX(0deg); } 50% { transform: scale(calc(1 + 0.025 * var(--amp)), calc(1 - 0.022 * var(--amp))) skewX(calc(var(--amp) * -2deg)); } }
+@keyframes chr-jelly-busy {
+  0%, 100% { transform: skewX(calc(var(--amp) * 3deg)) scale(calc(1 + 0.02 * var(--amp)), calc(1 - 0.02 * var(--amp))); }
+  50% { transform: skewX(calc(var(--amp) * -3deg)) scale(calc(1 - 0.015 * var(--amp)), calc(1 + 0.025 * var(--amp))); }
+}
+@keyframes chr-jelly-lag { 0%, 100% { transform: skewX(calc(var(--amp) * 3deg)); } 50% { transform: skewX(calc(var(--amp) * -3deg)); } }
+@keyframes chr-jelly-happy {
+  0% { transform: skewX(0deg) scale(1, 1); }
+  20% { transform: skewX(calc(var(--amp) * -7deg)) scale(calc(1 + 0.08 * var(--amp)), calc(1 - 0.08 * var(--amp))); }
+  45% { transform: skewX(calc(var(--amp) * 5deg)) scale(calc(1 - 0.05 * var(--amp)), calc(1 + 0.07 * var(--amp))); }
+  70% { transform: skewX(calc(var(--amp) * -2.5deg)) scale(calc(1 + 0.03 * var(--amp)), calc(1 - 0.03 * var(--amp))); }
+  100% { transform: skewX(0deg) scale(1, 1); }
+}
+@keyframes chr-jelly-melt { 0%, 100% { transform: scale(1, 1); } 50% { transform: scale(calc(1 + 0.03 * var(--amp)), calc(1 - 0.025 * var(--amp))) skewX(calc(var(--amp) * -1deg)); } }
+@keyframes chr-jelly-talk { 0%, 100% { transform: skewX(calc(var(--amp) * 1.4deg)); } 50% { transform: skewX(calc(var(--amp) * -1.4deg)); } }
+/* A random jiggle (JS adds .is-jiggle for a moment): a squash, then a springy, damped settle. */
+@keyframes chr-jiggle {
+  0% { transform: scale(1, 1) skewX(0deg); }
+  12% { transform: scale(calc(1 + 0.145 * var(--amp)), calc(1 - 0.16 * var(--amp))) skewX(calc(var(--amp) * -8.7deg)); }
+  27% { transform: scale(calc(1 - 0.102 * var(--amp)), calc(1 + 0.131 * var(--amp))) skewX(calc(var(--amp) * 7.25deg)); }
+  43% { transform: scale(calc(1 + 0.0653 * var(--amp)), calc(1 - 0.0725 * var(--amp))) skewX(calc(var(--amp) * -4.35deg)); }
+  60% { transform: scale(calc(1 - 0.0362 * var(--amp)), calc(1 + 0.0435 * var(--amp))) skewX(calc(var(--amp) * 2.32deg)); }
+  78% { transform: scale(calc(1 + 0.0145 * var(--amp)), calc(1 - 0.0174 * var(--amp))) skewX(calc(var(--amp) * -0.87deg)); }
+  100% { transform: scale(1, 1) skewX(0deg); }
+}
+.chr.st-idle .chr-jelly { animation: chr-jelly-idle 3.8s ease-in-out infinite; }
+.chr.st-idle.idle-still .chr-jelly { animation: none; }
+.chr.st-listening .chr-jelly { animation: chr-jelly-idle 2.9s ease-in-out infinite; }
+.chr.st-thinking .chr-jelly { animation: chr-jelly-squish 3.2s ease-in-out infinite; }
+.chr.st-working .chr-jelly { animation: chr-jelly-busy 0.92s ease-in-out infinite; }
+.chr.st-waiting .chr-jelly { animation: chr-jelly-lag 2.8s ease-in-out infinite; animation-delay: -0.35s; }
+.chr.st-happy .chr-jelly { animation: chr-jelly-happy 0.72s ease-out 2; }
+.chr.st-sleeping .chr-jelly { animation: chr-jelly-melt 4.6s ease-in-out infinite; }
+.chr.st-speaking .chr-jelly { animation: chr-jelly-talk 0.9s ease-in-out infinite; }
+.chr.is-jiggle .chr-jelly { animation: chr-jiggle 0.85s cubic-bezier(0.2, 0.6, 0.3, 1); }
+
+/* Mouth: tiny smile changes at rest, muttering while working, pursed and shifting while thinking. */
+@keyframes chr-mouth-idle {
+  0%, 56%, 100% { transform: none; }
+  61% { transform: scale(1.14, 1.32); }
+  68% { transform: scale(1.05, 1.1); }
+  78% { transform: translateX(0.6px) scale(0.9, 1.12); }
+  86% { transform: none; }
+}
+@keyframes chr-chew { 0%, 100% { transform: translateX(-0.5px) scale(1.12, 0.7); } 50% { transform: translateX(0.5px) scale(0.8, 1.9); } }
+@keyframes chr-purse { 0%, 100% { transform: translateX(-1.2px) scale(1, 1); } 50% { transform: translateX(1.4px) scale(0.85, 1.15); } }
+.chr.st-idle .chr-mouth { animation: chr-mouth-idle 6.5s ease-in-out infinite; }
+.chr.st-listening .chr-mouth { animation: chr-mouth-idle 4.6s ease-in-out infinite; animation-delay: -2s; }
+.chr.st-working .chr-mouth { animation: chr-chew 0.36s ease-in-out infinite; }
+.chr.st-thinking .chr-mouth { animation: chr-purse 3.2s ease-in-out infinite; }
+.chr.type-dots.st-idle .dt-m { --wv: calc(0.9 * var(--amp)); animation: dt-wave 3.6s ease-in-out infinite; }
+
+/* A quick eye squeeze (JS adds .is-squeeze). */
+.chr.is-squeeze .chr-eye, .chr.type-dots.is-squeeze .dt-eye, .chr.type-muse.is-squeeze .mu-eye { transform: scale(1.12, 0.45); }
+
+/* ---------- Euphoric: it found a gem ---------- */
+/* A spinning rainbow aura behind every type (works on grey, black and white bodies too). */
+.chr.st-euphoric { isolation: isolate; }
+.chr.st-euphoric::before {
+  content: ""; position: absolute; inset: -16%; z-index: -1; border-radius: 50%; pointer-events: none;
+  background: conic-gradient(from 0deg, #ff4d6d, #ff9f1c, #ffe14d, #3ddc84, #36b9ff, #8b6cff, #ff5fd2, #ff4d6d);
+  filter: blur(calc(var(--chr-size, 40px) * 0.08)); opacity: 0.85;
+  animation: chr-aura-spin 1.3s linear infinite, chr-aura-pulse 0.62s ease-in-out infinite;
+}
+@keyframes chr-aura-spin { to { rotate: 360deg; } }
+@keyframes chr-aura-pulse { 0%, 100% { scale: 0.92; opacity: 0.7; } 50% { scale: 1.12; opacity: 0.95; } }
+/* Everything cycles through the hues, with a warm glow. */
+@keyframes chr-hue {
+  from { filter: hue-rotate(0deg) drop-shadow(0 0 calc(var(--chr-size, 40px) * 0.035) rgba(255, 238, 160, 0.95)); }
+  to { filter: hue-rotate(360deg) drop-shadow(0 0 calc(var(--chr-size, 40px) * 0.035) rgba(255, 238, 160, 0.95)); }
+}
+.chr.st-euphoric > svg { animation: chr-hue 1.5s linear infinite; }
+/* A moving rainbow inside the body (mascot), behind the face (dots) or in the light (muse). */
+@keyframes chr-rainbow-slide { from { transform: translateX(0); } to { transform: translateX(-60px); } }
+.chr .chr-rainbow { animation: chr-rainbow-slide 0.8s linear infinite; opacity: 0.9; }
+.chr .dt-rainbow { opacity: 0.6; }
+.chr.type-dots.st-euphoric { --chr-dot: #ffffff; }
+.chr.type-dots.st-euphoric .dt-m { stroke: rgba(40, 18, 64, 0.55); stroke-width: 1; }
+.chr.type-muse .mu-rainbow { opacity: 0.8; }
+.chr.type-muse.st-euphoric { --flow: 1.4s; }
+.chr.type-muse.st-euphoric .mu-halo-size { transform: scale(1.22); }
+/* Big bouncy hops with strong squash and stretch, and a fast excited shake on top. */
+@keyframes chr-eu-hop {
+  0% { transform: translateY(0) scale(calc(1 + 0.2 * var(--eu)), calc(1 - 0.22 * var(--eu))); }
+  14% { transform: translateY(calc(var(--eu) * -6px)) scale(calc(1 - 0.12 * var(--eu)), calc(1 + 0.2 * var(--eu))); }
+  45% { transform: translateY(calc(var(--eu) * -26px)) scale(calc(1 - 0.05 * var(--eu)), calc(1 + 0.08 * var(--eu))); }
+  58% { transform: translateY(calc(var(--eu) * -27px)) scale(calc(1 + 0.03 * var(--eu)), calc(1 - 0.02 * var(--eu))); }
+  86% { transform: translateY(calc(var(--eu) * -5px)) scale(calc(1 - 0.12 * var(--eu)), calc(1 + 0.18 * var(--eu))); }
+  100% { transform: translateY(0) scale(calc(1 + 0.2 * var(--eu)), calc(1 - 0.22 * var(--eu))); }
+}
+@keyframes chr-eu-shake {
+  0%, 100% { transform: rotate(0deg) skewX(0deg); }
+  20% { transform: rotate(calc(var(--eu) * -8deg)) skewX(calc(var(--eu) * 7deg)) translateX(-1.5px); }
+  40% { transform: rotate(calc(var(--eu) * 6deg)) skewX(calc(var(--eu) * -6deg)) translateX(1.5px); }
+  60% { transform: rotate(calc(var(--eu) * -5deg)) skewX(calc(var(--eu) * 5deg)) translateX(-1px); }
+  80% { transform: rotate(calc(var(--eu) * 7deg)) skewX(calc(var(--eu) * -7deg)) translateX(1px); }
+}
+.chr.st-euphoric .chr-motion { animation: chr-eu-hop 0.62s cubic-bezier(0.3, 0.6, 0.4, 1) infinite; }
+.chr.st-euphoric .chr-jelly { animation: chr-eu-shake 0.28s linear infinite; }
+/* Sparkling star eyes and a wide mouth shouting with joy. */
+@keyframes chr-twinkle { from { transform: scale(0.88) rotate(-12deg); } to { transform: scale(1.22) rotate(14deg); } }
+.chr .chr-star-eye { animation: chr-twinkle 0.36s ease-in-out infinite alternate; }
+.chr .chr-star-eye-1 { animation-delay: -0.18s; }
+@keyframes chr-shout { from { transform: scale(0.94, 0.72); } to { transform: scale(1.1, 1.14); } }
+.chr .chr-shout { transform-box: fill-box; transform-origin: 50% 8%; animation: chr-shout 0.24s ease-in-out infinite alternate; }
+.chr.type-dots.st-euphoric .dt-m { --wv: calc(4 * var(--eu)); animation: dt-wave 0.3s ease-in-out infinite; }
+/* Stars and confetti bursting out, and a ring of light. */
+@keyframes chr-ray {
+  0% { transform: translateY(-20px) scale(0.2) rotate(0deg); opacity: 0; }
+  15% { opacity: 1; }
+  70% { opacity: 1; }
+  100% { transform: translateY(-66px) scale(1.15) rotate(170deg); opacity: 0; }
+}
+@keyframes chr-flash { 0% { transform: scale(0.55); opacity: 0.9; } 100% { transform: scale(1.45); opacity: 0; } }
+.chr .chr-ray { opacity: 0; animation: chr-ray 1.05s cubic-bezier(0.2, 0.7, 0.4, 1) infinite; }
+.chr .chr-ray-1 { animation-delay: -0.26s; } .chr .chr-ray-2 { animation-delay: -0.52s; } .chr .chr-ray-3 { animation-delay: -0.78s; }
+.chr .chr-flash { opacity: 0; animation: chr-flash 0.62s ease-out infinite; }
+
 /* Small avatars (lists): calm and cheap — only a slow breathe, nothing else moves. */
 .chr.is-small .chr-motion { animation: chr-breathe 5s ease-in-out infinite !important; transform: none !important; }
 .chr.is-small *:not(.chr-motion) { animation: none !important; }
+/* …except euphoria, which must show even in a list: a fast shake, the sliding rainbow, the hue cycle. */
+@keyframes chr-eu-shake-s {
+  0%, 100% { transform: rotate(0deg) translateY(0) scale(1.06, 0.94); }
+  25% { transform: rotate(-11deg) translateY(-6px) scale(0.95, 1.07); }
+  50% { transform: rotate(0deg) translateY(0) scale(1.06, 0.94); }
+  75% { transform: rotate(11deg) translateY(-6px) scale(0.95, 1.07); }
+}
+.chr.is-small.st-euphoric .chr-motion { animation: chr-eu-shake-s 0.4s linear infinite !important; }
+.chr.is-small.st-euphoric .chr-rainbow { animation: chr-rainbow-slide 0.8s linear infinite !important; }
+.chr.is-small.st-euphoric > svg { animation: chr-hue 1.5s linear infinite !important; }
 
 @media (prefers-reduced-motion: reduce) {
-  .chr, .chr * { animation: none !important; transition: none !important; }
+  .chr, .chr *, .chr::before { animation: none !important; transition: none !important; }
+  /* Euphoria stays visible, frozen: the rainbow, star eyes, open mouth and a still ring of stars. */
+  .chr .chr-ray { opacity: 1; transform: translateY(-46px); }
   .chr .chr-sweep { opacity: 0; }
 }
 
@@ -214,3 +358,6 @@
 @media (max-width: 620px) { .type-cards { grid-template-columns: 1fr; } }
 .type-cards.is-compact .type-card { flex-direction: column; text-align: center; gap: 6px; padding: 12px 8px 10px; }
 @media (max-width: 620px) { .type-cards.is-compact { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.chr-toggles.is-stacked { flex-direction: column; align-items: stretch; gap: 10px; max-width: 360px; }
+.chr-toggles.is-stacked .chr-toggle-row { justify-content: space-between; }
+.chr-toggle-row.is-disabled { color: var(--text-3); cursor: default; }

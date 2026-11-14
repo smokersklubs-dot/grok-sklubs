@@ -6,11 +6,13 @@ import { colorOf } from "../lib/colors";
 import type { AvatarColor, AvatarShape, Character as CharacterLook } from "../types";
 import type { CharacterState } from "../lib/botState";
 import { reducedMotion } from "../lib/pointer";
+import { EUPHORIA_MS, playShout } from "../lib/cheer";
+import { useStore } from "../store";
 import { Character, validHex } from "./Character";
 import { Toggle } from "./ui";
 
 /** States offered on the preview, in the order shown. */
-const TRY_STATES: CharacterState[] = ["idle", "thinking", "working", "waiting", "speaking", "happy", "sleeping"];
+const TRY_STATES: CharacterState[] = ["idle", "thinking", "working", "waiting", "speaking", "happy", "euphoric", "sleeping"];
 
 /** A pretend voice for the preview: syllables with pauses between words. */
 function simulatedLevel(): number {
@@ -112,12 +114,19 @@ export function TypeCards({ shape, color, character, onChange, compact = false }
 export function CharacterStage({ shape, color, name, character, size = 148, withTry = true }: { shape: AvatarShape; color: AvatarColor; name: string; character: CharacterLook; size?: number; withTry?: boolean }) {
   const t = useT();
   const [state, setState] = useState<CharacterState>("idle");
-  // "Happy" is a short moment, as in the app.
+  const [run, setRun] = useState(0);
+  const locale = useStore((s) => s.locale);
+  // "Happy" and "Euphoric" are short moments, as in the app.
   useEffect(() => {
-    if (state !== "happy") return;
-    const timer = window.setTimeout(() => setState("idle"), 1700);
+    if (state !== "happy" && state !== "euphoric") return;
+    const timer = window.setTimeout(() => setState("idle"), state === "happy" ? 1700 : EUPHORIA_MS);
     return () => window.clearTimeout(timer);
-  }, [state]);
+  }, [state, run]);
+  const pick = (s: CharacterState) => {
+    setState(s);
+    setRun((n) => n + 1);
+    if (s === "euphoric" && character.euphoria !== false && character.shout !== false) playShout(locale);
+  };
   return (
     <div className="chr-stage">
       <div className="chr-stage-view">
@@ -127,7 +136,7 @@ export function CharacterStage({ shape, color, name, character, size = 148, with
         <div className="chr-try" role="group" aria-label={t("look.tryAria")}>
           <span className="chr-try-label">{t("look.try")}</span>
           {TRY_STATES.map((s) => (
-            <button key={s} type="button" className={`opt-chip is-text ${state === s ? "is-selected" : ""}`} aria-pressed={state === s} onClick={() => setState(s)}>
+            <button key={s} type="button" className={`opt-chip is-text ${state === s ? "is-selected" : ""}`} aria-pressed={state === s} onClick={() => pick(s)}>
               {t(`look.state.${s}`)}
             </button>
           ))}
@@ -250,6 +259,14 @@ export function CharacterEditor({
         <div className="chr-toggles">
           <label className="chr-toggle-row"><span>{t("look.follow")}</span><Toggle checked={character.followCursor} onChange={(v) => set("followCursor", v)} label={t("look.follow")} /></label>
           <label className="chr-toggle-row"><span>{t("look.blink")}</span><Toggle checked={character.blink} onChange={(v) => set("blink", v)} label={t("look.blink")} /></label>
+        </div>
+        <div className="field">
+          <span className="field-label">{t("look.joy")}</span>
+          <div className="chr-toggles is-stacked">
+            <label className="chr-toggle-row"><span>{t("look.euphoria")}</span><Toggle checked={character.euphoria !== false} onChange={(v) => set("euphoria", v)} label={t("look.euphoria")} /></label>
+            <label className={`chr-toggle-row ${character.euphoria === false ? "is-disabled" : ""}`}><span>{t("look.shout")}</span><Toggle checked={character.euphoria !== false && character.shout !== false} disabled={character.euphoria === false} onChange={(v) => set("shout", v)} label={t("look.shout")} /></label>
+          </div>
+          <p className="field-hint">{t("look.euphoriaHint")}</p>
         </div>
       </div>
     </div>
