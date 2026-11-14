@@ -18,6 +18,14 @@ Sklubot a été reconstruit **en salle blanche** : voir [docs/CLEANROOM.md](docs
 | **Applications** | **Catalogue d'applications à ajouter en une étape** (GitHub, Stripe, Hugging Face, documentation technique…) et tout serveur d'outils au standard ouvert MCP (URL + jeton). Lectures automatiques, écritures soumises à approbation, « toujours autoriser » mémorisé et révocable |
 | **Coffre** | Identifiants enregistrés et chiffrés ; le bot les saisit sur son ordinateur **sans jamais voir le mot de passe**, après ton accord ; tout ce qui revient vers le modèle est nettoyé |
 | **Fichiers et images** | Pièces jointes dans la discussion (le bot voit les images, les autres fichiers arrivent sur son ordinateur), envoi de fichiers par le bot, **génération d'images** |
+| **Canaux** | **Telegram** par bot : écris à ton bot depuis ton téléphone, il te répond et te prévient quand il a besoin de toi |
+| **Recherche** | Dans tous les messages, y compris les conversations d'avant une remise à zéro ; recherche web pour tous les modèles (Claude nativement, les autres via Brave ou SearXNG) |
+| **Surveillance** | Routines déclenchées seulement quand une page web ou un fichier change (gratuit tant que rien ne bouge) ; historique des exécutions ; rattrapage des routines manquées |
+| **Pages** | Les bots publient rapports et tableaux de bord à une adresse publique, révocable |
+| **Fiabilité** | Reprise du travail après un redémarrage du serveur ; modèle de secours en cas de panne ; journal d'activité non modifiable |
+| **Prudence** | Le contenu venu de l'extérieur (pages, recherches, applications) est signalé au modèle comme simple information ; après en avoir lu, même un bot « de confiance » redemande avant de modifier une application |
+| **Équipe** | Export et import d'une équipe de bots ; choix des familles d'outils par bot ; règles de réponse dans les groupes |
+| **Compte** | Changement de mot de passe, export de toutes tes données, suppression du compte |
 | **Langue** | Interface, textes du serveur et réponses des bots en **français ou en anglais** |
 | **Téléphone** | Version mobile installable sur l'écran d'accueil (iPhone, iPad) et **application Android (APK)** à télécharger depuis ton serveur |
 | **Mise en ligne** | **Installation sur un VPS en une commande** (Docker, HTTPS automatique, mises à jour, sauvegarde) — voir [docs/INSTALLATION-VPS.md](docs/INSTALLATION-VPS.md) ; ou Coolify — voir [docs/DEPLOIEMENT.md](docs/DEPLOIEMENT.md) |
@@ -70,6 +78,14 @@ npm run dev -w server       # API sur le port 8787
 npm run dev -w web          # interface sur http://localhost:5173
 npm test                    # tests de bout en bout (modèle simulé, navigateur réel, connecteur réel)
 npm run typecheck
+```
+
+### Mot de passe oublié
+
+Il n'y a pas de récupération par e-mail. Sur le serveur :
+
+```bash
+docker compose -f docker-compose.vps.yml exec sklubot node server/dist/reset-password.js ton@email.fr
 ```
 
 ### Génération d'images

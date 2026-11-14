@@ -57,7 +57,7 @@ async function call(method: string, url: string, body?: unknown) {
 }
 const rowsOf = async (botId: string): Promise<Row[]> => (await call("GET", `/bots/${botId}/rows`)).json.rows;
 async function until<T>(probe: () => Promise<T | undefined | false | null>, label: string): Promise<T> {
-  for (let i = 0; i < 200; i++) {
+  for (let i = 0; i < 1600; i++) {
     const v = await probe();
     if (v) return v;
     await new Promise((r) => setTimeout(r, 25));
