@@ -233,6 +233,54 @@ const keysym = (combo: string) => combo.split("+").map((part) => {
   return KEYSYMS[k.toLowerCase().replace(/[_\s]/g, "")] ?? (k.length === 1 ? k.toLowerCase() : k);
 }).join("+");
 
+/**
+ * Types the text it reads on standard input. xdotool alone loses characters that are not on the US keyboard
+ * ("é", "É", "€"…): it borrows a key for each one and gives it back before the window has read the keystroke.
+ * So those characters are first placed on unused keys, typed like any other, and the keys are freed afterwards.
+ * A text with more distinct such characters than there are unused keys (about 19) is typed in several passes;
+ * re-placing keys between passes is less dependable in Chromium (roughly one text in eight came out wrong in tests).
+ */
+const TYPER = String.raw`
+import re, subprocess, sys, time
+text = sys.stdin.buffer.read().decode("utf-8", "replace")
+def run(args, data=None):
+    return subprocess.run(args, input=None if data is None else data.encode("utf-8"), capture_output=True)
+def send(part):
+    r = run(["xdotool", "type", "--delay", "6", "--file", "-"], part)
+    if r.returncode != 0:
+        sys.stderr.write(r.stderr.decode("utf-8", "replace"))
+        sys.exit(r.returncode)
+def keymap(pairs):
+    if pairs:
+        run(["xmodmap"] + [a for code, sym in pairs for a in ("-e", "keycode %d = %s" % (code, sym))])
+plain = lambda ch: ord(ch) < 127
+if all(plain(ch) for ch in text):
+    send(text)
+    sys.exit(0)
+listing = run(["xmodmap", "-pke"]).stdout.decode("utf-8", "replace")
+free = [int(m.group(1)) for m in re.finditer(r"^keycode\s+(\d+) =\s*$", listing, re.M)][:24]
+if not free:
+    send(text)
+    sys.exit(0)
+runs, part, seen = [], "", []
+for ch in text:
+    if not plain(ch) and ch not in seen:
+        if len(seen) == len(free):
+            runs.append((part, seen))
+            part, seen = "", []
+        seen.append(ch)
+    part += ch
+runs.append((part, seen))
+try:
+    for part, seen in runs:
+        keymap([(free[i], "U%04X" % ord(ch)) for i, ch in enumerate(seen)])
+        time.sleep(0.6)
+        send(part)
+        time.sleep(0.3)
+finally:
+    keymap([(code, "NoSymbol") for code in free])
+`;
+
 export const linuxScreen = {
   view: (botId: string, userId: string, ws: string) => onMachine(botId, userId, ws, async (n) => { await pause(300); return capture(n); }),
   open: (botId: string, userId: string, ws: string, url: string) => onMachine(botId, userId, ws, async (n) => {
@@ -251,7 +299,7 @@ export const linuxScreen = {
     }),
   type: (botId: string, userId: string, ws: string, text: string) => onMachine(botId, userId, ws, async (n) => {
     // The text travels on standard input, so it never shows up in a process list (it may be a password).
-    const r = await docker(["exec", "-i", n, "xdotool", "type", "--delay", "6", "--file", "-"], { timeoutMs: 20_000 + text.length * 20, input: text });
+    const r = await docker(["exec", "-i", n, "python3", "-c", TYPER], { timeoutMs: 30_000 + text.length * 40, input: text });
     if (r.code !== 0) throw new Error(`typing failed: ${r.stderr.trim().slice(0, 200) || "no detail"}`);
     await pause(300);
     return capture(n);
