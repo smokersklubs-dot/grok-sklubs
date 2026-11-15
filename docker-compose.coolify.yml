@@ -36,6 +36,7 @@ services:
       ENGINE_BASE_URL: "http://sklubot:3000"
       MAX_DESKTOPS: "${SKLUBOT_MAX_DESKTOPS:-4}"
       DESKTOP_MEMORY: "${SKLUBOT_DESKTOP_MEMORY:-2g}"
+      DESKTOP_CPUS: "${SKLUBOT_DESKTOP_CPUS:-2}"
       # Clavier des ordinateurs des bots (nom de disposition X : us, fr, de…).
       DESKTOP_KEYBOARD: "${SKLUBOT_DESKTOP_KEYBOARD:-us}"
       # Docker à travers le proxy filtrant ci-dessous, jamais le socket lui-même.

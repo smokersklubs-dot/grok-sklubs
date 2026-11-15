@@ -52,6 +52,7 @@ services:
       FIRST_BOT_NAME: "${SKLUBOT_FIRST_BOT_NAME:-}"
       FIRST_BOT_LABEL: "${SKLUBOT_FIRST_BOT_LABEL:-}"
       DESKTOP_MEMORY: "${SKLUBOT_DESKTOP_MEMORY:-2g}"
+      DESKTOP_CPUS: "${SKLUBOT_DESKTOP_CPUS:-2}"
       # Clavier des ordinateurs des bots (nom de disposition X : us, fr, de…).
       DESKTOP_KEYBOARD: "${SKLUBOT_DESKTOP_KEYBOARD:-us}"
       # Docker, à travers le proxy filtrant (voir plus bas), jamais le socket lui-même.
