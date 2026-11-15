@@ -165,11 +165,19 @@ test("an OAuth app: sign-in with discovery, dynamic registration and PKCE, then 
   assert.equal(createHash("sha256").update(verifier).digest("base64url"), u.searchParams.get("code_challenge"));
   assert.ok(pending[0].expires_at - Date.now() <= 10 * 60_000 && pending[0].expires_at - Date.now() > 9 * 60_000);
 
-  const back = await approve(start.json.authorizeUrl);
+  const redirect = new URL((await fetch(start.json.authorizeUrl, { redirect: "manual" })).headers.get("location")!);
+  const back = await call("GET", `/connectors/oauth/callback${redirect.search}`);
   assert.equal(back.status, 200, back.text);
   assert.match(back.text, /Connecté à Fake CRM/);
   assert.match(back.text, /BroadcastChannel\("sklubot-oauth"\)/);
-  assert.equal(q.all("SELECT * FROM oauth_pending WHERE connector_id = ?", conId).length, 0, "single use");
+  const tokenCalls = crm.s.tokenBodies.length;
+  const used = q.all<any>("SELECT * FROM oauth_pending WHERE connector_id = ?", conId);
+  assert.ok(used.length === 1 && used[0].used_at, "single use: marked used, kept only to recognise a duplicate arrival");
+  // The same callback arriving a second time (popup + tab, provider redirecting twice): no second exchange, a friendly page.
+  const twice = await call("GET", `/connectors/oauth/callback${redirect.search}`);
+  assert.equal(twice.status, 200, twice.text);
+  assert.match(twice.text, /Déjà connecté à Fake CRM/);
+  assert.equal(crm.s.tokenBodies.length, tokenCalls, "the code is not exchanged again");
 
   const list = await call("GET", "/connectors");
   const con = list.json.connectors.find((c: any) => c.id === conId);

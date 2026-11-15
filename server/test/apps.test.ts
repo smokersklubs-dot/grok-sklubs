@@ -325,8 +325,12 @@ test("Google sign-in: PKCE, the client secret only at the token endpoint, tokens
   assert.match(tokensOf(perso).access, /^ya29\./);
   assert.equal(JSON.stringify(q.all("SELECT * FROM native_clients")).includes(SECRET.google), false, "the client secret is sealed too");
   for (const p of ["/native", "/connectors/catalog", "/connectors", "/audit", "/export/data", "/bots"]) assert.equal((await call("GET", p)).text.includes("SECRETVALUE"), false, p);
-  // The state is single use.
-  assert.equal((await signIn(start.json.authorizeUrl)).status, 400, "the same sign-in cannot be replayed");
+  // The state is single use: a second arrival exchanges nothing and only says it is already done.
+  const exchanges = g.tokenBodies.length;
+  const again = await signIn(start.json.authorizeUrl);
+  assert.equal(again.status, 200, again.text);
+  assert.match(again.text, /Déjà connecté à Gmail — perso/);
+  assert.equal(g.tokenBodies.length, exchanges, "the same sign-in cannot be replayed into a new exchange");
   const replay = await call("GET", `/native/google/callback?code=gcode_x&state=nope`);
   assert.equal(replay.status, 400);
 });

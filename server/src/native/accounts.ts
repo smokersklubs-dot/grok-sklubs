@@ -187,13 +187,18 @@ const asTokens = (j: any, keepRefresh?: string): Tokens => ({
 });
 
 /** The browser came back from the vendor. The state is consumed whatever happens next. */
-export async function finishSignIn(vendor: NativeVendor, params: { state: string; code?: string; error?: string }, sessionUserId?: string): Promise<AccountRecord> {
-  const row = params.state ? q.get<{ user_id: string; account_id: string; verifier_enc: string | null; expires_at: number }>("SELECT * FROM native_pending WHERE state_hash = ?", sha256(params.state)) : undefined;
-  if (row) q.run("DELETE FROM native_pending WHERE state_hash = ?", sha256(params.state));
+export async function finishSignIn(vendor: NativeVendor, params: { state: string; code?: string; error?: string }, sessionUserId?: string): Promise<AccountRecord & { alreadyDone?: boolean }> {
+  const row = params.state ? q.get<{ user_id: string; account_id: string; verifier_enc: string | null; expires_at: number; used_at: number | null }>("SELECT * FROM native_pending WHERE state_hash = ?", sha256(params.state)) : undefined;
   if (!row || row.expires_at < now()) throw new Error("This sign-in link has expired or was already used. Start again from Sklubot.");
   if (sessionUserId && sessionUserId !== row.user_id) throw new Error("This sign-in was started from another account.");
   const acc = accounts.owned(row.user_id, row.account_id);
   if (!acc || acc.vendor !== vendor) throw new Error("That connector does not exist any more.");
+  if (row.used_at) {
+    // The same callback arriving twice: nothing is exchanged again; it only reports how the first arrival went.
+    if (acc.status === "ready") return Object.assign(acc, { alreadyDone: true });
+    throw new Error("This sign-in link has expired or was already used. Start again from Sklubot.");
+  }
+  q.run("UPDATE native_pending SET used_at = ? WHERE state_hash = ?", now(), sha256(params.state));
   const fail = (why: string) => { audit(acc.userId, "apps", `Sign-in failed: ${acc.name} (${why.slice(0, 120)})`); return new Error(why); };
   if (params.error) throw fail(`The app refused the sign-in: ${params.error.slice(0, 100)}`);
   if (!params.code) throw fail("The app did not send a sign-in code.");

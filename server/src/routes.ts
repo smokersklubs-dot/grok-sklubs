@@ -327,10 +327,11 @@ api.get("/connectors/oauth/callback", async (c) => {
     const r = await connectors.finishSignIn({ state: c.req.query("state") ?? "", code: c.req.query("code"), error: c.req.query("error"), iss: c.req.query("iss") }, session?.id);
     const owner = users.byId(r.userId);
     if (owner) locale = owner.locale;
-    ok = r.connector.status === "ready";
-    message = ok ? tr(locale, "Signed in to {name}. You can close this window.", { name: r.connector.name }) : tr(locale, "Signed in to {name}, but it does not answer yet: {detail}", { name: r.connector.name, detail: r.connector.error ?? "" });
+    ok = r.connector.status === "ready" || !!r.alreadyDone;
+    message = r.alreadyDone ? tr(locale, "Already signed in to {name}. You can close this window.", { name: r.connector.name })
+      : ok ? tr(locale, "Signed in to {name}. You can close this window.", { name: r.connector.name }) : tr(locale, "Signed in to {name}, but it does not answer yet: {detail}", { name: r.connector.name, detail: r.connector.error ?? "" });
     const bot = r.botId ? bots.owned(r.userId, r.botId) : null;
-    if (bot && ok) {
+    if (bot && ok && !r.alreadyDone) {
       if (r.seq !== null) rows.updateCard(bot, bot.generation, r.seq, (k) => (k.type === "connect" ? { ...k, status: "connected" } : k));
       enqueue(bot.id, { kind: "system", text: `The user signed in to ${r.connector.name}. Its tools are available now — continue with what you were doing.` });
     }
@@ -363,8 +364,8 @@ api.get("/native/:vendor/callback", async (c) => {
     const acc = await nativeFinish(vendor, { state: c.req.query("state") ?? "", code: c.req.query("code"), error: c.req.query("error") }, session?.id);
     locale = users.localeOf(acc.userId);
     ok = true;
-    message = tr(locale, "Signed in to {name}. You can close this window.", { name: acc.name });
-    syncSlackSockets();
+    message = tr(locale, acc.alreadyDone ? "Already signed in to {name}. You can close this window." : "Signed in to {name}. You can close this window.", { name: acc.name });
+    if (!acc.alreadyDone) syncSlackSockets();
   } catch (err) {
     message = tr(locale, "The sign-in did not finish: {detail}", { detail: /[{}]/.test((err as Error).message) ? (err as Error).message : tr(locale, (err as Error).message) });
   }

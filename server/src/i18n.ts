@@ -237,6 +237,7 @@ const FR: Record<string, string> = {
   "Signed in to {name}, but it does not answer yet: {detail}": "Connecté à {name}, mais l'app ne répond pas encore : {detail}",
   "The sign-in did not finish: {detail}": "La connexion n'a pas abouti : {detail}",
   "Back to Sklubot": "Retour à Sklubot",
+  "Already signed in to {name}. You can close this window.": "Déjà connecté à {name}. Tu peux fermer cette fenêtre.",
   "This sign-in link has expired or was already used. Start again from Sklubot.": "Ce lien de connexion a expiré ou a déjà servi. Recommence depuis Sklubot.",
   "This sign-in was started from another account.": "Cette connexion a été lancée depuis un autre compte.",
   "That connector does not exist any more.": "Cette app n'existe plus.",

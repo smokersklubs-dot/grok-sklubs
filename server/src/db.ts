@@ -397,6 +397,9 @@ function CREATE_EXTRA() {
   add("bots", "relay_enabled", "INTEGER NOT NULL DEFAULT 0");
   add("bots", "third_party_cap_usd", "REAL");
   add("settings", "cache_policy", "TEXT NOT NULL DEFAULT '{}'");
+  // A sign-in callback can reach the server twice (popup + tab, or the provider redirecting twice): the second one is told it is already done.
+  add("oauth_pending", "used_at", "INTEGER");
+  add("native_pending", "used_at", "INTEGER");
   db.exec(`
   -- What a task spent since the user last spoke to it (worker bot + scope key: chat:<thread>, task:<id>, routine:<run>),
   -- and the checkpoint it stops at (NULL: the bot's or the account's setting).

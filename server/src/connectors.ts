@@ -303,13 +303,20 @@ export const connectors = {
    * The browser came back from the provider. The state is consumed whatever happens next.
    * `iss` (RFC 9207), when the provider sends it, must name the authorization server we used.
    */
-  async finishSignIn(params: { state: string; code?: string; error?: string; iss?: string }, sessionUserId?: string): Promise<{ userId: string; connector: Connector; botId: string | null; seq: number | null }> {
-    const row = params.state ? q.get<{ user_id: string; connector_id: string; verifier_enc: string; bot_id: string | null; seq: number | null; expires_at: number }>("SELECT * FROM oauth_pending WHERE state_hash = ?", sha256(params.state)) : undefined;
-    if (row) q.run("DELETE FROM oauth_pending WHERE state_hash = ?", sha256(params.state));
+  async finishSignIn(params: { state: string; code?: string; error?: string; iss?: string }, sessionUserId?: string): Promise<{ userId: string; connector: Connector; botId: string | null; seq: number | null; alreadyDone?: boolean }> {
+    const row = params.state ? q.get<{ user_id: string; connector_id: string; verifier_enc: string; bot_id: string | null; seq: number | null; expires_at: number; used_at: number | null }>("SELECT * FROM oauth_pending WHERE state_hash = ?", sha256(params.state)) : undefined;
     if (!row || row.expires_at < now()) throw new Error("This sign-in link has expired or was already used. Start again from Sklubot.");
     if (sessionUserId && sessionUserId !== row.user_id) throw new Error("This sign-in was started from another account.");
     const record = recordOf(row.user_id, row.connector_id);
     if (!record) throw new Error("That connector does not exist any more.");
+    if (row.used_at) {
+      // A second arrival of the same callback: nothing is exchanged again (the state stays single use); it only reports how the first one went.
+      const connector = connectors.list(row.user_id).find((c) => c.id === record.id);
+      if (connector && connector.oauth?.signedIn) return { userId: row.user_id, connector, botId: null, seq: null, alreadyDone: true };
+      throw new Error("This sign-in link has expired or was already used. Start again from Sklubot.");
+    }
+    // Consumed now; the row is kept until it expires only to recognise a duplicate arrival.
+    q.run("UPDATE oauth_pending SET used_at = ? WHERE state_hash = ?", now(), sha256(params.state));
     const fail = (why: string) => { audit(row.user_id, "apps", `Sign-in failed: ${record.name} (${why.slice(0, 120)})`); return new Error(why); };
     if (params.error) throw fail(`The app refused the sign-in: ${params.error.slice(0, 100)}`);
     if (!params.code) throw fail("The app did not send a sign-in code.");
