@@ -31,6 +31,7 @@ Panneau du bot → **Pépites** → **Lancer la chasse aux pépites** (chaque jo
 ## 6. Téléphones
 - **iPhone** : Safari → ton adresse → Partager → **Sur l'écran d'accueil**.
 - **Android** : ouvre `https://ton-domaine/download/sklubot.apk` et installe.
+  - « Application non installée » : désinstalle d'abord toute ancienne Sklubot (Paramètres → Applications → Sklubot → Désinstaller), supprime les anciens `sklubot*.apk` dans Mes fichiers → Téléchargements, retélécharge, puis réessaie. Sur Samsung, vérifie aussi Paramètres → Sécurité et confidentialité → **Blocage automatique** (à désactiver le temps de l'installation) et Play Store → Play Protect.
 - [ ] Discussion, personnages et pépites s'affichent bien ; le micro marche.
 
 ## 7. Le cri de joie
