@@ -1,3 +1,4 @@
+import { BotReachTab } from "./Wave7";
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { api, errText } from "../api";
 import { tn, useT } from "../i18n";
@@ -1195,13 +1196,14 @@ export function BotSettings({ botId, tab }: { botId: string; tab: BotSettingsTab
   if (!bot) return null;
 
   const isRoom = bot.kind === "room";
-  const tabs: { id: BotSettingsTab; label: string; icon: "settings" | "book" | "brain" | "clock" | "send" | "mail" | "users"; count?: number }[] = isRoom
+  const tabs: { id: BotSettingsTab; label: string; icon: "settings" | "book" | "brain" | "clock" | "send" | "mail" | "users" | "globe"; count?: number }[] = isRoom
     ? [{ id: "general", label: t("botSettings.tab.general"), icon: "settings" }]
     : [
         { id: "general", label: t("botSettings.tab.general"), icon: "settings" },
         { id: "skills", label: t("botSettings.tab.skills"), icon: "book", count: bundle?.skills.length },
         { id: "memories", label: t("botSettings.tab.memories"), icon: "brain", count: bundle?.memories.length },
         { id: "routines", label: t("botSettings.tab.routines"), icon: "clock", count: bundle?.routines.length },
+        { id: "reach", label: t("botSettings.tab.reach"), icon: "globe" },
         { id: "telegram", label: t("botSettings.tab.telegram"), icon: "send" },
         { id: "email", label: t("botSettings.tab.email"), icon: "mail" },
         { id: "sharing", label: t("botSettings.tab.sharing"), icon: "users" },
@@ -1242,6 +1244,7 @@ export function BotSettings({ botId, tab }: { botId: string; tab: BotSettingsTab
           {active === "skills" && <Skills bot={bot} bundle={bundle} />}
           {active === "memories" && <Memories bot={bot} bundle={bundle} />}
           {active === "routines" && <Routines bot={bot} bundle={bundle} />}
+          {active === "reach" && <BotReachTab key={bot.id} bot={bot} />}
           {active === "telegram" && <Telegram key={bot.id} bot={bot} />}
           {active === "email" && <BotEmailTab key={bot.id} bot={bot} />}
           {active === "sharing" && <BotSharingTab key={bot.id} bot={bot} />}

@@ -16,8 +16,8 @@ export type ModalState =
   | { kind: "search"; mode?: "chat" }
   | { kind: "duplicate"; botId: string }
   | { kind: "connectors"; prefill?: { name: string; botId: string; seq: number } };
-export type BotSettingsTab = "general" | "skills" | "memories" | "routines" | "telegram" | "email" | "sharing";
-export type AppSection = "general" | "profile" | "models" | "notifications" | "computer" | "devices" | "permissions" | "rules" | "memory" | "connectors" | "vault" | "pages" | "usage" | "checkins" | "activity" | "team" | "workspaces" | "voice" | "email" | "account";
+export type BotSettingsTab = "general" | "skills" | "memories" | "routines" | "reach" | "telegram" | "email" | "sharing";
+export type AppSection = "general" | "profile" | "models" | "notifications" | "computer" | "devices" | "permissions" | "rules" | "memory" | "connectors" | "vault" | "keys" | "pages" | "usage" | "checkins" | "activity" | "team" | "workspaces" | "voice" | "email" | "account";
 
 /** A short message at the bottom of the window, optionally with one action (usually "Undo"). */
 export interface Toast { id: number; text: string; action?: { label: string; run: () => void | Promise<void> } }
@@ -176,6 +176,8 @@ interface Store {
   memorySettingsTick: number;
   /** Bumped when vault items change on the server (a secret saved from a card, an import). */
   vaultTick: number;
+  /** Wave 7: key health, temporary links or reading logins changed. */
+  wave7Tick: number;
   /** The user's own sidebar sections. */
   sections: BotSection[];
   /** Find in the open chat: highlighted matches, and the one shown (next / previous). */
@@ -317,6 +319,7 @@ export const useStore = create<Store>((set, get) => ({
   mailTick: {},
   memorySettingsTick: 0,
   vaultTick: 0,
+  wave7Tick: 0,
   sections: [],
   find: null,
   routineTicks: {},
@@ -752,6 +755,11 @@ export const useStore = create<Store>((set, get) => ({
         break;
       case "workspaces":
         set((s) => ({ workspacesTick: s.workspacesTick + 1 }));
+        break;
+      case "health":
+      case "publicLinks":
+      case "reach":
+        set((s) => ({ wave7Tick: s.wave7Tick + 1 }));
         break;
       case "mail":
         set((s) => ({ mailTick: { ...s.mailTick, [ev.botId]: (s.mailTick[ev.botId] ?? 0) + 1 } }));

@@ -232,3 +232,52 @@ tant que l'app est en mode Test, seuls les « Test users » ajoutés peuvent se 
   ordinateur et lance l'outil officiel (Claude Code ou Codex) pour chaque tour, avec ses propres routines et sa
   propre messagerie entre bots, gérées par Sklubot. Nous n'utilisons pas le mode « plusieurs bots » intégré à ces
   outils : les bots créés dans Sklubot ne s'affichent donc pas dans leurs applications de bureau, et inversement.
+
+## Lecture du web et des réseaux (Agent Reach) — vague 7
+
+Chaque ordinateur de bot contient **Agent Reach** (licence MIT, <https://github.com/Panniantong/Agent-Reach>, version **1.6.1**
+épinglée) : un outil en ligne de commande qui **lit** le web, Reddit, X, Instagram, Facebook, YouTube, GitHub… et ne sait
+rien publier. L'image `sklubot-desktop` l'installe avec `uv` depuis la **release GitHub** v1.6.1 (empreinte SHA-256
+vérifiée), jamais depuis PyPI (un autre projet y porte le même nom), puis lance son `setup` par défaut.
+
+- **Services joints par Agent Reach** (depuis l'ordinateur du bot, pas depuis le serveur) : `r.jina.ai` pour lire une
+  page, **Exa** (`mcp.exa.ai`) pour la recherche web, et les sites eux-mêmes (reddit.com, x.com, youtube.com…). Si ton
+  VPS filtre les sorties, autorise ces hôtes. Aucune clé n'est nécessaire pour ces deux services.
+- **Connexions de lecture** : réglages du bot → **Lecture et clés** → « Se connecter » à côté de Reddit, X, Instagram ou
+  Facebook. Une fenêtre s'ouvre sur l'écran du bot ; tu te connectes **toi-même** (utilise de préférence un compte
+  secondaire). Le bot ne voit jamais ton mot de passe ; « Se déconnecter » efface la connexion.
+- **YouTube** bloque souvent les adresses de centres de données (« Sign in to confirm you're not a bot ») : le bot le dit
+  clairement et, si ton ordinateur est relié avec Sklubot Relais, propose de passer par lui.
+- Après la mise à jour, **reconstruis l'image** (`docker compose -f docker-compose.vps.yml build desktop-image`, ou
+  `npm run computer:build`) puis **efface une fois l'ordinateur des bots existants** (Réglages → Ordinateur → Effacer)
+  pour qu'ils reçoivent Agent Reach et l'aide `sklubot-api`.
+- On peut couper la famille d'outils « Lecture (Agent Reach) » bot par bot (réglages du bot → Outils).
+
+## Relais d'identifiants pour les programmes des bots — vague 7
+
+Un script lancé par un bot sur son ordinateur peut appeler une API avec une clé de ton coffre **sans que la clé entre
+dans l'ordinateur** : il passe par Sklubot, qui ajoute la clé de son côté, seulement pour les hôtes liés à ce secret.
+
+- À activer **bot par bot** : réglages du bot → **Lecture et clés** → « Les programmes peuvent utiliser mes clés »
+  (désactivé par défaut). La première utilisation de chaque clé te demande ton accord ; après du contenu extérieur,
+  chaque modification (POST, PUT, PATCH, DELETE) le redemande.
+- Dans l'ordinateur : `sklubot-api "Nom du secret" GET https://api.exemple.com/v1/...` ; dans du code :
+  `$SKLUBOT_RELAY_URL/<secret>/<hôte>/<chemin>` avec l'en-tête `X-Sklubot-Relay-Token: $SKLUBOT_RELAY_TOKEN`
+  (fichier `~/.sklubot/relay.env`).
+- Le relais (`/egress/…`) n'est joignable **que depuis le réseau interne** des ordinateurs des bots : le `Caddyfile`
+  fourni répond 404 pour `/egress/` comme pour `/mcp/`, et Sklubot refuse toute requête passée par un proxy. Avec un
+  autre reverse proxy (Coolify/Traefik…), garde ce blocage.
+
+## Santé des clés, import d'un projet, liens temporaires — vague 7
+
+- **Réglages → Clés et connexions** : l'état de chaque clé et connexion (fonctionne, clé refusée, à reconnecter,
+  incertain, jamais vérifié). Vérification gratuite en lecture seule à l'enregistrement et une fois par jour
+  (`HEALTH_EVERY_MIN`, 1440 par défaut). Quand une clé casse : une notification, une ligne dans la discussion du bot
+  principal, et les routines qui en dépendent se mettent en pause.
+- **Importer un projet** (même page) : dépose un `.env` et/ou un zip de compétences ; tu vois les noms et les hôtes
+  devinés, jamais les valeurs, puis tu confirmes.
+- **Liens temporaires** (Réglages → Pages) : quand un service vidéo demande l'adresse publique d'une image de
+  référence, le bot peut publier un fichier de sa bibliothèque pour 1 h (24 h au plus) à l'adresse `/l/…`, révocable.
+  Cette adresse doit rester publique (ne la bloque pas dans le proxy).
+- **Outils payants** : prix d'une vidéo à annoncer avant l'appel avec `VIDEO_PRICE_USD` (facultatif ; sinon « prix
+  inconnu » est annoncé) ; plafond quotidien par bot dans ses réglages (Lecture et clés → Outils payants).

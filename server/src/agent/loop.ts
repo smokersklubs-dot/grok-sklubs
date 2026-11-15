@@ -1,6 +1,7 @@
 import { clearLive, emit, getLive, setLive } from "../bus.js";
 import { botPathOf, browserAvailable, computerKind, imageForModel, screen, shellAvailable, shellOnHost } from "../computer.js";
 import { config } from "../config.js";
+import { setRelayAsker } from "../egress.js";
 import { connectors } from "../connectors.js";
 import { defaultModelRef, ProviderError, resolveModel, validateToolInput, type TurnResult, type Block, type ChatMessage, type Effort, type TextBlock, type ToolResultBlock, type ToolSpec, type ToolUseBlock } from "../llm/index.js";
 import { tr } from "../i18n.js";
@@ -1211,6 +1212,32 @@ export async function waitForApproval(turn: Turn, call: ToolUseBlock, verdict: E
 }
 
 /**
+ * Wave 7: asks the user on a card for something that is not a tool call of a turn — a program on the bot's computer
+ * calling an API through the credential relay (egress.ts) — and waits for the answer (at most `timeoutMs`). The card is
+ * single-use (no action hash: the caller holds the request in hand while it waits). "Always" sets the policy as usual,
+ * unless the card is `once`.
+ */
+export async function askUser(bot: BotRecord, f: { title: string; detail: string; policyKey: string; source: string; once?: boolean }, timeoutMs = config.approvalExpireMs, signal?: AbortSignal): Promise<"allowed" | "always" | "denied" | "expired"> {
+  const approvalId = newId("apr");
+  const card = rows.append(bot, { kind: "card", card: { type: "approval", approvalId, title: f.title, detail: clip(f.detail, 1600), tool: f.policyKey, source: f.source, status: "pending", ...(f.once ? { once: true } : {}) } });
+  approvals.create(bot.id, bot.userId, bot.generation, card.seq, f.policyKey, approvalId, null);
+  bots.bumpUnread(bot.id);
+  emit(bot.userId, { type: "tasks", botId: bot.id });
+  tell({ type: "waiting", bot, text: f.title, approvalId, tool: f.policyKey });
+  const status = await new Promise<string>((resolve) => {
+    const finish = (s: string) => { clearTimeout(timer); signal?.removeEventListener("abort", onAbort); waiters.delete(approvalId); waiterBot.delete(approvalId); resolve(s); };
+    const onAbort = () => finish("expired");
+    const timer = setTimeout(() => finish("expired"), timeoutMs);
+    signal?.addEventListener("abort", onAbort, { once: true });
+    waiters.set(approvalId, finish);
+    waiterBot.set(approvalId, bot.id);
+  });
+  if (status === "expired") lapse(approvalId);
+  if ((status === "allowed" || status === "always") && !approvals.consume(approvalId, "")) return "expired";
+  return status as "allowed" | "always" | "denied" | "expired";
+}
+
+/**
  * `actor` (wave 6): an admin of the workspace a bot is shared with, answering for its owner when the bot's rule lets
  * admins approve (routes.ts checks that). Their "Always" counts as once: standing permissions stay the owner's choice.
  */
@@ -1244,3 +1271,6 @@ function noteCheckinOutcome(userId: string, spoke: boolean) {
 }
 
 export const liveOf = getLive;
+
+// Wave 7: the credential relay asks the user through the same approval cards (egress.ts cannot import this file).
+setRelayAsker((bot, f) => askUser(bot, f, Math.min(config.approvalExpireMs, 5 * 60_000)));

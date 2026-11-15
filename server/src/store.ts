@@ -82,6 +82,7 @@ function toBot(r: any): BotRecord {
     fallbackModels: r.fallback_models ? cleanModelList(safeJson(r.fallback_models)) : null, createdBy: r.created_by ?? null,
     nudges: cleanNudges(safeJson(r.nudges || "{}")),
     spendCheckpointUsd: typeof r.spend_checkpoint_usd === "number" ? r.spend_checkpoint_usd : null,
+    relayEnabled: !!r.relay_enabled, thirdPartyDailyCapUsd: typeof r.third_party_cap_usd === "number" ? r.third_party_cap_usd : null,
     telegramTokenEnc: r.telegram_token_enc ?? null, telegramChatId: r.telegram_chat_id ?? null, telegramCode: r.telegram_code ?? null, telegramOffset: r.telegram_offset ?? 0,
     memberIds: JSON.parse(r.members || "[]"), hidden: !!r.hidden, parentId: r.parent_id, nextSeq: r.next_seq, rev: r.rev,
     preview: last ? clip(previewOf(JSON.parse(last.body), users.localeOf(r.user_id)).replace(/\s+/g, " "), 140) : "",
@@ -259,6 +260,10 @@ export const bots = {
     // The bot's own spend checkpoint (USD, 0 = never stops), or null to follow the account's setting.
     if (patch.spendCheckpointUsd === null) { sets.push("spend_checkpoint_usd = ?"); vals.push(null); }
     else if (typeof patch.spendCheckpointUsd === "number" && Number.isFinite(patch.spendCheckpointUsd)) { sets.push("spend_checkpoint_usd = ?"); vals.push(Math.round(Math.min(10_000, Math.max(0, patch.spendCheckpointUsd)) * 100) / 100); }
+    // Wave 7: the credential relay for this bot's programs, and its daily cap on paid third-party tools (null: none).
+    if (typeof patch.relayEnabled === "boolean") { sets.push("relay_enabled = ?"); vals.push(patch.relayEnabled ? 1 : 0); }
+    if (patch.thirdPartyDailyCapUsd === null) { sets.push("third_party_cap_usd = ?"); vals.push(null); }
+    else if (typeof patch.thirdPartyDailyCapUsd === "number" && Number.isFinite(patch.thirdPartyDailyCapUsd)) { sets.push("third_party_cap_usd = ?"); vals.push(Math.round(Math.min(10_000, Math.max(0, patch.thirdPartyDailyCapUsd)) * 100) / 100); }
     if (Array.isArray(patch.disabledTools)) { sets.push("disabled_tools = ?"); vals.push(JSON.stringify(patch.disabledTools.filter((g) => (TOOL_GROUPS as readonly string[]).includes(g as string)))); }
     if (!sets.length) return;
     q.run(`UPDATE bots SET ${sets.join(", ")}, updated_at = ? WHERE id = ?`, ...vals, now(), id);
@@ -687,13 +692,14 @@ export const settings = {
 
 // ── Vault: saved logins, secrets (API keys) and TOTP seeds ──────────────────
 export interface VaultRecord extends VaultItem { userId: string; passwordEnc: string | null }
-export interface VaultFields { kind?: VaultKind; name: string; site: string; username: string; passwordEnc: string | null; note: string; hosts?: string[]; header?: string; prefix?: string; digits?: number; period?: number; brand?: string; last4?: string; dailyCapUsd?: number | null; monthlyCapUsd?: number | null }
+export interface VaultFields { kind?: VaultKind; name: string; site: string; username: string; passwordEnc: string | null; note: string; hosts?: string[]; header?: string; prefix?: string; checkUrl?: string; digits?: number; period?: number; brand?: string; last4?: string; dailyCapUsd?: number | null; monthlyCapUsd?: number | null }
 const toVault = (r: any): VaultRecord => {
   const meta = (() => { try { return JSON.parse(r.meta || "{}"); } catch { return {}; } })();
   const kind: VaultKind = r.kind === "secret" || r.kind === "totp" || r.kind === "card" ? r.kind : "login";
   return {
     id: r.id, kind, userId: r.user_id, name: r.name, site: r.site, username: r.username, hasPassword: !!r.password_enc, passwordEnc: r.password_enc, note: r.note, createdAt: r.created_at,
     hosts: Array.isArray(meta.hosts) ? meta.hosts.filter((h: unknown) => typeof h === "string") : [], header: typeof meta.header === "string" ? meta.header : "", prefix: typeof meta.prefix === "string" ? meta.prefix : "",
+    checkUrl: typeof meta.checkUrl === "string" ? meta.checkUrl : "",
     digits: meta.digits === 8 ? 8 : 6, period: Number.isInteger(meta.period) && meta.period >= 15 && meta.period <= 120 ? meta.period : 30,
     card: kind === "card" ? {
       brand: typeof meta.brand === "string" ? meta.brand : "", last4: typeof meta.last4 === "string" ? meta.last4 : "",
@@ -708,7 +714,7 @@ export function cardSpent(cardId: string, period: "day" | "month"): number {
   const since = period === "day" ? Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) : Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1);
   return q.get<{ s: number | null }>("SELECT SUM(amount) AS s FROM payments WHERE card_id = ? AND created_at >= ? AND status IN ('approved','filled','submitted','uncertain')", cardId, since)?.s ?? 0;
 }
-const metaOf = (f: VaultFields) => JSON.stringify(f.kind === "secret" ? { hosts: f.hosts ?? [], header: f.header ?? "", prefix: f.prefix ?? "" } : f.kind === "totp" ? { digits: f.digits ?? 6, period: f.period ?? 30 }
+const metaOf = (f: VaultFields) => JSON.stringify(f.kind === "secret" ? { hosts: f.hosts ?? [], header: f.header ?? "", prefix: f.prefix ?? "", ...(f.checkUrl ? { checkUrl: f.checkUrl } : {}) } : f.kind === "totp" ? { digits: f.digits ?? 6, period: f.period ?? 30 }
   : f.kind === "card" ? { brand: f.brand ?? "", last4: f.last4 ?? "", dailyCapUsd: f.dailyCapUsd ?? null, monthlyCapUsd: f.monthlyCapUsd ?? null } : {});
 export const publicVault = ({ userId, passwordEnc, ...rest }: VaultRecord): VaultItem => rest;
 export const vault = {

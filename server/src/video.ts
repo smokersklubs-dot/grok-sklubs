@@ -31,7 +31,7 @@ import { guardedFetch } from "./net.js";
  * (gemini-omni-1.2-flash). DEMO_MODE=1 with VIDEO_PROVIDER=demo makes a test clip locally (needs ffmpeg).
  */
 export type VideoProviderId = "xai" | "gemini" | "demo";
-interface VideoService { id: VideoProviderId; label: string; model: string; baseUrl: string; apiKey: string }
+export interface VideoService { id: VideoProviderId; label: string; model: string; baseUrl: string; apiKey: string }
 
 export function videoService(): VideoService | null {
   const e = process.env;
@@ -163,8 +163,29 @@ async function viaDemo(r: VideoRequest): Promise<VideoResult> {
   } finally { rmSync(dir, { recursive: true, force: true }); }
 }
 
-export async function generateVideo(r: VideoRequest): Promise<VideoResult> {
-  const svc = videoService();
+/**
+ * Wave 7 (spec 08 A3): every configured video API, in the order the provider chain tries them (the preferred one first,
+ * as videoService() picks it, then the others). Prices: none is documented in the responses we use before the call, so
+ * an estimate comes only from VIDEO_PRICE_USD (per video, set by the admin); otherwise the price is unknown and the
+ * user is asked.
+ */
+export function videoServices(): VideoService[] {
+  const first = videoService();
+  if (!first) return [];
+  if (first.id === "demo") return [first];
+  const e = process.env;
+  const want = (e.VIDEO_PROVIDER ?? "").trim().toLowerCase();
+  if (want === "xai" || want === "gemini") return [first];
+  const others: VideoService[] = [];
+  const xaiKey = e.VIDEO_XAI_API_KEY || e.XAI_API_KEY;
+  if (first.id !== "xai" && xaiKey) others.push({ id: "xai", label: "xAI", model: e.XAI_VIDEO_MODEL || "grok-imagine-video-1.5", baseUrl: (e.XAI_BASE_URL || "https://api.x.ai/v1").replace(/\/$/, ""), apiKey: xaiKey });
+  if (first.id !== "gemini" && e.GEMINI_API_KEY) others.push({ id: "gemini", label: "Google Gemini", model: e.GEMINI_VIDEO_MODEL || "gemini-omni-1.2-flash", baseUrl: (e.GEMINI_BASE_URL || "https://generativelanguage.googleapis.com").replace(/\/$/, ""), apiKey: e.GEMINI_API_KEY });
+  return [first, ...others];
+}
+export const videoPriceEstimate = (): number | null => { const v = Number(process.env.VIDEO_PRICE_USD); return Number.isFinite(v) && v > 0 ? v : null; };
+
+export async function generateVideo(r: VideoRequest, via?: VideoService): Promise<VideoResult> {
+  const svc = via ?? videoService();
   if (!svc) throw new Error("no video service is configured on this server");
   if (svc.id === "xai") return viaXai(svc, r);
   if (svc.id === "gemini") return viaGemini(svc, r);

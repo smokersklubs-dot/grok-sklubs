@@ -11,6 +11,7 @@ import { connectors } from "./connectors.js";
 import { defaultModelRef, listProviders } from "./llm/index.js";
 import { api, site } from "./routes.js";
 import { startScheduler } from "./scheduler.js";
+import { startHealthChecks } from "./health.js";
 import { attachLiveScreens } from "./vnc.js";
 import { relayUpgrade } from "./relay.js";
 import { expireOrphanApprovals, recoverInterruptedTurns } from "./agent/loop.js";
@@ -57,6 +58,7 @@ if (lapsed) console.log(`${lapsed} approval(s) left from before the restart are 
 const uncertain = sweepUncertain();
 if (uncertain) console.log(`${uncertain} action(s) cut off by the restart are marked uncertain.`);
 startScheduler();
+startHealthChecks();
 if (!config.schedulerOff) { telegram.start(); recoverInterruptedTurns(); }
 const server = serve({ fetch: app.fetch, port: config.port }, () => {
   const ready = listProviders().filter((p) => p.available()).map((p) => p.label);

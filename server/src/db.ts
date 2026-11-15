@@ -393,6 +393,10 @@ function CREATE_EXTRA() {
   // Voice settings of the account (JSON; API keys sealed inside), and who started the turn a usage line belongs to.
   add("settings", "voice", "TEXT NOT NULL DEFAULT '{}'");
   add("usage", "actor_id", "TEXT");
+  // Wave 7: the credential relay per bot (off by default), the daily cap on paid third-party tools, the cache policy.
+  add("bots", "relay_enabled", "INTEGER NOT NULL DEFAULT 0");
+  add("bots", "third_party_cap_usd", "REAL");
+  add("settings", "cache_policy", "TEXT NOT NULL DEFAULT '{}'");
   db.exec(`
   -- What a task spent since the user last spoke to it (worker bot + scope key: chat:<thread>, task:<id>, routine:<run>),
   -- and the checkpoint it stops at (NULL: the bot's or the account's setting).
@@ -428,6 +432,42 @@ function CREATE_EXTRA() {
     status TEXT NOT NULL DEFAULT 'pending', created_at INTEGER NOT NULL
   );
   CREATE INDEX IF NOT EXISTS api_connectors_user ON api_connectors(user_id, created_at);
+  -- Wave 7 (spec 08). Credential relay: one token per bot computer (stored hashed), revocable.
+  CREATE TABLE IF NOT EXISTS egress_tokens (
+    bot_id TEXT PRIMARY KEY REFERENCES bots(id) ON DELETE CASCADE, token_hash TEXT NOT NULL, created_at INTEGER NOT NULL
+  );
+  -- Health of keys and connections (A2): the last state per item, and the state an alert was last sent for.
+  CREATE TABLE IF NOT EXISTS credential_health (
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, kind TEXT NOT NULL, ref_id TEXT NOT NULL, name TEXT NOT NULL,
+    state TEXT NOT NULL DEFAULT 'never', detail TEXT NOT NULL DEFAULT '', how TEXT NOT NULL DEFAULT '', rate_limited INTEGER NOT NULL DEFAULT 0,
+    checked_at INTEGER, alerted_state TEXT NOT NULL DEFAULT '', PRIMARY KEY (user_id, kind, ref_id)
+  );
+  -- Paid third-party tool calls (A4), in micro-dollars: reserved before the call, settled at the real cost after.
+  -- idem_key: the same request sent again (a retry) is not charged twice and gets the same result back.
+  CREATE TABLE IF NOT EXISTS tool_spend (
+    id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, bot_id TEXT NOT NULL, tool TEXT NOT NULL,
+    provider TEXT NOT NULL, idem_key TEXT NOT NULL, reserved_micros INTEGER NOT NULL DEFAULT 0, actual_micros INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'reserved', result TEXT, created_at INTEGER NOT NULL, settled_at INTEGER
+  );
+  CREATE UNIQUE INDEX IF NOT EXISTS tool_spend_idem ON tool_spend(user_id, idem_key);
+  CREATE INDEX IF NOT EXISTS tool_spend_bot ON tool_spend(bot_id, created_at);
+  -- Response cache for read-only data calls (A5); each account sees only its own entries.
+  CREATE TABLE IF NOT EXISTS tool_cache (
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, cache_key TEXT NOT NULL, tool TEXT NOT NULL, provider TEXT NOT NULL,
+    response TEXT NOT NULL, created_at INTEGER NOT NULL, expires_at INTEGER, PRIMARY KEY (user_id, cache_key)
+  );
+  -- Temporary public links to one library file (A8). Only the token's hash is kept.
+  CREATE TABLE IF NOT EXISTS public_links (
+    id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, bot_id TEXT NOT NULL, path TEXT NOT NULL,
+    mime TEXT NOT NULL, size INTEGER NOT NULL, token_hash TEXT NOT NULL UNIQUE, expires_at INTEGER NOT NULL, revoked_at INTEGER,
+    downloads INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS public_links_user ON public_links(user_id, created_at);
+  -- A provider chain switched to a paid provider for a bot only once the user said yes (A3): remembered here.
+  CREATE TABLE IF NOT EXISTS paid_consents (
+    bot_id TEXT NOT NULL REFERENCES bots(id) ON DELETE CASCADE, capability TEXT NOT NULL, provider TEXT NOT NULL, created_at INTEGER NOT NULL,
+    PRIMARY KEY (bot_id, capability, provider)
+  );
   -- Telegram messages the bot sent that mean something on a reaction: an approval it asked, or one of its replies.
   CREATE TABLE IF NOT EXISTS telegram_messages (
     bot_id TEXT NOT NULL REFERENCES bots(id) ON DELETE CASCADE, message_id INTEGER NOT NULL, kind TEXT NOT NULL, ref TEXT NOT NULL,

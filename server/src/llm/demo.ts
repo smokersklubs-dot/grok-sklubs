@@ -30,6 +30,17 @@ function plan(text: string, has: (name: string) => boolean): Block[] | null {
   }
   // A long task (wave 4 demo): progress lines while it works, until the step limit stops it.
   if (/\b(long task|longue tâche|longue tache)\b/.test(lower)) return call("progress_update", { text: /[àâçéèêëîïôûùüÿœ]/.test(lower) ? "Je commence : 1 page lue sur 12." : "Starting: read 1 page of 12." });
+  // A command given first ("lance "…"") runs even when it holds an address (e.g. a program calling an API).
+  if (/^\s*(run|lance|exécute|execute)\b/.test(lower) && quoted && has("shell_run")) return call("shell_run", { command: /"(.+)"\s*$/.exec(text)?.[1] ?? quoted });
+  // Wave 7: Agent Reach (reading only), the web search chain, transcription, a temporary public link.
+  if (/\b(reddit|instagram|facebook|agent reach)\b/.test(lower) && !url) {
+    const channel = /\breddit\b/.test(lower) ? "reddit" : /\binstagram\b/.test(lower) ? "instagram" : /\bfacebook\b/.test(lower) ? "facebook" : "web";
+    return call("reach_search", { channel, query: quoted ?? "sklubot" });
+  }
+  if (/\b(cherche sur le web|search the web|recherche web|web search)\b/.test(lower)) return call("search_web", { query: quoted ?? "sklubot" });
+  if (url && /\b(transcri\w*|sous-titres|subtitles)\b/.test(lower)) return call("transcribe", { url });
+  if (url && /\b(lis avec agent reach|read with agent reach)\b/.test(lower)) return call("reach_read", { url });
+  if (/\b(lien public|public link|lien temporaire)\b/.test(lower) && quoted) return call("file_public_link", { path: quoted, minutes: 60 });
   if (url && /\b(open|ouvre|visit|go to|va sur)\b/.test(lower)) return call("browser_open", { url });
   if (url) return call("web_fetch", { url });
   if (/\b(remember|retiens|souviens)\b/.test(lower)) return call("memory_save", { text: quoted ?? text.replace(/^.*?(remember|retiens|souviens[- ]toi)( that| que)?/i, "").trim() });

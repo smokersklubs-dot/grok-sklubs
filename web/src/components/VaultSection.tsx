@@ -1,34 +1,37 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
-import { api, enc, errText } from "../api";
+import { api, ApiError, enc, errText } from "../api";
 import { useT } from "../i18n";
 import { useStore } from "../store";
 import type { VaultImportResult, VaultItem, VaultKind } from "../types";
 import { Icon, type IconName } from "./Icon";
 import { ConfirmButton, Empty, ErrorNote, IconButton, Loading, Menu, MenuItem } from "./ui";
 import { CardVaultEditor, cardSub, PaymentsList } from "./Wave5b";
+import { HealthBadge, useHealth } from "./Wave7";
 
 const KIND_ICON: Record<VaultKind, IconName> = { login: "key", secret: "lock", totp: "clock", card: "bolt" };
 
-interface VaultForm { name: string; site: string; username: string; password: string; note: string; hosts: string; header: string; prefix: string }
-const EMPTY: VaultForm = { name: "", site: "", username: "", password: "", note: "", hosts: "", header: "Authorization", prefix: "Bearer " };
+interface VaultForm { name: string; site: string; username: string; password: string; note: string; hosts: string; header: string; prefix: string; checkUrl: string }
+const EMPTY: VaultForm = { name: "", site: "", username: "", password: "", note: "", hosts: "", header: "Authorization", prefix: "Bearer ", checkUrl: "" };
 
 /** Add or edit one vault item. The value field always starts empty: the server never sends a value back. */
 function VaultEditor({ item, kind, onSaved, onCancel }: { item: VaultItem | null; kind: VaultKind; onSaved: (item: VaultItem) => void; onCancel: () => void }) {
   const t = useT();
   const [form, setForm] = useState<VaultForm>(
-    item ? { name: item.name, site: item.site, username: item.username, password: "", note: item.note, hosts: item.hosts.join(", "), header: item.header || "Authorization", prefix: item.prefix } : EMPTY,
+    item ? { name: item.name, site: item.site, username: item.username, password: "", note: item.note, hosts: item.hosts.join(", "), header: item.header || "Authorization", prefix: item.prefix, checkUrl: item.checkUrl ?? "" } : EMPTY,
   );
   const [reveal, setReveal] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Wave 7: the provider refused the key at save time; the user may save it anyway. */
+  const [refused, setRefused] = useState(false);
   const uid = useId();
   const first = useRef<HTMLInputElement>(null);
   useEffect(() => first.current?.focus(), []);
   const set = <K extends keyof VaultForm>(k: K, v: string) => setForm((f) => ({ ...f, [k]: v }));
   const valueLabel = t(kind === "secret" ? "vault.secretValue" : kind === "totp" ? "vault.totpValue" : "vault.password");
 
-  const submit = async (e: FormEvent) => {
-    e.preventDefault();
+  const submit = async (e: FormEvent | null, force = false) => {
+    e?.preventDefault();
     if (!form.name.trim() || busy) return;
     setBusy(true);
     setError(null);
@@ -36,12 +39,14 @@ function VaultEditor({ item, kind, onSaved, onCancel }: { item: VaultItem | null
     const body: Record<string, unknown> = { kind, name: form.name.trim(), note: form.note.trim(), ...(form.password ? { password: form.password } : {}) };
     if (kind === "login") Object.assign(body, { site: form.site.trim(), username: form.username.trim() });
     if (kind === "totp") Object.assign(body, { site: form.site.trim() });
-    if (kind === "secret") Object.assign(body, { hosts: form.hosts, header: form.header.trim(), prefix: form.prefix });
+    if (kind === "secret") Object.assign(body, { hosts: form.hosts, header: form.header.trim(), prefix: form.prefix, checkUrl: form.checkUrl.trim() }, force ? { force: true } : {});
     try {
       const r = item ? await api<{ item: VaultItem }>("PATCH", `/vault/${enc(item.id)}`, body) : await api<{ item: VaultItem }>("POST", "/vault", body);
+      useHealth.getState().load();
       onSaved(r.item);
     } catch (err) {
-      setError(errText(err));
+      setRefused(err instanceof ApiError && err.status === 422);
+      setError(err instanceof ApiError && err.status === 422 ? t("health.refusedOnSave") : errText(err));
       setBusy(false);
     }
   };
@@ -89,6 +94,11 @@ function VaultEditor({ item, kind, onSaved, onCancel }: { item: VaultItem | null
               <input id={`${uid}f`} className="input" value={form.prefix} maxLength={40} onChange={(e) => set("prefix", e.target.value)} autoComplete="off" spellCheck={false} />
             </div>
           </div>
+          <div className="field">
+            <label className="field-label" htmlFor={`${uid}c`}>{t("health.checkUrl")} <span className="muted">{t("common.optional")}</span></label>
+            <input id={`${uid}c`} className="input" value={form.checkUrl} maxLength={500} onChange={(e) => set("checkUrl", e.target.value)} placeholder="https://api.example.com/v1/me" autoComplete="off" autoCapitalize="off" spellCheck={false} inputMode="url" />
+            <p className="field-hint">{t("health.checkUrlHint")}</p>
+          </div>
         </>
       )}
       <div className="field">
@@ -106,6 +116,7 @@ function VaultEditor({ item, kind, onSaved, onCancel }: { item: VaultItem | null
       <ErrorNote>{error}</ErrorNote>
       <div className="row-end">
         <button type="button" className="btn btn-ghost btn-small" onClick={onCancel}>{t("common.cancel")}</button>
+        {refused && <button type="button" className="btn btn-small" disabled={busy} onClick={() => void submit(null, true)}>{t("health.saveAnyway")}</button>}
         <button type="submit" className="btn btn-primary btn-small" disabled={!form.name.trim() || busy}>{t(busy ? "common.saving" : item ? "common.save" : "vault.saveNew")}</button>
       </div>
     </form>
@@ -284,6 +295,7 @@ export function VaultSection() {
                     {item.name}
                     <span className="chip">{t(`vault.kind.${item.kind}`)}</span>
                     {item.kind === "login" && <span className={`chip ${item.hasPassword ? "state-ready" : ""}`}>{t(item.hasPassword ? "vault.hasPassword" : "vault.noPassword")}</span>}
+                    {item.kind === "secret" && <HealthBadge kind="vault" id={item.id} />}
                   </span>
                   {subOf(item) && <span className="list-row-sub">{subOf(item)}</span>}
                   {item.note && <span className="list-row-sub">{item.note}</span>}

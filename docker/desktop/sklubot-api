@@ -1,0 +1,30 @@
+#!/bin/bash
+# Calls an API with one of the user's saved secrets through Sklubot's credential relay (spec 08 A1).
+# The key never comes to this computer: Sklubot adds it on its side, only for the hosts the secret is saved for.
+#
+#   sklubot-api "<secret name>" <METHOD> <https://host/path?query> [more curl options…]
+#   e.g. sklubot-api "Stripe" GET https://api.stripe.com/v1/balance
+#        sklubot-api "Acme API key" POST https://api.acme.com/v1/items -H 'content-type: application/json' -d '{"a":1}'
+#
+# In your own code, use the base address $SKLUBOT_RELAY_URL/<secret name>/<host>/<path> with the header
+# "X-Sklubot-Relay-Token: $SKLUBOT_RELAY_TOKEN" (both are in ~/.sklubot/relay.env).
+set -euo pipefail
+[ -f /root/.sklubot/relay.env ] && . /root/.sklubot/relay.env
+if [ "$#" -lt 3 ]; then sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; fi
+if [ -z "${SKLUBOT_RELAY_URL:-}" ] || [ -z "${SKLUBOT_RELAY_TOKEN:-}" ]; then
+  echo "The credential relay is switched off for this bot. The user can switch it on in the bot's settings (Programs can use my keys)." >&2
+  exit 2
+fi
+secret="$1"; method="$2"; url="$3"; shift 3
+scheme_header=()
+case "$url" in
+  https://*) rest="${url#https://}" ;;
+  http://*) rest="${url#http://}"; scheme_header=(-H "x-sklubot-relay-scheme: http") ;;
+  *) echo "Give the full https:// address of the API." >&2; exit 2 ;;
+esac
+host="${rest%%/*}"
+path="${rest#"$host"}"
+[ -n "$path" ] || path="/"
+enc=$(python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$secret")
+# The relay token goes in a header read from a file descriptor, so it is not in this computer's process list.
+exec curl -sS -X "$method" -H @<(printf 'X-Sklubot-Relay-Token: %s\n' "$SKLUBOT_RELAY_TOKEN") "${scheme_header[@]}" "$SKLUBOT_RELAY_URL/$enc/$host$path" "$@"

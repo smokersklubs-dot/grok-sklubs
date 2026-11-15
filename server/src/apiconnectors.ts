@@ -198,7 +198,7 @@ export function approveConnector(userId: string, conn: ApiConnector, sealed: str
   if (!existing && !sealed) return { ok: false, error: "Type the token first." };
   if (existing) {
     const hosts = existing.hosts.includes(conn.host) ? existing.hosts : [...existing.hosts, conn.host];
-    vault.update(existing.id, { kind: "secret", name: existing.name, site: existing.site, username: existing.username, passwordEnc: sealed ?? existing.passwordEnc, note: existing.note, hosts, header: existing.header || h.header, prefix: existing.prefix ?? h.prefix });
+    vault.update(existing.id, { kind: "secret", name: existing.name, site: existing.site, username: existing.username, passwordEnc: sealed ?? existing.passwordEnc, note: existing.note, hosts, header: existing.header || h.header, prefix: existing.prefix ?? h.prefix, checkUrl: existing.checkUrl });
   } else vault.create(userId, { kind: "secret", name: conn.secret, site: "", username: "", passwordEnc: sealed, note: `API connector ${conn.name}`, hosts: [conn.host], header: h.header, prefix: h.prefix });
   apiConnectors.activate(conn.id);
   audit(userId, "apps", `API connector approved: ${conn.name} (${conn.host}, ${conn.endpoints.length} endpoints)`);

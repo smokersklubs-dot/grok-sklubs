@@ -17,6 +17,7 @@ import { ProfileSection } from "./ProfileSection";
 import { MemorySettingsSection, RulesSection } from "./Wave5";
 import { JournalView, PageVisibility, SpendSettingsBlock } from "./Wave5b";
 import { MailSection, VoiceSection, WorkspacesSection } from "./Wave6";
+import { KeysSection, PublicLinksBlock } from "./Wave7";
 
 const SECTIONS: { id: AppSection; icon: IconName }[] = [
   { id: "general", icon: "settings" },
@@ -30,6 +31,7 @@ const SECTIONS: { id: AppSection; icon: IconName }[] = [
   { id: "memory", icon: "brain" },
   { id: "connectors", icon: "plug" },
   { id: "vault", icon: "key" },
+  { id: "keys", icon: "shield" },
   { id: "pages", icon: "globe" },
   { id: "usage", icon: "chart" },
   { id: "checkins", icon: "bell" },
@@ -777,6 +779,7 @@ function PagesSection() {
           })}
         </ul>
       )}
+      <PublicLinksBlock />
     </>
   );
 }
@@ -1142,6 +1145,7 @@ export function AppSettings({ section }: { section: AppSection }) {
           {section === "memory" && <MemorySettingsSection />}
           {section === "connectors" && <ConnectorsSection />}
           {section === "vault" && <VaultSection />}
+          {section === "keys" && <KeysSection />}
           {section === "pages" && <PagesSection />}
           {section === "activity" && <ActivitySection />}
           {section === "team" && <TeamSection />}

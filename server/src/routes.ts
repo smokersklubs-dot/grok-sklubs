@@ -58,6 +58,13 @@ import { bgTasks, publicTask, replyToTask, stopTask } from "./agent/bgtasks.js";
 import { actOnNudge, nudges, nudgeStats, preparationPass } from "./agent/nudges.js";
 import { exportMemories, importCandidates, importMemories, learnStyle } from "./agent/memory.js";
 import { sentMail } from "./native/access.js";
+import { handleEgress, disableRelay } from "./egress.js";
+import { publicLinks, servePublicLink, DEFAULT_LINK_MIN } from "./publiclinks.js";
+import { reachLogin, reachState, LOGIN_CHANNELS } from "./reach.js";
+import { checkAll, checkConnector, checkSecret, healthList, recordHealth } from "./health.js";
+import { commitImport, previewImport, type ImportBinding } from "./projectimport.js";
+import { cacheSettings, DEFAULT_CACHE, saveCacheSettings, thirdPartySummary } from "./thirdparty.js";
+import { paidConsents } from "./providers.js";
 import { answerCheckpoint, checkpoints } from "./agent/spend.js";
 import { journalCsv, journalTotals, listJournal, type JournalFilter } from "./journal.js";
 import { payments, sealCard } from "./agent/payments.js";
@@ -159,6 +166,14 @@ site.post("/mcp/:botId", async (c) => {
   return RESPONSE_ALREADY_SENT;
 });
 site.on(["GET", "DELETE"], "/mcp/:botId", (c) => c.json({ error: "method not allowed" }, 405));
+
+/**
+ * Wave 7 (spec 08 A1): the credential relay for programs on the bots' computers. Like /mcp/, only reached on the
+ * internal network (Caddy answers 404 for /egress/ and requests that went through a proxy are refused).
+ */
+site.all("/egress/:botId/*", (c) => handleEgress(c));
+/** Wave 7 (spec 08 A8): a temporary public link to one library file (GET, or HEAD for services that check first). */
+site.on(["GET", "HEAD"], "/l/:token", (c) => servePublicLink(c));
 
 // ── Public routes ────────────────────────────────────────────────────────────
 api.get("/health", (c) => c.json({ ok: true, model: defaultModelRef() }));
@@ -431,6 +446,9 @@ api.patch("/bots/:id", async (c) => {
   }
   bots.patch(bot.id, patch);
   bots.announce(bot);
+  // Wave 7: switching the credential relay off revokes this computer's token at once (and clears its relay file).
+  if (patch.relayEnabled === false && bot.relayEnabled) void disableRelay(bot);
+  if (typeof patch.relayEnabled === "boolean" && patch.relayEnabled !== bot.relayEnabled) audit(bot.userId, "computer", `${bot.name}: credential relay ${patch.relayEnabled ? "on" : "off"}`, bot.id);
   // A new name, role, shape or colour shows on the bot's computer (only if it has one: U-005).
   if (["name", "label", "color", "shape", "character"].some((k) => patch[k] !== undefined)) void screen.redress(bot.id).catch(() => {});
   if (!a.owner) return c.json({ bot: sharedBotView(botAccess(c.get("user").id, bot.id)!) });
@@ -1263,7 +1281,15 @@ function vaultFields(b: Record<string, any>, base?: VaultFields & { card?: { dai
     const header = (b.header === undefined ? base?.header ?? "" : String(b.header)).trim() || "Authorization";
     if (!HEADER_OK(header)) fail(400, "That header name cannot carry a secret.");
     const prefix = (b.prefix === undefined ? base?.prefix ?? (header.toLowerCase() === "authorization" ? "Bearer " : "") : String(b.prefix)).slice(0, 40);
-    Object.assign(f, { site: "", hosts, header, prefix });
+    // Wave 7 (spec 08 A2): an optional read-only address to check the key with — https, on one of its hosts.
+    const checkUrl = (b.checkUrl === undefined ? (base as { checkUrl?: string } | undefined)?.checkUrl ?? "" : String(b.checkUrl)).trim().slice(0, 500);
+    if (checkUrl) {
+      let u: URL | null = null;
+      try { u = new URL(checkUrl); } catch { /* checked below */ }
+      const httpOk = process.env.ALLOW_PRIVATE_FETCH === "1" || process.env.ALLOW_PRIVATE_FETCH === "true";
+      if (!u || !(u.protocol === "https:" || (httpOk && u.protocol === "http:")) || !hosts.some((h) => u!.hostname.toLowerCase() === h || u!.hostname.toLowerCase().endsWith(`.${h}`))) fail(400, "The check address must be an https address on one of the secret's hosts.");
+    }
+    Object.assign(f, { site: "", hosts, header, prefix, checkUrl });
   }
   if (kind === "card") {
     // A payment card (spec 07 A12): number, expiry, CVC and the name on it are sealed together; only the network and
@@ -1293,22 +1319,43 @@ function vaultFields(b: Record<string, any>, base?: VaultFields & { card?: { dai
   return f;
 }
 api.get("/vault", (c) => c.json({ items: vault.list(c.get("user").id).map(publicVault) }));
+/**
+ * Wave 7 (spec 08 A2): a secret typed by the user is tried with the provider before it is saved (a known free check, or
+ * its check address). When the provider refuses it, nothing is saved and the answer says so (422, with the check);
+ * `force: true` saves it anyway. No check possible, or the provider unreachable: saved, with that state.
+ */
+async function verifyBeforeSave(b: Record<string, any>, f: VaultFields) {
+  if (f.kind !== "secret" || typeof b.password !== "string" || !b.password) return null;
+  const r = await checkSecret({ hosts: f.hosts ?? [], checkUrl: f.checkUrl ?? "", header: f.header ?? "", prefix: f.prefix ?? "", passwordEnc: null }, b.password);
+  if (r.state === "broken" && b.force !== true) return c422(r);
+  return r;
+}
+const c422 = (r: { state: string; detail: string; how: string }) => ({ refused: r });
 api.post("/vault", async (c) => {
   const user = c.get("user");
-  const f = vaultFields(await body(c));
+  const b = await body(c);
+  const f = vaultFields(b);
   if (vault.byName(user.id, f.name)) fail(409, "A login with this name already exists.");
+  const check = await verifyBeforeSave(b, f);
+  if (check && "refused" in check) return c.json({ error: "The provider refused this key.", health: check.refused }, 422);
   audit(user.id, "vault", `Vault item added (${f.kind}): ${f.name}`);
   emit(user.id, { type: "vault" });
-  return c.json({ item: publicVault(vault.create(user.id, f)) });
+  const item = vault.create(user.id, f);
+  if (check) { recordHealth(user.id, "vault", item.id, item.name, check, { quiet: true }); emit(user.id, { type: "health" }); }
+  return c.json({ item: publicVault(item), health: check ?? undefined });
 });
 api.patch("/vault/:id", async (c) => {
   const user = c.get("user");
   const cur = vault.owned(user.id, c.req.param("id")) ?? fail(404, "That login does not exist.");
-  const f = vaultFields(await body(c), cur);
+  const b = await body(c);
+  const f = vaultFields(b, cur);
   const clash = vault.byName(user.id, f.name);
   if (clash && clash.id !== cur.id) fail(409, "A login with this name already exists.");
+  const check = await verifyBeforeSave(b, f);
+  if (check && "refused" in check) return c.json({ error: "The provider refused this key.", health: check.refused }, 422);
   vault.update(cur.id, f);
-  return c.json({ item: publicVault(vault.owned(user.id, cur.id)!) });
+  if (check) { recordHealth(user.id, "vault", cur.id, f.name, check, { quiet: true }); emit(user.id, { type: "health" }); }
+  return c.json({ item: publicVault(vault.owned(user.id, cur.id)!), health: check ?? undefined });
 });
 api.delete("/vault/:id", (c) => {
   const cur = vault.owned(c.get("user").id, c.req.param("id")) ?? fail(404, "That login does not exist.");
@@ -1317,6 +1364,91 @@ api.delete("/vault/:id", (c) => {
   for (const key of [`vault: ${cur.name}`, `secret: ${cur.name}`, `totp: ${cur.name}`, `card: ${cur.name}`]) policies.remove(c.get("user").id, key);
   return c.json({ ok: true });
 });
+
+// ── Wave 7 (spec 08) ─────────────────────────────────────────────────────────
+/** Agent Reach on the bot's computer: channels and reading logins. */
+api.get("/bots/:id/reach", async (c) => c.json(await reachState(ownAgent(c))));
+/**
+ * The user signs in themselves on the bot's screen (Agent Reach opens its browser window there): the bot's own screen
+ * actions wait meanwhile (control mode, renewed by the viewer). The model never sees anything of it.
+ */
+api.post("/bots/:id/reach/:channel/:action", async (c) => {
+  const bot = ownAgent(c);
+  const action = c.req.param("action");
+  const channel = c.req.param("channel");
+  if (action !== "login" && action !== "logout") fail(400, "Unknown action.");
+  if (!LOGIN_CHANNELS.some((l) => l.channel === channel)) fail(400, "Unknown channel.");
+  if (action === "login") holdControl(bot.id);
+  const r = await reachLogin(bot, channel, action as "login" | "logout");
+  if (!r.ok) { if (action === "login") releaseControl(bot.id); return fail(502, r.message); }
+  return c.json({ ok: true, opened: r.opened ?? null, next: r.message });
+});
+
+/** Health of keys and connections (A2). */
+api.get("/health/credentials", (c) => c.json({ items: healthList(c.get("user").id) }));
+api.post("/health/credentials/check", async (c) => c.json({ items: await checkAll(c.get("user").id) }));
+api.post("/health/credentials/:kind/:id/check", async (c) => {
+  const user = c.get("user");
+  const kind = c.req.param("kind"), id = c.req.param("id");
+  if (kind === "vault") {
+    const item = vault.owned(user.id, id) ?? fail(404, "That item does not exist.");
+    if (item!.kind !== "secret") fail(400, "Only secrets are checked.");
+    recordHealth(user.id, "vault", item!.id, item!.name, await checkSecret(item!));
+  } else if (kind === "api") {
+    const conn = (await import("./apiconnectors.js")).apiConnectors.owned(user.id, id) ?? fail(404, "That connector does not exist.");
+    recordHealth(user.id, "api", conn!.id, conn!.name, await checkConnector(user.id, conn!.id));
+  } else await checkAll(user.id);
+  emit(user.id, { type: "health" });
+  return c.json({ items: healthList(user.id) });
+});
+
+/** Temporary public links (A8): the active ones, one created by the user, and "remove". */
+api.get("/public-links", (c) => c.json({ links: publicLinks.list(c.get("user").id) }));
+api.post("/bots/:id/public-links", async (c) => {
+  const bot = ownAgent(c);
+  const b = await body(c);
+  try { return c.json({ link: publicLinks.create(bot.userId, bot.id, String(b.path ?? ""), Number(b.minutes) || DEFAULT_LINK_MIN) }); }
+  catch (err) { return fail(400, (err as Error).message); }
+});
+api.delete("/public-links/:id", (c) => {
+  if (!publicLinks.revoke(c.get("user").id, c.req.param("id"))) fail(404, "That link does not exist or is already gone.");
+  return c.json({ ok: true });
+});
+
+/**
+ * Project import (A6). Preview: { env?: text of a .env file, zip?: base64 of a zip of skills } → names, guessed hosts,
+ * skills — never a value. Commit: { previewId, bindings: [{ name, import, hosts, header?, prefix? }], replace, skills,
+ * skillScope: "shared" | botId }.
+ */
+api.post("/import/project/preview", async (c) => {
+  if (Number(c.req.header("content-length") ?? 0) > 8_000_000) fail(413, "Too large (a .env file and a 5 MB zip at most).");
+  const b = await body(c);
+  const env = typeof b.env === "string" ? b.env.slice(0, 200_000) : "";
+  let zip: Buffer | null = null;
+  if (typeof b.zip === "string" && b.zip) { zip = Buffer.from(b.zip, "base64"); if (zip.length > 5_000_000) fail(413, "The zip is too large (5 MB at most)."); }
+  if (!env && !zip) fail(400, "Drop a .env file or a zip of skills.");
+  try { return c.json(previewImport(c.get("user").id, env, zip)); } catch (err) { return fail(400, (err as Error).message); }
+});
+api.post("/import/project/commit", async (c) => {
+  const user = c.get("user");
+  const b = await body(c);
+  const bindings: ImportBinding[] = Array.isArray(b.bindings) ? b.bindings.filter((x: any) => x && typeof x.name === "string").map((x: any) => ({ name: String(x.name), import: !!x.import, hosts: Array.isArray(x.hosts) ? x.hosts.map(String) : String(x.hosts ?? "").split(/[\s,]+/).filter(Boolean), header: typeof x.header === "string" ? x.header : undefined, prefix: typeof x.prefix === "string" ? x.prefix : undefined })) : [];
+  const scope = typeof b.skillScope === "string" && b.skillScope ? b.skillScope : "shared";
+  if (scope !== "shared" && !bots.owned(user.id, scope)) fail(404, "That bot does not exist.");
+  try { return c.json({ report: await commitImport(user.id, String(b.previewId ?? ""), bindings, { replace: !!b.replace, skills: Array.isArray(b.skills) ? b.skills.map(String) : [], skillScope: scope }) }); }
+  catch (err) { return fail(400, (err as Error).message); }
+});
+
+/** Paid third-party tools (A4): what was spent (account, or one bot with ?bot=), and the cache policies (A5). */
+api.get("/thirdparty", (c) => {
+  const user = c.get("user");
+  const botId = c.req.query("bot");
+  if (botId && !bots.owned(user.id, botId)) fail(404, "That bot does not exist.");
+  return c.json({ spend: thirdPartySummary(user.id, botId || undefined), consents: botId ? paidConsents.list(botId) : [] });
+});
+api.delete("/bots/:id/paid-consents", (c) => { const bot = ownAgent(c); paidConsents.clear(bot.id); audit(bot.userId, "apps", `${bot.name}: paid providers must ask again`, bot.id); return c.json({ ok: true }); });
+api.get("/cache-policy", (c) => c.json({ policies: cacheSettings(c.get("user").id), defaults: DEFAULT_CACHE }));
+api.put("/cache-policy", async (c) => c.json({ policies: saveCacheSettings(c.get("user").id, (await body(c)).policies) }));
 
 /**
  * CSV import of logins (see vault-import.ts for the formats). Body: { csv, mapping? }. Without a recognisable header

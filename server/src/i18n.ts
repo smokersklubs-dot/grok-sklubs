@@ -5,6 +5,32 @@ import type { Locale } from "./shared.js";
  * English is the key; French is looked up here. Anything missing falls back to English.
  */
 const FR: Record<string, string> = {
+  // Wave 7: Agent Reach, credential relay, key health, provider chains, paid tools, temporary links, project import.
+  "Searching with Agent Reach": "Cherche avec Agent Reach", "Reading with Agent Reach": "Lit avec Agent Reach", "Checking Agent Reach": "Vérifie Agent Reach",
+  "Transcribing a video": "Transcrit une vidéo", "Publishing a temporary link": "Publie un lien temporaire",
+  "cached": "réponse en mémoire", "YouTube blocks this server": "YouTube bloque ce serveur", "YouTube blocks this server — your computer can help": "YouTube bloque ce serveur — ton ordinateur peut aider",
+  "served by {who}": "servi par {who}", "nobody answered": "personne n'a répondu", "tried: {list}": "essayé : {list}",
+  "served": "servi", "empty": "vide", "error": "erreur", "not set up": "pas configuré", "too expensive": "trop cher", "paid: needs your yes": "payant : il faut ton accord",
+  "budget refused": "budget refusé", "in progress": "en cours", "same request, not charged again": "même demande, pas refacturée",
+  "{bot} has read outside content. Allow its program to send {method} to {host} with the secret {item}?": "{bot} a lu du contenu extérieur. Autoriser son programme à envoyer {method} à {host} avec le secret {item} ?",
+  "Allow {bot}'s program to call {host} with the secret {item}?": "Autoriser le programme de {bot} à appeler {host} avec le secret {item} ?",
+  "The program never sees the secret: Sklubot adds it outside the computer, only for the hosts it is saved for.": "Le programme ne voit jamais le secret : Sklubot l'ajoute hors de l'ordinateur, seulement pour les hôtes enregistrés.",
+  "Programs on its computer": "Programmes de son ordinateur",
+  "A program {bot} left running in the background wants to send {method} to {host} with the secret {item}. Allow it?": "Un programme que {bot} a laissé tourner en arrière-plan veut envoyer {method} à {host} avec le secret {item}. L'autoriser ?",
+  "The connection “{name}” needs a new sign-in.": "La connexion « {name} » demande une nouvelle connexion.",
+  "The key “{name}” stopped working ({detail}).": "La clé « {name} » ne fonctionne plus ({detail}).",
+  "Paused until it is fixed: {list}.": "En pause jusqu'à réparation : {list}.", "A connection broke": "Une connexion est cassée",
+  "Paused — connection to redo: {name}": "En pause — connexion à refaire : {name}",
+  "Allow {bot} to use {provider} (paid) for a web search?": "Autoriser {bot} à utiliser {provider} (payant) pour une recherche web ?",
+  "Allow {bot} to use {provider} (paid) for a transcription?": "Autoriser {bot} à utiliser {provider} (payant) pour une transcription ?",
+  "use a paid provider": "utiliser un fournisseur payant", "Paid provider": "Fournisseur payant",
+  "The price of one call is not known in advance. The free ways found nothing. Your yes is remembered for this bot.": "Le prix d'un appel n'est pas connu à l'avance. Les moyens gratuits n'ont rien donné. Ton accord est retenu pour ce bot.",
+  "Estimated cost: {cost} $ per call, reserved before the call and settled at the real cost. The free ways found nothing. Your yes is remembered for this bot.": "Coût estimé : {cost} $ par appel, réservé avant l'appel puis réglé au coût réel. Les moyens gratuits n'ont rien donné. Ton accord est retenu pour ce bot.",
+  "Estimated cost: {cost} $ per video, reserved before the call and settled at the real cost.": "Coût estimé : {cost} $ par vidéo, réservé avant l'appel puis réglé au coût réel.",
+  "The price of a video is not known in advance; the real cost is recorded after.": "Le prix d'une vidéo n'est pas connu à l'avance ; le coût réel est noté après.",
+  "{bot} has read outside content. Allow it to give {path} a temporary public address?": "{bot} a lu du contenu extérieur. L'autoriser à donner une adresse publique temporaire à {path} ?",
+  "publish a file at a public address": "publier un fichier à une adresse publique", "Library": "Bibliothèque",
+  "Anyone with the address can download this file until it expires or you remove it (Settings → Pages).": "Toute personne qui a l'adresse peut télécharger ce fichier jusqu'à son expiration ou jusqu'à ce que tu le retires (Réglages → Pages).",
   // Wave 6: workspaces, the bots' own email, server voice.
   "When an email arrives at its own address": "Quand un e-mail arrive à sa propre adresse",
   "Email from {from}: {subject}": "E-mail de {from} : {subject}",

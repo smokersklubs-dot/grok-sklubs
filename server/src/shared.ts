@@ -9,7 +9,7 @@ export type AvatarShape = (typeof AVATAR_SHAPES)[number];
 export type AvatarColor = (typeof AVATAR_COLORS)[number];
 
 /** Families of tools that can be switched off for a bot. */
-export const TOOL_GROUPS = ["computer", "shell", "web", "files", "memory", "routines", "tasks", "team", "apps", "vault", "images", "video", "pages", "mycomputer"] as const;
+export const TOOL_GROUPS = ["computer", "shell", "web", "files", "memory", "routines", "tasks", "team", "apps", "vault", "images", "video", "pages", "mycomputer", "reach"] as const;
 export type ToolGroup = (typeof TOOL_GROUPS)[number];
 /** Who answers a message nobody is mentioned in: the first member, every member, or nobody. */
 export type RoomRule = "lead" | "everyone" | "mentions";
@@ -190,6 +190,13 @@ export interface Bot {
   /** The bot that created this one with bot_create (null: created by the user). */
   createdBy: string | null;
   /**
+   * Wave 7 (spec 08 A1): programs on this bot's Linux computer may call APIs with the user's vault secrets through
+   * Sklubot's credential relay (the key is added outside the computer and never enters it). Off by default.
+   */
+  relayEnabled: boolean;
+  /** Wave 7 (spec 08 A4): daily cap in USD on paid third-party tools for this bot (null: none; the monthly budget still applies). */
+  thirdPartyDailyCapUsd: number | null;
+  /**
    * Wave 6. Set only for a bot someone else owns and shares with you through a workspace: who owns it and what your role
    * lets you do with it. Absent for your own bots (personal mode is unchanged).
    */
@@ -259,7 +266,7 @@ export type RowBody =
    */
   | { kind: "event"; event: "routine" | "task" | "bot" | "reset" | "computer" | "call" | "members" | "cheer" | "relay" | "progress" | "selfupdate"; text: string; call?: CallRecord; gem?: Gem; tone?: "info" | "warn"; undo?: { revisionId: string; status: "available" | "undone" } }
   /** `action`: a button under the notice. "continue": the bot stopped at its step limit and can pick the work back up. */
-  | { kind: "notice"; tone: "info" | "warn" | "error"; text: string; action?: { kind: "continue"; status: "pending" | "done" } };
+  | { kind: "notice"; tone: "info" | "warn" | "error"; text: string; action?: { kind: "continue"; status: "pending" | "done" } | { kind: "settings"; section: string } };
 
 export type Card =
   /** `once`: "Always" is not offered (e.g. a command on the user's own computer after outside content); choosing it anyway counts as allowing once. */
@@ -470,6 +477,8 @@ export interface VaultItem {
   hasPassword: boolean; note: string; createdAt: number;
   /** secret: the hosts it may be sent to, the header it goes in and the text before it (e.g. "Bearer "). */
   hosts: string[]; header: string; prefix: string;
+  /** secret (wave 7, spec 08 A2): an optional read-only https address on one of its hosts, used to check the key. */
+  checkUrl: string;
   /** totp: code length and period in seconds. */
   digits: number; period: number;
   /**
@@ -716,4 +725,46 @@ export type ServerEvent =
   /** Wave 6: your workspaces, their members or shared bots changed. */
   | { type: "workspaces" }
   /** Wave 6: a bot's mailbox changed (a mail arrived, was released…). */
-  | { type: "mail"; botId: string };
+  | { type: "mail"; botId: string }
+  /** Wave 7: the health of keys and connections changed (a check ran). */
+  | { type: "health" }
+  /** Wave 7: temporary public links changed. */
+  | { type: "publicLinks" }
+  /** Wave 7: a bot's reading logins (Agent Reach) changed. */
+  | { type: "reach"; botId: string };
+
+// ── Wave 7 ──────────────────────────────────────────────────────────────────
+/**
+ * A reading channel of Agent Reach on a bot's computer that needs (or may use) a login the user does themselves on the
+ * bot's screen. `loggedIn`: as Agent Reach reports it (null: unknown). `status`: its own word (ready, needs_user_action,
+ * not_added, broken…).
+ */
+export interface ReachLogin { channel: string; label: string; loggedIn: boolean | null; status: string; hint: string }
+export interface ReachState { available: boolean; reason: string; version: string | null; logins: ReachLogin[]; channels: { channel: string; status: string }[] }
+
+/**
+ * Health of a key or a connection (spec 08 A2). ok: works; broken: the provider refused it; reconnect: sign in again;
+ * uncertain: the provider could not be reached (5xx, timeout) — not counted as broken; never: no zero-cost check is
+ * possible (nothing is invented). `rateLimited`: the last check met a rate limit (not a failure).
+ */
+export type HealthState = "ok" | "broken" | "reconnect" | "uncertain" | "never";
+export interface CredentialHealth {
+  kind: "vault" | "api" | "native" | "connector"; id: string; name: string; state: HealthState;
+  detail: string; checkedAt: number | null; how: string; rateLimited?: boolean;
+  /** A pasted token that cannot be renewed: re-paste it when it expires. */
+  manualToken?: boolean;
+}
+
+/** A temporary public link to one library file (spec 08 A8). The address is shown only once, when it is created. */
+export interface PublicLink { id: string; botId: string; botName: string; path: string; mime: string; size: number; expiresAt: number; revokedAt: number | null; createdAt: number; downloads: number; url?: string }
+
+/** Preview of a project import (spec 08 A6): names and guessed hosts only, never a value. */
+export interface ImportVariable { name: string; isSecret: boolean; provider: string | null; hosts: string[]; header: string; prefix: string; exists: boolean; reason: string }
+export interface ImportSkill { name: string; description: string; path: string; mentionsKey: boolean; exists: boolean }
+export interface ImportPreview { previewId: string; variables: ImportVariable[]; skills: ImportSkill[]; ignored: string[] }
+export interface ImportReport { created: string[]; updated: string[]; skipped: string[]; toComplete: string[]; skills: string[]; health: { name: string; state: HealthState; detail: string }[] }
+
+/** Paid third-party tool calls (spec 08 A4), in micro-dollars (integers): reserved before, settled after. */
+export interface ThirdPartySpend { todayUsd: number; capUsd: number | null; monthUsd: number; recent: { at: number; botId: string; tool: string; provider: string; usd: number; status: string }[] }
+/** One step of a provider chain (spec 08 A3): who was tried and why it was set aside. */
+export interface ProviderAttempt { provider: string; tier: "owned" | "free" | "paid"; outcome: "served" | "empty" | "error" | "skipped" | "too_expensive" | "needs_consent"; detail: string; costUsd: number }

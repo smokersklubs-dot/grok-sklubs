@@ -1,7 +1,7 @@
 import { createContext, memo, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { api, enc, errText } from "../api";
 import { t, tn, useT, type Key } from "../i18n";
-import { useStore, type Thread } from "../store";
+import { useStore, type AppSection, type Thread } from "../store";
 import { REACTIONS, type ActivityKind, type Attachment, type Bot, type Live, type Origin, type Reaction, type ReactionEmoji, type Row, type RowBody } from "../types";
 import { callClock, clockTime, dividerLabel, elapsed, fileSize, hostName, liveDuration, workDuration } from "../lib/format";
 import { accentStyle } from "../lib/colors";
@@ -534,6 +534,11 @@ function NoticeRow({ body, botId, seq, readOnly }: { body: NoticeBody; botId: st
           <Icon name="play" size={13} /> {t(busy ? "notice.continuing" : "notice.continue")}
         </button>
       ) : action.status === "done" ? <em className="notice-done">{t("notice.continued")}</em> : null)}
+      {action?.kind === "settings" && !readOnly && (
+        <button type="button" className="btn btn-small notice-action" onClick={() => useStore.getState().openAppSettings(action.section as AppSection)}>
+          <Icon name="key" size={13} /> {t("health.openKeys")}
+        </button>
+      )}
       {failed && <span className="notice-error" role="alert">{failed}</span>}
     </div>
   );

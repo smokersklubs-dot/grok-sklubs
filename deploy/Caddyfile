@@ -2,7 +2,8 @@
 {$SITE_ADDRESS::80} {
 	# Le point d'accès des outils (/mcp/…) ne sert qu'aux ordinateurs des bots, qui joignent Sklubot
 	# directement sur le réseau interne (http://sklubot:3000). Depuis Internet, il n'existe pas.
-	@mcp path /mcp /mcp/*
+	# Pareil pour le relais d'identifiants (/egress/…, vague 7) : seuls les programmes des ordinateurs des bots s'en servent.
+	@mcp path /mcp /mcp/* /egress /egress/*
 	respond @mcp 404
 
 	# Caddy remplace X-Forwarded-For par l'adresse réelle du visiteur (il ne fait confiance à aucun en-tête reçu).

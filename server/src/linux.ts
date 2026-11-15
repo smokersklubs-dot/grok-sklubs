@@ -368,6 +368,27 @@ export async function linuxShell(botId: string, userId: string, ws: string, comm
   });
 }
 
+/**
+ * Runs one program on the bot's computer with an argument array (wave 7): nothing goes through a shell, so text the
+ * user or a model chose (a search query, an address) is passed as one argument and never interpreted. `env`: extra
+ * variables for that program only.
+ */
+export async function linuxExec(botId: string, userId: string, ws: string, argv: string[], timeoutSec: number, opts: { signal?: AbortSignal; env?: Record<string, string>; maxBytes?: number } = {}) {
+  return onMachine(botId, userId, ws, async (n) => {
+    const env = Object.entries(opts.env ?? {}).flatMap(([k, v]) => ["-e", `${k}=${v}`]);
+    const r = await docker(["exec", "-w", "/root", ...env, n, "timeout", "-k", "5", String(timeoutSec), ...argv], { timeoutMs: (timeoutSec + 15) * 1000, signal: opts.signal, maxBytes: opts.maxBytes ?? 4_000_000 });
+    return { code: r.code, stdout: r.stdout.toString("utf8"), raw: r.stdout, stderr: r.stderr, timedOut: r.timedOut || r.code === 124 };
+  });
+}
+
+/** Writes a small file on the bot's computer (its content travels on standard input, never in a process list). */
+export async function writeComputerFile(botId: string, userId: string, ws: string, file: string, content: string, mode = "600") {
+  return onMachine(botId, userId, ws, async (n) => {
+    const r = await docker(["exec", "-i", n, "sh", "-c", 'umask 077; mkdir -p "$(dirname "$1")" && cat > "$1" && chmod "$2" "$1"', "sh", file, mode], { timeoutMs: 20_000, input: content });
+    if (r.code !== 0) throw new Error(`could not write ${file}: ${r.stderr.trim().slice(0, 200)}`);
+  });
+}
+
 export const linuxMachines = (userId: string) => [...machines.values()].filter((m) => m.userId === userId);
 
 /** After a restart, find the computers that already exist so the app shows them correctly. */

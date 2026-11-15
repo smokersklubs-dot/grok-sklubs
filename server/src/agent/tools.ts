@@ -38,6 +38,12 @@ import { anonymise } from "./anonymise.js";
 import { apiTools } from "../apiconnectors.js";
 import { botMailTools } from "../botmail.js";
 import { ruleTools } from "./ruletools.js";
+import { reachAvailable, reachTools } from "../reach.js";
+import { attemptsText, DEFAULT_MAX_COST_USD, paidConsents, paidGate, runChain, searchChainAvailable, searchProviders, servedLine, transcribeProviders } from "../providers.js";
+import { cached, cachePolicy, idemKeyOf, release, remember, reserve, settle } from "../thirdparty.js";
+import { commandEnded, commandStarted, provisionRelay, relayHint } from "../egress.js";
+import { publicLinkTools } from "../publiclinks.js";
+import { videoPriceEstimate, videoServices } from "../video.js";
 
 export interface ToolContext {
   bot: BotRecord; user: UserRecord; depth: number; signal: AbortSignal;
@@ -192,8 +198,14 @@ const workTools: BuiltinTool[] = [
     activity: "shell", label: "Running a command", sensitive: true, audited: true, detail: (a) => clip(String(a.command ?? ""), 60),
     run: async (a, c) => {
       const timeout = Math.min(290, Math.max(1, Number(a.timeout_seconds) || 120));
-      const r = await runShell(c.bot.id, c.user.id, String(a.command), timeout, c.signal);
-      return { content: `${r.timedOut ? `Timed out after ${timeout}s.` : `Exit code ${r.code}.`}\n${r.output || "(no output)"}`, summary: r.timedOut ? "timed out" : `exit ${r.code}`, isError: r.timedOut || r.code !== 0 };
+      // Wave 7 (spec 08 A1): with the credential relay on, the computer gets the relay's address and its token (never a
+      // key), and the relay knows whether this command's turn read outside content while it runs.
+      if (c.bot.relayEnabled) await provisionRelay(c.bot).catch((err) => console.error("[relay]", (err as Error).message));
+      commandStarted(c.bot.id, !!c.tainted);
+      let r: Awaited<ReturnType<typeof runShell>>;
+      try { r = await runShell(c.bot.id, c.user.id, String(a.command), timeout, c.signal); } finally { commandEnded(c.bot.id); }
+      const hint = relayHint(c.bot, String(a.command), r.output);
+      return { content: `${r.timedOut ? `Timed out after ${timeout}s.` : `Exit code ${r.code}.`}\n${r.output || "(no output)"}${hint}`, summary: r.timedOut ? "timed out" : `exit ${r.code}`, isError: r.timedOut || r.code !== 0 };
     },
   }),
   tool("file_save", "Save a text file into your library so the user can open or download it. Use for reports, notes, drafts, data.", obj({ filename: str("File name, optionally with folders, e.g. reports/weekly.md"), content: str("Full text content") }, ["filename", "content"]), {
@@ -276,7 +288,10 @@ const videoTools: BuiltinTool[] = [
     gate: (_a, ctx) => {
       const owner = bots.byId(ctx.botId);
       if (!owner || videoRoute(owner.userId) !== "api") return null;
-      return { key: `video_generate: ${owner.name}`, title: "Allow {bot} to create a video? Each video is billed by {provider}.", reason: "create a video", source: "Paid video", vars: { provider: videoService()?.label ?? "" } };
+      // Spec 08 A4: the cost is announced on the card when it is known (VIDEO_PRICE_USD), else the card says it is not.
+      const est = videoPriceEstimate();
+      return { key: `video_generate: ${owner.name}`, title: "Allow {bot} to create a video? Each video is billed by {provider}.", reason: "create a video", source: "Paid video", vars: { provider: videoServices().map((v) => v.label).join(", ") || (videoService()?.label ?? ""), cost: est ? est.toFixed(2) : "" },
+        note: est ? "Estimated cost: {cost} $ per video, reserved before the call and settled at the real cost." : "The price of a video is not known in advance; the real cost is recorded after." };
     },
     run: async (a, c) => {
       const via = higgsfieldFor(c.user.id);
@@ -297,12 +312,33 @@ const videoTools: BuiltinTool[] = [
       }
       const show = (pct: number | null) => setLive(c.user.id, c.bot.id, { running: true, activity: { kind: "filming", detail: pct === null ? undefined : String(Math.round(pct)), since: Date.now() }, awaiting: null });
       const aspect = a.aspect_ratio === "9:16" || a.aspect_ratio === "1:1" ? a.aspect_ratio : a.aspect_ratio === "16:9" ? "16:9" : undefined;
-      const v = await generateVideo({ prompt: String(a.prompt), duration: Number(a.duration_seconds) || undefined, aspect, image, signal: c.signal, onProgress: show });
-      recordUsage(c.user.id, c.bot.id, v.model, { inputTokens: 0, outputTokens: 0, cachedTokens: 0 }, v.costUsd ?? 0);
-      const att = storeBytes(c.bot.id, "videos", `${String(a.filename ?? "video").trim() || "video"}.${EXT[v.mime] ?? "mp4"}`, v.bytes);
-      rows.append(c.bot, { kind: "message", role: "assistant", text: "", attachments: [att] });
-      bots.bumpUnread(c.bot.id);
-      return { content: `Created and shown to the user with a player. Saved as ${botPathOf(att.path)}.${v.costUsd ? ` It cost $${v.costUsd.toFixed(2)}.` : ""}`, summary: `${att.name}${v.costUsd ? ` · $${v.costUsd.toFixed(2)}` : ""}` };
+      // Spec 08 A3/A4: the configured video APIs in order; each paid call reserves its cost first and settles the real
+      // cost after (no double charge for the same request sent again); a provider error moves on to the next one, but a
+      // job that may still finish is never doubled with another paid provider.
+      const est = videoPriceEstimate();
+      const reqArgs = { prompt: String(a.prompt), duration: Number(a.duration_seconds) || null, aspect: aspect ?? null, image: a.reference_image ?? null };
+      const tried: string[] = [];
+      for (const svc of videoServices()) {
+        const r = reserve({ userId: c.user.id, botId: c.bot.id, tool: "video", provider: svc.id, maxUsd: est ?? (c.bot.thirdPartyDailyCapUsd !== null ? Math.min(DEFAULT_MAX_COST_USD, c.bot.thirdPartyDailyCapUsd) : 0), idemKey: idemKeyOf(c.bot.id, "video", svc.id, reqArgs, typeof a.request_id === "string" ? a.request_id : undefined) });
+        if (r.kind === "refused") return { content: r.message, isError: true, summary: tr(c.user.locale, "budget refused") };
+        if (r.kind === "busy") return { content: "This same video is still being made. Wait for it; do not start another.", isError: true, summary: tr(c.user.locale, "in progress") };
+        if (r.kind === "replay") return { content: `${r.result}\n(This is the same request as a moment ago: it was not made or charged again.)`, summary: tr(c.user.locale, "same request, not charged again") };
+        let v: Awaited<ReturnType<typeof generateVideo>>;
+        try { v = await generateVideo({ prompt: String(a.prompt), duration: Number(a.duration_seconds) || undefined, aspect, image, signal: c.signal, onProgress: show }, svc); }
+        catch (err) {
+          release(r.id);
+          if (c.signal.aborted || /timed out|took too long/i.test(String((err as Error)?.message))) throw err;
+          tried.push(`${svc.label}: ${clip(String((err as Error)?.message ?? err), 120)}`);
+          continue;
+        }
+        const att = storeBytes(c.bot.id, "videos", `${String(a.filename ?? "video").trim() || "video"}.${EXT[v.mime] ?? "mp4"}`, v.bytes);
+        rows.append(c.bot, { kind: "message", role: "assistant", text: "", attachments: [att] });
+        bots.bumpUnread(c.bot.id);
+        const content = `Created and shown to the user with a player. Saved as ${botPathOf(att.path)}.${v.costUsd ? ` It cost $${v.costUsd.toFixed(2)}.` : ""}${tried.length ? ` (Served by ${svc.label}; tried first: ${tried.join("; ")}.)` : ""}`;
+        settle(r.id, v.costUsd ?? est ?? 0, content, v.model);
+        return { content, summary: `${att.name}${v.costUsd ? ` · $${v.costUsd.toFixed(2)}` : ""}${tried.length ? ` · ${tr(c.user.locale, "served by {who}", { who: svc.label })}` : ""}` };
+      }
+      return { content: `No video service could make it: ${tried.join("; ") || "none is configured"}. Nothing was charged.`, isError: true, summary: tr(c.user.locale, "nobody answered") };
     },
   }),
   tool("media_save", "Download a finished video or picture from its address (for example one an app such as Higgsfield just made) into your library and show it to the user in the chat, with a player for videos.",
@@ -619,12 +655,59 @@ const knowledgeTools: BuiltinTool[] = [
   }),
 ];
 
+/** Options every provider-chain tool takes (spec 08 A3). */
+const chainProps = {
+  allow_paid: { type: "boolean", description: "Only after the free ways found nothing: allow a paid provider (the user is asked once for this bot, with the cost)" },
+  max_cost_usd: { type: "number", description: "Most this call may cost, in USD (default 1)" },
+  prefer: str("Optional: the provider to try first (its id)"),
+  exclude: { type: "array", items: { type: "string" }, description: "Optional: provider ids to leave out" },
+  fresh: { type: "boolean", description: "Force a real call instead of a recent cached answer" },
+};
+const chainOpts = (a: Record<string, any>) => ({ allowPaid: !!a.allow_paid, maxCostUsd: Number(a.max_cost_usd) > 0 ? Math.min(50, Number(a.max_cost_usd)) : DEFAULT_MAX_COST_USD, prefer: typeof a.prefer === "string" ? a.prefer : undefined, exclude: Array.isArray(a.exclude) ? a.exclude.map(String) : undefined });
+
 const searchTools: BuiltinTool[] = [
-  tool("search_web", "Search the web and get a list of results (title, address, excerpt). Open a result with web_fetch or the browser to read it.", obj({ query: str("What to search for") }, ["query"]), {
-    activity: "searching", label: "Searching the web", group: "web", outside: true,
+  tool("search_web", "Search the web and get a list of results (title, address, excerpt). Sklubot tries the ways available in order — the user's own keys first, then free services, then paid ones only with the user's yes — and tells you which one answered. Open a result with web_fetch, reach_read or the browser to read it.", obj({ query: str("What to search for"), ...chainProps }, ["query"]), {
+    activity: "searching", label: "Searching the web", group: "web", outside: true, detail: (a) => clip(String(a.query ?? ""), 60),
+    gate: (a, ctx) => paidGate("web search", "a web search", searchProviders(), { query: String(a.query ?? "") }, ctx.botId, !!a.allow_paid),
     run: async (a, c) => {
-      const results = await searchWeb(String(a.query), c.signal);
-      return { content: results.length ? results.map((r, i) => `${i + 1}. ${r.title}\n   ${r.url}\n   ${clip(r.snippet, 300)}`).join("\n") : "No results.", summary: `${results.length}` };
+      const query = String(a.query ?? "").trim();
+      if (!query) return { content: "Say what to search for.", isError: true };
+      const hit = a.fresh ? null : cached(c.user.id, "search_web", "chain", { query });
+      if (hit) return { content: `${hit.note}\n${hit.response}`, summary: `${tr(c.user.locale, "cached")} · ${hit.age}` };
+      const o = await runChain("web search", searchProviders(), { query }, { bot: c.bot, signal: c.signal }, chainOpts(a));
+      const line = servedLine(c.user.locale, o);
+      if (o.refusal) return { content: `${o.refusal}\n${attemptsText(o)}`, isError: true, summary: line };
+      if (o.needsConsent) return { content: `The free ways found nothing. The next way is paid: ${o.needsConsent.label}${o.needsConsent.estimateUsd === null ? " (price not known in advance)" : ` (about ${o.needsConsent.estimateUsd.toFixed(2)} $)`}. Ask the user whether it is worth it, or call search_web again with allow_paid: true (they will be asked once for you).\n${attemptsText(o)}`, summary: line };
+      if (!o.result) return { content: o.attempts.some((x) => x.outcome !== "skipped") ? `Nothing found.\n${attemptsText(o)}` : "No web search is set up for you: the user (or the server's admin) can add a Brave key in the vault (bound to api.search.brave.com), set up SearXNG, or switch on Agent Reach (your tools).", isError: !o.attempts.some((x) => x.outcome === "empty"), summary: line };
+      const text = o.result.map((r, i) => `${i + 1}. ${r.title}\n   ${r.url}\n   ${clip(r.snippet, 300)}`).join("\n");
+      remember(c.user.id, "search_web", "chain", { query }, text, cachePolicy(c.user.id, "search_web", o.attempts.find((x) => x.outcome === "served")?.provider === "Treg" ? "treg" : undefined));
+      return { content: `${text}\n\n${attemptsText(o)}`, summary: `${o.result.length} · ${line}` };
+    },
+  }),
+];
+
+/** Transcription of a video or podcast address (spec 08 A3): subtitles first (free), then the user's own Whisper, then paid. */
+const transcribeTools: BuiltinTool[] = [
+  tool("transcribe", "Get the transcript of a video (YouTube and other video sites) as text. Sklubot tries the subtitles first (free), then the user's own speech-to-text service, then a paid one only with the user's yes, and tells you which one answered.", obj({ url: str("Address of the video"), lang: str("Preferred languages, e.g. fr,en"), ...chainProps }, ["url"]), {
+    activity: "reading", label: "Transcribing a video", group: "web", outside: true, detail: (a) => hostOf(a.url),
+    gate: (a, ctx) => paidGate("transcription", "a transcription", transcribeProviders(), { url: String(a.url ?? "") }, ctx.botId, !!a.allow_paid),
+    run: async (a, c) => {
+      const url = String(a.url ?? "").trim();
+      if (!/^https?:\/\//i.test(url)) return { content: "Give the video's full http(s) address.", isError: true };
+      const args = { url, lang: typeof a.lang === "string" ? a.lang.slice(0, 40) : undefined };
+      const hit = a.fresh ? null : cached(c.user.id, "transcribe", "chain", args);
+      if (hit) return { content: `${hit.note}\n${hit.response}`, summary: `${tr(c.user.locale, "cached")} · ${hit.age}` };
+      const o = await runChain("transcription", transcribeProviders(), args, { bot: c.bot, signal: c.signal }, chainOpts(a));
+      const line = servedLine(c.user.locale, o);
+      if (o.refusal) return { content: `${o.refusal}\n${attemptsText(o)}`, isError: true, summary: line };
+      if (o.needsConsent) return { content: `The free ways did not work. The next way is paid: ${o.needsConsent.label} (price not known in advance). Ask the user, or call transcribe again with allow_paid: true.\n${attemptsText(o)}`, summary: line };
+      if (!o.result) {
+        const blocked = o.attempts.some((x) => /blocks this server|confirm you|not a bot/i.test(x.detail));
+        return { content: `No transcript.${blocked ? " YouTube blocks this server; if the user's own computer is paired with Sklubot Relais, suggest opening the video from there." : ""}\n${attemptsText(o)}`, isError: true, summary: blocked ? tr(c.user.locale, "YouTube blocks this server") : line };
+      }
+      const text = clip(o.result, 60_000);
+      remember(c.user.id, "transcribe", "chain", args, text, cachePolicy(c.user.id, "transcribe"));
+      return { content: `${text}\n\n${attemptsText(o)}`, summary: line };
     },
   }),
 ];
@@ -1077,7 +1160,11 @@ function assemble(opts: { nativeSearch?: boolean; video?: "connector" | "api" | 
     // On its own Linux computer a bot's commands are contained, so they do not need a permission card.
     ...workTools.filter((t) => t.spec.name !== "shell_run" || shellAvailable())
       .map((t): BuiltinTool => ({ ...t, group: t.spec.name === "shell_run" ? "shell" : t.spec.name === "web_fetch" ? "web" : "files", sensitive: t.spec.name === "shell_run" && computerKind() === "linux" ? false : t.sensitive })),
-    ...(searchConfigured() && !opts.nativeSearch ? searchTools : []),
+    ...(searchChainAvailable() && !opts.nativeSearch ? searchTools : []),
+    // Wave 7: Agent Reach (read-only) on the bot's Linux computer, transcription, temporary public links.
+    ...(reachAvailable() ? inGroup("reach", reachTools) : []),
+    ...(computerKind() === "linux" || reachAvailable() ? transcribeTools : []),
+    ...publicLinkTools,
     ...knowledgeTools, ...guideTools, ...ruleTools, ...pageTools, ...progressTools, ...profileTools, ...skillImportTools, ...botTools,
     ...(xSearchAvailable() ? xTools : []),
     ...shareTools.filter((t) => t.spec.name !== "image_generate" || imageService()).map((t): BuiltinTool => ({ ...t, group: t.spec.name === "image_generate" ? "images" : "files" })),
