@@ -52,6 +52,8 @@ services:
       FIRST_BOT_NAME: "${SKLUBOT_FIRST_BOT_NAME:-}"
       FIRST_BOT_LABEL: "${SKLUBOT_FIRST_BOT_LABEL:-}"
       DESKTOP_MEMORY: "${SKLUBOT_DESKTOP_MEMORY:-2g}"
+      # Clavier des ordinateurs des bots (nom de disposition X : us, fr, de…).
+      DESKTOP_KEYBOARD: "${SKLUBOT_DESKTOP_KEYBOARD:-us}"
       # Docker, à travers le proxy filtrant (voir plus bas), jamais le socket lui-même.
       DOCKER_HOST: "tcp://docker-proxy:2375"
       # Vague 6 — voix serveur (profil « voice » ci-dessous) : whisper.cpp + Piper sur le réseau interne. Vides = appels par le navigateur.

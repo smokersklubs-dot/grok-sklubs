@@ -75,6 +75,8 @@ export const config = {
   desktopMemory: process.env.DESKTOP_MEMORY ?? "2g",
   desktopCpus: num("DESKTOP_CPUS", 2),
   desktopResolution: process.env.DESKTOP_RESOLUTION ?? "1280x800x24",
+  /** Keyboard layout of the bots' computers (an X layout name: "us", "fr", "de"…). Applied when a computer is created. */
+  desktopKeyboard: /^[a-z0-9_,()-]{1,40}$/.test(process.env.DESKTOP_KEYBOARD ?? "") ? process.env.DESKTOP_KEYBOARD! : "us",
   compactChars: num("COMPACT_CHARS", 300_000),
   compactKeepTurns: num("COMPACT_KEEP_TURNS", 4),
   consolidateIdleMin: num("CONSOLIDATE_IDLE_MIN", 10),

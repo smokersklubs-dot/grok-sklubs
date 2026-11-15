@@ -172,6 +172,7 @@ async function wake(botId: string, userId: string, workspace: string): Promise<M
           // file capabilities, and no way to gain privileges through setuid programs.
           "--cap-drop", "ALL", ...COMPUTER_CAPS.flatMap((cap) => ["--cap-add", cap]), "--security-opt", "no-new-privileges",
           "-e", `SCREEN_RES=${config.desktopResolution}`,
+          "-e", `KEYBOARD=${config.desktopKeyboard}`,
           "-v", `${volumeName(botId)}:/root`, ...libraryMount(workspace),
           "--label", "sklubot=desktop", config.desktopImage,
         ], { timeoutMs: 120_000 });
@@ -234,8 +235,8 @@ const keysym = (combo: string) => combo.split("+").map((part) => {
 }).join("+");
 
 /**
- * Types the text it reads on standard input. xdotool alone loses characters that are not on the US keyboard
- * ("é", "É", "€"…): it borrows a key for each one and gives it back before the window has read the keystroke.
+ * Types the text it reads on standard input. xdotool alone loses characters that are not on the computer's keyboard
+ * ("É", "ô", "€"…; on a US keyboard also "é"): it borrows a key for each one and gives it back before the window has read the keystroke.
  * So those characters are first placed on unused keys, typed like any other, and the keys are freed afterwards.
  * A text with more distinct such characters than there are unused keys (about 19) is typed in several passes;
  * re-placing keys between passes is less dependable in Chromium (roughly one text in eight came out wrong in tests).
@@ -253,7 +254,15 @@ def send(part):
 def keymap(pairs):
     if pairs:
         run(["xmodmap"] + [a for code, sym in pairs for a in ("-e", "keycode %d = %s" % (code, sym))])
-plain = lambda ch: ord(ch) < 127
+# Characters the current keyboard layout already has (US, French…): xdotool types those dependably.
+known = set()
+for value in re.findall(r"0x([0-9a-f]+) \(", run(["xmodmap", "-pk"]).stdout.decode("utf-8", "replace")):
+    v = int(value, 16)
+    if 0x20 <= v < 0x100:
+        known.add(chr(v))
+    elif 0x01000000 < v <= 0x0110FFFF:
+        known.add(chr(v - 0x01000000))
+plain = (lambda ch: ord(ch) < 32 or ch in known) if known else (lambda ch: ord(ch) < 127)
 if all(plain(ch) for ch in text):
     send(text)
     sys.exit(0)
