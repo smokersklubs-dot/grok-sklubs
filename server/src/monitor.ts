@@ -5,6 +5,7 @@ import { computerKind } from "./computer.js";
 import { config } from "./config.js";
 import { q } from "./db.js";
 import { schedulerBeat } from "./scheduler.js";
+import { hostedMode, hostedOverBudget, subscriptions } from "./hosted.js";
 
 /**
  * What /api/health checks (SK-P0-08 / monitoring), each with a short code:
@@ -120,13 +121,24 @@ function checkQueue(): Check {
   return r?.oldest && Date.now() - r.oldest > QUEUE_STUCK_MS ? { state: "degraded", code: "queue_stuck", detail } : { state: "ok", code: "ok", detail };
 }
 
+/**
+ * Hosted mode only (no such check otherwise): how many customer accounts are in each status, and how many have spent
+ * this month's AI budget on the service's keys. For the operator's eye; it never changes the status.
+ */
+function checkHosted(): Check {
+  const byStatus: Record<string, number> = {};
+  for (const r of q.all<{ status: string; n: number }>("SELECT status, COUNT(*) AS n FROM subscriptions GROUP BY status")) byStatus[r.status] = r.n;
+  const overBudget = subscriptions.all().filter((s) => s.status !== "suspended" && hostedOverBudget(s.userId)).length;
+  return { state: "ok", code: "ok", detail: { accounts: byStatus, overBudget } };
+}
+
 let cached: { at: number; report: HealthReport } | null = null;
 let running: Promise<HealthReport> | null = null;
 /** Runs every check (at most once every few seconds: the public route may be polled by several monitors). */
 export async function healthReport(maxAgeMs = 5000): Promise<HealthReport> {
   if (cached && Date.now() - cached.at < maxAgeMs) return cached.report;
   running ??= (async () => {
-    const checks: Record<string, Check> = { db: checkDb(), docker: await checkDocker(), disk: checkDisk(), scheduler: checkScheduler(), backup: checkBackup(), queue: checkQueue() };
+    const checks: Record<string, Check> = { db: checkDb(), docker: await checkDocker(), disk: checkDisk(), scheduler: checkScheduler(), backup: checkBackup(), queue: checkQueue(), ...(hostedMode() ? { hosted: checkHosted() } : {}) };
     const order = ["db", "disk", "docker", "scheduler", "queue", "backup"];
     const down = order.find((k) => checks[k].state === "down");
     const degraded = order.find((k) => checks[k].state === "degraded");

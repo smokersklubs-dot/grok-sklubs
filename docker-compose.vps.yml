@@ -41,6 +41,9 @@ services:
       SEARXNG_URL: "${SEARXNG_URL:-}"
       OPEN_SIGNUP: "${SKLUBOT_OPEN_SIGNUP:-0}"
       ALLOWED_EMAILS: "${SKLUBOT_ALLOWED_EMAILS:-}"
+      # Mode hébergé commercial (offres, abonnements, budget IA par compte, page d'administration) : 1 pour l'activer.
+      # Voir docs/MODE-HEBERGE.md. À 0 (par défaut), Sklubot se comporte exactement comme une installation personnelle.
+      HOSTED_MODE: "${SKLUBOT_HOSTED_MODE:-0}"
       COMPUTER: "linux"
       DATA_VOLUME: "sklubot_data"
       # Les ordinateurs des bots sont sur leur propre réseau (BOTS_NETWORK, créé par Sklubot, sans trafic entre eux) et

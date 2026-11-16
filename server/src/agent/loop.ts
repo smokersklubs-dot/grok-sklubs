@@ -41,6 +41,7 @@ import { createGoal, goalAfterTurn, goalCommand, goalNote, goals, startRound, ty
 import { checkpoints } from "./spend.js";
 import { balancedCut, compactHistory, contextWindowOf, estimateTokens, prepareMessages } from "./context.js";
 import { jobs, setJobBlocked, setJobWaker, startJobWatch } from "../jobs.js";
+import { engineBlock, hostedMode, isHostedStop, isPlanLimit, operatorBlock, operatorPaid, postStopNotice } from "../hosted.js";
 
 /** A skill the user asked for with "/skill <name>" in the composer. */
 export interface ForcedSkill { name: string; body: string; from?: string }
@@ -522,6 +523,11 @@ async function runScopedTurn(botId: string, trigger: Trigger, thread: number): P
   const snapBase = await turnStarted(bot);
   try {
     const held = paused.get<PausedTurn>(botId);
+    // Hosted mode: the account's plan decides whether this turn may start at all (suspended account, a subscription bot
+    // someone else started, a model only the operator's keys pay for when the budget is spent or the plan uses own keys
+    // only). The bot says why, with the way forward; background work says it once a day.
+    const stop = hostedMode() ? hostedTurnStop(bot, trigger, held) : null;
+    if (stop) { postStopNotice(bot, stop, { background: trigger.kind !== "user" && trigger.kind !== "resume", member: trigger.kind === "user" && !!trigger.member }); return; }
     if (trigger.kind === "resume") {
       if (!held) return;
       turn = await newTurn(bot, user, held.depth, controller.signal);
@@ -632,11 +638,15 @@ async function runScopedTurn(botId: string, trigger: Trigger, thread: number): P
         const minutes = Math.round((controller.signal.reason as EngineTimeout).limitMs / 60_000);
         rows.append(bot, { kind: "notice", tone: "warn", text: tr(user.locale, "I stopped this turn after {min} minutes: that is the time limit for one turn on a subscription. What I did so far is kept. Press Continue, or just tell me to continue, to pick it back up.", { min: minutes }), action: { kind: "continue", status: "pending", reason: "timeout" } });
         audit(user.id, "system", `${bot.name}: subscription turn stopped at its time limit (${minutes} min)`, bot.id);
+      } else if (isHostedStop(err)) {
+        postStopNotice(bot, err.reason, { background: trigger.kind !== "user" && trigger.kind !== "resume" });
+      } else if (isPlanLimit(err)) {
+        postStopNotice(bot, "limit", { limit: err });
       } else if ((err as Error)?.name === "ComputersBusyError") {
         rows.append(bot, { kind: "notice", tone: "warn", text: tr(user.locale, "All the computers of this server are busy with other work right now, so mine could not start. Nothing was stopped. Tell me to continue in a few minutes."), action: { kind: "continue", status: "pending", reason: "busy" } });
       } else rows.append(bot, stopped ? { kind: "notice", tone: "info", text: tr(user.locale, "Stopped.") } : { kind: "notice", tone: "error", text: tr(user.locale, "Something went wrong: {detail}", { detail: clip(String((err as Error)?.message ?? err), 400) }) });
     }
-    if (!stopped) console.error(`[turn ${bot.name}]`, err);
+    if (!stopped && !isHostedStop(err) && !isPlanLimit(err)) console.error(`[turn ${bot.name}]`, err);
   } finally {
     turnEnded(bot, snapBase, thread);
     endScope(botId);
@@ -675,6 +685,30 @@ async function runScopedTurn(botId: string, trigger: Trigger, thread: number): P
       if (now?.kind === "agent") goalAfterTurn(now, { thread, stopped, failed: controller.signal.aborted ? "" : failed || engineFailed, waitsUser: !!turn?.waitsUser, loopStop: turn?.loopStop ? loopStopText(turn.loopStop) : "", tainted: !!turn?.tainted });
     } catch (err) { console.error(`[goal ${botId}]`, err); }
   }
+}
+
+/**
+ * Hosted mode: why this turn may not start (hosted.ts), or null. A subscription bot runs only for its own account (never
+ * started by a workspace member of another account); an API bot whose models are ALL paid by the operator's keys stops
+ * when those keys may not pay (budget spent, own-keys-only plan). A chain with one of the account's own keys goes on:
+ * the operator's models are skipped at call time (modelLoop).
+ */
+function hostedTurnStop(bot: BotRecord, trigger: Trigger, held: PausedTurn | null | undefined): "budget" | "suspended" | "byok" | "engines" | null {
+  const modelRef = trigger.kind === "resume" ? held?.modelRef ?? bot.model : bot.model;
+  if (isEngineRef(modelRef)) return engineBlock(bot.userId, trigger.kind === "user" && !!trigger.member);
+  const why = operatorBlock(bot.userId);
+  if (!why) return null;
+  if (why === "suspended") return why;
+  // Does any model of the chain run on something else than the operator's keys?
+  for (const ref of modelChain({ ...bot, model: modelRef })) {
+    try { if (!operatorPaid(bot.userId, resolveModel(ref, bot.userId).provider.id)) return null; } catch { /* nothing usable for this one */ }
+  }
+  return why;
+}
+
+/** Hosted mode: why background work of this bot (goal rounds, routines) may not run now, or null. */
+export function hostedHoldsBot(bot: BotRecord): "budget" | "suspended" | "byok" | "engines" | null {
+  return hostedMode() ? hostedTurnStop(bot, { kind: "system", text: "" }, null) : null;
 }
 
 /** What started a turn, as the journal and the tools see it. */
@@ -744,6 +778,17 @@ async function modelLoop(turn: Turn) {
         result = await call();
       } catch (err) {
         if (turn.signal.aborted) { stream.finish(); throw err; }
+        // Hosted mode: the plan stopped this model (budget spent on the operator's keys, own keys only, suspended). The next
+        // model of the chain may be the account's own key: tried at once, without a retry or a "not answering" notice.
+        if (isHostedStop(err)) {
+          const next = chain[at + 1];
+          if (!next || err.reason === "suspended") { stream.finish(); throw err; }
+          at++;
+          attempt = 0;
+          ({ provider, model } = resolveModel(next, turn.user.id));
+          turn.modelRef = next;
+          continue;
+        }
         // Whatever this failed call had started to write is taken back: the next try writes the reply afresh.
         stream.rollback(tr(loc, "The reply was interrupted. Trying again…"));
         // Too long for the model: summarise the older steps (keeping less than usual) and try the same model once more,

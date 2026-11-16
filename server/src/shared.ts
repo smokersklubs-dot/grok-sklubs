@@ -275,7 +275,16 @@ export type RowBody =
    * a subscription tool reached its time limit; `reason: "busy"`, its computer could not start, every one being busy — and can
    * pick the work back up.
    */
-  | { kind: "notice"; tone: "info" | "warn" | "error"; text: string; action?: { kind: "continue"; status: "pending" | "done"; reason?: "timeout" | "busy" } | { kind: "settings"; section: string } };
+  | { kind: "notice"; tone: "info" | "warn" | "error"; text: string; action?: { kind: "continue"; status: "pending" | "done"; reason?: "timeout" | "busy" } | { kind: "settings"; section: string } | HostedNoticeAction };
+
+/**
+ * Hosted mode: the way forward under a notice that stopped work because of the account's plan (hosted.ts). "budget": the
+ * month's AI budget on the service's keys is used up (top up, use one's own key, or wait until `resetAt`); "suspended":
+ * the account is suspended; "byok": the plan uses the customer's own keys only; "engines": a Claude / ChatGPT
+ * subscription bot that this person may not run; "limit": a plan limit (`limit` says which); "payment": the trial or the
+ * paid period is over (grace period before suspension).
+ */
+export interface HostedNoticeAction { kind: "plan"; reason: HostedStopReason; limit?: PlanLimitKind; resetAt?: number; contactUrl?: string }
 
 /** One file a turn changed (see the "files" card). */
 export interface FileChange { path: string; change: "added" | "modified" | "deleted"; added: number | null; removed: number | null; binary: boolean; oldSize: number | null; newSize: number | null }
@@ -953,3 +962,42 @@ export function maskSecrets(text: string, placeholder: string): { text: string; 
   for (const s of secrets) { out += text.slice(at, s.start) + placeholder; at = s.end; }
   return { text: out + text.slice(at), secrets };
 }
+
+
+// ── Hosted mode (hosted.ts; only when HOSTED_MODE=1) ─────────────────────────────────────────────────────────────────
+export type PlanKind = "free" | "included" | "byok";
+export type SubscriptionStatus = "trial" | "active" | "past_due" | "suspended";
+export type HostedStopReason = "budget" | "suspended" | "byok" | "engines" | "limit" | "payment";
+export type PlanLimitKind = "bots" | "routines" | "computers" | "storage";
+/** A plan as the instance owner edits it. Limits: null = no limit. Prices and budgets in euros, per month. */
+export interface HostedPlan {
+  id: string; kind: PlanKind; nameFr: string; nameEn: string; descriptionFr: string; descriptionEn: string;
+  priceEur: number; aiBudgetEur: number; maxBots: number | null; maxAwakeComputers: number | null; storageGb: number | null; maxRoutines: number | null;
+  public: boolean; position: number; archived: boolean;
+}
+/** The operator's estimates for paid services without a price per call (USD). They are estimates, not provider prices. */
+export interface HostedEstimates { imageUsd: number; videoUsd: number; sttUsdPerMinute: number; ttsUsdPer1kChars: number }
+/** Details printed in the legal templates; empty fields show as [À COMPLÉTER]. */
+export interface HostedLegal { company: string; legalForm: string; capital: string; address: string; siret: string; vat: string; director: string; email: string; phone: string; host: string; mediator: string }
+export interface HostedSettings {
+  usdToEur: number; trialDays: number; graceDays: number; trialBudgetEur: number; contactUrl: string; signupDefaultPlan: string;
+  /** Whether customer accounts may run bots on their own Claude Code / Codex sign-in (never the operator's). */
+  subscriptionEngines: boolean;
+  estimates: HostedEstimates; legal: HostedLegal;
+}
+/** "Mon abonnement": what a customer sees of their own account. */
+export interface HostedAccountView {
+  operator: boolean;
+  plan: HostedPlan | null; status: SubscriptionStatus | null;
+  trialEndsAt: number | null; periodEnd: number | null; graceEndsAt: number | null;
+  month: string; resetAt: number; spentEur: number; budgetEur: number; creditEur: number; operatorKeys: boolean;
+  usage: { bots: number; maxBots: number | null; routines: number; maxRoutines: number | null; awake: number; maxAwake: number | null; storageBytes: number; storageLimitBytes: number | null };
+  contactUrl: string; plans: HostedPlan[];
+}
+export interface AdminCustomer {
+  id: string; name: string; email: string; createdAt: number; operator: boolean; owner: boolean;
+  planId: string | null; status: SubscriptionStatus | null; trialEndsAt: number | null; periodEnd: number | null; graceEndsAt: number | null;
+  spentEur: number; budgetEur: number; creditEur: number; lastActivity: number | null; bots: number; computers: number; awake: number;
+}
+export interface AdminAuditEntry { id: number; at: number; actorLabel: string; targetId: string | null; targetEmail: string | null; action: string; detail: string }
+export interface PlanInviteView { id: string; planId: string; email: string; expiresAt: number; usedAt: number | null; createdAt: number; link?: string }

@@ -3,6 +3,7 @@ import { q } from "./db.js";
 import type { ThirdPartySpend } from "./shared.js";
 import { bots, newId, now, settings } from "./store.js";
 import { record as recordUsage, spentThisMonth } from "./usage.js";
+import { operatorBlock, toolRefusal } from "./hosted.js";
 
 /**
  * Wave 7 (spec 08) — what paid third-party tools cost (A4) and a cache for read-only data calls (A5).
@@ -80,6 +81,10 @@ export function reserve(f: { userId: string; botId: string; tool: string; provid
         message: `Budget refusal: this paid call could cost up to ${usd(max)}, and the account's monthly budget of ${usd(toMicros(budget))} has ${usd(Math.max(0, toMicros(budget) - spent))} left. Nothing was spent. Tell the user: they can raise the budget (Settings → Usage), or you can use a free way.`,
       };
     }
+    // Hosted mode: paid third-party calls run on the service's keys; the plan's monthly AI budget must cover the most this
+    // call can cost on top of what is spent and reserved (nothing for an operator, or with hosted mode off).
+    const held = max > 0 ? operatorBlock(f.userId, fromMicros(reservedForUser(f.userId) + max)) : null;
+    if (held) return { kind: "refused", reason: "budget", message: toolRefusal(held) };
     if (prev) {
       q.run("UPDATE tool_spend SET status = 'reserved', reserved_micros = ?, actual_micros = 0, result = NULL, created_at = ?, settled_at = NULL, tool = ?, provider = ? WHERE id = ?", max, now(), f.tool, f.provider, prev.id);
       return { kind: "reserved", id: prev.id, reservedUsd: fromMicros(max) };

@@ -159,11 +159,21 @@ const unknownWarned = new Set<string>();
 let actorHook: (botId: string) => string | null = () => null;
 export const setActorHook = (fn: (botId: string) => string | null) => { actorHook = fn; };
 
+/**
+ * Hosted mode (hosted.ts): who pays for a usage line — "operator", "own" or "subscription". Without hosted mode it says
+ * nothing ("") and the line is written exactly as before.
+ */
+let payerHook: (userId: string, model: string, u: TurnUsage, status: string) => string = () => "";
+export const setPayerHook = (fn: typeof payerHook) => { payerHook = fn; };
+
 /** `costUsd`: the price the service itself reported (e.g. a video), used instead of our token price list. */
 export function record(userId: string, botId: string, model: string, u: TurnUsage, costUsd?: number) {
   const e = costUsd !== undefined ? { cost: costUsd, status: "reported" as const, estimate: 0 } : costEstimate(model, u, userId);
+  const payer = payerHook(userId, model, u, e.status);
   // actor_id (wave 6): the workspace member whose message started the turn, for per-member usage (null: the owner).
-  q.run("INSERT INTO usage (user_id, bot_id, at, model, input_tokens, output_tokens, cached_tokens, cost_usd, actor_id, price_status, est_cost_usd) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+  if (payer) q.run("INSERT INTO usage (user_id, bot_id, at, model, input_tokens, output_tokens, cached_tokens, cost_usd, actor_id, price_status, est_cost_usd, payer) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    userId, botId, now(), model, u.inputTokens, u.outputTokens, u.cachedTokens, e.cost, actorHook(botId), e.status, e.estimate, payer);
+  else q.run("INSERT INTO usage (user_id, bot_id, at, model, input_tokens, output_tokens, cached_tokens, cost_usd, actor_id, price_status, est_cost_usd) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     userId, botId, now(), model, u.inputTokens, u.outputTokens, u.cachedTokens, e.cost, actorHook(botId), e.status, e.estimate);
   // The task's spend checkpoint (A5) counts the same money — for an unknown price, the conservative estimate, so a
   // checkpoint still stops the work. The journal's per-action cost (A14) only ever shows real, known costs.
@@ -176,6 +186,17 @@ export function record(userId: string, botId: string, model: string, u: TurnUsag
     if (main) rows.append(main, { kind: "notice", tone: "warn", text: tr(users.localeOf(userId), "You have used 80% of this month's budget.") });
     audit(userId, "system", "80% of this month's budget is used");
   }
+}
+
+/**
+ * Hosted mode only: a paid service the operator's keys paid for and that reports no price (a picture, a voice minute…),
+ * counted at the operator's estimate (hosted settings) like an unknown model price: est_cost_usd, status "unknown".
+ */
+export function recordEstimate(userId: string, botId: string, label: string, estimateUsd: number, payer: string) {
+  q.run("INSERT INTO usage (user_id, bot_id, at, model, input_tokens, output_tokens, cached_tokens, cost_usd, actor_id, price_status, est_cost_usd, payer) VALUES (?, ?, ?, ?, 0, 0, 0, 0, ?, 'unknown', ?, ?)",
+    userId, botId, now(), label, botId ? actorHook(botId) : null, Math.max(0, estimateUsd), payer);
+  if (botId) addSpend(botId, Math.max(0, estimateUsd));
+  emit(userId, { type: "usage" });
 }
 
 function warnUnknown(userId: string, model: string) {

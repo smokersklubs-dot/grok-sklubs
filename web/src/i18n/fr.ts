@@ -416,6 +416,8 @@ export const fr: Dict = {
   "settings.section.usage": "Consommation",
   "settings.section.checkins": "Points quotidiens",
   "settings.section.account": "Compte",
+  "settings.section.subscription": "Mon abonnement",
+  "settings.section.admin": "Administration",
   "general.theme": "Thème",
   "general.themeHint": "« Système » suit l’apparence de ton appareil et change avec elle.",
   "theme.system": "Système",

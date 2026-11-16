@@ -8,14 +8,23 @@ import { bots, clip, history, memories, now, paused, rows, settings, type BotRec
 import { findQuote, typedByUser } from "./grounding.js";
 import { looksSecret, memoryVerdict, sensitiveCategory } from "./sensitive.js";
 import { record } from "../usage.js";
-import { isBusy } from "./loop.js";
+import { hostedHoldsBot, isBusy } from "./loop.js";
+import { isHostedStop } from "../hosted.js";
 
 /** A short side request to the model (summaries, fact extraction): no tools, low effort. */
 export async function ask(bot: BotRecord, system: string, prompt: string): Promise<string> {
   // A bot on a subscription does its side work there too, unless the server has its own model for it.
   if (isEngineRef(bot.model) && !config.auxModel && !listProviders().some((p) => p.available())) return engineAsk(bot, system, prompt);
-  const { provider, model } = resolveModel(config.auxModel || bot.model || defaultModelRef(), bot.userId);
-  const res = await provider.runTurn({ model, system, tools: [], effort: "low", maxTokens: 8000, messages: [{ role: "user", content: [{ type: "text", text: prompt }] }], signal: AbortSignal.timeout(180_000) });
+  let res;
+  try {
+    const { provider, model } = resolveModel(config.auxModel || bot.model || defaultModelRef(), bot.userId);
+    res = await provider.runTurn({ model, system, tools: [], effort: "low", maxTokens: 8000, messages: [{ role: "user", content: [{ type: "text", text: prompt }] }], signal: AbortSignal.timeout(180_000) });
+  } catch (err) {
+    // Hosted mode: the plan does not let the service's keys pay for this side request; a bot on its own subscription
+    // does it there instead (never for a suspended account).
+    if (isHostedStop(err) && err.reason !== "suspended" && isEngineRef(bot.model)) return engineAsk(bot, system, prompt);
+    throw err;
+  }
   record(bot.userId, bot.id, res.model, res.usage);
   return res.content.filter((b) => b.type === "text").map((b) => (b as { text: string }).text).join("").trim();
 }
@@ -301,7 +310,7 @@ export async function consolidationSweep() {
        GROUP BY r.bot_id HAVING MAX(r.created_at) <= ? AND MAX(r.created_at) > COALESCE((SELECT mark FROM consolidation c WHERE c.bot_id = b.id), 0))`, quietBefore);
   for (const { id } of due) {
     const bot = bots.byId(id);
-    if (!bot || isBusy(id) || getLive(id).running || paused.get(id)) continue;
+    if (!bot || isBusy(id) || getLive(id).running || paused.get(id) || hostedHoldsBot(bot)) continue;
     await consolidate(bot).catch((err) => console.error("[consolidation]", err?.message ?? err));
   }
 }

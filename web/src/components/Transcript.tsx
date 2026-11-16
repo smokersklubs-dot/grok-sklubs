@@ -12,6 +12,7 @@ import { CardView } from "./Cards";
 import { GrantLine } from "./Wave5";
 import { Icon, Spinner } from "./Icon";
 import { IconButton, useDialogFocus, useEscape, useTick } from "./ui";
+import { PlanNoticeActions } from "./Hosted";
 
 type MessageBody = Extract<RowBody, { kind: "message" }>;
 type StepBody = Extract<RowBody, { kind: "step" }>;
@@ -539,6 +540,7 @@ function NoticeRow({ body, botId, seq, readOnly }: { body: NoticeBody; botId: st
           <Icon name="key" size={13} /> {t("health.openKeys")}
         </button>
       )}
+      {action?.kind === "plan" && !readOnly && <PlanNoticeActions action={action} />}
       {failed && <span className="notice-error" role="alert">{failed}</span>}
     </div>
   );

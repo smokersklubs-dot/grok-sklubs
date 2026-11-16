@@ -435,7 +435,12 @@ export function readLibraryFile(botId: string, rel: string): Buffer {
 }
 
 /** Writes a library file. `exclusive`: fail if anything already has that name. Returns the full path. */
+/** Hosted mode (hosted.ts): the account's plan may limit its storage. Throws before anything is written when it is full. */
+let libraryWriteGuard: (botId: string, bytes: number) => void = () => {};
+export const setLibraryWriteGuard = (fn: (botId: string, bytes: number) => void) => { libraryWriteGuard = fn; };
+
 function writeLibraryFile(botId: string, rel: string, data: string | Buffer, exclusive = false): string {
+  libraryWriteGuard(botId, typeof data === "string" ? Buffer.byteLength(data) : data.length);
   const full = resolveInWorkspace(botId, rel);
   mkdirSync(path.dirname(full), { recursive: true });
   resolveInWorkspace(botId, rel); // a link may have appeared while the folders were made

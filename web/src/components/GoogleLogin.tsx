@@ -111,7 +111,7 @@ function GoogleMark() {
 }
 
 /** The sign-in page's "Continuer avec Google" (also for invitation links). Hidden while the server has no Google keys. */
-export function GoogleSignInButton({ invite, setupCode, setupCodeRequired, onError }: { invite?: string; setupCode?: string; setupCodeRequired?: boolean; onError: (message: string | null) => void }) {
+export function GoogleSignInButton({ invite, setupCode, setupCodeRequired, onError, hosted, check }: { invite?: string; setupCode?: string; setupCodeRequired?: boolean; onError: (message: string | null) => void; /** Hosted mode: the plan, the plan invitation and the terms ticked on the form. */ hosted?: { plan?: string; planInvite?: string; acceptTerms: boolean }; /** An error to show instead of starting (e.g. the terms not ticked). */ check?: () => string | null }) {
   const g = useG();
   const locale = useStore((s) => s.locale);
   const [enabled, setEnabled] = useState(false);
@@ -123,10 +123,12 @@ export function GoogleSignInButton({ invite, setupCode, setupCodeRequired, onErr
   const go = async () => {
     if (busy) return;
     if (setupCodeRequired && !setupCode?.trim()) { onError(g("needSetupCode")); return; }
+    const problem = check?.();
+    if (problem) { onError(problem); return; }
     setBusy(true);
     onError(null);
     try {
-      const r = await api<{ url: string }>("POST", "/auth/google/start", { invite: invite || undefined, setupCode: setupCodeRequired ? setupCode?.trim() : undefined, locale });
+      const r = await api<{ url: string }>("POST", "/auth/google/start", { invite: invite || undefined, setupCode: setupCodeRequired ? setupCode?.trim() : undefined, locale, ...(hosted ?? {}) });
       location.assign(r.url);
     } catch (err) {
       onError(errText(err));

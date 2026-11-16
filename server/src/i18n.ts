@@ -9,6 +9,7 @@ const FR: Record<string, string> = {
   "Goal: {objective}": "Objectif : {objective}", "replaced by a new goal": "remplacé par un nouvel objectif", "the conversation was reset": "la conversation a été remise à zéro",
   "the last round failed: {detail}": "le dernier tour a échoué : {detail}", "this month's budget is used up": "le budget du mois est épuisé",
   "it reached its limit of {n} rounds": "il a atteint sa limite de {n} tours", "Goal paused after {n} rounds: {objective}": "Objectif en pause après {n} tours : {objective}",
+  "the account is suspended": "le compte est suspendu", "the plan does not allow this model": "l'offre ne permet pas ce modèle",
   "paused by you": "mis en pause par toi", "complete": "atteint", "blocked": "bloqué", "Goal blocked: {reason}": "Objectif bloqué : {reason}",
   "Updating the goal": "Fait le point sur l'objectif", "Proposing a goal": "Propose un objectif", "stopped at a spend checkpoint": "arrêté à un point de contrôle des dépenses",
   "I reached {n} steps in this round. Goal mode carries on in the next round.": "J'ai atteint {n} étapes dans ce tour. Le mode objectif continue au tour suivant.",

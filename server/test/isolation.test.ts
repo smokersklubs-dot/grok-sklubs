@@ -56,9 +56,9 @@ let userA = "", userB = "", userV = "";
 const t = Date.now();
 
 test("setup: A owns one of everything, V is a viewer of A's workspace with bot1 shared, B is a stranger", async () => {
-  userA = (await call(api, "a", "POST", "/auth/signup", { email: "alice.alphasecret@example.com", name: "Alice ALPHASECRET", password: "password123" })).json.user.id;
-  userB = (await call(api, "b", "POST", "/auth/signup", { email: "bob@example.com", name: "Bob", password: "password123" })).json.user.id;
-  userV = (await call(api, "v", "POST", "/auth/signup", { email: "vera@example.com", name: "Vera", password: "password123" })).json.user.id;
+  userA = (await call(api, "a", "POST", "/auth/signup", { email: "alice.alphasecret@example.com", name: "Alice ALPHASECRET", password: "password123", acceptTerms: true })).json.user.id;
+  userB = (await call(api, "b", "POST", "/auth/signup", { email: "bob@example.com", name: "Bob", password: "password123", acceptTerms: true })).json.user.id;
+  userV = (await call(api, "v", "POST", "/auth/signup", { email: "vera@example.com", name: "Vera", password: "password123", acceptTerms: true })).json.user.id;
   ids.bot1 = (await A("POST", "/bots", { name: "ALPHASECRET One" })).json.bot.id;
   ids.bot2 = (await A("POST", "/bots", { name: "ALPHASECRET Two" })).json.bot.id;
   ids.room = (await A("POST", "/rooms", { name: "ALPHASECRET Room", members: [ids.bot1, ids.bot2] })).json?.bot?.id ?? "";
@@ -112,6 +112,10 @@ test("setup: A owns one of everything, V is a viewer of A's workspace with bot1 
   assert.equal((await A("PUT", `/bots/${ids.bot1}/share`, { workspaceId: ids.ws, access: "all" })).status, 200);
   ins("INSERT INTO workspace_resources (workspace_id, kind, resource_id, shared_by, created_at) VALUES (?, 'connector', 'a_conn', ?, ?)", ids.ws, userA, t);
   assert.equal((await call(api, "v", "GET", "/bots")).json.bots.some((b: any) => b.id === ids.bot1), true, "V sees the shared bot");
+  // Hosted mode (isolation-hosted.test.ts runs this file with HOSTED_MODE=1): A, the owner, is an operator with a plan
+  // invitation of its own; B and V are customers. Off, the administration routes do not exist (404) and nothing is made.
+  ids.planInvite = (await A("POST", "/admin/invites", { planId: "free", email: "later@example.com" })).json?.invite?.id ?? "pinv_none";
+  if (HOSTED) assert.notEqual(ids.planInvite, "pinv_none", "the operator made a plan invitation");
 });
 
 /** A's value for a route parameter, from the static segment before it. Unknown → the suite fails (add it here). */
@@ -134,6 +138,9 @@ function resolve(routePath: string, param: string, bot: "bot1" | "bot2"): string
     "invites:iid": ids.invite, "resources:kind": "connector", "mail:mailId": ids[`mail_${b}`], "api-providers:id": "up-alpha",
     "sections:id": "a_section", "invites:token": "not-a-real-invite", "hooks:token": "hooktoken_" + b, "native:vendor": "google",
     "mcp:botId": ids[b], "egress:botId": ids[b], "l:token": "not-a-real-link", "p:token": ids[`page_${b}`],
+    // Hosted mode (hosted.ts / hostedroutes.ts): A's account, A's plan invitation, A's provider; the public ones.
+    "customers:uid": userA, "plans:planId": "free", "invites:inviteId": ids.planInvite, "providers:pid": "up-alpha",
+    "plan-invites:token": "not-a-real-invite", "webhook:provider": "stripe",
   };
   if (param === "action" && prev2 === "reach") return "login";
   if (param === "rid" && prev2 === "resources") return "a_conn";
@@ -158,7 +165,9 @@ function fill(routePath: string, bot: "bot1" | "bot2"): string {
  * token, an invitation) or they say nothing about anyone. They are still called below: with A's tokens unknown to B
  * (not-a-real-…) they must say nothing; with A's real hook token they do what a hook does (that token IS the secret).
  */
-const PUBLIC = new Set(["POST /hooks/:token", "GET /invites/:token", "GET /native/:vendor/callback", "GET /p/:token", "GET /l/:token", "HEAD /l/:token"]);
+const PUBLIC = new Set(["POST /hooks/:token", "GET /invites/:token", "GET /native/:vendor/callback", "GET /p/:token", "GET /l/:token", "HEAD /l/:token", "GET /plan-invites/:token", "POST /billing/webhook/:provider"]);
+/** Whether this run is the hosted-mode one (isolation-hosted.test.ts). */
+const HOSTED = process.env.HOSTED_MODE === "1";
 /** The bots' own channel (engine token or socket): never a browser session. Refused without that token. */
 const BOT_CHANNEL = new Set(["POST /mcp/:botId", "GET /mcp/:botId", "DELETE /mcp/:botId", "ALL /egress/:botId/*"]);
 /**
@@ -239,7 +248,8 @@ test("B, a stranger, gets 403/404 on every parameterised route with A's ids, and
         // A page shared "with the link" is public by design (its token is the secret); a private one is not.
         if (r.key === "GET /p/:token") { if (res.status !== (bot === "bot1" ? 200 : 404) || (bot === "bot2" && leakIn(res.text))) problems.push(`${r.key} (${bot}, ${bot === "bot1" ? "link" : "private"}) → ${res.status}`); continue; }
         if (leakIn(res.text)) problems.push(`${r.key} (${bot}) → ${res.status} LEAKS: ${res.text.slice(0, 160)}`);
-        const want = r.key === "POST /hooks/:token" ? [200] : r.key === "GET /native/:vendor/callback" ? [400] : [404, 410];
+        // The payment webhook of a provider that is planned but not written: 501 in hosted mode (nothing changes), else 404.
+        const want = r.key === "POST /hooks/:token" ? [200] : r.key === "GET /native/:vendor/callback" ? [400] : r.key === "POST /billing/webhook/:provider" ? [HOSTED ? 501 : 404] : [404, 410];
         if (!want.includes(res.status)) problems.push(`${r.key} (${bot}) public route → ${res.status}`);
         continue;
       }
@@ -260,7 +270,7 @@ test("without a session, every non-public route says 401 (and nothing else)", as
     const res = await call(api, null, methodOf(r.method), fill(r.path, "bot1"), {});
     if (leakIn(res.text)) problems.push(`${r.key} LEAKS`);
     // A handful of public routes have no parameter (health, me, downloads, sign-in, forgot-password status…): they must not leak either.
-    if (res.status !== 401 && !/^(GET \/(health|me|downloads|auth\/link|connectors\/oauth\/callback|auth\/google.*|auth\/password\/status)|POST \/auth\/.*)$/.test(r.key)) problems.push(`${r.key} → ${res.status}`);
+    if (res.status !== 401 && !/^(GET \/(health|me|downloads|plans|auth\/link|connectors\/oauth\/callback|auth\/google.*|auth\/password\/status)|POST \/auth\/.*)$/.test(r.key)) problems.push(`${r.key} → ${res.status}`);
   }
   assert.deepEqual(problems, []);
 });

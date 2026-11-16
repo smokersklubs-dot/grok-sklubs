@@ -286,6 +286,12 @@ async function sleepMachine(key: string) {
   } finally { stopping.delete(key); }
 }
 
+/** Hosted mode (hosted.ts): how many computers an account may keep awake, and the error when they are all busy. */
+let awakeLimitOf: (userId: string) => { max: number; error: () => Error } | null = () => null;
+export const setAwakeLimit = (fn: typeof awakeLimitOf) => { awakeLimitOf = fn; };
+/** Computers allowed to start under an account's own limit, not running yet (key → account). */
+const accountReserved = new Map<string, string>();
+
 /** All the awake computers are busy and none could be put to sleep in time. Nothing was evicted. */
 export class ComputersBusyError extends Error {
   constructor(readonly max: number) {
@@ -414,6 +420,21 @@ async function wake(key: string, userId: string, workspace?: string): Promise<Ma
         if (power !== "absent") madeWith.set(key, labels[SPEC_LABEL] ?? "");
       }
       if (power !== "running") {
+        // Hosted mode: the account's plan may allow fewer computers awake at once than the server (its own idle one goes
+        // to sleep first, like below; all of them busy → a plan-limit error with the way forward).
+        const account = awakeLimitOf(userId);
+        if (account) {
+          await makeRoom({
+            max: account.max, waitMs: config.computerWaitMs,
+            awake: () => [
+              ...[...machines.values()].filter((m) => m.userId === userId && m.power === "running" && !stopping.has(m.key) && m.key !== key),
+              ...[...accountReserved].filter(([id, u]) => u === userId && id !== key).map(([id]) => ({ key: id, busy: 1, lastUsedAt: 0 })),
+            ],
+            take: () => { accountReserved.set(key, userId); },
+            pick: (m) => { stopping.add(m.key); },
+            free: (m) => sleepMachine(m.key),
+          }).catch((err) => { throw err instanceof ComputersBusyError ? account.error() : err; });
+        }
         // Awake: running and not being put to sleep, plus the others already allowed to start (counted as busy).
         await makeRoom({
           max: config.maxDesktops, waitMs: config.computerWaitMs,
@@ -465,7 +486,7 @@ async function wake(key: string, userId: string, workspace?: string): Promise<Ma
       throw new Error("the computer started but its screen did not come up");
     })();
     starting.set(key, pending);
-    pending.finally(() => { starting.delete(key); reserved.delete(key); }).catch(() => {});
+    pending.finally(() => { starting.delete(key); reserved.delete(key); accountReserved.delete(key); }).catch(() => {});
   }
   await pending;
   const m = note(key, userId, "running");

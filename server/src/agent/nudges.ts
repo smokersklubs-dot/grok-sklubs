@@ -6,6 +6,7 @@ import { nativeToolsFor, runNativeTool } from "../native/tools.js";
 import { inQuietHours, pushLater, pushSettings } from "../push.js";
 import { audit, bots, clip, memories, newId, now, paused, rows, users, type BotRecord } from "../store.js";
 import { costEstimate, record } from "../usage.js";
+import { hostedMode, operatorBlock, operatorPaid, suspended } from "../hosted.js";
 import { isEngineRef } from "./engine.js";
 import { enqueue, isBusy } from "./loop.js";
 
@@ -105,6 +106,8 @@ export async function preparationPass(botId: string, force = false): Promise<Pas
   if (!ref) return { status: "skipped", reason: "no model" };
   let resolved;
   try { resolved = resolveModel(ref, bot.userId); } catch { return { status: "skipped", reason: "no model" }; }
+  // Hosted mode: no quiet pass on the service's keys when the plan does not let them pay (budget spent, suspended…).
+  if (hostedMode() && (suspended(bot.userId) || (operatorPaid(bot.userId, resolved.provider.id) && operatorBlock(bot.userId)))) return { status: "skipped", reason: "plan" };
   bump(bot.id, { pass: true });
   const user = users.byId(bot.userId)!;
   // Read-only tools only: reads of the user's connected apps, and the bot's own memory.

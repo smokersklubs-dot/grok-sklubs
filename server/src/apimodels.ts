@@ -7,6 +7,7 @@ import { assertPublicUrl, fetchProblem, guardedFetch } from "./net.js";
 import type { ApiProvider, ApiProviderModel } from "./shared.js";
 import { now } from "./store.js";
 import { setPriceSource } from "./usage.js";
+import { lentProviderIds } from "./hosted.js";
 
 /**
  * Model providers a user sets up in Settings → Models: any endpoint speaking the OpenAI chat-completions format, with
@@ -37,7 +38,7 @@ export const DEEPSEEK_PRESET = {
 };
 export const PRESETS = { deepseek: DEEPSEEK_PRESET } as const;
 
-interface Row { id: string; user_id: string; name: string; base_url: string; key_enc: string | null; models: string; preset: string; images: number; created_at: number; updated_at: number }
+interface Row { id: string; user_id: string; name: string; base_url: string; key_enc: string | null; models: string; preset: string; images: number; created_at: number; updated_at: number; shared_hosted?: number }
 
 const MAX_PROVIDERS = 10;
 const MAX_MODELS = 30;
@@ -79,6 +80,12 @@ function safe(s: string): unknown { try { return JSON.parse(s); } catch { return
 
 const rowsOf = (userId: string) => q.all<Row>("SELECT * FROM user_providers WHERE user_id = ? ORDER BY created_at", userId);
 const rowOf = (userId: string, id: string) => q.get<Row>("SELECT * FROM user_providers WHERE user_id = ? AND id = ?", userId, id);
+/**
+ * Hosted mode: an operator's own providers lent to this account (hosted.ts lentProviderIds — only for plans that use the
+ * operator's keys, never "bring your own key"). Used to run and price turns only: they never appear in the account's
+ * Settings → Models list, and their keys and addresses are never sent to it.
+ */
+const lentRows = (userId: string): Row[] => lentProviderIds(userId).map((id) => q.get<Row>("SELECT * FROM user_providers WHERE id = ?", id)).filter((r): r is Row => !!r);
 
 /** One provider object per saved version (rebuilt when the provider changes). */
 const instances = new Map<string, { at: number; provider: OpenAiCompatProvider }>();
@@ -103,7 +110,14 @@ export const apiProviders = {
   list: (userId: string): ApiProvider[] => rowsOf(userId).map(toPublic),
   get: (userId: string, id: string): ApiProvider | null => { const r = rowOf(userId, id); return r ? toPublic(r) : null; },
   /** The providers a user's turns may use (ids start with "up-"; see llm/index.ts). */
-  providersOf: (userId: string): LlmProvider[] => rowsOf(userId).filter((r) => r.key_enc).map(instanceOf),
+  providersOf: (userId: string): LlmProvider[] => [...rowsOf(userId), ...lentRows(userId)].filter((r) => r.key_enc).map(instanceOf),
+  /** Hosted mode: the providers an operator lends to hosted accounts (by name and models only). */
+  lentTo: (userId: string): { id: string; name: string; models: string[] }[] => lentRows(userId).map((r) => ({ id: r.id, name: r.name, models: cleanModels(safe(r.models)).map((m) => m.id) })),
+  /** Hosted mode: whether an operator's provider is lent to hosted accounts. */
+  setLent(userId: string, id: string, on: boolean): boolean {
+    return q.run("UPDATE user_providers SET shared_hosted = ? WHERE id = ? AND user_id = ?", on ? 1 : 0, id, userId).changes > 0;
+  },
+  lentFlags: (userId: string): Record<string, boolean> => Object.fromEntries(rowsOf(userId).map((r) => [r.id, !!r.shared_hosted])),
   create(userId: string, f: { name: string; baseUrl: string; key: string | null; models: ApiProviderModel[]; preset: string; images: boolean }): ApiProvider {
     if (rowsOf(userId).length >= MAX_PROVIDERS) throw new Error(`At most ${MAX_PROVIDERS} providers.`);
     const id = `up-${randomUUID().replace(/-/g, "").slice(0, 12)}`;
@@ -130,7 +144,7 @@ export const apiProviders = {
   },
   /** Prices of a model of this user's providers, by its bare name (the usage table records the bare model name). */
   priceOf(userId: string, model: string): [number, number, number] | null {
-    for (const p of apiProviders.list(userId)) {
+    for (const p of [...apiProviders.list(userId), ...lentRows(userId).map(toPublic)]) {
       const m = p.models.find((x) => x.id === model);
       if (m && (m.input !== null || m.output !== null)) return [m.input ?? 0, m.output ?? 0, m.cached ?? m.input ?? 0];
     }

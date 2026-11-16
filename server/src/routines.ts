@@ -110,6 +110,10 @@ function toRoutine(r: any): RoutineRecord {
 
 export const publicRoutine = ({ hookToken, watchHash, nativeState, rawInputs: _i, inputsHash: _h, ...rest }: RoutineRecord, locale?: Locale): Routine => ({ ...rest, describe: describeRoutine(rest, locale) });
 
+/** Hosted mode (hosted.ts): the account's plan may limit its number of active routines (bot id of the routine). */
+let routineGuard: (botId: string) => void = () => {};
+export const setRoutineGuard = (fn: (botId: string) => void) => { routineGuard = fn; };
+
 export const routines = {
   forBot: (botId: string) => q.all("SELECT * FROM routines WHERE bot_id = ? ORDER BY created_at", botId).map(toRoutine),
   byId: (id: string) => { const r = q.get("SELECT * FROM routines WHERE id = ?", id); return r ? toRoutine(r) : null; },
@@ -128,6 +132,7 @@ export const routines = {
     return r ? toRoutine(r) : null;
   },
   create(botId: string, f: { name: string; prompt: string; trigger: Routine["trigger"]; schedule?: string; timezone?: string; runAt?: number | null; watch?: { kind: string; target: string; everyMin: number }; native?: { accountId: string; query?: string; channel?: string; mentionsOnly?: boolean; leadMin?: number; everyMin: number }; inputs?: RoutineInput[] }): RoutineRecord {
+    routineGuard(botId);
     const id = newId("rtn");
     q.run("INSERT INTO routines (id, bot_id, name, prompt, trigger, schedule, timezone, run_at, hook_token, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       id, botId, f.name.trim().slice(0, 80), f.prompt.trim(), f.trigger, f.schedule ?? "", f.timezone ?? "UTC", f.runAt ?? null, f.trigger === "webhook" ? randomToken(24) : null, now());
@@ -150,6 +155,7 @@ export const routines = {
   update(id: string, f: Partial<{ name: string; prompt: string; schedule: string; timezone: string; runAt: number | null; enabled: boolean }>) {
     const cur = routines.byId(id);
     if (!cur) return null;
+    if (f.enabled === true && !cur.enabled) routineGuard(cur.botId);
     // Turned back on by the user: the failure count starts over.
     if (f.enabled === true && !cur.enabled) q.run("UPDATE routines SET failures = 0, paused_reason = NULL WHERE id = ?", id);
     q.run("UPDATE routines SET name = ?, prompt = ?, schedule = ?, timezone = ?, run_at = ?, enabled = ? WHERE id = ?",

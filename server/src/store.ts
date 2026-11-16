@@ -170,6 +170,10 @@ export class TeamFullError extends Error {
   constructor(public max: number) { super(`The team is full: this installation holds at most ${max} bots. Remove one to create another.`); }
 }
 
+/** Hosted mode (hosted.ts): the account's plan may limit its number of bots. Throws when one more would not fit. */
+let botGuard: (userId: string) => void = () => {};
+export const setBotGuard = (fn: (userId: string) => void) => { botGuard = fn; };
+
 export const bots = {
   /** Agent bots across every account (group chats and hidden helpers excluded): what MAX_BOTS limits. */
   teamCount: () => q.get<{ n: number }>("SELECT COUNT(*) AS n FROM bots WHERE kind = 'agent' AND hidden = 0")!.n,
@@ -189,7 +193,7 @@ export const bots = {
     return r ? toBot(r) : null;
   },
   create(userId: string, input: Partial<Bot> & { hidden?: boolean; parentId?: string | null }): BotRecord {
-    if ((input.kind ?? "agent") === "agent" && !input.hidden) bots.assertRoom();
+    if ((input.kind ?? "agent") === "agent" && !input.hidden) { bots.assertRoom(); botGuard(userId); }
     const id = newId("bot");
     const name = (input.name ?? "").trim().slice(0, 60) || "New bot";
     const shape = AVATAR_SHAPES.includes(input.shape as any) ? input.shape! : stablePick(id + "s", AVATAR_SHAPES);

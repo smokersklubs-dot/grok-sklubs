@@ -8,6 +8,7 @@ import { Icon } from "./Icon";
 import { ErrorNote } from "./ui";
 import { GoogleSignInButton } from "./GoogleLogin";
 import { ForgotPassword } from "./AccountRecovery";
+import { HostedLinks, HostedSignupFields, useHostedMustAccept, type HostedSignup } from "./Hosted";
 
 export function SignIn() {
   const signupOpen = useStore((s) => s.signupOpen);
@@ -37,7 +38,15 @@ export function SignIn() {
     if (!inviteToken) return;
     api<{ invite: { workspaceName: string; email: string; role: string } }>("GET", `/invites/${encodeURIComponent(inviteToken)}`).then((r) => { setInvite(r.invite); setEmail(r.invite.email); setMode("signup"); }, () => setInvite(null));
   }, [inviteToken]);
-  const creating = mode === "signup" && (signupOpen || !!invite);
+  // Hosted mode: the plan, the terms of service, and an operator's plan invitation (/?plan_invite=…).
+  const hostedOn = useStore((s) => !!s.hosted);
+  const mustAccept = useHostedMustAccept();
+  const [planInvite] = useState(() => new URLSearchParams(location.search).get("plan_invite") ?? "");
+  const [hostedForm, setHostedForm] = useState<HostedSignup>(() => ({ acceptTerms: false, planInvite: planInvite || undefined }));
+  useEffect(() => { if (planInvite) setMode("signup"); }, [planInvite]);
+  // Signing up the very first account (the owner) needs no plan and no terms: the owner writes them.
+  const hostedSignup = hostedOn && !setupCodeRequired;
+  const creating = mode === "signup" && (signupOpen || !!invite || !!planInvite);
   // A one-time sign-in link that has expired or was already used lands here with ?link=expired.
   const [linkExpired] = useState(() => new URLSearchParams(location.search).get("link") === "expired");
   useEffect(() => {
@@ -67,14 +76,18 @@ export function SignIn() {
       setError(t("signin.errSetupCode"));
       return;
     }
+    if (creating && hostedSignup && !hostedForm.acceptTerms) {
+      setError(mustAccept);
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
       const r = creating
-        ? await api<{ user: User }>("POST", "/auth/signup", { email: mail, name: name.trim() || undefined, password, locale, invite: invite ? inviteToken : undefined, setupCode: setupCodeRequired ? setupCode.trim() : undefined, botName: botName.trim() || undefined, botLabel: botLabel.trim() || undefined })
+        ? await api<{ user: User }>("POST", "/auth/signup", { email: mail, name: name.trim() || undefined, password, locale, invite: invite ? inviteToken : undefined, setupCode: setupCodeRequired ? setupCode.trim() : undefined, botName: botName.trim() || undefined, botLabel: botLabel.trim() || undefined, ...(hostedSignup ? hostedForm : {}) })
         : await api<{ user: User }>("POST", "/auth/login", { email: mail, password });
       // A sign-up with the invitation already joined the workspace: the link is used up.
-      if (creating && invite) history.replaceState(history.state, "", location.pathname);
+      if (creating && (invite || planInvite)) history.replaceState(history.state, "", location.pathname);
       await signedIn(r.user);
     } catch (err) {
       setError(creating && setupCodeRequired && err instanceof ApiError && err.status === 403 && /setup code/i.test(err.message) ? t("signin.errSetupCodeWrong") : errText(err));
@@ -172,12 +185,15 @@ export function SignIn() {
           </fieldset>
         )}
 
+        {creating && hostedSignup && <HostedSignupFields value={hostedForm} onChange={setHostedForm} />}
+
         <ErrorNote>{error}</ErrorNote>
 
         <button type="submit" className="btn btn-primary btn-block" disabled={busy}>
           {t(busy ? (creating ? "signin.creating" : "signin.signingIn") : creating ? "signin.createBtn" : "signin.signIn")}
         </button>
-        <GoogleSignInButton invite={invite ? inviteToken : undefined} setupCode={setupCode} setupCodeRequired={creating && setupCodeRequired} onError={setError} />
+        <GoogleSignInButton invite={invite ? inviteToken : undefined} setupCode={setupCode} setupCodeRequired={creating && setupCodeRequired} onError={setError}
+          hosted={creating && hostedSignup ? hostedForm : undefined} check={() => (creating && hostedSignup && !hostedForm.acceptTerms ? mustAccept : null)} />
 
         {signupOpen && (
           <p className="signin-switch">
@@ -196,8 +212,10 @@ export function SignIn() {
         )}
         {!signupOpen && <p className="signin-switch">{t("signin.closed")}</p>}
       </form>
-      <p className="signin-foot">{t("signin.foot")}</p>
+      {/* "Software you host yourself" is not true of a hosted service: its footer is the public pages instead. */}
+      {!hostedOn && <p className="signin-foot">{t("signin.foot")}</p>}
       <p className="signin-links"><a href="/telecharger">{t("signin.download")}</a></p>
+      <HostedLinks />
       <div className="segmented signin-lang" role="radiogroup" aria-label={t("signin.language")}>
         {LOCALES.map((l) => (
           <button key={l.id} type="button" role="radio" aria-checked={locale === l.id} lang={l.id} className={locale === l.id ? "is-active" : ""} onClick={() => void setLocale(l.id)}>

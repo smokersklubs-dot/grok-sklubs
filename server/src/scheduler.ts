@@ -4,7 +4,8 @@ import { sweepIdleDesktops } from "./computer.js";
 import { config } from "./config.js";
 import { isValidTimezone, localParts, nextRun } from "./cron.js";
 import { q } from "./db.js";
-import { enqueue } from "./agent/loop.js";
+import { enqueue, hostedHoldsBot } from "./agent/loop.js";
+import { hostedTick, postStopNotice } from "./hosted.js";
 import { consolidationSweep } from "./agent/memory.js";
 import { nudgeSweep } from "./agent/nudges.js";
 import { createHash } from "node:crypto";
@@ -43,6 +44,15 @@ export const unschedule = (routineId: string) => { due.delete(routineId); };
 export function fireRoutine(r: RoutineRecord, payload?: unknown, opts: { outside?: boolean; label?: string; note?: string } = {}): "fired" | "busy" {
   const bot = bots.byId(r.botId);
   if (!bot) return "busy";
+  // Hosted mode: a suspended account's routines are paused, and one whose models only the operator's keys pay for waits
+  // while those keys may not pay (budget spent…). Recorded as skipped, said once a day in the chat; no model call.
+  const held = hostedHoldsBot(bot);
+  if (held) {
+    runs.skipped(r.id, held === "suspended" ? "Account suspended: skipped." : held === "budget" ? "The plan's AI budget for this month is used up: skipped." : "The plan does not allow this bot's model: skipped.");
+    postStopNotice(bot, held, { background: true });
+    emit(bot.userId, { type: "routines", botId: bot.id });
+    return "busy";
+  }
   // One run at a time (spec 07 A7): a due time that comes while a run is still under way is skipped (a one-off
   // routine is tried again a minute later).
   if (runs.active(r.id)) {
@@ -250,4 +260,7 @@ export function startScheduler() {
   setInterval(guard(() => { remindStuck(); }), 60_000).unref();
   // Proactive nudges: quiet read-only preparation passes for the bots that have them on, and snoozed nudges coming back.
   setInterval(guard(nudgeSweep), 5 * 60_000).unref();
+  // Hosted mode: subscription statuses move by date (trial → active / past_due → suspended); nothing when it is off.
+  guard(() => hostedTick())();
+  setInterval(guard(() => hostedTick()), 10 * 60_000).unref();
 }

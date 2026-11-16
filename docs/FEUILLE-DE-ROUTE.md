@@ -50,7 +50,7 @@ vraiment, pas d'une liste théorique.
 |---|---|---|---|
 | Supervision centralisée | **Partiel** | État en direct de chaque bot poussé par SSE (`bus.ts:43-71`). Vue des tâches de tout le compte (`routes.ts:1081`, `web/src/components/TasksView.tsx`). Rappels de travail bloqué (`agent/stuck.ts:7-10`). Santé des clés et connexions (`health.ts:15-30`). Arrêt d'un bot (`routes.ts:811`), d'une tâche, d'un job (`routes.ts:747`, `2275`). | Pas d'écran unique « tous les agents / missions / ordinateurs / consommation » ; pas de pause/reprise globale ; aucune vue opérateur sur tout le serveur. |
 | Utilisateurs et rôles | **Partiel** | Rôles owner / admin / member / viewer par espace (`shared.ts:740-745`), invitations par lien à usage unique (`db.ts:360`). | Le rôle « manager » de l'évaluation correspond à « admin ». Il manque un **rôle opérateur du serveur** (aujourd'hui, aucune notion d'administrateur global : `grep isAdmin` ne trouve rien). |
-| Facturation et abonnements | **Manque** | Rien (`grep stripe|paddle|past_due` : aucun résultat côté facturation). | Prévu : mode hébergé (section 3, phase H). |
+| Facturation et abonnements | **Partiel** | Mode hébergé derrière `HOSTED_MODE=1` (`hosted.ts`, `docs/MODE-HEBERGE.md`) : offres, statuts, budget IA en €, paiement manuel. | Fournisseur de paiement (Stripe / Paddle) à choisir et brancher (`billing/provider.ts`). |
 | Documentation et installation simple | **Existe** | Installateur double-clic (`deploy/Installer Sklubot sur mon VPS.*`, `deploy/install.sh`), `docs/INSTALLATION-VPS.md`, `docs/DEPLOIEMENT.md`, `docs/API.md`, mise à jour (`deploy/update.sh`), désinstallation. | `docs/API.md` n'est pas tenu à jour automatiquement (supposé : écrit à la main). Pas de doc « exploitant » (alertes, restauration, incident). |
 
 ### 1.3 Différenciants
@@ -93,7 +93,7 @@ vraiment, pas d'une liste théorique.
 | Détection de boucles / blocages | **Existe** | `LoopGuard` (`agent/reliability.ts:78-87`), limite de temps par tour des moteurs abonnement (`config.ts:86`, `agent/engine.ts:525`), rappels de travail bloqué (`agent/stuck.ts`), interblocage entre bots détecté (`agent/team.ts:47`). |
 | Charge (dizaines d'agents) | **Manque** | Aucun test de charge. Un seul processus Node, SQLite, 4 ordinateurs allumés par défaut (`config.ts:60`). |
 | Android réel et notifications | **Partiel** | Appli Expo avec tests unitaires (`mobile/__tests__/`), Web Push côté serveur (`push.ts:9-20`). L'appli native n'a **que des notifications locales** (`mobile/app.config.ts:54`, `enableRemoteNotifications: false`). Pas de test sur appareil réel automatisé (supposé). |
-| Paiement, quotas, factures, suspension | **Manque** | Prévu dans le mode hébergé. Quotas existants : `MAX_BOTS` global (`config.ts:148`), places d'espace d'équipe. |
+| Paiement, quotas, factures, suspension | **Partiel** | Mode hébergé : limites par offre côté serveur, suspension en lecture seule, paiement manuel (`hosted.ts`). Reste : fournisseur de paiement, factures. |
 | Surveillance (alertes, erreurs, disponibilité, consommation) | **Manque** | `/api/health` répond `{ ok, model }` sans rien vérifier (`routes.ts:194`) ; healthcheck Docker ; erreurs non rattrapées seulement écrites dans la console (`index.ts:71-72`). |
 | Licences open source | **Partiel** | Projet sous MIT (`LICENSE`). Code inspiré de deepseek-harness (MIT) cité dans les fichiers (`jobs.ts:13`, `snapshots.ts:14`, `agent/goals.ts:20`). Aucun inventaire des licences des dépendances ni de l'image des ordinateurs (Chromium, polices, Piper/voix, whisper). |
 | Conditions Claude Code / Codex pour un accès commercial partagé | **Manque** (vérification juridique) | La doc dit déjà « usage personnel, ne fais pas travailler les bots de quelqu'un d'autre sur ton abonnement » (`docs/INSTALLATION-VPS.md:235-245`). Non vérifié contre les conditions actuelles des fournisseurs. |
@@ -289,6 +289,7 @@ Les phases suivent l'ordre voulu par le propriétaire : 1 fiabilité/sécurité 
   `/api/admin/*` (comptes, usage, ordinateurs, santé) avec MFA obligatoire ; page `web/src/components/Admin.tsx` ;
   chaque action d'opérateur dans un journal non modifiable.
 - **Tests** : un non-opérateur reçoit 404 sur `/api/admin/*` (ajouté à SK-P0-03) ; opérateur sans MFA → refus.
+- **Statut (2026-11-16)** : partiel, en mode hébergé — colonne `users.server_role` (la propriétaire est toujours opératrice), page Administration (clients, offres, invitations, réglages, journal non modifiable `admin_audit`), 404 pour les autres comptes, couvert par `isolation-hosted.test.ts`. Reste : MFA exigée des opérateurs (SK-P0-09), vue opérateur hors mode hébergé.
 - **Effort** : M. **Dépendances** : SK-P0-09. Prérequis du mode hébergé.
 
 #### SK-P1-02 · Sessions : appareils connectés et révocation
@@ -362,6 +363,7 @@ Prérequis : SK-P0-01, -03, -04, -06, -09, -10, SK-P1-01, SK-P1-05.
   **l'utilisateur** (simple) ou **l'espace d'équipe** (multi-entreprises) — recommandation : l'espace, avec un espace
   personnel créé d'office.
 - **Tests** : transitions de statut (tableau de cas) ; `HOSTED_MODE=0` → toute la suite existante reste verte.
+- **Statut (2026-11-16)** : fait — tables `plans`, `subscriptions` (migration 4), payeur = l'utilisateur (simple ; l'espace d'équipe reste possible plus tard), statuts trial → active → past_due → suspended avancés par le planificateur, `hosted.test.ts` + `hosted-off.test.ts`. Voir `docs/MODE-HEBERGE.md`.
 - **Effort** : L. **Dépendances** : SK-P0-05.
 
 #### SK-P0-12 · Quotas appliqués côté serveur
@@ -372,6 +374,7 @@ Prérequis : SK-P0-01, -03, -04, -06, -09, -10, SK-P1-01, SK-P1-05.
   carte « limite du plan » avec remède (changer de plan) ; suspension → bots en pause, ordinateurs endormis, données
   gardées.
 - **Tests** : un test par quota ; compte suspendu → aucun tour ne démarre, routine sautée et notée.
+- **Statut (2026-11-16)** : fait dans `hosted.ts` (bots, routines actives, ordinateurs allumés, stockage ; suspendu = lecture seule ; carte avec la façon d'avancer). La vérification d'e-mail avant le premier tour (anti-abus) reste à faire.
 - **Effort** : M. **Dépendances** : SK-P0-11, SK-P0-06.
 
 #### SK-P0-13 · Clés opérateur (plan gratuit) et BYOK
@@ -382,6 +385,7 @@ Prérequis : SK-P0-01, -03, -04, -06, -09, -10, SK-P1-01, SK-P1-05.
   (existant) ne comptent pas dans le budget opérateur mais restent mesurées ; plafond dur par jour sur les clés
   opérateur ; anti-abus : vérification d'e-mail obligatoire (M5) avant le premier tour.
 - **Tests** : compte gratuit au budget atteint → refus ; même compte avec sa propre clé → passe.
+- **Statut (2026-11-16)** : fait autrement sur un point — un budget mensuel en € par offre (plus recharges) au lieu d'un plafond par jour ; coupure nette au budget atteint, y compris au milieu d'un tour ; « J'apporte ma clé » ne retombe jamais sur les clés du service ; fournisseurs de l'opérateur prêtables aux comptes hébergés.
 - **Effort** : M. **Dépendances** : SK-P0-06, SK-P0-12.
 
 #### SK-P1-07 · Paiement : manuel d'abord, puis Stripe ou Paddle
@@ -392,6 +396,7 @@ Prérequis : SK-P0-01, -03, -04, -06, -09, -10, SK-P1-01, SK-P1-05.
   officiel) simplifie la TVA européenne ; Stripe demande de la gérer (Stripe Tax). Ne pas inventer d'API : citer la
   doc officielle dans le code, comme le reste du dépôt.
 - **Tests** : webhooks rejoués (même événement deux fois → un seul effet), signature fausse → 400.
+- **Statut (2026-11-16)** : partiel — interface `billing/provider.ts`, fournisseur « manuel » (l'opérateur marque payé), table `billing_events` prête pour l'idempotence, `POST /api/billing/webhook/stripe|paddle` → 501. Fournisseur à choisir ; pas encore de factures PDF.
 - **Effort** : L. **Dépendances** : SK-P0-11, SK-P1-01.
 
 #### SK-P1-08 · Pages publiques : tarifs, mentions légales, CGV, confidentialité
@@ -399,6 +404,7 @@ Prérequis : SK-P0-01, -03, -04, -06, -09, -10, SK-P1-01, SK-P1-05.
   mentions ; la page de confidentialité existe (`privacy.ts`) et doit être étendue au mode hébergé (sous-traitants :
   fournisseurs de modèles, hébergeur, paiement).
 - **Tests** : pages servies sans session ; liens présents à l'inscription.
+- **Statut (2026-11-16)** : fait — `/tarifs` et `/pricing` générés depuis les offres, modèles `/cgu` (+ `/terms`) et `/mentions-legales` (+ `/legal-notice`) marqués « Brouillon — à faire valider par un professionnel », case CGU obligatoire à l'inscription. Reste : DPA, extension de `/confidentialite` au service, relecture juridique.
 - **Effort** : M. **Dépendances** : SK-P0-11. Relecture juridique hors code.
 
 ### Phase 2 — Infrastructure répartie (4 VPS)

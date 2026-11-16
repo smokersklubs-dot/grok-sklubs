@@ -4,6 +4,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { baseline } from "./001-baseline.js";
 import { usageAndPrices } from "./002-usage-prices.js";
 import { accountMail } from "./003-account-mail.js";
+import { hosted } from "./004-hosted.js";
 
 /**
  * Versioned migrations (SK-P0-05). The database's version is SQLite's own `PRAGMA user_version` (0 on a database made
@@ -20,6 +21,7 @@ export const MIGRATIONS: Migration[] = [
   { version: 1, name: "baseline", up: baseline },
   { version: 2, name: "usage-prices", up: usageAndPrices },
   { version: 3, name: "account-mail", up: accountMail },
+  { version: 4, name: "hosted", up: hosted },
 ];
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;
 

@@ -17,7 +17,9 @@ export type ModalState =
   | { kind: "duplicate"; botId: string }
   | { kind: "connectors"; prefill?: { name: string; botId: string; seq: number } };
 export type BotSettingsTab = "general" | "skills" | "memories" | "routines" | "localTools" | "reach" | "telegram" | "email" | "sharing";
-export type AppSection = "general" | "profile" | "models" | "notifications" | "computer" | "devices" | "permissions" | "rules" | "memory" | "connectors" | "vault" | "keys" | "pages" | "usage" | "checkins" | "activity" | "team" | "workspaces" | "voice" | "email" | "account";
+export type AppSection = "general" | "profile" | "models" | "notifications" | "computer" | "devices" | "permissions" | "rules" | "memory" | "connectors" | "vault" | "keys" | "pages" | "usage" | "checkins" | "activity" | "team" | "workspaces" | "voice" | "email" | "account" | "subscription" | "admin";
+/** Hosted mode (server/src/hosted.ts): only present when the server runs with HOSTED_MODE=1. */
+export interface HostedInfo { operator: boolean; links: { pricing: string; terms: string; legal: string; privacy: string } }
 
 /** A short message at the bottom of the window, optionally with one action (usually "Undo"). */
 export interface Toast { id: number; text: string; action?: { label: string; run: () => void | Promise<void> } }
@@ -138,6 +140,8 @@ interface Store {
   firstBot: { name: string; label: string };
   /** Whether bots on this server can create images. */
   imageGeneration: boolean;
+  /** Hosted mode: the public pages to link and whether the signed-in person is an operator (null: not a hosted server). */
+  hosted: HostedInfo | null;
   /** How bots can make videos (Higgsfield app, a video API, or neither). */
   video: VideoStatus;
   /** The thread open in the side panel: the bot and the seq of the message it hangs on. */
@@ -295,6 +299,7 @@ export const useStore = create<Store>((set, get) => ({
   setupCodeRequired: false,
   firstBot: { name: "Juno", label: "" },
   imageGeneration: false,
+  hosted: null,
   video: { provider: null, higgsfield: false },
   openThread: null,
   recordings: {},
@@ -353,8 +358,8 @@ export const useStore = create<Store>((set, get) => ({
       if (get().boot === "ready") set({ boot: "signedOut", user: null });
     });
     try {
-      const me = await api<{ user: User | null; signupOpen: boolean; setupCodeRequired?: boolean; imageGeneration?: boolean; video?: VideoStatus; firstBot?: { name: string; label: string } }>("GET", `/me?locale=${get().locale}`);
-      set({ imageGeneration: me.imageGeneration === true, video: me.video ?? { provider: null, higgsfield: false }, ...(me.firstBot ? { firstBot: me.firstBot } : {}) });
+      const me = await api<{ user: User | null; signupOpen: boolean; setupCodeRequired?: boolean; imageGeneration?: boolean; video?: VideoStatus; firstBot?: { name: string; label: string }; hosted?: HostedInfo }>("GET", `/me?locale=${get().locale}`);
+      set({ imageGeneration: me.imageGeneration === true, video: me.video ?? { provider: null, higgsfield: false }, hosted: me.hosted ?? null, ...(me.firstBot ? { firstBot: me.firstBot } : {}) });
       if (me.user) {
         set({ signupOpen: me.signupOpen });
         await get().signedIn(me.user);
@@ -375,8 +380,8 @@ export const useStore = create<Store>((set, get) => ({
     }
     if (get().boot === "signedOut") {
       // Signed in from the form: /me was read before there was a session, so read the server flags again.
-      api<{ imageGeneration?: boolean; video?: VideoStatus }>("GET", "/me").then(
-        (me) => set({ imageGeneration: me.imageGeneration === true, video: me.video ?? { provider: null, higgsfield: false } }),
+      api<{ imageGeneration?: boolean; video?: VideoStatus; hosted?: HostedInfo }>("GET", "/me").then(
+        (me) => set({ imageGeneration: me.imageGeneration === true, video: me.video ?? { provider: null, higgsfield: false }, hosted: me.hosted ?? null }),
         () => undefined,
       );
     }

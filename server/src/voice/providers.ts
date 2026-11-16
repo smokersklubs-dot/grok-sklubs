@@ -2,6 +2,7 @@ import { q } from "../db.js";
 import { config } from "../config.js";
 import { seal, unseal } from "../auth.js";
 import { guardedFetch } from "../net.js";
+import { meterOperatorUse, operatorBlock, unitEstimate } from "../hosted.js";
 import { STT_PROVIDERS, TTS_PROVIDERS, type SttProvider, type TtsProvider, type VoiceSettings, type VoiceStatus } from "../shared.js";
 
 /**
@@ -70,16 +71,21 @@ export function saveVoiceSettings(userId: string, f: Record<string, any>): Voice
   return voiceSettings(userId);
 }
 
-interface Endpoint { url: string; trusted: boolean; key: string | null }
+/** `operatorKey`: the key is the server's own (OPENAI_API_KEY), so the operator pays (hosted mode meters it). */
+interface Endpoint { url: string; trusted: boolean; key: string | null; operatorKey?: boolean }
 function endpoint(userId: string, which: "stt" | "tts"): Endpoint | null {
   const s = voiceSettings(userId);
   const stored = read(userId);
   const provider = s[which].provider;
   const userUrl = s[which].url;
   if (provider === "openai") {
-    const key = (stored[which === "stt" ? "sttKeyEnc" : "ttsKeyEnc"] ? unseal(stored[which === "stt" ? "sttKeyEnc" : "ttsKeyEnc"]!) : null) ?? process.env.OPENAI_API_KEY ?? null;
+    const own = stored[which === "stt" ? "sttKeyEnc" : "ttsKeyEnc"] ? unseal(stored[which === "stt" ? "sttKeyEnc" : "ttsKeyEnc"]!) : null;
+    // Hosted mode: the server's key only when the account's plan lets the operator's keys pay (else: its own key, or the
+    // browser's voice).
+    const server = !own && !operatorBlock(userId) ? process.env.OPENAI_API_KEY ?? null : null;
+    const key = own ?? server;
     if (!key && !userUrl) return null;
-    return userUrl ? { url: userUrl, trusted: false, key } : { url: config.openaiAudioUrl, trusted: true, key };
+    return userUrl ? { url: userUrl, trusted: false, key } : { url: config.openaiAudioUrl, trusted: true, key, operatorKey: !own && !!server };
   }
   if (userUrl) return { url: userUrl, trusted: false, key: null };
   const env = which === "stt" ? config.voiceSttUrl : config.voiceTtsUrl;
@@ -110,6 +116,13 @@ function multipart(fields: Record<string, string>, file: { name: string; field: 
 export type Stt = (wav: Buffer, signal?: AbortSignal) => Promise<string>;
 export type Tts = (text: string, signal?: AbortSignal) => Promise<Buffer>;
 
+/** Length of a WAV recording in seconds, from its header (byte rate at offset 28); 0 when it is not a WAV. */
+function wavSeconds(wav: Buffer): number {
+  if (wav.length < 44 || wav.toString("latin1", 0, 4) !== "RIFF") return 0;
+  const byteRate = wav.readUInt32LE(28);
+  return byteRate > 0 ? Math.max(0, wav.length - 44) / byteRate : 0;
+}
+
 export function sttFor(userId: string, lang?: string): Stt | null {
   const s = voiceSettings(userId);
   const e = endpoint(userId, "stt");
@@ -125,6 +138,7 @@ export function sttFor(userId: string, lang?: string): Stt | null {
     const form = multipart({ model: s.stt.model || "gpt-4o-mini-transcribe", response_format: "json", ...(language ? { language } : {}) }, { field: "file", name: "audio.wav", type: "audio/wav", data: wav });
     const res = await go(e, `${e.url}/v1/audio/transcriptions`, { method: "POST", headers: { "content-type": form.type, ...(e.key ? { authorization: `Bearer ${e.key}` } : {}) }, body: new Uint8Array(form.body), signal: signal ?? AbortSignal.timeout(30_000) });
     if (!res.ok) throw new Error(`speech-to-text answered ${res.status}`);
+    if (e.operatorKey) meterOperatorUse(userId, null, "voice:speech-to-text", (wavSeconds(wav) / 60) * unitEstimate("sttUsdPerMinute"));
     return String(((await res.json()) as { text?: string }).text ?? "").trim();
   };
 }
@@ -139,6 +153,7 @@ export function ttsFor(userId: string): Tts | null {
       : { url: `${e.url}/v1/audio/speech`, body: { model: s.tts.model || "gpt-4o-mini-tts", input: text, voice: s.tts.voice || "marin", response_format: "wav" } };
     const res = await go(e, req.url, { method: "POST", headers: { "content-type": "application/json", ...(e.key ? { authorization: `Bearer ${e.key}` } : {}) }, body: JSON.stringify(req.body), signal: signal ?? AbortSignal.timeout(30_000) });
     if (!res.ok) throw new Error(`text-to-speech answered ${res.status}`);
+    if (e.operatorKey) meterOperatorUse(userId, null, "voice:text-to-speech", (text.length / 1000) * unitEstimate("ttsUsdPer1kChars"));
     return Buffer.from(await res.arrayBuffer());
   };
 }

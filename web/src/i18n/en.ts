@@ -414,6 +414,8 @@ export const en = {
   "settings.section.usage": "Usage",
   "settings.section.checkins": "Check-ins",
   "settings.section.account": "Account",
+  "settings.section.subscription": "My subscription",
+  "settings.section.admin": "Administration",
   "general.theme": "Theme",
   "general.themeHint": "System follows your device's appearance and switches with it.",
   "theme.system": "System",

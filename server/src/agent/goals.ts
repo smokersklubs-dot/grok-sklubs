@@ -6,7 +6,7 @@ import { audit, bots, clip, newId, now, paused, rows, users, type BotRecord } fr
 import { overBudget } from "../usage.js";
 import { checkpoints } from "./spend.js";
 import type { BuiltinTool } from "./tools.js";
-import { enqueue, interrupt, queuedBehind, runningThreadOf, tell } from "./loop.js";
+import { enqueue, hostedHoldsBot, interrupt, queuedBehind, runningThreadOf, tell } from "./loop.js";
 
 /**
  * Goal mode ("Objectif" in the composer, "/objectif …", a routine whose text starts with "/objectif", or a goal the bot
@@ -191,6 +191,9 @@ function continueGoal(bot: BotRecord, g: GoalRecord) {
   // Work is queued behind this turn: the end of the last of it starts the round.
   if (queuedBehind(bot.id) > 0) return;
   if (overBudget(bot.userId)) { pauseGoal(bot, g, tr(loc, "this month's budget is used up")); return; }
+  // Hosted mode: the plan holds this bot's work (budget on the service's keys, suspended account…): the goal waits, paused.
+  const held = hostedHoldsBot(bot);
+  if (held) { pauseGoal(bot, g, tr(loc, held === "suspended" ? "the account is suspended" : held === "budget" ? "this month's budget is used up" : "the plan does not allow this model")); return; }
   if (g.rounds >= g.maxRounds) {
     goals.set(g, { status: "limit", reason: tr(loc, "it reached its limit of {n} rounds", { n: g.maxRounds }), queued: false });
     tell({ type: "waiting", bot, text: tr(loc, "Goal paused after {n} rounds: {objective}", { n: g.maxRounds, objective: clip(g.objective, 120) }) });

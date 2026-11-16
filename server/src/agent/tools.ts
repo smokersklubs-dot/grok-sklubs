@@ -20,6 +20,7 @@ import { fetchProblem, guardedFetch } from "../net.js";
 import { config as appConfig } from "../config.js";
 import { audit, bots, clip, memories, newId, pages, rows, searchMessages, settings, skills, skillText, tasks, vault, type BotRecord, type UserRecord } from "../store.js";
 import { record as recordUsage } from "../usage.js";
+import { meterOperatorUse, operatorBlock, toolRefusal, unitEstimate } from "../hosted.js";
 import { interrupt, tell } from "./loop.js";
 import { DRIVING, releaseControl, takeoverTimeoutMs, userDriving, waitForUser } from "../takeover.js";
 import { pushLater } from "../push.js";
@@ -350,7 +351,11 @@ const shareTools: BuiltinTool[] = [
   tool("image_generate", "Create a picture from a description. It is saved in your library and shown to the user in the chat.", obj({ prompt: str("What the picture should show, in detail: subject, style, colours, framing"), filename: str("Short file name without extension") }, ["prompt"]), {
     activity: "saving", label: "Creating an image", audited: true,
     run: async (a, c) => {
+      // Hosted mode: pictures are made with the server's key — the plan must let it pay (counted at the operator's estimate).
+      const held = operatorBlock(c.user.id);
+      if (held) return { content: toolRefusal(held), isError: true };
       const img = await generateImage(String(a.prompt), c.signal);
+      meterOperatorUse(c.user.id, c.bot.id, "image_generate", unitEstimate("imageUsd"));
       const ext = img.mime === "image/jpeg" ? "jpg" : img.mime === "image/webp" ? "webp" : "png";
       const att = storeBytes(c.bot.id, "images", `${String(a.filename ?? "image").trim() || "image"}.${ext}`, img.bytes);
       rows.append(c.bot, { kind: "message", role: "assistant", text: "", attachments: [att] });
@@ -412,6 +417,9 @@ const videoTools: BuiltinTool[] = [
         };
       }
       if (!videoService()) return { content: "No video service is set up on this server. Tell the user they can connect Higgsfield in Settings → Apps, or ask the server's admin to add a video API key.", isError: true };
+      // Hosted mode: the video APIs run on the server's keys — the plan must let them pay.
+      const held = operatorBlock(c.user.id);
+      if (held) return { content: toolRefusal(held), isError: true };
       let image: { mime: string; data: Buffer } | undefined;
       if (typeof a.reference_image === "string" && a.reference_image.trim()) {
         const att = attachmentAt(c.bot.id, libraryPath(a.reference_image));
@@ -444,7 +452,7 @@ const videoTools: BuiltinTool[] = [
         rows.append(c.bot, { kind: "message", role: "assistant", text: "", attachments: [att] });
         bots.bumpUnread(c.bot.id);
         const content = `Created and shown to the user with a player. Saved as ${botPathOf(att.path)}.${v.costUsd ? ` It cost $${v.costUsd.toFixed(2)}.` : ""}${tried.length ? ` (Served by ${svc.label}; tried first: ${tried.join("; ")}.)` : ""}`;
-        settle(r.id, v.costUsd ?? est ?? 0, content, v.model);
+        settle(r.id, v.costUsd ?? est ?? unitEstimate("videoUsd"), content, v.model);
         return { content, summary: `${att.name}${v.costUsd ? ` · $${v.costUsd.toFixed(2)}` : ""}${tried.length ? ` · ${tr(c.user.locale, "served by {who}", { who: svc.label })}` : ""}` };
       }
       return { content: `No video service could make it: ${tried.join("; ") || "none is configured"}. Nothing was charged.`, isError: true, summary: tr(c.user.locale, "nobody answered") };

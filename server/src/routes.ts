@@ -30,7 +30,7 @@ import { config } from "./config.js";
 import { connectors, NeedsClientIdError, oauthRedirectUri } from "./connectors.js";
 import { isValidTimezone } from "./cron.js";
 import { pickLocale, tr } from "./i18n.js";
-import { defaultModelRef, listProviders } from "./llm/index.js";
+import { defaultModelRef, listProviders, modelAvailable } from "./llm/index.js";
 import { publicRoutine, routines, runs } from "./routines.js";
 import { fireCheckin, fireRoutine, schedule, unschedule } from "./scheduler.js";
 import { REACTIONS, type CheckinSettings, type ReactionEmoji, type ServerEvent, type VideoStatus } from "./shared.js";
@@ -95,6 +95,8 @@ import { dropResetLinks, registerAccountMailPrivate, registerAccountMailPublic }
 import { createGoal, goalAction, GoalError, goalCommand, goals, pauseGoalsOf } from "./agent/goals.js";
 import { publicJobs, stopJob } from "./jobs.js";
 import { healthReport } from "./monitor.js";
+import { accountCreated, HostedError, hostedMode, isOperator, isPlanLimit, lentProviderIds, planInviteOpens, signupChoice, subscriptionEnginesFor, suspended, type SignupChoice } from "./hosted.js";
+import { registerHostedPages, registerHostedPrivate, registerHostedPublic, suspendedText } from "./hostedroutes.js";
 
 type Env = { Variables: { user: UserRecord } };
 export const api = new Hono<Env>();
@@ -106,6 +108,11 @@ api.onError((err, c) => {
   if (err instanceof HttpError) return c.json({ error: err.message }, err.status);
   if (err instanceof WorkspaceError) return c.json({ error: err.message }, err.status);
   if (err instanceof MailError) return c.json({ error: err.message }, 400);
+  // Hosted mode: a plan limit or a refusal of the account's plan, in the caller's language, with what to do next.
+  if (err instanceof HostedError || isPlanLimit(err)) {
+    const loc = (c.get("user") as UserRecord | undefined)?.locale ?? pickLocale(undefined, c.req.header("accept-language"));
+    return c.json({ error: err.text(loc), code: err instanceof HostedError ? err.code ?? "hosted" : "plan_limit", ...(isPlanLimit(err) ? { limit: err.kind } : {}) }, err instanceof HostedError ? err.status : 403);
+  }
   // MAX_BOTS reached: a clear refusal, never a silent eviction.
   if (err instanceof TeamFullError) {
     const loc = (c.get("user") as UserRecord | undefined)?.locale ?? pickLocale(undefined, c.req.header("accept-language"));
@@ -235,7 +242,9 @@ api.get("/me", (c) => {
   const user = userForToken(getCookie(c, SESSION_COOKIE));
   const video: VideoStatus = { provider: videoService()?.id ?? null, higgsfield: !!user && !!higgsfieldFor(user.id) };
   const locale = user?.locale ?? pickLocale(c.req.query("locale"), c.req.header("accept-language"));
-  return c.json({ user: user ? publicUser(user) : null, signupOpen: signupOpen(), setupCodeRequired: setupCodeRequired(), imageGeneration: !!imageService(), video, firstBot: firstBotIdentity(locale) });
+  // Hosted mode only (no field at all otherwise): the public pages to link and, signed in, whether this is an operator.
+  const hosted = hostedMode() ? { operator: !!user && isOperator(user.id), links: locale === "fr" ? { pricing: "/tarifs", terms: "/cgu", legal: "/mentions-legales", privacy: "/confidentialite" } : { pricing: "/pricing", terms: "/terms", legal: "/legal-notice", privacy: "/privacy" } } : undefined;
+  return c.json({ user: user ? publicUser(user) : null, signupOpen: signupOpen(), setupCodeRequired: setupCodeRequired(), imageGeneration: !!imageService(), video, firstBot: firstBotIdentity(locale), ...(hosted ? { hosted } : {}) });
 });
 
 // Slows down password guessing: a handful of attempts per account, and a few dozen per client address,
@@ -282,7 +291,8 @@ api.post("/auth/signup", async (c) => {
   // Wave 6: a workspace invitation lets its addressee create an account even when new accounts are closed.
   const invite = typeof b.invite === "string" && b.invite ? invites.peek(b.invite) : null;
   const invited = !!invite && invite.email.toLowerCase() === String(b.email ?? "").trim().toLowerCase();
-  if (!signupOpen() && !invited) fail(403, "New accounts are closed on this server.");
+  // Hosted mode: an operator's plan invitation also opens the door (hosted.ts).
+  if (!signupOpen() && !invited && !planInviteOpens(b.planInvite, String(b.email ?? ""))) fail(403, "New accounts are closed on this server.");
   throttle(`signup:${clientIp(c)}`, 20);
   // A fresh install waits for its owner: the first account needs the code the installer printed.
   if (setupCodeRequired() && !setupCodeMatches(String(b.setupCode ?? ""))) fail(403, "The setup code is missing or wrong. It was shown at the end of the installation, and is in the server's .env file (SKLUBOT_SETUP_CODE).");
@@ -293,9 +303,12 @@ api.post("/auth/signup", async (c) => {
   if (users.byEmail(email)) fail(409, "An account with this email already exists.");
   if (config.allowedEmails.length && !config.allowedEmails.includes(email.toLowerCase()) && !invited) fail(403, "This address is not allowed to create an account on this server.");
   const locale = pickLocale(b.locale, c.req.header("accept-language"));
+  // Hosted mode: the plan the account starts on and the terms of service, checked before anything is created.
+  const choice: SignupChoice | null = signupChoice({ plan: b.plan, planInvite: b.planInvite, acceptTerms: b.acceptTerms, email, first: users.count() === 0 });
   // The account's first bot needs a place in the team (MAX_BOTS): checked before anything is created.
   bots.assertRoom();
   const user = users.create(email, String(b.name ?? ""), hashPassword(password), locale);
+  accountCreated(user.id, choice);
   // Every account starts with one main bot so there is someone to talk to straight away. Its name and role: what the
   // person chose on the sign-up form, else the server's settings (FIRST_BOT_NAME / FIRST_BOT_LABEL), else the defaults.
   const first = firstBotIdentity(locale, b.botName, b.botLabel);
@@ -426,6 +439,10 @@ api.get("/native/:vendor/callback", async (c) => {
   return signInPage(c, locale, ok, message);
 });
 
+// Hosted mode's public routes (plans, plan invitations, payment webhooks) and pages (/tarifs, /cgu…): hostedroutes.ts.
+registerHostedPublic(api);
+registerHostedPages(site);
+
 // "Continuer avec Google" (googlelogin.ts): same sessions, throttling and sign-up rules as the password routes.
 const googleDeps: GoogleDeps = { throttle, clientIp, startSession, publicUser, firstBotIdentity };
 registerGooglePublic(api, googleDeps);
@@ -439,9 +456,14 @@ api.use("*", async (c, next) => {
   // State-changing requests must come from our own pages, not from another site using the visitor's cookie.
   // An Origin that is not a URL of this site ("null" from a sandboxed page, garbage) is refused too.
   if (c.req.method !== "GET" && !originAllowed(c.req.header("origin"), c.req.header("host"))) return c.json({ error: "Cross-site request refused." }, 403);
+  // Hosted mode: a suspended account is read-only — it can still look, export, sign out, change its own sign-in details
+  // and delete itself; nothing else that changes something.
+  if (c.req.method !== "GET" && c.req.method !== "HEAD" && suspended(user.id) && !/^(\/api)?\/(account(\/|$)|prefs$|push\/|auth\/|bots\/[^/]+\/read$)/.test(c.req.path))
+    return c.json({ error: suspendedText(user.locale), code: "suspended" }, 403);
   c.set("user", user);
   await next();
 });
+registerHostedPrivate(api);
 
 api.get("/events", (c) =>
   streamSSE(c, async (stream) => {
@@ -472,10 +494,13 @@ api.put("/prefs", async (c) => {
 // `bot`: the bot whose settings are open; the subscription tools' real model list is read on its computer first (if on).
 api.get("/models", async (c) => c.json({
   models: [
-    ...listProviders().filter((p) => p.available()).flatMap((p) => p.models.map((m) => ({ ref: `${p.id}:${m}`, provider: p.label, model: m, kind: "api" as const }))),
+    // Hosted mode: the server's own models only for plans that use the operator's keys (never "bring your own key").
+    ...listProviders().filter((p) => p.available() && modelAvailable(`${p.id}:${p.models[0] ?? ""}`, c.get("user").id)).flatMap((p) => p.models.map((m) => ({ ref: `${p.id}:${m}`, provider: p.label, model: m, kind: "api" as const }))),
     // The user's own providers (Settings → Models): theirs only.
     ...apiProviders.list(c.get("user").id).filter((p) => p.hasKey).flatMap((p) => p.models.map((m) => ({ ref: `${p.id}:${m.id}`, provider: p.name, model: m.id, kind: "api" as const }))),
-    ...(await engineModelsFor(c.get("user").id, c.req.query("bot") || undefined)),
+    // Hosted mode: an operator's providers lent to this account's plan (by name and models only).
+    ...(lentProviderIds(c.get("user").id).length ? apiProviders.lentTo(c.get("user").id).flatMap((p) => p.models.map((m) => ({ ref: `${p.id}:${m}`, provider: p.name, model: m, kind: "api" as const }))) : []),
+    ...(subscriptionEnginesFor(c.get("user").id) ? await engineModelsFor(c.get("user").id, c.req.query("bot") || undefined) : []),
   ],
   defaultRef: defaultModelRef(),
 }));

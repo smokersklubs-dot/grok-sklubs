@@ -1,0 +1,88 @@
+/* Hosted mode (Hosted.tsx): "Mon abonnement", Administration, the sign-up plan picker and the plan notices. */
+.callout.is-danger { background: var(--danger-soft); color: var(--danger); }
+.hosted-card { display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; border: 1px solid var(--border); border-radius: var(--r-lg, 12px); background: var(--surface); }
+.hosted-card + .hosted-card { margin-top: 10px; }
+.hosted-card .action-title { display: flex; align-items: center; gap: 6px; margin: 0; }
+.hosted-plan-card { margin-top: 4px; }
+.hosted-plan-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.hosted-plan-head p { margin: 0; }
+.hosted-plan-name { font-size: 20px; font-weight: 700; letter-spacing: -0.01em; }
+.hosted-plan-price { font-size: 18px; font-weight: 650; }
+.hosted-plan-meta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.hosted-status { display: inline-flex; align-items: center; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 650; background: var(--surface-2); color: var(--text-2); white-space: nowrap; }
+.hosted-status.is-active { background: var(--ok-soft); color: var(--ok); }
+.hosted-status.is-trial { background: var(--info-soft); color: var(--info); }
+.hosted-status.is-past_due { background: var(--warn-soft); color: var(--warn); }
+.hosted-status.is-suspended { background: var(--danger-soft); color: var(--danger); }
+.hosted-meter .meter-head { gap: 10px; flex-wrap: wrap; }
+.hosted-meter .meter-head > span:first-child { min-width: 0; }
+.hosted-limits { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px 18px; }
+.hosted-over { margin: 8px 0 0; }
+.hosted-over-text { color: var(--danger); font-weight: 650; }
+.hosted-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+.hosted-actions + .muted { margin-top: 8px; }
+.hosted-links { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 14px; }
+.hosted-doc-links { justify-content: flex-start; margin: 0; font-size: 13px; }
+
+/* Plan cards: the list in "Mon abonnement" and the picker of the sign-up form. */
+.hosted-plans { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px; }
+.hosted-plans-item { position: relative; display: flex; flex-direction: column; gap: 4px; padding: 11px 12px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); font-size: 13px; }
+.hosted-plans.is-picker .hosted-plans-item { cursor: pointer; }
+.hosted-plans.is-picker .hosted-plans-item:hover { border-color: var(--text-3); }
+.hosted-plans-item.is-selected { border-color: var(--accent, #4f46e5); box-shadow: 0 0 0 1px var(--accent, #4f46e5) inset; }
+.hosted-plans-item input[type="radio"] { position: absolute; opacity: 0; pointer-events: none; }
+.hosted-plans-item:focus-within { outline: 2px solid var(--accent, #4f46e5); outline-offset: 2px; }
+.hosted-plans-name { display: flex; align-items: center; gap: 6px; font-weight: 650; }
+.hosted-plans-price { font-weight: 650; color: var(--text-2); }
+.hosted-plans-facts { display: flex; flex-direction: column; gap: 1px; font-size: 12px; color: var(--text-3); line-height: 1.4; }
+.hosted-signup { display: flex; flex-direction: column; gap: 12px; }
+.hosted-signup-plans { border: 0; padding: 0; margin: 0; min-width: 0; }
+.hosted-signup-plans legend { font-size: 12.5px; font-weight: 600; color: var(--text-2); margin-bottom: 6px; padding: 0; }
+.hosted-signup .hosted-plans { grid-template-columns: 1fr; }
+.hosted-terms { display: flex; align-items: flex-start; gap: 9px; font-size: 13px; line-height: 1.45; color: var(--text-2); cursor: pointer; }
+.hosted-terms input { margin-top: 2px; flex: none; width: 16px; height: 16px; }
+.hosted-notice-actions { display: flex; align-items: center; justify-content: center; gap: 6px; flex-wrap: wrap; }
+
+/* Administration. */
+.app-settings-content.is-wide { max-width: 1060px; }
+.hosted-table .pill { margin-left: 0; }
+.hosted-cell-stack { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; }
+.hosted-tabs { flex-wrap: wrap; max-width: 100%; }
+.hosted-table td, .hosted-table th { vertical-align: middle; }
+.hosted-table tr.is-open > * { background: var(--hover); }
+.hosted-who { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.hosted-who-name { font-weight: 600; }
+.table .hosted-manage-row > td { white-space: normal; background: var(--surface-2); }
+.hosted-manage { display: flex; flex-direction: column; gap: 10px; padding: 4px 0; }
+.hosted-manage-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; align-items: start; }
+.hosted-box { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); }
+.hosted-box .field-label { margin: 0; }
+.hosted-box .field-label.small { font-weight: 500; font-size: 12px; }
+.hosted-box .row-gap .input { flex: 1; min-width: 0; }
+.hosted-box .btn { align-self: flex-start; }
+.hosted-plan-editors { display: flex; flex-direction: column; gap: 12px; }
+.hosted-plan-editor { display: flex; flex-direction: column; gap: 10px; }
+.hosted-plan-editor-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.hosted-plan-editor-head code { font-weight: 400; margin-left: 6px; }
+.hosted-form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px 12px; }
+.hosted-form-grid.is-numbers { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); align-items: end; }
+.hosted-form-grid .field { margin: 0; min-width: 0; }
+.hosted-check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-2); }
+.hosted-new-plan summary { cursor: pointer; font-weight: 650; font-size: 14px; }
+.hosted-new-plan[open] summary { margin-bottom: 10px; }
+.hosted-link { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+.hosted-link code { flex: 1 1 260px; min-width: 0; overflow-wrap: anywhere; padding: 6px 9px; border-radius: var(--r-sm, 6px); background: var(--hover); font-size: 12.5px; }
+.hosted-list { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.hosted-list .pill { margin-left: 8px; }
+.hosted-engines { margin-top: 12px; }
+.hosted-settings { display: flex; flex-direction: column; gap: 12px; }
+.hosted-settings .field-hint { margin: -4px 0 0; }
+.hosted-settings .pane-heading:first-child { margin-top: 0; }
+.hosted-audit td { white-space: normal; }
+.hosted-audit-detail { overflow-wrap: anywhere; min-width: 180px; }
+@media (max-width: 640px) {
+  .hosted-plan-head { align-items: flex-start; }
+  .hosted-limits { grid-template-columns: 1fr; }
+}
+.table.hosted-table thead th { white-space: normal; }
+.table.hosted-audit td { white-space: normal; }

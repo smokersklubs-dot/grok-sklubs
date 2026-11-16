@@ -21,6 +21,7 @@ import { MailSection, VoiceSection, WorkspacesSection } from "./Wave6";
 import { KeysSection, PublicLinksBlock } from "./Wave7";
 import { GoogleAccountBlock, GoogleLoginSettings } from "./GoogleLogin";
 import { AccountEmailBlock, ServerMailSettings } from "./AccountRecovery";
+import { AdminSection, SubscriptionSection } from "./Hosted";
 
 const SECTIONS: { id: AppSection; icon: IconName }[] = [
   { id: "general", icon: "settings" },
@@ -44,6 +45,9 @@ const SECTIONS: { id: AppSection; icon: IconName }[] = [
   { id: "voice", icon: "mic" },
   { id: "email", icon: "mail" },
   { id: "account", icon: "user" },
+  // Hosted mode only (HOSTED_MODE=1 on the server): the customer's subscription, and the operators' administration.
+  { id: "subscription", icon: "star" },
+  { id: "admin", icon: "shield" },
 ];
 
 /* ---------- General ---------- */
@@ -1204,6 +1208,8 @@ export function AppSettings({ section }: { section: AppSection }) {
   const blocked = useStore((s) => !!(s.modal || s.botSettings || s.viewerBotId || s.relayViewerId));
   const root = useRef<HTMLDivElement>(null);
   const t = useT();
+  const hosted = useStore((s) => s.hosted);
+  const sections = SECTIONS.filter((s) => (s.id === "subscription" ? !!hosted : s.id === "admin" ? !!hosted?.operator : true));
   useEscape(closeAppSettings, !blocked);
   useDialogFocus(root);
   return (
@@ -1213,7 +1219,7 @@ export function AppSettings({ section }: { section: AppSection }) {
           <Icon name="arrowLeft" size={15} /> {t("settings.back")}
         </button>
         <h1>{t("settings.title")}</h1>
-        {SECTIONS.map((s) => (
+        {sections.map((s) => (
           <button key={s.id} type="button" className={`settings-nav-item ${section === s.id ? "is-active" : ""}`} aria-current={section === s.id ? "page" : undefined} onClick={() => openAppSettings(s.id)}>
             <Icon name={s.icon} size={16} />
             <span>{t(`settings.section.${s.id}`)}</span>
@@ -1222,7 +1228,7 @@ export function AppSettings({ section }: { section: AppSection }) {
       </nav>
       <div className="app-settings-main">
         <IconButton icon="close" label={t("settings.close")} className="app-settings-close" onClick={closeAppSettings} />
-        <div className="app-settings-content settings-pane">
+        <div className={`app-settings-content settings-pane ${section === "admin" ? "is-wide" : ""}`}>
           {section === "general" && <GeneralSection />}
           {section === "profile" && <ProfileSection />}
           {section === "models" && <ModelsSection />}
@@ -1244,6 +1250,8 @@ export function AppSettings({ section }: { section: AppSection }) {
           {section === "usage" && <UsageSection />}
           {section === "checkins" && <CheckinsSection />}
           {section === "account" && <AccountSection />}
+          {section === "subscription" && hosted && <SubscriptionSection title={t("settings.section.subscription")} />}
+          {section === "admin" && hosted?.operator && <AdminSection title={t("settings.section.admin")} />}
         </div>
       </div>
     </div>

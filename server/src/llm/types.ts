@@ -26,7 +26,11 @@ export interface ToolSpec {
 /** "pause" means the provider stopped mid-turn (e.g. a long hosted search) and expects the same turn to be continued. */
 export type StopReason = "end" | "tool_use" | "max_tokens" | "refusal" | "pause";
 
-export interface TurnUsage { inputTokens: number; outputTokens: number; cachedTokens: number }
+/**
+ * `via`: the id of the provider that served the call. Set only in hosted mode (hosted.ts tags the providers it hands out),
+ * so the usage line can say who pays: the operator's keys or the customer's own.
+ */
+export interface TurnUsage { inputTokens: number; outputTokens: number; cachedTokens: number; via?: string }
 
 export interface TurnResult {
   content: Block[];

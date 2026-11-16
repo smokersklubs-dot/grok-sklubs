@@ -39,6 +39,7 @@ import { guardedFetch } from "./net.js";
 import type { Locale } from "./shared.js";
 import { audit, bots, now, sha256, users, type UserRecord } from "./store.js";
 import { invites } from "./workspaces.js";
+import { accountCreated, HostedError, planInviteOpens, signupChoice, type SignupChoice } from "./hosted.js";
 
 // ── Storage (additive) ──────────────────────────────────────────────────────
 db.exec(`
@@ -193,6 +194,8 @@ export async function verifyIdToken(idToken: string, clientId: string, nonce: st
 interface Flow {
   browserHash: string; nonce: string; verifier: string; expires: number; locale: Locale;
   invite: string | null; setupOk: boolean; linkUserId: string | null; appChallenge: string | null;
+  /** Hosted mode (hosted.ts): the plan chosen on the sign-up form, a plan invitation, and the terms ticked. */
+  hosted?: { plan?: string; planInvite?: string; acceptTerms: boolean };
 }
 const flows = new Map<string, Flow>();
 interface AppCode { userId: string; challenge: string; expires: number }
@@ -282,12 +285,17 @@ function resolveAccount(c: Context, deps: GoogleDeps, flow: Flow, claims: Google
   // A new account: the same rules as POST /auth/signup.
   const invite = flow.invite ? invites.peek(flow.invite) : null;
   const invited = !!invite && invite.email.toLowerCase() === claims.email;
-  if (!signupOpen() && !invited) throw new GoogleError(403, "New accounts are closed on this server. Ask its owner for an invitation.");
+  if (!signupOpen() && !invited && !planInviteOpens(flow.hosted?.planInvite, claims.email)) throw new GoogleError(403, "New accounts are closed on this server. Ask its owner for an invitation.");
   deps.throttle(`signup:${deps.clientIp(c)}`, 20);
+  // Hosted mode: the plan and the terms of service, checked before the account is created (the same rules as the form).
+  let choice: SignupChoice | null = null;
+  try { choice = signupChoice({ plan: flow.hosted?.plan, planInvite: flow.hosted?.planInvite, acceptTerms: flow.hosted?.acceptTerms, email: claims.email, first: users.count() === 0 }); }
+  catch (err) { if (err instanceof HostedError) throw new GoogleError(err.status === 404 ? 404 : err.status === 403 ? 403 : 400, err.text(flow.locale)); throw err; }
   if (setupCodeRequired() && !flow.setupOk) throw new GoogleError(403, flow.appChallenge ? "The very first account of this server must be created on the website, with the setup code." : "The setup code is missing or wrong. It was shown at the end of the installation, and is in the server's .env file (SKLUBOT_SETUP_CODE).");
   if (config.allowedEmails.length && !config.allowedEmails.includes(claims.email) && !invited) throw new GoogleError(403, "This address is not allowed to create an account on this server.");
   try { bots.assertRoom(); } catch { throw new GoogleError(409, "The team is full on this server: no new account can be created."); }
   const user = users.create(claims.email, claims.name, NO_PASSWORD_PREFIX + b64url(randomBytes(32)), flow.locale);
+  accountCreated(user.id, choice);
   const first = deps.firstBotIdentity(flow.locale);
   bots.create(user.id, {
     name: first.name, label: first.label, primary: true, shape: "pebble", color: "indigo",
@@ -316,7 +324,8 @@ export function registerGooglePublic(api: Hono<any>, deps: GoogleDeps) {
         if (!setupCodeMatches(String(b.setupCode ?? ""))) throw new GoogleError(403, "The setup code is missing or wrong. It was shown at the end of the installation, and is in the server's .env file (SKLUBOT_SETUP_CODE).");
         setupOk = true;
       }
-      const url = await beginFlow(c, { locale, invite: typeof b.invite === "string" && b.invite ? b.invite.slice(0, 200) : null, setupOk, linkUserId: null, appChallenge: null });
+      const hosted = { plan: typeof b.plan === "string" ? b.plan.slice(0, 40) : undefined, planInvite: typeof b.planInvite === "string" ? b.planInvite.slice(0, 200) : undefined, acceptTerms: b.acceptTerms === true };
+      const url = await beginFlow(c, { locale, invite: typeof b.invite === "string" && b.invite ? b.invite.slice(0, 200) : null, setupOk, linkUserId: null, appChallenge: null, hosted });
       return c.json({ url });
     } catch (err) {
       if (err instanceof GoogleError) return c.json({ error: m(locale, err.message) }, err.status);
