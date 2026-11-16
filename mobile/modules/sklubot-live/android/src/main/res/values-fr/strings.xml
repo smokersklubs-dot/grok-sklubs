@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="live_channel">Connexion en arrière-plan</string>
+    <string name="live_channel_bots">Messages des bots</string>
+    <string name="live_title">Sklubot reste connecté</string>
+    <string name="live_text">Pour te prévenir dès qu’un bot répond ou a besoin de toi.</string>
+    <string name="live_offline">Hors ligne — en attente du réseau</string>
+    <string name="live_retry">Connexion perdue — nouvel essai dans %d s</string>
+    <string name="live_stop">Arrêter</string>
+    <string name="live_waiting">T’attend</string>
+</resources>

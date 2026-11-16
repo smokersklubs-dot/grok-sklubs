@@ -61,6 +61,7 @@ class PhoneAccessibilityService : AccessibilityService(), PhoneCaps {
 
     override fun onServiceConnected() {
         super.onServiceConnected()
+        RelayHub.prefs(this).accessibilityWasOn = true
         RelayHub.attachService(this)
     }
 

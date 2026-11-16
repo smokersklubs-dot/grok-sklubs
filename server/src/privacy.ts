@@ -18,13 +18,16 @@ const FR = `<h1>Politique de confidentialité de Sklubot</h1>
 <li><strong>Session</strong> : après la connexion, un jeton de session est gardé sur le téléphone dans le stockage sécurisé du système (Android Keystore, trousseau iOS) et n’est envoyé qu’à ton serveur.</li>
 <li><strong>Messages et fichiers</strong> : ce que tu écris à tes bots, et les photos ou fichiers que tu choisis de joindre, sont envoyés à ton serveur. L’appli n’accède à tes photos, à l’appareil photo ou à tes fichiers que lorsque tu le demandes, pour une pièce jointe.</li>
 <li><strong>Notifications</strong> : l’appli affiche des notifications locales (un bot t’attend, une réponse est arrivée). Elles sont créées sur le téléphone à partir de ton serveur ; aucun service de notification tiers n’est utilisé.</li>
+<li><strong>Appels vocaux</strong> : le micro n’est utilisé que pendant un appel que tu lances avec un bot (autorisation demandée au premier appel). Si ton serveur a des services vocaux, le son est envoyé à ton serveur, qui le transcrit puis ne garde que le texte de l’appel ; sinon, la reconnaissance vocale du téléphone le transcrit et seul le texte part à ton serveur. Pendant l’appel, une notification indique qu’il est en cours.</li>
+<li><strong>Clés et secrets demandés par un bot</strong> : ce que tu saisis dans la carte d’un secret part directement dans le coffre chiffré de ton serveur ; rien n’est gardé sur le téléphone.</li>
 <li><strong>Préférences</strong> : langue, thème et choix de notifications restent sur le téléphone.</li>
 </ul>
-<p>L’appli ne collecte ni ta position, ni tes contacts, ni ton micro, ni d’identifiant publicitaire.</p>
+<p>L’appli ne collecte ni ta position, ni tes contacts, ni d’identifiant publicitaire, et n’utilise le micro que pendant un appel vocal.</p>
 <h2>Ce que fait ton serveur</h2>
 <p>Ton serveur garde tes conversations, les fichiers de tes bots, leurs souvenirs et routines. Selon sa configuration, il peut envoyer le texte de tes conversations à un fournisseur de modèle d’IA choisi par la personne qui le gère (par exemple une API de modèle de langage) pour que les bots répondent, et utiliser les applis que tu as connectées toi-même. Ces envois partent du serveur, pas du téléphone.</p>
 <h2>Version « complète » (installée hors des boutiques) : contrôle du téléphone</h2>
 <p>La version complète de l’appli, installée depuis un fichier, contient en plus le « contrôle du téléphone ». Il n’est jamais activé sans toi : tu dois l’allumer, l’associer à ton serveur et activer toi-même le service d’accessibilité de Sklubot dans les réglages d’Android. Un bot ne peut alors voir l’écran (captures et texte affiché) et agir (toucher, écrire, ouvrir une appli) qu’après ton accord sur le téléphone, pendant une session signalée par une bannière et une notification avec un bouton Stop. Les applis que tu bloques (banque, paiement…) restent inaccessibles. Ces captures et actions vont uniquement à ton serveur. La version publiée sur les boutiques d’applications ne contient pas cette fonction.</p>
+<p>Elle propose aussi, si tu l’actives (Réglages → Notifications), de « rester connectée en arrière-plan » : une connexion permanente à ton serveur, signalée par une notification, pour être prévenu tout de suite. Sa copie du jeton de session est chiffrée par le Keystore Android et effacée quand tu désactives l’option ou te déconnectes.</p>
 <h2>Sécurité</h2>
 <p>Les échanges avec ton serveur sont chiffrés (HTTPS). Le jeton de session est stocké chiffré sur le téléphone.</p>
 <h2>Durée de conservation et suppression</h2>
@@ -46,13 +49,16 @@ const EN = `<h1>Sklubot privacy policy</h1>
 <li><strong>Session</strong>: after signing in, a session token is kept on the phone in the system’s secure storage (Android Keystore, iOS Keychain) and is only ever sent to your server.</li>
 <li><strong>Messages and files</strong>: what you write to your bots, and the photos or files you choose to attach, are sent to your server. The app only opens your photos, camera or files when you ask, for an attachment.</li>
 <li><strong>Notifications</strong>: the app shows local notifications (a bot needs you, a reply arrived). They are created on the phone from your server; no third-party notification service is used.</li>
+<li><strong>Voice calls</strong>: the microphone is only used during a call you start with a bot (permission asked at the first call). If your server has voice services, the sound goes to your server, which transcribes it and keeps only the text of the call; otherwise the phone’s own speech recognition transcribes it and only the text goes to your server. A notification shows while the call is on.</li>
+<li><strong>Keys and secrets a bot asks for</strong>: what you type into a secret card goes straight into your server’s encrypted vault; nothing is kept on the phone.</li>
 <li><strong>Preferences</strong>: language, theme and notification choices stay on the phone.</li>
 </ul>
-<p>The app does not collect your location, contacts, microphone or any advertising identifier.</p>
+<p>The app does not collect your location, contacts or any advertising identifier, and only uses the microphone during a voice call.</p>
 <h2>What your server does</h2>
 <p>Your server keeps your conversations, your bots’ files, memories and routines. Depending on how it is set up, it may send the text of your conversations to an AI model provider chosen by the person who runs it (for example a language model API) so the bots can answer, and use the apps you connected yourself. Those requests leave from the server, not from the phone.</p>
 <h2>“Complete” edition (installed outside app stores): phone control</h2>
 <p>The complete edition of the app, installed from a file, also contains “phone control”. It is never on without you: you must turn it on, pair it with your server and enable Sklubot’s accessibility service yourself in Android’s settings. A bot can then see the screen (screenshots and on-screen text) and act (tap, type, open an app) only after you agree on the phone, during a session shown by a banner and a notification with a Stop button. Apps you block (banking, payment…) stay out of reach. Those screenshots and actions only go to your server. The edition published on app stores does not contain this feature.</p>
+<p>If you turn it on (Settings → Notifications), it can also “stay connected in the background”: a permanent connection to your server, shown by a notification, so you are told at once. Its copy of the session token is encrypted with the Android Keystore and erased when you turn the option off or sign out.</p>
 <h2>Security</h2>
 <p>Traffic with your server is encrypted (HTTPS). The session token is stored encrypted on the phone.</p>
 <h2>Retention and deletion</h2>

@@ -53,6 +53,13 @@
                 android:value="Keeps the user's own Sklubot server connected so that the bots they allowed can see and control this phone, with an always-visible Stop." />
         </service>
 
+        <!-- After an app update: the relay comes back on if the user had left it on (never the accessibility service). -->
+        <receiver android:name="app.sklubot.android.relay.RelayUpdateReceiver" android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
         <!-- Quick-settings tile "Stop Sklubot". https://developer.android.com/develop/ui/views/quicksettings-tiles -->
         <service
             android:name="app.sklubot.android.relay.StopTileService"

@@ -84,6 +84,15 @@ class RelayService : Service() {
             if (Build.VERSION.SDK_INT >= 26) c.startForegroundService(i) else c.startService(i)
         }
 
+        /** The relay is on (the user's choice) but its service is not running (after an update, or the app restarted). */
+        fun resume(c: Context) {
+            val prefs = RelayHub.prefs(c)
+            val server = try { normalizeServer(prefs.server) } catch (e: ProtocolError) { null }
+            if (!prefs.enabled || server == null || RelayHub.connection != null) return
+            val i = Intent(c, RelayService::class.java)
+            try { if (Build.VERSION.SDK_INT >= 26) c.startForegroundService(i) else c.startService(i) } catch (_: Exception) { /* not allowed now: next app start */ }
+        }
+
         fun turnOff(c: Context) {
             RelayHub.prefs(c).enabled = false
             c.stopService(Intent(c, RelayService::class.java))

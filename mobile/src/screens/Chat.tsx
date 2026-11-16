@@ -3,6 +3,7 @@ import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useCallback, useEffect, useMemo } from "react";
 import { ActivityIndicator, FlatList, KeyboardAvoidingView, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { CallPanel } from "../components/CallPanel";
 import { CardView } from "../components/Cards";
 import { ActivityLine, DayDivider, EventRow, MessageBubble, NoticeRow, StepGroup } from "../components/Chat";
 import { Character, stateOf } from "../components/Character";
@@ -13,6 +14,7 @@ import { useT } from "../i18n";
 import { buildItems, type Item } from "../state/items";
 import { useStore } from "../state/store";
 import { useTheme } from "../theme";
+import { callsAvailable, startCall, useCall } from "../voice/call";
 import type { RootStack } from "./types";
 
 export function ChatScreen() {
@@ -25,6 +27,7 @@ export function ChatScreen() {
   const live = useStore((s) => s.live[botId]);
   const thread = useStore((s) => s.threads[botId]);
   const user = useStore((s) => s.user);
+  const inCall = useCall((s) => s.call?.botId === botId);
 
   useFocusEffect(useCallback(() => {
     const s = useStore.getState();
@@ -68,6 +71,11 @@ export function ChatScreen() {
             <Text numberOfLines={1} style={{ color: live?.awaiting ? c.warn : c.text3, fontSize: 13 }}>{live?.awaiting ? t("bots.status.attention") : live?.running ? t("bots.status.working") : bot.label}</Text>
           </View>
         </Pressable>
+        {callsAvailable && bot.kind === "agent" && (!bot.access || bot.access.canTalk) && !inCall ? (
+          <Pressable accessibilityRole="button" accessibilityLabel={t("call.start")} onPress={() => { tap(); void startCall(botId); }} hitSlop={8} style={styles.headerBtn}>
+            <Icon name="call" size={22} color={c.text2} />
+          </Pressable>
+        ) : null}
         <Pressable accessibilityRole="button" accessibilityLabel={t("chat.details")} onPress={() => { tap(); nav.navigate("Details", { botId }); }} hitSlop={8} style={styles.headerBtn}>
           <Icon name="info" size={22} color={c.text2} />
         </Pressable>
@@ -100,7 +108,7 @@ export function ChatScreen() {
           />
         )}
         <View style={{ paddingBottom: insets.bottom }}>
-          <Composer bot={bot} live={live} />
+          {inCall ? <CallPanel bot={bot} /> : <Composer bot={bot} live={live} />}
         </View>
       </KeyboardAvoidingView>
     </View>

@@ -1,0 +1,7 @@
+{
+  "name": "sklubot-live",
+  "version": "1.1.0",
+  "private": true,
+  "description": "Sklubot \"stay connected in the background\" (Android, complet build only): a foreground service holds the server's live channel (/api/events) and posts local notifications at once, without any push service. Excluded from the store build.",
+  "license": "MIT"
+}

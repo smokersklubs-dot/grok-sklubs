@@ -8,8 +8,10 @@ import { ApiClient, checkHealth } from "../api/client";
 import { EventStream } from "../api/sse";
 import type { Attachment, Bot, BotBundle, Live, MeResponse, Row, ServerEvent, Task, User } from "../api/types";
 import { errText, getLocale, setLocale, t } from "../i18n";
+import { cardReq } from "../lib/cardActions";
+import { jsShouldNotify, liveClearBot, liveDisable, liveInFront, liveResume, liveSession, useLive } from "../live";
 import { clearBot, notifyBot, rememberSeen } from "../notify";
-import { relaySetServer } from "../relay";
+import { relayResume, relaySetServer } from "../relay";
 import { usePrefs } from "./prefs";
 import { applyEvent, applyRowsPage, emptyThread, firstWords, PAGE, type Thread } from "./reducers";
 import { loadOrigin, loadToken, saveOrigin, saveToken } from "./session";
@@ -53,6 +55,8 @@ interface State {
   answer(botId: string, seq: number, answer: string): Promise<void>;
   dismissCard(botId: string, seq: number): Promise<void>;
   continueRow(botId: string, seq: number): Promise<void>;
+  /** Any other JSON call of the API (the special cards, the bot's screen): same client, same session. */
+  call<T = unknown>(method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE", path: string, body?: unknown): Promise<T>;
   applyEvent(ev: ServerEvent): void;
 }
 
@@ -69,7 +73,7 @@ function makeClient(origin: string, token: string | null): ApiClient {
   return new ApiClient({
     origin,
     token,
-    onToken: (tok) => { void saveToken(origin, tok); },
+    onToken: (tok) => { void saveToken(origin, tok); liveSession(origin, tok); },
     onUnauthorized: () => { void sessionLost(); },
   });
 }
@@ -78,6 +82,7 @@ async function sessionLost() {
   const s = useStore.getState();
   if (s.boot !== "ready") return;
   stopStream();
+  liveDisable();
   if (s.origin) await saveToken(s.origin, null);
   s.client?.setToken(null);
   useStore.setState({ boot: "signedOut", user: null, bots: {}, live: {}, threads: {}, bundles: {}, tasks: null });
@@ -120,9 +125,11 @@ function stopStream() {
   stream = null;
 }
 
+liveInFront(appActive);
 AppState.addEventListener("change", (next) => {
   const wasActive = appActive;
   appActive = next === "active";
+  liveInFront(appActive);
   const s = useStore.getState();
   if (s.boot !== "ready") return;
   if (appActive && !wasActive) {
@@ -166,6 +173,7 @@ export const useStore = create<State>((set, get) => ({
       // Offline at start: with a saved session, open the app anyway (it reconnects); without, the sign-in screen.
       if (token) {
         set({ boot: "ready", online: false });
+        liveResume();
         startStream();
       } else set({ boot: "signedOut" });
     }
@@ -190,6 +198,7 @@ export const useStore = create<State>((set, get) => ({
 
   async forgetServer() {
     stopStream();
+    liveDisable();
     await saveOrigin(null);
     set({ boot: "server", user: null, me: null, bots: {}, live: {}, threads: {}, bundles: {}, tasks: null });
   },
@@ -213,6 +222,7 @@ export const useStore = create<State>((set, get) => ({
   async signOut() {
     const { client, origin } = get();
     stopStream();
+    liveDisable();
     try { await client?.post("/auth/logout"); } catch { /* signed out locally anyway */ }
     if (origin) await saveToken(origin, null);
     client?.setToken(null);
@@ -224,6 +234,7 @@ export const useStore = create<State>((set, get) => ({
     const { client, origin } = get();
     await needClient().request("DELETE", "/account", { password });
     stopStream();
+    liveDisable();
     if (origin) await saveToken(origin, null);
     client?.setToken(null);
     set({ boot: "signedOut", user: null, bots: {}, live: {}, threads: {}, bundles: {}, tasks: null, openBotId: null });
@@ -286,7 +297,7 @@ export const useStore = create<State>((set, get) => ({
 
   setOpenBot(botId) {
     set({ openBotId: botId });
-    if (botId) void clearBot(botId);
+    if (botId) { void clearBot(botId); liveClearBot(botId); }
   },
 
   async markRead(botId) {
@@ -305,19 +316,25 @@ export const useStore = create<State>((set, get) => ({
   },
 
   async decide(approvalId, decision) {
-    await needClient().post(`/approvals/${encodeURIComponent(approvalId)}`, { decision });
+    const r = cardReq.decide(approvalId, decision);
+    await needClient().post(r.path, r.body);
   },
 
   async answer(botId, seq, answer) {
-    await needClient().post(`/bots/${encodeURIComponent(botId)}/cards/${seq}/answer`, { answer });
+    const r = cardReq.answer(botId, seq, answer);
+    await needClient().post(r.path, r.body);
   },
 
   async dismissCard(botId, seq) {
-    await needClient().post(`/bots/${encodeURIComponent(botId)}/cards/${seq}/dismiss`);
+    await needClient().post(cardReq.dismiss(botId, seq).path);
   },
 
   async continueRow(botId, seq) {
     await needClient().post(`/bots/${encodeURIComponent(botId)}/rows/${seq}/continue`);
+  },
+
+  call(method, path, body) {
+    return needClient().request(method, path, method === "GET" ? undefined : body ?? {});
   },
 
   applyEvent(ev) {
@@ -330,6 +347,8 @@ export const useStore = create<State>((set, get) => ({
     // Opened chat in front: it is read as it comes.
     if (ev.type === "bot" && ev.bot.id === s.openBotId && appActive && ev.bot.unread > 0) void s.markRead(ev.bot.id);
     if (!usePrefs.getState().notify) return;
+    // The background connection notifies while the app is not in front: not twice.
+    if (!jsShouldNotify(appActive, useLive.getState().enabled)) return;
     for (const a of r.alerts) {
       if (appActive && s.openBotId === a.botId) continue;
       const bot = get().bots[a.botId];
@@ -342,6 +361,9 @@ export const useStore = create<State>((set, get) => ({
 async function signedIn(user: User) {
   setLocale(usePrefs.getState().locale ?? user.locale);
   useStore.setState({ user, boot: "ready", online: true });
+  // A background connection, or the phone relay, that the system or an app update stopped comes back.
+  liveResume();
+  relayResume();
   const s = useStore.getState();
   await s.loadBots();
   void s.loadTasks();

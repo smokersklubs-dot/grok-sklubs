@@ -11,9 +11,11 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { Icon } from "./src/components/Icon";
 import { useT } from "./src/i18n";
 import { ensurePermission, setBackgroundCheck } from "./src/notify";
+import { useLive } from "./src/live";
 import { openRelay } from "./src/relay";
 import { BotsScreen } from "./src/screens/Bots";
 import { ChatScreen } from "./src/screens/Chat";
+import { ComputerScreen } from "./src/screens/Computer";
 import { DetailsScreen } from "./src/screens/Details";
 import { SettingsScreen } from "./src/screens/Settings";
 import { TasksScreen } from "./src/screens/Tasks";
@@ -22,6 +24,7 @@ import { ServerScreen, SignInScreen } from "./src/screens/Welcome";
 import { usePrefs } from "./src/state/prefs";
 import { useStore } from "./src/state/store";
 import { useTheme } from "./src/theme";
+import { endCall } from "./src/voice/call";
 
 SplashScreen.preventAutoHideAsync().catch(() => undefined);
 
@@ -58,15 +61,19 @@ export default function App() {
   const { c, dark } = useTheme();
   const boot = useStore((s) => s.boot);
   const notify = usePrefs((p) => p.notify);
+  const liveOn = useLive((l) => l.enabled);
 
   useEffect(() => { void useStore.getState().init(); }, []);
   useEffect(() => { if (boot !== "loading") SplashScreen.hideAsync().catch(() => undefined); }, [boot]);
+  // Signed out (or the session lost): a call in progress ends.
+  useEffect(() => { if (boot !== "ready") endCall(); }, [boot]);
   useEffect(() => {
     if (boot !== "ready") return;
-    void setBackgroundCheck(notify);
+    // With the background connection on (complet build), the service notifies at once: no periodic check on top.
+    void setBackgroundCheck(notify && !liveOn);
     // Asked once, after sign-in, while notifications are on (Android 13+ / iOS show the system prompt).
     if (notify) void ensurePermission(true);
-  }, [boot, notify]);
+  }, [boot, notify, liveOn]);
 
   // A tap on a notification opens that bot's chat.
   useEffect(() => {
@@ -105,6 +112,7 @@ export default function App() {
                 <Stack.Screen name="Main" component={MainTabs} />
                 <Stack.Screen name="Chat" component={ChatScreen} />
                 <Stack.Screen name="Details" component={DetailsScreen} />
+                <Stack.Screen name="Computer" component={ComputerScreen} />
               </>
             )}
         </Stack.Navigator>

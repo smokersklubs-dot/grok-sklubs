@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- "Rester connecté en arrière-plan" (complet build only; the store build excludes this module from autolinking). -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <!-- Type "specialUse": a connection the user keeps open to their own server so its bots' messages arrive at once,
+         with no push service, fits none of the other types; dataSync would be stopped after 6 hours a day on Android 15+
+         (https://developer.android.com/develop/background-work/services/fgs/timeout).
+         https://developer.android.com/develop/background-work/services/fgs/service-types#special-use -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- Only acted on when the user chose "Relancer au démarrage du téléphone". -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <application>
+        <service
+            android:name="app.sklubot.live.LiveService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Keeps the user's own Sklubot server's live channel open, at the user's request, so that their bots' replies and requests are notified at once without a push service." />
+        </service>
+        <receiver android:name="app.sklubot.live.LiveBootReceiver" android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+    </application>
+</manifest>

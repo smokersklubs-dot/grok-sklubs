@@ -28,6 +28,14 @@ class RelayPrefs(context: Context) : PermStore {
         get() = p.getBoolean("enabled", false)
         set(v) = p.edit().putBoolean("enabled", v).apply()
 
+    /**
+     * The accessibility service has been on at least once since pairing: when it is off now while the relay is on and
+     * paired, something turned it off (a force stop, some phones' update process) and the app offers to turn it back on.
+     */
+    var accessibilityWasOn: Boolean
+        get() = p.getBoolean("a11yWasOn", false)
+        set(v) = p.edit().putBoolean("a11yWasOn", v).apply()
+
     override fun alwaysAllowed(botId: String) = p.getStringSet("always", emptySet())!!.contains(botId)
     override fun setAlwaysAllowed(bot: Bot) {
         p.edit().putStringSet("always", p.getStringSet("always", emptySet())!! + bot.id)

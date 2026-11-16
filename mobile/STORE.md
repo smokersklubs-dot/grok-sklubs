@@ -4,7 +4,7 @@ Ce document prépare la fiche Google Play (puis App Store) de la variante **stor
 téléphone). La variante **complet** (`fr.sklubot.app.complet`) ne va pas sur les boutiques : elle s’installe depuis un
 fichier APK (le service d’accessibilité utilisé pour piloter le téléphone est soumis à des règles Google Play strictes).
 
-Fichiers à envoyer : `dist/sklubot-store-1.0.0.aab` (Play), icône `store/icon-512.png`, captures `store/*.png`.
+Fichiers à envoyer : `dist/sklubot-store-1.1.0.aab` (version 1.1.0, versionCode 2) (Play), icône `store/icon-512.png`, captures `store/*.png`.
 
 ## Fiche Google Play
 
@@ -23,7 +23,10 @@ Fichiers à envoyer : `dist/sklubot-store-1.0.0.aab` (Play), icône `store/icon-
 > • Discuter avec un bot et suivre sa réponse en direct, étape par étape (recherche, lecture, commande…).
 > • Joindre une photo, une image prise avec l’appareil photo ou un fichier.
 > • Autoriser ou refuser une action en un geste quand un bot te demande la permission (une fois, toujours, ou non).
-> • Répondre aux questions de tes bots, suivre leurs tâches et leurs tâches de fond.
+> • Répondre aux questions de tes bots, leur donner une clé d’API en toute sécurité (elle va directement dans le coffre
+>   de ton serveur), connecter une appli, suivre leurs tâches et leurs tâches de fond.
+> • Appeler un bot et lui parler à voix haute, même écran verrouillé.
+> • Regarder l’écran de l’ordinateur d’un bot et prendre la main quand il a besoin de toi (CAPTCHA, code…).
 > • Parcourir la bibliothèque de chaque bot (rapports, notes, images) et partager un fichier.
 > • Recevoir une notification quand un bot t’attend ou a fini de répondre.
 > • Thème clair ou sombre, en français ou en anglais.
@@ -61,7 +64,8 @@ n’y a pas d’échange entre utilisateurs inconnus (pas de réseau social). At
 | Photos et vidéos | Collectées **seulement si l’utilisateur en joint** — facultatif, finalité : *fonctionnalités de l’appli*. |
 | Fichiers et documents | Idem, seulement les pièces jointes choisies — facultatif. |
 | Identifiants de l’appli / appareil | Non (aucun identifiant publicitaire, pas d’identifiant d’appareil envoyé). |
-| Localisation, contacts, agenda, audio, santé, finance, historique web | **Non collectés.** |
+| Audio (enregistrements vocaux) | **Collecté seulement pendant un appel vocal** lancé par l’utilisateur — facultatif, finalité : *fonctionnalités de l’appli*. Avec les services vocaux du serveur, le son du micro est envoyé au serveur de l’utilisateur (transcrit puis jeté, seul le texte de l’appel est gardé) ; sinon la reconnaissance vocale du téléphone le transcrit et seul le texte part au serveur. Chiffré en transit, non partagé. |
+| Localisation, contacts, agenda, santé, finance, historique web | **Non collectés.** |
 | Données éphémères ? | Non (les messages sont gardés sur le serveur de l’utilisateur jusqu’à suppression). |
 
 Remarque à mettre dans la fiche : « Les données sont envoyées au serveur Sklubot dont l’utilisateur saisit l’adresse et
@@ -69,8 +73,23 @@ qu’il (ou son organisation) gère. »
 
 **Permissions déclarées par la variante store** (vérifiées avec `aapt2`, voir README) : Internet, notifications
 (`POST_NOTIFICATIONS`), vibreur, démarrage du téléphone et état réseau (pour la vérification en arrière-plan,
-WorkManager), appareil photo (prise de photo pour une pièce jointe, demandée au moment voulu). Pas d’accès au micro, à la
-localisation, aux contacts ; **pas de service d’accessibilité**, **pas de service de premier plan**.
+WorkManager), appareil photo (prise de photo pour une pièce jointe, demandée au moment voulu), **micro**
+(`RECORD_AUDIO`, demandé au premier appel vocal) avec `MODIFY_AUDIO_SETTINGS` (haut-parleur / écouteur) et un **service
+de premier plan de type « microphone »** (`FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MICROPHONE`) qui ne tourne que
+pendant un appel. Pas d’accès à la localisation, aux contacts ; **pas de service d’accessibilité**, **pas de service
+« special use »**, pas de connexion permanente.
+
+### Nouveauté 1.1.0 : déclaration du service de premier plan (Play Console)
+
+Depuis la 1.1.0 la variante store déclare un service de premier plan de type **microphone** (appel vocal qui continue
+écran verrouillé). Google Play demande, pour toute appli ciblant Android 14+ qui en déclare un : Play Console → Règles et
+programmes → Contenu de l’appli → **Services de premier plan** → cocher « Microphone » et décrire l’usage, par exemple :
+« Pendant un appel vocal que l’utilisateur lance avec un de ses bots, le service garde le micro et le son actifs quand
+l’écran est verrouillé ou que l’utilisateur change d’appli. Il s’arrête dès qu’il raccroche (bouton dans l’appli ou dans
+la notification). » Joindre une **courte vidéo** (lien YouTube non répertorié ou Drive) montrant : lancer un appel, verrouiller
+l’écran, la notification « Appel avec … » et Raccrocher. Mettre aussi à jour la **Sécurité des données** (ligne Audio
+ci-dessus) et la page de confidentialité du serveur (`/confidentialite`), qui doit mentionner les appels vocaux.
+Si Play refusait ce type de service, retirer `CallService` de la variante store limiterait les appels à l’appli ouverte.
 
 **Accès pour l’examen Google** : Play demande des identifiants de test si l’appli nécessite une connexion. Fournir dans
 la Play Console (Contenu de l’appli → Accès aux applis) : l’adresse d’un serveur de démonstration accessible en https,

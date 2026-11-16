@@ -23,7 +23,12 @@ test("GET /confidentialite and /privacy need no session and serve a static page"
   assert.match(html, /Politique de confidentialité/);
   assert.match(html, /Supprimer mon compte/);
   assert.doesNotMatch(html, /<script/i);
+  // Since app 1.1.0: voice calls use the microphone, during a call only.
+  assert.match(html, /Appels vocaux/);
+  assert.doesNotMatch(html, /ni ton micro/);
   const en = await site.request("/privacy");
   assert.equal(en.status, 200);
-  assert.match(await en.text(), /Sklubot privacy policy/);
+  const enHtml = await en.text();
+  assert.match(enHtml, /Sklubot privacy policy/);
+  assert.match(enHtml, /Voice calls/);
 });

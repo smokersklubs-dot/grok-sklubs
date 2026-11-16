@@ -1,0 +1,7 @@
+{
+  "name": "sklubot-voice",
+  "version": "1.1.0",
+  "private": true,
+  "description": "Sklubot voice calls (Android): 16 kHz PCM microphone capture and WAV playback for the server's voice pipeline, the phone's own speech recognition and text-to-speech otherwise, audio focus, speaker/earpiece and a microphone foreground service so a call goes on with the screen locked. In both builds.",
+  "license": "MIT"
+}

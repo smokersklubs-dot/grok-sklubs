@@ -5,10 +5,14 @@
  */
 import { requireOptionalNativeModule } from "expo";
 
+export interface RelayStatus { enabled: boolean; accessibility: boolean; locked: boolean; state: string; paired?: boolean; accessibilityWasOn?: boolean }
 interface RelayNative {
   setServer(origin: string): void;
   openRelay(): void;
-  status(): { enabled: boolean; accessibility: boolean; locked: boolean; state: string };
+  status(): RelayStatus;
+  resume(): void;
+  openAccessibility(): void;
+  openAppInfo(): void;
 }
 
 const native = requireOptionalNativeModule<RelayNative>("SklubotRelay");
@@ -29,3 +33,20 @@ export function openRelay(): boolean {
 export function relayStatus() {
   try { return native ? native.status() : null; } catch { return null; }
 }
+
+/**
+ * The phone is paired and the user left the relay on, but the accessibility service is off (some phones turn it off at an
+ * app update or to save battery; stock Android 14 keeps it on across an update, checked on the emulator): worth a clear prompt. Pure: unit-tested.
+ */
+export function relayNeedsAccessibility(s: RelayStatus | null): boolean {
+  return !!s && s.enabled && !!s.paired && !s.accessibility;
+}
+
+/** At each start of the app: the relay's connection comes back if it was left on (Android stops it at an update). */
+export function relayResume() { try { native?.resume(); } catch { /* the relay screen shows the state */ } }
+
+/** Sklubot's page in the accessibility settings (the user turns it on there). */
+export function openRelayAccessibility() { try { native?.openAccessibility(); } catch { /* ignore */ } }
+
+/** The app's info screen ("Allow restricted settings" on Android 13+ for an app installed from a file). */
+export function openRelayAppInfo() { try { native?.openAppInfo(); } catch { /* ignore */ } }

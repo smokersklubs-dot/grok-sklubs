@@ -28,6 +28,7 @@ export type FetchLike = (url: string, init: Record<string, unknown>) => Promise<
   status: number;
   headers: { get(name: string): string | null; getSetCookie?: () => string[] };
   text(): Promise<string>;
+  arrayBuffer?(): Promise<ArrayBuffer>;
 }>;
 
 export interface ClientOptions {
@@ -117,6 +118,27 @@ export class ApiClient {
       throw new ApiError(serverMessage ?? `HTTP ${res.status}`, res.status, serverMessage);
     }
     return data as T;
+  }
+
+  /**
+   * GET raw bytes (the bot's screenshot): the status and the body, without JSON. 204 → null body. Same session header,
+   * same 401 handling as JSON requests.
+   */
+  async bytes(path: string, timeoutMs = 15_000): Promise<{ status: number; bytes: Uint8Array | null }> {
+    const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+    const timer = ctrl ? setTimeout(() => ctrl.abort(), timeoutMs) : null;
+    let res: Awaited<ReturnType<FetchLike>>;
+    try {
+      res = await this.doFetch(this.url(path), { method: "GET", headers: { ...this.authHeaders() }, credentials: "omit", signal: ctrl?.signal });
+    } catch {
+      throw new ApiError("unreachable", 0);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+    if (res.status === 401) this.opts.onUnauthorized?.();
+    if (!res.ok) throw new ApiError(`HTTP ${res.status}`, res.status);
+    if (res.status === 204 || !res.arrayBuffer) return { status: res.status, bytes: null };
+    return { status: res.status, bytes: new Uint8Array(await res.arrayBuffer()) };
   }
 
   get<T>(path: string) { return this.request<T>("GET", path); }

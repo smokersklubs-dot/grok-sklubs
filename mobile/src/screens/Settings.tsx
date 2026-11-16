@@ -8,7 +8,9 @@ import { Icon } from "../components/Icon";
 import { Button, Card, ErrorNote, Field, Row, Segmented, SectionTitle, tap, text } from "../components/ui";
 import { errText, useT } from "../i18n";
 import { ensurePermission, setBackgroundCheck } from "../notify";
+import { liveAvailable, liveDisable, liveEnable, liveSetOnBoot, useLive } from "../live";
 import { openRelay, relayAvailable } from "../relay";
+import { loadToken } from "../state/session";
 import { usePrefs, type ThemePref } from "../state/prefs";
 import { useStore } from "../state/store";
 import { useTheme } from "../theme";
@@ -60,7 +62,22 @@ export function SettingsScreen() {
       if (s !== "granted") return;
     }
     prefs.set({ notify: on });
-    await setBackgroundCheck(on);
+    if (!on) liveDisable();
+    await setBackgroundCheck(on && !useLive.getState().enabled);
+  };
+  const live = useLive();
+  const toggleLive = async (on: boolean) => {
+    tap();
+    if (!on) { liveDisable(); await setBackgroundCheck(prefs.notify); return; }
+    const s = await ensurePermission(true);
+    setDenied(s === "blocked");
+    if (s !== "granted" || !origin) return;
+    const token = await loadToken(origin);
+    if (!token) return;
+    if (!prefs.notify) prefs.set({ notify: true });
+    liveEnable(origin, token, live.onBoot);
+    // The service notifies at once: the ~15 min check would only repeat it.
+    await setBackgroundCheck(false);
   };
   const version = `${Application.nativeApplicationVersion ?? "1.0.0"} (${Application.nativeBuildVersion ?? "1"})`;
   return (
@@ -87,6 +104,8 @@ export function SettingsScreen() {
       <Card style={{ padding: 0 }}>
         <Row title={t("settings.notifyOn")} subtitle={t("settings.notifyHint")} right={<Switch value={prefs.notify && !denied} onValueChange={(v) => void toggleNotify(v)} accessibilityLabel={t("settings.notifyOn")} />} />
         {denied && prefs.notify ? <Row icon="alert" title={t("settings.notifyDenied")} subtitle={t("settings.openSystem")} onPress={() => void Linking.openSettings()} /> : null}
+        {liveAvailable ? <Row title={t("settings.bgLive")} subtitle={t("settings.bgLiveHint")} right={<Switch value={live.enabled} onValueChange={(v) => void toggleLive(v)} accessibilityLabel={t("settings.bgLive")} />} /> : null}
+        {liveAvailable && live.enabled ? <Row title={t("settings.bgLiveBoot")} subtitle={t("settings.bgLiveBootHint")} right={<Switch value={live.onBoot} onValueChange={(v) => { tap(); liveSetOnBoot(v); }} accessibilityLabel={t("settings.bgLiveBoot")} />} /> : null}
       </Card>
 
       {relayAvailable ? (

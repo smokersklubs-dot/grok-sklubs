@@ -1,5 +1,6 @@
 /** A bot's details: Activité (routines, background tasks, members, computer), Tâches, Bibliothèque (web DetailsPanel.tsx). */
 import { useNavigation, useRoute, type RouteProp } from "@react-navigation/native";
+import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import * as WebBrowser from "expo-web-browser";
 import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
@@ -27,6 +28,7 @@ function routineWhen(r: Routine, t: ReturnType<typeof useT>): string {
 }
 
 function Activity({ bot }: { bot: Bot }) {
+  const nav = useNavigation<NativeStackNavigationProp<RootStack>>();
   const { c } = useTheme();
   const t = useT();
   const bundle = useStore((s) => s.bundles[bot.id]);
@@ -93,10 +95,9 @@ function Activity({ bot }: { bot: Bot }) {
         <>
           <SectionTitle>{t("details.computer")}</SectionTitle>
           <Card style={{ padding: 0 }}>
-            <Row icon="monitor" title={t("details.openComputer")} subtitle={t("details.computerHint")} onPress={() => void WebBrowser.openBrowserAsync(origin)} right={<Icon name="external" size={18} color={c.text3} />} />
+            <Row icon="monitor" title={t("details.openComputer")} subtitle={t("details.computerHint")} onPress={() => nav.navigate("Computer", { botId: bot.id })} />
             {!bot.access ? <Row icon="settings" title={t("details.settingsWeb")} onPress={() => void WebBrowser.openBrowserAsync(origin)} right={<Icon name="external" size={18} color={c.text3} />} /> : null}
           </Card>
-          <Text style={[styles.muted, { color: c.text3, marginTop: 10 }]}>{t("voice.todo")}</Text>
         </>
       ) : null}
     </View>

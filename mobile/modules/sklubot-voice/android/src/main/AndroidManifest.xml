@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Voice calls with a bot (both builds). -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- The microphone, asked at the first call (runtime permission). -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- Speaker/earpiece and the communication audio mode. https://developer.android.com/reference/android/media/AudioManager#setMode(int) -->
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <!-- A call goes on with the screen locked: foreground service of type "microphone", started from the call screen
+         (the app is visible and the microphone permission granted, as Android 14+ requires).
+         https://developer.android.com/develop/background-work/services/fgs/service-types#microphone -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- Android 11 package visibility: the phone's speech recognition and text-to-speech services.
+         https://developer.android.com/reference/android/speech/SpeechRecognizer and
+         https://developer.android.com/reference/android/speech/tts/TextToSpeech.Engine#INTENT_ACTION_TTS_SERVICE -->
+    <queries>
+        <intent><action android:name="android.speech.RecognitionService" /></intent>
+        <intent><action android:name="android.intent.action.TTS_SERVICE" /></intent>
+    </queries>
+
+    <application>
+        <service
+            android:name="app.sklubot.voice.CallService"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
+    </application>
+</manifest>
