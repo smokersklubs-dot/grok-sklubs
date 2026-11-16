@@ -154,7 +154,7 @@ export const apiTools: BuiltinTool[] = [
       const existing = vault.byName(c.user.id, secret);
       const header = String(a.header ?? "").trim() || existing?.header || "Authorization";
       const prefix = typeof a.prefix === "string" ? a.prefix.slice(0, 40) : existing?.prefix ?? (header.toLowerCase() === "authorization" ? "Bearer " : "");
-      rows.append(c.bot, { kind: "card", card: { type: "apiconnector", connectorId: conn.id, name, baseUrl: base.baseUrl, host: base.host, secret, secretSaved: !!(existing?.kind === "secret" && existing.hasPassword), endpoints, status: "pending" } });
+      rows.append(c.bot, { kind: "card", card: { type: "apiconnector", connectorId: conn.id, name, baseUrl: base.baseUrl, host: base.host, secret, secretSaved: !!(existing?.kind === "secret" && existing.hasPassword && coversHost(existing.hosts, base.host)), endpoints, status: "pending" } });
       // The header and prefix to use if the user types a new token on the card.
       pendingHeaders.set(conn.id, { header, prefix });
       bots.bumpUnread(c.bot.id);
@@ -183,6 +183,12 @@ export const apiTools: BuiltinTool[] = [
   },
 ];
 
+/** A secret bound to `hosts` may already go to `host` (the same host, or a subdomain of one, as the credential relay allows). */
+export function coversHost(hosts: string[], host: string): boolean {
+  const h = host.toLowerCase();
+  return hosts.some((x) => { const b = x.toLowerCase(); return h === b || h.endsWith(`.${b}`); });
+}
+
 /** Header and prefix for a token typed on a connector's card (in memory; the card falls back to Authorization: Bearer). */
 export const pendingHeaders = new Map<string, { header: string; prefix: string }>();
 
@@ -196,6 +202,9 @@ export function approveConnector(userId: string, conn: ApiConnector, sealed: str
   const h = pendingHeaders.get(conn.id) ?? { header: existing?.header || "Authorization", prefix: existing?.prefix ?? "Bearer " };
   if (existing && existing.kind !== "secret") return { ok: false, error: "A vault item with that name is not a secret." };
   if (!existing && !sealed) return { ok: false, error: "Type the token first." };
+  // A bot's proposal must never send an existing secret to a new host on one click (a page or an email could steer it to
+  // an attacker's address): the user types the token again on the card to bind it to this host too.
+  if (existing && !sealed && !coversHost(existing.hosts, conn.host)) return { ok: false, error: `The secret "${existing.name}" is not used with ${conn.host} yet. Type the token again on the card to allow it there too.` };
   if (existing) {
     const hosts = existing.hosts.includes(conn.host) ? existing.hosts : [...existing.hosts, conn.host];
     vault.update(existing.id, { kind: "secret", name: existing.name, site: existing.site, username: existing.username, passwordEnc: sealed ?? existing.passwordEnc, note: existing.note, hosts, header: existing.header || h.header, prefix: existing.prefix ?? h.prefix, checkUrl: existing.checkUrl });

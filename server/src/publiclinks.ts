@@ -20,7 +20,11 @@ import type { BuiltinTool } from "./agent/tools.js";
  * outside content asks first.
  */
 
-export const LINK_TYPES = /^(image|audio|video)\//;
+/**
+ * Served inline on the app's own domain, so only types a browser cannot run script from: no SVG (image/svg+xml carries
+ * <script>), no HTML-ish video/audio containers beyond the common ones. Checked at creation and again when served.
+ */
+export const LINK_TYPES = /^(image\/(png|jpeg|gif|webp|avif)|audio\/(mpeg|mp4|aac|ogg|wav|webm|flac|x-wav)|video\/(mp4|webm|ogg|quicktime))$/;
 export const MAX_LINK_BYTES = 50_000_000;
 export const DEFAULT_LINK_MIN = 60;
 export const MAX_LINK_MIN = 24 * 60;
@@ -67,6 +71,8 @@ export function servePublicLink(c: Context): Response {
   const want = Buffer.from(sign(id, r.expires_at)), got = Buffer.from(sig);
   if (want.length !== got.length || !timingSafeEqual(want, got)) return notFound();
   if (r.revoked_at || r.expires_at <= now()) return new Response("This link has expired. Ask for a new one.", { status: 410, headers: { "cache-control": "no-store", "x-robots-tag": "noindex" } });
+  // Links made before SVG was refused stay unusable rather than serving script on this domain.
+  if (!LINK_TYPES.test(String(r.mime))) return notFound();
   let data: Buffer;
   try { data = readLibraryFile(r.bot_id, r.path); } catch { return notFound(); }
   const head = c.req.method === "HEAD";
@@ -76,7 +82,7 @@ export function servePublicLink(c: Context): Response {
   }
   return new Response(head ? null : new Uint8Array(data), {
     status: 200,
-    headers: { "content-type": r.mime, "content-length": String(data.length), "cache-control": "no-store", "x-robots-tag": "noindex", "x-content-type-options": "nosniff", "content-disposition": "inline", "referrer-policy": "no-referrer" },
+    headers: { "content-type": r.mime, "content-length": String(data.length), "cache-control": "no-store", "x-robots-tag": "noindex", "x-content-type-options": "nosniff", "content-disposition": "inline", "referrer-policy": "no-referrer", "content-security-policy": "default-src 'none'; sandbox" },
   });
 }
 
