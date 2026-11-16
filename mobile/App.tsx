@@ -119,7 +119,7 @@ export default function App() {
   if (boot === "loading") return <View style={{ flex: 1, backgroundColor: c.bg }} />;
   return (
     <SafeAreaProvider>
-      <StatusBar style={dark ? "light" : "dark"} backgroundColor={c.bg} />
+      <StatusBar style={dark ? "light" : "dark"} />
       <NavigationContainer ref={navRef} theme={navTheme}>
         <Stack.Navigator screenOptions={{ headerShown: false, contentStyle: { backgroundColor: c.bg }, animation: "slide_from_right" }}>
           {boot === "server" ? <Stack.Screen name="Server" component={ServerScreen} /> :
