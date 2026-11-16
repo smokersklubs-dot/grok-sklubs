@@ -93,4 +93,5 @@
     <string name="a11y_label">Sklubot — contrôle du téléphone</string>
     <string name="a11y_summary">Permet aux bots que tu autorises de voir et d\'utiliser ce téléphone, seulement quand le relais est allumé et après ton oui.</string>
     <string name="a11y_description">Sklubot utilise ce service pour faire des captures d\'écran, lire le texte à l\'écran, appuyer, glisser, écrire et faire Retour ou Accueil pour un bot que tu as autorisé, seulement quand le relais est allumé dans l\'appli et après ton accord sur ce téléphone. Rien n\'est lu ni envoyé autrement. Stop est toujours disponible (bandeau, notification, vignette des réglages rapides).</string>
+    <string name="setup_unreachable_retry">Aucun serveur Sklubot n’a répondu à cette adresse. Vérifie l’adresse et ta connexion, ou appuie encore sur Se connecter pour l’ouvrir quand même.</string>
 </resources>

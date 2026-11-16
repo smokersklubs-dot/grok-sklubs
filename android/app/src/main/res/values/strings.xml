@@ -94,4 +94,5 @@
     <string name="a11y_label">Sklubot — phone control</string>
     <string name="a11y_summary">Lets the bots you allow see and use this phone, only while the relay is on and after your yes.</string>
     <string name="a11y_description">Sklubot uses this service to take screenshots, read the text on screen, tap, swipe, type and press Back or Home on behalf of a bot you allowed, only while the relay is turned on in the app and after you accepted on this phone. Nothing is read or sent otherwise. Stop is always available (banner, notification, quick-settings tile).</string>
+    <string name="setup_unreachable_retry">No Sklubot server answered at this address. Check the address and your connection, or press Connect again to open it anyway.</string>
 </resources>

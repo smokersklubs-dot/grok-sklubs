@@ -112,6 +112,7 @@ public class MainActivity extends Activity {
         if (current != null) address.setText(current);
         else if (!BuildConfig.DEFAULT_SERVER.isEmpty()) address.setText(BuildConfig.DEFAULT_SERVER);
 
+        final String[] lastFailed = { null };
         Runnable submit = () -> {
             String base = normalise(address.getText().toString());
             if (base == null) { error.setText(R.string.setup_invalid); error.setVisibility(View.VISIBLE); return; }
@@ -124,7 +125,10 @@ public class MainActivity extends Activity {
                     if (isFinishing() || isDestroyed()) return;
                     connect.setEnabled(true);
                     connect.setText(R.string.setup_button);
-                    if (!ok) { error.setText(R.string.setup_unreachable); error.setVisibility(View.VISIBLE); return; }
+                    // Second press on the same address after a failed check: open it anyway (a flaky network or a
+                    // proxy can make the check fail while the site itself loads fine in the WebView).
+                    boolean retry = base.equals(lastFailed[0]);
+                    if (!ok && !retry) { lastFailed[0] = base; error.setText(R.string.setup_unreachable_retry); error.setVisibility(View.VISIBLE); return; }
                     server = base;
                     prefs().edit().putString(KEY_SERVER, base).apply();
                     showWeb(null);
