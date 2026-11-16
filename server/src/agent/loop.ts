@@ -19,6 +19,7 @@ import { noteDiskTrouble } from "../disk.js";
 import { builtinTools, higgsfieldFor, videoRoute, type BuiltinTool, type ToolOutput } from "./tools.js";
 import { videoService } from "../video.js";
 import { nativeToolsFor, runNativeTool, type Risk } from "../native/tools.js";
+import { localTools } from "../localtools.js";
 import { accounts as nativeAccounts } from "../native/accounts.js";
 import { appVisible, pushLater } from "../push.js";
 import { onlyPhones, devices as relayDevices } from "../relay.js";
@@ -113,7 +114,11 @@ interface PausedTurn {
   ask?: AskRoute;
 }
 
-export interface RemoteTool { connectorId: string; connectorName: string; remoteName: string; readOnly: boolean; native?: { accountId: string; risk: Risk; label: string } }
+/**
+ * `destructive`: the tool server annotated it `destructiveHint: true` (only ever used to ADD an "irreversible" warning).
+ * `command`: a tool of a local tool server started by a command on this bot's own computer (localtools.ts).
+ */
+export interface RemoteTool { connectorId: string; connectorName: string; remoteName: string; readOnly: boolean; destructive?: boolean; command?: boolean; native?: { accountId: string; risk: Risk; label: string } }
 
 export interface Turn {
   bot: BotRecord;
@@ -373,7 +378,8 @@ export async function newTurn(bot: BotRecord, user: UserRecord, depth: number, s
   let nativeSearch = false;
   try { nativeSearch = resolveModel(modelRef).provider.id === "anthropic"; } catch { /* no provider yet: the turn will say so */ }
   const appsOff = bot.disabledTools.includes("apps");
-  const remoteTools = appsOff ? [] : await connectors.toolsFor(user.id).catch(() => []);
+  // App tools: the account's connectors, and this bot's own local tool servers (started on its computer when needed).
+  const remoteTools = appsOff ? [] : [...await connectors.toolsFor(user.id).catch(() => []), ...localTools.toolsFor(bot.id)];
   // Built-in app accounts (Gmail, Outlook, Slack…): one set of tools per signed-in account.
   const nativeTools = appsOff ? [] : nativeToolsFor(user.id).map((t) => ({ spec: t.spec, connectorId: "", connectorName: t.accountName, remoteName: t.action, readOnly: t.risk === "read", native: { accountId: t.accountId, risk: t.risk, label: t.label } }));
   const nativeAll = appsOff ? [] : nativeAccounts.list(user.id);
@@ -386,7 +392,9 @@ export async function newTurn(bot: BotRecord, user: UserRecord, depth: number, s
     // Phones only (protocol 1.2): no commands, shared files or windows to offer.
     .filter((t) => !PHONE_LESS.has(t.spec.name) || !onlyPhones(user.id))
     // Its own mailbox (wave 6): only for a bot with an email address that is on.
-    .filter((t) => !t.spec.name.startsWith("bot_email_") || botEmail.has(bot.id));
+    .filter((t) => !t.spec.name.startsWith("bot_email_") || botEmail.has(bot.id))
+    // Proposing a local tool server: only where bots have a Linux computer to run it on.
+    .filter((t) => t.spec.name !== "local_tool_server_add" || localTools.available());
   const connectorNames = [...new Set(remoteTools.map((t) => t.connectorName))];
   const builtinMap = new Map(builtins.map((b) => [b.spec.name, b]));
   const remoteMap = new Map<string, RemoteTool>([...remoteTools.map((r) => [r.spec.name, r] as const), ...nativeTools.map(({ spec, ...r }) => [spec.name, r] as const)]);
@@ -974,6 +982,11 @@ export async function execute(turn: Turn, raw: ToolUseBlock): Promise<ToolOutput
     const r = await runNativeTool(remote.native.accountId, remote.remoteName, call.input, { botId: turn.bot.id });
     return { content: r.text, summary: r.summary };
   }
+  if (remote?.command) {
+    activity(turn, "connector", remote.connectorName);
+    const r = await localTools.call(remote.connectorId, remote.remoteName, call.input, turn.signal);
+    return { content: r.text, isError: r.isError, summary: r.isError ? "failed" : "done" };
+  }
   if (remote) {
     activity(turn, "connector", remote.connectorName);
     const r = await connectors.call(remote.connectorId, remote.remoteName, call.input);
@@ -1023,7 +1036,7 @@ async function processCalls(turn: Turn, st: PausedTurn): Promise<"continue" | "e
     answered = "";
     if (verdict.kind === "ask") {
       const approvalId = newId("apr");
-      const card = rows.append(bot, { kind: "card", card: { type: "approval", approvalId, title: verdict.title, detail: cardDetail(call, verdict), tool: verdict.policyKey, source: verdict.source, status: "pending", ...(verdict.once ? { once: true } : {}), ...(verdict.why ? { why: verdict.why } : {}), ...(verdict.quote ? { quote: clip(verdict.quote, 400) } : {}) } });
+      const card = rows.append(bot, { kind: "card", card: { type: "approval", approvalId, title: verdict.title, detail: cardDetail(call, verdict), tool: verdict.policyKey, source: verdict.source, status: "pending", ...(verdict.once ? { once: true } : {}), ...(verdict.why ? { why: verdict.why } : {}), ...(verdict.quote ? { quote: clip(verdict.quote, 400) } : {}), ...(verdict.irreversible ? { irreversible: true, irreversibleReason: verdict.irreversible } : {}) } });
       approvals.create(bot.id, user.id, st.generation, card.seq, verdict.policyKey, approvalId, hash);
       setStep(turn, st, call, "waiting");
       st.approvalId = approvalId;
@@ -1286,12 +1299,12 @@ function lapse(approvalId: string) {
  * sends a new message; until the engine is restarted; or until the turn is stopped).
  * Used when the bot runs on a subscription tool: its call simply blocks until the user decides.
  */
-export async function waitForApproval(turn: Turn, call: ToolUseBlock, verdict: Extract<Verdict, { kind: "ask" }> & { why?: string; quote?: string }, out?: { approvalId?: string }): Promise<"allowed" | "always" | "denied" | "expired"> {
+export async function waitForApproval(turn: Turn, call: ToolUseBlock, verdict: Extract<Verdict, { kind: "ask" }> & { why?: string; quote?: string; irreversible?: string }, out?: { approvalId?: string }): Promise<"allowed" | "always" | "denied" | "expired"> {
   const { bot, user } = turn;
   const approvalId = newId("apr");
   if (out) out.approvalId = approvalId;
   const hash = actionHash(call.name, call.input);
-  const card = rows.append(bot, { kind: "card", card: { type: "approval", approvalId, title: verdict.title, detail: cardDetail(call, verdict), tool: verdict.policyKey, source: verdict.source, status: "pending", ...(verdict.once ? { once: true } : {}), ...(verdict.why ? { why: verdict.why } : {}), ...(verdict.quote ? { quote: clip(verdict.quote, 400) } : {}) } });
+  const card = rows.append(bot, { kind: "card", card: { type: "approval", approvalId, title: verdict.title, detail: cardDetail(call, verdict), tool: verdict.policyKey, source: verdict.source, status: "pending", ...(verdict.once ? { once: true } : {}), ...(verdict.why ? { why: verdict.why } : {}), ...(verdict.quote ? { quote: clip(verdict.quote, 400) } : {}), ...(verdict.irreversible ? { irreversible: true, irreversibleReason: verdict.irreversible } : {}) } });
   approvals.create(bot.id, user.id, bot.generation, card.seq, verdict.policyKey, approvalId, hash);
   bots.bumpUnread(bot.id);
   setLive(user.id, bot.id, { running: false, activity: { kind: "waiting", since: Date.now() }, awaiting: { reason: verdict.reason, since: Date.now() } });

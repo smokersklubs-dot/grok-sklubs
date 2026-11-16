@@ -117,6 +117,7 @@ export function TaskCardView({ card, botId }: { card: TaskCard; botId: string })
         <div className="task-approval">
           <p className="card-title small">{card.approval.title}</p>
           {card.approval.detail && <pre className="card-detail">{card.approval.detail}</pre>}
+          {card.approval.irreversible && <p className="approval-irreversible"><Icon name="alert" size={14} /><span><strong>{t("approval.irreversible")}</strong> {card.approval.irreversible}</span></p>}
           <div className="card-actions">
             <button type="button" className="btn btn-ghost" disabled={busy !== null} onClick={() => void decide("deny")}>{t("approval.deny")}</button>
             <button type="button" className="btn btn-accent" disabled={busy !== null} onClick={() => void decide("allow")}>{t("approval.allow")}</button>

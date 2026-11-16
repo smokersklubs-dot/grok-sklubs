@@ -8,6 +8,7 @@ import { setLookSource } from "./linux.js";
 import { bots, users } from "./store.js";
 import { assertConfig, config } from "./config.js";
 import { connectors } from "./connectors.js";
+import { localTools } from "./localtools.js";
 import { defaultModelRef, listProviders } from "./llm/index.js";
 import { api, site } from "./routes.js";
 import { startScheduler } from "./scheduler.js";
@@ -80,7 +81,7 @@ async function shutdown() {
   telegram.stopAll();
   closeSlackSockets();
   await stopMailReceiver().catch(() => {});
-  await Promise.all([closeAllDesktops(), connectors.closeAll()]).catch(() => {});
+  await Promise.all([closeAllDesktops(), connectors.closeAll(), localTools.closeAll()]).catch(() => {});
   process.exit(0);
 }
 process.on("SIGINT", shutdown);

@@ -69,7 +69,13 @@ function Approval({ card, botId }: { card: ApprovalCard; botId: string }) {
           {card.why && <p className="approval-reason"><Icon name="info" size={13} /> <span>{t("approval.why", { why: card.why })}</span></p>}
         </div>
       )}
-      {card.once && card.status === "pending" && <p className="card-note">{t("approval.onceOnly")}</p>}
+      {card.irreversible && (
+        <p className="approval-irreversible" role={card.status === "pending" ? "alert" : undefined}>
+          <Icon name="alert" size={14} />
+          <span><strong>{t("approval.irreversible")}</strong> {card.irreversibleReason ?? ""}</span>
+        </p>
+      )}
+      {card.once && card.status === "pending" && <p className="card-note">{t(card.irreversible ? "approval.irreversibleOnce" : "approval.onceOnly")}</p>}
       {card.status === "pending" && !canDecide ? (
         <p className="card-note"><Icon name="users" size={13} /> {t("ws.approvalOwner", { name: access?.ownerName ?? "" })}</p>
       ) : card.status === "pending" ? (

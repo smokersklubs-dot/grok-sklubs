@@ -1,4 +1,5 @@
 import { BotReachTab } from "./Wave7";
+import { LocalToolsTab } from "./LocalTools";
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { api, errText } from "../api";
 import { tn, useT } from "../i18n";
@@ -6,7 +7,7 @@ import { useStore, type BotSettingsTab } from "../store";
 import { BotEmailTab, BotSharingTab } from "./Wave6";
 import { DEFAULT_CHARACTER, TOOL_GROUPS } from "../types";
 import { BotSpendField, ConfidenceBadge, RoutineExtras } from "./Wave5b";
-import type { Autonomy, AvatarColor, AvatarShape, Bot, BotBundle, Character as CharacterLook, BotMode, Effort, Memory, MemoryStatus, ModelOption, NativeTrigger, RoomRule, Routine, RoutineRun, Skill, SkillRef, TelegramStatus, ToolGroup } from "../types";
+import type { Autonomy, AvatarColor, AvatarShape, Bot, BotBundle, Character as CharacterLook, BotMode, Effort, Memory, MemoryStatus, ModelOption, NativeTrigger, RoomRule, Routine, RoutineRun, Skill, SkillExtras, SkillRef, TelegramStatus, ToolGroup } from "../types";
 import { useNative } from "./NativeApps";
 import { dateTime, nextRunLabel, relTime, shortDate } from "../lib/format";
 import { BotAvatar } from "./Avatar";
@@ -333,12 +334,33 @@ function General({ bot, onClose }: { bot: Bot; onClose: () => void }) {
 
 /* ---------- Skills ---------- */
 
+/** The optional structured parts of a skill, in the order the bot follows them. */
+const SKILL_PARTS = ["needs", "approvals", "check", "output"] as const satisfies readonly (keyof SkillExtras)[];
+
+/** The structured parts a skill has, read-only (in its row). */
+function SkillParts({ skill }: { skill: Skill }) {
+  const t = useT();
+  const parts = SKILL_PARTS.filter((k) => skill[k]?.trim());
+  if (!parts.length) return null;
+  return (
+    <dl className="skill-parts">
+      {parts.map((k) => (
+        <div key={k} className={`skill-part is-${k}`}>
+          <dt>{t(`skill.part.${k}`)}</dt>
+          <dd>{skill[k]}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
 function SkillEditor({ botId, skill, onDone }: { botId: string; skill: Skill | null; onDone: () => void }) {
   const loadBundle = useStore((s) => s.loadBundle);
   const t = useT();
   const [name, setName] = useState(skill?.name ?? "");
   const [description, setDescription] = useState(skill?.description ?? "");
   const [body, setBody] = useState(skill?.body ?? "");
+  const [extras, setExtras] = useState<SkillExtras>({ needs: skill?.needs ?? "", check: skill?.check ?? "", output: skill?.output ?? "", approvals: skill?.approvals ?? "" });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const uid = useId();
@@ -350,7 +372,7 @@ function SkillEditor({ botId, skill, onDone }: { botId: string; skill: Skill | n
     if (!name.trim() || !body.trim() || busy) return;
     setBusy(true);
     setError(null);
-    const payload = { name: name.trim(), description: description.trim(), body };
+    const payload = { name: name.trim(), description: description.trim(), body, ...extras };
     try {
       if (skill) await api("PATCH", `/skills/${skill.id}`, payload);
       else await api("POST", `/bots/${botId}/skills`, payload);
@@ -376,6 +398,18 @@ function SkillEditor({ botId, skill, onDone }: { botId: string; skill: Skill | n
         <label className="field-label" htmlFor={`${uid}b`}>{t("skill.steps")}</label>
         <textarea id={`${uid}b`} className="input" rows={7} value={body} onChange={(e) => setBody(e.target.value)} placeholder={t("skill.stepsPlaceholder")} />
       </div>
+      {/* Optional structured parts: open at once when the skill already has one. */}
+      <details className="skill-more" open={SKILL_PARTS.some((k) => !!extras[k])}>
+        <summary>{t("skill.moreDetails")}</summary>
+        <div className="skill-more-fields">
+        {SKILL_PARTS.map((k) => (
+          <div className="field" key={k}>
+            <label className="field-label" htmlFor={`${uid}${k}`}>{t(`skill.part.${k}`)} <span className="muted">{t("common.optional")}</span></label>
+            <textarea id={`${uid}${k}`} className="input" rows={2} maxLength={2000} value={extras[k]} onChange={(e) => setExtras((x) => ({ ...x, [k]: e.target.value }))} placeholder={t(`skill.part.${k}Placeholder`)} />
+          </div>
+        ))}
+        </div>
+      </details>
       <ErrorNote>{error}</ErrorNote>
       <div className="row-end">
         <button type="button" className="btn btn-ghost btn-small" onClick={onDone}>{t("common.cancel")}</button>
@@ -499,7 +533,7 @@ function Skills({ bot, bundle }: { bot: Bot; bundle: BotBundle | undefined }) {
                 <SkillEditor botId={bot.id} skill={s} onDone={() => setEditing(null)} />
               </li>
             ) : (
-              <li key={s.id} className="list-row is-card">
+              <li key={s.id} className="list-row is-card skill-row">
                 <div className="list-row-text">
                   <span className="list-row-title">{s.name}{s.shared && <span className="pill is-shared">{t("skill.shared")}</span>}</span>
                   <span className="list-row-sub">{s.description || s.body.split("\n").find((l) => l.trim()) || ""}</span>
@@ -522,7 +556,7 @@ function Skills({ bot, bundle }: { bot: Bot; bundle: BotBundle | undefined }) {
                       showToast(t("skill.deleted", { name: s.name }), {
                         label: t("common.undo"),
                         run: async () => {
-                          await api("POST", `/bots/${bot.id}/skills`, { name: s.name, description: s.description, body: s.body });
+                          await api("POST", `/bots/${bot.id}/skills`, { name: s.name, description: s.description, body: s.body, needs: s.needs, check: s.check, output: s.output, approvals: s.approvals });
                           await loadBundle(bot.id);
                           showToast(t("skill.restored"));
                         },
@@ -532,6 +566,7 @@ function Skills({ bot, bundle }: { bot: Bot; bundle: BotBundle | undefined }) {
                     }
                   }}
                 />
+                <SkillParts skill={s} />
               </li>
             ),
           )}
@@ -1197,13 +1232,15 @@ export function BotSettings({ botId, tab }: { botId: string; tab: BotSettingsTab
   if (!bot) return null;
 
   const isRoom = bot.kind === "room";
-  const tabs: { id: BotSettingsTab; label: string; icon: "settings" | "book" | "brain" | "clock" | "send" | "mail" | "users" | "globe"; count?: number }[] = isRoom
+  const tabs: { id: BotSettingsTab; label: string; icon: "settings" | "book" | "brain" | "clock" | "send" | "mail" | "users" | "globe" | "wrench"; count?: number }[] = isRoom
     ? [{ id: "general", label: t("botSettings.tab.general"), icon: "settings" }]
     : [
         { id: "general", label: t("botSettings.tab.general"), icon: "settings" },
         { id: "skills", label: t("botSettings.tab.skills"), icon: "book", count: bundle?.skills.length },
         { id: "memories", label: t("botSettings.tab.memories"), icon: "brain", count: bundle?.memories.length },
         { id: "routines", label: t("botSettings.tab.routines"), icon: "clock", count: bundle?.routines.length },
+        // Local tool servers run on the bot's computer: its owner manages them (a shared bot's members do not see the tab).
+        ...(bot.access ? [] : [{ id: "localTools" as const, label: t("botSettings.tab.localTools"), icon: "wrench" as const }]),
         { id: "reach", label: t("botSettings.tab.reach"), icon: "globe" },
         { id: "telegram", label: t("botSettings.tab.telegram"), icon: "send" },
         { id: "email", label: t("botSettings.tab.email"), icon: "mail" },
@@ -1245,6 +1282,7 @@ export function BotSettings({ botId, tab }: { botId: string; tab: BotSettingsTab
           {active === "skills" && <Skills bot={bot} bundle={bundle} />}
           {active === "memories" && <Memories bot={bot} bundle={bundle} />}
           {active === "routines" && <Routines bot={bot} bundle={bundle} />}
+          {active === "localTools" && <LocalToolsTab key={bot.id} bot={bot} />}
           {active === "reach" && <BotReachTab key={bot.id} bot={bot} />}
           {active === "telegram" && <Telegram key={bot.id} bot={bot} />}
           {active === "email" && <BotEmailTab key={bot.id} bot={bot} />}

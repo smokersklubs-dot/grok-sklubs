@@ -21,7 +21,7 @@ import { fetchProblem, guardedFetch } from "./net.js";
  * registration when the server offers it — all driven by the SDK's own `auth()`.
  */
 
-interface LiveConnector { client: Client; provider: ConnectorOAuth | null; tools: { name: string; description: string; readOnly: boolean; schema: ToolSpec["inputSchema"] }[] }
+interface LiveConnector { client: Client; provider: ConnectorOAuth | null; tools: { name: string; description: string; readOnly: boolean; destructive: boolean; schema: ToolSpec["inputSchema"] }[] }
 interface Entry { record: ConnectorRecord; live: LiveConnector | null; error: string | null; connecting: Promise<void> | null; needsAuth: boolean; failedAt?: number; errorStatus?: number }
 interface ConnectorRecord { id: string; userId: string; name: string; url: string; tokenEnc: string | null; auth: ConnectorAuth }
 
@@ -34,6 +34,16 @@ const READ_WORDS = new Set(["get", "list", "search", "fetch", "find", "read", "r
 export function looksReadOnly(name: string, hint?: boolean): boolean {
   if (hint !== undefined) return hint;
   return name.split(/[^a-zA-Z0-9]+|(?<=[a-z])(?=[A-Z])/).some((word) => READ_WORDS.has(word.toLowerCase()));
+}
+
+/**
+ * MCP ToolAnnotations (https://modelcontextprotocol.io/specification/2025-06-18/server/tools): `destructiveHint` "may
+ * perform destructive updates", meaningful only when `readOnlyHint` is false. Its default is true, but most servers
+ * never set it, so only an explicit true counts. Hints come from an untrusted server: this only ever ADDS the
+ * "irreversible" warning on a card (agent/irreversible.ts), it never lets anything through.
+ */
+export function destructiveHint(a: { readOnlyHint?: boolean; destructiveHint?: boolean } | undefined): boolean {
+  return a?.readOnlyHint !== true && a?.destructiveHint === true;
 }
 
 // ── OAuth ────────────────────────────────────────────────────────────────────
@@ -168,6 +178,7 @@ async function connect(entry: Entry) {
       name: t.name,
       description: (t.description ?? "").slice(0, 1000),
       readOnly: looksReadOnly(t.name, t.annotations?.readOnlyHint),
+      destructive: destructiveHint(t.annotations),
       schema: { type: "object", properties: (t.inputSchema?.properties ?? {}) as Record<string, unknown>, required: t.inputSchema?.required },
     })),
   };
@@ -352,7 +363,7 @@ export const connectors = {
   },
 
   /** Tools from every ready connector, namespaced so two servers can expose the same tool name. */
-  async toolsFor(userId: string): Promise<{ spec: ToolSpec; connectorId: string; connectorName: string; remoteName: string; readOnly: boolean }[]> {
+  async toolsFor(userId: string): Promise<{ spec: ToolSpec; connectorId: string; connectorName: string; remoteName: string; readOnly: boolean; destructive: boolean }[]> {
     const out = [];
     for (const record of recordsFor(userId)) {
       const entry = ensure(record);
@@ -360,7 +371,7 @@ export const connectors = {
       for (const t of entry.live?.tools ?? []) {
         out.push({
           spec: { name: `app_${slug(record.name)}__${t.name}`.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 64), description: `[${record.name}] ${t.description}`, inputSchema: t.schema },
-          connectorId: record.id, connectorName: record.name, remoteName: t.name, readOnly: t.readOnly,
+          connectorId: record.id, connectorName: record.name, remoteName: t.name, readOnly: t.readOnly, destructive: t.destructive,
         });
       }
     }

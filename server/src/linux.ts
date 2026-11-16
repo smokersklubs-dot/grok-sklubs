@@ -162,8 +162,14 @@ const stopping = new Set<string>();
 /** Computers allowed to wake (room was made for them) that are still starting: they count as awake already. */
 const reserved = new Set<string>();
 
+/** Told just before a computer goes to sleep or is wiped: what runs in it stops (local tool servers, localtools.ts). */
+const stoppingListeners: ((botId: string) => void)[] = [];
+export const onComputerStopping = (fn: (botId: string) => void) => { stoppingListeners.push(fn); };
+const tellStopping = (botId: string) => { for (const fn of stoppingListeners) { try { fn(botId); } catch (err) { console.error("[computer stopping]", err); } } };
+
 async function sleepMachine(botId: string) {
   const m = machines.get(botId);
+  tellStopping(botId);
   stopping.add(botId);
   try {
     await docker(["stop", "-t", "3", containerName(botId)], { timeoutMs: 30_000 });
@@ -289,6 +295,13 @@ async function wake(botId: string, userId: string, workspace: string): Promise<M
   m.lastUsedAt = now();
   m.verifiedAt = now();
   return m;
+}
+
+/** Wakes the bot's computer (and dresses it) and returns its container's name: for a process that outlives one call (localtools.ts). */
+export async function computerReady(botId: string, userId: string, workspace: string): Promise<string> {
+  await wake(botId, userId, workspace);
+  await dress(botId).catch(() => {});
+  return containerName(botId);
 }
 
 async function onMachine<T>(botId: string, userId: string, workspace: string, fn: (name: string) => Promise<T>): Promise<T> {
@@ -533,6 +546,7 @@ export const linuxScreen = {
   /** Wipes the computer: the container and its home volume are deleted; a fresh one is made on next use. */
   async destroy(botId: string) {
     const m = machines.get(botId);
+    tellStopping(botId);
     await docker(["rm", "-f", containerName(botId)], { timeoutMs: 30_000 });
     await docker(["volume", "rm", "-f", volumeName(botId)], { timeoutMs: 30_000 });
     machines.delete(botId);

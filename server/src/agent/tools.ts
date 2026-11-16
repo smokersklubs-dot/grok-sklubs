@@ -13,12 +13,12 @@ import { describeRoutine, routines, type RoutineInput } from "../routines.js";
 import { accounts as nativeAccounts } from "../native/accounts.js";
 import { appOf } from "../native/vendors.js";
 import { schedule, unschedule } from "../scheduler.js";
-import { GEM_KINDS, GEMS_PER_DAY, REACTIONS, TAKEOVER_REASONS, type TakeoverReason, type ActivityKind, type Connector, type Gem, type GemKind, type ReactionEmoji, type Row, type ToolGroup } from "../shared.js";
+import { GEM_KINDS, GEMS_PER_DAY, REACTIONS, TAKEOVER_REASONS, type TakeoverReason, type ActivityKind, type Connector, type Gem, type GemKind, type ReactionEmoji, type Row, type ToolGroup, type SkillExtras, SKILL_EXTRA_KEYS } from "../shared.js";
 import { q } from "../db.js";
 import { searchConfigured, searchWeb } from "../search.js";
 import { fetchProblem, guardedFetch } from "../net.js";
 import { config as appConfig } from "../config.js";
-import { audit, bots, clip, memories, newId, pages, rows, searchMessages, settings, skills, tasks, vault, type BotRecord, type UserRecord } from "../store.js";
+import { audit, bots, clip, memories, newId, pages, rows, searchMessages, settings, skills, skillText, tasks, vault, type BotRecord, type UserRecord } from "../store.js";
 import { record as recordUsage } from "../usage.js";
 import { interrupt, tell } from "./loop.js";
 import { DRIVING, releaseControl, takeoverTimeoutMs, userDriving, waitForUser } from "../takeover.js";
@@ -46,6 +46,7 @@ import { attemptsText, DEFAULT_MAX_COST_USD, paidConsents, paidGate, runChain, s
 import { cached, cachePolicy, idemKeyOf, release, remember, reserve, settle } from "../thirdparty.js";
 import { commandEnded, commandStarted, provisionRelay, relayHint } from "../egress.js";
 import { publicLinkTools } from "../publiclinks.js";
+import { localTools } from "../localtools.js";
 import { videoPriceEstimate, videoServices } from "../video.js";
 
 export interface ToolContext {
@@ -679,18 +680,28 @@ const knowledgeTools: BuiltinTool[] = [
       const s = skills.find(c.bot.id, String(a.name));
       if (!s) return { content: `You have no skill called "${a.name}", and no teammate shared one by that name.`, isError: true };
       // A skill learned in a turn that had read outside content is itself outside content: a page may have shaped it.
-      return { content: `# ${s.name}${s.own ? "" : ` (shared by ${s.botName})`}${s.learned ? " (learned from an earlier task)" : ""}\n${s.description ? `Use when: ${s.description}\n` : ""}\n${s.body}`, summary: s.name, outside: s.outside };
+      return { content: `# ${s.name}${s.own ? "" : ` (shared by ${s.botName})`}${s.learned ? " (learned from an earlier task)" : ""}\n${skillText(s)}`, summary: s.name, outside: s.outside };
     },
   }),
-  tool("skill_save", "Save a way of doing something as a skill, so you do it the same way next time. Use it when the user says to remember how to do a task, or after working out a procedure worth keeping. Saving under an existing name replaces that skill.",
-    obj({ name: str("Short name"), when: str("When to use it, in one line"), steps: str("The procedure, step by step"), shared: { type: "boolean", description: "Share it with every bot of the user (they see it in their skill list)" } }, ["name", "steps"]), {
+  tool("skill_save", "Save a way of doing something as a skill, so you do it the same way next time. Use it when the user says to remember how to do a task, or after working out a procedure worth keeping. Fill in, whenever you know them: what the task needs first (accounts, access, files), which steps need the user's approval (sending, paying, deleting, publishing, confirming a form…), how to check that it worked, and what to hand back at the end. Saving under an existing name replaces that skill (a part you leave out keeps its current text).",
+    obj({
+      name: str("Short name"), when: str("When to use it, in one line"), steps: str("The procedure, step by step"),
+      needs: str("What it needs before starting: accounts, access, apps, files (e.g. \"the Gmail app signed in; the invoice PDF in ~/files\")"),
+      approvals: str("Which steps need the user's approval before you do them (e.g. \"step 4: sending the email\")"),
+      check: str("How to check the result worked (e.g. \"the order appears in My orders with status Paid\")"),
+      output: str("What to hand back to the user at the end (e.g. \"the order number and the delivery date\")"),
+      shared: { type: "boolean", description: "Share it with every bot of the user (they see it in their skill list)" },
+    }, ["name", "steps"]), {
     activity: "remembering", label: "Learning a skill", group: "memory", audited: true,
     run: async (a, c) => {
       const name = clip(String(a.name).trim(), 80), body = String(a.steps).trim().slice(0, 20_000), when = clip(String(a.when ?? "").trim(), 300);
       if (!name || !body) return { content: "A skill needs a name and steps.", isError: true };
       const existing = skills.list(c.bot.id).find((k) => k.name.toLowerCase() === name.toLowerCase());
       const shared = typeof a.shared === "boolean" ? a.shared : undefined;
-      if (existing) skills.update(existing.id, { name, description: when, body, shared }); else skills.create(c.bot.id, name, when, body, !!shared);
+      // Only the parts the bot gave: one it leaves out keeps what the skill already says (the user may have written it).
+      const extras: Partial<SkillExtras> = {};
+      for (const k of SKILL_EXTRA_KEYS) if (typeof a[k] === "string") extras[k] = clip(a[k].trim(), 2000);
+      if (existing) skills.update(existing.id, { name, description: when, body, shared, ...extras }); else skills.create(c.bot.id, name, when, body, !!shared, {}, extras);
       emit(c.user.id, { type: "memories", botId: c.bot.id });
       return { content: existing ? "Skill updated." : "Skill saved.", summary: name };
     },
@@ -1226,6 +1237,36 @@ export async function retireBot(b: BotRecord) {
 const inGroup = (group: ToolGroup, list: BuiltinTool[]) => list.map((t) => ({ ...t, group: t.group ?? group }));
 
 /** `video`: how videos are made for this user (see videoRoute); without one, the video tools are not offered. */
+/**
+ * A bot may PROPOSE a local tool server for its own computer (localtools.ts), never add one on its own: the card always
+ * asks (a strict gate: an earlier "Always" does not count, and "Always" is not offered), shows the exact command line,
+ * and only the owner's yes adds it. Its tools then ask like any app's.
+ */
+const localServerTools: BuiltinTool[] = [
+  tool("local_tool_server_add", "Propose a local tool server (an MCP server started by a command, e.g. npx -y some-mcp-server) to run on your own computer, so you get its tools. The user sees the exact command on a card and decides; nothing is added without their yes. Its tools are available from your next turn. Never pass keys or passwords in the arguments.",
+    obj({ name: str("Short name for it, e.g. Filesystem"), command: str("The program to run, one word: npx, uvx, node, python3…"), args: { type: "array", items: { type: "string" }, description: "Its arguments, one per item, e.g. [\"-y\", \"@modelcontextprotocol/server-filesystem\", \"/root/files\"]" }, reason: str("Why you need it, in one sentence for the user") }, ["name", "command"]), {
+    activity: "connector", label: "Adding a local tool server", group: "apps", audited: true,
+    gate: (a) => ({
+      key: "local_tool_server_add", title: "Allow {bot} to add a tool server that runs on its own computer: {name}?",
+      reason: "add a local tool server", source: "Its computer",
+      vars: { name: clip(String(a.name ?? a.command ?? "?"), 40), line: clip([String(a.command ?? ""), ...(Array.isArray(a.args) ? a.args.map((x: unknown) => (/[\s"'\\]/.test(String(x)) ? JSON.stringify(String(x)) : String(x))) : [])].join(" "), 600) },
+      note: "Command: {line}\nIt runs inside the bot's own computer, never on the Sklubot server, and starts when the bot needs its tools. Only say yes if you trust this program.",
+      strict: true, once: true,
+    }),
+    run: async (a, c) => {
+      const args = Array.isArray(a.args) ? a.args.map(String) : [];
+      let rec;
+      try { rec = localTools.add(c.bot, { name: String(a.name ?? ""), command: String(a.command ?? ""), args }, "bot"); }
+      catch (err) { return { content: `Not added: ${(err as Error).message}`, isError: true, summary: "not added" }; }
+      await localTools.start(rec.id);
+      const now = localTools.get(rec.id);
+      const st = localTools.state(c.bot.id, "en").servers.find((x) => x.id === rec.id);
+      if (st?.status !== "ready") return { content: `Added "${rec.name}", but it did not start: ${st?.error ?? "unknown reason"} The user can retry it in the bot's settings (Local tools).`, isError: true, summary: "did not start" };
+      return { content: `Added "${rec.name}" with ${now?.tools.length ?? 0} tools (${(now?.tools ?? []).slice(0, 20).map((t) => t.name).join(", ")}). They are available from your next turn.`, summary: rec.name };
+    },
+  }),
+];
+
 export function builtinTools(opts: { nativeSearch?: boolean; disabled?: readonly string[]; video?: "connector" | "api" | null; bgTasks?: boolean } = {}): BuiltinTool[] {
   return assemble(opts).filter((t) => !t.group || !(opts.disabled ?? []).includes(t.group));
 }
@@ -1251,6 +1292,8 @@ function assemble(opts: { nativeSearch?: boolean; video?: "connector" | "api" | 
     ...inGroup("apps", apiTools),
     // A bot's own email address (wave 6): offered by newTurn only to bots that have one.
     ...inGroup("apps", botMailTools),
+    // Proposing a local tool server for its own computer: offered by newTurn only where bots have Linux computers.
+    ...localServerTools,
     ...(opts.video ? inGroup("video", videoTools) : []),
     // The user's own computers (Sklubot Relais): offered by newTurn only to users who linked one.
     ...myComputerTools,

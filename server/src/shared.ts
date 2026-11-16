@@ -278,8 +278,11 @@ export type Card =
    * `why`: why the server asks instead of going ahead (no quote of the user's words, a quote not found, out of scope,
    * the reviewer's reason, an action that always asks). `quote`: the words the bot cited, when it cited any.
    * `outcome`: once allowed, what became of the single execution this approval is bound to.
+   * `irreversible`: the action cannot be undone once it runs (a message sent, a payment, a deletion, a page published, a
+   * form confirmed…), as the server decided from the tool and its arguments (agent/irreversible.ts); `irreversibleReason`
+   * says why, in the user's language. Such a card is always `once`: "Always" is never offered for it.
    */
-  | { type: "approval"; approvalId: string; title: string; detail: string; tool: string; source: string; status: "pending" | "allowed" | "always" | "denied" | "expired"; once?: boolean; why?: string; quote?: string; outcome?: "done" | "failed" | "uncertain" }
+  | { type: "approval"; approvalId: string; title: string; detail: string; tool: string; source: string; status: "pending" | "allowed" | "always" | "denied" | "expired"; once?: boolean; why?: string; quote?: string; outcome?: "done" | "failed" | "uncertain"; irreversible?: boolean; irreversibleReason?: string }
   /**
    * An action whose outcome is unknown (the server stopped, or the call timed out, while it ran). It is never replayed on
    * its own: the user says it went through, asks the bot to check, or retries it once.
@@ -289,7 +292,7 @@ export type Card =
    * A background task (task_start). `helperId`: the hidden helper doing the work (its live state gives the step counter).
    * `question`: what it asks the user while waiting; `approval`: an approval it waits on, answered from this card.
    */
-  | { type: "task"; taskId: string; helperId: string; title: string; state: BgTaskState; steps: number; now?: string; result?: string; question?: string; approval?: { approvalId: string; title: string; detail: string } }
+  | { type: "task"; taskId: string; helperId: string; title: string; state: BgTaskState; steps: number; now?: string; result?: string; question?: string; approval?: { approvalId: string; title: string; detail: string; /** Why the action it waits on cannot be undone (see the approval card). */ irreversible?: string } }
   /** A nudge from a quiet preparation pass: "Do it", "Later" (snoozed) or "Never for this" (the matter never comes back). */
   | { type: "nudge"; nudgeId: string; title: string; body: string; status: "pending" | "doing" | "later" | "never" }
   | { type: "question"; question: string; options: string[]; status: "pending" | "answered" | "dismissed"; answer?: string }
@@ -351,7 +354,14 @@ export interface Memory { id: string; botId: string; text: string; source: "chat
  * `learned`: proposed by the bot after a task and approved by the user (spec 07 A9). `outside`: it came from a turn that
  * read outside content: treated as outside content (information, never an authorisation).
  */
-export interface Skill { id: string; botId: string; name: string; description: string; body: string; shared: boolean; learned: boolean; outside: boolean; createdAt: number; updatedAt: number }
+/**
+ * Optional structured parts of a skill (empty string: not given). `needs`: accounts, access or files it needs first;
+ * `check`: how to check the result; `output`: what to hand back at the end; `approvals`: the steps that need the user's
+ * approval before they are done.
+ */
+export interface SkillExtras { needs: string; check: string; output: string; approvals: string }
+export const SKILL_EXTRA_KEYS = ["needs", "check", "output", "approvals"] as const;
+export interface Skill extends SkillExtras { id: string; botId: string; name: string; description: string; body: string; shared: boolean; learned: boolean; outside: boolean; createdAt: number; updatedAt: number }
 /** A skill a bot can use: one of its own, or one another bot of the same user shared. */
 export interface SkillRef { id: string; name: string; description: string; botId: string; botName: string; own: boolean; shared: boolean }
 
@@ -435,6 +445,21 @@ export interface Connector {
   /** OAuth apps only. Tokens themselves never leave the server. */
   oauth?: { signedIn: boolean; customClient: boolean };
 }
+/**
+ * A local tool server: an MCP server the owner starts with a command (e.g. `npx -y some-mcp-server`) on ONE bot's own
+ * Linux computer, spoken to over its standard input and output. Never run on the Sklubot server itself.
+ * "stopped": not running (started when the bot needs its tools; it stops when the computer sleeps). "error": the last
+ * start failed or it stopped on its own (`retryInSec`: when it may start again). "unavailable": this server gives bots no
+ * Linux computer. `error` is in the user's language; `detail`: the last line the program wrote to its error output.
+ */
+export interface LocalToolServer {
+  id: string; botId: string; name: string; command: string; args: string[];
+  status: "stopped" | "starting" | "ready" | "error" | "unavailable";
+  error: string | null; detail?: string; retryInSec?: number;
+  tools: { name: string; description: string; readOnly: boolean }[];
+  createdAt: number;
+}
+export interface LocalToolsState { available: boolean; reason: string | null; servers: LocalToolServer[] }
 // ── Built-in apps ("native" integrations through the vendors' own REST APIs) ──────────────────────────
 /** Who issues the OAuth client the user creates in their own console. */
 export type NativeVendor = "google" | "microsoft" | "slack";
@@ -722,6 +747,8 @@ export type ServerEvent =
   | { type: "tasks"; botId: string }
   | { type: "memories"; botId: string }
   | { type: "connectors" }
+  /** A bot's local tool servers changed (added, started, stopped, failed): GET /bots/:id/local-tools again. */
+  | { type: "localtools"; botId: string }
   /** Built-in app accounts or their OAuth clients changed. */
   | { type: "native" }
   | { type: "usage" }

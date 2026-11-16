@@ -5,6 +5,31 @@ import type { Locale } from "./shared.js";
  * English is the key; French is looked up here. Anything missing falls back to English.
  */
 const FR: Record<string, string> = {
+  // Local tool servers (localtools.ts) and the bot's proposal card (local_tool_server_add).
+  "Local tool servers run on the bot's own Linux computer, and this Sklubot server gives bots no Linux computer (Docker is not available). Ask whoever runs the server to enable Linux computers.":
+    "Les serveurs d'outils locaux tournent sur l'ordinateur Linux du bot, et ce serveur Sklubot ne donne pas d'ordinateur Linux aux bots (Docker n'est pas disponible). Demande à la personne qui gère le serveur d'activer les ordinateurs Linux.",
+  "Give the program to run as one word, e.g. npx or uvx (its arguments go in the list below).": "Indique le programme à lancer en un seul mot, p. ex. npx ou uvx (ses arguments vont dans la liste en dessous).",
+  "At most 40 arguments.": "40 arguments au maximum.",
+  "Each argument is one line of text (1000 characters at most).": "Chaque argument tient sur une ligne (1000 caractères au maximum).",
+  "A bot can have 10 local tool servers at most.": "Un bot peut avoir 10 serveurs d'outils locaux au maximum.",
+  "All the computers of this server are busy right now. It will start when one is free.": "Tous les ordinateurs de ce serveur sont occupés. Il démarrera quand l'un d'eux sera libre.",
+  "The program did not answer as a tool server within {sec} s. Check the command, then press Retry.": "Le programme n'a pas répondu comme un serveur d'outils en {sec} s. Vérifie la commande, puis appuie sur Réessayer.",
+  "The program could not start as a tool server. Check the command, then press Retry.": "Le programme n'a pas pu démarrer comme serveur d'outils. Vérifie la commande, puis appuie sur Réessayer.",
+  "It stopped on its own.": "Il s'est arrêté tout seul.",
+  "That local tool server does not exist.": "Ce serveur d'outils local n'existe pas.",
+  "Allow {bot} to add a tool server that runs on its own computer: {name}?": "Autoriser {bot} à ajouter un serveur d'outils qui tourne sur son propre ordinateur : {name} ?",
+  "add a local tool server": "ajouter un serveur d'outils local", "Its computer": "Son ordinateur", "Adding a local tool server": "Ajoute un serveur d'outils local",
+  "Command: {line}\nIt runs inside the bot's own computer, never on the Sklubot server, and starts when the bot needs its tools. Only say yes if you trust this program.":
+    "Commande : {line}\nElle tourne dans l'ordinateur du bot, jamais sur le serveur Sklubot, et démarre quand le bot a besoin de ses outils. Ne dis oui que si tu fais confiance à ce programme.",
+  // Irreversible actions (agent/irreversible.ts): the reason under "Action irréversible :" on an approval card.
+  "a message or an email cannot be taken back once it is sent.": "un message ou un e-mail envoyé ne peut pas être repris.",
+  "a payment cannot be undone from here.": "un paiement ne peut pas être annulé d'ici.",
+  "what is deleted cannot be recovered.": "ce qui est supprimé ne peut pas être récupéré.",
+  "once it is published, others can see it right away.": "une fois publié, d'autres peuvent le voir aussitôt.",
+  "a confirmed form cannot be withdrawn.": "un formulaire validé ne peut pas être retiré.",
+  "a booking commits you as soon as it is made.": "une réservation t'engage dès qu'elle est faite.",
+  "the app says this action may change or erase data for good.": "l'app indique que cette action peut modifier ou effacer des données définitivement.",
+  "this command deletes or overwrites data with no way back.": "cette commande supprime ou écrase des données sans retour possible.",
   // Asking a teammate and waiting; element refs on the screen; the team folder; a full disk.
   "{bot} answered": "{bot} a répondu", "answer later": "réponse plus tard",
   "Listing the page's controls": "Liste les commandes de la page", "Choosing in a list": "Choisit dans une liste", "stale reference": "référence périmée",

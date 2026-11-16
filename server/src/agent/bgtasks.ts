@@ -123,7 +123,7 @@ export const bgTaskHooks = {
       const a = approvals.byId(held.approvalId);
       const row = a ? rows.get(bot.id, a.generation, a.seq) : null;
       const card = row?.body.kind === "card" && row.body.card.type === "approval" ? row.body.card : null;
-      refreshCard(bgTasks.set(t.id, { state: "waiting", steps })!, card ? { approval: { approvalId: card.approvalId, title: card.title, detail: [card.detail, card.why].filter(Boolean).join("\n\n") } } : {});
+      refreshCard(bgTasks.set(t.id, { state: "waiting", steps })!, card ? { approval: { approvalId: card.approvalId, title: card.title, detail: [card.detail, card.why].filter(Boolean).join("\n\n"), ...(card.irreversible && card.irreversibleReason ? { irreversible: card.irreversibleReason } : {}) } } : {});
       return;
     }
     if (t.state === "stopped" || info.failed === "stopped") { refreshCard(bgTasks.set(t.id, { state: "stopped", steps })!); return; }

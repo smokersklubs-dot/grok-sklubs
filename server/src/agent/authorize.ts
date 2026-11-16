@@ -6,6 +6,7 @@ import type { Grant } from "../shared.js";
 import { clip, policies, settings } from "../store.js";
 import { committingKind, seenTarget } from "./bind.js";
 import { capProblem } from "./payments.js";
+import { irreversibility } from "./irreversible.js";
 import { record } from "../usage.js";
 import { isEngineRef } from "./engine.js";
 import { actionHash, grants } from "./executions.js";
@@ -69,12 +70,25 @@ export function actionName(turn: Pick<Turn, "remote">, name: string, input: Reco
   return turn.remote.get(name)?.remoteName ?? name;
 }
 
-export type Ask = Extract<Verdict, { kind: "ask" }> & { why?: string; quote?: string };
+/** `irreversible`: why the action cannot be undone (translated), when it cannot (irreversible.ts). */
+export type Ask = Extract<Verdict, { kind: "ask" }> & { why?: string; quote?: string; irreversible?: string };
 export type Decision = { kind: "allow"; grant?: Grant } | { kind: "block"; reason?: string } | Ask;
 
 export interface ReviewAnswer { decision: "allow" | "ask" | "deny"; reason: string }
 
+/**
+ * The decision, and when it is a card: whether the action can be undone. An irreversible action's card says why, and
+ * never offers "Always" (`once`): each one needs its own yes. What was already allowed (a policy, the user's words, the
+ * reviewer) is not changed here; this only makes the card say it and keeps it from becoming a standing permission.
+ */
 export async function authorize(turn: Turn, call: ToolUseBlock): Promise<Decision> {
+  const d = await decide(turn, call);
+  if (d.kind !== "ask") return d;
+  const irr = irreversibility(turn, call.name, call.input);
+  return irr ? { ...d, once: true, irreversible: tr(turn.user.locale, irr.reason) } : d;
+}
+
+async function decide(turn: Turn, call: ToolUseBlock): Promise<Decision> {
   let verdict = judge(turn, call);
   const loc = turn.user.locale;
   let name = actionName(turn, call.name, call.input);

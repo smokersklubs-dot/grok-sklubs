@@ -16,7 +16,7 @@ export type ModalState =
   | { kind: "search"; mode?: "chat" }
   | { kind: "duplicate"; botId: string }
   | { kind: "connectors"; prefill?: { name: string; botId: string; seq: number } };
-export type BotSettingsTab = "general" | "skills" | "memories" | "routines" | "reach" | "telegram" | "email" | "sharing";
+export type BotSettingsTab = "general" | "skills" | "memories" | "routines" | "localTools" | "reach" | "telegram" | "email" | "sharing";
 export type AppSection = "general" | "profile" | "models" | "notifications" | "computer" | "devices" | "permissions" | "rules" | "memory" | "connectors" | "vault" | "keys" | "pages" | "usage" | "checkins" | "activity" | "team" | "workspaces" | "voice" | "email" | "account";
 
 /** A short message at the bottom of the window, optionally with one action (usually "Undo"). */
@@ -176,6 +176,8 @@ interface Store {
   memorySettingsTick: number;
   /** Bumped when vault items change on the server (a secret saved from a card, an import). */
   vaultTick: number;
+  /** Bumped when a bot's local tool servers change ("localtools" event): its settings tab loads them again. */
+  localToolsTick: Record<string, number>;
   /** Wave 7: key health, temporary links or reading logins changed. */
   wave7Tick: number;
   /** The user's own sidebar sections. */
@@ -319,6 +321,7 @@ export const useStore = create<Store>((set, get) => ({
   mailTick: {},
   memorySettingsTick: 0,
   vaultTick: 0,
+  localToolsTick: {},
   wave7Tick: 0,
   sections: [],
   find: null,
@@ -732,6 +735,9 @@ export const useStore = create<Store>((set, get) => ({
         break;
       case "vault":
         set((s) => ({ vaultTick: s.vaultTick + 1 }));
+        break;
+      case "localtools":
+        set((s) => ({ localToolsTick: { ...s.localToolsTick, [ev.botId]: (s.localToolsTick[ev.botId] ?? 0) + 1 } }));
         break;
       case "connectors":
         void get().loadConnectors();

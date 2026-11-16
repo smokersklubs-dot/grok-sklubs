@@ -6,7 +6,7 @@ import { tr } from "./i18n.js";
 import type { ChatMessage } from "./llm/types.js";
 import {
   AVATAR_COLORS, AVATAR_SHAPES,
-  ACCESSORIES, CHARACTER_TYPES, DEFAULT_CHARACTER, DEFAULT_NUDGES, SENSITIVE_CATEGORIES, type NudgeSettings, type MemorySettings, type MemoryStatus, type SensitiveCategory, EYE_STYLES, IDLE_MOTIONS, TOOL_GROUPS, type AuditEntry, type Character, type Bot, type Card, type CheckinSettings, type Locale, type Memory, type SearchHit, type SharedPage, type VaultItem, type VaultKind, type BotSection, type Policy, type Reaction, type Row, type RowBody, type Skill, type SkillRef, type Task, type User, type Profile, type ReliabilitySettings, RELIABILITY_LIMITS, DEFAULT_SPEND_CHECKPOINT_USD, type SpendSettings,
+  ACCESSORIES, CHARACTER_TYPES, DEFAULT_CHARACTER, DEFAULT_NUDGES, SENSITIVE_CATEGORIES, type NudgeSettings, type MemorySettings, type MemoryStatus, type SensitiveCategory, EYE_STYLES, IDLE_MOTIONS, TOOL_GROUPS, type AuditEntry, type Character, type Bot, type Card, type CheckinSettings, type Locale, type Memory, type SearchHit, type SharedPage, type VaultItem, type VaultKind, type BotSection, type Policy, type Reaction, type Row, type RowBody, type Skill, type SkillExtras, SKILL_EXTRA_KEYS, type SkillRef, type Task, type User, type Profile, type ReliabilitySettings, RELIABILITY_LIMITS, DEFAULT_SPEND_CHECKPOINT_USD, type SpendSettings,
 } from "./shared.js";
 
 export const now = () => Date.now();
@@ -295,7 +295,7 @@ export const bots = {
     });
     bots.patch(copy.id, { voice: src.voice, disabledTools: src.disabledTools, pinned: src.pinned, sectionId: src.sectionId, fallbackModels: src.fallbackModels });
     q.tx(() => {
-      for (const k of skills.list(src.id)) skills.create(copy.id, k.name, k.description, k.body);
+      for (const k of skills.list(src.id)) skills.create(copy.id, k.name, k.description, k.body, false, {}, { needs: k.needs, check: k.check, output: k.output, approvals: k.approvals });
       if (opts.memories) for (const m of [...memories.list(src.id, 5000)].reverse()) memories.add(copy.id, m.text, m.source, { quote: m.quote, category: m.category, status: m.status });
       if (opts.conversation) {
         const g = q.get<{ next_seq: number; generation: number }>("SELECT next_seq, generation FROM bots WHERE id = ?", src.id)!;
@@ -507,7 +507,26 @@ export const memories = {
   },
 };
 
-const toSkill = (r: any): Skill => ({ id: r.id, botId: r.bot_id, name: r.name, description: r.description, body: r.body, shared: !!r.shared, learned: !!r.learned, outside: !!r.outside, createdAt: r.created_at, updatedAt: r.updated_at });
+const toSkill = (r: any): Skill => ({ id: r.id, botId: r.bot_id, name: r.name, description: r.description, body: r.body, needs: r.needs ?? "", check: r.check_how ?? "", output: r.output ?? "", approvals: r.approvals ?? "", shared: !!r.shared, learned: !!r.learned, outside: !!r.outside, createdAt: r.created_at, updatedAt: r.updated_at });
+/** Column of each structured part of a skill. */
+const SKILL_COLUMNS: Record<keyof SkillExtras, string> = { needs: "needs", check: "check_how", output: "output", approvals: "approvals" };
+function saveSkillExtras(id: string, extras: Partial<SkillExtras> | undefined) {
+  for (const k of SKILL_EXTRA_KEYS) if (typeof extras?.[k] === "string") q.run(`UPDATE skills SET ${SKILL_COLUMNS[k]} = ? WHERE id = ?`, extras[k]!.trim().slice(0, 2000), id);
+}
+/**
+ * A skill as the bot reads it: when to use it, what it needs, its steps, the steps that need the user's approval, how
+ * to check the result and what to hand back. Parts not given are left out, so an older skill reads as it always did.
+ */
+export function skillText(s: Pick<Skill, "description" | "body"> & Partial<SkillExtras>): string {
+  return [
+    s.description ? `Use when: ${s.description}` : "",
+    s.needs ? `Needs first (accounts, access, files): ${s.needs}` : "",
+    s.needs || s.approvals || s.check || s.output ? `Steps:\n${s.body}` : s.body,
+    s.approvals ? `Steps that need the user's approval — ask before doing them, even if you could go ahead otherwise: ${s.approvals}` : "",
+    s.check ? `How to check the result: ${s.check}` : "",
+    s.output ? `What to hand back at the end: ${s.output}` : "",
+  ].filter(Boolean).join("\n");
+}
 export const skills = {
   list: (botId: string) => q.all("SELECT * FROM skills WHERE bot_id = ? ORDER BY created_at", botId).map(toSkill),
   owned(userId: string, id: string) {
@@ -515,14 +534,18 @@ export const skills = {
     return r ? toSkill(r) : null;
   },
   /** `learned`/`outside`: a procedure the bot proposed and the user approved; outside: it came from a turn that read outside content. */
-  create(botId: string, name: string, description: string, body: string, shared = false, origin: { learned?: boolean; outside?: boolean } = {}): Skill {
+  /** `extras`: the optional structured parts (needs, check, output, approvals); missing ones stay empty. */
+  create(botId: string, name: string, description: string, body: string, shared = false, origin: { learned?: boolean; outside?: boolean } = {}, extras?: Partial<SkillExtras>): Skill {
     const id = newId("skl");
     const t = now();
     q.run("INSERT INTO skills (id, bot_id, name, description, body, shared, learned, outside, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", id, botId, name, description, body, shared ? 1 : 0, origin.learned ? 1 : 0, origin.outside ? 1 : 0, t, t);
+    saveSkillExtras(id, extras);
     return toSkill(q.get("SELECT * FROM skills WHERE id = ?", id));
   },
-  update(id: string, f: { name: string; description: string; body: string; shared?: boolean }) {
+  /** A structured part left undefined keeps its value; an empty string clears it. */
+  update(id: string, f: { name: string; description: string; body: string; shared?: boolean } & Partial<SkillExtras>) {
     q.run("UPDATE skills SET name = ?, description = ?, body = ?, updated_at = ? WHERE id = ?", f.name, f.description, f.body, now(), id);
+    saveSkillExtras(id, f);
     if (typeof f.shared === "boolean") q.run("UPDATE skills SET shared = ? WHERE id = ?", f.shared ? 1 : 0, id);
     return toSkill(q.get("SELECT * FROM skills WHERE id = ?", id));
   },

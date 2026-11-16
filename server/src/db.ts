@@ -314,6 +314,12 @@ function CREATE_EXTRA() {
   add("settings", "spend", "TEXT NOT NULL DEFAULT '{}'");
   add("skills", "learned", "INTEGER NOT NULL DEFAULT 0");
   add("skills", "outside", "INTEGER NOT NULL DEFAULT 0");
+  // Richer skills: what the skill needs (accounts, access, files), how to check the result, what to hand back, and which
+  // steps need the user's approval. Empty for every skill saved before (they work exactly as they did).
+  add("skills", "needs", "TEXT NOT NULL DEFAULT ''");
+  add("skills", "check_how", "TEXT NOT NULL DEFAULT ''");
+  add("skills", "output", "TEXT NOT NULL DEFAULT ''");
+  add("skills", "approvals", "TEXT NOT NULL DEFAULT ''");
   // Routines: skip a run when nothing changed in what it waits for (inputs JSON, fingerprint of the last look), failed
   // runs in a row and why the server paused it, and the due slot already fired (never twice).
   add("routines", "skip_unchanged", "INTEGER NOT NULL DEFAULT 0");
@@ -486,6 +492,16 @@ function CREATE_EXTRA() {
     status TEXT NOT NULL DEFAULT 'pending', created_at INTEGER NOT NULL, started_at INTEGER, done_at INTEGER
   );
   CREATE INDEX IF NOT EXISTS bot_queue_status ON bot_queue(status, id);`);
+  db.exec(`
+  -- Local tool servers (localtools.ts): an MCP server a bot's owner starts with a command on that bot's own Linux
+  -- computer, spoken to over standard input and output. \`args\`: JSON list of strings. \`tools\`: the tool list it gave
+  -- the last time it started (JSON), so a turn can offer its tools without waking the computer. No secrets are stored.
+  CREATE TABLE IF NOT EXISTS local_tool_servers (
+    id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    bot_id TEXT NOT NULL REFERENCES bots(id) ON DELETE CASCADE, name TEXT NOT NULL, command TEXT NOT NULL,
+    args TEXT NOT NULL DEFAULT '[]', tools TEXT NOT NULL DEFAULT '[]', created_at INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS local_tool_servers_bot ON local_tool_servers(bot_id, created_at);`);
 }
 
 type Param = string | number | null | bigint;

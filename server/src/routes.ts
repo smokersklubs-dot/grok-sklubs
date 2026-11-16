@@ -8,7 +8,8 @@ import { continueAfterStepLimit, decideApproval, enqueue, inQueue, interrupt, no
 import { cleanProfile, fetchSkillMarkdown, saveImportedSkill, undoRevision } from "./agent/tools-team.js";
 import { xSearchProvider } from "./xsearch.js";
 import { cleanModelList, TeamFullError } from "./store.js";
-import { RELIABILITY_LIMITS, type RowBody } from "./shared.js";
+import { localTools } from "./localtools.js";
+import { RELIABILITY_LIMITS, SKILL_EXTRA_KEYS, type RowBody, type SkillExtras } from "./shared.js";
 import { ask, compactIfNeeded, consolidate, memoryStatus } from "./agent/memory.js";
 import { telegram } from "./telegram.js";
 import { EngineRestartRefused, engineLogin, engineLogout, engineModelsFor, engineRuntime, engineStatus, restartEngine } from "./agent/engine.js";
@@ -35,7 +36,7 @@ import { videoService } from "./video.js";
 import { higgsfieldFor } from "./agent/tools.js";
 import { dropRecording, noteInput, recording, retryRecording, saveRecording, startRecording, stopRecording } from "./teach.js";
 import { approvals } from "./store.js";
-import { account, audit, auditList, bots, clip, feedback, history, memories, pages, policies, publicBot, publicVault, rows, searchMessages, sections, settings, sha256, skills, tasks, users, vault, type BotRecord, type UserRecord, type VaultFields } from "./store.js";
+import { account, audit, auditList, bots, clip, feedback, history, memories, pages, policies, publicBot, publicVault, rows, searchMessages, sections, settings, sha256, skills, skillText, tasks, users, vault, type BotRecord, type UserRecord, type VaultFields } from "./store.js";
 import { finishTakeover, holdControl, releaseControl } from "./takeover.js";
 import { deskRun, deskShot, startDeskTest } from "./desktest.js";
 import { notePresence, push, pushSettings, savePushSettings, sendPush } from "./push.js";
@@ -629,7 +630,8 @@ export function skillCommand(bot: BotRecord, text: string): ForcedSkill | undefi
   if (!m) return undefined;
   const rest = m[1].toLowerCase();
   const found = skills.available(bot.id).filter((k) => rest === k.name.toLowerCase() || rest.startsWith(k.name.toLowerCase() + " ") || rest.startsWith(k.name.toLowerCase() + "\n")).sort((a, b) => b.name.length - a.name.length)[0];
-  if (found) return { name: found.name, body: found.body, from: found.own ? undefined : found.botName };
+  // The whole skill, with what it needs, the steps that need approval, the check and what to hand back (skillText).
+  if (found) return { name: found.name, body: skillText(found), from: found.own ? undefined : found.botName };
   // An unknown name still reaches the bot, which says so instead of guessing.
   return { name: m[1].split(/\s/)[0], body: "(There is no skill by this name: tell the user, and list the skills you do have.)" };
 }
@@ -806,20 +808,27 @@ api.get("/bots/:id/bundle", (c) => {
   return c.json({ memories: memories.list(bot.id), skills: skills.list(bot.id), routines: routines.forBot(bot.id).map((r) => publicRoutine(r, c.get("user").locale)), tasks: tasks.forBot(bot.id), memoryStatus: memoryStatus(bot), bgTasks: bot.kind === "agent" ? bgTasks.forBot(bot.id).map(publicTask) : [] });
 });
 
+/** The structured parts of a skill that a body or a file gives as strings (needs, check, output, approvals); others are left out. */
+function extrasOf(b: Record<string, any>): Partial<SkillExtras> {
+  const out: Partial<SkillExtras> = {};
+  for (const k of SKILL_EXTRA_KEYS) if (typeof b?.[k] === "string") out[k] = b[k].trim().slice(0, 2000);
+  return out;
+}
+
 function skillFields(b: Record<string, any>, base?: { name: string; description: string; body: string }) {
   const name = (b.name === undefined ? base?.name ?? "" : String(b.name)).trim().slice(0, 80);
   const description = (b.description === undefined ? base?.description ?? "" : String(b.description)).trim().slice(0, 300);
   const text = (b.body === undefined ? base?.body ?? "" : String(b.body)).trim().slice(0, 20_000);
   if (!name) fail(400, "Give the skill a name.");
   if (!text) fail(400, "Write the steps for this skill.");
-  return { name, description, body: text };
+  return { name, description, body: text, ...extrasOf(b) };
 }
 
 api.post("/bots/:id/skills", async (c) => {
   const bot = ownAgent(c);
   const b = await body(c);
   const f = skillFields(b);
-  return c.json({ skill: skills.create(bot.id, f.name, f.description, f.body, b.shared === true) });
+  return c.json({ skill: skills.create(bot.id, f.name, f.description, f.body, b.shared === true, {}, f) });
 });
 api.patch("/skills/:id", async (c) => {
   const cur = skills.owned(c.get("user").id, c.req.param("id")) ?? fail(404, "That skill does not exist.");
@@ -1021,7 +1030,7 @@ api.get("/export/team", (c) => {
   const team = bots.list(user.id).filter((b) => b.kind === "agent").map((b) => ({
     name: b.name, label: b.label, description: b.description, instructions: b.instructions, shape: b.shape, color: b.color, mode: b.mode,
     effort: b.effort, model: b.model, autonomy: b.autonomy, disabledTools: b.disabledTools, character: b.character,
-    skills: skills.list(b.id).map((s) => ({ name: s.name, description: s.description, body: s.body })),
+    skills: skills.list(b.id).map((s) => ({ name: s.name, description: s.description, body: s.body, ...extrasOf(s) })),
     routines: routines.forBot(b.id).filter((r) => r.trigger === "cron").map((r) => ({ name: r.name, prompt: r.prompt, schedule: r.schedule, timezone: r.timezone })),
   }));
   return download(c, "sklubot-team.json", "application/json", JSON.stringify({ sklubotTeam: 1, bots: team }, null, 2));
@@ -1039,7 +1048,7 @@ api.post("/import/team", async (c) => {
     if (Array.isArray(t.disabledTools)) bots.patch(bot.id, { disabledTools: t.disabledTools });
     if (t.character) bots.patch(bot.id, { character: t.character });
     for (const s of Array.isArray(t.skills) ? t.skills.slice(0, 50) : [])
-      if (s && typeof s.name === "string" && typeof s.body === "string" && s.name.trim() && s.body.trim()) skills.create(bot.id, s.name.trim().slice(0, 80), String(s.description ?? "").slice(0, 300), s.body.slice(0, 20_000));
+      if (s && typeof s.name === "string" && typeof s.body === "string" && s.name.trim() && s.body.trim()) skills.create(bot.id, s.name.trim().slice(0, 80), String(s.description ?? "").slice(0, 300), s.body.slice(0, 20_000), false, {}, extrasOf(s));
     for (const r of Array.isArray(t.routines) ? t.routines.slice(0, 20) : [])
       if (r && typeof r.name === "string" && typeof r.prompt === "string" && typeof r.schedule === "string") {
         // Imported routines start paused, so nothing runs before you have looked at it.
@@ -1618,6 +1627,42 @@ api.post("/presence", async (c) => {
 
 // ── Connectors and permissions ───────────────────────────────────────────────
 api.get("/connectors/catalog", (c) => c.json({ apps: catalogFor(c.get("user").locale), oauthRedirectUri: oauthRedirectUri() }));
+// ── Local tool servers (localtools.ts): owner only (ownAgent), each on one bot's own Linux computer ──
+api.get("/bots/:id/local-tools", (c) => c.json(localTools.state(ownAgent(c).id, c.get("user").locale)));
+api.post("/bots/:id/local-tools", async (c) => {
+  const bot = ownAgent(c);
+  const b = await body(c);
+  const args = Array.isArray(b.args) ? b.args : [];
+  let rec;
+  try { rec = localTools.add(bot, { name: String(b.name ?? ""), command: String(b.command ?? "").trim(), args }, "owner"); }
+  catch (err) { fail(400, tr(c.get("user").locale, (err as Error).message)); }
+  // Started in the background: the page follows it through "localtools" events.
+  void localTools.start(rec!.id);
+  return c.json(localTools.state(bot.id, c.get("user").locale));
+});
+/** A local tool server of one of the caller's own bots (404 otherwise). */
+const ownLocalTool = (c: Context<Env>) => {
+  const rec = localTools.get(c.req.param("id") ?? "");
+  if (!rec || rec.userId !== c.get("user").id || bots.byId(rec.botId)?.userId !== c.get("user").id) fail(404, tr(c.get("user").locale, "That local tool server does not exist."));
+  return rec!;
+};
+api.post("/local-tools/:id/restart", async (c) => {
+  const rec = ownLocalTool(c);
+  await localTools.stop(rec.id);
+  void localTools.start(rec.id);
+  return c.json(localTools.state(rec.botId, c.get("user").locale));
+});
+api.post("/local-tools/:id/stop", async (c) => {
+  const rec = ownLocalTool(c);
+  await localTools.stop(rec.id);
+  return c.json(localTools.state(rec.botId, c.get("user").locale));
+});
+api.delete("/local-tools/:id", async (c) => {
+  const rec = ownLocalTool(c);
+  await localTools.remove(rec.id);
+  return c.json(localTools.state(rec.botId, c.get("user").locale));
+});
+
 api.get("/connectors", (c) => c.json({ connectors: connectors.list(c.get("user").id), oauthRedirectUri: oauthRedirectUri() }));
 
 api.post("/connectors", async (c) => {
