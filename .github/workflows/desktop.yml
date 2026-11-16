@@ -97,7 +97,14 @@ jobs:
           cache-dependency-path: companion/package-lock.json
       - run: npm ci
       - name: Build
-        run: npm run ${{ matrix.script }}
+        # A secret that is not set arrives as an empty string; electron-builder then reads CSC_LINK="" as a path
+        # ("companion not a file" on macOS). Unset the empty ones so the build is simply unsigned.
+        shell: bash
+        run: |
+          for v in CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID WIN_CSC_LINK WIN_CSC_KEY_PASSWORD; do
+            if [ -z "${!v}" ]; then unset "$v"; fi
+          done
+          npm run ${{ matrix.script }}
         env:
           # Without a certificate, do not look for one in the keychain / store (unsigned build).
           CSC_IDENTITY_AUTO_DISCOVERY: ${{ secrets.CSC_LINK != '' }}
