@@ -1,0 +1,55 @@
+# Checks every push and pull request: types, the server's tests (with the bots' Linux computer image, so the
+# container tests run too), the web build, and the mobile app's tests. A red run must block merging into main
+# (Settings → Branches → branch protection on main → "Require status checks": ci / server, ci / mobile).
+name: ci
+
+on:
+  push:
+    branches: [main, 'claude/**']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  server:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Types
+        run: npm run typecheck
+      - name: Web build
+        run: npm run build -w web
+      # The bots' computer image: the Linux, desk, jobs and office tests use it (they skip without it).
+      - name: Bots' computer image
+        run: npm run computer:build
+      - name: Server tests
+        run: npm test
+
+  mobile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - run: npm ci
+      - name: Types and tests
+        run: npm run qa
