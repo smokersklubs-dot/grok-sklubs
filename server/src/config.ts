@@ -69,6 +69,31 @@ export const config = {
   desktopImage: process.env.DESKTOP_IMAGE ?? "sklubot-desktop",
   /** Docker network the bots' computers join (set when Sklubot itself runs in a container). */
   desktopNetwork: process.env.DESKTOP_NETWORK ?? "",
+  /**
+   * How the bots' computers reach this server's tool endpoint and credential relay (H2).
+   *  - "socket": each computer gets a Unix socket of its own, served by a separate listener of this server that answers
+   *    only /mcp/<its bot> and /egress/<its bot>; inside the computer a local forwarder offers it on 127.0.0.1. The
+   *    computers sit on BOTS_NETWORK (created with inter-container traffic off) and cannot reach this server's other
+   *    ports, the mail receiver, the proxy, the voice services or each other. The default when Sklubot runs in a container.
+   *  - "network": the older way, for a server running directly on this machine (development): ENGINE_BASE_URL.
+   */
+  botLink: (["socket", "network"].includes(process.env.BOT_LINK ?? "") ? process.env.BOT_LINK : process.env.DATA_VOLUME ? "socket" : "network") as "socket" | "network",
+  /** The bots' own Docker network in "socket" mode (created by the server if missing, see linux.ts ensureBotsNetwork). */
+  botsNetwork: process.env.BOTS_NETWORK ?? "sklubot_bots",
+  /** Port of the forwarder inside each computer (127.0.0.1 only) in "socket" mode. */
+  botLinkPort: Math.min(65535, Math.max(1024, num("BOT_LINK_PORT", 39100))),
+  /**
+   * Optional size limit of each computer's own disk layer (what is installed outside its home folder), e.g. "20G":
+   * docker run --storage-opt size=… — only some storage drivers support it (overlay2 on xfs with pquota, btrfs, zfs);
+   * elsewhere it is skipped (linux.ts). Empty: no limit.
+   */
+  desktopDiskQuota: /^\d+(\.\d+)?[kKmMgGtT]?[bB]?$/.test(process.env.DESKTOP_DISK_QUOTA ?? "") ? process.env.DESKTOP_DISK_QUOTA! : "",
+  /** Optional container runtime for the computers (e.g. "runsc" for gVisor, installed by the operator). Empty: Docker's default. */
+  desktopRuntime: /^[a-zA-Z0-9_.-]{1,40}$/.test(process.env.DESKTOP_RUNTIME ?? "") ? process.env.DESKTOP_RUNTIME! : "",
+  /** Free space (MB) under which the disk watchdog puts the most space-hungry idle computer to sleep (M2). 0 = off. */
+  diskFreeMinMb: Math.max(0, num("DISK_FREE_MIN_MB", 2048)),
+  /** Shared computers (Part B): the most one account may have. */
+  maxSharedComputers: Math.max(1, Math.floor(num("MAX_SHARED_COMPUTERS", 3))),
   /** How a bot's computer reaches this server's tool endpoint (for bots running on a subscription). */
   engineBaseUrl: (process.env.ENGINE_BASE_URL ?? `http://host.docker.internal:${num("PORT", 8787)}`).replace(/\/$/, ""),
   /** Model choices offered for Codex (ChatGPT subscription); "default" lets Codex pick. */

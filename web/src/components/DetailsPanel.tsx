@@ -335,7 +335,7 @@ function ComputerSection({ bot }: { bot: Bot }) {
             </span>
           )}
           <span className="screen-card-text">
-            <span className="list-row-title">{t(linux ? "details.linuxOf" : "details.desktopOf", { name: bot.name })}</span>
+            <span className="list-row-title">{t(linux ? (bot.computerMode === "shared" ? "details.linuxShared" : "details.linuxOf") : "details.desktopOf", { name: bot.name })}</span>
             <span className="list-row-sub truncate">
               {live && liveUp && <span className="dot-inline dot-live" />}
               {text}

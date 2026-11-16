@@ -10,7 +10,10 @@ import { assertConfig, config } from "./config.js";
 import { connectors } from "./connectors.js";
 import { localTools } from "./localtools.js";
 import { defaultModelRef, listProviders } from "./llm/index.js";
-import { api, site } from "./routes.js";
+import { api, botLinkRoutes, site } from "./routes.js";
+import { closeAllBotLinks, initBotLinks } from "./botlink.js";
+import { membersOf, sharedComputers } from "./sharedcomputers.js";
+import { startDiskWatchdog } from "./diskwatch.js";
 import { startScheduler } from "./scheduler.js";
 import { startHealthChecks } from "./health.js";
 import { attachLiveScreens } from "./vnc.js";
@@ -21,30 +24,50 @@ import { telegram } from "./telegram.js";
 import { closeSlackSockets } from "./native/triggers.js";
 import { receiving, startMailReceiver, stopMailReceiver } from "./botmail.js";
 import { voiceUpgrade } from "./voice/session.js";
+import { appCsp, inlineScriptHashes, limitBodies, openSetupProblem, securityHeaders } from "./hardening.js";
 
 try { assertConfig(); } catch (err) { console.error(`\nCannot start: ${(err as Error).message}\n`); process.exit(1); }
+// M6: a fresh install open to others needs its setup code; one that already has accounts always starts.
+{
+  const problem = openSetupProblem({ users: users.all().length, setupCode: config.setupCode, publicUrl: config.publicUrl });
+  if (problem) { console.error(`\nCannot start: ${problem}\n`); process.exit(1); }
+}
 
+const builtIndex = existsSync(path.join(config.webDist, "index.html")) ? readFileSync(path.join(config.webDist, "index.html"), "utf8") : null;
 const app = new Hono();
+// Security headers on every response (M3) and a size limit on every request body (M7), before any route.
+app.use("*", securityHeaders(appCsp(builtIndex ? inlineScriptHashes(builtIndex) : [])));
+app.use("*", limitBodies);
 app.route("/api", api);
 app.all("/api/*", (c) => c.json({ error: "No such endpoint." }, 404));
 
 app.route("/", site);
 
 // In production the server also serves the built web app; unknown paths fall back to its index page.
-if (existsSync(path.join(config.webDist, "index.html"))) {
-  const index = readFileSync(path.join(config.webDist, "index.html"), "utf8");
+if (builtIndex) {
+  const index = builtIndex;
   // Phones only offer to install the Android app when the file is announced as one.
   app.use("/download/*", async (c, next) => { await next(); if (c.req.path.endsWith(".apk")) c.header("content-type", "application/vnd.android.package-archive"); });
   app.use("*", serveStatic({ root: path.relative(process.cwd(), config.webDist) || "." }));
   app.get("*", (c) => c.html(index));
 }
 
-setLookSource((botId) => {
-  const bot = bots.byId(botId);
-  const owner = bot ? users.byId(bot.userId) : null;
+setLookSource((key) => {
+  const bot = bots.byId(key);
+  if (!bot) {
+    // A shared computer (Part B) wears its own look: its name, in the neutral colour, for its account.
+    const shared = sharedComputers.byId(key);
+    const owner = shared ? users.byId(shared.userId) : null;
+    if (!shared || !owner) return null;
+    const fr = owner.locale === "fr";
+    return { name: `${fr ? "Ordinateur partagé" : "Shared computer"} ${shared.name}`, label: fr ? "Partagé entre tes bots" : "Shared by your bots", color: "slate", locale: owner.locale, owner: owner.name };
+  }
+  const owner = users.byId(bot.userId);
   // A custom character colour also tints the bot's computer.
-  return bot && owner ? { name: bot.name, label: bot.label, color: bot.character.customColor ?? bot.color, locale: owner.locale, owner: owner.name, kind: bot.character.type } : null;
+  return owner ? { name: bot.name, label: bot.label, color: bot.character.customColor ?? bot.color, locale: owner.locale, owner: owner.name, kind: bot.character.type } : null;
 });
+// H2: each computer's own socket to this server (opened when a computer wakes, or adopted below).
+initBotLinks(botLinkRoutes, membersOf);
 
 let computerNote: string;
 try {
@@ -60,6 +83,8 @@ const uncertain = sweepUncertain();
 if (uncertain) console.log(`${uncertain} action(s) cut off by the restart are marked uncertain.`);
 startScheduler();
 startHealthChecks();
+// M2: the disk watchdog (DISK_FREE_MIN_MB; Linux computers only).
+startDiskWatchdog();
 if (!config.schedulerOff) { telegram.start(); recoverInterruptedTurns(); startJobWatch(); }
 const server = serve({ fetch: app.fetch, port: config.port }, () => {
   const ready = listProviders().filter((p) => p.available()).map((p) => p.label);
@@ -82,6 +107,7 @@ async function shutdown() {
   closeSlackSockets();
   await stopMailReceiver().catch(() => {});
   await Promise.all([closeAllDesktops(), connectors.closeAll(), localTools.closeAll()]).catch(() => {});
+  closeAllBotLinks();
   process.exit(0);
 }
 process.on("SIGINT", shutdown);

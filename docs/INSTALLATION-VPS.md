@@ -231,6 +231,29 @@ manque de mémoire. Il peut être relancé sans risque : il ne refait que ce qui
 - Sklubot crée les ordinateurs des bots avec le Docker du VPS : **réserve ce VPS à Sklubot**.
 - Après l'installation, pense à remplacer la connexion par mot de passe par une clé SSH (ton hébergeur a un guide).
 - Le fichier `/opt/sklubot/.env` contient tes clés : il n'est lisible que par l'administrateur. Ne le partage pas.
+- Pare-feu des ordinateurs des bots : l'installation propose de couper leur accès à l'hôte, au service de métadonnées
+  du fournisseur et aux réseaux privés (`deploy/bots-firewall.sh`, réversible avec `sudo bash deploy/bots-firewall.sh off`).
+- `ALLOWED_EMAILS` n'est **pas** une authentification : l'adresse n'est pas vérifiée. Garde les inscriptions fermées
+  et invite les gens.
+
+### Renforcements facultatifs (rien n'est imposé)
+
+- **Navigateur des bots** : Chromium tourne en root avec `--no-sandbox` dans l'ordinateur du bot. Son bac à sable
+  a besoin soit d'un programme setuid (neutralisé par `no-new-privileges`, que l'on garde), soit d'espaces de noms
+  utilisateur, que le profil seccomp par défaut de Docker interdit (essai : « No usable sandbox! » en utilisateur
+  normal). L'activer demanderait d'assouplir seccomp pour tous les ordinateurs : on ne le fait pas. La frontière reste
+  le conteneur (aucune capacité dangereuse, réseau à part, pas de privilège possible).
+- **gVisor** (noyau isolé par conteneur) : installe `runsc` sur l'hôte (gvisor.dev/docs/user_guide/install/, il
+  s'enregistre comme runtime Docker), puis dans `.env` : `SKLUBOT_DESKTOP_RUNTIME=runsc`. Les ordinateurs sont refaits
+  à leur prochain usage. Vérifie ensuite le bureau et le navigateur avec le test d'ordinateur.
+- **userns-remap** (root des conteneurs = utilisateur sans droit sur l'hôte) : option `"userns-remap": "default"`
+  de `/etc/docker/daemon.json` (docs.docker.com/engine/security/userns-remap/). Elle s'applique à **tous** les
+  conteneurs et change le propriétaire attendu des volumes : à faire sur une installation neuve, ou après avoir
+  sauvegardé (`bash deploy/backup.sh`) et en sachant remettre les droits des volumes.
+- **Disque** : `SKLUBOT_DESKTOP_DISK_QUOTA=20G` limite le disque propre de chaque ordinateur, là où Docker le sait
+  (overlay2 sur un système de fichiers xfs monté avec `pquota`, btrfs, zfs ; ailleurs le réglage est ignoré, le journal
+  le dit). Indépendamment, quand il reste moins de `SKLUBOT_DISK_FREE_MIN_MB` (2048 par défaut) sur le disque des
+  données, Sklubot met en veille l'ordinateur inactif qui a le plus écrit et le dit dans le fil du bot.
 
 ## Utiliser tes abonnements Claude et ChatGPT (sans clé d'API)
 

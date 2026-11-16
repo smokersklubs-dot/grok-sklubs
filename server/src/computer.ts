@@ -6,7 +6,8 @@ import { config } from "./config.js";
 import { assertPublicUrl } from "./net.js";
 import { emit } from "./bus.js";
 import { bots, now, settings } from "./store.js";
-import { adoptMachines, containerName, linuxMachines, linuxReady, linuxScreen, linuxShell, makeRoom, onMachinesChanged, setTeamFolderSource, sweepIdleMachines, teamLabels } from "./linux.js";
+import { adoptMachines, containerName, ensureBotsNetwork, holdComputer, isSharedMachine, linuxMachines, linuxReady, linuxScreen, linuxShell, makeRoom, onMachinesChanged, setTeamFolderSource, setWorkspaceSource, sweepIdleMachines, teamLabels } from "./linux.js";
+import { onSharedChanged, sharedOwners, sharedView } from "./sharedcomputers.js";
 import type { Attachment, ComputerState, FileEntry, TeamFolderState } from "./shared.js";
 import type { ElementRequest } from "./screen-elements.js";
 
@@ -40,8 +41,13 @@ export async function initComputer(owners: Map<string, string> = new Map()): Pro
     if (ready.ok) {
       kind = "linux";
       onMachinesChanged((userId) => announce(userId));
-      await adoptMachines(owners);
-      return "Computers: a Linux desktop per bot (containers)";
+      onSharedChanged((userId) => announce(userId));
+      setWorkspaceSource(workspaceOf);
+      // H2: the bots' own network (made once); a problem with it is said, never hidden.
+      const netProblem = await ensureBotsNetwork();
+      if (netProblem) console.error(`[computers] ${netProblem}`);
+      await adoptMachines(new Map([...owners, ...sharedOwners()]));
+      return `Computers: a Linux desktop per bot (containers)${config.botLink === "socket" ? `, on their own network ${config.botsNetwork}, reaching this server through their own socket` : ""}`;
     }
     if (want === "linux") throw new Error(`COMPUTER=linux was requested but ${ready.reason}.`);
     kind = loadEngine() ? "browser" : "none";
@@ -70,7 +76,8 @@ export function computerState(userId: string): ComputerState {
   if (kind === "linux")
     return {
       kind, browser: true, maxDesktops: config.maxDesktops,
-      desktops: linuxMachines(userId).sort((a, b) => b.lastUsedAt - a.lastUsedAt).map((m) => ({ botId: m.botId, open: m.power === "running", url: null, lastUsedAt: m.lastUsedAt })),
+      desktops: linuxMachines(userId).filter((m) => !isSharedMachine(m.key)).sort((a, b) => b.lastUsedAt - a.lastUsedAt).map((m) => ({ botId: m.key, open: m.power === "running", url: null, lastUsedAt: m.lastUsedAt })),
+      shared: sharedView(userId), maxShared: config.maxSharedComputers,
     };
   return {
     kind, browser: browserAvailable(),
@@ -275,10 +282,18 @@ export const screen = {
   ready: (botId: string, userId: string) => (kind === "linux" ? linuxScreen.ready(botId, userId, workspaceOf(botId)) : Promise.resolve()),
   /** Whether the bot's browser answers right now (Linux computers; never wakes one). */
   browserAnswers: (botId: string) => (kind === "linux" ? linuxScreen.browserAnswers(botId) : Promise.resolve(false)),
-  /** Marks the computer busy for work run in it directly (a subscription turn): never put to sleep meanwhile. Returns the release. */
+  /** Marks the computer busy for work run in it directly (a background job): never put to sleep meanwhile. Returns the release. */
   hold: (botId: string): (() => void) => (kind === "linux" ? linuxScreen.hold(botId) : () => {}),
+  /**
+   * For a whole subscription turn: wakes the computer, keeps it busy, and keeps a shared computer for this bot alone until
+   * the release (Part B: one subscription tool at a time per computer). Waits while another bot drives a shared one.
+   */
+  holdTurn: (botId: string, userId: string): Promise<() => void> => (kind === "linux" ? holdComputer(botId, userId, workspaceOf(botId)) : Promise.resolve(() => {})),
   /** Linux: put the computer to sleep, keeping everything on it. Browser: close it. */
   sleep: (botId: string) => (kind === "linux" ? linuxScreen.sleep(botId) : browserScreen.reset(botId)),
+  /** Part B: a shared computer by its id — put to sleep, or wiped (container and home volume; made again on next use). */
+  sleepShared: (key: string) => (kind === "linux" ? linuxScreen.sleepKey(key) : Promise.resolve()),
+  resetShared: (key: string) => (kind === "linux" ? linuxScreen.destroyKey(key) : Promise.resolve()),
   /** Linux: wipe the computer and start fresh next time. Browser: close it (logins are kept). */
   reset: (botId: string) => (kind === "linux" ? linuxScreen.destroy(botId) : browserScreen.reset(botId)),
 };

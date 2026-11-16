@@ -78,7 +78,8 @@ const key = () => createHash("sha256").update("connector-tokens:" + config.sessi
 
 export function seal(plain: string): string {
   const iv = randomBytes(12);
-  const cipher = createCipheriv("aes-256-gcm", key(), iv);
+  // A full 16-byte tag, stated explicitly (it is also Node's default, so every value sealed before reads the same).
+  const cipher = createCipheriv("aes-256-gcm", key(), iv, { authTagLength: 16 });
   const body = Buffer.concat([cipher.update(plain, "utf8"), cipher.final()]);
   return [iv, cipher.getAuthTag(), body].map((b) => b.toString("base64")).join(".");
 }
@@ -86,7 +87,9 @@ export function seal(plain: string): string {
 export function unseal(sealed: string): string | null {
   try {
     const [iv, tag, body] = sealed.split(".").map((s) => Buffer.from(s, "base64"));
-    const decipher = createDecipheriv("aes-256-gcm", key(), iv);
+    // authTagLength: a shortened tag (which GCM would otherwise accept, down to 4 bytes) is refused.
+    if (tag.length !== 16) return null;
+    const decipher = createDecipheriv("aes-256-gcm", key(), iv, { authTagLength: 16 });
     decipher.setAuthTag(tag);
     return Buffer.concat([decipher.update(body), decipher.final()]).toString("utf8");
   } catch {

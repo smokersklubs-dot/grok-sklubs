@@ -43,7 +43,12 @@ services:
       ALLOWED_EMAILS: "${SKLUBOT_ALLOWED_EMAILS:-}"
       COMPUTER: "linux"
       DATA_VOLUME: "sklubot_data"
-      # The bots' computers join this network so their subscription tools can reach Sklubot's tool endpoint.
+      # Les ordinateurs des bots sont sur leur propre réseau (BOTS_NETWORK, créé par Sklubot, sans trafic entre eux) et
+      # joignent Sklubot par une prise (socket) qui leur est propre, servie à part : ils n'atteignent ni ses ports, ni le
+      # récepteur de courrier, ni le proxy Docker, ni la voix, ni les autres ordinateurs (revue de sécurité H2).
+      BOT_LINK: "${SKLUBOT_BOT_LINK:-socket}"
+      BOTS_NETWORK: "sklubot_bots"
+      # Utilisés seulement avec SKLUBOT_BOT_LINK=network (l'ancienne façon, sur le réseau de Sklubot).
       DESKTOP_NETWORK: "sklubot_net"
       ENGINE_BASE_URL: "http://sklubot:3000"
       MAX_DESKTOPS: "${SKLUBOT_MAX_DESKTOPS:-4}"
@@ -59,6 +64,15 @@ services:
       FIRST_BOT_NAME: "${SKLUBOT_FIRST_BOT_NAME:-}"
       FIRST_BOT_LABEL: "${SKLUBOT_FIRST_BOT_LABEL:-}"
       DESKTOP_MEMORY: "${SKLUBOT_DESKTOP_MEMORY:-2g}"
+      # Facultatif : taille maximale du disque propre de chaque ordinateur (ex. 20G), seulement là où Docker sait la
+      # limiter (overlay2 sur xfs avec pquota, btrfs, zfs) ; ailleurs, ignoré. Vide = pas de limite.
+      DESKTOP_DISK_QUOTA: "${SKLUBOT_DESKTOP_DISK_QUOTA:-}"
+      # Facultatif : environnement d'exécution des ordinateurs (ex. runsc pour gVisor, à installer sur l'hôte).
+      DESKTOP_RUNTIME: "${SKLUBOT_DESKTOP_RUNTIME:-}"
+      # Sous cet espace libre (Mo) sur le disque des données, l'ordinateur inactif qui a le plus écrit est mis en veille.
+      DISK_FREE_MIN_MB: "${SKLUBOT_DISK_FREE_MIN_MB:-2048}"
+      # Ordinateurs partagés entre les bots d'un compte : au plus ce nombre par compte.
+      MAX_SHARED_COMPUTERS: "${SKLUBOT_MAX_SHARED_COMPUTERS:-3}"
       DESKTOP_CPUS: "${SKLUBOT_DESKTOP_CPUS:-2}"
       # Clavier des ordinateurs des bots (nom de disposition X : us, fr, de…).
       DESKTOP_KEYBOARD: "${SKLUBOT_DESKTOP_KEYBOARD:-us}"
@@ -94,26 +108,33 @@ services:
       retries: 3
       start_period: 30s
 
-  # Le seul à voir le socket Docker. N'autorise que ce dont Sklubot se sert pour les ordinateurs des bots :
-  # conteneurs (créer, démarrer, arrêter, exec), volumes, images, réseaux. Tout le reste (système, swarm, build,
-  # plugins, secrets, authentification aux registres…) répond 403. Options : README officiel du projet
-  # (github.com/Tecnativa/docker-socket-proxy) ; DISABLE_IPV6 évite un échec de démarrage là où IPv6 est coupé.
-  # Sur un système à SELinux (Fedora, RHEL), ajoute « privileged: true » à ce service si Sklubot ne joint pas Docker.
+  # Le seul à voir le socket Docker : le proxy de Sklubot (server/src/dockerproxy.ts, même image que l'application,
+  # lancé seul, sans données ni secret ni privilège). Il lit le contenu des demandes, pas seulement leurs adresses :
+  # un conteneur n'est créé que depuis l'image des ordinateurs, sans privilège, avec les capacités réduites, sur le
+  # réseau des bots, sans dossier de l'hôte ni espace de noms de l'hôte ; les autres actions ne touchent que les
+  # conteneurs portant l'étiquette de Sklubot ; tout le reste répond 403 (revue de sécurité H3). Cela reste un accès
+  # à Docker : il ne doit jamais être joignable par autre chose que l'application (réseau interne « docker »).
+  # Sur un système à SELinux (Fedora, RHEL), ajoute « security_opt: [label:disable] » à ce service si Sklubot ne joint pas Docker.
   docker-proxy:
-    image: "${DOCKER_PROXY_IMAGE:-tecnativa/docker-socket-proxy:v0.5.0}"
+    build:
+      context: .
+      dockerfile: Dockerfile.production
+    command: ["node", "server/dist/dockerproxy.js"]
     restart: unless-stopped
     environment:
-      CONTAINERS: "1"
-      EXEC: "1"
-      IMAGES: "1"
-      VOLUMES: "1"
-      NETWORKS: "1"
-      POST: "1"
-      ALLOW_START: "1"
-      ALLOW_STOP: "1"
-      DISABLE_IPV6: "1"
+      DESKTOP_IMAGE: "sklubot-desktop"
+      # Réseaux où un ordinateur peut être créé. Avec SKLUBOT_BOT_LINK=network (l'ancienne façon), mets
+      # SKLUBOT_PROXY_NETWORKS=sklubot_bots,sklubot_net.
+      PROXY_NETWORKS: "${SKLUBOT_PROXY_NETWORKS:-sklubot_bots}"
+      PROXY_DATA_VOLUME: "sklubot_data"
+      PROXY_RUNTIMES: "${SKLUBOT_DESKTOP_RUNTIME:-}"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - "no-new-privileges:true"
     networks:
       - docker
 

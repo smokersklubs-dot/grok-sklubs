@@ -408,6 +408,14 @@ function CREATE_EXTRA() {
   add("native_pending", "used_at", "INTEGER");
   // Wave 8: the account's team folder (JSON: enabled), off by default; and disk-full checks of the bots' computers.
   add("settings", "team", "TEXT NOT NULL DEFAULT '{}'");
+  // Part B: a bot works on its own computer ("own", as before) or on one of its account's shared computers ("shared").
+  add("bots", "computer_mode", "TEXT NOT NULL DEFAULT 'own'");
+  db.exec(`
+  CREATE TABLE IF NOT EXISTS shared_computers (
+    id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, name TEXT NOT NULL,
+    position INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS shared_computers_user ON shared_computers(user_id, position);`);
   db.exec(`
   -- What a task spent since the user last spoke to it (worker bot + scope key: chat:<thread>, task:<id>, routine:<run>),
   -- and the checkpoint it stops at (NULL: the bot's or the account's setting).

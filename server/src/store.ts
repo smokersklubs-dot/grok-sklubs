@@ -86,6 +86,7 @@ function toBot(r: any): BotRecord {
     fallbackModels: r.fallback_models ? cleanModelList(safeJson(r.fallback_models)) : null, createdBy: r.created_by ?? null,
     nudges: cleanNudges(safeJson(r.nudges || "{}")),
     spendCheckpointUsd: typeof r.spend_checkpoint_usd === "number" ? r.spend_checkpoint_usd : null,
+    computerMode: r.computer_mode === "shared" ? "shared" : "own",
     relayEnabled: !!r.relay_enabled, thirdPartyDailyCapUsd: typeof r.third_party_cap_usd === "number" ? r.third_party_cap_usd : null,
     telegramTokenEnc: r.telegram_token_enc ?? null, telegramChatId: r.telegram_chat_id ?? null, telegramCode: r.telegram_code ?? null, telegramOffset: r.telegram_offset ?? 0,
     memberIds: JSON.parse(r.members || "[]"), hidden: !!r.hidden, parentId: r.parent_id, nextSeq: r.next_seq, rev: r.rev,
@@ -266,6 +267,8 @@ export const bots = {
     else if (typeof patch.spendCheckpointUsd === "number" && Number.isFinite(patch.spendCheckpointUsd)) { sets.push("spend_checkpoint_usd = ?"); vals.push(Math.round(Math.min(10_000, Math.max(0, patch.spendCheckpointUsd)) * 100) / 100); }
     // Wave 7: the credential relay for this bot's programs, and its daily cap on paid third-party tools (null: none).
     if (typeof patch.relayEnabled === "boolean") { sets.push("relay_enabled = ?"); vals.push(patch.relayEnabled ? 1 : 0); }
+    // Part B: its own computer, or one of the account's shared computers.
+    if (patch.computerMode === "own" || patch.computerMode === "shared") { sets.push("computer_mode = ?"); vals.push(patch.computerMode); }
     if (patch.thirdPartyDailyCapUsd === null) { sets.push("third_party_cap_usd = ?"); vals.push(null); }
     else if (typeof patch.thirdPartyDailyCapUsd === "number" && Number.isFinite(patch.thirdPartyDailyCapUsd)) { sets.push("third_party_cap_usd = ?"); vals.push(Math.round(Math.min(10_000, Math.max(0, patch.thirdPartyDailyCapUsd)) * 100) / 100); }
     if (Array.isArray(patch.disabledTools)) { sets.push("disabled_tools = ?"); vals.push(JSON.stringify(patch.disabledTools.filter((g) => (TOOL_GROUPS as readonly string[]).includes(g as string)))); }

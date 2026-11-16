@@ -38,7 +38,7 @@ import type { ElementAnswer } from "../screen-elements.js";
 import { cardLabel, cardTools } from "./payments.js";
 import { guideIndex, guideTools } from "./guides.js";
 import { anonymise } from "./anonymise.js";
-import { apiTools } from "../apiconnectors.js";
+import { apiTools, scrubSecret } from "../apiconnectors.js";
 import { botMailTools } from "../botmail.js";
 import { ruleTools } from "./ruletools.js";
 import { reachAvailable, reachTools } from "../reach.js";
@@ -617,7 +617,9 @@ const vaultTools: BuiltinTool[] = [
       const type = res.headers.get("content-type") ?? "";
       const where = res.headers.get("location");
       const text = /text|json|xml|javascript|html/.test(type) || !type ? await res.text() : `(${type} content, ${res.headers.get("content-length") ?? "?"} bytes, not shown)`;
-      return { content: `Status ${res.status}${where ? ` (redirect to ${where}, not followed)` : ""}\n\n${clip(text, 40_000)}`, summary: `${res.status} · ${host}`, isError: res.status >= 400 };
+      // An API that echoes the key back (an error page quoting the header, a "whoami" route…) must not hand it to the
+      // bot: every form of the value is hidden, as for the API connectors and the credential relay.
+      return { content: scrubSecret(`Status ${res.status}${where ? ` (redirect to ${where}, not followed)` : ""}\n\n${clip(text, 40_000)}`, value), summary: `${res.status} · ${host}`, isError: res.status >= 400 };
     },
   }),
 ];

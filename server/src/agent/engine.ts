@@ -4,7 +4,7 @@ import { botPathOf, computerKind, screen } from "../computer.js";
 import { config } from "../config.js";
 import { q } from "../db.js";
 import { tr } from "../i18n.js";
-import { containerName, docker } from "../linux.js";
+import { botBaseUrl, containerName, docker, machineOf, mayControlProcesses } from "../linux.js";
 import type { Attachment, Engine, EngineRuntime, EngineStatus } from "../shared.js";
 import { bots, clip, rows, type BotRecord } from "../store.js";
 import { noteSubscription, record } from "../usage.js";
@@ -101,7 +101,8 @@ export function parseCodexCatalog(raw: string): string[] {
  */
 type CatalogRunner = () => Promise<string | null>;
 const bundledCatalog: CatalogRunner = async () => {
-  const r = await docker(["run", "--rm", "--network", "none", "--memory", "512m", "--entrypoint", "codex", config.desktopImage, "debug", "models", "--bundled"], { timeoutMs: CATALOG_TIMEOUT_MS, maxBytes: 8_000_000 });
+  // Labelled and unprivileged like every container of Sklubot: the Docker proxy (dockerproxy.ts) refuses any other.
+  const r = await docker(["run", "--rm", "--network", "none", "--memory", "512m", "--cap-drop", "ALL", "--security-opt", "no-new-privileges", "--label", "sklubot=catalog", "--entrypoint", "codex", config.desktopImage, "debug", "models", "--bundled"], { timeoutMs: CATALOG_TIMEOUT_MS, maxBytes: 8_000_000 });
   return r.code === 0 && !r.timedOut ? r.stdout.toString("utf8") : null;
 };
 let catalogRunner: CatalogRunner = bundledCatalog;
@@ -207,7 +208,9 @@ export interface EngineHost {
    * Marks the computer busy while a turn (or a side request) runs in it, so it is never put to sleep meanwhile; returns
    * the release. Optional: a host without it (a test's fake) has nothing to keep awake.
    */
-  hold?(bot: BotRecord): () => void;
+  hold?(bot: BotRecord): (() => void) | Promise<() => void>;
+  /** The computer a bot works on (its own, or a shared one): what the one-tool-at-a-time lock is keyed by. */
+  machineOf?(botId: string): string;
   /** Runs a short command in the computer if it is on (never wakes it): for the model list (engineModelsFor). */
   probe?(botId: string, args: string[], timeoutMs: number): Promise<{ code: number | null; stdout: string }>;
 }
@@ -225,7 +228,8 @@ const dockerHost: EngineHost = {
   kill: (botId) => killEngineProcesses(botId),
   ready: (bot) => screen.ready(bot.id, bot.userId),
   awake: (botId) => screen.isOpen(botId),
-  hold: (bot) => screen.hold(bot.id),
+  hold: (bot) => screen.holdTurn(bot.id, bot.userId),
+  machineOf: (botId) => machineOf(botId),
   async probe(botId, args, timeoutMs) {
     if (!screen.isOpen(botId)) return { code: null, stdout: "" };
     const r = await docker(["exec", containerName(botId), ...args], { timeoutMs, maxBytes: 8_000_000 });
@@ -235,6 +239,8 @@ const dockerHost: EngineHost = {
 
 /** The tools' own processes only (and the one whose id the last turn wrote down); the desktop keeps running. */
 async function killEngineProcesses(botId: string) {
+  // A shared computer driven by another bot right now: its tool is that bot's, not this one's (Part B).
+  if (!mayControlProcesses(botId)) return;
   await docker(["exec", containerName(botId), "sh", "-c", "kill -TERM $(cat /tmp/sklubot-engine.pid 2>/dev/null) 2>/dev/null; pkill -TERM -f '^(node .*)?claude( |$)' ; pkill -TERM -f '^(node .*)?codex( |$)'; sleep 1; pkill -KILL -f '^(node .*)?claude( |$)'; pkill -KILL -f '^(node .*)?codex( |$)'; rm -f /tmp/sklubot-engine.pid; true"], { timeoutMs: 20_000 });
 }
 let host: EngineHost = dockerHost;
@@ -490,7 +496,10 @@ function runInComputer(bot: BotRecord, args: string[], env: Record<string, strin
   const name = containerName(bot.id);
   const envArgs = Object.entries(env).flatMap(([k, v]) => ["-e", `${k}=${v}`]);
   // The process id is written down so that "stop" can interrupt the tool inside the computer.
-  const child = spawn("docker", ["exec", "-i", "-w", cwd, ...envArgs, name, "sh", "-c", 'echo $$ > /tmp/sklubot-engine.pid; exec "$@"', "sh", ...args], { stdio: ["pipe", "pipe", "pipe"] });
+  // A secret for the tool (the MCP token of a Codex turn) is never passed with `docker exec -e`, where it would show in
+  // this server's process list and in the exec's inspect data: it was written to a file first (SECRET_ENV_FILE), which
+  // the wrapper reads into the variable and deletes before the tool starts.
+  const child = spawn("docker", ["exec", "-i", "-w", cwd, ...envArgs, name, "sh", "-c", ENGINE_WRAPPER, "sh", ...args], { stdio: ["pipe", "pipe", "pipe"] });
   // Stop (or the turn's time limit): an interrupt first, so the tool can wind down and save its session. A tool that is
   // hung and ignores it is killed 15 s later, inside the computer and here, so the bot's queue never stays blocked.
   let escalate: NodeJS.Timeout | null = null;
@@ -514,6 +523,13 @@ function runInComputer(bot: BotRecord, args: string[], env: Record<string, strin
   child.stdin.end(input);
   return new Promise((resolve) => child.on("close", (code) => { signal.removeEventListener("abort", stop); if (escalate) clearTimeout(escalate); if (buffer.trim()) { try { onLine(buffer.trim()); } catch { /* ignore */ } } resolve({ code, stderr }); }));
 }
+
+/** Where a turn's secret variables wait for the wrapper (mode 600, removed as soon as read). */
+export const SECRET_ENV_FILE = "/root/.sklubot/turn-secrets.env";
+/** Writes the pid down (for "stop"), loads and deletes the secret variables if any, then runs the tool. */
+export const ENGINE_WRAPPER = `echo $$ > /tmp/sklubot-engine.pid; if [ -f ${SECRET_ENV_FILE} ]; then set -a; . ${SECRET_ENV_FILE}; set +a; rm -f ${SECRET_ENV_FILE}; fi; exec "$@"`;
+/** The file's content: KEY='value' lines (values are hex tokens; single quotes inside are escaped anyway). */
+export const secretEnvFile = (vars: Record<string, string>) => Object.entries(vars).map(([k, v]) => `${k}='${v.replace(/'/g, `'\\''`)}'`).join("\n") + "\n";
 
 /** How long a stopped tool gets to exit on its interrupt before it is killed. */
 const ENGINE_KILL_GRACE_MS = 15_000;
@@ -540,9 +556,39 @@ export interface EngineOutcome { failure: string; steps: number[] }
 export async function runEngineTurn(turn: Turn, prompt: string, attachments: Attachment[]): Promise<EngineOutcome> {
   const { bot } = turn;
   await ensureComputer(bot);
-  // Busy for the whole turn: the computer is never put to sleep under the tool (to make room for another, or as idle).
-  const release = host.hold?.(bot) ?? (() => {});
-  try { return await engineTurnOn(turn, prompt, attachments); } finally { release(); }
+  // Busy for the whole turn: the computer is never put to sleep under the tool (to make room for another, or as idle),
+  // and a shared computer stays this bot's until the turn ends (Part B).
+  const release = (await host.hold?.(bot)) ?? (() => {});
+  try { return await withEngineLock(bot, 0, () => engineTurnOn(turn, prompt, attachments)); } finally { release(); }
+}
+
+/**
+ * One subscription tool at a time per computer (Part B): a turn and a side request of the same bot, or two bots of a
+ * shared computer, never run Claude Code or Codex side by side — both would refresh the same sign-in token, and OpenAI's
+ * refresh tokens are single-use ("refresh token was already used"). Keyed by the computer (machineOf). `waitMs` 0: wait
+ * as long as it takes (a turn); otherwise give up after that long (a side request).
+ */
+const engineLocks = new Map<string, Promise<void>>();
+export async function withEngineLock<T>(bot: BotRecord, waitMs: number, fn: () => Promise<T>): Promise<T> {
+  const key = host.machineOf?.(bot.id) ?? bot.id;
+  const before = engineLocks.get(key) ?? Promise.resolve();
+  let free!: () => void;
+  const mine = new Promise<void>((r) => { free = r; });
+  const chain = before.then(() => mine);
+  engineLocks.set(key, chain);
+  try {
+    if (waitMs > 0) {
+      let timer: NodeJS.Timeout | undefined;
+      const late = new Promise<"late">((r) => { timer = setTimeout(() => r("late"), waitMs); });
+      const got = await Promise.race([before.then(() => "ok" as const), late]);
+      clearTimeout(timer);
+      if (got === "late") throw new Error("the computer's subscription tool is busy with another request");
+    } else await before;
+    return await fn();
+  } finally {
+    free();
+    if (engineLocks.get(key) === chain) engineLocks.delete(key);
+  }
 }
 
 async function engineTurnOn(turn: Turn, prompt: string, attachments: Attachment[]): Promise<EngineOutcome> {
@@ -589,7 +635,7 @@ const TOOL_TIMEOUT_MS = 30 * 60_000;
 
 async function claudeTurn(turn: Turn, t: Transcript, prompt: string, token: string, retried = false) {
   const { bot } = turn;
-  const mcp = { mcpServers: { sklubot: { type: "http", url: `${config.engineBaseUrl}/mcp/${encodeURIComponent(bot.id)}`, headers: { Authorization: `Bearer ${token}` }, timeout: TOOL_TIMEOUT_MS } } };
+  const mcp = { mcpServers: { sklubot: { type: "http", url: `${botBaseUrl()}/mcp/${encodeURIComponent(bot.id)}`, headers: { Authorization: `Bearer ${token}` }, timeout: TOOL_TIMEOUT_MS } } };
   await writeFile(bot.id, "/root/.sklubot/mcp.json", JSON.stringify(mcp));
   const resume = sessionOf(bot.id, turn.generation, "claude-code");
   const model = modelOf(bot.model);
@@ -663,7 +709,7 @@ async function codexTurn(turn: Turn, t: Transcript, prompt: string, system: stri
     "--json", "--skip-git-repo-check",
     // As above: the computer itself is the sandbox.
     "--dangerously-bypass-approvals-and-sandbox",
-    "-c", `mcp_servers.sklubot.url="${config.engineBaseUrl}/mcp/${encodeURIComponent(bot.id)}"`,
+    "-c", `mcp_servers.sklubot.url="${botBaseUrl()}/mcp/${encodeURIComponent(bot.id)}"`,
     "-c", 'mcp_servers.sklubot.bearer_token_env_var="SKLUBOT_MCP_TOKEN"',
     "-c", `mcp_servers.sklubot.tool_timeout_sec=${TOOL_TIMEOUT_MS / 1000}`,
     ...(model && model !== "default" ? ["-m", model] : []),
@@ -671,7 +717,8 @@ async function codexTurn(turn: Turn, t: Transcript, prompt: string, system: stri
   ];
   const args = resume ? ["codex", "exec", "resume", ...common, resume, "-"] : ["codex", "exec", ...common, "-"];
   let failure = "", sawEnd = false, missingSession = false, produced = false;
-  const res = await host.exec(bot, args, { SKLUBOT_MCP_TOKEN: token }, "/root", prompt, turn.signal, (line) => {
+  await writeFile(bot.id, SECRET_ENV_FILE, secretEnvFile({ SKLUBOT_MCP_TOKEN: token }));
+  const res = await host.exec(bot, args, {}, "/root", prompt, turn.signal, (line) => {
     let e: any;
     try { e = JSON.parse(line); } catch { return; }
     const it = e.item;
@@ -722,8 +769,11 @@ const signInHint = (turn: Turn, engine: Engine) =>
 // ── A short side request (memory, summaries) through the subscription ───────
 export async function engineAsk(bot: BotRecord, system: string, prompt: string): Promise<string> {
   await ensureComputer(bot);
-  const release = host.hold?.(bot) ?? (() => {});
-  try {
+  const release = (await host.hold?.(bot)) ?? (() => {});
+  try { return await withEngineLock(bot, 60_000, () => engineAskOn(bot, system, prompt)); } finally { release(); }
+}
+async function engineAskOn(bot: BotRecord, system: string, prompt: string): Promise<string> {
+  {
     const engine = engineOf(bot.model);
     let out = "";
     const ctrl = AbortSignal.timeout(180_000);
@@ -736,7 +786,7 @@ export async function engineAsk(bot: BotRecord, system: string, prompt: string):
         (line) => { try { const e = JSON.parse(line); if (e.type === "item.completed" && e.item?.type === "agent_message") out = String(e.item.text ?? ""); } catch { /* ignore */ } });
     }
     return out.trim();
-  } finally { release(); }
+  }
 }
 
 // ── Sign-in on the bot's own screen ─────────────────────────────────────────

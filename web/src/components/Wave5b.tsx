@@ -398,7 +398,8 @@ export function FilePreviewPanel() {
       <div className="preview-body">
         {error && <p className="muted small">{t("preview.failed")}</p>}
         {kind === "image" && <img src={viewUrl(preview.botId, f.path)} alt={f.name} />}
-        {kind === "pdf" && blobUrl && <object data={blobUrl} type="application/pdf" className="preview-pdf" aria-label={f.name}><p className="muted small">{t("preview.failed")}</p></object>}
+        {/* An iframe rather than <object>: the app's Content-Security-Policy has object-src 'none'; frame-src allows blob: (our own PDF only). */}
+        {kind === "pdf" && blobUrl && <iframe src={blobUrl} className="preview-pdf" title={f.name} />}
         {kind === "csv" && text !== null && (() => { const rows = parseCsv(text); return (
           <div className="md"><div className="md-table"><table><thead><tr>{(rows[0] ?? []).map((h, i) => <th key={i}>{h}</th>)}</tr></thead><tbody>{rows.slice(1).map((r, i) => <tr key={i}>{r.map((c, j) => <td key={j}>{c}</td>)}</tr>)}</tbody></table></div></div>
         ); })()}

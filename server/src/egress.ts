@@ -6,7 +6,7 @@ import { config } from "./config.js";
 import { q } from "./db.js";
 import { tr } from "./i18n.js";
 import { addJournal } from "./journal.js";
-import { writeComputerFile } from "./linux.js";
+import { botBaseUrl, writeComputerFile } from "./linux.js";
 import { fetchProblem, guardedFetch } from "./net.js";
 import { scrubSecret } from "./apiconnectors.js";
 import { audit, bots, clip, now, policies, users, vault, type BotRecord } from "./store.js";
@@ -45,7 +45,7 @@ const allowHttp = () => process.env.ALLOW_PRIVATE_FETCH === "1" || process.env.A
 const hashToken = (t: string) => createHash("sha256").update(t).digest("hex");
 
 /** The relay's address as the bots' computers reach this server (the same internal route as the tool endpoint). */
-export const relayBase = (botId: string) => `${config.engineBaseUrl}/egress/${encodeURIComponent(botId)}`;
+export const relayBase = (botId: string) => `${botBaseUrl()}/egress/${encodeURIComponent(botId)}`;
 
 export const egressTokens = {
   /** A new token for this bot's computer (the old one stops working). Only its hash is kept. */
@@ -196,6 +196,8 @@ export async function handleEgress(c: Context): Promise<Response> {
   if (buf.length > MAX_RESPONSE) { journal("failed", decision, "response too large"); return json(502, "The response is too large to pass on (50 MB at most)."); }
   const type = res.headers.get("content-type") ?? "";
   const textual = !type || /text|json|xml|javascript|html|form-urlencoded/.test(type);
+  // A binary response cannot be rewritten safely; one that carries the key in any of its forms is refused whole.
+  if (!textual && binaryHoldsSecret(buf, value)) { journal("failed", decision, "secret in response"); return json(502, "The API sent the secret back inside a binary response, so it was not passed on."); }
   const out = textual ? Buffer.from(scrubSecret(buf.toString("utf8"), value), "utf8") : buf;
   const back = new Headers();
   res.headers.forEach((v, k) => { if (!HOP.has(k.toLowerCase()) && k.toLowerCase() !== "content-encoding") back.append(k, scrubSecret(v, value)); });
@@ -203,6 +205,13 @@ export async function handleEgress(c: Context): Promise<Response> {
   journal(res.status >= 400 ? "failed" : "done", decision, `${res.status}`);
   audit(bot.userId, "computer", `${bot.name}: relay ${method} ${host}${clip(rest, 60)} with ${item.name} → ${res.status}`, bot.id);
   return new Response(method === "HEAD" ? null : new Uint8Array(out), { status: res.status, headers: back });
+}
+
+/** Whether a binary body contains the secret, raw or in one of the forms scrubSecret hides (searched byte for byte). */
+export function binaryHoldsSecret(buf: Buffer, secret: string): boolean {
+  if (!secret || secret.length < 4) return false;
+  const forms = new Set([secret, encodeURIComponent(secret), JSON.stringify(secret).slice(1, -1), Buffer.from(secret).toString("base64"), Buffer.from(secret).toString("base64url")]);
+  return [...forms].some((f) => f.length >= 4 && buf.includes(Buffer.from(f, "utf8")));
 }
 
 /**

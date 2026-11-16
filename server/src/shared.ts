@@ -194,6 +194,11 @@ export interface Bot {
    * Sklubot's credential relay (the key is added outside the computer and never enters it). Off by default.
    */
   relayEnabled: boolean;
+  /**
+   * Part B: "own" — the bot has a Linux computer of its own (the default); "shared" — it works on one of its account's
+   * shared computers (files, browser and sign-ins shared with the other bots set to "shared"), one bot at a time.
+   */
+  computerMode: "own" | "shared";
   /** Wave 7 (spec 08 A4): daily cap in USD on paid third-party tools for this bot (null: none; the monthly budget still applies). */
   thirdPartyDailyCapUsd: number | null;
   /**
@@ -608,6 +613,22 @@ export interface ComputerState {
   /** `open` = switched on. Linux computers that exist but are asleep are listed with open: false. */
   desktops: { botId: string; open: boolean; url: string | null; lastUsedAt: number }[];
   maxDesktops: number;
+  /** Part B: the account's shared computers (Linux computers only), and how many it may have. */
+  shared?: SharedComputerView[];
+  maxShared?: number;
+}
+
+/** One shared computer of the account (Part B). */
+export interface SharedComputerView {
+  id: string;
+  name: string;
+  /** "running": on; "asleep": off, everything kept; "absent": not made yet (made on first use). */
+  power: "running" | "asleep" | "absent";
+  /** The bot driving it right now (null: free). */
+  busyWith: string | null;
+  /** Bots that used it last (most recent first). */
+  lastBots: string[];
+  lastUsedAt: number | null;
 }
 
 export interface CheckinSettings { enabled: boolean; times: string[]; timezone: string }

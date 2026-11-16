@@ -433,6 +433,15 @@ const FR: Record<string, string> = {
   "Every day at {time}": "Tous les jours à {time}", "Weekdays at {time}": "En semaine à {time}", "Every {day} at {time}": "Chaque {day} à {time}",
   "Every hour": "Toutes les heures", "Every {n} minutes": "Toutes les {n} minutes", "Every {n} hours": "Toutes les {n} heures",
   "When its web address is called": "Quand son adresse web est appelée", "When what it watches changes": "Quand ce qu'elle surveille change", "Once on {date}": "Une fois, le {date}", "Once": "Une fois",
+  // Security review and shared computers (Part B)
+  "Only the owner of this server can run the desk test.": "Seule la personne qui gère ce serveur peut lancer le banc d'essai.",
+  "Too many requests. Wait a minute and try again.": "Trop de demandes. Attends une minute et réessaie.",
+  "This shared computer is being used by another bot right now. Try again when it has finished.": "Un autre bot se sert de cet ordinateur partagé en ce moment. Réessaie quand il aura fini.",
+  "This bot uses a shared computer. To start it afresh, reset the shared computer in Settings → Computers (it affects every bot that uses it).": "Ce bot utilise un ordinateur partagé. Pour repartir de zéro, efface l'ordinateur partagé dans Réglages → Ordinateur (cela touche tous les bots qui s'en servent).",
+  "Shared computers need the bots' Linux computers (Docker and the desktop image) on this server.": "Les ordinateurs partagés ont besoin des ordinateurs Linux des bots (Docker et l'image du bureau) sur ce serveur.",
+  "An account can have at most {n} shared computers.": "Un compte peut avoir au plus {n} ordinateurs partagés.",
+  "Keep at least one shared computer. Set your bots to their own computer first if you want none.": "Garde au moins un ordinateur partagé. Remets d'abord tes bots sur leur propre ordinateur si tu n'en veux aucun.",
+  "The server's disk is almost full ({mb} MB left): I put my computer to sleep so it stops filling it. Everything on it is kept. Free some space (or ask the server's owner to), then I can go on.": "Le disque du serveur est presque plein (il reste {mb} Mo) : j'ai mis mon ordinateur en veille pour qu'il arrête de le remplir. Tout ce qu'il contient est gardé. Libère de la place (ou demande-le à la personne qui gère le serveur), puis je pourrai continuer.",
   "Sunday": "dimanche", "Monday": "lundi", "Tuesday": "mardi", "Wednesday": "mercredi", "Thursday": "jeudi", "Friday": "vendredi", "Saturday": "samedi",
 };
 

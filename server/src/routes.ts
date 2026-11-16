@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { closeSync, createReadStream } from "node:fs";
 import path from "node:path";
 import { Readable } from "node:stream";
@@ -80,12 +81,16 @@ import { adminView, approversOf, botAccess, exportWorkspace, invites, resources,
 import { invalidateAudience } from "./bus.js";
 import { fileDiff, listedPathOk, undoFiles } from "./snapshots.js";
 import { forgetHeld, holdAndOffer, screen as screenSecrets, takeHeld } from "./pastedsecrets.js";
-import { assertPublicUrl, BlockedAddressError } from "./net.js";
+import { assertPublicUrl, BlockedAddressError, clientAddress } from "./net.js";
+import { hookLimits } from "./hardening.js";
 import { apiProviders, cleanBaseUrl, cleanModels, fetchModels, PRESETS, testProvider } from "./apimodels.js";
 import { botEmail, mailFor, MailError, receiving as mailReceiving, relays, releaseMail } from "./botmail.js";
 import { onTurnEvent, submitMemberMessage } from "./agent/loop.js";
 import { privacyPage } from "./privacy.js";
-import { registerGooglePrivate, registerGooglePublic, type GoogleDeps } from "./googlelogin.js";
+import { closeBotLink } from "./botlink.js";
+import { SharedComputerInUseError } from "./linux.js";
+import { sharedComputers, sharedHolder, SharedLimitError } from "./sharedcomputers.js";
+import { ownerId, registerGooglePrivate, registerGooglePublic, type GoogleDeps } from "./googlelogin.js";
 import { createGoal, goalAction, GoalError, goalCommand, goals, pauseGoalsOf } from "./agent/goals.js";
 import { publicJobs, stopJob } from "./jobs.js";
 
@@ -170,23 +175,45 @@ site.get("/confidentialite", (c) => c.html(privacyPage("fr"), 200, { "cache-cont
 site.get("/privacy", (c) => c.html(privacyPage("en"), 200, { "cache-control": "public, max-age=3600", "x-content-type-options": "nosniff", "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'" }));
 
 /** Sklubot's tools for a bot running on a subscription tool; the caller proves it is that bot's computer. */
-site.post("/mcp/:botId", async (c) => {
-  // Only the bots' computers call this, directly on the internal network (ENGINE_BASE_URL). A request that
-  // went through a reverse proxy came from the internet: it is refused (Caddy also blocks /mcp/ itself).
+const mcpRoute = async (c: Context) => {
+  // Only the bots' computers call this, directly (their own socket, or the internal network). A request that went
+  // through a reverse proxy came from the internet: it is refused (Caddy also blocks /mcp/ itself).
   if (c.req.header("x-forwarded-for") || c.req.header("forwarded")) return c.json({ error: "not found" }, 404);
   const env = c.env as { incoming?: IncomingMessage; outgoing?: ServerResponse } | undefined;
   if (!env?.incoming || !env.outgoing) return c.json({ error: "unavailable" }, 503);
   const parsed = await c.req.json().catch(() => undefined);
-  await handleMcp(c.req.param("botId"), env.incoming, env.outgoing, parsed);
+  await handleMcp(c.req.param("botId")!, env.incoming, env.outgoing, parsed);
   return RESPONSE_ALREADY_SENT;
-});
-site.on(["GET", "DELETE"], "/mcp/:botId", (c) => c.json({ error: "method not allowed" }, 405));
+};
+/**
+ * H2: in "socket" mode the bots' computers reach these routes only through their own socket (botlink.ts, see
+ * botLinkRoutes); this server's web port does not serve them at all, so nothing else on its networks can try them.
+ * In "network" mode (a server run directly on this machine) they stay on the web port, as before.
+ */
+if (config.botLink === "network") {
+  site.post("/mcp/:botId", mcpRoute);
+  site.on(["GET", "DELETE"], "/mcp/:botId", (c) => c.json({ error: "method not allowed" }, 405));
+  /**
+   * Wave 7 (spec 08 A1): the credential relay for programs on the bots' computers. Like /mcp/, only reached on the
+   * internal network (Caddy answers 404 for /egress/ and requests that went through a proxy are refused).
+   */
+  site.all("/egress/:botId/*", (c) => handleEgress(c));
+}
 
 /**
- * Wave 7 (spec 08 A1): the credential relay for programs on the bots' computers. Like /mcp/, only reached on the
- * internal network (Caddy answers 404 for /egress/ and requests that went through a proxy are refused).
+ * The routes one computer's socket serves (H2): the tool endpoint and the credential relay, and only for the bots that
+ * use that computer (`allowed`: its own bot, or the bots of a shared computer). Anything else: 404.
  */
-site.all("/egress/:botId/*", (c) => handleEgress(c));
+export function botLinkRoutes(allowed: (botId: string) => boolean): Hono {
+  const link = new Hono();
+  link.use("/:kind/:botId/*", async (c, next) => { if (!allowed(c.req.param("botId"))) return c.json({ error: "not found" }, 404); await next(); });
+  link.use("/:kind/:botId", async (c, next) => { if (!allowed(c.req.param("botId"))) return c.json({ error: "not found" }, 404); await next(); });
+  link.post("/mcp/:botId", mcpRoute);
+  link.on(["GET", "DELETE"], "/mcp/:botId", (c) => c.json({ error: "method not allowed" }, 405));
+  link.all("/egress/:botId/*", (c) => handleEgress(c));
+  link.all("*", (c) => c.json({ error: "not found" }, 404));
+  return link;
+}
 /** Wave 7 (spec 08 A8): a temporary public link to one library file (GET, or HEAD for services that check first). */
 site.on(["GET", "HEAD"], "/l/:token", (c) => servePublicLink(c));
 
@@ -224,12 +251,8 @@ function throttle(key: string, limit = 8) {
  * address of the connection.
  */
 function clientIp(c: Context): string {
-  if (config.trustProxy) {
-    const last = (c.req.header("x-forwarded-for") ?? "").split(",").map((s) => s.trim()).filter(Boolean).pop();
-    if (last) return last;
-  }
   const env = c.env as { incoming?: IncomingMessage } | undefined;
-  return env?.incoming?.socket?.remoteAddress ?? "local";
+  return clientAddress(config.trustProxy, env?.incoming?.socket?.remoteAddress, c.req.header("x-forwarded-for"));
 }
 
 // Checked against when the email is unknown, so a wrong address takes as long as a wrong password.
@@ -321,8 +344,11 @@ api.post("/auth/logout", (c) => {
 
 /** Outside systems call this address to set a webhook routine in motion. The token is the credential. */
 api.post("/hooks/:token", async (c) => {
+  // L7: a client trying addresses, or a sender flooding one hook (each call starts a turn of the bot), is slowed down.
+  if (hookLimits.perAddress.over(clientIp(c))) fail(429, "Too many requests. Wait a minute and try again.");
   const r = routines.byHook(c.req.param("token"));
   if (!r || !r.enabled) fail(404, "Unknown or paused hook.");
+  if (hookLimits.perHook.over(r!.id)) fail(429, "Too many requests. Wait a minute and try again.");
   const raw = await c.req.text();
   if (raw.length > 200_000) fail(413, "Payload too large.");
   let payload: unknown = raw || undefined;
@@ -366,7 +392,9 @@ function signInPage(c: Context, locale: "fr" | "en", ok: boolean, message: strin
   const html = `<!doctype html><html lang="${locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>Sklubot</title>
 <style>body{font-family:system-ui,sans-serif;background:#f6f6f8;color:#1d1d24;display:grid;place-items:center;min-height:100vh;margin:0;padding:16px}main{max-width:420px;background:#fff;border-radius:14px;padding:28px;box-shadow:0 6px 30px rgba(0,0,0,.08);text-align:center}p{line-height:1.5}.ok{color:#137a3f}.ko{color:#b3261e}a{color:#4f46e5}@media(prefers-color-scheme:dark){body{background:#15151a;color:#ececf1}main{background:#1f1f26}}</style></head>
 <body><main><p class="${ok ? "ok" : "ko"}">${escHtml(message)}</p><p><a href="/">${escHtml(back)}</a></p></main><script>${script}</script></body></html>`;
-  return c.html(html, ok ? 200 : 400, { "referrer-policy": "no-referrer", "cache-control": "no-store" });
+  // Its own policy (M3): the app's CSP allows only the app's inline script; this page's one is allowed by its hash.
+  const csp = `default-src 'none'; script-src 'sha256-${createHash("sha256").update(script, "utf8").digest("base64")}'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'`;
+  return c.html(html, ok ? 200 : 400, { "referrer-policy": "no-referrer", "cache-control": "no-store", "content-security-policy": csp });
 }
 
 // Built-in apps: the vendor sends the browser back here (the redirect URI the user registered in their console).
@@ -545,6 +573,12 @@ api.patch("/bots/:id", async (c) => {
   // Wave 7: switching the credential relay off revokes this computer's token at once (and clears its relay file).
   if (patch.relayEnabled === false && bot.relayEnabled) void disableRelay(bot);
   if (typeof patch.relayEnabled === "boolean" && patch.relayEnabled !== bot.relayEnabled) audit(bot.userId, "computer", `${bot.name}: credential relay ${patch.relayEnabled ? "on" : "off"}`, bot.id);
+  // Part B: own computer or shared one. The change applies from the bot's next use of its computer.
+  if ((patch.computerMode === "own" || patch.computerMode === "shared") && patch.computerMode !== bot.computerMode) {
+    audit(bot.userId, "computer", `${bot.name}: ${patch.computerMode === "shared" ? "uses a shared computer" : "uses its own computer"}`, bot.id);
+    if (patch.computerMode === "shared" && computerKind() === "linux") sharedComputers.ensure(bot.userId);
+    emit(bot.userId, { type: "computer", computer: computerState(bot.userId) });
+  }
   // A new name, role, shape or colour shows on the bot's computer (only if it has one: U-005).
   if (["name", "label", "color", "shape", "character"].some((k) => patch[k] !== undefined)) void screen.redress(bot.id).catch(() => {});
   if (!a.owner) return c.json({ bot: sharedBotView(botAccess(c.get("user").id, bot.id)!) });
@@ -1272,14 +1306,19 @@ api.get("/computer", (c) => c.json(computerState(c.get("user").id)));
  * The desk test (B-10): an end-to-end check of a bot computer on two computers of invented bots (no real bot, no user
  * data). One run at a time on the server; the latest result stays until the server restarts.
  */
-api.get("/computer/desk-test", (c) => c.json({ run: deskRun() }));
+// L4: the desk test starts computers on the server for everyone's account and shows their pictures: the server's owner
+// only (the earliest account, the same rule as the Google sign-in settings, googlelogin.ts ownerId).
+const deskOwner = (c: Context) => { if (ownerId() !== c.get("user").id) fail(403, tr(c.get("user").locale, "Only the owner of this server can run the desk test.")); };
+api.get("/computer/desk-test", (c) => { deskOwner(c); return c.json({ run: deskRun() }); });
 api.post("/computer/desk-test", (c) => {
+  deskOwner(c);
   if (computerKind() !== "linux") fail(409, "The desk test needs the bots' Linux computers (Docker and the desktop image) on this server.");
   const run = startDeskTest(c.get("user").id);
   audit(c.get("user").id, "computer", "Desk test started");
   return c.json({ run });
 });
 api.get("/computer/desk-test/shots/:name", (c) => {
+  deskOwner(c);
   const shot = deskShot(c.req.param("name"));
   if (!shot) return fail(404, "No such picture.");
   return c.body(new Uint8Array(shot), 200, { "content-type": "image/jpeg", "cache-control": "no-store" });
@@ -1387,8 +1426,64 @@ api.post("/bots/:id/engine/logout", async (c) => {
   audit(bot.userId, "account", `${bot.name}: signed out of ${engine === "codex" ? "ChatGPT" : "Claude"}`, bot.id);
   return c.json({ ok: true });
 });
-api.post("/bots/:id/desktop/sleep", async (c) => { await screen.sleep(ownBot(c).id); return c.json({ ok: true }); });
-api.post("/bots/:id/desktop/reset", async (c) => { await screen.reset(ownBot(c).id); return c.json({ ok: true }); });
+const inUse = (c: Context, err: unknown): never => {
+  if (err instanceof SharedComputerInUseError) fail(409, tr(c.get("user").locale, err.message));
+  throw err;
+};
+api.post("/bots/:id/desktop/sleep", async (c) => { await screen.sleep(ownBot(c).id).catch((err) => inUse(c, err)); return c.json({ ok: true }); });
+api.post("/bots/:id/desktop/reset", async (c) => {
+  const bot = ownBot(c);
+  // A bot on a shared computer: wiping it would wipe the other bots' files and sign-ins too (Settings → Computers does that).
+  if (bot.computerMode === "shared" && computerKind() === "linux") fail(409, tr(c.get("user").locale, "This bot uses a shared computer. To start it afresh, reset the shared computer in Settings → Computers (it affects every bot that uses it)."));
+  await screen.reset(bot.id);
+  return c.json({ ok: true });
+});
+
+// ── Part B: the account's shared computers ───────────────────────────────────
+const ownShared = (c: Context) => {
+  const rec = sharedComputers.byId(c.req.param("sid") ?? "");
+  // Isolation: an account only ever sees and changes its own shared computers.
+  if (!rec || rec.userId !== c.get("user").id) fail(404, "No such shared computer.");
+  return rec!;
+};
+const linuxOnly = (c: Context) => { if (computerKind() !== "linux") fail(409, tr(c.get("user").locale, "Shared computers need the bots' Linux computers (Docker and the desktop image) on this server.")); };
+api.post("/computer/shared", (c) => {
+  linuxOnly(c);
+  const user = c.get("user");
+  try { sharedComputers.ensure(user.id); sharedComputers.add(user.id); }
+  catch (err) { if (err instanceof SharedLimitError) fail(409, tr(user.locale, "An account can have at most {n} shared computers.", { n: err.max })); throw err; }
+  audit(user.id, "computer", "Shared computer added");
+  emit(user.id, { type: "computer", computer: computerState(user.id) });
+  return c.json({ computer: computerState(user.id) });
+});
+api.post("/computer/shared/:sid/sleep", async (c) => {
+  linuxOnly(c);
+  const rec = ownShared(c);
+  if (sharedHolder(rec.id)) fail(409, tr(c.get("user").locale, "This shared computer is being used by another bot right now. Try again when it has finished."));
+  await screen.sleepShared(rec.id);
+  return c.json({ computer: computerState(c.get("user").id) });
+});
+api.post("/computer/shared/:sid/reset", async (c) => {
+  linuxOnly(c);
+  const rec = ownShared(c);
+  if (sharedHolder(rec.id)) fail(409, tr(c.get("user").locale, "This shared computer is being used by another bot right now. Try again when it has finished."));
+  await screen.resetShared(rec.id).catch((err) => inUse(c, err));
+  audit(c.get("user").id, "computer", `Shared computer ${rec.name} reset`);
+  return c.json({ computer: computerState(c.get("user").id) });
+});
+api.delete("/computer/shared/:sid", async (c) => {
+  linuxOnly(c);
+  const user = c.get("user");
+  const rec = ownShared(c);
+  if (sharedComputers.list(user.id).length <= 1) fail(409, tr(user.locale, "Keep at least one shared computer. Set your bots to their own computer first if you want none."));
+  if (sharedHolder(rec.id)) fail(409, tr(user.locale, "This shared computer is being used by another bot right now. Try again when it has finished."));
+  await screen.resetShared(rec.id).catch((err) => inUse(c, err));
+  closeBotLink(rec.id);
+  sharedComputers.remove(rec.id);
+  audit(user.id, "computer", `Shared computer ${rec.name} removed`);
+  emit(user.id, { type: "computer", computer: computerState(user.id) });
+  return c.json({ computer: computerState(user.id) });
+});
 
 const safePath = (botId: string, rel: string) => { try { return resolveInWorkspace(botId, rel); } catch (err) { return fail(400, (err as Error).message); } };
 

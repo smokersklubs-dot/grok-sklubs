@@ -22,4 +22,7 @@ fi
 mkdir -p /root/files /root/.sklubot
 # Put the bot's look back on (it is kept in the home volume), or start plain until the server sends one.
 if [ -f /root/.sklubot/look.json ]; then rm -f /root/.sklubot/applied; python3 /opt/sklubot/dress.py </dev/null >/dev/null 2>&1; else tint2 >/dev/null 2>&1 & fi
+# The way to Sklubot (security review H2): this computer's own socket, offered on 127.0.0.1 to its programs (Claude
+# Code, Codex, sklubot-api). Sklubot also starts it after each wake; a second one just fails to bind and exits.
+if [ -d /run/sklubot ]; then socat TCP-LISTEN:39100,bind=127.0.0.1,reuseaddr,fork UNIX-CONNECT:/run/sklubot/s.sock >/dev/null 2>&1 & fi
 exec sleep infinity

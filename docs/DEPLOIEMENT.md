@@ -33,15 +33,54 @@ Sklubot écoute alors sur le port 3000 du conteneur ; place un proxy HTTPS (Cadd
 **À savoir**
 
 - Sklubot crée l'ordinateur Linux de chaque bot à travers le service `docker-proxy`, le seul à monter
-  `/var/run/docker.sock` : il n'ouvre que la partie de l'API Docker utile (conteneurs, exec, volumes, images,
-  réseaux), sur un réseau interne que les ordinateurs des bots ne voient pas. Cela reste un accès puissant au
-  Docker du serveur : réserve ce serveur à Sklubot.
+  `/var/run/docker.sock`. C'est le proxy de Sklubot (`server/src/dockerproxy.ts`, même image que l'application) :
+  il lit le contenu de chaque demande et ne laisse créer que des ordinateurs depuis l'image `sklubot-desktop`,
+  sans privilège, avec les capacités réduites, sur le réseau des bots, sans dossier de l'hôte ; les autres actions
+  ne touchent que les conteneurs étiquetés `sklubot`. Cela reste un accès à Docker : réserve ce serveur à Sklubot.
 - L'application tourne sans privilège Linux et sur un système de fichiers en lecture seule (seuls `/data` et
-  `/tmp` s'écrivent).
-- Le point d'accès `/mcp/…` sert uniquement aux ordinateurs des bots (réseau interne) : Sklubot refuse toute
-  requête qui y arrive par un proxy. Avec le fichier VPS, Caddy le bloque aussi.
+  `/tmp` s'écrivent). Elle envoie une politique de sécurité du contenu (CSP) stricte et limite la taille des
+  requêtes (1 Mo, 25 Mo pour un fichier envoyé).
+- Les ordinateurs des bots sont sur leur propre réseau Docker, `sklubot_bots` (créé par Sklubot, sans trafic entre
+  conteneurs). Ils joignent Sklubot par une prise (socket) qui leur est propre, dans `sklubot_data/botlink/`, qui ne
+  sert que leurs outils (`/mcp/…`) et le relais d'identifiants (`/egress/…`) : ni le port 3000, ni le courrier, ni le
+  proxy Docker, ni la voix, ni les autres ordinateurs. Le port web n'a plus du tout `/mcp/` ni `/egress/`.
 - Toutes les données sont dans le volume `sklubot_data` (base, fichiers des bots). Sauvegarde-le.
 - Le HTTPS est nécessaire pour le micro (dictée, appel vocal) et pour l'installation sur iPhone.
+
+### Mise à jour depuis une version précédente (Coolify)
+
+Rien à faire à la main : redéploie comme d'habitude. Au premier usage de chaque ordinateur de bot, Sklubot le
+refait sur le nouveau réseau (son dossier personnel — fichiers, connexions, navigateur — et sa bibliothèque sont
+gardés ; ce qui avait été installé hors de `/root` est à réinstaller, comme lors d'un changement de dossier d'équipe).
+Le réseau `sklubot_bots` est créé tout seul. Si quelque chose ne va pas, `SKLUBOT_BOT_LINK=network` (et
+`SKLUBOT_PROXY_NETWORKS=sklubot_bots,sklubot_net`) remet l'ancienne façon le temps de regarder.
+
+### Isoler encore plus les ordinateurs des bots (facultatif, sur l'hôte)
+
+Coolify ne laisse pas une application toucher au pare-feu de la machine. Sans règle de pare-feu, un ordinateur de
+bot peut encore joindre l'hôte (SSH, le tableau de bord de Coolify, une base qui écoute sur toutes les adresses), le
+service de métadonnées du fournisseur cloud (`169.254.169.254`) et les réseaux privés. Pour couper cela (Internet et
+le DNS restent ouverts), en SSH sur la machine, une fois :
+
+```bash
+cd /chemin/vers/une/copie/du/dépôt      # ou copie seulement deploy/bots-firewall.sh
+sudo bash deploy/bots-firewall.sh on       # règles iptables (chaîne DOCKER-USER et INPUT, interface sklubot-bots)
+sudo bash deploy/bots-firewall.sh persist  # les remet à chaque démarrage (service systemd)
+sudo bash deploy/bots-firewall.sh status   # vérifier ;  … off  pour les retirer
+```
+
+Coolify passe par Traefik, pas par Caddy : pour limiter aussi la taille des requêtes au niveau du proxy, ajoute au
+service `sklubot` un middleware Traefik « buffering » (`maxRequestBodyBytes`, ex. 31457280) dans ses étiquettes ;
+l'application applique de toute façon ses propres limites.
+
+### Ordinateurs partagés entre les bots
+
+Dans les réglages d'un bot (section Ordinateur), « Ordinateur : le sien / partagé ». Les bots réglés sur
+« partagé » utilisent les ordinateurs partagés du compte (un au départ, jusqu'à `SKLUBOT_MAX_SHARED_COMPUTERS`,
+3 par défaut, ajoutés dans Réglages → Ordinateur) : mêmes fichiers personnels, même navigateur, mêmes connexions
+Claude / ChatGPT. Un seul bot à la fois s'en sert ; un autre attend qu'il se libère (puis un message clair « occupé »).
+Chaque bot garde sa bibliothèque à `~/files` (toutes celles des bots partageant l'ordinateur y sont montées sous
+`~/libraries/`, donc lisibles entre eux). Un ordinateur partagé n'appartient qu'à un compte.
 
 ## Télécharger les applications : la page `/telecharger`
 

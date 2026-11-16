@@ -417,6 +417,7 @@ button.captions:hover { box-shadow: 0 0 0 1px var(--border-strong); }
 .md .md-table tbody tr:last-child td { border-bottom: 0; }
 .md blockquote.md-callout { padding: 9px 12px; border-left: 3px solid var(--info); border-radius: var(--r-md); background: var(--info-soft); color: var(--text); }
 .md blockquote.md-callout p:last-child { margin-bottom: 0; }
+.md a.md-remote-img { display: inline-block; padding: 4px 10px; border: 1px dashed var(--line, currentColor); border-radius: var(--r-md); font-size: 0.92em; text-decoration: none; }
 .md .md-callout-title { display: inline-block; margin-bottom: 2px; font-size: 12.5px; letter-spacing: .02em; color: var(--info); }
 .md blockquote.md-callout.is-tip { border-color: var(--ok); background: var(--ok-soft); }
 .md blockquote.md-callout.is-tip .md-callout-title { color: var(--ok); }

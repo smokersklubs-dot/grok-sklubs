@@ -749,3 +749,5 @@ a.btn { text-decoration: none; }
 .job-cmd { font-family: var(--font-mono, ui-monospace, monospace); font-size: 12px; display: block; }
 .job-sub { font-size: 11.5px; color: var(--text-3); }
 .job .btn { flex: none; }
+.computer-choice .action-row > .segmented { flex-shrink: 0; min-width: max-content; }
+.shared-computers .list-row .chip { margin-left: 8px; }

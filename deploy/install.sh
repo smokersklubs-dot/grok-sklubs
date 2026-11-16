@@ -134,6 +134,23 @@ if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q "Status: a
   info "Pare-feu : ports 80 et 443 ouverts."
 fi
 
+# Facultatif (revue de sécurité H2) : les ordinateurs des bots ne joignent ni l'hôte, ni le service de métadonnées du
+# fournisseur (169.254.169.254), ni les réseaux privés ; Internet et le DNS restent ouverts. Détails : deploy/bots-firewall.sh.
+# Non interactif : seulement avec SKLUBOT_BOTS_FIREWALL=1. Désactivable plus tard : sudo bash deploy/bots-firewall.sh off
+if command -v iptables >/dev/null 2>&1; then
+  if [ -z "${SKLUBOT_BOTS_FIREWALL:-}" ]; then
+    ask SKLUBOT_BOTS_FIREWALL "Isoler les ordinateurs des bots du reste du serveur et du réseau privé (recommandé) ? [O/n]"
+    case "${SKLUBOT_BOTS_FIREWALL:-}" in n|N|non|Non|no|No) SKLUBOT_BOTS_FIREWALL=0 ;; "") { : </dev/tty; } 2>/dev/null && SKLUBOT_BOTS_FIREWALL=1 || SKLUBOT_BOTS_FIREWALL=0 ;; *) SKLUBOT_BOTS_FIREWALL=1 ;; esac
+  fi
+  if [ "$SKLUBOT_BOTS_FIREWALL" = 1 ]; then
+    if bash deploy/bots-firewall.sh on >/dev/null && bash deploy/bots-firewall.sh persist >/dev/null 2>&1; then
+      info "Pare-feu des ordinateurs des bots : en place (et remis à chaque démarrage)."
+    else
+      info "Pare-feu des ordinateurs des bots : non installé (voir sudo bash deploy/bots-firewall.sh)."
+    fi
+  fi
+fi
+
 say "4/5  Construction et démarrage (5 à 10 minutes la première fois)"
 # Le détail de la construction va dans un journal ; en cas d'échec, ses 20 dernières lignes s'affichent.
 LOG="$DIR/install.log"

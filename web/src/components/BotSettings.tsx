@@ -1,7 +1,7 @@
 import { BotReachTab } from "./Wave7";
 import { LocalToolsTab } from "./LocalTools";
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
-import { api, errText } from "../api";
+import { api, enc, errText } from "../api";
 import { tn, useT } from "../i18n";
 import { useStore, type BotSettingsTab } from "../store";
 import { BotEmailTab, BotSharingTab } from "./Wave6";
@@ -254,6 +254,8 @@ function General({ bot, onClose }: { bot: Bot; onClose: () => void }) {
         <button type="button" className="btn btn-ghost btn-small" disabled={!dirty || saving} onClick={() => setForm(formOf(bot))}>{t("bot.discard")}</button>
         <button type="submit" className="btn btn-primary btn-small" disabled={!dirty || !form.name.trim() || saving}>{t(saving ? "common.saving" : "common.save")}</button>
       </div>
+
+      {!isRoom && !bot.access && <ComputerChoice bot={bot} />}
 
       <h3 className="pane-heading">{t("bot.conversation")}</h3>
       <div className="action-row">
@@ -1212,6 +1214,61 @@ function Telegram({ bot }: { bot: Bot }) {
         </>
       )}
     </div>
+  );
+}
+
+/**
+ * Part B: the bot's computer — its own (the default) or one of the account's shared computers (files, browser and
+ * sign-ins shared with the other bots set to "shared", one bot at a time). Saved at once, like the relay switch.
+ */
+function ComputerChoice({ bot }: { bot: Bot }) {
+  const t = useT();
+  const computer = useStore((s) => s.computer);
+  const { loadComputer, upsertBot, openAppSettings } = useStore.getState();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => { if (!computer) void loadComputer(); }, [computer, loadComputer]);
+  if (computer?.kind !== "linux") return null;
+  const mode = bot.computerMode ?? "own";
+  const choose = async (next: "own" | "shared") => {
+    if (next === mode || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await api<{ bot: Bot }>("PATCH", `/bots/${enc(bot.id)}`, { computerMode: next });
+      upsertBot(r.bot);
+      await loadComputer();
+    } catch (e) {
+      setError(errText(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const shared = computer.shared ?? [];
+  return (
+    <section className="computer-choice">
+      <h3 className="pane-heading">{t("botComputer.heading")}</h3>
+      <div className="action-row">
+        <div>
+          <p className="action-title">{t("botComputer.label")}</p>
+          <p className="muted small">{t(mode === "shared" ? "botComputer.sharedHint" : "botComputer.ownHint", { name: bot.name })}</p>
+        </div>
+        <div className="segmented" role="radiogroup" aria-label={t("botComputer.label")}>
+          {(["own", "shared"] as const).map((m) => (
+            <button key={m} type="button" role="radio" aria-checked={mode === m} disabled={busy} className={mode === m ? "is-active" : ""} onClick={() => void choose(m)}>
+              {t(m === "own" ? "botComputer.own" : "botComputer.shared")}
+            </button>
+          ))}
+        </div>
+      </div>
+      {mode === "shared" && (
+        <p className="muted small">
+          {t("botComputer.sharedList", { n: shared.length, busy: shared.filter((c) => c.busyWith).length })}{" "}
+          <button type="button" className="btn btn-ghost btn-small" onClick={() => openAppSettings("computer")}>{t("botComputer.manage")}</button>
+        </p>
+      )}
+      <ErrorNote>{error}</ErrorNote>
+    </section>
   );
 }
 

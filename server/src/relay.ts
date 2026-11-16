@@ -9,6 +9,7 @@ import { emit } from "./bus.js";
 import { config } from "./config.js";
 import { q } from "./db.js";
 import { tr } from "./i18n.js";
+import { clientAddress } from "./net.js";
 import { pushLater } from "./push.js";
 import type { AppDownloads, DesktopDownload, Locale, RelayDevice, RelayDownloads } from "./shared.js";
 import { audit, bots, clip, now, randomToken, rows, sha256, users, type UserRecord } from "./store.js";
@@ -155,11 +156,8 @@ function refuse(socket: Duplex, status: number, text: string) {
 
 /** The client's address, as routes.ts reads it: behind our proxy (TRUST_PROXY=1), the last X-Forwarded-For entry. */
 function ipOf(req: IncomingMessage): string {
-  if (config.trustProxy) {
-    const last = String(req.headers["x-forwarded-for"] ?? "").split(",").map((s) => s.trim()).filter(Boolean).pop();
-    if (last) return last;
-  }
-  return req.socket.remoteAddress ?? "local";
+  const xff = req.headers["x-forwarded-for"];
+  return clientAddress(config.trustProxy, req.socket.remoteAddress, Array.isArray(xff) ? xff.join(",") : xff);
 }
 
 /** True when the request was one of ours (handled or refused); false lets the next handler look at it. */

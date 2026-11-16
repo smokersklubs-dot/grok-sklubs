@@ -24,7 +24,35 @@ export function renderMarkdown(src: string): string {
     FORBID_TAGS: ["style", "form", "button", "textarea", "select", "iframe", "object", "embed", "video", "audio"],
     FORBID_ATTR: ["style", "id", "class", "name"],
   });
-  return callouts(clean).replace(/<table>/g, '<div class="md-table"><table>').replace(/<\/table>/g, "</table></div>");
+  return callouts(remoteImagesAsLinks(clean)).replace(/<table>/g, '<div class="md-table"><table>').replace(/<\/table>/g, "</table></div>");
+}
+
+/**
+ * A picture from another site is never loaded on its own (it would tell that site who reads the message and when, and
+ * the app's Content-Security-Policy refuses it anyway): it becomes a link that opens it in a new tab when clicked.
+ * Pictures of this server (relative addresses, data: and blob:) stay pictures.
+ */
+const REMOTE_SRC = /^(?:[a-z][a-z0-9+.-]*:)?\/\//i;
+export function remoteImagesAsLinks(html: string): string {
+  if (!/<img/i.test(html) || typeof document === "undefined") return html;
+  const box = document.createElement("template");
+  box.innerHTML = html;
+  for (const img of [...box.content.querySelectorAll("img")]) {
+    const src = img.getAttribute("src") ?? "";
+    if (!REMOTE_SRC.test(src.trim())) continue;
+    let sameSite = false;
+    try { sameSite = new URL(src, location.href).origin === location.origin; } catch { /* not a URL: treated as remote */ }
+    if (sameSite) continue;
+    const link = document.createElement("a");
+    const safe = /^https?:/i.test(src.trim()) || /^\/\//.test(src.trim());
+    if (safe) { link.setAttribute("href", src); link.setAttribute("target", "_blank"); link.setAttribute("rel", "noopener noreferrer"); }
+    link.className = "md-remote-img";
+    const fr = document.documentElement.lang === "fr";
+    const alt = (img.getAttribute("alt") ?? "").trim();
+    link.textContent = `🖼 ${alt || (fr ? "Image d'un autre site" : "Image from another site")} — ${fr ? "cliquer pour l'ouvrir" : "click to open"}`;
+    img.replaceWith(link);
+  }
+  return box.innerHTML;
 }
 
 /**

@@ -156,3 +156,45 @@ export function fetchProblem(err: unknown): string | null {
   if (code === "ECONNREFUSED" || code === "ECONNRESET" || code === "ETIMEDOUT" || code === "EHOSTUNREACH") return "That server could not be reached.";
   return null;
 }
+
+// ── The visitor's address behind our reverse proxy (L1) ──────────────────────
+/**
+ * TRUSTED_PROXIES: the addresses (or CIDR ranges) of the reverse proxy in front of Sklubot. Empty: any loopback or
+ * private address (Caddy or Coolify's proxy reach Sklubot on a Docker network, always from such an address).
+ */
+const trustedList = (() => {
+  const list = new net.BlockList();
+  let any = false;
+  for (const raw of (process.env.TRUSTED_PROXIES ?? "").split(",").map((s) => s.trim()).filter(Boolean)) {
+    const [addr, bits] = raw.split("/");
+    const family = net.isIP(addr);
+    if (!family) continue;
+    const type = family === 4 ? "ipv4" : "ipv6";
+    if (bits !== undefined && /^\d+$/.test(bits)) list.addSubnet(addr, Number(bits), type); else list.addAddress(addr, type);
+    any = true;
+  }
+  return any ? list : null;
+})();
+const plainAddress = (ip: string) => ip.replace(/^::ffff:(?=\d+\.\d+\.\d+\.\d+$)/, "");
+/** Whether a connection comes from the reverse proxy we trust (see TRUSTED_PROXIES above). */
+export function fromTrustedProxy(remote: string | undefined): boolean {
+  if (!remote) return false;
+  const ip = plainAddress(remote);
+  const family = net.isIP(ip);
+  if (!family) return false;
+  if (trustedList) return trustedList.check(ip, family === 4 ? "ipv4" : "ipv6");
+  return isPrivateAddress(ip);
+}
+/**
+ * The client's address. With TRUST_PROXY=1, and only when the connection itself comes from the trusted proxy, the last
+ * X-Forwarded-For entry (the one the proxy added; earlier entries come from the client). Otherwise the connection's own
+ * address: someone reaching the server directly cannot pick the address it is counted under.
+ */
+export function clientAddress(trustProxy: boolean, remote: string | undefined, forwardedFor: string | undefined): string {
+  // No connection at all: a request made inside this process (tests), which no one on the network can send.
+  if (trustProxy && (remote === undefined || fromTrustedProxy(remote))) {
+    const last = String(forwardedFor ?? "").split(",").map((s) => s.trim()).filter(Boolean).pop();
+    if (last) return last;
+  }
+  return remote ?? "local";
+}

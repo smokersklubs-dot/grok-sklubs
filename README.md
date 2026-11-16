@@ -28,7 +28,7 @@ Sklubot a été reconstruit **en salle blanche** : voir [docs/CLEANROOM.md](docs
 | **Fiabilité** | Reprise du travail après un redémarrage du serveur ; modèle de secours en cas de panne ; journal d'activité non modifiable |
 | **Prudence** | Le contenu venu de l'extérieur (pages, recherches, applications) est signalé au modèle comme simple information ; après en avoir lu, même un bot « de confiance » redemande avant de modifier une application |
 | **Équipe** | Export et import d'une équipe de bots ; choix des familles d'outils par bot ; règles de réponse dans les groupes |
-| **Compte** | Lien de connexion à usage unique (`node server/dist/sign-in-link.js email`), liste d'adresses autorisées (`ALLOWED_EMAILS`), changement de mot de passe, export de toutes tes données, suppression du compte |
+| **Compte** | Lien de connexion à usage unique (`node server/dist/sign-in-link.js email`), liste d'adresses autorisées (`ALLOWED_EMAILS` — un filtre, pas une authentification : l'adresse n'est pas vérifiée, voir `.env.example`), changement de mot de passe, export de toutes tes données, suppression du compte |
 | **Langue** | Interface, textes du serveur et réponses des bots en **français ou en anglais** |
 | **Téléphone** | Version mobile installable sur l'écran d'accueil (iPhone, iPad) et **application Android (APK)** à télécharger depuis ton serveur |
 | **Ordinateur (application)** | **Application Sklubot pour Windows, macOS et Linux** : ton Sklubot dans sa propre fenêtre, notifications, icône dans la barre avec les non-lus, et le **Relais intégré** pour que tes bots pilotent ton ordinateur avec ton accord — voir [companion/LISEZMOI.md](companion/LISEZMOI.md) |

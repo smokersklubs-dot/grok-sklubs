@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { api, ApiError, enc, errText } from "../api";
 import { LOCALES, tn, useT, type Key } from "../i18n";
 import { useStore, type AppSection, type Theme } from "../store";
-import type { AuditEntry, CheckinSettings, DeskTestRun, Locale, Policy, SharedPage, SubscriptionUsage, UsageSummary } from "../types";
+import type { AuditEntry, CheckinSettings, ComputerState, DeskTestRun, Locale, Policy, SharedPage, SubscriptionUsage, UsageSummary } from "../types";
 import { ENGINE_BRAND, ENGINE_TOOL } from "../lib/engines";
 import { clockTime, compactNumber, dateTime, dayLabel, initials, money, relTime, shortDate, toolWords } from "../lib/format";
 import { connectorError } from "../lib/connectorError";
@@ -165,7 +165,7 @@ function ComputerSection() {
           <div className="status-row">
             <span className="dot-inline dot-ok" />
             <span>
-              {t(computer.kind === "linux" ? "computer.statusLinux" : "computer.statusBrowser", { open: computer.desktops.filter((d) => d.open).length, max: computer.maxDesktops })}
+              {t(computer.kind === "linux" ? "computer.statusLinux" : "computer.statusBrowser", { open: computer.desktops.filter((d) => d.open).length + (computer.shared ?? []).filter((c) => c.power === "running").length, max: computer.maxDesktops })}
             </span>
           </div>
           <h3 className="pane-heading">{t(computer.kind === "linux" ? "computer.headingLinux" : "computer.headingBrowser")}</h3>
@@ -223,10 +223,70 @@ function ComputerSection() {
           <p className="muted small">
             {tn(computer.kind === "linux" ? "computer.footLinux" : "computer.footBrowser", computer.maxDesktops)}
           </p>
+          {computer.kind === "linux" && <SharedComputers computer={computer} onError={setError} />}
           {computer.kind === "linux" && <DeskTest />}
         </>
       )}
     </>
+  );
+}
+
+/**
+ * Part B: the account's shared computers. Bots set to "shared" (bot settings → Computer) take the first free one; one
+ * bot at a time drives it. Each row: its state, who drives it now, who used it last; put it to sleep, wipe it, remove it.
+ */
+function SharedComputers({ computer, onError }: { computer: ComputerState; onError: (e: string | null) => void }) {
+  const t = useT();
+  const bots = useStore((s) => s.bots);
+  const { loadComputer } = useStore.getState();
+  const list = computer.shared ?? [];
+  const max = computer.maxShared ?? 1;
+  const sharing = Object.values(bots).filter((b) => b.kind === "agent" && !b.access && b.computerMode === "shared");
+  const act = async (fn: () => Promise<unknown>) => {
+    onError(null);
+    try { await fn(); await loadComputer(); } catch (e) { onError(errText(e)); }
+  };
+  const names = (ids: string[]) => ids.map((id) => bots[id]?.name).filter(Boolean).join(", ");
+  return (
+    <div className="shared-computers">
+      <h3 className="pane-heading">{t("shared.heading")}</h3>
+      <p className="muted small">{t("shared.intro")}</p>
+      <p className="muted small">{sharing.length ? t("shared.usedBy", { names: sharing.map((b) => b.name).join(", ") }) : t("shared.nobody")}</p>
+      {list.length === 0 ? (
+        <p className="muted small">{t("shared.none")}</p>
+      ) : (
+        <ul className="list">
+          {list.map((c) => {
+            const driver = c.busyWith ? bots[c.busyWith] : null;
+            return (
+              <li key={c.id} className="list-row is-card">
+                <span className="logo-tile" aria-hidden><Icon name="monitor" size={16} /></span>
+                <div className="list-row-text">
+                  <span className="list-row-title">
+                    {t("shared.name", { name: c.name })}
+                    <span className={`chip ${c.busyWith ? "state-working" : ""}`}>{c.busyWith ? t("shared.busy", { name: driver?.name ?? "?" }) : c.power === "running" ? t("shared.free") : c.power === "asleep" ? t("computer.chipAsleep") : t("shared.notMade")}</span>
+                  </span>
+                  <span className="list-row-sub truncate">{c.lastBots.length ? t("shared.last", { names: names(c.lastBots) }) : t("shared.neverUsed")}</span>
+                </div>
+                {c.power === "running" && !c.busyWith && (
+                  <button type="button" className="btn btn-small" onClick={() => void act(() => api("POST", `/computer/shared/${enc(c.id)}/sleep`))}>{t("computer.sleep")}</button>
+                )}
+                <ConfirmButton className="btn btn-small" label={t("computer.erase")} confirmLabel={t("shared.eraseConfirm")} onConfirm={() => act(() => api("POST", `/computer/shared/${enc(c.id)}/reset`))} />
+                {list.length > 1 && (
+                  <ConfirmButton className="btn btn-small btn-danger" label={t("shared.remove")} confirmLabel={t("shared.removeConfirm")} onConfirm={() => act(() => api("DELETE", `/computer/shared/${enc(c.id)}`))} />
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      <div className="row-gap">
+        <button type="button" className="btn btn-small" disabled={list.length >= max} onClick={() => void act(() => api("POST", "/computer/shared"))}>
+          <Icon name="plus" size={12} /> {t("shared.add")}
+        </button>
+        <span className="muted small">{t("shared.count", { n: list.length, max })}</span>
+      </div>
+    </div>
   );
 }
 
@@ -239,8 +299,10 @@ function DeskTest() {
   const [run, setRun] = useState<DeskTestRun | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
+  // The desk test is the server owner's (the earliest account): for anyone else the server answers 403, and it is hidden.
+  const [allowed, setAllowed] = useState(true);
   useEffect(() => {
-    api<{ run: DeskTestRun | null }>("GET", "/computer/desk-test").then((r) => setRun(r.run), () => undefined);
+    api<{ run: DeskTestRun | null }>("GET", "/computer/desk-test").then((r) => setRun(r.run), (e) => { if (e instanceof ApiError && e.status === 403) setAllowed(false); });
   }, []);
   // While it runs, the result is refreshed every 2 s.
   useEffect(() => {
@@ -263,6 +325,7 @@ function DeskTest() {
   };
   const running = run?.status === "running";
   const failed = run?.checks.filter((c) => !c.ok).length ?? 0;
+  if (!allowed) return null;
   return (
     <div className="desk-test">
       <h3 className="pane-heading">{t("desk.title")}</h3>
