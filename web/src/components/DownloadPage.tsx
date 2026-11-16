@@ -62,7 +62,7 @@ export function DownloadPage() {
     if (target === "ios") return null;
     if (target === "android") {
       if (!data?.android) return <a className="btn btn-small" href={releases} target="_blank" rel="noopener noreferrer"><Icon name="external" size={14} /> {t("dl.releases")}</a>;
-      return <a className={`btn btn-small ${os === "android" ? "btn-accent" : ""}`} href={data.android.url} download="sklubot.apk"><Icon name="download" size={14} /> {t("dl.file.apk")} · {mb(data.android.size)}</a>;
+      return <a className={`btn btn-small ${os === "android" ? "btn-accent" : ""}`} href={data.android.url} download={data.android.name ?? "sklubot.apk"}><Icon name="download" size={14} /> {t("dl.file.apk")}{data.android.version ? ` ${data.android.version}` : ""} · {mb(data.android.size)}</a>;
     }
     const files = (data?.desktop ?? []).filter((f) => f.os === target);
     return (

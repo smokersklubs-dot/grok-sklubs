@@ -75,3 +75,12 @@ test("GitHub release files fill in what this server lacks; a local copy of the s
   const relay = relayDownloads(dir, [gh("Sklubot-1.0.0-win.exe")]);
   assert.ok(relay.files.some((f) => f.name === "Sklubot-1.0.0-win.exe" && f.url.startsWith("https://github.com/")));
 });
+
+test("the native Android app attached to a release replaces the server's older APK, newest version first", () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "sklubot-dl-apk-"));
+  writeFileSync(path.join(dir, "sklubot.apk"), Buffer.alloc(10));
+  const gh = (name: string) => ({ name, url: `https://github.com/smokersklubs-dot/grok-sklubs/releases/download/desktop-v1.0.0/${name}`, size: 75 });
+  const d = appDownloads(dir, [gh("sklubot-complet-1.0.0.apk"), gh("sklubot-complet-1.1.0.apk"), gh("sklubot-store-1.1.0.apk")]);
+  assert.deepEqual(d.android, { url: gh("sklubot-complet-1.1.0.apk").url, size: 75, version: "1.1.0", name: "sklubot-complet-1.1.0.apk" });
+  assert.deepEqual(appDownloads(dir, []).android, { url: "/download/sklubot.apk", size: 10 });
+});

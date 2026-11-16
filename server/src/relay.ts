@@ -799,6 +799,10 @@ export function relayDownloads(dir = path.join(config.webDist, "download"), rele
 /** Sklubot-1.2.0-win.exe, Sklubot-1.2.0-mac.dmg, Sklubot-1.2.0-linux.AppImage… (companion/package.json artifactName). */
 const DESKTOP_FILE = /^Sklubot-(\d+)\.(\d+)\.(\d+)-(win|mac|linux)\.(exe|zip|dmg|AppImage|deb)$/;
 const OS_OF = { win: "windows", mac: "mac", linux: "linux" } as const;
+/** The native Android app, complete edition (mobile/: sklubot-complet-<version>.apk), attached to a GitHub release. */
+const ANDROID_FILE = /^sklubot-complet-(\d+)\.(\d+)\.(\d+)\.apk$/;
+/** Release tags whose files the download page offers: the desktop workflow's, or one made by hand for the phone app. */
+const RELEASE_TAG = /^(desktop|android|app)-v/;
 
 /**
  * Everything the public download page (/telecharger) lists: the Android app when this server has it, the newest
@@ -826,13 +830,21 @@ export function appDownloads(dir = path.join(config.webDist, "download"), releas
   }
   const desktop = [...best.values()].map(({ rank: _rank, ...f }) => f).sort((a, b) => a.name.localeCompare(b.name));
   let android: AppDownloads["android"] = null;
-  try { const st = statSync(path.join(dir, "sklubot.apk")); if (st.isFile()) android = { url: "/download/sklubot.apk", size: st.size }; } catch { /* not on this server */ }
+  // The native app attached to a release (newest version) replaces the older WebView app this server may serve.
+  let apkRank = -1;
+  for (const e of released) {
+    const m = ANDROID_FILE.exec(e.name);
+    if (!m) continue;
+    const rank = Number(m[1]) * 1e8 + Number(m[2]) * 1e4 + Number(m[3]);
+    if (rank > apkRank) { apkRank = rank; android = { url: e.url, size: e.size, version: `${m[1]}.${m[2]}.${m[3]}`, name: e.name }; }
+  }
+  if (!android) try { const st = statSync(path.join(dir, "sklubot.apk")); if (st.isFile()) android = { url: "/download/sklubot.apk", size: st.size }; } catch { /* not on this server */ }
   return { android, desktop, releasesUrl: RELEASES_URL };
 }
 
 /**
- * Desktop builds attached to this project's public GitHub releases (tags "desktop-v…", made by the desktop
- * workflow): the download page links to them when this server has no copy of its own. Listed with GitHub's
+ * Desktop builds and the Android app attached to this project's public GitHub releases (tags "desktop-v…" made by
+ * the desktop workflow, or "android-v…" / "app-v…"): the download page links to them when this server has no copy of its own. Listed with GitHub's
  * "List releases" endpoint (https://docs.github.com/en/rest/releases/releases#list-releases): each asset has
  * name, size and browser_download_url. Refreshed in the background at most every 15 minutes; a failure keeps the
  * last list. RELEASE_DOWNLOADS=0 turns it off.
@@ -852,10 +864,10 @@ export function releasedDesktopFiles(): ReleasedFile[] {
         const list = (await res.json()) as { tag_name?: string; draft?: boolean; prerelease?: boolean; assets?: { name?: string; size?: number; browser_download_url?: string }[] }[];
         const files: ReleasedFile[] = [];
         for (const r of Array.isArray(list) ? list : []) {
-          if (r.draft || r.prerelease || !String(r.tag_name ?? "").startsWith("desktop-v")) continue;
+          if (r.draft || r.prerelease || !RELEASE_TAG.test(String(r.tag_name ?? ""))) continue;
           for (const a of r.assets ?? []) {
             const url = String(a.browser_download_url ?? "");
-            if (a.name && DESKTOP_FILE.test(a.name) && url.startsWith("https://github.com/")) files.push({ name: a.name, url, size: Number(a.size) || 0 });
+            if (a.name && (DESKTOP_FILE.test(a.name) || ANDROID_FILE.test(a.name)) && url.startsWith("https://github.com/")) files.push({ name: a.name, url, size: Number(a.size) || 0 });
           }
         }
         releasedFiles = files;

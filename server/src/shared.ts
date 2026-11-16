@@ -653,7 +653,7 @@ export interface RelayDownloads { files: { name: string; url: string; platform: 
 /** One Sklubot desktop build served under /download/ (named Sklubot-<version>-<os>.<ext>). */
 export interface DesktopDownload { name: string; url: string; os: "windows" | "mac" | "linux"; kind: "exe" | "zip" | "dmg" | "AppImage" | "deb"; size: number; version: string }
 /** The public download page (/telecharger): Android app, desktop builds on this server, and the releases page. */
-export interface AppDownloads { android: { url: string; size: number } | null; desktop: DesktopDownload[]; releasesUrl: string }
+export interface AppDownloads { android: { url: string; size: number; version?: string; name?: string } | null; desktop: DesktopDownload[]; releasesUrl: string }
 
 // ── Wave 6 ──────────────────────────────────────────────────────────────────
 /**
