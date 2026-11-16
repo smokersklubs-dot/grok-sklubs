@@ -5,6 +5,7 @@ import { useStore, type AppSection, type Theme } from "../store";
 import type { AuditEntry, CheckinSettings, DeskTestRun, Locale, Policy, SharedPage, SubscriptionUsage, UsageSummary } from "../types";
 import { ENGINE_BRAND, ENGINE_TOOL } from "../lib/engines";
 import { clockTime, compactNumber, dateTime, dayLabel, initials, money, relTime, shortDate, toolWords } from "../lib/format";
+import { connectorError } from "../lib/connectorError";
 import { BotAvatar } from "./Avatar";
 import { Icon, type IconName } from "./Icon";
 import { ConfirmButton, CopyButton, Empty, ErrorNote, IconButton, Loading, Toggle, useDialogFocus, useEscape, useTick } from "./ui";
@@ -407,7 +408,7 @@ function ConnectorsSection() {
               <span className="logo-tile">{(Array.from(c.name.trim())[0] ?? "?").toUpperCase()}</span>
               <div className="list-row-text">
                 <span className="list-row-title">{c.name}</span>
-                <span className="list-row-sub truncate">{c.status === "error" ? c.error || t("connector.cantConnect") : `${tn("count.tool", c.tools.length)} · ${c.url}`}</span>
+                <span className="list-row-sub truncate">{c.status === "error" ? connectorError(c, t, t("connector.cantConnect")) : `${tn("count.tool", c.tools.length)} · ${c.url}`}</span>
               </div>
               <span className={`chip state-${c.status}`}>{t(`connector.status.${c.status}`)}</span>
             </li>

@@ -420,6 +420,8 @@ export interface Connector {
   /** "needs_auth": an OAuth app that is not signed in, or whose sign-in could not be renewed. */
   status: "ready" | "error" | "connecting" | "needs_auth";
   error: string | null; tools: { name: string; description: string; readOnly: boolean }[];
+  /** The HTTP status the app answered with when it refused the connection (401 wrong key, 404 wrong address...), so the page can explain it in the user's language. */
+  errorStatus?: number;
   /** OAuth apps only. Tokens themselves never leave the server. */
   oauth?: { signedIn: boolean; customClient: boolean };
 }

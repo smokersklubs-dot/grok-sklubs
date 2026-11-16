@@ -22,7 +22,7 @@ import { fetchProblem, guardedFetch } from "./net.js";
  */
 
 interface LiveConnector { client: Client; provider: ConnectorOAuth | null; tools: { name: string; description: string; readOnly: boolean; schema: ToolSpec["inputSchema"] }[] }
-interface Entry { record: ConnectorRecord; live: LiveConnector | null; error: string | null; connecting: Promise<void> | null; needsAuth: boolean; failedAt?: number }
+interface Entry { record: ConnectorRecord; live: LiveConnector | null; error: string | null; connecting: Promise<void> | null; needsAuth: boolean; failedAt?: number; errorStatus?: number }
 interface ConnectorRecord { id: string; userId: string; name: string; url: string; tokenEnc: string | null; auth: ConnectorAuth }
 
 const entries = new Map<string, Entry>();
@@ -194,6 +194,11 @@ function connectionProblem(err: unknown): string {
   return "The app could not be reached or did not answer as a tool server.";
 }
 
+/** The HTTP status of a refused connection, when the app gave one (never its error text). */
+export function connectionStatus(err: unknown): number | undefined {
+  return err instanceof StreamableHTTPError && typeof err.code === "number" && err.code >= 400 && err.code <= 599 ? err.code : undefined;
+}
+
 function ensure(record: ConnectorRecord): Entry {
   let entry = entries.get(record.id);
   if (!entry) entries.set(record.id, (entry = { record, live: null, error: null, connecting: null, needsAuth: false }));
@@ -203,7 +208,7 @@ function ensure(record: ConnectorRecord): Entry {
   if (!entry.live && !entry.connecting && !entry.needsAuth && !coolingDown) {
     const e = entry;
     e.connecting = connect(e)
-      .catch((err) => { e.error = connectionProblem(err); e.failedAt = Date.now(); })
+      .catch((err) => { e.error = connectionProblem(err); e.errorStatus = connectionStatus(err); e.failedAt = Date.now(); })
       .finally(() => { e.connecting = null; emit(record.userId, { type: "connectors" }); });
   }
   return entry;
@@ -214,6 +219,7 @@ const view = (e: Entry): Connector => {
   return {
     id: e.record.id, name: e.record.name, url: e.record.url, hasToken: !!e.record.tokenEnc, auth: e.record.auth,
     status: e.live ? "ready" : e.connecting ? "connecting" : e.needsAuth ? "needs_auth" : "error", error: e.live || e.needsAuth ? null : e.error,
+    ...(!e.live && !e.needsAuth && e.error && e.errorStatus ? { errorStatus: e.errorStatus } : {}),
     tools: (e.live?.tools ?? []).map(({ name, description, readOnly }) => ({ name, description, readOnly })),
     ...(oauth ? { oauth: { signedIn: !!oauth.tokens, customClient: !!oauth.manualClient } } : {}),
   };

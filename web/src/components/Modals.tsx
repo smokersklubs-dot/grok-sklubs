@@ -5,6 +5,7 @@ import { sortedBots, useStore } from "../store";
 import { DEFAULT_CHARACTER } from "../types";
 import type { AvatarColor, AvatarShape, Bot, BotMode, CatalogApp, Character as CharacterLook, Connector, SearchHit } from "../types";
 import { botTitle, relTime } from "../lib/format";
+import { connectorError } from "../lib/connectorError";
 import { openSignInWindow, onSignInDone, startSignIn } from "../lib/oauth";
 import { Avatar, BotAvatar } from "./Avatar";
 import { AccessoryChips, CharacterStage, EyeChips, JoyToggles, LookPicker, TypeCards } from "./CharacterEditor";
@@ -323,7 +324,7 @@ function ConnectorRow({ c }: { c: Connector }) {
             <span className={`chip state-${c.status}`}>{t(`connector.status.${c.status}`)}</span>
           </span>
           <span className="list-row-sub truncate" title={c.url}>{c.url}{credential}</span>
-          {c.status === "error" && <span className="list-row-sub is-error">{c.error || t("connector.unreachable")}</span>}
+          {c.status === "error" && <span className="list-row-sub is-error">{connectorError(c, t, t("connector.unreachable"))}</span>}
         </div>
         {oauth && (needsAuth || c.status === "error") ? (
           <button type="button" className="btn btn-small btn-primary" disabled={busy || (clientForm !== null && !clientId.trim())} onClick={() => void signIn()} aria-label={t("connector.signInName", { name: c.name })}>
