@@ -34,7 +34,7 @@ export function TasksScreen() {
   const openCount = tasks?.filter((x) => x.state !== "done").length ?? 0;
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
-      <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
+      <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <Text accessibilityRole="header" style={[text.h1, { color: c.text }]}>{t("tasks.title")}</Text>
         <Segmented label={t("tasks.title")} value={filter} onChange={setFilter} options={[{ id: "open", label: openCount ? `${t("tasks.filter.open")} (${openCount})` : t("tasks.filter.open") }, { id: "done", label: t("tasks.filter.done") }, { id: "all", label: t("tasks.filter.all") }]} />
       </View>
@@ -42,20 +42,22 @@ export function TasksScreen() {
         <FlatList
           data={shown}
           keyExtractor={(x) => x.id}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); await useStore.getState().loadTasks(); setRefreshing(false); }} colors={[c.brand]} tintColor={c.text2} />}
-          contentContainerStyle={{ padding: 16, gap: 10, flexGrow: 1 }}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); await useStore.getState().loadTasks(); setRefreshing(false); }} colors={[c.brand]} tintColor={c.brand} />}
+          contentContainerStyle={{ paddingHorizontal: 14, paddingTop: 12, paddingBottom: 28, gap: 11, flexGrow: 1 }}
           ListEmptyComponent={<Empty icon="tasks" title={t(filter === "done" ? "tasks.emptyDoneTitle" : "tasks.emptyOpenTitle")} text={t(filter === "done" ? "tasks.emptyDoneText" : "tasks.emptyOpenText")} />}
           renderItem={({ item }) => {
             const bot = bots[item.botId];
             return (
-              <Pressable accessibilityRole="button" disabled={!bot} onPress={() => { tap(); if (bot) nav.navigate("Chat", { botId: bot.id }); }} style={({ pressed }) => [styles.task, { backgroundColor: pressed ? c.surface2 : c.surface, borderColor: c.border }]}>
-                <Icon name={item.state === "done" ? "check" : "clock"} size={20} color={item.state === "done" ? c.ok : item.state === "needs_input" ? c.warn : c.info} />
-                <View style={{ flex: 1, gap: 3 }}>
-                  <Text style={{ color: c.text, fontSize: 16, fontWeight: "500" }}>{item.title}</Text>
-                  {item.note ? <Text numberOfLines={3} style={{ color: c.text2, fontSize: 14 }}>{item.note}</Text> : null}
+              <Pressable accessibilityRole="button" disabled={!bot} onPress={() => { tap(); if (bot) nav.navigate("Chat", { botId: bot.id }); }} style={({ pressed }) => [styles.task, { backgroundColor: pressed ? c.surface2 : c.surface, borderColor: c.border, opacity: pressed ? 0.94 : 1 }]}>
+                <View style={[styles.taskIcon, { backgroundColor: item.state === "done" ? c.okSoft : item.state === "needs_input" ? c.warnSoft : c.infoSoft }]}>
+                  <Icon name={item.state === "done" ? "check" : "clock"} size={19} color={item.state === "done" ? c.ok : item.state === "needs_input" ? c.warn : c.info} />
+                </View>
+                <View style={{ flex: 1, gap: 5, minWidth: 0 }}>
+                  <Text style={{ color: c.text, fontSize: 15, fontWeight: "700" }}>{item.title}</Text>
+                  {item.note ? <Text numberOfLines={3} style={{ color: c.text2, fontSize: 13, lineHeight: 19 }}>{item.note}</Text> : null}
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                    {bot ? <Character bot={bot} size={16} /> : null}
-                    <Text style={{ color: c.text3, fontSize: 13 }}>{bot ? bot.name : t("common.removedBot")} · {relTime(item.updatedAt, t.locale)}</Text>
+                    {bot ? <Character bot={bot} size={17} /> : null}
+                    <Text numberOfLines={1} style={{ color: c.text3, fontSize: 12, flexShrink: 1 }}>{bot ? bot.name : t("common.removedBot")} · {relTime(item.updatedAt, t.locale)}</Text>
                   </View>
                 </View>
                 <Chip label={t(`task.chip.${item.state}` as "task.chip.done")} tone={item.state === "done" ? "ok" : item.state === "needs_input" ? "warn" : "info"} />
@@ -69,6 +71,7 @@ export function TasksScreen() {
 }
 
 const styles = StyleSheet.create({
-  header: { paddingHorizontal: 16, gap: 12, paddingBottom: 4 },
-  task: { flexDirection: "row", gap: 12, padding: 14, borderRadius: 14, borderWidth: 1, alignItems: "flex-start" },
+  header: { paddingHorizontal: 18, gap: 13, paddingBottom: 4 },
+  task: { flexDirection: "row", gap: 11, padding: 14, borderRadius: 18, borderWidth: 1, alignItems: "center", minHeight: 80, elevation: 1 },
+  taskIcon: { width: 36, height: 36, borderRadius: 12, alignItems: "center", justifyContent: "center" },
 });

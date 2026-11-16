@@ -24,20 +24,21 @@ function BotRow({ bot, onPress }: { bot: Bot; onPress: () => void }) {
   const preview = waiting ? `${t("bots.status.attention")} · ${live!.awaiting!.reason}` : working ? t("bots.status.working") : bot.preview ? firstWords(bot.preview, 90) : t("bots.noMessages");
   const label = [bot.name, bot.label, bot.unread ? t.n("bots.unread", bot.unread) : "", waiting ? t("bots.status.attention") : working ? t("bots.status.working") : "", preview].filter(Boolean).join(", ");
   return (
-    <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={() => { tap(); onPress(); }} style={({ pressed }) => [styles.row, { backgroundColor: pressed ? c.surface2 : c.surface }]}>
-      <Character bot={bot} size={46} state={stateOf(live)} />
-      <View style={{ flex: 1, minWidth: 0 }}>
+    <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={() => { tap(); onPress(); }} style={({ pressed }) => [styles.row, { backgroundColor: pressed ? c.surface2 : c.surface, borderColor: c.border, opacity: pressed ? 0.94 : 1 }]}>
+      <Character bot={bot} size={48} state={stateOf(live)} />
+      <View style={{ flex: 1, minWidth: 0, gap: 5 }}>
         <View style={styles.rowTop}>
           <Text numberOfLines={1} style={[styles.name, { color: c.text }]}>{bot.name}</Text>
           {bot.primary ? <Icon name="star" size={13} color={c.warn} /> : null}
           <View style={{ flex: 1 }} />
-          <Text style={{ color: bot.unread ? c.text : c.text3, fontSize: 12 }}>{listTime(bot.lastActivityAt, t.locale)}</Text>
+          <Text style={{ color: bot.unread ? c.text : c.text3, fontSize: 11, fontWeight: "600" }}>{listTime(bot.lastActivityAt, t.locale)}</Text>
         </View>
         <View style={styles.rowTop}>
-          <Text numberOfLines={1} style={{ color: waiting ? c.warn : c.text2, fontSize: 14, flex: 1, fontWeight: bot.unread ? "600" : "400" }}>{preview}</Text>
+          <Text numberOfLines={1} style={{ color: waiting ? c.warn : c.text2, fontSize: 13, flex: 1, fontWeight: bot.unread ? "600" : "400" }}>{preview}</Text>
           {bot.unread ? <View style={[styles.badge, { backgroundColor: c.brand }]}><Text style={styles.badgeText}>{bot.unread > 99 ? "99+" : bot.unread}</Text></View> : null}
         </View>
       </View>
+      <Icon name="chevron" size={17} color={c.text3} />
     </Pressable>
   );
 }
@@ -67,9 +68,9 @@ export function BotsScreen() {
   };
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
-      <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
+      <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <Text accessibilityRole="header" style={[text.h1, { color: c.text }]}>{t("bots.title")}</Text>
-        {!online ? <View style={styles.offline}><Icon name="wifiOff" size={16} color={c.warn} /><Text style={{ color: c.warn, fontSize: 13 }}>{t("api.offline")}</Text></View> : null}
+        {!online ? <View style={styles.offline}><Icon name="wifiOff" size={16} color={c.warn} /><Text style={{ color: c.warn, fontSize: 13, fontWeight: "600" }}>{t("api.offline")}</Text></View> : null}
       </View>
       <RelayOffBanner />
       {error && !Object.keys(bots).length ? <View style={{ padding: 16 }}><ErrorNote>{error}</ErrorNote></View> : null}
@@ -77,12 +78,12 @@ export function BotsScreen() {
         <SectionList
           sections={sections}
           keyExtractor={(b) => b.id}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={c.text2} colors={[c.brand]} />}
-          renderSectionHeader={({ section }) => sections.length > 1 ? <Text style={[styles.section, { color: c.text3, backgroundColor: c.bg }]}>{section.title}</Text> : null}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={c.brand} colors={[c.brand]} />}
+          renderSectionHeader={({ section }) => sections.length > 1 ? <Text style={[styles.section, { color: c.text3 }]}>{section.title}</Text> : null}
           renderItem={({ item }) => <BotRow bot={item} onPress={() => nav.navigate("Chat", { botId: item.id })} />}
-          ItemSeparatorComponent={() => <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: c.border, marginLeft: 74 }} />}
+          ItemSeparatorComponent={() => <View style={{ height: 9 }} />}
           ListEmptyComponent={<Empty icon="bots" text={t("bots.empty")} />}
-          contentContainerStyle={{ paddingBottom: 24 }}
+          contentContainerStyle={{ paddingHorizontal: 13, paddingBottom: 26, paddingTop: 4 }}
           stickySectionHeadersEnabled={false}
         />
       )}
@@ -91,12 +92,12 @@ export function BotsScreen() {
 }
 
 const styles = StyleSheet.create({
-  header: { paddingHorizontal: 18, paddingBottom: 10, gap: 6 },
+  header: { paddingHorizontal: 20, paddingBottom: 12, gap: 7 },
   offline: { flexDirection: "row", alignItems: "center", gap: 6 },
-  section: { fontSize: 12, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.6, paddingHorizontal: 18, paddingTop: 16, paddingBottom: 6 },
-  row: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16, paddingVertical: 12, minHeight: 72 },
+  section: { fontSize: 11, fontWeight: "800", textTransform: "uppercase", letterSpacing: 1, paddingHorizontal: 6, paddingTop: 18, paddingBottom: 9 },
+  row: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 13, paddingVertical: 13, minHeight: 82, borderWidth: 1, borderRadius: 17, elevation: 1 },
   rowTop: { flexDirection: "row", alignItems: "center", gap: 6 },
-  name: { fontSize: 16, fontWeight: "600", flexShrink: 1 },
-  badge: { minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 6, alignItems: "center", justifyContent: "center" },
-  badgeText: { color: "#fff", fontSize: 12, fontWeight: "700" },
+  name: { fontSize: 16, fontWeight: "700", flexShrink: 1, letterSpacing: -0.2 },
+  badge: { minWidth: 21, height: 21, borderRadius: 11, paddingHorizontal: 6, alignItems: "center", justifyContent: "center" },
+  badgeText: { color: "#fff", fontSize: 11, fontWeight: "800" },
 });

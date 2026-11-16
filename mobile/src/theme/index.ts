@@ -1,29 +1,29 @@
 import { useColorScheme } from "react-native";
 import { usePrefs } from "../state/prefs";
 
-/** Sklubot's design tokens (web/src/styles/tokens.css), light and dark. */
+/** Sklubot design system: warm industrial neutrals, precise contrast and a restrained orange accent. */
 const light = {
-  bg: "#f4f2ee", surface: "#ffffff", surface2: "#f3f1ed", surface3: "#e9e6e0",
-  border: "#e4e0d8", borderStrong: "#cdc8bd",
-  text: "#1e2024", text2: "#5a5f67", text3: "#8a8f97",
-  ink: "#23262b", inkFg: "#ffffff",
-  danger: "#c43c3c", dangerSoft: "#fbecec", warn: "#b26a12", warnSoft: "#fbf1df",
-  ok: "#2c8a57", okSoft: "#e6f4ec", info: "#2a6fb8", infoSoft: "#eaf1fa",
-  focus: "#3b76e1", scrim: "rgba(24,22,18,0.38)", brand: "#e2552d",
-  userBubble: "#23262b", userBubbleFg: "#ffffff",
+  bg: "#f5f3ef", surface: "#ffffff", surface2: "#f8f6f2", surface3: "#eeebe5",
+  border: "#e8e3db", borderStrong: "#d5cec2",
+  text: "#202329", text2: "#5e646d", text3: "#858b94",
+  ink: "#202329", inkFg: "#ffffff",
+  danger: "#c43c3c", dangerSoft: "#fbecec", warn: "#a96316", warnSoft: "#fbf1df",
+  ok: "#287c50", okSoft: "#e6f4ec", info: "#2869a9", infoSoft: "#eaf1fa",
+  focus: "#3b76e1", scrim: "rgba(22,24,28,0.46)", brand: "#e2552d",
+  userBubble: "#252a31", userBubbleFg: "#ffffff",
 };
 const dark: typeof light = {
-  bg: "#131416", surface: "#1a1c1f", surface2: "#222528", surface3: "#2c2f33",
-  border: "#2b2e32", borderStrong: "#3d4146",
-  text: "#eceef1", text2: "#a7adb5", text3: "#767c85",
-  ink: "#e8eaee", inkFg: "#17181b",
-  danger: "#ee6b6b", dangerSoft: "#3a2022", warn: "#e0a34a", warnSoft: "#35290f",
-  ok: "#5cc28a", okSoft: "#17301f", info: "#79b0ee", infoSoft: "#1a2a3d",
-  focus: "#7aa7f5", scrim: "rgba(0,0,0,0.58)", brand: "#e2552d",
+  bg: "#101215", surface: "#191d22", surface2: "#20252b", surface3: "#292f36",
+  border: "#2b323a", borderStrong: "#3c4651",
+  text: "#f1f3f5", text2: "#aeb6c0", text3: "#7d8792",
+  ink: "#f1f3f5", inkFg: "#171a1e",
+  danger: "#f07878", dangerSoft: "#3a2022", warn: "#e6ad62", warnSoft: "#35290f",
+  ok: "#69ca94", okSoft: "#17301f", info: "#83b8f0", infoSoft: "#1a2a3d",
+  focus: "#7aa7f5", scrim: "rgba(0,0,0,0.66)", brand: "#f06b45",
   userBubble: "#e8eaee", userBubbleFg: "#17181b",
 };
 export type Colors = typeof light;
-export const radius = { sm: 6, md: 10, lg: 14, xl: 20 };
+export const radius = { sm: 8, md: 13, lg: 18, xl: 24 };
 
 /** Bot colours (web/src/lib/colors.ts). "ink" follows the theme. */
 export const BOT_COLORS: Record<string, string> = {

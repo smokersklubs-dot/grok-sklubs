@@ -10,8 +10,8 @@ import type { ConfigContext, ExpoConfig } from "expo/config";
 
 const variant = process.env.SKLUBOT_VARIANT === "store" ? "store" : "complet";
 const store = variant === "store";
-const VERSION = "1.1.0";
-const VERSION_CODE = 2;
+const VERSION = "1.2.0";
+const VERSION_CODE = 3;
 /** Launcher badge permissions that expo-notifications' badge library declares; the app sets no badge count. */
 const BADGE_PERMISSIONS = [
   "com.sec.android.provider.badge.permission.READ", "com.sec.android.provider.badge.permission.WRITE",
@@ -33,7 +33,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   icon: "./assets/icon.png",
   scheme: "sklubot",
   userInterfaceStyle: "automatic",
-  backgroundColor: "#f4f2ee",
+  backgroundColor: "#f5f3ef",
   ios: {
     bundleIdentifier: "fr.sklubot.app",
     buildNumber: String(VERSION_CODE),
@@ -63,7 +63,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     "expo-sharing",
     "expo-localization",
     "expo-web-browser",
-    ["expo-splash-screen", { image: "./assets/splash-icon.png", imageWidth: 120, backgroundColor: "#f4f2ee", dark: { image: "./assets/splash-icon.png", backgroundColor: "#131416" } }],
+    ["expo-splash-screen", { image: "./assets/splash-icon.png", imageWidth: 120, backgroundColor: "#f5f3ef", dark: { image: "./assets/splash-icon.png", backgroundColor: "#101215" } }],
     "expo-image",
     // The microphone is for voice calls with a bot (modules/sklubot-voice), asked at the first call; not for videos.
     ["expo-image-picker", { microphonePermission: "Sklubot utilise le micro seulement pendant un appel vocal avec un bot.",photosPermission: "Sklubot accède à tes photos seulement quand tu en joins une à un message.", cameraPermission: "Sklubot utilise l’appareil photo seulement quand tu prends une photo pour un bot." }],

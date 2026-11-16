@@ -7,7 +7,7 @@ import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useMemo } from "react";
 import { View } from "react-native";
-import { SafeAreaProvider } from "react-native-safe-area-context";
+import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Icon } from "./src/components/Icon";
 import { useT } from "./src/i18n";
 import { ensurePermission, setBackgroundCheck } from "./src/notify";
@@ -36,13 +36,29 @@ let initialUrlHandled = false;
 function MainTabs() {
   const { c } = useTheme();
   const t = useT();
+  const insets = useSafeAreaInsets();
   const waiting = useStore((s) => Object.values(s.bots).reduce((n, b) => n + (b.unread > 0 || s.live[b.id]?.awaiting ? 1 : 0), 0));
   const openTasks = useStore((s) => s.tasks?.filter((x) => x.state === "needs_input").length ?? 0);
   return (
-    <Tabs.Navigator screenOptions={{ headerShown: false, tabBarActiveTintColor: c.text, tabBarInactiveTintColor: c.text3, tabBarStyle: { backgroundColor: c.surface, borderTopColor: c.border }, tabBarLabelStyle: { fontSize: 12, fontWeight: "600" } }}>
-      <Tabs.Screen name="Bots" component={BotsScreen} options={{ title: t("tabs.bots"), tabBarIcon: ({ color }) => <Icon name="bots" color={color} />, tabBarBadge: waiting || undefined, tabBarBadgeStyle: { backgroundColor: c.brand } }} />
-      <Tabs.Screen name="Tasks" component={TasksScreen} options={{ title: t("tabs.tasks"), tabBarIcon: ({ color }) => <Icon name="tasks" color={color} />, tabBarBadge: openTasks || undefined, tabBarBadgeStyle: { backgroundColor: c.warn } }} />
-      <Tabs.Screen name="Settings" component={SettingsScreen} options={{ title: t("tabs.settings"), tabBarIcon: ({ color }) => <Icon name="settings" color={color} /> }} />
+    <Tabs.Navigator screenOptions={{
+      headerShown: false,
+      tabBarActiveTintColor: c.brand,
+      tabBarInactiveTintColor: c.text3,
+      tabBarStyle: {
+        backgroundColor: c.surface,
+        borderTopColor: c.border,
+        borderTopWidth: 1,
+        height: 62 + insets.bottom,
+        paddingTop: 7,
+        paddingBottom: Math.max(7, insets.bottom),
+        elevation: 12,
+      },
+      tabBarLabelStyle: { fontSize: 11, fontWeight: "700", letterSpacing: 0.15 },
+      tabBarItemStyle: { marginHorizontal: 5, borderRadius: 13 },
+    }}>
+      <Tabs.Screen name="Bots" component={BotsScreen} options={{ title: t("tabs.bots"), tabBarIcon: ({ color }) => <Icon name="bots" color={color} size={21} />, tabBarBadge: waiting || undefined, tabBarBadgeStyle: { backgroundColor: c.brand, color: "#fff", fontWeight: "700" } }} />
+      <Tabs.Screen name="Tasks" component={TasksScreen} options={{ title: t("tabs.tasks"), tabBarIcon: ({ color }) => <Icon name="tasks" color={color} size={21} />, tabBarBadge: openTasks || undefined, tabBarBadgeStyle: { backgroundColor: c.warn, color: "#fff", fontWeight: "700" } }} />
+      <Tabs.Screen name="Settings" component={SettingsScreen} options={{ title: t("tabs.settings"), tabBarIcon: ({ color }) => <Icon name="settings" color={color} size={21} /> }} />
     </Tabs.Navigator>
   );
 }
@@ -103,7 +119,7 @@ export default function App() {
   if (boot === "loading") return <View style={{ flex: 1, backgroundColor: c.bg }} />;
   return (
     <SafeAreaProvider>
-      <StatusBar style={dark ? "light" : "dark"} />
+      <StatusBar style={dark ? "light" : "dark"} backgroundColor={c.bg} />
       <NavigationContainer ref={navRef} theme={navTheme}>
         <Stack.Navigator screenOptions={{ headerShown: false, contentStyle: { backgroundColor: c.bg }, animation: "slide_from_right" }}>
           {boot === "server" ? <Stack.Screen name="Server" component={ServerScreen} /> :
