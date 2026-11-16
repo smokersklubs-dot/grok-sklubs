@@ -8,7 +8,7 @@
         <intent
             android:action="app.sklubot.android.CHANGE_SERVER"
             android:targetClass="app.sklubot.android.MainActivity"
-            android:targetPackage="app.sklubot.android" />
+            android:targetPackage="fr.sklubot.android" />
     </shortcut>
     <shortcut
         android:shortcutId="phone_relay"
@@ -18,6 +18,6 @@
         <intent
             android:action="app.sklubot.android.PHONE_RELAY"
             android:targetClass="app.sklubot.android.MainActivity"
-            android:targetPackage="app.sklubot.android" />
+            android:targetPackage="fr.sklubot.android" />
     </shortcut>
 </shortcuts>
