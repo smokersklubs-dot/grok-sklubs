@@ -1,0 +1,7 @@
+{
+  "name": "sklubot-relay",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Sklubot phone relay (Android): lets the bots the user allows see and drive this phone, with consent and an always-visible Stop. Only in the \"complet\" build; the store build excludes it from autolinking.",
+  "license": "MIT"
+}

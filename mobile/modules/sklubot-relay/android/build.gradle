@@ -1,0 +1,35 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'app.sklubot'
+version = '1.0.0'
+
+android {
+  // The relay code keeps its package (app.sklubot.android.relay) and imports app.sklubot.android.R, as in android/.
+  namespace "app.sklubot.android"
+  defaultConfig {
+    versionCode 1
+    versionName '1.0.0'
+  }
+  testOptions {
+    unitTests.includeAndroidResources = true
+    unitTests.all {
+      it.testLogging { events "passed", "failed", "skipped"; exceptionFormat "full" }
+      // Where the screen tests (ScreensTest, Robolectric) write their pictures.
+      it.systemProperty "screens.dir", System.getProperty("screens.dir", "${buildDir}/screens")
+      it.systemProperty "robolectric.dependency.repo.url", System.getProperty("robolectric.dependency.repo.url", "https://repo1.maven.org/maven2")
+    }
+  }
+}
+
+dependencies {
+  // WebSocket client of the phone relay (outbound only). https://square.github.io/okhttp/ — React Native already ships OkHttp 4.
+  implementation "com.squareup.okhttp3:okhttp:4.12.0"
+  testImplementation "junit:junit:4.13.2"
+  // android.jar only has stubs of org.json: the JVM unit tests use the real implementation.
+  testImplementation "org.json:json:20240303"
+  // Renders the relay's screens on the JVM with real Android graphics (GraphicsMode NATIVE). https://robolectric.org
+  testImplementation "org.robolectric:robolectric:4.14.1"
+}

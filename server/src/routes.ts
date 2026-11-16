@@ -77,6 +77,7 @@ import { adminView, approversOf, botAccess, exportWorkspace, invites, resources,
 import { invalidateAudience } from "./bus.js";
 import { botEmail, mailFor, MailError, receiving as mailReceiving, relays, releaseMail } from "./botmail.js";
 import { onTurnEvent, submitMemberMessage } from "./agent/loop.js";
+import { privacyPage } from "./privacy.js";
 
 type Env = { Variables: { user: UserRecord } };
 export const api = new Hono<Env>();
@@ -153,6 +154,10 @@ site.get("/p/:token", (c) => {
     "content-security-policy": "sandbox allow-scripts allow-popups; default-src 'self' data: blob: https: 'unsafe-inline' 'unsafe-eval'; frame-ancestors 'none'",
   });
 });
+
+/** The apps' privacy policy (stores and visitors read it without a session): French and English. */
+site.get("/confidentialite", (c) => c.html(privacyPage("fr"), 200, { "cache-control": "public, max-age=3600", "x-content-type-options": "nosniff", "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'" }));
+site.get("/privacy", (c) => c.html(privacyPage("en"), 200, { "cache-control": "public, max-age=3600", "x-content-type-options": "nosniff", "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'" }));
 
 /** Sklubot's tools for a bot running on a subscription tool; the caller proves it is that bot's computer. */
 site.post("/mcp/:botId", async (c) => {
