@@ -3,6 +3,7 @@ import { api, errText } from "../api";
 import { t, useT } from "../i18n";
 import { useStore, type Upload } from "../store";
 import type { Bot, Live, Row, SkillRef } from "../types";
+import { findSecrets } from "../../../server/src/shared";
 import { botTitle, fileSize } from "../lib/format";
 import { callPossible, endCall, startCall } from "../lib/call";
 import { canCall, canRecognize, createRecognition, micErrorText, recognitionLang, type Recognition } from "../lib/speech";
@@ -142,7 +143,7 @@ export function Composer({ bot, live }: { bot: Bot; live: Live }) {
   const focusTick = useStore((s) => s.focusTick);
   const callBotId = useStore((s) => s.call?.botId ?? null);
   const anyModal = useStore((s) => !!(s.modal || s.botSettings || s.appSettings || s.viewerBotId));
-  const { setDraft, addRows, openModal, resetConversation, showToast, attachFiles, removeUpload, clearUploads } = useStore.getState();
+  const { setDraft, addRows, openModal, resetConversation, showToast, attachFiles, removeUpload, clearUploads, openAppSettings } = useStore.getState();
   const t = useT();
   const [sending, setSending] = useState(false);
   const [stopping, setStopping] = useState(false);
@@ -292,6 +293,8 @@ export function Composer({ bot, live }: { bot: Bot; live: Live }) {
     };
 
   const placeholder = t("composer.placeholder", { name: botTitle(bot) });
+  // Something that looks like a key or a password: the server will mask it before the bot sees it (pastedsecrets.ts).
+  const looksSecret = text.length >= 8 && findSecrets(text).length > 0;
 
   return (
     <div
@@ -321,6 +324,13 @@ export function Composer({ bot, live }: { bot: Bot; live: Live }) {
       }}
     >
       <ErrorNote onDismiss={() => setError(null)}>{error}</ErrorNote>
+      {looksSecret && (
+        <div className="secret-warn" role="status">
+          <Icon name="lock" size={15} />
+          <span>{t("composer.secretWarn")} <span className="muted">{t("composer.secretWarnHint")}</span></span>
+          <button type="button" className="btn btn-small btn-ghost" onClick={() => openAppSettings("vault")}>{t("composer.secretVault")}</button>
+        </div>
+      )}
       {uploads.length > 0 && (
         <ul className="uploads" aria-label={t("composer.attachments")}>
           {uploads.map((u) => (

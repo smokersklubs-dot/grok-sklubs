@@ -1,4 +1,4 @@
-import type { SensitiveCategory } from "../shared.js";
+import { findSecrets, type SensitiveCategory } from "../shared.js";
 import { rows, settings, type BotRecord } from "../store.js";
 import { normalize, typedByUser } from "./grounding.js";
 
@@ -49,6 +49,8 @@ function luhn(digits: string): boolean {
 
 /** Lines that look like a password, a key or a card number: never remembered, never imported. */
 export function looksSecret(text: string): boolean {
+  // The formats a pasted message is masked for (shared.ts findSecrets): provider keys, tokens, "password: …".
+  if (findSecrets(text).length) return true;
   if (/\b(password|passwd|mot de passe|mdp|passcode|code pin|pin code|api[_ -]?key|cl[eé] (d'?)?api|secret|token)\b[^\n:=]{0,30}[:=]\s*\S+/i.test(text)) return true;
   for (const m of text.matchAll(/\b(?:\d[ -]?){13,19}\b/g)) { const d = m[0].replace(/\D/g, ""); if (d.length >= 13 && d.length <= 19 && luhn(d)) return true; }
   if (/\b(sk|pk|rk|ghp|gho|xox[abp]|AKIA)[-_A-Za-z0-9]{12,}\b/.test(text)) return true;

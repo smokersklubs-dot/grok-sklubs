@@ -183,7 +183,7 @@ export async function review(turn: Turn, call: ToolUseBlock, g: Grounding, words
   const ref = reviewerModel(turn.user.id, turn.bot.model);
   if (!ref) return null;
   let resolved;
-  try { resolved = resolveModel(ref); } catch { return null; }
+  try { resolved = resolveModel(ref, turn.user.id); } catch { return null; }
   if (!resolved.provider.available()) return null;
   const args = withoutQuote(call.input);
   const facts = actionFacts(actionName(turn, call.name, call.input), args);

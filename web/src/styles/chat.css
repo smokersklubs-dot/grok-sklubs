@@ -471,3 +471,7 @@ button.captions:hover { box-shadow: 0 0 0 1px var(--border-strong); }
 .attach-preview { display: grid; place-items: center; width: 34px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); color: var(--text-2); cursor: pointer; }
 .attach-preview:hover { color: var(--accent); border-color: var(--accent); }
 @media (max-width: 900px) { .preview-panel { position: absolute; inset: 0; width: auto; z-index: 20; } .chat-body-row { position: relative; } }
+/* A key or a password in the draft: it will be masked before the bot sees it. */
+.secret-warn { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 10px; border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent); background: var(--warn-soft); color: var(--text, inherit); font-size: 13px; line-height: 1.35; }
+.secret-warn > span { flex: 1; min-width: 0; }
+.secret-warn .btn { flex: none; }

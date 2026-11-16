@@ -1,6 +1,7 @@
 import { seal, unseal } from "./auth.js";
 import { getLive } from "./bus.js";
 import { decideApproval, interrupt, onTurnEvent, submitUserMessage } from "./agent/loop.js";
+import { holdAndOffer, screen as screenSecrets } from "./pastedsecrets.js";
 import { config } from "./config.js";
 import { q } from "./db.js";
 import { tr } from "./i18n.js";
@@ -124,8 +125,11 @@ async function receive(botId: string, chatId: string, text: string, token: strin
   if (cmd && COMMANDS[cmd]) { await reply(commandAnswer(bot, COMMANDS[cmd])); audit(bot.userId, "channel", `${bot.name}: Telegram /${cmd}`, bot.id); return; }
   // Received while the bot works: 👀, so the user knows it was seen and will be folded into the work.
   if (messageId && getLive(bot.id).running) void call(token, "setMessageReaction", { chat_id: chatId, message_id: messageId, reaction: [{ type: "emoji", emoji: "👀" }] }).catch(() => {});
-  rows.append(bot, { kind: "message", role: "user", text });
-  submitUserMessage(bot, text, false, [], "telegram");
+  // A pasted secret is masked before it is stored or sent to a model; the card to save it waits in the web chat.
+  const screened = screenSecrets(text, users.localeOf(bot.userId));
+  rows.append(bot, { kind: "message", role: "user", text: screened.text });
+  if (screened.secrets.length) holdAndOffer(bot, bot.userId, screened.secrets);
+  submitUserMessage(bot, screened.text, false, [], "telegram");
 }
 
 /** A channel command, answered by the server from its own records (no model call). */

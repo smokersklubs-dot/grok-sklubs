@@ -142,8 +142,9 @@ const starting = new Map<string, Promise<void>>();
 let changed: (userId: string) => void = () => {};
 export const onMachinesChanged = (fn: (userId: string) => void) => { changed = fn; };
 /** Told when a computer was just started (from asleep or made anew), e.g. to check its disk (disk.ts). */
-let woken: (botId: string, userId: string) => void = () => {};
-export const onComputerWoken = (fn: (botId: string, userId: string) => void) => { woken = fn; };
+const wokenListeners: ((botId: string, userId: string) => void)[] = [];
+const woken = (botId: string, userId: string) => { for (const fn of wokenListeners) { try { fn(botId, userId); } catch (err) { console.error("[woken]", err); } } };
+export const onComputerWoken = (fn: (botId: string, userId: string) => void) => { wokenListeners.push(fn); };
 
 export async function powerOf(botId: string): Promise<Power> {
   const r = await docker(["inspect", "--format", "{{.State.Running}}", containerName(botId)], { timeoutMs: 8000 });

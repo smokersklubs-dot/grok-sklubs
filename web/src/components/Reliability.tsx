@@ -4,15 +4,16 @@ import { useT } from "../i18n";
 import type { ModelOption, ReliabilitySettings } from "../types";
 import { Icon } from "./Icon";
 import { ErrorNote, IconButton, Loading } from "./ui";
+import { ApiProvidersSection } from "./Wave9";
 
 /** The models offered on this server (API models only: subscription engines run a different kind of turn). */
-export function useApiModels() {
+export function useApiModels(reload = 0) {
   const [models, setModels] = useState<ModelOption[] | null>(null);
   useEffect(() => {
     let dead = false;
     api<{ models: ModelOption[] }>("GET", "/models").then((r) => !dead && setModels(r.models.filter((m) => m.kind === "api")), () => !dead && setModels([]));
     return () => { dead = true; };
-  }, []);
+  }, [reload]);
   return models;
 }
 
@@ -65,7 +66,8 @@ const CONTINUATIONS = [0, 1, 2, 3, 4, 5];
 /** Settings → Models: the account's backup models and how hard a turn tries before giving up. */
 export function ModelsSection() {
   const t = useT();
-  const models = useApiModels();
+  const [reload, setReload] = useState(0);
+  const models = useApiModels(reload);
   const [state, setState] = useState<ReliabilitySettings | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -89,6 +91,7 @@ export function ModelsSection() {
       <h2>{t("settings.section.models")}</h2>
       <p className="muted">{t("models.intro")}</p>
       <ErrorNote onDismiss={() => setError(null)}>{error}</ErrorNote>
+      <ApiProvidersSection onChanged={() => setReload((n) => n + 1)} />
       {!state || !models ? <Loading /> : (
         <>
           <h3 className="pane-heading">{t("models.fallbacks")}</h3>

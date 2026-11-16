@@ -5,6 +5,12 @@ import type { Locale } from "./shared.js";
  * English is the key; French is looked up here. Anything missing falls back to English.
  */
 const FR: Record<string, string> = {
+  // A subscription turn that failed goes on with a backup API model (loop.ts engineFallback).
+  "{tool} failed ({detail}). I am carrying on with the backup model {next}.": "{tool} a échoué ({detail}). Je continue avec le modèle de secours {next}.",
+  // A secret pasted in a message (pastedsecrets.ts) and the files a turn changed (snapshots.ts).
+  "[secret hidden]": "[secret masqué]",
+  "A secret was masked in your message": "Un secret a été masqué dans ton message",
+  "Files changed: {n}": "Fichiers modifiés : {n}",
   // Local tool servers (localtools.ts) and the bot's proposal card (local_tool_server_add).
   "Local tool servers run on the bot's own Linux computer, and this Sklubot server gives bots no Linux computer (Docker is not available). Ask whoever runs the server to enable Linux computers.":
     "Les serveurs d'outils locaux tournent sur l'ordinateur Linux du bot, et ce serveur Sklubot ne donne pas d'ordinateur Linux aux bots (Docker n'est pas disponible). Demande à la personne qui gère le serveur d'activer les ordinateurs Linux.",

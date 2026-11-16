@@ -5,6 +5,7 @@ import { originAllowed, parseCookies, SESSION_COOKIE, userForToken } from "../au
 import { getLive, subscribe } from "../bus.js";
 import { callEnded, callStarted } from "../calls.js";
 import { interrupt, submitMemberMessage, submitUserMessage } from "../agent/loop.js";
+import { holdAndOffer, screen as screenSecrets } from "../pastedsecrets.js";
 import { bots, rows, type BotRecord, type UserRecord } from "../store.js";
 import { botAccess } from "../workspaces.js";
 import { Vad, wavDurationMs, wavOf } from "./vad.js";
@@ -294,14 +295,18 @@ function runCall(ws: WebSocket, bot: BotRecord, user: UserRecord, member: { role
       const current = bots.byId(bot.id)!;
       session = new VoiceSession({
         send, stt, tts, partials: settings.stt.provider === "whisper-cpp", bargeIn: settings.bargeIn,
-        submit: (text) => {
+        submit: (said) => {
           const b = bots.byId(bot.id);
           if (!b) return;
+          // A secret spoken aloud (a password read out) is masked like a typed one; only the owner is offered the vault.
+          const screened = screenSecrets(said, user.locale);
+          const text = screened.text;
           if (member) {
             rows.append(b, { kind: "message", role: "user", text, origin: { kind: "member", id: user.id, name: user.name } });
             submitMemberMessage(b, text, { id: user.id, name: user.name, role: member.role, workspace: member.workspace }, true);
           } else {
             rows.append(b, { kind: "message", role: "user", text, origin: { kind: "voice", id: "", name: "Voice" } });
+            if (screened.secrets.length) holdAndOffer(b, user.id, screened.secrets);
             submitUserMessage(b, text, true);
           }
         },

@@ -104,7 +104,7 @@ export async function preparationPass(botId: string, force = false): Promise<Pas
   const ref = passModel(bot);
   if (!ref) return { status: "skipped", reason: "no model" };
   let resolved;
-  try { resolved = resolveModel(ref); } catch { return { status: "skipped", reason: "no model" }; }
+  try { resolved = resolveModel(ref, bot.userId); } catch { return { status: "skipped", reason: "no model" }; }
   bump(bot.id, { pass: true });
   const user = users.byId(bot.userId)!;
   // Read-only tools only: reads of the user's connected apps, and the bot's own memory.
@@ -119,7 +119,7 @@ export async function preparationPass(botId: string, force = false): Promise<Pas
     if (stats(bot.id).spent >= bot.nudges.budgetUsd) return { status: "skipped", reason: "daily budget" };
     const res = await resolved.provider.runTurn({ model: resolved.model, system, tools, effort: "low", maxTokens: 2000, messages, signal: AbortSignal.timeout(120_000) });
     record(user.id, bot.id, res.model, res.usage);
-    bump(bot.id, { spent: costOf(res.model, res.usage) });
+    bump(bot.id, { spent: costOf(res.model, res.usage, user.id) });
     messages.push({ role: "assistant", content: res.content });
     const calls = res.content.filter((b): b is ToolUseBlock => b.type === "tool_use");
     if (!calls.length) return { status: "nothing", reason: "nothing worth raising" };

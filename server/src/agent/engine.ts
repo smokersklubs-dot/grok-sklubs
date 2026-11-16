@@ -477,6 +477,8 @@ class Transcript {
     this.lastFailure = clip(text, 300);
   }
   failed = false;
+  /** The tool itself ended on this failure (not a passing error item): a backup model may take the turn over. */
+  fatal = false;
   lastFailure = "";
 }
 
@@ -529,15 +531,21 @@ export class EngineTimeout extends Error {
 }
 export const isEngineTimeout = (reason: unknown): reason is EngineTimeout => reason instanceof EngineTimeout;
 
-export async function runEngineTurn(turn: Turn, prompt: string, attachments: Attachment[]) {
+/**
+ * How a subscription turn ended, for a backup model that may take over (loop.ts): `failure` is what the tool said when it
+ * failed (empty: it did not); `steps` are the chat rows of what it did meanwhile (never done again by the backup).
+ */
+export interface EngineOutcome { failure: string; steps: number[] }
+
+export async function runEngineTurn(turn: Turn, prompt: string, attachments: Attachment[]): Promise<EngineOutcome> {
   const { bot } = turn;
   await ensureComputer(bot);
   // Busy for the whole turn: the computer is never put to sleep under the tool (to make room for another, or as idle).
   const release = host.hold?.(bot) ?? (() => {});
-  try { await engineTurnOn(turn, prompt, attachments); } finally { release(); }
+  try { return await engineTurnOn(turn, prompt, attachments); } finally { release(); }
 }
 
-async function engineTurnOn(turn: Turn, prompt: string, attachments: Attachment[]) {
+async function engineTurnOn(turn: Turn, prompt: string, attachments: Attachment[]): Promise<EngineOutcome> {
   const { bot } = turn;
   // B-2: before the message goes to the engine, the screen must be ready (computer up, look applied, the bot's own
   // browser answering). Otherwise a tool that finds no browser may start one of its own, out of the user's sight.
@@ -567,6 +575,7 @@ async function engineTurnOn(turn: Turn, prompt: string, attachments: Attachment[
     else noteRuntime(bot.id, "ready");
   }
   if (turn.signal.aborted) throw new Error("aborted");
+  return { failure: t.fatal ? t.lastFailure || "the tool failed" : "", steps: t.steps.map((s) => s.seq) };
 }
 
 /**
@@ -632,7 +641,7 @@ async function claudeTurn(turn: Turn, t: Transcript, prompt: string, token: stri
   if (missingSession && !retried) { dropSession(bot.id, turn.generation, "claude-code"); return claudeTurn(turn, t, prompt, token, true); }
   if (turn.signal.aborted) return;
   if (!sawResult && !failure) failure = NOT_SIGNED_IN.test(res.stderr) ? signInHint(turn, "claude-code") : clip(res.stderr.trim() || `Claude Code stopped (code ${res.code}).`, 300);
-  if (failure) t.notice(failure);
+  if (failure) { t.notice(failure); t.fatal = true; }
 }
 
 /**
@@ -702,7 +711,7 @@ async function codexTurn(turn: Turn, t: Transcript, prompt: string, system: stri
   }
   if (turn.signal.aborted) return;
   if (!sawEnd && !failure) failure = NOT_SIGNED_IN.test(res.stderr) ? signInHint(turn, "codex") : clip(res.stderr.trim() || `Codex stopped (code ${res.code}).`, 300);
-  if (failure) t.notice(failure);
+  if (failure) { t.notice(failure); t.fatal = true; }
 }
 
 const signInHint = (turn: Turn, engine: Engine) =>

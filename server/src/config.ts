@@ -79,6 +79,10 @@ export const config = {
    * Longest a turn on a subscription tool (Claude Code, Codex) may run, in minutes: past it the tool is stopped, what it
    * did so far is kept, and the user can continue. 0 = no limit.
    */
+  // "Fichiers modifiés" (snapshots.ts): a private snapshot of each bot's home folder at the start and end of every turn.
+  fileSnapshots: !["0", "false", "off"].includes((process.env.FILE_SNAPSHOTS ?? "").toLowerCase()),
+  snapshotMaxFiles: Math.max(100, num("SNAPSHOT_MAX_FILES", 20_000)),
+  snapshotMaxMb: Math.max(10, num("SNAPSHOT_MAX_MB", 300)),
   engineTurnTimeoutMs: Math.max(0, num("ENGINE_TURN_TIMEOUT_MINUTES", 60)) * 60_000,
   /**
    * bot_message with wait: true (ask another bot and wait for its answer in the same turn). The default wait, and the

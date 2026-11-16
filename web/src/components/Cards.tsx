@@ -8,6 +8,7 @@ import { Icon } from "./Icon";
 import { NudgeCardView, TaskCardView, Uncertain } from "./Wave5";
 import { ApiConnectorCardView, MemoryCardView, SkillCardView, SpendCardView } from "./Wave5b";
 import { DiskCardView } from "./Wave8";
+import { FilesCardView, PastedSecretCardView } from "./Wave9";
 
 type ApprovalCard = Extract<Card, { type: "approval" }>;
 type QuestionCard = Extract<Card, { type: "question" }>;
@@ -357,6 +358,10 @@ export function CardView({ card, botId, seq }: { card: Card; botId: string; seq:
       return <MailCardView card={card} botId={botId} />;
     case "disk":
       return <DiskCardView card={card} botId={botId} seq={seq} />;
+    case "pastedsecret":
+      return <PastedSecretCardView card={card} botId={botId} seq={seq} />;
+    case "files":
+      return <FilesCardView card={card} botId={botId} seq={seq} />;
     default:
       return null;
   }

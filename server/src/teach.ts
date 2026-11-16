@@ -5,7 +5,7 @@ import { emit } from "./bus.js";
 import { screen } from "./computer.js";
 import { config } from "./config.js";
 import { tr } from "./i18n.js";
-import { defaultModelRef, listProviders, resolveModel, type Block } from "./llm/index.js";
+import { defaultModelRef, listProviders, resolveModel, userProvidersOf, type Block } from "./llm/index.js";
 import { describeKey, MODIFIERS, type RfbEvent } from "./rfb.js";
 import type { Recording, SkillDraft } from "./shared.js";
 import { audit, bots, clip, newId, now, rows, skills, users, type BotRecord } from "./store.js";
@@ -207,8 +207,8 @@ async function draftSkill(r: Rec) {
   if (!bot) throw new Error("the bot no longer exists");
   // The bot's own model looks at the screenshots; a bot on a subscription tool uses the server's model for this.
   const ref = isEngineRef(bot.model) ? config.auxModel || defaultModelRef() : bot.model || defaultModelRef();
-  if (!listProviders().some((p) => p.available())) throw new Error("turning a demonstration into a skill needs a model on the server");
-  const { provider, model } = resolveModel(ref);
+  if (!listProviders().some((p) => p.available()) && !userProvidersOf(bot.userId).length) throw new Error("turning a demonstration into a skill needs a model on the server");
+  const { provider, model } = resolveModel(ref, bot.userId);
   const picks = keyFrames(r.frames, r.steps);
   const content: Block[] = [];
   for (const i of picks) {

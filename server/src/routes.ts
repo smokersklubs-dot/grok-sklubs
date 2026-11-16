@@ -77,6 +77,10 @@ import { callEnded, callStarted } from "./calls.js";
 import { saveVoiceSettings, sttFor, ttsFor, voiceSettings, voiceStatus } from "./voice/providers.js";
 import { adminView, approversOf, botAccess, exportWorkspace, invites, resources, SHARED_SETTINGS, sharedBotsFor, sharedBotView, shares, workspaces, WorkspaceError, wsAudit, type BotAccess } from "./workspaces.js";
 import { invalidateAudience } from "./bus.js";
+import { fileDiff, listedPathOk, undoFiles } from "./snapshots.js";
+import { forgetHeld, holdAndOffer, screen as screenSecrets, takeHeld } from "./pastedsecrets.js";
+import { assertPublicUrl, BlockedAddressError } from "./net.js";
+import { apiProviders, cleanBaseUrl, cleanModels, fetchModels, PRESETS, testProvider } from "./apimodels.js";
 import { botEmail, mailFor, MailError, receiving as mailReceiving, relays, releaseMail } from "./botmail.js";
 import { onTurnEvent, submitMemberMessage } from "./agent/loop.js";
 import { privacyPage } from "./privacy.js";
@@ -422,10 +426,83 @@ api.put("/prefs", async (c) => {
 api.get("/models", async (c) => c.json({
   models: [
     ...listProviders().filter((p) => p.available()).flatMap((p) => p.models.map((m) => ({ ref: `${p.id}:${m}`, provider: p.label, model: m, kind: "api" as const }))),
+    // The user's own providers (Settings → Models): theirs only.
+    ...apiProviders.list(c.get("user").id).filter((p) => p.hasKey).flatMap((p) => p.models.map((m) => ({ ref: `${p.id}:${m.id}`, provider: p.name, model: m.id, kind: "api" as const }))),
     ...(await engineModelsFor(c.get("user").id, c.req.query("bot") || undefined)),
   ],
   defaultRef: defaultModelRef(),
 }));
+
+// ── The user's own model providers (Settings → Models → API providers) ────────
+// The key is accepted here and sealed; no answer ever carries it back (hasKey only).
+const providerKey = (v: unknown): string | null | undefined => {
+  if (v === undefined) return undefined;
+  if (v === null) return null;
+  const k = String(v).trim();
+  if (!k) return undefined;
+  if (k.length > 4000 || /[\s\0-\x1f]/.test(k)) fail(400, "That key does not look right.");
+  return k;
+};
+const providerFields = (b: Record<string, any>, partial: boolean) => {
+  const out: { name?: string; baseUrl?: string; models?: ReturnType<typeof cleanModels>; images?: boolean } = {};
+  if (b.name !== undefined || !partial) { const n = String(b.name ?? "").trim().slice(0, 60); if (!n) fail(400, "Give this provider a name."); out.name = n; }
+  if (b.baseUrl !== undefined || !partial) out.baseUrl = cleanBaseUrl(b.baseUrl) ?? fail(400, "The address must be an https address, like https://api.example.com/v1.");
+  if (b.models !== undefined || !partial) out.models = cleanModels(b.models);
+  if (b.images !== undefined) out.images = !!b.images;
+  return out;
+};
+/** A private or local address is refused at once (the outbound guard would refuse every call to it anyway). */
+async function publicProviderUrl(base: string | undefined) {
+  if (!base) return;
+  try { await assertPublicUrl(base); } catch (err) { if (err instanceof BlockedAddressError) fail(400, "That address is on a private or local network, which this server does not reach."); }
+}
+api.get("/api-providers", (c) => c.json({ providers: apiProviders.list(c.get("user").id), presets: PRESETS }));
+api.post("/api-providers", async (c) => {
+  const user = c.get("user");
+  const b = await body(c);
+  const preset = typeof b.preset === "string" && b.preset in PRESETS ? b.preset : "";
+  const f = providerFields(b, false);
+  await publicProviderUrl(f.baseUrl);
+  try {
+    const p = apiProviders.create(user.id, { name: f.name!, baseUrl: f.baseUrl!, key: providerKey(b.key) ?? null, models: f.models!, preset, images: f.images ?? (preset ? PRESETS[preset as keyof typeof PRESETS].images : true) });
+    audit(user.id, "apps", `Model provider added: ${p.name} (${p.baseUrl})`);
+    return c.json({ provider: p });
+  } catch (err) { return fail(400, (err as Error).message); }
+});
+api.patch("/api-providers/:id", async (c) => {
+  const user = c.get("user");
+  const b = await body(c);
+  const f = providerFields(b, true);
+  await publicProviderUrl(f.baseUrl);
+  const p = apiProviders.update(user.id, c.req.param("id"), { ...f, key: providerKey(b.key) }) ?? fail(404, "That provider does not exist.");
+  audit(user.id, "apps", `Model provider changed: ${p.name}`);
+  return c.json({ provider: p });
+});
+api.delete("/api-providers/:id", (c) => {
+  const user = c.get("user");
+  const p = apiProviders.get(user.id, c.req.param("id")) ?? fail(404, "That provider does not exist.");
+  apiProviders.remove(user.id, p.id);
+  audit(user.id, "apps", `Model provider removed: ${p.name}`);
+  return c.json({ ok: true });
+});
+// Read the provider's model list, or try the key: with the key typed in the form, else the saved one.
+api.post("/api-providers/models", async (c) => {
+  const user = c.get("user");
+  const b = await body(c);
+  throttle(`provider-check:${user.id}`, 20);
+  const id = typeof b.id === "string" && apiProviders.get(user.id, b.id) ? b.id : null;
+  const base = cleanBaseUrl(b.baseUrl) ?? fail(400, "The address must be an https address, like https://api.example.com/v1.");
+  return c.json(await fetchModels(user.id, base, id, providerKey(b.key) ?? null));
+});
+api.post("/api-providers/test", async (c) => {
+  const user = c.get("user");
+  const b = await body(c);
+  throttle(`provider-check:${user.id}`, 20);
+  const id = typeof b.id === "string" && apiProviders.get(user.id, b.id) ? b.id : null;
+  const base = cleanBaseUrl(b.baseUrl) ?? fail(400, "The address must be an https address, like https://api.example.com/v1.");
+  const model = typeof b.model === "string" && /^[A-Za-z0-9._:/@+-]{1,100}$/.test(b.model) ? b.model : null;
+  return c.json(await testProvider(user.id, base, id, providerKey(b.key) ?? null, model));
+});
 
 // ── Bots ─────────────────────────────────────────────────────────────────────
 api.get("/bots", (c) => {
@@ -555,7 +632,8 @@ api.get("/bots/:id/rows", (c) => {
 async function memberMessage(c: Context<Env>, access: BotAccess, b: Record<string, any>) {
   const bot = access.bot;
   const user = c.get("user");
-  const text = String(b.text ?? "").trim();
+  // A secret pasted by a member is masked and dropped (the vault it could go in is the owner's, not theirs).
+  const text = screenSecrets(String(b.text ?? "").trim(), user.locale).text;
   if (!text) fail(400, "Write a message first.");
   if (text.length > 20_000) fail(413, "That message is too long.");
   throttle(`member-msg:${user.id}:${bot.id}`, 60);
@@ -605,7 +683,10 @@ api.post("/bots/:id/messages", async (c) => {
   const b = await body(c);
   if (!access.owner) return memberMessage(c, access, b);
   const bot = access.bot;
-  const text = String(b.text ?? "").trim();
+  // A pasted secret (a key, a token, a password) is masked before anything is stored or sent to a model; the owner
+  // gets a card to put it in the vault, or forget it (pastedsecrets.ts).
+  const screened = screenSecrets(String(b.text ?? "").trim(), c.get("user").locale);
+  const text = screened.text;
   // Only files this bot already holds under uploads/ can be attached; anything else is ignored.
   const attachments = (Array.isArray(b.attachments) ? b.attachments : []).slice(0, 10)
     .map((p: unknown) => (typeof p === "string" && p.startsWith("uploads/") ? attachmentAt(bot.id, p) : null))
@@ -616,6 +697,7 @@ api.post("/bots/:id/messages", async (c) => {
   // `thread`: a reply in the thread on that message of the main chat.
   const thread = threadParent(bot, b.thread);
   const row = rows.append(bot, { kind: "message", role: "user", text, origin: voice ? { kind: "voice", id: "", name: "Voice" } : undefined, attachments: attachments.length ? attachments : undefined }, thread);
+  if (screened.secrets.length) holdAndOffer(bot, c.get("user").id, screened.secrets, thread);
   if (bot.kind === "room") dispatchToRoom(bot, c.get("user"), text, null, 0, false, thread);
   else { relayUserSpoke(bot.id); submitUserMessage(bot, text, voice, attachments, undefined, thread, skillCommand(bot, text)); }
   return c.json({ row });
@@ -722,7 +804,8 @@ api.post("/approvals/:approvalId", async (c) => {
 
 api.post("/bots/:id/cards/:seq/answer", async (c) => {
   const bot = ownBot(c);
-  const answer = String((await body(c)).answer ?? "").trim();
+  const screened = screenSecrets(String((await body(c)).answer ?? "").trim(), c.get("user").locale);
+  const answer = screened.text;
   const row = rows.get(bot.id, bot.generation, Number(c.req.param("seq")));
   if (!row || row.body.kind !== "card" || row.body.card.type !== "question") fail(400, "That is not a question.");
   if (!answer) fail(400, "Pick or write an answer.");
@@ -731,6 +814,7 @@ api.post("/bots/:id/cards/:seq/answer", async (c) => {
   // A question asked in a thread is answered in that thread.
   const thread = row!.thread ?? 0;
   rows.append(bot, { kind: "message", role: "user", text: answer }, thread);
+  if (screened.secrets.length) holdAndOffer(bot, c.get("user").id, screened.secrets, thread);
   submitUserMessage(bot, `(Answering your question "${card?.type === "question" ? card.question : ""}")\n${answer}`, false, [], undefined, thread);
   return c.json({ ok: true });
 });
@@ -779,6 +863,46 @@ api.post("/bots/:id/cards/:seq/secret", async (c) => {
   emit(user.id, { type: "vault" });
   rows.updateCard(bot, row!.generation, row!.seq, (k) => (k.type === "secret" ? { ...k, host, header, prefix, status: "saved" } : k));
   enqueue(bot.id, { kind: "system", text: `The user saved the secret "${card.name}" for ${host}. Use it with secret_use (secret: "${card.name}") — you will not see its value. Continue with what you were doing.`, thread: row!.thread || undefined });
+  return c.json({ ok: true });
+});
+
+/**
+ * The card of a secret pasted in a message (pastedsecrets.ts): "save" seals the held value in the vault as a secret for
+ * the host the user names; "discard" forgets it. The value comes from the server's memory, never from the browser, and
+ * is never written anywhere else. Owner only.
+ */
+api.post("/bots/:id/cards/:seq/pasted-secret", async (c) => {
+  const bot = ownBot(c);
+  const user = c.get("user");
+  const row = rows.get(bot.id, bot.generation, Number(c.req.param("seq")));
+  const card = row?.body.kind === "card" && row.body.card.type === "pastedsecret" ? row.body.card : fail(400, "That is not a pasted secret.");
+  if (card.status !== "pending") fail(409, "This was already answered.");
+  const b = await body(c);
+  const setStatus = (status: "saved" | "discarded" | "expired", extra: { name?: string; host?: string } = {}) =>
+    rows.updateCard(bot, row!.generation, row!.seq, (k) => (k.type === "pastedsecret" ? { ...k, ...extra, status } : k));
+  if (b.action === "discard") {
+    forgetHeld(card.pendingId);
+    setStatus("discarded");
+    return c.json({ ok: true });
+  }
+  if (b.action !== "save") fail(400, "Unknown action.");
+  const name = String(b.name ?? "").trim().slice(0, 80);
+  if (!name) fail(400, "Give this secret a name.");
+  const host = siteOf(b.host);
+  if (!host) fail(400, "Say which host the secret may be sent to.");
+  const header = typeof b.header === "string" && b.header.trim() ? b.header.trim() : "Authorization";
+  if (!HEADER_OK(header)) fail(400, "That header name cannot carry a secret.");
+  const prefix = typeof b.prefix === "string" ? b.prefix.slice(0, 40) : header.toLowerCase() === "authorization" ? "Bearer " : "";
+  const existing = vault.byName(user.id, name);
+  if (existing && existing.kind !== "secret") fail(409, "A vault item with this name already exists and is not a secret.");
+  const value = takeHeld(user.id, bot.id, card.pendingId);
+  if (!value) { setStatus("expired"); return fail(409, "The pasted value is no longer held (it is kept 30 minutes, and not across a restart). Paste it again, or add it in Settings → Vault."); }
+  const fields: VaultFields = { kind: "secret", name, site: "", username: "", passwordEnc: seal(value), note: existing?.note ?? "Pasted in a chat message", hosts: [host], header, prefix };
+  if (existing) vault.update(existing.id, fields); else vault.create(user.id, fields);
+  audit(user.id, "vault", `Secret saved from a pasted message in ${bot.name}'s chat: ${name} (for ${host})`, bot.id);
+  emit(user.id, { type: "vault" });
+  setStatus("saved", { name, host });
+  if (bot.kind === "agent") enqueue(bot.id, { kind: "system", text: `The user saved the secret they pasted (shown to you as a masked placeholder) in the vault as "${name}", for ${host}. Use it with secret_use (secret: "${name}") when it is needed — you will not see its value.`, thread: row!.thread || undefined });
   return c.json({ ok: true });
 });
 
@@ -1291,6 +1415,45 @@ api.post("/bots/:id/cards/:seq/disk", async (c) => {
   const r = await deleteListed(bot, card.items, chosen);
   if (r.deleted.length) audit(c.get("user").id, "computer", `${bot.name}: deleted from its computer to free disk space — ${r.deleted.join(", ")}`, bot.id);
   rows.updateCard(bot, row!.generation, row!.seq, (k) => (k.type === "disk" ? { ...k, status: "cleaned", deleted: r.deleted, freedBytes: r.freedBytes, ...(r.freeBytes !== null ? { freeBytes: r.freeBytes } : {}) } : k));
+  return c.json({ ok: true, ...r });
+});
+
+// ── "Fichiers modifiés" (snapshots.ts): a turn's file changes — the diff of one listed file, and undo (owner only) ──
+const filesCard = (c: Context<Env>) => {
+  const bot = ownAgent(c);
+  const row = rows.get(bot.id, bot.generation, Number(c.req.param("seq")));
+  const card = row?.body.kind === "card" && row.body.card.type === "files" ? row.body.card : fail(400, "That is not a list of changed files.");
+  return { bot, row: row!, card };
+};
+api.get("/bots/:id/cards/:seq/files/diff", async (c) => {
+  const { bot, card } = filesCard(c);
+  const path = c.req.query("path") ?? "";
+  const f = card.files.find((x) => x.path === path);
+  if (!f || !listedPathOk(path)) fail(400, "That file is not on this card.");
+  if (f!.binary) return c.json({ diff: "", truncated: false, binary: true });
+  const d = await fileDiff(bot, card, path);
+  if (!d) fail(409, "The snapshot of this turn is no longer kept.");
+  return c.json({ ...d, binary: false });
+});
+api.post("/bots/:id/cards/:seq/files", async (c) => {
+  const { bot, row, card } = filesCard(c);
+  if (card.status !== "available") fail(409, "These changes were already undone.");
+  const b = await body(c);
+  if (b.action !== "undo") fail(400, "Unknown action.");
+  // Undoing is the owner's explicit choice, confirmed on the card. Only paths the card lists.
+  if (b.confirm !== true) fail(400, "Confirm first.");
+  const listed = card.files.map((f) => f.path);
+  const chosen: string[] = Array.isArray(b.paths) ? b.paths.filter((p: unknown): p is string => typeof p === "string") : listed;
+  if (!chosen.length || chosen.some((p) => !listed.includes(p) || !listedPathOk(p))) fail(400, "Choose among the files listed on the card.");
+  const r = await undoFiles(bot, card, chosen, b.force === true);
+  if (r.missing) {
+    rows.updateCard(bot, row.generation, row.seq, (k) => (k.type === "files" ? { ...k, status: "expired" } : k));
+    return fail(409, "The snapshot of this turn is no longer kept (only the last 20 turns are), so it cannot be undone.");
+  }
+  if (r.restored.length) audit(c.get("user").id, "computer", `${bot.name}: file changes undone — ${r.restored.slice(0, 20).join(", ")}${r.restored.length > 20 ? "…" : ""}`, bot.id);
+  rows.updateCard(bot, row.generation, row.seq, (k) => (k.type === "files" ? { ...k, status: r.restored.length ? "undone" : k.status, restored: r.restored, changedSince: r.changedSince } : k));
+  // The bot hears about it at the start of its next turn in that chat (no turn is started just for this).
+  if (r.restored.length) feedback.add(bot.id, bot.generation, row.thread ?? 0, -row.seq, "undo", `The user undid your file changes from an earlier turn: ${r.restored.slice(0, 30).join(", ")}${r.restored.length > 30 ? " and more" : ""} (relative to /root) are back as they were before that turn. Do not redo those changes unless asked.`);
   return c.json({ ok: true, ...r });
 });
 
@@ -2075,8 +2238,11 @@ api.get("/bots/:id/bgtasks", (c) => c.json({ tasks: bgTasks.forBot(ownAgent(c).i
 api.post("/bots/:id/bgtasks/:taskId/stop", async (c) => c.json({ task: publicTask(await stopTask(ownTask(c))) }));
 api.post("/bots/:id/bgtasks/:taskId/reply", async (c) => {
   const t = ownTask(c);
-  const text = String((await body(c)).text ?? "").trim();
+  const screened = screenSecrets(String((await body(c)).text ?? "").trim(), c.get("user").locale);
+  const text = screened.text;
   if (!text) fail(400, "Write a message first.");
+  // The card for a pasted secret goes in the bot's own chat (the task card lives there).
+  if (screened.secrets.length) { const owner = bots.byId(t.botId); if (owner) holdAndOffer(owner, c.get("user").id, screened.secrets); }
   try { return c.json({ task: publicTask(await replyToTask(t, clip(text, 20_000))) }); } catch (err) { return fail(409, (err as Error).message); }
 });
 

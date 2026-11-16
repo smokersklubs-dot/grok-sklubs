@@ -24,8 +24,17 @@ const PRICES: Record<string, [number, number, number]> = {
   "claude-haiku-5-5": [0.1, 0.5, 0.01],
 };
 
-export function costOf(model: string, u: TurnUsage): number {
-  const p = PRICES[model];
+/** Prices the user gave for a model of their own providers (apimodels.ts), when it has some. */
+let priceSource: (userId: string, model: string) => [number, number, number] | null = () => null;
+export const setPriceSource = (fn: (userId: string, model: string) => [number, number, number] | null) => { priceSource = fn; };
+
+/** The price of `model` for this user: the built-in table first, then the prices set on their own providers. */
+export function priceFor(model: string, userId?: string): [number, number, number] | null {
+  return PRICES[model] ?? (userId ? priceSource(userId, model) : null);
+}
+
+export function costOf(model: string, u: TurnUsage, userId?: string): number {
+  const p = priceFor(model, userId);
   if (!p) return 0;
   const fresh = Math.max(0, u.inputTokens - u.cachedTokens);
   return (fresh * p[0] + u.outputTokens * p[1] + u.cachedTokens * p[2]) / 1_000_000;
@@ -37,7 +46,7 @@ export const setActorHook = (fn: (botId: string) => string | null) => { actorHoo
 
 /** `costUsd`: the price the service itself reported (e.g. a video), used instead of our token price list. */
 export function record(userId: string, botId: string, model: string, u: TurnUsage, costUsd?: number) {
-  const cost = costUsd ?? costOf(model, u);
+  const cost = costUsd ?? costOf(model, u, userId);
   // actor_id (wave 6): the workspace member whose message started the turn, for per-member usage (null: the owner).
   q.run("INSERT INTO usage (user_id, bot_id, at, model, input_tokens, output_tokens, cached_tokens, cost_usd, actor_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
     userId, botId, now(), model, u.inputTokens, u.outputTokens, u.cachedTokens, cost, actorHook(botId));

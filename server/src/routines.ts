@@ -73,17 +73,18 @@ function runsPerMonth(r: any): number | null {
   return seen || null;
 }
 /** What one run of a bot costs, by default: a typical turn (8 000 tokens in, 600 out) at its model's price. */
-export function typicalRunUsd(modelRef: string): number {
+export function typicalRunUsd(modelRef: string, userId?: string): number {
   const ref = modelRef || defaultModelRef();
-  return costOf(ref.includes(":") ? ref.slice(ref.indexOf(":") + 1) : ref, { inputTokens: 8000, outputTokens: 600, cachedTokens: 0 });
+  return costOf(ref.includes(":") ? ref.slice(ref.indexOf(":") + 1) : ref, { inputTokens: 8000, outputTokens: 600, cachedTokens: 0 }, userId);
 }
 /** Projected monthly cost: the average of its recent runs (or a typical run) times how often it fires. */
 function projected(r: any): number | null {
   const per = runsPerMonth(r);
   if (per === null) return null;
   const recent = q.all<{ c: number }>("SELECT cost_usd AS c FROM routine_runs WHERE routine_id = ? AND status IN ('done','quiet','error') ORDER BY at DESC LIMIT 10", r.id);
-  const model = q.get<{ model: string }>("SELECT model FROM bots WHERE id = ?", r.bot_id)?.model ?? "";
-  const avg = recent.length && recent.some((x) => x.c > 0) ? recent.reduce((a, x) => a + x.c, 0) / recent.length : typicalRunUsd(model);
+  const owner = q.get<{ model: string; user_id: string }>("SELECT model, user_id FROM bots WHERE id = ?", r.bot_id);
+  const model = owner?.model ?? "";
+  const avg = recent.length && recent.some((x) => x.c > 0) ? recent.reduce((a, x) => a + x.c, 0) / recent.length : typicalRunUsd(model, owner?.user_id);
   return Math.round(avg * per * 100) / 100;
 }
 

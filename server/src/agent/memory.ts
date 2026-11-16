@@ -14,7 +14,7 @@ import { isBusy } from "./loop.js";
 export async function ask(bot: BotRecord, system: string, prompt: string): Promise<string> {
   // A bot on a subscription does its side work there too, unless the server has its own model for it.
   if (isEngineRef(bot.model) && !config.auxModel && !listProviders().some((p) => p.available())) return engineAsk(bot, system, prompt);
-  const { provider, model } = resolveModel(config.auxModel || bot.model || defaultModelRef());
+  const { provider, model } = resolveModel(config.auxModel || bot.model || defaultModelRef(), bot.userId);
   const res = await provider.runTurn({ model, system, tools: [], effort: "low", maxTokens: 8000, messages: [{ role: "user", content: [{ type: "text", text: prompt }] }], signal: AbortSignal.timeout(180_000) });
   record(bot.userId, bot.id, res.model, res.usage);
   return res.content.filter((b) => b.type === "text").map((b) => (b as { text: string }).text).join("").trim();

@@ -502,6 +502,15 @@ function CREATE_EXTRA() {
     args TEXT NOT NULL DEFAULT '[]', tools TEXT NOT NULL DEFAULT '[]', created_at INTEGER NOT NULL
   );
   CREATE INDEX IF NOT EXISTS local_tool_servers_bot ON local_tool_servers(bot_id, created_at);`);
+  db.exec(`
+  -- Model providers a user set up in Settings → Models (apimodels.ts): an OpenAI-compatible address, its key (sealed,
+  -- never sent back to the browser) and its models with their context window and prices (JSON). Per account only.
+  CREATE TABLE IF NOT EXISTS user_providers (
+    id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, name TEXT NOT NULL,
+    base_url TEXT NOT NULL, key_enc TEXT, models TEXT NOT NULL DEFAULT '[]', preset TEXT NOT NULL DEFAULT '',
+    images INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS user_providers_user ON user_providers(user_id, created_at);`);
 }
 
 type Param = string | number | null | bigint;

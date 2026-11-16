@@ -3,7 +3,7 @@ import { botPathOf, browserAvailable, computerKind, imageForModel, screen, shell
 import { config } from "../config.js";
 import { setRelayAsker } from "../egress.js";
 import { connectors } from "../connectors.js";
-import { defaultModelRef, ProviderError, resolveModel, validateToolInput, type TurnResult, type Block, type ChatMessage, type Effort, type TextBlock, type ToolResultBlock, type ToolSpec, type ToolUseBlock } from "../llm/index.js";
+import { defaultModelRef, modelLabel, ProviderError, resolveModel, validateToolInput, type TurnResult, type Block, type ChatMessage, type Effort, type TextBlock, type ToolResultBlock, type ToolSpec, type ToolUseBlock } from "../llm/index.js";
 import { tr } from "../i18n.js";
 import { imageService } from "../images.js";
 import type { ActivityKind, Attachment, Row } from "../shared.js";
@@ -12,7 +12,8 @@ import { runs } from "../routines.js";
 import { overBudget, record, setActorHook } from "../usage.js";
 import { botEmail } from "../botmail.js";
 import { compactIfNeeded } from "./memory.js";
-import { EngineTimeout, engineTurnOf, isEngineRef, isEngineTimeout, runEngineTurn } from "./engine.js";
+import { turnEnded, turnStarted } from "../snapshots.js";
+import { EngineTimeout, engineOf, engineTurnOf, isEngineRef, isEngineTimeout, runEngineTurn, type EngineOutcome } from "./engine.js";
 import { buildSystemPrompt } from "./prompt.js";
 import { deliverBotMessage, settleAsk, type AskRoute } from "./team.js";
 import { noteDiskTrouble } from "../disk.js";
@@ -376,7 +377,7 @@ function trimOldImages(messages: ChatMessage[]): ChatMessage[] {
 export async function newTurn(bot: BotRecord, user: UserRecord, depth: number, signal: AbortSignal, forEngine = false): Promise<Turn> {
   const modelRef = bot.model || defaultModelRef();
   let nativeSearch = false;
-  try { nativeSearch = resolveModel(modelRef).provider.id === "anthropic"; } catch { /* no provider yet: the turn will say so */ }
+  try { nativeSearch = resolveModel(modelRef, user.id).provider.id === "anthropic"; } catch { /* no provider yet: the turn will say so */ }
   const appsOff = bot.disabledTools.includes("apps");
   // App tools: the account's connectors, and this bot's own local tool servers (started on its computer when needed).
   const remoteTools = appsOff ? [] : [...await connectors.toolsFor(user.id).catch(() => []), ...localTools.toolsFor(bot.id)];
@@ -414,6 +415,50 @@ export async function newTurn(bot: BotRecord, user: UserRecord, depth: number, s
   };
 }
 
+/**
+ * A subscription turn (Claude Code, Codex) failed — not stopped by the user, not at its time limit: the same turn goes on
+ * with the first backup API model (Settings → Models, or the bot's own list), with a line in the chat. The backup is told
+ * what the tool already did and said, so nothing done is done twice, and it gets the recent conversation (a subscription
+ * keeps its own session, which the backup cannot read).
+ */
+async function engineFallback(bot: BotRecord, user: UserRecord, trigger: Exclude<Trigger, { kind: "resume" }>, thread: number, failed: Turn, o: { failure: string; steps: number[]; prompt: string; backup: string; extra: Block[] }): Promise<Turn> {
+  const loc = user.locale;
+  const tool = engineOf(bot.model) === "codex" ? "Codex" : "Claude Code";
+  rows.append(bot, { kind: "notice", tone: "info", text: tr(loc, "{tool} failed ({detail}). I am carrying on with the backup model {next}.", { tool, detail: clip(o.failure, 160), next: modelLabel(o.backup, user.id) }) });
+  audit(user.id, "system", `${bot.name}: ${tool} failed (${clip(o.failure, 160)}), switched to the backup model ${o.backup}`, bot.id);
+  const turn = await newTurn(bot, user, failed.depth, failed.signal);
+  turn.thread = thread;
+  turn.modelRef = o.backup;
+  turn.ask = failed.ask;
+  // The subscription tool may have read outside content before failing: the backup carries on as if it had.
+  turn.tainted = true;
+  turn.hosts = new Set(failed.hosts);
+  turn.spoke = failed.spoke;
+  turn.lastText = failed.lastText;
+  turn.autoContinue = trigger.kind === "routine";
+  turn.origin = originOf(trigger);
+  if (trigger.kind === "user" && trigger.channel) turn.channel = trigger.channel;
+  turn.spendKey = spendKeyOf(bot, trigger, thread);
+  beginScope(bot.id, turn.spendKey);
+  turn.ruleScope = ruleScopeOf(turn.spendKey);
+  const done = o.steps.map((seq) => rows.get(bot.id, bot.generation, seq)).flatMap((r) => {
+    if (r?.body.kind !== "step") return [];
+    const args = Object.entries(r.body.args ?? {}).map(([k, v]) => `${k}=${clip(typeof v === "string" ? v : JSON.stringify(v), 200)}`).join(", ");
+    return [`- ${r.body.tool}${args ? ` (${args})` : ""}: ${r.body.status}${r.body.summary ? ` — ${clip(r.body.summary, 200)}` : ""}`];
+  });
+  const recent = rows.recentMessages(bot.id, bot.generation, 10, thread).filter((r) => r.body.kind === "message")
+    .map((r) => r.body.kind === "message" ? `${r.body.role === "user" ? "User" : "You"}: ${clip(r.body.text.replace(/\s+/g, " "), 600)}` : "");
+  const note = [
+    `[System: your subscription tool (${tool}) failed during this turn (${clip(o.failure, 300)}). You are now carrying on with this turn on a backup model, with your own tools.`,
+    done.length ? `Before it failed, it already did this — do NOT do any of it again; check the current state first when it matters:\n${done.join("\n")}` : "It had not run any action yet.",
+    failed.lastText ? `It already told the user: "${clip(failed.lastText, 1500)}"` : "",
+    recent.length ? `The recent conversation, oldest first (for context; the subscription tool's own session is not available to you):\n${recent.join("\n")}` : "",
+    "The message this turn is answering follows.]",
+  ].filter(Boolean).join("\n\n");
+  history.append(bot.id, bot.generation, { role: "user", content: [...repairDangling(bot.id, bot.generation, thread), text(note), text(o.prompt), ...o.extra.filter((b) => b.type === "image")] }, thread);
+  return turn;
+}
+
 /** Runs a turn inside its thread's scope, so whatever it writes into its chat lands in that thread. */
 function runTurn(botId: string, trigger: Trigger): Promise<void> {
   const thread = trigger.kind === "resume" ? paused.get<PausedTurn>(botId)?.thread ?? 0 : threadOf(trigger);
@@ -449,6 +494,8 @@ async function runScopedTurn(botId: string, trigger: Trigger, thread: number): P
   activeTurns.begin(botId);
   bgTaskHooks.started(bot);
   if (trigger.kind === "user" && trigger.member) actors.set(botId, trigger.member.id); else actors.delete(botId);
+  // "Fichiers modifiés": what the turn changes in the bot's home folder is measured from here (never fails the turn).
+  const snapBase = await turnStarted(bot);
   try {
     const held = paused.get<PausedTurn>(botId);
     if (trigger.kind === "resume") {
@@ -483,11 +530,22 @@ async function runScopedTurn(botId: string, trigger: Trigger, thread: number): P
         // forever. It stops the turn through the same path as "Stop", with its own reason (told apart below).
         const limit = config.engineTurnTimeoutMs;
         const timer = limit > 0 ? setTimeout(() => controller.abort(new EngineTimeout(limit)), limit) : null;
+        const prompt = note + (heard ? heard + "\n" : "") + inThread + words + forced + extraText(extra);
+        let outcome: EngineOutcome | null = null;
+        let thrown: unknown = null;
         try {
-          await runEngineTurn(turn, note + (heard ? heard + "\n" : "") + inThread + words + forced + extraText(extra), trigger.kind === "user" ? trigger.attachments ?? [] : []);
+          outcome = await runEngineTurn(turn, prompt, trigger.kind === "user" ? trigger.attachments ?? [] : []);
+        } catch (err) {
+          // Stopped (by the user or the time limit) or every computer busy: those have their own way out, never a backup.
+          if (controller.signal.aborted || (err as Error)?.name === "ComputersBusyError") throw err;
+          thrown = err;
         } finally { if (timer) clearTimeout(timer); }
-        throw new EngineDone();
-      }
+        const failure = thrown ? clip(String((thrown as Error)?.message ?? thrown), 300) : outcome?.failure ?? "";
+        // The subscription tool failed: the turn goes on with the first backup API model, if there is one (and money left).
+        const backup = failure ? modelChain({ ...bot, model: bot.model }).slice(1)[0] : undefined;
+        if (!backup || overBudget(user.id)) { if (thrown) throw thrown; throw new EngineDone(); }
+        turn = await engineFallback(bot, user, trigger, thread, turn, { failure, steps: outcome?.steps ?? [], prompt, backup, extra });
+      } else {
       if (overBudget(user.id)) {
         rows.append(bot, { kind: "notice", tone: "warn", text: tr(user.locale, "This month's budget is used up, so I'm paused. Raise or clear the budget in Settings → Usage to continue.") });
         return;
@@ -521,6 +579,7 @@ async function runScopedTurn(botId: string, trigger: Trigger, thread: number): P
       if (heard) first.unshift(text(heard));
       if (thread && !history.count(botId, bot.generation, thread)) first.unshift(text(threadOpening(bot, thread)));
       history.append(botId, bot.generation, { role: "user", content: [...repairDangling(botId, bot.generation, thread), ...first, ...extra] }, thread);
+      }
     }
     await modelLoop(turn);
     // A helper's last words go back to whoever started it.
@@ -553,6 +612,7 @@ async function runScopedTurn(botId: string, trigger: Trigger, thread: number): P
     }
     if (!stopped) console.error(`[turn ${bot.name}]`, err);
   } finally {
+    turnEnded(bot, snapBase, thread);
     endScope(botId);
     activeTurns.end(botId);
     // Its queue row is done in the same breath, so a restart can never find it neither under way nor done (no double run).
@@ -615,7 +675,7 @@ async function modelLoop(turn: Turn) {
   // The bot's model, then its backups in order (see modelChain). A resumed turn starts on the model it paused on.
   const chain = modelChain({ ...bot, model: turn.modelRef });
   let at = 0;
-  let { provider, model } = resolveModel(chain[0]);
+  let { provider, model } = resolveModel(chain[0], turn.user.id);
   const rel = settings.reliability(turn.user.id);
   const caption = new Caption(turn);
   /** A reply cut off by the output limit: its row stays open and the continuation is written into it. */
@@ -662,10 +722,10 @@ async function modelLoop(turn: Turn) {
         if (!next) { stream.finish(); throw err; }
         at++;
         attempt = 0;
-        ({ provider, model } = resolveModel(next));
+        ({ provider, model } = resolveModel(next, turn.user.id));
         const from = turn.modelRef;
         turn.modelRef = next;
-        rows.append(bot, { kind: "notice", tone: "info", text: tr(loc, "My model {model} is not answering ({detail}). I am carrying on with the backup model {next}.", { model: from, detail: errorDetail(err), next }) });
+        rows.append(bot, { kind: "notice", tone: "info", text: tr(loc, "My model {model} is not answering ({detail}). I am carrying on with the backup model {next}.", { model: modelLabel(from, turn.user.id), detail: errorDetail(err), next: modelLabel(next, turn.user.id) }) });
         audit(turn.user.id, "system", `${bot.name}: ${from} failed (${errorDetail(err)}), switched to ${next}`, bot.id);
       }
     }

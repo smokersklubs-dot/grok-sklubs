@@ -168,10 +168,10 @@ const LOOK_SCHEMA = {
 };
 
 /** Model references a bot may give a new bot: "" (the server's default), an API model set up here, or a subscription choice offered here. */
-function modelAllowed(ref: string): boolean {
+function modelAllowed(ref: string, userId: string): boolean {
   if (!ref) return true;
   if (isEngineRef(ref)) return engineModels().some((m) => m.ref === ref);
-  return modelAvailable(ref);
+  return modelAvailable(ref, userId);
 }
 
 /** What self_update would change, compared with the bot's current settings. */
@@ -221,7 +221,7 @@ export const botTools: BuiltinTool[] = [
       const used = bots.createdByBotsSince(c.user.id, Date.now() - 86_400_000);
       if (used >= config.botCreatePerDay) return { content: `Not created: bots already created ${used} bots in the last 24 hours (the limit is ${config.botCreatePerDay}). Tell the user they can create one in the sidebar.`, isError: true };
       const model = String(a.model ?? "").trim();
-      if (!modelAllowed(model)) return { content: `"${model}" is not a model set up on this server. Leave model empty for the default.`, isError: true };
+      if (!modelAllowed(model, c.user.id)) return { content: `"${model}" is not a model set up on this server. Leave model empty for the default.`, isError: true };
       const look = lookPatch(a.look);
       const created = bots.create(c.user.id, {
         name, label: clip(String(a.role ?? "").trim(), 60), instructions: String(a.instructions ?? "").slice(0, 8000), model,

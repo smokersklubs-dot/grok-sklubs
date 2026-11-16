@@ -20,7 +20,7 @@ export function modelChain(bot: Pick<BotRecord, "model" | "fallbackModels" | "us
   const account = settings.reliability(bot.userId).fallbackModels;
   const backups = bot.fallbackModels ?? (account.length ? account : config.fallbackModels);
   const out = [own];
-  for (const ref of backups) if (!out.includes(ref) && !isEngineRef(ref) && modelAvailable(ref)) out.push(ref);
+  for (const ref of backups) if (!out.includes(ref) && !isEngineRef(ref) && modelAvailable(ref, bot.userId)) out.push(ref);
   return out;
 }
 

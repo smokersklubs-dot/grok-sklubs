@@ -61,6 +61,8 @@ function previewOf(body: RowBody, locale: Locale): string {
     if (c.type === "memory") return tr(locale, "Which is right? {text}", { text: c.newText });
     if (c.type === "mail") return tr(locale, "Email from {from}: {subject}", { from: c.from, subject: c.subject });
     if (c.type === "disk") return tr(locale, "Its computer's disk is {pct}% full", { pct: c.usedPct });
+    if (c.type === "pastedsecret") return tr(locale, "A secret was masked in your message");
+    if (c.type === "files") return tr(locale, "Files changed: {n}", { n: c.files.length + c.more });
     return tr(locale, "Connect {name}", { name: c.name });
   }
   return "";

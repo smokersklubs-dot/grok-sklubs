@@ -272,6 +272,9 @@ export type RowBody =
    */
   | { kind: "notice"; tone: "info" | "warn" | "error"; text: string; action?: { kind: "continue"; status: "pending" | "done"; reason?: "timeout" | "busy" } | { kind: "settings"; section: string } };
 
+/** One file a turn changed (see the "files" card). */
+export interface FileChange { path: string; change: "added" | "modified" | "deleted"; added: number | null; removed: number | null; binary: boolean; oldSize: number | null; newSize: number | null }
+
 export type Card =
   /** `once`: "Always" is not offered (e.g. a command on the user's own computer after outside content); choosing it anyway counts as allowing once. */
   /**
@@ -326,6 +329,20 @@ export type Card =
    * biggest files and folders of its own home (/root) and library (/root/files), largest first. The user ticks some and
    * confirms; only listed paths can be deleted, nothing is ever deleted on its own. `deleted` / `freedBytes`: what was.
    */
+  /**
+   * The user pasted something that looks like a secret in a message: it was masked ("[secret masqué]") before the
+   * message was stored or sent to any model, and is held in the server's memory only until `expiresAt`. The user saves
+   * it to the vault (as a secret for `host`) or discards it. `hint`: a well-known format prefix ("sk-", "ghp_"…), never
+   * any of the value itself; `length`: its length. `name`, `host`: suggested, then what it was saved as.
+   */
+  | { type: "pastedsecret"; pendingId: string; kind: "key" | "token" | "password" | "private-key"; hint: string; length: number; name: string; host: string; status: "pending" | "saved" | "discarded" | "expired"; expiresAt: number }
+  /**
+   * "Fichiers modifiés" (snapshots.ts): the files a turn changed in the bot's home folder (/root), as paths relative to
+   * it, with lines added and removed (null for a binary file) and sizes in bytes. `more`: changed files not listed.
+   * `baseId` / `snapId`: the private snapshots of the turn's start and end. "Annuler" (owner only, confirmed) restores
+   * the listed files to the start; `restored` / `changedSince` (changed again after the turn, left as they are).
+   */
+  | { type: "files"; snapId: string; baseId: string; files: FileChange[]; more: number; status: "available" | "undone" | "expired"; restored?: string[]; changedSince?: string[] }
   | { type: "disk"; checkId: string; usedPct: number; totalBytes: number; freeBytes: number; items: { path: string; bytes: number }[]; status: "pending" | "cleaned" | "dismissed"; deleted?: string[]; freedBytes?: number };
 
 /** Why a bot hands its screen to the user. */
@@ -581,6 +598,18 @@ export interface CheckinSettings { enabled: boolean; times: string[]; timezone: 
  * computer, signed in with the user's personal subscription (Claude Pro/Max, ChatGPT Plus/Pro).
  */
 export interface ModelOption { ref: string; provider: string; model: string; kind: "api" | "subscription"; engine?: Engine }
+
+/**
+ * A model of a provider the user set up (Settings → Models → API providers). `contextWindow` in tokens; prices in $ per
+ * million tokens (input, output, cached input); null: not given (the use is then counted in tokens only).
+ */
+export interface ApiProviderModel { id: string; contextWindow: number | null; input: number | null; output: number | null; cached: number | null }
+/**
+ * An OpenAI-compatible provider the user set up, for their account only. Its models are referenced as "<id>:<model>"
+ * (ids start with "up-"). `hasKey`: a key is saved — the key itself never leaves the server. `preset`: "deepseek" when
+ * made from that preset. `images`: whether its models read images.
+ */
+export interface ApiProvider { id: string; name: string; baseUrl: string; hasKey: boolean; models: ApiProviderModel[]; preset: string | null; images: boolean; createdAt: number; updatedAt: number }
 export type Engine = "claude-code" | "codex";
 export interface EngineStatus {
   engine: Engine;
@@ -817,3 +846,66 @@ export interface ImportReport { created: string[]; updated: string[]; skipped: s
 export interface ThirdPartySpend { todayUsd: number; capUsd: number | null; monthUsd: number; recent: { at: number; botId: string; tool: string; provider: string; usd: number; status: string }[] }
 /** One step of a provider chain (spec 08 A3): who was tried and why it was set aside. */
 export interface ProviderAttempt { provider: string; tier: "owned" | "free" | "paid"; outcome: "served" | "empty" | "error" | "skipped" | "too_expensive" | "needs_consent"; detail: string; costUsd: number }
+
+// ── A secret pasted in a chat message ────────────────────────────────────────
+/**
+ * Formats that are a key, a token or a password and almost never anything else (low false positives): provider key
+ * prefixes (sk-…, sk_live_…, ghp_…, github_pat_…, glpat-…, xox?-…, AKIA…, AIza…, xai-…, hf_…), Telegram bot tokens,
+ * JWTs, PEM private keys, and a labelled value ("password: …", "mot de passe = …", "api key: …", "token: …"). A long
+ * random string alone is not enough (document ids, hashes and URLs look like that). Shared by the server (which masks
+ * them before anything is stored or sent to a model) and the composer (which warns before sending).
+ */
+const SECRET_FORMATS: { kind: "key" | "token" | "password" | "private-key"; re: RegExp; group?: number }[] = [
+  { kind: "private-key", re: /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\s\S]*?(?:-----END [A-Z0-9 ]*PRIVATE KEY-----|$)/g },
+  { kind: "key", re: /\bsk-(?:ant-|proj-|or-|svcacct-)?[A-Za-z0-9_-]{20,}/g },
+  { kind: "key", re: /\b(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{16,}/g },
+  { kind: "token", re: /\bgh[pousr]_[A-Za-z0-9]{36,}/g },
+  { kind: "token", re: /\bgithub_pat_[A-Za-z0-9_]{40,}/g },
+  { kind: "token", re: /\bglpat-[A-Za-z0-9_-]{20,}/g },
+  { kind: "token", re: /\bxox[abeprs]-[A-Za-z0-9-]{10,}/g },
+  { kind: "key", re: /\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/g },
+  { kind: "key", re: /\bAIza[0-9A-Za-z_-]{35}/g },
+  { kind: "key", re: /\bxai-[A-Za-z0-9]{20,}/g },
+  { kind: "token", re: /\bhf_[A-Za-z0-9]{30,}/g },
+  { kind: "token", re: /\b\d{8,10}:AA[A-Za-z0-9_-]{33}\b/g },
+  { kind: "token", re: /\beyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g },
+  {
+    kind: "password", group: 2,
+    re: /(?<![\p{L}\p{N}_])(password|passwd|pwd|passcode|mot de passe|mdp|api[_ -]?key|cl[eé] (?:d'|de l'|d')?api|access[_ -]?token|auth[_ -]?token|bearer token|secret|token)\s*(?:[:=]|=>)\s*["'«]?\s*([^\s"'»]{4,300})/giu,
+  },
+];
+/** Values that are clearly not a secret even after "password:" (a placeholder, stars, an earlier mask). */
+const NOT_A_SECRET = /^(?:\*+|x+|\.+|•+|<[^>]*>?|\[.*|\{\{.*|null|none|undefined|aucun|vide|empty|changeme|example|exemple)$/i;
+
+export interface SecretFound { start: number; end: number; value: string; kind: "key" | "token" | "password" | "private-key" }
+
+/** The secrets in a text, in order, without overlaps. */
+export function findSecrets(text: string): SecretFound[] {
+  if (!text || text.length < 8) return [];
+  const all: SecretFound[] = [];
+  for (const f of SECRET_FORMATS) {
+    f.re.lastIndex = 0;
+    for (const m of text.matchAll(f.re)) {
+      const value = f.group ? m[f.group] : m[0];
+      if (!value || NOT_A_SECRET.test(value)) continue;
+      // "secret: …" and "token: …" also open ordinary sentences: only a value that looks generated counts there.
+      if (f.group && /^(?:secret|token)$/i.test(m[1]) && !(/\d/.test(value) && /[A-Za-z]/.test(value)) && value.length < 16) continue;
+      const start = (m.index ?? 0) + (f.group ? m[0].lastIndexOf(value) : 0);
+      all.push({ start, end: start + value.length, value, kind: f.kind });
+    }
+  }
+  all.sort((a, b) => a.start - b.start || b.end - a.end);
+  const out: SecretFound[] = [];
+  for (const s of all) if (!out.length || s.start >= out[out.length - 1].end) out.push(s);
+  return out;
+}
+
+/** The text with every secret replaced by `placeholder`, and the secrets taken out. */
+export function maskSecrets(text: string, placeholder: string): { text: string; secrets: SecretFound[] } {
+  const secrets = findSecrets(text);
+  if (!secrets.length) return { text, secrets };
+  let out = "";
+  let at = 0;
+  for (const s of secrets) { out += text.slice(at, s.start) + placeholder; at = s.end; }
+  return { text: out + text.slice(at), secrets };
+}

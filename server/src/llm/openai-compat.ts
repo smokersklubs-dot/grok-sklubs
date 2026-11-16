@@ -5,15 +5,27 @@ interface WireMessage {
   content?: unknown;
   tool_calls?: Array<{ id: string; type: "function"; function: { name: string; arguments: string } }>;
   tool_call_id?: string;
+  reasoning_content?: string;
 }
 
-function toWire(system: string, messages: ChatMessage[]): WireMessage[] {
+/** How a provider's own reasoning travels in its history (see OpenAiCompatOptions.echoReasoning). */
+interface WireOpts { providerId: string; echoReasoning: boolean; images: boolean }
+
+const NO_IMAGE = "[An image was here; this model does not read images.]";
+
+function toWire(system: string, messages: ChatMessage[], o: WireOpts = { providerId: "", echoReasoning: false, images: true }): WireMessage[] {
   const out: WireMessage[] = [{ role: "system", content: system }];
   for (const m of messages) {
     if (m.role === "assistant") {
       const text = m.content.filter((b) => b.type === "text").map((b) => (b as { text: string }).text).join("");
       const calls = m.content.filter((b) => b.type === "tool_use") as Extract<Block, { type: "tool_use" }>[];
       const msg: WireMessage = { role: "assistant", content: text || null };
+      if (o.echoReasoning) {
+        // This provider's own reasoning goes back as it came; a reply written by another model gets an empty one.
+        const mine = m.content.find((b) => b.type === "opaque" && b.provider === o.providerId) as Extract<Block, { type: "opaque" }> | undefined;
+        const raw = mine?.raw as { reasoning_content?: unknown } | undefined;
+        msg.reasoning_content = typeof raw?.reasoning_content === "string" ? raw.reasoning_content : "";
+      }
       if (calls.length)
         msg.tool_calls = calls.map((c) => ({ id: c.id, type: "function", function: { name: c.name, arguments: JSON.stringify(c.input) } }));
       out.push(msg);
@@ -27,8 +39,10 @@ function toWire(system: string, messages: ChatMessage[]): WireMessage[] {
         out.push({ role: "tool", tool_call_id: b.toolUseId, content: (b.isError ? "ERROR: " : "") + (text || "(no text output)") });
         // Tool messages are text-only on this wire format; images follow as a user message.
         for (const c of b.content)
-          if (c.type === "image") followUpImages.push({ type: "image_url", image_url: { url: `data:${c.mediaType};base64,${c.data}` } });
+          if (c.type === "image" && !o.images) out.push({ role: "user", content: NO_IMAGE });
+          else if (c.type === "image") followUpImages.push({ type: "image_url", image_url: { url: `data:${c.mediaType};base64,${c.data}` } });
       } else if (b.type === "text") parts.push({ type: "text", text: b.text });
+      else if (b.type === "image" && !o.images) parts.push({ type: "text", text: NO_IMAGE });
       else if (b.type === "image") parts.push({ type: "image_url", image_url: { url: `data:${b.mediaType};base64,${b.data}` } });
     }
     if (followUpImages.length) out.push({ role: "user", content: [{ type: "text", text: "Image output of the previous tool call:" }, ...followUpImages] });
@@ -45,6 +59,20 @@ export interface OpenAiCompatOptions {
   models: string[];
   /** Whether the endpoint understands a reasoning-effort hint. */
   sendsEffort?: boolean;
+  /** The key, when it does not come from an environment variable (a provider the user set up; apimodels.ts). */
+  apiKey?: () => string | null;
+  /** How requests go out: a user-chosen address goes through the outbound guard (net.ts guardedFetch). */
+  fetch?: (url: string, init: RequestInit) => Promise<Response>;
+  /**
+   * The endpoint streams its reasoning as `reasoning_content` and wants it back on every assistant message once tools
+   * are in play: DeepSeek — "the reasoning_content must be fully passed back to the API in all subsequent requests",
+   * else a 400 (https://api-docs.deepseek.com/guides/thinking_mode). Replies by another model carry an empty one (the
+   * same technique as deepseek-harness packages/llm/llm-pi-ai/src/catalog.ts
+   * `requiresReasoningContentOnAssistantMessages`, MIT, Copyright (c) 2026 DeepSeek).
+   */
+  echoReasoning?: boolean;
+  /** False for a model that does not read images: pictures are replaced by a short note. */
+  images?: boolean;
 }
 
 /** Any endpoint speaking the widely adopted chat-completions wire format (xAI, OpenAI, local servers…). */
@@ -59,7 +87,11 @@ export class OpenAiCompatProvider implements LlmProvider {
   }
 
   available(): boolean {
-    return Boolean(process.env[this.opts.apiKeyEnv]);
+    return Boolean(this.key());
+  }
+
+  private key(): string | null {
+    return this.opts.apiKey ? this.opts.apiKey() : process.env[this.opts.apiKeyEnv] ?? null;
   }
 
   async runTurn(req: TurnRequest): Promise<TurnResult> {
@@ -67,7 +99,7 @@ export class OpenAiCompatProvider implements LlmProvider {
       model: req.model,
       stream: true,
       stream_options: { include_usage: true },
-      messages: toWire(req.system, req.messages),
+      messages: toWire(req.system, req.messages, { providerId: this.id, echoReasoning: !!this.opts.echoReasoning, images: this.opts.images !== false }),
     };
     if (req.tools.length)
       body.tools = req.tools.map((t) => ({ type: "function", function: { name: t.name, description: t.description, parameters: t.inputSchema } }));
@@ -75,9 +107,9 @@ export class OpenAiCompatProvider implements LlmProvider {
 
     let res: Response;
     try {
-      res = await fetch(`${this.opts.baseUrl.replace(/\/$/, "")}/chat/completions`, {
+      res = await (this.opts.fetch ?? fetch)(`${this.opts.baseUrl.replace(/\/$/, "")}/chat/completions`, {
         method: "POST",
-        headers: { "content-type": "application/json", authorization: `Bearer ${process.env[this.opts.apiKeyEnv]}` },
+        headers: { "content-type": "application/json", authorization: `Bearer ${this.key()}` },
         body: JSON.stringify(body),
         signal: req.signal,
       });
@@ -92,6 +124,7 @@ export class OpenAiCompatProvider implements LlmProvider {
     }
 
     let text = "";
+    let reasoning = "";
     let finish = "";
     const calls = new Map<number, { id: string; name: string; args: string }>();
     const usage = { inputTokens: 0, outputTokens: 0, cachedTokens: 0 };
@@ -111,13 +144,14 @@ export class OpenAiCompatProvider implements LlmProvider {
         if (evt.usage) {
           usage.inputTokens = evt.usage.prompt_tokens ?? 0;
           usage.outputTokens = evt.usage.completion_tokens ?? 0;
-          usage.cachedTokens = evt.usage.prompt_tokens_details?.cached_tokens ?? 0;
+          // DeepSeek also reports it as prompt_cache_hit_tokens (https://api-docs.deepseek.com/api/create-chat-completion).
+          usage.cachedTokens = evt.usage.prompt_tokens_details?.cached_tokens ?? evt.usage.prompt_cache_hit_tokens ?? 0;
         }
         const choice = evt.choices?.[0];
         if (!choice) continue;
         if (choice.finish_reason) finish = choice.finish_reason;
         const delta = choice.delta ?? {};
-        if (typeof delta.reasoning_content === "string" && delta.reasoning_content) req.onReasoning?.(delta.reasoning_content);
+        if (typeof delta.reasoning_content === "string" && delta.reasoning_content) { reasoning += delta.reasoning_content; req.onReasoning?.(delta.reasoning_content); }
         if (typeof delta.content === "string" && delta.content) {
           text += delta.content;
           req.onText?.(delta.content);
@@ -141,6 +175,7 @@ export class OpenAiCompatProvider implements LlmProvider {
     }
 
     const content: Block[] = [];
+    if (this.opts.echoReasoning) content.push({ type: "opaque", provider: this.id, raw: { reasoning_content: reasoning } });
     if (text) content.push({ type: "text", text });
     for (const c of calls.values()) {
       let input: Record<string, unknown>;
