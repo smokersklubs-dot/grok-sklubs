@@ -18,7 +18,7 @@ const BADGE_PERMISSIONS = [
   "com.htc.launcher.permission.READ_SETTINGS", "com.htc.launcher.permission.UPDATE_SHORTCUT",
   "com.sonyericsson.home.permission.BROADCAST_BADGE", "com.sonymobile.home.permission.PROVIDER_INSERT_BADGE",
   "com.anddoes.launcher.permission.UPDATE_COUNT", "com.majeur.launcher.permission.UPDATE_BADGE",
-  "com.huawei.android.launcher.permission.CHANGE_BADGE", "com.huawei.android.launcher.permission.READ_SETTINGS",
+  "com.huawei.android.launcher.permission.CHANGE_SETTINGS", "com.huawei.android.launcher.permission.READ_SETTINGS",
   "com.huawei.android.launcher.permission.WRITE_SETTINGS", "android.permission.READ_APP_BADGE",
   "com.oppo.launcher.permission.READ_SETTINGS", "com.oppo.launcher.permission.WRITE_SETTINGS",
   "me.everything.badger.permission.BADGE_COUNT_READ", "me.everything.badger.permission.BADGE_COUNT_WRITE",
@@ -51,7 +51,6 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     // Only what the app uses; the store build adds nothing else (checked with aapt2, see README).
     blockedPermissions: [
       "android.permission.SYSTEM_ALERT_WINDOW", "android.permission.READ_EXTERNAL_STORAGE", "android.permission.WRITE_EXTERNAL_STORAGE",
-      // No push service yet (local notifications only), no biometric unlock, no launcher badge counters.
       "com.google.android.c2dm.permission.RECEIVE", "android.permission.USE_BIOMETRIC", "android.permission.USE_FINGERPRINT",
       ...BADGE_PERMISSIONS,
     ],
@@ -65,12 +64,17 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     "expo-web-browser",
     ["expo-splash-screen", { image: "./assets/splash-icon.png", imageWidth: 120, backgroundColor: "#f5f3ef", dark: { image: "./assets/splash-icon.png", backgroundColor: "#101215" } }],
     "expo-image",
-    // The microphone is for voice calls with a bot (modules/sklubot-voice), asked at the first call; not for videos.
-    ["expo-image-picker", { microphonePermission: "Sklubot utilise le micro seulement pendant un appel vocal avec un bot.",photosPermission: "Sklubot accède à tes photos seulement quand tu en joins une à un message.", cameraPermission: "Sklubot utilise l’appareil photo seulement quand tu prends une photo pour un bot." }],
+    ["expo-image-picker", { microphonePermission: "Sklubot utilise le micro seulement pendant un appel vocal avec un bot.", photosPermission: "Sklubot accède à tes photos seulement quand tu en joins une à un message.", cameraPermission: "Sklubot utilise l’appareil photo seulement quand tu prends une photo pour un bot." }],
     ["expo-notifications", { icon: "./assets/notification-icon.png", color: "#e2552d", enableRemoteNotifications: false }],
     "expo-background-task",
-    ["expo-build-properties", { android: { buildArchs: ["arm64-v8a", "armeabi-v7a", "x86_64"], // R8 removed WorkManager's Room constructor (crash at start): no minification, as in android/.
-      enableMinifyInReleaseBuilds: false, enableShrinkResourcesInReleaseBuilds: false } }],
+    ["expo-build-properties", { android: {
+      compileSdkVersion: 36,
+      targetSdkVersion: 36,
+      buildToolsVersion: "36.0.0",
+      buildArchs: ["arm64-v8a", "armeabi-v7a", "x86_64"],
+      enableMinifyInReleaseBuilds: false,
+      enableShrinkResourcesInReleaseBuilds: false,
+    } }],
     "./plugins/withDevCleartext",
     "./plugins/withReleaseSigning",
     ["./plugins/withRelayVariant", { variant }],
