@@ -31,6 +31,12 @@ jobs:
         run: npm run typecheck
       - name: Web build
         run: npm run build -w web
+      # The "browser" computer kind (screen, vault and card tools) needs a browser engine; Sklubot loads Playwright
+      # if it is installed (server/src/computer.ts loadEngine), it is not a dependency. Same version as the dev setup.
+      - name: Browser engine for the tests
+        run: |
+          npm install --no-save playwright@1.56.1
+          npx playwright install --with-deps chromium
       # The bots' computer image: the Linux, desk, jobs and office tests use it (they skip without it).
       - name: Bots' computer image
         run: npm run computer:build
