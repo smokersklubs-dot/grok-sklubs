@@ -31,6 +31,7 @@ Sklubot a été reconstruit **en salle blanche** : voir [docs/CLEANROOM.md](docs
 | **Compte** | Lien de connexion à usage unique (`node server/dist/sign-in-link.js email`), liste d'adresses autorisées (`ALLOWED_EMAILS`), changement de mot de passe, export de toutes tes données, suppression du compte |
 | **Langue** | Interface, textes du serveur et réponses des bots en **français ou en anglais** |
 | **Téléphone** | Version mobile installable sur l'écran d'accueil (iPhone, iPad) et **application Android (APK)** à télécharger depuis ton serveur |
+| **Ordinateur (application)** | **Application Sklubot pour Windows, macOS et Linux** : ton Sklubot dans sa propre fenêtre, notifications, icône dans la barre avec les non-lus, et le **Relais intégré** pour que tes bots pilotent ton ordinateur avec ton accord — voir [companion/LISEZMOI.md](companion/LISEZMOI.md) |
 | **Mise en ligne** | **Installation sur un VPS en une commande** (Docker, HTTPS automatique, mises à jour, sauvegarde) — voir [docs/INSTALLATION-VPS.md](docs/INSTALLATION-VPS.md) ; ou Coolify — voir [docs/DEPLOIEMENT.md](docs/DEPLOIEMENT.md) |
 | **Mémoire** | Souvenirs enregistrés par le bot, **apprentissage automatique** après les conversations (avec dédoublonnage), sélection des souvenirs pertinents à chaque tour, **résumé automatique** des longues conversations |
 | **Compétences** | Procédures rédigées par toi, injectées dans le bot |
@@ -39,6 +40,22 @@ Sklubot a été reconstruit **en salle blanche** : voir [docs/CLEANROOM.md](docs
 | **Tâches** | Suivi du travail en cours, en attente de toi, terminé |
 | **Voix** | Appel vocal et dictée dans le navigateur (reconnaissance et synthèse vocales du navigateur), voix / vitesse / langue par bot |
 | **Maîtrise** | Compteur de jetons et de coût par bot, **budget mensuel** qui met les bots en pause, garde-fou contre les boucles, limite d'étapes |
+
+## Télécharger les applications
+
+Sur ton serveur, la page **`/telecharger`** (lien en bas de la page de connexion) propose tout, en mettant en avant le
+bon fichier pour l'appareil du visiteur :
+
+| Appareil | Quoi | Où |
+|---|---|---|
+| Windows 10/11 | Application Sklubot (installateur `.exe` ou `.zip` sans installation), Relais intégré | `/telecharger`, ou les [versions GitHub](https://github.com/smokersklubs-dot/grok-sklubs/releases) (`desktop-v…`) |
+| macOS 11+ (Intel et Apple Silicon) | Application Sklubot (`.dmg`), Relais intégré | idem |
+| Linux | Application Sklubot (`.deb` ou `.AppImage`), Relais intégré | idem |
+| Android | Application Sklubot (`.apk`) | `/download/sklubot.apk` |
+| iPhone, iPad | Pas d'application native : Safari › Partager › « Sur l'écran d'accueil » | — |
+
+Applications non signées pour l'instant : premier lancement sous Windows (SmartScreen) et macOS (Gatekeeper) expliqué
+dans [companion/LISEZMOI.md](companion/LISEZMOI.md). Publier une version : [docs/DEPLOIEMENT.md](docs/DEPLOIEMENT.md).
 
 ## Démarrage
 
@@ -138,6 +155,7 @@ server/src/agent/      boucle d'agent, outils, mémoire, équipe, prompt
 server/src/            base, routes HTTP, ordinateur, connecteurs, planificateur, usage
 docker/desktop/        image de l'ordinateur Linux des bots
 android/               application Android
+companion/             application Sklubot pour ordinateur (Electron) avec le Relais intégré
 Dockerfile.production, docker-compose.coolify.yml   mise en ligne
 server/test/           tests de bout en bout
 web/src/               interface React

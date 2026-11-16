@@ -174,6 +174,7 @@ export function SignIn() {
         {!signupOpen && <p className="signin-switch">{t("signin.closed")}</p>}
       </form>
       <p className="signin-foot">{t("signin.foot")}</p>
+      <p className="signin-links"><a href="/telecharger">{t("signin.download")}</a></p>
       <div className="segmented signin-lang" role="radiogroup" aria-label={t("signin.language")}>
         {LOCALES.map((l) => (
           <button key={l.id} type="button" role="radio" aria-checked={locale === l.id} lang={l.id} className={locale === l.id ? "is-active" : ""} onClick={() => void setLocale(l.id)}>

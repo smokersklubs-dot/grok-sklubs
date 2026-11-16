@@ -5,3 +5,7 @@ data/
 *.db
 *.db-*
 .DS_Store
+
+# Desktop builds (100-160 MB each): GitHub refuses files over 100 MB. Attach them to a GitHub Release instead
+# (companion/.github-workflow-example.yml) or copy them onto the server (docs/DEPLOIEMENT.md).
+web/public/download/Sklubot-*

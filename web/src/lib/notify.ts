@@ -2,6 +2,7 @@
  * Browser notifications for "a bot needs you" and "a bot finished a reply".
  * The on/off choice lives on this device (localStorage); the browser's own permission still decides.
  */
+import { focusDesktopWindow } from "./desktop";
 import { pushActiveHere } from "./push";
 
 const KEY = "sklubot.notify";
@@ -66,6 +67,8 @@ export function notifyBot(botId: string, title: string, body: string, onClick: (
     const n = new Notification(title, { body, tag: `sklubot-${botId}`, icon: "/icon-192.png" });
     n.onclick = () => {
       window.focus();
+      // In the desktop app the window may be hidden in the tray: ask the app to show it.
+      focusDesktopWindow();
       onClick();
       n.close();
     };

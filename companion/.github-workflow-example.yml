@@ -1,20 +1,35 @@
-# Example GitHub Actions workflow for Sklubot Relais (companion/).
-# Not active: copy it to .github/workflows/relais.yml if you want it.
-# Builds the three desktop apps on native runners (electron-builder recommends building each OS on
-# its own runner: https://www.electron.build/docs/features/github-actions).
+# GitHub Actions workflow for the Sklubot desktop app (companion/: the Sklubot window + the relay built in).
+# Not active: review it, then copy it to .github/workflows/desktop.yml.
 #
-# Optional secrets (without them the builds are produced UNSIGNED):
+# What it does
+#   - on every push of a tag "desktop-vX.Y.Z" (and on demand): tests on Linux (unit + end-to-end under Xvfb),
+#     then builds on native runners, as electron-builder recommends
+#     (https://www.electron.build/docs/features/github-actions):
+#       Linux   -> Sklubot-X.Y.Z-linux.AppImage, Sklubot-X.Y.Z-linux.deb
+#       Windows -> Sklubot-X.Y.Z-win.exe (NSIS installer), Sklubot-X.Y.Z-win.zip (no install)
+#       macOS   -> Sklubot-X.Y.Z-mac.dmg, Sklubot-X.Y.Z-mac.zip (universal: Intel + Apple Silicon)
+#   - for a tag: creates the GitHub Release "Sklubot X.Y.Z" and attaches the files. The desktop app's
+#     "update available" check (companion/src/main/app-window.js) reads the releases whose tag starts with
+#     "desktop-v"; the server's download page links to this releases page as a fallback.
+#   - the tag must match "version" in companion/package.json (checked first).
+#
+# Release steps:  edit companion/package.json "version" -> commit -> git tag desktop-v1.0.1 -> git push --tags
+#
+# Optional secrets (without them the builds are produced UNSIGNED: SmartScreen / Gatekeeper warn on first run,
+# see companion/LISEZMOI.md):
 #   macOS  : CSC_LINK (base64 .p12 "Developer ID Application"), CSC_KEY_PASSWORD,
 #            and for notarisation APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID
 #            (or APPLE_API_KEY, APPLE_API_KEY_ID, APPLE_API_ISSUER) — https://www.electron.build/docs/notarization
-#   Windows: WIN_CSC_LINK (base64 .pfx), WIN_CSC_KEY_PASSWORD
-name: Sklubot Relais
+#   Windows: WIN_CSC_LINK (base64 .pfx), WIN_CSC_KEY_PASSWORD — https://www.electron.build/docs/code-signing
+name: Sklubot desktop
 
 on:
   push:
-    tags: ['relais-v*']
-    paths: ['companion/**']
+    tags: ['desktop-v*']
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 defaults:
   run:
@@ -25,23 +40,35 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+      - name: The tag matches companion/package.json
+        if: startsWith(github.ref, 'refs/tags/desktop-v')
+        run: |
+          want="${GITHUB_REF_NAME#desktop-v}"
+          have="$(node -p "require('./package.json').version")"
+          if [ "$want" != "$have" ]; then echo "Tag $GITHUB_REF_NAME but package.json says $have"; exit 1; fi
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: companion/package-lock.json
+          cache-dependency-path: |
+            package-lock.json
+            companion/package-lock.json
+      # The end-to-end suite also runs the real Sklubot server (../server, started with tsx).
+      - name: Server dependencies (for the end-to-end test against the real server)
+        working-directory: .
+        run: npm ci
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
-      - name: System packages for the end-to-end tests (virtual screen, window manager, screenshots)
-        run: sudo apt-get update && sudo apt-get install -y xvfb openbox wmctrl imagemagick libxtst6
+      - name: System packages for the end-to-end tests (virtual screen, window manager, screenshots, typing)
+        run: sudo apt-get update && sudo apt-get install -y xvfb openbox wmctrl xdotool imagemagick libxtst6 dbus
       - run: npm run test:e2e
       - run: npm run dist:linux:dir
       - run: npm run test:packaged
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: relais-e2e-screenshots
+          name: desktop-e2e-screenshots
           path: companion/test/.tmp/shots
 
   build:
@@ -68,7 +95,7 @@ jobs:
       - name: Build
         run: npm run ${{ matrix.script }}
         env:
-          # macOS: without a certificate, do not look for one in the keychain (unsigned build).
+          # Without a certificate, do not look for one in the keychain / store (unsigned build).
           CSC_IDENTITY_AUTO_DISCOVERY: ${{ secrets.CSC_LINK != '' }}
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
@@ -79,12 +106,41 @@ jobs:
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
       - uses: actions/upload-artifact@v4
         with:
-          name: sklubot-relais-${{ runner.os }}
+          name: sklubot-desktop-${{ runner.os }}
           path: |
-            companion/dist/*.AppImage
-            companion/dist/*.deb
-            companion/dist/*.tar.gz
-            companion/dist/*.exe
-            companion/dist/*.zip
-            companion/dist/*.dmg
-          if-no-files-found: ignore
+            companion/dist/Sklubot-*.AppImage
+            companion/dist/Sklubot-*.deb
+            companion/dist/Sklubot-*.exe
+            companion/dist/Sklubot-*.zip
+            companion/dist/Sklubot-*.dmg
+          if-no-files-found: error
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/desktop-v')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write # create the release and upload the files
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: sklubot-desktop-*
+          path: release
+          merge-multiple: true
+      - name: Checksums
+        run: cd release && sha256sum Sklubot-* > SHA256SUMS.txt && cat SHA256SUMS.txt
+      # https://github.com/softprops/action-gh-release
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: Sklubot ${{ github.ref_name }}
+          body: |
+            Sklubot pour ordinateur (Windows, macOS, Linux), avec le Relais intégré.
+            Installation et premier lancement : companion/LISEZMOI.md.
+            Vérifier un fichier : comparer son empreinte SHA-256 avec SHA256SUMS.txt.
+          files: |
+            release/Sklubot-*
+            release/SHA256SUMS.txt
+          fail_on_unmatched_files: true

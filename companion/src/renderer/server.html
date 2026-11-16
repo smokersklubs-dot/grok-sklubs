@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sklubot</title>
+<link rel="stylesheet" href="desktop.css">
+</head>
+<body>
+<main class="card">
+  <img class="logo" src="../../assets/icon.png" alt="" width="64" height="64">
+  <h1 id="title"></h1>
+  <p id="intro" class="muted"></p>
+  <form id="form" novalidate>
+    <label id="label" for="server"></label>
+    <input id="server" type="url" autocomplete="url" spellcheck="false" required>
+    <p id="error" class="error" role="alert" hidden></p>
+    <div class="row">
+      <button id="cancel" type="button" class="ghost" hidden></button>
+      <button id="go" type="submit" class="primary"></button>
+    </div>
+  </form>
+  <p id="hint" class="muted small"></p>
+</main>
+<script src="server.js"></script>
+</body>
+</html>

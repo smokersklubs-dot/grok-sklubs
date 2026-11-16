@@ -110,6 +110,7 @@ public class MainActivity extends Activity {
         TextView error = view.findViewById(R.id.error);
         Button connect = view.findViewById(R.id.connect);
         if (current != null) address.setText(current);
+        else if (!BuildConfig.DEFAULT_SERVER.isEmpty()) address.setText(BuildConfig.DEFAULT_SERVER);
 
         Runnable submit = () -> {
             String base = normalise(address.getText().toString());

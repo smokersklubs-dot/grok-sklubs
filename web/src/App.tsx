@@ -16,6 +16,8 @@ import { Sidebar } from "./components/Sidebar";
 import { SignIn } from "./components/SignIn";
 import { TasksView } from "./components/TasksView";
 import { ThreadPanel } from "./components/ThreadPanel";
+import { DownloadPage, isDownloadPath } from "./components/DownloadPage";
+import { useDesktopBadge } from "./lib/desktop";
 
 function useShortcuts(): void {
   useEffect(() => {
@@ -128,6 +130,12 @@ function Shell() {
 }
 
 export function App() {
+  // /telecharger is public (linked from the sign-in page): no session needed, no app shell.
+  if (isDownloadPath()) return <DownloadPage />;
+  return <MainApp />;
+}
+
+function MainApp() {
   const boot = useStore((s) => s.boot);
   const init = useStore((s) => s.init);
   const t = useT();
@@ -136,6 +144,7 @@ export function App() {
   }, [init]);
   useShortcuts();
   useSystemTheme();
+  useDesktopBadge();
 
   if (boot === "loading") return <div className="boot" aria-busy="true" aria-label={t("common.loading")} />;
   if (boot === "signedOut") return <SignIn />;

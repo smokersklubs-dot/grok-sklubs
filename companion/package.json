@@ -1,14 +1,14 @@
 {
-  "name": "sklubot-relais",
-  "productName": "Sklubot Relais",
-  "version": "0.1.0",
-  "description": "Sklubot Relais : laisse tes bots Sklubot voir et piloter ton ordinateur, avec ton accord.",
+  "name": "sklubot-desktop",
+  "productName": "Sklubot",
+  "version": "1.0.0",
+  "description": "Sklubot : ton équipe de bots dans une fenêtre, avec le Relais intégré pour qu'ils pilotent ton ordinateur, avec ton accord.",
   "license": "MIT",
   "private": true,
   "main": "src/main/main.js",
   "author": {
     "name": "Sklubot",
-    "email": "relais@sklubot.invalid"
+    "email": "desktop@sklubot.invalid"
   },
   "homepage": "https://github.com/smokersklubs-dot/grok-sklubs",
   "repository": {
@@ -27,11 +27,12 @@
     "test:e2e:server": "RELAIS_E2E_FILES=test/e2e/sklubot-server.e2e.test.js bash test/run-e2e.sh",
     "test:packaged": "bash test/run-e2e.sh packaged",
     "typecheck": "tsc -p jsconfig.json",
-    "dist:linux": "electron-builder --linux --publish never",
+    "dist:linux": "electron-builder --linux AppImage deb --publish never",
     "dist:linux:dir": "electron-builder --linux dir --publish never",
     "dist:win": "electron-builder --win --publish never",
     "dist:mac": "electron-builder --mac --publish never",
-    "dist:win:zip": "electron-builder --win zip --publish never"
+    "dist:win:zip": "electron-builder --win zip --publish never",
+    "icons": "electron scripts/make-icons.js"
   },
   "dependencies": {
     "@jitsi/robotjs": "0.6.24",
@@ -43,11 +44,11 @@
     "electron-builder": "26.18.1",
     "typescript": "6.0.3"
   },
-  "desktopName": "sklubot-relais.desktop",
+  "desktopName": "sklubot.desktop",
   "build": {
-    "appId": "fr.sklubot.relais",
-    "productName": "Sklubot Relais",
-    "artifactName": "Sklubot-Relais-${version}-${os}-${arch}.${ext}",
+    "appId": "fr.sklubot.desktop",
+    "productName": "Sklubot",
+    "artifactName": "Sklubot-${version}-${os}.${ext}",
     "directories": {
       "output": "dist",
       "buildResources": "build"
@@ -75,23 +76,19 @@
           "arch": [
             "x64"
           ]
-        },
-        {
-          "target": "tar.gz",
-          "arch": [
-            "x64"
-          ]
         }
       ],
-      "category": "Utility",
-      "icon": "build/icon.png",
-      "synopsis": "Laisse tes bots Sklubot piloter ton ordinateur, avec ton accord",
+      "category": "Network",
+      "icon": "build/icons",
+      "synopsis": "Ton équipe de bots Sklubot dans une fenêtre, Relais intégré",
+      "description": "L'application Sklubot pour ordinateur : ton serveur Sklubot dans une fenêtre, avec notifications, icône dans la barre et le Relais intégré.",
       "desktop": {
         "entry": {
-          "Name": "Sklubot Relais",
-          "StartupWMClass": "Sklubot Relais"
+          "Name": "Sklubot",
+          "StartupWMClass": "Sklubot"
         }
-      }
+      },
+      "executableName": "sklubot"
     },
     "win": {
       "target": [
@@ -108,14 +105,16 @@
           ]
         }
       ],
-      "icon": "build/icon.png"
+      "icon": "build/icon.ico"
     },
     "nsis": {
       "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
-      "runAfterFinish": true
+      "runAfterFinish": true,
+      "shortcutName": "Sklubot",
+      "uninstallDisplayName": "Sklubot"
     },
     "mac": {
       "target": [
@@ -132,15 +131,18 @@
           ]
         }
       ],
-      "category": "public.app-category.utilities",
-      "icon": "build/icon.png",
+      "category": "public.app-category.productivity",
+      "icon": "build/icon.icns",
       "hardenedRuntime": true,
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist",
-      "notarize": true
+      "notarize": true,
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "Sklubot utilise le micro pour parler à tes bots (mode vocal)."
+      }
     },
     "dmg": {
-      "title": "Sklubot Relais"
+      "title": "Sklubot"
     },
     "publish": []
   }

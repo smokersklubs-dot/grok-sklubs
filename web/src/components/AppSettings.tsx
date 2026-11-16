@@ -96,6 +96,19 @@ function GeneralSection() {
         </button>
       </div>
 
+      <h3 className="pane-heading">{t("general.apps")}</h3>
+      <ul className="list">
+        <li className="list-row is-card">
+          <div className="list-row-text">
+            <span className="list-row-title">{t("general.apps.title")}</span>
+            <span className="list-row-sub">{t("general.apps.hint")}</span>
+          </div>
+          <a className="btn btn-small" href="/telecharger" target="_blank" rel="noopener">
+            <Icon name="download" size={14} /> {t("general.apps.open")}
+          </a>
+        </li>
+      </ul>
+
       {!/SklubotAndroid/.test(navigator.userAgent) && (
         <>
           <h3 className="pane-heading">{t("general.phone")}</h3>

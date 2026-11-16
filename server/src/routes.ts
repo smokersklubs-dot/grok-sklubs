@@ -50,7 +50,7 @@ import { appOf, appsFor, nativeRedirectUri, setupDocs, setupSteps, VENDOR_NAMES,
 import { syncSlackSockets } from "./native/triggers.js";
 import { isNativeTrigger } from "./routines.js";
 import type { NativeVendor, NativeVendorSetup } from "./shared.js";
-import { confirmPairing, lastFrame, listDevices, relayDownloads, revokeDevice, stopSession, userSpoke as relayUserSpoke } from "./relay.js";
+import { confirmPairing, lastFrame, listDevices, relayDownloads, appDownloads, revokeDevice, stopSession, userSpoke as relayUserSpoke } from "./relay.js";
 import { isRuleTrigger, MAX_RULES, ruleChanges, rules } from "./rules.js";
 import type { RuleTrigger } from "./shared.js";
 import { executions, grants } from "./agent/executions.js";
@@ -177,6 +177,8 @@ site.on(["GET", "HEAD"], "/l/:token", (c) => servePublicLink(c));
 
 // ── Public routes ────────────────────────────────────────────────────────────
 api.get("/health", (c) => c.json({ ok: true, model: defaultModelRef() }));
+// The download page (/telecharger) is public: it is linked from the sign-in page.
+api.get("/downloads", (c) => c.json(appDownloads()));
 
 api.get("/me", (c) => {
   const user = userForToken(getCookie(c, SESSION_COOKIE));

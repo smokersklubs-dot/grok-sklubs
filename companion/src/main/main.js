@@ -1,8 +1,9 @@
 // @ts-check
 'use strict';
 /**
- * Sklubot Relais — Electron main process.
- * Wires the relay (connection + core) to the local UI: main window, consent dialogs,
+ * Sklubot desktop app — Electron main process.
+ * The Sklubot window (the user's web app, see app-window.js) plus the relay built in: the relay (connection + core)
+ * is wired to its own local UI exactly as in the former "Sklubot Relais" app: relay panel, consent dialogs,
  * always-on-top "session active" banner, tray icon and the global Stop hotkey.
  * Electron APIs used are documented at https://www.electronjs.org/docs/latest/api/app (and siblings).
  */
@@ -21,10 +22,15 @@ const { createDesktopCaps } = require('./capabilities/desktop');
 const { runShell } = require('./capabilities/shell');
 const { createFileCaps, shareProblem } = require('./capabilities/files');
 const i18n = require('./i18n');
+const { AppSettings } = require('./app-settings');
+const { createAppShell } = require('./app-window');
+const { migrateRelaisDir } = require('./desktop-core');
 
 // ───────────────────────── process-level setup (before "ready") ─────────────────────────
 
-if (process.env.SKLUBOT_RELAIS_DATA_DIR) app.setPath('userData', path.resolve(process.env.SKLUBOT_RELAIS_DATA_DIR));
+// SKLUBOT_DATA_DIR (or the older SKLUBOT_RELAIS_DATA_DIR) moves the settings folder: tests and portable use only.
+const DATA_DIR_OVERRIDE = process.env.SKLUBOT_DATA_DIR || process.env.SKLUBOT_RELAIS_DATA_DIR;
+if (DATA_DIR_OVERRIDE) app.setPath('userData', path.resolve(DATA_DIR_OVERRIDE));
 
 // Since Electron 38, Linux defaults to native Wayland in a Wayland session
 // (https://www.electronjs.org/docs/latest/breaking-changes#changed-ozone-platform-default-to-auto-on-linux).
@@ -47,7 +53,7 @@ const PRELOAD = path.join(__dirname, '..', 'preload', 'preload.js');
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
-  app.on('second-instance', () => showMain());
+  app.on('second-instance', () => { if (appShell) appShell.show(); });
   app.whenReady().then(boot).catch((e) => {
     console.error(e);
     app.exit(1);
@@ -63,6 +69,9 @@ if (!app.requestSingleInstanceLock()) {
 /** @type {Electron.BrowserWindow | null} */ let mainWin = null;
 /** @type {Electron.BrowserWindow | null} */ let bannerWin = null;
 /** @type {Electron.Tray | null} */ let tray = null;
+/** @type {AppSettings} */ let appSettings;
+/** @type {ReturnType<typeof createAppShell> | null} */ let appShell = null;
+let unread = 0;
 let hotkeyOk = false;
 let quitting = false;
 /** @type {Record<string,string>} */ let dict = i18n.fr;
@@ -86,6 +95,12 @@ const log = (e) => {
 
 async function boot() {
   const userData = app.getPath('userData');
+  // The app was called "Sklubot Relais" before: copy its settings once (pairing, shared folders, bots' permissions).
+  if (!DATA_DIR_OVERRIDE) {
+    try {
+      if (migrateRelaisDir(path.join(app.getPath('appData'), 'Sklubot Relais'), userData)) console.log('[sklubot] relay settings copied from the former Sklubot Relais folder');
+    } catch (e) { console.error('[sklubot] could not copy the former Sklubot Relais settings:', e); }
+  }
   store = await new Store(userData, safeStorage ? {
     available: () => safeStorage.isAsyncEncryptionAvailable(),
     encrypt: (s) => safeStorage.encryptStringAsync(s),
@@ -94,7 +109,8 @@ async function boot() {
   actionLog = new ActionLog(path.join(userData, 'logs'));
   lang = i18n.pickLanguage(app.getLocale(), store.settings.language);
   dict = i18n.strings(lang);
-  if (process.platform === 'win32') app.setAppUserModelId('fr.sklubot.relais');
+  if (process.platform === 'win32') app.setAppUserModelId('fr.sklubot.desktop');
+  appSettings = new AppSettings(userData).load();
 
   const desktop = createDesktopCaps(electron);
   core = new RelayCore({
@@ -116,16 +132,42 @@ async function boot() {
   if (!store.settings.server && process.env.SKLUBOT_RELAIS_SERVER) {
     try { store.setServer(normalizeServer(process.env.SKLUBOT_RELAIS_SERVER).base); } catch { /* ignore */ }
   }
-  showMain();
+  appShell = createAppShell({
+    settings: appSettings,
+    tr,
+    dict: () => dict,
+    lang: () => lang,
+    assets: ASSETS,
+    renderer: RENDERER,
+    preloadDir: path.dirname(PRELOAD),
+    keepInBackground: relayEnabled,
+    openRelay: () => showMain(),
+    quit: () => quit(),
+    isQuitting: () => quitting,
+    getAutostart: () => store.settings.autostart,
+    setAutostart: (on) => { store.setAutostart(on); applyAutostart(on); pushState(); },
+    onBadge: (n) => { unread = n; updateTray(); },
+    log,
+  });
+  appShell.show();
   if (store.settings.server) startConnection();
   applyAutostart(store.settings.autostart);
   pushState();
+  // "Update available" check (GitHub Releases, no automatic install): packaged builds only, a little after start.
+  if (app.isPackaged && process.env.SKLUBOT_NO_UPDATE_CHECK !== '1') setTimeout(() => { if (appShell) void appShell.checkForUpdate(false); }, 15_000);
+}
+
+/** The relay is on when the user set it up in the relay panel (a server address there); "Oublier ce serveur" turns it off. */
+function relayEnabled() {
+  return !!(store && store.settings.server);
 }
 
 app.on('window-all-closed', () => {
-  // Keep running in the tray; quitting is explicit (tray menu).
-  if (!tray) quit();
+  // With the relay on, the app keeps running in the tray. Otherwise: quit on Windows/Linux, stay in the Dock on macOS.
+  if (process.platform !== 'darwin' && !relayEnabled()) quit();
 });
+// macOS: a click on the Dock icon reopens the window.
+app.on('activate', () => { if (appShell) appShell.show(); });
 app.on('before-quit', () => { quitting = true; });
 app.on('will-quit', () => globalShortcut.unregisterAll());
 
@@ -305,8 +347,9 @@ function showMain() {
   lockDownContents(mainWin);
   mainWin.loadFile(path.join(RENDERER, 'index.html'));
   mainWin.once('ready-to-show', () => mainWin && mainWin.show());
+  // The relay panel is a secondary window of the app: closing it only hides it.
   mainWin.on('close', (e) => {
-    if (!quitting && tray) { e.preventDefault(); mainWin && mainWin.hide(); }
+    if (!quitting) { e.preventDefault(); mainWin && mainWin.hide(); }
   });
   mainWin.on('closed', () => { mainWin = null; });
 }
@@ -347,7 +390,7 @@ function hideBanner() {
 
 // ───────────────────────── tray ─────────────────────────
 
-function trayIcon(/** @type {'idle'|'active'|'paused'} */ kind) {
+function trayIcon(/** @type {'idle'|'active'|'paused'|'unread'} */ kind) {
   const file = path.join(ASSETS, `tray-${kind}.png`);
   const img = nativeImage.createFromPath(file);
   return img.isEmpty() ? nativeImage.createFromPath(path.join(ASSETS, 'icon.png')).resize({ width: 16, height: 16 }) : img;
@@ -356,7 +399,7 @@ function trayIcon(/** @type {'idle'|'active'|'paused'} */ kind) {
 function createTray() {
   try {
     tray = new Tray(trayIcon('idle'));
-    tray.on('click', () => showMain());
+    tray.on('click', () => { if (appShell) appShell.show(); });
     updateTray();
   } catch (e) {
     tray = null;
@@ -367,19 +410,27 @@ function createTray() {
 function updateTray() {
   if (!tray) return;
   const active = !!(core && core.session);
-  const paused = !conn || conn.status === 'paused';
-  tray.setImage(trayIcon(active ? 'active' : paused ? 'paused' : 'idle'));
-  tray.setToolTip(tr('tray.tooltip', { status: active ? tr('session.active', { bot: core.session ? core.session.botName : '' }) : statusText() }));
-  tray.setContextMenu(Menu.buildFromTemplate([
-    { label: tr('tray.open'), click: () => showMain() },
+  const relayOn = relayEnabled();
+  const paused = relayOn && (!conn || conn.status === 'paused');
+  tray.setImage(trayIcon(active ? 'active' : paused ? 'paused' : unread > 0 ? 'unread' : 'idle'));
+  const unreadText = unread > 0 ? ` — ${tr('tray.unread', { n: unread })}` : '';
+  tray.setToolTip(relayOn ? tr('tray.tooltip', { status: active ? tr('session.active', { bot: core.session ? core.session.botName : '' }) : statusText() }) + unreadText : `Sklubot${unreadText}`);
+  // macOS menu bar: the count next to the icon (Tray.setTitle is macOS only).
+  if (process.platform === 'darwin') tray.setTitle(unread > 0 ? String(unread > 99 ? '99+' : unread) : '');
+  /** @type {Electron.MenuItemConstructorOptions[]} */
+  const items = [
+    { label: tr('tray.open'), click: () => { if (appShell) appShell.show(); } },
+    { label: tr('tray.relay'), click: () => showMain() },
+    { type: 'separator' },
     { label: tr('tray.stop'), enabled: active, click: () => core.stop('tray') },
-    { type: 'separator' },
-    conn && conn.status === 'paused'
+  ];
+  if (relayOn) {
+    items.push(conn && conn.status === 'paused'
       ? { label: tr('btn.resume'), click: () => resume() }
-      : { label: tr('btn.pause'), enabled: !!conn, click: () => pause() },
-    { type: 'separator' },
-    { label: tr('tray.quit'), click: () => quit() },
-  ]));
+      : { label: tr('btn.pause'), enabled: !!conn, click: () => pause() });
+  }
+  items.push({ type: 'separator' }, { label: tr('tray.quit'), click: () => quit() });
+  tray.setContextMenu(Menu.buildFromTemplate(items));
 }
 
 function pause() { if (conn) { conn.pause(); log({ kind: 'paused' }); } updateTray(); pushState(); }
@@ -396,11 +447,11 @@ function applyAutostart(on) {
   try {
     if (process.platform === 'linux') {
       const dir = path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), 'autostart');
-      const file = path.join(dir, 'sklubot-relais.desktop');
+      const file = path.join(dir, 'sklubot.desktop');
       if (on) {
         const exec = process.env.APPIMAGE || process.execPath;
         fs.mkdirSync(dir, { recursive: true });
-        fs.writeFileSync(file, `[Desktop Entry]\nType=Application\nName=Sklubot Relais\nExec="${exec.replace(/"/g, '')}"\nX-GNOME-Autostart-enabled=true\n`);
+        fs.writeFileSync(file, `[Desktop Entry]\nType=Application\nName=Sklubot\nExec="${exec.replace(/"/g, '')}"\nX-GNOME-Autostart-enabled=true\n`);
       } else if (fs.existsSync(file)) {
         fs.unlinkSync(file);
       }
@@ -449,6 +500,8 @@ function uiState() {
     view,
     lang,
     setupError,
+    // The relay panel's address field starts with the server shown in the Sklubot window.
+    suggestedServer: appSettings ? appSettings.server : null,
     server: s.server,
     serverName: s.serverName,
     status: conn ? conn.status : 'idle',
@@ -596,6 +649,7 @@ function registerIpc() {
     if (on === true && (core.session || prompts.size)) return false;
     store.setAutostart(on === true);
     applyAutostart(on === true);
+    if (appShell) appShell.buildMenu();
     pushState();
     return true;
   });

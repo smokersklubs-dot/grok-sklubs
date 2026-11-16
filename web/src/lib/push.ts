@@ -18,6 +18,9 @@ const standalone = () => window.matchMedia?.("(display-mode: standalone)").match
 export function pushSupport(): PushSupport {
   if (typeof window === "undefined") return "unsupported";
   if (isIos() && !standalone()) return "ios-home-screen";
+  // The Sklubot desktop app has no Web Push service (Chromium's Push API needs the browser vendor's push servers);
+  // it shows this page's notifications itself while it runs, even with its window closed to the tray.
+  if (window.sklubotDesktop) return "unsupported";
   if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) return "unsupported";
   return Notification.permission === "denied" ? "denied" : "ok";
 }

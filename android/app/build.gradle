@@ -16,8 +16,10 @@ android {
         applicationId "app.sklubot.android"
         minSdk 24
         targetSdk 35
-        versionCode 3
-        versionName "1.1.1"
+        versionCode 4
+        versionName "1.2.0"
+        // Address pre-filled on first run; override with -PsklubotServer=https://… (empty = no default).
+        buildConfigField "String", "DEFAULT_SERVER", "\"" + (project.findProperty("sklubotServer") ?: "https://sklubot.sklubs.fr") + "\""
     }
     signingConfigs {
         release {
@@ -39,6 +41,7 @@ android {
             if (keystoreFile.exists()) signingConfig signingConfigs.release
         }
     }
+    buildFeatures { buildConfig true }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17

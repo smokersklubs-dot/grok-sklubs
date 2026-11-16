@@ -14,6 +14,8 @@ function render(s) {
   const err = $('setup-error');
   err.textContent = s.setupError || '';
   show(err, !!s.setupError);
+  // Pre-filled with the server of the Sklubot window (the user can still change it).
+  if (s.view === 'setup' && s.suggestedServer && !$('server').value && document.activeElement !== $('server')) $('server').value = s.suggestedServer;
 
   // pairing
   $('pair-code').textContent = s.pairing ? s.pairing.code : '· · · ·';

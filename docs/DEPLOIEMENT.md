@@ -43,6 +43,39 @@ Sklubot écoute alors sur le port 3000 du conteneur ; place un proxy HTTPS (Cadd
 - Toutes les données sont dans le volume `sklubot_data` (base, fichiers des bots). Sauvegarde-le.
 - Le HTTPS est nécessaire pour le micro (dictée, appel vocal) et pour l'installation sur iPhone.
 
+## Télécharger les applications : la page `/telecharger`
+
+Ton serveur a une page publique **Télécharger Sklubot** : `https://ton-adresse/telecharger` (lien en bas de la page de
+connexion et dans **Réglages › Général › Applications Sklubot**). Elle repère le système du visiteur pour mettre le bon
+bouton en avant et liste :
+
+- l'**application Android** (`/download/sklubot.apk`, si le fichier est sur le serveur) ;
+- l'**application pour ordinateur** Windows, macOS, Linux (avec le Relais intégré) : les fichiers déposés dans
+  `web/public/download/` sous le nom `Sklubot-<version>-<os>.<ext>` (par exemple `Sklubot-1.0.0-linux.AppImage`,
+  `Sklubot-1.0.0-win.exe`, `Sklubot-1.0.0-mac.dmg`), la version la plus récente de chaque type ; à défaut, un lien vers la
+  [page des versions GitHub](https://github.com/smokersklubs-dot/grok-sklubs/releases) ;
+- les étapes pour l'**iPhone et l'iPad** (écran d'accueil, pas d'application native).
+
+La liste vient de `GET /api/downloads` (public, aucune donnée personnelle). Les mêmes fichiers d'ordinateur sont aussi
+proposés dans **Réglages › Ordinateurs** pour installer le Relais.
+
+Les fichiers pour ordinateur pèsent 100 à 160 Mo : GitHub refuse tout fichier de plus de 100 Mo dans un dépôt, donc
+**ne les commite pas** (`.gitignore` les exclut). Deux façons de les servir :
+
+1. les attacher à une Release GitHub (workflow `companion/.github-workflow-example.yml`, tag `desktop-vX.Y.Z`) : la page
+   `/telecharger` renvoie alors vers GitHub ;
+2. les copier sur le serveur, dans le dossier servi : avec Docker, `docker cp Sklubot-1.0.0-linux.AppImage
+   <conteneur>:/app/web/dist/download/` (dossier `web/dist/download/` de l'image ; à refaire après chaque mise à jour de
+   l'image), ou les déposer dans `web/public/download/` avant de construire l'image.
+
+## Sklubot sur ordinateur (Windows, macOS, Linux)
+
+L'application **Sklubot** pour ordinateur (dossier `companion/`) affiche ton Sklubot dans sa propre fenêtre, avec
+notifications, icône dans la barre et nombre de non-lus, et contient le **Relais** (tes bots pilotent ton ordinateur,
+avec ton accord). Au premier lancement, elle demande l'adresse du serveur (`https://…` obligatoire). Rien à configurer
+côté serveur : elle passe par la même adresse que le navigateur. Installation, premier lancement sous Windows
+(SmartScreen) et macOS (Gatekeeper) : [`companion/LISEZMOI.md`](../companion/LISEZMOI.md).
+
 ## 2. iPhone et iPad
 
 1. Ouvre l'adresse de ton Sklubot dans **Safari**.

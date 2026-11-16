@@ -10,7 +10,7 @@ import { config } from "./config.js";
 import { q } from "./db.js";
 import { tr } from "./i18n.js";
 import { pushLater } from "./push.js";
-import type { Locale, RelayDevice, RelayDownloads } from "./shared.js";
+import type { AppDownloads, DesktopDownload, Locale, RelayDevice, RelayDownloads } from "./shared.js";
 import { audit, bots, clip, now, randomToken, rows, sha256, users, type UserRecord } from "./store.js";
 
 /**
@@ -778,9 +778,12 @@ export function noteSession(deviceId: string, bot: RelayBot, grant: unknown, ses
 /** Screenshot data for the web app's "last seen" picture, when no live view runs. */
 export const lastFrame = (deviceId: string) => lastFrames.get(deviceId) ?? null;
 
-/** Built relay files this server offers under /download/, and the releases page in any case. */
-export function relayDownloads(): RelayDownloads {
-  const dir = path.join(config.webDist, "download");
+/**
+ * Built relay files this server offers under /download/, and the releases page in any case. The Sklubot desktop app
+ * (Sklubot-<version>-<os>.<ext>) has the relay built in, so it is offered here too, next to the older
+ * Sklubot-Relais-* files.
+ */
+export function relayDownloads(dir = path.join(config.webDist, "download")): RelayDownloads {
   const files: RelayDownloads["files"] = [];
   try {
     for (const name of readdirSync(dir)) {
@@ -789,7 +792,37 @@ export function relayDownloads(): RelayDownloads {
       files.push({ name, url: `/download/${encodeURIComponent(name)}`, platform, size: statSync(path.join(dir, name)).size });
     }
   } catch { /* no download folder */ }
+  for (const f of appDownloads(dir).desktop) files.push({ name: f.name, url: f.url, platform: f.os, size: f.size });
   return { files, releasesUrl: RELEASES_URL };
+}
+
+/** Sklubot-1.2.0-win.exe, Sklubot-1.2.0-mac.dmg, Sklubot-1.2.0-linux.AppImage… (companion/package.json artifactName). */
+const DESKTOP_FILE = /^Sklubot-(\d+)\.(\d+)\.(\d+)-(win|mac|linux)\.(exe|zip|dmg|AppImage|deb)$/;
+const OS_OF = { win: "windows", mac: "mac", linux: "linux" } as const;
+
+/**
+ * Everything the public download page (/telecharger) lists: the Android app when this server has it, the newest
+ * desktop build of each kind found in web/dist/download/, and the GitHub releases page as the fallback.
+ */
+export function appDownloads(dir = path.join(config.webDist, "download")): AppDownloads {
+  let names: string[] = [];
+  try { names = readdirSync(dir); } catch { /* no download folder */ }
+  const best = new Map<string, DesktopDownload & { rank: number }>();
+  for (const name of names) {
+    const m = DESKTOP_FILE.exec(name);
+    if (!m) continue;
+    let size = 0;
+    try { const st = statSync(path.join(dir, name)); if (!st.isFile()) continue; size = st.size; } catch { continue; }
+    const rank = Number(m[1]) * 1e8 + Number(m[2]) * 1e4 + Number(m[3]);
+    const kind = m[5] as DesktopDownload["kind"];
+    const key = `${m[4]}.${kind}`;
+    const cur = best.get(key);
+    if (!cur || rank > cur.rank) best.set(key, { name, url: `/download/${encodeURIComponent(name)}`, os: OS_OF[m[4] as keyof typeof OS_OF], kind, size, version: `${m[1]}.${m[2]}.${m[3]}`, rank });
+  }
+  const desktop = [...best.values()].map(({ rank: _rank, ...f }) => f).sort((a, b) => a.name.localeCompare(b.name));
+  let android: AppDownloads["android"] = null;
+  try { const st = statSync(path.join(dir, "sklubot.apk")); if (st.isFile()) android = { url: "/download/sklubot.apk", size: st.size }; } catch { /* not on this server */ }
+  return { android, desktop, releasesUrl: RELEASES_URL };
 }
 
 /** For a localised label of the device in the bots' tools and cards. */

@@ -19,24 +19,30 @@ function electronBin() {
 
 function packagedBin() {
   const dir = path.join(ROOT, 'dist', 'linux-unpacked');
-  return path.join(dir, 'sklubot-relais');
+  return path.join(dir, 'sklubot');
 }
 
 /**
- * @param {{ packaged?: boolean, dataDir: string, server: string, autoconfirm?: boolean }} o
+ * Launches the Sklubot desktop app (relay built in). `server` pre-fills the relay's server (the relay then starts
+ * pairing at once); leave it out to start with the relay off. `env` / `args` add variables / command-line switches.
+ * @param {{ packaged?: boolean, dataDir: string, server?: string, autoconfirm?: boolean, env?: Record<string,string>, args?: string[] }} o
  */
 function launchRelay(o) {
   const env = {
     ...process.env,
     SKLUBOT_RELAIS_DATA_DIR: o.dataDir,
-    SKLUBOT_RELAIS_SERVER: o.server,
     SKLUBOT_RELAIS_DEBUG: '1',
+    SKLUBOT_NO_UPDATE_CHECK: '1',
     LANG: 'fr_FR.UTF-8',
+    ...(o.env || {}),
   };
+  if (o.server) env.SKLUBOT_RELAIS_SERVER = o.server;
+  else delete env.SKLUBOT_RELAIS_SERVER;
   if (o.autoconfirm) env.SKLUBOT_RELAIS_TEST_AUTOCONFIRM = '1';
   else delete env.SKLUBOT_RELAIS_TEST_AUTOCONFIRM;
   // --no-sandbox only because the test container runs as root (Chromium refuses otherwise).
-  const [cmd, args] = o.packaged ? [packagedBin(), ['--no-sandbox', '--lang=fr']] : [electronBin(), [ROOT, '--no-sandbox', '--lang=fr']];
+  const extra = o.args || [];
+  const [cmd, args] = o.packaged ? [packagedBin(), ['--no-sandbox', '--lang=fr', ...extra]] : [electronBin(), [ROOT, '--no-sandbox', '--lang=fr', ...extra]];
   const child = spawn(cmd, args, { env, stdio: ['ignore', 'pipe', 'pipe'] });
   child.output = '';
   child.stdout.on('data', (d) => { child.output += d; });
