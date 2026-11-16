@@ -343,7 +343,26 @@ export type Card =
    * the listed files to the start; `restored` / `changedSince` (changed again after the turn, left as they are).
    */
   | { type: "files"; snapId: string; baseId: string; files: FileChange[]; more: number; status: "available" | "undone" | "expired"; restored?: string[]; changedSince?: string[] }
+  /**
+   * Goal mode ("Objectif"): the bot keeps working across rounds, without the user pressing Continue, until it marks the
+   * goal complete (with evidence) or blocked (with a reason), or reaches `maxRounds`. `status`: "proposed" (the bot
+   * proposed it, the user accepts or declines), "active", "paused" (by the user, a stop, an error), "complete",
+   * "blocked", "limit" (round cap reached), "stopped", "declined". `waiting`: why an active goal is not running a round
+   * right now ("approval", "user": a question or a card, "checkpoint": a spend checkpoint). `summary`: the latest status
+   * line the bot gave (goal_update); `evidence`: what proves it is done; `reason`: why it paused or is blocked.
+   */
+  | { type: "goal"; goalId: string; objective: string; status: GoalStatus; rounds: number; maxRounds: number; summary?: string; evidence?: string; reason?: string; waiting?: GoalWaiting }
   | { type: "disk"; checkId: string; usedPct: number; totalBytes: number; freeBytes: number; items: { path: string; bytes: number }[]; status: "pending" | "cleaned" | "dismissed"; deleted?: string[]; freedBytes?: number };
+
+export type GoalStatus = "proposed" | "active" | "paused" | "complete" | "blocked" | "limit" | "stopped" | "declined";
+export type GoalWaiting = "" | "approval" | "user" | "checkpoint";
+/**
+ * A long command running in the background on a bot's Linux computer (shell_run with background: true, or one that
+ * outlived its time limit). Its output goes to `log` on that computer. `status`: "running", then "done" (exit 0),
+ * "failed" (other exit code), "stopped" (job_stop, the Stop button, its time cap, or the computer was reset) or "lost"
+ * (the computer went away while it ran).
+ */
+export interface BotJob { id: string; botId: string; command: string; status: "running" | "done" | "failed" | "stopped" | "lost"; exitCode: number | null; startedAt: number; endedAt: number | null; log: string; note: string }
 
 /** Why a bot hands its screen to the user. */
 export const TAKEOVER_REASONS = ["captcha", "2fa", "login", "payment", "other"] as const;

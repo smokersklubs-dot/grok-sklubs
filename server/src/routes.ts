@@ -20,6 +20,7 @@ import { createRoom, dispatchToRoom, validMembers } from "./agent/team.js";
 import { retireBot } from "./agent/tools.js";
 import { createSession, dropSession, hashPassword, originAllowed, seal, SESSION_COOKIE, setupCodeMatches, setupCodeRequired, signupOpen, userForToken, verifyPassword } from "./auth.js";
 import { emit, getLive, subscribe } from "./bus.js";
+import { workspaceOf } from "./computer.js";
 import { attachmentAt, computerKind, computerState, isInlineImage, isInlineVideo, listFiles, listTeamFiles, mimeOf, openLibraryFile, openTeamFile, readLibraryFile, removeTeamFolder, removeWorkspace, resolveInTeam, resolveInWorkspace, screen, storeBytes, teamFolderState } from "./computer.js";
 import { checkDisk, deleteListed } from "./disk.js";
 import { catalogFor } from "./catalog.js";
@@ -84,6 +85,9 @@ import { apiProviders, cleanBaseUrl, cleanModels, fetchModels, PRESETS, testProv
 import { botEmail, mailFor, MailError, receiving as mailReceiving, relays, releaseMail } from "./botmail.js";
 import { onTurnEvent, submitMemberMessage } from "./agent/loop.js";
 import { privacyPage } from "./privacy.js";
+import { registerGooglePrivate, registerGooglePublic, type GoogleDeps } from "./googlelogin.js";
+import { createGoal, goalAction, GoalError, goalCommand, goals, pauseGoalsOf } from "./agent/goals.js";
+import { publicJobs, stopJob } from "./jobs.js";
 
 type Env = { Variables: { user: UserRecord } };
 export const api = new Hono<Env>();
@@ -384,6 +388,10 @@ api.get("/native/:vendor/callback", async (c) => {
   }
   return signInPage(c, locale, ok, message);
 });
+
+// "Continuer avec Google" (googlelogin.ts): same sessions, throttling and sign-up rules as the password routes.
+const googleDeps: GoogleDeps = { throttle, clientIp, startSession, publicUser, firstBotIdentity };
+registerGooglePublic(api, googleDeps);
 
 // ── Everything below needs a session ─────────────────────────────────────────
 api.use("*", async (c, next) => {
@@ -696,10 +704,19 @@ api.post("/bots/:id/messages", async (c) => {
   const voice = b.origin === "voice";
   // `thread`: a reply in the thread on that message of the main chat.
   const thread = threadParent(bot, b.thread);
+  // Goal mode (see below): the objective is checked before anything is written.
+  const objective = bot.kind === "agent" ? (b.goal === true ? goalCommand(text) ?? text : goalCommand(text)) : null;
+  if (objective !== null && !objective.trim()) fail(400, "Write the objective after /objectif.");
   const row = rows.append(bot, { kind: "message", role: "user", text, origin: voice ? { kind: "voice", id: "", name: "Voice" } : undefined, attachments: attachments.length ? attachments : undefined }, thread);
   if (screened.secrets.length) holdAndOffer(bot, c.get("user").id, screened.secrets, thread);
+  // Goal mode: "/objectif …" (or "/goal …"), or the composer's "Objectif" switch: this message becomes the objective of a
+  // goal the bot keeps working on across rounds (agent/goals.ts). Its card follows the message.
+  let goalId: string | undefined;
+  if (objective !== null && bot.kind === "agent") {
+    goalId = createGoal(bot, { objective, thread, origin: "user", maxRounds: Number(b.goalMaxRounds) || undefined }).id;
+  }
   if (bot.kind === "room") dispatchToRoom(bot, c.get("user"), text, null, 0, false, thread);
-  else { relayUserSpoke(bot.id); submitUserMessage(bot, text, voice, attachments, undefined, thread, skillCommand(bot, text)); }
+  else { relayUserSpoke(bot.id); submitUserMessage(bot, text, voice, attachments, undefined, thread, skillCommand(bot, text), goalId); }
   return c.json({ row });
 });
 
@@ -717,6 +734,27 @@ export function skillCommand(bot: BotRecord, text: string): ForcedSkill | undefi
   // An unknown name still reaches the bot, which says so instead of guessing.
   return { name: m[1].split(/\s/)[0], body: "(There is no skill by this name: tell the user, and list the skills you do have.)" };
 }
+
+/** The goal card's buttons: pause, resume, stop; accept or decline a goal the bot proposed. */
+api.post("/bots/:id/goals/:goalId", async (c) => {
+  const bot = ownAgent(c);
+  const action = String((await body(c)).action ?? "");
+  if (!["pause", "resume", "stop", "accept", "decline"].includes(action)) fail(400, "Unknown action.");
+  try { return c.json({ goal: goalCardOf(goalAction(bot, c.req.param("goalId"), action as "pause")) }); }
+  catch (err) { if (err instanceof GoalError) return fail(err.status, err.message); throw err; }
+});
+api.get("/bots/:id/goals", (c) => c.json({ goals: goals.forBot(ownAgent(c).id).map(goalCardOf) }));
+const goalCardOf = (g: NonNullable<ReturnType<typeof goals.byId>>) => ({ id: g.id, objective: g.objective, status: g.status, rounds: g.rounds, maxRounds: g.maxRounds, thread: g.thread, summary: g.summary, reason: g.reason });
+
+/** Background jobs on the bot's computer (jobs.ts), for its computer panel, and the Stop button there. */
+api.get("/bots/:id/jobs", (c) => c.json({ jobs: publicJobs(ownAgent(c).id) }));
+api.post("/bots/:id/jobs/:jobId/stop", async (c) => {
+  const bot = ownAgent(c);
+  try { await stopJob(bot, workspaceOf(bot.id), c.req.param("jobId"), "stopped by you"); }
+  catch (err) { return fail(404, (err as Error).message); }
+  audit(bot.userId, "computer", `${bot.name}: background job ${c.req.param("jobId")} stopped`, bot.id);
+  return c.json({ jobs: publicJobs(bot.id) });
+});
 
 /** "Continue" under a notice that says the bot stopped at its step limit. */
 api.post("/bots/:id/rows/:seq/continue", (c) => {
@@ -1103,6 +1141,7 @@ api.delete("/pages/:token", (c) => {
 });
 
 // ── Account and data ─────────────────────────────────────────────────────────
+registerGooglePrivate(api, googleDeps);
 api.put("/account/password", async (c) => {
   const user = c.get("user");
   const b = await body(c);
@@ -2100,6 +2139,8 @@ api.post("/spend/:id", async (c) => {
   const action = String((await body(c)).action ?? "");
   if (action !== "continue" && action !== "raise" && action !== "stop") fail(400, "Unknown action.");
   if (!(await answerCheckpoint(cp, action as "continue" | "raise" | "stop"))) fail(409, "This was already answered.");
+  // Stopping at a checkpoint also pauses the worker's goals: no new round starts on its own.
+  if (action === "stop") pauseGoalsOf(worker, tr(user.locale, "stopped at a spend checkpoint"));
   return c.json({ ok: true });
 });
 

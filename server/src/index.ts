@@ -15,7 +15,7 @@ import { startScheduler } from "./scheduler.js";
 import { startHealthChecks } from "./health.js";
 import { attachLiveScreens } from "./vnc.js";
 import { relayUpgrade } from "./relay.js";
-import { expireOrphanApprovals, recoverInterruptedTurns } from "./agent/loop.js";
+import { expireOrphanApprovals, recoverInterruptedTurns, startJobWatch } from "./agent/loop.js";
 import { sweepUncertain } from "./agent/executions.js";
 import { telegram } from "./telegram.js";
 import { closeSlackSockets } from "./native/triggers.js";
@@ -60,7 +60,7 @@ const uncertain = sweepUncertain();
 if (uncertain) console.log(`${uncertain} action(s) cut off by the restart are marked uncertain.`);
 startScheduler();
 startHealthChecks();
-if (!config.schedulerOff) { telegram.start(); recoverInterruptedTurns(); }
+if (!config.schedulerOff) { telegram.start(); recoverInterruptedTurns(); startJobWatch(); }
 const server = serve({ fetch: app.fetch, port: config.port }, () => {
   const ready = listProviders().filter((p) => p.available()).map((p) => p.label);
   console.log(`Sklubot is running at ${config.publicUrl}`);

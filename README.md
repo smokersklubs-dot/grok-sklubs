@@ -105,6 +105,39 @@ partage `~/team` entre les ordinateurs des bots d'un même compte, jamais avec u
 reçoit à son prochain démarrage. Quand le disque d'un ordinateur dépasse `DISK_ALERT_PERCENT` (90 %), une carte liste les
 plus gros fichiers et ne supprime que ce que tu coches et confirmes.
 
+**Commandes longues en arrière-plan.** Une commande (`shell_run`) encore en cours à sa limite de temps (290 s au plus)
+n'est plus tuée : elle continue en **commande en arrière-plan** sur l'ordinateur du bot (sortie dans
+`~/.sklubot/jobs/<id>.log`), et `shell_run` avec `background: true` en lance une tout de suite. Le bot la suit avec
+`job_output` (qui peut attendre sa fin), l'arrête avec `job_stop`, et reçoit **un seul** message quand elle se termine —
+jamais pendant qu'il attend ton accord ou un point de contrôle des dépenses (il arrive ensuite). Elles apparaissent dans
+le panneau Ordinateur, avec un bouton Arrêter. L'ordinateur n'est jamais endormi pendant qu'une commande tourne ; au plus
+`JOBS_PER_BOT` (4) à la fois, et chacune est arrêtée après `JOB_MAX_HOURS` (6 h). Effacer ou endormir l'ordinateur les
+arrête. Les bots sur abonnement (Claude Code, Codex) gardent leurs propres moyens de lancer des commandes longues :
+Sklubot ne les change pas. Une sortie longue (plus de `SPILL_CHARS`, 20 000 caractères) de `shell_run`, `web_fetch` ou
+`page_read` est gardée en entier dans `~/.sklubot/outputs/` ; le modèle en reçoit le début, la fin et le chemin.
+
+**Documents bureautiques.** L'image du bureau contient LibreOffice (sans interface) : `office_convert` (pdf, docx, xlsx,
+pptx, odt, ods, odp, csv, html, txt, rtf), `office_recalculate` (recalcule toutes les formules d'un tableur) et
+`office_render` (une page, une diapositive ou une feuille en image que le bot voit). L'original n'est jamais modifié :
+le résultat va dans un nouveau fichier. **Après la mise à jour, reconstruis l'image du bureau** (`npm run computer:build`,
+ou le redéploiement qui la reconstruit) puis efface une fois l'ordinateur des bots qui en ont déjà un (Réglages →
+Ordinateur → Effacer) : un ordinateur existant garde l'ancienne image.
+
+**Mode objectif.** « Mode objectif » dans le menu + du champ de saisie, ou `/objectif …` au début d'un message (aussi au
+début du texte d'une routine) : le bot travaille **tour après tour sans que tu appuies sur Continuer**, jusqu'à marquer
+l'objectif atteint (avec preuves), bloqué (avec la raison), ou la limite de tours (`GOAL_MAX_ROUNDS`, 20 ; au plus
+`GOAL_ROUNDS_LIMIT`, 100). Une carte suit les tours ; Pause, Reprendre, Arrêter. Un bot peut aussi proposer un objectif
+(tu acceptes ou non). Les approbations restent en place : tant qu'une carte attend ton accord, une question ou un point de
+contrôle des dépenses, aucun nouveau tour ne part. Marche avec les modèles par API et avec Claude Code / Codex (chaque
+tour reprend la session).
+
+**Longs tours (modèles par API).** Avant chaque étape, si la demande dépasse `COMPACT_RATIO` (80 %) de la fenêtre de
+contexte du modèle (`CONTEXT_WINDOW_TOKENS`, 200 000 par défaut ; celle d'un fournisseur ajouté dans Réglages → Modèles
+sinon), le début du tour est résumé et la fin gardée telle quelle ; un « trop long » renvoyé par le fournisseur déclenche
+un résumé puis un nouvel essai avant de passer au modèle de secours. Les anciens résultats d'outils très longs sont
+raccourcis à l'envoi, seules les 8 dernières captures d'écran d'un tour sont renvoyées (`KEEP_SCREENSHOTS`), et les
+lectures sans effet (pages, recherches, mémoire…) d'une même étape partent en parallèle (`PARALLEL_TOOLS`, 4).
+
 Sans Docker, Sklubot se rabat sur un simple navigateur par bot (`npm i playwright && npx playwright install chromium`),
 et sinon sur la lecture de pages, la ligne de commande et les connecteurs.
 

@@ -100,6 +100,27 @@ export const config = {
   /** Keyboard layout of the bots' computers (an X layout name: "us", "fr", "de"…). Applied when a computer is created. */
   desktopKeyboard: /^[a-z0-9_,()-]{1,40}$/.test(process.env.DESKTOP_KEYBOARD ?? "") ? process.env.DESKTOP_KEYBOARD! : "us",
   compactChars: num("COMPACT_CHARS", 300_000),
+  // ── Goal mode, background jobs, long API turns ──
+  /** Goal mode (agent/goals.ts): rounds a goal gets by default, and the most a goal may be given. */
+  goalMaxRounds: Math.max(1, Math.floor(num("GOAL_MAX_ROUNDS", 20))),
+  goalRoundsLimit: Math.max(1, Math.floor(num("GOAL_ROUNDS_LIMIT", 100))),
+  /** Background jobs (jobs.ts): the longest one may run (hours), and how many may run at once on one bot's computer. */
+  jobMaxMs: Math.max(0.05, num("JOB_MAX_HOURS", 6)) * 3_600_000,
+  jobsPerBot: Math.max(1, Math.floor(num("JOBS_PER_BOT", 4))),
+  /** How often running jobs are checked (seconds). */
+  jobPollMs: Math.max(1, num("JOB_POLL_SECONDS", 10)) * 1000,
+  /**
+   * The context window assumed for a model when its provider says nothing (tokens). A model of a provider the user set up
+   * uses the window they gave it (Settings → Models). Past COMPACT_RATIO of it, an API turn summarises its older steps.
+   */
+  contextWindowTokens: Math.max(8000, num("CONTEXT_WINDOW_TOKENS", 200_000)),
+  compactRatio: Math.min(0.95, Math.max(0.3, num("COMPACT_RATIO", 0.8))),
+  /** A tool result longer than this (characters) is saved whole on the bot's computer; the model gets its head and tail. */
+  spillChars: Math.max(4000, num("SPILL_CHARS", 20_000)),
+  /** At most this many read-only tool calls run at the same time in one API turn. */
+  parallelTools: Math.max(1, Math.floor(num("PARALLEL_TOOLS", 4))),
+  /** Within one API turn, only the latest screenshots are sent again to the model; older ones become a short note. */
+  keepScreenshots: Math.max(1, Math.floor(num("KEEP_SCREENSHOTS", 8))),
   compactKeepTurns: num("COMPACT_KEEP_TURNS", 4),
   consolidateIdleMin: num("CONSOLIDATE_IDLE_MIN", 10),
   promptMemoryChars: num("PROMPT_MEMORY_CHARS", 4000),

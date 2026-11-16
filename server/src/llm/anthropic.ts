@@ -1,5 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { alternate, isTransientStatus, ProviderError, retryAfterOf, type Block, type ChatMessage, type LlmProvider, type StopReason, type TurnRequest, type TurnResult } from "./types.js";
+import { alternate, isContextTooLong, isTransientStatus, ProviderError, retryAfterOf, type Block, type ChatMessage, type LlmProvider, type StopReason, type TurnRequest, type TurnResult } from "./types.js";
 
 type BetaParams = Anthropic.Beta.Messages.MessageCreateParamsStreaming;
 type BetaContentParam = Anthropic.Beta.Messages.BetaContentBlockParam;
@@ -112,6 +112,9 @@ export class AnthropicProvider implements LlmProvider {
       // No status: the connection failed or timed out before an answer (APIConnectionError) — worth another try.
       if (err instanceof Anthropic.APIConnectionError) throw new ProviderError(`Anthropic could not be reached: ${err.message}`, { transient: true });
       if (err instanceof Anthropic.RateLimitError) throw new ProviderError("Anthropic rate limit reached.", { status: 429, transient: true, retryAfterMs: retryAfterOf(err.headers as Headers | undefined) });
+      // Longer than the model's window: a distinct code, so the turn compacts and tries again before changing model.
+      if (err instanceof Anthropic.APIError && isContextTooLong(err.status, err.message))
+        throw new ProviderError(`Anthropic: the request is too long for the model (${err.message})`, { status: err.status, transient: false, code: "context_length" });
       if (err instanceof Anthropic.APIError) {
         // An overloaded_error can also arrive inside the stream, after a 200: it carries no status but says so.
         const status = err.status ?? (/overloaded/i.test(err.message) ? 529 : undefined);

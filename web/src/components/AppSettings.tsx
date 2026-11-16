@@ -19,6 +19,7 @@ import { MemorySettingsSection, RulesSection } from "./Wave5";
 import { JournalView, PageVisibility, SpendSettingsBlock } from "./Wave5b";
 import { MailSection, VoiceSection, WorkspacesSection } from "./Wave6";
 import { KeysSection, PublicLinksBlock } from "./Wave7";
+import { GoogleAccountBlock, GoogleLoginSettings } from "./GoogleLogin";
 
 const SECTIONS: { id: AppSection; icon: IconName }[] = [
   { id: "general", icon: "settings" },
@@ -1103,7 +1104,8 @@ function AccountSection() {
       </div>
 
       <h3 className="pane-heading">{t("account.passwordHeading")}</h3>
-      <PasswordForm />
+      <GoogleAccountBlock><PasswordForm /></GoogleAccountBlock>
+      <GoogleLoginSettings />
 
       <h3 className="pane-heading">{t("account.dataHeading")}</h3>
       <div className="action-row">

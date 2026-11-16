@@ -511,6 +511,30 @@ function CREATE_EXTRA() {
     images INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
   );
   CREATE INDEX IF NOT EXISTS user_providers_user ON user_providers(user_id, created_at);`);
+  db.exec(`
+  -- Goal mode (agent/goals.ts): an objective a bot keeps working on across rounds until it is complete, blocked, paused
+  -- or at its round cap. At most one goal per bot and thread is proposed, active or paused (index below). \`queued\`: a
+  -- round is in the bot's queue (bot_queue) and not started yet. \`waiting\`: why an active goal runs no round now.
+  -- \`tainted\`: a round read outside content, so the next rounds start careful. \`spend_key\`: the spend scope rounds bill to.
+  CREATE TABLE IF NOT EXISTS bot_goals (
+    id TEXT PRIMARY KEY, bot_id TEXT NOT NULL REFERENCES bots(id) ON DELETE CASCADE, user_id TEXT NOT NULL,
+    generation INTEGER NOT NULL, thread INTEGER NOT NULL DEFAULT 0, objective TEXT NOT NULL, status TEXT NOT NULL,
+    rounds INTEGER NOT NULL DEFAULT 0, max_rounds INTEGER NOT NULL, summary TEXT NOT NULL DEFAULT '', evidence TEXT NOT NULL DEFAULT '',
+    reason TEXT NOT NULL DEFAULT '', waiting TEXT NOT NULL DEFAULT '', queued INTEGER NOT NULL DEFAULT 0, tainted INTEGER NOT NULL DEFAULT 0,
+    origin TEXT NOT NULL DEFAULT 'user', spend_key TEXT NOT NULL DEFAULT '', card_seq INTEGER, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+  );
+  CREATE UNIQUE INDEX IF NOT EXISTS bot_goals_open ON bot_goals(bot_id, thread) WHERE status IN ('proposed', 'active', 'paused');
+  -- Long commands running in the background on a bot's Linux computer (jobs.ts). Output goes to a log file on that
+  -- computer (~/.sklubot/jobs/<id>.log). \`notified\`: the bot was told it ended (once per job). \`thread\`/\`origin\`/\`tainted\`:
+  -- of the turn that started it, so the message about its end goes to the same conversation, as carefully.
+  CREATE TABLE IF NOT EXISTS bot_jobs (
+    id TEXT PRIMARY KEY, bot_id TEXT NOT NULL REFERENCES bots(id) ON DELETE CASCADE, user_id TEXT NOT NULL, command TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'running', exit_code INTEGER, started_at INTEGER NOT NULL, ended_at INTEGER,
+    thread INTEGER NOT NULL DEFAULT 0, origin TEXT NOT NULL DEFAULT '', tainted INTEGER NOT NULL DEFAULT 0, notified INTEGER NOT NULL DEFAULT 0,
+    note TEXT NOT NULL DEFAULT ''
+  );
+  CREATE INDEX IF NOT EXISTS bot_jobs_bot ON bot_jobs(bot_id, started_at);
+  CREATE INDEX IF NOT EXISTS bot_jobs_status ON bot_jobs(status, notified);`);
 }
 
 type Param = string | number | null | bigint;

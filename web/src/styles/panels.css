@@ -707,3 +707,45 @@ a.btn { text-decoration: none; }
   .provider-list .list-row-text { flex: 1 1 calc(100% - 32px); }
   .provider-list .list-row-sub { overflow-wrap: anywhere; }
 }
+
+/* ---------- Goal mode: the goal card, the composer's chip (Wave10.tsx) ---------- */
+.logo-tile.is-goal { background: color-mix(in srgb, var(--accent) 14%, var(--surface)); color: var(--accent); }
+.logo-tile.is-goal.is-complete { background: var(--ok-soft); color: var(--ok); }
+.logo-tile.is-goal.is-blocked, .logo-tile.is-goal.is-limit, .logo-tile.is-goal.is-paused { background: var(--warn-soft); color: var(--warn); }
+.logo-tile.is-goal.is-stopped, .logo-tile.is-goal.is-declined { background: var(--surface-2); color: var(--text-3); }
+.goal-card .card-head { align-items: center; }
+.goal-card.is-proposed { border-color: color-mix(in srgb, var(--accent) 50%, var(--border)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 10%, transparent); }
+.goal-state.is-active { background: var(--info-soft); color: var(--info); }
+.goal-state.is-complete { background: var(--ok-soft); color: var(--ok); }
+.goal-state.is-paused, .goal-state.is-blocked, .goal-state.is-limit, .goal-state.is-proposed { background: var(--warn-soft); color: var(--warn); }
+.goal-rounds { font-size: 12.5px; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.goal-objective { font-size: 14px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+.goal-objective.is-clamped { display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+.goal-more { align-self: flex-start; font-size: 12.5px; }
+.goal-bar { height: 4px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
+.goal-bar > span { display: block; height: 100%; border-radius: inherit; background: var(--accent); transition: width 0.3s ease; }
+.goal-card.is-complete .goal-bar > span { background: var(--ok); width: 100% !important; }
+.goal-line { display: flex; gap: 6px; align-items: flex-start; font-size: 13px; color: var(--text-2); overflow-wrap: anywhere; }
+.goal-line svg { flex: none; margin-top: 2px; }
+.goal-line.is-waiting { color: var(--warn); }
+.goal-done { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border-radius: var(--r-md); background: var(--ok-soft); font-size: 13.5px; overflow-wrap: anywhere; white-space: pre-wrap; }
+.goal-evidence { font-size: 13px; }
+.goal-card .card-actions .btn svg { margin-right: 2px; }
+.goal-chip { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: 10px; border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); background: color-mix(in srgb, var(--accent) 8%, var(--surface)); font-size: 13px; line-height: 1.35; }
+.goal-chip > span { flex: 1; min-width: 0; }
+.goal-chip > svg { flex: none; color: var(--accent); }
+.goal-chip-x { flex: none; width: 26px; height: 26px; }
+
+/* ---------- Background jobs in the computer panel ---------- */
+.jobs { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+.jobs-head { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--text-2); text-transform: uppercase; letter-spacing: 0.03em; }
+.jobs-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.job { display: flex; align-items: center; gap: 8px; padding: 7px 9px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); }
+.job .dot-inline { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--text-3); }
+.job.is-running .dot-inline { background: var(--info); }
+.job.is-done .dot-inline { background: var(--ok); }
+.job.is-failed .dot-inline, .job.is-lost .dot-inline { background: var(--danger); }
+.job-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.job-cmd { font-family: var(--font-mono, ui-monospace, monospace); font-size: 12px; display: block; }
+.job-sub { font-size: 11.5px; color: var(--text-3); }
+.job .btn { flex: none; }

@@ -48,6 +48,12 @@ import { commandEnded, commandStarted, provisionRelay, relayHint } from "../egre
 import { publicLinkTools } from "../publiclinks.js";
 import { localTools } from "../localtools.js";
 import { videoPriceEstimate, videoServices } from "../video.js";
+import { writeComputerFile } from "../linux.js";
+import { workspaceOf } from "../computer.js";
+import { JobLimitError, jobLine, jobOutput, jobs, runCommand, stopJob } from "../jobs.js";
+import { officeAvailable, officeTools } from "../office.js";
+import { goalTools } from "./goals.js";
+import { botPath, spillPath, spillPreview } from "./context.js";
 
 export interface ToolContext {
   bot: BotRecord; user: UserRecord; depth: number; signal: AbortSignal;
@@ -92,6 +98,12 @@ export interface BuiltinTool {
    * unless the user's words in this conversation ask for exactly that (authorize.ts and its floor).
    */
   appWrite?: { title: string; reason: string; source: string };
+  /**
+   * Read-only and safe to run at the same time as other such calls (web reads, searches, memory, skills, job output…):
+   * consecutive calls of these tools in one API step run side by side (loop.ts processCalls). Nothing that changes
+   * anything, asks the user, or acts on the screen is ever marked.
+   */
+  parallel?: boolean;
   /** Extra detail for the live activity line. */
   detail?: (args: Record<string, any>) => string | undefined;
   run(args: Record<string, any>, ctx: ToolContext): Promise<ToolOutput>;
@@ -122,10 +134,10 @@ const screenTools: BuiltinTool[] = [
     run: async (a, c) => shot(await screen.open(c.bot.id, c.user.id, String(a.url)), `Opened ${a.url}.`),
   }),
   tool("page_read", "Return the visible text of the page currently open in your browser. Use this to read; use screen_view when layout or images matter.", obj({}), {
-    activity: "reading", label: "Reading the page", outside: true,
+    activity: "reading", label: "Reading the page", outside: true, parallel: true,
     run: async (_a, c) => {
       const p = await screen.read(c.bot.id, c.user.id);
-      return { content: `${p.title}\n${p.url}\n\n${clip(p.text, 40_000)}`, summary: clip(p.title || p.url, 80) };
+      return { content: `${p.title}\n${p.url}\n\n${await spillIfLong(c, p.text, 40_000)}`, summary: clip(p.title || p.url, 80) };
     },
   }),
   tool("screen_click", "Click at a position on the screen. Take a screenshot first so the coordinates are current.",
@@ -234,9 +246,29 @@ function htmlToText(html: string): string {
     .replace(/[ \t]+/g, " ").replace(/\n\s*\n\s*/g, "\n\n").trim();
 }
 
+/** A command that reads a tool result kept whole on the computer (it may be a web page or an app's answer). */
+export const readsKeptOutput = (command: string) => /\.sklubot\/outputs/.test(command);
+
+/**
+ * A long tool result (over SPILL_CHARS) is kept whole on the bot's computer, ~/.sklubot/outputs/<id>.txt, when that
+ * computer is on; the model gets its head and tail and where the rest is (context.ts spillPreview). Otherwise it is
+ * shortened to `fallback` characters as before. Never wakes a computer for this.
+ */
+async function spillIfLong(c: ToolContext, text: string, fallback: number): Promise<string> {
+  if (text.length <= appConfig.spillChars) return text;
+  if (computerKind() === "linux" && screen.isOpen(c.bot.id)) {
+    const path = spillPath();
+    try {
+      await writeComputerFile(c.bot.id, c.user.id, workspaceOf(c.bot.id), path, text, "600");
+      return spillPreview(text, botPath(path));
+    } catch (err) { console.error("[spill]", (err as Error).message); }
+  }
+  return clip(text, fallback);
+}
+
 const workTools: BuiltinTool[] = [
   tool("web_fetch", "Download a web page or text file and return its readable text. No browser needed.", obj({ url: str("http(s) address") }, ["url"]), {
-    activity: "reading", label: "Reading a page", detail: (a) => hostOf(a.url), outside: true,
+    activity: "reading", label: "Reading a page", detail: (a) => hostOf(a.url), outside: true, parallel: true,
     run: async (a, c) => {
       const url = String(a.url);
       if (!/^https?:\/\//i.test(url)) return { content: "Only http and https addresses can be fetched.", isError: true };
@@ -247,22 +279,40 @@ const workTools: BuiltinTool[] = [
       const type = res.headers.get("content-type") ?? "";
       if (!/text|json|xml|javascript/.test(type)) return { content: `Fetched ${url} (status ${res.status}) but it is ${type || "binary"} content, not text.`, isError: !res.ok };
       const body = await res.text();
-      return { content: `Status ${res.status}\n\n${clip(/html/.test(type) ? htmlToText(body) : body, 40_000)}`, summary: `${res.status} · ${hostOf(url) ?? ""}`, isError: !res.ok };
+      return { content: `Status ${res.status}\n\n${await spillIfLong(c, /html/.test(type) ? htmlToText(body) : body, 40_000)}`, summary: `${res.status} · ${hostOf(url) ?? ""}`, isError: !res.ok };
     },
   }),
-  tool("shell_run", "Run a shell command on your computer and return its exit code and output.", obj({ command: str("Command line to run with bash"), timeout_seconds: int("Give up after this many seconds (default 120, max 290)") }, ["command"]), {
+  tool("shell_run", "Run a shell command on your computer and return its exit code and output. A command still running at its time limit is not killed: it goes on as a background job (you get its id; check it with job_output, stop it with job_stop, and you get a message when it ends). For long work (builds, downloads, servers, long scripts) pass background: true to start it as a job straight away.",
+    obj({ command: str("Command line to run with bash"), timeout_seconds: int("Wait at most this many seconds (default 120, max 290)"), background: { type: "boolean", description: "Start it as a background job and return at once (its output goes to a log file on your computer)" } }, ["command"]), {
     activity: "shell", label: "Running a command", sensitive: true, audited: true, detail: (a) => clip(String(a.command ?? ""), 60),
     run: async (a, c) => {
       const timeout = Math.min(290, Math.max(1, Number(a.timeout_seconds) || 120));
+      const command = String(a.command);
       // Wave 7 (spec 08 A1): with the credential relay on, the computer gets the relay's address and its token (never a
       // key), and the relay knows whether this command's turn read outside content while it runs.
       if (c.bot.relayEnabled) await provisionRelay(c.bot).catch((err) => console.error("[relay]", (err as Error).message));
+      // Wave 8: other bots write in the team folder — what a command may have read from it is outside content. So is a
+      // tool result kept whole on the computer (~/.sklubot/outputs): it may hold a page or an app's answer.
+      const outside = (teamEnabledFor(c.bot) && readsTeamFolder(command)) || readsKeptOutput(command);
+      // On a Linux computer: as a job that can outlive its time limit (jobs.ts). On this server itself: as before.
+      if (computerKind() === "linux") {
+        commandStarted(c.bot.id, !!c.tainted);
+        let r: Awaited<ReturnType<typeof runCommand>>;
+        try { r = await runCommand(c.bot, workspaceOf(c.bot.id), command, timeout, { background: a.background === true, signal: c.signal, thread: c.thread, origin: c.origin, tainted: c.tainted }); }
+        catch (err) { if (err instanceof JobLimitError) return { content: err.message, isError: true, summary: "too many jobs" }; throw err; }
+        finally { commandEnded(c.bot.id); }
+        noteDiskTrouble(c.bot, r.output);
+        if (r.job && a.background === true) return { content: `Started as background job ${r.job.id}. Its output goes to ${r.job.log}. Check it with job_output (wait_seconds waits for it), stop it with job_stop; you will get a message when it ends.`, summary: tr(c.user.locale, "background job {id}", { id: r.job.id }), ...(outside ? { outside: true } : {}) };
+        if (r.job) return { content: `Still running after ${timeout}s, so it goes on as background job ${r.job.id} (output: ${r.job.log}). Check it with job_output, stop it with job_stop; you will get a message when it ends.\nOutput so far (end):\n${r.output || "(no output yet)"}`, summary: tr(c.user.locale, "background job {id}", { id: r.job.id }), ...(outside ? { outside: true } : {}) };
+        const hint = relayHint(c.bot, command, r.output);
+        const body = r.spilled ? `${r.output}\n\n(The output was ${r.size} bytes; above is its end. Full output stored at: ${botPath(r.spilled)}. Read the parts you need with grep, sed -n or head.)` : r.output;
+        return { content: `${r.timedOut ? `Timed out after ${timeout}s and was stopped.` : `Exit code ${r.code}.`}\n${body || "(no output)"}${hint}`, summary: r.timedOut ? "timed out" : `exit ${r.code}`, isError: r.timedOut || r.code !== 0, ...(outside ? { outside: true } : {}) };
+      }
+      if (a.background === true) return { content: "Background jobs need a Linux computer per bot, which this server does not give. Run the command without background, in shorter steps.", isError: true };
       commandStarted(c.bot.id, !!c.tainted);
       let r: Awaited<ReturnType<typeof runShell>>;
-      try { r = await runShell(c.bot.id, c.user.id, String(a.command), timeout, c.signal); } finally { commandEnded(c.bot.id); }
-      const hint = relayHint(c.bot, String(a.command), r.output);
-      // Wave 8: other bots write in the team folder — what a command may have read from it is outside content.
-      const outside = teamEnabledFor(c.bot) && readsTeamFolder(String(a.command));
+      try { r = await runShell(c.bot.id, c.user.id, command, timeout, c.signal); } finally { commandEnded(c.bot.id); }
+      const hint = relayHint(c.bot, command, r.output);
       noteDiskTrouble(c.bot, r.output);
       return { content: `${r.timedOut ? `Timed out after ${timeout}s.` : `Exit code ${r.code}.`}\n${r.output || "(no output)"}${hint}`, summary: r.timedOut ? "timed out" : `exit ${r.code}`, isError: r.timedOut || r.code !== 0, ...(outside ? { outside: true } : {}) };
     },
@@ -1267,6 +1317,38 @@ const localServerTools: BuiltinTool[] = [
   }),
 ];
 
+/** Background jobs on the bot's own Linux computer (jobs.ts): started by shell_run. */
+const jobTools: BuiltinTool[] = [
+  tool("job_output", "Check a background job started by shell_run: its state, exit code once it ended, how long it ran, and the end of its output. wait_seconds: wait up to that long for it to end first (at most 290).", obj({ id: str("The job's id, e.g. j1a2b3c4d5"), wait_seconds: int("Wait up to this many seconds for it to end (default 0)") }, ["id"]), {
+    activity: "shell", label: "Checking a background job", parallel: true, detail: (a) => String(a.id ?? ""),
+    run: async (a, c) => {
+      let r: Awaited<ReturnType<typeof jobOutput>>;
+      try { r = await jobOutput(c.bot, workspaceOf(c.bot.id), String(a.id ?? "").trim(), Math.min(290, Math.max(0, Number(a.wait_seconds) || 0)), c.signal); }
+      catch (err) { return { content: (err as Error).message, isError: true, summary: "no such job" }; }
+      const j = r.job;
+      const head = j.status === "running" ? `[Background job ${j.id} — \`${clip(j.command, 200)}\` — still running after ${Math.round((Date.now() - j.startedAt) / 60_000)} min. Output so far: ${r.size} bytes in ${j.log}]` : jobLine({ id: j.id, command: j.command, status: j.status, exit_code: j.exitCode, started_at: j.startedAt, ended_at: j.endedAt, note: j.note }, "");
+      const outside = (teamEnabledFor(c.bot) && readsTeamFolder(j.command)) || readsKeptOutput(j.command);
+      return { content: `${head}\nEnd of its output:\n${r.tail.trim() || "(no output yet)"}${r.size > 8000 ? `\n(Only the end is shown; read more of ${j.log} with shell_run.)` : ""}`, summary: j.status === "running" ? tr(c.user.locale, "still running") : j.exitCode !== null ? `exit ${j.exitCode}` : tr(c.user.locale, j.status), ...(outside ? { outside: true } : {}) };
+    },
+  }),
+  tool("job_stop", "Stop a background job started by shell_run (the whole command and what it started).", obj({ id: str("The job's id") }, ["id"]), {
+    activity: "shell", label: "Stopping a background job", audited: true, detail: (a) => String(a.id ?? ""),
+    run: async (a, c) => {
+      try {
+        const j = await stopJob(c.bot, workspaceOf(c.bot.id), String(a.id ?? "").trim());
+        return { content: j.status === "stopped" ? `Stopped job ${j.id}.` : `Job ${j.id} had already ended (${j.status}).`, summary: j.id };
+      } catch (err) { return { content: (err as Error).message, isError: true, summary: "no such job" }; }
+    },
+  }),
+  tool("job_list", "List your background jobs (running and recently ended) with their ids and states.", obj({}), {
+    activity: "shell", label: "Listing background jobs", parallel: true,
+    run: async (_a, c) => {
+      const list = jobs.forBot(c.bot.id, 15);
+      return { content: list.length ? list.map((j) => `${j.id} · ${j.status}${j.exitCode !== null ? ` (exit ${j.exitCode})` : ""} · ${clip(j.command, 120)}`).join("\n") : "You have no background jobs.", summary: `${list.length}` };
+    },
+  }),
+];
+
 export function builtinTools(opts: { nativeSearch?: boolean; disabled?: readonly string[]; video?: "connector" | "api" | null; bgTasks?: boolean } = {}): BuiltinTool[] {
   return assemble(opts).filter((t) => !t.group || !(opts.disabled ?? []).includes(t.group));
 }
@@ -1276,6 +1358,9 @@ function assemble(opts: { nativeSearch?: boolean; video?: "connector" | "api" | 
     ...(browserAvailable() ? inGroup("computer", screenTools).map(respectDriver) : []),
     ...(computerKind() === "linux" ? inGroup("computer", elementTools).map(respectDriver) : []),
     // On its own Linux computer a bot's commands are contained, so they do not need a permission card.
+    // Background jobs and office documents: on the bots' own Linux computers only (shell_run starts the jobs).
+    ...(computerKind() === "linux" && shellAvailable() ? inGroup("shell", jobTools) : []),
+    ...(officeAvailable() ? officeTools : []),
     ...workTools.filter((t) => t.spec.name !== "shell_run" || shellAvailable())
       .map((t): BuiltinTool => ({ ...t, group: t.spec.name === "shell_run" ? "shell" : t.spec.name === "web_fetch" ? "web" : "files", sensitive: t.spec.name === "shell_run" && computerKind() === "linux" ? false : t.sensitive })),
     ...(searchChainAvailable() && !opts.nativeSearch ? searchTools : []),
@@ -1297,6 +1382,6 @@ function assemble(opts: { nativeSearch?: boolean; video?: "connector" | "api" | 
     ...(opts.video ? inGroup("video", videoTools) : []),
     // The user's own computers (Sklubot Relais): offered by newTurn only to users who linked one.
     ...myComputerTools,
-    ...inGroup("memory", memoryTools), ...inGroup("routines", routineTools), ...inGroup("tasks", taskTools), ...(opts.bgTasks === false ? [] : inGroup("tasks", bgTaskTools)), ...inGroup("team", teamTools), ...userTools.filter((t) => t.spec.name !== "ask_takeover" || browserAvailable()), ...reactTools,
+    ...inGroup("memory", memoryTools), ...inGroup("routines", routineTools), ...inGroup("tasks", taskTools), ...(opts.bgTasks === false ? [] : inGroup("tasks", bgTaskTools)), ...goalTools, ...inGroup("team", teamTools), ...userTools.filter((t) => t.spec.name !== "ask_takeover" || browserAvailable()), ...reactTools,
   ];
 }

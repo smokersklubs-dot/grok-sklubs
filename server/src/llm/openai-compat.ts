@@ -1,4 +1,4 @@
-import { isTransientStatus, ProviderError, retryAfterOf, type Block, type ChatMessage, type LlmProvider, type StopReason, type TurnRequest, type TurnResult } from "./types.js";
+import { isContextTooLong, isTransientStatus, ProviderError, retryAfterOf, type Block, type ChatMessage, type LlmProvider, type StopReason, type TurnRequest, type TurnResult } from "./types.js";
 
 interface WireMessage {
   role: "system" | "user" | "assistant" | "tool";
@@ -120,6 +120,7 @@ export class OpenAiCompatProvider implements LlmProvider {
     }
     if (!res.ok || !res.body) {
       const detail = (await res.text().catch(() => "")).slice(0, 400);
+      if (isContextTooLong(res.status, detail)) throw new ProviderError(`${this.label}: the request is too long for the model (${detail})`, { status: res.status, transient: false, code: "context_length" });
       throw new ProviderError(`${this.label} API error ${res.status}: ${detail}`, { status: res.status, transient: isTransientStatus(res.status), retryAfterMs: retryAfterOf(res.headers) });
     }
 

@@ -15,6 +15,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       python3 python3-pip python3-venv python3-websocket ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
+# Office documents (server/src/office.ts: office_convert, office_recalculate, office_render): LibreOffice without its
+# graphical front-ends (Debian's -nogui variants of Writer, Calc and Impress; about +480 MB on the image, measured on
+# bookworm 7.4.7), and poppler-utils for pdftoppm / pdfinfo (one PDF page to PNG). In its own layer so the layer above
+# stays cached when only this one changes.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      libreoffice-writer-nogui libreoffice-calc-nogui libreoffice-impress-nogui poppler-utils \
+    && rm -rf /var/lib/apt/lists/*
+
 # The official command-line tools of Anthropic and OpenAI, so a bot can work on its owner's own
 # subscription (Claude Pro/Max, ChatGPT Plus/Pro) once signed in on this computer.
 RUN npm install -g --no-audit --no-fund @anthropic-ai/claude-code @openai/codex && npm cache clean --force

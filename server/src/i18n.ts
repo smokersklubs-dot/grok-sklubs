@@ -5,6 +5,22 @@ import type { Locale } from "./shared.js";
  * English is the key; French is looked up here. Anything missing falls back to English.
  */
 const FR: Record<string, string> = {
+  // Goal mode (agent/goals.ts).
+  "Goal: {objective}": "Objectif : {objective}", "replaced by a new goal": "remplacé par un nouvel objectif", "the conversation was reset": "la conversation a été remise à zéro",
+  "the last round failed: {detail}": "le dernier tour a échoué : {detail}", "this month's budget is used up": "le budget du mois est épuisé",
+  "it reached its limit of {n} rounds": "il a atteint sa limite de {n} tours", "Goal paused after {n} rounds: {objective}": "Objectif en pause après {n} tours : {objective}",
+  "paused by you": "mis en pause par toi", "complete": "atteint", "blocked": "bloqué", "Goal blocked: {reason}": "Objectif bloqué : {reason}",
+  "Updating the goal": "Fait le point sur l'objectif", "Proposing a goal": "Propose un objectif", "stopped at a spend checkpoint": "arrêté à un point de contrôle des dépenses",
+  "I reached {n} steps in this round. Goal mode carries on in the next round.": "J'ai atteint {n} étapes dans ce tour. Le mode objectif continue au tour suivant.",
+  // Long API turns (agent/context.ts).
+  "Summarising the earlier steps to make room…": "Je résume les premières étapes pour faire de la place…",
+  "This work was getting too long for my model's memory, so I summarised its earlier steps to carry on.": "Ce travail devenait trop long pour la mémoire de mon modèle : j'ai résumé ses premières étapes pour continuer.",
+  // Background jobs (jobs.ts) and office documents (office.ts).
+  "background job {id}": "commande en arrière-plan {id}", "still running": "toujours en cours", "done": "terminé", "lost": "perdu",
+  "Checking a background job": "Consulte une commande en arrière-plan", "Stopping a background job": "Arrête une commande en arrière-plan", "Listing background jobs": "Liste les commandes en arrière-plan",
+  "the computer stopped": "l'ordinateur s'est arrêté", "its process ended without an exit code": "son processus s'est terminé sans code de sortie",
+  "the computer was put to sleep or reset": "l'ordinateur a été mis en veille ou réinitialisé",
+  "Converting a document": "Convertit un document", "Recalculating a spreadsheet": "Recalcule un tableur", "Looking at a document": "Regarde un document",
   // A subscription turn that failed goes on with a backup API model (loop.ts engineFallback).
   "{tool} failed ({detail}). I am carrying on with the backup model {next}.": "{tool} a échoué ({detail}). Je continue avec le modèle de secours {next}.",
   // A secret pasted in a message (pastedsecrets.ts) and the files a turn changed (snapshots.ts).

@@ -6,6 +6,7 @@ import type { User } from "../types";
 import { Avatar } from "./Avatar";
 import { Icon } from "./Icon";
 import { ErrorNote } from "./ui";
+import { GoogleSignInButton } from "./GoogleLogin";
 
 export function SignIn() {
   const signupOpen = useStore((s) => s.signupOpen);
@@ -155,6 +156,7 @@ export function SignIn() {
         <button type="submit" className="btn btn-primary btn-block" disabled={busy}>
           {t(busy ? (creating ? "signin.creating" : "signin.signingIn") : creating ? "signin.createBtn" : "signin.signIn")}
         </button>
+        <GoogleSignInButton invite={invite ? inviteToken : undefined} setupCode={setupCode} setupCodeRequired={creating && setupCodeRequired} onError={setError} />
 
         {signupOpen && (
           <p className="signin-switch">

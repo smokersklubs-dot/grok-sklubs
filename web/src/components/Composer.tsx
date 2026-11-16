@@ -151,6 +151,8 @@ export function Composer({ bot, live }: { bot: Bot; live: Live }) {
   const [menu, setMenu] = useState(false);
   const [confirmNew, setConfirmNew] = useState(false);
   const [dragging, setDragging] = useState(false);
+  // Goal mode ("Objectif"): the next message becomes an objective the bot keeps working on until it is done.
+  const [goalMode, setGoalMode] = useState(false);
   const area = useRef<HTMLTextAreaElement>(null);
   const picker = useRef<HTMLInputElement>(null);
   const dragDepth = useRef(0);
@@ -198,6 +200,7 @@ export function Composer({ bot, live }: { bot: Bot; live: Live }) {
     setError(null);
     setMenu(false);
     setDragging(false);
+    setGoalMode(false);
     dragDepth.current = 0;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bot.id, focusTick]);
@@ -228,7 +231,8 @@ export function Composer({ bot, live }: { bot: Bot; live: Live }) {
     setError(null);
     try {
       const paths = sent.map((u) => u.attachment?.path).filter((p): p is string => !!p);
-      const r = await api<{ row: Row }>("POST", `/bots/${bot.id}/messages`, paths.length ? { text, attachments: paths } : { text });
+      const r = await api<{ row: Row }>("POST", `/bots/${bot.id}/messages`, { text, ...(paths.length ? { attachments: paths } : {}), ...(goalMode ? { goal: true } : {}) });
+      setGoalMode(false);
       addRows(bot.id, [r.row]);
       clearUploads(bot.id, sent.map((u) => u.id));
       if ((useStore.getState().drafts[bot.id] ?? "").trim() === text) setDraft(bot.id, "");
@@ -292,7 +296,9 @@ export function Composer({ bot, live }: { bot: Bot; live: Live }) {
       cls: "is-voice",
     };
 
-  const placeholder = t("composer.placeholder", { name: botTitle(bot) });
+  const goalTyped = /^\/(objectif|goal)\b/i.test(text);
+  const goalOn = (goalMode || goalTyped) && bot.kind === "agent";
+  const placeholder = goalMode ? t("composer.goalPlaceholder", { name: botTitle(bot) }) : t("composer.placeholder", { name: botTitle(bot) });
   // Something that looks like a key or a password: the server will mask it before the bot sees it (pastedsecrets.ts).
   const looksSecret = text.length >= 8 && findSecrets(text).length > 0;
 
@@ -329,6 +335,13 @@ export function Composer({ bot, live }: { bot: Bot; live: Live }) {
           <Icon name="lock" size={15} />
           <span>{t("composer.secretWarn")} <span className="muted">{t("composer.secretWarnHint")}</span></span>
           <button type="button" className="btn btn-small btn-ghost" onClick={() => openAppSettings("vault")}>{t("composer.secretVault")}</button>
+        </div>
+      )}
+      {goalOn && (
+        <div className="goal-chip" role="status">
+          <Icon name="target" size={15} />
+          <span><strong>{t("composer.goalOn")}</strong> <span className="muted">{t("composer.goalHint")}</span></span>
+          {goalMode && <button type="button" className="icon-btn goal-chip-x" aria-label={t("composer.goalOff")} title={t("composer.goalOff")} onClick={() => setGoalMode(false)}><Icon name="close" size={13} /></button>}
         </div>
       )}
       {uploads.length > 0 && (
@@ -368,6 +381,11 @@ export function Composer({ bot, live }: { bot: Bot; live: Live }) {
             >
               {t("composer.attach")}
             </MenuItem>
+            {bot.kind === "agent" && (
+              <MenuItem icon="target" onClick={() => { setMenu(false); setGoalMode((v) => !v); area.current?.focus(); }}>
+                {t(goalMode ? "composer.goalOff" : "composer.goal")}
+              </MenuItem>
+            )}
             <MenuItem icon="edit" danger={confirmNew} onClick={() => void newConversation()}>
               {t(confirmNew ? "chat.confirmNew" : "chat.newConversation")}
             </MenuItem>

@@ -63,6 +63,7 @@ function previewOf(body: RowBody, locale: Locale): string {
     if (c.type === "disk") return tr(locale, "Its computer's disk is {pct}% full", { pct: c.usedPct });
     if (c.type === "pastedsecret") return tr(locale, "A secret was masked in your message");
     if (c.type === "files") return tr(locale, "Files changed: {n}", { n: c.files.length + c.more });
+    if (c.type === "goal") return tr(locale, "Goal: {objective}", { objective: c.objective });
     return tr(locale, "Connect {name}", { name: c.name });
   }
   return "";
