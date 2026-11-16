@@ -48,13 +48,125 @@ export function issueEngineToken(botId: string): string {
 }
 export const revokeEngineToken = (botId: string) => { turnTokens.delete(botId); };
 
-/** Subscription choices for the model picker (only when bots have Linux computers). */
+const claudeOption = (m: string) => ({ ref: `claude-code:${m}`, provider: "Claude (subscription)", model: m, kind: "subscription" as const, engine: "claude-code" as const });
+const codexOption = (m: string) => ({ ref: `codex:${m}`, provider: "ChatGPT (subscription)", model: m, kind: "subscription" as const, engine: "codex" as const });
+
+/**
+ * Every subscription choice this server accepts (only when bots have Linux computers): the configured lists plus the
+ * Codex models discovered lately (see engineModelsFor). Used to check a model a bot picks for a new bot.
+ */
 export function engineModels() {
   if (computerKind() !== "linux") return [];
-  return [
-    ...config.claudeCodeModels.map((m) => ({ ref: `claude-code:${m}`, provider: "Claude (subscription)", model: m, kind: "subscription" as const, engine: "claude-code" as const })),
-    ...config.codexModels.map((m) => ({ ref: `codex:${m}`, provider: "ChatGPT (subscription)", model: m, kind: "subscription" as const, engine: "codex" as const })),
-  ];
+  const codex = new Set(config.codexModels);
+  for (const c of codexCatalogs.values()) for (const m of c.models) codex.add(m);
+  return [...config.claudeCodeModels.map(claudeOption), ...[...codex].map(codexOption)];
+}
+
+// ── The real model list of the subscription tools ───────────────────────────
+/**
+ * Codex: `codex debug models` "Render the raw model catalog as JSON" (codex debug --help, codex-cli 0.169.0, the
+ * version in the desktop image): {"models":[{"slug", "visibility": "list" | "hide", "priority", ...}]}. Run as is it
+ * refreshes the catalog for the signed-in account (falling back to the one bundled with the binary); `--bundled` "Skip
+ * refresh and dump only the bundled catalog shipped with this binary" (codex debug models --help). Same technique as
+ * SuperBot (superbot server/src/adapters/codex.rs:62-80, cached 10 minutes in adapters/mod.rs:65-78).
+ * Claude Code: no documented command lists the models (claude --help, code.claude.com/docs/en/cli-reference only document
+ * --model with aliases or full names), so its list stays the configured CLAUDE_CODE_MODELS.
+ */
+const CATALOG_TTL_MS = 10 * 60_000;
+/** A failed discovery is not retried for a minute (the configured list is offered meanwhile). */
+const CATALOG_RETRY_MS = 60_000;
+const CATALOG_TIMEOUT_MS = 20_000;
+/** Per user ("" = the bundled catalog of the desktop image): when it was read and the models it lists, in its order. */
+const codexCatalogs = new Map<string, { at: number; models: string[] }>();
+const catalogFailures = new Map<string, number>();
+const catalogReads = new Map<string, Promise<string[] | null>>();
+
+/** The models a `codex debug models` catalog offers in its picker ("list" visibility), by priority; [] if unreadable. */
+export function parseCodexCatalog(raw: string): string[] {
+  let j: any;
+  try { j = JSON.parse(raw); } catch { return []; }
+  const list: any[] = Array.isArray(j?.models) ? j.models : [];
+  const seen = new Set<string>();
+  return list
+    .filter((m) => m && typeof m.slug === "string" && /^[A-Za-z0-9][\w.:-]{0,79}$/.test(m.slug) && (m.visibility === undefined || m.visibility === "list"))
+    .sort((a, b) => (Number.isFinite(a.priority) ? a.priority : 1e9) - (Number.isFinite(b.priority) ? b.priority : 1e9))
+    .map((m) => m.slug as string)
+    .filter((slug) => !seen.has(slug) && !!seen.add(slug));
+}
+
+/**
+ * Where the catalog is read when none of the user's computers is on: a throwaway container of the desktop image, with no
+ * network, dumping the catalog bundled with its Codex. Never wakes a bot's computer. Tests replace it.
+ */
+type CatalogRunner = () => Promise<string | null>;
+const bundledCatalog: CatalogRunner = async () => {
+  const r = await docker(["run", "--rm", "--network", "none", "--memory", "512m", "--entrypoint", "codex", config.desktopImage, "debug", "models", "--bundled"], { timeoutMs: CATALOG_TIMEOUT_MS, maxBytes: 8_000_000 });
+  return r.code === 0 && !r.timedOut ? r.stdout.toString("utf8") : null;
+};
+let catalogRunner: CatalogRunner = bundledCatalog;
+/** For tests: replace the throwaway reader (null puts the real one back) and forget what was cached. */
+export function setCatalogRunner(fn: CatalogRunner | null) { catalogRunner = fn ?? bundledCatalog; codexCatalogs.clear(); catalogFailures.clear(); catalogReads.clear(); }
+
+async function readCodexCatalog(key: string, read: () => Promise<string | null>): Promise<string[] | null> {
+  const cached = codexCatalogs.get(key);
+  if (cached && Date.now() - cached.at < CATALOG_TTL_MS) return cached.models;
+  if (Date.now() - (catalogFailures.get(key) ?? 0) < CATALOG_RETRY_MS) return null;
+  const inflight = catalogReads.get(key);
+  if (inflight) return inflight;
+  const job = (async () => {
+    const raw = await read().catch(() => null);
+    const models = raw ? parseCodexCatalog(raw) : [];
+    if (!models.length) { catalogFailures.set(key, Date.now()); return null; }
+    codexCatalogs.set(key, { at: Date.now(), models });
+    catalogFailures.delete(key);
+    return models;
+  })();
+  catalogReads.set(key, job);
+  try { return await job; } finally { catalogReads.delete(key); }
+}
+
+/**
+ * The subscription choices for one user's model picker. Codex: the catalog read in a computer of theirs that is on
+ * (`prefer` first: the bot whose settings are open), which knows their account, else the image's bundled catalog;
+ * cached 10 minutes; on any failure or timeout, the configured CODEX_MODELS. "default" (Codex picks) always comes first.
+ */
+export async function engineModelsFor(userId: string, prefer?: string) {
+  return computerKind() === "linux" ? subscriptionChoices(userId, prefer) : [];
+}
+/** engineModelsFor without the check for Linux computers (tests run without them). */
+export async function subscriptionChoices(userId: string, prefer?: string) {
+  const mine = bots.list(userId, true).filter((b) => b.kind === "agent").map((b) => b.id);
+  const order = prefer && mine.includes(prefer) ? [prefer, ...mine.filter((id) => id !== prefer)] : mine;
+  const awake = order.find((id) => host.awake(id));
+  let found: string[] | null = null;
+  if (awake && host.probe) {
+    const probe = host.probe;
+    found = await readCodexCatalog(userId, async () => {
+      const r = await probe(awake, ["codex", "debug", "models"], CATALOG_TIMEOUT_MS);
+      return r.code === 0 ? r.stdout : null;
+    });
+  }
+  found ??= await readCodexCatalog("", () => catalogRunner());
+  const codex = found ? [...new Set(["default", ...found])] : config.codexModels;
+  return [...config.claudeCodeModels.map(claudeOption), ...codex.map(codexOption)];
+}
+
+/**
+ * The bot's thinking effort (Bot.effort: low | medium | high | xhigh) for the subscription tools; nothing when unset.
+ * - Claude Code: `--effort <level>` "Effort level for the current session (low, medium, high, xhigh, max)" (claude --help,
+ *   Claude Code 2.1.325; code.claude.com/docs/en/cli-reference). SuperBot passes it the same way
+ *   (superbot server/src/adapters/claude.rs:30-31).
+ * - Codex: `-c model_reasoning_effort="<level>"`, the config key model_reasoning_effort (Codex configuration reference,
+ *   developers.openai.com/codex/config-reference; `-c key=value` per codex exec --help). Checked with codex-cli 0.169.0:
+ *   `codex exec -c model_reasoning_effort="high"` prints "reasoning effort: high". The levels each model takes are its
+ *   supported_reasoning_levels in `codex debug models`: low, medium, high and xhigh for every listed model. SuperBot:
+ *   superbot server/src/adapters/codex.rs:25-26.
+ * Sklubot's four levels exist in both tools under the same names, so they pass through unchanged.
+ */
+const ENGINE_EFFORTS = new Set(["low", "medium", "high", "xhigh"]);
+export function effortArgs(engine: Engine, effort: string | null | undefined): string[] {
+  if (!effort || !ENGINE_EFFORTS.has(effort)) return [];
+  return engine === "codex" ? ["-c", `model_reasoning_effort="${effort}"`] : ["--effort", effort];
 }
 
 // While a subscription turn runs, the tool calls it makes share its state (stop signal, caution after
@@ -87,6 +199,13 @@ export interface EngineHost {
   ready(bot: BotRecord): Promise<void>;
   /** Whether the computer is on right now (never wakes it). */
   awake(botId: string): boolean;
+  /**
+   * Marks the computer busy while a turn (or a side request) runs in it, so it is never put to sleep meanwhile; returns
+   * the release. Optional: a host without it (a test's fake) has nothing to keep awake.
+   */
+  hold?(bot: BotRecord): () => void;
+  /** Runs a short command in the computer if it is on (never wakes it): for the model list (engineModelsFor). */
+  probe?(botId: string, args: string[], timeoutMs: number): Promise<{ code: number | null; stdout: string }>;
 }
 
 const dockerHost: EngineHost = {
@@ -99,13 +218,21 @@ const dockerHost: EngineHost = {
     if (r.code !== 0) throw new Error(`could not prepare the bot's computer: ${r.stderr.trim().slice(0, 200)}`);
   },
   exec: (bot, args, env, cwd, input, signal, onLine) => runInComputer(bot, args, env, cwd, input, signal, onLine),
-  async kill(botId) {
-    // The tools' own processes only (and the one whose id the last turn wrote down); the desktop keeps running.
-    await docker(["exec", containerName(botId), "sh", "-c", "kill -TERM $(cat /tmp/sklubot-engine.pid 2>/dev/null) 2>/dev/null; pkill -TERM -f '^(node .*)?claude( |$)' ; pkill -TERM -f '^(node .*)?codex( |$)'; sleep 1; pkill -KILL -f '^(node .*)?claude( |$)'; pkill -KILL -f '^(node .*)?codex( |$)'; rm -f /tmp/sklubot-engine.pid; true"], { timeoutMs: 20_000 });
-  },
+  kill: (botId) => killEngineProcesses(botId),
   ready: (bot) => screen.ready(bot.id, bot.userId),
   awake: (botId) => screen.isOpen(botId),
+  hold: (bot) => screen.hold(bot.id),
+  async probe(botId, args, timeoutMs) {
+    if (!screen.isOpen(botId)) return { code: null, stdout: "" };
+    const r = await docker(["exec", containerName(botId), ...args], { timeoutMs, maxBytes: 8_000_000 });
+    return { code: r.timedOut ? null : r.code, stdout: r.stdout.toString("utf8") };
+  },
 };
+
+/** The tools' own processes only (and the one whose id the last turn wrote down); the desktop keeps running. */
+async function killEngineProcesses(botId: string) {
+  await docker(["exec", containerName(botId), "sh", "-c", "kill -TERM $(cat /tmp/sklubot-engine.pid 2>/dev/null) 2>/dev/null; pkill -TERM -f '^(node .*)?claude( |$)' ; pkill -TERM -f '^(node .*)?codex( |$)'; sleep 1; pkill -KILL -f '^(node .*)?claude( |$)'; pkill -KILL -f '^(node .*)?codex( |$)'; rm -f /tmp/sklubot-engine.pid; true"], { timeoutMs: 20_000 });
+}
 let host: EngineHost = dockerHost;
 /** For tests: replace the computer the engine talks to (null puts the real one back). */
 export const setEngineHost = (h: EngineHost | null) => { host = h ?? dockerHost; };
@@ -329,12 +456,12 @@ class Transcript {
     if (!getLive(this.turn.bot.id).awaiting) activity(this.turn, "thinking");
   }
   /** End of the turn: rows still running or waiting become done (success) or error, "stopped" / "did not finish". */
-  close(success: boolean, aborted: boolean) {
+  close(success: boolean, aborted: boolean, timedOut = false) {
     const loc = this.turn.user.locale;
     for (const step of this.steps) {
       const row = rows.get(this.turn.bot.id, this.turn.generation, step.seq);
       if (row?.body.kind !== "step" || (row.body.status !== "running" && row.body.status !== "waiting")) continue;
-      rows.rewrite(this.turn.bot, this.turn.generation, step.seq, success ? { ...row.body, status: "done" } : { ...row.body, status: "error", summary: tr(loc, aborted ? "stopped" : "did not finish") });
+      rows.rewrite(this.turn.bot, this.turn.generation, step.seq, success ? { ...row.body, status: "done" } : { ...row.body, status: "error", summary: tr(loc, timedOut ? "time limit reached" : aborted ? "stopped" : "did not finish") });
     }
     if (turnSteps.get(this.turn.bot.id) === this.steps) turnSteps.delete(this.turn.bot.id);
   }
@@ -357,7 +484,13 @@ function runInComputer(bot: BotRecord, args: string[], env: Record<string, strin
   const envArgs = Object.entries(env).flatMap(([k, v]) => ["-e", `${k}=${v}`]);
   // The process id is written down so that "stop" can interrupt the tool inside the computer.
   const child = spawn("docker", ["exec", "-i", "-w", cwd, ...envArgs, name, "sh", "-c", 'echo $$ > /tmp/sklubot-engine.pid; exec "$@"', "sh", ...args], { stdio: ["pipe", "pipe", "pipe"] });
-  const stop = () => { void docker(["exec", name, "sh", "-c", "kill -INT $(cat /tmp/sklubot-engine.pid) 2>/dev/null"], { timeoutMs: 10_000 }); };
+  // Stop (or the turn's time limit): an interrupt first, so the tool can wind down and save its session. A tool that is
+  // hung and ignores it is killed 15 s later, inside the computer and here, so the bot's queue never stays blocked.
+  let escalate: NodeJS.Timeout | null = null;
+  const stop = () => {
+    void docker(["exec", name, "sh", "-c", "kill -INT $(cat /tmp/sklubot-engine.pid) 2>/dev/null"], { timeoutMs: 10_000 });
+    escalate = setTimeout(() => { void killEngineProcesses(bot.id).finally(() => { if (child.exitCode === null) child.kill("SIGKILL"); }); }, ENGINE_KILL_GRACE_MS);
+  };
   signal.addEventListener("abort", stop, { once: true });
   let buffer = "", stderr = "";
   child.stdout.on("data", (chunk: Buffer) => {
@@ -372,15 +505,35 @@ function runInComputer(bot: BotRecord, args: string[], env: Record<string, strin
   child.stderr.on("data", (c: Buffer) => { stderr = (stderr + c.toString("utf8")).slice(-4000); });
   child.stdin.on("error", () => {}); // the tool may exit before reading everything
   child.stdin.end(input);
-  return new Promise((resolve) => child.on("close", (code) => { signal.removeEventListener("abort", stop); if (buffer.trim()) { try { onLine(buffer.trim()); } catch { /* ignore */ } } resolve({ code, stderr }); }));
+  return new Promise((resolve) => child.on("close", (code) => { signal.removeEventListener("abort", stop); if (escalate) clearTimeout(escalate); if (buffer.trim()) { try { onLine(buffer.trim()); } catch { /* ignore */ } } resolve({ code, stderr }); }));
 }
+
+/** How long a stopped tool gets to exit on its interrupt before it is killed. */
+const ENGINE_KILL_GRACE_MS = 15_000;
 
 const NOT_SIGNED_IN = /not logged in|please run \/login|login required|not authenticated|unauthorized|401/i;
 
 // ── One turn ─────────────────────────────────────────────────────────────────
+/**
+ * The reason a subscription turn is aborted with when it reaches its time limit (ENGINE_TURN_TIMEOUT_MINUTES), so it is
+ * told apart from the user's "Stop" (an abort without a reason). See SuperBot's runner for the same idea of a stop reason
+ * (superbot server/src/runner.rs:177-186, 238-268).
+ */
+export class EngineTimeout extends Error {
+  constructor(readonly limitMs: number) { super(`the turn reached its time limit (${Math.round(limitMs / 60_000)} min)`); this.name = "EngineTimeout"; }
+}
+export const isEngineTimeout = (reason: unknown): reason is EngineTimeout => reason instanceof EngineTimeout;
+
 export async function runEngineTurn(turn: Turn, prompt: string, attachments: Attachment[]) {
   const { bot } = turn;
   await ensureComputer(bot);
+  // Busy for the whole turn: the computer is never put to sleep under the tool (to make room for another, or as idle).
+  const release = host.hold?.(bot) ?? (() => {});
+  try { await engineTurnOn(turn, prompt, attachments); } finally { release(); }
+}
+
+async function engineTurnOn(turn: Turn, prompt: string, attachments: Attachment[]) {
+  const { bot } = turn;
   // B-2: before the message goes to the engine, the screen must be ready (computer up, look applied, the bot's own
   // browser answering). Otherwise a tool that finds no browser may start one of its own, out of the user's sight.
   // A failure here is logged and the turn goes on; a stop pressed meanwhile ends the turn before anything is sent.
@@ -403,7 +556,7 @@ export async function runEngineTurn(turn: Turn, prompt: string, attachments: Att
     runningTurns.delete(bot.id);
     t.endMessage();
     const aborted = turn.signal.aborted;
-    t.close(!aborted && !threw && !t.failed, aborted);
+    t.close(!aborted && !threw && !t.failed, aborted, isEngineTimeout(turn.signal.reason));
     if (aborted) noteRuntime(bot.id, "ready");
     else if (threw || t.failed) noteRuntime(bot.id, "error", t.lastFailure || null);
     else noteRuntime(bot.id, "ready");
@@ -435,6 +588,7 @@ async function claudeTurn(turn: Turn, t: Transcript, prompt: string, token: stri
     "--strict-mcp-config", "--mcp-config", "/root/.sklubot/mcp.json",
     "--append-system-prompt-file", "/root/.sklubot/engine-prompt.md",
     ...(model && model !== "default" ? ["--model", model] : []),
+    ...effortArgs("claude-code", bot.effort),
     ...(resume ? ["--resume", resume] : []),
   ];
   let failure = "", sawResult = false, missingSession = false;
@@ -490,6 +644,7 @@ async function codexTurn(turn: Turn, t: Transcript, prompt: string, system: stri
     "-c", 'mcp_servers.sklubot.bearer_token_env_var="SKLUBOT_MCP_TOKEN"',
     "-c", `mcp_servers.sklubot.tool_timeout_sec=${TOOL_TIMEOUT_MS / 1000}`,
     ...(model && model !== "default" ? ["-m", model] : []),
+    ...effortArgs("codex", bot.effort),
   ];
   const args = resume ? ["codex", "exec", "resume", ...common, resume, "-"] : ["codex", "exec", ...common, "-"];
   let failure = "", sawEnd = false;
@@ -535,18 +690,21 @@ const signInHint = (turn: Turn, engine: Engine) =>
 // ── A short side request (memory, summaries) through the subscription ───────
 export async function engineAsk(bot: BotRecord, system: string, prompt: string): Promise<string> {
   await ensureComputer(bot);
-  const engine = engineOf(bot.model);
-  let out = "";
-  const ctrl = AbortSignal.timeout(180_000);
-  if (engine === "claude-code") {
-    await writeFile(bot.id, "/root/.sklubot/side-prompt.md", system);
-    await host.exec(bot, ["claude", "-p", "--output-format", "stream-json", "--verbose", "--tools", "", "--no-session-persistence", "--append-system-prompt-file", "/root/.sklubot/side-prompt.md", ...(modelOf(bot.model) !== "default" ? ["--model", modelOf(bot.model)] : [])],
-      { IS_SANDBOX: "1" }, "/root", prompt, ctrl, (line) => { try { const e = JSON.parse(line); if (e.type === "result" && !e.is_error) out = String(e.result ?? ""); } catch { /* ignore */ } });
-  } else {
-    await host.exec(bot, ["codex", "exec", "--json", "--skip-git-repo-check", "--ephemeral", "--sandbox", "read-only", "-"], {}, "/tmp", `${system}\n\n${prompt}`, ctrl,
-      (line) => { try { const e = JSON.parse(line); if (e.type === "item.completed" && e.item?.type === "agent_message") out = String(e.item.text ?? ""); } catch { /* ignore */ } });
-  }
-  return out.trim();
+  const release = host.hold?.(bot) ?? (() => {});
+  try {
+    const engine = engineOf(bot.model);
+    let out = "";
+    const ctrl = AbortSignal.timeout(180_000);
+    if (engine === "claude-code") {
+      await writeFile(bot.id, "/root/.sklubot/side-prompt.md", system);
+      await host.exec(bot, ["claude", "-p", "--output-format", "stream-json", "--verbose", "--tools", "", "--no-session-persistence", "--append-system-prompt-file", "/root/.sklubot/side-prompt.md", ...(modelOf(bot.model) !== "default" ? ["--model", modelOf(bot.model)] : []), ...effortArgs("claude-code", bot.effort)],
+        { IS_SANDBOX: "1" }, "/root", prompt, ctrl, (line) => { try { const e = JSON.parse(line); if (e.type === "result" && !e.is_error) out = String(e.result ?? ""); } catch { /* ignore */ } });
+    } else {
+      await host.exec(bot, ["codex", "exec", "--json", "--skip-git-repo-check", "--ephemeral", "--sandbox", "read-only", ...effortArgs("codex", bot.effort), "-"], {}, "/tmp", `${system}\n\n${prompt}`, ctrl,
+        (line) => { try { const e = JSON.parse(line); if (e.type === "item.completed" && e.item?.type === "agent_message") out = String(e.item.text ?? ""); } catch { /* ignore */ } });
+    }
+    return out.trim();
+  } finally { release(); }
 }
 
 // ── Sign-in on the bot's own screen ─────────────────────────────────────────

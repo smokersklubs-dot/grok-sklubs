@@ -851,6 +851,28 @@ export const pages = {
 };
 
 // ── Turns under way (to notice the ones a restart cut off) ───────────────────
+/**
+ * A bot's queue, kept on disk (bot_queue) so that work waiting behind a turn survives a restart. The order of rows (id)
+ * is the order of the queue. Done rows are kept a week, then dropped (prune).
+ */
+export interface QueuedWork { id: number; bot_id: string; trigger: string; status: "pending" | "running" | "deferred" | "done" }
+export const botQueue = {
+  /** Writes a job; null when it cannot be written (a bot that is not in the database): it then runs from memory only. */
+  add(botId: string, trigger: unknown): number | null {
+    try { return Number(q.run("INSERT INTO bot_queue (bot_id, trigger, created_at) VALUES (?, ?, ?)", botId, JSON.stringify(trigger), now()).lastInsertRowid); } catch { return null; }
+  },
+  start: (id: number) => q.run("UPDATE bot_queue SET status = 'running', started_at = ? WHERE id = ?", now(), id),
+  /** Done, unless it was set aside meanwhile (deferred). */
+  finish: (id: number) => q.run("UPDATE bot_queue SET status = 'done', done_at = ? WHERE id = ? AND status <> 'deferred'", now(), id),
+  done: (id: number) => q.run("UPDATE bot_queue SET status = 'done', done_at = ? WHERE id = ?", now(), id),
+  defer: (id: number) => q.run("UPDATE bot_queue SET status = 'deferred' WHERE id = ?", id),
+  /** Puts other work in a row's place, back to pending (the turn a restart cut off becomes its recovery, in its place). */
+  replace: (id: number, trigger: unknown) => q.run("UPDATE bot_queue SET trigger = ?, status = 'pending', started_at = NULL WHERE id = ?", JSON.stringify(trigger), id),
+  unfinished: () => q.all<QueuedWork>("SELECT id, bot_id, trigger, status FROM bot_queue WHERE status IN ('pending', 'running', 'deferred') ORDER BY id"),
+  status: (id: number) => q.get<{ status: QueuedWork["status"] }>("SELECT status FROM bot_queue WHERE id = ?", id)?.status ?? null,
+  prune: (olderThanMs = 7 * 86_400_000) => q.run("DELETE FROM bot_queue WHERE status = 'done' AND done_at < ?", now() - olderThanMs),
+};
+
 export const activeTurns = {
   begin: (botId: string) => q.run("INSERT INTO active_turns (bot_id, started_at) VALUES (?, ?) ON CONFLICT(bot_id) DO UPDATE SET started_at = excluded.started_at, acted = 0", botId, now()),
   acted: (botId: string) => q.run("UPDATE active_turns SET acted = 1 WHERE bot_id = ?", botId),

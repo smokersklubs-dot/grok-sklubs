@@ -131,11 +131,51 @@ function note(botId: string, userId: string, power: Power): Machine {
   return m;
 }
 
+/** Computers being put to sleep right now: they no longer count as awake, and nobody picks them twice. */
+const stopping = new Set<string>();
+/** Computers allowed to wake (room was made for them) that are still starting: they count as awake already. */
+const reserved = new Set<string>();
+
 async function sleepMachine(botId: string) {
   const m = machines.get(botId);
-  await docker(["stop", "-t", "3", containerName(botId)], { timeoutMs: 30_000 });
-  dressedWith.delete(botId);
-  if (m) note(botId, m.userId, "asleep");
+  stopping.add(botId);
+  try {
+    await docker(["stop", "-t", "3", containerName(botId)], { timeoutMs: 30_000 });
+    dressedWith.delete(botId);
+    if (m) note(botId, m.userId, "asleep");
+  } finally { stopping.delete(botId); }
+}
+
+/** All the awake computers are busy and none could be put to sleep in time. Nothing was evicted. */
+export class ComputersBusyError extends Error {
+  constructor(readonly max: number) {
+    super(`All ${max} computers are busy right now, and a busy computer is never put to sleep. Try again in a few minutes, or raise MAX_DESKTOPS on the server.`);
+    this.name = "ComputersBusyError";
+  }
+}
+
+/**
+ * Makes room for one more awake computer (or browser) without ever stopping one that is busy (a tool call, a command,
+ * or a whole Claude Code / Codex turn in it). Under the limit: the slot is taken at once (`take`, synchronous, so two
+ * callers can never both take the last slot). At the limit: the least recently used idle one is put to sleep (`pick`
+ * marks it synchronously, `free` stops it). All busy: waits, checking every `stepMs`, for up to `waitMs`; past that,
+ * ComputersBusyError. We wait rather than go over the limit: on a small server each computer holds its memory
+ * (DESKTOP_MEMORY, 2 GB by default), and one too many can push the whole machine out of memory. SuperBot only ever stops
+ * the screen of a bot that is not working, and gives up at once when it cannot (superbot server/src/screen.rs:78-107);
+ * here a short wait comes first, since a busy computer often frees up within seconds.
+ */
+export async function makeRoom<T extends { busy: number; lastUsedAt: number }>(o: {
+  max: number; awake: () => T[]; take: () => void; pick: (victim: T) => void; free: (victim: T) => Promise<void>; waitMs: number; stepMs?: number;
+}): Promise<void> {
+  const deadline = Date.now() + o.waitMs;
+  for (;;) {
+    const awake = o.awake();
+    if (awake.length < o.max) { o.take(); return; }
+    const victim = [...awake].sort((a, b) => a.lastUsedAt - b.lastUsedAt).find((m) => m.busy === 0);
+    if (victim) { o.pick(victim); o.take(); await o.free(victim); return; }
+    if (Date.now() >= deadline) throw new ComputersBusyError(o.max);
+    await new Promise((r) => setTimeout(r, Math.min(o.stepMs ?? 1000, Math.max(1, deadline - Date.now()))));
+  }
 }
 
 /** Makes sure the bot's computer is on. Only a few may run at once; the least recently used idle one goes to sleep. */
@@ -153,8 +193,17 @@ async function wake(botId: string, userId: string, workspace: string): Promise<M
     pending = (async () => {
       const power = await powerOf(botId);
       if (power !== "running") {
-        const awake = [...machines.values()].filter((m) => m.power === "running").sort((a, b) => a.lastUsedAt - b.lastUsedAt);
-        if (awake.length >= config.maxDesktops) await sleepMachine((awake.find((m) => m.busy === 0) ?? awake[0]).botId);
+        // Awake: running and not being put to sleep, plus the others already allowed to start (counted as busy).
+        await makeRoom({
+          max: config.maxDesktops, waitMs: config.computerWaitMs,
+          awake: () => [
+            ...[...machines.values()].filter((m) => m.power === "running" && !stopping.has(m.botId) && m.botId !== botId),
+            ...[...reserved].filter((id) => id !== botId).map((id) => ({ botId: id, busy: 1, lastUsedAt: 0 })),
+          ],
+          take: () => { reserved.add(botId); },
+          pick: (m) => { stopping.add(m.botId); },
+          free: (m) => sleepMachine(m.botId),
+        });
       }
       if (power === "asleep") {
         const r = await docker(["start", containerName(botId)], { timeoutMs: 60_000 });
@@ -187,7 +236,7 @@ async function wake(botId: string, userId: string, workspace: string): Promise<M
       throw new Error("the computer started but its screen did not come up");
     })();
     starting.set(botId, pending);
-    pending.finally(() => starting.delete(botId)).catch(() => {});
+    pending.finally(() => { starting.delete(botId); reserved.delete(botId); }).catch(() => {});
   }
   await pending;
   const m = note(botId, userId, "running");
@@ -404,6 +453,11 @@ export const linuxScreen = {
   }),
   /** Counts as use, so the idle sweep leaves the computer awake. */
   touch: (botId: string) => { const m = machines.get(botId); if (m) m.lastUsedAt = now(); },
+  /**
+   * Marks the computer busy for work that runs in it outside onMachine (a whole Claude Code / Codex turn): it is never
+   * put to sleep meanwhile, neither to make room for another nor by the idle sweep. Returns the release (call it once).
+   */
+  hold: (botId: string): (() => void) => holdMachine(botId),
   wake: (botId: string, userId: string, ws: string) => wake(botId, userId, ws).then(() => {}),
   sleep: sleepMachine,
   /** Wipes the computer: the container and its home volume are deleted; a fresh one is made on next use. */
@@ -444,6 +498,15 @@ export async function writeComputerFile(botId: string, userId: string, ws: strin
     const r = await docker(["exec", "-i", n, "sh", "-c", 'umask 077; mkdir -p "$(dirname "$1")" && cat > "$1" && chmod "$2" "$1"', "sh", file, mode], { timeoutMs: 20_000, input: content });
     if (r.code !== 0) throw new Error(`could not write ${file}: ${r.stderr.trim().slice(0, 200)}`);
   });
+}
+
+/** See linuxScreen.hold. A computer not known yet (never woken by this server) has nothing to hold. */
+export function holdMachine(botId: string): () => void {
+  const m = machines.get(botId);
+  if (!m) return () => {};
+  m.busy++;
+  let released = false;
+  return () => { if (released) return; released = true; m.busy = Math.max(0, m.busy - 1); m.lastUsedAt = now(); };
 }
 
 export const linuxMachines = (userId: string) => [...machines.values()].filter((m) => m.userId === userId);

@@ -265,8 +265,12 @@ export type RowBody =
    * `selfupdate`: the bot changed its own settings (self_update); `undo` offers to put them back.
    */
   | { kind: "event"; event: "routine" | "task" | "bot" | "reset" | "computer" | "call" | "members" | "cheer" | "relay" | "progress" | "selfupdate"; text: string; call?: CallRecord; gem?: Gem; tone?: "info" | "warn"; undo?: { revisionId: string; status: "available" | "undone" } }
-  /** `action`: a button under the notice. "continue": the bot stopped at its step limit and can pick the work back up. */
-  | { kind: "notice"; tone: "info" | "warn" | "error"; text: string; action?: { kind: "continue"; status: "pending" | "done" } | { kind: "settings"; section: string } };
+  /**
+   * `action`: a button under the notice. "continue": the bot stopped at its step limit — or, `reason: "timeout"`, a turn on
+   * a subscription tool reached its time limit; `reason: "busy"`, its computer could not start, every one being busy — and can
+   * pick the work back up.
+   */
+  | { kind: "notice"; tone: "info" | "warn" | "error"; text: string; action?: { kind: "continue"; status: "pending" | "done"; reason?: "timeout" | "busy" } | { kind: "settings"; section: string } };
 
 export type Card =
   /** `once`: "Always" is not offered (e.g. a command on the user's own computer after outside content); choosing it anyway counts as allowing once. */

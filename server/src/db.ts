@@ -475,7 +475,15 @@ function CREATE_EXTRA() {
   CREATE TABLE IF NOT EXISTS telegram_messages (
     bot_id TEXT NOT NULL REFERENCES bots(id) ON DELETE CASCADE, message_id INTEGER NOT NULL, kind TEXT NOT NULL, ref TEXT NOT NULL,
     created_at INTEGER NOT NULL, PRIMARY KEY (bot_id, message_id)
-  );`);
+  );
+  -- Work queued for a bot (a message, a routine run, a teammate's message, a system notice), in order: 'pending' until its
+  -- turn starts, 'running', then 'done'; 'deferred' while a workspace member's message waits for the owner's approval.
+  -- After a restart, pending and deferred work runs again in order; a 'running' one was the turn cut off (active_turns).
+  CREATE TABLE IF NOT EXISTS bot_queue (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, bot_id TEXT NOT NULL REFERENCES bots(id) ON DELETE CASCADE, trigger TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending', created_at INTEGER NOT NULL, started_at INTEGER, done_at INTEGER
+  );
+  CREATE INDEX IF NOT EXISTS bot_queue_status ON bot_queue(status, id);`);
 }
 
 type Param = string | number | null | bigint;

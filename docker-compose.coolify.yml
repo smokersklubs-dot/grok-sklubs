@@ -35,6 +35,8 @@ services:
       DESKTOP_NETWORK: "sklubot_net"
       ENGINE_BASE_URL: "http://sklubot:3000"
       MAX_DESKTOPS: "${SKLUBOT_MAX_DESKTOPS:-4}"
+      # Durée max d'un tour Claude Code / Codex, en minutes (0 = sans limite).
+      ENGINE_TURN_TIMEOUT_MINUTES: "${SKLUBOT_ENGINE_TURN_TIMEOUT_MINUTES:-60}"
       DESKTOP_MEMORY: "${SKLUBOT_DESKTOP_MEMORY:-2g}"
       DESKTOP_CPUS: "${SKLUBOT_DESKTOP_CPUS:-2}"
       # Clavier des ordinateurs des bots (nom de disposition X : us, fr, de…).

@@ -89,7 +89,12 @@ conteneur à la première utilisation : Debian, bureau graphique 1280×800, Chro
 Son dossier personnel est conservé (logiciels installés, connexions du navigateur, fichiers). Le dossier
 `~/files` de l'ordinateur est la bibliothèque visible dans l'interface. Un ordinateur inactif depuis 20 minutes
 s'endort ; il se réveille tout seul. Quatre ordinateurs peuvent être éveillés en même temps (`MAX_DESKTOPS`),
-avec 2 Go de mémoire et 2 processeurs chacun (`DESKTOP_MEMORY`, `DESKTOP_CPUS`).
+avec 2 Go de mémoire et 2 processeurs chacun (`DESKTOP_MEMORY`, `DESKTOP_CPUS`). Pour en réveiller un autre, Sklubot
+endort le moins récent des ordinateurs **inactifs** ; un ordinateur occupé (une commande, un tour Claude Code ou Codex)
+n'est jamais endormi : s'ils le sont tous, il attend qu'un se libère (`COMPUTER_WAIT_SEC`, 90 s), puis le dit clairement.
+Un tour Claude Code ou Codex dure au plus `ENGINE_TURN_TIMEOUT_MINUTES` (60 min, 0 = sans limite) : au-delà il est
+arrêté, ce qui a été fait est gardé et un bouton « Continuer » le reprend. La liste des modèles Codex proposés est lue
+dans Codex lui-même (`codex debug models`, gardée 10 min) ; `CODEX_MODELS` sert de secours.
 
 Sans Docker, Sklubot se rabat sur un simple navigateur par bot (`npm i playwright && npx playwright install chromium`),
 et sinon sur la lecture de pages, la ligne de commande et les connecteurs.

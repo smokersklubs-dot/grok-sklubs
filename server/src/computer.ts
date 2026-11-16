@@ -6,7 +6,7 @@ import { config } from "./config.js";
 import { assertPublicUrl } from "./net.js";
 import { emit } from "./bus.js";
 import { now } from "./store.js";
-import { adoptMachines, linuxMachines, linuxReady, linuxScreen, linuxShell, onMachinesChanged, sweepIdleMachines } from "./linux.js";
+import { adoptMachines, linuxMachines, linuxReady, linuxScreen, linuxShell, makeRoom, onMachinesChanged, sweepIdleMachines } from "./linux.js";
 import type { Attachment, ComputerState, FileEntry } from "./shared.js";
 
 /**
@@ -98,10 +98,9 @@ async function desktop(botId: string, userId: string): Promise<Desktop> {
   const eng = loadEngine();
   if (!eng) throw new Error("No browser engine is installed on this server. Install one with: npm i playwright && npx playwright install chromium");
   const attempt = (async () => {
-    if (desktops.size >= config.maxDesktops) {
-      const victims = [...desktops.values()].sort((a, b) => a.lastUsedAt - b.lastUsedAt);
-      await closeDesktop((victims.find((d) => d.busy === 0) ?? victims[0]).botId);
-    }
+    // Never closes a browser in use: waits for one to be idle (makeRoom, linux.ts), else a clear "all busy" error.
+    // closeDesktop forgets the browser at once, so the slot it frees is not counted twice.
+    await makeRoom({ max: config.maxDesktops, waitMs: config.computerWaitMs, awake: () => [...desktops.values(), ...[...opening.keys()].filter((id) => id !== botId).map((id) => ({ botId: id, busy: 1, lastUsedAt: 0 }))], take: () => {}, pick: () => {}, free: (d) => closeDesktop(d.botId) });
     const profile = path.join(config.profileDir, safeId(botId));
     mkdirSync(profile, { recursive: true });
     const context = await eng.chromium.launchPersistentContext(profile, {
@@ -271,6 +270,8 @@ export const screen = {
   ready: (botId: string, userId: string) => (kind === "linux" ? linuxScreen.ready(botId, userId, workspaceOf(botId)) : Promise.resolve()),
   /** Whether the bot's browser answers right now (Linux computers; never wakes one). */
   browserAnswers: (botId: string) => (kind === "linux" ? linuxScreen.browserAnswers(botId) : Promise.resolve(false)),
+  /** Marks the computer busy for work run in it directly (a subscription turn): never put to sleep meanwhile. Returns the release. */
+  hold: (botId: string): (() => void) => (kind === "linux" ? linuxScreen.hold(botId) : () => {}),
   /** Linux: put the computer to sleep, keeping everything on it. Browser: close it. */
   sleep: (botId: string) => (kind === "linux" ? linuxScreen.sleep(botId) : browserScreen.reset(botId)),
   /** Linux: wipe the computer and start fresh next time. Browser: close it (logins are kept). */

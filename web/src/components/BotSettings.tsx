@@ -83,14 +83,15 @@ function General({ bot, onClose }: { bot: Bot; onClose: () => void }) {
 
   useEffect(() => {
     let dead = false;
-    api<{ models: ModelOption[]; defaultRef: string }>("GET", "/models").then(
+    // The bot's id: the subscription tools' real model list is read on its own computer first.
+    api<{ models: ModelOption[]; defaultRef: string }>("GET", `/models?bot=${encodeURIComponent(bot.id)}`).then(
       (r) => !dead && setModels(r),
       () => undefined,
     );
     return () => {
       dead = true;
     };
-  }, []);
+  }, [bot.id]);
 
   useEffect(() => {
     if (!note) return;

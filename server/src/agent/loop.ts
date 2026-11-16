@@ -7,12 +7,12 @@ import { defaultModelRef, ProviderError, resolveModel, validateToolInput, type T
 import { tr } from "../i18n.js";
 import { imageService } from "../images.js";
 import type { ActivityKind, Attachment, Row } from "../shared.js";
-import { activeTurns, approvals, audit, bots, clip, feedback, history, newId, paused, policies, rows, redactSecrets, rowScope, settings, users, type BotRecord, type UserRecord } from "../store.js";
+import { activeTurns, approvals, audit, botQueue, bots, clip, type QueuedWork, feedback, history, newId, paused, policies, rows, redactSecrets, rowScope, settings, users, type BotRecord, type UserRecord } from "../store.js";
 import { runs } from "../routines.js";
 import { overBudget, record, setActorHook } from "../usage.js";
 import { botEmail } from "../botmail.js";
 import { compactIfNeeded } from "./memory.js";
-import { engineTurnOf, isEngineRef, runEngineTurn } from "./engine.js";
+import { EngineTimeout, engineTurnOf, isEngineRef, isEngineTimeout, runEngineTurn } from "./engine.js";
 import { buildSystemPrompt } from "./prompt.js";
 import { deliverBotMessage } from "./team.js";
 import { builtinTools, higgsfieldFor, videoRoute, type BuiltinTool, type ToolOutput } from "./tools.js";
@@ -202,8 +202,35 @@ export function inQueue<T>(botId: string, job: () => Promise<T>): Promise<T> {
   return run;
 }
 
+/**
+ * Queues a turn. The trigger is written to disk first (bot_queue), so work waiting behind a long turn survives a restart:
+ * it runs again in order then (replayQueue), and a job that already ran is never run twice. Same idea as SuperBot's
+ * persisted job status (superbot server/src/db.rs, runner.rs:368-381).
+ */
 export function enqueue(botId: string, trigger: Trigger) {
-  void inQueue(botId, () => runTurn(botId, trigger)).catch(() => {});
+  const id = botQueue.add(botId, trigger);
+  if (id !== null) { liveJobs.add(id); jobOf.set(trigger, id); }
+  void inQueue(botId, () => runQueued(id, botId, trigger)).catch(() => {});
+}
+
+/** Queue rows this server process holds in memory (queued, running or deferred): a replay never runs them a second time. */
+const liveJobs = new Set<number>();
+/** The queue row of each trigger in memory. */
+const jobOf = new WeakMap<Trigger, number>();
+
+/** The queue row of the turn each bot is running (marked done in the same instant its turn stops being "under way"). */
+const runningJob = new Map<string, number>();
+
+async function runQueued(id: number | null, botId: string, trigger: Trigger) {
+  if (id !== null) { botQueue.start(id); runningJob.set(botId, id); }
+  try { await runTurn(botId, trigger); } finally {
+    if (id !== null) {
+      if (runningJob.get(botId) === id) runningJob.delete(botId);
+      botQueue.finish(id);
+      // A deferred job stays in memory (deferredMember) until the owner's approval is settled.
+      if (botQueue.status(id) !== "deferred") liveJobs.delete(id);
+    }
+  }
 }
 
 /** What the model is told when the user forces a skill with "/skill <name>". */
@@ -393,6 +420,8 @@ async function runScopedTurn(botId: string, trigger: Trigger, thread: number): P
   // A workspace member's message must not cancel what the owner is asked to approve: it waits (wave 6).
   if (trigger.kind === "user" && trigger.member && paused.get(botId)) {
     deferredMember.set(botId, [...(deferredMember.get(botId) ?? []), trigger]);
+    const job = jobOf.get(trigger);
+    if (job !== undefined) botQueue.defer(job);
     return;
   }
   const controller = new AbortController();
@@ -433,7 +462,13 @@ async function runScopedTurn(botId: string, trigger: Trigger, thread: number): P
         // A subscription tool keeps one session of its own: a thread reply carries the message it hangs on every time.
         const inThread = thread ? `${threadOpening(bot, thread)}\n[Answer in this thread.]\n` : "";
         const forced = trigger.kind === "user" && trigger.skill ? `\n\n${forcedSkillNote(trigger.skill)}` : "";
-        await runEngineTurn(turn, note + (heard ? heard + "\n" : "") + inThread + words + forced + extraText(extra), trigger.kind === "user" ? trigger.attachments ?? [] : []);
+        // The time limit of a subscription turn (ENGINE_TURN_TIMEOUT_MINUTES): a hung tool must not hold the bot's queue
+        // forever. It stops the turn through the same path as "Stop", with its own reason (told apart below).
+        const limit = config.engineTurnTimeoutMs;
+        const timer = limit > 0 ? setTimeout(() => controller.abort(new EngineTimeout(limit)), limit) : null;
+        try {
+          await runEngineTurn(turn, note + (heard ? heard + "\n" : "") + inThread + words + forced + extraText(extra), trigger.kind === "user" ? trigger.attachments ?? [] : []);
+        } finally { if (timer) clearTimeout(timer); }
         throw new EngineDone();
       }
       if (overBudget(user.id)) {
@@ -483,13 +518,26 @@ async function runScopedTurn(botId: string, trigger: Trigger, thread: number): P
   } catch (err) {
     if (err instanceof EngineDone) { finishEngineTurn(bot, user, trigger, turn); return; }
     const stopped = controller.signal.aborted;
-    failed = stopped ? "stopped" : clip(String((err as Error)?.message ?? err), 200);
-    if (bots.byId(botId))
-      rows.append(bot, stopped ? { kind: "notice", tone: "info", text: tr(user.locale, "Stopped.") } : { kind: "notice", tone: "error", text: tr(user.locale, "Something went wrong: {detail}", { detail: clip(String((err as Error)?.message ?? err), 400) }) });
+    const timedOut = stopped && isEngineTimeout(controller.signal.reason);
+    failed = timedOut ? "timed out" : stopped ? "stopped" : clip(String((err as Error)?.message ?? err), 200);
+    if (bots.byId(botId)) {
+      if (timedOut) {
+        // Never a dead end: what the tool said and did so far is kept (and its session, resumed next turn); "Continue" — or
+        // simply saying so — picks the work back up.
+        const minutes = Math.round((controller.signal.reason as EngineTimeout).limitMs / 60_000);
+        rows.append(bot, { kind: "notice", tone: "warn", text: tr(user.locale, "I stopped this turn after {min} minutes: that is the time limit for one turn on a subscription. What I did so far is kept. Press Continue, or just tell me to continue, to pick it back up.", { min: minutes }), action: { kind: "continue", status: "pending", reason: "timeout" } });
+        audit(user.id, "system", `${bot.name}: subscription turn stopped at its time limit (${minutes} min)`, bot.id);
+      } else if ((err as Error)?.name === "ComputersBusyError") {
+        rows.append(bot, { kind: "notice", tone: "warn", text: tr(user.locale, "All the computers of this server are busy with other work right now, so mine could not start. Nothing was stopped. Tell me to continue in a few minutes."), action: { kind: "continue", status: "pending", reason: "busy" } });
+      } else rows.append(bot, stopped ? { kind: "notice", tone: "info", text: tr(user.locale, "Stopped.") } : { kind: "notice", tone: "error", text: tr(user.locale, "Something went wrong: {detail}", { detail: clip(String((err as Error)?.message ?? err), 400) }) });
+    }
     if (!stopped) console.error(`[turn ${bot.name}]`, err);
   } finally {
     endScope(botId);
     activeTurns.end(botId);
+    // Its queue row is done in the same breath, so a restart can never find it neither under way nor done (no double run).
+    const job = runningJob.get(botId);
+    if (job !== undefined) botQueue.finish(job);
     actors.delete(botId);
     if (trigger.kind === "routine" && trigger.runId)
       runs.finish(trigger.runId, failed ? "error" : paused.get(botId) ? "done" : turn?.spoke ? "done" : "quiet", failed || (paused.get(botId) ? "Waiting for your approval" : clip(turn?.lastText ?? "", 200)));
@@ -500,7 +548,11 @@ async function runScopedTurn(botId: string, trigger: Trigger, thread: number): P
     if (!paused.get(botId)) clearLive(user.id, botId);
     // The owner's approval is settled: member messages that waited for it go now.
     const waiting = !paused.get(botId) ? deferredMember.get(botId) : undefined;
-    if (waiting?.length) { deferredMember.delete(botId); for (const t of waiting) enqueue(botId, t); }
+    if (waiting?.length) {
+      deferredMember.delete(botId);
+      // Each goes back in the queue as new work; its set-aside row is then done (in that order: never lost in between).
+      for (const t of waiting) { const old = jobOf.get(t); enqueue(botId, t); if (old !== undefined) { botQueue.done(old); liveJobs.delete(old); } }
+    }
     bots.announce(bots.byId(botId));
     // Anything typed in the last instant of the turn still deserves an answer.
     if (leftover.length && bots.byId(botId) && isEngineRef(bots.byId(botId)!.model)) enqueue(botId, { kind: "user", text: extraText(leftover).trim(), thread: thread || undefined });
@@ -674,13 +726,17 @@ function stepLimitReached(turn: Turn) {
 
 const CONTINUE_TEXT = "You stopped your last turn at the step limit. Pick the work back up where you left off — do not redo what is already done — and finish it, or say plainly where things stand.";
 
-/** "Continue" pressed under a step-limit notice: resumes the work, once per notice. */
+const TIMEOUT_CONTINUE_TEXT = "Your last turn was stopped because it reached its time limit. Pick the work back up where you left off — check what is already done, do not redo it — and finish it, or say plainly where things stand. If something was hanging (a command that never returned, a page that never loaded), do it another way.";
+const BUSY_CONTINUE_TEXT = "Your last turn could not start because every computer of the server was busy. Carry on with what was asked now.";
+
+/** "Continue" pressed under a step-limit (or time-limit, or busy-computers) notice: resumes the work, once per notice. */
 export function continueAfterStepLimit(bot: BotRecord, seq: number): boolean {
   const row = rows.get(bot.id, bot.generation, seq);
   if (!row || row.body.kind !== "notice" || row.body.action?.kind !== "continue" || row.body.action.status !== "pending") return false;
-  rows.rewrite(bot, bot.generation, seq, { ...row.body, action: { kind: "continue", status: "done" } });
+  const reason = row.body.action.reason;
+  rows.rewrite(bot, bot.generation, seq, { ...row.body, action: { kind: "continue", status: "done", ...(reason ? { reason } : {}) } });
   // The user pressed "Continue" themselves: the work goes on as theirs.
-  enqueue(bot.id, { kind: "system", text: CONTINUE_TEXT, resumeOf: "steps", thread: row.thread || undefined, origin: "user" });
+  enqueue(bot.id, { kind: "system", text: reason === "timeout" ? TIMEOUT_CONTINUE_TEXT : reason === "busy" ? BUSY_CONTINUE_TEXT : CONTINUE_TEXT, resumeOf: "steps", thread: row.thread || undefined, origin: "user" });
   return true;
 }
 
@@ -1090,20 +1146,53 @@ function feedbackNote(bot: BotRecord, thread: number): string {
 
 /** After a restart, bots whose turn was cut off pick their work back up — carefully if they had already acted. */
 export function recoverInterruptedTurns() {
+  // Queue rows this process does not hold: what was queued or running when the server stopped.
+  const left = botQueue.unfinished().filter((r) => !liveJobs.has(r.id));
+  const cutOff = new Set<string>();
   for (const { bot_id, acted } of activeTurns.leftover()) {
     activeTurns.end(bot_id);
+    cutOff.add(bot_id);
     const bot = bots.byId(bot_id);
     if (!bot || bot.kind !== "agent" || paused.get(bot_id)) continue;
     const loc = users.localeOf(bot.userId);
     rows.append(bot, { kind: "notice", tone: "info", text: tr(loc, "The server restarted while I was working. I am picking this back up.") });
     audit(bot.userId, "system", `${bot.name}: resumed after a server restart`, bot.id);
-    enqueue(bot_id, {
+    const recovery: Trigger = {
       kind: "system",
       text: acted
         ? "The server restarted in the middle of your last turn, after you had already taken some actions. Before doing anything again, check what was actually done (look, list, read). Then finish the job, or tell the user where things stand. Never repeat an action that already went through."
         : "The server restarted just as you started on the last request, before you had done anything. Carry on with it now.",
-    });
+    };
+    // The cut-off turn's queue row becomes its recovery, in its place, so the work queued behind it stays behind it.
+    const row = left.find((r) => r.bot_id === bot_id && r.status === "running");
+    if (row) { botQueue.replace(row.id, recovery); row.status = "pending"; row.trigger = JSON.stringify(recovery); }
+    else enqueue(bot_id, recovery);
   }
+  replayQueue(left, cutOff);
+}
+
+/**
+ * After a restart: the work that was waiting in the bots' queues runs again, in its order. A row still 'running' was the
+ * turn the restart cut off: when its bot had a turn under way (active_turns), that turn's recovery covers it (it never
+ * runs twice, and its "acted" flag decides how careful the recovery is); otherwise it had not started acting yet, and
+ * runs again. Done work is never replayed.
+ */
+function replayQueue(left: QueuedWork[], cutOff: Set<string>) {
+  botQueue.prune();
+  let n = 0;
+  for (const row of left) {
+    if (row.status === "running" && cutOff.has(row.bot_id)) { botQueue.done(row.id); continue; }
+    const bot = bots.byId(row.bot_id);
+    let trigger: Trigger | null = null;
+    try { trigger = JSON.parse(row.trigger) as Trigger; } catch { /* unreadable: dropped below */ }
+    if (!bot || bot.kind !== "agent" || !trigger || typeof trigger !== "object" || !("kind" in trigger)) { botQueue.done(row.id); continue; }
+    liveJobs.add(row.id);
+    jobOf.set(trigger, row.id);
+    const t = trigger;
+    void inQueue(row.bot_id, () => runQueued(row.id, row.bot_id, t)).catch(() => {});
+    n++;
+  }
+  if (n) console.log(`${n} queued job(s) from before the restart are running again, in order.`);
 }
 
 /** Vault values (passwords, keys, TOTP seeds) must never reach a model, whatever a page or a command prints back. */

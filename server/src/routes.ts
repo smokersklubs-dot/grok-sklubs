@@ -11,7 +11,7 @@ import { cleanModelList, TeamFullError } from "./store.js";
 import { RELIABILITY_LIMITS, type RowBody } from "./shared.js";
 import { ask, compactIfNeeded, consolidate, memoryStatus } from "./agent/memory.js";
 import { telegram } from "./telegram.js";
-import { EngineRestartRefused, engineLogin, engineLogout, engineModels, engineRuntime, engineStatus, restartEngine } from "./agent/engine.js";
+import { EngineRestartRefused, engineLogin, engineLogout, engineModelsFor, engineRuntime, engineStatus, restartEngine } from "./agent/engine.js";
 import { handleMcp } from "./agent/mcp.js";
 import { RESPONSE_ALREADY_SENT } from "@hono/node-server/utils/response";
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -416,10 +416,11 @@ api.put("/prefs", async (c) => {
   return c.json({ user: publicUser(users.byId(c.get("user").id)!) });
 });
 
-api.get("/models", (c) => c.json({
+// `bot`: the bot whose settings are open; the subscription tools' real model list is read on its computer first (if on).
+api.get("/models", async (c) => c.json({
   models: [
     ...listProviders().filter((p) => p.available()).flatMap((p) => p.models.map((m) => ({ ref: `${p.id}:${m}`, provider: p.label, model: m, kind: "api" as const }))),
-    ...engineModels(),
+    ...(await engineModelsFor(c.get("user").id, c.req.query("bot") || undefined)),
   ],
   defaultRef: defaultModelRef(),
 }));

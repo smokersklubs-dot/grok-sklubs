@@ -5,6 +5,12 @@ import type { Locale } from "./shared.js";
  * English is the key; French is looked up here. Anything missing falls back to English.
  */
 const FR: Record<string, string> = {
+  // Subscription turns: time limit, busy computers.
+  "time limit reached": "limite de temps atteinte",
+  "I stopped this turn after {min} minutes: that is the time limit for one turn on a subscription. What I did so far is kept. Press Continue, or just tell me to continue, to pick it back up.":
+    "J'ai arrêté ce tour au bout de {min} minutes : c'est la durée maximale d'un tour sur un abonnement. Ce que j'ai déjà fait est gardé. Appuie sur Continuer, ou dis-moi simplement de continuer, pour reprendre.",
+  "All the computers of this server are busy with other work right now, so mine could not start. Nothing was stopped. Tell me to continue in a few minutes.":
+    "Tous les ordinateurs de ce serveur sont occupés en ce moment, le mien n'a donc pas pu démarrer. Rien n'a été arrêté. Dis-moi de continuer dans quelques minutes.",
   // Wave 7: Agent Reach, credential relay, key health, provider chains, paid tools, temporary links, project import.
   "Searching with Agent Reach": "Cherche avec Agent Reach", "Reading with Agent Reach": "Lit avec Agent Reach", "Checking Agent Reach": "Vérifie Agent Reach",
   "Transcribing a video": "Transcrit une vidéo", "Publishing a temporary link": "Publie un lien temporaire",

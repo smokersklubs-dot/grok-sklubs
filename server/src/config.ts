@@ -58,6 +58,11 @@ export const config = {
   hostShell: process.env.SHELL_ENABLED === "1" || process.env.SHELL_ENABLED === "true",
   maxSteps: num("MAX_STEPS", 60),
   maxDesktops: num("MAX_DESKTOPS", 4),
+  /**
+   * When every awake computer is busy and one more must wake: how long to wait for one to become idle (it is then put to
+   * sleep). A busy computer is never put to sleep; past this wait the wake fails with a clear message instead.
+   */
+  computerWaitMs: Math.max(0, num("COMPUTER_WAIT_SEC", 90)) * 1000,
   desktopIdleMin: num("DESKTOP_IDLE_MIN", 20),
   /** "linux" = a container per bot, "browser" = a browser on this server, "auto" = linux when available. */
   computer: (process.env.COMPUTER ?? "auto") as "auto" | "linux" | "browser",
@@ -70,6 +75,11 @@ export const config = {
   codexModels: (process.env.CODEX_MODELS ?? "default").split(",").map((s) => s.trim()).filter(Boolean),
   /** Model choices offered for Claude Code (Claude subscription): aliases the tool accepts. */
   claudeCodeModels: (process.env.CLAUDE_CODE_MODELS ?? "sonnet,opus,fable,haiku").split(",").map((s) => s.trim()).filter(Boolean),
+  /**
+   * Longest a turn on a subscription tool (Claude Code, Codex) may run, in minutes: past it the tool is stopped, what it
+   * did so far is kept, and the user can continue. 0 = no limit.
+   */
+  engineTurnTimeoutMs: Math.max(0, num("ENGINE_TURN_TIMEOUT_MINUTES", 60)) * 60_000,
   /** When Sklubot itself runs in a container: the name of the Docker volume mounted as its data folder, so bots' computers can share their library with it. */
   dataVolume: process.env.DATA_VOLUME ?? "",
   desktopMemory: process.env.DESKTOP_MEMORY ?? "2g",
