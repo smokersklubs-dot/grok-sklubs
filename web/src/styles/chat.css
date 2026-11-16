@@ -476,3 +476,25 @@ button.captions:hover { box-shadow: 0 0 0 1px var(--border-strong); }
 .secret-warn { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 10px; border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent); background: var(--warn-soft); color: var(--text, inherit); font-size: 13px; line-height: 1.35; }
 .secret-warn > span { flex: 1; min-width: 0; }
 .secret-warn .btn { flex: none; }
+
+/*
+ * Phones and tablets, every engine. WebKit (all iPhone browsers) and older Safari keep a long unbreakable word (a URL,
+ * a JSON body, a secret's name) as the minimum width of its box unless told otherwise, which pushed cards wider than the
+ * screen. Everything in the conversation column may shrink to the column, and long words break: break-word first (wide
+ * support), then anywhere where it is understood.
+ */
+.transcript-inner > *, .thread-inner > * { min-width: 0; max-width: 100%; }
+.card { min-width: 0; max-width: min(480px, 100%); overflow: hidden; }
+.card > *, .card-head > *, .card-head-text > * { min-width: 0; max-width: 100%; }
+.card-title, .card-sub, .card-reason, .card-note, .card-outcome, .approval-quote, .card code, .card-detail {
+  word-break: break-word; overflow-wrap: break-word; overflow-wrap: anywhere;
+}
+.card-detail { max-width: 100%; }
+.card-actions > * { flex: 0 1 auto; min-width: 0; }
+@media (max-width: 420px) {
+  .card { padding: 12px; }
+  .card-actions { justify-content: stretch; }
+  .card-actions > .btn { flex: 1 1 auto; }
+}
+.bubble, .bubble p, .bubble li, .bubble code, .event-line, .event-summary { word-break: break-word; overflow-wrap: break-word; overflow-wrap: anywhere; }
+.bubble pre { max-width: 100%; overflow-x: auto; }
