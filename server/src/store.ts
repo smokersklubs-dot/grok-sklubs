@@ -60,6 +60,7 @@ function previewOf(body: RowBody, locale: Locale): string {
     if (c.type === "apiconnector") return tr(locale, "API connector to review: {name}", { name: c.name });
     if (c.type === "memory") return tr(locale, "Which is right? {text}", { text: c.newText });
     if (c.type === "mail") return tr(locale, "Email from {from}: {subject}", { from: c.from, subject: c.subject });
+    if (c.type === "disk") return tr(locale, "Its computer's disk is {pct}% full", { pct: c.usedPct });
     return tr(locale, "Connect {name}", { name: c.name });
   }
   return "";
@@ -684,6 +685,18 @@ export const settings = {
     const v = Math.round(Math.min(10_000, Math.max(0, f.checkpointUsd)) * 100) / 100;
     q.run("INSERT INTO settings (user_id, spend) VALUES (?, ?) ON CONFLICT(user_id) DO UPDATE SET spend = excluded.spend", userId, JSON.stringify({ checkpointUsd: v }));
     return settings.spend(userId);
+  },
+  /**
+   * Wave 8: the account's team folder — one folder shared, at ~/team, by the computers of this account's own bots. Off by
+   * default; `since`: when it was last switched on or off.
+   */
+  team(userId: string): { enabled: boolean; since: number | null } {
+    const raw = (safeJson(q.get<{ team: string }>("SELECT team FROM settings WHERE user_id = ?", userId)?.team ?? "{}") ?? {}) as Record<string, unknown>;
+    return { enabled: raw.enabled === true, since: typeof raw.since === "number" ? raw.since : null };
+  },
+  saveTeam(userId: string, enabled: boolean) {
+    q.run("INSERT INTO settings (user_id, team) VALUES (?, ?) ON CONFLICT(user_id) DO UPDATE SET team = excluded.team", userId, JSON.stringify({ enabled, since: now() }));
+    return settings.team(userId);
   },
   budget: (userId: string) => q.get<{ budget_usd: number | null }>("SELECT budget_usd FROM settings WHERE user_id = ?", userId)?.budget_usd ?? null,
   setBudget: (userId: string, usd: number | null) =>

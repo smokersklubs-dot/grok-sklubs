@@ -13,6 +13,7 @@ import { getLive, setLive } from "../bus.js";
 import { buildSystemPrompt } from "./prompt.js";
 import { imageService } from "../images.js";
 import { browserAvailable } from "../computer.js";
+import { noteDiskTrouble } from "../disk.js";
 
 /**
  * Bots that run on their owner's own subscription. Each turn is handed to the provider's official
@@ -467,6 +468,7 @@ class Transcript {
   }
   notice(text: string, tone: "info" | "warn" | "error" = "warn") {
     this.endMessage();
+    noteDiskTrouble(this.turn.bot, text);
     rows.append(this.turn.bot, { kind: "notice", tone, text });
     this.failed = true;
     this.lastFailure = clip(text, 300);
@@ -630,7 +632,16 @@ async function claudeTurn(turn: Turn, t: Transcript, prompt: string, token: stri
   if (failure) t.notice(failure);
 }
 
-async function codexTurn(turn: Turn, t: Transcript, prompt: string, system: string, token: string) {
+/**
+ * What `codex exec resume <id>` prints when that conversation is gone (the computer was reset, its ~/.codex wiped): on
+ * standard error, exit code 1, before any JSON event. Reproduced with codex-cli 0.169.0 (the desktop image's version):
+ * `echo hi | codex exec resume --json --skip-git-repo-check <unknown id> -` prints
+ * "Error: thread/resume: thread/resume failed: no rollout found for thread id <id> (code -32600)". A "rollout" is Codex's
+ * file of a saved conversation (~/.codex/sessions). The same words are accepted in a turn.failed / error event.
+ */
+export const CODEX_LOST_SESSION = /no rollout found for thread id/i;
+
+async function codexTurn(turn: Turn, t: Transcript, prompt: string, system: string, token: string, retried = false) {
   const { bot } = turn;
   // Codex reads its standing instructions from AGENTS.md in its working folder.
   await writeFile(bot.id, "/root/AGENTS.md", system);
@@ -647,11 +658,13 @@ async function codexTurn(turn: Turn, t: Transcript, prompt: string, system: stri
     ...effortArgs("codex", bot.effort),
   ];
   const args = resume ? ["codex", "exec", "resume", ...common, resume, "-"] : ["codex", "exec", ...common, "-"];
-  let failure = "", sawEnd = false;
+  let failure = "", sawEnd = false, missingSession = false, produced = false;
   const res = await host.exec(bot, args, { SKLUBOT_MCP_TOKEN: token }, "/root", prompt, turn.signal, (line) => {
     let e: any;
     try { e = JSON.parse(line); } catch { return; }
     const it = e.item;
+    // Anything beyond the thread's start means the turn already did or said something: it is never run a second time.
+    if (e.type !== "thread.started" && e.type !== "turn.started" && e.type !== "turn.failed" && e.type !== "error") produced = true;
     if (e.type === "thread.started" && e.thread_id) saveSession(bot.id, turn.generation, "codex", e.thread_id);
     else if (e.type === "item.started" && it) {
       if (it.type === "command_execution") t.stepStart(it.id, "command_execution", { command: it.command });
@@ -674,9 +687,16 @@ async function codexTurn(turn: Turn, t: Transcript, prompt: string, system: stri
     } else if (e.type === "turn.failed" || e.type === "error") {
       sawEnd = true;
       const msg = String(e.error?.message ?? e.message ?? "Codex stopped.");
-      failure = NOT_SIGNED_IN.test(msg) ? signInHint(turn, "codex") : clip(msg, 300);
+      if (resume && CODEX_LOST_SESSION.test(msg)) missingSession = true;
+      else failure = NOT_SIGNED_IN.test(msg) ? signInHint(turn, "codex") : clip(msg, 300);
     }
   });
+  // The saved conversation is gone (see CODEX_LOST_SESSION): forget it and start a fresh one, once, like Claude Code above
+  // — only when nothing came out of this attempt (no step, no words), so no work is ever done twice.
+  if (resume && !retried && !turn.signal.aborted && !produced && !turn.spoke && (missingSession || CODEX_LOST_SESSION.test(res.stderr))) {
+    dropSession(bot.id, turn.generation, "codex");
+    return codexTurn(turn, t, prompt, system, token, true);
+  }
   if (turn.signal.aborted) return;
   if (!sawEnd && !failure) failure = NOT_SIGNED_IN.test(res.stderr) ? signInHint(turn, "codex") : clip(res.stderr.trim() || `Codex stopped (code ${res.code}).`, 300);
   if (failure) t.notice(failure);

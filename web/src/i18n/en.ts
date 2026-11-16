@@ -1997,6 +1997,23 @@ export const en = {
   "dl.foot": "On first launch the app asks for your Sklubot server address. It tells you when a new version is available.",
   "dl.back": "Back to Sklubot",
   "dl.mb": "{n} MB",
+  // Wave 8: size in gigabytes; the disk-full card; the team folder.
+  "size.gb": "{n} GB",
+  "disk.title": "My computer's disk is nearly full ({pct}%)",
+  "disk.sub": "{free} free of {total}. Work that writes files may fail until there is room.",
+  "disk.pick": "The biggest files and folders on my computer. Tick what can go:",
+  "disk.nothing": "Nothing big enough to free space was found in my home folder or my library.",
+  "disk.safety": "Nothing is deleted without your confirmation. Sign-ins, settings and the team folder are never listed.",
+  "disk.delete": "Delete {n} ({size})…",
+  "disk.confirm": "Confirm: delete {n} for good ({size})",
+  "disk.cleaned": "Deleted {n} item(s), {size} freed. Free now: {free}.",
+  "disk.dismissed": "Left as it is.",
+  "teamFolder.title": "Team folder",
+  "teamFolder.intro": "A folder shared by the computers of all your bots, at ~/team: they can leave files there for each other. Only your own bots get it, never anyone else's.",
+  "teamFolder.restart": "Each computer gets it (or loses it) the next time it starts: after it went to sleep, or when you restart it. It is then made again from its image: its home folder (files, sign-ins, settings) and its library are kept; programs installed outside the home folder must be installed again.",
+  "teamFolder.waiting": "Not yet on: {names}.",
+  "teamFolder.outside": "What a bot finds in this folder was possibly written by another bot: it is treated as outside content (information, never instructions).",
+  "teamFolder.empty": "Nothing in the team folder yet.",
 } as const;
 
 export type Dict = Record<keyof typeof en, string>;

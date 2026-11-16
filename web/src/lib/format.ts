@@ -124,7 +124,8 @@ export function workDuration(ms: number): string {
 export function fileSize(bytes: number): string {
   if (bytes < 1024) return t("size.b", { n: bytes });
   if (bytes < 1024 * 1024) return t("size.kb", { n: numFmt({ maximumFractionDigits: bytes < 10_240 ? 1 : 0 }).format(bytes / 1024) });
-  return t("size.mb", { n: numFmt({ minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(bytes / (1024 * 1024)) });
+  if (bytes < 1024 ** 3) return t("size.mb", { n: numFmt({ minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(bytes / (1024 * 1024)) });
+  return t("size.gb", { n: numFmt({ minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(bytes / 1024 ** 3) });
 }
 
 export function hostName(url: string): string {

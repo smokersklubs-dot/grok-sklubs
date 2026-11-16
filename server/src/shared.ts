@@ -317,7 +317,13 @@ export type Card =
   | { type: "memory"; memoryId: string; oldText: string; newText: string; quote: string; status: "pending" | "kept" | "replaced" }
   /** Wave 6: a mail received at the bot's own address. `held`: kept out of the bot's reach (sender not allowed, failed DMARC, spam). */
   | { type: "mail"; mailId: string; from: string; subject: string; snippet: string; auth: MailAuth; spam: number; status: "delivered" | "held" | "released" | "replied" }
-  | { type: "apiconnector"; connectorId: string; name: string; baseUrl: string; host: string; secret: string; secretSaved: boolean; endpoints: ApiEndpoint[]; status: "pending" | "approved" | "dismissed" };
+  | { type: "apiconnector"; connectorId: string; name: string; baseUrl: string; host: string; secret: string; secretSaved: boolean; endpoints: ApiEndpoint[]; status: "pending" | "approved" | "dismissed" }
+  /**
+   * Wave 8: the disk of the bot's computer is nearly full (`usedPct` of the disk its home folder is on). `items`: the
+   * biggest files and folders of its own home (/root) and library (/root/files), largest first. The user ticks some and
+   * confirms; only listed paths can be deleted, nothing is ever deleted on its own. `deleted` / `freedBytes`: what was.
+   */
+  | { type: "disk"; checkId: string; usedPct: number; totalBytes: number; freeBytes: number; items: { path: string; bytes: number }[]; status: "pending" | "cleaned" | "dismissed"; deleted?: string[]; freedBytes?: number };
 
 /** Why a bot hands its screen to the user. */
 export const TAKEOVER_REASONS = ["captcha", "2fa", "login", "payment", "other"] as const;
@@ -527,6 +533,12 @@ export interface CatalogApp {
 export interface Policy { tool: string; mode: "always_allow" | "needs_approval" | "blocked" }
 
 export interface FileEntry { name: string; size: number; modifiedAt: number; dir: boolean }
+/**
+ * Wave 8: the account's team folder, shared at ~/team (/root/team) by the computers of the account's own bots — never
+ * with another account's. `available`: bots have Linux computers on this server. A computer gets the change the next
+ * time it starts (after it went to sleep, or a restart); `waiting`: names of bots whose computer has not yet.
+ */
+export interface TeamFolderState { available: boolean; enabled: boolean; since: number | null; path: string; waiting: string[] }
 export interface ComputerState {
   /** "linux": each bot has its own Linux computer. "browser": each bot has a browser on the server. "none": neither is installed. */
   kind: "linux" | "browser" | "none";

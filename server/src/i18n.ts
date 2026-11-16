@@ -5,6 +5,11 @@ import type { Locale } from "./shared.js";
  * English is the key; French is looked up here. Anything missing falls back to English.
  */
 const FR: Record<string, string> = {
+  // Asking a teammate and waiting; element refs on the screen; the team folder; a full disk.
+  "{bot} answered": "{bot} a répondu", "answer later": "réponse plus tard",
+  "Listing the page's controls": "Liste les commandes de la page", "Choosing in a list": "Choisit dans une liste", "stale reference": "référence périmée",
+  "no such element": "élément introuvable", "not done": "pas fait",
+  "Its computer's disk is {pct}% full": "Le disque de son ordinateur est plein à {pct} %",
   // Subscription turns: time limit, busy computers.
   "time limit reached": "limite de temps atteinte",
   "I stopped this turn after {min} minutes: that is the time limit for one turn on a subscription. What I did so far is kept. Press Continue, or just tell me to continue, to pick it back up.":

@@ -19,7 +19,8 @@ import { createRoom, dispatchToRoom, validMembers } from "./agent/team.js";
 import { retireBot } from "./agent/tools.js";
 import { createSession, dropSession, hashPassword, originAllowed, seal, SESSION_COOKIE, setupCodeMatches, setupCodeRequired, signupOpen, userForToken, verifyPassword } from "./auth.js";
 import { emit, getLive, subscribe } from "./bus.js";
-import { attachmentAt, computerKind, computerState, isInlineImage, isInlineVideo, listFiles, mimeOf, openLibraryFile, readLibraryFile, removeWorkspace, resolveInWorkspace, screen, storeBytes } from "./computer.js";
+import { attachmentAt, computerKind, computerState, isInlineImage, isInlineVideo, listFiles, listTeamFiles, mimeOf, openLibraryFile, openTeamFile, readLibraryFile, removeTeamFolder, removeWorkspace, resolveInTeam, resolveInWorkspace, screen, storeBytes, teamFolderState } from "./computer.js";
+import { checkDisk, deleteListed } from "./disk.js";
 import { catalogFor } from "./catalog.js";
 import { imageService } from "./images.js";
 import { config } from "./config.js";
@@ -988,6 +989,7 @@ api.delete("/account", async (c) => {
   if (!verifyPassword(String((await body(c)).password ?? ""), user.passHash)) fail(401, "The password is wrong.");
   for (const bot of bots.list(user.id, true)) { if (bots.byId(bot.id)) { telegram.disconnect(bot); await retireBot(bot); removeWorkspace(bot.id); } }
   for (const con of connectorStore.list(user.id)) await connectorStore.remove(user.id, con.id);
+  removeTeamFolder(user.id);
   account.remove(user.id);
   deleteCookie(c, SESSION_COOKIE, { path: "/" });
   return c.json({ ok: true });
@@ -1223,6 +1225,64 @@ api.get("/bots/:id/files", (c) => {
   const rel = c.req.query("path") ?? "";
   safePath(bot.id, rel);
   return c.json({ entries: listFiles(bot.id, rel) });
+});
+
+// ── The team folder (wave 8): one per account, shared by its own bots' computers at ~/team; off by default ──
+api.get("/team-folder", async (c) => c.json({ team: await teamFolderState(c.get("user").id) }));
+api.put("/team-folder", async (c) => {
+  const user = c.get("user");
+  const b = await body(c);
+  if (typeof b.enabled !== "boolean") fail(400, "Say whether the team folder is on (enabled: true or false).");
+  if (computerKind() !== "linux") fail(409, "The team folder needs the bots' own Linux computers, which this server does not have.");
+  settings.saveTeam(user.id, b.enabled);
+  audit(user.id, "account", b.enabled ? "Team folder switched on (bots' computers get ~/team when they next start)" : "Team folder switched off (bots' computers lose ~/team when they next start; its files are kept)");
+  return c.json({ team: await teamFolderState(user.id) });
+});
+const safeTeamPath = (userId: string, rel: string) => { try { return resolveInTeam(userId, rel); } catch (err) { return fail(400, (err as Error).message); } };
+api.get("/team-folder/files", (c) => {
+  const user = c.get("user");
+  const rel = c.req.query("path") ?? "";
+  safeTeamPath(user.id, rel);
+  return c.json({ entries: listTeamFiles(user.id, rel) });
+});
+api.get("/team-folder/files/download", (c) => {
+  const user = c.get("user");
+  const rel = c.req.query("path") ?? "";
+  safeTeamPath(user.id, rel);
+  let f: ReturnType<typeof openTeamFile>;
+  try { f = openTeamFile(user.id, rel); } catch { return fail(404, "That file does not exist."); }
+  const name = path.basename(f.full).replace(/[^\w. -]/g, "_");
+  return c.body(Readable.toWeb(createReadStream(f.full, { fd: f.fd })) as unknown as ReadableStream, 200, {
+    "content-type": "application/octet-stream", "content-disposition": `attachment; filename="${name}"`, "content-length": String(f.size),
+  });
+});
+
+// ── A full disk (wave 8): measure on demand; delete what the user ticked on the card, after they confirmed ──
+api.post("/bots/:id/disk/check", async (c) => {
+  const bot = ownAgent(c);
+  const report = await checkDisk(bot, { force: true });
+  return c.json({ report });
+});
+api.post("/bots/:id/cards/:seq/disk", async (c) => {
+  const bot = ownAgent(c);
+  const row = rows.get(bot.id, bot.generation, Number(c.req.param("seq")));
+  const card = row?.body.kind === "card" && row.body.card.type === "disk" ? row.body.card : fail(400, "That is not a disk card.");
+  if (card.status !== "pending") fail(409, "This was already answered.");
+  const b = await body(c);
+  if (b.action === "dismiss") {
+    rows.updateCard(bot, row!.generation, row!.seq, (k) => (k.type === "disk" ? { ...k, status: "dismissed" } : k));
+    return c.json({ ok: true });
+  }
+  if (b.action !== "delete") fail(400, "Unknown action.");
+  // Deleting is the user's explicit choice: they ticked these on the card and confirmed. Only paths the card listed.
+  if (b.confirm !== true) fail(400, "Confirm the deletion first.");
+  const chosen: string[] = Array.isArray(b.paths) ? b.paths.filter((p: unknown): p is string => typeof p === "string").slice(0, 50) : [];
+  const listed = new Set(card.items.map((i) => i.path));
+  if (!chosen.length || chosen.some((p) => !listed.has(p))) fail(400, "Choose among the files and folders listed on the card.");
+  const r = await deleteListed(bot, card.items, chosen);
+  if (r.deleted.length) audit(c.get("user").id, "computer", `${bot.name}: deleted from its computer to free disk space — ${r.deleted.join(", ")}`, bot.id);
+  rows.updateCard(bot, row!.generation, row!.seq, (k) => (k.type === "disk" ? { ...k, status: "cleaned", deleted: r.deleted, freedBytes: r.freedBytes, ...(r.freeBytes !== null ? { freeBytes: r.freeBytes } : {}) } : k));
+  return c.json({ ok: true, ...r });
 });
 
 /** Opens a library file for sending: only a plain file inside the library, never through a link. */

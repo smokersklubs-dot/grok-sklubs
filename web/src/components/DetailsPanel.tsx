@@ -14,6 +14,7 @@ import { SubscriptionBadge } from "./Brain";
 import { LiveScreen } from "./LiveScreen";
 import { ScreenFrame } from "./ScreenFrame";
 import { MyComputerSection } from "./MyComputer";
+import { TeamFolderSection } from "./Wave8";
 import { Icon, Spinner } from "./Icon";
 import { Empty, ErrorNote, IconButton, Loading, Toggle } from "./ui";
 
@@ -568,6 +569,7 @@ function LibraryTab({ bot }: { bot: Bot }) {
           ))}
         </ul>
       )}
+      <TeamFolderSection />
     </section>
   );
 }

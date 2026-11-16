@@ -3,6 +3,7 @@ import path from "node:path";
 import { config } from "./config.js";
 import { now } from "./store.js";
 import type { ClickTarget } from "./computer.js";
+import { ELEMENTS_PY, type ElementAnswer, type ElementRequest, type ElementSnapshot } from "./screen-elements.js";
 
 /**
  * A real Linux computer per bot: one container each, with a graphical desktop, a browser, a terminal
@@ -50,10 +51,32 @@ export async function linuxReady(): Promise<{ ok: boolean; reason: string }> {
  * When Sklubot runs in a container, that folder only exists inside a Docker volume, so the same
  * sub-folder of that volume is mounted instead.
  */
-function libraryMount(workspace: string): string[] {
-  if (!config.dataVolume) return ["-v", `${workspace}:/root/files`];
+function libraryMount(workspace: string, dst = "/root/files"): string[] {
+  if (!config.dataVolume) return ["-v", `${workspace}:${dst}`];
   const sub = path.relative(config.dataDir, workspace).split(path.sep).join("/");
-  return ["--mount", `type=volume,src=${config.dataVolume},dst=/root/files,volume-subpath=${sub}`];
+  return ["--mount", `type=volume,src=${config.dataVolume},dst=${dst},volume-subpath=${sub}`];
+}
+
+// ── The team folder (wave 8) ─────────────────────────────────────────────────
+/**
+ * The account's team folder for a bot's computer: a folder of this server's data (per account, see computer.ts
+ * teamDirOf), mounted at /root/team the same way as the library. Null: none for this bot (switched off, not an agent of
+ * that account, an invented bot of the desk test). Set once at start-up by computer.ts.
+ */
+let teamFolderOf: (botId: string, userId: string) => string | null = () => null;
+export const setTeamFolderSource = (fn: (botId: string, userId: string) => string | null) => { teamFolderOf = fn; };
+/** The label a computer carries: whether it was made with the team folder ("1") or not ("0"; absent on older ones). */
+export const TEAM_LABEL = "sklubot.team";
+const teamLabelOf = async (botId: string) => {
+  const r = await docker(["inspect", "--format", `{{index .Config.Labels "${TEAM_LABEL}"}}`, containerName(botId)], { timeoutMs: 8000 });
+  return r.code === 0 ? r.stdout.toString("utf8").trim() : null;
+};
+/** Each computer's team label, by container name, in one call (for the library view). */
+export async function teamLabels(): Promise<Map<string, string>> {
+  const r = await docker(["ps", "-a", "--filter", "label=sklubot=desktop", "--format", `{{.Names}}\t{{.Label "${TEAM_LABEL}"}}`], { timeoutMs: 10_000 });
+  const out = new Map<string, string>();
+  for (const line of r.stdout.toString("utf8").split("\n")) { const [name, label] = line.split("\t"); if (name) out.set(name, (label ?? "").trim()); }
+  return out;
 }
 
 // ── Dressing: each computer looks like its bot's own ─────────────────────────
@@ -118,6 +141,9 @@ const machines = new Map<string, Machine>();
 const starting = new Map<string, Promise<void>>();
 let changed: (userId: string) => void = () => {};
 export const onMachinesChanged = (fn: (userId: string) => void) => { changed = fn; };
+/** Told when a computer was just started (from asleep or made anew), e.g. to check its disk (disk.ts). */
+let woken: (botId: string, userId: string) => void = () => {};
+export const onComputerWoken = (fn: (botId: string, userId: string) => void) => { woken = fn; };
 
 export async function powerOf(botId: string): Promise<Power> {
   const r = await docker(["inspect", "--format", "{{.State.Running}}", containerName(botId)], { timeoutMs: 8000 });
@@ -191,7 +217,18 @@ async function wake(botId: string, userId: string, workspace: string): Promise<M
   let pending = starting.get(botId);
   if (!pending) {
     pending = (async () => {
-      const power = await powerOf(botId);
+      let power = await powerOf(botId);
+      // The team folder was switched on or off since this computer was made (wave 8): mounts are fixed when a container is
+      // created, so an asleep computer is made again from the image — its home volume (/root: files, logins, settings)
+      // and its library are kept; what was installed outside /root is not. A running computer is never touched: it picks
+      // the change up the next time it starts.
+      const team = teamFolderOf(botId, userId);
+      // A computer made before this label existed counts as made without the team folder: nothing changes for it.
+      const label = power === "asleep" ? await teamLabelOf(botId) : null;
+      if (label !== null && (label === "1") !== !!team) {
+        const rm = await docker(["rm", "-f", containerName(botId)], { timeoutMs: 30_000 });
+        if (rm.code === 0) power = "absent";
+      }
       if (power !== "running") {
         // Awake: running and not being put to sleep, plus the others already allowed to start (counted as busy).
         await makeRoom({
@@ -223,14 +260,23 @@ async function wake(botId: string, userId: string, workspace: string): Promise<M
           "-e", `SCREEN_RES=${config.desktopResolution}`,
           "-e", `KEYBOARD=${config.desktopKeyboard}`,
           "-v", `${volumeName(botId)}:/root`, ...libraryMount(workspace),
-          "--label", "sklubot=desktop", config.desktopImage,
+          ...(team ? libraryMount(team, "/root/team") : []),
+          "--label", "sklubot=desktop", "--label", `${TEAM_LABEL}=${team ? "1" : "0"}`, config.desktopImage,
         ], { timeoutMs: 120_000 });
         if (r.code !== 0) throw new Error(`could not create the computer: ${r.stderr.trim().slice(0, 300)}`);
+        // Made without the team folder after having had it: the empty folder its mount left in the home volume goes
+        // (rmdir only removes an empty one), so the bot does not mistake it for the shared folder.
+        if (!team) await docker(["exec", containerName(botId), "rmdir", "/root/team"], { timeoutMs: 10_000 });
       }
       // The screen needs a moment before it accepts input.
       for (let i = 0; i < 60; i++) {
         const probe = await docker(["exec", containerName(botId), "xdotool", "getdisplaygeometry"], { timeoutMs: 5000 });
-        if (probe.code === 0) { dressedWith.delete(botId); await dress(botId).catch(() => {}); return; }
+        if (probe.code === 0) {
+          dressedWith.delete(botId);
+          await dress(botId).catch(() => {});
+          if (power !== "running") { try { woken(botId, userId); } catch (err) { console.error("[woken]", err); } }
+          return;
+        }
         await new Promise((r) => setTimeout(r, 250));
       }
       throw new Error("the computer started but its screen did not come up");
@@ -339,6 +385,12 @@ finally:
     keymap([(code, "NoSymbol") for code in free])
 `;
 
+/** Runs the page-elements helper (screen-elements.ts) in a computer that is on, with its request on standard input. */
+async function runElements<T>(name: string, req: object): Promise<T> {
+  const r = await docker(["exec", "-i", name, "python3", "-c", ELEMENTS_PY], { timeoutMs: 40_000, input: JSON.stringify(req), maxBytes: 2_000_000 });
+  try { return JSON.parse(r.stdout.toString("utf8")) as T; } catch { throw new Error(`could not read the page's elements: ${r.stderr.trim().slice(0, 200) || `exit ${r.code}`}`); }
+}
+
 export const linuxScreen = {
   view: (botId: string, userId: string, ws: string) => onMachine(botId, userId, ws, async (n) => { await pause(300); return capture(n); }),
   open: (botId: string, userId: string, ws: string, url: string) => onMachine(botId, userId, ws, async (n) => {
@@ -387,6 +439,24 @@ export const linuxScreen = {
     if (parsed.error) throw new Error(parsed.error);
     return { url: parsed.url ?? "", title: parsed.title ?? "", text: parsed.text ?? "" };
   }),
+  /** The interactive elements of the browser's front tab (wakes the computer if needed, like page_read). */
+  elements: (botId: string, userId: string, ws: string, limit: number) => onMachine(botId, userId, ws, async (n) => {
+    const r = await runElements<ElementSnapshot & { error?: string }>(n, { op: "snapshot", limit });
+    if (r.error) throw new Error(r.error);
+    return r;
+  }),
+  /** Acts on one element of a snapshot; then a screenshot, like the pixel tools (`shot` null when the helper refused). */
+  elementAct: (botId: string, userId: string, ws: string, req: ElementRequest) => onMachine(botId, userId, ws, async (n) => {
+    const answer = await runElements<ElementAnswer>(n, req);
+    if (!answer.ok) return { answer, shot: null };
+    await pause(req.action === "click" ? 700 : 300);
+    return { answer, shot: await capture(n) };
+  }),
+  /** What an element of a snapshot is (its words, its form) if the computer is on; null otherwise. Never wakes it. */
+  async elementInfo(botId: string, req: ElementRequest): Promise<ElementAnswer | null> {
+    if (machines.get(botId)?.power !== "running") return null;
+    try { return await runElements<ElementAnswer>(containerName(botId), { ...req, action: "info" }); } catch { return null; }
+  },
   /** What is under a point of the screen, read in the browser's front tab (null: computer off, no browser, nothing there). Never wakes it. */
   async targetAt(botId: string, expression: string): Promise<{ url: string; target: ClickTarget | null } | null> {
     if (machines.get(botId)?.power !== "running") return null;
@@ -498,6 +568,24 @@ export async function writeComputerFile(botId: string, userId: string, ws: strin
     const r = await docker(["exec", "-i", n, "sh", "-c", 'umask 077; mkdir -p "$(dirname "$1")" && cat > "$1" && chmod "$2" "$1"', "sh", file, mode], { timeoutMs: 20_000, input: content });
     if (r.code !== 0) throw new Error(`could not write ${file}: ${r.stderr.trim().slice(0, 200)}`);
   });
+}
+
+/**
+ * Runs a short sh script against a bot's own disk without waking its computer (disk.ts): inside the computer when it is
+ * on; otherwise in a throwaway container of the desktop image with only the bot's home volume and library mounted (no
+ * network, the computer's reduced privileges). `args` are passed as positional arguments ("$@"), never through the
+ * script's text. Null when the bot has no computer (no home volume) yet.
+ */
+export async function diskScript(botId: string, workspace: string, script: string, args: string[] = [], timeoutMs = 120_000): Promise<Exec | null> {
+  if ((await powerOf(botId)) === "running") return docker(["exec", containerName(botId), "sh", "-c", script, "sh", ...args], { timeoutMs, maxBytes: 2_000_000 });
+  const vol = await docker(["volume", "inspect", "--format", "{{.Name}}", volumeName(botId)], { timeoutMs: 8000 });
+  if (vol.code !== 0) return null;
+  return docker([
+    "run", "--rm", "--network", "none", "--memory", "256m", "--pids-limit", "256",
+    "--cap-drop", "ALL", ...COMPUTER_CAPS.flatMap((cap) => ["--cap-add", cap]), "--security-opt", "no-new-privileges",
+    "-v", `${volumeName(botId)}:/root`, ...libraryMount(workspace), "--label", "sklubot=disk-check",
+    "--entrypoint", "sh", config.desktopImage, "-c", script, "sh", ...args,
+  ], { timeoutMs, maxBytes: 2_000_000 });
 }
 
 /** See linuxScreen.hold. A computer not known yet (never woken by this server) has nothing to hold. */

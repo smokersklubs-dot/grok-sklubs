@@ -5,9 +5,10 @@ import path from "node:path";
 import { config } from "./config.js";
 import { assertPublicUrl } from "./net.js";
 import { emit } from "./bus.js";
-import { now } from "./store.js";
-import { adoptMachines, linuxMachines, linuxReady, linuxScreen, linuxShell, makeRoom, onMachinesChanged, sweepIdleMachines } from "./linux.js";
-import type { Attachment, ComputerState, FileEntry } from "./shared.js";
+import { bots, now, settings } from "./store.js";
+import { adoptMachines, containerName, linuxMachines, linuxReady, linuxScreen, linuxShell, makeRoom, onMachinesChanged, setTeamFolderSource, sweepIdleMachines, teamLabels } from "./linux.js";
+import type { Attachment, ComputerState, FileEntry, TeamFolderState } from "./shared.js";
+import type { ElementRequest } from "./screen-elements.js";
 
 /**
  * Each bot gets a private "desktop": a folder of its own on disk plus a real browser with its own
@@ -254,6 +255,10 @@ export const screen = {
     if (kind === "browser") return browserScreen.targetAt(botId, x, y);
     return null;
   },
+  /** Element references (Linux computers only: they go through the desktop browser's debugging port). */
+  elements: (botId: string, userId: string, limit = 150) => (kind === "linux" ? linuxScreen.elements(botId, userId, workspaceOf(botId), limit) : Promise.reject(new Error("element references need a Linux computer"))),
+  elementAct: (botId: string, userId: string, req: ElementRequest) => (kind === "linux" ? linuxScreen.elementAct(botId, userId, workspaceOf(botId), req) : Promise.reject(new Error("element references need a Linux computer"))),
+  elementInfo: (botId: string, req: ElementRequest) => (kind === "linux" ? linuxScreen.elementInfo(botId, req) : Promise.resolve(null)),
   peek: (botId: string) => (kind === "linux" ? linuxScreen.peek(botId) : browserScreen.peek(botId)),
   isOpen: (botId: string) => (kind === "linux" ? linuxScreen.isOpen(botId) : browserScreen.isOpen(botId)),
   /** A picture for a demonstration recording, only if the computer is already on (never wakes it). */
@@ -312,6 +317,60 @@ export async function closeAllDesktops() {
 /** The library's real location (a data folder reached through a link is fine; links inside the library are not). */
 const realRootOf = (botId: string) => realpathSync(workspaceOf(botId));
 const isInside = (root: string, p: string) => p === root || p.startsWith(root + path.sep);
+
+// ── The team folder (wave 8) ─────────────────────────────────────────────────
+/**
+ * One folder per account, on this server's disk next to the libraries, mounted at /root/team in the computers of that
+ * account's own agent bots once the account switches it on (settings.team). Never another account's: the folder is keyed
+ * by the account, and only a bot of that account gets it (setTeamFolderSource below). Like the library, whatever is in
+ * it was written by bots (as root on their own computers): the same link-proof reading applies.
+ */
+export const teamDirOf = (userId: string) => {
+  const dir = path.join(config.dataDir, "team", safeId(userId));
+  mkdirSync(dir, { recursive: true });
+  return dir;
+};
+setTeamFolderSource((botId, userId) => {
+  const b = bots.byId(botId);
+  if (!b || b.kind !== "agent" || b.userId !== userId || !settings.team(userId).enabled) return null;
+  return teamDirOf(userId);
+});
+/** The account is deleted: its team folder goes with it. */
+export const removeTeamFolder = (userId: string) => rmSync(path.join(config.dataDir, "team", safeId(userId)), { recursive: true, force: true });
+/** Whether this bot's computer gets the team folder (its owner switched it on). */
+export const teamEnabledFor = (bot: { userId: string }) => kind === "linux" && settings.team(bot.userId).enabled;
+
+/** The team folder as the library view shows it, with the bots whose computer has not picked up the setting yet. */
+export async function teamFolderState(userId: string): Promise<TeamFolderState> {
+  const t = settings.team(userId);
+  const base = { available: kind === "linux", enabled: t.enabled, since: t.since, path: "~/team", waiting: [] as string[] };
+  if (kind !== "linux") return base;
+  const labels = await teamLabels().catch(() => new Map<string, string>());
+  const waiting = bots.list(userId, true).filter((b) => b.kind === "agent").filter((b) => {
+    const label = labels.get(containerName(b.id));
+    return label !== undefined && (label === "1") !== t.enabled;
+  }).map((b) => b.name);
+  return { ...base, waiting };
+}
+const realTeamRoot = (userId: string) => realpathSync(teamDirOf(userId));
+export function listTeamFiles(userId: string, rel = ""): FileEntry[] { return listUnder(realTeamRoot(userId), rel); }
+export function openTeamFile(userId: string, rel: string): { fd: number; full: string; size: number } {
+  const root = realTeamRoot(userId);
+  const full = resolveUnder(root, rel);
+  const fd = openSync(full, FS.O_RDONLY | NOFOLLOW | NONBLOCK);
+  try { return { fd, full, size: verifyOpenedUnder(root, fd, full).size }; } catch (err) { closeSync(fd); throw err; }
+}
+export const resolveInTeam = (userId: string, rel: string) => resolveUnder(realTeamRoot(userId), rel);
+
+/**
+ * A shell command that may read the team folder, where other bots write (wave 8): its output is outside content for the
+ * caution system. Told from the command's words — it names the folder ("team"), or it walks the whole home folder
+ * (find, grep -r, tar… on ~, /root, $HOME or ".", where the shell starts) — so it errs on the careful side.
+ */
+export function readsTeamFolder(command: string): boolean {
+  if (/\bteam\b/i.test(command)) return true;
+  return /\b(find|grep|egrep|rg|ag|ack|tar|zip|rsync|cp|du|ls|tree|xargs|cat|head|tail|less|more|sed|awk|python3?|node)\b[^\n|;&]*(?:\s|=)(?:~|\/root|\$HOME|\$\{HOME\}|\.)\/?(?:\*|\s|$|[|;&)])/.test(command);
+}
 const NOFOLLOW = FS.O_NOFOLLOW ?? 0;
 // Opening a pipe would otherwise wait for a writer forever and freeze the server.
 const NONBLOCK = FS.O_NONBLOCK ?? 0;
@@ -319,8 +378,10 @@ const lstatOrNull = (p: string): Stats | null => { try { return lstatSync(p); } 
 
 /** Resolves a user- or model-supplied relative path inside the bot's folder, refusing anything that escapes it or goes through a link. */
 export function resolveInWorkspace(botId: string, rel: string): string {
+  return resolveUnder(realRootOf(botId), rel);
+}
+function resolveUnder(root: string, rel: string): string {
   if (/[\0-\x1f]/.test(rel)) throw new Error("invalid path");
-  const root = realRootOf(botId);
   const full = path.resolve(root, rel.replace(/^[/\\]+/, ""));
   if (!isInside(root, full)) throw new Error("that path is outside this bot's folder");
   let cur = root;
@@ -335,11 +396,14 @@ export function resolveInWorkspace(botId: string, rel: string): string {
 
 /** After opening: a plain file, really inside the library (catches a link swapped in after the path was checked). */
 function verifyOpened(botId: string, fd: number, full: string): Stats {
+  return verifyOpenedUnder(realRootOf(botId), fd, full);
+}
+function verifyOpenedUnder(root: string, fd: number, full: string): Stats {
   const st = fstatSync(fd);
   if (!st.isFile()) throw new Error("that is not a regular file");
   let actual: string;
   try { actual = readlinkSync(`/proc/self/fd/${fd}`); } catch { actual = realpathSync(full); }
-  if (!isInside(realRootOf(botId), actual)) throw new Error("that path is outside this bot's folder");
+  if (!isInside(root, actual)) throw new Error("that path is outside this bot's folder");
   return st;
 }
 
@@ -374,7 +438,10 @@ function writeLibraryFile(botId: string, rel: string, data: string | Buffer, exc
 }
 
 export function listFiles(botId: string, rel = ""): FileEntry[] {
-  const dir = resolveInWorkspace(botId, rel);
+  return listUnder(realRootOf(botId), rel);
+}
+function listUnder(root: string, rel: string): FileEntry[] {
+  const dir = resolveUnder(root, rel);
   if (!lstatOrNull(dir)?.isDirectory()) return [];
   // Only plain files and folders are listed; links and other special files are left out.
   return readdirSync(dir, { withFileTypes: true })

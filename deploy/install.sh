@@ -67,6 +67,11 @@ else
   info "Téléchargé."
 fi
 cd "$DIR"
+# Petit serveur : un fichier d'échange s'il n'y en a pas, et earlyoom qui arrête d'abord un navigateur de bot plutôt
+# que de laisser la machine geler (règles dans deploy/memory-guard.sh ; sans risque à relancer, jamais bloquant).
+if [ "${SKLUBOT_SKIP_MEMORY_GUARD:-0}" != "1" ] && [ -f deploy/memory-guard.sh ]; then
+  bash deploy/memory-guard.sh || info "Protection mémoire : non appliquée (sans gravité)."
+fi
 
 say "3/5  Configuration"
 if [ -f .env ] && grep -q '^SKLUBOT_SESSION_SECRET=.\{32,\}' .env; then

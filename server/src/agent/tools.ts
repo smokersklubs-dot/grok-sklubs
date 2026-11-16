@@ -1,6 +1,7 @@
 import { unseal } from "../auth.js";
 import { emit, getLive, setLive } from "../bus.js";
-import { attachmentAt, botPathOf, browserAvailable, computerKind, isInlineImage, lastKnownUrl, readLibraryFile, runShell, saveFile, screen, shellAvailable, storeBytes, type Shot } from "../computer.js";
+import { attachmentAt, botPathOf, browserAvailable, computerKind, isInlineImage, lastKnownUrl, readLibraryFile, readsTeamFolder, runShell, saveFile, screen, shellAvailable, storeBytes, teamEnabledFor, type Shot } from "../computer.js";
+import { noteDiskTrouble } from "../disk.js";
 import { generateImage, imageService } from "../images.js";
 import { generateVideo, videoService } from "../video.js";
 import { connectors, slug } from "../connectors.js";
@@ -24,7 +25,7 @@ import { DRIVING, releaseControl, takeoverTimeoutMs, userDriving, waitForUser } 
 import { pushLater } from "../push.js";
 import { generatePassword, parseTotp, totpNow } from "../totp.js";
 import { seal } from "../auth.js";
-import { createRoom, deliverBotMessage, dispatchToRoom, MAX_HELPERS, MAX_HOPS, startHelper } from "./team.js";
+import { askAndWait, createRoom, deliverBotMessage, dispatchToRoom, MAX_HELPERS, MAX_HOPS, startHelper, waitsOn } from "./team.js";
 import { myComputerTools } from "./mycomputer.js";
 import { botTools, profileTools, progressTools, skillImportTools, xSearchAvailable, xTools } from "./tools-team.js";
 import { bgTasks, bgTaskToolSpecs, publicTask, startTask, stopTask, TaskLimitError } from "./bgtasks.js";
@@ -32,6 +33,8 @@ import { findCode, mailAccounts } from "../native/access.js";
 import { hideForAWhile } from "../store.js";
 import { explicitRemember, memoryVerdict } from "./sensitive.js";
 import { committingKind, probe, seenOf, seenTarget } from "./bind.js";
+import { refusal, rememberSnapshot, resolveRef } from "./elements.js";
+import type { ElementAnswer } from "../screen-elements.js";
 import { cardLabel, cardTools } from "./payments.js";
 import { guideIndex, guideTools } from "./guides.js";
 import { anonymise } from "./anonymise.js";
@@ -157,8 +160,60 @@ const screenTools: BuiltinTool[] = [
   }),
 ];
 
+/**
+ * Element references (wave 8, item 6): the page's interactive elements by role and name, and actions on one of them by
+ * its reference — sturdier than pixels when the browser is in front. Linux computers only (the desktop browser's
+ * debugging port, see screen-elements.ts). A click whose words commit something is bound and judged exactly like
+ * screen_click (bind.ts, authorize.ts); typing and choosing in a list are like screen_type.
+ */
+const elementResult = (botId: string, r: { answer: ElementAnswer; shot: Shot | null }, caption: string): ToolOutput =>
+  r.shot ? shot(r.shot, caption) : { content: refusal(botId, r.answer), isError: true, summary: r.answer.stale ? "stale reference" : "not done" };
+const REF = str("An element reference from your latest element_snapshot, e.g. 3f9a.12");
+const elementTools: BuiltinTool[] = [
+  tool("element_snapshot", "List the interactive elements (links, buttons, fields, lists, checkboxes…) of the page in front of your browser, each with a short reference, its role, its name and its state. Prefer this and element_click / element_type / element_select over pixel coordinates when the browser is in front.", obj({ limit: int("At most this many elements (default 150, max 300)") }), {
+    activity: "reading", label: "Listing the page's controls", outside: true,
+    run: async (a, c) => {
+      const snap = await screen.elements(c.bot.id, c.user.id, Math.min(300, Math.max(1, Number(a.limit) || 150)));
+      return { content: rememberSnapshot(c.bot.id, snap), summary: `${snap.elements.length} · ${clip(snap.title || snap.url, 60)}` };
+    },
+  }),
+  tool("element_click", "Click an element of the page by its reference (from element_snapshot). It is scrolled into view first. Fails, doing nothing, when the reference is stale.", obj({ ref: REF }, ["ref"]), {
+    activity: "computer", label: "Clicking",
+    run: async (a, c) => {
+      const found = resolveRef(c.bot.id, a.ref);
+      if ("error" in found) return { content: found.error, isError: true, summary: "no such element" };
+      // As screen_click: a click that commits something was judged for this control on this site; if it changed since, nothing is clicked.
+      const seen = seenTarget(a);
+      if (seen && committingKind(seen.label)) {
+        const live = await probe.element(c.bot.id, String(a.ref)).catch(() => null);
+        const still = live ? seenOf(live) : null;
+        if (!still || still.label !== seen.label || still.host !== seen.host) return { content: `The page changed since this click was checked (it was “${seen.label}” on ${seen.host || "?"}; now ${still ? `“${still.label}” on ${still.host || "?"}` : "nothing readable"}). Nothing was clicked. Take a new element_snapshot.`, isError: true, summary: "page changed" };
+      }
+      return elementResult(c.bot.id, await screen.elementAct(c.bot.id, c.user.id, { ...found.req, action: "click" }), `Clicked ${found.element.role} “${clip(found.element.name, 80)}”.`);
+    },
+  }),
+  tool("element_type", "Type text into a field of the page by its reference (from element_snapshot): it is focused first. clear: replace what is in it. submit: press Enter afterwards.", obj({ ref: REF, text: str("Text to type"), clear: { type: "boolean", description: "Replace the field's content (default false)" }, submit: { type: "boolean", description: "Press Enter afterwards (default false)" } }, ["ref", "text"]), {
+    activity: "computer", label: "Typing",
+    run: async (a, c) => {
+      const found = resolveRef(c.bot.id, a.ref);
+      if ("error" in found) return { content: found.error, isError: true, summary: "no such element" };
+      const text = String(a.text ?? "");
+      return elementResult(c.bot.id, await screen.elementAct(c.bot.id, c.user.id, { ...found.req, action: "type", text, clear: a.clear === true, submit: a.submit === true }), `Typed ${text.length} characters into “${clip(found.element.name, 80)}”.`);
+    },
+  }),
+  tool("element_select", "Choose an option in a drop-down list (<select>) of the page by its reference (from element_snapshot), by the option's label or value.", obj({ ref: REF, option: str("The option's label (or value)") }, ["ref", "option"]), {
+    activity: "computer", label: "Choosing in a list",
+    run: async (a, c) => {
+      const found = resolveRef(c.bot.id, a.ref);
+      if ("error" in found) return { content: found.error, isError: true, summary: "no such element" };
+      const r = await screen.elementAct(c.bot.id, c.user.id, { ...found.req, action: "select", value: String(a.option ?? "") });
+      return elementResult(c.bot.id, r, `Chose “${clip(r.answer.chosen ?? String(a.option), 80)}” in “${clip(found.element.name, 80)}”.`);
+    },
+  }),
+];
+
 /** Screen actions (not looking) wait while the user drives the screen: the server refuses them, whatever the bot says. */
-const ACTS_ON_SCREEN = new Set(["browser_open", "screen_click", "screen_type", "screen_key", "screen_scroll", "screen_drag", "vault_type", "card_fill"]);
+const ACTS_ON_SCREEN = new Set(["browser_open", "screen_click", "screen_type", "screen_key", "screen_scroll", "screen_drag", "vault_type", "card_fill", "element_click", "element_type", "element_select"]);
 function respectDriver(t: BuiltinTool): BuiltinTool {
   if (!ACTS_ON_SCREEN.has(t.spec.name)) return t;
   return { ...t, run: async (a, c) => (userDriving(c.bot.id) ? { content: DRIVING, isError: true, summary: "the user is driving" } : t.run(a, c)) };
@@ -205,7 +260,10 @@ const workTools: BuiltinTool[] = [
       let r: Awaited<ReturnType<typeof runShell>>;
       try { r = await runShell(c.bot.id, c.user.id, String(a.command), timeout, c.signal); } finally { commandEnded(c.bot.id); }
       const hint = relayHint(c.bot, String(a.command), r.output);
-      return { content: `${r.timedOut ? `Timed out after ${timeout}s.` : `Exit code ${r.code}.`}\n${r.output || "(no output)"}${hint}`, summary: r.timedOut ? "timed out" : `exit ${r.code}`, isError: r.timedOut || r.code !== 0 };
+      // Wave 8: other bots write in the team folder — what a command may have read from it is outside content.
+      const outside = teamEnabledFor(c.bot) && readsTeamFolder(String(a.command));
+      noteDiskTrouble(c.bot, r.output);
+      return { content: `${r.timedOut ? `Timed out after ${timeout}s.` : `Exit code ${r.code}.`}\n${r.output || "(no output)"}${hint}`, summary: r.timedOut ? "timed out" : `exit ${r.code}`, isError: r.timedOut || r.code !== 0, ...(outside ? { outside: true } : {}) };
     },
   }),
   tool("file_save", "Save a text file into your library so the user can open or download it. Use for reports, notes, drafts, data.", obj({ filename: str("File name, optionally with folders, e.g. reports/weekly.md"), content: str("Full text content") }, ["filename", "content"]), {
@@ -972,7 +1030,8 @@ const bgTaskTools: BuiltinTool[] = [
 void TaskLimitError;
 
 const teamTools: BuiltinTool[] = [
-  tool("bot_message", "Send a message to another bot on the team. Their answer arrives later as a message to you.", obj({ bot: str("The bot's name"), message: str("What you need, with all the context they need") }, ["bot", "message"]), {
+  tool("bot_message", `Send a message to another bot on the team. Their answer arrives later as a message to you — or, with wait: true, you wait for it (up to wait_seconds, default ${config.botWaitDefaultSec}, at most ${config.botWaitMaxSec}) and get it right here, in this turn. Wait only when you need the answer to go on; if it takes longer, it still arrives later as a message.`,
+    obj({ bot: str("The bot's name"), message: str("What you need, with all the context they need"), wait: { type: "boolean", description: "Wait for their answer and get it as this tool's result" }, wait_seconds: int(`How long to wait at most, in seconds (default ${config.botWaitDefaultSec}, at most ${config.botWaitMaxSec})`) }, ["bot", "message"]), {
     activity: "messaging", label: "Messaging a teammate", audited: true, detail: (a) => String(a.bot ?? ""),
     run: async (a, c) => {
       const target = bots.byName(c.user.id, String(a.bot));
@@ -981,8 +1040,25 @@ const teamTools: BuiltinTool[] = [
       if (target.id === c.bot.id) return { content: "That is you.", isError: true };
       if (target.kind === "room") return { content: "That is a group chat; use room_post.", isError: true };
       if (c.depth >= MAX_HOPS) return { content: "This exchange has bounced between bots too many times. Wrap up and report to the user instead.", isError: true };
-      deliverBotMessage(c.bot, target, String(a.message), c.depth, c.tainted);
-      return { content: `Delivered to ${target.name}. Their reply will reach you as a new message.`, summary: `to ${target.name}` };
+      if (a.wait !== true) {
+        deliverBotMessage(c.bot, target, String(a.message), c.depth, c.tainted);
+        return { content: `Delivered to ${target.name}. Their reply will reach you as a new message.`, summary: `to ${target.name}` };
+      }
+      // Waiting on a bot that waits (directly or through others) for you would never end: refused, nothing is sent.
+      if (waitsOn(target.id, c.bot.id)) return { content: `${target.name} is itself waiting for your answer right now. Do not wait on it: finish your turn — your final message goes back to it — or send without wait.`, isError: true, summary: "would wait forever" };
+      const seconds = Math.min(config.botWaitMaxSec, Math.max(1, Math.round(Number(a.wait_seconds) || config.botWaitDefaultSec)));
+      setLive(c.user.id, c.bot.id, { running: true, activity: { kind: "waiting", detail: target.name, since: Date.now() }, awaiting: null });
+      const r = await askAndWait(c.bot, target, String(a.message), c.depth, !!c.tainted, seconds * 1000, c.signal);
+      setLive(c.user.id, c.bot.id, { running: true, activity: { kind: "thinking", since: Date.now() } });
+      switch (r.kind) {
+        // Its words are as trustworthy as its turn was: outside content when it had read some.
+        case "reply": return { content: `${target.name} answered:\n${clip(r.text, 40_000)}`, summary: tr(c.user.locale, "{bot} answered", { bot: target.name }), outside: r.tainted };
+        case "silent": return { content: `${target.name} ended its turn without an answer (it may have run into a problem: its own chat says more).`, isError: true, summary: tr(c.user.locale, "no answer") };
+        case "failed": return { content: `${target.name}'s turn failed (${clip(r.reason, 200)}). Nothing more will come from it for this message.`, isError: true, summary: tr(c.user.locale, "failed") };
+        case "pending": return { content: `${target.name} stopped to ask its owner for an approval. Its answer will reach you later as a new message; carry on without it for now.`, summary: tr(c.user.locale, "answer later") };
+        case "timeout": return { content: `No answer from ${target.name} within ${seconds} seconds. The message was delivered: their answer will reach you later as a new message, as with an ordinary bot_message. Carry on without it for now.`, summary: tr(c.user.locale, "answer later") };
+        case "stopped": return { content: "Stopped while waiting for the answer. It will arrive later as a new message.", isError: true, summary: tr(c.user.locale, "stopped") };
+      }
     },
   }),
   tool("helper_start", "Start a temporary helper that works on a self-contained goal in parallel and reports back when done.", obj({ goal: str("Everything the helper needs to know: the goal, the context, what to report"), label: str("A few words naming the job") }, ["goal"]), {
@@ -1157,6 +1233,7 @@ export function builtinTools(opts: { nativeSearch?: boolean; disabled?: readonly
 function assemble(opts: { nativeSearch?: boolean; video?: "connector" | "api" | null; bgTasks?: boolean }): BuiltinTool[] {
   return [
     ...(browserAvailable() ? inGroup("computer", screenTools).map(respectDriver) : []),
+    ...(computerKind() === "linux" ? inGroup("computer", elementTools).map(respectDriver) : []),
     // On its own Linux computer a bot's commands are contained, so they do not need a permission card.
     ...workTools.filter((t) => t.spec.name !== "shell_run" || shellAvailable())
       .map((t): BuiltinTool => ({ ...t, group: t.spec.name === "shell_run" ? "shell" : t.spec.name === "web_fetch" ? "web" : "files", sensitive: t.spec.name === "shell_run" && computerKind() === "linux" ? false : t.sensitive })),

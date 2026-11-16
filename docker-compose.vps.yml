@@ -49,6 +49,11 @@ services:
       MAX_DESKTOPS: "${SKLUBOT_MAX_DESKTOPS:-4}"
       # Durée max d'un tour Claude Code / Codex, en minutes (0 = sans limite).
       ENGINE_TURN_TIMEOUT_MINUTES: "${SKLUBOT_ENGINE_TURN_TIMEOUT_MINUTES:-60}"
+      # bot_message avec attente : attente par défaut et maximale de la réponse d'un autre bot (secondes) ; disque d'un
+      # ordinateur de bot rempli à ce pourcentage : carte « disque plein ».
+      BOT_WAIT_DEFAULT_SECONDS: "${SKLUBOT_BOT_WAIT_DEFAULT_SECONDS:-180}"
+      BOT_WAIT_MAX_SECONDS: "${SKLUBOT_BOT_WAIT_MAX_SECONDS:-600}"
+      DISK_ALERT_PERCENT: "${SKLUBOT_DISK_ALERT_PERCENT:-90}"
       # Nombre de bots au plus sur toute l'installation (0 = sans limite) ; nom et rôle du premier bot de chaque compte.
       MAX_BOTS: "${SKLUBOT_MAX_BOTS:-0}"
       FIRST_BOT_NAME: "${SKLUBOT_FIRST_BOT_NAME:-}"

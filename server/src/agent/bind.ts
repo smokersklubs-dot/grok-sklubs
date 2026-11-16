@@ -2,6 +2,7 @@ import type { ToolUseBlock } from "../llm/index.js";
 import { browserAvailable, lastKnownUrl, screen, type ClickTarget } from "../computer.js";
 import { findQuote, normalize, QUOTE_ARG, userWordsFor, type ActionKind } from "./grounding.js";
 import type { Turn } from "./loop.js";
+import { resolveRef } from "./elements.js";
 
 /**
  * What the server itself sees, bound into an action before it is judged (wave 5b).
@@ -11,6 +12,7 @@ import type { Turn } from "./loop.js";
  *    (buy, pay, order, send, delete, confirm, publish…) is then judged like any state-changing action (grounding in
  *    the user's words, the reviewer, or a card), and its approval is bound to that control on that site: if the page
  *    changed by the time it runs, nothing is clicked.
+ *  - element_click (wave 8): the same, for the element a reference of the bot's latest snapshot names.
  *  - card_fill (spec 07 A12): the host of the page in front, so a payment's approval is bound to amount, merchant,
  *    card AND that page; a different page at run time fills nothing.
  *
@@ -22,6 +24,13 @@ export const BOUND_KEYS = ["seen_target", "seen_host", "seen_quote"] as const;
 /** Replaceable in tests: how the control under a point, and the page in front, are read. */
 export const probe = {
   target: (botId: string, x: number, y: number): Promise<ClickTarget | null> => (browserAvailable() ? screen.targetAt(botId, x, y) : Promise.resolve(null)),
+  /** The element a reference of the bot's latest snapshot names, read live in the page (null: stale, or computer off). */
+  element: async (botId: string, ref: string): Promise<ClickTarget | null> => {
+    const found = resolveRef(botId, ref);
+    if ("error" in found) return null;
+    const a = await screen.elementInfo(botId, { ...found.req, action: "info" });
+    return a?.info ? { ...a.info, url: a.info.url || a.url || "" } : null;
+  },
   pageUrl: async (botId: string, userId: string): Promise<string> => {
     if (!browserAvailable()) return "";
     try { return (await screen.read(botId, userId)).url; } catch { return lastKnownUrl(botId); }
@@ -43,11 +52,15 @@ export async function bindCall(turn: Turn, call: ToolUseBlock): Promise<void> {
     input.seen_quote = quote && findQuote(quote, userWordsFor(turn.bot, turn.thread)) ? quote : "";
     return;
   }
-  if (call.name !== "screen_click" && call.name !== "card_fill") return;
+  if (call.name !== "screen_click" && call.name !== "element_click" && call.name !== "card_fill") return;
   for (const k of BOUND_KEYS) delete input[k];
   try {
     if (call.name === "screen_click") {
       const t = await probe.target(turn.bot.id, Number(input.x), Number(input.y));
+      input.seen_target = t ? seenOf(t) : null;
+    } else if (call.name === "element_click") {
+      // Wave 8: the element named by its reference, read live (its words, the site, its form), exactly as for a pixel click.
+      const t = await probe.element(turn.bot.id, String(input.ref ?? ""));
       input.seen_target = t ? seenOf(t) : null;
     } else {
       input.seen_host = hostOf(await probe.pageUrl(turn.bot.id, turn.user.id));

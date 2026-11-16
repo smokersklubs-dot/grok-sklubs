@@ -80,6 +80,14 @@ export const config = {
    * did so far is kept, and the user can continue. 0 = no limit.
    */
   engineTurnTimeoutMs: Math.max(0, num("ENGINE_TURN_TIMEOUT_MINUTES", 60)) * 60_000,
+  /**
+   * bot_message with wait: true (ask another bot and wait for its answer in the same turn). The default wait, and the
+   * most a bot may ask for, in seconds. Past it the answer still arrives later, as a message, like an ordinary bot_message.
+   */
+  botWaitDefaultSec: Math.max(10, num("BOT_WAIT_DEFAULT_SECONDS", 180)),
+  botWaitMaxSec: Math.max(10, num("BOT_WAIT_MAX_SECONDS", 600)),
+  /** Disk use of a bot's computer (%, of the disk its home folder is on) from which a "disk full" card is shown. */
+  diskAlertPct: Math.min(99, Math.max(50, num("DISK_ALERT_PERCENT", 90))),
   /** When Sklubot itself runs in a container: the name of the Docker volume mounted as its data folder, so bots' computers can share their library with it. */
   dataVolume: process.env.DATA_VOLUME ?? "",
   desktopMemory: process.env.DESKTOP_MEMORY ?? "2g",

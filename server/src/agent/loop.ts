@@ -14,7 +14,8 @@ import { botEmail } from "../botmail.js";
 import { compactIfNeeded } from "./memory.js";
 import { EngineTimeout, engineTurnOf, isEngineRef, isEngineTimeout, runEngineTurn } from "./engine.js";
 import { buildSystemPrompt } from "./prompt.js";
-import { deliverBotMessage } from "./team.js";
+import { deliverBotMessage, settleAsk, type AskRoute } from "./team.js";
+import { noteDiskTrouble } from "../disk.js";
 import { builtinTools, higgsfieldFor, videoRoute, type BuiltinTool, type ToolOutput } from "./tools.js";
 import { videoService } from "../video.js";
 import { nativeToolsFor, runNativeTool, type Risk } from "../native/tools.js";
@@ -54,7 +55,8 @@ export type Trigger =
   /** `skill`: the user typed "/skill <name>": the bot is told to follow that skill, whose steps ride along. */
   | { kind: "user"; text: string; voice?: boolean; attachments?: Attachment[]; channel?: "telegram"; thread?: number; skill?: ForcedSkill; /** Wave 6: written by someone of a workspace the bot is shared with, not its owner. */ member?: MemberAuthor }
   | { kind: "routine"; name: string; text: string; runId?: string; tainted?: boolean }
-  | { kind: "bot"; fromName: string; text: string; depth: number; tainted?: boolean }
+  /** `ask`: the sender waits for the answer in its own turn (bot_message with wait): this turn's last words go back to it. */
+  | { kind: "bot"; fromName: string; text: string; depth: number; tainted?: boolean; ask?: AskRoute }
   /**
    * `resumeOf`: "steps" when it picks up work stopped at the step limit (a routine does that once, by itself); "spend"
    * when the user chose to continue at a spend checkpoint. `spendScope`: the piece of work it goes on billing to.
@@ -107,6 +109,8 @@ interface PausedTurn {
   /** The turn answers a message from a phone channel: its reply goes back there after an approval too. */
   channel?: "telegram";
   ruleScope?: RuleScope;
+  /** The turn answers a bot that waits for it (Turn.ask). */
+  ask?: AskRoute;
 }
 
 export interface RemoteTool { connectorId: string; connectorName: string; remoteName: string; readOnly: boolean; native?: { accountId: string; risk: Risk; label: string } }
@@ -160,6 +164,8 @@ export interface Turn {
   channel?: "telegram";
   /** The routine (and its kind) that started the turn: rules tied to it apply (rules.ts). */
   ruleScope?: RuleScope;
+  /** Another bot waits for this turn's answer (bot_message with wait): its last words go back to it (team.ts settleAsk). */
+  ask?: AskRoute;
 }
 
 /** Things other parts of the server want to hear about (e.g. to pass them on to a phone). */
@@ -313,7 +319,9 @@ export function triggerMessage(trigger: Exclude<Trigger, { kind: "resume" }>): s
       return `${who}${voiceNote}${trigger.text}`;
     }
     case "routine": return `[Your routine "${trigger.name}" is running now. Carry it out:]\n${trigger.text}`;
-    case "bot": return `[Message from ${trigger.fromName}, another bot on the team. To answer them, use bot_message.]\n${trigger.text}`;
+    case "bot": return trigger.ask
+      ? `[Message from ${trigger.fromName}, another bot on the team. ${trigger.fromName} is waiting for your answer right now: your final message in this turn goes straight back to them. Answer in that final message, short and complete; do not use bot_message to reply.]\n${trigger.text}`
+      : `[Message from ${trigger.fromName}, another bot on the team. To answer them, use bot_message.]\n${trigger.text}`;
     case "system": return `[System notice]\n${trigger.text}`;
   }
 }
@@ -441,7 +449,7 @@ async function runScopedTurn(botId: string, trigger: Trigger, thread: number): P
       // The paused request must be continued with exactly the prompt and tools it started with.
       turn.system = held.system; turn.tools = held.tools; turn.modelRef = held.modelRef; turn.tainted = !!held.tainted; turn.hosts = new Set(held.hosts ?? []);
       turn.appUrls = new Set(held.appUrls ?? []); turn.thread = held.thread ?? 0;
-      turn.origin = held.origin ?? "resume"; turn.spendKey = held.spendKey; turn.channel = held.channel; turn.ruleScope = held.ruleScope;
+      turn.origin = held.origin ?? "resume"; turn.spendKey = held.spendKey; turn.channel = held.channel; turn.ruleScope = held.ruleScope; turn.ask = held.ask;
       if (turn.spendKey) beginScope(botId, turn.spendKey);
       const outcome = await processCalls(turn, held);
       if (outcome !== "continue") return;
@@ -451,6 +459,7 @@ async function runScopedTurn(botId: string, trigger: Trigger, thread: number): P
         const depth = trigger.kind === "bot" ? trigger.depth : trigger.kind === "system" ? trigger.depth ?? 0 : 0;
         turn = await newTurn(bot, user, depth, controller.signal, true);
         turn.thread = thread;
+        if (trigger.kind === "bot" && trigger.ask) turn.ask = trigger.ask;
         // A subscription tool reads the web and runs commands with its own tools, out of our sight: its turn
         // is treated as having read outside content from the start.
         turn.tainted = true;
@@ -483,6 +492,7 @@ async function runScopedTurn(botId: string, trigger: Trigger, thread: number): P
       const depth = trigger.kind === "bot" ? trigger.depth : trigger.kind === "system" ? trigger.depth ?? 0 : 0;
       turn = await newTurn(bot, user, depth, controller.signal);
       turn.thread = thread;
+      if (trigger.kind === "bot" && trigger.ask) turn.ask = trigger.ask;
       turn.tainted = startsTainted(trigger);
       turn.autoContinue = trigger.kind === "routine";
       turn.origin = originOf(trigger);
@@ -520,6 +530,8 @@ async function runScopedTurn(botId: string, trigger: Trigger, thread: number): P
     const stopped = controller.signal.aborted;
     const timedOut = stopped && isEngineTimeout(controller.signal.reason);
     failed = timedOut ? "timed out" : stopped ? "stopped" : clip(String((err as Error)?.message ?? err), 200);
+    // Wave 8: a computer that could not start or work because its disk is full gets a disk check (and maybe a card).
+    if (!stopped) noteDiskTrouble(bot, String((err as Error)?.message ?? err));
     if (bots.byId(botId)) {
       if (timedOut) {
         // Never a dead end: what the tool said and did so far is kept (and its session, resumed next turn); "Continue" — or
@@ -543,6 +555,11 @@ async function runScopedTurn(botId: string, trigger: Trigger, thread: number): P
       runs.finish(trigger.runId, failed ? "error" : paused.get(botId) ? "done" : turn?.spoke ? "done" : "quiet", failed || (paused.get(botId) ? "Waiting for your approval" : clip(turn?.lastText ?? "", 200)));
     controllers.delete(botId);
     runningThread.delete(botId);
+    // A bot waits for this turn's answer (bot_message with wait): it gets it now, or later as a message (team.ts).
+    if (turn?.ask) {
+      try { settleAsk(bot, turn.ask, { lastText: turn.lastText, tainted: turn.tainted, depth: turn.depth, failed, paused: !!paused.get(botId) }); }
+      catch (err) { console.error(`[ask ${bot.name}]`, err); }
+    }
     bgTaskHooks.ended(bot, { failed, lastText: turn?.lastText ?? "", tainted: !!turn?.tainted });
     const leftover = drainSteering(bot);
     if (!paused.get(botId)) clearLive(user.id, botId);
@@ -1018,6 +1035,7 @@ async function processCalls(turn: Turn, st: PausedTurn): Promise<"continue" | "e
       st.spendKey = turn.spendKey;
       st.channel = turn.channel;
       st.ruleScope = turn.ruleScope;
+      st.ask = turn.ask;
       paused.set(bot.id, st);
       tell({ type: "waiting", bot, text: verdict.title, approvalId, tool: verdict.policyKey });
       setLive(user.id, bot.id, { running: false, activity: { kind: "waiting", since: Date.now() }, awaiting: { reason: verdict.reason, since: Date.now() }, thread: turn.thread });
@@ -1127,7 +1145,10 @@ export function afterTool(turn: Turn, call: ToolUseBlock, out: ToolOutput): Tool
   if ((call.name === "web_fetch" || call.name === "browser_open") && !out.isError) { const h = hostOf(call.input.url); if (h) turn.hosts.add(h); }
   if (call.name === "search_web" && !out.isError && typeof out.content === "string") for (const m of out.content.matchAll(/https?:\/\/\S+/g)) { const h = hostOf(m[0]); if (h) turn.hosts.add(h); }
   if (remote && !out.isError && typeof out.content === "string") for (const u of urlsIn(out.content)) turn.appUrls.add(u);
-  if (!(builtin?.outside || remote || out.outside) || out.isError) return out;
+  if (out.isError) noteDiskTrouble(turn.bot, typeof out.content === "string" ? out.content : out.content.map((b) => (b.type === "text" ? b.text : "")).join(" "));
+  // A result marked outside by the tool itself (e.g. a command that may have read the team folder) stays outside even when
+  // it failed: a failing command still printed what it read.
+  if (!(builtin?.outside || remote || out.outside) || (out.isError && !out.outside)) return out;
   turn.tainted = true;
   const parts = typeof out.content === "string" ? [text(out.content)] : out.content;
   return { ...out, content: [text(OUTSIDE_NOTE), ...parts] };

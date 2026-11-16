@@ -400,6 +400,8 @@ function CREATE_EXTRA() {
   // A sign-in callback can reach the server twice (popup + tab, or the provider redirecting twice): the second one is told it is already done.
   add("oauth_pending", "used_at", "INTEGER");
   add("native_pending", "used_at", "INTEGER");
+  // Wave 8: the account's team folder (JSON: enabled), off by default; and disk-full checks of the bots' computers.
+  add("settings", "team", "TEXT NOT NULL DEFAULT '{}'");
   db.exec(`
   -- What a task spent since the user last spoke to it (worker bot + scope key: chat:<thread>, task:<id>, routine:<run>),
   -- and the checkpoint it stops at (NULL: the bot's or the account's setting).

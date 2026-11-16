@@ -199,6 +199,22 @@ Ensuite, dans les réglages d'un bot → **Routines** → **Nouveau déclencheur
 message Slack ou événement à venir. Si un compte affiche « Connexion requise », clique **Se reconnecter**. Google :
 tant que l'app est en mode Test, seuls les « Test users » ajoutés peuvent se connecter.
 
+## Mémoire : fichier d'échange et earlyoom (automatique)
+
+Pendant l'installation (et à chaque relance du script), `deploy/memory-guard.sh` protège un petit serveur contre le
+manque de mémoire. Il peut être relancé sans risque : il ne refait que ce qui manque et ne supprime jamais rien.
+
+- **Fichier d'échange** (`/swapfile`), seulement s'il n'y a encore aucun swap : taille = la mémoire du serveur arrondie
+  au Go supérieur, **au moins 2 Go, au plus 4 Go** (1 Go → 2 Go, 3 Go → 3 Go, 6 Go → 4 Go). Pas de fichier à partir de
+  8 Go de mémoire, ni si le disque n'aurait plus 5 Go libres (la taille est réduite, et rien sous 1 Go), ni sur un
+  disque Btrfs, ni si l'hébergeur l'interdit (certains VPS « conteneurs »). Il est ajouté à `/etc/fstab` et
+  `vm.swappiness` passe à 10 (`/etc/sysctl.d/90-sklubot-swap.conf`) : le swap reste un filet de sécurité.
+- **earlyoom** (paquet Debian / Ubuntu) : quand la mémoire disponible passe sous 6 % **et** le swap libre sous 20 %, il
+  arrête un programme avant que le serveur ne gèle — d'abord les navigateurs des bots (Chromium, Chrome), jamais en
+  priorité Sklubot (`node`), Caddy, SSH ni Docker. Réglage : `/etc/default/earlyoom` (si tu l'as modifié toi-même, il
+  est conservé). Journal : `journalctl -u earlyoom`.
+- Pour sauter cette étape : `SKLUBOT_SKIP_MEMORY_GUARD=1`. Pour la lancer seule : `sudo bash /opt/sklubot/deploy/memory-guard.sh`.
+
 ## Si ça coince
 
 | Symptôme | Que faire |
@@ -207,7 +223,7 @@ tant que l'app est en mode Test, seuls les « Test users » ajoutés peuvent se 
 | « Permission denied » | Mauvais mot de passe ; certains hébergeurs imposent un autre utilisateur que `root` (`ubuntu`, `debian`). |
 | « Le code d'installation est manquant ou faux » | Recopie le code affiché à la fin de l'installation, ou lis-le avec `grep SETUP_CODE /opt/sklubot/.env`. |
 | La page ne s'ouvre pas en https | Le domaine ne pointe pas encore vers le VPS (étape 1), ou les ports 80 et 443 sont fermés dans le pare-feu de l'hébergeur. |
-| « Sklubot ne répond pas » en fin d'installation | Le journal s'affiche juste au-dessus : la cause y est. Le plus souvent, pas assez de mémoire. |
+| « Sklubot ne répond pas » en fin d'installation | Le journal s'affiche juste au-dessus : la cause y est. Le plus souvent, pas assez de mémoire (voir la section Mémoire ci-dessus ; `free -h` montre le swap). |
 | Les bots ne répondent pas | Pas de clé de modèle : ajoute `ANTHROPIC_API_KEY` dans `.env` et mets `SKLUBOT_DEMO_MODE=0`. |
 
 ## Sécurité

@@ -96,6 +96,15 @@ Un tour Claude Code ou Codex dure au plus `ENGINE_TURN_TIMEOUT_MINUTES` (60 min,
 arrêté, ce qui a été fait est gardé et un bouton « Continuer » le reprend. La liste des modèles Codex proposés est lue
 dans Codex lui-même (`codex debug models`, gardée 10 min) ; `CODEX_MODELS` sert de secours.
 
+Sur la page du navigateur, un bot peut agir par **références d'éléments** plutôt que par pixels : `element_snapshot` liste
+liens, boutons, champs et listes (via le protocole DevTools de Chromium), puis `element_click` / `element_type` /
+`element_select` agissent sur l'un d'eux ; une référence d'une page qui a changé est refusée. Un bot peut **demander à un
+autre et attendre** sa réponse dans le même tour (`bot_message` avec `wait`, `BOT_WAIT_DEFAULT_SECONDS` / `BOT_WAIT_MAX_SECONDS`) ;
+au-delà, la réponse arrive en message. Le **dossier d'équipe** (bibliothèque → « Dossier d'équipe », désactivé par défaut)
+partage `~/team` entre les ordinateurs des bots d'un même compte, jamais avec un autre compte ; chaque ordinateur le
+reçoit à son prochain démarrage. Quand le disque d'un ordinateur dépasse `DISK_ALERT_PERCENT` (90 %), une carte liste les
+plus gros fichiers et ne supprime que ce que tu coches et confirmes.
+
 Sans Docker, Sklubot se rabat sur un simple navigateur par bot (`npm i playwright && npx playwright install chromium`),
 et sinon sur la lecture de pages, la ligne de commande et les connecteurs.
 

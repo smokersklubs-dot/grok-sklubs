@@ -30,7 +30,7 @@ import { CARRIES_FURTHER, describeArgs, judge, type Turn, type Verdict } from ".
  */
 
 /** Built-in tools whose effect lasts or reaches others, beyond those judge already treats as sensitive. */
-const EXTRA_GROUNDABLE = new Set(["rule_propose", "routine_delete", "self_update", "bot_create", "profile_update", "checkins_set", "page_publish", "page_edit", "video_generate", "email_code_type", "screen_click", "card_fill", "api_send", "my_file_write", "my_file_trash"]);
+const EXTRA_GROUNDABLE = new Set(["rule_propose", "routine_delete", "self_update", "bot_create", "profile_update", "checkins_set", "page_publish", "page_edit", "video_generate", "email_code_type", "screen_click", "element_click", "card_fill", "api_send", "my_file_write", "my_file_trash"]);
 /** Built-in tools that act outside Sklubot (or type something private): each run gets a reservation (executions.ts). */
 const EXTERNAL_BUILTINS = new Set(["bot_email_send", "page_publish", "page_edit", "vault_type", "email_code_type", "video_generate", "secret_use", "card_fill", "api_send", "my_command", "my_click", "my_type", "my_key", "my_open", "my_drag", "my_scroll", "my_file_write", "my_file_trash"]);
 
@@ -46,7 +46,7 @@ export function groundable(turn: Pick<Turn, "builtin" | "remote">, name: string)
 export function external(turn: Pick<Turn, "builtin" | "remote">, name: string, input?: Record<string, unknown>): boolean {
   const r = turn.remote.get(name);
   if (r) return r.native ? r.native.risk !== "read" : !r.readOnly;
-  if (name === "screen_click" && input) { const t = seenTarget(input); return !!t && !!committingKind(t.label); }
+  if ((name === "screen_click" || name === "element_click") && input) { const t = seenTarget(input); return !!t && !!committingKind(t.label); }
   return EXTERNAL_BUILTINS.has(name);
 }
 
@@ -88,7 +88,7 @@ export async function authorize(turn: Turn, call: ToolUseBlock): Promise<Decisio
     if (over) return { kind: "block", reason: tr(loc, over.reason, over.vars) };
   }
   // A click whose words commit something (spec 07 A13) is judged like any state-changing action.
-  if (call.name === "screen_click" && verdict.kind !== "block") {
+  if ((call.name === "screen_click" || call.name === "element_click") && verdict.kind !== "block") {
     const seen = seenTarget(call.input);
     const kind = seen ? committingKind(seen.label) : null;
     if (seen && kind) {
