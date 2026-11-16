@@ -28,7 +28,8 @@ kbd { padding: 1px 5px; border: 1px solid var(--border); border-radius: 5px; col
 .spacer { flex: 1 1 auto; }
 .muted { color: var(--text-2); }
 .small { font-size: 12.5px; }
-.only-mobile { display: none; }
+/* .icon-btn sets display later in this file: the compound selector keeps phone-only buttons hidden on wider screens. */
+.only-mobile, .icon-btn.only-mobile { display: none; }
 .icon { flex: none; display: block; }
 .is-rotated { transform: rotate(90deg); }
 .icon { transition: transform 0.15s ease; }

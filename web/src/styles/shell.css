@@ -128,7 +128,7 @@
 
 /* Phone width: the sidebar becomes an overlay */
 @media (max-width: 720px) {
-  .only-mobile { display: inline-flex; }
+  .only-mobile, .icon-btn.only-mobile { display: inline-flex; }
   .shell, .shell.has-details { grid-template-columns: minmax(0, 1fr); }
   .main, .shell.has-details .main { margin: 0; border: 0; border-radius: 0; }
   .sidebar, .sidebar.is-collapsed { position: fixed; z-index: 50; top: 0; left: 0; bottom: 0; width: min(320px, 88vw); background: var(--bg); box-shadow: var(--shadow-lg); transform: translateX(-102%); transition: transform 0.2s ease; visibility: hidden; }
