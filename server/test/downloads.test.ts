@@ -14,6 +14,7 @@ process.env.SESSION_SECRET = "test-secret-test-secret-test-secret";
 process.env.NO_SCHEDULER = "1";
 process.env.COMPUTER = "browser";
 process.env.PUBLIC_URL = "http://127.0.0.1";
+process.env.RELEASE_DOWNLOADS = "0";
 
 const { api } = await import("../src/routes.js");
 const { appDownloads, relayDownloads } = await import("../src/relay.js");
@@ -59,4 +60,18 @@ test("no download folder: nothing but the releases page", () => {
   const d = appDownloads(path.join(tmpdir(), "does-not-exist-sklubot"));
   assert.deepEqual(d.desktop, []);
   assert.equal(d.android, null);
+});
+
+test("GitHub release files fill in what this server lacks; a local copy of the same version wins", () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "sklubot-dl-rel-"));
+  writeFileSync(path.join(dir, "Sklubot-1.0.0-linux.AppImage"), Buffer.alloc(30));
+  const gh = (name: string) => ({ name, url: `https://github.com/smokersklubs-dot/grok-sklubs/releases/download/desktop-v1.0.0/${name}`, size: 99 });
+  const d = appDownloads(dir, [gh("Sklubot-1.0.0-linux.AppImage"), gh("Sklubot-1.0.0-win.exe"), gh("Sklubot-1.0.0-mac.dmg"), gh("notes.txt")]);
+  assert.deepEqual(d.desktop.map((f) => [f.name, f.url.startsWith("/download/") ? "local" : "github"]), [
+    ["Sklubot-1.0.0-linux.AppImage", "local"],
+    ["Sklubot-1.0.0-mac.dmg", "github"],
+    ["Sklubot-1.0.0-win.exe", "github"],
+  ]);
+  const relay = relayDownloads(dir, [gh("Sklubot-1.0.0-win.exe")]);
+  assert.ok(relay.files.some((f) => f.name === "Sklubot-1.0.0-win.exe" && f.url.startsWith("https://github.com/")));
 });

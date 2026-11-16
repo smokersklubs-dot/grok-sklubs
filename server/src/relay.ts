@@ -783,7 +783,7 @@ export const lastFrame = (deviceId: string) => lastFrames.get(deviceId) ?? null;
  * (Sklubot-<version>-<os>.<ext>) has the relay built in, so it is offered here too, next to the older
  * Sklubot-Relais-* files.
  */
-export function relayDownloads(dir = path.join(config.webDist, "download")): RelayDownloads {
+export function relayDownloads(dir = path.join(config.webDist, "download"), released: ReleasedFile[] = []): RelayDownloads {
   const files: RelayDownloads["files"] = [];
   try {
     for (const name of readdirSync(dir)) {
@@ -792,7 +792,7 @@ export function relayDownloads(dir = path.join(config.webDist, "download")): Rel
       files.push({ name, url: `/download/${encodeURIComponent(name)}`, platform, size: statSync(path.join(dir, name)).size });
     }
   } catch { /* no download folder */ }
-  for (const f of appDownloads(dir).desktop) files.push({ name: f.name, url: f.url, platform: f.os, size: f.size });
+  for (const f of appDownloads(dir, released).desktop) files.push({ name: f.name, url: f.url, platform: f.os, size: f.size });
   return { files, releasesUrl: RELEASES_URL };
 }
 
@@ -804,25 +804,65 @@ const OS_OF = { win: "windows", mac: "mac", linux: "linux" } as const;
  * Everything the public download page (/telecharger) lists: the Android app when this server has it, the newest
  * desktop build of each kind found in web/dist/download/, and the GitHub releases page as the fallback.
  */
-export function appDownloads(dir = path.join(config.webDist, "download")): AppDownloads {
+export function appDownloads(dir = path.join(config.webDist, "download"), released: ReleasedFile[] = []): AppDownloads {
   let names: string[] = [];
   try { names = readdirSync(dir); } catch { /* no download folder */ }
-  const best = new Map<string, DesktopDownload & { rank: number }>();
+  const entries: ReleasedFile[] = [];
   for (const name of names) {
-    const m = DESKTOP_FILE.exec(name);
+    if (!DESKTOP_FILE.test(name)) continue;
+    try { const st = statSync(path.join(dir, name)); if (!st.isFile()) continue; entries.push({ name, url: `/download/${encodeURIComponent(name)}`, size: st.size }); } catch { continue; }
+  }
+  // Files on this server come first: at the same version they win over the copy attached to a GitHub release.
+  entries.push(...released);
+  const best = new Map<string, DesktopDownload & { rank: number }>();
+  for (const e of entries) {
+    const m = DESKTOP_FILE.exec(e.name);
     if (!m) continue;
-    let size = 0;
-    try { const st = statSync(path.join(dir, name)); if (!st.isFile()) continue; size = st.size; } catch { continue; }
     const rank = Number(m[1]) * 1e8 + Number(m[2]) * 1e4 + Number(m[3]);
     const kind = m[5] as DesktopDownload["kind"];
     const key = `${m[4]}.${kind}`;
     const cur = best.get(key);
-    if (!cur || rank > cur.rank) best.set(key, { name, url: `/download/${encodeURIComponent(name)}`, os: OS_OF[m[4] as keyof typeof OS_OF], kind, size, version: `${m[1]}.${m[2]}.${m[3]}`, rank });
+    if (!cur || rank > cur.rank) best.set(key, { name: e.name, url: e.url, os: OS_OF[m[4] as keyof typeof OS_OF], kind, size: e.size, version: `${m[1]}.${m[2]}.${m[3]}`, rank });
   }
   const desktop = [...best.values()].map(({ rank: _rank, ...f }) => f).sort((a, b) => a.name.localeCompare(b.name));
   let android: AppDownloads["android"] = null;
   try { const st = statSync(path.join(dir, "sklubot.apk")); if (st.isFile()) android = { url: "/download/sklubot.apk", size: st.size }; } catch { /* not on this server */ }
   return { android, desktop, releasesUrl: RELEASES_URL };
+}
+
+/**
+ * Desktop builds attached to this project's public GitHub releases (tags "desktop-v…", made by the desktop
+ * workflow): the download page links to them when this server has no copy of its own. Listed with GitHub's
+ * "List releases" endpoint (https://docs.github.com/en/rest/releases/releases#list-releases): each asset has
+ * name, size and browser_download_url. Refreshed in the background at most every 15 minutes; a failure keeps the
+ * last list. RELEASE_DOWNLOADS=0 turns it off.
+ */
+export interface ReleasedFile { name: string; url: string; size: number }
+const RELEASES_API = "https://api.github.com/repos/smokersklubs-dot/grok-sklubs/releases?per_page=20";
+let releasedFiles: ReleasedFile[] = [];
+let releasedAt = 0;
+let releasing: Promise<void> | null = null;
+export function releasedDesktopFiles(): ReleasedFile[] {
+  if (process.env.RELEASE_DOWNLOADS !== "0" && !releasing && Date.now() - releasedAt > 15 * 60_000) {
+    releasedAt = Date.now();
+    releasing = (async () => {
+      try {
+        const res = await fetch(RELEASES_API, { headers: { accept: "application/vnd.github+json", "user-agent": "sklubot-server" }, signal: AbortSignal.timeout(10_000) });
+        if (!res.ok) return;
+        const list = (await res.json()) as { tag_name?: string; draft?: boolean; prerelease?: boolean; assets?: { name?: string; size?: number; browser_download_url?: string }[] }[];
+        const files: ReleasedFile[] = [];
+        for (const r of Array.isArray(list) ? list : []) {
+          if (r.draft || r.prerelease || !String(r.tag_name ?? "").startsWith("desktop-v")) continue;
+          for (const a of r.assets ?? []) {
+            const url = String(a.browser_download_url ?? "");
+            if (a.name && DESKTOP_FILE.test(a.name) && url.startsWith("https://github.com/")) files.push({ name: a.name, url, size: Number(a.size) || 0 });
+          }
+        }
+        releasedFiles = files;
+      } catch { /* offline or rate-limited: keep the last list */ } finally { releasing = null; }
+    })();
+  }
+  return releasedFiles;
 }
 
 /** For a localised label of the device in the bots' tools and cards. */

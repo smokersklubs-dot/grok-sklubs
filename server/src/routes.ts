@@ -50,7 +50,7 @@ import { appOf, appsFor, nativeRedirectUri, setupDocs, setupSteps, VENDOR_NAMES,
 import { syncSlackSockets } from "./native/triggers.js";
 import { isNativeTrigger } from "./routines.js";
 import type { NativeVendor, NativeVendorSetup } from "./shared.js";
-import { confirmPairing, lastFrame, listDevices, relayDownloads, appDownloads, revokeDevice, stopSession, userSpoke as relayUserSpoke } from "./relay.js";
+import { confirmPairing, lastFrame, listDevices, relayDownloads, appDownloads, releasedDesktopFiles, revokeDevice, stopSession, userSpoke as relayUserSpoke } from "./relay.js";
 import { isRuleTrigger, MAX_RULES, ruleChanges, rules } from "./rules.js";
 import type { RuleTrigger } from "./shared.js";
 import { executions, grants } from "./agent/executions.js";
@@ -178,7 +178,7 @@ site.on(["GET", "HEAD"], "/l/:token", (c) => servePublicLink(c));
 // ── Public routes ────────────────────────────────────────────────────────────
 api.get("/health", (c) => c.json({ ok: true, model: defaultModelRef() }));
 // The download page (/telecharger) is public: it is linked from the sign-in page.
-api.get("/downloads", (c) => c.json(appDownloads()));
+api.get("/downloads", (c) => c.json(appDownloads(undefined, releasedDesktopFiles())));
 
 api.get("/me", (c) => {
   const user = userForToken(getCookie(c, SESSION_COOKIE));
@@ -1046,7 +1046,7 @@ api.post("/import/team", async (c) => {
 api.get("/usage.csv", (c) => download(c, "sklubot-usage.csv", "text/csv; charset=utf-8", usageCsv(c.get("user").id)));
 
 // ── The user's own computers (Sklubot Relais, docs/RELAIS-PROTOCOLE.md) ──────
-api.get("/relay/devices", (c) => c.json({ devices: listDevices(c.get("user").id), downloads: relayDownloads() }));
+api.get("/relay/devices", (c) => c.json({ devices: listDevices(c.get("user").id), downloads: relayDownloads(undefined, releasedDesktopFiles()) }));
 /** Pairing: the user types the code their computer shows. A few tries per account and per address, then a pause. */
 const pairTries = new Map<string, number[]>();
 function pairThrottle(key: string, limit: number) {
