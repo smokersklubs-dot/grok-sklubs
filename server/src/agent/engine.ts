@@ -143,7 +143,10 @@ export async function subscriptionChoices(userId: string, prefer?: string) {
   if (awake && host.probe) {
     const probe = host.probe;
     found = await readCodexCatalog(userId, async () => {
-      const r = await probe(awake, ["codex", "debug", "models"], CATALOG_TIMEOUT_MS);
+      // --bundled: never touch the account. Without it Codex refreshes the account's catalog, which can refresh its
+      // sign-in token while a turn of this bot holds the old one; OpenAI's refresh tokens are single-use, so the turn
+      // then fails with "your refresh token was already used" and the user has to sign in again.
+      const r = await probe(awake, ["codex", "debug", "models", "--bundled"], CATALOG_TIMEOUT_MS);
       return r.code === 0 ? r.stdout : null;
     });
   }
