@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useT } from "./i18n";
 import { errText } from "./api";
 import { applyTheme, useStore, type Toast } from "./store";
@@ -14,6 +14,7 @@ import { CommandPalette } from "./components/CommandPalette";
 import { DuplicateBotModal } from "./components/DuplicateBotModal";
 import { Sidebar } from "./components/Sidebar";
 import { SignIn } from "./components/SignIn";
+import { EmailConfirmPage, ResetPasswordPage, takeLinkAction } from "./components/AccountRecovery";
 import { TasksView } from "./components/TasksView";
 import { ThreadPanel } from "./components/ThreadPanel";
 import { DownloadPage, isDownloadPath } from "./components/DownloadPage";
@@ -139,6 +140,8 @@ function MainApp() {
   const boot = useStore((s) => s.boot);
   const init = useStore((s) => s.init);
   const t = useT();
+  // A "forgot password" or change-of-address link (/?reset=… or /?email_change=…), read once and removed from the address.
+  const [link, setLink] = useState(takeLinkAction);
   useEffect(() => {
     void init();
   }, [init]);
@@ -147,6 +150,8 @@ function MainApp() {
   useDesktopBadge();
 
   if (boot === "loading") return <div className="boot" aria-busy="true" aria-label={t("common.loading")} />;
+  if (link?.kind === "reset") return <ResetPasswordPage token={link.token} onDone={() => setLink(null)} />;
+  if (link?.kind === "emailChange") return <EmailConfirmPage token={link.token} />;
   if (boot === "signedOut") return <SignIn />;
   return <Shell />;
 }

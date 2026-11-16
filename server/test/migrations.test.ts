@@ -38,7 +38,7 @@ test("a new database is created at the latest version, without a pre-migration c
   assert.deepEqual(r.applied, MIGRATIONS.map((m) => `${m.version}-${m.name}`));
   assert.equal(r.backup, null);
   assert.equal(userVersion(db), LATEST_VERSION);
-  for (const t of ["users", "bots", "rows", "usage", "bot_jobs", "model_prices", "subscription_usage"]) assert.equal(n(db, `SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'table' AND name = '${t}'`), 1, t);
+  for (const t of ["users", "bots", "rows", "usage", "bot_jobs", "model_prices", "subscription_usage", "instance_smtp", "password_resets", "email_changes"]) assert.equal(n(db, `SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'table' AND name = '${t}'`), 1, t);
   assert.deepEqual(backups(file), []);
   db.close();
 });
@@ -100,7 +100,7 @@ test("a failing step is rolled back: the database stays at the previous version,
   const db = open(file);
   migrate(db, file);
   const steps: Migration[] = [...MIGRATIONS, { version: LATEST_VERSION + 1, name: "broken", up: (d) => { d.exec("CREATE TABLE half_done (x)"); throw new Error("boom"); } }];
-  assert.throws(() => migrate(db, file, steps), /broken\) failed and was rolled back.*version 2.*boom/s);
+  assert.throws(() => migrate(db, file, steps), new RegExp(`broken\\) failed and was rolled back.*version ${LATEST_VERSION}.*boom`, "s"));
   assert.equal(userVersion(db), LATEST_VERSION);
   assert.equal(n(db, "SELECT COUNT(*) AS n FROM sqlite_master WHERE name = 'half_done'"), 0);
   // A working next step then applies once, after a copy.

@@ -86,6 +86,14 @@ services:
       MAIL_DOMAIN: "${SKLUBOT_MAIL_DOMAIN:-}"
       MAIL_SMTP_PORT: "${SKLUBOT_MAIL_SMTP_PORT:-0}"
       MAIL_HOSTNAME: "${SKLUBOT_MAIL_HOSTNAME:-}"
+      # E-mails du serveur (mot de passe oublié, changement d'adresse). Facultatif : sinon, réglables dans
+      # Réglages → Compte par le propriétaire. Ces variables l'emportent. SMTP_TLS : tls (port 465), starttls (587) ou none.
+      SMTP_HOST: "${SKLUBOT_SMTP_HOST:-}"
+      SMTP_PORT: "${SKLUBOT_SMTP_PORT:-}"
+      SMTP_TLS: "${SKLUBOT_SMTP_TLS:-}"
+      SMTP_USER: "${SKLUBOT_SMTP_USER:-}"
+      SMTP_PASS: "${SKLUBOT_SMTP_PASS:-}"
+      SMTP_FROM: "${SKLUBOT_SMTP_FROM:-}"
       # Places des espaces d'équipe (par défaut, et maximum qu'un propriétaire peut choisir).
       WORKSPACE_SEATS: "${SKLUBOT_WORKSPACE_SEATS:-10}"
       WORKSPACE_MAX_SEATS: "${SKLUBOT_WORKSPACE_MAX_SEATS:-50}"

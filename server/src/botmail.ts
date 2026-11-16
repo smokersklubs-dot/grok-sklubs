@@ -311,7 +311,7 @@ const smtpError = (code: number, message: string) => Object.assign(new Error(mes
 
 // ── Sending ─────────────────────────────────────────────────────────────────
 /** The relay's address, resolved and checked: never this server's own network (unless ALLOW_PRIVATE_FETCH, for tests). */
-async function relayAddress(host: string): Promise<string> {
+export async function relayAddress(host: string): Promise<string> {
   const list = net.isIP(host) ? [{ address: host }] : await dns.promises.lookup(host, { all: true });
   const allowPrivate = process.env.ALLOW_PRIVATE_FETCH === "1" || process.env.ALLOW_PRIVATE_FETCH === "true";
   if (!list.length) throw new MailError(`The relay ${host} cannot be found.`);

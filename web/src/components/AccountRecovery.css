@@ -1,0 +1,15 @@
+/* Forgotten password, reset and change-of-address pages, server e-mail settings (AccountRecovery.tsx). */
+.recovery-form { display: flex; flex-direction: column; gap: 14px; }
+.recovery-form > .muted { margin: 0; line-height: 1.45; }
+.recovery-nomail { display: flex; flex-direction: column; gap: 8px; padding: 12px 13px; border-radius: var(--r-md); background: var(--info-soft); color: var(--text); font-size: 13px; line-height: 1.45; }
+.recovery-nomail p { margin: 0; }
+.recovery-nomail-title { display: flex; align-items: center; gap: 6px; font-weight: 600; color: var(--info); }
+.recovery-cmd { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.recovery-cmd code { flex: 1 1 200px; min-width: 0; overflow-wrap: anywhere; padding: 6px 9px; border-radius: var(--r-sm, 6px); background: var(--surface); border: 1px solid var(--border); font-size: 12px; }
+.recovery-guide-h { margin: 12px 0 4px; font-weight: 600; font-size: 13px; }
+.recovery-guide-h:first-of-type { margin-top: 10px; }
+.google-guide .recovery-guide-h + ol { margin-top: 4px; }
+.google-guide p.small { margin: 0; line-height: 1.5; }
+.recovery-docs { margin-top: 10px !important; }
+.recovery-docs a { color: var(--text); text-decoration: underline; text-underline-offset: 2px; }
+.signin-forgot { align-self: flex-end; margin-top: -6px; }

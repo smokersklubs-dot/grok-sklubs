@@ -91,6 +91,7 @@ import { closeBotLink } from "./botlink.js";
 import { SharedComputerInUseError } from "./linux.js";
 import { sharedComputers, sharedHolder, SharedLimitError } from "./sharedcomputers.js";
 import { ownerId, registerGooglePrivate, registerGooglePublic, type GoogleDeps } from "./googlelogin.js";
+import { dropResetLinks, registerAccountMailPrivate, registerAccountMailPublic } from "./accountmail.js";
 import { createGoal, goalAction, GoalError, goalCommand, goals, pauseGoalsOf } from "./agent/goals.js";
 import { publicJobs, stopJob } from "./jobs.js";
 import { healthReport } from "./monitor.js";
@@ -428,6 +429,8 @@ api.get("/native/:vendor/callback", async (c) => {
 // "Continuer avec Google" (googlelogin.ts): same sessions, throttling and sign-up rules as the password routes.
 const googleDeps: GoogleDeps = { throttle, clientIp, startSession, publicUser, firstBotIdentity };
 registerGooglePublic(api, googleDeps);
+// "Mot de passe oublié ?" and the link that confirms a new address (accountmail.ts): same throttling and sessions.
+registerAccountMailPublic(api, googleDeps);
 
 // ── Everything below needs a session ─────────────────────────────────────────
 api.use("*", async (c, next) => {
@@ -1184,6 +1187,7 @@ api.delete("/pages/:token", (c) => {
 
 // ── Account and data ─────────────────────────────────────────────────────────
 registerGooglePrivate(api, googleDeps);
+registerAccountMailPrivate(api, googleDeps);
 api.put("/account/password", async (c) => {
   const user = c.get("user");
   const b = await body(c);
@@ -1193,6 +1197,7 @@ api.put("/account/password", async (c) => {
   account.setPassword(user.id, hashPassword(String(b.next)));
   // Every other device is signed out; this one stays in.
   account.dropOtherSessions(user.id, sha256(getCookie(c, SESSION_COOKIE) ?? ""));
+  dropResetLinks(user.id);
   audit(user.id, "account", "Password changed");
   return c.json({ ok: true });
 });

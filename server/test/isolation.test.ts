@@ -259,8 +259,8 @@ test("without a session, every non-public route says 401 (and nothing else)", as
   for (const r of discover().filter((x) => x.app === api && !PUBLIC.has(x.key))) {
     const res = await call(api, null, methodOf(r.method), fill(r.path, "bot1"), {});
     if (leakIn(res.text)) problems.push(`${r.key} LEAKS`);
-    // A handful of public routes have no parameter (health, me, downloads, sign-in…): they must not leak either.
-    if (res.status !== 401 && !/^(GET \/(health|me|downloads|auth\/link|connectors\/oauth\/callback|auth\/google.*)|POST \/auth\/.*)$/.test(r.key)) problems.push(`${r.key} → ${res.status}`);
+    // A handful of public routes have no parameter (health, me, downloads, sign-in, forgot-password status…): they must not leak either.
+    if (res.status !== 401 && !/^(GET \/(health|me|downloads|auth\/link|connectors\/oauth\/callback|auth\/google.*|auth\/password\/status)|POST \/auth\/.*)$/.test(r.key)) problems.push(`${r.key} → ${res.status}`);
   }
   assert.deepEqual(problems, []);
 });

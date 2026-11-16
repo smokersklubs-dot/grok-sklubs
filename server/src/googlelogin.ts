@@ -481,6 +481,7 @@ export function registerGooglePrivate(api: Hono<any>, deps: GoogleDeps) {
     q.run("UPDATE users SET pass_hash = ? WHERE id = ?", hashPassword(next), user.id);
     // Like a password change: every other device is signed out, this one stays in.
     q.run("DELETE FROM sessions WHERE user_id = ? AND token_hash != ?", user.id, sha256(getCookie(c, SESSION_COOKIE) ?? ""));
+    q.run("DELETE FROM password_resets WHERE user_id = ?", user.id); // older "forgot password" links stop working
     audit(user.id, "account", "Password set");
     return c.json({ ok: true });
   }));

@@ -152,7 +152,14 @@ npm run typecheck
 
 ### Mot de passe oublié
 
-Il n'y a pas de récupération par e-mail. Sur le serveur :
+Avec les e-mails du serveur réglés (Réglages → Compte → E-mails du serveur, ou variables `SMTP_HOST`, `SMTP_PORT`,
+`SMTP_TLS`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`), chacun — propriétaire compris — utilise « Mot de passe oublié ? »
+sur la page de connexion : un lien valable 30 minutes, à usage unique, qui déconnecte tous les appareils. Le même
+réglage sert à confirmer un changement d'adresse e-mail (Réglages → Compte).
+
+Sans e-mails du serveur, ou si le propriétaire a perdu l'accès à sa boîte, il reste la commande sur le serveur
+(avec Coolify : service `sklubot` → *Terminal*, puis `node server/dist/reset-password.js ton@email.fr`). Il n'y a
+volontairement aucune autre porte de secours. Sur un VPS avec Docker Compose :
 
 ```bash
 docker compose -f docker-compose.vps.yml exec sklubot node server/dist/reset-password.js ton@email.fr

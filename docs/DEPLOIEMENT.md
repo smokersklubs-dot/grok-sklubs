@@ -55,6 +55,12 @@ Sklubot écoute alors sur le port 3000 du conteneur ; place un proxy HTTPS (Cadd
   dernier exercice…) est réservé au propriétaire du serveur, connecté : `GET /api/health/deep`. Un moniteur externe
   (Uptime Kuma, etc.) peut surveiller `/api/health` et alerter si `status` n'est pas `ok`.
 - Le HTTPS est nécessaire pour le micro (dictée, appel vocal) et pour l'installation sur iPhone.
+- **E-mails du serveur** (« Mot de passe oublié ? », confirmation d'un changement d'adresse) : à régler par le
+  propriétaire dans Réglages → Compte → E-mails du serveur, ou par les variables `SKLUBOT_SMTP_HOST`,
+  `SKLUBOT_SMTP_PORT`, `SKLUBOT_SMTP_TLS` (`tls`, `starttls` ou `none`), `SKLUBOT_SMTP_USER`, `SKLUBOT_SMTP_PASS`,
+  `SKLUBOT_SMTP_FROM` (elles l'emportent sur la page). Le propriétaire qui a perdu l'accès, sur son téléphone, passe
+  aussi par « Mot de passe oublié ? ». Sans e-mails du serveur, seule la commande reste : Coolify → service `sklubot`
+  → *Terminal* → `node server/dist/reset-password.js ton@email.fr`. Il n'y a volontairement pas d'autre porte de secours.
 
 ### Mise à jour depuis une version précédente (Coolify)
 

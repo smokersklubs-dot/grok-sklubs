@@ -7,6 +7,7 @@ import { Avatar } from "./Avatar";
 import { Icon } from "./Icon";
 import { ErrorNote } from "./ui";
 import { GoogleSignInButton } from "./GoogleLogin";
+import { ForgotPassword } from "./AccountRecovery";
 
 export function SignIn() {
   const signupOpen = useStore((s) => s.signupOpen);
@@ -26,6 +27,8 @@ export function SignIn() {
   const [botLabel, setBotLabel] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // "Mot de passe oublié ?": the card shows the e-mail form instead (AccountRecovery.tsx).
+  const [forgot, setForgot] = useState(false);
   const ids = { name: useId(), email: useId(), password: useId(), setupCode: useId(), botName: useId(), botLabel: useId() };
   // Wave 6: a workspace invitation link (/?invite=…) lets its addressee create an account even when sign-ups are closed.
   const [inviteToken] = useState(() => new URLSearchParams(location.search).get("invite") ?? "");
@@ -79,6 +82,21 @@ export function SignIn() {
     }
   };
 
+  if (forgot) {
+    return (
+      <main className="signin">
+        <div className="signin-card">
+          <div className="signin-brand">
+            <Avatar shape="squircle" color="ember" name="S" size={56} />
+            <h1>Sklubot</h1>
+            <p>{t("signin.tagline")}</p>
+          </div>
+          <ForgotPassword initialEmail={email} onBack={() => { setForgot(false); setError(null); }} />
+        </div>
+      </main>
+    );
+  }
+
   return (
     <main className="signin">
       <form className="signin-card" onSubmit={submit} noValidate>
@@ -125,6 +143,9 @@ export function SignIn() {
           />
           {creating && <p className="field-hint">{t("signin.passwordHint")}</p>}
         </div>
+        {!creating && (
+          <button type="button" className="link signin-forgot" onClick={() => { setForgot(true); setError(null); }}>{t("recovery.forgotLink")}</button>
+        )}
         {creating && setupCodeRequired && (
           <div className="field">
             <label className="field-label" htmlFor={ids.setupCode}>{t("signin.setupCode")}</label>

@@ -12,6 +12,16 @@ answers 401 without it. Types named below are defined in `server/src/shared.ts`.
 | POST | `/auth/signup` | `{ email, name?, password, locale? }` | `{ user }` (403 when signup is closed) |
 | POST | `/auth/login` | `{ email, password }` | `{ user }` (401 on bad credentials) |
 | POST | `/auth/logout` | – | `{ ok: true }` |
+| GET | `/auth/password/status` | – | `{ mail: boolean }` — whether the server can send its own e-mails (SMTP set up) |
+| POST | `/auth/password/forgot` | `{ email, locale? }` | `{ ok: true }` — always the same answer whether the address has an account; the link (`/?reset=<token>`, 30 min, single use) is sent afterwards. 409 when no SMTP account is set up; 403 when throttled |
+| POST | `/auth/password/reset/check` | `{ token }` | `{ valid: boolean }` — does not use the link up |
+| POST | `/auth/password/reset` | `{ token, password }` | `{ user }` + session cookie — every other session of the account is deleted; 400 for a used/expired link |
+| POST | `/auth/email/confirm` | `{ token }` | `{ ok, email }` — applies a change of address (link `/?email_change=<token>` sent to the new address); 409 if the address was taken meanwhile |
+| GET | `/account/email` | – | `{ email, pending: { email, expiresAt } \| null, mail: boolean, hasPassword: boolean }` |
+| POST | `/account/email` | `{ email, password }` | `{ applied, pending, user? }` — with SMTP: confirmation link to the new address, notice to the old one; without: applied at once. 401 wrong password, 409 no password yet (Google account) or address taken (no SMTP only) |
+| DELETE | `/account/email/pending` | – | `{ pending: null }` |
+| GET/PUT/DELETE | `/settings/smtp` | PUT: `{ host, port, tlsMode: "tls"\|"starttls"\|"none", username?, password?, from }` | `{ configured, source: "env"\|"saved"\|null, host, port, tlsMode, username, hasPassword, from }` — owner only (403 otherwise); 409 on PUT when `SMTP_HOST` is set in the environment |
+| POST | `/settings/smtp/test` | – | `{ ok, to }` — test e-mail to the owner's own address; 502 with the SMTP server's answer |
 | GET | `/events` | – | SSE stream of `ServerEvent` |
 | GET | `/health` | – | `{ ok, model }` |
 | GET | `/models` | – | `{ models: ModelOption[], defaultRef }` |
