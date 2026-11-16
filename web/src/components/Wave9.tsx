@@ -315,3 +315,74 @@ export function ApiProvidersSection({ onChanged }: { onChanged: () => void }) {
     </>
   );
 }
+
+/* ---------- Prices of the server's own models (SK-P0-06): built-in from official pages, set by the owner, or unknown ---------- */
+
+interface ServerModelPrice { model: string; origin: "owner" | "builtin" | "user" | null; source: string | null; input: number | null; output: number | null; cached: number | null; note: string }
+interface ServerPrices { owner: boolean; unknownEstimate: { input: number; output: number; cached: number }; checkedOn: string; models: ServerModelPrice[] }
+
+function PriceRow({ m, owner, onSaved }: { m: ServerModelPrice; owner: boolean; onSaved: (p: ServerPrices) => void }) {
+  const t = useT();
+  const str = (v: number | null) => (v === null ? "" : String(v));
+  const [d, setD] = useState({ input: str(m.input), output: str(m.output), cached: str(m.cached) });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => { setD({ input: str(m.input), output: str(m.output), cached: str(m.cached) }); }, [m.input, m.output, m.cached]);
+  const dirty = d.input !== str(m.input) || d.output !== str(m.output) || d.cached !== str(m.cached);
+  const save = async (clear = false) => {
+    setBusy(true); setError(null);
+    try {
+      const body = clear ? { input: null, output: null, cached: null } : { input: d.input.trim() || null, output: d.output.trim() || null, cached: d.cached.trim() || null };
+      onSaved(await api<ServerPrices>("PUT", `/model-prices/${enc(m.model)}`, body));
+    } catch (e) { setError(errText(e)); } finally { setBusy(false); }
+  };
+  const status = m.origin === "builtin" ? t("prices.builtin") : m.origin === "owner" ? t("prices.owner") : t("prices.unknown");
+  return (
+    <>
+      <div className="provider-model">
+        <span className="provider-model-name" title={m.source ?? undefined}>
+          {m.model} <span className={`muted small ${m.origin === null ? "is-warn" : ""}`}>· {status}</span>
+        </span>
+        {(["input", "output", "cached"] as const).map((k) => owner ? (
+          <input key={k} className="input input-small" inputMode="decimal" value={d[k]} onChange={(e) => setD({ ...d, [k]: e.target.value })} aria-label={`${m.model} — ${t(`providers.${k}`)}`} placeholder={m.origin === null ? "?" : ""} />
+        ) : (
+          <span key={k} className="num">{m[k] === null ? "—" : m[k]}</span>
+        ))}
+        {owner ? (
+          dirty ? <button type="button" className="btn btn-small" disabled={busy} onClick={() => void save()}>{t(busy ? "common.saving" : "common.save")}</button>
+            : m.origin === "owner" ? <button type="button" className="btn btn-small btn-ghost" disabled={busy} onClick={() => void save(true)}>{t("prices.reset")}</button> : <span />
+        ) : <span />}
+      </div>
+      {error && <ErrorNote onDismiss={() => setError(null)}>{error}</ErrorNote>}
+    </>
+  );
+}
+
+export function ServerModelPricesSection() {
+  const t = useT();
+  const tick = useStore((s) => s.usageTick);
+  const [state, setState] = useState<ServerPrices | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => { api<ServerPrices>("GET", "/model-prices").then(setState, (e) => setError(errText(e))); }, [tick]);
+  if (!state) return error ? <ErrorNote>{error}</ErrorNote> : <Loading />;
+  if (!state.models.length) return null;
+  const unknown = state.models.filter((m) => m.origin === null).length;
+  return (
+    <>
+      <h3 className="pane-heading">{t("prices.heading")}</h3>
+      <p className="muted small">{t(state.owner ? "prices.introOwner" : "prices.intro", { date: state.checkedOn })}</p>
+      {unknown > 0 && (
+        <div className="callout is-warn" role="status">
+          <Icon name="alert" size={16} />
+          <span>{t("prices.unknownNote", { input: state.unknownEstimate.input, output: state.unknownEstimate.output })}</span>
+        </div>
+      )}
+      <div className="provider-models price-grid">
+        <div className="provider-model is-head" aria-hidden="true">
+          <span>{t("providers.model")}</span><span>{t("providers.input")}</span><span>{t("providers.output")}</span><span>{t("providers.cached")}</span><span />
+        </div>
+        {state.models.map((m) => <PriceRow key={m.model} m={m} owner={state.owner} onSaved={setState} />)}
+      </div>
+    </>
+  );
+}

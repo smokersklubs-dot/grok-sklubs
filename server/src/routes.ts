@@ -48,7 +48,7 @@ import { PUSH_KINDS, VAULT_KINDS, type VaultKind } from "./shared.js";
 import { q } from "./db.js";
 import { connectors as connectorStore } from "./connectors.js";
 import type { Attachment } from "./shared.js";
-import { csv as usageCsv, summary as usageSummary } from "./usage.js";
+import { csv as usageCsv, ownerPrices, PRICE_SOURCES, priceInfo, summary as usageSummary, UNKNOWN_ESTIMATE } from "./usage.js";
 import { accounts as nativeAccounts, clients as nativeClients, disconnect as nativeDisconnect, finishSignIn as nativeFinish, publicAccount, startSignIn as nativeStart } from "./native/accounts.js";
 import { appOf, appsFor, nativeRedirectUri, setupDocs, setupSteps, VENDOR_NAMES, VENDORS } from "./native/vendors.js";
 import { syncSlackSockets } from "./native/triggers.js";
@@ -93,6 +93,7 @@ import { sharedComputers, sharedHolder, SharedLimitError } from "./sharedcompute
 import { ownerId, registerGooglePrivate, registerGooglePublic, type GoogleDeps } from "./googlelogin.js";
 import { createGoal, goalAction, GoalError, goalCommand, goals, pauseGoalsOf } from "./agent/goals.js";
 import { publicJobs, stopJob } from "./jobs.js";
+import { healthReport } from "./monitor.js";
 
 type Env = { Variables: { user: UserRecord } };
 export const api = new Hono<Env>();
@@ -218,7 +219,14 @@ export function botLinkRoutes(allowed: (botId: string) => boolean): Hono {
 site.on(["GET", "HEAD"], "/l/:token", (c) => servePublicLink(c));
 
 // ── Public routes ────────────────────────────────────────────────────────────
-api.get("/health", (c) => c.json({ ok: true, model: defaultModelRef() }));
+// Monitoring (monitor.ts): fast and public, so it says only ok / degraded / down and the first problem's short code.
+// `ok: true` means "a Sklubot answers here" (the apps and the companion check it) — also when degraded. HTTP 200 unless
+// the database cannot be written or the disk is full ("down": 503), so Docker's / Coolify's healthcheck (curl -f) only
+// fails when the server really cannot work. The detail is for the server's owner: GET /api/health/deep.
+api.get("/health", async (c) => {
+  const r = await healthReport();
+  return c.json({ ok: r.status !== "down", status: r.status, code: r.code }, r.status === "down" ? 503 : 200, { "cache-control": "no-store" });
+});
 // The download page (/telecharger) is public: it is linked from the sign-in page.
 api.get("/downloads", (c) => c.json(appDownloads(undefined, releasedDesktopFiles())));
 
@@ -1760,6 +1768,11 @@ api.post("/bots/:id/reach/:channel/:action", async (c) => {
 });
 
 /** Health of keys and connections (A2). */
+/** Every check with its detail (disk space, backup age…), for the server's owner only; anyone else gets a 404. */
+api.get("/health/deep", async (c) => {
+  if (ownerId() !== c.get("user").id) fail(404, "No such endpoint.");
+  return c.json(await healthReport(0), 200, { "cache-control": "no-store" });
+});
 api.get("/health/credentials", (c) => c.json({ items: healthList(c.get("user").id) }));
 api.post("/health/credentials/check", async (c) => c.json({ items: await checkAll(c.get("user").id) }));
 api.post("/health/credentials/:kind/:id/check", async (c) => {
@@ -2148,6 +2161,43 @@ api.put("/usage/budget", async (c) => {
   settings.setBudget(c.get("user").id, v);
   emit(c.get("user").id, { type: "usage" });
   return c.json(usageSummary(c.get("user").id));
+});
+
+/**
+ * SK-P0-06: prices of the server's own models (the .env providers). Every signed-in user sees where each price comes
+ * from ("builtin" with its official page, "owner", or unknown → "coût inconnu"); only the instance owner (the first
+ * account, googlelogin.ts ownerId) may set a price. Prices in USD per million tokens, like the user providers' fields.
+ */
+function serverModelPrices(userId: string) {
+  const models = new Set<string>(listProviders().filter((p) => p.available() && p.id !== "demo").flatMap((p) => p.models));
+  for (const r of ownerPrices.list()) models.add(r.model);
+  for (const r of q.all<{ model: string }>("SELECT DISTINCT model FROM usage WHERE price_status = 'unknown' AND model NOT LIKE 'up-%' AND user_id = ?", userId)) models.add(r.model);
+  const notes = new Map(ownerPrices.list().map((r) => [r.model, r.note]));
+  return {
+    owner: ownerId() === userId,
+    unknownEstimate: { input: UNKNOWN_ESTIMATE[0], output: UNKNOWN_ESTIMATE[1], cached: UNKNOWN_ESTIMATE[2] },
+    checkedOn: PRICE_SOURCES.checkedOn,
+    models: [...models].sort().map((model) => {
+      const info = priceInfo(model);
+      return { model, origin: info?.origin ?? null, source: info?.source ?? null, input: info?.prices[0] ?? null, output: info?.prices[1] ?? null, cached: info?.prices[2] ?? null, note: notes.get(model) ?? "" };
+    }),
+  };
+}
+api.get("/model-prices", (c) => c.json(serverModelPrices(c.get("user").id)));
+api.put("/model-prices/:model", async (c) => {
+  const user = c.get("user");
+  if (ownerId() !== user.id) fail(403, "Only the owner of this server can change this.");
+  const model = c.req.param("model");
+  if (!model || model.length > 100 || !/^[A-Za-z0-9._:/@+-]+$/.test(model) || model.startsWith("up-")) fail(400, "Unknown model.");
+  const b = await body(c);
+  const price = (v: unknown): number | null => {
+    if (v === null || v === undefined || v === "") return null;
+    const n = Number(v);
+    return Number.isFinite(n) && n >= 0 && n <= 10_000 ? Math.round(n * 1_000_000) / 1_000_000 : fail(400, "A price is a number of dollars per million tokens (0 to 10000).");
+  };
+  ownerPrices.set(model, { input: price(b.input), output: price(b.output), cached: price(b.cached), note: typeof b.note === "string" ? b.note : "" }, user.id);
+  audit(user.id, "account", `Price of model ${model} set (per million tokens: input ${b.input ?? "—"}, output ${b.output ?? "—"}, cached ${b.cached ?? "—"})`);
+  return c.json(serverModelPrices(user.id));
 });
 
 // ── Wave 5: rules and the reviewer, uncertain actions, background tasks, nudges, memory ──────────────────

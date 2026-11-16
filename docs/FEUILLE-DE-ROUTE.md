@@ -176,6 +176,7 @@ Les phases suivent l'ordre voulu par le propriétaire : 1 fiabilité/sécurité 
   événement de A (`bus.ts:43`).
 - **Tests** : la suite elle-même ; une route ajoutée plus tard sans contrôle la fait échouer (car découverte
   automatiquement).
+- **Statut (2026-11-16)** : fait — `server/test/isolation.test.ts` (routes découvertes dans `api.routes`/`site.routes`, comptes A, B et lecteur d'espace V, SSE). Correctif trouvé : `PATCH /workspaces/:wid` vide d'un lecteur répondait 200 (`workspaces.ts` update).
 - **Effort** : M. **Dépendances** : SK-P0-02.
 
 #### SK-P0-04 · Sauvegarde complète, hors du serveur, et restauration testée automatiquement
@@ -201,6 +202,7 @@ Les phases suivent l'ordre voulu par le propriétaire : 1 fiabilité/sécurité 
 - **Tests** : automatique — `server/test/deploy.test.ts` (existant) étendu : lancer backup puis restore-drill sur
   un Docker de CI avec 2 bots factices ; vérifier empreintes. Manuel — sur le VPS de test : supprimer volontairement
   `sklubot_data`, restaurer, se connecter, ouvrir un secret du coffre, réveiller un ordinateur de bot.
+- **Statut (2026-11-16)** : fait (sauf rapport e-mail/push de l'exercice) — `backup.sh` (copie en ligne VACUUM INTO, ordinateurs en pause un par un, secrets chiffrés age/openssl, manifeste, SHA256SUMS, rotation, rclone/rsync), `restore-drill.sh` (projet isolé sans réseau), `update.sh` sauvegarde d'abord ; `docs/SAUVEGARDE.md` (VPS et Coolify) ; test `backup-drill.test.ts` (ignoré sans image serveur).
 - **Effort** : M. **Dépendances** : SK-P0-01 (H3 change les appels Docker), SK-P0-08 (alertes).
 
 #### SK-P0-05 · Migrations de base versionnées
@@ -212,6 +214,7 @@ Les phases suivent l'ordre voulu par le propriétaire : 1 fiabilité/sécurité 
   Refus de démarrer si la base est plus récente que le code (retour arrière sans restauration).
 - **Tests** : fixture `server/test/fixtures/db-<ancienne version>.sqlite` ; le test démarre dessus, vérifie
   `user_version` et l'intégrité ; test « base plus récente → refus clair ».
+- **Statut (2026-11-16)** : fait — `server/src/migrations/` (001 = schéma b8096fa, 002 = coûts), copie avant migration, refus d'une base plus récente ; `migrations.test.ts` avec la base `fixtures/db-v0-b8096fa.sqlite.gz`.
 - **Effort** : M. **Dépendances** : SK-P0-02.
 
 #### SK-P0-06 · Coûts IA comptés juste pour tous les modèles
@@ -224,6 +227,7 @@ Les phases suivent l'ordre voulu par le propriétaire : 1 fiabilité/sécurité 
   persister l'usage des abonnements (`subscription_usage`) ; budget mensuel en tokens en plus des dollars.
 - **Tests** : un tour avec `grok-4.7` facturé > 0 ; budget à 0,01 $ → le tour suivant s'arrête avec la carte
   habituelle ; redémarrage → l'usage des abonnements est toujours affiché.
+- **Statut (2026-11-16)** : fait autrement sur un point — un modèle sans prix n'est pas refusé : ses tokens sont comptés et le budget / les points d'arrêt le comptent au prix connu le plus élevé (« coût inconnu » à l'écran) ; prix officiels intégrés (Anthropic, xAI, OpenAI, sources dans `usage.ts`), prix fixés par le propriétaire (`model_prices`), `subscription_usage` persistant ; `costs.test.ts`. Reste : budget en tokens.
 - **Effort** : M. **Dépendances** : aucune. **Prérequis du mode hébergé.**
 
 #### SK-P0-07 · Scénarios de bout en bout : modèle démo (CI) et vrai modèle (sur demande, plafonné)

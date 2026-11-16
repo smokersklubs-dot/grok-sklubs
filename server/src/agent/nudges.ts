@@ -5,7 +5,7 @@ import { defaultModelRef, resolveModel, type ChatMessage, type ToolResultBlock, 
 import { nativeToolsFor, runNativeTool } from "../native/tools.js";
 import { inQuietHours, pushLater, pushSettings } from "../push.js";
 import { audit, bots, clip, memories, newId, now, paused, rows, users, type BotRecord } from "../store.js";
-import { costOf, record } from "../usage.js";
+import { costEstimate, record } from "../usage.js";
 import { isEngineRef } from "./engine.js";
 import { enqueue, isBusy } from "./loop.js";
 
@@ -119,7 +119,7 @@ export async function preparationPass(botId: string, force = false): Promise<Pas
     if (stats(bot.id).spent >= bot.nudges.budgetUsd) return { status: "skipped", reason: "daily budget" };
     const res = await resolved.provider.runTurn({ model: resolved.model, system, tools, effort: "low", maxTokens: 2000, messages, signal: AbortSignal.timeout(120_000) });
     record(user.id, bot.id, res.model, res.usage);
-    bump(bot.id, { spent: costOf(res.model, res.usage, user.id) });
+    bump(bot.id, { spent: ((e) => e.cost + e.estimate)(costEstimate(res.model, res.usage, user.id)) }); // unknown price: its conservative estimate
     messages.push({ role: "assistant", content: res.content });
     const calls = res.content.filter((b): b is ToolUseBlock => b.type === "tool_use");
     if (!calls.length) return { status: "nothing", reason: "nothing worth raising" };

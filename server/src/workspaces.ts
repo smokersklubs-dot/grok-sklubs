@@ -88,6 +88,9 @@ export const workspaces = {
   },
   update(workspaceId: string, userId: string, patch: { name?: unknown; seats?: unknown }): Workspace {
     const { ws, role } = requireRole(workspaceId, userId);
+    // A role that may change nothing here (member, viewer) is refused whatever it sends — even an empty change — so
+    // the answer never depends on the body (SK-P0-03: found by the isolation suite, a viewer's empty PATCH answered 200).
+    if (!perms(role).manageMembers && role !== "owner") refuse("Your role in this workspace does not allow that.");
     if (patch.name !== undefined) {
       if (!perms(role).manageMembers) refuse("Your role in this workspace does not allow that.");
       const clean = String(patch.name).replace(/\s+/g, " ").trim().slice(0, 60);

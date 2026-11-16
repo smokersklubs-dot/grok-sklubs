@@ -230,13 +230,18 @@ onRunEnded((r, status, note) => {
   emit(bot.userId, { type: "routines", botId: bot.id });
 });
 
+/** When the scheduler last ran its routine tick (monitor.ts: a scheduler that stopped ticking makes /api/health degraded). */
+let lastBeat = 0;
+export const schedulerBeat = () => lastBeat;
+
 export function startScheduler() {
   if (config.schedulerOff) return;
+  lastBeat = Date.now();
   syncSlackSockets();
   catchUp();
   for (const r of routines.allEnabled()) schedule(r.id);
   const guard = (fn: () => unknown) => () => { try { void Promise.resolve(fn()).catch((e) => console.error("[scheduler]", e)); } catch (e) { console.error("[scheduler]", e); } };
-  setInterval(guard(tickRoutines), 15_000).unref();
+  setInterval(guard(() => { lastBeat = Date.now(); return tickRoutines(); }), 15_000).unref();
   setInterval(guard(tickCheckins), 60_000).unref();
   setInterval(guard(consolidationSweep), 60_000).unref();
   setInterval(guard(sweepIdleDesktops), 60_000).unref();

@@ -44,12 +44,24 @@ Sklubot écoute alors sur le port 3000 du conteneur ; place un proxy HTTPS (Cadd
   conteneurs). Ils joignent Sklubot par une prise (socket) qui leur est propre, dans `sklubot_data/botlink/`, qui ne
   sert que leurs outils (`/mcp/…`) et le relais d'identifiants (`/egress/…`) : ni le port 3000, ni le courrier, ni le
   proxy Docker, ni la voix, ni les autres ordinateurs. Le port web n'a plus du tout `/mcp/` ni `/egress/`.
-- Toutes les données sont dans le volume `sklubot_data` (base, fichiers des bots). Sauvegarde-le.
+- Toutes les données sont dans le volume `sklubot_data` (base, fichiers des bots), plus un volume `sklubot-home-*` par
+  ordinateur. **Sauvegarde** : `deploy/backup.sh` en SSH sur le serveur (copie en ligne, secrets chiffrés, rotation,
+  copie distante), exercice de restauration `deploy/restore-drill.sh`, et une tâche planifiée Coolify en complément :
+  voir [SAUVEGARDE.md](SAUVEGARDE.md#coolify).
+- Surveillance : `/api/health` (public, rapide) répond `{"ok":true,"status":"ok"|"degraded","code":"…"}` — `degraded`
+  avec un code court (`disk_low`, `docker_unreachable`, `scheduler_stalled`, `queue_stuck`, `backup_old`…) reste en
+  HTTP 200 pour que le healthcheck de Coolify ne relance pas le conteneur pour rien ; seuls une base qui n'accepte plus
+  d'écriture ou un disque plein donnent `down` (HTTP 503). Le détail (place libre, âge de la dernière sauvegarde et du
+  dernier exercice…) est réservé au propriétaire du serveur, connecté : `GET /api/health/deep`. Un moniteur externe
+  (Uptime Kuma, etc.) peut surveiller `/api/health` et alerter si `status` n'est pas `ok`.
 - Le HTTPS est nécessaire pour le micro (dictée, appel vocal) et pour l'installation sur iPhone.
 
 ### Mise à jour depuis une version précédente (Coolify)
 
-Rien à faire à la main : redéploie comme d'habitude. Au premier usage de chaque ordinateur de bot, Sklubot le
+Rien à faire à la main : redéploie comme d'habitude. Au démarrage, la nouvelle version met la base à jour par
+migrations numérotées (`PRAGMA user_version`) après en avoir fait une copie à côté d'elle
+(`sklubot.db.pre-vX-to-vY-….bak`, les 3 dernières gardées) ; une base plus récente que le code est refusée sans être
+touchée (revenir en arrière = restaurer la sauvegarde d'avant la mise à jour). Au premier usage de chaque ordinateur de bot, Sklubot le
 refait sur le nouveau réseau (son dossier personnel — fichiers, connexions, navigateur — et sa bibliothèque sont
 gardés ; ce qui avait été installé hors de `/root` est à réinstaller, comme lors d'un changement de dossier d'équipe).
 Le réseau `sklubot_bots` est créé tout seul. Si quelque chose ne va pas, `SKLUBOT_BOT_LINK=network` (et

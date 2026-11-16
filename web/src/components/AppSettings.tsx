@@ -516,6 +516,7 @@ function SubscriptionUsageBlock({ subs }: { subs: SubscriptionUsage[] }) {
               <span className="choice-title">{ENGINE_BRAND[s.engine]} <span className="muted small">· {ENGINE_TOOL[s.engine]}</span></span>
               {s.at > 0 && <span className="muted small">{t("usage.subAt", { when: relTime(s.at) })}</span>}
             </div>
+            {(s.turns ?? 0) > 0 && <p className="field-hint">{t("usage.subTokens", { turns: compactNumber(s.turns ?? 0), input: compactNumber(s.inputTokens ?? 0), output: compactNumber(s.outputTokens ?? 0) })}</p>}
             {meter(t("usage.fiveHour"), s.fiveHour)}
             {meter(t("usage.sevenDay"), s.sevenDay)}
             {s.resetsAt !== null && <p className="field-hint">{t("usage.resets", { when: dateTime(s.resetsAt) })}</p>}
@@ -574,7 +575,7 @@ function UsageSection() {
     }
   };
 
-  const over = usage && usage.budgetUsd !== null && usage.budgetUsd > 0 ? Math.min(100, Math.round((usage.totals.costUsd / usage.budgetUsd) * 100)) : null;
+  const over = usage && usage.budgetUsd !== null && usage.budgetUsd > 0 ? Math.min(100, Math.round(((usage.totals.costUsd + (usage.totals.estimatedUsd ?? 0)) / usage.budgetUsd) * 100)) : null;
 
   return (
     <>
@@ -601,6 +602,12 @@ function UsageSection() {
             <div className="stat"><span className="stat-value">{compactNumber(usage.totals.outputTokens)}</span><span className="stat-label">{t("usage.output")}</span></div>
             <div className="stat"><span className="stat-value">{compactNumber(usage.totals.turns)}</span><span className="stat-label">{t("usage.turns")}</span></div>
           </div>
+          {(usage.totals.unknownTokens ?? 0) > 0 && (
+            <div className="callout is-warn" role="status">
+              <Icon name="alert" size={16} />
+              <span>{t("usage.unknownCost", { tokens: compactNumber(usage.totals.unknownTokens), models: (usage.unknownModels ?? []).join(", "), estimate: money(usage.totals.estimatedUsd) })}</span>
+            </div>
+          )}
           {over !== null && (
             <div className="meter-box">
               <div className="meter-head"><span>{t("usage.meter", { percent: over, budget: money(usage.budgetUsd ?? 0) })}</span></div>
@@ -624,7 +631,7 @@ function UsageSection() {
                       <td className="num">{compactNumber(b.turns)}</td>
                       <td className="num">{compactNumber(b.inputTokens)}</td>
                       <td className="num">{compactNumber(b.outputTokens)}</td>
-                      <td className="num">{money(b.costUsd)}</td>
+                      <td className="num">{money(b.costUsd)}{(b.unknownTokens ?? 0) > 0 && <span className="muted small" title={t("usage.unknownCostHint")}> + {t("usage.unknownShort")}</span>}</td>
                     </tr>
                   ))}
                 </tbody>

@@ -694,6 +694,9 @@ a.btn { text-decoration: none; }
 .provider-models { display: grid; gap: 6px; margin-top: 6px; }
 .provider-model { display: grid; grid-template-columns: minmax(120px, 2fr) repeat(4, minmax(64px, 1fr)) 28px; gap: 6px; align-items: center; }
 .provider-model.is-head { font-size: 11.5px; color: var(--text-3); }
+.price-grid .provider-model { grid-template-columns: minmax(160px, 2fr) repeat(3, minmax(64px, 1fr)) minmax(72px, auto); }
+.price-grid .provider-model-name { font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere; }
+.price-grid .is-warn { color: var(--warn, #b45309); }
 .provider-model .input { min-width: 0; width: 100%; max-width: none; font-family: var(--mono); font-size: 12px; }
 .provider-add-model { align-self: flex-start; margin-top: 6px; }
 @media (max-width: 640px) {
@@ -701,6 +704,8 @@ a.btn { text-decoration: none; }
   .provider-model.is-head { display: none; }
   .provider-model > :first-child { grid-column: 1 / 4; grid-row: 1; }
   .provider-model > :last-child { grid-column: 4; grid-row: 1; justify-self: end; }
+  .price-grid .provider-model { grid-template-columns: repeat(3, minmax(0, 1fr)) auto; }
+  .price-grid .provider-model > :first-child { grid-column: 1 / 4; }
 }
 @media (max-width: 640px) {
   .provider-list .list-row { flex-wrap: wrap; }

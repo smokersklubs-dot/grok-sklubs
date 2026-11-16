@@ -21,7 +21,7 @@ function setup() {
   const log = path.join(root, "docker.log");
   // Canned answers: two bot computers, the four app containers, volumes, networks, images — plus things that are not ours.
   writeFileSync(path.join(bin, "docker"), `#!/usr/bin/env bash
-echo "$*" >> "${log}"
+echo "$*" | head -n1 >> "${log}"
 case "$*" in
   "ps -a --filter label=sklubot=desktop --format {{.Names}}") grep -q "rm -f sklubot-bot_a" "${log}" 2>/dev/null || printf 'sklubot-bot_a\\nsklubot-bot_b\\n' ;;
   "ps -a --filter label=com.docker.compose.project=sklubot --format {{.Names}}") grep -q "rm -f sklubot-sklubot-1" "${log}" 2>/dev/null || printf 'sklubot-sklubot-1\\nsklubot-docker-proxy-1\\nsklubot-caddy-1\\nsklubot-desktop-image-1\\n' ;;
@@ -29,6 +29,7 @@ case "$*" in
   "network ls --format {{.Name}}") grep -q "network rm sklubot_net" "${log}" 2>/dev/null && echo bridge || printf 'bridge\\nsklubot_net\\nsklubot_docker\\n' ;;
   "image ls --format {{.Repository}}:{{.Tag}}") printf 'sklubot-server:latest\\nsklubot-desktop:latest\\ntecnativa/docker-socket-proxy:v0.5.0\\ncaddy:2\\npostgres:16\\n' ;;
   "image rm caddy:2") echo "image is being used by running container" >&2; exit 1 ;;
+  "run --rm -v sklubot_data:/data sklubot-server node --no-warnings -e"*) printf '{"integrity":"ok","userVersion":2,"counts":{"users":1,"bots":2,"rows":3}}' ;;
 esac
 exit 0
 `);

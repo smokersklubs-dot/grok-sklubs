@@ -13,8 +13,8 @@ import { audit, bots, clip, newId, now, rows, settings, users, type BotRecord } 
  * next step — an action already started finishes first — and a card asks: continue (up to the next checkpoint), raise
  * (doubles it for this piece of work) or stop. Nothing done is lost: the history stays, and "continue" picks it up.
  *
- * With a model the server has no price for (a subscription tool, an unknown model), nothing is counted: there is no
- * checkpoint for that work.
+ * A subscription tool (Claude Code, Codex) has no per-token charge: nothing is counted for it. A model without a known
+ * price counts at the conservative estimate (usage.ts UNKNOWN_ESTIMATE), so its work still meets its checkpoint.
  */
 
 /** The scope each bot's running turn bills to (in memory: a restart begins a new turn anyway). */

@@ -686,11 +686,15 @@ export interface DeskTestRun {
   shots: string[];
   error: string | null;
 }
-export interface SubscriptionUsage { engine: Engine; fiveHour: number | null; sevenDay: number | null; resetsAt: number | null; at: number }
+/** A subscription tool's windows (fractions 0–1) and, in a summary, this month's tokens of its turns (from `usage`). */
+export interface SubscriptionUsage { engine: Engine; fiveHour: number | null; sevenDay: number | null; resetsAt: number | null; at: number; inputTokens?: number; outputTokens?: number; turns?: number }
 export interface UsageSummary {
   month: string;
-  totals: { inputTokens: number; outputTokens: number; turns: number; costUsd: number };
-  byBot: { botId: string; name: string; inputTokens: number; outputTokens: number; turns: number; costUsd: number }[];
+  /** costUsd: known costs only. unknownTokens: tokens of calls to a model without a price; estimatedUsd: their conservative estimate (counted by budgets). */
+  totals: { inputTokens: number; outputTokens: number; turns: number; costUsd: number; unknownTokens: number; estimatedUsd: number };
+  byBot: { botId: string; name: string; inputTokens: number; outputTokens: number; turns: number; costUsd: number; unknownTokens: number; estimatedUsd: number }[];
+  /** Models used this month without a known price ("coût inconnu"). */
+  unknownModels: string[];
   budgetUsd: number | null;
   /** Latest known use of the subscription windows (fractions 0–1), per engine. */
   subscriptions: SubscriptionUsage[];

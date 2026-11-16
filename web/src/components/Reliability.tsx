@@ -4,7 +4,7 @@ import { useT } from "../i18n";
 import type { ModelOption, ReliabilitySettings } from "../types";
 import { Icon } from "./Icon";
 import { ErrorNote, IconButton, Loading } from "./ui";
-import { ApiProvidersSection } from "./Wave9";
+import { ApiProvidersSection, ServerModelPricesSection } from "./Wave9";
 
 /** The models offered on this server (API models only: subscription engines run a different kind of turn). */
 export function useApiModels(reload = 0) {
@@ -92,6 +92,7 @@ export function ModelsSection() {
       <p className="muted">{t("models.intro")}</p>
       <ErrorNote onDismiss={() => setError(null)}>{error}</ErrorNote>
       <ApiProvidersSection onChanged={() => setReload((n) => n + 1)} />
+      <ServerModelPricesSection />
       {!state || !models ? <Loading /> : (
         <>
           <h3 className="pane-heading">{t("models.fallbacks")}</h3>

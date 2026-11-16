@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { q } from "./db.js";
 import type { ThirdPartySpend } from "./shared.js";
 import { bots, newId, now, settings } from "./store.js";
-import { record as recordUsage } from "./usage.js";
+import { record as recordUsage, spentThisMonth } from "./usage.js";
 
 /**
  * Wave 7 (spec 08) — what paid third-party tools cost (A4) and a cache for read-only data calls (A5).
@@ -43,7 +43,8 @@ function reservedForUser(userId: string): number {
   return q.get<{ s: number | null }>("SELECT SUM(reserved_micros) AS s FROM tool_spend WHERE user_id = ? AND status = 'reserved' AND created_at >= ?", userId, monthStart())?.s ?? 0;
 }
 function monthUsage(userId: string): number {
-  return toMicros(q.get<{ c: number | null }>("SELECT SUM(cost_usd) AS c FROM usage WHERE user_id = ? AND at >= ?", userId, monthStart())?.c ?? 0);
+  // Model calls whose price is unknown count at their conservative estimate, like the monthly budget (usage.ts).
+  return toMicros(spentThisMonth(userId, monthStart()));
 }
 
 export type Reservation =

@@ -62,8 +62,9 @@ Sur le VPS, dans `/opt/sklubot` :
 | Pour… | Commande |
 |---|---|
 | Ajouter ou changer la clé Claude, le domaine | `nano .env` puis `docker compose -f docker-compose.vps.yml up -d` |
-| Mettre à jour Sklubot | `bash deploy/update.sh` |
-| Sauvegarder les données | `bash deploy/backup.sh` |
+| Mettre à jour Sklubot (fait d'abord une sauvegarde) | `bash deploy/update.sh` |
+| Sauvegarder les données (sans arrêt ; chiffrement, rotation, copie distante : [SAUVEGARDE.md](SAUVEGARDE.md)) | `bash deploy/backup.sh` |
+| Vérifier qu'une sauvegarde se restaure (copie isolée, détruite à la fin) | `bash deploy/restore-drill.sh` |
 | Voir ce qui se passe | `docker compose -f docker-compose.vps.yml logs -f sklubot` |
 | Arrêter | `docker compose -f docker-compose.vps.yml down` |
 | Recevoir un lien de connexion (mot de passe perdu) | `docker compose -f docker-compose.vps.yml exec sklubot node server/dist/sign-in-link.js ton@adresse.fr` |
