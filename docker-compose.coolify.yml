@@ -63,6 +63,8 @@ services:
       # Vague 6 — voix serveur (profil « voice » ci-dessous) : whisper.cpp + Piper sur le réseau interne. Vides = appels par le navigateur.
       VOICE_STT_URL: "${SKLUBOT_VOICE_STT_URL:-}"
       VOICE_TTS_URL: "${SKLUBOT_VOICE_TTS_URL:-}"
+      # Kokoro (profil « kokoro » ci-dessous), voix gratuites auto-hébergées, une par bot possible : http://kokoro:8880. Vide = pas de Kokoro.
+      VOICE_KOKORO_URL: "${SKLUBOT_VOICE_KOKORO_URL:-}"
       # Vague 6 — adresse e-mail propre aux bots : domaine dont le MX pointe vers ce serveur. Le récepteur écoute sur 2525
       # dans le conteneur (pas de privilège pour le port 25) ; publier le port 25 : docker-compose.mail.yml.
       MAIL_DOMAIN: "${SKLUBOT_MAIL_DOMAIN:-}"
@@ -92,6 +94,7 @@ services:
     networks:
       - default
       - docker
+      - voice
     expose:
       - "3000"
     healthcheck:
@@ -164,12 +167,33 @@ services:
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
 
+  # ── Kokoro : synthèse vocale gratuite auto-hébergée, des dizaines de voix, une voix par bot (facultatif) ──
+  # Kokoro-FastAPI (https://github.com/remsky/Kokoro-FastAPI, Apache-2.0), modèle Kokoro-82M (Apache-2.0,
+  # https://huggingface.co/hexgrad/Kokoro-82M), image CPU officielle épinglée, modèles inclus dans l'image.
+  # Activer : docker compose --profile kokoro up -d  puis  SKLUBOT_VOICE_KOKORO_URL=http://kokoro:8880 (et redémarrer Sklubot).
+  # Mémoire : environ 1 à 2 Go de RAM en marche (modèle de 82 M paramètres + PyTorch CPU) — plafonnée par KOKORO_MEM_LIMIT.
+  # Réseau : seulement « voice » (interne, sans Internet), que seule l'application rejoint — ni publié, ni joignable
+  # par les ordinateurs des bots.
+  kokoro:
+    image: "${KOKORO_IMAGE:-ghcr.io/remsky/kokoro-fastapi-cpu:v0.10.0}"
+    profiles: ["kokoro"]
+    restart: unless-stopped
+    mem_limit: "${KOKORO_MEM_LIMIT:-3g}"
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    networks:
+      - voice
+
 networks:
   default:
     name: sklubot_net
   # Interne : l'application et le proxy Docker seulement (pas les ordinateurs des bots, pas Internet).
   docker:
     name: sklubot_docker
+    internal: true
+  # Interne : l'application et Kokoro seulement (pas les ordinateurs des bots, pas Internet).
+  voice:
+    name: sklubot_voice
     internal: true
 
 volumes:

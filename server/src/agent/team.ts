@@ -2,6 +2,7 @@ import { emit } from "../bus.js";
 import { tr } from "../i18n.js";
 import { bots, clip, newId, rows, users, type BotRecord, type UserRecord } from "../store.js";
 import { enqueue, isPaused } from "./loop.js";
+import { postBudget, roomChannel } from "./roombudget.js";
 
 export const MAX_HOPS = 3;
 export const MAX_HELPERS = 4;
@@ -129,6 +130,8 @@ function mentioned(text: string, members: BotRecord[]): BotRecord[] {
  * mentioned, the bots already in that thread (or the bot whose message started it) answer, else the room's rule.
  */
 export function dispatchToRoom(room: BotRecord, user: UserRecord, text: string, fromBot: BotRecord | null, depth: number, tainted = false, thread = 0) {
+  // A human wrote in the room: its anti-loop breaker closes and its counters start over (roombudget.ts).
+  if (!fromBot) postBudget.human(room.userId, roomChannel(room.id));
   // A member that belongs to someone else (however it got on the list) is never woken by this room.
   const all = room.memberIds.map((id) => bots.byId(id)).filter((b): b is BotRecord => !!b && b.kind === "agent" && b.userId === room.userId);
   // "Pause": a paused member is skipped and the room goes on with the others. One that was called by name says so in the

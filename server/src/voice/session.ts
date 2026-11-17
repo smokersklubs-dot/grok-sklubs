@@ -34,6 +34,8 @@ export const VOICE_PATH = /^\/api\/voice\/([\w-]{1,80})$/;
 export const SAMPLE_RATE = 16000;
 const MIN_UTTERANCE_MS = 250;
 const MAX_CALL_MS = 60 * 60_000;
+/** Sentences being synthesized at once, ahead of playback (Fish Audio's smallest plan allows 5 concurrent requests). */
+const PREFETCH = 2;
 
 /** What can be read out: no code, links, markdown or ids — the words only. */
 export function speakableText(s: string): string {
@@ -141,6 +143,8 @@ export class VoiceSession {
   bargeIn() {
     this.epoch++;
     this.bargeIns++;
+    this.cut.abort();
+    this.cut = new AbortController();
     this.unplayed.clear();
     for (const seq of this.cursor.keys()) this.silenced.add(seq);
     this.json({ type: "barge_in" });
@@ -195,14 +199,32 @@ export class VoiceSession {
     if (!streaming) { this.buffers.delete(seq); this.silenced.add(seq); this.cursor.delete(seq); }
   }
 
+  /**
+   * Sentences are synthesized ahead (up to PREFETCH at once, so the next one is ready when the current one ends — no gap
+   * while the speech service works) and sent strictly in order. A barge-in (new epoch) drops every one not yet sent.
+   */
+  private prefetching = 0;
+  private cut = new AbortController();
+  private waiting: (() => void)[] = [];
+  private slot(): Promise<void> {
+    if (this.prefetching < PREFETCH) { this.prefetching++; return Promise.resolve(); }
+    return new Promise((r) => this.waiting.push(() => { this.prefetching++; r(); }));
+  }
+  private release() { this.prefetching--; this.waiting.shift()?.(); }
+
   private speak(text: string) {
     const epoch = this.epoch;
     this.ttsPending++;
+    const audio: Promise<Buffer | null> = this.slot().then(async () => {
+      // Cancelled with its epoch (barge-in, hang-up): a sentence nobody will hear is not paid for to the end.
+      try { return epoch !== this.epoch || this.closed ? null : await this.d.tts(text, AbortSignal.any([this.cut.signal, AbortSignal.timeout(30_000)])); } finally { this.release(); }
+    });
+    audio.catch(() => {}); // handled in order below
     this.ttsQueue = this.ttsQueue.then(async () => {
       try {
         if (epoch !== this.epoch || this.closed) return;
-        const wav = await this.d.tts(text);
-        if (epoch !== this.epoch || this.closed) return;
+        const wav = await audio;
+        if (!wav || epoch !== this.epoch || this.closed) return;
         const id = ++this.audioId;
         this.unplayed.add(id);
         const last = this.transcript[this.transcript.length - 1];
@@ -210,6 +232,7 @@ export class VoiceSession {
         this.json({ type: "audio", id, text, mime: "audio/wav", ms: wavDurationMs(wav) });
         this.d.send(wav);
       } catch (err) {
+        if (epoch !== this.epoch || this.closed) return; // cancelled by a barge-in or the hang-up: not an error
         this.json({ type: "error", message: `text-to-speech: ${(err as Error).message}` });
       } finally { this.ttsPending--; }
     });
@@ -220,6 +243,7 @@ export class VoiceSession {
 
   close() {
     this.closed = true;
+    this.cut.abort();
     this.stopPartials();
     this.unplayed.clear();
   }
@@ -239,7 +263,7 @@ export function voiceUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer)
   // The owner, or someone of the workspace whose role lets them talk to this bot (wave 6).
   const access = botAccess(user.id, m[1]);
   if (!access || !access.canTalk || access.bot.kind !== "agent") { refuse(socket, 404, "Not Found"); return true; }
-  if (voiceStatus(access.bot.userId).mode !== "server") { refuse(socket, 409, "Conflict"); return true; }
+  if (voiceStatus(access.bot.userId, access.bot.id).mode !== "server") { refuse(socket, 409, "Conflict"); return true; }
   wss.handleUpgrade(req, socket, head, (ws) => runCall(ws, access.bot, user, access.owner ? null : { role: access.role!, workspace: access.share!.workspaceName }));
   return true;
 }
@@ -290,7 +314,8 @@ function runCall(ws: WebSocket, bot: BotRecord, user: UserRecord, member: { role
     if (msg.type === "hello" && !session) {
       if (Number(msg.sampleRate) !== SAMPLE_RATE) { ws.close(4400, "16 kHz PCM only"); return; }
       stt = sttFor(bot.userId, typeof msg.lang === "string" ? msg.lang : undefined);
-      tts = ttsFor(bot.userId);
+      // The bot speaks with its own voice when it has one (voice/botvoice.ts), else the account's.
+      tts = ttsFor(bot.userId, { botId: bot.id });
       if (!stt || !tts) { ws.close(4409, "voice services unavailable"); return; }
       const current = bots.byId(bot.id)!;
       session = new VoiceSession({
@@ -314,7 +339,7 @@ function runCall(ws: WebSocket, bot: BotRecord, user: UserRecord, member: { role
         botBusy: () => getLive(bot.id).running,
       });
       callId = callStarted(current, user.locale);
-      send(JSON.stringify({ type: "ready", callId, stt: settings.stt.provider, tts: settings.tts.provider }));
+      send(JSON.stringify({ type: "ready", callId, stt: settings.stt.provider, tts: voiceStatus(bot.userId, bot.id).tts ?? settings.tts.provider }));
       return;
     }
     if (!session) return;

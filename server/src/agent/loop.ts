@@ -43,6 +43,7 @@ import { balancedCut, compactHistory, contextWindowOf, estimateTokens, prepareMe
 import { jobs, setJobBlocked, setJobWaker, startJobWatch } from "../jobs.js";
 import { engineBlock, hostedMode, isHostedStop, isPlanLimit, operatorBlock, operatorPaid, postStopNotice } from "../hosted.js";
 import { pauses } from "../pauses.js";
+import { callSignal, EngineGone, endWatch, isWatchStop, takeSwitch, TurnStalled, watchKind, watchNextModel, watchOutput, watchTool, watchTurn, watchWait, type WatchHandle } from "./watch.js";
 
 /** A skill the user asked for with "/skill <name>" in the composer. */
 export interface ForcedSkill { name: string; body: string; from?: string }
@@ -498,11 +499,14 @@ export async function newTurn(bot: BotRecord, user: UserRecord, depth: number, s
  * what the tool already did and said, so nothing done is done twice, and it gets the recent conversation (a subscription
  * keeps its own session, which the backup cannot read).
  */
-async function engineFallback(bot: BotRecord, user: UserRecord, trigger: Exclude<Trigger, { kind: "resume" }>, thread: number, failed: Turn, o: { failure: string; steps: number[]; prompt: string; backup: string; extra: Block[] }): Promise<Turn> {
+async function engineFallback(bot: BotRecord, user: UserRecord, trigger: Exclude<Trigger, { kind: "resume" }>, thread: number, failed: Turn, o: { failure: string; steps: number[]; prompt: string; backup: string; extra: Block[]; switched?: boolean }): Promise<Turn> {
   const loc = user.locale;
   const tool = engineOf(bot.model) === "codex" ? "Codex" : "Claude Code";
-  rows.append(bot, { kind: "notice", tone: "info", text: tr(loc, "{tool} failed ({detail}). I am carrying on with the backup model {next}.", { tool, detail: clip(o.failure, 160), next: modelLabel(o.backup, user.id) }) });
-  audit(user.id, "system", `${bot.name}: ${tool} failed (${clip(o.failure, 160)}), switched to the backup model ${o.backup}`, bot.id);
+  // "Switch AI" (watch.ts): its notice already says where the message went.
+  if (!o.switched) {
+    rows.append(bot, { kind: "notice", tone: "info", text: tr(loc, "{tool} failed ({detail}). I am carrying on with the backup model {next}.", { tool, detail: clip(o.failure, 160), next: modelLabel(o.backup, user.id) }) });
+    audit(user.id, "system", `${bot.name}: ${tool} failed (${clip(o.failure, 160)}), switched to the backup model ${o.backup}`, bot.id);
+  }
   const turn = await newTurn(bot, user, failed.depth, failed.signal);
   turn.thread = thread;
   turn.modelRef = o.backup;
@@ -526,7 +530,9 @@ async function engineFallback(bot: BotRecord, user: UserRecord, trigger: Exclude
   const recent = rows.recentMessages(bot.id, bot.generation, 10, thread).filter((r) => r.body.kind === "message")
     .map((r) => r.body.kind === "message" ? `${r.body.role === "user" ? "User" : "You"}: ${clip(r.body.text.replace(/\s+/g, " "), 600)}` : "");
   const note = [
-    `[System: your subscription tool (${tool}) failed during this turn (${clip(o.failure, 300)}). You are now carrying on with this turn on a backup model, with your own tools.`,
+    o.switched
+      ? `[System: your subscription tool (${tool}) did not answer this message at all, so the user moved it to a backup model: you. Nothing has been done or said for it yet. Carry on with this turn with your own tools.`
+      : `[System: your subscription tool (${tool}) failed during this turn (${clip(o.failure, 300)}). You are now carrying on with this turn on a backup model, with your own tools.`,
     done.length ? `Before it failed, it already did this — do NOT do any of it again; check the current state first when it matters:\n${done.join("\n")}` : "It had not run any action yet.",
     failed.lastText ? `It already told the user: "${clip(failed.lastText, 1500)}"` : "",
     recent.length ? `The recent conversation, oldest first (for context; the subscription tool's own session is not available to you):\n${recent.join("\n")}` : "",
@@ -591,6 +597,11 @@ async function runScopedTurn(botId: string, trigger: Trigger, thread: number): P
   setLive(user.id, botId, { running: true, activity: { kind: "thinking", since: Date.now() }, awaiting: null, startedAt: Date.now(), thread, steps: 0, caption: null });
   let turn: Turn | null = null;
   let failed = "";
+  /** The turn watch (watch.ts): started once the AI itself is asked, ended with the turn. */
+  let watch: WatchHandle | null = null;
+  const startWatch = (kind: "engine" | "api") => {
+    watch ??= watchTurn({ bot, locale: user.locale, controller, kind, engine: kind === "engine" ? engineOf(bot.model) : null, thread, waitsUser: () => !!turn?.waitsUser });
+  };
   activeTurns.begin(botId);
   bgTaskHooks.started(bot);
   if (trigger.kind === "user" && trigger.member) actors.set(botId, trigger.member.id); else actors.delete(botId);
@@ -638,6 +649,9 @@ async function runScopedTurn(botId: string, trigger: Trigger, thread: number): P
         const prompt = note + (heard ? heard + "\n" : "") + inThread + goalLine + words + forced + extraText(extra);
         let outcome: EngineOutcome | null = null;
         let thrown: unknown = null;
+        startWatch("engine");
+        // "Switch AI" under the first-reply notice: the first backup model, when there is one and money left for it.
+        watchNextModel(botId, () => (overBudget(user.id) ? undefined : modelChain(bot).slice(1)[0]));
         try {
           outcome = await runEngineTurn(turn, prompt, trigger.kind === "user" ? trigger.attachments ?? [] : []);
         } catch (err) {
@@ -646,11 +660,14 @@ async function runScopedTurn(botId: string, trigger: Trigger, thread: number): P
           thrown = err;
         } finally { if (timer) clearTimeout(timer); }
         const failure = thrown ? clip(String((thrown as Error)?.message ?? thrown), 300) : outcome?.failure ?? "";
+        // The user moved this message to the next model before the tool said anything (watch.ts "Switch AI").
+        const switched = !thrown && outcome?.switched ? takeSwitch(botId) : null;
         // The subscription tool failed: the turn goes on with the first backup API model, if there is one (and money left).
-        const backup = failure ? modelChain({ ...bot, model: bot.model }).slice(1)[0] : undefined;
+        const backup = switched ?? (failure ? modelChain({ ...bot, model: bot.model }).slice(1)[0] : undefined);
         if (failure) engineFailed = failure;
         if (!backup || overBudget(user.id)) { if (thrown) throw thrown; throw new EngineDone(); }
-        turn = await engineFallback(bot, user, trigger, thread, turn, { failure, steps: outcome?.steps ?? [], prompt, backup, extra });
+        turn = await engineFallback(bot, user, trigger, thread, turn, { failure: switched ? "no answer" : failure, steps: outcome?.steps ?? [], prompt, backup, extra, switched: !!switched });
+        watchKind(botId, "api");
       } else {
       if (overBudget(user.id)) {
         rows.append(bot, { kind: "notice", tone: "warn", text: tr(user.locale, "This month's budget is used up, so I'm paused. Raise or clear the budget in Settings → Usage to continue.") });
@@ -688,6 +705,7 @@ async function runScopedTurn(botId: string, trigger: Trigger, thread: number): P
       }
     }
     if (goalRound) turn.goalId = goalRound.id;
+    startWatch("api");
     await modelLoop(turn);
     // A helper's last words go back to whoever started it.
     if (bot.parentId && turn.lastText && !paused.get(botId) && !bgTaskHooks.isTaskHelper(botId)) {
@@ -703,7 +721,8 @@ async function runScopedTurn(botId: string, trigger: Trigger, thread: number): P
     if (err instanceof EngineDone) { finishEngineTurn(bot, user, trigger, turn); return; }
     const stopped = controller.signal.aborted;
     const timedOut = stopped && isEngineTimeout(controller.signal.reason);
-    failed = timedOut ? "timed out" : stopped ? "stopped" : clip(String((err as Error)?.message ?? err), 200);
+    const watchStop = stopped && isWatchStop(controller.signal.reason) ? controller.signal.reason : null;
+    failed = timedOut ? "timed out" : watchStop instanceof EngineGone ? "the subscription tool stopped" : watchStop ? "stalled" : stopped ? "stopped" : clip(String((err as Error)?.message ?? err), 200);
     // Wave 8: a computer that could not start or work because its disk is full gets a disk check (and maybe a card).
     if (!stopped) noteDiskTrouble(bot, String((err as Error)?.message ?? err));
     if (bots.byId(botId)) {
@@ -713,6 +732,17 @@ async function runScopedTurn(botId: string, trigger: Trigger, thread: number): P
         const minutes = Math.round((controller.signal.reason as EngineTimeout).limitMs / 60_000);
         rows.append(bot, { kind: "notice", tone: "warn", text: tr(user.locale, "I stopped this turn after {min} minutes: that is the time limit for one turn on a subscription. What I did so far is kept. Press Continue, or just tell me to continue, to pick it back up.", { min: minutes }), action: { kind: "continue", status: "pending", reason: "timeout" } });
         audit(user.id, "system", `${bot.name}: subscription turn stopped at its time limit (${minutes} min)`, bot.id);
+      } else if (watchStop instanceof EngineGone) {
+        // The tool's process ended in the computer while the turn still waited on it (watch.ts): said at once, with
+        // Continue, instead of waiting for the time limit. What it did and said is kept (its session too).
+        const tool = engineOf(bot.model) === "codex" ? "Codex" : "Claude Code";
+        rows.append(bot, { kind: "notice", tone: "warn", text: tr(user.locale, "{tool} stopped on my computer without finishing this turn. What I did so far is kept. Press Continue, or just tell me to continue, to pick it back up.", { tool }), action: { kind: "continue", status: "pending", reason: "gone" } });
+        audit(user.id, "system", `${bot.name}: ${tool} ended without finishing the turn`, bot.id);
+      } else if (watchStop instanceof TurnStalled) {
+        // "Stop and resume" under the stall notice (watch.ts; the notice says so): the work goes on in a new turn, as with
+        // Continue after the time limit. A goal round needs none: the goal's next round picks it up.
+        if (!(trigger.kind === "system" && trigger.goalRound))
+          enqueue(botId, { kind: "system", text: STALL_CONTINUE_TEXT, resumeOf: "steps", thread: thread || undefined, tainted: turn?.tainted || undefined, depth: turn?.depth, origin: turn?.origin ?? (trigger.kind === "resume" ? "resume" : originOf(trigger)), spendScope: turn?.spendKey });
       } else if (isHostedStop(err)) {
         postStopNotice(bot, err.reason, { background: trigger.kind !== "user" && trigger.kind !== "resume" });
       } else if (isPlanLimit(err)) {
@@ -729,6 +759,7 @@ async function runScopedTurn(botId: string, trigger: Trigger, thread: number): P
     }
     if (!stopped && !isHostedStop(err) && !isPlanLimit(err)) console.error(`[turn ${bot.name}]`, err);
   } finally {
+    endWatch(watch);
     turnEnded(bot, snapBase, thread);
     endScope(botId);
     activeTurns.end(botId);
@@ -765,7 +796,7 @@ async function runScopedTurn(botId: string, trigger: Trigger, thread: number): P
     // Goal mode: the next round of an active goal starts here, unless the bot now waits on the user (goals.ts).
     try {
       const now = bots.byId(botId);
-      const stopped = controller.signal.aborted && !isEngineTimeout(controller.signal.reason);
+      const stopped = controller.signal.aborted && !isEngineTimeout(controller.signal.reason) && !isWatchStop(controller.signal.reason);
       if (now?.kind === "agent") goalAfterTurn(now, { thread, stopped, failed: controller.signal.aborted ? "" : failed || engineFailed, waitsUser: !!turn?.waitsUser, loopStop: turn?.loopStop ? loopStopText(turn.loopStop) : "", tainted: !!turn?.tainted });
     } catch (err) { console.error(`[goal ${botId}]`, err); }
   }
@@ -826,6 +857,8 @@ async function modelLoop(turn: Turn) {
   const chain = modelChain({ ...bot, model: turn.modelRef });
   let at = 0;
   let { provider, model } = resolveModel(chain[0], turn.user.id);
+  // "Switch AI" under the first-reply notice (watch.ts): the next model of this chain.
+  watchNextModel(bot.id, () => chain[at + 1]);
   const rel = settings.reliability(turn.user.id);
   const caption = new Caption(turn);
   /** A reply cut off by the output limit: its row stays open and the continuation is written into it. */
@@ -843,17 +876,18 @@ async function modelLoop(turn: Turn) {
       return;
     }
     // A long turn nearing the model's context window summarises its older steps first (context.ts).
-    if (!carry) await compactIfLong(turn, provider, model);
+    if (!carry) { const done = watchWait(bot.id); try { await compactIfLong(turn, provider, model); } finally { done(); } }
     const stream: StreamingRow = carry ?? new StreamingRow(turn);
     carry = null;
     const call = () => provider.runTurn({
-      model, system: turn.system, tools: turn.tools, effort: bot.effort as Effort, webSearch: !bot.disabledTools.includes("web"), signal: turn.signal,
+      // The turn's stop, and "Switch AI" for this call only (watch.ts).
+      model, system: turn.system, tools: turn.tools, effort: bot.effort as Effort, webSearch: !bot.disabledTools.includes("web"), signal: callSignal(bot.id, turn.signal),
       // Old pictures dropped (only the latest screenshots of this turn are sent again), old long tool results pruned.
       messages: prepareMessages(history.load(bot.id, turn.generation, turn.thread)),
       onText: (delta) => { if (!stream.started) activity(turn, "writing"); stream.push(delta); },
       onReasoning: (delta) => caption.push(delta),
       // The provider's own web search brings outside content into the turn just like ours.
-      onToolStart: (_id, name) => { if (name === "web_search") { turn.tainted = true; activity(turn, "searching"); } },
+      onToolStart: (_id, name) => { watchOutput(bot.id); if (name === "web_search") { turn.tainted = true; activity(turn, "searching"); } },
     });
     let result: TurnResult | null = null;
     let overflowRetried = false;
@@ -862,6 +896,17 @@ async function modelLoop(turn: Turn) {
         result = await call();
       } catch (err) {
         if (turn.signal.aborted) { stream.finish(); throw err; }
+        // The user moved this message to the next model while this one had said nothing (watch.ts): on to it at once.
+        const to = takeSwitch(bot.id);
+        if (to) {
+          stream.rollback(tr(loc, "The reply was interrupted. Trying again…"));
+          const i = chain.indexOf(to, at + 1);
+          at = i > at ? i : at + 1;
+          attempt = 0;
+          ({ provider, model } = resolveModel(chain[at], turn.user.id));
+          turn.modelRef = chain[at];
+          continue;
+        }
         // Hosted mode: the plan stopped this model (budget spent on the operator's keys, own keys only, suspended). The next
         // model of the chain may be the account's own key: tried at once, without a retry or a "not answering" notice.
         if (isHostedStop(err)) {
@@ -880,8 +925,9 @@ async function modelLoop(turn: Turn) {
         if (err instanceof ProviderError && err.code === "context_length" && !overflowRetried) {
           overflowRetried = true;
           const window = contextWindowOf(turn.user.id, turn.modelRef);
+          const waited = watchWait(bot.id);
           const done = await compactHistory({ bot, generation: turn.generation, thread: turn.thread, system: turn.system, tools: turn.tools, provider, model, signal: turn.signal, locale: loc }, Math.round(window * 4 * 0.05))
-            .catch((e) => { console.error(`[compaction ${bot.name}]`, (e as Error)?.message ?? e); return false; });
+            .catch((e) => { console.error(`[compaction ${bot.name}]`, (e as Error)?.message ?? e); return false; }).finally(waited);
           if (done) continue;
         }
         const wait = isTransient(err) && attempt < rel.maxRetries ? backoffDelay(attempt, err instanceof ProviderError ? err.retryAfterMs : null) : null;
@@ -904,6 +950,8 @@ async function modelLoop(turn: Turn) {
       }
     }
     record(turn.user.id, bot.id, result.model, result.usage);
+    // A reply that did not stream (or only called tools) is the AI's answer all the same.
+    if (result.content.length) watchOutput(bot.id);
     if (result.sources?.length) { turn.tainted = true; for (const src of result.sources) { const h = hostOf(src.url); if (h) turn.hosts.add(h); } }
     const calls = result.content.filter((b): b is ToolUseBlock => b.type === "tool_use");
     history.append(bot.id, turn.generation, { role: "assistant", content: result.content }, turn.thread);
@@ -1010,6 +1058,8 @@ function stepLimitReached(turn: Turn) {
 const CONTINUE_TEXT = "You stopped your last turn at the step limit. Pick the work back up where you left off — do not redo what is already done — and finish it, or say plainly where things stand.";
 
 const TIMEOUT_CONTINUE_TEXT = "Your last turn was stopped because it reached its time limit. Pick the work back up where you left off — check what is already done, do not redo it — and finish it, or say plainly where things stand. If something was hanging (a command that never returned, a page that never loaded), do it another way.";
+const GONE_CONTINUE_TEXT = "Your subscription tool stopped on your computer in the middle of your last turn, without finishing it. Pick the work back up where you left off — check what is already done, do not redo it — and finish it, or say plainly where things stand.";
+const STALL_CONTINUE_TEXT = "Your last turn made no progress for several minutes (nothing came from you and no tool was running), so the user stopped it and asked you to pick the work back up. Check what is already done, do not redo it, and finish the job — if something was hanging (a command that never returned, a page that never loaded), do it another way — or say plainly where things stand.";
 const BUSY_CONTINUE_TEXT = "Your last turn could not start because every computer of the server was busy. Carry on with what was asked now.";
 
 /** "Continue" pressed under a step-limit (or time-limit, or busy-computers) notice: resumes the work, once per notice. */
@@ -1019,7 +1069,7 @@ export function continueAfterStepLimit(bot: BotRecord, seq: number): boolean {
   const reason = row.body.action.reason;
   rows.rewrite(bot, bot.generation, seq, { ...row.body, action: { kind: "continue", status: "done", ...(reason ? { reason } : {}) } });
   // The user pressed "Continue" themselves: the work goes on as theirs.
-  enqueue(bot.id, { kind: "system", text: reason === "timeout" ? TIMEOUT_CONTINUE_TEXT : reason === "busy" ? BUSY_CONTINUE_TEXT : CONTINUE_TEXT, resumeOf: "steps", thread: row.thread || undefined, origin: "user" });
+  enqueue(bot.id, { kind: "system", text: reason === "timeout" ? TIMEOUT_CONTINUE_TEXT : reason === "busy" ? BUSY_CONTINUE_TEXT : reason === "gone" ? GONE_CONTINUE_TEXT : CONTINUE_TEXT, resumeOf: "steps", thread: row.thread || undefined, origin: "user" });
   return true;
 }
 
@@ -1045,6 +1095,7 @@ export class Caption {
   private shown = "";
   constructor(private turn: Turn) {}
   push(delta: string) {
+    watchOutput(this.turn.bot.id);
     this.text = (this.text + delta).slice(-4000);
     if (Date.now() - this.last < 500) return;
     this.last = Date.now();
@@ -1081,6 +1132,7 @@ export class StreamingRow {
     else { rows.rewrite(this.turn.bot, this.row.generation, this.row.seq, { kind: "notice", tone: "info", text: note }); this.row = null; }
   }
   push(delta: string) {
+    if (delta) watchOutput(this.turn.bot.id);
     this.buffer += delta;
     if (!this.row) {
       if (!this.buffer.trim()) return;
@@ -1415,6 +1467,8 @@ export async function runReserved(turn: Turn, call: ToolUseBlock, grant: Grant |
   const decision = journalDecision(turn, call.name, grant);
   const exec = reserved ? executions.begin(bot, { tool: call.name, label, detail: describeArgs(withoutQuote(call.input)), hash, approvalId: approvalId || null, grant, thread: turn.thread }) : "";
   let out: ToolOutput;
+  // A tool at work (a command, a background job, an office conversion, a screen action) is not silence (watch.ts).
+  watchTool(bot.id, call.id, true);
   try {
     out = await execute(turn, call);
     activeTurns.acted(bot.id);
@@ -1434,7 +1488,7 @@ export async function runReserved(turn: Turn, call: ToolUseBlock, grant: Grant |
       : { content: `Tool error: ${message}`, isError: true };
     onStatus("error", clip(unknown ? tr(loc, "outcome unknown") : message, 200));
     addJournal({ userId: user.id, botId: bot.id, tool: call.name, label, decision, quote: grant?.quote, reason: clip(message, 200), status: unknown ? "uncertain" : "failed", origin: turn.origin ?? "" });
-  }
+  } finally { watchTool(bot.id, call.id, false); }
   turn.toolsRun = (turn.toolsRun ?? 0) + 1;
   return out;
 }

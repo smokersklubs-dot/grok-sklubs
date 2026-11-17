@@ -5,6 +5,7 @@ import { Readable } from "node:stream";
 import { Hono, type Context } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { streamSSE } from "hono/streaming";
+import { chooseWatch, WatchChoiceRefused } from "./agent/watch.js";
 import { continueAfterStepLimit, decideApproval, enqueue, inQueue, interrupt, noteHandBack, submitUserMessage, type ForcedSkill } from "./agent/loop.js";
 import { cleanProfile, fetchSkillMarkdown, saveImportedSkill, undoRevision } from "./agent/tools-team.js";
 import { xSearchProvider } from "./xsearch.js";
@@ -77,6 +78,7 @@ import { firstTaskIdeas } from "./ideas.js";
 import { guideIndex } from "./agent/guides.js";
 import { callEnded, callStarted } from "./calls.js";
 import { saveVoiceSettings, sttFor, ttsFor, voiceSettings, voiceStatus } from "./voice/providers.js";
+import { registerVoiceRoutes } from "./voice/routes.js";
 import { adminView, approversOf, botAccess, exportWorkspace, invites, resources, SHARED_SETTINGS, sharedBotsFor, sharedBotView, shares, workspaces, WorkspaceError, wsAudit, type BotAccess } from "./workspaces.js";
 import { invalidateAudience } from "./bus.js";
 import { fileDiff, listedPathOk, undoFiles } from "./snapshots.js";
@@ -863,6 +865,20 @@ api.post("/bots/:id/jobs/:jobId/stop", async (c) => {
 api.post("/bots/:id/rows/:seq/continue", (c) => {
   const bot = ownAgent(c);
   if (!continueAfterStepLimit(bot, Number(c.req.param("seq")))) fail(409, "There is nothing to continue here.");
+  return c.json({ ok: true });
+});
+
+/**
+ * A choice under a notice of the turn watch (agent/watch.ts): "wait", "switch" (this message goes on with the next model
+ * of the bot's chain) or "stop" (stopped after no progress, and picked back up).
+ */
+api.post("/bots/:id/rows/:seq/watch", async (c) => {
+  const bot = ownAgent(c);
+  const body = await c.req.json().catch(() => ({})) as { choice?: unknown };
+  const choice = body.choice;
+  if (choice !== "wait" && choice !== "switch" && choice !== "stop") fail(400, "choice must be wait, switch or stop.");
+  try { chooseWatch(bot, Number(c.req.param("seq")), choice as "wait" | "switch" | "stop"); }
+  catch (err) { if (err instanceof WatchChoiceRefused) fail(409, err.message); throw err; }
   return c.json({ ok: true });
 });
 
@@ -2695,7 +2711,7 @@ api.post("/bots/:id/email/routine", async (c) => {
 // ── Wave 6: server-mediated voice ────────────────────────────────────────────
 /** What a call with this bot will use (the bot's owner's services): the server pipeline, or the browser's own speech. */
 api.get("/voice", (c) => c.json({ status: voiceStatus(c.get("user").id), settings: voiceSettings(c.get("user").id) }));
-api.get("/bots/:id/voice", (c) => c.json({ status: voiceStatus(accessBot(c, "talk").bot.userId) }));
+api.get("/bots/:id/voice", (c) => { const a = accessBot(c, "talk"); return c.json({ status: voiceStatus(a.bot.userId, a.bot.id) }); });
 api.put("/voice", async (c) => {
   const user = c.get("user");
   const settings = saveVoiceSettings(user.id, await body(c));
@@ -2718,3 +2734,5 @@ api.post("/voice/test", async (c) => {
     return c.json({ ok: false, error: clip((err as Error).message, 300) });
   }
 });
+// A voice per bot and the voice pickers (Fish Audio's library, Kokoro): voice/routes.ts.
+registerVoiceRoutes(api);

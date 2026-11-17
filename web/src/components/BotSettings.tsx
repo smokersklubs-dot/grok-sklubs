@@ -21,6 +21,7 @@ import { MODE_IDS } from "./Modals";
 import { ConfirmButton, CopyButton, copyText, Empty, ErrorNote, IconButton, Loading, Modal, Toggle, useTick } from "./ui";
 import { BotRulesAndNudges } from "./Wave5";
 import { runNote } from "./Pause";
+import { BotVoicePicker } from "./VoicePicker";
 
 const EFFORT_IDS: Effort[] = ["low", "medium", "high", "xhigh"];
 const AUTONOMY_IDS: Autonomy[] = ["careful", "balanced", "trusted", "auto"];
@@ -257,6 +258,7 @@ function General({ bot, onClose }: { bot: Bot; onClose: () => void }) {
       </div>
 
       {!isRoom && !bot.access && <ComputerChoice bot={bot} />}
+      {!isRoom && !bot.access && <BotVoicePicker bot={bot} />}
 
       <h3 className="pane-heading">{t("bot.conversation")}</h3>
       <div className="action-row">

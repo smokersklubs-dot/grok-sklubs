@@ -17,6 +17,7 @@ import { MyComputerSection } from "./MyComputer";
 import { JobsList } from "./Wave10";
 import { TeamFolderSection } from "./Wave8";
 import { Icon, Spinner } from "./Icon";
+import { BotVoicePicker } from "./VoicePicker";
 import { Empty, ErrorNote, IconButton, Loading, Toggle } from "./ui";
 
 type Tab = "activity" | "tasks" | "library";
@@ -443,6 +444,7 @@ function VoiceSection({ bot }: { bot: Bot }) {
         </select>
       </div>
       <ErrorNote>{error}</ErrorNote>
+      {!bot.access && <BotVoicePicker bot={bot} />}
       <button
         type="button"
         className={`btn btn-block ${inCall ? "btn-danger" : "btn-accent"}`}

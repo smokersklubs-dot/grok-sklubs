@@ -6,6 +6,7 @@ import type { Bot, BotEmail, InboundMail, MailRelay, VoiceSettings, VoiceStatus,
 import { money, relTime } from "../lib/format";
 import { Icon } from "./Icon";
 import { ConfirmButton, CopyButton, ErrorNote, Loading, Toggle } from "./ui";
+import { useVT } from "./VoicePicker";
 
 /* =====================================================================================
  * Workspaces: members, roles, invitations, shared bots, usage per member, export (wave 6)
@@ -324,6 +325,8 @@ export function VoiceSection() {
   const [status, setStatus] = useState<VoiceStatus | null>(null);
   const [sttKey, setSttKey] = useState("");
   const [ttsKey, setTtsKey] = useState("");
+  const [fishKey, setFishKey] = useState("");
+  const vt = useVT();
   const [error, setError] = useState<string | null>(null);
   const [test, setTest] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -334,8 +337,8 @@ export function VoiceSection() {
     setBusy(true);
     setError(null);
     try {
-      const r = await api<{ settings: VoiceSettings; status: VoiceStatus }>("PUT", "/voice", { mode: s.mode, stt: { provider: s.stt.provider, url: s.stt.url, model: s.stt.model, language: s.stt.language }, tts: { provider: s.tts.provider, url: s.tts.url, model: s.tts.model, voice: s.tts.voice }, bargeIn: s.bargeIn, ...(sttKey ? { sttKey } : {}), ...(ttsKey ? { ttsKey } : {}) });
-      setS(r.settings); setStatus(r.status); setSttKey(""); setTtsKey("");
+      const r = await api<{ settings: VoiceSettings; status: VoiceStatus }>("PUT", "/voice", { mode: s.mode, stt: { provider: s.stt.provider, url: s.stt.url, model: s.stt.model, language: s.stt.language }, tts: { provider: s.tts.provider, url: s.tts.url, model: s.tts.model, voice: s.tts.voice }, bargeIn: s.bargeIn, ...(sttKey ? { sttKey } : {}), ...(ttsKey ? { ttsKey } : {}), ...(fishKey ? { fishKey } : {}) });
+      setS(r.settings); setStatus(r.status); setSttKey(""); setTtsKey(""); setFishKey("");
     } catch (e) { setError(errText(e)); } finally { setBusy(false); }
   };
   const runTest = async () => {
@@ -365,28 +368,41 @@ export function VoiceSection() {
           <select className="input" value={s.stt.provider} onChange={(e) => set({ stt: { ...s.stt, provider: e.target.value as VoiceSettings["stt"]["provider"] } })} aria-label={t("voice.stt")}>
             <option value="whisper-cpp">{t("voice.provider.whisper-cpp")}</option>
             <option value="openai">{t("voice.provider.openai-stt")}</option>
+            <option value="fish">{vt("providerFishStt")}</option>
           </select>
-          <input className="input" value={s.stt.url} onChange={(e) => set({ stt: { ...s.stt, url: e.target.value } })} placeholder={s.stt.provider === "openai" ? "https://api.openai.com" : t("voice.urlServer")} aria-label={t("voice.url")} />
+          {s.stt.provider !== "fish" && <input className="input" value={s.stt.url} onChange={(e) => set({ stt: { ...s.stt, url: e.target.value } })} placeholder={s.stt.provider === "openai" ? "https://api.openai.com" : t("voice.urlServer")} aria-label={t("voice.url")} />}
           <div className="field-inline">
-            <input className="input" value={s.stt.model} onChange={(e) => set({ stt: { ...s.stt, model: e.target.value } })} placeholder={s.stt.provider === "openai" ? "gpt-4o-mini-transcribe" : t("voice.modelServer")} aria-label={t("voice.model")} />
+            <input className="input" value={s.stt.model} onChange={(e) => set({ stt: { ...s.stt, model: e.target.value } })} placeholder={s.stt.provider === "openai" ? "gpt-4o-mini-transcribe" : s.stt.provider === "fish" ? "transcribe-1-pro" : t("voice.modelServer")} aria-label={t("voice.model")} />
             <input className="input input-small" value={s.stt.language} onChange={(e) => set({ stt: { ...s.stt, language: e.target.value } })} placeholder="auto" aria-label={t("voice.language")} />
           </div>
           {s.stt.provider === "openai" && <input className="input" type="password" value={sttKey} onChange={(e) => setSttKey(e.target.value)} placeholder={s.stt.hasKey ? t("voice.keySaved") : t("voice.key")} autoComplete="off" aria-label={t("voice.key")} />}
-          <p className="field-hint">{t(s.stt.provider === "openai" ? "voice.hint.openai" : "voice.hint.whisper")}</p>
+          {s.stt.provider === "fish" && s.tts.provider !== "fish" && <input className="input" type="password" value={fishKey} onChange={(e) => setFishKey(e.target.value)} placeholder={s.fish?.hasKey ? vt("fishKeySaved") : vt("fishKey")} autoComplete="off" aria-label={vt("fishKey")} />}
+          <p className="field-hint">{s.stt.provider === "fish" ? vt("hintFish") : t(s.stt.provider === "openai" ? "voice.hint.openai" : "voice.hint.whisper")}</p>
         </div>
         <div className="voice-card">
           <h3 className="pane-heading"><Icon name="wave" size={15} /> {t("voice.tts")}</h3>
           <select className="input" value={s.tts.provider} onChange={(e) => set({ tts: { ...s.tts, provider: e.target.value as VoiceSettings["tts"]["provider"] } })} aria-label={t("voice.tts")}>
             <option value="piper">{t("voice.provider.piper")}</option>
             <option value="openai">{t("voice.provider.openai-tts")}</option>
+            <option value="fish">{vt("providerFishTts")}</option>
+            <option value="kokoro">{vt("providerKokoro")}</option>
           </select>
-          <input className="input" value={s.tts.url} onChange={(e) => set({ tts: { ...s.tts, url: e.target.value } })} placeholder={s.tts.provider === "openai" ? "https://api.openai.com" : t("voice.urlServer")} aria-label={t("voice.url")} />
+          {s.tts.provider !== "fish" && <input className="input" value={s.tts.url} onChange={(e) => set({ tts: { ...s.tts, url: e.target.value } })} placeholder={s.tts.provider === "openai" ? "https://api.openai.com" : s.tts.provider === "kokoro" ? vt("kokoroUrlPh") : t("voice.urlServer")} aria-label={t("voice.url")} />}
           <div className="field-inline">
-            <input className="input" value={s.tts.voice} onChange={(e) => set({ tts: { ...s.tts, voice: e.target.value } })} placeholder={s.tts.provider === "openai" ? "marin" : "fr_FR-siwis-medium"} aria-label={t("voice.voice")} />
+            <input className="input" value={s.tts.voice} onChange={(e) => set({ tts: { ...s.tts, voice: e.target.value } })} placeholder={s.tts.provider === "openai" ? "marin" : s.tts.provider === "fish" ? vt("fishVoicePh") : s.tts.provider === "kokoro" ? vt("kokoroVoicePh") : "fr_FR-siwis-medium"} aria-label={t("voice.voice")} />
             {s.tts.provider === "openai" && <input className="input" value={s.tts.model} onChange={(e) => set({ tts: { ...s.tts, model: e.target.value } })} placeholder="gpt-4o-mini-tts" aria-label={t("voice.model")} />}
+            {s.tts.provider === "fish" && (
+              <select className="input" value={s.tts.model || "s2.1-pro"} onChange={(e) => set({ tts: { ...s.tts, model: e.target.value } })} aria-label={vt("fishModel")}>
+                <option value="s2.1-pro">s2.1-pro</option>
+                <option value="s2.1-pro-free">{vt("fishModelFree")}</option>
+                <option value="s2-pro">s2-pro</option>
+                <option value="drama-3">drama-3</option>
+              </select>
+            )}
           </div>
           {s.tts.provider === "openai" && <input className="input" type="password" value={ttsKey} onChange={(e) => setTtsKey(e.target.value)} placeholder={s.tts.hasKey ? t("voice.keySaved") : t("voice.key")} autoComplete="off" aria-label={t("voice.key")} />}
-          <p className="field-hint">{t(s.tts.provider === "openai" ? "voice.hint.openai" : "voice.hint.piper")}</p>
+          {s.tts.provider === "fish" && <input className="input" type="password" value={fishKey} onChange={(e) => setFishKey(e.target.value)} placeholder={s.fish?.hasKey ? vt("fishKeySaved") : vt("fishKey")} autoComplete="off" aria-label={vt("fishKey")} />}
+          <p className="field-hint">{s.tts.provider === "fish" ? vt("hintFish") : s.tts.provider === "kokoro" ? vt("hintKokoro") : t(s.tts.provider === "openai" ? "voice.hint.openai" : "voice.hint.piper")}</p>
         </div>
       </div>
       <div className="action-row">

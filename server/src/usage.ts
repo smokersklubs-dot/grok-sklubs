@@ -199,6 +199,21 @@ export function recordEstimate(userId: string, botId: string, label: string, est
   emit(userId, { type: "usage" });
 }
 
+/**
+ * A paid service on the account's OWN key (e.g. Fish Audio's speech, voice/fish.ts), priced from the provider's published
+ * price list: one usage line with that cost (status "reported", like a price the service gives). `payer`: "own" in
+ * hosted mode (the account's key pays, not the operator's), "" otherwise (written exactly as record() does).
+ */
+export function recordServiceCost(userId: string, botId: string, label: string, costUsd: number, payer: string) {
+  const cost = Math.max(0, costUsd);
+  if (payer) q.run("INSERT INTO usage (user_id, bot_id, at, model, input_tokens, output_tokens, cached_tokens, cost_usd, actor_id, price_status, est_cost_usd, payer) VALUES (?, ?, ?, ?, 0, 0, 0, ?, ?, 'reported', 0, ?)",
+    userId, botId, now(), label, cost, botId ? actorHook(botId) : null, payer);
+  else q.run("INSERT INTO usage (user_id, bot_id, at, model, input_tokens, output_tokens, cached_tokens, cost_usd, actor_id, price_status, est_cost_usd) VALUES (?, ?, ?, ?, 0, 0, 0, ?, ?, 'reported', 0)",
+    userId, botId, now(), label, cost, botId ? actorHook(botId) : null);
+  if (botId) { addSpend(botId, cost); noteCost(botId, cost); }
+  emit(userId, { type: "usage" });
+}
+
 function warnUnknown(userId: string, model: string) {
   const key = `${userId}|${model}|${monthStart().label}`;
   if (unknownWarned.has(key)) return;

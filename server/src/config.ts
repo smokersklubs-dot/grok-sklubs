@@ -110,6 +110,15 @@ export const config = {
   snapshotMaxMb: Math.max(10, num("SNAPSHOT_MAX_MB", 300)),
   engineTurnTimeoutMs: Math.max(0, num("ENGINE_TURN_TIMEOUT_MINUTES", 60)) * 60_000,
   /**
+   * The turn watch (agent/watch.ts). FIRST_REPLY_RESCUE_SEC: a turn whose AI has sent nothing at all (no text, thinking,
+   * tool call or progress) for this long gets one notice in its chat (0 = off). STALL_NOTICE_MIN: a turn with no progress
+   * at all for this long gets one notice "seems stuck" (0 = off). ENGINE_CPU_SAMPLE_SEC: how often a subscription turn's
+   * process is looked at in its computer (CPU used, still alive). Fractions are accepted (tests use small values).
+   */
+  firstReplyRescueMs: Math.max(0, num("FIRST_REPLY_RESCUE_SEC", 20)) * 1000,
+  stallNoticeMs: Math.max(0, num("STALL_NOTICE_MIN", 5)) * 60_000,
+  engineSampleMs: Math.max(0.05, num("ENGINE_CPU_SAMPLE_SEC", 15)) * 1000,
+  /**
    * bot_message with wait: true (ask another bot and wait for its answer in the same turn). The default wait, and the
    * most a bot may ask for, in seconds. Past it the answer still arrives later, as a message, like an ordinary bot_message.
    */

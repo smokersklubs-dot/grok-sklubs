@@ -93,7 +93,12 @@ avec 2 Go de mémoire et 2 processeurs chacun (`DESKTOP_MEMORY`, `DESKTOP_CPUS`)
 endort le moins récent des ordinateurs **inactifs** ; un ordinateur occupé (une commande, un tour Claude Code ou Codex)
 n'est jamais endormi : s'ils le sont tous, il attend qu'un se libère (`COMPUTER_WAIT_SEC`, 90 s), puis le dit clairement.
 Un tour Claude Code ou Codex dure au plus `ENGINE_TURN_TIMEOUT_MINUTES` (60 min, 0 = sans limite) : au-delà il est
-arrêté, ce qui a été fait est gardé et un bouton « Continuer » le reprend. La liste des modèles Codex proposés est lue
+arrêté, ce qui a été fait est gardé et un bouton « Continuer » le reprend. Un tour (abonnement ou modèle API) dont l'IA
+ne dit encore rien au bout de `FIRST_REPLY_RESCUE_SEC` (20 s) reçoit une ligne « … ne répond pas encore » (Attendre,
+Changer d'IA pour ce message, Vérifier la connexion) ; sans aucun progrès pendant `STALL_NOTICE_MIN` (5 min), une ligne
+« … semble bloqué » (Continuer d'attendre, Arrêter et reprendre). Une approbation, une question, une pause ou un outil
+en cours ne comptent jamais comme un silence ; un outil Claude Code / Codex dont le processus a disparu de l'ordinateur
+arrête le tour aussitôt, avec « Continuer ». La liste des modèles Codex proposés est lue
 dans Codex lui-même (`codex debug models`, gardée 10 min) ; `CODEX_MODELS` sert de secours.
 
 Sur la page du navigateur, un bot peut agir par **références d'éléments** plutôt que par pixels : `element_snapshot` liste

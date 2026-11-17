@@ -291,9 +291,20 @@ export type RowBody =
   /**
    * `action`: a button under the notice. "continue": the bot stopped at its step limit — or, `reason: "timeout"`, a turn on
    * a subscription tool reached its time limit; `reason: "busy"`, its computer could not start, every one being busy — and can
-   * pick the work back up.
+   * pick the work back up; `reason: "gone"`, the subscription tool's process ended without finishing the turn.
+   * "watch": the turn watch (agent/watch.ts), see WatchNoticeAction.
    */
-  | { kind: "notice"; tone: "info" | "warn" | "error"; text: string; action?: { kind: "continue"; status: "pending" | "done"; reason?: "timeout" | "busy" } | { kind: "settings"; section: string } | HostedNoticeAction };
+  | { kind: "notice"; tone: "info" | "warn" | "error"; text: string; action?: { kind: "continue"; status: "pending" | "done"; reason?: "timeout" | "busy" | "gone" } | { kind: "settings"; section: string } | HostedNoticeAction | WatchNoticeAction };
+
+/**
+ * The turn watch's notice (agent/watch.ts), at most one of each per turn. `watch`: "silent" — the AI has sent nothing yet
+ * (first-reply rescue: "Wait", "Switch AI for this message" when `next` is set, "Check the Claude / ChatGPT connection"
+ * when `engine` is set); "stalled" — no progress for `minutes` ("Keep waiting", "Stop and resume").
+ * `status`: "pending" (the buttons are live), "waiting" (the user chose to wait), "switched" (the message went to `next`),
+ * "stopped" (stopped, and a continuation queued), "settled" (the work moved again), "over" (the turn ended meanwhile).
+ * `next`: the label of the next model of the bot's fallback chain. `engine`: the turn runs on a subscription tool.
+ */
+export interface WatchNoticeAction { kind: "watch"; watch: "silent" | "stalled"; status: "pending" | "waiting" | "switched" | "stopped" | "settled" | "over"; minutes?: number; next?: string; engine?: Engine }
 
 /**
  * Hosted mode: the way forward under a notice that stopped work because of the account's plan (hosted.ts). "budget": the
@@ -818,8 +829,8 @@ export interface InboundMail { id: string; botId: string; from: string; to: stri
 export interface MailRelay { host: string; port: number; secure: boolean; username: string; hasPassword: boolean; fromDomain: string; dkimSelector: string; hasDkimKey: boolean }
 
 /** Server-mediated voice (wave 6). "browser": the browser's own speech recognition and synthesis (the old mode). */
-export const STT_PROVIDERS = ["whisper-cpp", "openai"] as const;
-export const TTS_PROVIDERS = ["piper", "openai"] as const;
+export const STT_PROVIDERS = ["whisper-cpp", "openai", "fish"] as const;
+export const TTS_PROVIDERS = ["piper", "openai", "fish", "kokoro"] as const;
 export type SttProvider = (typeof STT_PROVIDERS)[number];
 export type TtsProvider = (typeof TTS_PROVIDERS)[number];
 /** `url`: the service's base address ("" = the server's own setting); `hasKey`: an API key is saved (sealed) for it. */
@@ -829,7 +840,19 @@ export interface VoiceSettings {
   tts: { provider: TtsProvider; url: string; model: string; voice: string; hasKey: boolean };
   /** Barge-in sensitivity: how loud (0-1 scale) and how long (ms) the user must speak to cut the bot off. */
   bargeIn: { enabled: boolean; minSpeechMs: number };
+  /** Fish Audio (voice/fish.ts): one key (sealed, never returned) for its speech, transcription and voice library. */
+  fish?: { hasKey: boolean };
 }
+/**
+ * A bot's own voice (voice/botvoice.ts), chosen in its settings: from Fish Audio's library (`voiceId` = the voice's public
+ * id there, sent as `reference_id`) or the self-hosted Kokoro (`voiceId` = a Kokoro voice such as "ff_siwis", or a
+ * weighted mix); `name`/`author` as listed; `language` "" = the bot's language.
+ */
+export interface BotVoiceChoice { provider: "fish" | "kokoro"; voiceId: string; name: string; author: string; language: string }
+/** One voice of the self-hosted Kokoro (GET /voice/kokoro/voices): language and gender read from the id's prefix. */
+export interface KokoroVoice { id: string; name: string; language: string; gender: "female" | "male" | ""; grade: string }
+/** One voice of Fish Audio's library as the picker shows it (GET /voice/fish/voices). */
+export interface FishVoice { id: string; title: string; description: string; languages: string[]; tags: string[]; likes: number; uses: number; author: string; licensed: boolean; visibility: string; state: string }
 /** What a call will use: "server" when speech-to-text and text-to-speech are both reachable, else "browser". */
 export interface VoiceStatus { mode: "server" | "browser"; stt: string | null; tts: string | null; reason: string }
 

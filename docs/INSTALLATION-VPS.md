@@ -111,6 +111,34 @@ docker compose -f docker-compose.vps.yml up -d sklubot
 - Réglages → Voix → **Tester** prononce une phrase puis la retranscrit. Sans service configuré, les appels repassent
   tout seuls en mode navigateur.
 
+### Une voix par bot : Kokoro (gratuit) et Fish Audio (payant, clé à toi)
+
+- **Kokoro** (texte → voix, gratuit, auto-hébergé) : [Kokoro-FastAPI](https://github.com/remsky/Kokoro-FastAPI)
+  (Apache-2.0) avec le modèle [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M) (poids Apache-2.0). Image CPU
+  officielle épinglée (`ghcr.io/remsky/kokoro-fastapi-cpu:v0.10.0`, modèles inclus). Une cinquantaine de voix
+  (anglais US/GB, français, espagnol, italien, portugais du Brésil, hindi, japonais, mandarin). Compte **1 à 2 Go de
+  RAM** de plus quand il tourne (plafond `KOKORO_MEM_LIMIT`, 3 Go par défaut) : laisse-le éteint sur un petit VPS.
+
+  ```bash
+  docker compose -f docker-compose.vps.yml --profile kokoro up -d kokoro
+  # puis dans .env :
+  SKLUBOT_VOICE_KOKORO_URL=http://kokoro:8880
+  docker compose -f docker-compose.vps.yml up -d sklubot
+  ```
+
+  Kokoro n'est que sur le réseau interne `sklubot_voice` (sans Internet), que seule l'application rejoint : il n'est
+  ni publié, ni joignable par les ordinateurs des bots. **Coolify** : ajoute `COMPOSE_PROFILES=kokoro` et
+  `SKLUBOT_VOICE_KOKORO_URL=http://kokoro:8880` aux variables, puis redéploie ; si le service `kokoro` n'apparaît pas
+  (version de Coolify qui ignore les profils), lance la commande ci-dessus sur le serveur.
+- **Fish Audio** (payant, facultatif) : chaque compte crée une clé d'API sur
+  [fish.audio](https://fish.audio/app/api-keys/) et la colle dans Réglages → Voix (scellée sur le serveur, jamais
+  renvoyée au navigateur). Seule l'API officielle est utilisée ; les voix sont désignées par leur identifiant public,
+  rien n'est téléchargé. Le modèle `s2.1-pro-free` est gratuit ; les autres sont facturés par Fish Audio (15 $ par
+  million d'octets de texte pour `s2.1-pro`), et chaque phrase lue apparaît dans Usage.
+- Puis, dans les réglages d'un bot → **Voix** : cherche une voix (Fish Audio ou Kokoro), **Écouter**, **Choisir**. Sans
+  voix choisie, le bot parle avec la voix par défaut du compte. Respecte les conditions de Fish Audio et les droits de
+  chaque voix (auteur affiché) ; ne clone jamais la voix de quelqu'un sans son accord.
+
 ## Une adresse e-mail pour chaque bot (facultatif)
 
 Chaque bot peut recevoir des e-mails à sa propre adresse (`juno@bots.ton-domaine.fr`) et répondre par ton relais SMTP.
@@ -172,7 +200,7 @@ taper **OUI**, puis retire, dans cet ordre :
 1. les ordinateurs des bots (arrêtés d'abord : les outils Claude Code / Codex qui y tournent s'arrêtent avec eux) ;
 2. les conteneurs de l'application : Sklubot, le proxy Docker filtrant, Caddy ;
 3. les volumes : données, dossiers des ordinateurs des bots (profils de navigateur, connexions), certificats Caddy ;
-4. les réseaux `sklubot_net` et `sklubot_docker` ;
+4. les réseaux `sklubot_net`, `sklubot_docker` et `sklubot_voice` ;
 5. les images construites ou téléchargées pour Sklubot (une image utilisée par un autre conteneur est gardée) ;
 6. le dossier `/opt/sklubot` (code et `.env`).
 

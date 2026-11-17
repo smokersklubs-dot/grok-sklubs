@@ -10,7 +10,7 @@
 #   2. les conteneurs de l'application : Sklubot, le proxy Docker filtrant (socket proxy), Caddy ;
 #   3. les volumes : données (base, bibliothèques), dossier personnel de chaque ordinateur de bot (profils de navigateur,
 #      connexions), certificats et réglages de Caddy ;
-#   4. les réseaux sklubot_net et sklubot_docker ;
+#   4. les réseaux sklubot_net, sklubot_docker et sklubot_voice ;
 #   5. les images construites ou téléchargées pour Sklubot (une image encore utilisée par autre chose est gardée) ;
 #   6. le dossier d'installation (code, fichier .env).
 # Docker lui-même, le pare-feu et tes autres conteneurs restent en place.
@@ -50,7 +50,7 @@ inventory() {
   BOTS=$(docker ps -a --filter "label=sklubot=desktop" --format '{{.Names}}' 2>/dev/null | sort -u)
   APPS=$(docker ps -a --filter "label=com.docker.compose.project=$PROJECT" --format '{{.Names}}' 2>/dev/null | sort -u)
   VOLUMES=$(docker volume ls -q 2>/dev/null | grep -E "^(sklubot_data|sklubot-home-.+|${PROJECT}_caddy_data|${PROJECT}_caddy_config)$" | sort -u)
-  NETWORKS=$(docker network ls --format '{{.Name}}' 2>/dev/null | grep -E '^(sklubot_net|sklubot_docker)$' | sort -u)
+  NETWORKS=$(docker network ls --format '{{.Name}}' 2>/dev/null | grep -E '^(sklubot_net|sklubot_docker|sklubot_voice)$' | sort -u)
   IMAGES=""
   if [ "$KEEP_IMAGES" = 0 ]; then
     IMAGES=$(docker image ls --format '{{.Repository}}:{{.Tag}}' 2>/dev/null | grep -E '^(sklubot-server|sklubot-desktop|tecnativa/docker-socket-proxy|caddy|public\.ecr\.aws/docker/library/caddy):' | sort -u)

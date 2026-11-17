@@ -28,6 +28,7 @@ import { pushLater } from "../push.js";
 import { generatePassword, parseTotp, totpNow } from "../totp.js";
 import { seal } from "../auth.js";
 import { askAndWait, createRoom, deliverBotMessage, dispatchToRoom, MAX_HELPERS, MAX_HOPS, startHelper, waitsOn } from "./team.js";
+import { addressesNoBot, BREAKER_LINE, dmChannel, postBudget, roomChannel, type Verdict } from "./roombudget.js";
 import { myComputerTools } from "./mycomputer.js";
 import { botTools, profileTools, progressTools, skillImportTools, xSearchAvailable, xTools } from "./tools-team.js";
 import { bgTasks, bgTaskToolSpecs, publicTask, startTask, stopTask, TaskLimitError } from "./bgtasks.js";
@@ -1101,6 +1102,19 @@ const bgTaskTools: BuiltinTool[] = [
 ];
 void TaskLimitError;
 
+/**
+ * A post refused by the anti-loop limits (roombudget.ts): nothing is sent, the bot is told why and not to retry, and its
+ * turn ends so it cannot route around it. When the refusal opens a breaker, `where` (the room, or the sender's own chat
+ * for bot_message) gets one line saying the bots are stopped until the user writes.
+ */
+function loopRefusal(v: Extract<Verdict, { allow: false }>, where: BotRecord, c: ToolContext): ToolOutput {
+  if (v.opened) {
+    rows.append(where, { kind: "notice", tone: "warn", text: tr(c.user.locale, BREAKER_LINE) });
+    audit(c.user.id, "system", `Anti-loop breaker opened in ${where.name} (${v.rule})`, where.id);
+  }
+  return { content: v.reason, isError: true, endTurn: true, summary: tr(c.user.locale, "stopped: possible loop") };
+}
+
 const teamTools: BuiltinTool[] = [
   tool("bot_message", `Send a message to another bot on the team. Their answer arrives later as a message to you — or, with wait: true, you wait for it (up to wait_seconds, default ${config.botWaitDefaultSec}, at most ${config.botWaitMaxSec}) and get it right here, in this turn. Wait only when you need the answer to go on; if it takes longer, it still arrives later as a message.`,
     obj({ bot: str("The bot's name"), message: str("What you need, with all the context they need"), wait: { type: "boolean", description: "Wait for their answer and get it as this tool's result" }, wait_seconds: int(`How long to wait at most, in seconds (default ${config.botWaitDefaultSec}, at most ${config.botWaitMaxSec})`) }, ["bot", "message"]), {
@@ -1114,6 +1128,11 @@ const teamTools: BuiltinTool[] = [
       // "Pause": nothing is sent to a paused bot; the sender is told, and not to route around it.
       if (isPaused(target)) return { content: pausedLine(target), isError: true, summary: tr(c.user.locale, "{bot} is paused", { bot: target.name }) };
       if (c.depth >= MAX_HOPS) return { content: "This exchange has bounced between bots too many times. Wrap up and report to the user instead.", isError: true };
+      // Anti-loop limits (roombudget.ts). A turn the user started by writing counts as a human in between.
+      const channel = dmChannel(c.bot.id, target.id);
+      if (c.origin === "user") postBudget.human(c.user.id, channel);
+      const verdict = postBudget.attempt(c.user.id, { channel, botId: c.bot.id, text: String(a.message), now: Date.now() });
+      if (!verdict.allow) return loopRefusal(verdict, c.bot, c);
       if (a.wait !== true) {
         deliverBotMessage(c.bot, target, String(a.message), c.depth, c.tainted);
         return { content: `Delivered to ${target.name}. Their reply will reach you as a new message.`, summary: `to ${target.name}` };
@@ -1199,6 +1218,12 @@ const teamTools: BuiltinTool[] = [
         if (!parent || parent.thread || parent.body.kind !== "message") return { content: `That group has no thread number ${a.thread}.`, isError: true };
         thread = parent.seq;
       }
+      // Anti-loop limits (roombudget.ts). A turn the user started by writing counts as a human in between.
+      const channel = roomChannel(room.id);
+      if (c.origin === "user") postBudget.human(c.user.id, channel);
+      const others = room.memberIds.filter((id) => id !== c.bot.id).map((id) => bots.byId(id)?.name ?? "").filter(Boolean);
+      const verdict = postBudget.attempt(c.user.id, { channel, botId: c.bot.id, text, now: Date.now(), toUser: addressesNoBot(text, others) });
+      if (!verdict.allow) return loopRefusal(verdict, room, c);
       rows.append(room, { kind: "message", role: "assistant", text, origin: { kind: "bot", id: c.bot.id, name: c.bot.name } }, thread);
       bots.bumpUnread(room.id);
       bots.announce(room);

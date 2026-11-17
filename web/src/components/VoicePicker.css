@@ -1,0 +1,37 @@
+/* A voice per bot (VoicePicker.tsx). */
+.bot-voice { display: flex; flex-direction: column; gap: 8px; margin: 12px 0; padding-top: 12px; border-top: 1px solid var(--border); }
+.bot-voice .field-label { margin: 0; }
+.bot-voice-current { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; color: var(--text); }
+.bot-voice-current > svg { flex: 0 0 auto; margin-top: 2px; }
+.bot-voice-current > span { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.bot-voice .row-gap { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.voice-picker .modal-body { gap: 12px; }
+.voice-tabs { display: flex; gap: 4px; padding: 3px; border-radius: var(--r-md); background: var(--surface-2); align-self: flex-start; }
+.voice-tab { border: 0; background: transparent; color: var(--text-2); padding: 6px 12px; border-radius: var(--r-sm, 6px); font: inherit; font-size: 13px; font-weight: 550; cursor: pointer; }
+.voice-tab.is-on { background: var(--surface); color: var(--text); box-shadow: 0 1px 2px rgb(0 0 0 / 0.08); }
+.voice-filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.voice-filters .input[type="search"] { flex: 1 1 200px; min-width: 0; }
+.voice-check { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-2); white-space: nowrap; }
+.voice-rights { margin: 0; padding: 8px 10px; border-radius: var(--r-md); background: var(--surface-2); color: var(--text-2); line-height: 1.45; }
+.voice-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; max-height: min(52vh, 520px); overflow-y: auto; }
+.voice-item { display: flex; gap: 12px; align-items: center; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface); }
+.voice-item.is-chosen { border-color: var(--accent, var(--ok)); }
+.voice-item-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.voice-item-main p { margin: 0; }
+.voice-item-title { font-weight: 600; font-size: 14px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; overflow-wrap: anywhere; }
+.voice-item-desc { color: var(--text-2); display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.voice-item-meta { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.chip.chip-soft { background: transparent; border: 1px solid var(--border); }
+.voice-item-actions { display: flex; gap: 6px; flex: 0 0 auto; }
+.voice-paste { display: flex; flex-direction: column; gap: 6px; padding-top: 8px; border-top: 1px solid var(--border); }
+.voice-paste .row-gap { display: flex; gap: 6px; flex-wrap: wrap; }
+.voice-paste .input { flex: 1 1 200px; min-width: 0; }
+.voice-empty { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; padding: 8px 0; }
+.voice-empty p { margin: 0; }
+
+@media (max-width: 560px) {
+  .voice-item { flex-direction: column; align-items: stretch; }
+  .voice-item-actions > .btn { flex: 1 1 0; justify-content: center; }
+  .voice-list { max-height: none; }
+}

@@ -13,6 +13,7 @@ import { GrantLine } from "./Wave5";
 import { Icon, Spinner } from "./Icon";
 import { IconButton, useDialogFocus, useEscape, useTick } from "./ui";
 import { PlanNoticeActions } from "./Hosted";
+import { ENGINE_BRAND } from "../lib/engines";
 
 type MessageBody = Extract<RowBody, { kind: "message" }>;
 type StepBody = Extract<RowBody, { kind: "step" }>;
@@ -541,6 +542,59 @@ function NoticeRow({ body, botId, seq, readOnly }: { body: NoticeBody; botId: st
         </button>
       )}
       {action?.kind === "plan" && !readOnly && <PlanNoticeActions action={action} />}
+      {action?.kind === "watch" && <WatchNoticeActions action={action} botId={botId} seq={seq} readOnly={readOnly} />}
+      {failed && <span className="notice-error" role="alert">{failed}</span>}
+    </div>
+  );
+}
+
+type WatchAction = Extract<NonNullable<NoticeBody["action"]>, { kind: "watch" }>;
+
+/**
+ * The turn watch's notices (server agent/watch.ts). "Not answering yet": Wait, Switch AI for this message (when the bot has
+ * a next model), Check the Claude / ChatGPT connection (a subscription bot: its settings, where the engine's sign-in is).
+ * "Seems stuck": Keep waiting, Stop and resume. Once answered, or once the turn moved on, the notice only tells.
+ */
+function WatchNoticeActions({ action, botId, seq, readOnly }: { action: WatchAction; botId: string; seq: number; readOnly: boolean }) {
+  const t = useT();
+  const [busy, setBusy] = useState<"wait" | "switch" | "stop" | null>(null);
+  const [failed, setFailed] = useState<string | null>(null);
+  const open = action.status === "pending" || action.status === "waiting";
+  if (!open || readOnly) return null;
+  const choose = async (choice: "wait" | "switch" | "stop") => {
+    setBusy(choice);
+    setFailed(null);
+    try { await api("POST", `/bots/${botId}/rows/${seq}/watch`, { choice }); } catch (e) { setFailed(errText(e)); }
+    setBusy(null);
+  };
+  const checkEngine = () => {
+    useStore.getState().openBotSettings(botId, "general");
+    // The engine's box (sign-in state, Restart) sits under the brain picker: brought into view once the panel is open.
+    window.setTimeout(() => document.querySelector(".engine-box")?.scrollIntoView({ block: "center", behavior: "smooth" }), 250);
+  };
+  return (
+    <div className="notice-actions" role="group" aria-label={action.watch === "silent" ? t("watch.silentGroup") : t("watch.stalledGroup")}>
+      {action.status === "pending" && (
+        <button type="button" className="btn btn-small" disabled={busy !== null} onClick={() => void choose("wait")}>
+          <Icon name="clock" size={13} /> {t(action.watch === "silent" ? "watch.wait" : "watch.keepWaiting")}
+        </button>
+      )}
+      {action.status === "waiting" && <em className="notice-done">{t("watch.waiting")}</em>}
+      {action.watch === "silent" && action.next && (
+        <button type="button" className="btn btn-small" disabled={busy !== null} title={t("watch.switchTitle", { next: action.next })} onClick={() => void choose("switch")}>
+          <Icon name="refresh" size={13} /> {t(busy === "switch" ? "common.working" : "watch.switch")}
+        </button>
+      )}
+      {action.watch === "silent" && action.engine && (
+        <button type="button" className="btn btn-small btn-ghost" disabled={busy !== null} onClick={checkEngine}>
+          <Icon name="key" size={13} /> {t("watch.checkEngine", { brand: ENGINE_BRAND[action.engine] })}
+        </button>
+      )}
+      {action.watch === "stalled" && (
+        <button type="button" className="btn btn-small" disabled={busy !== null} onClick={() => void choose("stop")}>
+          <Icon name="play" size={13} /> {t(busy === "stop" ? "common.working" : "watch.stopResume")}
+        </button>
+      )}
       {failed && <span className="notice-error" role="alert">{failed}</span>}
     </div>
   );

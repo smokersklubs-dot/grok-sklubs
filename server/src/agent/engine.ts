@@ -14,6 +14,7 @@ import { buildSystemPrompt } from "./prompt.js";
 import { imageService } from "../images.js";
 import { browserAvailable } from "../computer.js";
 import { noteDiskTrouble } from "../disk.js";
+import { callSignal, EngineGone, setEngineSampler, SwitchModel, watchExec, watchOutput, watchProgress, watchTool, watchToolsDone, watchWait, type EngineSample } from "./watch.js";
 
 /**
  * Bots that run on their owner's own subscription. Each turn is handed to the provider's official
@@ -213,6 +214,11 @@ export interface EngineHost {
   machineOf?(botId: string): string;
   /** Runs a short command in the computer if it is on (never wakes it): for the model list (engineModelsFor). */
   probe?(botId: string, args: string[], timeoutMs: number): Promise<{ code: number | null; stdout: string }>;
+  /**
+   * The turn watch (watch.ts) looks at the running tool's process: gone from the computer, or alive with the CPU time its
+   * process tree used so far; null when it cannot tell. Optional: a host without it is not looked at.
+   */
+  sample?(botId: string): Promise<EngineSample | null>;
 }
 
 const dockerHost: EngineHost = {
@@ -235,7 +241,28 @@ const dockerHost: EngineHost = {
     const r = await docker(["exec", containerName(botId), ...args], { timeoutMs, maxBytes: 8_000_000 });
     return { code: r.timedOut ? null : r.code, stdout: r.stdout.toString("utf8") };
   },
+  async sample(botId) {
+    if (!screen.isOpen(botId)) return null;
+    const r = await docker(["exec", containerName(botId), "sh", "-c", ENGINE_SAMPLE], { timeoutMs: 10_000 });
+    return r.code === 0 && !r.timedOut ? parseEngineSample(r.stdout.toString("utf8")) : null;
+  },
 };
+
+/**
+ * One look at the running tool's process (the pid the wrapper wrote down, ENGINE_WRAPPER): "gone" when that process no
+ * longer exists, else "alive <ms>", the CPU time (user + system) of it and every process under it, from /proc/<pid>/stat
+ * fields 14 and 15 (utime, stime, in clock ticks: proc(5)) and the parent pid of each process (field 4); the command name
+ * (field 2, in parentheses) may hold spaces, so fields are counted after its closing parenthesis. "none": no pid written.
+ * Only sh, cat, awk and getconf are needed: all in the desktop image (checked in sklubot-desktop: /usr/bin/awk,
+ * /usr/bin/getconf; a busy child process was counted, 1 980 ms for about 2 s of `yes`).
+ */
+export const ENGINE_SAMPLE = String.raw`pid=$(cat /tmp/sklubot-engine.pid 2>/dev/null); if [ -z "$pid" ]; then echo none; exit 0; fi; if [ ! -d /proc/$pid ]; then echo gone; exit 0; fi; cat /proc/[0-9]*/stat 2>/dev/null | awk -v root="$pid" -v hz="$(getconf CLK_TCK 2>/dev/null || echo 100)" '{ p=$1; s=$0; sub(/^.*\) /, "", s); split(s, f, " "); par[p]=f[2]; t[p]=f[12]+f[13] } END { n=0; for (p in t) { x=p; for (i=0; i<64 && x!="" && x!=root && x>1; i++) x=par[x]; if (x==root) n+=t[p] } printf "alive %d\n", n*1000/hz }'`;
+export function parseEngineSample(out: string): EngineSample | null {
+  const text = out.trim();
+  if (text === "gone") return { gone: true };
+  const m = /^alive (\d+)$/.exec(text);
+  return m ? { gone: false, cpuMs: Number(m[1]) } : null;
+}
 
 /** The tools' own processes only (and the one whose id the last turn wrote down); the desktop keeps running. */
 async function killEngineProcesses(botId: string) {
@@ -244,6 +271,8 @@ async function killEngineProcesses(botId: string) {
   await docker(["exec", containerName(botId), "sh", "-c", "kill -TERM $(cat /tmp/sklubot-engine.pid 2>/dev/null) 2>/dev/null; pkill -TERM -f '^(node .*)?claude( |$)' ; pkill -TERM -f '^(node .*)?codex( |$)'; sleep 1; pkill -KILL -f '^(node .*)?claude( |$)'; pkill -KILL -f '^(node .*)?codex( |$)'; rm -f /tmp/sklubot-engine.pid; true"], { timeoutMs: 20_000 });
 }
 let host: EngineHost = dockerHost;
+/** How the turn watch looks at a running tool's process: through the computer this file talks to. */
+const sampleEngine = (botId: string) => (host.sample ? host.sample(botId) : Promise.resolve(null));
 /** For tests: replace the computer the engine talks to (null puts the real one back). */
 export const setEngineHost = (h: EngineHost | null) => { host = h ?? dockerHost; };
 const writeFile = (botId: string, path: string, content: string) => host.writeFile(botId, path, content);
@@ -437,6 +466,7 @@ class Transcript {
   }
   stepStart(id: string, raw: string, args: Record<string, unknown>) {
     const { user, bot } = this.turn;
+    watchOutput(bot.id);
     if (TOOL_SEARCH.test(raw)) { setLive(user.id, bot.id, { caption: tr(user.locale, "Finding the right tool") }); return; }
     if (this.steps.some((x) => x.callId === id)) return;
     this.endMessage();
@@ -445,6 +475,8 @@ class Transcript {
     for (const [k, v] of Object.entries(args ?? {})) short[k] = typeof v === "string" ? clip(v, 400) : v;
     const seq = rows.append(bot, { kind: "step", callId: id, tool: name, label: toolLabel(name, server, this.turn), status: "running", args: short }).seq;
     this.steps.push({ seq, callId: id, name, claimed: false, done: false, declared: null });
+    // A tool at work (a command, a page, one of ours waiting for an approval) is not silence (watch.ts).
+    watchTool(bot.id, id, true);
     // The counter moves on even while the bot waits for the user; only then the activity stays as it is.
     const count = this.steps.length;
     if (getLive(bot.id).awaiting) setLive(user.id, bot.id, { steps: count });
@@ -455,6 +487,7 @@ class Transcript {
     const step = this.steps.find((x) => x.callId === id);
     if (!step || step.done) return;
     step.done = true;
+    watchTool(this.turn.bot.id, id, false);
     const row = rows.get(this.turn.bot.id, this.turn.generation, step.seq);
     if (row?.body.kind === "step") {
       const guess = guessOutcome(raw, ok);
@@ -474,6 +507,7 @@ class Transcript {
       rows.rewrite(this.turn.bot, this.turn.generation, step.seq, success ? { ...row.body, status: "done" } : { ...row.body, status: "error", summary: tr(loc, timedOut ? "time limit reached" : aborted ? "stopped" : "did not finish") });
     }
     if (turnSteps.get(this.turn.bot.id) === this.steps) turnSteps.delete(this.turn.bot.id);
+    watchToolsDone(this.turn.bot.id);
   }
   notice(text: string, tone: "info" | "warn" | "error" = "warn") {
     this.endMessage();
@@ -485,6 +519,8 @@ class Transcript {
   failed = false;
   /** The tool itself ended on this failure (not a passing error item): a backup model may take the turn over. */
   fatal = false;
+  /** The user moved this message to the next model before the tool said anything ("Switch AI", watch.ts). */
+  switched = false;
   lastFailure = "";
 }
 
@@ -505,7 +541,10 @@ function runInComputer(bot: BotRecord, args: string[], env: Record<string, strin
   let escalate: NodeJS.Timeout | null = null;
   const stop = () => {
     void docker(["exec", name, "sh", "-c", "kill -INT $(cat /tmp/sklubot-engine.pid) 2>/dev/null"], { timeoutMs: 10_000 });
-    escalate = setTimeout(() => { void killEngineProcesses(bot.id).finally(() => { if (child.exitCode === null) child.kill("SIGKILL"); }); }, ENGINE_KILL_GRACE_MS);
+    // A process already gone (its helpers may still hold the output open) or a tool that never said a word and whose
+    // message goes to another model: nothing to save, so no grace (watch.ts).
+    const quick = signal.reason instanceof EngineGone || signal.reason instanceof SwitchModel;
+    escalate = setTimeout(() => { void killEngineProcesses(bot.id).finally(() => { if (child.exitCode === null) child.kill("SIGKILL"); }); }, quick ? 1000 : ENGINE_KILL_GRACE_MS);
   };
   signal.addEventListener("abort", stop, { once: true });
   let buffer = "", stderr = "";
@@ -551,15 +590,20 @@ export const isEngineTimeout = (reason: unknown): reason is EngineTimeout => rea
  * How a subscription turn ended, for a backup model that may take over (loop.ts): `failure` is what the tool said when it
  * failed (empty: it did not); `steps` are the chat rows of what it did meanwhile (never done again by the backup).
  */
-export interface EngineOutcome { failure: string; steps: number[] }
+export interface EngineOutcome { failure: string; steps: number[]; /** The user moved this message to the next model before the tool said anything (watch.ts). */ switched?: boolean }
 
 export async function runEngineTurn(turn: Turn, prompt: string, attachments: Attachment[]): Promise<EngineOutcome> {
   const { bot } = turn;
-  await ensureComputer(bot);
-  // Busy for the whole turn: the computer is never put to sleep under the tool (to make room for another, or as idle),
-  // and a shared computer stays this bot's until the turn ends (Part B).
-  const release = (await host.hold?.(bot)) ?? (() => {});
-  try { return await withEngineLock(bot, 0, () => engineTurnOn(turn, prompt, attachments)); } finally { release(); }
+  // Starting the computer (or waiting for room, or for the tool another bot of a shared computer runs) is not the AI's
+  // silence: the turn watch counts from the moment the tool itself starts.
+  const ready = watchWait(bot.id);
+  try {
+    await ensureComputer(bot);
+    // Busy for the whole turn: the computer is never put to sleep under the tool (to make room for another, or as idle),
+    // and a shared computer stays this bot's until the turn ends (Part B).
+    const release = (await host.hold?.(bot)) ?? (() => {});
+    try { return await withEngineLock(bot, 0, () => engineTurnOn(turn, prompt, attachments, ready)); } finally { release(); }
+  } finally { ready(); }
 }
 
 /**
@@ -591,7 +635,7 @@ export async function withEngineLock<T>(bot: BotRecord, waitMs: number, fn: () =
   }
 }
 
-async function engineTurnOn(turn: Turn, prompt: string, attachments: Attachment[]): Promise<EngineOutcome> {
+async function engineTurnOn(turn: Turn, prompt: string, attachments: Attachment[], ready: () => void): Promise<EngineOutcome> {
   const { bot } = turn;
   // B-2: before the message goes to the engine, the screen must be ready (computer up, look applied, the bot's own
   // browser answering). Otherwise a tool that finds no browser may start one of its own, out of the user's sight.
@@ -607,6 +651,7 @@ async function engineTurnOn(turn: Turn, prompt: string, attachments: Attachment[
   setLive(turn.user.id, bot.id, { steps: 0 });
   const token = issueEngineToken(bot.id);
   let threw = false;
+  ready();
   try {
     if (engine === "claude-code") await claudeTurn(turn, t, prompt + files, token);
     else await codexTurn(turn, t, prompt + files, system, token);
@@ -616,12 +661,30 @@ async function engineTurnOn(turn: Turn, prompt: string, attachments: Attachment[
     t.endMessage();
     const aborted = turn.signal.aborted;
     t.close(!aborted && !threw && !t.failed, aborted, isEngineTimeout(turn.signal.reason));
-    if (aborted) noteRuntime(bot.id, "ready");
+    if (aborted && turn.signal.reason instanceof EngineGone) noteRuntime(bot.id, "error", "the tool's process ended without finishing the turn");
+    else if (aborted || t.switched) noteRuntime(bot.id, "ready");
     else if (threw || t.failed) noteRuntime(bot.id, "error", t.lastFailure || null);
     else noteRuntime(bot.id, "ready");
   }
   if (turn.signal.aborted) throw new Error("aborted");
-  return { failure: t.fatal ? t.lastFailure || "the tool failed" : "", steps: t.steps.map((s) => s.seq) };
+  return { failure: t.fatal ? t.lastFailure || "the tool failed" : "", steps: t.steps.map((s) => s.seq), ...(t.switched ? { switched: true } : {}) };
+}
+
+/**
+ * Runs the tool for one attempt of a turn, watched (watch.ts): its process is looked at meanwhile, every line of its
+ * stream is progress, and "Switch AI" stops this run only (the turn goes on with the next model, loop.ts).
+ */
+async function watchedExec(turn: Turn, t: Transcript, args: string[], env: Record<string, string>, cwd: string, input: string, onLine: (line: string) => void) {
+  const { bot } = turn;
+  const signal = callSignal(bot.id, turn.signal);
+  setEngineSampler(sampleEngine);
+  watchExec(bot.id, true);
+  try {
+    return await host.exec(bot, args, env, cwd, input, signal, (line) => { watchProgress(bot.id); onLine(line); });
+  } finally {
+    watchExec(bot.id, false);
+    if (!turn.signal.aborted && signal.aborted && signal.reason instanceof SwitchModel) t.switched = true;
+  }
 }
 
 /**
@@ -652,9 +715,11 @@ async function claudeTurn(turn: Turn, t: Transcript, prompt: string, token: stri
     ...(resume ? ["--resume", resume] : []),
   ];
   let failure = "", sawResult = false, missingSession = false;
-  const res = await host.exec(bot, args, { IS_SANDBOX: "1", MCP_TOOL_TIMEOUT: String(TOOL_TIMEOUT_MS) }, "/root/files", prompt, turn.signal, (line) => {
+  const res = await watchedExec(turn, t, args, { IS_SANDBOX: "1", MCP_TOOL_TIMEOUT: String(TOOL_TIMEOUT_MS) }, "/root/files", prompt, (line) => {
     let e: any;
     try { e = JSON.parse(line); } catch { return; }
+    // The model's own stream (words, thinking, a tool call or its result) is its answer starting (watch.ts).
+    if (e.type === "stream_event" || e.type === "assistant" || e.type === "user") watchOutput(bot.id);
     if (e.type === "system" && e.subtype === "init" && e.session_id) saveSession(bot.id, turn.generation, "claude-code", e.session_id);
     else if (e.type === "stream_event") {
       const d = e.event?.delta;
@@ -684,8 +749,8 @@ async function claudeTurn(turn: Turn, t: Transcript, prompt: string, token: stri
       }
     }
   });
+  if (turn.signal.aborted || t.switched) return;
   if (missingSession && !retried) { dropSession(bot.id, turn.generation, "claude-code"); return claudeTurn(turn, t, prompt, token, true); }
-  if (turn.signal.aborted) return;
   if (!sawResult && !failure) failure = NOT_SIGNED_IN.test(res.stderr) ? signInHint(turn, "claude-code") : clip(res.stderr.trim() || `Claude Code stopped (code ${res.code}).`, 300);
   if (failure) { t.notice(failure); t.fatal = true; }
 }
@@ -718,10 +783,12 @@ async function codexTurn(turn: Turn, t: Transcript, prompt: string, system: stri
   const args = resume ? ["codex", "exec", "resume", ...common, resume, "-"] : ["codex", "exec", ...common, "-"];
   let failure = "", sawEnd = false, missingSession = false, produced = false;
   await writeFile(bot.id, SECRET_ENV_FILE, secretEnvFile({ SKLUBOT_MCP_TOKEN: token }));
-  const res = await host.exec(bot, args, {}, "/root", prompt, turn.signal, (line) => {
+  const res = await watchedExec(turn, t, args, {}, "/root", prompt, (line) => {
     let e: any;
     try { e = JSON.parse(line); } catch { return; }
     const it = e.item;
+    // An item (a message, reasoning, a command, a tool call) is the model's answer starting (watch.ts).
+    if (typeof e.type === "string" && e.type.startsWith("item.")) watchOutput(bot.id);
     // Anything beyond the thread's start means the turn already did or said something: it is never run a second time.
     if (e.type !== "thread.started" && e.type !== "turn.started" && e.type !== "turn.failed" && e.type !== "error") produced = true;
     if (e.type === "thread.started" && e.thread_id) saveSession(bot.id, turn.generation, "codex", e.thread_id);
@@ -752,6 +819,7 @@ async function codexTurn(turn: Turn, t: Transcript, prompt: string, system: stri
   });
   // The saved conversation is gone (see CODEX_LOST_SESSION): forget it and start a fresh one, once, like Claude Code above
   // — only when nothing came out of this attempt (no step, no words), so no work is ever done twice.
+  if (t.switched) return;
   if (resume && !retried && !turn.signal.aborted && !produced && !turn.spoke && (missingSession || CODEX_LOST_SESSION.test(res.stderr))) {
     dropSession(bot.id, turn.generation, "codex");
     return codexTurn(turn, t, prompt, system, token, true);

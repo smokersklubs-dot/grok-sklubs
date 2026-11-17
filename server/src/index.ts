@@ -19,6 +19,7 @@ import { startAutoBackup } from "./autobackup.js";
 import { startHealthChecks } from "./health.js";
 import { attachLiveScreens } from "./vnc.js";
 import { relayUpgrade } from "./relay.js";
+import { closeLeftOpenWatchNotices } from "./agent/watch.js";
 import { expireOrphanApprovals, recoverInterruptedTurns, startJobWatch } from "./agent/loop.js";
 import { sweepUncertain } from "./agent/executions.js";
 import { telegram } from "./telegram.js";
@@ -80,6 +81,8 @@ try {
 const lapsed = expireOrphanApprovals();
 if (lapsed) console.log(`${lapsed} approval(s) left from before the restart are marked expired.`);
 // Actions that were running when the server stopped: their outcome is unknown. They are never replayed; the user gets a card.
+// Notices of the turn watch that still asked something belong to turns the restart ended: they are history now.
+closeLeftOpenWatchNotices();
 const uncertain = sweepUncertain();
 if (uncertain) console.log(`${uncertain} action(s) cut off by the restart are marked uncertain.`);
 startScheduler();

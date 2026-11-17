@@ -14,6 +14,9 @@ const FR: Record<string, string> = {
   "{bot} is paused": "{bot} est en pause", "Paused: it goes on when its bot is resumed.": "En pause : elle continuera à la reprise de son bot.",
   "⏸ {bot} is paused: your message is kept and will be handled when it is resumed.": "⏸ {bot} est en pause : ton message est gardé et sera traité à la reprise.",
   "This routine's bot is paused. Resume it to run the routine.": "Le bot de cette routine est en pause. Reprends-le pour lancer la routine.",
+  // Anti-loop limits for bot posts (agent/roombudget.ts).
+  "The bots keep answering each other in a loop: I'm stopping here. Write a message to get them going again.": "Les bots se répondent en boucle : j'arrête ici. Écris un message pour les relancer.",
+  "stopped: possible loop": "arrêté : boucle probable",
   // The in-app automatic backup (autobackup.ts).
   "The automatic backup failed {n} times in a row: {detail}": "La sauvegarde automatique a échoué {n} fois de suite : {detail}", "Backup failed": "Sauvegarde en échec",
   // Goal mode (agent/goals.ts).
@@ -35,6 +38,15 @@ const FR: Record<string, string> = {
   "Converting a document": "Convertit un document", "Recalculating a spreadsheet": "Recalcule un tableur", "Looking at a document": "Regarde un document",
   // A subscription turn that failed goes on with a backup API model (loop.ts engineFallback).
   "{tool} failed ({detail}). I am carrying on with the backup model {next}.": "{tool} a échoué ({detail}). Je continue avec le modèle de secours {next}.",
+  // The turn watch (agent/watch.ts, loop.ts): a turn whose AI says nothing, a turn that makes no progress, a tool that stopped.
+  "{bot} is not answering yet.": "{bot} ne répond pas encore.", "{bot} started answering.": "{bot} a commencé à répondre.",
+  "{bot} was not answering.": "{bot} ne répondait pas.", "{bot} was not answering: this message went to {next}.": "{bot} ne répondait pas : ce message est passé à {next}.",
+  "{bot} seems stuck: nothing has moved for {min} min.": "{bot} semble bloqué depuis {min} min.",
+  "{bot} seemed stuck for {min} min, then moved again.": "{bot} semblait bloqué depuis {min} min, puis a repris.",
+  "{bot} seemed stuck for {min} min: stopped, and picking the work back up.": "{bot} semblait bloqué depuis {min} min : arrêté, et le travail reprend.",
+  "{bot} seemed stuck for {min} min.": "{bot} semblait bloqué depuis {min} min.",
+  "{tool} stopped on my computer without finishing this turn. What I did so far is kept. Press Continue, or just tell me to continue, to pick it back up.":
+    "{tool} s'est arrêté sur mon ordinateur sans finir ce tour. Ce que j'ai déjà fait est gardé. Appuie sur Continuer, ou dis-moi simplement de continuer, pour reprendre.",
   // A secret pasted in a message (pastedsecrets.ts) and the files a turn changed (snapshots.ts).
   "[secret hidden]": "[secret masqué]",
   "A secret was masked in your message": "Un secret a été masqué dans ton message",
