@@ -1,0 +1,36 @@
+SKLUBOT — FILM DE PRÉSENTATION 45 s — TEXTE DE LA VOIX OFF
+============================================================
+Ton : chaleureux, simple, tutoiement. Débit posé (≈ 110 mots en 45 s).
+Le film est muet côté voix : enregistre ce texte (ou génère-le plus tard), puis
+cale chaque bloc sur le timecode indiqué. La musique (audio/soundtrack.wav) est
+pensée pour passer dessous : baisse-la d’environ 6 dB sous la voix.
+
+[00:00 – 00:04]  ACCROCHE
+Et si ton équipe d’IA travaillait… pendant que tu dors ?
+
+[00:04 – 00:12]  L’ÉQUIPE
+Voici Sklubot : une équipe de bots IA, chacun avec son métier.
+Le SEO, la prospection, le service client, les réseaux sociaux, l’administratif.
+Chacun a sa mémoire… et sa propre voix.
+
+[00:12 – 00:22]  LEUR ORDINATEUR
+Chaque bot a son propre ordinateur Linux, sur ton serveur.
+Il ouvre son navigateur, analyse, rédige, coche ses tâches.
+Et ils avancent en parallèle, même quand tu n’es pas là.
+
+[00:22 – 00:30]  LA SÉCURITÉ
+Avant une action irréversible — envoyer un e-mail, payer, supprimer —
+il te demande. Tu gardes toujours la main.
+
+[00:30 – 00:38]  AUJOURD’HUI
+Chaque jour, la page « Aujourd’hui » te montre ce qui est fait,
+et une estimation du temps gagné.
+
+[00:38 – 00:45]  APPEL À L’ACTION
+Sklubot. Crée ton équipe gratuite sur sklubot.sklubs.fr.
+Sur le web, ton téléphone ou ton ordinateur.
+
+------------------------------------------------------------
+Mentions à garder à l’écran : les chiffres de la page « Aujourd’hui »
+(5 tâches, ≈ 2 h 40) sont un EXEMPLE illustratif, signalé « Exemple » et
+« estimation » dans l’image. Aucun témoignage, aucun chiffre réel.

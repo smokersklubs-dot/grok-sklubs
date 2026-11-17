@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sklubot — film de présentation</title>
+<link rel="stylesheet" href="tokens-scoped.css">
+<link rel="stylesheet" href="character.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<!-- ?mode=h (1920×1080) or ?mode=v (1080×1920); ?t=12.5 shows one moment; without t it plays in real time.
+     The renderer (build/render.mjs) calls window.renderAt(t) for every frame. -->
+<div id="stage">
+  <section class="scene" id="s-hook">
+    <div class="hook-glow"></div>
+    <div class="hook-moon"></div>
+    <div class="slot" id="hook-bot"></div>
+    <h1 class="headline kin" id="hook-text">Et si ton équipe d’IA <em>travaillait pendant que tu&nbsp;dors</em>&nbsp;?</h1>
+  </section>
+
+  <section class="scene" id="s-team">
+    <h2 class="title kin" id="team-title">Voici ton équipe d’IA.</h2>
+    <div class="team-row" id="team-row"></div>
+    <p class="caption kin" id="team-cap">Chacun a <b>un métier</b>, <b>sa mémoire</b> et <b>sa propre voix</b>.</p>
+  </section>
+
+  <section class="scene" id="s-computer">
+    <div class="phase" id="pc-a">
+      <h2 class="title kin" id="pc-title">Chacun a son propre ordinateur.</h2>
+      <p class="sub kin" id="pc-sub">Un vrai ordinateur Linux, sur ton serveur.</p>
+      <div class="pc" id="pc">
+        <div class="pc-bar"><i></i><i></i><i></i><span>Ordinateur de Max</span></div>
+        <div class="pc-screen">
+          <div class="wall-home"><div class="wh-clock">Max</div><div class="wh-role">Analyste SEO</div></div>
+          <div class="win win-browser" id="win-browser">
+            <div class="win-top"><span class="url" id="url-ico"></span><span class="url-text">Positions du site · semaine</span></div>
+            <div class="bars" id="bars"></div>
+          </div>
+          <div class="win win-doc" id="win-doc">
+            <div class="win-top"><span class="url-text">resume-semaine.md</span></div>
+            <div class="doc-title">Résumé de la semaine</div>
+            <div class="doc-lines" id="doc-lines"></div>
+          </div>
+          <div class="dock" id="dock"></div>
+          <div class="pointer" id="pc-pointer"></div>
+        </div>
+      </div>
+      <div class="tasks" id="tasks"></div>
+      <div class="slot" id="pc-bot"></div>
+    </div>
+    <div class="phase" id="pc-b">
+      <h2 class="title kin" id="par-title">Ils avancent en parallèle.</h2>
+      <p class="sub kin" id="par-sub">Même quand tu n’es pas là.</p>
+      <div class="minis" id="minis"></div>
+    </div>
+  </section>
+
+  <section class="scene" id="s-safety">
+    <h2 class="title kin" id="safe-title">Il te demande avant chaque action <em>irréversible.</em></h2>
+    <div class="slot" id="safe-bot"></div>
+    <div class="appcard" id="appcard">
+      <div class="card">
+        <div class="card-head">
+          <div class="logo-tile" id="card-ico"></div>
+          <div class="card-head-text">
+            <div class="card-title">Envoyer la relance aux prospects</div>
+            <div class="card-sub">Léa · Prospection · demande ton accord</div>
+          </div>
+        </div>
+        <div class="card-detail">À : liste « Prospects du mois »
+Objet : Suite à notre échange</div>
+        <div class="approval-irreversible" id="irrev"><span id="irrev-ico"></span><span><strong>Action irréversible.</strong> Un e-mail envoyé ne peut pas être repris.</span></div>
+        <div class="card-foot">
+          <div class="card-actions" id="card-actions">
+            <button class="btn btn-ghost">Refuser</button>
+            <button class="btn btn-primary" id="btn-allow">Autoriser une fois</button>
+          </div>
+          <div class="card-outcome is-allowed" id="card-outcome"><span id="out-ico"></span>Autorisé une fois · fait</div>
+        </div>
+      </div>
+    </div>
+    <p class="caption kin" id="safe-cap">Tu gardes toujours <b>la main</b>.</p>
+    <div class="pointer" id="safe-pointer"></div>
+  </section>
+
+  <section class="scene" id="s-today">
+    <h2 class="title kin" id="today-title">Chaque jour, ta page «&nbsp;Aujourd’hui&nbsp;».</h2>
+    <div class="tp-wrap" id="tp"><div class="tp">
+      <div class="tp-head"><h1>Aujourd’hui</h1><span class="chip chip-warn">Exemple</span></div>
+      <div class="tp-date">Chiffres d’exemple, pour illustrer</div>
+      <div class="today-stats">
+        <div class="today-stat is-ok"><span id="st-i1"></span><div class="today-stat-value" id="st-done">0</div><div class="today-stat-label">tâches terminées</div></div>
+        <div class="today-stat"><span id="st-i2"></span><div class="today-stat-value" id="st-time">0 min</div><div class="today-stat-label">temps gagné</div></div>
+        <div class="today-stat"><span id="st-i3"></span><div class="today-stat-value">5</div><div class="today-stat-label">bots au travail</div></div>
+      </div>
+      <div class="today-block">
+        <div class="today-block-head"><h2>Terminé</h2><span class="chip today-estimate">estimation</span></div>
+        <div class="today-list" id="today-list"></div>
+      </div>
+    </div></div>
+    <div class="hl" id="hl">
+      <div class="hl-num" id="hl-num">≈ 0 min</div>
+      <div class="hl-text">gagnées aujourd’hui</div>
+      <div class="hl-note">exemple · estimation</div>
+    </div>
+  </section>
+
+  <section class="scene" id="s-cta">
+    <div class="hook-glow cta-glow"></div>
+    <div class="cta-bots" id="cta-bots"></div>
+    <div class="cta-brand" id="cta-brand"><span class="app-icon" id="app-icon"></span><span class="wordmark">Sklubot</span></div>
+    <div class="cta-line kin" id="cta-line">Crée ton équipe gratuite</div>
+    <div class="cta-url" id="cta-url">sklubot.sklubs.fr</div>
+    <div class="cta-plat" id="cta-plat"></div>
+    <div class="cta-tpl" id="cta-tpl">Des modèles prêts pour ta petite entreprise.</div>
+  </section>
+</div>
+<script src="timeline.js"></script>
+<script src="characters.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
