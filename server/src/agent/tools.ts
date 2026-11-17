@@ -21,7 +21,8 @@ import { config as appConfig } from "../config.js";
 import { audit, bots, clip, memories, newId, pages, rows, searchMessages, settings, skills, skillText, tasks, vault, type BotRecord, type UserRecord } from "../store.js";
 import { record as recordUsage } from "../usage.js";
 import { meterOperatorUse, operatorBlock, toolRefusal, unitEstimate } from "../hosted.js";
-import { interrupt, tell } from "./loop.js";
+import { interrupt, isPaused, tell } from "./loop.js";
+import { pausedLine } from "./pause.js";
 import { DRIVING, releaseControl, takeoverTimeoutMs, userDriving, waitForUser } from "../takeover.js";
 import { pushLater } from "../push.js";
 import { generatePassword, parseTotp, totpNow } from "../totp.js";
@@ -1110,6 +1111,8 @@ const teamTools: BuiltinTool[] = [
       if (!target) return { content: `No bot is called "${a.bot}". The team: ${names.join(", ") || "nobody else yet"}.`, isError: true };
       if (target.id === c.bot.id) return { content: "That is you.", isError: true };
       if (target.kind === "room") return { content: "That is a group chat; use room_post.", isError: true };
+      // "Pause": nothing is sent to a paused bot; the sender is told, and not to route around it.
+      if (isPaused(target)) return { content: pausedLine(target), isError: true, summary: tr(c.user.locale, "{bot} is paused", { bot: target.name }) };
       if (c.depth >= MAX_HOPS) return { content: "This exchange has bounced between bots too many times. Wrap up and report to the user instead.", isError: true };
       if (a.wait !== true) {
         deliverBotMessage(c.bot, target, String(a.message), c.depth, c.tainted);

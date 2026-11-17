@@ -355,6 +355,17 @@ test("suspended = read-only: sign in, look, export, change sign-in details, dele
   assert.equal(sub.status, "active");
   assert.equal(sub.periodEnd, until);
   assert.equal((await trial("POST", "/bots", { name: "Back" })).status, 200);
+  // "Pause" (agent/pause.ts) is separate from the suspension: both can hold a bot, each is lifted in its own place.
+  assert.equal((await trial("POST", `/bots/${bot}/pause`)).status, 200);
+  q.run("UPDATE subscriptions SET status = 'suspended' WHERE user_id = ?", ids.trial);
+  assert.equal((await trial("POST", `/bots/${bot}/resume`)).status, 403, "a suspended account is read-only, pauses included");
+  assert.equal(fireRoutine(routines.byId(r.id)!), "busy", "the suspension is checked first");
+  q.run("UPDATE subscriptions SET status = 'active' WHERE user_id = ?", ids.trial);
+  assert.equal(fireRoutine(routines.byId(r.id)!), "paused", "reactivated, the bot is still paused");
+  assert.equal(opCalls, calls);
+  const resumed = await trial("POST", `/bots/${bot}/resume`);
+  assert.equal(resumed.status, 200);
+  assert.equal((await trial("GET", "/bots")).json.bots.find((b: any) => b.id === bot).pause, null);
 });
 
 test("subscription tools: only for their own account — never started by a workspace member of another account", async () => {

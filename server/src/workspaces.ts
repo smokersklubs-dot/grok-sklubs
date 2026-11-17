@@ -301,7 +301,7 @@ export function sharedAccessOf(a: BotAccess): SharedAccess {
  */
 export function sharedBotView(a: BotAccess): Bot {
   const b = publicBot(a.bot);
-  return { ...b, primary: false, telegram: null, fallbackModels: null, spendCheckpointUsd: null, pinned: false, sectionId: null, listHidden: false, nudges: { ...b.nudges, enabled: false }, sharing: null, access: sharedAccessOf(a) };
+  return { ...b, primary: false, telegram: null, fallbackModels: null, spendCheckpointUsd: null, pinned: false, sectionId: null, listHidden: false, nudges: { ...b.nudges, enabled: false }, sharing: null, access: sharedAccessOf(a), pause: b.pause ? { ...b.pause, sectionId: null } : null };
 }
 
 /** Every bot someone else shares with this user (through any of their workspaces). */

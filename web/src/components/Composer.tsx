@@ -9,6 +9,7 @@ import { callPossible, endCall, startCall } from "../lib/call";
 import { canCall, canRecognize, createRecognition, micErrorText, recognitionLang, type Recognition } from "../lib/speech";
 import { Icon, Spinner } from "./Icon";
 import { ErrorNote, Menu, MenuItem, useEscape } from "./ui";
+import { PauseBanner } from "./Pause";
 
 type DictationState = "idle" | "recording" | "transcribing";
 
@@ -298,7 +299,7 @@ export function Composer({ bot, live }: { bot: Bot; live: Live }) {
 
   const goalTyped = /^\/(objectif|goal)\b/i.test(text);
   const goalOn = (goalMode || goalTyped) && bot.kind === "agent";
-  const placeholder = goalMode ? t("composer.goalPlaceholder", { name: botTitle(bot) }) : t("composer.placeholder", { name: botTitle(bot) });
+  const placeholder = bot.pause ? t("pause.composerPlaceholder") : goalMode ? t("composer.goalPlaceholder", { name: botTitle(bot) }) : t("composer.placeholder", { name: botTitle(bot) });
   // Something that looks like a key or a password: the server will mask it before the bot sees it (pastedsecrets.ts).
   const looksSecret = text.length >= 8 && findSecrets(text).length > 0;
 
@@ -330,6 +331,7 @@ export function Composer({ bot, live }: { bot: Bot; live: Live }) {
       }}
     >
       <ErrorNote onDismiss={() => setError(null)}>{error}</ErrorNote>
+      {bot.pause && !live.running && <PauseBanner bot={bot} />}
       {looksSecret && (
         <div className="secret-warn" role="status">
           <Icon name="lock" size={15} />

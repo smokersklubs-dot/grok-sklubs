@@ -1,6 +1,6 @@
 import { seal, unseal } from "./auth.js";
 import { getLive } from "./bus.js";
-import { decideApproval, interrupt, onTurnEvent, submitUserMessage } from "./agent/loop.js";
+import { decideApproval, interrupt, isPaused, onTurnEvent, submitUserMessage } from "./agent/loop.js";
 import { holdAndOffer, screen as screenSecrets } from "./pastedsecrets.js";
 import { config } from "./config.js";
 import { q } from "./db.js";
@@ -129,6 +129,8 @@ async function receive(botId: string, chatId: string, text: string, token: strin
   const screened = screenSecrets(text, users.localeOf(bot.userId));
   rows.append(bot, { kind: "message", role: "user", text: screened.text });
   if (screened.secrets.length) holdAndOffer(bot, bot.userId, screened.secrets);
+  // "Pause": the message is kept and waits in the bot's queue; the sender hears it now, not when it is resumed.
+  if (isPaused(bot)) await reply(tr(users.localeOf(bot.userId), "⏸ {bot} is paused: your message is kept and will be handled when it is resumed.", { bot: bot.name }));
   submitUserMessage(bot, screened.text, false, [], "telegram");
 }
 

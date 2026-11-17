@@ -5,6 +5,15 @@ import type { Locale } from "./shared.js";
  * English is the key; French is looked up here. Anything missing falls back to English.
  */
 const FR: Record<string, string> = {
+  // "Pause" (agent/pause.ts, loop.ts, team.ts, telegram.ts).
+  "its bot is paused": "son bot est en pause", "the section “{name}”": "la section « {name} »",
+  "{bot} is paused: this message is kept and will be handled when it is resumed.": "{bot} est en pause : ce message est gardé et sera traité à la reprise.",
+  "Paused. What I did so far is kept; I will pick this back up when I am resumed.": "En pause. Ce que j'ai déjà fait est gardé ; je reprendrai là où j'en étais à la reprise.",
+  "{bot} is paused and will not answer until it is resumed.": "{bot} est en pause et ne répondra pas avant la reprise.",
+  "{bots} are paused and will not answer until they are resumed.": "{bots} sont en pause et ne répondront pas avant la reprise.",
+  "{bot} is paused": "{bot} est en pause", "Paused: it goes on when its bot is resumed.": "En pause : elle continuera à la reprise de son bot.",
+  "⏸ {bot} is paused: your message is kept and will be handled when it is resumed.": "⏸ {bot} est en pause : ton message est gardé et sera traité à la reprise.",
+  "This routine's bot is paused. Resume it to run the routine.": "Le bot de cette routine est en pause. Reprends-le pour lancer la routine.",
   // The in-app automatic backup (autobackup.ts).
   "The automatic backup failed {n} times in a row: {detail}": "La sauvegarde automatique a échoué {n} fois de suite : {detail}", "Backup failed": "Sauvegarde en échec",
   // Goal mode (agent/goals.ts).

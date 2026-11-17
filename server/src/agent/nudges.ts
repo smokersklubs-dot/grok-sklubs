@@ -8,7 +8,7 @@ import { audit, bots, clip, memories, newId, now, paused, rows, users, type BotR
 import { costEstimate, record } from "../usage.js";
 import { hostedMode, operatorBlock, operatorPaid, suspended } from "../hosted.js";
 import { isEngineRef } from "./engine.js";
-import { enqueue, isBusy } from "./loop.js";
+import { enqueue, isBusy, isPaused } from "./loop.js";
 
 /**
  * Proactive nudges (spec 07 A6). Optional per bot (off by default). Every so often a quiet preparation pass looks at the
@@ -98,6 +98,8 @@ export async function preparationPass(botId: string, force = false): Promise<Pas
   const bot = bots.byId(botId);
   if (!bot || bot.kind !== "agent" || bot.hidden) return { status: "skipped", reason: "no such bot" };
   if (!bot.nudges.enabled && !force) return { status: "skipped", reason: "off" };
+  // "Pause": a paused bot makes no quiet pass either (no model call).
+  if (isPaused(bot)) return { status: "skipped", reason: "paused" };
   if (inQuietHours(pushSettings(bot.userId))) return { status: "skipped", reason: "quiet hours" };
   const s = stats(bot.id);
   if (s.raised >= bot.nudges.perDay) return { status: "skipped", reason: "daily cap" };

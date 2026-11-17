@@ -7,6 +7,7 @@ import { botTitle, initials } from "../lib/format";
 import { BotAvatar } from "./Avatar";
 import { Icon } from "./Icon";
 import { IconButton, Menu, MenuItem, modKey } from "./ui";
+import { PauseAllNotice, PausedBadge, setPaused } from "./Pause";
 
 function statusOf(bot: Bot, live: Live): "attention" | "working" | "unread" | null {
   if (live.awaiting) return "attention";
@@ -18,6 +19,8 @@ function statusOf(bot: Bot, live: Live): "attention" | "working" | "unread" | nu
 const statusLabel = (status: "attention" | "working" | "unread"): string => tt(`sidebar.status.${status}`);
 
 function previewOf(bot: Bot, live: Live): string {
+  // A paused bot already has its badge: the line says what waits for it, else its last message.
+  if (bot.pause && !live.running && bot.pause.queued > 0) return tn("pause.queued", bot.pause.queued);
   if (live.awaiting) return tt("sidebar.waitingReason", { reason: live.awaiting.reason });
   if (bot.preview) return bot.preview;
   if (live.running) return tt("sidebar.workingPreview");
@@ -64,6 +67,11 @@ function BotMenu({ bot, open, onClose }: { bot: Bot; open: boolean; onClose: () 
           <MenuItem icon="folder" onClick={() => setMoving(true)}>{t("sidebar.moveTo")}…</MenuItem>
           {bot.kind === "agent" && <MenuItem icon="copy" onClick={() => { close(); openModal({ kind: "duplicate", botId: bot.id }); }}>{t("sidebar.duplicate")}…</MenuItem>}
           {bot.unread === 0 && <MenuItem icon="ring" onClick={() => { close(); void markUnread(bot.id); }}>{t("sidebar.markUnread")}</MenuItem>}
+          {bot.kind === "agent" && (
+            bot.pause?.self
+              ? <MenuItem icon="play" onClick={() => { close(); void setPaused({ kind: "bot", bot }, false); }}>{t("pause.resumeBot")}</MenuItem>
+              : <MenuItem icon="pause" onClick={() => { close(); void setPaused({ kind: "bot", bot }, true); }}>{t("pause.pauseBot")}</MenuItem>
+          )}
           {!bot.primary && <MenuItem icon={bot.listHidden ? "eye" : "eyeOff"} onClick={() => { close(); void organise(bot.id, { listHidden: !bot.listHidden }); }}>{t(bot.listHidden ? "sidebar.unhide" : "sidebar.hide")}</MenuItem>}
           <div className="menu-sep" />
           <MenuItem icon="settings" onClick={() => { close(); openBotSettings(bot.id); }}>{t("chat.botSettings")}</MenuItem>
@@ -90,11 +98,12 @@ function BotRow({ bot, live, active, collapsed }: { bot: Bot; live: Live; active
         onDragStart={(e) => { e.dataTransfer.setData(DRAG_TYPE, bot.id); e.dataTransfer.effectAllowed = "move"; }}
         aria-current={active ? "true" : undefined}
         title={collapsed ? title : undefined}
-        aria-label={collapsed ? `${title}${status ? ` — ${statusLabel(status)}` : ""}` : undefined}
+        aria-label={collapsed ? `${title}${bot.pause ? ` — ${t("pause.badge")}` : ""}${status ? ` — ${statusLabel(status)}` : ""}` : undefined}
       >
-        <span className="bot-row-avatar">
+        <span className={`bot-row-avatar ${bot.pause ? "is-paused" : ""}`}>
           <BotAvatar bot={bot} size={38} />
           {status && <span className={`dot dot-${status}`} title={statusLabel(status)} />}
+          {collapsed && <PausedBadge bot={bot} compact />}
         </span>
         {!collapsed && (
           <span className="bot-row-text">
@@ -104,6 +113,7 @@ function BotRow({ bot, live, active, collapsed }: { bot: Bot; live: Live; active
               {bot.kind === "room" && <Icon name="users" size={13} className="bot-row-kind" />}
               {bot.pinned && <Icon name="pin" size={12} className="bot-row-kind" />}
               {bot.access && <Icon name="users" size={12} className="bot-row-kind" aria-label={bot.access.workspaceName} />}
+              <PausedBadge bot={bot} />
             </span>
             <span className={`bot-row-preview truncate ${status === "attention" ? "is-attention" : ""}`}>{previewOf(bot, live)}</span>
           </span>
@@ -165,11 +175,15 @@ function SectionActions({ section }: { section: BotSection }) {
     try { await api("DELETE", `/sections/${section.id}`); await loadSections(); } catch (e) { showToast(errText(e)); }
   };
   return (
-    <span className="menu-wrap">
+    <span className="menu-wrap sidebar-group-actions">
+      {section.paused && <span className="pause-badge is-compact" title={t("pause.sectionPaused")} aria-label={t("pause.sectionPaused")}><Icon name="pause" size={10} /></span>}
       <button type="button" className="icon-btn sidebar-group-more" aria-label={t("sections.menu", { name: section.name })} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
         <Icon name="more" size={15} />
       </button>
       <Menu open={open} onClose={() => setOpen(false)} align="right" label={t("sections.menu", { name: section.name })}>
+        {section.paused
+          ? <MenuItem icon="play" onClick={() => { setOpen(false); void setPaused({ kind: "section", section }, false); }}>{t("pause.resumeSection")}</MenuItem>
+          : <MenuItem icon="pause" onClick={() => { setOpen(false); void setPaused({ kind: "section", section }, true); }}>{t("pause.pauseSection")}</MenuItem>}
         <MenuItem icon="edit" onClick={() => void rename()}>{t("sections.rename")}</MenuItem>
         <MenuItem icon="trash" danger onClick={() => void remove()}>{t("sections.delete")}</MenuItem>
       </Menu>
@@ -187,6 +201,7 @@ export function Sidebar() {
   const tasks = useStore((s) => s.tasks);
   const user = useStore((s) => s.user);
   const online = useStore((s) => s.online);
+  const pausedAll = useStore((s) => !!s.pauses.all);
   const { toggleSidebar, openModal, setView, selectBot, openAppSettings, logout, setMobileNav } = useStore.getState();
   const [menuOpen, setMenuOpen] = useState(false);
   const t = useT();
@@ -282,6 +297,7 @@ export function Sidebar() {
               {!collapsed && (
                 <>
                   <span className="primary-tile-name">{botTitle(primary)}</span>
+                  {primary.pause && <PausedBadge bot={primary} />}
                   <span className={`primary-tile-preview truncate ${primaryStatus === "attention" ? "is-attention" : ""}`}>
                     {previewOf(primary, primaryLive)}
                   </span>
@@ -341,6 +357,8 @@ export function Sidebar() {
           )}
         </div>
 
+        <PauseAllNotice collapsed={collapsed} />
+
         {!online && !collapsed && (
           <div className="sidebar-offline" role="status">
             <span className="dot-inline dot-warn" /> {t("sidebar.reconnecting")}
@@ -375,6 +393,10 @@ export function Sidebar() {
                 >
                   {t("sidebar.connectApps")}
                 </MenuItem>
+                <div className="menu-sep" />
+                {pausedAll
+                  ? <MenuItem icon="play" onClick={() => { setMenuOpen(false); void setPaused({ kind: "all" }, false); }}>{t("pause.resumeAll")}</MenuItem>
+                  : <MenuItem icon="pause" onClick={() => { setMenuOpen(false); void setPaused({ kind: "all" }, true); }}>{t("pause.pauseAll")}</MenuItem>}
                 <div className="menu-sep" />
                 <MenuItem icon="logout" danger onClick={() => void logout()}>
                   {t("sidebar.logout")}

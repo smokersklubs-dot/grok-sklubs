@@ -1,6 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { q } from "./db.js";
+import { pauses } from "./pauses.js";
 import { emit } from "./bus.js";
 import { tr } from "./i18n.js";
 import type { ChatMessage } from "./llm/types.js";
@@ -83,6 +84,7 @@ function toBot(r: any): BotRecord {
     roomRule: r.room_rule === "everyone" || r.room_rule === "mentions" ? r.room_rule : "lead",
     disabledTools: JSON.parse(r.disabled_tools || "[]"), telegram: r.telegram_username ?? null,
     pinned: !!r.pinned, sectionId: r.section_id ?? null, listHidden: !!r.list_hidden,
+    pause: r.kind === "agent" ? pauses.of({ id: r.id, userId: r.user_id, sectionId: r.section_id ?? null, parentId: r.parent_id ?? null }) : null,
     fallbackModels: r.fallback_models ? cleanModelList(safeJson(r.fallback_models)) : null, createdBy: r.created_by ?? null,
     nudges: cleanNudges(safeJson(r.nudges || "{}")),
     spendCheckpointUsd: typeof r.spend_checkpoint_usd === "number" ? r.spend_checkpoint_usd : null,
@@ -320,7 +322,7 @@ export const bots = {
   bumpUnread(id: string) { q.run("UPDATE bots SET unread = unread + 1 WHERE id = ?", id); },
   /** How many bots this user's bots created (bot_create) since `since`, for the daily limit. */
   createdByBotsSince: (userId: string, since: number) => q.get<{ n: number }>("SELECT COUNT(*) AS n FROM bots WHERE user_id = ? AND created_by IS NOT NULL AND created_at > ?", userId, since)!.n,
-  remove(id: string) { q.run("DELETE FROM bots WHERE id = ? OR parent_id = ?", id, id); },
+  remove(id: string) { q.run("DELETE FROM bots WHERE id = ? OR parent_id = ?", id, id); pauses.forget("bot", id); },
   resetConversation(id: string): number {
     q.run("UPDATE bots SET generation = generation + 1, next_seq = 1, unread = 0, updated_at = ? WHERE id = ?", now(), id);
     q.run("DELETE FROM paused WHERE bot_id = ?", id);
@@ -330,7 +332,7 @@ export const bots = {
 };
 
 // ── Sidebar sections ─────────────────────────────────────────────────────────
-const toSection = (r: any): BotSection => ({ id: r.id, name: r.name, position: r.position, createdAt: r.created_at });
+const toSection = (r: any): BotSection => ({ id: r.id, name: r.name, position: r.position, createdAt: r.created_at, paused: pauses.sectionPaused(r.user_id, r.id) });
 export const sections = {
   list: (userId: string) => q.all("SELECT * FROM bot_sections WHERE user_id = ? ORDER BY position, created_at", userId).map(toSection),
   owned(userId: string, id: string) { const r = q.get("SELECT * FROM bot_sections WHERE id = ? AND user_id = ?", id, userId); return r ? toSection(r) : null; },
@@ -349,6 +351,8 @@ export const sections = {
     q.tx(() => {
       q.run("UPDATE bots SET section_id = NULL WHERE user_id = ? AND section_id = ?", userId, id);
       q.run("DELETE FROM bot_sections WHERE id = ? AND user_id = ?", id, userId);
+      // Its pause goes with it: its bots, back in the default list, are no longer paused because of it.
+      if (!q.get("SELECT 1 FROM bot_sections WHERE id = ?", id)) pauses.forget("section", id);
     });
   },
 };
@@ -901,7 +905,7 @@ export const pages = {
  * A bot's queue, kept on disk (bot_queue) so that work waiting behind a turn survives a restart. The order of rows (id)
  * is the order of the queue. Done rows are kept a week, then dropped (prune).
  */
-export interface QueuedWork { id: number; bot_id: string; trigger: string; status: "pending" | "running" | "deferred" | "done" }
+export interface QueuedWork { id: number; bot_id: string; trigger: string; status: "pending" | "running" | "deferred" | "held" | "done" }
 export const botQueue = {
   /** Writes a job; null when it cannot be written (a bot that is not in the database): it then runs from memory only. */
   add(botId: string, trigger: unknown): number | null {
@@ -914,7 +918,13 @@ export const botQueue = {
   defer: (id: number) => q.run("UPDATE bot_queue SET status = 'deferred' WHERE id = ?", id),
   /** Puts other work in a row's place, back to pending (the turn a restart cut off becomes its recovery, in its place). */
   replace: (id: number, trigger: unknown) => q.run("UPDATE bot_queue SET trigger = ?, status = 'pending', started_at = NULL WHERE id = ?", JSON.stringify(trigger), id),
-  unfinished: () => q.all<QueuedWork>("SELECT id, bot_id, trigger, status FROM bot_queue WHERE status IN ('pending', 'running', 'deferred') ORDER BY id"),
+  unfinished: () => q.all<QueuedWork>("SELECT id, bot_id, trigger, status FROM bot_queue WHERE status IN ('pending', 'running', 'deferred', 'held') ORDER BY id"),
+  /** "Pause" (agent/pause.ts): work that came for a paused bot is set aside, in its order, until the bot is resumed. */
+  hold: (id: number) => q.run("UPDATE bot_queue SET status = 'held', started_at = NULL WHERE id = ?", id),
+  /** The work set aside for a bot while it was paused, oldest first. */
+  heldFor: (botId: string) => q.all<QueuedWork>("SELECT id, bot_id, trigger, status FROM bot_queue WHERE bot_id = ? AND status = 'held' ORDER BY id", botId),
+  /** Back to pending (the bot was resumed): it runs again, in its place. */
+  unhold: (id: number) => q.run("UPDATE bot_queue SET status = 'pending' WHERE id = ? AND status = 'held'", id),
   status: (id: number) => q.get<{ status: QueuedWork["status"] }>("SELECT status FROM bot_queue WHERE id = ?", id)?.status ?? null,
   prune: (olderThanMs = 7 * 86_400_000) => q.run("DELETE FROM bot_queue WHERE status = 'done' AND done_at < ?", now() - olderThanMs),
 };

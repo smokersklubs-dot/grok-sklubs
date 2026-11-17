@@ -1,7 +1,7 @@
 import { emit } from "../bus.js";
 import { tr } from "../i18n.js";
 import { bots, clip, newId, rows, users, type BotRecord, type UserRecord } from "../store.js";
-import { enqueue } from "./loop.js";
+import { enqueue, isPaused } from "./loop.js";
 
 export const MAX_HOPS = 3;
 export const MAX_HELPERS = 4;
@@ -130,7 +130,15 @@ function mentioned(text: string, members: BotRecord[]): BotRecord[] {
  */
 export function dispatchToRoom(room: BotRecord, user: UserRecord, text: string, fromBot: BotRecord | null, depth: number, tainted = false, thread = 0) {
   // A member that belongs to someone else (however it got on the list) is never woken by this room.
-  const members = room.memberIds.map((id) => bots.byId(id)).filter((b): b is BotRecord => !!b && b.kind === "agent" && b.userId === room.userId);
+  const all = room.memberIds.map((id) => bots.byId(id)).filter((b): b is BotRecord => !!b && b.kind === "agent" && b.userId === room.userId);
+  // "Pause": a paused member is skipped and the room goes on with the others. One that was called by name says so in the
+  // room (once per message), so whoever wrote knows not to wait for it.
+  const members = all.filter((m) => !isPaused(m));
+  const asleep = mentioned(text, all).filter((m) => m.id !== fromBot?.id && isPaused(m));
+  if (asleep.length && depth < MAX_HOPS) {
+    const loc = users.localeOf(room.userId);
+    rows.append(room, { kind: "notice", tone: "info", text: asleep.length === 1 ? tr(loc, "{bot} is paused and will not answer until it is resumed.", { bot: asleep[0].name }) : tr(loc, "{bots} are paused and will not answer until they are resumed.", { bots: asleep.map((m) => m.name).join(", ") }) }, thread);
+  }
   let targets = mentioned(text, members).filter((m) => m.id !== fromBot?.id);
   const parent = thread ? rows.get(room.id, room.generation, thread) : null;
   if (!targets.length && !fromBot && parent) {

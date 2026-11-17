@@ -111,7 +111,7 @@ export const bgTaskHooks = {
     if (!t || t.state === "running") return;
     refreshCard(bgTasks.set(t.id, { state: "running" })!);
   },
-  ended(bot: BotRecord, info: { failed: string; lastText: string; tainted: boolean }) {
+  ended(bot: BotRecord, info: { failed: string; lastText: string; tainted: boolean; paused?: boolean }) {
     if (!bot.parentId) return;
     const t = bgTasks.byHelper(bot.id);
     if (!t) return;
@@ -126,6 +126,8 @@ export const bgTaskHooks = {
       refreshCard(bgTasks.set(t.id, { state: "waiting", steps })!, card ? { approval: { approvalId: card.approvalId, title: card.title, detail: [card.detail, card.why].filter(Boolean).join("\n\n"), ...(card.irreversible && card.irreversibleReason ? { irreversible: card.irreversibleReason } : {}) } } : {});
       return;
     }
+    // "Pause" stopped it (its bot, section or every bot was paused): it waits, and goes on once resumed.
+    if (info.paused && t.state !== "stopped") { refreshCard(bgTasks.set(t.id, { state: "waiting", steps })!, { question: tr(loc, "Paused: it goes on when its bot is resumed.") }); return; }
     if (t.state === "stopped" || info.failed === "stopped") { refreshCard(bgTasks.set(t.id, { state: "stopped", steps })!); return; }
     // Stopped at a spend checkpoint (spend.ts): it waits for the user's answer on the checkpoint card.
     if (q.get("SELECT 1 FROM spend_checkpoints WHERE worker_id = ? AND status = 'pending'", bot.id)) {

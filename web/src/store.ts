@@ -4,7 +4,7 @@ import { getLocale, isLocale, setLocale as applyLocale, t } from "./i18n";
 import { notifyBot } from "./lib/notify";
 import { startPresence } from "./lib/push";
 import { playShout, startEuphoria } from "./lib/cheer";
-import type { Attachment, Bot, BotBundle, BotSection, ComputerState, Connector, Live, Locale, NativeAccount, NativeApp, NativeVendorSetup, ReactionEmoji, Recording, RelayDevice, RelayDownloads, Routine, Row, ServerEvent, Task, User, VideoStatus } from "./types";
+import type { Attachment, Bot, BotBundle, BotSection, ComputerState, PauseState, Connector, Live, Locale, NativeAccount, NativeApp, NativeVendorSetup, ReactionEmoji, Recording, RelayDevice, RelayDownloads, Routine, Row, ServerEvent, Task, User, VideoStatus } from "./types";
 
 export interface NativeState { apps: NativeApp[]; vendors: NativeVendorSetup[]; accounts: NativeAccount[] }
 
@@ -186,6 +186,8 @@ interface Store {
   wave7Tick: number;
   /** The user's own sidebar sections. */
   sections: BotSection[];
+  /** "Pause": what the owner paused (GET /pauses); `all` while every bot is paused. */
+  pauses: PauseState;
   /** Find in the open chat: highlighted matches, and the one shown (next / previous). */
   find: { botId: string; query: string; index: number } | null;
   /** Bumped per bot on every `routines` event, so open run histories reload. */
@@ -231,6 +233,7 @@ interface Store {
   loadConnectors(): Promise<void>;
   loadNative(): Promise<void>;
   loadSections(): Promise<void>;
+  loadPauses(): Promise<void>;
   /** Change a bot's place in the sidebar (pin, section, hidden) or mark it unread. */
   organise(botId: string, patch: { pinned?: boolean; sectionId?: string | null; listHidden?: boolean }): Promise<void>;
   markUnread(botId: string): Promise<void>;
@@ -329,6 +332,7 @@ export const useStore = create<Store>((set, get) => ({
   localToolsTick: {},
   wave7Tick: 0,
   sections: [],
+  pauses: { all: null, sections: [], bots: [] },
   find: null,
   routineTicks: {},
   jump: null,
@@ -396,6 +400,7 @@ export const useStore = create<Store>((set, get) => ({
     void get().loadRelay();
     void get().loadConnectors();
     void get().loadSections();
+    void get().loadPauses();
     // Opened from a push notification (/?bot=<id>): show that bot, then tidy the address.
     const wanted = new URLSearchParams(window.location.search).get("bot");
     if (wanted && get().bots[wanted]) get().selectBot(wanted);
@@ -592,6 +597,14 @@ export const useStore = create<Store>((set, get) => ({
     }
   },
 
+  async loadPauses() {
+    try {
+      set({ pauses: await api<PauseState>("GET", "/pauses") });
+    } catch {
+      /* keep the previous state */
+    }
+  },
+
   async loadSections() {
     try {
       const r = await api<{ sections: BotSection[] }>("GET", "/sections");
@@ -737,6 +750,11 @@ export const useStore = create<Store>((set, get) => ({
         break;
       case "sections":
         void get().loadSections();
+        break;
+      case "pauses":
+        void get().loadPauses();
+        void get().loadSections();
+        void get().loadBots().catch(() => undefined);
         break;
       case "vault":
         set((s) => ({ vaultTick: s.vaultTick + 1 }));

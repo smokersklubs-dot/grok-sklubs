@@ -4,7 +4,7 @@ import { sweepIdleDesktops } from "./computer.js";
 import { config } from "./config.js";
 import { isValidTimezone, localParts, nextRun } from "./cron.js";
 import { q } from "./db.js";
-import { enqueue, hostedHoldsBot } from "./agent/loop.js";
+import { enqueue, hostedHoldsBot, isPaused } from "./agent/loop.js";
 import { hostedTick, postStopNotice } from "./hosted.js";
 import { consolidationSweep } from "./agent/memory.js";
 import { nudgeSweep } from "./agent/nudges.js";
@@ -41,7 +41,7 @@ export const unschedule = (routineId: string) => { due.delete(routineId); };
  * Runs a routine now: notes it in the chat and queues the work behind whatever the bot is doing.
  * `outside`: the payload came from outside (a webhook call); the turn treats it as outside content.
  */
-export function fireRoutine(r: RoutineRecord, payload?: unknown, opts: { outside?: boolean; label?: string; note?: string } = {}): "fired" | "busy" {
+export function fireRoutine(r: RoutineRecord, payload?: unknown, opts: { outside?: boolean; label?: string; note?: string } = {}): "fired" | "busy" | "paused" {
   const bot = bots.byId(r.botId);
   if (!bot) return "busy";
   // Hosted mode: a suspended account's routines are paused, and one whose models only the operator's keys pay for waits
@@ -52,6 +52,16 @@ export function fireRoutine(r: RoutineRecord, payload?: unknown, opts: { outside
     postStopNotice(bot, held, { background: true });
     emit(bot.userId, { type: "routines", botId: bot.id });
     return "busy";
+  }
+  // "Pause" (agent/pause.ts): a paused bot's routines — scheduled, watched, webhooks, mail — do not run. Each run that
+  // comes due is recorded as skipped in its run log (nothing lands under To review, no model call); it comes back on its
+  // own at its next due time once the bot is resumed. A run started by hand is refused (routes.ts).
+  if (isPaused(bot)) {
+    // A one-off routine is not lost: it waits (looked at again every minute) and runs once the bot is resumed.
+    if (r.trigger === "once" && r.runAt && !r.lastRunAt) { due.set(r.id, now() + 60_000); return "paused"; }
+    runs.skipped(r.id, "The bot is paused: skipped.");
+    emit(bot.userId, { type: "routines", botId: bot.id });
+    return "paused";
   }
   // One run at a time (spec 07 A7): a due time that comes while a run is still under way is skipped (a one-off
   // routine is tried again a minute later).
@@ -95,7 +105,7 @@ export async function inputsFingerprint(r: RoutineRecord): Promise<string | null
  * routine checks its inputs: unchanged since the last run → skipped, no model call. Its first run and the run after a
  * failure always happen. Running more than 10 minutes late is said in the instruction.
  */
-export async function dueRoutine(r: RoutineRecord, slot: number): Promise<"fired" | "skipped" | "busy" | "claimed"> {
+export async function dueRoutine(r: RoutineRecord, slot: number): Promise<"fired" | "skipped" | "busy" | "claimed" | "paused"> {
   if (!routines.claimSlot(r.id, String(slot))) return "claimed";
   let note = "";
   const late = now() - slot;
@@ -171,7 +181,8 @@ function catchUp() {
 // ── Proactive check-ins ──────────────────────────────────────────────────────
 export function fireCheckin(userId: string, quietStreak: number) {
   const primary = bots.primary(userId);
-  if (!primary) return;
+  // A paused main bot has no check-in (it would be stale by the time it is resumed).
+  if (!primary || isPaused(primary)) return;
   const all = bots.list(userId);
   const name = (id: string) => all.find((b) => b.id === id)?.name ?? "a bot";
   const waiting = tasks.forUser(userId).filter((t) => t.state === "needs_input").slice(0, 10);

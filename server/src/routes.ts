@@ -94,6 +94,8 @@ import { ownerId, registerGooglePrivate, registerGooglePublic, type GoogleDeps }
 import { dropResetLinks, registerAccountMailPrivate, registerAccountMailPublic } from "./accountmail.js";
 import { registerAutoBackupRoutes } from "./autobackup.js";
 import { createGoal, goalAction, GoalError, goalCommand, goals, pauseGoalsOf } from "./agent/goals.js";
+import { afterMove, setPause } from "./agent/pause.js";
+import { pauses } from "./pauses.js";
 import { publicJobs, stopJob } from "./jobs.js";
 import { healthReport } from "./monitor.js";
 import { accountCreated, HostedError, hostedMode, isOperator, isPlanLimit, lentProviderIds, planInviteOpens, signupChoice, subscriptionEnginesFor, suspended, type SignupChoice } from "./hosted.js";
@@ -377,7 +379,9 @@ api.post("/hooks/:token", async (c) => {
   let payload: unknown = raw || undefined;
   try { payload = raw ? JSON.parse(raw) : undefined; } catch { /* keep the raw text */ }
   // Whoever holds the hook's address can send anything: the payload is outside content for the turn it starts.
-  fireRoutine(r!, payload, { outside: true });
+  // "Pause": a paused bot's webhook is recorded as skipped (like any routine run), and the sender is told so — with a
+  // 2xx, so senders that retry on errors do not pile calls up while it is paused.
+  if (fireRoutine(r!, payload, { outside: true }) === "paused") return c.json({ ok: true, skipped: "paused" });
   return c.json({ ok: true });
 });
 
@@ -607,6 +611,8 @@ api.patch("/bots/:id", async (c) => {
   }
   bots.patch(bot.id, patch);
   bots.announce(bot);
+  // "Pause": a bot moved into a paused section is paused with it; moved out, it is free again (agent/pause.ts).
+  if (a.owner && patch.sectionId !== undefined && (patch.sectionId ?? null) !== bot.sectionId) afterMove(c.get("user"), bot.id, !!bot.pause);
   // Wave 7: switching the credential relay off revokes this computer's token at once (and clears its relay file).
   if (patch.relayEnabled === false && bot.relayEnabled) void disableRelay(bot);
   if (typeof patch.relayEnabled === "boolean" && patch.relayEnabled !== bot.relayEnabled) audit(bot.userId, "computer", `${bot.name}: credential relay ${patch.relayEnabled ? "on" : "off"}`, bot.id);
@@ -689,10 +695,36 @@ api.patch("/sections/:id", async (c) => {
 api.delete("/sections/:id", (c) => {
   const user = c.get("user");
   const cur = sections.owned(user.id, c.req.param("id")) ?? fail(404, "That section does not exist.");
+  // A paused section is resumed first: its bots go back to the team list free, with their waiting work.
+  if (cur.paused) setPause(user, "section", cur.id, false, cur.name);
   sections.remove(user.id, cur.id);
   emit(user.id, { type: "sections" });
   emit(user.id, { type: "roster" });
   return c.json({ ok: true });
+});
+
+// ── Pause (agent/pause.ts) ───────────────────────────────────────────────────
+// Owner only: pausing decides about the owner's bots, spend and subscriptions. Someone of a workspace a bot is shared
+// with — viewer, member or admin — cannot pause or resume it (ownAgent / sections.owned answer 404, as for any other
+// account's thing); a stranger's call to "everything" pauses only their own bots. Each change is an audit line.
+api.get("/pauses", (c) => c.json(pauses.state(c.get("user").id)));
+api.post("/bots/:id/pause", (c) => { const bot = ownAgent(c); return c.json(setPause(c.get("user"), "bot", bot.id, true, bot.name)); });
+api.post("/bots/:id/resume", (c) => { const bot = ownAgent(c); return c.json(setPause(c.get("user"), "bot", bot.id, false, bot.name)); });
+api.post("/sections/:id/pause", (c) => {
+  const user = c.get("user");
+  const sec = sections.owned(user.id, c.req.param("id")) ?? fail(404, "That section does not exist.");
+  return c.json(setPause(user, "section", sec.id, true, sec.name));
+});
+api.post("/sections/:id/resume", (c) => {
+  const user = c.get("user");
+  const sec = sections.owned(user.id, c.req.param("id")) ?? fail(404, "That section does not exist.");
+  return c.json(setPause(user, "section", sec.id, false, sec.name));
+});
+/** "Tout mettre en pause" / "Tout reprendre": `{ paused: true | false }`. Resuming everything leaves bots and sections paused on their own. */
+api.post("/pauses/all", async (c) => {
+  const b = await body(c);
+  if (typeof b.paused !== "boolean") fail(400, "Say paused: true or false.");
+  return c.json(setPause(c.get("user"), "all", "", b.paused));
 });
 
 // ── Conversation ─────────────────────────────────────────────────────────────
@@ -1144,7 +1176,11 @@ api.patch("/routines/:id", async (c) => {
 });
 api.get("/routines/:id/runs", (c) => c.json({ runs: runs.list(ownRoutine(c).id) }));
 // "Run now" does not move the next due time and does not turn a paused routine back on; a run under way is not doubled.
-api.post("/routines/:id/run", (c) => { const r = fireRoutine(ownRoutine(c)); return r === "busy" ? fail(409, "This routine is already running.") : c.json({ ok: true }); });
+api.post("/routines/:id/run", (c) => {
+  const r = fireRoutine(ownRoutine(c));
+  if (r === "paused") fail(409, tr(c.get("user").locale, "This routine's bot is paused. Resume it to run the routine."));
+  return r === "busy" ? fail(409, "This routine is already running.") : c.json({ ok: true });
+});
 api.delete("/routines/:id", (c) => {
   const r = ownRoutine(c);
   unschedule(r.id);

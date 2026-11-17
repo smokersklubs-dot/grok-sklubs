@@ -10,6 +10,7 @@ import { Icon } from "./Icon";
 import { Transcript } from "./Transcript";
 import { FindBar } from "./FindBar";
 import { FilePreviewPanel } from "./Wave5b";
+import { PausedBadge, resumeWidest, setPaused } from "./Pause";
 import { SharedBadge } from "./Wave6";
 import { IconButton, Menu, MenuItem, isMac, modKey } from "./ui";
 
@@ -55,6 +56,7 @@ export function ChatView() {
           <button type="button" className="bot-pill" onClick={() => (menu ? close() : setMenu(true))} aria-haspopup="menu" aria-expanded={menu}>
             <BotAvatar bot={bot} size={24} badge />
             <span className="truncate">{botTitle(bot)}</span>
+            <PausedBadge bot={bot} />
             <Icon name="chevronDown" size={14} />
           </button>
           <Menu open={menu} onClose={close} align="center" label={t("chat.actions", { name: bot.name })}>
@@ -105,6 +107,11 @@ export function ChatView() {
             >
               {t("find.inChat")}
             </MenuItem>
+            {!bot.access && bot.kind === "agent" && (
+              bot.pause
+                ? <MenuItem icon="play" onClick={() => { close(); void resumeWidest(bot); }}>{t(bot.pause.by === "all" ? "pause.resumeAll" : bot.pause.by === "section" ? "pause.resumeSection" : "pause.resumeBot")}</MenuItem>
+                : <MenuItem icon="pause" onClick={() => { close(); void setPaused({ kind: "bot", bot }, true); }}>{t("pause.pauseBot")}</MenuItem>
+            )}
             {!bot.access && <MenuItem
               icon="settings"
               onClick={() => {

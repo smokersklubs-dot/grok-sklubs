@@ -6,7 +6,7 @@ import { audit, bots, clip, newId, now, paused, rows, users, type BotRecord } fr
 import { overBudget } from "../usage.js";
 import { checkpoints } from "./spend.js";
 import type { BuiltinTool } from "./tools.js";
-import { enqueue, hostedHoldsBot, interrupt, queuedBehind, runningThreadOf, tell } from "./loop.js";
+import { enqueue, hostedHoldsBot, interrupt, isPaused, queuedBehind, runningThreadOf, tell } from "./loop.js";
 
 /**
  * Goal mode ("Objectif" in the composer, "/objectif …", a routine whose text starts with "/objectif", or a goal the bot
@@ -191,6 +191,8 @@ function continueGoal(bot: BotRecord, g: GoalRecord) {
   // Work is queued behind this turn: the end of the last of it starts the round.
   if (queuedBehind(bot.id) > 0) return;
   if (overBudget(bot.userId)) { pauseGoal(bot, g, tr(loc, "this month's budget is used up")); return; }
+  // "Pause": the bot is paused — the goal is paused with it, and resumed with it (resumeGoalsAfterPause).
+  if (isPaused(bot)) { pauseGoal(bot, g, tr(loc, GOAL_PAUSED_WITH_BOT)); return; }
   // Hosted mode: the plan holds this bot's work (budget on the service's keys, suspended account…): the goal waits, paused.
   const held = hostedHoldsBot(bot);
   if (held) { pauseGoal(bot, g, tr(loc, held === "suspended" ? "the account is suspended" : held === "budget" ? "this month's budget is used up" : "the plan does not allow this model")); return; }
@@ -201,6 +203,21 @@ function continueGoal(bot: BotRecord, g: GoalRecord) {
   }
   goals.set(g, { queued: true });
   enqueue(bot.id, { kind: "system", text: goalRoundPrompt(g, g.rounds + 1), thread: g.thread || undefined, goalRound: g.id, tainted: g.tainted || undefined, origin: g.origin, spendScope: g.spendKey || undefined, depth: 0 });
+}
+
+/** Why a goal waits while its bot is paused ("Pause", agent/pause.ts); resuming the bot resumes those goals. */
+export const GOAL_PAUSED_WITH_BOT = "its bot is paused";
+
+/** The bot was resumed: the goals "Pause" paused go on (each at its next round), in any language the reason was written. */
+export function resumeGoalsAfterPause(bot: BotRecord): number {
+  const reasons = new Set([GOAL_PAUSED_WITH_BOT, tr("fr", GOAL_PAUSED_WITH_BOT), tr("en", GOAL_PAUSED_WITH_BOT)]);
+  let n = 0;
+  for (const g of q.all("SELECT * FROM bot_goals WHERE bot_id = ? AND status = 'paused' ORDER BY created_at", bot.id).map(toGoal)) {
+    if (g.status !== "paused" || g.generation !== bot.generation || !reasons.has(g.reason)) continue;
+    continueGoal(bot, goals.set(g, { status: "active", reason: "", waiting: "", queued: false }));
+    n++;
+  }
+  return n;
 }
 
 /** The user (or a spend checkpoint's "Stop") pauses every active goal of a bot. */

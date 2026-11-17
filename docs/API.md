@@ -312,6 +312,43 @@ so it cannot be bound to a host.
 
 Server events: `{ type: "sections" }`, `{ type: "vault" }`.
 
+### Pause (`server/src/agent/pause.ts`, `server/src/pauses.ts`)
+Pause one bot, one sidebar section, or every bot of the account ("Tout mettre en pause"); resume each the same way.
+`Bot.pause` is `null`, or `{ by: "bot" | "section" | "all", self, sectionId, since, queued }` (`by`: the widest pause
+that holds it; `self`: also paused on its own; `queued`: work waiting for it). `BotSection.paused` says whether a section
+is paused. A helper bot follows the bot it works for; a bot moved into a paused section is paused with it.
+
+| Method | Path | Body | Returns |
+|---|---|---|---|
+| GET | `/pauses` | – | `PauseState`: `{ all: { since } \| null, sections: [{ id, since }], bots: [{ id, since }] }` |
+| POST | `/bots/:id/pause` · `/bots/:id/resume` | – | `PauseResult`: `{ state, stopped, released }` |
+| POST | `/sections/:id/pause` · `/sections/:id/resume` | – | `PauseResult` |
+| POST | `/pauses/all` | `{ paused: boolean }` | `PauseResult` — resuming everything leaves a bot or section paused on its own paused |
+
+Who: the bot's owner only. Someone of a workspace a bot is shared with — viewer, member or admin — gets 404 (they see
+`pause` on the shared bot, without its section). A suspended hosted account is read-only: pausing too (403).
+Each change is an audit line (`Paused: …` / `Resumed: …`). Server event: `{ type: "pauses" }`.
+
+What pausing does, for each bot it covers:
+- the running turn stops at a safe point, as Stop does (an API turn's request is aborted; a subscription turn's process
+  is ended through the same signal). What it did is kept and a continuation waits in its queue: it runs first on resume.
+  A routine run in progress is recorded as skipped ("The bot was paused: stopped."), not as a failure;
+- its active goals are paused ("its bot is paused") and resumed with it;
+- nothing new starts. The owner's and members' messages (web, voice, Telegram), mail with auto-reply, other bots'
+  reports to it, approvals answered meanwhile, "Continue": stored, shown, and kept in its durable queue (`bot_queue`
+  status `held`, kept across restarts), then run in order on resume. The chat says "{bot} is paused: this message is
+  kept…"; Telegram answers at once with the same line;
+- routines (schedule, watch, app and mail triggers) and webhooks are recorded as skipped in their run log
+  ("The bot is paused: skipped.", no model call, not a failure); they come back at their next due time. A one-off
+  routine waits and runs once resumed. `POST /routines/:id/run` answers 409; `POST /hooks/:token` answers
+  `{ ok: true, skipped: "paused" }` (2xx, so senders that retry on errors do not pile calls up);
+- `bot_message` to it is refused ("… is paused … Do not route around it"); in a room it is skipped (one called by name
+  is announced as paused in the room) and the room goes on with its other members;
+- background jobs keep running (they are its own commands; stopping them could lose work), but their end does not wake
+  it: the message is sent once it is resumed. No check-in, nudge pass or memory consolidation runs for it.
+
+Hosted mode's suspension is separate: both can hold a bot, each is lifted in its own place.
+
 ## Sklubot Relais — the user's own computers
 
 Server side of protocol v1 ([`RELAIS-PROTOCOLE.md`](RELAIS-PROTOCOLE.md)), in `server/src/relay.ts`; the bots' tools in

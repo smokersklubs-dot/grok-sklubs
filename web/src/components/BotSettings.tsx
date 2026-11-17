@@ -20,6 +20,7 @@ import { Icon, Spinner } from "./Icon";
 import { MODE_IDS } from "./Modals";
 import { ConfirmButton, CopyButton, copyText, Empty, ErrorNote, IconButton, Loading, Modal, Toggle, useTick } from "./ui";
 import { BotRulesAndNudges } from "./Wave5";
+import { runNote } from "./Pause";
 
 const EFFORT_IDS: Effort[] = ["low", "medium", "high", "xhigh"];
 const AUTONOMY_IDS: Autonomy[] = ["careful", "balanced", "trusted", "auto"];
@@ -758,7 +759,7 @@ function RoutineHistory({ r }: { r: Routine }) {
             <li key={run.id} className="run">
               <time className="run-time" dateTime={new Date(run.at).toISOString()}>{dateTime(run.at, r.timezone || undefined)}</time>
               <span className={`chip ${RUN_STATE[run.status] ?? ""}`}>{t(`routine.run.${run.status}`)}</span>
-              {run.note && <span className="run-note">{run.note}</span>}
+              {run.note && <span className="run-note">{runNote(run.note)}</span>}
             </li>
           ))}
         </ul>

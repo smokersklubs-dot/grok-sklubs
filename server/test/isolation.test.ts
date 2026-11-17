@@ -351,6 +351,28 @@ test("the automatic backup's routes (owner only): B and V get 403 on every one, 
   assert.ok(!mine.text.includes("ALPHASECRET-SK") && !mine.text.includes("ALPHASECRET-AK"));
 });
 
+test("Pause (agent/pause.ts): owner only — B and V get 404 on A's bots and section, and 'everything' pauses only their own", async () => {
+  const routes = discover().filter((r) => r.app === api && /pause|resume/.test(r.path)).map((r) => r.key).sort();
+  assert.deepEqual(routes, ["GET /pauses", "POST /bots/:id/pause", "POST /bots/:id/resume", "POST /pauses/all", "POST /sections/:id/pause", "POST /sections/:id/resume"]);
+  for (const who of ["b", "v"] as const) {
+    for (const bot of ["bot1", "bot2"] as const) {
+      for (const action of ["pause", "resume"]) {
+        const res = await call(api, who, "POST", `/bots/${ids[bot]}/${action}`, {});
+        assert.equal(res.status, 404, `${who} ${action} ${bot}`);
+        assert.ok(!leakIn(res.text));
+      }
+    }
+    assert.equal((await call(api, who, "POST", "/sections/a_section/pause", {})).status, 404);
+    // Their own "pause everything" and their own state: nothing of A's.
+    assert.equal((await call(api, who, "POST", "/pauses/all", { paused: true })).status, 200);
+    const mine = await call(api, who, "GET", "/pauses");
+    assert.ok(!leakIn(mine.text) && !mine.text.includes(ids.bot1) && !mine.text.includes("a_section"));
+    assert.equal((await call(api, who, "POST", "/pauses/all", { paused: false })).status, 200);
+  }
+  assert.equal(q.get<{ n: number }>("SELECT COUNT(*) AS n FROM bot_pauses WHERE user_id = ?", userA)!.n, 0, "nothing of A's was paused");
+  assert.equal((await A("GET", "/bots")).json.bots.find((b: any) => b.id === ids.bot1).pause, null);
+});
+
 test("A's things are all still there (nothing B or V tried changed them)", async () => {
   const n = (sql: string, ...p: string[]) => q.get<{ n: number }>(sql, ...p)!.n;
   assert.equal(n("SELECT COUNT(*) AS n FROM bots WHERE user_id = ? AND kind = 'agent' AND name LIKE 'ALPHASECRET%'", userA), 2);

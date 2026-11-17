@@ -42,6 +42,7 @@ import { checkpoints } from "./spend.js";
 import { balancedCut, compactHistory, contextWindowOf, estimateTokens, prepareMessages } from "./context.js";
 import { jobs, setJobBlocked, setJobWaker, startJobWatch } from "../jobs.js";
 import { engineBlock, hostedMode, isHostedStop, isPlanLimit, operatorBlock, operatorPaid, postStopNotice } from "../hosted.js";
+import { pauses } from "../pauses.js";
 
 /** A skill the user asked for with "/skill <name>" in the composer. */
 export interface ForcedSkill { name: string; body: string; from?: string }
@@ -251,6 +252,9 @@ const jobOf = new WeakMap<Trigger, number>();
 const runningJob = new Map<string, number>();
 
 async function runQueued(id: number | null, botId: string, trigger: Trigger) {
+  // "Pause": a paused bot starts nothing. Its work waits in the queue, in order, until it is resumed (or is let go, for
+  // the kinds of work that have their own way back: routines, goal rounds, job ends). Checked right before the turn.
+  if (holdIfPaused(id, botId, trigger)) return;
   if (id !== null) { botQueue.start(id); runningJob.set(botId, id); }
   try { await runTurn(botId, trigger); } finally {
     if (id !== null) {
@@ -261,6 +265,73 @@ async function runQueued(id: number | null, botId: string, trigger: Trigger) {
     }
   }
 }
+
+/** Why a running turn was stopped by "Pause" (agent/pause.ts), as the reason of its abort signal. */
+export class BotPaused extends Error { constructor() { super("paused"); this.name = "BotPaused"; } }
+const pausedStop = (signal: AbortSignal) => signal.aborted && signal.reason instanceof BotPaused;
+
+/** Whether this bot is paused now (itself, its section, every bot of the account; a helper with its parent). */
+export const isPaused = (bot: BotRecord) => bot.kind === "agent" && !!pauses.of(bot);
+
+/** What a paused turn is told when its bot is resumed: the work it was doing goes on (agent/pause.ts). */
+const PAUSE_CONTINUE_TEXT = "Your owner paused you in the middle of your last turn, and has now resumed you. Pick the work back up where you left off — check what is already done, do not redo it — and finish it, or say plainly where things stand.";
+
+/**
+ * A paused bot's work, as it comes up in its queue. A routine run is let go (recorded as skipped: a routine comes back on
+ * its own next time), so is a goal round (the goal is paused; resuming the bot resumes it) and a job-end message (jobs.ts
+ * sends it again once the bot is free). Everything else — the owner's and members' messages, Telegram, mail, other bots'
+ * reports, approvals, "continue" — is set aside in its order (bot_queue status 'held') and runs when the bot is resumed.
+ */
+function holdIfPaused(id: number | null, botId: string, trigger: Trigger): boolean {
+  const bot = bots.byId(botId);
+  if (!bot || !isPaused(bot)) return false;
+  const loc = users.localeOf(bot.userId);
+  const drop = () => { if (id !== null) { botQueue.done(id); liveJobs.delete(id); } };
+  if (trigger.kind === "routine") {
+    if (trigger.runId) runs.finish(trigger.runId, "skipped", "The bot is paused: skipped.");
+    drop();
+    return true;
+  }
+  if (trigger.kind === "system" && trigger.goalRound) {
+    const g = goals.byId(trigger.goalRound);
+    if (g?.queued) goals.set(g, { queued: false });
+    drop();
+    return true;
+  }
+  if (trigger.kind === "system" && trigger.jobIds?.length) { jobs.unnotify(trigger.jobIds); drop(); return true; }
+  if (id === null) { drop(); return true; }
+  botQueue.hold(id);
+  liveJobs.delete(id);
+  if (trigger.kind === "user") rows.append(bot, { kind: "notice", tone: "info", text: tr(loc, "{bot} is paused: this message is kept and will be handled when it is resumed.", { bot: bot.name }) });
+  bots.announce(bots.byId(botId));
+  return true;
+}
+
+/**
+ * The bot was resumed (agent/pause.ts): the work set aside while it was paused runs again, in its order, before anything
+ * that comes after. Returns how many jobs were let go.
+ */
+export function releaseHeld(botId: string): number {
+  let n = 0;
+  // The turn "Pause" stopped picks up first; then everything else, in the order it came.
+  const held = botQueue.heldFor(botId);
+  const first = held.filter((r) => r.trigger.includes(JSON.stringify(PAUSE_CONTINUE_TEXT).slice(1, 60)));
+  for (const row of [...first, ...held.filter((r) => !first.includes(r))]) {
+    let trigger: Trigger | null = null;
+    try { trigger = JSON.parse(row.trigger) as Trigger; } catch { /* unreadable: dropped below */ }
+    if (!trigger || typeof trigger !== "object" || !("kind" in trigger)) { botQueue.done(row.id); continue; }
+    botQueue.unhold(row.id);
+    liveJobs.add(row.id);
+    jobOf.set(trigger, row.id);
+    const t = trigger;
+    void inQueue(botId, () => runQueued(row.id, botId, t)).catch(() => {});
+    n++;
+  }
+  return n;
+}
+
+/** Whether a turn of this bot is running now. */
+export const isRunning = (botId: string) => controllers.has(botId);
 
 /** What the model is told when the user forces a skill with "/skill <name>". */
 function forcedSkillNote(skill: ForcedSkill): string {
@@ -286,7 +357,7 @@ export function submitUserMessage(bot: BotRecord, text: string, voice = false, a
   const task = bot.parentId ? bgTasks.byHelper(bot.id) : null;
   resetScope(bot.id, task ? scopeKey.task(task.id) : scopeKey.chat(thread));
   // Only a message for the same conversation (main chat or the same thread) joins the turn under way.
-  if (controllers.has(bot.id) && !paused.get(bot.id) && (runningThread.get(bot.id) ?? 0) === thread) {
+  if (controllers.has(bot.id) && !paused.get(bot.id) && !isPaused(bot) && (runningThread.get(bot.id) ?? 0) === thread) {
     const list = steering.get(bot.id) ?? [];
     const blocks = userBlocks(bot.id, text, attachments);
     if (skill) blocks.push({ type: "text", text: forcedSkillNote(skill) });
@@ -302,8 +373,12 @@ export function submitUserMessage(bot: BotRecord, text: string, voice = false, a
 const handedBack = new Set<string>();
 export const noteHandBack = (botId: string) => { handedBack.add(botId); };
 
-export function interrupt(botId: string) {
-  controllers.get(botId)?.abort();
+/** Stops the bot's running turn ("Stop"). `reason`: BotPaused when "Pause" stops it (the turn goes on once resumed). */
+export function interrupt(botId: string, reason?: Error) {
+  const c = controllers.get(botId);
+  if (!c) return false;
+  if (reason) c.abort(reason); else c.abort();
+  return true;
 }
 
 /** What the model sees for a user message: the words, any pictures, and where attached files were put. */
@@ -644,6 +719,12 @@ async function runScopedTurn(botId: string, trigger: Trigger, thread: number): P
         postStopNotice(bot, "limit", { limit: err });
       } else if ((err as Error)?.name === "ComputersBusyError") {
         rows.append(bot, { kind: "notice", tone: "warn", text: tr(user.locale, "All the computers of this server are busy with other work right now, so mine could not start. Nothing was stopped. Tell me to continue in a few minutes."), action: { kind: "continue", status: "pending", reason: "busy" } });
+      } else if (pausedStop(controller.signal)) {
+        // "Pause": stopped at a safe point. What it did so far is kept; the work goes on once the bot is resumed (the
+        // continuation waits in its queue), except a routine run (skipped) and a goal round (the goal resumes with the bot).
+        rows.append(bot, { kind: "notice", tone: "info", text: tr(user.locale, "Paused. What I did so far is kept; I will pick this back up when I am resumed.") });
+        if (trigger.kind !== "routine" && !(trigger.kind === "system" && trigger.goalRound))
+          enqueue(botId, { kind: "system", text: PAUSE_CONTINUE_TEXT, thread: thread || undefined, tainted: turn?.tainted || undefined, depth: turn?.depth, origin: turn?.origin ?? (trigger.kind === "resume" ? "resume" : originOf(trigger)), spendScope: turn?.spendKey });
       } else rows.append(bot, stopped ? { kind: "notice", tone: "info", text: tr(user.locale, "Stopped.") } : { kind: "notice", tone: "error", text: tr(user.locale, "Something went wrong: {detail}", { detail: clip(String((err as Error)?.message ?? err), 400) }) });
     }
     if (!stopped && !isHostedStop(err) && !isPlanLimit(err)) console.error(`[turn ${bot.name}]`, err);
@@ -655,8 +736,11 @@ async function runScopedTurn(botId: string, trigger: Trigger, thread: number): P
     const job = runningJob.get(botId);
     if (job !== undefined) botQueue.finish(job);
     actors.delete(botId);
-    if (trigger.kind === "routine" && trigger.runId)
-      runs.finish(trigger.runId, failed ? "error" : paused.get(botId) ? "done" : turn?.spoke ? "done" : "quiet", failed || (paused.get(botId) ? "Waiting for your approval" : clip(turn?.lastText ?? "", 200)));
+    if (trigger.kind === "routine" && trigger.runId) {
+      // Stopped by "Pause": the run is let go (skipped), not counted as a failure.
+      if (pausedStop(controller.signal)) runs.finish(trigger.runId, "skipped", "The bot was paused: stopped.");
+      else runs.finish(trigger.runId, failed ? "error" : paused.get(botId) ? "done" : turn?.spoke ? "done" : "quiet", failed || (paused.get(botId) ? "Waiting for your approval" : clip(turn?.lastText ?? "", 200)));
+    }
     controllers.delete(botId);
     runningThread.delete(botId);
     // A bot waits for this turn's answer (bot_message with wait): it gets it now, or later as a message (team.ts).
@@ -664,7 +748,7 @@ async function runScopedTurn(botId: string, trigger: Trigger, thread: number): P
       try { settleAsk(bot, turn.ask, { lastText: turn.lastText, tainted: turn.tainted, depth: turn.depth, failed, paused: !!paused.get(botId) }); }
       catch (err) { console.error(`[ask ${bot.name}]`, err); }
     }
-    bgTaskHooks.ended(bot, { failed, lastText: turn?.lastText ?? "", tainted: !!turn?.tainted });
+    bgTaskHooks.ended(bot, { failed, lastText: turn?.lastText ?? "", tainted: !!turn?.tainted, paused: pausedStop(controller.signal) });
     const leftover = drainSteering(bot);
     if (!paused.get(botId)) clearLive(user.id, botId);
     // The owner's approval is settled: member messages that waited for it go now.
@@ -1457,6 +1541,8 @@ function replayQueue(left: QueuedWork[], cutOff: Set<string>) {
     let trigger: Trigger | null = null;
     try { trigger = JSON.parse(row.trigger) as Trigger; } catch { /* unreadable: dropped below */ }
     if (!bot || bot.kind !== "agent" || !trigger || typeof trigger !== "object" || !("kind" in trigger)) { botQueue.done(row.id); continue; }
+    // "Pause": work set aside for a bot that is still paused stays set aside (releaseHeld runs it on resume).
+    if (row.status === "held") { if (isPaused(bot)) continue; botQueue.unhold(row.id); }
     liveJobs.add(row.id);
     jobOf.set(trigger, row.id);
     const t = trigger;
@@ -1638,5 +1724,5 @@ setRelayAsker((bot, f) => askUser(bot, f, Math.min(config.approvalExpireMs, 5 * 
 // Background jobs (jobs.ts): a job that ended reaches its bot as a queued system message, never over an approval or a
 // spend checkpoint the bot waits on (jobs.ts sends it once that is settled).
 setJobWaker((botId, trigger) => enqueue(botId, trigger));
-setJobBlocked((botId) => !!paused.get(botId) || !!checkpoints.pendingFor(botId));
+setJobBlocked((botId) => { const b = bots.byId(botId); return !!paused.get(botId) || !!checkpoints.pendingFor(botId) || (!!b && isPaused(b)); });
 export { startJobWatch };

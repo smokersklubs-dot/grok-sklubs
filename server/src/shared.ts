@@ -175,6 +175,11 @@ export interface Bot {
   /** Hidden from the sidebar by the user (still works; listed under "Hidden"). */
   listHidden: boolean;
   /**
+   * "Pause": set while the owner paused this bot, its section, or every bot of the account (null: not paused). A paused bot
+   * runs nothing: what comes for it waits in its queue (or is skipped, for routines) until it is resumed.
+   */
+  pause: BotPause | null;
+  /**
    * Backup models for this bot, tried in order when its own model fails ("provider:model" refs). null: the account's
    * list (Settings → Models) is used.
    */
@@ -216,8 +221,21 @@ export interface Bot {
   createdAt: number;
 }
 
-/** A sidebar section the user created to file bots under. */
-export interface BotSection { id: string; name: string; position: number; createdAt: number }
+/** A sidebar section the user created to file bots under. `paused`: the owner paused the whole section (pauses.ts). */
+export interface BotSection { id: string; name: string; position: number; createdAt: number; paused: boolean }
+
+/**
+ * Why a bot is paused (pauses.ts). `by`: the widest pause that holds it — "all" (every bot of the account), "section"
+ * (its sidebar section, `sectionId`) or "bot" (itself; for a helper, the bot it works for). `self`: the bot is also paused
+ * on its own (resuming its section or everything leaves it paused). `since`: when the pause in `by` was set.
+ * `queued`: work waiting for it, run in order when it is resumed.
+ */
+export interface BotPause { by: "bot" | "section" | "all"; self: boolean; sectionId: string | null; since: number; queued: number }
+
+/** GET /pauses: what the owner paused. */
+export interface PauseState { all: { since: number } | null; sections: { id: string; since: number }[]; bots: { id: string; since: number }[] }
+/** POST pause / resume answers: the new state, how many running turns were stopped, how many queued jobs were let go. */
+export interface PauseResult { state: PauseState; stopped: number; released: number }
 
 export type ActivityKind =
   | "thinking" | "writing" | "searching" | "reading" | "browsing" | "computer" | "shell"
@@ -841,6 +859,8 @@ export type ServerEvent =
   | { type: "recording"; botId: string; recording: Recording | null }
   /** The user's sidebar sections changed. */
   | { type: "sections" }
+  /** Something was paused or resumed (a bot, a section, everything): bots, sections and GET /pauses again. */
+  | { type: "pauses" }
   /** Vault items changed (a secret saved from a card, an import…). */
   | { type: "vault" }
   /** The user's linked computers or their live state changed (connection, session, Stop, a question on screen). */
