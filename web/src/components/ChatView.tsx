@@ -38,6 +38,7 @@ export function ChatView() {
         <div className="chat-empty">
           <h2>{t("chat.noBot")}</h2>
           <p>{t("chat.noBotHint")}</p>
+          <button type="button" className="btn btn-small" onClick={() => openModal({ kind: "templates" })}><Icon name="star" size={14} /> {t("tpl.open")}</button>
         </div>
       </section>
     );

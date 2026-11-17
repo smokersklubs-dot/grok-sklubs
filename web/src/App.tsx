@@ -12,6 +12,7 @@ import { DetailsPanel } from "./components/DetailsPanel";
 import { ConnectorsModal, CreateBotModal, CreateRoomModal } from "./components/Modals";
 import { CommandPalette } from "./components/CommandPalette";
 import { DuplicateBotModal } from "./components/DuplicateBotModal";
+import { ExportTemplateModal, TemplatesModal } from "./components/TeamTemplates";
 import { Sidebar } from "./components/Sidebar";
 import { SignIn } from "./components/SignIn";
 import { EmailConfirmPage, ResetPasswordPage, takeLinkAction } from "./components/AccountRecovery";
@@ -119,6 +120,8 @@ function Shell() {
       {modal?.kind === "createBot" && <CreateBotModal onClose={close} />}
       {modal?.kind === "createRoom" && <CreateRoomModal onClose={close} />}
       {modal?.kind === "search" && <CommandPalette onClose={close} />}
+      {modal?.kind === "templates" && <TemplatesModal onClose={close} tab={modal.tab} />}
+      {modal?.kind === "exportTemplate" && <ExportTemplateModal onClose={close} sectionId={modal.sectionId} botIds={modal.botIds} />}
       {modal?.kind === "duplicate" && <DuplicateBotModal key={modal.botId} botId={modal.botId} onClose={close} />}
       {modal?.kind === "connectors" && <ConnectorsModal key={modal.prefill ? `${modal.prefill.botId}:${modal.prefill.seq}` : "all"} onClose={close} prefill={modal.prefill} />}
       {viewerBotId && <ComputerViewer key={viewerBotId} botId={viewerBotId} />}

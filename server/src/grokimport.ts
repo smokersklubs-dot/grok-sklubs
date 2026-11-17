@@ -33,7 +33,7 @@ const MAX_BOTS = 20, MAX_SKILLS = 30, MAX_ROUTINES = 20, MAX_MEMORIES = 50, MAX_
 
 /** A refusal with its English text (the key of i18n.ts) and the HTTP status to answer with. */
 export class GrokImportError extends Error {
-  constructor(public code: string, public english: string, public vars: Record<string, string | number> = {}, public status: 400 | 413 = 400) {
+  constructor(public code: string, public english: string, public vars: Record<string, string | number> = {}, public status: 400 | 404 | 413 = 400) {
     super(tr("en", english, vars));
     this.name = "GrokImportError";
   }
@@ -142,7 +142,7 @@ export function looseJsonParse(src: string): { value: unknown; repaired: boolean
 // ── 3. Checking and cleaning ─────────────────────────────────────────────────────────────────────────────────────
 
 /** Field names that hold a credential: dropped wherever they appear, and reported. */
-const CREDENTIAL_KEY = /pass(word|wd|phrase)?$|^pwd$|mot.?de.?passe|api.?key|secret|token|cookie|credential|^session|bearer|^auth(orization)?$|^otp$|^pin$|card.?number|iban/i;
+export const CREDENTIAL_KEY = /pass(word|wd|phrase)?$|^pwd$|mot.?de.?passe|api.?key|secret|token|cookie|credential|^session|bearer|^auth(orization)?$|^otp$|^pin$|card.?number|iban/i;
 /** Formats findSecrets does not cover, worth catching here: cookies, bearer values, card numbers (Luhn-checked). */
 const EXTRA: { kind: GrokImportStripped["kind"]; re: RegExp; group?: number; check?: (v: string) => boolean }[] = [
   // "mot de passe Gmail : …", "password for the bank is …": a few words may sit between the word and the value.
@@ -165,9 +165,9 @@ const LABELS: Record<string, { fr: string; en: string }> = {
 };
 const label = (k: string, l: Locale) => (l === "fr" ? LABELS[k]?.fr : LABELS[k]?.en) ?? k;
 
-interface Cleaner { stripped: GrokImportStripped[]; placeholder: string }
+export interface Cleaner { stripped: GrokImportStripped[]; placeholder: string }
 /** The text without its secrets (each replaced by the placeholder and reported under `where`). */
-function scrub(text: string, where: string, cx: Cleaner): { text: string; found: boolean } {
+export function scrub(text: string, where: string, cx: Cleaner): { text: string; found: boolean } {
   const masked = maskSecrets(text, cx.placeholder);
   let out = masked.text;
   for (const s of masked.secrets) cx.stripped.push({ where, kind: s.kind });
@@ -345,7 +345,7 @@ const sweep = () => { for (const [k, v] of pending) if (v.until < now()) pending
 const PREVIEW_MS = 15 * 60_000;
 
 /** Room for `n` more bots on this installation (MAX_BOTS): the limit, when it would be passed. */
-function teamFullAt(n: number): number | null {
+export function teamFullAt(n: number): number | null {
   try { bots.assertRoom(n); return null; } catch (e) { if (e instanceof TeamFullError) return e.max; throw e; }
 }
 

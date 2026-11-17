@@ -38,6 +38,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
     const s = useStore.getState();
     const list: Command[] = [
       { id: "new-bot", icon: "plus", label: t("palette.cmd.newBot"), keywords: "new bot create nouveau créer", run: () => s.openModal({ kind: "createBot" }) },
+      { id: "templates", icon: "star", label: t("tpl.open"), keywords: "template modèle modele galerie gallery équipe team import fichier", run: () => s.openModal({ kind: "templates" }) },
       { id: "new-room", icon: "users", label: t("palette.cmd.newRoom"), keywords: "group room salon groupe", run: () => s.openModal({ kind: "createRoom" }) },
       { id: "settings", icon: "settings", label: t("palette.cmd.settings"), hint: `${modKey},`, keywords: "settings preferences réglages", run: () => { s.openModal(null); s.openAppSettings(); } },
       { id: "notifications", icon: "bell", label: t("palette.cmd.notifications"), keywords: "push notifications alertes", run: () => { s.openModal(null); s.openAppSettings("notifications"); } },

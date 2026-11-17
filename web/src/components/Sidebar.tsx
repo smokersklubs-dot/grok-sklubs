@@ -66,6 +66,7 @@ function BotMenu({ bot, open, onClose }: { bot: Bot; open: boolean; onClose: () 
           <MenuItem icon="pin" onClick={() => { close(); void organise(bot.id, { pinned: !bot.pinned }); }}>{t(bot.pinned ? "sidebar.unpin" : "sidebar.pin")}</MenuItem>
           <MenuItem icon="folder" onClick={() => setMoving(true)}>{t("sidebar.moveTo")}…</MenuItem>
           {bot.kind === "agent" && <MenuItem icon="copy" onClick={() => { close(); openModal({ kind: "duplicate", botId: bot.id }); }}>{t("sidebar.duplicate")}…</MenuItem>}
+          {bot.kind === "agent" && !bot.access && <MenuItem icon="download" onClick={() => { close(); openModal({ kind: "exportTemplate", botIds: [bot.id] }); }}>{t("tpl.export")}…</MenuItem>}
           {bot.unread === 0 && <MenuItem icon="ring" onClick={() => { close(); void markUnread(bot.id); }}>{t("sidebar.markUnread")}</MenuItem>}
           {bot.kind === "agent" && (
             bot.pause?.self
@@ -184,6 +185,7 @@ function SectionActions({ section }: { section: BotSection }) {
         {section.paused
           ? <MenuItem icon="play" onClick={() => { setOpen(false); void setPaused({ kind: "section", section }, false); }}>{t("pause.resumeSection")}</MenuItem>
           : <MenuItem icon="pause" onClick={() => { setOpen(false); void setPaused({ kind: "section", section }, true); }}>{t("pause.pauseSection")}</MenuItem>}
+        <MenuItem icon="download" onClick={() => { setOpen(false); useStore.getState().openModal({ kind: "exportTemplate", sectionId: section.id }); }}>{t("tpl.export")}…</MenuItem>
         <MenuItem icon="edit" onClick={() => void rename()}>{t("sections.rename")}</MenuItem>
         <MenuItem icon="trash" danger onClick={() => void remove()}>{t("sections.delete")}</MenuItem>
       </Menu>
@@ -205,6 +207,7 @@ export function Sidebar() {
   const pausedAll = useStore((s) => !!s.pauses.all);
   const { toggleSidebar, openModal, setView, selectBot, openAppSettings, logout, setMobileNav } = useStore.getState();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
   const t = useT();
 
   const collapsed = collapsedPref && !mobileNav;
@@ -253,7 +256,14 @@ export function Sidebar() {
             {!collapsed && (
               <>
                 <IconButton icon="search" label={t("palette.open")} title={`${t("palette.open")} (${modKey}K)`} onClick={() => openModal({ kind: "search" })} />
-                <IconButton icon="plus" label={t("sidebar.newBot")} onClick={() => openModal({ kind: "createBot" })} />
+                <span className="menu-wrap">
+                  <IconButton icon="plus" label={t("sidebar.newBot")} onClick={() => setAddOpen((v) => !v)} active={addOpen} />
+                  <Menu open={addOpen} onClose={() => setAddOpen(false)} align="right" label={t("sidebar.newBot")}>
+                    <MenuItem icon="plus" onClick={() => { setAddOpen(false); openModal({ kind: "createBot" }); }}>{t("sidebar.newBot")}</MenuItem>
+                    <MenuItem icon="star" onClick={() => { setAddOpen(false); openModal({ kind: "templates" }); }}>{t("tpl.open")}…</MenuItem>
+                    <MenuItem icon="upload" onClick={() => { setAddOpen(false); openModal({ kind: "templates", tab: "file" }); }}>{t("tpl.importFile")}…</MenuItem>
+                  </Menu>
+                </span>
               </>
             )}
             <IconButton
@@ -366,6 +376,17 @@ export function Sidebar() {
               <span className="bot-row-text">
                 <span className="bot-row-name">{t("sidebar.createBot")}</span>
                 <span className="bot-row-preview">{t("sidebar.createBotHint")}</span>
+              </span>
+            </button>
+          )}
+          {others.length === 0 && !collapsed && (
+            <button type="button" className="cta-row" onClick={() => openModal({ kind: "templates" })}>
+              <span className="cta-row-icon">
+                <Icon name="star" size={18} />
+              </span>
+              <span className="bot-row-text">
+                <span className="bot-row-name">{t("tpl.open")}</span>
+                <span className="bot-row-preview">{t("tpl.openHint")}</span>
               </span>
             </button>
           )}

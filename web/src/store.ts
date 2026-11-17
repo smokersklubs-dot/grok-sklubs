@@ -15,6 +15,8 @@ export type ModalState =
   | { kind: "createRoom" }
   | { kind: "search"; mode?: "chat" }
   | { kind: "duplicate"; botId: string }
+  | { kind: "templates"; tab?: "gallery" | "file" | "url" }
+  | { kind: "exportTemplate"; sectionId?: string; botIds?: string[] }
   | { kind: "connectors"; prefill?: { name: string; botId: string; seq: number } };
 export type BotSettingsTab = "general" | "skills" | "memories" | "routines" | "localTools" | "reach" | "telegram" | "email" | "sharing";
 export type AppSection = "general" | "today" | "profile" | "models" | "notifications" | "computer" | "devices" | "permissions" | "rules" | "memory" | "connectors" | "vault" | "keys" | "pages" | "usage" | "checkins" | "activity" | "team" | "workspaces" | "voice" | "email" | "account" | "subscription" | "admin";

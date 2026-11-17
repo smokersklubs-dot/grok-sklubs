@@ -69,6 +69,7 @@ import { reachLogin, reachState, LOGIN_CHANNELS } from "./reach.js";
 import { checkAll, checkConnector, checkSecret, healthList, recordHealth } from "./health.js";
 import { commitImport, previewImport, type ImportBinding } from "./projectimport.js";
 import { commitGrokImport, GrokImportError, previewGrokImport } from "./grokimport.js";
+import { commitTeamFile, exportTeam, previewTeamFile, templateList } from "./teamfile.js";
 import { cacheSettings, DEFAULT_CACHE, saveCacheSettings, thirdPartySummary } from "./thirdparty.js";
 import { paidConsents } from "./providers.js";
 import { answerCheckpoint, checkpoints } from "./agent/spend.js";
@@ -1395,6 +1396,30 @@ api.post("/import/grok/commit", async (c) => {
   const b = await body(c);
   const choices = Array.isArray(b.bots) ? b.bots.slice(0, 50).filter((x: unknown) => x && typeof x === "object") : [];
   return c.json({ report: commitGrokImport(c.get("user"), String(b.previewId ?? ""), choices) });
+});
+
+/**
+ * "Modèles d'équipe" (teamfile.ts, docs/MODELES-EQUIPE.md): the gallery of built-in templates; a preview of a template,
+ * a file's text or an https address (nothing is created); the commit (a safe package, one transaction); and the export
+ * of the caller's own bots as a team file (no memory, model, autonomy, connector or key; secrets masked).
+ */
+api.get("/templates", (c) => c.json({ templates: templateList() }));
+api.post("/templates/preview", async (c) => {
+  if (Number(c.req.header("content-length") ?? 0) > 1_000_000) fail(413, "This file is too large (200 KB at most).");
+  const user = c.get("user");
+  const b = await body(c);
+  // An address is fetched by the server: a few per account at a time.
+  if (typeof b.url === "string" && b.url.trim()) throttle(`tplurl:${user.id}`, 20);
+  return c.json(await previewTeamFile(user, { template: b.template, text: b.text, url: b.url, filename: b.filename }));
+});
+api.post("/templates/commit", async (c) => {
+  const b = await body(c);
+  const choices = Array.isArray(b.bots) ? b.bots.slice(0, 50).filter((x: unknown) => x && typeof x === "object") : [];
+  return c.json({ report: commitTeamFile(c.get("user"), String(b.previewId ?? ""), choices, { section: b.section }) });
+});
+api.post("/templates/export", async (c) => {
+  const b = await body(c);
+  return c.json(exportTeam(c.get("user"), { botIds: b.botIds, sectionId: b.sectionId, title: b.title, description: b.description, icon: b.icon, category: b.category }));
 });
 
 api.get("/usage.csv", (c) => download(c, "sklubot-usage.csv", "text/csv; charset=utf-8", usageCsv(c.get("user").id)));

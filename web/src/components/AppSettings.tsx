@@ -1054,6 +1054,29 @@ function TeamSection() {
       </div>
       <div className="action-row">
         <div>
+          <p className="action-title">{t("team.templateRow")}</p>
+          <p className="muted small">{t("team.templateRowHint")}</p>
+        </div>
+        <span className="action-row-buttons">
+          <button type="button" className="btn btn-small" onClick={() => useStore.getState().openModal({ kind: "templates" })}>
+            <Icon name="star" size={14} /> {t("tpl.open")}
+          </button>
+          <button type="button" className="btn btn-small" onClick={() => useStore.getState().openModal({ kind: "templates", tab: "file" })}>
+            <Icon name="upload" size={14} /> {t("tpl.importFile")}
+          </button>
+        </span>
+      </div>
+      <div className="action-row">
+        <div>
+          <p className="action-title">{t("tpl.export")}</p>
+          <p className="muted small">{t("tpl.exportHint")}</p>
+        </div>
+        <button type="button" className="btn btn-small" onClick={() => useStore.getState().openModal({ kind: "exportTemplate" })}>
+          <Icon name="download" size={14} /> {t("tpl.export")}
+        </button>
+      </div>
+      <div className="action-row">
+        <div>
           <p className="action-title">{t("grok.rowTitle")}</p>
           <p className="muted small">{t("grok.rowHint")}</p>
         </div>

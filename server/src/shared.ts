@@ -1073,6 +1073,54 @@ export interface GrokImportReport {
   apps: string[];
 }
 
+// ── "Modèles d'équipe": the portable team file (teamfile.ts, docs/MODELES-EQUIPE.md) ───────────────────────────────
+/**
+ * One Markdown file per team: YAML front matter (the team's title, description, icon, category…) then one "## Bot: name"
+ * section per bot. Only names, roles, personality, instructions, skills, routines, suggested apps and the look travel in
+ * it; models, autonomy, computers, connectors, keys, memories and workspaces never do (the parser drops them and says so).
+ */
+export const TEAM_FILE_FORMAT = "sklubot-equipe";
+export const TEAM_FILE_VERSION = 1;
+/** The icons a template may ask for (names of the web app's Icon set). */
+export const TEMPLATE_ICONS = ["users", "chart", "search", "target", "mail", "calendar", "book", "image", "star", "bulb", "shield", "globe", "folder", "sun", "brain", "wrench", "phone", "chat", "tasks", "send"] as const;
+export type TemplateIcon = (typeof TEMPLATE_ICONS)[number];
+/** Gallery filters. */
+export const TEMPLATE_CATEGORIES = ["commerce", "marketing", "sales", "admin", "finance", "support", "personal", "research"] as const;
+export type TemplateCategory = (typeof TEMPLATE_CATEGORIES)[number];
+/** A bot's look as a file carries it: null shape or colour lets Sklubot pick one. */
+export interface TeamFileLook { shape: AvatarShape | null; color: AvatarColor | null; character: Character }
+export interface TeamFileMeta {
+  title: string; description: string; icon: TemplateIcon; category: TemplateCategory | null; tags: string[]; language: string; author: string;
+}
+export interface TeamFileBot {
+  name: string; nameTaken: boolean; role: string; personality: string; instructions: string; look: TeamFileLook;
+  skills: GrokImportSkill[]; routines: GrokImportRoutine[]; apps: string[];
+}
+/** A field or section the file carried that is not on the allowlist: dropped before the preview. */
+export interface TeamFileRemoved { where: string; field: string; reason: "forbidden" | "unknown" | "secret" }
+export interface TeamFileSource { kind: "template" | "file" | "url"; label: string; url?: string }
+/** A built-in template, as the gallery lists it. */
+export interface TemplateSummary extends TeamFileMeta {
+  id: string; bots: { name: string; role: string; look: TeamFileLook }[]; skills: number; routines: number; apps: string[];
+}
+export interface TeamFilePreview {
+  previewId: string; source: TeamFileSource; meta: TeamFileMeta; bots: TeamFileBot[];
+  /** Every app named by the bots, once each. */
+  apps: string[];
+  /** Secret-looking values replaced by a marker (where, what kind; never the value). */
+  masked: GrokImportStripped[];
+  removed: TeamFileRemoved[];
+  warnings: GrokImportWarning[];
+  room: { bots: number | null; activeRoutines: number | null };
+}
+/** What the user kept: as for the Grok import, without memories (a team file never carries any). */
+export type TeamFileChoice = Omit<GrokImportChoice, "memories">;
+export interface TeamFileReport {
+  bots: { id: string; name: string }[]; skills: number; routines: number; unscheduled: string[]; apps: string[];
+  section: { id: string; name: string } | null;
+}
+export interface TeamFileExport { filename: string; text: string; bots: number; masked: number }
+
 /** Paid third-party tool calls (spec 08 A4), in micro-dollars (integers): reserved before, settled after. */
 export interface ThirdPartySpend { todayUsd: number; capUsd: number | null; monthUsd: number; recent: { at: number; botId: string; tool: string; provider: string; usd: number; status: string }[] }
 /** One step of a provider chain (spec 08 A3): who was tried and why it was set aside. */
