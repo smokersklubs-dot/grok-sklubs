@@ -9,7 +9,7 @@ import type { Row } from "../types";
 import { voiceStarted, voiceStopped, voiceWord } from "./voiceLevel";
 import { canCall, createRecognition, makeUtterance, micErrorText, recognitionLang, speakable, type Recognition } from "./speech";
 import { fallbackError } from "./dictationPlan";
-import { endServerCall, serverBargeIn, serverCallActive, serverMute, startServerCall } from "./voice";
+import { dropPrimedAudio, endServerCall, primeCallAudio, serverBargeIn, serverCallActive, serverMute, startServerCall } from "./voice";
 import type { VoiceStatus } from "../types";
 
 let rec: Recognition | null = null;
@@ -221,16 +221,28 @@ export function startCall(botId: string): void {
     call: { botId, status: "connecting", error: null, muted: false, speaking: false, listening: false, startedAt: null, lines: [], pipeline: "browser", bargedAt: null },
   });
   void store.loadRows(botId);
+  // Still inside the click: unlock audio now (phones refuse to start it after the network round-trips below).
+  if (typeof AudioWorkletNode !== "undefined") primeCallAudio();
+  // The server's voice stopped answering between the check and the call: the browser's own speech, when it has one.
+  const fallBack = () => {
+    if (getCall()?.botId !== botId || !canCall()) return false;
+    useStore.setState((s) => (s.call ? { call: { ...s.call, status: "connecting", pipeline: "browser", providers: undefined } } : {}));
+    unsubscribe?.();
+    unsubscribe = null;
+    startBrowserCall(botId);
+    return true;
+  };
   void api<{ status: VoiceStatus }>("GET", `/bots/${botId}/voice`).then(
     async (r) => {
-      if (getCall()?.botId !== botId) return;
-      if (r.status.mode === "server" && typeof AudioWorkletNode !== "undefined" && (await startServerCall(botId, recognitionLang(bot.voice)))) {
+      if (getCall()?.botId !== botId) { dropPrimedAudio(); return; }
+      if (r.status.mode === "server" && typeof AudioWorkletNode !== "undefined" && (await startServerCall(botId, recognitionLang(bot.voice), fallBack))) {
         unsubscribe = useStore.subscribe(() => { if (useStore.getState().selectedId !== botId) endCall(); });
         return;
       }
+      dropPrimedAudio();
       startBrowserCall(botId);
     },
-    () => startBrowserCall(botId),
+    () => { dropPrimedAudio(); startBrowserCall(botId); },
   );
 }
 
@@ -324,6 +336,7 @@ export function setMuted(muted: boolean): void {
 
 export function endCall(): void {
   endServerCall();
+  dropPrimedAudio();
   endTrace();
   window.clearTimeout(restartTimer);
   unsubscribe?.();

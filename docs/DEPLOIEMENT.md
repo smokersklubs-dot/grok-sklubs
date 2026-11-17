@@ -56,12 +56,14 @@ Sklubot écoute alors sur le port 3000 du conteneur ; place un proxy HTTPS (Cadd
   (Uptime Kuma, etc.) peut surveiller `/api/health` et alerter si `status` n'est pas `ok`.
 - Le HTTPS est nécessaire pour le micro (dictée, appel vocal) et pour l'installation sur iPhone.
 - **Voix du serveur, active par défaut** : les services `whisper` (voix → texte, whisper.cpp, modèle `base`) et `piper`
-  (texte → voix, voix française `fr_FR-siwis-medium`, licence CC BY 4.0) démarrent avec Sklubot, sans profil, sur le
+  (texte → voix, voix françaises et anglaise gratuites, licences CC BY / CC BY-SA, une voix différente par bot :
+  [VOIX.md](VOIX.md)) démarrent avec Sklubot, sans profil, sur le
   réseau interne `sklubot_voice` seulement (ni publiés, ni joignables par les ordinateurs des bots) : la dictée et les
-  appels marchent sur tous les navigateurs, iPhone compris. Compte ≈ 0,5 à 0,8 Go de RAM de plus (plafonds
-  `WHISPER_MEM_LIMIT` 1 Go, `PIPER_MEM_LIMIT` 768 Mo). Le premier déploiement télécharge le modèle (142 Mo, service
+  appels marchent sur tous les navigateurs, iPhone compris. Compte ≈ 0,5 à 1,4 Go de RAM de plus selon le nombre de voix utilisées (plafonds
+  `WHISPER_MEM_LIMIT` 1 Go, `PIPER_MEM_LIMIT` 1200 Mo). Le premier déploiement télécharge le modèle (142 Mo, service
   `whisper-model`, qui s'arrête ensuite : « Exited (0) » est normal). Dans Coolify, ne donne **pas** de domaine à
-  `whisper`, `piper` ni `whisper-model`. Pour les couper : `SKLUBOT_VOICE_LOCAL=0`, puis redéploie. Détails, licences
+  `whisper`, `piper`, `kokoro` ni `whisper-model`. **Kokoro** (voix gratuites de meilleure qualité, ≈ 1 à 1,5 Go de RAM, plafond
+  `KOKORO_MEM_LIMIT` 2 Go) tourne aussi par défaut ; `SKLUBOT_KOKORO=0` le met en veille (les bots parlent alors avec Piper). Pour les couper : `SKLUBOT_VOICE_LOCAL=0`, puis redéploie. Détails, licences
   et réglages : [INSTALLATION-VPS.md](INSTALLATION-VPS.md#voix-du-serveur-active-par-défaut-gratuite).
 - **E-mails du serveur** (« Mot de passe oublié ? », confirmation d'un changement d'adresse) : à régler par le
   propriétaire dans Réglages → Compte → E-mails du serveur, ou par les variables `SKLUBOT_SMTP_HOST`,

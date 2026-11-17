@@ -91,7 +91,7 @@ export function vapidHeader(endpoint: string, at = Date.now()): string {
 interface SubRow { id: string; user_id: string; endpoint: string; p256dh: string; auth_enc: string; label: string; enabled: number; created_at: number; last_ok_at: number | null; failures: number }
 const toDevice = (r: SubRow): PushDevice => ({ id: r.id, label: r.label, enabled: !!r.enabled, createdAt: r.created_at, lastOkAt: r.last_ok_at, failures: r.failures });
 
-export const DEFAULT_PUSH: PushSettings = { kinds: { needs: true, gem: true, reply: true, routine: true, computer: true, nudge: true }, quiet: { enabled: false, start: "22:00", end: "07:00", timezone: "UTC" } };
+export const DEFAULT_PUSH: PushSettings = { kinds: { needs: true, gem: true, reply: true, routine: true, computer: true, nudge: true, announce: true }, quiet: { enabled: false, start: "22:00", end: "07:00", timezone: "UTC" } };
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 export function pushSettings(userId: string): PushSettings {
@@ -192,7 +192,7 @@ export async function sendPush(userId: string, msg: PushMessage): Promise<number
   recent.set(key, Date.now());
   if (recent.size > 2000) for (const [k, v] of recent) if (v < Date.now() - 60_000) recent.delete(k);
   // Kept well under the 4096 octets a push service must accept (RFC 8030 section 7.2 / RFC 8291 section 4).
-  const payload = Buffer.from(JSON.stringify({ kind: msg.kind, title: clip(msg.title, 80), body: clip(msg.body.replace(/\s+/g, " ").trim(), 300), botId: msg.botId ?? null, tag, url: msg.kind === "digest" ? "/?view=today" : msg.kind === "sentinel" ? "/?view=surveillance" : msg.botId ? `/?bot=${encodeURIComponent(msg.botId)}` : "/" }));
+  const payload = Buffer.from(JSON.stringify({ kind: msg.kind, title: clip(msg.title, 80), body: clip(msg.body.replace(/\s+/g, " ").trim(), 300), botId: msg.botId ?? null, tag, url: msg.kind === "digest" || msg.kind === "announce" ? "/?view=today" : msg.kind === "sentinel" ? "/?view=surveillance" : msg.botId ? `/?bot=${encodeURIComponent(msg.botId)}` : "/" }));
   let ok = 0;
   await Promise.all(subs.map(async (s) => {
     const auth = unseal(s.auth_enc);

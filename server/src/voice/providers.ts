@@ -3,12 +3,14 @@ import { config } from "../config.js";
 import { seal, unseal } from "../auth.js";
 import { guardedFetch } from "../net.js";
 import { hostedMode, meterOperatorUse, operatorBlock, unitEstimate } from "../hosted.js";
-import { bots } from "../store.js";
+import { bots, users } from "../store.js";
 import { recordServiceCost } from "../usage.js";
-import { STT_PROVIDERS, TTS_PROVIDERS, type BotVoiceChoice, type SttProvider, type TtsProvider, type VoiceSettings, type VoiceStatus } from "../shared.js";
+import { STT_PROVIDERS, TTS_PROVIDERS, type BotVoiceChoice, type BotVoiceRow, type SttProvider, type TtsProvider, type VoiceSettings, type VoiceStatus } from "../shared.js";
+import { assignVoices, type AutoVoice } from "./autovoice.js";
 import { botVoices } from "./botvoice.js";
 import { fishAsr, fishAsrCost, fishBase, fishSttModel, fishTts, fishTtsCost, fishTtsModel } from "./fish.js";
-import { kokoroEnvUrl, kokoroTts, type KokoroEndpoint } from "./kokoro.js";
+import { kokoroEnvUrl, kokoroTts, kokoroVoiceIds, type KokoroEndpoint } from "./kokoro.js";
+import { PIPER_VARIANTS, piperModels, piperTts, piperVoice, type PiperEndpoint } from "./piper.js";
 
 /**
  * Speech services for server-mediated calls (wave 6). Two of each, documented interfaces only:
@@ -106,7 +108,7 @@ function endpoint(userId: string, which: "stt" | "tts"): Endpoint | null {
   }
   if (provider === "kokoro" && which === "tts") {
     if (userUrl) return { url: userUrl, trusted: false, key: null };
-    if (kokoroEnvUrl()) return { url: kokoroEnvUrl(), trusted: true, key: null };
+    if (kokoroEnvUrl() && reachable(kokoroEnvUrl())) return { url: kokoroEnvUrl(), trusted: true, key: null };
   }
   if (provider === "openai") {
     const own = stored[which === "stt" ? "sttKeyEnc" : "ttsKeyEnc"] ? unseal(stored[which === "stt" ? "sttKeyEnc" : "ttsKeyEnc"]!) : null;
@@ -143,19 +145,65 @@ export function reachable(url: string, now = Date.now()): boolean {
   return h.up;
 }
 
-/** Where Kokoro answers for this account: its own Kokoro address (Settings → Voice), else the server's, else nowhere. */
+/**
+ * Where Kokoro answers for this account: its own Kokoro address (Settings → Voice), else the server's (by default the
+ * bundled one, http://kokoro:8880) while it answers — checked like whisper and Piper (reachable): a Kokoro that is still
+ * starting, asleep or down makes the bots speak with Piper instead.
+ */
 export function kokoroEndpoint(userId: string): KokoroEndpoint | null {
   const s = voiceSettings(userId);
   if (s.tts.provider === "kokoro") { const e = endpoint(userId, "tts"); if (e) return { url: e.url, trusted: e.trusted }; }
-  return kokoroEnvUrl() ? { url: kokoroEnvUrl(), trusted: true } : null;
+  const env = kokoroEnvUrl();
+  return env && reachable(env) ? { url: env, trusted: true } : null;
 }
 
-/** The bot's own voice, when it has one AND the account can use it (a Fish Audio key is saved; Kokoro is reachable). */
+/**
+ * Where Piper answers for this account: its own Piper address (Settings → Voice, provider Piper), else the server's
+ * bundled one (VOICE_TTS_URL with VOICE_TTS_PROVIDER=piper, the default of the compose files) while it answers.
+ */
+export function piperEndpoint(userId: string): PiperEndpoint | null {
+  const s = voiceSettings(userId);
+  if (s.tts.provider === "piper") { const e = endpoint(userId, "tts"); if (e) return { url: e.url, trusted: e.trusted }; }
+  return config.voiceTtsProvider === "piper" && config.voiceTtsUrl && reachable(config.voiceTtsUrl) ? { url: config.voiceTtsUrl, trusted: true } : null;
+}
+
+/** The bot's own voice, when it has one AND the account can use it (a Fish Audio key is saved; Kokoro/Piper answer). */
 export function botVoiceFor(userId: string, botId?: string | null): BotVoiceChoice | null {
   if (!botId) return null;
   const v = botVoices.get(botId);
   if (!v) return null;
-  return (v.provider === "fish" ? fishKey(userId) : kokoroEndpoint(userId)) ? v : null;
+  return (v.provider === "fish" ? fishKey(userId) : v.provider === "piper" ? piperEndpoint(userId) : kokoroEndpoint(userId)) ? v : null;
+}
+
+/**
+ * The free voices given automatically to the account's bots (voice/autovoice.ts): only while the account speaks with
+ * Piper (the default) and did not type one voice for all its bots in Settings → Voice. Empty otherwise.
+ */
+export function autoVoices(userId: string): Map<string, AutoVoice> {
+  const s = voiceSettings(userId);
+  if (s.tts.provider !== "piper" || s.tts.voice) return new Map();
+  const e = piperEndpoint(userId);
+  const k = kokoroEndpoint(userId);
+  if (!e && !k) return new Map();
+  const own = new Map<string, BotVoiceChoice | null>();
+  const ownOf = (id: string) => { if (!own.has(id)) own.set(id, botVoiceFor(userId, id)); return own.get(id)!; };
+  return assignVoices({ bots: bots.list(userId, true), locale: users.localeOf(userId), own: ownOf, models: e ? piperModels(e) : new Set(), kokoro: k ? kokoroVoiceIds(k) : false });
+}
+export const autoVoiceFor = (userId: string, botId?: string | null): AutoVoice | null => (botId ? autoVoices(userId).get(botId) ?? null : null);
+
+const piperLabel = (id: string, fallback: string) => piperVoice(id)?.name ?? (fallback || id);
+
+/** The bot's voice as Settings → Voice and the call button show it. */
+export function botVoiceRow(userId: string, bot: { id: string; name: string }, auto = autoVoices(userId)): BotVoiceRow {
+  const own = botVoiceFor(userId, bot.id);
+  if (own) {
+    const p = own.provider === "piper" ? piperVoice(own.voiceId) : null;
+    return { botId: bot.id, name: bot.name, provider: own.provider, voiceId: own.voiceId, voiceName: own.provider === "piper" ? piperLabel(own.voiceId, own.name) : own.name || own.voiceId, auto: false, gender: p?.gender ?? "", licence: p?.licence ?? "" };
+  }
+  const a = auto.get(bot.id);
+  if (a) return { botId: bot.id, name: bot.name, provider: a.voice.provider, voiceId: a.voice.id, voiceName: a.voice.name, auto: true, gender: a.gender, licence: a.voice.licence };
+  const s = voiceSettings(userId);
+  return { botId: bot.id, name: bot.name, provider: s.tts.provider, voiceId: s.tts.voice, voiceName: s.tts.voice, auto: false, gender: "", licence: "" };
 }
 
 /** What a call will use. With `botId`: that bot's own voice counts as its text-to-speech (it speaks with it). */
@@ -170,7 +218,9 @@ export function voiceStatus(userId: string, botId?: string | null): VoiceStatus 
   const tts = own ? true : endpoint(userId, "tts");
   const ttsName = own ? own.provider : s.tts.provider;
   if (!stt || !tts) return { mode: "browser", stt: stt ? s.stt.provider : null, tts: tts ? ttsName : null, reason: !stt && !tts ? "no speech service configured" : !stt ? "no speech-to-text service" : "no text-to-speech service", dictation };
-  return { mode: "server", stt: s.stt.provider, tts: ttsName, reason: "", dictation };
+  const bot = botId ? bots.byId(botId) : null;
+  const voice = bot ? botVoiceRow(userId, bot).voiceName : "";
+  return { mode: "server", stt: s.stt.provider, tts: ttsName, reason: "", dictation, ...(voice ? { voice } : {}) };
 }
 
 /** Who pays a Fish Audio line: the account's own key ("own" in hosted mode; nothing to say otherwise). */
@@ -229,7 +279,7 @@ export interface TtsFor {
   botId?: string | null;
   /** Another voice to try (the picker's "Listen"), instead of the bot's or the account's: with `provider`. */
   voiceId?: string;
-  provider?: "fish" | "kokoro";
+  provider?: "fish" | "kokoro" | "piper";
 }
 
 /** Text-to-speech for the account (and, with `botId`, in that bot's own voice when it has one). */
@@ -247,21 +297,29 @@ export function ttsFor(userId: string, opts: TtsFor = {}): Tts | null {
     };
   };
   const kokoro = (e: KokoroEndpoint, voice: string): Tts => (text, signal) => kokoroTts(e, { text, voice, speed }, signal);
+  const piper = (e: PiperEndpoint, voiceId: string, variant = 0): Tts => (text, signal) => piperTts(e, { text, voiceId, rate: speed, variant }, signal);
   // A voice being tried, or the bot's own voice: its provider, whatever the account's default one.
   const own = opts.voiceId ? { provider: opts.provider ?? "fish", voiceId: opts.voiceId, language: "" } : botVoiceFor(userId, opts.botId);
   if (own) {
     if (own.provider === "kokoro") { const e = kokoroEndpoint(userId); return e ? kokoro(e, own.voiceId) : null; }
+    if (own.provider === "piper") { const e = piperEndpoint(userId); return e ? piper(e, own.voiceId) : null; }
     const key = fishKey(userId);
     return key ? fish(key, own.voiceId, own.language || botLang) : null;
   }
+  // No voice of its own: the free voice it was given automatically (distinct from the account's other bots).
+  const auto = autoVoiceFor(userId, opts.botId);
+  if (auto?.voice.provider === "kokoro") {
+    const e = kokoroEndpoint(userId);
+    // The pace variant (voice/piper.ts PIPER_VARIANTS) as Kokoro's speed: a longer phoneme is a slower voice.
+    if (e) return (text, signal) => kokoroTts(e, { text, voice: auto.voice.id, speed: speed / PIPER_VARIANTS[auto.variant][0] }, signal);
+  } else if (auto) { const e = piperEndpoint(userId); if (e) return piper(e, auto.voice.id, auto.variant); }
   const e = endpoint(userId, "tts");
   if (!e) return null;
   if (s.tts.provider === "fish") return fish(e.key!, s.tts.voice, botLang);
   if (s.tts.provider === "kokoro") return kokoro({ url: e.url, trusted: e.trusted }, s.tts.voice);
+  if (s.tts.provider === "piper") return piper({ url: e.url, trusted: e.trusted }, s.tts.voice);
   return async (text, signal) => {
-    const req = s.tts.provider === "piper"
-      ? { url: `${e.url}/synthesize`, body: { text, ...(s.tts.voice ? { voice: s.tts.voice } : {}) } }
-      : { url: `${e.url}/v1/audio/speech`, body: { model: s.tts.model || "gpt-4o-mini-tts", input: text, voice: s.tts.voice || "marin", response_format: "wav" } };
+    const req = { url: `${e.url}/v1/audio/speech`, body: { model: s.tts.model || "gpt-4o-mini-tts", input: text, voice: s.tts.voice || "marin", response_format: "wav" } };
     const res = await go(e, req.url, { method: "POST", headers: { "content-type": "application/json", ...(e.key ? { authorization: `Bearer ${e.key}` } : {}) }, body: JSON.stringify(req.body), signal: signal ?? AbortSignal.timeout(30_000) });
     if (!res.ok) throw new Error(`text-to-speech answered ${res.status}`);
     if (e.operatorKey) meterOperatorUse(userId, null, "voice:text-to-speech", (text.length / 1000) * unitEstimate("ttsUsdPer1kChars"));

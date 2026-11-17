@@ -5,7 +5,7 @@
  *   npm run dev -w web   →   http://localhost:5173/?dev=gallery
  *
  * Everything is in the address, so a state can be shared or screenshotted:
- *   section=all|basics|cards|notices|banners|empty|today|surveillance
+ *   section=all|basics|cards|notices|banners|empty|today|surveillance|announcements
  *   theme=light|dark   lang=fr|en   frame=390 (phone frame)   long=1 (very long texts)
  *   empty=1 (Today/Surveillance with no data)   fail=1 (buttons answer with an error)
  *   type=<card type>   status=<card status>   (filter the cards)
@@ -23,13 +23,16 @@ import { buildItems, RowItems } from "../components/Transcript";
 import { PauseAllNotice, PauseBanner } from "../components/Pause";
 import { TodayView } from "../components/TodayView";
 import { SurveillanceView } from "../components/SurveillanceView";
+import { AnnouncementsView } from "../components/AnnouncementsView";
+import { AnnouncementCard, SiteAnnouncementBanner } from "../components/AnnouncementCard";
+import { useAnnouncements } from "../lib/announcements";
 import { Empty, ErrorNote, IconButton, Loading, Toggle } from "../components/ui";
 import { Icon } from "../components/Icon";
-import { cardFixtures, fakeBot, GALLERY_BOT_ID, noticeRows, NOW, type FixtureOptions } from "./fixtures";
+import { announcementsState, cardFixtures, fakeBot, GALLERY_BOT_ID, noticeRows, NOW, type FixtureOptions } from "./fixtures";
 import { installFakeApi, type FakeApiState } from "./fakeApi";
 import "./gallery.css";
 
-const SECTIONS = ["all", "basics", "cards", "notices", "banners", "empty", "today", "surveillance"] as const;
+const SECTIONS = ["all", "basics", "cards", "notices", "banners", "empty", "today", "surveillance", "announcements"] as const;
 type Section = (typeof SECTIONS)[number];
 
 interface GalleryState extends FakeApiState {
@@ -78,6 +81,8 @@ export function mountGallery(root: HTMLElement): void {
   document.title = "Sklubot — galerie des états (dev)";
   // The cards read their bot's name from the store.
   useStore.setState({ bots: { [GALLERY_BOT_ID]: fakeBot({ lang: current.lang, long: false }) } });
+  // « Annonces »: what a reader sees on Today and in the band, from the fixtures.
+  useAnnouncements.setState({ state: announcementsState(current, current.empty) });
   createRoot(root).render(<Gallery />);
 }
 
@@ -89,6 +94,7 @@ function Gallery() {
   useEffect(() => {
     applyTheme(s.theme);
     setLocale(s.lang);
+    useAnnouncements.setState({ state: announcementsState(s, s.empty) });
     if (!s.embed) history.replaceState(null, "", toQuery(s));
   }, [s]);
 
@@ -160,8 +166,24 @@ function Sections({ s }: { s: GalleryState }) {
       {show("banners") && <Banners o={o} />}
       {show("empty") && <EmptyStates />}
       {show("today") && <Section id="today" title="Aujourd'hui" hint="La vraie page, avec des données factices (interrupteur « Vide » pour la journée calme)."><div className="gallery-page"><TodayView /></div></Section>}
+      {show("announcements") && <Announcements o={o} empty={s.empty} />}
       {show("surveillance") && <Section id="surveillance" title="Surveillance" hint="La vraie page : incidents critiques, à surveiller, acquittés, info ; historique ; santé."><div className="gallery-page"><SurveillanceView /></div></Section>}
     </main>
+  );
+}
+
+/** « Annonces »: the maintenance band, the bell's panel, then the real page « Annonces » (its editor opens with « Nouvelle annonce »). */
+function Announcements({ o, empty }: { o: FixtureOptions; empty: boolean }) {
+  const state = announcementsState(o, empty);
+  return (
+    <Section id="announcements" title="Annonces" hint="Le bandeau de maintenance, le panneau de la cloche (cartes compactes), puis la vraie page « Annonces » de l'administrateur. Les cartes sur Aujourd'hui sont dans la section « today ».">
+      <div className="gallery-page gallery-ann-band"><div className="shell has-site-banner gallery-ann-shell"><SiteAnnouncementBanner /></div></div>
+      <div className="gallery-ann-pop">
+        <div className="ann-pop-head"><h2>{o.lang === "fr" ? "Annonces" : "Announcements"}</h2></div>
+        <div className="ann-pop-list">{state.items.map((a) => <AnnouncementCard key={a.id} a={a} compact now={NOW} onDismiss={() => undefined} />)}</div>
+      </div>
+      <div className="gallery-page"><AnnouncementsView /></div>
+    </Section>
   );
 }
 

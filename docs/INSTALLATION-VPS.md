@@ -99,16 +99,18 @@ sa réponse en cours est annulée). Rien à faire : `deploy/install.sh` et `depl
   Internet, qui s'arrête aussitôt. Poids Whisper d'OpenAI sous licence MIT. Un VPS de 2 vCPU transcrit une phrase en
   moins d'une seconde avec `base`.
 - **Piper** : construit depuis `docker/piper` (version de `piper-tts` épinglée ; moteur sous GPL-3.0, lancé comme
-  service séparé). Voix par défaut **`fr_FR-siwis-medium`** (une voix féminine française), entraînée sur le corpus SIWIS,
-  **licence CC BY 4.0** ([fiche du modèle](https://huggingface.co/rhasspy/piper-voices/blob/main/fr/fr_FR/siwis/medium/MODEL_CARD)) :
-  utilisation libre, y compris commerciale, en citant la source. Autre voix :
-  `docker compose -f docker-compose.vps.yml build --build-arg PIPER_VOICE=en_US-lessac-medium piper` (vérifie la licence
-  dans sa fiche ; `fr_FR-upmc` est en CC BY-SA 4.0, `fr_FR-tom` en AGPL).
+  service séparé). Voix incluses : **`fr_FR-siwis-medium`** (voix par défaut, CC BY 4.0), **`fr_FR-upmc-medium`**
+  (CC BY-SA 4.0), **`fr_FR-mls-medium`** (125 lecteurs, CC BY 4.0) et **`en_GB-vctk-medium`** (CC BY 4.0) : utilisation
+  libre, y compris commerciale, en citant la source. **Chaque bot reçoit automatiquement sa propre voix** parmi elles
+  (36 voix au catalogue) ; liste, licences et mémoire : [VOIX.md](VOIX.md). Moins de voix :
+  `docker compose -f docker-compose.vps.yml build --build-arg PIPER_VOICES="fr_FR-siwis-medium fr_FR-upmc-medium" piper`
+  (vérifie la licence de toute autre voix dans sa fiche ; `fr_FR-tom` est en AGPL, `en_US-ryan` en CC BY-NC-SA).
 - **Réseau** : les deux ne sont que sur le réseau interne `sklubot_voice` (sans Internet), que seule l'application
   rejoint. Ils ne sont ni publiés, ni joignables par les ordinateurs des bots ; Caddy n'est pas concerné.
 - **Mémoire** (estimations, en marche) : whisper `base` ≈ 300 à 500 Mo (plafond `WHISPER_MEM_LIMIT`, 1 Go par défaut ;
-  avec `small` compte 0,9 à 1,2 Go et mets `WHISPER_MEM_LIMIT=2g`), Piper ≈ 150 à 300 Mo (plafond `PIPER_MEM_LIMIT`,
-  768 Mo par défaut). Soit **≈ 0,5 à 0,8 Go** de plus en tout avec `base`. Ils passent après l'application pour le
+  avec `small` compte 0,9 à 1,2 Go et mets `WHISPER_MEM_LIMIT=2g`), Piper ≈ 210 Mo avec une voix, + 150 à 190 Mo par modèle utilisé
+  (≈ 0,7 à 0,9 Go avec les quatre ; plafond `PIPER_MEM_LIMIT`, 1200 Mo par défaut). Soit **≈ 0,5 à 1,4 Go** de plus en
+  tout avec `base`. Ils passent après l'application pour le
   processeur (`cpu_shares`) ; `WHISPER_THREADS` (2 par défaut) règle les fils de calcul de whisper.
 - **Les couper** : `SKLUBOT_VOICE_LOCAL=0` dans `.env`, puis `docker compose -f docker-compose.vps.yml up -d`. Les deux
   services restent en veille (quelques Mo) et Sklubot ne s'en sert plus : la voix repasse par le navigateur, ou par le
@@ -123,32 +125,32 @@ sa réponse en cours est annulée). Rien à faire : `deploy/install.sh` et `depl
   le convertit en WAV 16 kHz et l'envoie au serveur (`POST /api/voice/transcribe`, une minute au plus par dictée,
   12 par minute et par compte). Sans voix du serveur, elle dit où l'activer (Réglages → Voix).
 
-### Une voix par bot : Kokoro (gratuit) et Fish Audio (payant, clé à toi)
+### Une voix par bot : automatique et gratuite (Kokoro + Piper), ou Fish Audio (payant, clé à toi)
 
-- **Kokoro** (texte → voix, gratuit, auto-hébergé) : [Kokoro-FastAPI](https://github.com/remsky/Kokoro-FastAPI)
+Chaque bot a **sa propre voix sans réglage** : une voix gratuite différente lui est donnée automatiquement (Kokoro
+d'abord pour sa qualité, puis Piper ; détails, licences et mémoire : [VOIX.md](VOIX.md)).
+
+- **Kokoro** (texte → voix, gratuit, auto-hébergé, **actif par défaut**) : [Kokoro-FastAPI](https://github.com/remsky/Kokoro-FastAPI)
   (Apache-2.0) avec le modèle [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M) (poids Apache-2.0). Image CPU
-  officielle épinglée (`ghcr.io/remsky/kokoro-fastapi-cpu:v0.10.0`, modèles inclus). Une cinquantaine de voix
-  (anglais US/GB, français, espagnol, italien, portugais du Brésil, hindi, japonais, mandarin). Compte **1 à 2 Go de
-  RAM** de plus quand il tourne (plafond `KOKORO_MEM_LIMIT`, 3 Go par défaut) : laisse-le éteint sur un petit VPS.
-
-  ```bash
-  docker compose -f docker-compose.vps.yml --profile kokoro up -d kokoro
-  # puis dans .env :
-  SKLUBOT_VOICE_KOKORO_URL=http://kokoro:8880
-  docker compose -f docker-compose.vps.yml up -d sklubot
-  ```
-
-  Kokoro n'est que sur le réseau interne `sklubot_voice` (sans Internet), que seule l'application rejoint : il n'est
-  ni publié, ni joignable par les ordinateurs des bots. **Coolify** : ajoute `COMPOSE_PROFILES=kokoro` et
-  `SKLUBOT_VOICE_KOKORO_URL=http://kokoro:8880` aux variables, puis redéploie ; si le service `kokoro` n'apparaît pas
-  (version de Coolify qui ignore les profils), lance la commande ci-dessus sur le serveur.
+  officielle épinglée (`ghcr.io/remsky/kokoro-fastapi-cpu:v0.10.0`, modèle et voix inclus, plusieurs Go à
+  télécharger la première fois à cause de PyTorch). Une cinquantaine de voix (anglais US/GB, français — une seule,
+  `ff_siwis`, mêlée aux voix françaises de Piper —, espagnol, italien, portugais du Brésil, hindi, japonais, mandarin).
+  Compte **≈ 1 à 1,5 Go de RAM** de plus quand il tourne (plafond `KOKORO_MEM_LIMIT`, 2 Go par défaut) ; toute la voix
+  (whisper + Piper + Kokoro) ≈ 1,5 à 3 Go. `deploy/install.sh` et `deploy/update.sh` le laissent **en veille sous
+  3,5 Go de mémoire** (`SKLUBOT_KOKORO=0` dans `.env`) : les bots parlent alors avec Piper. Pour le mettre en veille
+  ou l'activer : `SKLUBOT_KOKORO=0` ou `1` dans `.env`, puis `docker compose -f docker-compose.vps.yml up -d`.
+  S'il ne répond pas (démarrage, veille, panne), les bots repassent tout seuls sur Piper.
+  Kokoro n'est que sur le réseau interne `sklubot_voice` (sans Internet, rien n'est téléchargé au démarrage), que seule
+  l'application rejoint : il n'est ni publié, ni joignable par les ordinateurs des bots. Système de fichiers en
+  lecture seule, aucun privilège. **Coolify** : rien à faire (pas de profil) ; ne lui donne pas de domaine.
 - **Fish Audio** (payant, facultatif) : chaque compte crée une clé d'API sur
   [fish.audio](https://fish.audio/app/api-keys/) et la colle dans Réglages → Voix (scellée sur le serveur, jamais
   renvoyée au navigateur). Seule l'API officielle est utilisée ; les voix sont désignées par leur identifiant public,
   rien n'est téléchargé. Le modèle `s2.1-pro-free` est gratuit ; les autres sont facturés par Fish Audio (15 $ par
   million d'octets de texte pour `s2.1-pro`), et chaque phrase lue apparaît dans Usage.
-- Puis, dans les réglages d'un bot → **Voix** : cherche une voix (Fish Audio ou Kokoro), **Écouter**, **Choisir**. Sans
-  voix choisie, le bot parle avec la voix par défaut du compte. Respecte les conditions de Fish Audio et les droits de
+- **Réglages → Voix → « Voix des bots »** : chaque bot avec sa voix, **Écouter**, **Changer** ; avec une clé Fish
+  Audio, **« Donner une voix Fish à tous mes bots »** propose une voix par bot (rien n'est dépensé avant ta
+  confirmation). Dans les réglages d'un bot → **Voix** : voix gratuites, Fish Audio ou Kokoro, **Écouter**, **Choisir**. Respecte les conditions de Fish Audio et les droits de
   chaque voix (auteur affiché) ; ne clone jamais la voix de quelqu'un sans son accord.
 
 ## Une adresse e-mail pour chaque bot (facultatif)

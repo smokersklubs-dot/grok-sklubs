@@ -19,6 +19,7 @@ import { startScheduler } from "./scheduler.js";
 import { startAutoBackup } from "./autobackup.js";
 import { startHealthChecks } from "./health.js";
 import { startSentinel } from "./sentinel/index.js";
+import { startAnnouncements } from "./announcements.js";
 import { installErrorCounter, noteSignal } from "./sentinel/signals.js";
 import { attachLiveScreens } from "./vnc.js";
 import { relayUpgrade } from "./relay.js";
@@ -99,6 +100,8 @@ startAutoBackup();
 startHealthChecks();
 // The Sentinelle (sentinel/): a read-only scan every SENTINEL_EVERY_MIN minutes, incidents and alerts to the owner/operators.
 startSentinel();
+// « Annonces » (announcements.ts): push and e-mail of announcements, once per reader, every minute.
+startAnnouncements();
 // M2: the disk watchdog (DISK_FREE_MIN_MB; Linux computers only).
 startDiskWatchdog();
 if (!config.schedulerOff) { telegram.start(); recoverInterruptedTurns(); startJobWatch(); startLimitWatch(); }

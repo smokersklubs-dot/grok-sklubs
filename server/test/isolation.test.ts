@@ -106,6 +106,10 @@ test("setup: A owns one of everything, V is a viewer of A's workspace with bot1 
   // "Surveillance" (sentinel/): an incident about A's bot1 — only the server's owner (A) may see or acknowledge it.
   ins("INSERT INTO sentinel_incidents (id, fingerprint, kind, severity, status, params, user_id, bot_id, count, peak, seen, first_at, last_at) VALUES ('a_incident', ?, 'tool_errors', 'critical', 'open', ?, ?, ?, 25, 25, 1, ?, ?)",
     `tool_errors:${ids.bot1}:alphasecret_tool`, JSON.stringify({ tool: "alphasecret_tool", failed: 25, total: 25 }), userA, ids.bot1, t, t);
+  // « Annonces » (announcements.ts): one written by A (the owner) for A's account only — nobody else may read or close it.
+  const ann = await A("POST", "/announcements-admin", { kind: "important", title: "ALPHASECRET notice", body: "ALPHASECRET body", audience: { type: "accounts", emails: ["alice.alphasecret@example.com"] } });
+  assert.equal(ann.status, 200, ann.text);
+  ids.ann = ann.json.id;
   ins("INSERT INTO vault (id, user_id, name, username, password_enc, created_at) VALUES ('a_vault', ?, 'ALPHASECRET vault', 'alice', ?, ?)", userA, seal("ALPHASECRET password"), t);
   ins("INSERT INTO connectors (id, user_id, name, url, token_enc, created_at) VALUES ('a_conn', ?, 'ALPHASECRET connector', 'https://mcp.example.com', ?, ?)", userA, seal("ALPHASECRET token"), t);
   ins("INSERT INTO bot_sections (id, user_id, name, created_at) VALUES ('a_section', ?, 'ALPHASECRET section', ?)", userA, t);
@@ -164,6 +168,8 @@ function resolve(routePath: string, param: string, bot: "bot1" | "bot2"): string
     "api-keys:keyId": ids[`apikey_${b}`] ?? "bak_none", "messages:seq": "1", "tasks:taskId": ids[`goal_${b}`],
     // "Surveillance" (sentinel/): A's incident.
     "incidents:incidentId": "a_incident",
+    // « Annonces »: A's announcement (for A only), on the readers' route and on the authors' ones.
+    "announcements:annId": ids.ann, "announcements-admin:annId": ids.ann,
   };
   if (param === "action" && prev2 === "reach") return "login";
   if (param === "rid" && prev2 === "resources") return "a_conn";
@@ -396,6 +402,30 @@ test("Surveillance (sentinel/): owner only — B and V get 404 on every route an
   const mine = await A("GET", "/surveillance");
   assert.equal(mine.status, 200);
   assert.ok(mine.json.incidents.some((i: any) => i.id === "a_incident" && /ALPHASECRET One/.test(i.explanation)));
+});
+
+test("Annonces (announcements.ts): authors' routes are the owner's only (404 for B and V); readers see only what is theirs", async () => {
+  const routes = discover().filter((r) => r.app === api && r.path.startsWith("/announcements")).map((r) => r.key).sort();
+  assert.deepEqual(routes, ["GET /announcements", "GET /announcements-admin", "POST /announcements-admin", "POST /announcements-admin/:annId/archive", "POST /announcements-admin/preview", "POST /announcements/:annId/dismiss", "POST /announcements/seen", "PUT /announcements-admin/:annId", "PUT /announcements/prefs"]);
+  const problems: string[] = [];
+  const draft = { kind: "info", title: "Hello", body: "", audience: { type: "everyone" } };
+  for (const who of ["b", "v"] as const) {
+    for (const r of discover().filter((x) => x.app === api && x.path.startsWith("/announcements-admin"))) {
+      const res = await call(api, who, methodOf(r.method), fill(r.path, "bot1"), draft);
+      if (res.status !== 404 || leakIn(res.text)) problems.push(`${who} ${r.key} → ${res.status} ${res.text.slice(0, 120)}`);
+    }
+    const dis = await call(api, who, "POST", `/announcements/${ids.ann}/dismiss`, {});
+    if (dis.status !== 404 || leakIn(dis.text)) problems.push(`${who} dismiss → ${dis.status}`);
+    await call(api, who, "POST", "/announcements/seen", { ids: [ids.ann] });
+    const feed = await call(api, who, "GET", "/announcements");
+    if (feed.status !== 200 || leakIn(feed.text) || feed.text.includes(ids.ann) || feed.json.canAuthor !== false) problems.push(`${who} feed → ${feed.status} ${feed.text.slice(0, 160)}`);
+  }
+  assert.deepEqual(problems, []);
+  assert.equal(q.get<{ n: number }>("SELECT COUNT(*) AS n FROM announcement_reads WHERE announcement_id = ?", ids.ann)!.n, 0, "nobody but A marked it");
+  assert.equal(q.get<{ n: number }>("SELECT COUNT(*) AS n FROM announcements")!.n, 1, "B and V created nothing");
+  const mine = await A("GET", "/announcements");
+  assert.equal(mine.status, 200);
+  assert.ok(mine.json.canAuthor && mine.json.items.some((i: any) => i.id === ids.ann));
 });
 
 test("Pause (agent/pause.ts): owner only — B and V get 404 on A's bots and section, and 'everything' pauses only their own", async () => {

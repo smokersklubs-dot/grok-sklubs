@@ -645,7 +645,7 @@ export interface VaultImportResult { imported: number; skipped: number; totp: nu
 
 // ── Push notifications (Web Push) ──────────────────────────────────────────
 /** What can be pushed: a bot needs the user, a gem, a reply finished while the app was hidden, a routine's result. */
-export const PUSH_KINDS = ["needs", "gem", "reply", "routine", "computer", "nudge"] as const;
+export const PUSH_KINDS = ["needs", "gem", "reply", "routine", "computer", "nudge", "announce"] as const;
 export type PushKind = (typeof PUSH_KINDS)[number];
 /** One browser or phone that receives push notifications. Its keys never leave the server. */
 export interface PushDevice { id: string; label: string; enabled: boolean; createdAt: number; lastOkAt: number | null; failures: number }
@@ -911,14 +911,16 @@ export interface VoiceSettings {
  * id there, sent as `reference_id`) or the self-hosted Kokoro (`voiceId` = a Kokoro voice such as "ff_siwis", or a
  * weighted mix); `name`/`author` as listed; `language` "" = the bot's language.
  */
-export interface BotVoiceChoice { provider: "fish" | "kokoro"; voiceId: string; name: string; author: string; language: string }
+export interface BotVoiceChoice { provider: "fish" | "kokoro" | "piper"; voiceId: string; name: string; author: string; language: string }
+/** Free Piper voices, bots' voices as listed, Fish Audio proposals (voice/piper.ts, autovoice.ts, fishbulk.ts). */
+export type { PiperVoiceInfo, BotVoiceRow, FishBulkProposal } from "./voicetypes.js";
 /** One voice of the self-hosted Kokoro (GET /voice/kokoro/voices): language and gender read from the id's prefix. */
 export interface KokoroVoice { id: string; name: string; language: string; gender: "female" | "male" | ""; grade: string }
 /** One voice of Fish Audio's library as the picker shows it (GET /voice/fish/voices). */
 export interface FishVoice { id: string; title: string; description: string; languages: string[]; tags: string[]; likes: number; uses: number; author: string; licensed: boolean; visibility: string; state: string }
 /** What a call will use: "server" when speech-to-text and text-to-speech are both reachable, else "browser". */
 /** `dictation`: the server can transcribe a recorded clip (POST /voice/transcribe), whatever the call mode. */
-export interface VoiceStatus { mode: "server" | "browser"; stt: string | null; tts: string | null; reason: string; dictation?: boolean }
+export interface VoiceStatus { mode: "server" | "browser"; stt: string | null; tts: string | null; reason: string; dictation?: boolean; /** with a bot: the voice's name */ voice?: string }
 
 /** Server → browser events on GET /api/events (one JSON object per SSE message). */
 export type ServerEvent =
@@ -969,7 +971,9 @@ export type ServerEvent =
   /** Wave 7: temporary public links changed. */
   | { type: "publicLinks" }
   /** Wave 7: a bot's reading logins (Agent Reach) changed. */
-  | { type: "reach"; botId: string };
+  | { type: "reach"; botId: string }
+  /** « Annonces » (announcements.ts): one was published, changed, started or taken down: reload GET /announcements. */
+  | { type: "announcements" };
 
 // ── Wave 7 ──────────────────────────────────────────────────────────────────
 /**

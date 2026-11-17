@@ -19,6 +19,9 @@ import { EmailConfirmPage, ResetPasswordPage, takeLinkAction } from "./component
 import { TasksView } from "./components/TasksView";
 import { TodayView } from "./components/TodayView";
 import { SurveillanceView } from "./components/SurveillanceView";
+import { AnnouncementsView } from "./components/AnnouncementsView";
+import { SiteAnnouncementBanner } from "./components/AnnouncementCard";
+import { useAnnouncements } from "./lib/announcements";
 import { ThreadPanel } from "./components/ThreadPanel";
 import { DownloadPage, isDownloadPath } from "./components/DownloadPage";
 import { useDesktopBadge } from "./lib/desktop";
@@ -119,6 +122,8 @@ function Shell() {
   const toast = useStore((s) => s.toast);
   const history = useStore((s) => s.history);
   const sentinel = useStore((s) => s.sentinel);
+  const author = useAnnouncements((s) => !!s.state?.canAuthor);
+  const siteBanner = useAnnouncements((s) => !!s.state?.site);
   const openModal = useStore((s) => s.openModal);
   const close = () => openModal(null);
   const openThread = useStore((s) => (s.openThread && s.openThread.botId === s.selectedId ? s.openThread : null));
@@ -126,9 +131,10 @@ function Shell() {
   const showDetails = view === "chat" && hasBot && detailsOpen && !showThread;
 
   return (
-    <div className={`shell ${showDetails || showThread ? "has-details" : ""}`}>
+    <div className={`shell ${showDetails || showThread ? "has-details" : ""} ${siteBanner ? "has-site-banner" : ""}`}>
+      <SiteAnnouncementBanner />
       <Sidebar />
-      {view === "tasks" ? <TasksView /> : view === "today" ? <TodayView /> : view === "surveillance" && sentinel ? <SurveillanceView /> : <ChatView />}
+      {view === "tasks" ? <TasksView /> : view === "today" ? <TodayView /> : view === "surveillance" && sentinel ? <SurveillanceView /> : view === "announcements" && author ? <AnnouncementsView /> : <ChatView />}
       {showDetails && <DetailsPanel />}
       {showThread && openThread && <ThreadPanel key={`${openThread.botId}:${openThread.seq}`} botId={openThread.botId} seq={openThread.seq} />}
 

@@ -206,7 +206,7 @@ interface Store {
   history: HistoryTarget | null;
 
   selectedId: string | null;
-  view: "chat" | "tasks" | "today" | "surveillance";
+  view: "chat" | "tasks" | "today" | "surveillance" | "announcements";
   detailsOpen: boolean;
   sidebarCollapsed: boolean;
   mobileNav: boolean;
@@ -264,7 +264,7 @@ interface Store {
   removeUpload(botId: string, id: string): void;
   clearUploads(botId: string, ids: string[]): void;
   setTheme(theme: Theme): void;
-  setView(view: "chat" | "tasks" | "today" | "surveillance"): void;
+  setView(view: "chat" | "tasks" | "today" | "surveillance" | "announcements"): void;
   toggleDetails(open?: boolean): void;
   toggleSidebar(): void;
   setMobileNav(open: boolean): void;

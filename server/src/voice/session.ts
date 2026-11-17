@@ -26,7 +26,7 @@ import { emailGateBlocks } from "../publicsignup.js";
  * Protocol (`GET /api/voice/:botId`, WebSocket, same-site Origin and the session cookie; docs/API.md):
  *  client → server  text  {"type":"hello","sampleRate":16000,"lang":"fr-FR"}   then binary PCM frames (Int16 LE)
  *                   text  {"type":"played","id":N} · {"type":"interrupt"} · {"type":"mute","on":bool} · {"type":"bye"}
- *  server → client  text  {"type":"ready","callId","stt","tts"} · {"type":"vad","speaking":bool} · {"type":"partial","text"}
+ *  server → client  text  {"type":"ready","callId","stt","tts","voice"?} · {"type":"vad","speaking":bool} · {"type":"partial","text"}
  *                         {"type":"final","text"} · {"type":"barge_in"} · {"type":"audio","id","text","mime","ms"} (followed by
  *                         one binary message: the WAV) · {"type":"error","message"}
  */
@@ -341,7 +341,9 @@ function runCall(ws: WebSocket, bot: BotRecord, user: UserRecord, member: { role
         botBusy: () => getLive(bot.id).running,
       });
       callId = callStarted(current, user.locale);
-      send(JSON.stringify({ type: "ready", callId, stt: settings.stt.provider, tts: voiceStatus(bot.userId, bot.id).tts ?? settings.tts.provider }));
+      const st = voiceStatus(bot.userId, bot.id);
+      // `voice`: the name of the voice the bot speaks with (its own, or the free one it was given), shown in the call bar.
+      send(JSON.stringify({ type: "ready", callId, stt: settings.stt.provider, tts: st.tts ?? settings.tts.provider, ...(st.voice ? { voice: st.voice } : {}) }));
       return;
     }
     if (!session) return;

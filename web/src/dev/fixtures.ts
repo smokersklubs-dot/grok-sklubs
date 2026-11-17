@@ -2,7 +2,7 @@
  * Fake data for the dev gallery (web/src/dev/Gallery.tsx). Never shipped: the gallery is only loaded in development.
  * Every text comes in French and English (`L`), and `long` swaps in very long texts to check wrapping on a phone.
  */
-import type { Bot, Card, Row, SentinelIncidentView, SentinelOverview, TodayReport } from "../types";
+import type { AnnouncementAdminItem, AnnouncementsAdmin, AnnouncementsState, AnnouncementView, Bot, Card, Row, SentinelIncidentView, SentinelOverview, TodayReport } from "../types";
 import { DEFAULT_MINUTES } from "../types";
 
 export interface FixtureOptions { lang: "fr" | "en"; long: boolean }
@@ -249,3 +249,38 @@ export function todayReport(o: FixtureOptions, empty: boolean): TodayReport {
     cost: { usd: empty ? 0 : 1.84, estimatedUsd: empty ? 0 : 0.12, inputTokens: 412_000, outputTokens: 38_000, turns: 23, subscriptionTokens: 0, byBot: empty ? [] : [{ botId: GALLERY_BOT_ID, botName: "Juno", usd: 1.5, tokens: 380_000 }, { botId: "bot_other", botName: "Atlas", usd: 0.46, tokens: 70_000 }] },
   };
 }
+
+/** « Annonces »: what a reader sees (Today's cards, the bell, the maintenance band). `empty`: nothing up. */
+export function announcementsState(o: FixtureOptions, empty: boolean): AnnouncementsState {
+  const { L, LONG } = texts(o);
+  const items: AnnouncementView[] = empty ? [] : [
+    { id: "ann_imp", kind: "important", title: L("Nouvelles conditions d'utilisation le 1er décembre", "New terms of use on December 1"), body: LONG(L("Les conditions changent pour les comptes de test : relis-les avant la fin du mois.\nDétails : https://sklubot.example/cgu.", "The terms change for test accounts: read them again before the end of the month.\nDetails: https://sklubot.example/terms.")), link: { url: "https://sklubot.example/cgu", label: L("Lire les conditions", "Read the terms") }, startsAt: NOW - 2 * HOUR, endsAt: null, siteBanner: false, unread: true },
+    { id: "ann_maint", kind: "maintenance", title: L("Maintenance ce soir de 22 h à 23 h", "Maintenance tonight from 10 to 11 pm"), body: L("Les bots seront en pause pendant une heure ; rien n'est perdu, ils reprennent ensuite.", "Bots will pause for an hour; nothing is lost, they resume afterwards."), link: null, startsAt: NOW - 30 * MIN, endsAt: NOW + 6 * HOUR, siteBanner: true, unread: true },
+    { id: "ann_new", kind: "new", title: L("Nouveau : les voix gratuites pour tous les bots", "New: free voices for every bot"), body: L("Chaque bot a maintenant sa propre voix. Change-la dans Réglages → Voix.", "Every bot now has its own voice. Change it in Settings → Voice."), link: null, startsAt: NOW - 26 * HOUR, endsAt: null, siteBanner: false, unread: false },
+    { id: "ann_info", kind: "info", title: L("Merci aux testeurs !", "Thanks to the testers!"), body: L("Vos retours de la semaine sont dans le journal des changements.", "Your feedback of the week is in the changelog."), link: null, startsAt: NOW - 3 * 24 * HOUR, endsAt: null, siteBanner: false, unread: false },
+  ];
+  return { items, unread: items.filter((i) => i.unread).length, site: items.find((i) => i.siteBanner) ?? null, canAuthor: true, emailOptIn: true };
+}
+
+/** The page « Annonces » (owner / operators). `empty`: nothing written yet. */
+export function announcementsAdmin(o: FixtureOptions, empty: boolean): AnnouncementsAdmin {
+  const { L } = texts(o);
+  const reader = announcementsState(o, empty).items;
+  const base = { emails: [] as string[], createdAt: NOW - 3 * HOUR, updatedAt: NOW - 2 * HOUR, authorName: "Alex", dismissed: 0, sent: { push: 0, email: 0, skipped: 0 } };
+  const items: AnnouncementAdminItem[] = empty ? [] : [
+    { ...base, ...pick(reader[0]), audience: { type: "everyone" }, audienceLabel: "", push: true, email: true, status: "live", recipients: 42, dismissed: 17, sent: { push: 31, email: 38, skipped: 4 } },
+    { ...base, ...pick(reader[1]), audience: { type: "plan", planId: "free" }, audienceLabel: L("Gratuit", "Free"), push: true, email: false, status: "live", recipients: 28, dismissed: 3, sent: { push: 22, email: 0, skipped: 6 } },
+    { ...base, id: "ann_sched", kind: "new", title: L("Bientôt : l'application Android", "Coming: the Android app"), body: L("Disponible lundi pour les testeurs.", "Available on Monday for testers."), link: { url: "https://sklubot.example/android", label: L("Voir", "See") }, startsAt: NOW + 3 * 24 * HOUR, endsAt: NOW + 10 * 24 * HOUR, siteBanner: false, audience: { type: "workspace", workspaceId: "ws_beta" }, audienceLabel: L("Bêta-testeurs", "Beta testers"), push: true, email: false, status: "scheduled", recipients: 9 },
+    { ...base, id: "ann_acc", kind: "info", title: L("Ton accès avancé est prêt", "Your advanced access is ready"), body: "", link: null, startsAt: NOW - 5 * 24 * HOUR, endsAt: NOW - 24 * HOUR, siteBanner: false, audience: { type: "accounts", userIds: ["u1", "u2", "u3"] }, emails: ["camille@exemple.fr", "sam@exemple.fr", "lou@exemple.fr"], audienceLabel: "", push: false, email: false, status: "ended", recipients: 3, dismissed: 2 },
+  ];
+  return {
+    items, plans: [{ id: "free", name: L("Gratuit", "Free") }, { id: "included", name: L("Tout inclus", "All included") }],
+    workspaces: [{ id: "ws_beta", name: L("Bêta-testeurs", "Beta testers"), members: 9 }], mailConfigured: true,
+    log: empty ? [] : [
+      { at: NOW - 2 * HOUR, actorName: "Alex", action: "edit", title: items[0].title },
+      { at: NOW - 3 * HOUR, actorName: "Alex", action: "create", title: items[0].title },
+      { at: NOW - 24 * HOUR, actorName: "Sam", action: "archive", title: L("Ancienne maintenance", "Old maintenance") },
+    ],
+  };
+}
+const pick = (v: AnnouncementView) => ({ id: v.id, kind: v.kind, title: v.title, body: v.body, link: v.link, startsAt: v.startsAt, endsAt: v.endsAt, siteBanner: v.siteBanner });

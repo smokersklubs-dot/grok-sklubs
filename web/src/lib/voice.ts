@@ -28,6 +28,23 @@ interface Conn {
 
 let conn: Conn | null = null;
 let lineId = 100_000;
+/**
+ * An AudioContext made and resumed INSIDE the click that starts the call. Phones (iOS Safari, Chrome on Android) keep a
+ * context created later — after the network round-trips — suspended: the bot's voice would stay silent and, on iOS,
+ * the microphone would send nothing. startServerCall takes it over; dropPrimedAudio releases it when the call goes
+ * through the browser's own speech instead.
+ */
+let primed: AudioContext | null = null;
+export function primeCallAudio(): void {
+  dropPrimedAudio();
+  if (typeof AudioContext === "undefined") return;
+  try { primed = new AudioContext(); void primed.resume().catch(() => undefined); } catch { primed = null; }
+}
+export function dropPrimedAudio(): void {
+  const p = primed;
+  primed = null;
+  if (p && p.state !== "closed") void p.close().catch(() => undefined);
+}
 
 const getCall = (): CallState | null => useStore.getState().call;
 function patch(p: Partial<CallState>): void {
@@ -51,17 +68,24 @@ function stopAll(c: Conn): void {
   patch({ speaking: false });
 }
 
-/** Opens a call through the server. Resolves false when it cannot (the caller falls back to the browser's speech). */
-export async function startServerCall(botId: string, lang: string): Promise<boolean> {
+/**
+ * Opens a call through the server. Resolves false when it cannot (the caller falls back to the browser's speech).
+ * `onEarlyFail`: the connection closed before the call was ready (the server's voice stopped answering in between);
+ * returns true when the caller took over (the browser's own speech), else the call bar shows the error.
+ */
+export async function startServerCall(botId: string, lang: string, onEarlyFail?: () => boolean): Promise<boolean> {
   let stream: MediaStream;
   try {
     // Echo cancellation keeps the bot's own voice out of the microphone (otherwise it would cut itself off).
     stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 } });
   } catch {
+    dropPrimedAudio();
     patch({ status: "error", error: t("call.micDenied") });
     return true;
   }
-  const ctx = new AudioContext();
+  const ctx = primed && primed.state !== "closed" ? primed : new AudioContext();
+  primed = null;
+  await ctx.resume().catch(() => undefined);
   try {
     await ctx.audioWorklet.addModule("/voice-worklet.js");
   } catch {
@@ -77,6 +101,11 @@ export async function startServerCall(botId: string, lang: string): Promise<bool
   const gain = ctx.createGain();
   gain.connect(ctx.destination);
   source.connect(node);
+  // Some engines (WebKit) only run a node that leads to the speakers: the capture node gets a silent path there.
+  const sink = ctx.createGain();
+  sink.gain.value = 0;
+  node.connect(sink);
+  sink.connect(ctx.destination);
   const c: Conn = { botId, ws, ctx, stream, node, gain, sources: new Map(), expect: null, playAt: 0, loudFrames: 0, quietFrames: 0, ducked: false, closed: false };
   conn = c;
   patch({ pipeline: "server" });
@@ -94,6 +123,7 @@ export async function startServerCall(botId: string, lang: string): Promise<bool
     if (c.ducked && c.quietFrames >= 30) { c.ducked = false; c.gain.gain.setTargetAtTime(1, ctx.currentTime, 0.05); }
   };
 
+  let ready = false;
   ws.onopen = () => ws.send(JSON.stringify({ type: "hello", sampleRate: 16000, lang }));
   ws.onmessage = (e) => {
     if (c.closed) return;
@@ -104,7 +134,7 @@ export async function startServerCall(botId: string, lang: string): Promise<bool
       return;
     }
     const m = JSON.parse(e.data) as Record<string, any>;
-    if (m.type === "ready") patch({ status: "live", listening: true, startedAt: getCall()?.startedAt ?? Date.now(), providers: `${m.stt} · ${m.tts}` });
+    if (m.type === "ready") { ready = true; patch({ status: "live", listening: true, startedAt: getCall()?.startedAt ?? Date.now(), providers: m.voice ? String(m.voice) : `${m.stt} · ${m.tts}` }); }
     else if (m.type === "vad") patch({ hearing: !!m.speaking });
     else if (m.type === "partial") setLines((lines) => [...lines.filter((l) => l.final), { id: ++lineId, role: "user", text: String(m.text), final: false }]);
     else if (m.type === "final") setLines((lines) => [...lines.filter((l) => l.final), { id: ++lineId, role: "user", text: String(m.text), final: true }]);
@@ -127,6 +157,7 @@ export async function startServerCall(botId: string, lang: string): Promise<bool
     if (c.closed) return;
     teardown(c);
     if (e.code === 1000) return;
+    if (!ready && onEarlyFail?.()) return;
     patch({ status: "error", error: e.code === 4409 || e.code === 1006 ? t("call.serverUnavailable") : t("call.ended"), listening: false, speaking: false });
   };
   return true;

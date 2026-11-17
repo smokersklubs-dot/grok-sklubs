@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api, errText } from "../api";
 import { useLocale, type Locale } from "../i18n";
 import { useStore } from "../store";
-import type { Bot, BotVoiceChoice, FishVoice, KokoroVoice, VoiceStatus } from "../types";
+import type { Bot, BotVoiceChoice, BotVoiceRow, FishVoice, KokoroVoice, PiperVoiceInfo, VoiceStatus } from "../types";
 import { Icon, Spinner } from "./Icon";
 import { ErrorNote, Modal } from "./ui";
 import "./VoicePicker.css";
@@ -63,6 +63,29 @@ const TX = {
     kokoroVoicePh: "Voix par défaut, ex. ff_siwis",
     hintFish: "API officielle de Fish Audio avec ta propre clé (fish.audio → API Keys). La clé est scellée sur le serveur et jamais renvoyée au navigateur. Choisis la voix de chaque bot dans ses réglages.",
     hintKokoro: "Kokoro tourne sur ton serveur (profil « kokoro »), sans clé ni coût. Choisis la voix de chaque bot dans ses réglages.",
+    tabPiper: "Piper (gratuit)",
+    rightsPiper: "Voix Piper libres (licences CC BY / CC BY-SA, usage commercial permis), servies par ton propre serveur : rien ne sort, rien n'est payé.",
+    noPiper: "Les voix gratuites (Piper) ne tournent pas sur ce serveur pour l'instant.",
+    autoVoice: "Voix : {name}",
+    autoChip: "automatique · gratuite",
+    freeChip: "gratuite",
+    callWith: "Appeler {name}",
+    hangUp: "Raccrocher",
+    callVoice: "Appeler {name} — voix : {voice}",
+    botsHeading: "Voix des bots : automatique (gratuite)",
+    botsIntro: "Chaque bot parle avec sa propre voix, donnée automatiquement parmi les voix gratuites du serveur. Rien à régler ; change celle d'un bot si tu veux.",
+    botsBrowser: "Les appels passent pour l'instant par la voix du navigateur : les voix des bots s'appliquent dès que la voix du serveur répond.",
+    accountVoice: "voix du compte ({provider})",
+    changeShort: "Changer",
+    noBots: "Aucun bot pour l'instant.",
+    fishAll: "Donner une voix Fish à tous mes bots",
+    fishAllIntro: "Une voix Fish Audio populaire et différente pour chaque bot, dans sa langue. Rien n'est dépensé ni enregistré avant ta confirmation ; « Écouter » fabrique un court échantillon facturé sur ton compte Fish Audio.",
+    fishAllSearching: "Recherche de voix dans la bibliothèque Fish Audio…",
+    fishAllConfirm: "Confirmer ces {n} voix",
+    fishAllCancel: "Annuler",
+    fishAllDone: "{n} bot(s) parlent maintenant avec une voix Fish Audio.",
+    fishAllNone: "Aucune voix à proposer : tes bots ont déjà une voix Fish Audio, ou la bibliothèque n'a rien trouvé.",
+    fishAllFiltered: "Les voix qui imitent une personne réelle ou un personnage sont écartées.",
   },
   en: {
     heading: "Bot's voice (server calls)",
@@ -114,6 +137,29 @@ const TX = {
     kokoroVoicePh: "Default voice, e.g. af_heart",
     hintFish: "Fish Audio's official API with your own key (fish.audio → API Keys). The key is sealed on the server and never sent back to the browser. Choose each bot's voice in its settings.",
     hintKokoro: "Kokoro runs on your server (profile \"kokoro\"), no key, no cost. Choose each bot's voice in its settings.",
+    tabPiper: "Piper (free)",
+    rightsPiper: "Free Piper voices (CC BY / CC BY-SA licences, commercial use allowed), served by your own server: nothing leaves it, nothing is paid.",
+    noPiper: "The free voices (Piper) are not running on this server yet.",
+    autoVoice: "Voice: {name}",
+    autoChip: "automatic · free",
+    freeChip: "free",
+    callWith: "Call {name}",
+    hangUp: "Hang up",
+    callVoice: "Call {name} — voice: {voice}",
+    botsHeading: "Bots' voices: automatic (free)",
+    botsIntro: "Each bot speaks with its own voice, given automatically from the server's free voices. Nothing to set up; change a bot's voice if you like.",
+    botsBrowser: "Calls use the browser's voice for now: the bots' voices apply as soon as the server's voice answers.",
+    accountVoice: "account's voice ({provider})",
+    changeShort: "Change",
+    noBots: "No bot yet.",
+    fishAll: "Give all my bots a Fish voice",
+    fishAllIntro: "A popular, different Fish Audio voice for each bot, in its language. Nothing is spent or saved before you confirm; \"Listen\" makes a short sample billed to your Fish Audio account.",
+    fishAllSearching: "Searching Fish Audio's library…",
+    fishAllConfirm: "Confirm these {n} voices",
+    fishAllCancel: "Cancel",
+    fishAllDone: "{n} bot(s) now speak with a Fish Audio voice.",
+    fishAllNone: "No voice to propose: your bots already have a Fish Audio voice, or the library found nothing.",
+    fishAllFiltered: "Voices imitating a real person or a character are left out.",
   },
 } as const;
 export type VoiceText = keyof typeof TX.fr;
@@ -127,21 +173,23 @@ export function useVT() {
 
 const LANGS = ["fr", "en", "es", "de", "it", "pt", "ja", "zh", "ko", "ar", "hi", "ru", "nl", "pl"];
 
-interface ChoiceInfo { choice: BotVoiceChoice | null; account: { provider: string; voice: string }; fish: { hasKey: boolean }; kokoro: { available: boolean }; status: VoiceStatus }
+interface ChoiceInfo { choice: BotVoiceChoice | null; account: { provider: string; voice: string }; fish: { hasKey: boolean }; kokoro: { available: boolean }; piper?: { available: boolean }; current?: BotVoiceRow; status: VoiceStatus }
+export type VoiceProvider = "fish" | "kokoro" | "piper";
+export const providerName = (p: string) => (p === "fish" ? "Fish Audio" : p === "kokoro" ? "Kokoro" : p === "piper" ? "Piper" : p);
 
 /** Plays the server-made sample of a voice (blob URL: the app's CSP allows blob: media). One at a time. */
-function usePreview(botId: string) {
+export function usePreview(botId: string) {
   const [playing, setPlaying] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const audio = useRef<HTMLAudioElement | null>(null);
   const stop = useCallback(() => { audio.current?.pause(); audio.current = null; setPlaying(null); }, []);
   useEffect(() => stop, [stop]);
-  const play = async (provider: "fish" | "kokoro", voiceId: string, language = "") => {
+  const play = async (provider: VoiceProvider, voiceId: string, language = "", forBot = botId) => {
     stop();
     setError(null);
     setPlaying(`${provider}:${voiceId}`);
     try {
-      const res = await fetch(`/api/bots/${encodeURIComponent(botId)}/voice/preview`, { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify({ provider, voiceId, language }) });
+      const res = await fetch(`/api/bots/${encodeURIComponent(forBot)}/voice/preview`, { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify({ provider, voiceId, language }) });
       if (!res.ok) { const j = await res.json().catch(() => null) as { error?: string } | null; throw new Error(j?.error ?? `HTTP ${res.status}`); }
       const url = URL.createObjectURL(await res.blob());
       const a = new Audio(url);
@@ -154,7 +202,7 @@ function usePreview(botId: string) {
 }
 
 /** Under the bot's voice settings (details panel): its own voice, or the account's default, and the picker. */
-export function BotVoicePicker({ bot }: { bot: Bot }) {
+export function BotVoicePicker({ bot, onChanged }: { bot: Bot; onChanged?: () => void }) {
   const vt = useVT();
   const [info, setInfo] = useState<ChoiceInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -164,7 +212,7 @@ export function BotVoicePicker({ bot }: { bot: Bot }) {
   useEffect(load, [load]);
   const save = async (body: Record<string, unknown>) => {
     setError(null);
-    try { await api("PUT", `/bots/${bot.id}/voice/choice`, body); load(); setOpen(false); } catch (e) { setError(errText(e)); }
+    try { await api("PUT", `/bots/${bot.id}/voice/choice`, body); load(); setOpen(false); onChanged?.(); } catch (e) { setError(errText(e)); }
   };
   if (!info) return error ? <ErrorNote>{error}</ErrorNote> : null;
   const c = info.choice;
@@ -174,14 +222,16 @@ export function BotVoicePicker({ bot }: { bot: Bot }) {
       <div className="bot-voice-current">
         <Icon name="volume" size={14} />
         <span>
-          {c ? <>{vt("current", { name: c.name || c.voiceId })} <span className="chip">{c.provider === "fish" ? "Fish Audio" : "Kokoro"}</span>{c.author ? <span className="muted small"> · {vt("by", { author: c.author })}</span> : null}</>
+          {c ? <>{vt("current", { name: c.name || c.voiceId })} <span className="chip">{providerName(c.provider)}</span>{c.author ? <span className="muted small"> · {vt("by", { author: c.author })}</span> : null}</>
+            : info.current?.auto ? <>{vt("autoVoice", { name: info.current.voiceName })} <span className="chip chip-soft">{vt("autoChip")}</span>{info.current.gender ? <span className="muted small"> · {vt(info.current.gender)}</span> : null}</>
             : info.account.provider === "fish" || info.account.provider === "kokoro" || info.account.provider === "piper" || info.account.provider === "openai" ? vt("accountDefault", { provider: info.account.provider }) : vt("none")}
         </span>
       </div>
       {info.status.mode !== "server" && <p className="muted small">{vt("statusOff", { reason: info.status.reason })}</p>}
       <div className="row-gap">
         <button type="button" className="btn btn-small" onClick={() => setOpen(true)}><Icon name="search" size={12} /> {vt("change")}</button>
-        {c && <button type="button" className="btn btn-small" disabled={!!preview.playing} onClick={() => void preview.play(c.provider, c.voiceId, c.language)}><Icon name="play" size={12} /> {vt(preview.playing ? "listening" : "listen")}</button>}
+        {c ? <button type="button" className="btn btn-small" disabled={!!preview.playing} onClick={() => void preview.play(c.provider, c.voiceId, c.language)}><Icon name="play" size={12} /> {vt(preview.playing ? "listening" : "listen")}</button>
+          : info.current?.auto && info.status.mode === "server" ? <button type="button" className="btn btn-small" disabled={!!preview.playing} onClick={() => void preview.play("piper", "")}><Icon name="play" size={12} /> {vt(preview.playing ? "listening" : "listen")}</button> : null}
         {c && <button type="button" className="btn btn-small btn-ghost" onClick={() => void save({ voiceId: null })}>{vt("reset")}</button>}
       </div>
       <ErrorNote onDismiss={() => setError(null)}>{error}</ErrorNote>
@@ -191,21 +241,39 @@ export function BotVoicePicker({ bot }: { bot: Bot }) {
   );
 }
 
+/** "Change" from Settings → Voice: the same picker, loaded for that bot, saved on pick. */
+export function BotVoiceChangeModal({ bot, onClose, onSaved }: { bot: Bot; onClose: () => void; onSaved: () => void }) {
+  const [info, setInfo] = useState<ChoiceInfo | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => { void api<ChoiceInfo>("GET", `/bots/${bot.id}/voice/choice`).then(setInfo, (e) => setError(errText(e))); }, [bot.id]);
+  if (!info) return error ? <Modal title={bot.name} onClose={onClose}><div className="modal-body"><ErrorNote>{error}</ErrorNote></div></Modal> : null;
+  const save = async (body: Record<string, unknown>) => {
+    try { await api("PUT", `/bots/${bot.id}/voice/choice`, body); onSaved(); onClose(); } catch (e) { setError(errText(e)); }
+  };
+  return (
+    <>
+      <VoicePickerModal bot={bot} info={info} onClose={onClose} onPick={(b) => void save(b)} />
+      {error && <ErrorNote onDismiss={() => setError(null)}>{error}</ErrorNote>}
+    </>
+  );
+}
+
 function VoicePickerModal({ bot, info, onClose, onPick }: { bot: Bot; info: ChoiceInfo; onClose: () => void; onPick: (body: Record<string, unknown>) => void }) {
   const vt = useVT();
-  const [tab, setTab] = useState<"fish" | "kokoro">(info.choice?.provider ?? (info.fish.hasKey || !info.kokoro.available ? "fish" : "kokoro"));
+  const [tab, setTab] = useState<VoiceProvider>(info.choice?.provider ?? (info.piper?.available ? "piper" : info.fish.hasKey || !info.kokoro.available ? "fish" : "kokoro"));
   const preview = usePreview(bot.id);
   const botLang = bot.voice.lang && bot.voice.lang !== "auto" ? bot.voice.lang.slice(0, 2).toLowerCase() : "";
   return (
     <Modal title={vt("pickTitle", { name: bot.name })} onClose={onClose} size="lg" className="voice-picker">
       <div className="modal-body">
         <div className="voice-tabs" role="tablist">
-          {(["fish", "kokoro"] as const).map((p) => (
-            <button key={p} type="button" role="tab" aria-selected={tab === p} className={`voice-tab${tab === p ? " is-on" : ""}`} onClick={() => { preview.stop(); setTab(p); }}>{vt(p === "fish" ? "tabFish" : "tabKokoro")}</button>
+          {(["piper", "fish", "kokoro"] as const).map((p) => (
+            <button key={p} type="button" role="tab" aria-selected={tab === p} className={`voice-tab${tab === p ? " is-on" : ""}`} onClick={() => { preview.stop(); setTab(p); }}>{vt(p === "fish" ? "tabFish" : p === "piper" ? "tabPiper" : "tabKokoro")}</button>
           ))}
         </div>
         {tab === "fish"
           ? <FishTab bot={bot} info={info} botLang={botLang} preview={preview} onPick={onPick} />
+          : tab === "piper" ? <PiperTab info={info} botLang={botLang} preview={preview} onPick={onPick} />
           : <KokoroTab info={info} botLang={botLang} preview={preview} onPick={onPick} />}
         <ErrorNote onDismiss={preview.clearError}>{preview.error}</ErrorNote>
       </div>
@@ -301,6 +369,54 @@ function FishTab({ bot, info, botLang, preview, onPick }: { bot: Bot; info: Choi
           <button type="button" className="btn btn-small btn-primary" disabled={!pasted.trim()} onClick={() => void usePasted()}>{vt("use")}</button>
         </div>
       </div>
+    </>
+  );
+}
+
+function PiperTab({ info, botLang, preview, onPick }: { info: ChoiceInfo; botLang: string; preview: Preview; onPick: (b: Record<string, unknown>) => void }) {
+  const vt = useVT();
+  const [voices, setVoices] = useState<PiperVoiceInfo[] | null>(null);
+  const [lang, setLang] = useState(botLang === "en" ? "en" : botLang ? "fr" : "");
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => { void api<{ voices: PiperVoiceInfo[] }>("GET", "/voice/piper/voices").then((r) => setVoices(r.voices), (e) => setError(errText(e))); }, []);
+  if (info.piper && !info.piper.available) return <div className="voice-empty"><p>{vt("noPiper")}</p></div>;
+  const langs = [...new Set((voices ?? []).map((v) => v.language))].sort();
+  const shown = (voices ?? []).filter((v) => !lang || v.language === lang);
+  const chosen = info.choice?.provider === "piper" ? info.choice.voiceId : info.current?.auto ? info.current.voiceId : "";
+  return (
+    <>
+      <div className="voice-filters">
+        <select className="input input-small" value={lang} onChange={(e) => setLang(e.target.value)} aria-label={vt("anyLang")}>
+          <option value="">{vt("anyLang")}</option>
+          {langs.map((l) => <option key={l} value={l}>{l}</option>)}
+        </select>
+      </div>
+      <p className="voice-rights small">{vt("rightsPiper")}</p>
+      <ErrorNote onDismiss={() => setError(null)}>{error}</ErrorNote>
+      {!voices && !error && <Spinner />}
+      <ul className="voice-list">
+        {shown.map((v) => (
+          <li key={v.id} className={`voice-item${v.id === chosen ? " is-chosen" : ""}`}>
+            <div className="voice-item-main">
+              <p className="voice-item-title">{v.name} <span className="muted small mono">{v.id}</span></p>
+              <p className="voice-item-meta">
+                <span className="chip">{v.language}</span>
+                <span className="chip chip-soft">{vt(v.gender)}</span>
+                <span className="muted small">{v.licence}</span>
+              </p>
+            </div>
+            <div className="voice-item-actions">
+              <button type="button" className="btn btn-small" disabled={!!preview.playing} onClick={() => void preview.play("piper", v.id, v.language)}>
+                <Icon name="play" size={12} /> {vt(preview.playing === `piper:${v.id}` ? "listening" : "listen")}
+              </button>
+              <button type="button" className="btn btn-small btn-primary" disabled={info.choice?.provider === "piper" && v.id === chosen} onClick={() => onPick({ provider: "piper", voiceId: v.id })}>
+                {vt(info.choice?.provider === "piper" && v.id === chosen ? "chosen" : "choose")}
+              </button>
+            </div>
+          </li>
+        ))}
+      </ul>
+      {voices && !shown.length && <p className="muted">{vt("empty")}</p>}
     </>
   );
 }

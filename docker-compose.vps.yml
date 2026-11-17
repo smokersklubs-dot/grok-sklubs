@@ -105,8 +105,10 @@ services:
       VOICE_STT_URL: "${SKLUBOT_VOICE_STT_URL:-http://whisper:8080}"
       VOICE_TTS_URL: "${SKLUBOT_VOICE_TTS_URL:-http://piper:5000}"
       VOICE_LOCAL: "${SKLUBOT_VOICE_LOCAL:-1}"
-      # Kokoro (profil « kokoro » ci-dessous), voix gratuites auto-hébergées, une par bot possible : http://kokoro:8880. Vide = pas de Kokoro.
-      VOICE_KOKORO_URL: "${SKLUBOT_VOICE_KOKORO_URL:-}"
+      # Kokoro (ci-dessous, actif par défaut) : voix gratuites de meilleure qualité, données automatiquement aux bots avec
+      # celles de Piper. SKLUBOT_KOKORO=0 le met en veille (Piper seul) ; une autre adresse le remplace.
+      VOICE_KOKORO_URL: "${SKLUBOT_VOICE_KOKORO_URL:-http://kokoro:8880}"
+      VOICE_KOKORO: "${SKLUBOT_KOKORO:-1}"
       # Vague 6 — adresse e-mail propre aux bots : domaine dont le MX pointe vers ce serveur. Le récepteur écoute sur 2525
       # dans le conteneur (pas de privilège pour le port 25) ; publier le port 25 : docker-compose.mail.yml.
       MAIL_DOMAIN: "${SKLUBOT_MAIL_DOMAIN:-}"
@@ -187,7 +189,8 @@ services:
   # ordinateurs des bots (réseau sklubot_bots), ni Internet ne les atteignent. Aucun port publié : dans Coolify, ne leur
   # donne pas de domaine.
   # Mémoire (estimations, en marche) : whisper « base » ≈ 300 à 500 Mo (« small » ≈ 0,9 à 1,2 Go : WHISPER_MEM_LIMIT=2g),
-  # Piper (voix medium) ≈ 150 à 300 Mo. Plafonnées par WHISPER_MEM_LIMIT / PIPER_MEM_LIMIT. Priorité CPU plus basse que
+  # Piper ≈ 210 Mo avec une voix, + 150 à 190 Mo par modèle de voix utilisé (les quatre : ≈ 0,7 à 0,9 Go, mesuré).
+  # Plafonnées par WHISPER_MEM_LIMIT / PIPER_MEM_LIMIT. Priorité CPU plus basse que
   # l'application (cpu_shares).
   # Désactiver : SKLUBOT_VOICE_LOCAL=0 (et redéployer) — les deux services restent en veille (quelques Mo) et Sklubot ne
   # les utilise plus ; le navigateur, ou un service choisi dans Réglages → Voix, prend le relais.
@@ -235,8 +238,11 @@ services:
     security_opt: ["no-new-privileges:true"]
     networks:
       - voice
-  # Piper : pas d'image officielle du serveur HTTP ; construite ici (docker/piper : piper-tts épinglé, voix française
-  # fr_FR-siwis-medium incluse dans l'image — données SIWIS sous licence CC BY 4.0 ; moteur Piper sous GPL-3.0, service à part).
+  # Piper : pas d'image officielle du serveur HTTP ; construite ici (docker/piper : piper-tts épinglé ; moteur Piper sous
+  # GPL-3.0, service à part). Voix gratuites incluses (licences vérifiées, usage commercial permis, docs/VOIX.md) : françaises
+  # fr_FR-siwis-medium (CC BY 4.0, voix par défaut), fr_FR-upmc-medium (CC BY-SA 4.0), fr_FR-mls-medium (CC BY 4.0, 125
+  # lecteurs) et anglaise en_GB-vctk-medium (CC BY 4.0) : chaque bot reçoit automatiquement sa propre voix parmi elles.
+  # Un modèle n'est chargé en mémoire que quand un bot l'utilise ; moins de voix : --build-arg PIPER_VOICES="…".
   piper:
     build:
       context: docker/piper
@@ -246,7 +252,7 @@ services:
       VOICE_LOCAL: "${SKLUBOT_VOICE_LOCAL:-1}"
     read_only: true
     tmpfs: [/tmp]
-    mem_limit: "${PIPER_MEM_LIMIT:-768m}"
+    mem_limit: "${PIPER_MEM_LIMIT:-1200m}"
     cpu_shares: 512
     pids_limit: 128
     cap_drop: [ALL]
@@ -254,18 +260,37 @@ services:
     networks:
       - voice
 
-  # ── Kokoro : synthèse vocale gratuite auto-hébergée, des dizaines de voix, une voix par bot (facultatif) ──
+  # ── Kokoro : synthèse vocale gratuite auto-hébergée, ACTIVE PAR DÉFAUT (meilleure qualité que Piper) ──
   # Kokoro-FastAPI (https://github.com/remsky/Kokoro-FastAPI, Apache-2.0), modèle Kokoro-82M (Apache-2.0,
-  # https://huggingface.co/hexgrad/Kokoro-82M), image CPU officielle épinglée, modèles inclus dans l'image.
-  # Activer : docker compose --profile kokoro up -d  puis  SKLUBOT_VOICE_KOKORO_URL=http://kokoro:8880 (et redémarrer Sklubot).
-  # Mémoire : environ 1 à 2 Go de RAM en marche (modèle de 82 M paramètres + PyTorch CPU) — plafonnée par KOKORO_MEM_LIMIT.
-  # Réseau : seulement « voice » (interne, sans Internet), que seule l'application rejoint — ni publié, ni joignable
-  # par les ordinateurs des bots.
+  # https://huggingface.co/hexgrad/Kokoro-82M), image CPU officielle épinglée, modèle et voix inclus dans l'image
+  # (DOWNLOAD_MODEL=false : rien n'est téléchargé au démarrage ; HF_HUB_OFFLINE=1). Ses voix rejoignent les voix
+  # automatiques des bots (anglais : af_/am_/bf_/bm_ ; français : ff_siwis, mêlée aux voix françaises de Piper).
+  # S'il ne répond pas (démarrage, veille), les bots parlent avec Piper : rien ne casse.
+  # Mémoire : ≈ 1 à 1,5 Go en marche (82 M paramètres + PyTorch CPU), plafonnée par KOKORO_MEM_LIMIT (2 Go par défaut).
+  # Toute la voix (whisper base + Piper + Kokoro) : ≈ 1,5 à 3 Go. Veille : SKLUBOT_KOKORO=0 (Kokoro seul) ou
+  # SKLUBOT_VOICE_LOCAL=0 (toute la voix locale), puis redéploie.
+  # Système de fichiers en lecture seule ; seuls /tmp (mélanges de voix), api/temp_files (fichiers du lecteur web de
+  # l'image) et le dossier personnel sont en mémoire. Réseau : seulement « voice » (interne, sans Internet), que seule
+  # l'application rejoint — ni publié, ni joignable par les ordinateurs des bots.
   kokoro:
     image: "${KOKORO_IMAGE:-ghcr.io/remsky/kokoro-fastapi-cpu:v0.10.0}"
-    profiles: ["kokoro"]
     restart: unless-stopped
-    mem_limit: "${KOKORO_MEM_LIMIT:-3g}"
+    environment:
+      VOICE_LOCAL: "${SKLUBOT_VOICE_LOCAL:-1}"
+      KOKORO: "${SKLUBOT_KOKORO:-1}"
+      DOWNLOAD_MODEL: "false"
+      HF_HUB_OFFLINE: "1"
+    # Point d'entrée de l'image : CMD ./entrypoint.sh (docker/cpu/Dockerfile.optimized au tag v0.10.0) ; en veille, il
+    # dort au lieu de charger le modèle ($$ = « $ » pour le shell du conteneur).
+    command: ["sh", "-c", "if [ \"$$VOICE_LOCAL\" = 0 ] || [ \"$$KOKORO\" = 0 ]; then echo 'Kokoro en veille.'; exec sleep infinity; fi; exec ./entrypoint.sh"]
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /app/api/temp_files:uid=1000,gid=1000
+      - /home/appuser:uid=1000,gid=1000
+    mem_limit: "${KOKORO_MEM_LIMIT:-2g}"
+    cpu_shares: 512
+    pids_limit: 256
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
     networks:

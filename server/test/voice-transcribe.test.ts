@@ -71,7 +71,7 @@ async function post(cookie: string, url: string, body: Uint8Array | ReadableStre
 }
 const get = async (cookie: string, url: string) => (await api.request(url, { headers: { cookie } })).json() as Promise<any>;
 
-test("compose files: whisper.cpp and Piper run by default, on the internal voice network only, bounded and without privileges", () => {
+test("compose files: whisper.cpp, Piper and Kokoro run by default, on the internal voice network only, bounded and without privileges", () => {
   for (const file of ["docker-compose.coolify.yml", "docker-compose.vps.yml"]) {
     const y = readFileSync(path.join(import.meta.dirname, "../..", file), "utf8");
     // A service's block: from "  name:" to the next service (or the top-level networks:).
@@ -80,7 +80,14 @@ test("compose files: whisper.cpp and Piper run by default, on the internal voice
     assert.match(y, /VOICE_TTS_URL: "\$\{SKLUBOT_VOICE_TTS_URL:-http:\/\/piper:5000\}"/, file);
     assert.match(y, /VOICE_LOCAL: "\$\{SKLUBOT_VOICE_LOCAL:-1\}"/, file);
     assert.doesNotMatch(y, /profiles: \["voice"\]/, `${file}: no "voice" profile any more`);
-    for (const svc of ["whisper", "piper"]) {
+    // Kokoro too (by default since the bots' automatic voices): its address, its own opt-out, and an idle mode.
+    assert.match(y, /VOICE_KOKORO_URL: "\$\{SKLUBOT_VOICE_KOKORO_URL:-http:\/\/kokoro:8880\}"/, file);
+    assert.match(block("kokoro"), /KOKORO: "\$\{SKLUBOT_KOKORO:-1\}"/);
+    assert.match(block("kokoro"), /DOWNLOAD_MODEL: "false"/, "nothing downloaded at start (no Internet on the voice network)");
+    assert.match(block("kokoro"), /exec sleep infinity; fi; exec \.\/entrypoint\.sh/);
+    assert.match(block("kokoro"), /mem_limit: "\$\{KOKORO_MEM_LIMIT:-2g\}"/);
+    assert.match(block("kokoro"), /pids_limit: /); assert.match(block("kokoro"), /cpu_shares: 512/);
+    for (const svc of ["whisper", "piper", "kokoro"]) {
       const b = block(svc);
       assert.doesNotMatch(b, /profiles:/, `${file}: ${svc} runs without a profile`);
       assert.match(`${b}\n`, /\n {4}networks:\n {6}- voice\n(?! {6}- )/, `${file}: ${svc} only on the internal voice network`);
@@ -98,7 +105,7 @@ test("compose files: whisper.cpp and Piper run by default, on the internal voice
     assert.doesNotMatch(block("sklubot").match(/BOTS_NETWORK: "([^"]+)"/)?.[1] ?? "", /voice/);
   }
   const piper = readFileSync(path.join(import.meta.dirname, "../../docker/piper/Dockerfile"), "utf8");
-  assert.match(piper, /ARG PIPER_VOICE=fr_FR-siwis-medium/, "a French voice by default");
+  assert.match(piper, /ARG PIPER_VOICES="fr_FR-siwis-medium /, "a French voice by default (the first one)");
   assert.match(piper, /CC BY 4\.0/, "its licence is written down");
 });
 

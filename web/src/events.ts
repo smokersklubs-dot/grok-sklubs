@@ -1,5 +1,6 @@
 import { useStore } from "./store";
 import type { ServerEvent } from "./types";
+import { startAnnouncements, useAnnouncements } from "./lib/announcements";
 
 /**
  * One server-sent event stream for the whole app.
@@ -20,7 +21,7 @@ function open(): void {
   es.onopen = () => {
     if (source !== es) return;
     useStore.setState({ online: true });
-    if (connectedBefore) useStore.getState().resync();
+    if (connectedBefore) { useStore.getState().resync(); void useAnnouncements.getState().load(); }
     connectedBefore = true;
   };
 
@@ -35,6 +36,8 @@ function open(): void {
     if (!ev || typeof ev !== "object") return;
     if (ev.type === "hello") delay = 1000;
     if (ev.type === "hello" || ev.type === "ping") return;
+    // « Annonces »: their own small store (lib/announcements.ts).
+    if (ev.type === "announcements") { void useAnnouncements.getState().load(); return; }
     useStore.getState().applyEvent(ev);
   };
 
@@ -53,6 +56,7 @@ export function connectEvents(): void {
   if (source) return;
   delay = 1000;
   open();
+  startAnnouncements();
   if (!listening) {
     listening = true;
     // A click on a push notification while the app is open: the service worker says which bot to show.

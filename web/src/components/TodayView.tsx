@@ -9,6 +9,7 @@ import { BotAvatar } from "./Avatar";
 import { Icon, type IconName } from "./Icon";
 import { ErrorNote, IconButton, Loading, Toggle, useTick } from "./ui";
 import { SubLimitList } from "./SubLimit";
+import { TodayAnnouncements } from "./AnnouncementCard";
 
 /**
  * "Aujourd'hui": one page for the day — what only you can fix, what the bots finished (by bot), the time it saved as an
@@ -125,6 +126,8 @@ export function TodayView() {
         <IconButton icon="refresh" label={t("today.refresh")} onClick={() => void load(day, todayDate)} disabled={busy} className={busy ? "is-spinning" : ""} />
       </header>
       <div className="tasks-body today-body">
+        {/* « Annonces » from the server's owner, on top of the day (closed per reader). */}
+        <TodayAnnouncements />
         <ErrorNote onDismiss={() => setError(null)}>{error}</ErrorNote>
         {!report && !error && <Loading label={t("today.loading")} />}
         {report && (

@@ -8,8 +8,26 @@ import { currentSubscription, disablePush, enablePush, pushSupport } from "../li
 import { relTime } from "../lib/format";
 import { Icon } from "./Icon";
 import { ConfirmButton, ErrorNote, Loading, Toggle } from "./ui";
+import { useAnnouncements } from "../lib/announcements";
 
-const KINDS: PushKind[] = ["needs", "gem", "reply", "routine", "computer"];
+/** « Annonces » by e-mail (when the author asks for it): the reader's own choice, on by default. */
+function AnnounceMailRow() {
+  const t = useT();
+  const on = useAnnouncements((s) => s.state?.emailOptIn);
+  const [error, setError] = useState<string | null>(null);
+  if (on === undefined) return null;
+  return (
+    <li className="list-row">
+      <div className="list-row-text">
+        <span className="list-row-title">{t("push.kind.announceMail")}</span>
+        <span className="list-row-sub">{error ?? t("push.kind.announceMailHint")}</span>
+      </div>
+      <Toggle checked={on} label={t("push.kind.announceMail")} onChange={(next) => { setError(null); useAnnouncements.getState().setEmail(next).catch((e: unknown) => setError(errText(e))); }} />
+    </li>
+  );
+}
+
+const KINDS: PushKind[] = ["needs", "gem", "reply", "routine", "computer", "announce"];
 const browserZone = () => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"; } catch { return "UTC"; } };
 
 export function NotificationsSection() {
@@ -147,6 +165,7 @@ export function NotificationsSection() {
                 <Toggle checked={state.settings.kinds[k]} label={t(`push.kind.${k}`)} onChange={(on) => void saveSettings({ kinds: { ...state.settings.kinds, [k]: on } })} />
               </li>
             ))}
+            <AnnounceMailRow />
           </ul>
 
           <h3 className="pane-heading">{t("push.quiet")}</h3>

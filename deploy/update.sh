@@ -14,6 +14,12 @@ if [ "${SKLUBOT_UPDATE_SKIP_BACKUP:-}" != "1" ] && docker volume inspect sklubot
   fi
 fi
 [ -d .git ] && git pull --ff-only
+# Kokoro (voix gratuites, ~1 à 1,5 Go) tourne désormais par défaut : sur une machine de moins de 3,5 Go qui n'a encore
+# rien choisi, il reste en veille (même règle que deploy/install.sh). SKLUBOT_KOKORO=1 dans .env pour l'activer.
+if [ -f .env ] && ! grep -q '^SKLUBOT_KOKORO=' .env && [ "$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo 2>/dev/null || echo 0)" -lt 3500 ]; then
+  echo "SKLUBOT_KOKORO=0" >> .env
+  echo "Kokoro laissé en veille (moins de 3,5 Go de mémoire) : SKLUBOT_KOKORO=1 dans .env pour l'activer."
+fi
 docker compose -f docker-compose.vps.yml up -d --build
 docker image prune -f >/dev/null
 echo "Sklubot est à jour."

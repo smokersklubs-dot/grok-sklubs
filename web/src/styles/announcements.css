@@ -1,0 +1,103 @@
+/* « Annonces »: the card (Today, the bell, the editor's preview), the bell, the maintenance band, the page « Annonces ». */
+.ann-card { position: relative; display: flex; gap: 11px; padding: 12px 14px; border: 1px solid var(--border); border-left: 4px solid var(--info); border-radius: var(--r-lg); background: var(--surface); min-width: 0; }
+.ann-card.is-new { border-left-color: var(--ok); }
+.ann-card.is-maintenance { border-left-color: var(--warn); }
+.ann-card.is-important { border-left-color: var(--danger); }
+.ann-card-icon { flex: none; display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 9px; background: var(--info-soft); color: var(--info); }
+.is-new > .ann-card-icon { background: var(--ok-soft); color: var(--ok); }
+.is-maintenance > .ann-card-icon { background: var(--warn-soft); color: var(--warn); }
+.is-important > .ann-card-icon { background: var(--danger-soft); color: var(--danger); }
+.ann-card-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.ann-card-chips { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding-right: 26px; }
+.ann-kind.is-info { background: var(--info-soft); color: var(--info); }
+.ann-kind.is-new { background: var(--ok-soft); color: var(--ok); }
+.ann-kind.is-maintenance { background: var(--warn-soft); color: var(--warn); }
+.ann-kind.is-important { background: var(--danger-soft); color: var(--danger); }
+.ann-card-when { font-size: 12px; color: var(--text-3); }
+.ann-card-title { font-size: 15px; font-weight: 650; line-height: 1.35; overflow-wrap: anywhere; }
+.ann-card-body { font-size: 13.5px; line-height: 1.5; color: var(--text-2); white-space: pre-line; overflow-wrap: anywhere; }
+.ann-inline-link { color: var(--info); text-decoration: underline; text-underline-offset: 2px; overflow-wrap: anywhere; }
+.ann-card-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+.ann-card-hint { margin-right: auto; font-size: 12px; color: var(--text-3); }
+.ann-card-actions .btn .icon { flex: none; }
+.ann-card-dismiss { position: absolute; top: 6px; right: 6px; }
+.ann-card.is-compact { padding: 10px 12px; gap: 9px; border-radius: var(--r-md); }
+.ann-card.is-compact .ann-card-icon { width: 26px; height: 26px; border-radius: 8px; }
+.ann-card.is-compact .ann-card-title { font-size: 14px; }
+.ann-card.is-compact .ann-card-body { font-size: 13px; }
+
+.ann-today { display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; }
+.ann-more { align-self: flex-start; font-size: 13px; }
+
+/* The maintenance band: on top of every page (a grid row of .shell). */
+.shell.has-site-banner { grid-template-rows: auto minmax(0, 1fr); }
+.ann-site { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; padding: 7px 10px 7px 16px; background: var(--warn-soft); color: var(--warn); border-bottom: 1px solid var(--border); min-width: 0; }
+.ann-site > .icon { flex: none; }
+.ann-site-text { flex: 1; min-width: 0; font-size: 13px; color: var(--text); overflow-wrap: anywhere; }
+.ann-site-text strong { font-weight: 650; }
+.ann-site-body { color: var(--text-2); }
+.ann-site .ann-inline-link { color: var(--text); }
+
+/* The bell (sidebar) and its panel. */
+.ann-bell { position: relative; display: inline-flex; }
+.ann-bell-trigger { position: relative; }
+.ann-bell-count { position: absolute; top: -2px; right: -4px; min-width: 17px; height: 17px; padding: 0 4px; font-size: 10.5px; line-height: 17px; pointer-events: none; }
+.ann-pop { position: fixed; z-index: 57; top: 54px; left: 12px; width: min(380px, calc(100vw - 24px)); max-height: min(560px, calc(100dvh - 120px)); display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); box-shadow: var(--shadow-lg); outline: none; }
+.ann-pop-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 10px 8px 14px; border-bottom: 1px solid var(--border); }
+.ann-pop-head h2 { font-size: 15px; font-weight: 650; }
+.ann-pop-list { display: flex; flex-direction: column; gap: 8px; padding: 10px; overflow-y: auto; }
+.ann-pop-empty { display: flex; align-items: center; gap: 8px; padding: 16px 14px; font-size: 13px; color: var(--text-2); }
+
+/* Page « Annonces ». */
+.ann-admin-grid { display: flex; flex-direction: column; gap: 14px; }
+.ann-admin-list { display: flex; flex-direction: column; gap: 10px; }
+.ann-row { display: flex; gap: 11px; padding: 12px 14px; border: 1px solid var(--border); border-left: 4px solid var(--info); border-radius: var(--r-md); background: var(--surface); min-width: 0; flex-wrap: wrap; }
+.ann-row.is-new { border-left-color: var(--ok); }
+.ann-row.is-maintenance { border-left-color: var(--warn); }
+.ann-row.is-important { border-left-color: var(--danger); }
+.ann-row.is-past { opacity: 0.85; }
+.ann-row-main { flex: 1 1 240px; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.ann-row-main .ann-card-chips { padding-right: 0; }
+.ann-row-title { font-weight: 650; font-size: 14.5px; overflow-wrap: anywhere; }
+.ann-row-meta { font-size: 12.5px; color: var(--text-2); overflow-wrap: anywhere; }
+.ann-row-stats { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--text-3); }
+.ann-row-stats span { display: inline-flex; align-items: center; gap: 4px; }
+.ann-row-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-left: auto; align-self: center; }
+.ann-status.is-live { background: var(--ok-soft); color: var(--ok); }
+.ann-status.is-scheduled { background: var(--info-soft); color: var(--info); }
+
+.ann-editor { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+.ann-editor-fields { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.ann-editor-preview { position: sticky; top: 0; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.ann-two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+.ann-label-row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.ann-count { font-size: 12px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.ann-count.is-over, .ann-bad { color: var(--danger); }
+.ann-body-input { resize: vertical; min-height: 110px; }
+.ann-kinds { flex-wrap: wrap; }
+.ann-kinds button { display: inline-flex; align-items: center; gap: 5px; }
+.ann-toggle-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; border-top: 1px solid var(--border); }
+.ann-toggle-label { font-size: 13.5px; font-weight: 550; }
+.ann-check { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-2); overflow-wrap: anywhere; }
+.ann-check.is-bad { color: var(--danger); }
+.ann-editor-actions { margin-top: 14px; }
+.ann-log summary { cursor: pointer; font-size: 13px; color: var(--text-2); }
+.ann-log ul { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; font-size: 12.5px; color: var(--text-2); }
+.ann-log li { overflow-wrap: anywhere; }
+.ann-log-when { color: var(--text-3); margin-right: 6px; }
+
+@media (max-width: 860px) {
+  .ann-editor { grid-template-columns: minmax(0, 1fr); }
+  .ann-editor-preview { position: static; }
+}
+@media (max-width: 520px) {
+  .ann-two { grid-template-columns: minmax(0, 1fr); }
+  .ann-row-actions { margin-left: 0; width: 100%; }
+  .ann-site { padding-left: 12px; }
+  .ann-card-actions .btn { flex: 1 1 auto; }
+}
+@media (max-width: 720px) {
+  .ann-site { padding-top: calc(7px + env(safe-area-inset-top)); }
+  .shell.has-site-banner .main { padding-top: 0; }
+}
+@media (max-width: 520px) { .ann-admin .today-date { display: none; } }

@@ -5,6 +5,7 @@ import { accentStyle } from "../lib/colors";
 import { botTitle } from "../lib/format";
 import { BotAvatar } from "./Avatar";
 import { CallBar } from "./CallBar";
+import { CallHeadButton } from "./CallHeadButton";
 import { Composer } from "./Composer";
 import { Icon } from "./Icon";
 import { Transcript } from "./Transcript";
@@ -126,6 +127,7 @@ export function ChatView() {
         </div>
         <span className="chat-head-right">
           <SharedBadge bot={bot} />
+          <CallHeadButton bot={bot} />
           {recording && recording.status !== "error" && (
             <button type="button" className="rec-chip" onClick={() => openViewer(bot.id, { control: true })} title={t("teach.openViewer")}>
               <span className={recording.status === "recording" ? "rec-dot" : "rec-dot is-still"} aria-hidden="true" />

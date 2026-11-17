@@ -26,7 +26,36 @@ import { completeWav } from "./fish.js";
 export const KOKORO_SAMPLE_RATE = 24000;
 const LANGS: Record<string, string> = { a: "en-US", b: "en-GB", e: "es", f: "fr", h: "hi", i: "it", j: "ja", p: "pt-BR", z: "zh" };
 
-export const kokoroEnvUrl = () => (process.env.VOICE_KOKORO_URL ?? "").replace(/\/$/, "");
+/** The compose files' bundled Kokoro (on by default, internal network "voice"). */
+export const LOCAL_KOKORO_URL = "http://kokoro:8880";
+/**
+ * The operator's Kokoro: VOICE_KOKORO_URL, except the bundled address while the local voice is off (VOICE_LOCAL=0,
+ * SKLUBOT_VOICE_LOCAL=0) or Kokoro alone is (VOICE_KOKORO=0, SKLUBOT_KOKORO=0): its container then sleeps.
+ */
+export const kokoroEnvUrl = () => {
+  const url = (process.env.VOICE_KOKORO_URL ?? "").trim().replace(/\/$/, "");
+  return url === LOCAL_KOKORO_URL && (process.env.VOICE_LOCAL === "0" || process.env.VOICE_KOKORO === "0") ? "" : url;
+};
+
+/**
+ * Kokoro voices given automatically to bots (voice/autovoice.ts), best first per language and gender: ids, genders and
+ * grades from https://huggingface.co/hexgrad/Kokoro-82M/blob/main/VOICES.md (read 2026-11-17; Kokoro-82M and its voice
+ * packs: Apache-2.0). Left out: the novelty "santa" voices. French has one voice (ff_siwis, trained on SIWIS, CC BY 4.0
+ * data): French bots get it and the Piper French voices (voice/piper.ts).
+ */
+type AutoKokoro = { id: string; gender: "female" | "male"; language: string };
+export const KOKORO_AUTO: (AutoKokoro & { name: string })[] = ([
+  ...["af_heart", "af_bella", "af_nicole", "bf_emma", "af_aoede", "af_kore", "af_sarah", "af_alloy", "af_nova", "bf_isabella", "af_sky", "bf_alice", "bf_lily"].map((id) => ({ id, gender: "female" as const, language: "en" })),
+  ...["am_fenrir", "am_michael", "am_puck", "bm_fable", "bm_george", "bm_lewis", "am_echo", "am_eric", "am_liam", "am_onyx", "bm_daniel"].map((id) => ({ id, gender: "male" as const, language: "en" })),
+  { id: "ff_siwis", gender: "female", language: "fr" },
+  { id: "ef_dora", gender: "female", language: "es" }, { id: "em_alex", gender: "male", language: "es" },
+  { id: "if_sara", gender: "female", language: "it" }, { id: "im_nicola", gender: "male", language: "it" },
+  { id: "pf_dora", gender: "female", language: "pt" }, { id: "pm_alex", gender: "male", language: "pt" },
+  { id: "hf_alpha", gender: "female", language: "hi" }, { id: "hf_beta", gender: "female", language: "hi" }, { id: "hm_omega", gender: "male", language: "hi" }, { id: "hm_psi", gender: "male", language: "hi" },
+  { id: "jf_alpha", gender: "female", language: "ja" }, { id: "jf_gongitsune", gender: "female", language: "ja" }, { id: "jf_nezumi", gender: "female", language: "ja" }, { id: "jf_tebukuro", gender: "female", language: "ja" }, { id: "jm_kumo", gender: "male", language: "ja" },
+  { id: "zf_xiaobei", gender: "female", language: "zh" }, { id: "zf_xiaoni", gender: "female", language: "zh" }, { id: "zf_xiaoxiao", gender: "female", language: "zh" }, { id: "zf_xiaoyi", gender: "female", language: "zh" },
+  { id: "zm_yunjian", gender: "male", language: "zh" }, { id: "zm_yunxi", gender: "male", language: "zh" }, { id: "zm_yunxia", gender: "male", language: "zh" }, { id: "zm_yunyang", gender: "male", language: "zh" },
+] as AutoKokoro[]).map((v) => ({ ...v, name: kokoroVoiceOf(v.id).name }));
 /** A base voice ("ff_siwis") or a documented weighted mix ("af_bella(2)+af_sky(1)"). */
 export const validKokoroVoice = (v: string) => v.length <= 200 && /^[a-z]{2}_[a-z0-9_]+(\(\d+(\.\d+)?\))?([+-][a-z]{2}_[a-z0-9_]+(\(\d+(\.\d+)?\))?){0,4}$/.test(v);
 
@@ -68,3 +97,20 @@ export async function kokoroVoices(e: KokoroEndpoint): Promise<KokoroVoice[]> {
   return voices;
 }
 export const clearKokoroCache = () => cache.clear();
+
+/**
+ * The voices this Kokoro really has, for the automatic voices (sync: what the last listing said, refreshed in the
+ * background at most every 10 minutes; null while unknown — then the whole KOKORO_AUTO list is used).
+ */
+const known = new Map<string, { at: number; ids: Set<string> | null; busy: boolean }>();
+export function kokoroVoiceIds(e: KokoroEndpoint, now = Date.now()): Set<string> | null {
+  let h = known.get(e.url);
+  if (!h) { h = { at: 0, ids: null, busy: false }; known.set(e.url, h); }
+  if (!h.busy && now - h.at > 10 * 60_000) {
+    const entry = h;
+    entry.busy = true;
+    kokoroVoices(e).then((v) => { entry.ids = new Set(v.map((x) => x.id)); }, () => undefined).finally(() => { entry.at = Date.now(); entry.busy = false; });
+  }
+  return h.ids;
+}
+export const clearKokoroIds = () => known.clear();

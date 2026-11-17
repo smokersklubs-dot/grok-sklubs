@@ -8,6 +8,8 @@ import { BotAvatar } from "./Avatar";
 import { Icon } from "./Icon";
 import { IconButton, Menu, MenuItem, modKey } from "./ui";
 import { PauseAllNotice, PausedBadge, setPaused } from "./Pause";
+import { AnnouncementBell } from "./AnnouncementCard";
+import { useAnnouncements } from "../lib/announcements";
 
 function statusOf(bot: Bot, live: Live): "attention" | "working" | "unread" | null {
   if (live.awaiting) return "attention";
@@ -203,6 +205,7 @@ export function Sidebar() {
   const tasks = useStore((s) => s.tasks);
   const todayReport = useStore((s) => s.today);
   const sentinel = useStore((s) => s.sentinel);
+  const author = useAnnouncements((s) => !!s.state?.canAuthor);
   const user = useStore((s) => s.user);
   const online = useStore((s) => s.online);
   const pausedAll = useStore((s) => !!s.pauses.all);
@@ -258,6 +261,7 @@ export function Sidebar() {
           <span className="sidebar-top-actions">
             {!collapsed && (
               <>
+                <AnnouncementBell />
                 <IconButton icon="search" label={t("palette.open")} title={`${t("palette.open")} (${modKey}K)`} onClick={() => openModal({ kind: "search" })} />
                 <span className="menu-wrap">
                   <IconButton icon="plus" label={t("sidebar.newBot")} onClick={() => setAddOpen((v) => !v)} active={addOpen} />
@@ -313,6 +317,21 @@ export function Sidebar() {
             {!collapsed && critical > 0 && <span className="count-badge is-attention" aria-label={t("sidebar.surveillanceCritical", { n: critical })}>{critical}</span>}
           </button>
         )}
+
+        {author && (
+          <button
+            type="button"
+            className={`nav-row ${view === "announcements" ? "is-active" : ""}`}
+            onClick={() => setView(view === "announcements" ? "chat" : "announcements")}
+            aria-pressed={view === "announcements"}
+            title={collapsed ? t("sidebar.announcements") : undefined}
+            aria-label={collapsed ? t("sidebar.announcements") : undefined}
+          >
+            <span className="nav-row-icon"><Icon name="send" size={19} /></span>
+            {!collapsed && <span className="nav-row-label">{t("sidebar.announcements")}</span>}
+          </button>
+        )}
+        {collapsed && <AnnouncementBell row />}
 
         <button
           type="button"

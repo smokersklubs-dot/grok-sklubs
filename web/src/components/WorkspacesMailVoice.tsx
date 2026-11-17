@@ -7,6 +7,7 @@ import { money, relTime } from "../lib/format";
 import { Icon } from "./Icon";
 import { ConfirmButton, CopyButton, ErrorNote, Loading, Toggle } from "./ui";
 import { useVT } from "./VoicePicker";
+import { BotVoicesSection } from "./BotVoices";
 
 /* =====================================================================================
  * Workspaces: members, roles, invitations, shared bots, usage per member, export (wave 6)
@@ -359,6 +360,7 @@ export function VoiceSection() {
         </div>
       )}
       {status && <p className="muted small" role="status">{t(status.dictation ? "voice.dictationOn" : "voice.dictationOff")}</p>}
+      {status && <BotVoicesSection key={`${status.mode}:${s.tts.provider}`} serverMode={status.mode === "server"} />}
       <fieldset className="field">
         <legend className="field-label">{t("voice.mode")}</legend>
         {(["auto", "server", "browser"] as const).map((m) => <label key={m} className="radio-row"><input type="radio" checked={s.mode === m} onChange={() => set({ mode: m })} /> {t(`voice.mode.${m}`)}</label>)}

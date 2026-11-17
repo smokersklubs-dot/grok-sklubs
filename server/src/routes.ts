@@ -109,6 +109,7 @@ import { TodayError, todayReport, todaySettings } from "./today.js";
 import { registerBotApi, registerBotApiOwner } from "./botapi.js";
 import { handleBotMcp } from "./botmcp.js";
 import { registerSentinelRoutes } from "./sentinel/routes.js";
+import { registerAnnouncementRoutes } from "./announceroutes.js";
 import { canWatch as sentinelWatcher } from "./sentinel/view.js";
 import { noteSignal } from "./sentinel/signals.js";
 import { accountFlags, accountOpened, assertEmailSignupPossible, PublicSignupError, emailGateAllows, emailGateBlocks, emailGateBody, publicSignupGate, publicSignupInfo, registerPublicSignupPrivate, registerPublicSignupPublic, setAccountRemover } from "./publicsignup.js";
@@ -504,7 +505,7 @@ api.use("*", async (c, next) => {
   if (c.req.method !== "GET" && !originAllowed(c.req.header("origin"), c.req.header("host"))) return c.json({ error: "Cross-site request refused." }, 403);
   // Hosted mode: a suspended account is read-only — it can still look, export, sign out, change its own sign-in details
   // and delete itself; nothing else that changes something.
-  if (c.req.method !== "GET" && c.req.method !== "HEAD" && suspended(user.id) && !/^(\/api)?\/(account(\/|$)|prefs$|push\/|auth\/|bots\/[^/]+\/read$)/.test(c.req.path))
+  if (c.req.method !== "GET" && c.req.method !== "HEAD" && suspended(user.id) && !/^(\/api)?\/(account(\/|$)|prefs$|push\/|auth\/|announcements\/|bots\/[^/]+\/read$)/.test(c.req.path))
     return c.json({ error: suspendedText(user.locale), code: "suspended" }, 403);
   // Mandatory e-mail verification (publicsignup.ts): an account whose address is not confirmed may only confirm it,
   // change it, sign out, export or delete itself — every other route answers 403 { code: "email_unverified" }.
@@ -1321,6 +1322,8 @@ registerAccountMailPrivate(api, googleDeps);
 registerAutoBackupRoutes(api, googleDeps);
 // "Surveillance" (sentinel/): the Sentinelle's incidents and alert settings, for the owner and hosted operators only.
 registerSentinelRoutes(api);
+// « Annonces » (announcements.ts): readers' feed, and the owner/operators' page to write them.
+registerAnnouncementRoutes(api);
 registerNoticeRoutes(api);
 api.put("/account/password", async (c) => {
   const user = c.get("user");
