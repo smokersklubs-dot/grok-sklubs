@@ -136,7 +136,9 @@ test("finished work: every kind is counted, grouped by bot, with the minutes of 
   j("page_publish", "Publishing a page", at);
   j("gmail_perso__mail_send", "Sending an email", at, "failed");
   for (let i = 0; i < 4; i++) j("web_fetch", `Reading page ${i}`, at + i * 60_000, "done", id.cid);
-  j("search_web", "Search far apart 1", at - 5 * 3_600_000 > dayStart ? at - 5 * 3_600_000 : dayStart + 1, "done", id.cid);
+  // Hours away from the other searches whatever the time of the run (just after midnight, `at` is minutes after the
+  // day's start, so the start itself would sit next to them and join their group).
+  j("search_web", "Search far apart 1", at - 5 * 3_600_000 > dayStart ? at - 5 * 3_600_000 : at + 6 * 3_600_000, "done", id.cid);
   j("search_web", "Search far apart 2", at + 3 * 3_600_000, "done", id.cid);
   // A turn changed 14 files (counted 10) and another 2.
   const ada = bots.byId(id.ada)!;
