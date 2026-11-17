@@ -5,6 +5,8 @@ import { q } from "../db.js";
 import { hostedMode, hostedSettings, isOperator, monthBounds, plans } from "../hosted.js";
 import { backupStatus, checkDocker } from "../monitor.js";
 import { schedulerBeat } from "../scheduler.js";
+import { mailConfigured } from "../accountmail.js";
+import { turnstileKeys, verificationWanted } from "../publicsignup.js";
 import type { SentinelSeverity } from "../shared.js";
 import { countSignals } from "./signals.js";
 
@@ -32,6 +34,7 @@ import { countSignals } from "./signals.js";
  *  - login_failures    failed password sign-ins in 15 min: ≥ 20 in all or ≥ 10 from one address warn; ≥ 100 critical
  *  - error_rate        lines on the error log in 1 h ≥ 30 warn, ≥ 200 critical; an uncaught exception in 1 h: warn
  *  - scheduler         the scheduler's tick is more than 2 min old (unless switched off): critical
+ *  - public_signup     open to the public without SMTP (no e-mail verification): warn; OPEN_SIGNUP without Turnstile: info
  */
 export interface Observation {
   fingerprint: string;
@@ -210,6 +213,20 @@ const hostedBudget: Detector = {
   },
 };
 
+/**
+ * A server open to the public (OPEN_SIGNUP or HOSTED_MODE, publicsignup.ts) without SMTP cannot verify new accounts'
+ * addresses (verification is skipped) nor send "forgotten password" links: warn. OPEN_SIGNUP without Turnstile: info.
+ */
+const publicSignup: Detector = {
+  name: "public_signup",
+  run() {
+    const out: Observation[] = [];
+    if (verificationWanted() && !mailConfigured()) out.push({ fingerprint: "public_signup:no_mail", kind: "public_signup", severity: "warn", count: 1, params: { v: "no_mail" } });
+    if (config.openSignup && !turnstileKeys()) out.push({ fingerprint: "public_signup:no_turnstile", kind: "public_signup", severity: "info", count: 1, params: { v: "no_turnstile" } });
+    return out;
+  },
+};
+
 const docker: Detector = {
   name: "docker",
   async run({ now }) {
@@ -286,4 +303,4 @@ const scheduler: Detector = {
 };
 
 /** In the order they run (the cheapest and most telling first; the scan stops starting new ones past its time box). */
-export const DETECTORS: Detector[] = [scheduler, diskLow, queueStuck, backup, errorRate, loginFailures, turnFailures, engineWatch, toolErrors, routineFailures, connectorAuth, costSpike, hostedBudget, docker];
+export const DETECTORS: Detector[] = [scheduler, diskLow, queueStuck, backup, errorRate, loginFailures, turnFailures, engineWatch, toolErrors, routineFailures, connectorAuth, costSpike, hostedBudget, publicSignup, docker];

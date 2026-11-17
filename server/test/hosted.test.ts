@@ -14,6 +14,8 @@ process.env.SESSION_SECRET = "test-secret-test-secret-test-secret";
 process.env.NO_SCHEDULER = "1";
 process.env.COMPUTER = "browser";
 process.env.OPEN_SIGNUP = "1";
+// Many sign-ups from this one test client: above the public sign-up limit per address (publicsignup.ts, 5 per quarter hour).
+process.env.SIGNUP_PER_IP = "100";
 process.env.ALLOW_PRIVATE_FETCH = "1";
 process.env.HOSTED_MODE = "1";
 process.env.PUBLIC_URL = "https://bots.example.test";

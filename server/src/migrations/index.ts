@@ -13,6 +13,7 @@ import { skillDrafts } from "./009-skill-drafts.js";
 import { today } from "./010-today.js";
 import { botApiKeys } from "./011-bot-api-keys.js";
 import { sentinel } from "./012-sentinel.js";
+import { publicSignup } from "./013-public-signup.js";
 
 /**
  * Versioned migrations (SK-P0-05). The database's version is SQLite's own `PRAGMA user_version` (0 on a database made
@@ -38,6 +39,7 @@ export const MIGRATIONS: Migration[] = [
   { version: 10, name: "today", up: today },
   { version: 11, name: "bot-api-keys", up: botApiKeys },
   { version: 12, name: "sentinel", up: sentinel },
+  { version: 13, name: "public-signup", up: publicSignup },
 ];
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;
 

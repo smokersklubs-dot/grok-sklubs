@@ -2,7 +2,7 @@ import { statfsSync } from "node:fs";
 import { computerKind } from "./computer.js";
 import { config } from "./config.js";
 import { tr } from "./i18n.js";
-import { isSharedMachine, sleepBiggestIdle } from "./linux.js";
+import { isSharedMachine, machineMembers, sleepBiggestIdle } from "./linux.js";
 import { membersOf } from "./sharedcomputers.js";
 import { bots, rows, users } from "./store.js";
 
@@ -31,7 +31,7 @@ export async function diskCheck(o: { free?: number | null; at?: number } = {}): 
   const loc = users.localeOf(slept.userId);
   const freeMb = Math.round(free / 1024 / 1024);
   console.log(`[disk] ${freeMb} MB free on the server: computer ${slept.key} put to sleep (${Math.round(slept.bytes / 1e6)} MB written on its own disk).`);
-  const botId = isSharedMachine(slept.key) ? membersOf(slept.key)[0] : slept.key;
+  const botId = isSharedMachine(slept.key) ? membersOf(slept.key)[0] : machineMembers(slept.key)[0] ?? slept.key;
   const bot = botId ? bots.byId(botId) : null;
   if (bot) rows.append(bot, { kind: "notice", tone: "warn", text: tr(loc, "The server's disk is almost full ({mb} MB left): I put my computer to sleep so it stops filling it. Everything on it is kept. Free some space (or ask the server's owner to), then I can go on.", { mb: freeMb }) });
   return { key: slept.key, bytes: slept.bytes };

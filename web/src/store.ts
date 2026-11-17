@@ -146,6 +146,8 @@ interface Store {
   hosted: HostedInfo | null;
   /** The signed-in person watches this server (its owner, or a hosted operator): the Surveillance page is theirs. */
   sentinel: boolean;
+  /** OPEN_SIGNUP (server publicsignup.ts): the public landing page, and the Turnstile site key of the sign-up form. */
+  publicSignup: { landing: boolean; turnstileSiteKey: string | null };
   /** How bots can make videos (Higgsfield app, a video API, or neither). */
   video: VideoStatus;
   /** The thread open in the side panel: the bot and the seq of the message it hangs on. */
@@ -314,6 +316,7 @@ export const useStore = create<Store>((set, get) => ({
   imageGeneration: false,
   hosted: null,
   sentinel: false,
+  publicSignup: { landing: false, turnstileSiteKey: null },
   video: { provider: null, higgsfield: false },
   openThread: null,
   recordings: {},
@@ -374,8 +377,8 @@ export const useStore = create<Store>((set, get) => ({
       if (get().boot === "ready") set({ boot: "signedOut", user: null });
     });
     try {
-      const me = await api<{ user: User | null; signupOpen: boolean; setupCodeRequired?: boolean; imageGeneration?: boolean; video?: VideoStatus; firstBot?: { name: string; label: string }; hosted?: HostedInfo; sentinel?: boolean }>("GET", `/me?locale=${get().locale}`);
-      set({ imageGeneration: me.imageGeneration === true, video: me.video ?? { provider: null, higgsfield: false }, hosted: me.hosted ?? null, sentinel: me.sentinel === true, ...(me.firstBot ? { firstBot: me.firstBot } : {}) });
+      const me = await api<{ user: User | null; signupOpen: boolean; setupCodeRequired?: boolean; imageGeneration?: boolean; video?: VideoStatus; firstBot?: { name: string; label: string }; hosted?: HostedInfo; sentinel?: boolean; landing?: boolean; turnstileSiteKey?: string }>("GET", `/me?locale=${get().locale}`);
+      set({ publicSignup: { landing: me.landing === true, turnstileSiteKey: me.turnstileSiteKey ?? null }, imageGeneration: me.imageGeneration === true, video: me.video ?? { provider: null, higgsfield: false }, hosted: me.hosted ?? null, sentinel: me.sentinel === true, ...(me.firstBot ? { firstBot: me.firstBot } : {}) });
       if (me.user) {
         set({ signupOpen: me.signupOpen });
         await get().signedIn(me.user);

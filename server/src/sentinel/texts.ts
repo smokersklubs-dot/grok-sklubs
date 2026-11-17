@@ -141,6 +141,16 @@ const T: Record<string, Entry> = {
     explain: ["Son dernier passage date de {min} minutes : les routines et les rappels ne partent plus.", "Its last tick was {min} minutes ago: routines and reminders no longer go out."],
     fix: ["Redémarre le serveur. Si ça revient, lis le journal du serveur.", "Restart the server. If it comes back, read the server's log."],
   },
+  "public_signup:no_mail": {
+    title: ["Inscriptions ouvertes sans e-mail : adresses non vérifiées", "Open sign-ups without e-mail: addresses not verified"],
+    explain: ["Le serveur accepte des inscriptions publiques mais ne sait pas envoyer d'e-mails : les nouveaux comptes ne confirment pas leur adresse et « Mot de passe oublié ? » ne marche pas.", "The server accepts public sign-ups but cannot send e-mails: new accounts do not confirm their address and “Forgot password?” does not work."],
+    fix: ["Réglages → Compte → E-mails du serveur : configure un compte SMTP (ou les variables SMTP_*), puis envoie un e-mail de test. Voir docs/OUVERTURE-PUBLIQUE.md.", "Settings → Account → Server e-mails: set up an SMTP account (or the SMTP_* variables), then send a test e-mail. See docs/OUVERTURE-PUBLIQUE.md."],
+  },
+  "public_signup:no_turnstile": {
+    title: ["Inscriptions ouvertes sans vérification anti-robot", "Open sign-ups without an anti-robot check"],
+    explain: ["Les inscriptions sont ouvertes à tous, sans Cloudflare Turnstile : seules les limites de débit freinent les robots.", "Anyone can sign up, without Cloudflare Turnstile: only the rate limits slow robots down."],
+    fix: ["Crée un widget Turnstile dans le tableau de bord Cloudflare, puis ajoute TURNSTILE_SITE_KEY et TURNSTILE_SECRET_KEY à l'environnement du serveur et redéploie.", "Create a Turnstile widget in the Cloudflare dashboard, then add TURNSTILE_SITE_KEY and TURNSTILE_SECRET_KEY to the server's environment and redeploy."],
+  },
 };
 
 const fill = (s: string, vars: TextVars) => s.replace(/\{(\w+)\}/g, (_m, k) => (vars[k] === undefined ? "" : String(vars[k])));
@@ -193,6 +203,7 @@ export function linkFor(kind: string): SentinelLink | null {
     case "backup": return { kind: "settings", section: "account" };
     case "cost_spike": return { kind: "settings", section: "usage" };
     case "hosted_budget": return { kind: "settings", section: "admin" };
+    case "public_signup": return { kind: "settings", section: "account" };
     case "disk_low": case "docker": case "queue_stuck": case "scheduler": case "error_rate": case "login_failures": case "engine_watch": return { kind: "health" };
     default: return null;
   }

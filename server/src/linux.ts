@@ -80,6 +80,11 @@ export const setComputerAllocator = (a: ComputerAllocator | null) => { allocator
 /** The key of the computer the bot uses now (or last used). */
 export const machineOf = (botId: string) => allocator.current(botId);
 export const isSharedMachine = (key: string) => allocator.isShared(key);
+/** The bots a computer serves (own computer: the bot; shared: its account's shared bots; free computer: its one bot). */
+export const machineMembers = (key: string) => allocator.members(key);
+/** Memory and CPUs of a computer when it is made (freecomputers.ts: smaller ones); null: DESKTOP_MEMORY / DESKTOP_CPUS. */
+let runLimitsOf: (key: string) => { memory: string; cpus: number } | null = () => null;
+export const setRunLimits = (fn: typeof runLimitsOf) => { runLimitsOf = fn; };
 export const mayControlProcesses = (botId: string) => allocator.mayControl(botId);
 /** The container the bot's commands go to: its own computer, or the shared one it works on. */
 export const containerName = (botId: string) => nameOf(allocator.current(botId));
@@ -367,6 +372,7 @@ async function quotaArgs(): Promise<string[]> {
 
 /** The docker run arguments of a computer (exported for tests). */
 export function computerRunArgs(key: string, o: { libraries: { dir: string; dst: string }[]; team: string | null; quota: string[] }): string[] {
+  const lim = runLimitsOf(key) ?? { memory: config.desktopMemory, cpus: config.desktopCpus };
   return [
     "run", "-d", "--name", nameOf(key), "--hostname", "computer", "--init",
     // How the bot's subscription tools reach this server's tool endpoint: "socket" mode — the bots' own network, cut off
@@ -376,7 +382,7 @@ export function computerRunArgs(key: string, o: { libraries: { dir: string; dst:
     ...(config.botLink === "socket" ? ["--network", config.botsNetwork] : config.desktopNetwork ? ["--network", config.desktopNetwork] : ["--add-host", "host.docker.internal:host-gateway"]),
     // L10: --memory-swap equal to --memory: no swap on top of the memory limit ("If --memory-swap is set to the same
     // value as --memory … the container does not have access to swap", docs.docker.com/engine/containers/resource_constraints/).
-    "--memory", config.desktopMemory, "--memory-swap", config.desktopMemory, "--cpus", String(config.desktopCpus), "--shm-size", "1g", "--pids-limit", "2048",
+    "--memory", lim.memory, "--memory-swap", lim.memory, "--cpus", String(lim.cpus), "--shm-size", "1g", "--pids-limit", "2048",
     // Only the privileges a desktop, a browser and package installs need (checked one by one: Xvfb,
     // Chromium, x11vnc, apt-get, sudo, su all work with these). No device nodes, raw sockets, chroot or
     // file capabilities, and no way to gain privileges through setuid programs.
@@ -469,7 +475,7 @@ async function wake(key: string, userId: string, workspace?: string): Promise<Ma
           // A shared computer mounts the library of each bot that uses it, side by side; /root/files points at the one
           // of the bot driving it (pointFilesAt).
           ? allocator.members(key).map((botId) => ({ dir: workspaceOfBot(botId), dst: `/root/libraries/${safeId(botId)}` }))
-          : [{ dir: workspace ?? workspaceOfBot(key), dst: "/root/files" }];
+          : [{ dir: workspace ?? workspaceOfBot(allocator.members(key)[0] ?? key), dst: "/root/files" }];
         const quota = await quotaArgs();
         let r = await docker(computerRunArgs(key, { libraries, team, quota }), { timeoutMs: 120_000 });
         if (r.code !== 0 && quota.length && /storage.?opt|quota|size/i.test(r.stderr)) {
@@ -883,6 +889,8 @@ export function holdMachine(botId: string): () => void {
 
 /** The computers of an account (their own ones and its shared ones), as this server knows them. */
 export const linuxMachines = (userId: string) => [...machines.values()].filter((m) => m.userId === userId);
+/** Every computer this server knows of (freecomputers.ts looks for its own). */
+export const allMachines = () => [...machines.values()];
 /** One computer by its key (shared computers' list). */
 export const machineInfo = (key: string) => machines.get(key) ?? null;
 

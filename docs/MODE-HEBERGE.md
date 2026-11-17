@@ -34,6 +34,9 @@ publiques), `server/src/billing/provider.ts` (paiement), `server/src/migrations/
    « Brouillon — à faire valider par un professionnel » : remplis les champs [À COMPLÉTER] et fais-les relire avant
    d'encaisser quoi que ce soit.
 
+Pour ouvrir le service à tout le monde (page d'accueil publique, vérification des adresses e-mail, Turnstile, ordinateurs
+gratuits de l'offre « Gratuit », première prise en main), voir [OUVERTURE-PUBLIQUE.md](OUVERTURE-PUBLIQUE.md).
+
 ## Comment ça marche
 
 ### Comptes et rôles
@@ -46,7 +49,7 @@ publiques), `server/src/billing/provider.ts` (paiement), `server/src/migrations/
 ### Offres (modifiables, Administration → Offres)
 | Type | Clés d'IA | Budget | Défaut |
 |---|---|---|---|
-| `free` (Gratuit) | celles du service (`.env` du serveur, ou tes fournisseurs prêtés) | petit budget mensuel en € | 2 €, 2 bots, 1 ordinateur allumé, 1 Go, 3 routines |
+| `free` (Gratuit) | celles du service (`.env` du serveur, ou tes fournisseurs prêtés) | petit budget mensuel en € | 2 €, 2 bots, ordinateurs gratuits jetables (voir OUVERTURE-PUBLIQUE.md), 1 Go, 3 routines |
 | `included` (Tout inclus) | celles du service | budget mensuel en € | 39 €/mois, 20 € d'IA, 10 bots, 2 ordinateurs, 10 Go, 30 routines |
 | `byok` (J'apporte ma clé) | **uniquement celles du client** (Réglages → Modèles) — jamais celles du service | aucun | 15 €/mois, mêmes limites |
 

@@ -449,10 +449,22 @@ export function engineBlock(botOwnerId: string, startedByOther: boolean): "engin
   if (!hostedMode()) return null;
   if (suspended(botOwnerId)) return "suspended";
   if (startedByOther) return "engines";
+  // A free computer (freecomputers.ts) keeps nothing between uses: no place for a Claude Code / Codex sign-in.
+  if (freeComputerPlan(botOwnerId)) return "engines";
   if (!isOperator(botOwnerId) && !hostedSettings.get().subscriptionEngines) return "engines";
   return null;
 }
-export const subscriptionEnginesFor = (userId: string) => !hostedMode() || isOperator(userId) || hostedSettings.get().subscriptionEngines;
+/**
+ * Hosted mode, plan of kind "free": the account's bots get no personal Linux computer but the server's pool of disposable
+ * free computers (freecomputers.ts, FREE_COMPUTERS_MAX). FREE_PLAN_COMPUTER=personal keeps the earlier behaviour (a
+ * personal computer, limited by the plan's computers awake). Operators are never on a plan.
+ */
+export function freeComputerPlan(userId: string): boolean {
+  if (!hostedMode() || (process.env.FREE_PLAN_COMPUTER ?? "").trim().toLowerCase() === "personal") return false;
+  const a = accessOf(userId);
+  return !a.operator && a.plan?.kind === "free";
+}
+export const subscriptionEnginesFor = (userId: string) => !freeComputerPlan(userId) && (!hostedMode() || isOperator(userId) || hostedSettings.get().subscriptionEngines);
 
 // ── Cards ────────────────────────────────────────────────────────────────────────────────────────────────────────
 function stopEnglish(reason: HostedStopReason, userId: string): { text: string; vars: Record<string, string | number> } {

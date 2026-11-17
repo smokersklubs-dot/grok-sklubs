@@ -39,6 +39,7 @@ import { guardedFetch } from "./net.js";
 import type { Locale } from "./shared.js";
 import { audit, bots, now, sha256, users, type UserRecord } from "./store.js";
 import { invites } from "./workspaces.js";
+import { accountOpened, markVerified, publicSignupChecks } from "./publicsignup.js";
 import { accountCreated, HostedError, planInviteOpens, signupChoice, type SignupChoice } from "./hosted.js";
 
 // ── Storage (additive) ──────────────────────────────────────────────────────
@@ -280,6 +281,8 @@ function resolveAccount(c: Context, deps: GoogleDeps, flow: Flow, claims: Google
     const linked = identityOf(existing.id);
     if (linked && linked.sub !== claims.sub) throw new GoogleError(409, "Your Sklubot account with this address is linked to another Google account.");
     linkIdentity(existing.id, claims);
+    // Google says the address is verified (checked above): an account still waiting for its link is verified now.
+    markVerified(existing.id);
     return { user: existing, created: false };
   }
   // A new account: the same rules as POST /auth/signup.
@@ -294,8 +297,14 @@ function resolveAccount(c: Context, deps: GoogleDeps, flow: Flow, claims: Google
   if (setupCodeRequired() && !flow.setupOk) throw new GoogleError(403, flow.appChallenge ? "The very first account of this server must be created on the website, with the setup code." : "The setup code is missing or wrong. It was shown at the end of the installation, and is in the server's .env file (SKLUBOT_SETUP_CODE).");
   if (config.allowedEmails.length && !config.allowedEmails.includes(claims.email) && !invited) throw new GoogleError(403, "This address is not allowed to create an account on this server.");
   try { bots.assertRoom(); } catch { throw new GoogleError(409, "The team is full on this server: no new account can be created."); }
+  // OPEN_SIGNUP (publicsignup.ts): the same rate limits and disposable-address check as the form (Google is its own proof
+  // of a person: no Turnstile widget on Google's page).
+  const firstAccount = users.count() === 0;
+  try { publicSignupChecks(c, { email: claims.email, first: firstAccount, invited: invited || planInviteOpens(flow.hosted?.planInvite, claims.email) }); }
+  catch (err) { if (err instanceof HostedError) throw new GoogleError(err.status === 403 ? 403 : 400, err.text(flow.locale)); throw err; }
   const user = users.create(claims.email, claims.name, NO_PASSWORD_PREFIX + b64url(randomBytes(32)), flow.locale);
   accountCreated(user.id, choice);
+  accountOpened(user, { first: firstAccount, verified: true });
   const first = deps.firstBotIdentity(flow.locale);
   bots.create(user.id, {
     name: first.name, label: first.label, primary: true, shape: "pebble", color: "indigo",

@@ -5,7 +5,7 @@ import { getRequestListener } from "@hono/node-server";
 import { Hono } from "hono";
 import { config } from "./config.js";
 import { limitBodies } from "./hardening.js";
-import { botLinkDir, isSharedMachine, setBotLinkOpener } from "./linux.js";
+import { botLinkDir, isSharedMachine, machineMembers, setBotLinkOpener } from "./linux.js";
 
 /**
  * H2: each Linux computer reaches this server through a Unix socket of its own, in a folder of the data volume mounted
@@ -43,7 +43,7 @@ export function openBotLink(key: string): Promise<void> {
     const app = new Hono();
     app.use("*", limitBodies);
     // The members are read at each request: a bot that stops sharing a computer loses its way in at once.
-    app.route("/", routesFor!((botId) => (isSharedMachine(key) ? membersOf(key) : [key]).includes(botId)));
+    app.route("/", routesFor!((botId) => (isSharedMachine(key) ? membersOf(key) : machineMembers(key)).includes(botId)));
     const server = http.createServer(getRequestListener(app.fetch));
     // A subscription tool's call may wait for the user's approval (up to 30 minutes, see engine.ts TOOL_TIMEOUT_MS).
     server.requestTimeout = 0;

@@ -4,6 +4,8 @@
 :root {
   --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  /* Display serif of the public landing page (system fonts only: the CSP allows no font from elsewhere). */
+  --display: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, ui-serif, serif;
 
   --bg: #f4f2ee;
   --surface: #ffffff;
@@ -26,6 +28,9 @@
   --ok-soft: #e6f4ec;
   --info-soft: #eaf1fa;
   --info: #2a6fb8;
+  /* Brand ember (the "S" mark's colour), darkened for text: the landing page's highlights. */
+  --brand: #b23f1b;
+  --brand-soft: #fae7de;
   /* Text and icons on a solid status colour (red button, count badges). */
   --on-strong: #ffffff;
   --focus: #3b76e1;
@@ -67,6 +72,8 @@
   --ok-soft: #17301f;
   --info-soft: #1a2a3d;
   --info: #79b0ee;
+  --brand: #ff8d66;
+  --brand-soft: #3a2119;
   --on-strong: #17181b;
   --focus: #7aa7f5;
   --scrim: rgba(0, 0, 0, 0.58);

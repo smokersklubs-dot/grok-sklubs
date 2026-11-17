@@ -3,7 +3,8 @@ import path from "node:path";
 import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
-import { closeAllDesktops, initComputer } from "./computer.js";
+import { closeAllDesktops, computerKind, initComputer } from "./computer.js";
+import { startFreeComputers } from "./freecomputers.js";
 import { setLookSource } from "./linux.js";
 import { bots, users } from "./store.js";
 import { assertConfig, config } from "./config.js";
@@ -28,6 +29,7 @@ import { telegram } from "./telegram.js";
 import { closeSlackSockets } from "./native/triggers.js";
 import { receiving, startMailReceiver, stopMailReceiver } from "./botmail.js";
 import { voiceUpgrade } from "./voice/session.js";
+import { turnstileKeys } from "./publicsignup.js";
 import { appCsp, inlineScriptHashes, limitBodies, openSetupProblem, securityHeaders } from "./hardening.js";
 
 // The Sentinelle's error counter (sentinel/signals.ts): from here on, every console.error line counts.
@@ -42,7 +44,7 @@ try { assertConfig(); } catch (err) { console.error(`\nCannot start: ${(err as E
 const builtIndex = existsSync(path.join(config.webDist, "index.html")) ? readFileSync(path.join(config.webDist, "index.html"), "utf8") : null;
 const app = new Hono();
 // Security headers on every response (M3) and a size limit on every request body (M7), before any route.
-app.use("*", securityHeaders(appCsp(builtIndex ? inlineScriptHashes(builtIndex) : [])));
+app.use("*", securityHeaders(appCsp(builtIndex ? inlineScriptHashes(builtIndex) : [], { turnstile: config.openSignup && !!turnstileKeys() })));
 app.use("*", limitBodies);
 app.route("/api", api);
 app.all("/api/*", (c) => c.json({ error: "No such endpoint." }, 404));
@@ -80,6 +82,8 @@ try {
   const owners = new Map(users.all().flatMap((u) => bots.list(u.id, true).map((b) => [b.id, u.id] as [string, string])));
   computerNote = await initComputer(owners);
 } catch (err) { console.error(`\nCannot start: ${(err as Error).message}\n`); process.exit(1); }
+// Hosted mode: the free plan's disposable computers (freecomputers.ts) — leftovers wiped, then swept every 30 s.
+if (computerKind() === "linux") await startFreeComputers().catch((err) => console.error("[free computers]", (err as Error).message));
 
 // Approvals a subscription turn was waiting on lived in memory: after a restart nobody waits for them any more.
 const lapsed = expireOrphanApprovals();

@@ -141,7 +141,8 @@ export interface Payment { id: string; botId: string; cardId: string; cardName: 
 export interface TaskIdea { title: string; prompt: string; kind: "once" | "recurring"; why: string }
 
 export type Locale = "fr" | "en";
-export interface User { id: string; email: string; name: string; locale: Locale }
+/** `emailUnverified` / `onboarding` (publicsignup.ts): only present, and true, on a new public account that has them pending. */
+export interface User { id: string; email: string; name: string; locale: Locale; emailUnverified?: true; onboarding?: true }
 
 /** A file shown in the chat. `path` is relative to the bot's library; fetch it with GET /bots/:id/files/view?path=. */
 export interface Attachment { name: string; path: string; mime: string; size: number }

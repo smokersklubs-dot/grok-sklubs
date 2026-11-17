@@ -32,6 +32,23 @@ services:
       # Mode hébergé commercial (offres, abonnements, budget IA par compte, page d'administration) : 1 pour l'activer.
       # Voir docs/MODE-HEBERGE.md. À 0 (par défaut), Sklubot se comporte exactement comme une installation personnelle.
       HOSTED_MODE: "${SKLUBOT_HOSTED_MODE:-0}"
+      # Ouverture publique (docs/OUVERTURE-PUBLIQUE.md), tout vide = valeurs par défaut. Turnstile : clés du tableau de bord
+      # Cloudflare (la clé secrète ne quitte jamais le serveur). Limites d'inscription par quart d'heure : par adresse IP, et en tout.
+      TURNSTILE_SITE_KEY: "${SKLUBOT_TURNSTILE_SITE_KEY:-}"
+      TURNSTILE_SECRET_KEY: "${SKLUBOT_TURNSTILE_SECRET_KEY:-}"
+      SIGNUP_PER_IP: "${SKLUBOT_SIGNUP_PER_IP:-}"
+      SIGNUP_GLOBAL: "${SKLUBOT_SIGNUP_GLOBAL:-}"
+      DISPOSABLE_EMAIL_BLOCK: "${SKLUBOT_DISPOSABLE_EMAIL_BLOCK:-}"
+      EMAIL_VERIFICATION: "${SKLUBOT_EMAIL_VERIFICATION:-}"
+      # Offre Gratuite (mode hébergé) : ordinateurs jetables partagés (pool), « personal » (comme avant) ; combien à la fois.
+      FREE_PLAN_COMPUTER: "${SKLUBOT_FREE_PLAN_COMPUTER:-}"
+      FREE_COMPUTERS_MAX: "${SKLUBOT_FREE_COMPUTERS_MAX:-}"
+      FREE_COMPUTER_IDLE_MIN: "${SKLUBOT_FREE_COMPUTER_IDLE_MIN:-}"
+      FREE_COMPUTER_MEMORY: "${SKLUBOT_FREE_COMPUTER_MEMORY:-}"
+      FREE_COMPUTER_CPUS: "${SKLUBOT_FREE_COMPUTER_CPUS:-}"
+      # « Continuer avec Google » : identifiants OAuth (console Google Cloud), ou à saisir dans Réglages → Compte.
+      GOOGLE_LOGIN_CLIENT_ID: "${SKLUBOT_GOOGLE_LOGIN_CLIENT_ID:-}"
+      GOOGLE_LOGIN_CLIENT_SECRET: "${SKLUBOT_GOOGLE_LOGIN_CLIENT_SECRET:-}"
       COMPUTER: "linux"
       DATA_VOLUME: "sklubot_data"
       # Les ordinateurs des bots sont sur leur propre réseau (BOTS_NETWORK, créé par Sklubot, sans trafic entre eux) et

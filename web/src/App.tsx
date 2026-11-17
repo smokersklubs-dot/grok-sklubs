@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { useT } from "./i18n";
 import { errText } from "./api";
 import { applyTheme, useStore, type Toast } from "./store";
@@ -22,6 +22,21 @@ import { SurveillanceView } from "./components/SurveillanceView";
 import { ThreadPanel } from "./components/ThreadPanel";
 import { DownloadPage, isDownloadPath } from "./components/DownloadPage";
 import { useDesktopBadge } from "./lib/desktop";
+import { takeVerifyLink, VerifyEmailPage } from "./components/VerifyEmail";
+import { Onboarding } from "./components/Onboarding";
+
+// The public landing page (OPEN_SIGNUP): its own chunk, loaded only for signed-out visitors of an open server.
+const Landing = lazy(() => import("./components/Landing"));
+type Entry = "landing" | "login" | "signup";
+/** Where a signed-out visitor starts: ?auth=login|signup, or a link that needs the form (invitation, plan, expired link). */
+function entryFromUrl(): Entry {
+  const p = new URLSearchParams(location.search);
+  const auth = p.get("auth");
+  if (auth === "login" || auth === "signup") return auth;
+  if (p.get("invite") || p.get("plan_invite")) return "signup";
+  if (p.get("link") || p.get("plan")) return p.get("plan") ? "signup" : "login";
+  return "landing";
+}
 
 function useShortcuts(): void {
   useEffect(() => {
@@ -131,6 +146,7 @@ function Shell() {
 
       {history && <HistoryViewer key={`${history.botId}:${history.generation}:${history.seq}`} target={history} />}
 
+      <Onboarding />
       <ToastView toast={toast} />
     </div>
   );
@@ -148,6 +164,25 @@ function MainApp() {
   const t = useT();
   // A "forgot password" or change-of-address link (/?reset=… or /?email_change=…), read once and removed from the address.
   const [link, setLink] = useState(takeLinkAction);
+  // The e-mail verification link (/?verify_email=…, publicsignup.ts), read once and removed from the address.
+  const [verifyToken, setVerifyToken] = useState(takeVerifyLink);
+  const landing = useStore((s) => s.publicSignup.landing);
+  const [entry, setEntry] = useState<Entry>(entryFromUrl);
+  useEffect(() => {
+    const onPop = () => setEntry(entryFromUrl());
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+  const goAuth = (mode: "login" | "signup", opts: { plan?: string } = {}) => {
+    const url = new URL(location.href);
+    url.hash = "";
+    url.searchParams.set("auth", mode);
+    if (opts.plan) url.searchParams.set("plan", opts.plan);
+    history.pushState(null, "", `${url.pathname}${url.search}`);
+    setEntry(mode);
+    window.scrollTo(0, 0);
+  };
+  const goHome = () => { history.pushState(null, "", "/"); setEntry("landing"); };
   useEffect(() => {
     void init();
   }, [init]);
@@ -158,6 +193,14 @@ function MainApp() {
   if (boot === "loading") return <div className="boot" aria-busy="true" aria-label={t("common.loading")} />;
   if (link?.kind === "reset") return <ResetPasswordPage token={link.token} onDone={() => setLink(null)} />;
   if (link?.kind === "emailChange") return <EmailConfirmPage token={link.token} />;
-  if (boot === "signedOut") return <SignIn />;
+  if (verifyToken) return <VerifyEmailPage token={verifyToken} onDone={() => setVerifyToken(null)} />;
+  if (boot === "signedOut" && landing && entry === "landing") {
+    return (
+      <Suspense fallback={<div className="boot" aria-busy="true" aria-label={t("common.loading")} />}>
+        <Landing onAuth={goAuth} />
+      </Suspense>
+    );
+  }
+  if (boot === "signedOut") return landing ? <SignIn key={entry} initialMode={entry === "signup" ? "signup" : "login"} onBack={goHome} /> : <SignIn />;
   return <Shell />;
 }

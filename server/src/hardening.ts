@@ -55,17 +55,20 @@ export function inlineScriptHashes(html: string): string[] {
  * Connections: this server (EventSource, fetch) and wss: (live screens, voice). PDF previews are shown from a blob: in an
  * iframe. Nothing may frame the app, no plugin content, no <base>.
  */
-export function appCsp(scriptHashes: string[] = []): string {
+export function appCsp(scriptHashes: string[] = [], o: { turnstile?: boolean } = {}): string {
+  // Cloudflare Turnstile on the sign-up form (publicsignup.ts), only when it is configured: its script and its frame come
+  // from https://challenges.cloudflare.com (https://developers.cloudflare.com/turnstile/reference/content-security-policy/).
+  const cf = o.turnstile ? " https://challenges.cloudflare.com" : "";
   return [
     "default-src 'self'",
-    `script-src 'self' ${scriptHashes.join(" ")}`.trim(),
+    `script-src 'self' ${scriptHashes.join(" ")}`.trim() + cf,
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob:",
     "media-src 'self' data: blob:",
     "font-src 'self' data:",
     "connect-src 'self' wss:",
     "worker-src 'self' blob:",
-    "frame-src 'self' blob:",
+    `frame-src 'self' blob:${cf}`,
     "manifest-src 'self'",
     "object-src 'none'",
     "base-uri 'none'",

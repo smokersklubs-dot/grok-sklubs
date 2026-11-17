@@ -10,6 +10,7 @@ import { canCall, canRecognize, createRecognition, micErrorText, recognitionLang
 import { Icon, Spinner } from "./Icon";
 import { ErrorNote, Menu, MenuItem, useEscape } from "./ui";
 import { PauseBanner } from "./Pause";
+import { VerifyBanner } from "./VerifyEmail";
 
 type DictationState = "idle" | "recording" | "transcribing";
 
@@ -332,6 +333,7 @@ export function Composer({ bot, live }: { bot: Bot; live: Live }) {
     >
       <ErrorNote onDismiss={() => setError(null)}>{error}</ErrorNote>
       {bot.pause && !live.running && <PauseBanner bot={bot} />}
+      <VerifyBanner />
       {looksSecret && (
         <div className="secret-warn" role="status">
           <Icon name="lock" size={15} />

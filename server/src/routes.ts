@@ -110,6 +110,7 @@ import { handleBotMcp } from "./botmcp.js";
 import { registerSentinelRoutes } from "./sentinel/routes.js";
 import { canWatch as sentinelWatcher } from "./sentinel/view.js";
 import { noteSignal } from "./sentinel/signals.js";
+import { accountFlags, accountOpened, publicSignupGate, publicSignupInfo, registerPublicSignupPrivate, registerPublicSignupPublic } from "./publicsignup.js";
 import { answerCapCard, amountText, CapError, capName, caps as usageCaps, capsView, cleanCapInput, cm } from "./usagecaps.js";
 
 type Env = { Variables: { user: UserRecord } };
@@ -146,7 +147,8 @@ const body = async (c: Context): Promise<Record<string, any>> => {
   const parsed = await c.req.json().catch(() => ({}));
   return parsed && typeof parsed === "object" ? parsed : {};
 };
-const publicUser = (u: UserRecord) => ({ id: u.id, email: u.email, name: u.name, locale: u.locale });
+// accountFlags (publicsignup.ts): `emailUnverified` / `onboarding`, only present when true.
+const publicUser = (u: UserRecord) => ({ id: u.id, email: u.email, name: u.name, locale: u.locale, ...accountFlags(u.id) });
 const ownBot = (c: Context<Env>, id = c.req.param("id")): BotRecord => bots.owned(c.get("user").id, id ?? "") ?? fail(404, "That bot does not exist.");
 const ownAgent = (c: Context<Env>): BotRecord => { const b = ownBot(c); return b.kind === "agent" ? b : fail(400, "A group chat cannot do that."); };
 /**
@@ -266,7 +268,7 @@ api.get("/me", (c) => {
   const hosted = hostedMode() ? { operator: !!user && isOperator(user.id), links: locale === "fr" ? { pricing: "/tarifs", terms: "/cgu", legal: "/mentions-legales", privacy: "/confidentialite" } : { pricing: "/pricing", terms: "/terms", legal: "/legal-notice", privacy: "/privacy" } } : undefined;
   // `sentinel`: the signed-in person watches this server (the owner, or a hosted operator): the Surveillance page is theirs.
   const sentinel = !!user && sentinelWatcher(user.id);
-  return c.json({ user: user ? publicUser(user) : null, signupOpen: signupOpen(), setupCodeRequired: setupCodeRequired(), imageGeneration: !!imageService(), video, firstBot: firstBotIdentity(locale), ...(hosted ? { hosted } : {}), ...(sentinel ? { sentinel } : {}) });
+  return c.json({ user: user ? publicUser(user) : null, signupOpen: signupOpen(), setupCodeRequired: setupCodeRequired(), imageGeneration: !!imageService(), video, firstBot: firstBotIdentity(locale), ...(hosted ? { hosted } : {}), ...(sentinel ? { sentinel } : {}), ...publicSignupInfo() });
 });
 
 // Slows down password guessing: a handful of attempts per account, and a few dozen per client address,
@@ -325,12 +327,16 @@ api.post("/auth/signup", async (c) => {
   if (users.byEmail(email)) fail(409, "An account with this email already exists.");
   if (config.allowedEmails.length && !config.allowedEmails.includes(email.toLowerCase()) && !invited) fail(403, "This address is not allowed to create an account on this server.");
   const locale = pickLocale(b.locale, c.req.header("accept-language"));
+  const firstAccount = users.count() === 0;
+  // OPEN_SIGNUP (publicsignup.ts): rate limits, disposable addresses and Turnstile on open sign-ups, before anything is created.
+  await publicSignupGate(c, { email, token: b.turnstileToken, first: firstAccount, invited: invited || planInviteOpens(b.planInvite, email) });
   // Hosted mode: the plan the account starts on and the terms of service, checked before anything is created.
   const choice: SignupChoice | null = signupChoice({ plan: b.plan, planInvite: b.planInvite, acceptTerms: b.acceptTerms, email, first: users.count() === 0 });
   // The account's first bot needs a place in the team (MAX_BOTS): checked before anything is created.
   bots.assertRoom();
   const user = users.create(email, String(b.name ?? ""), hashPassword(password), locale);
   accountCreated(user.id, choice);
+  accountOpened(user, { first: firstAccount, verified: false });
   // Every account starts with one main bot so there is someone to talk to straight away. Its name and role: what the
   // person chose on the sign-up form, else the server's settings (FIRST_BOT_NAME / FIRST_BOT_LABEL), else the defaults.
   const first = firstBotIdentity(locale, b.botName, b.botLabel);
@@ -482,6 +488,8 @@ const googleDeps: GoogleDeps = { throttle, clientIp, startSession, publicUser, f
 registerGooglePublic(api, googleDeps);
 // "Mot de passe oublié ?" and the link that confirms a new address (accountmail.ts): same throttling and sessions.
 registerAccountMailPublic(api, googleDeps);
+// "Ouverture publique" (publicsignup.ts): the landing page's data and the e-mail verification link.
+registerPublicSignupPublic(api, googleDeps);
 
 // ── Everything below needs a session ─────────────────────────────────────────
 api.use("*", async (c, next) => {
@@ -498,6 +506,7 @@ api.use("*", async (c, next) => {
   await next();
 });
 registerHostedPrivate(api);
+registerPublicSignupPrivate(api);
 
 api.get("/events", (c) =>
   streamSSE(c, async (stream) => {

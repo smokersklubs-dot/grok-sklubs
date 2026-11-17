@@ -43,6 +43,7 @@ import { balancedCut, compactHistory, contextWindowOf, estimateTokens, prepareMe
 import { jobs, setJobBlocked, setJobWaker, startJobWatch } from "../jobs.js";
 import { engineBlock, hostedMode, isHostedStop, isPlanLimit, operatorBlock, operatorPaid, postStopNotice } from "../hosted.js";
 import { pauses } from "../pauses.js";
+import { emailUnverified, unverifiedText } from "../publicsignup.js";
 import { blockingCap, capCard, caps as usageCaps, clearTurn, cm, markTurn, noteAttended, noteSkip, skipText, turnAttended } from "../usagecaps.js";
 import type { CapStateView } from "../shared.js";
 import { noteTurnFailure } from "../sentinel/signals.js";
@@ -634,6 +635,8 @@ async function runScopedTurn(botId: string, trigger: Trigger, thread: number): P
     // only). The bot says why, with the way forward; background work says it once a day.
     const stop = hostedMode() ? hostedTurnStop(bot, trigger, held) : null;
     if (stop) { postStopNotice(bot, stop, { background: trigger.kind !== "user" && trigger.kind !== "resume", member: trigger.kind === "user" && !!trigger.member }); return; }
+    // Public sign-up (publicsignup.ts): a new account's bots wait for its e-mail address to be confirmed; a person's message says why.
+    if (emailUnverified(bot.userId)) { if (trigger.kind === "user") rows.append(bot, { kind: "notice", tone: "warn", text: unverifiedText(users.byId(bot.userId) ?? user) }); return; }
     // Usage caps (usagecaps.ts): a reached cap stops work no person started ("unattended", the default) or everything.
     // A person's own message under an "unattended" cap runs, with one notice.
     const attended = attendedTrigger(trigger);

@@ -8,9 +8,11 @@ import { Icon } from "./Icon";
 import { ErrorNote } from "./ui";
 import { GoogleSignInButton } from "./GoogleLogin";
 import { ForgotPassword } from "./AccountRecovery";
+import { TurnstileWidget } from "./Turnstile";
 import { HostedLinks, HostedSignupFields, useHostedMustAccept, type HostedSignup } from "./Hosted";
 
-export function SignIn() {
+/** `initialMode` / `onBack`: opened from the public landing page (Landing.tsx), which it can go back to. */
+export function SignIn({ initialMode, onBack }: { initialMode?: "login" | "signup"; onBack?: () => void } = {}) {
   const signupOpen = useStore((s) => s.signupOpen);
   const setupCodeRequired = useStore((s) => s.setupCodeRequired);
   const firstBot = useStore((s) => s.firstBot);
@@ -18,7 +20,7 @@ export function SignIn() {
   const locale = useStore((s) => s.locale);
   const setLocale = useStore((s) => s.setLocale);
   const t = useT();
-  const [mode, setMode] = useState<"login" | "signup">(signupOpen ? "signup" : "login");
+  const [mode, setMode] = useState<"login" | "signup">(initialMode ?? (signupOpen ? "signup" : "login"));
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -47,6 +49,11 @@ export function SignIn() {
   // Signing up the very first account (the owner) needs no plan and no terms: the owner writes them.
   const hostedSignup = hostedOn && !setupCodeRequired;
   const creating = mode === "signup" && (signupOpen || !!invite || !!planInvite);
+  // OPEN_SIGNUP with Turnstile (server publicsignup.ts): open sign-ups only (not the first account, not an invitation).
+  const turnstileKey = useStore((s) => s.publicSignup.turnstileSiteKey);
+  const needsTurnstile = !!turnstileKey && creating && !setupCodeRequired && !invite && !planInvite;
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  const [turnstileRound, setTurnstileRound] = useState(0);
   // A one-time sign-in link that has expired or was already used lands here with ?link=expired.
   const [linkExpired] = useState(() => new URLSearchParams(location.search).get("link") === "expired");
   useEffect(() => {
@@ -80,16 +87,22 @@ export function SignIn() {
       setError(mustAccept);
       return;
     }
+    if (needsTurnstile && !turnstileToken) {
+      setError(t("signin.errTurnstile"));
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
       const r = creating
-        ? await api<{ user: User }>("POST", "/auth/signup", { email: mail, name: name.trim() || undefined, password, locale, invite: invite ? inviteToken : undefined, setupCode: setupCodeRequired ? setupCode.trim() : undefined, botName: botName.trim() || undefined, botLabel: botLabel.trim() || undefined, ...(hostedSignup ? hostedForm : {}) })
+        ? await api<{ user: User }>("POST", "/auth/signup", { email: mail, name: name.trim() || undefined, password, locale, invite: invite ? inviteToken : undefined, setupCode: setupCodeRequired ? setupCode.trim() : undefined, botName: botName.trim() || undefined, botLabel: botLabel.trim() || undefined, ...(hostedSignup ? hostedForm : {}), ...(needsTurnstile ? { turnstileToken } : {}) })
         : await api<{ user: User }>("POST", "/auth/login", { email: mail, password });
       // A sign-up with the invitation already joined the workspace: the link is used up.
       if (creating && (invite || planInvite)) history.replaceState(history.state, "", location.pathname);
       await signedIn(r.user);
     } catch (err) {
+      // A Turnstile token is single use: a refused sign-up needs a fresh check.
+      if (needsTurnstile) setTurnstileRound((n) => n + 1);
       setError(creating && setupCodeRequired && err instanceof ApiError && err.status === 403 && /setup code/i.test(err.message) ? t("signin.errSetupCodeWrong") : errText(err));
       setBusy(false);
     }
@@ -186,6 +199,7 @@ export function SignIn() {
         )}
 
         {creating && hostedSignup && <HostedSignupFields value={hostedForm} onChange={setHostedForm} />}
+        {needsTurnstile && turnstileKey && <TurnstileWidget siteKey={turnstileKey} onToken={setTurnstileToken} resetKey={turnstileRound} />}
 
         <ErrorNote>{error}</ErrorNote>
 
@@ -214,7 +228,10 @@ export function SignIn() {
       </form>
       {/* "Software you host yourself" is not true of a hosted service: its footer is the public pages instead. */}
       {!hostedOn && <p className="signin-foot">{t("signin.foot")}</p>}
-      <p className="signin-links"><a href="/telecharger">{t("signin.download")}</a></p>
+      <p className="signin-links">
+        {onBack && <a href="/" onClick={(e) => { e.preventDefault(); onBack(); }}>{t("signin.backHome")}</a>}
+        <a href="/telecharger">{t("signin.download")}</a>
+      </p>
       <HostedLinks />
       <div className="segmented signin-lang" role="radiogroup" aria-label={t("signin.language")}>
         {LOCALES.map((l) => (

@@ -297,7 +297,7 @@ test("without a session, every non-public route says 401 (and nothing else)", as
     const res = await call(api, null, methodOf(r.method), fill(r.path, "bot1"), {});
     if (leakIn(res.text)) problems.push(`${r.key} LEAKS`);
     // A handful of public routes have no parameter (health, me, downloads, sign-in, forgot-password status…): they must not leak either.
-    if (res.status !== 401 && !/^(GET \/(health|me|downloads|plans|auth\/link|connectors\/oauth\/callback|auth\/google.*|auth\/password\/status)|POST \/auth\/.*)$/.test(r.key)) problems.push(`${r.key} → ${res.status}`);
+    if (res.status !== 401 && !/^(GET \/(health|me|downloads|plans|public\/landing|auth\/link|connectors\/oauth\/callback|auth\/google.*|auth\/password\/status)|POST \/auth\/.*)$/.test(r.key)) problems.push(`${r.key} → ${res.status}`);
   }
   assert.deepEqual(problems, []);
 });
@@ -505,4 +505,25 @@ test("Aujourd'hui (today.ts): B sees nothing of A; V sees only the shared bot's 
   assert.equal((await call(api, "b", "PUT", "/today/settings", { minutes: { goal: 1 }, digest: { enabled: true } })).status, 200);
   assert.equal((await A("GET", "/today")).json.minutes.table.goal, 30);
   assert.equal((await A("GET", "/today/settings")).json.digest.enabled, false);
+});
+
+test("public sign-up (publicsignup.ts): the landing data, the first run and the verification routes only touch the caller", async () => {
+  const routes = discover().filter((r) => r.app === api && /^\/(public\/|onboarding\/|account\/verify-email|auth\/verify-email)/.test(r.path)).map((r) => r.key).sort();
+  assert.deepEqual(routes, ["GET /public/landing", "POST /account/verify-email/resend", "POST /auth/verify-email", "POST /onboarding/commit", "POST /onboarding/skip"]);
+  const aBots = q.all<{ id: string; name: string }>("SELECT id, name FROM bots WHERE user_id = ? ORDER BY id", userA);
+  // The landing page's data is public and says nothing of anyone (templates and plans only).
+  const landing = await call(api, null, "GET", "/public/landing");
+  assert.equal(landing.status, 200);
+  assert.ok(!leakIn(landing.text) && !landing.text.includes(ids.bot1));
+  // B's first run creates B's bots (or meets B's plan limit), never A's; a second one is refused.
+  const first = await call(api, "b", "POST", "/onboarding/commit", { template: "secretariat", name: "Alphasecret clone" });
+  assert.ok([200, 403].includes(first.status), first.text);
+  assert.ok(!first.text.includes(userA) && !first.text.includes(ids.bot1));
+  if (first.status === 200) assert.equal(q.get<{ user_id: string }>("SELECT user_id FROM bots WHERE id = ?", first.json.botId)!.user_id, userB);
+  assert.equal((await call(api, "b", "POST", "/onboarding/skip")).status, 200);
+  assert.equal((await call(api, "b", "POST", "/onboarding/commit", { template: "secretariat" })).status, 409);
+  // A verification link cannot be guessed, and resending is about the caller only (no SMTP here: nothing to confirm).
+  assert.equal((await call(api, "b", "POST", "/auth/verify-email", { token: "not-a-real-token" })).status, 400);
+  assert.equal((await call(api, "b", "POST", "/account/verify-email/resend")).status, 409);
+  assert.deepEqual(q.all<{ id: string; name: string }>("SELECT id, name FROM bots WHERE user_id = ? ORDER BY id", userA), aBots, "A's bots are untouched");
 });

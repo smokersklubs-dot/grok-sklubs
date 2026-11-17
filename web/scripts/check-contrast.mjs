@@ -24,6 +24,12 @@ export const THRESHOLDS = { text: 4.5, large: 3, ui: 3 };
  * CSS colour written in the stylesheets (e.g. "#ffffff" for the white text of the red button).
  */
 export const PAIRS = [
+  // Public landing page (Landing.tsx, landing.css): the brand highlight on the page, on cards and on its soft fill.
+  ["--brand", "--bg", "large", "landing headline highlight"],
+  ["--brand", "--surface", "text", "landing eyebrows and step numbers on cards"],
+  ["--brand", "--brand-soft", "text", "landing chips on the brand fill"],
+  ["--brand", "--bg", "text", "landing eyebrow text on the page"],
+  ["--text", "--brand-soft", "text", "landing text on the brand fill"],
   // Body text and secondary text on every surface.
   ["--text", "--bg", "text", "page text"],
   ["--text", "--surface", "text", "text in cards, panels, modals"],
