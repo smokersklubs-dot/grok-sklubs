@@ -6,7 +6,7 @@
     "dev": "vite",
     "build": "vite build",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "node --test scripts/*.test.mjs",
+    "test": "node --experimental-strip-types --no-warnings --test scripts/*.test.mjs",
     "check:contrast": "node scripts/check-contrast.mjs",
     "check:bundle": "node scripts/check-bundle.mjs"
   },

@@ -61,7 +61,10 @@ export function CallBar({ botId }: { botId: string }) {
           <span className={`callbar-status ${shimmer ? "shimmer" : ""}`} role="status">{status}</span>
         </div>
         {call.status === "error" ? (
-          <button type="button" className="btn btn-small" onClick={endCall}>{t("common.dismiss")}</button>
+          <div className="callbar-actions">
+            {call.voiceSettings && <button type="button" className="btn btn-small" onClick={() => { endCall(); useStore.getState().openAppSettings("voice"); }}>{t("mic.openVoiceSettings")}</button>}
+            <button type="button" className="btn btn-small" onClick={endCall}>{t("common.dismiss")}</button>
+          </div>
         ) : (
           <div className="callbar-actions">
             {call.speaking && (

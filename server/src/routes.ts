@@ -81,6 +81,7 @@ import { guideIndex } from "./agent/guides.js";
 import { callEnded, callStarted } from "./calls.js";
 import { saveVoiceSettings, sttFor, ttsFor, voiceSettings, voiceStatus } from "./voice/providers.js";
 import { registerVoiceRoutes } from "./voice/routes.js";
+import { registerTranscribeRoute } from "./voice/transcribe.js";
 import { adminView, approversOf, botAccess, exportWorkspace, invites, resources, SHARED_SETTINGS, sharedBotsFor, sharedBotView, shares, workspaces, WorkspaceError, wsAudit, type BotAccess } from "./workspaces.js";
 import { invalidateAudience } from "./bus.js";
 import { fileDiff, listedPathOk, undoFiles } from "./snapshots.js";
@@ -2877,3 +2878,5 @@ api.post("/voice/test", async (c) => {
 });
 // A voice per bot and the voice pickers (Fish Audio's library, Kokoro): voice/routes.ts.
 registerVoiceRoutes(api);
+// One-shot dictation for browsers without working speech recognition (iOS Safari, Firefox…): voice/transcribe.ts.
+registerTranscribeRoute(api);

@@ -38,7 +38,7 @@ Sklubot a été reconstruit **en salle blanche** : voir [docs/CLEANROOM.md](docs
 | **Automatisation** | Routines créées en discutant : planifiées (cron + fuseau), ponctuelles, ou **déclenchées par webhook** ; points réguliers proactifs du bot principal |
 | **Équipe** | Messages entre bots, assistants temporaires en parallèle (4 max, compte rendu automatique), discussions de groupe avec @mentions |
 | **Tâches** | Suivi du travail en cours, en attente de toi, terminé |
-| **Voix** | Appel vocal et dictée dans le navigateur (reconnaissance et synthèse vocales du navigateur), voix / vitesse / langue par bot |
+| **Voix** | Appel vocal et dictée sur tous les navigateurs (iPhone compris) : reconnaissance et synthèse vocales du serveur (whisper.cpp + Piper, auto-hébergés et actifs par défaut), sinon celles du navigateur ; voix / vitesse / langue par bot |
 | **Maîtrise** | Compteur de jetons et de coût par bot, **budget mensuel** qui met les bots en pause, **plafonds d'usage** par jour ou par mois (dollars ou tokens, compte ou bot, travail sans surveillance ou tout — voir `docs/PLAFONDS.md`), garde-fou contre les boucles, limite d'étapes |
 
 ## Télécharger les applications

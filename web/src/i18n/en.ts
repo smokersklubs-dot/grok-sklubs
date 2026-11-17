@@ -763,6 +763,12 @@ export const en = {
   "mic.none": "No microphone was found.",
   "mic.network": "Speech recognition needs a network connection and couldn't reach its service.",
   "mic.lang": "This language isn't supported for speech recognition in your browser.",
+  "mic.unavailable": "Voice dictation isn't available in this browser. Turn on the server's speech recognition in Settings → Voice.",
+  "mic.openVoiceSettings": "Open Settings → Voice",
+  "mic.switched": "This browser's speech recognition doesn't work here: the next dictation will go through the server. Try again.",
+  "call.unavailable": "Voice calls aren't available in this browser. Turn on the server's voice in Settings → Voice.",
+  "voice.dictationOn": "Dictation in every browser: the server transcribes the microphone when the browser can't.",
+  "voice.dictationOff": "No speech recognition on the server: dictation only works in browsers that recognise speech themselves (not iOS Safari, Firefox, Brave…).",
   "speech.codeOmitted": "(code omitted)",
   "speech.link": "link",
 
@@ -1941,8 +1947,8 @@ export const en = {
   "ws.summary": "{n} member(s) · {seats} seats · you are {role}",
   "ws.unshare": "Stop sharing",
   "voice.hint.openai": "Paid per use. The key is sealed on the server; leave the address empty for OpenAI itself, or point it at an OpenAI-compatible server.",
-  "voice.hint.whisper": "The whisper.cpp server (compose profile “voice”). Empty address: the one set by the server (VOICE_STT_URL).",
-  "voice.hint.piper": "Piper's HTTP server (compose profile “voice”). Empty address: the one set by the server (VOICE_TTS_URL).",
+  "voice.hint.whisper": "The whisper.cpp server (started with Sklubot by default). Empty address: the one set by the server (VOICE_STT_URL).",
+  "voice.hint.piper": "Piper's HTTP server (started with Sklubot by default). Empty address: the one set by the server (VOICE_TTS_URL).",
   "ws.summaryRole": "Your role: {role}",
   // Wave 7: Agent Reach, credential relay, key health, project import, temporary links, paid tools.
   "settings.section.keys": "Keys and connections",

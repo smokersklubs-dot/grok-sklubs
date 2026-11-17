@@ -8,6 +8,7 @@ import { useStore, type CallLine, type CallState, type Thread } from "../store";
 import type { Row } from "../types";
 import { voiceStarted, voiceStopped, voiceWord } from "./voiceLevel";
 import { canCall, createRecognition, makeUtterance, micErrorText, recognitionLang, speakable, type Recognition } from "./speech";
+import { fallbackError } from "./dictationPlan";
 import { endServerCall, serverBargeIn, serverCallActive, serverMute, startServerCall } from "./voice";
 import type { VoiceStatus } from "../types";
 
@@ -108,11 +109,12 @@ function stopListening(): void {
   }
 }
 
-function fail(message: string): void {
+/** `voiceSettings`: the browser's speech cannot work here; the call bar offers Settings → Voice (server voice). */
+function fail(message: string, voiceSettings = false): void {
   queue = [];
   if ("speechSynthesis" in window) window.speechSynthesis.cancel();
   endTrace();
-  patch({ status: "error", error: message, listening: false, speaking: false });
+  patch({ status: "error", error: message, listening: false, speaking: false, voiceSettings });
   stopListening();
 }
 
@@ -238,14 +240,16 @@ export const callPossible = (): boolean => canCall() || (typeof AudioWorkletNode
 function startBrowserCall(botId: string): void {
   const bot = useStore.getState().bots[botId];
   if (!bot || getCall()?.botId !== botId) return;
+  // No server voice for this bot's owner and no speech in this browser (iOS Safari, Firefox, Brave…): say where to turn
+  // the server's voice on.
   if (!canCall()) {
-    fail(useStore.getState().call ? t("composer.voiceUnsupported") : "");
+    fail(useStore.getState().call ? t("call.unavailable") : "", true);
     return;
   }
 
   const r = createRecognition(recognitionLang(bot.voice));
   if (!r) {
-    fail(t("composer.voiceUnsupported"));
+    fail(t("call.unavailable"), true);
     return;
   }
   rec = r;
@@ -271,6 +275,7 @@ function startBrowserCall(botId: string): void {
   };
   r.onerror = (e) => {
     if (rec !== r) return;
+    if (fallbackError(e.error)) { fail(t("call.unavailable"), true); return; }
     const message = micErrorText(e.error);
     if (message) fail(message);
   };

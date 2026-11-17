@@ -79,9 +79,11 @@ services:
       DESKTOP_KEYBOARD: "${SKLUBOT_DESKTOP_KEYBOARD:-us}"
       # Docker à travers le proxy filtrant ci-dessous, jamais le socket lui-même.
       DOCKER_HOST: "tcp://docker-proxy:2375"
-      # Vague 6 — voix serveur (profil « voice » ci-dessous) : whisper.cpp + Piper sur le réseau interne. Vides = appels par le navigateur.
-      VOICE_STT_URL: "${SKLUBOT_VOICE_STT_URL:-}"
-      VOICE_TTS_URL: "${SKLUBOT_VOICE_TTS_URL:-}"
+      # Voix serveur : par défaut whisper.cpp + Piper ci-dessous (réseau interne « voice »). Une autre adresse les remplace ;
+      # SKLUBOT_VOICE_LOCAL=0 les coupe (la dictée et les appels passent alors par le navigateur, ou Réglages → Voix).
+      VOICE_STT_URL: "${SKLUBOT_VOICE_STT_URL:-http://whisper:8080}"
+      VOICE_TTS_URL: "${SKLUBOT_VOICE_TTS_URL:-http://piper:5000}"
+      VOICE_LOCAL: "${SKLUBOT_VOICE_LOCAL:-1}"
       # Kokoro (profil « kokoro » ci-dessous), voix gratuites auto-hébergées, une par bot possible : http://kokoro:8880. Vide = pas de Kokoro.
       VOICE_KOKORO_URL: "${SKLUBOT_VOICE_KOKORO_URL:-}"
       # Vague 6 — adresse e-mail propre aux bots : domaine dont le MX pointe vers ce serveur. Le récepteur écoute sur 2525
@@ -161,30 +163,79 @@ services:
     restart: "no"
 
 
-  # ── Vague 6 : voix serveur auto-hébergée, gratuite (facultative) ──
-  # docker compose --profile voice up -d  puis  SKLUBOT_VOICE_STT_URL=http://whisper:8080 et SKLUBOT_VOICE_TTS_URL=http://piper:5000
-  # whisper.cpp : image officielle épinglée par empreinte (ghcr.io/ggml-org/whisper.cpp, README « Docker ») ; le modèle est
-  # téléchargé une fois dans le volume. Point d'entrée de l'image : bash -c, d'où une seule chaîne de commande.
-  whisper:
+  # ── Voix serveur auto-hébergée, gratuite : ACTIVE PAR DÉFAUT (dictée et appels sur tous les navigateurs) ──
+  # whisper.cpp (voix → texte) et Piper (texte → voix) tournent sans profil : la dictée et les appels marchent aussi là où le
+  # navigateur n'a pas de reconnaissance vocale (iOS Safari, Firefox, Brave, beaucoup de WebViews Android).
+  # Réseau : seulement « voice » (interne, sans Internet, jamais publié), que seule l'application rejoint — ni les
+  # ordinateurs des bots (réseau sklubot_bots), ni Internet ne les atteignent. Aucun port publié : dans Coolify, ne leur
+  # donne pas de domaine.
+  # Mémoire (estimations, en marche) : whisper « base » ≈ 300 à 500 Mo (« small » ≈ 0,9 à 1,2 Go : WHISPER_MEM_LIMIT=2g),
+  # Piper (voix medium) ≈ 150 à 300 Mo. Plafonnées par WHISPER_MEM_LIMIT / PIPER_MEM_LIMIT. Priorité CPU plus basse que
+  # l'application (cpu_shares).
+  # Désactiver : SKLUBOT_VOICE_LOCAL=0 (et redéployer) — les deux services restent en veille (quelques Mo) et Sklubot ne
+  # les utilise plus ; le navigateur, ou un service choisi dans Réglages → Voix, prend le relais.
+  #
+  # Le modèle whisper est téléchargé une fois (Hugging Face, ggerganov/whisper.cpp, poids Whisper sous licence MIT) dans le
+  # volume whisper_models par « whisper-model », seul à avoir Internet, qui s'arrête aussitôt ; whisper lui-même n'a que
+  # le réseau interne et lit le volume en lecture seule. WHISPER_MODEL : base (défaut, multilingue, 142 Mo) ou small
+  # (multilingue, 466 Mo, comprend mieux le français, plus lent). Point d'entrée de l'image : bash -c, d'où une seule
+  # chaîne de commande ($$ = « $ » pour le shell du conteneur).
+  whisper-model:
     image: "${WHISPER_IMAGE:-ghcr.io/ggml-org/whisper.cpp:main@sha256:203ed2a39087406689e78ea5a664fef7ae596ee548f3323a4ffc63169da84933}"
-    profiles: ["voice"]
-    restart: unless-stopped
-    command: ["[ -f /models/ggml-${WHISPER_MODEL:-base}.bin ] || ./models/download-ggml-model.sh ${WHISPER_MODEL:-base} /models; whisper-server --host 0.0.0.0 --port 8080 -m /models/ggml-${WHISPER_MODEL:-base}.bin -l auto"]
+    restart: "no"
+    environment:
+      VOICE_LOCAL: "${SKLUBOT_VOICE_LOCAL:-1}"
+      WHISPER_MODEL: "${WHISPER_MODEL:-base}"
+    command: ["if [ \"$$VOICE_LOCAL\" = 0 ]; then echo 'SKLUBOT_VOICE_LOCAL=0 : voix locale désactivée.'; exit 0; fi; f=/models/ggml-$$WHISPER_MODEL.bin; if [ -s \"$$f\" ]; then echo \"Modèle déjà présent : $$f\"; exit 0; fi; ./models/download-ggml-model.sh \"$$WHISPER_MODEL\" /models || { rm -f \"$$f\"; echo 'Téléchargement du modèle impossible : la dictée passera par le navigateur. Redéploie pour réessayer.'; }; exit 0"]
     volumes:
       - whisper_models:/models
+    mem_limit: 256m
+    pids_limit: 64
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
-  # Piper : pas d'image officielle du serveur HTTP ; construite ici (docker/piper, version de piper-tts épinglée).
+    networks:
+      - default
+  whisper:
+    image: "${WHISPER_IMAGE:-ghcr.io/ggml-org/whisper.cpp:main@sha256:203ed2a39087406689e78ea5a664fef7ae596ee548f3323a4ffc63169da84933}"
+    restart: unless-stopped
+    depends_on:
+      whisper-model:
+        condition: service_completed_successfully
+    environment:
+      VOICE_LOCAL: "${SKLUBOT_VOICE_LOCAL:-1}"
+      WHISPER_MODEL: "${WHISPER_MODEL:-base}"
+      WHISPER_THREADS: "${WHISPER_THREADS:-2}"
+    # Sans modèle (téléchargement raté), il attend 5 min puis redémarre : Sklubot le voit injoignable et passe par le navigateur.
+    command: ["if [ \"$$VOICE_LOCAL\" = 0 ]; then echo 'SKLUBOT_VOICE_LOCAL=0 : en veille.'; exec sleep infinity; fi; f=/models/ggml-$$WHISPER_MODEL.bin; if [ ! -s \"$$f\" ]; then echo \"Modèle absent ($$f) : redéploie pour le télécharger.\"; sleep 300; exit 1; fi; exec whisper-server --host 0.0.0.0 --port 8080 -t \"$$WHISPER_THREADS\" -m \"$$f\" -l auto"]
+    volumes:
+      - whisper_models:/models:ro
+    read_only: true
+    tmpfs: [/tmp]
+    mem_limit: "${WHISPER_MEM_LIMIT:-1g}"
+    cpu_shares: 512
+    pids_limit: 128
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    networks:
+      - voice
+  # Piper : pas d'image officielle du serveur HTTP ; construite ici (docker/piper : piper-tts épinglé, voix française
+  # fr_FR-siwis-medium incluse dans l'image — données SIWIS sous licence CC BY 4.0 ; moteur Piper sous GPL-3.0, service à part).
   piper:
     build:
       context: docker/piper
     image: sklubot-piper
-    profiles: ["voice"]
     restart: unless-stopped
+    environment:
+      VOICE_LOCAL: "${SKLUBOT_VOICE_LOCAL:-1}"
     read_only: true
     tmpfs: [/tmp]
+    mem_limit: "${PIPER_MEM_LIMIT:-768m}"
+    cpu_shares: 512
+    pids_limit: 128
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
+    networks:
+      - voice
 
   # ── Kokoro : synthèse vocale gratuite auto-hébergée, des dizaines de voix, une voix par bot (facultatif) ──
   # Kokoro-FastAPI (https://github.com/remsky/Kokoro-FastAPI, Apache-2.0), modèle Kokoro-82M (Apache-2.0,
@@ -210,7 +261,8 @@ networks:
   docker:
     name: sklubot_docker
     internal: true
-  # Interne : l'application et Kokoro seulement (pas les ordinateurs des bots, pas Internet).
+  # Interne : l'application et ses services de voix (whisper, Piper, Kokoro) seulement — pas les ordinateurs des bots,
+  # pas Internet.
   voice:
     name: sklubot_voice
     internal: true

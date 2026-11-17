@@ -6,82 +6,11 @@ import type { Bot, Live, Row, SkillRef } from "../types";
 import { findSecrets } from "../../../server/src/shared";
 import { botTitle, fileSize } from "../lib/format";
 import { callPossible, endCall, startCall } from "../lib/call";
-import { canCall, canRecognize, createRecognition, micErrorText, recognitionLang, type Recognition } from "../lib/speech";
+import { canRecognize, recognitionLang } from "../lib/speech";
+import { canRecord, useDictation } from "../lib/dictation";
 import { Icon, Spinner } from "./Icon";
 import { ErrorNote, Menu, MenuItem, useEscape } from "./ui";
 import { PauseBanner } from "./Pause";
-
-type DictationState = "idle" | "recording" | "transcribing";
-
-/** Dictation with the browser's speech recognition. Text is delivered once, when recording stops. */
-function useDictation(lang: string, onText: (text: string) => void, onError: (message: string) => void) {
-  const [state, setState] = useState<DictationState>("idle");
-  const rec = useRef<Recognition | null>(null);
-  const finals = useRef("");
-  const cancelled = useRef(false);
-  const cb = useRef({ onText, onError });
-  useEffect(() => {
-    cb.current = { onText, onError };
-  });
-
-  const start = useCallback(() => {
-    if (rec.current) return;
-    const r = createRecognition(lang);
-    if (!r) return;
-    finals.current = "";
-    cancelled.current = false;
-    r.continuous = true;
-    r.interimResults = false;
-    r.onresult = (e) => {
-      for (let i = e.resultIndex; i < e.results.length; i++) {
-        const res = e.results[i];
-        if (res.isFinal) finals.current = `${finals.current} ${(res[0]?.transcript ?? "").trim()}`.trim();
-      }
-    };
-    r.onerror = (e) => {
-      const message = micErrorText(e.error);
-      if (message) cb.current.onError(message);
-    };
-    r.onend = () => {
-      rec.current = null;
-      setState("idle");
-      if (!cancelled.current && finals.current) cb.current.onText(finals.current);
-    };
-    rec.current = r;
-    try {
-      r.start();
-      setState("recording");
-    } catch {
-      rec.current = null;
-      cb.current.onError(t("composer.micFailed"));
-    }
-  }, [lang]);
-
-  const stop = useCallback(() => {
-    if (!rec.current) return;
-    setState("transcribing");
-    try {
-      rec.current.stop();
-    } catch {
-      rec.current = null;
-      setState("idle");
-    }
-  }, []);
-
-  const cancel = useCallback(() => {
-    if (!rec.current) return;
-    cancelled.current = true;
-    try {
-      rec.current.abort();
-    } catch {
-      rec.current = null;
-      setState("idle");
-    }
-  }, []);
-
-  useEffect(() => cancel, [cancel]);
-  return { state, start, stop, cancel };
-}
 
 const NO_UPLOADS: Upload[] = [];
 
@@ -180,7 +109,9 @@ export function Composer({ bot, live }: { bot: Bot; live: Live }) {
     [bot.id, setDraft],
   );
 
-  const dictation = useDictation(recognitionLang(bot.voice), insertAtCaret, setError);
+  // Neither the browser's recognition nor the server's works here: say so, with the way to Settings → Voice.
+  const [micUnavailable, setMicUnavailable] = useState(false);
+  const dictation = useDictation(bot.id, recognitionLang(bot.voice), insertAtCaret, (m) => { setMicUnavailable(false); setError(m); }, () => { setError(null); setMicUnavailable(true); });
   const skillCmd = useSkillCommand(bot.id, draft, bot.kind === "agent");
   const pickSkill = (name: string) => {
     setDraft(bot.id, `/skill ${name} `);
@@ -202,6 +133,7 @@ export function Composer({ bot, live }: { bot: Bot; live: Live }) {
     setMenu(false);
     setDragging(false);
     setGoalMode(false);
+    setMicUnavailable(false);
     dragDepth.current = 0;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bot.id, focusTick]);
@@ -275,7 +207,7 @@ export function Composer({ bot, live }: { bot: Bot; live: Live }) {
     else if (dictation.state === "recording") dictation.stop();
   };
 
-  const micLabel = !canRecognize()
+  const micLabel = !canRecognize() && !canRecord()
     ? t("composer.micUnsupported")
     : dictation.state === "recording"
       ? t("composer.micStop")
@@ -331,6 +263,16 @@ export function Composer({ bot, live }: { bot: Bot; live: Live }) {
       }}
     >
       <ErrorNote onDismiss={() => setError(null)}>{error}</ErrorNote>
+      {micUnavailable && (
+        <div className="error-note mic-unavailable" role="alert">
+          <Icon name="mic" size={16} />
+          <span>{t("mic.unavailable")}</span>
+          <button type="button" className="btn btn-small" onClick={() => { setMicUnavailable(false); openAppSettings("voice"); }}>{t("mic.openVoiceSettings")}</button>
+          <button type="button" className="error-note-x" aria-label={t("common.dismiss")} onClick={() => setMicUnavailable(false)}>
+            <Icon name="close" size={14} />
+          </button>
+        </div>
+      )}
       {bot.pause && !live.running && <PauseBanner bot={bot} />}
       {looksSecret && (
         <div className="secret-warn" role="status">
@@ -457,7 +399,7 @@ export function Composer({ bot, live }: { bot: Bot; live: Live }) {
           aria-label={micLabel}
           title={micLabel}
           aria-pressed={dictation.state === "recording"}
-          disabled={!canRecognize() || dictation.state === "transcribing" || inCall}
+          disabled={dictation.state === "transcribing" || inCall}
           onPointerDown={(e) => {
             if (e.button !== 0) return;
             const wasIdle = dictation.state === "idle";

@@ -85,31 +85,43 @@ Le nom reste modifiable ensuite dans les réglages du bot.
 (les salons de groupe ne comptent pas). Au-delà, la création est refusée avec un message clair : retire un bot
 d'abord. Aucun bot n'est jamais supprimé à ta place.
 
-## Voix en temps réel (facultatif, gratuit)
+## Voix du serveur (active par défaut, gratuite)
 
-Par défaut, les appels vocaux utilisent la reconnaissance et la synthèse vocales du navigateur, tour par tour. Pour
-des appels à faible latence où **tu peux couper la parole au bot** (il se tait aussitôt et sa réponse en cours est
-annulée), lance les deux services vocaux auto-hébergés :
+La dictée (le micro de la zone de saisie) et les appels vocaux passent par deux services auto-hébergés, **lancés par
+défaut** avec Sklubot : **whisper.cpp** (voix → texte) et **Piper** (texte → voix). Ils marchent donc sur tous les
+navigateurs, y compris là où le navigateur ne sait pas reconnaître la voix lui-même (iPhone/iPad avec Safari, Firefox,
+Brave, beaucoup d'applications Android). Pendant un appel, **tu peux couper la parole au bot** (il se tait aussitôt et
+sa réponse en cours est annulée). Rien à faire : `deploy/install.sh` et `deploy/update.sh` les démarrent avec le reste.
 
-```bash
-cd /opt/sklubot
-docker compose -f docker-compose.vps.yml --profile voice up -d whisper piper
-# puis dans .env :
-SKLUBOT_VOICE_STT_URL=http://whisper:8080
-SKLUBOT_VOICE_TTS_URL=http://piper:5000
-docker compose -f docker-compose.vps.yml up -d sklubot
-```
-
-- **whisper.cpp** (voix → texte) : image officielle `ghcr.io/ggml-org/whisper.cpp`, épinglée par empreinte. Le modèle
-  (`base` par défaut, `WHISPER_MODEL=small` pour mieux comprendre, plus lent) est téléchargé une fois dans le volume
-  `whisper_models`. Un VPS de 2 vCPU transcrit une phrase en moins d'une seconde avec `base`.
-- **Piper** (texte → voix) : construit depuis `docker/piper` (version de `piper-tts` épinglée, voix `fr_FR-siwis-medium`
-  par défaut ; autre voix : `docker compose build --build-arg PIPER_VOICE=en_US-lessac-medium piper`).
-- Les deux restent sur le réseau interne : rien n'est publié sur Internet, Caddy n'est pas concerné.
-- **OpenAI** (payant, facultatif) : dans Réglages → Voix, choisis OpenAI et colle une clé d'API (scellée sur le
-  serveur), ou mets `OPENAI_API_KEY` dans `.env`.
-- Réglages → Voix → **Tester** prononce une phrase puis la retranscrit. Sans service configuré, les appels repassent
-  tout seuls en mode navigateur.
+- **whisper.cpp** : image officielle `ghcr.io/ggml-org/whisper.cpp`, épinglée par empreinte (MIT). Le modèle
+  (`base` multilingue par défaut, 142 Mo ; `WHISPER_MODEL=small`, 466 Mo, comprend mieux le français mais est plus
+  lent) est téléchargé une fois dans le volume `whisper_models` par le petit service `whisper-model`, le seul à avoir
+  Internet, qui s'arrête aussitôt. Poids Whisper d'OpenAI sous licence MIT. Un VPS de 2 vCPU transcrit une phrase en
+  moins d'une seconde avec `base`.
+- **Piper** : construit depuis `docker/piper` (version de `piper-tts` épinglée ; moteur sous GPL-3.0, lancé comme
+  service séparé). Voix par défaut **`fr_FR-siwis-medium`** (une voix féminine française), entraînée sur le corpus SIWIS,
+  **licence CC BY 4.0** ([fiche du modèle](https://huggingface.co/rhasspy/piper-voices/blob/main/fr/fr_FR/siwis/medium/MODEL_CARD)) :
+  utilisation libre, y compris commerciale, en citant la source. Autre voix :
+  `docker compose -f docker-compose.vps.yml build --build-arg PIPER_VOICE=en_US-lessac-medium piper` (vérifie la licence
+  dans sa fiche ; `fr_FR-upmc` est en CC BY-SA 4.0, `fr_FR-tom` en AGPL).
+- **Réseau** : les deux ne sont que sur le réseau interne `sklubot_voice` (sans Internet), que seule l'application
+  rejoint. Ils ne sont ni publiés, ni joignables par les ordinateurs des bots ; Caddy n'est pas concerné.
+- **Mémoire** (estimations, en marche) : whisper `base` ≈ 300 à 500 Mo (plafond `WHISPER_MEM_LIMIT`, 1 Go par défaut ;
+  avec `small` compte 0,9 à 1,2 Go et mets `WHISPER_MEM_LIMIT=2g`), Piper ≈ 150 à 300 Mo (plafond `PIPER_MEM_LIMIT`,
+  768 Mo par défaut). Soit **≈ 0,5 à 0,8 Go** de plus en tout avec `base`. Ils passent après l'application pour le
+  processeur (`cpu_shares`) ; `WHISPER_THREADS` (2 par défaut) règle les fils de calcul de whisper.
+- **Les couper** : `SKLUBOT_VOICE_LOCAL=0` dans `.env`, puis `docker compose -f docker-compose.vps.yml up -d`. Les deux
+  services restent en veille (quelques Mo) et Sklubot ne s'en sert plus : la voix repasse par le navigateur, ou par le
+  service choisi dans Réglages → Voix.
+- **Autres services** : `SKLUBOT_VOICE_STT_URL` / `SKLUBOT_VOICE_TTS_URL` remplacent les adresses par défaut
+  (`http://whisper:8080`, `http://piper:5000`). **OpenAI** (payant, facultatif) : dans Réglages → Voix, choisis OpenAI
+  et colle une clé d'API (scellée sur le serveur), ou mets `OPENAI_API_KEY` dans `.env`.
+- Réglages → Voix → **Tester** prononce une phrase puis la retranscrit, et la page dit si la dictée du serveur est
+  disponible. Si un service ne répond pas (modèle encore en téléchargement, service arrêté), Sklubot le voit en
+  quelques secondes et les appels repassent tout seuls en mode navigateur.
+- **Dictée** : sur un navigateur sans reconnaissance vocale, ou quand elle échoue, l'application enregistre le micro,
+  le convertit en WAV 16 kHz et l'envoie au serveur (`POST /api/voice/transcribe`, une minute au plus par dictée,
+  12 par minute et par compte). Sans voix du serveur, elle dit où l'activer (Réglages → Voix).
 
 ### Une voix par bot : Kokoro (gratuit) et Fish Audio (payant, clé à toi)
 

@@ -910,7 +910,8 @@ export interface KokoroVoice { id: string; name: string; language: string; gende
 /** One voice of Fish Audio's library as the picker shows it (GET /voice/fish/voices). */
 export interface FishVoice { id: string; title: string; description: string; languages: string[]; tags: string[]; likes: number; uses: number; author: string; licensed: boolean; visibility: string; state: string }
 /** What a call will use: "server" when speech-to-text and text-to-speech are both reachable, else "browser". */
-export interface VoiceStatus { mode: "server" | "browser"; stt: string | null; tts: string | null; reason: string }
+/** `dictation`: the server can transcribe a recorded clip (POST /voice/transcribe), whatever the call mode. */
+export interface VoiceStatus { mode: "server" | "browser"; stt: string | null; tts: string | null; reason: string; dictation?: boolean }
 
 /** Server → browser events on GET /api/events (one JSON object per SSE message). */
 export type ServerEvent =

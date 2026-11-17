@@ -104,6 +104,8 @@ SKLUBOT_DEMO_MODE=$([ -n "${ANTHROPIC_API_KEY:-}${XAI_API_KEY:-}${OPENAI_API_KEY
 SKLUBOT_OPEN_SIGNUP=0
 SKLUBOT_MAX_DESKTOPS=$([ "$MEM_MB" -ge 7500 ] && echo 4 || { [ "$MEM_MB" -ge 3500 ] && echo 2 || echo 1; })
 SKLUBOT_DESKTOP_MEMORY=2g
+# Voix du serveur (whisper.cpp + Piper, ~0,5 à 0,8 Go) : coupée d'office sous 2 Go de mémoire ; 1 pour la remettre.
+SKLUBOT_VOICE_LOCAL=$([ "$MEM_MB" -ge 1900 ] && echo 1 || echo 0)
 ${SKLUBOT_HTTP_PORT:+SKLUBOT_HTTP_PORT=$SKLUBOT_HTTP_PORT}
 ${SKLUBOT_HTTPS_PORT:+SKLUBOT_HTTPS_PORT=$SKLUBOT_HTTPS_PORT}
 ${CADDY_IMAGE:+CADDY_IMAGE=$CADDY_IMAGE}

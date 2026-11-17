@@ -358,6 +358,7 @@ export function VoiceSection() {
           <span>{status.mode === "server" ? t("voice.statusServer", { stt: status.stt ?? "", tts: status.tts ?? "" }) : t("voice.statusBrowser", { reason: status.reason })}</span>
         </div>
       )}
+      {status && <p className="muted small" role="status">{t(status.dictation ? "voice.dictationOn" : "voice.dictationOff")}</p>}
       <fieldset className="field">
         <legend className="field-label">{t("voice.mode")}</legend>
         {(["auto", "server", "browser"] as const).map((m) => <label key={m} className="radio-row"><input type="radio" checked={s.mode === m} onChange={() => set({ mode: m })} /> {t(`voice.mode.${m}`)}</label>)}

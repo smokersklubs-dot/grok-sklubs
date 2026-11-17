@@ -59,6 +59,11 @@ export function apiUpload<T = unknown>(path: string, file: File): Promise<T> {
   return request<T>(path, { method: "POST", body: form });
 }
 
+/** POST raw bytes (an audio recording) with their own content type. */
+export function apiBlob<T = unknown>(path: string, blob: Blob): Promise<T> {
+  return request<T>(path, { method: "POST", headers: { "Content-Type": blob.type }, body: blob });
+}
+
 export const errText = (e: unknown): string => (e instanceof Error && e.message ? e.message : t("api.generic"));
 
 export const enc = encodeURIComponent;

@@ -29,6 +29,14 @@ const flag = (name: string, fallback = false) => (process.env[name] === undefine
 
 const dataDir = path.resolve(process.env.DATA_DIR ?? path.join(ROOT, "data"));
 
+/** The bundled speech services of docker-compose.coolify.yml / docker-compose.vps.yml (internal network "voice"). */
+export const LOCAL_STT_URL = "http://whisper:8080";
+export const LOCAL_TTS_URL = "http://piper:5000";
+export function localVoiceUrl(v: string | undefined, bundled: string): string {
+  const url = (v ?? "").trim().replace(/\/$/, "");
+  return url === bundled && process.env.VOICE_LOCAL === "0" ? "" : url;
+}
+
 export const config = {
   port: num("PORT", 8787),
   dataDir,
@@ -213,8 +221,10 @@ export const config = {
   mailTlsCert: process.env.MAIL_TLS_CERT ?? "",
   mailTlsKey: process.env.MAIL_TLS_KEY ?? "",
   /** Server-mediated voice: the self-hosted speech services (internal addresses, set by the operator) and OpenAI's API. */
-  voiceSttUrl: (process.env.VOICE_STT_URL ?? "").replace(/\/$/, ""),
-  voiceTtsUrl: (process.env.VOICE_TTS_URL ?? "").replace(/\/$/, ""),
+  /** The compose files point these at the bundled whisper.cpp and Piper (http://whisper:8080, http://piper:5000) by default;
+   *  VOICE_LOCAL=0 (SKLUBOT_VOICE_LOCAL=0) drops those two bundled addresses, any other address set by hand stays. */
+  voiceSttUrl: localVoiceUrl(process.env.VOICE_STT_URL, LOCAL_STT_URL),
+  voiceTtsUrl: localVoiceUrl(process.env.VOICE_TTS_URL, LOCAL_TTS_URL),
   voiceSttProvider: (process.env.VOICE_STT_PROVIDER ?? "whisper-cpp") as "whisper-cpp" | "openai",
   voiceTtsProvider: (process.env.VOICE_TTS_PROVIDER ?? "piper") as "piper" | "openai",
   openaiAudioUrl: (process.env.OPENAI_AUDIO_URL ?? "https://api.openai.com").replace(/\/$/, ""),

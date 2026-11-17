@@ -587,3 +587,13 @@ test("mandatory e-mail verification: an unconfirmed account gets 403 email_unver
     if (saved === undefined) delete process.env.EMAIL_VERIFICATION; else process.env.EMAIL_VERIFICATION = saved;
   }
 });
+
+test("dictation (POST /voice/transcribe?bot=): only someone who may talk to the bot uses its owner's speech services", async () => {
+  // B, a stranger: A's bots do not exist for them. V, a viewer: sees bot1 but may not talk to it; bot2 is not shared.
+  assert.equal((await call(api, "b", "POST", `/voice/transcribe?bot=${ids.bot1}`, {})).status, 404);
+  assert.equal((await call(api, "v", "POST", `/voice/transcribe?bot=${ids.bot1}`, {})).status, 403);
+  assert.equal((await call(api, "v", "POST", `/voice/transcribe?bot=${ids.bot2}`, {})).status, 404);
+  for (const who of ["b", "v"] as const) assert.ok(!MARK.test((await call(api, who, "POST", `/voice/transcribe?bot=${ids.bot1}`, {})).text));
+  // Without a session, nothing.
+  assert.equal((await call(api, null, "POST", "/voice/transcribe", {})).status, 401);
+});

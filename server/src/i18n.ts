@@ -127,6 +127,13 @@ const FR: Record<string, string> = {
   "Reading its mailbox": "Lit sa boîte mail",
   "No speech service is configured.": "Aucun service vocal n'est configuré.",
   "Hello, this is a voice test.": "Bonjour, ceci est un test de voix.",
+  // Dictation (voice/transcribe.ts)
+  "Your role in this workspace does not allow that.": "Ton rôle dans cet espace ne le permet pas.",
+  "Send the recording as a WAV file (16 kHz mono).": "Envoie l'enregistrement en fichier WAV (16 kHz, mono).",
+  "This recording is too long (one minute at most).": "Cet enregistrement est trop long (une minute au plus).",
+  "Too many dictations. Wait a minute and try again.": "Trop de dictées. Attends une minute et réessaie.",
+  "Speech recognition is not set up on the server. Turn it on in Settings → Voice.": "La reconnaissance vocale du serveur n'est pas activée. Active-la dans Réglages → Voix.",
+  "The speech recognition service did not answer. Try again in a moment.": "Le service de reconnaissance vocale n'a pas répondu. Réessaie dans un instant.",
   "New email": "Nouvel e-mail",
   "Read the new email. If it needs an answer, draft a short reply and ask me before sending it.": "Lis le nouvel e-mail. S'il appelle une réponse, rédige une courte réponse et demande-moi avant de l'envoyer.",
   // Wave 5b: spend checkpoints, committing clicks, card payments, files on the user's computer, Telegram commands, routines, first-task ideas.

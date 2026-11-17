@@ -56,6 +56,8 @@ export interface CallState {
   hearing?: boolean;
   /** When the user last cut the bot off (barge-in), for the indicator. */
   bargedAt?: number | null;
+  /** The error means the browser's own speech cannot work here: the call bar offers Settings → Voice. */
+  voiceSettings?: boolean;
   /** Which speech services the server uses ("whisper-cpp · piper"). */
   providers?: string;
 }

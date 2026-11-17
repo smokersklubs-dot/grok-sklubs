@@ -37,8 +37,8 @@ import { kokoroEnvUrl, kokoroTts, type KokoroEndpoint } from "./kokoro.js";
  *    VOICE_KOKORO_URL (compose profile "kokoro", internal network) or an address the user typed. Bots can have their own
  *    Kokoro voice too.
  *
- * Addresses: the operator's (VOICE_STT_URL / VOICE_TTS_URL, usually the compose services on the internal network) are
- * trusted and fetched directly; an address the user typed in Settings goes through guardedFetch (never this server's
+ * Addresses: the operator's (VOICE_STT_URL / VOICE_TTS_URL: by default the bundled whisper.cpp and Piper of the compose
+ * files, on the internal network "voice"; SKLUBOT_VOICE_LOCAL=0 turns them off) are trusted and fetched directly; an address the user typed in Settings goes through guardedFetch (never this server's
  * own network). API keys are sealed in the account's settings, or come from OPENAI_API_KEY; never sent anywhere else.
  */
 
@@ -120,7 +120,27 @@ function endpoint(userId: string, which: "stt" | "tts"): Endpoint | null {
   if (userUrl) return { url: userUrl, trusted: false, key: null };
   const env = which === "stt" ? config.voiceSttUrl : config.voiceTtsUrl;
   const envProvider = which === "stt" ? config.voiceSttProvider : config.voiceTtsProvider;
-  return env && envProvider === provider ? { url: env, trusted: true, key: null } : null;
+  return env && envProvider === provider && reachable(env) ? { url: env, trusted: true, key: null } : null;
+}
+
+/**
+ * Whether the operator's own speech service answers (the bundled whisper.cpp may still be downloading its model, or the
+ * services were switched off with SKLUBOT_VOICE_LOCAL=0 on a hand-made setup): any HTTP answer counts as up, only a
+ * failed connection as down. Checked in the background, at most every 30 s; never checked yet = up, so the first call
+ * is not delayed. A service that is down makes the app use the browser's own speech instead of failing every call.
+ */
+const health = new Map<string, { up: boolean; at: number; busy: boolean }>();
+export function reachable(url: string, now = Date.now()): boolean {
+  let h = health.get(url);
+  if (!h) { h = { up: true, at: 0, busy: false }; health.set(url, h); }
+  if (!h.busy && now - h.at > 30_000) {
+    const entry = h;
+    entry.busy = true;
+    fetch(`${url}/`, { signal: AbortSignal.timeout(3000) })
+      .then((r) => { void r.body?.cancel().catch(() => undefined); entry.up = true; }, () => { entry.up = false; })
+      .finally(() => { entry.at = Date.now(); entry.busy = false; });
+  }
+  return h.up;
 }
 
 /** Where Kokoro answers for this account: its own Kokoro address (Settings → Voice), else the server's, else nowhere. */
@@ -141,13 +161,16 @@ export function botVoiceFor(userId: string, botId?: string | null): BotVoiceChoi
 /** What a call will use. With `botId`: that bot's own voice counts as its text-to-speech (it speaks with it). */
 export function voiceStatus(userId: string, botId?: string | null): VoiceStatus {
   const s = voiceSettings(userId);
-  if (s.mode === "browser") return { mode: "browser", stt: null, tts: null, reason: "browser mode chosen" };
+  // One-shot dictation (POST /voice/transcribe) only needs speech-to-text, whatever the call mode: the app uses it when
+  // the browser has no recognition of its own, or when it fails (iOS Safari, Firefox, Brave, many Android web views).
   const stt = endpoint(userId, "stt");
+  const dictation = !!stt;
+  if (s.mode === "browser") return { mode: "browser", stt: null, tts: null, reason: "browser mode chosen", dictation };
   const own = botVoiceFor(userId, botId);
   const tts = own ? true : endpoint(userId, "tts");
   const ttsName = own ? own.provider : s.tts.provider;
-  if (!stt || !tts) return { mode: "browser", stt: stt ? s.stt.provider : null, tts: tts ? ttsName : null, reason: !stt && !tts ? "no speech service configured" : !stt ? "no speech-to-text service" : "no text-to-speech service" };
-  return { mode: "server", stt: s.stt.provider, tts: ttsName, reason: "" };
+  if (!stt || !tts) return { mode: "browser", stt: stt ? s.stt.provider : null, tts: tts ? ttsName : null, reason: !stt && !tts ? "no speech service configured" : !stt ? "no speech-to-text service" : "no text-to-speech service", dictation };
+  return { mode: "server", stt: s.stt.provider, tts: ttsName, reason: "", dictation };
 }
 
 /** Who pays a Fish Audio line: the account's own key ("own" in hosted mode; nothing to say otherwise). */

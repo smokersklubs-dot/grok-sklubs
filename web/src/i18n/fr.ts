@@ -765,6 +765,12 @@ export const fr: Dict = {
   "mic.none": "Aucun micro détecté.",
   "mic.network": "La reconnaissance vocale a besoin d’une connexion et n’a pas pu joindre son service.",
   "mic.lang": "Ton navigateur ne prend pas en charge cette langue pour la reconnaissance vocale.",
+  "mic.unavailable": "La dictée vocale n'est pas disponible sur ce navigateur. Active la reconnaissance vocale du serveur dans Réglages → Voix.",
+  "mic.openVoiceSettings": "Ouvrir Réglages → Voix",
+  "mic.switched": "La reconnaissance vocale de ce navigateur ne marche pas ici : la prochaine dictée passera par le serveur. Réessaie.",
+  "call.unavailable": "Les appels vocaux ne sont pas disponibles sur ce navigateur. Active la voix du serveur dans Réglages → Voix.",
+  "voice.dictationOn": "Dictée sur tous les navigateurs : le serveur transcrit le micro quand le navigateur ne sait pas le faire.",
+  "voice.dictationOff": "Pas de reconnaissance vocale sur le serveur : la dictée ne marche que dans les navigateurs qui reconnaissent la voix eux-mêmes (pas iOS Safari, Firefox, Brave…).",
   "speech.codeOmitted": "(code non lu)",
   "speech.link": "lien",
 
@@ -1943,8 +1949,8 @@ export const fr: Dict = {
   "ws.summary": "{n} membre(s) · {seats} places · tu es {role}",
   "ws.unshare": "Ne plus partager",
   "voice.hint.openai": "Payant à l'usage. La clé est scellée sur le serveur ; laisse l'adresse vide pour OpenAI, ou indique un serveur compatible OpenAI.",
-  "voice.hint.whisper": "Le serveur whisper.cpp (profil compose « voice »). Adresse vide : celle du serveur (VOICE_STT_URL).",
-  "voice.hint.piper": "Le serveur HTTP de Piper (profil compose « voice »). Adresse vide : celle du serveur (VOICE_TTS_URL).",
+  "voice.hint.whisper": "Le serveur whisper.cpp (lancé par défaut avec Sklubot). Adresse vide : celle du serveur (VOICE_STT_URL).",
+  "voice.hint.piper": "Le serveur HTTP de Piper (lancé par défaut avec Sklubot). Adresse vide : celle du serveur (VOICE_TTS_URL).",
   "ws.summaryRole": "Ton rôle : {role}",
   // Wave 7: Agent Reach, credential relay, key health, project import, temporary links, paid tools.
   "settings.section.keys": "Clés et connexions",
