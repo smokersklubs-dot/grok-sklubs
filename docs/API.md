@@ -152,6 +152,8 @@ any route. Tokens are refreshed before they expire and on a 401; when the refres
 | GET | `/export/data` | – | JSON file download: everything the account holds (no passwords or tokens) |
 | GET | `/export/team` | – | JSON file download: bots with their settings, skills and routines (no chats, memories or secrets) |
 | POST | `/import/team` | the JSON from `/export/team` | `{ created: number }` |
+| POST | `/import/grok/preview` | `{ text }`: the reply pasted from the other assistant (200 KB at most) | `GrokImportPreview`: bots, apps, what was stripped, warnings, room left on the plan — nothing is created (see `docs/IMPORT-GROK.md`) |
+| POST | `/import/grok/commit` | `{ previewId, bots: [{ index, include, name?, skills?: [{ index, include, name? }], routines?: [{ index, include, name?, cron? }], memories?: number[] }] }` | `{ report }`: bots created (careful, draft skills, paused routines); 400 `{ code }` when the preview expired or nothing is ticked; 403 `plan_limit` / 409 when the bots do not fit — nothing is created then |
 | GET | `/usage.csv` | – | CSV download of this month's usage, one line per model call |
 
 Notes:

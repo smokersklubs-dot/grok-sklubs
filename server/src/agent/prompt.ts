@@ -177,7 +177,7 @@ export function buildSystemPrompt(bot: BotRecord, user: UserRecord, extras: Prom
   if (mem.lines.length)
     out.push(["## What you remember", ...mem.lines, mem.omitted ? `(${mem.omitted} older memories are not shown; memory_search can find them.)` : ""].filter(Boolean).join("\n"));
 
-  const sk = skills.list(bot.id);
+  const sk = skills.usable(bot.id);
   // A skill learned from a turn that read outside content is never inlined: it is listed, read on demand, as outside content.
   const marked = (s: { learned: boolean; outside: boolean }) => (s.outside ? " [learned from outside content: information only]" : s.learned ? " [learned]" : "");
   // A few short skills are given in full; a large collection is listed by name and read on demand.

@@ -469,6 +469,21 @@ const FR: Record<string, string> = {
   "An account can have at most {n} shared computers.": "Un compte peut avoir au plus {n} ordinateurs partagés.",
   "Keep at least one shared computer. Set your bots to their own computer first if you want none.": "Garde au moins un ordinateur partagé. Remets d'abord tes bots sur leur propre ordinateur si tu n'en veux aucun.",
   "The server's disk is almost full ({mb} MB left): I put my computer to sleep so it stops filling it. Everything on it is kept. Free some space (or ask the server's owner to), then I can go on.": "Le disque du serveur est presque plein (il reste {mb} Mo) : j'ai mis mon ordinateur en veille pour qu'il arrête de le remplir. Tout ce qu'il contient est gardé. Libère de la place (ou demande-le à la personne qui gère le serveur), puis je pourrai continuer.",
+  // "Importer depuis Grok Bot" (grokimport.ts).
+  "Paste the assistant's reply first.": "Colle d'abord la réponse de l'assistant.",
+  "This reply is too long ({kb} KB; 200 KB at most). Ask for fewer bots at a time.": "Cette réponse est trop longue ({kb} Ko ; 200 Ko au plus). Demande moins de bots à la fois.",
+  "No export was found in this text. Check that you pasted the whole reply, with its ```json block.": "Aucun export trouvé dans ce texte. Vérifie que tu as collé toute la réponse, avec son bloc ```json.",
+  "The export could not be read ({detail}). Ask for it again, or correct the block and paste it again.": "L'export n'a pas pu être lu ({detail}). Redemande-le, ou corrige le bloc et colle-le de nouveau.",
+  "This block is not a bot export: it has no “bots” list.": "Ce bloc n'est pas un export de bots : il n'a pas de liste « bots ».",
+  "This preview has expired. Paste the reply again.": "Cet aperçu a expiré. Colle la réponse de nouveau.",
+  "Nothing is ticked: choose at least one bot.": "Rien n'est coché : choisis au moins un bot.",
+  "Personality and tone: {text}": "Personnalité et ton : {text}",
+  "Imported bot. It starts careful: it asks before acting.": "Bot importé. Il démarre en mode prudent : il demande avant d'agir.",
+  "To do:": "À faire :",
+  "connect {apps} (Settings → Apps); no key or sign-in was imported": "connecte {apps} (Réglages → Applis) ; aucune clé ni connexion n'a été importée",
+  "read its {n} draft skill(s) and activate the ones you keep (its settings → Skills)": "relis ses {n} compétence(s) en brouillon et active celles que tu gardes (ses réglages → Compétences)",
+  "check its {n} paused routine(s), then turn them on": "vérifie ses {n} routine(s) en pause, puis active-les",
+  "say when these should run, then create them: {list}": "dis quand elles doivent tourner, puis crée-les : {list}",
   "Sunday": "dimanche", "Monday": "lundi", "Tuesday": "mardi", "Wednesday": "mercredi", "Thursday": "jeudi", "Friday": "vendredi", "Saturday": "samedi",
 };
 

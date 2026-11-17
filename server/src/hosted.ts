@@ -507,6 +507,22 @@ setRoutineGuard((botId) => {
   if (owner && plan?.maxRoutines !== null && plan?.maxRoutines !== undefined && countRoutines(owner) >= plan.maxRoutines)
     throw new PlanLimitError("routines", "Your plan allows {n} active routines. Pause or remove one, or change plan (Settings → My subscription), to add another.", { n: plan.maxRoutines });
 });
+/**
+ * Room left on the account's plan before an import ("Importer depuis Grok Bot"): bots, and active routines (null: no
+ * limit — not hosted mode, an operator, or a plan without that limit).
+ */
+export function planRoom(userId: string): { bots: number | null; maxBots: number | null; activeRoutines: number | null; maxRoutines: number | null } {
+  const plan = limited(userId);
+  const maxBots = plan?.maxBots ?? null, maxRoutines = plan?.maxRoutines ?? null;
+  return {
+    maxBots, bots: maxBots === null ? null : Math.max(0, maxBots - countBots(userId)),
+    maxRoutines, activeRoutines: maxRoutines === null ? null : Math.max(0, maxRoutines - countRoutines(userId)),
+  };
+}
+/** The plan's refusal for `kind`, as the guards above throw it (for a check made before anything is created). */
+export const planLimitError = (kind: "bots" | "routines", n: number) => kind === "bots"
+  ? new PlanLimitError("bots", "Your plan allows {n} bots. Remove one, or change plan (Settings → My subscription), to create another.", { n })
+  : new PlanLimitError("routines", "Your plan allows {n} active routines. Pause or remove one, or change plan (Settings → My subscription), to add another.", { n });
 /** How many computers this account may keep awake at once (null: only the server's own limit), and the error to give. */
 export function awakeLimitFor(userId: string): { max: number; error: () => PlanLimitError } | null {
   const plan = limited(userId);

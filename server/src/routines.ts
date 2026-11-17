@@ -131,11 +131,13 @@ export const routines = {
       botId, f.trigger, f.prompt.trim(), f.schedule ?? "", f.timezone ?? "UTC", f.runAt ?? 0, f.watchTarget ?? "");
     return r ? toRoutine(r) : null;
   },
-  create(botId: string, f: { name: string; prompt: string; trigger: Routine["trigger"]; schedule?: string; timezone?: string; runAt?: number | null; watch?: { kind: string; target: string; everyMin: number }; native?: { accountId: string; query?: string; channel?: string; mentionsOnly?: boolean; leadMin?: number; everyMin: number }; inputs?: RoutineInput[] }): RoutineRecord {
-    routineGuard(botId);
+  create(botId: string, f: { name: string; prompt: string; trigger: Routine["trigger"]; schedule?: string; timezone?: string; runAt?: number | null; watch?: { kind: string; target: string; everyMin: number }; native?: { accountId: string; query?: string; channel?: string; mentionsOnly?: boolean; leadMin?: number; everyMin: number }; inputs?: RoutineInput[]; paused?: boolean }): RoutineRecord {
+    // `paused`: created switched off (an import): it never runs before the user turns it on, and an inactive routine does
+    // not count against the plan's limit of active routines (the guard runs when it is turned on).
+    if (!f.paused) routineGuard(botId);
     const id = newId("rtn");
-    q.run("INSERT INTO routines (id, bot_id, name, prompt, trigger, schedule, timezone, run_at, hook_token, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-      id, botId, f.name.trim().slice(0, 80), f.prompt.trim(), f.trigger, f.schedule ?? "", f.timezone ?? "UTC", f.runAt ?? null, f.trigger === "webhook" ? randomToken(24) : null, now());
+    q.run("INSERT INTO routines (id, bot_id, name, prompt, trigger, schedule, timezone, run_at, hook_token, enabled, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      id, botId, f.name.trim().slice(0, 80), f.prompt.trim(), f.trigger, f.schedule ?? "", f.timezone ?? "UTC", f.runAt ?? null, f.trigger === "webhook" ? randomToken(24) : null, f.paused ? 0 : 1, now());
     if (f.watch) q.run("UPDATE routines SET watch_kind = ?, watch_target = ?, watch_every_min = ? WHERE id = ?", f.watch.kind, f.watch.target, f.watch.everyMin, id);
     if (f.inputs?.length && f.trigger === "cron") q.run("UPDATE routines SET skip_unchanged = 1, inputs = ? WHERE id = ?", JSON.stringify(f.inputs.slice(0, 5)), id);
     if (f.native) {

@@ -450,7 +450,8 @@ export interface Memory { id: string; botId: string; text: string; source: "chat
  */
 export interface SkillExtras { needs: string; check: string; output: string; approvals: string }
 export const SKILL_EXTRA_KEYS = ["needs", "check", "output", "approvals"] as const;
-export interface Skill extends SkillExtras { id: string; botId: string; name: string; description: string; body: string; shared: boolean; learned: boolean; outside: boolean; createdAt: number; updatedAt: number }
+/** `draft`: imported from outside and not activated yet by the user: listed in the settings, never given to the bot. */
+export interface Skill extends SkillExtras { id: string; botId: string; name: string; description: string; body: string; shared: boolean; learned: boolean; outside: boolean; draft: boolean; createdAt: number; updatedAt: number }
 /** A skill a bot can use: one of its own, or one another bot of the same user shared. */
 export interface SkillRef { id: string; name: string; description: string; botId: string; botName: string; own: boolean; shared: boolean }
 
@@ -974,6 +975,102 @@ export interface ImportVariable { name: string; isSecret: boolean; provider: str
 export interface ImportSkill { name: string; description: string; path: string; mentionsKey: boolean; exists: boolean }
 export interface ImportPreview { previewId: string; variables: ImportVariable[]; skills: ImportSkill[]; ignored: string[] }
 export interface ImportReport { created: string[]; updated: string[]; skipped: string[]; toComplete: string[]; skills: string[]; health: { name: string; state: HealthState; detail: string }[] }
+
+// ── "Importer depuis Grok Bot" (grokimport.ts, docs/IMPORT-GROK.md) ─────────────────────────────────────────────
+/**
+ * The user asks the assistant they use elsewhere to describe its bots with the prompt below, then pastes its reply here.
+ * The reply must hold one ```json block: { "format": "sklubot-bots", "version": 1, "bots": [...] }. The prompt and the
+ * format are Sklubot's own (docs/IMPORT-GROK.md documents every field).
+ */
+export const GROK_EXPORT_FORMAT = "sklubot-bots";
+export const GROK_EXPORT_VERSION = 1;
+const EXPORT_SHAPE = `{
+  "format": "sklubot-bots",
+  "version": 1,
+  "bots": [
+    {
+      "name": "",
+      "role": "",
+      "personality": "",
+      "instructions": "",
+      "memories": [""],
+      "skills": [{ "name": "", "when": "", "steps": [""] }],
+      "routines": [{ "name": "", "schedule": "", "cron": "", "timezone": "", "task": "" }],
+      "apps": [""]
+    }
+  ]
+}`;
+export const GROK_EXPORT_PROMPT_FR = `Je déplace mes bots vers une autre application. Prépare un export de chacun des bots (ou assistants) que tu fais tourner pour moi, en respectant exactement ces règles.
+
+1. Ta réponse contient UN SEUL bloc de code, ouvert par \`\`\`json et fermé par \`\`\`. Une phrase avant ou après le bloc est permise, rien d'autre dans le bloc.
+2. Le bloc est un JSON valide (guillemets droits, aucune virgule en trop, aucun commentaire) de cette forme exacte :
+${EXPORT_SHAPE}
+3. Un objet par bot dans "bots". Ce que veut dire chaque champ :
+   - "name" : le nom du bot.
+   - "role" : son travail, en une ou deux phrases.
+   - "personality" : sa personnalité et son ton.
+   - "instructions" : les consignes qu'il suit, telles que je les lui ai données.
+   - "memories" : les faits sur moi qu'il garde et que j'ai accepté de partager. Un fait par ligne ; je les relirai un par un.
+   - "skills" : ses savoir-faire ; pour chacun, son nom, quand s'en servir ("when") et ses étapes dans l'ordre ("steps").
+   - "routines" : ses tâches régulières ; "schedule" dit quand en mots simples, "cron" donne l'expression cron à 5 champs si tu en es sûr (sinon ""), "timezone" le fuseau horaire (par exemple "Europe/Paris", sinon ""), "task" ce qu'il fait à chaque fois.
+   - "apps" : les applications qui lui sont connectées, par leur nom seulement (par exemple "Gmail").
+4. Une rubrique vide reste vide : [] ou "". N'invente rien.
+5. Ne mets JAMAIS dans l'export : mot de passe, clé d'API, jeton (token), cookie, code de vérification, identifiant de connexion, numéro de carte ou de compte bancaire, ni aucune donnée privée d'autres personnes (leurs coordonnées, leurs messages). Si un texte en contient, remplace ce passage par [RETIRÉ].`;
+export const GROK_EXPORT_PROMPT_EN = `I am moving my bots to another app. Prepare an export of each bot (or assistant) you run for me, following these rules exactly.
+
+1. Your reply contains ONE code block only, opened with \`\`\`json and closed with \`\`\`. A sentence before or after the block is fine; nothing else goes inside the block.
+2. The block is valid JSON (straight quotes, no extra commas, no comments) in exactly this shape:
+${EXPORT_SHAPE}
+3. One object per bot in "bots". What each field means:
+   - "name": the bot's name.
+   - "role": its job, in one or two sentences.
+   - "personality": its personality and tone.
+   - "instructions": the instructions it follows, as I gave them.
+   - "memories": the facts about me it keeps and that I agreed to share. One fact per line; I will review each one.
+   - "skills": what it knows how to do; for each, its name, when to use it ("when") and its steps in order ("steps").
+   - "routines": its recurring jobs; "schedule" says when in plain words, "cron" gives the 5-field cron expression if you are sure (otherwise ""), "timezone" the time zone (for example "Europe/Paris", otherwise ""), "task" what it does each time.
+   - "apps": the apps connected to it, by name only (for example "Gmail").
+4. An empty section stays empty: [] or "". Do not make anything up.
+5. NEVER put in the export: passwords, API keys, tokens, cookies, verification codes, sign-in details, card or bank account numbers, or any private data about other people (their contact details, their messages). If a text contains any, replace that part with [REMOVED].`;
+
+export interface GrokImportSkill { name: string; when: string; steps: string }
+/** `cron`: a valid 5-field expression, or "" (the routine then needs one before it can be created); `describe`: when it runs, in words. */
+export interface GrokImportRoutine { name: string; schedule: string; cron: string; timezone: string; task: string; describe: string }
+/** `flagged`: something that looked like a secret was taken out of it. */
+export interface GrokImportMemory { text: string; flagged: boolean }
+export interface GrokImportBot {
+  name: string; nameTaken: boolean; role: string; personality: string; instructions: string;
+  memories: GrokImportMemory[]; skills: GrokImportSkill[]; routines: GrokImportRoutine[]; apps: string[];
+}
+/** What was taken out before the preview: where (e.g. "Ava › skill “Invoices”"), and what it looked like. Never the value. */
+export interface GrokImportStripped { where: string; kind: SecretFound["kind"] | "cookie" | "card" | "field" }
+export type GrokImportWarningCode =
+  | "no_version" | "newer_version" | "repaired" | "several_blocks" | "too_many_bots" | "too_many_items" | "unknown_fields"
+  | "routine_no_cron" | "bots_limit" | "routines_limit" | "team_full";
+export interface GrokImportWarning { code: GrokImportWarningCode; n?: number; detail?: string }
+export interface GrokImportPreview {
+  previewId: string; bots: GrokImportBot[];
+  /** Every app named by the bots, once each (the "to connect" checklist). */
+  apps: string[];
+  stripped: GrokImportStripped[]; warnings: GrokImportWarning[];
+  /** Room left on the plan (null: no limit): bots that can still be created, routines that can still be active. */
+  room: { bots: number | null; activeRoutines: number | null };
+}
+/** What the user kept in the preview. Indexes point into the preview; names may be edited; memories: the ticked indexes. */
+export interface GrokImportChoice {
+  index: number; include: boolean; name?: string;
+  skills?: { index: number; include: boolean; name?: string }[];
+  routines?: { index: number; include: boolean; name?: string; cron?: string }[];
+  memories?: number[];
+  /** The apps kept on the bot's to-do list (indexes; left out: all of them). */
+  apps?: number[];
+}
+export interface GrokImportReport {
+  bots: { id: string; name: string }[]; skills: number; routines: number; memories: number;
+  /** Routines left out for want of a valid schedule (listed in the bot's to-do notice). */
+  unscheduled: string[];
+  apps: string[];
+}
 
 /** Paid third-party tool calls (spec 08 A4), in micro-dollars (integers): reserved before, settled after. */
 export interface ThirdPartySpend { todayUsd: number; capUsd: number | null; monthUsd: number; recent: { at: number; botId: string; tool: string; provider: string; usd: number; status: string }[] }

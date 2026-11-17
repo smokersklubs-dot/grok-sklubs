@@ -68,6 +68,7 @@ import { publicLinks, servePublicLink, DEFAULT_LINK_MIN } from "./publiclinks.js
 import { reachLogin, reachState, LOGIN_CHANNELS } from "./reach.js";
 import { checkAll, checkConnector, checkSecret, healthList, recordHealth } from "./health.js";
 import { commitImport, previewImport, type ImportBinding } from "./projectimport.js";
+import { commitGrokImport, GrokImportError, previewGrokImport } from "./grokimport.js";
 import { cacheSettings, DEFAULT_CACHE, saveCacheSettings, thirdPartySummary } from "./thirdparty.js";
 import { paidConsents } from "./providers.js";
 import { answerCheckpoint, checkpoints } from "./agent/spend.js";
@@ -119,6 +120,8 @@ api.onError((err, c) => {
     const loc = (c.get("user") as UserRecord | undefined)?.locale ?? pickLocale(undefined, c.req.header("accept-language"));
     return c.json({ error: err.text(loc), code: err instanceof HostedError ? err.code ?? "hosted" : "plan_limit", ...(isPlanLimit(err) ? { limit: err.kind } : {}) }, err instanceof HostedError ? err.status : 403);
   }
+  // "Importer depuis Grok Bot" (grokimport.ts): a pasted reply that cannot be read, in the caller's language.
+  if (err instanceof GrokImportError) return c.json({ error: err.text((c.get("user") as UserRecord | undefined)?.locale), code: err.code }, err.status);
   // Usage caps (usagecaps.ts): a refusal in the caller's language.
   if (err instanceof CapError) return c.json({ error: err.text((c.get("user") as UserRecord | undefined)?.locale) }, err.status);
   // MAX_BOTS reached: a clear refusal, never a silent eviction.
@@ -1121,7 +1124,10 @@ api.post("/bots/:id/skills", async (c) => {
 api.patch("/skills/:id", async (c) => {
   const cur = skills.owned(c.get("user").id, c.req.param("id")) ?? fail(404, "That skill does not exist.");
   const b = await body(c);
-  return c.json({ skill: skills.update(cur.id, { ...skillFields(b, cur), shared: typeof b.shared === "boolean" ? b.shared : undefined }) });
+  // `draft: false` activates an imported skill (the bot gets it from then on).
+  const skill = skills.update(cur.id, { ...skillFields(b, cur), shared: typeof b.shared === "boolean" ? b.shared : undefined, draft: typeof b.draft === "boolean" ? b.draft : undefined });
+  if (cur.draft && !skill.draft) audit(c.get("user").id, "account", `Skill activated: ${skill.name}`, cur.botId);
+  return c.json({ skill });
 });
 /** Skills a bot can follow: its own and those its teammates shared (for "/skill" in the composer). */
 api.get("/bots/:id/skills/available", (c) => c.json({ skills: skills.refs(ownAgent(c).id) }));
@@ -1357,6 +1363,22 @@ api.post("/import/team", async (c) => {
   }
   if (created) { emit(user.id, { type: "roster" }); audit(user.id, "account", `Team imported: ${created} bots`); }
   return c.json({ created });
+});
+
+/**
+ * "Importer depuis Grok Bot" (grokimport.ts, docs/IMPORT-GROK.md). Preview: { text: the pasted reply } → what would be
+ * created, cleaned of secrets (nothing is created). Commit: { previewId, bots: GrokImportChoice[] } → the bots, as a safe
+ * package (careful, draft skills, paused routines, ticked memories only, apps as a to-do).
+ */
+api.post("/import/grok/preview", async (c) => {
+  if (Number(c.req.header("content-length") ?? 0) > 1_000_000) fail(413, "Too large: paste 200 KB of text at most.");
+  const b = await body(c);
+  return c.json(previewGrokImport(c.get("user"), typeof b.text === "string" ? b.text : ""));
+});
+api.post("/import/grok/commit", async (c) => {
+  const b = await body(c);
+  const choices = Array.isArray(b.bots) ? b.bots.slice(0, 50).filter((x: unknown) => x && typeof x === "object") : [];
+  return c.json({ report: commitGrokImport(c.get("user"), String(b.previewId ?? ""), choices) });
 });
 
 api.get("/usage.csv", (c) => download(c, "sklubot-usage.csv", "text/csv; charset=utf-8", usageCsv(c.get("user").id)));

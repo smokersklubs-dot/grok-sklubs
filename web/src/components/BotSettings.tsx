@@ -512,6 +512,16 @@ function Skills({ bot, bundle }: { bot: Bot; bundle: BotBundle | undefined }) {
       setError(errText(e));
     }
   };
+  const activate = async (s: Skill) => {
+    setError(null);
+    try {
+      await api("PATCH", `/skills/${s.id}`, { draft: false });
+      await loadBundle(bot.id);
+      showToast(t("skill.activated", { name: s.name }));
+    } catch (e) {
+      setError(errText(e));
+    }
+  };
   return (
     <div className="settings-pane">
       <div className="pane-intro">
@@ -542,9 +552,15 @@ function Skills({ bot, bundle }: { bot: Bot; bundle: BotBundle | undefined }) {
             ) : (
               <li key={s.id} className="list-row is-card skill-row">
                 <div className="list-row-text">
-                  <span className="list-row-title">{s.name}{s.shared && <span className="pill is-shared">{t("skill.shared")}</span>}</span>
+                  <span className="list-row-title">{s.name}{s.shared && <span className="pill is-shared">{t("skill.shared")}</span>}{s.draft && <span className="chip">{t("skill.draft")}</span>}</span>
                   <span className="list-row-sub">{s.description || s.body.split("\n").find((l) => l.trim()) || ""}</span>
+                  {s.draft && <span className="list-row-sub warn-text">{t("skill.draftHint")}</span>}
                 </div>
+                {s.draft && (
+                  <button type="button" className="btn btn-small btn-primary" onClick={() => void activate(s)}>
+                    <Icon name="check" size={14} /> {t("skill.activate")}
+                  </button>
+                )}
                 <span className="skill-share">
                   <span className="muted small">{t("skill.shareShort")}</span>
                   <Toggle checked={s.shared} label={t("skill.shareWithTeam")} onChange={(on) => void share(s, on)} />

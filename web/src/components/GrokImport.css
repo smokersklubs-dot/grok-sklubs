@@ -1,0 +1,67 @@
+/* "Importer depuis Grok Bot" (GrokImport.tsx). */
+.grok-modal.modal-lg { max-width: 760px; }
+.grok-body { gap: 14px; }
+.grok-foot { flex: none; justify-content: flex-end; padding: 12px 20px 14px; border-top: 1px solid var(--border); background: var(--surface); }
+
+.grok-steps { display: flex; gap: 6px; list-style: none; margin: 0; padding: 0; }
+.grok-steps li { flex: 1; display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: var(--r-md); background: var(--surface-2); color: var(--text-3); font-size: 12.5px; font-weight: 600; min-width: 0; }
+.grok-steps li.is-current { background: var(--info-soft); color: var(--info); }
+.grok-steps li.is-done { color: var(--ok); }
+.grok-step-num { flex: none; display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 999px; border: 1.5px solid currentColor; font-size: 11px; }
+.grok-step-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.grok-section { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.grok-howto { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; font-size: 13.5px; color: var(--text-2); }
+.grok-prompt-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.grok-prompt {
+  margin: 0; max-height: 300px; overflow: auto; padding: 12px 14px; border-radius: var(--r-md);
+  background: var(--surface-2); border: 1px solid var(--border); font-family: var(--mono); font-size: 12px; line-height: 1.5;
+  white-space: pre-wrap; word-break: break-word; color: var(--text);
+}
+.grok-paste { font-family: var(--mono); font-size: 12px; min-height: 220px; }
+.grok-size { text-align: right; margin-top: -4px; }
+
+.grok-stripped p { margin: 0 0 4px; }
+.grok-stripped details { font-weight: 450; }
+.grok-stripped ul { margin: 6px 0 0; padding-left: 18px; }
+.grok-warnings { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.grok-warnings li { display: flex; gap: 6px; align-items: flex-start; }
+.grok-warnings .icon { flex: none; margin-top: 2px; }
+
+.grok-bot { border: 1px solid var(--border); border-radius: var(--r-lg); padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; background: var(--surface); }
+.grok-bot.is-off { opacity: 0.6; }
+.grok-bot-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.grok-name { flex: 1 1 180px; min-width: 0; font-weight: 650; }
+.grok-role { margin: 0; color: var(--text-2); font-size: 13px; }
+.grok-parts { display: flex; flex-direction: column; gap: 10px; }
+.grok-instructions summary { cursor: pointer; font-size: 13px; color: var(--text-2); }
+.grok-pre { white-space: pre-wrap; }
+.grok-group { border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.grok-group legend { display: flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 650; color: var(--text-2); text-transform: none; padding: 0; margin-bottom: 4px; }
+.grok-group legend .btn { margin-left: auto; }
+.grok-item { display: flex; align-items: flex-start; gap: 8px; min-width: 0; }
+.grok-item > input[type="checkbox"] { margin-top: 7px; flex: none; }
+.grok-item-text { display: flex; flex-direction: column; gap: 3px; flex: 1; min-width: 0; }
+.grok-item-row { display: flex; gap: 6px; flex-wrap: wrap; }
+.grok-item-row .input { flex: 1 1 160px; min-width: 0; }
+.grok-cron { font-family: var(--mono); flex: 0 1 150px !important; }
+.grok-cron.is-invalid { border-color: var(--warn); }
+.grok-memory { cursor: pointer; font-size: 13px; padding: 2px 0; }
+.grok-memory > input[type="checkbox"] { margin-top: 3px; }
+.grok-apps { display: flex; flex-wrap: wrap; gap: 2px 8px; }
+.grok-app { width: auto; font-size: 13px; padding: 4px 6px; }
+.grok-summary { margin: 4px 0 0; font-weight: 650; }
+.grok-done-list { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; }
+
+@media (max-width: 520px) {
+  .grok-steps li { padding: 6px; justify-content: center; }
+  .grok-step-label { display: none; }
+  .grok-steps li.is-current .grok-step-label { display: inline; }
+  .grok-bot { padding: 10px; }
+  .grok-cron { flex: 1 1 100% !important; }
+  .grok-foot { padding: 10px 14px; }
+  .grok-foot .btn { flex: 1; justify-content: center; }
+}
+.grok-item-text > .input { width: 100%; max-width: 380px; }
+.grok-item-text > .warn-text { display: flex; gap: 5px; align-items: flex-start; }
+.grok-item-text > .warn-text .icon { flex: none; margin-top: 2px; }

@@ -522,7 +522,7 @@ export const memories = {
   },
 };
 
-const toSkill = (r: any): Skill => ({ id: r.id, botId: r.bot_id, name: r.name, description: r.description, body: r.body, needs: r.needs ?? "", check: r.check_how ?? "", output: r.output ?? "", approvals: r.approvals ?? "", shared: !!r.shared, learned: !!r.learned, outside: !!r.outside, createdAt: r.created_at, updatedAt: r.updated_at });
+const toSkill = (r: any): Skill => ({ id: r.id, botId: r.bot_id, name: r.name, description: r.description, body: r.body, needs: r.needs ?? "", check: r.check_how ?? "", output: r.output ?? "", approvals: r.approvals ?? "", shared: !!r.shared, learned: !!r.learned, outside: !!r.outside, draft: !!r.draft, createdAt: r.created_at, updatedAt: r.updated_at });
 /** Column of each structured part of a skill. */
 const SKILL_COLUMNS: Record<keyof SkillExtras, string> = { needs: "needs", check: "check_how", output: "output", approvals: "approvals" };
 function saveSkillExtras(id: string, extras: Partial<SkillExtras> | undefined) {
@@ -544,35 +544,39 @@ export function skillText(s: Pick<Skill, "description" | "body"> & Partial<Skill
 }
 export const skills = {
   list: (botId: string) => q.all("SELECT * FROM skills WHERE bot_id = ? ORDER BY created_at", botId).map(toSkill),
+  /** The skills a bot is given (its prompt, skill_read): its own, without the drafts the user has not activated yet. */
+  usable: (botId: string) => q.all("SELECT * FROM skills WHERE bot_id = ? AND draft = 0 ORDER BY created_at", botId).map(toSkill),
   owned(userId: string, id: string) {
     const r = q.get("SELECT s.* FROM skills s JOIN bots b ON b.id = s.bot_id WHERE s.id = ? AND b.user_id = ?", id, userId);
     return r ? toSkill(r) : null;
   },
   /** `learned`/`outside`: a procedure the bot proposed and the user approved; outside: it came from a turn that read outside content. */
   /** `extras`: the optional structured parts (needs, check, output, approvals); missing ones stay empty. */
-  create(botId: string, name: string, description: string, body: string, shared = false, origin: { learned?: boolean; outside?: boolean } = {}, extras?: Partial<SkillExtras>): Skill {
+  /** `draft`: came from outside (an import) and waits for the user to activate it; the bot does not get it until then. */
+  create(botId: string, name: string, description: string, body: string, shared = false, origin: { learned?: boolean; outside?: boolean; draft?: boolean } = {}, extras?: Partial<SkillExtras>): Skill {
     const id = newId("skl");
     const t = now();
-    q.run("INSERT INTO skills (id, bot_id, name, description, body, shared, learned, outside, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", id, botId, name, description, body, shared ? 1 : 0, origin.learned ? 1 : 0, origin.outside ? 1 : 0, t, t);
+    q.run("INSERT INTO skills (id, bot_id, name, description, body, shared, learned, outside, draft, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", id, botId, name, description, body, shared ? 1 : 0, origin.learned ? 1 : 0, origin.outside ? 1 : 0, origin.draft ? 1 : 0, t, t);
     saveSkillExtras(id, extras);
     return toSkill(q.get("SELECT * FROM skills WHERE id = ?", id));
   },
   /** A structured part left undefined keeps its value; an empty string clears it. */
-  update(id: string, f: { name: string; description: string; body: string; shared?: boolean } & Partial<SkillExtras>) {
+  update(id: string, f: { name: string; description: string; body: string; shared?: boolean; draft?: boolean } & Partial<SkillExtras>) {
     q.run("UPDATE skills SET name = ?, description = ?, body = ?, updated_at = ? WHERE id = ?", f.name, f.description, f.body, now(), id);
     saveSkillExtras(id, f);
     if (typeof f.shared === "boolean") q.run("UPDATE skills SET shared = ? WHERE id = ?", f.shared ? 1 : 0, id);
+    if (typeof f.draft === "boolean") q.run("UPDATE skills SET draft = ? WHERE id = ?", f.draft ? 1 : 0, id);
     return toSkill(q.get("SELECT * FROM skills WHERE id = ?", id));
   },
   /** Skills other bots of the same user shared (never this bot's own). */
   sharedWith(botId: string): (Skill & { botName: string })[] {
-    return q.all("SELECT s.*, b.name AS bot_name FROM skills s JOIN bots b ON b.id = s.bot_id WHERE s.shared = 1 AND s.bot_id != ? AND b.user_id = (SELECT user_id FROM bots WHERE id = ?) ORDER BY s.created_at", botId, botId)
+    return q.all("SELECT s.*, b.name AS bot_name FROM skills s JOIN bots b ON b.id = s.bot_id WHERE s.shared = 1 AND s.draft = 0 AND s.bot_id != ? AND b.user_id = (SELECT user_id FROM bots WHERE id = ?) ORDER BY s.created_at", botId, botId)
       .map((r: any) => ({ ...toSkill(r), botName: r.bot_name }));
   },
   /** Every skill a bot can follow: its own first, then the ones its teammates shared (an own skill wins on a name clash). */
   available(botId: string): (Skill & { botName: string; own: boolean })[] {
     const self = q.get<{ name: string }>("SELECT name FROM bots WHERE id = ?", botId)?.name ?? "";
-    const own = skills.list(botId).map((k) => ({ ...k, botName: self, own: true }));
+    const own = skills.usable(botId).map((k) => ({ ...k, botName: self, own: true }));
     const names = new Set(own.map((k) => k.name.toLowerCase()));
     return [...own, ...skills.sharedWith(botId).filter((k) => !names.has(k.name.toLowerCase())).map((k) => ({ ...k, own: false }))];
   },

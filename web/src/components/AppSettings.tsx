@@ -20,6 +20,7 @@ import { MemorySettingsSection, RulesSection } from "./Wave5";
 import { JournalView, PageVisibility, SpendSettingsBlock } from "./Wave5b";
 import { MailSection, VoiceSection, WorkspacesSection } from "./Wave6";
 import { KeysSection, PublicLinksBlock } from "./Wave7";
+import { GrokImportButton } from "./GrokImport";
 import { GoogleAccountBlock, GoogleLoginSettings } from "./GoogleLogin";
 import { AccountEmailBlock, ServerMailSettings } from "./AccountRecovery";
 import { AdminSection, SubscriptionSection } from "./Hosted";
@@ -1048,6 +1049,13 @@ function TeamSection() {
           <Icon name="upload" size={14} /> {t(busy ? "team.importing" : "team.import")}
         </button>
         <input ref={input} type="file" accept="application/json,.json" className="sr-only" tabIndex={-1} aria-label={t("team.import")} onChange={(e) => void importFile(e.target.files?.[0])} />
+      </div>
+      <div className="action-row">
+        <div>
+          <p className="action-title">{t("grok.rowTitle")}</p>
+          <p className="muted small">{t("grok.rowHint")}</p>
+        </div>
+        <GrokImportButton />
       </div>
       <ErrorNote onDismiss={() => setError(null)}>{error}</ErrorNote>
       {note && (
