@@ -108,6 +108,9 @@ SKLUBOT_DESKTOP_MEMORY=2g
 SKLUBOT_VOICE_LOCAL=$([ "$MEM_MB" -ge 1900 ] && echo 1 || echo 0)
 # Kokoro (voix gratuites de meilleure qualité, ~1 à 1,5 Go de plus) : en veille sous 3,5 Go de mémoire (Piper suffit) ; 1 pour l'activer.
 SKLUBOT_KOKORO=$([ "$MEM_MB" -ge 3500 ] && echo 1 || echo 0)
+# Reconnaissance vocale : modèle « small » (bien meilleur en français, ~1 Go) ; « base » (~0,4 Go) sous 3,5 Go de mémoire.
+WHISPER_MODEL=$([ "$MEM_MB" -ge 3500 ] && echo small || echo base)
+WHISPER_MEM_LIMIT=$([ "$MEM_MB" -ge 3500 ] && echo 2g || echo 1g)
 ${SKLUBOT_HTTP_PORT:+SKLUBOT_HTTP_PORT=$SKLUBOT_HTTP_PORT}
 ${SKLUBOT_HTTPS_PORT:+SKLUBOT_HTTPS_PORT=$SKLUBOT_HTTPS_PORT}
 ${CADDY_IMAGE:+CADDY_IMAGE=$CADDY_IMAGE}

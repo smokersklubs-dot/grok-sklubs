@@ -20,6 +20,11 @@ if [ -f .env ] && ! grep -q '^SKLUBOT_KOKORO=' .env && [ "$(awk '/MemTotal/ {pri
   echo "SKLUBOT_KOKORO=0" >> .env
   echo "Kokoro laissé en veille (moins de 3,5 Go de mémoire) : SKLUBOT_KOKORO=1 dans .env pour l'activer."
 fi
+# Reconnaissance vocale : « small » par défaut désormais ; une petite machine qui n'a rien choisi garde « base ».
+if [ -f .env ] && ! grep -q '^WHISPER_MODEL=' .env && [ "$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo 2>/dev/null || echo 0)" -lt 3500 ]; then
+  printf 'WHISPER_MODEL=base\nWHISPER_MEM_LIMIT=1g\n' >> .env
+  echo "Reconnaissance vocale : modèle « base » gardé (moins de 3,5 Go de mémoire)."
+fi
 docker compose -f docker-compose.vps.yml up -d --build
 docker image prune -f >/dev/null
 echo "Sklubot est à jour."

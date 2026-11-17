@@ -11,7 +11,7 @@
  * not cut it off.
  */
 export interface VadOptions { sampleRate: number; frameMs: number; startMs: number; endMs: number; maxMs: number; absMin: number; ratio: number; prerollMs: number }
-export const DEFAULT_VAD: VadOptions = { sampleRate: 16000, frameMs: 20, startMs: 100, endMs: 650, maxMs: 30_000, absMin: 0.015, ratio: 3, prerollMs: 300 };
+export const DEFAULT_VAD: VadOptions = { sampleRate: 16000, frameMs: 20, startMs: 100, endMs: 800, maxMs: 30_000, absMin: 0.015, ratio: 3, prerollMs: 300 };
 
 export type VadEvent = { type: "start" } | { type: "end"; audio: Int16Array; ms: number };
 

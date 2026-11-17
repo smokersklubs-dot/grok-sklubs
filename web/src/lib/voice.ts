@@ -100,7 +100,14 @@ export async function startServerCall(botId: string, lang: string, onEarlyFail?:
   const node = new AudioWorkletNode(ctx, "sklubot-capture");
   const gain = ctx.createGain();
   gain.connect(ctx.destination);
-  source.connect(node);
+  // Anti-aliasing before the worklet brings the microphone down to 16 kHz: two 7 kHz low-pass filters (24 dB/octave),
+  // so the voice reaches speech-to-text clean instead of with folded-back hiss. BiquadFilterNode: Web Audio API.
+  const lp1 = ctx.createBiquadFilter();
+  const lp2 = ctx.createBiquadFilter();
+  for (const f of [lp1, lp2]) { f.type = "lowpass"; f.frequency.value = 7000; f.Q.value = 0.707; }
+  source.connect(lp1);
+  lp1.connect(lp2);
+  lp2.connect(node);
   // Some engines (WebKit) only run a node that leads to the speakers: the capture node gets a silent path there.
   const sink = ctx.createGain();
   sink.gain.value = 0;

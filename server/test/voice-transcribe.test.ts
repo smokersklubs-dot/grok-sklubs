@@ -99,7 +99,7 @@ test("compose files: whisper.cpp, Piper and Kokoro run by default, on the intern
     assert.match(block("whisper"), /@sha256:[0-9a-f]{64}/, "pinned image");
     // Only the one-shot model download has Internet; it ends at once.
     const dl = block("whisper-model");
-    assert.match(dl, /restart: "no"/); assert.match(dl, /cap_drop: \[ALL\]/); assert.match(dl, /WHISPER_MODEL: "\$\{WHISPER_MODEL:-base\}"/);
+    assert.match(dl, /restart: "no"/); assert.match(dl, /cap_drop: \[ALL\]/); assert.match(dl, /WHISPER_MODEL: "\$\{WHISPER_MODEL:-small\}"/);
     assert.match(y, /voice:\n\s+name: sklubot_voice\n\s+internal: true/, `${file}: the voice network is internal`);
     // The bots' computers never join it (they have their own network, created by Sklubot).
     assert.doesNotMatch(block("sklubot").match(/BOTS_NETWORK: "([^"]+)"/)?.[1] ?? "", /voice/);

@@ -129,7 +129,7 @@ test("VAD: silence and noise stay quiet, a short click is ignored, speech starts
   assert.deepEqual(ev.map((e) => e.type), ["start", "end"]);
   const end = ev[1] as { type: "end"; audio: Int16Array; ms: number };
   // The utterance holds the speech (600 ms), some pre-roll and the trailing silence before the end was called.
-  assert.ok(end.ms >= 600 + 600 && end.ms <= 600 + 650 + 400, `utterance ${end.ms} ms`);
+  assert.ok(end.ms >= 600 + 600 && end.ms <= 600 + 800 + 400, `utterance ${end.ms} ms`);
   assert.ok(rms(end.audio.subarray(0, 320)) < 0.05, "starts with the pre-roll, not mid-word");
   // Frames can arrive in any sizes.
   const v2 = new Vad();

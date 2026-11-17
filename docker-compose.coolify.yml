@@ -171,7 +171,7 @@ services:
   # Réseau : seulement « voice » (interne, sans Internet, jamais publié), que seule l'application rejoint — ni les
   # ordinateurs des bots (réseau sklubot_bots), ni Internet ne les atteignent. Aucun port publié : dans Coolify, ne leur
   # donne pas de domaine.
-  # Mémoire (estimations, en marche) : whisper « base » ≈ 300 à 500 Mo (« small » ≈ 0,9 à 1,2 Go : WHISPER_MEM_LIMIT=2g),
+  # Mémoire (estimations, en marche) : whisper « small » (défaut) ≈ 0,9 à 1,2 Go, « base » ≈ 300 à 500 Mo (WHISPER_MODEL=base, WHISPER_MEM_LIMIT=1g),
   # Piper ≈ 210 Mo avec une voix, + 150 à 190 Mo par modèle de voix utilisé (les quatre : ≈ 0,7 à 0,9 Go, mesuré).
   # Plafonnées par WHISPER_MEM_LIMIT / PIPER_MEM_LIMIT. Priorité CPU plus basse que
   # l'application (cpu_shares).
@@ -180,7 +180,7 @@ services:
   #
   # Le modèle whisper est téléchargé une fois (Hugging Face, ggerganov/whisper.cpp, poids Whisper sous licence MIT) dans le
   # volume whisper_models par « whisper-model », seul à avoir Internet, qui s'arrête aussitôt ; whisper lui-même n'a que
-  # le réseau interne et lit le volume en lecture seule. WHISPER_MODEL : base (défaut, multilingue, 142 Mo) ou small
+  # le réseau interne et lit le volume en lecture seule. WHISPER_MODEL : small (défaut, multilingue, 466 Mo, bien meilleur en français) ou base (142 Mo, petites machines)
   # (multilingue, 466 Mo, comprend mieux le français, plus lent). Point d'entrée de l'image : bash -c, d'où une seule
   # chaîne de commande ($$ = « $ » pour le shell du conteneur).
   whisper-model:
@@ -188,7 +188,7 @@ services:
     restart: "no"
     environment:
       VOICE_LOCAL: "${SKLUBOT_VOICE_LOCAL:-1}"
-      WHISPER_MODEL: "${WHISPER_MODEL:-base}"
+      WHISPER_MODEL: "${WHISPER_MODEL:-small}"
     command: ["if [ \"$$VOICE_LOCAL\" = 0 ]; then echo 'SKLUBOT_VOICE_LOCAL=0 : voix locale désactivée.'; exit 0; fi; f=/models/ggml-$$WHISPER_MODEL.bin; if [ -s \"$$f\" ]; then echo \"Modèle déjà présent : $$f\"; exit 0; fi; ./models/download-ggml-model.sh \"$$WHISPER_MODEL\" /models || { rm -f \"$$f\"; echo 'Téléchargement du modèle impossible : la dictée passera par le navigateur. Redéploie pour réessayer.'; }; exit 0"]
     volumes:
       - whisper_models:/models
@@ -206,15 +206,15 @@ services:
         condition: service_completed_successfully
     environment:
       VOICE_LOCAL: "${SKLUBOT_VOICE_LOCAL:-1}"
-      WHISPER_MODEL: "${WHISPER_MODEL:-base}"
-      WHISPER_THREADS: "${WHISPER_THREADS:-2}"
+      WHISPER_MODEL: "${WHISPER_MODEL:-small}"
+      WHISPER_THREADS: "${WHISPER_THREADS:-4}"
     # Sans modèle (téléchargement raté), il attend 5 min puis redémarre : Sklubot le voit injoignable et passe par le navigateur.
     command: ["if [ \"$$VOICE_LOCAL\" = 0 ]; then echo 'SKLUBOT_VOICE_LOCAL=0 : en veille.'; exec sleep infinity; fi; f=/models/ggml-$$WHISPER_MODEL.bin; if [ ! -s \"$$f\" ]; then echo \"Modèle absent ($$f) : redéploie pour le télécharger.\"; sleep 300; exit 1; fi; exec whisper-server --host 0.0.0.0 --port 8080 -t \"$$WHISPER_THREADS\" -m \"$$f\" -l auto"]
     volumes:
       - whisper_models:/models:ro
     read_only: true
     tmpfs: [/tmp]
-    mem_limit: "${WHISPER_MEM_LIMIT:-1g}"
+    mem_limit: "${WHISPER_MEM_LIMIT:-2g}"
     cpu_shares: 512
     pids_limit: 128
     cap_drop: [ALL]
@@ -250,7 +250,7 @@ services:
   # automatiques des bots (anglais : af_/am_/bf_/bm_ ; français : ff_siwis, mêlée aux voix françaises de Piper).
   # S'il ne répond pas (démarrage, veille), les bots parlent avec Piper : rien ne casse.
   # Mémoire : ≈ 1 à 1,5 Go en marche (82 M paramètres + PyTorch CPU), plafonnée par KOKORO_MEM_LIMIT (2 Go par défaut).
-  # Toute la voix (whisper base + Piper + Kokoro) : ≈ 1,5 à 3 Go. Veille : SKLUBOT_KOKORO=0 (Kokoro seul) ou
+  # Toute la voix (whisper small + Piper + Kokoro) : ≈ 2 à 3,5 Go. Veille : SKLUBOT_KOKORO=0 (Kokoro seul) ou
   # SKLUBOT_VOICE_LOCAL=0 (toute la voix locale), puis redéploie.
   # Système de fichiers en lecture seule ; seuls /tmp (mélanges de voix), api/temp_files (fichiers du lecteur web de
   # l'image) et le dossier personnel sont en mémoire. Réseau : seulement « voice » (interne, sans Internet), que seule

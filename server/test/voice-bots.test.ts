@@ -103,7 +103,7 @@ const { voiceUpgrade } = await import("../src/voice/session.js");
 const { users } = await import("../src/store.js");
 const { createSession, hashPassword, SESSION_COOKIE } = await import("../src/auth.js");
 const { PIPER_MODELS, PIPER_VOICES, PIPER_DEFAULT_MODELS, piperBody, availablePiperVoices, validPiperVoice } = await import("../src/voice/piper.js");
-const { assignVoices, genderHint, hashId } = await import("../src/voice/autovoice.js");
+const { LOW_QUALITY_MODELS, assignVoices, genderHint, hashId } = await import("../src/voice/autovoice.js");
 const { KOKORO_AUTO } = await import("../src/voice/kokoro.js");
 const { reachable } = await import("../src/voice/providers.js");
 const { isImitation, fishCandidates, proposeFish } = await import("../src/voice/fishbulk.js");
@@ -157,7 +157,7 @@ test("Piper requests: the documented /synthesize fields, voice and speaker of th
   assert.deepEqual(piperBody({ text: "Salut", voiceId: "fr_FR-mls-medium#62" }), { text: "Salut", voice: "fr_FR-mls-medium", speaker_id: 62 });
   assert.deepEqual(piperBody({ text: "Salut", voiceId: "fr_FR-upmc-medium#1", rate: 1.25 }), { text: "Salut", voice: "fr_FR-upmc-medium", speaker_id: 1, length_scale: 0.8 }, "faster bot: shorter phonemes");
   const v1 = piperBody({ text: "Salut", voiceId: "fr_FR-mls-medium#3", variant: 1 });
-  assert.equal(v1.length_scale, 0.92); assert.equal(v1.noise_scale, 0.5); assert.equal(v1.noise_w_scale, 0.6);
+  assert.equal(v1.length_scale, 0.93); assert.equal(v1.noise_scale, undefined, "pace only: the model's own expressiveness"); assert.equal(v1.noise_w_scale, undefined);
   assert.deepEqual(piperBody({ text: "x", voiceId: "en_US-lessac-medium" }), { text: "x", voice: "en_US-lessac-medium" }, "a name typed in Settings → Voice is sent as is");
   assert.ok(!validPiperVoice("../../etc/passwd") && !validPiperVoice("fr_FR-mls-medium#99999") && validPiperVoice("fr_FR-mls-medium#124"));
 });
@@ -196,7 +196,9 @@ test("automatic voices: stable, distinct within an account, gendered by name, in
   const more = [...bots10, ...Array.from({ length: 30 }, (_, i) => mkBot(`late_${i}`, `Late ${i}`, 5000 + i))];
   const b = assignVoices({ bots: more, locale: "fr", own, models: null });
   for (const x of bots10) assert.deepEqual([b.get(x.id)!.voice.id, b.get(x.id)!.variant], [a.get(x.id)!.voice.id, a.get(x.id)!.variant]);
-  assert.equal(new Set(pairs(b)).size, 40, "forty bots: still all different (voice × pace variant)");
+  // French automatic pool: the clean voices only (siwis, upmc Jessica and Pierre), × 5 paces = 15 different voices.
+  assert.equal(new Set(pairs(b)).size, 15, "forty bots: every voice × pace variant used before any repeats");
+  for (const v of b.values()) assert.ok(!LOW_QUALITY_MODELS.has(v.voice.id.split("#")[0]), `${v.voice.id}: no noisy audiobook voice given automatically`);
   // Gender hints.
   assert.equal(genderHint({ name: "Léa", label: "", voice: { name: "", rate: 1, lang: "auto" } }), "female");
   assert.equal(genderHint({ name: "Hugo le comptable", label: "", voice: { name: "", rate: 1, lang: "auto" } }), "male");

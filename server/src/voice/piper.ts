@@ -116,8 +116,11 @@ export interface PiperRequest {
   variant?: number;
 }
 
-/** Pace and variability per variant: [length_scale factor, noise_scale, noise_w_scale]. Variant 0 = the voice's defaults. */
-export const PIPER_VARIANTS: [number, number | null, number | null][] = [[1, null, null], [0.92, 0.5, 0.6], [1.09, 0.8, 0.9], [0.96, 0.75, 1.0], [1.05, 0.55, 0.7]];
+/**
+ * Pace per variant: [length_scale factor, noise_scale, noise_w_scale]. Variant 0 = the voice's defaults. Only the pace
+ * changes: moving noise_scale / noise_w_scale away from the model's trained values made the voices sound worse.
+ */
+export const PIPER_VARIANTS: [number, number | null, number | null][] = [[1, null, null], [0.93, null, null], [1.07, null, null], [0.97, null, null], [1.04, null, null]];
 
 /** The documented `/synthesize` body for a voice of this catalogue (or any Piper voice name). */
 export function piperBody(r: PiperRequest): Record<string, unknown> {

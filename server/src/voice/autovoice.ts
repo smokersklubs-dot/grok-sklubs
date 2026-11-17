@@ -70,10 +70,15 @@ export interface AssignInput {
   kokoro?: Set<string> | null | false;
 }
 
+/** Piper models too noisy to be given automatically (still selectable by hand). */
+export const LOW_QUALITY_MODELS = new Set(["fr_FR-mls-medium"]);
+
 /** The free voices on offer: Kokoro's (best first) then Piper's. */
 export function freeVoices(models: Set<string> | null, kokoro: Set<string> | null | false = false): FreeVoice[] {
   const k: FreeVoice[] = kokoro === false ? [] : KOKORO_AUTO.filter((v) => !kokoro || kokoro.has(v.id)).map((v) => ({ provider: "kokoro", id: v.id, name: v.name, gender: v.gender, language: v.language, licence: "Apache-2.0" }));
-  const p: FreeVoice[] = availablePiperVoices(models).map((v) => ({ provider: "piper", id: v.id, name: v.name, gender: v.gender, language: v.language, licence: v.licence }));
+  // Only the clean studio voices are given automatically: fr_FR-mls-medium is trained on amateur audiobook recordings
+  // (Multilingual LibriSpeech) and sounds noisy; its speakers stay available by hand in Settings → Voice.
+  const p: FreeVoice[] = availablePiperVoices(models).filter((v) => !LOW_QUALITY_MODELS.has(v.model)).map((v) => ({ provider: "piper", id: v.id, name: v.name, gender: v.gender, language: v.language, licence: v.licence }));
   return [...k, ...p];
 }
 

@@ -72,6 +72,11 @@ Les prénoms sont inventés (ce ne sont pas ceux des lecteurs des corpus). Le ge
 médiane de la voix (F0) mesurée sur une phrase synthétisée : moins de 125 Hz → masculine, plus de 190 Hz → féminine ;
 les locuteurs entre les deux ne sont pas retenus.
 
+**Qualité** : les voix `mls` viennent de livres audio enregistrés par des bénévoles, souvent avec un micro amateur ;
+elles sonnent bruitées. Elles ne sont **plus données automatiquement** : en français, l'attribution automatique
+n'utilise que Siwis (Kokoro et Piper), Jessica et Pierre, avec cinq débits différents. Les voix `mls` restent
+choisissables à la main (Réglages → Voix). Pour une voix vraiment naturelle, Fish Audio (payant) reste au-dessus.
+
 - **Français, féminines** : Siwis (siwis), Jessica (upmc #0), Camille, Léa, Chloé, Manon, Inès, Margaux, Juliette,
   Alix (mls #19, 69, 18, 3, 14, 62, 22, 25).
 - **Français, masculines** : Pierre (upmc #1), Antoine, Hugo, Louis, Mathis, Gabriel, Arthur, Jules, Raphaël, Victor
