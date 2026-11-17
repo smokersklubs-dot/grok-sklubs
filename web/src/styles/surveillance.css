@@ -1,0 +1,86 @@
+/* Page « Surveillance » (SurveillanceView.tsx): the Sentinelle's incidents, their history and the health checks. */
+.surv-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
+.surv-scan { flex: none; }
+
+.surv-banner { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: var(--r-lg); border: 1px solid var(--border); background: var(--ok-soft); color: var(--ok); }
+.surv-banner.is-warn { background: var(--warn-soft); color: var(--warn); }
+.surv-banner.is-critical { background: var(--danger-soft); color: var(--danger); }
+.surv-banner-title { font-weight: 650; color: var(--text); }
+.surv-banner-text { font-size: 12.5px; color: var(--text-2); }
+.today-stat.is-danger > .icon { color: var(--danger); }
+
+.surv-list { display: flex; flex-direction: column; gap: 10px; }
+.surv-card { border: 1px solid var(--border); border-left: 4px solid var(--text-3); border-radius: var(--r-md); padding: 12px 14px; background: var(--surface); display: flex; flex-direction: column; gap: 8px; }
+.surv-card.is-critical { border-left-color: var(--danger); }
+.surv-card.is-warn { border-left-color: var(--warn); }
+.surv-card.is-info { border-left-color: var(--info); }
+.surv-card.is-acked { opacity: 0.82; }
+.surv-card-head { display: flex; align-items: flex-start; gap: 10px; }
+.surv-card-icon { flex: none; display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 9px; background: var(--surface-2); color: var(--text-2); }
+.surv-card.is-critical .surv-card-icon { background: var(--danger-soft); color: var(--danger); }
+.surv-card.is-warn .surv-card-icon { background: var(--warn-soft); color: var(--warn); }
+.surv-card.is-info .surv-card-icon { background: var(--info-soft); color: var(--info); }
+.surv-card-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.surv-card-chips { display: flex; gap: 5px; flex-wrap: wrap; }
+.surv-sev.is-critical { background: var(--danger-soft); color: var(--danger); }
+.surv-sev.is-warn { background: var(--warn-soft); color: var(--warn); }
+.surv-sev.is-info { background: var(--info-soft); color: var(--info); }
+.surv-account { max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
+.surv-card-title { font-size: 15px; font-weight: 650; overflow-wrap: anywhere; }
+.surv-card-text { font-size: 13.5px; color: var(--text-2); overflow-wrap: anywhere; }
+.surv-card-meta { font-size: 12px; color: var(--text-3); }
+.surv-fix { padding: 9px 11px; border-radius: var(--r-sm); background: var(--surface-2); font-size: 13px; color: var(--text-2); }
+.surv-fix-title { display: flex; align-items: center; gap: 5px; font-weight: 600; color: var(--text); margin-bottom: 2px; }
+.surv-card .surv-more { align-self: flex-start; font-size: 13px; text-decoration: underline; text-underline-offset: 3px; color: var(--text-2); }
+.surv-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+
+.surv-spark { flex: none; color: var(--text-3); }
+.surv-spark rect { fill: currentColor; }
+.surv-spark.is-critical { color: var(--danger); }
+.surv-spark.is-warn { color: var(--warn); }
+.surv-spark.is-info { color: var(--info); }
+.surv-spark-base { stroke: var(--border-strong); stroke-width: 1; }
+
+.surv-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--text-3); }
+.surv-dot.is-critical, .surv-dot.is-down { background: var(--danger); }
+.surv-dot.is-warn, .surv-dot.is-degraded { background: var(--warn); }
+.surv-dot.is-info { background: var(--info); }
+.surv-dot.is-ok { background: var(--ok); }
+
+.surv-history { display: flex; flex-direction: column; }
+.surv-history li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 7px 2px; font-size: 13px; }
+.surv-history li + li { border-top: 1px solid var(--border); }
+.surv-history-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.surv-history-meta { font-size: 12px; color: var(--text-3); white-space: nowrap; }
+
+.surv-health-status { font-weight: 600; margin-bottom: 8px; }
+.surv-health-status.is-ok { color: var(--ok); }
+.surv-health-status.is-degraded { color: var(--warn); }
+.surv-health-status.is-down { color: var(--danger); }
+.surv-checks { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.surv-checks li { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: var(--r-sm); background: var(--surface-2); font-size: 13px; min-width: 0; }
+.surv-check-name { font-weight: 600; }
+.surv-check-state { margin-left: auto; color: var(--text-3); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.surv-detectors { margin-top: 10px; font-size: 12.5px; color: var(--text-2); }
+.surv-detectors summary { cursor: pointer; color: var(--text-3); }
+.surv-detectors ul { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3px 12px; margin-top: 6px; }
+.surv-detectors li { display: flex; align-items: center; gap: 5px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.surv-detectors li .icon { color: var(--ok); }
+.surv-detectors li.is-bad .icon { color: var(--danger); }
+
+/* Réglages → Surveillance */
+.surv-select { width: auto; min-width: 180px; }
+.today-settings-row .input.surv-tz { width: 220px; max-width: 100%; flex: none; }
+
+@media (max-width: 720px) {
+  .surv-scan-label { display: none; }
+  .surv-card { padding: 11px 12px; }
+  .surv-card-head { flex-wrap: wrap; }
+  .surv-card-main { flex-basis: calc(100% - 40px); }
+  .surv-card-head .surv-spark { margin-left: 40px; }
+  .surv-checks { grid-template-columns: minmax(0, 1fr); }
+  .surv-detectors ul { grid-template-columns: minmax(0, 1fr); }
+  .surv-history li { grid-template-columns: auto minmax(0, 1fr); }
+  .surv-history-meta { grid-column: 2; white-space: normal; }
+  .surv-actions .btn { flex: 1; justify-content: center; }
+}

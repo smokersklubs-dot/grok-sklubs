@@ -202,6 +202,7 @@ export function Sidebar() {
   const mobileNav = useStore((s) => s.mobileNav);
   const tasks = useStore((s) => s.tasks);
   const todayReport = useStore((s) => s.today);
+  const sentinel = useStore((s) => s.sentinel);
   const user = useStore((s) => s.user);
   const online = useStore((s) => s.online);
   const pausedAll = useStore((s) => !!s.pauses.all);
@@ -242,6 +243,8 @@ export function Sidebar() {
   const waiting = tasks?.filter((t) => t.state === "needs_input").length ?? 0;
   // "Aujourd'hui": what waits for the user right now (from the last report loaded; its needs are always "now").
   const needs = todayReport?.needs.length ?? 0;
+  // Critical incidents of the Sentinelle not acknowledged yet (they are among the Today needs of the owner/operators).
+  const critical = todayReport?.needs.filter((n) => n.kind === "incident").length ?? 0;
   const chatActive = view === "chat";
   const primaryLive = primary ? (live[primary.id] ?? IDLE_LIVE) : IDLE_LIVE;
   const primaryStatus = primary ? statusOf(primary, primaryLive) : null;
@@ -292,6 +295,24 @@ export function Sidebar() {
           {!collapsed && <span className="nav-row-label">{t("sidebar.today")}</span>}
           {!collapsed && needs > 0 && <span className="count-badge is-attention" aria-label={tn("sidebar.todayNeeds", needs)}>{needs}</span>}
         </button>
+
+        {sentinel && (
+          <button
+            type="button"
+            className={`nav-row ${view === "surveillance" ? "is-active" : ""}`}
+            onClick={() => setView(view === "surveillance" ? "chat" : "surveillance")}
+            aria-pressed={view === "surveillance"}
+            title={collapsed ? t("sidebar.surveillance") : undefined}
+            aria-label={collapsed ? `${t("sidebar.surveillance")}${critical ? `, ${t("sidebar.surveillanceCritical", { n: critical })}` : ""}` : undefined}
+          >
+            <span className="nav-row-icon">
+              <Icon name="shield" size={19} />
+              {collapsed && critical > 0 && <span className="dot dot-attention" />}
+            </span>
+            {!collapsed && <span className="nav-row-label">{t("sidebar.surveillance")}</span>}
+            {!collapsed && critical > 0 && <span className="count-badge is-attention" aria-label={t("sidebar.surveillanceCritical", { n: critical })}>{critical}</span>}
+          </button>
+        )}
 
         <button
           type="button"

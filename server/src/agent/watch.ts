@@ -8,6 +8,7 @@ import type { Engine, Locale, RowBody, WatchNoticeAction } from "../shared.js";
 import { audit, bots, paused, rows, type BotRecord } from "../store.js";
 import { goals } from "./goals.js";
 import { checkpoints } from "./spend.js";
+import { noteSignal } from "../sentinel/signals.js";
 
 /**
  * The turn watch: what a person sees when a turn goes quiet, instead of a spinner that never ends.
@@ -298,6 +299,8 @@ function postRescue(w: Watch) {
   const action: WatchNoticeAction = { kind: "watch", watch: "silent", status: "pending", ...(next ? { next } : {}), ...(w.kind === "engine" && w.engine ? { engine: w.engine } : {}) };
   const row = rows.append(w.bot, { kind: "notice", tone: "info", text: noticeText(w, "silent", "pending", { next }), action }, w.thread);
   w.rescue = { seq: row.seq, ...(nextRef ? { next: nextRef } : {}) };
+  // The Sentinelle counts first-reply rescues (how often the AI keeps people waiting); stalls and ends are in the audit log.
+  noteSignal("engine_silent", w.kind);
 }
 
 function postStall(w: Watch) {

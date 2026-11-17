@@ -16,7 +16,7 @@ import { ErrorNote, IconButton, Loading, Toggle, useTick } from "./ui";
 
 const NEED_ICON: Record<TodayNeed["kind"], IconName> = {
   approval: "shield", question: "chat", cap: "chart", spend: "chart", paused: "pause", stalled: "clock", silent: "clock", continue: "play",
-  routine: "alert", connector: "plug", disk: "folder", takeover: "hand", secret: "key", uncertain: "alert", goal: "target", review: "eye", plan: "star",
+  routine: "alert", connector: "plug", disk: "folder", takeover: "hand", secret: "key", uncertain: "alert", goal: "target", review: "eye", plan: "star", incident: "shield",
 };
 const DONE_ICON: Record<TodayKind, IconName> = {
   task: "tasks", bgTask: "bolt", goal: "target", routine: "clock", job: "terminal", fileEdit: "file", emailSent: "mail",
@@ -39,6 +39,7 @@ function openLink(link: TodayLink | null) {
   if (!link) return;
   const s = useStore.getState();
   if (link.kind === "settings") return s.openAppSettings(link.section);
+  if (link.kind === "surveillance") return s.setView("surveillance");
   if (!s.bots[link.botId]) return;
   if (link.kind === "botSettings") return s.openBotSettings(link.botId, link.tab);
   if (link.kind === "bot") return s.selectBot(link.botId);

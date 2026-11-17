@@ -7,6 +7,7 @@ import { bots, clip, now, users, type BotRecord } from "./store.js";
 import { DEFAULT_MINUTES, FILES_PER_TURN, minutesSaved, minutesTable, RESEARCH_GAP_MIN, RESEARCH_MIN_READS, TODAY_KINDS, type TodayKind } from "./todayminutes.js";
 import { localMidnight, userTimezone } from "./usagecaps.js";
 import { sharedBotsFor, type BotAccess } from "./workspaces.js";
+import { criticalNeeds } from "./sentinel/view.js";
 
 /**
  * "Aujourd'hui" — one page for the day: what only the user can fix now ("Ce qui t'attend"), what their bots finished
@@ -241,7 +242,9 @@ function needsOf(userId: string, scope: Scope, t: number): TodayNeed[] {
       out.push({ kind: "plan", botId: null, botName: "", title: block ?? "past_due", detail: "", at: sub?.statusChangedAt ?? t, link: { kind: "settings", section: "subscription" } });
     }
   }
-  const order: TodayNeed["kind"][] = ["plan", "approval", "question", "takeover", "secret", "cap", "spend", "uncertain", "disk", "connector", "stalled", "silent", "continue", "paused", "routine", "goal", "review"];
+  // The server's owner (and hosted operators): a critical incident of the Sentinelle not acknowledged yet → Surveillance.
+  for (const i of criticalNeeds(userId)) out.push({ kind: "incident", botId: null, botName: "", title: i.title, detail: clip(i.detail, 240), at: i.at, link: { kind: "surveillance", incidentId: i.id } });
+  const order: TodayNeed["kind"][] = ["incident", "plan", "approval", "question", "takeover", "secret", "cap", "spend", "uncertain", "disk", "connector", "stalled", "silent", "continue", "paused", "routine", "goal", "review"];
   return out.sort((x, y) => order.indexOf(x.kind) - order.indexOf(y.kind) || y.at - x.at);
 }
 

@@ -1247,7 +1247,8 @@ export type TodayLink =
   | { kind: "row"; botId: string; seq: number; thread?: number }
   | { kind: "bot"; botId: string }
   | { kind: "botSettings"; botId: string; tab: "general" | "routines" }
-  | { kind: "settings"; section: "usage" | "connectors" | "keys" | "subscription" };
+  | { kind: "settings"; section: "usage" | "connectors" | "keys" | "subscription" }
+  | { kind: "surveillance"; incidentId?: string };
 /**
  * Something only the user can fix. `kind`: approval, question (a question card, or a background task asking), cap (a
  * usage cap card), spend (a spend checkpoint), paused (a paused bot holding `count` messages), stalled / silent (the turn
@@ -1255,9 +1256,10 @@ export type TodayLink =
  * built-in app or a connection to sign in again, or a "connect" card), disk (its computer's disk is nearly full),
  * takeover (it needs you on its screen), secret (it asks for a key), uncertain (an action whose outcome is unknown),
  * goal (a proposed goal), review (a skill, an API connector, a memory conflict or a pasted secret to look at),
- * plan (hosted mode: the account's plan stops work). `title`: the card's own words (data, not translated).
+ * plan (hosted mode: the account's plan stops work), incident (the server's owner or an operator: a critical incident of
+ * the Sentinelle is open — `title` is its title, already in the user's language). `title`: the card's own words (data, not translated).
  */
-export type TodayNeedKind = "approval" | "question" | "cap" | "spend" | "paused" | "stalled" | "silent" | "continue" | "routine" | "connector" | "disk" | "takeover" | "secret" | "uncertain" | "goal" | "review" | "plan";
+export type TodayNeedKind = "approval" | "question" | "cap" | "spend" | "paused" | "stalled" | "silent" | "continue" | "routine" | "connector" | "disk" | "takeover" | "secret" | "uncertain" | "goal" | "review" | "plan" | "incident";
 export interface TodayNeed { kind: TodayNeedKind; botId: string | null; botName: string; title: string; detail: string; at: number; count?: number; shared?: boolean; link: TodayLink }
 /** One thing a bot finished. `count`: how many it stands for (files of a turn, reads of a research); minutes = counted × table. */
 export interface TodayDone { kind: TodayKind; at: number; title: string; detail: string; count: number; counted: number; minutes: number; link: TodayLink | null }
@@ -1285,3 +1287,46 @@ export interface TodaySettingsView {
   digest: TodayDigestSettings; overrides: Partial<Record<TodayKind, number>>;
   defaults: Record<TodayKind, number>; timezone: string; mailConfigured: boolean; pushDevices: number; lastSent: string | null;
 }
+
+// ── "Sentinelle" / page Surveillance (sentinel/) ─────────────────────────────────────────────────────────────────
+export const SENTINEL_SEVERITIES = ["info", "warn", "critical"] as const;
+export type SentinelSeverity = (typeof SENTINEL_SEVERITIES)[number];
+/** open: first seen; ongoing: seen again; acknowledged: an operator said they know (still active); resolved: quiet since. */
+export type SentinelState = "open" | "ongoing" | "acknowledged" | "resolved";
+/** What "Ouvrir" opens: a settings section, a bot or its settings (only the viewer's own bots), or the health checks. */
+export type SentinelLink =
+  | { kind: "settings"; section: "account" | "connectors" | "usage" | "models" | "admin" | "notifications" }
+  | { kind: "bot"; botId: string }
+  | { kind: "botSettings"; botId: string; tab: "general" | "routines" }
+  | { kind: "health" };
+export interface SentinelIncidentView {
+  id: string; fingerprint: string; kind: string; severity: SentinelSeverity; state: SentinelState;
+  /** In the viewer's language. */
+  title: string; explanation: string; fix: string;
+  count: number; peak: number; seen: number; firstAt: number; lastAt: number; resolvedAt: number | null;
+  ackedAt: number | null; ackedBy: string | null;
+  /** The measure per hour over the last 24 hours (oldest first, 24 values). */
+  sparkline: number[];
+  link: SentinelLink | null;
+  /** The account it concerns (its e-mail), when it is not the viewer's own. */
+  account: string | null;
+}
+export interface SentinelDetectorRun { name: string; ok: boolean; ms: number; skipped?: boolean; error?: string }
+export interface SentinelScanInfo { at: number; durationMs: number; detectors: SentinelDetectorRun[]; opened: number; resolved: number }
+/** The /api/health/deep checks, as the page shows them (monitor.ts). */
+export interface SentinelHealth { status: "ok" | "degraded" | "down"; code: string; at: number; checks: { name: string; state: "ok" | "degraded" | "down" | "off" | "unknown"; code: string; detail?: Record<string, unknown> }[] }
+export interface SentinelOverview {
+  incidents: SentinelIncidentView[];
+  /** Resolved incidents, the most recent first. */
+  history: SentinelIncidentView[];
+  health: SentinelHealth | null;
+  counts: Record<SentinelSeverity, number>;
+  lastScan: SentinelScanInfo | null;
+  nextScanAt: number | null;
+  everyMin: number;
+}
+export interface SentinelQuiet { enabled: boolean; start: string; end: string }
+export interface SentinelSettings {
+  push: boolean; email: boolean; minSeverity: SentinelSeverity; digest: boolean; digestHour: number; quiet: SentinelQuiet; timezone: string;
+}
+export interface SentinelSettingsView { settings: SentinelSettings; mailConfigured: boolean; pushDevices: number; email: string }

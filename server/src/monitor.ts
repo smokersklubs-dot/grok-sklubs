@@ -48,7 +48,7 @@ function dockerTarget(): { host?: string; port?: number; socketPath?: string } |
   if (!h && existsSync("/var/run/docker.sock")) return { socketPath: "/var/run/docker.sock" };
   return null;
 }
-async function checkDocker(): Promise<Check> {
+export async function checkDocker(): Promise<Check> {
   if (computerKind() !== "linux") return { state: "off", code: "not_used" };
   const target = dockerTarget();
   if (!target) return { state: "degraded", code: "docker_not_configured" };

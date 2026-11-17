@@ -26,10 +26,13 @@ import { GoogleAccountBlock, GoogleLoginSettings } from "./GoogleLogin";
 import { AccountEmailBlock, ServerMailSettings } from "./AccountRecovery";
 import { AdminSection, SubscriptionSection } from "./Hosted";
 import { BackupSettings } from "./BackupSettings";
+import { SurveillanceSettingsSection } from "./SurveillanceView";
 
 const SECTIONS: { id: AppSection; icon: IconName }[] = [
   { id: "general", icon: "settings" },
   { id: "today", icon: "sun" },
+  // The server's owner and hosted operators only: the Sentinelle's alerts (SurveillanceView.tsx).
+  { id: "surveillance", icon: "shield" },
   { id: "profile", icon: "user" },
   { id: "models", icon: "brain" },
   { id: "notifications", icon: "bell" },
@@ -1239,7 +1242,8 @@ export function AppSettings({ section }: { section: AppSection }) {
   const root = useRef<HTMLDivElement>(null);
   const t = useT();
   const hosted = useStore((s) => s.hosted);
-  const sections = SECTIONS.filter((s) => (s.id === "subscription" ? !!hosted : s.id === "admin" ? !!hosted?.operator : true));
+  const sentinel = useStore((s) => s.sentinel);
+  const sections = SECTIONS.filter((s) => (s.id === "subscription" ? !!hosted : s.id === "admin" ? !!hosted?.operator : s.id === "surveillance" ? sentinel : true));
   useEscape(closeAppSettings, !blocked);
   useDialogFocus(root);
   return (
@@ -1261,6 +1265,7 @@ export function AppSettings({ section }: { section: AppSection }) {
         <div className={`app-settings-content settings-pane ${section === "admin" ? "is-wide" : ""}`}>
           {section === "general" && <GeneralSection />}
           {section === "today" && <TodaySettingsSection />}
+          {section === "surveillance" && sentinel && <SurveillanceSettingsSection />}
           {section === "profile" && <ProfileSection />}
           {section === "models" && <ModelsSection />}
           {section === "notifications" && <NotificationsSection />}

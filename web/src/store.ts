@@ -19,7 +19,7 @@ export type ModalState =
   | { kind: "exportTemplate"; sectionId?: string; botIds?: string[] }
   | { kind: "connectors"; prefill?: { name: string; botId: string; seq: number } };
 export type BotSettingsTab = "general" | "skills" | "memories" | "routines" | "localTools" | "reach" | "telegram" | "email" | "sharing" | "api";
-export type AppSection = "general" | "today" | "profile" | "models" | "notifications" | "computer" | "devices" | "permissions" | "rules" | "memory" | "connectors" | "vault" | "keys" | "pages" | "usage" | "checkins" | "activity" | "team" | "workspaces" | "voice" | "email" | "account" | "subscription" | "admin";
+export type AppSection = "general" | "today" | "surveillance" | "profile" | "models" | "notifications" | "computer" | "devices" | "permissions" | "rules" | "memory" | "connectors" | "vault" | "keys" | "pages" | "usage" | "checkins" | "activity" | "team" | "workspaces" | "voice" | "email" | "account" | "subscription" | "admin";
 /** Hosted mode (server/src/hosted.ts): only present when the server runs with HOSTED_MODE=1. */
 export interface HostedInfo { operator: boolean; links: { pricing: string; terms: string; legal: string; privacy: string } }
 
@@ -144,6 +144,8 @@ interface Store {
   imageGeneration: boolean;
   /** Hosted mode: the public pages to link and whether the signed-in person is an operator (null: not a hosted server). */
   hosted: HostedInfo | null;
+  /** The signed-in person watches this server (its owner, or a hosted operator): the Surveillance page is theirs. */
+  sentinel: boolean;
   /** How bots can make videos (Higgsfield app, a video API, or neither). */
   video: VideoStatus;
   /** The thread open in the side panel: the bot and the seq of the message it hangs on. */
@@ -200,7 +202,7 @@ interface Store {
   history: HistoryTarget | null;
 
   selectedId: string | null;
-  view: "chat" | "tasks" | "today";
+  view: "chat" | "tasks" | "today" | "surveillance";
   detailsOpen: boolean;
   sidebarCollapsed: boolean;
   mobileNav: boolean;
@@ -258,7 +260,7 @@ interface Store {
   removeUpload(botId: string, id: string): void;
   clearUploads(botId: string, ids: string[]): void;
   setTheme(theme: Theme): void;
-  setView(view: "chat" | "tasks" | "today"): void;
+  setView(view: "chat" | "tasks" | "today" | "surveillance"): void;
   toggleDetails(open?: boolean): void;
   toggleSidebar(): void;
   setMobileNav(open: boolean): void;
@@ -311,6 +313,7 @@ export const useStore = create<Store>((set, get) => ({
   firstBot: { name: "Juno", label: "" },
   imageGeneration: false,
   hosted: null,
+  sentinel: false,
   video: { provider: null, higgsfield: false },
   openThread: null,
   recordings: {},
@@ -371,8 +374,8 @@ export const useStore = create<Store>((set, get) => ({
       if (get().boot === "ready") set({ boot: "signedOut", user: null });
     });
     try {
-      const me = await api<{ user: User | null; signupOpen: boolean; setupCodeRequired?: boolean; imageGeneration?: boolean; video?: VideoStatus; firstBot?: { name: string; label: string }; hosted?: HostedInfo }>("GET", `/me?locale=${get().locale}`);
-      set({ imageGeneration: me.imageGeneration === true, video: me.video ?? { provider: null, higgsfield: false }, hosted: me.hosted ?? null, ...(me.firstBot ? { firstBot: me.firstBot } : {}) });
+      const me = await api<{ user: User | null; signupOpen: boolean; setupCodeRequired?: boolean; imageGeneration?: boolean; video?: VideoStatus; firstBot?: { name: string; label: string }; hosted?: HostedInfo; sentinel?: boolean }>("GET", `/me?locale=${get().locale}`);
+      set({ imageGeneration: me.imageGeneration === true, video: me.video ?? { provider: null, higgsfield: false }, hosted: me.hosted ?? null, sentinel: me.sentinel === true, ...(me.firstBot ? { firstBot: me.firstBot } : {}) });
       if (me.user) {
         set({ signupOpen: me.signupOpen });
         await get().signedIn(me.user);
@@ -393,8 +396,8 @@ export const useStore = create<Store>((set, get) => ({
     }
     if (get().boot === "signedOut") {
       // Signed in from the form: /me was read before there was a session, so read the server flags again.
-      api<{ imageGeneration?: boolean; video?: VideoStatus; hosted?: HostedInfo }>("GET", "/me").then(
-        (me) => set({ imageGeneration: me.imageGeneration === true, video: me.video ?? { provider: null, higgsfield: false }, hosted: me.hosted ?? null }),
+      api<{ imageGeneration?: boolean; video?: VideoStatus; hosted?: HostedInfo; sentinel?: boolean }>("GET", "/me").then(
+        (me) => set({ imageGeneration: me.imageGeneration === true, video: me.video ?? { provider: null, higgsfield: false }, hosted: me.hosted ?? null, sentinel: me.sentinel === true }),
         () => undefined,
       );
     }
@@ -415,9 +418,10 @@ export const useStore = create<Store>((set, get) => ({
     const wanted = new URLSearchParams(window.location.search).get("bot");
     if (wanted && get().bots[wanted]) get().selectBot(wanted);
     if (wanted) window.history.replaceState(null, "", window.location.pathname);
-    // Opened from the daily digest (/?view=today): the Today page.
-    if (new URLSearchParams(window.location.search).get("view") === "today") {
-      get().setView("today");
+    // Opened from the daily digest (/?view=today): the Today page; from a Sentinelle alert (/?view=surveillance): Surveillance.
+    const wantedView = new URLSearchParams(window.location.search).get("view");
+    if (wantedView === "today" || wantedView === "surveillance") {
+      get().setView(wantedView);
       window.history.replaceState(null, "", window.location.pathname);
     }
     // Wave 6: opened from a workspace invitation while signed in: join, then show the bots shared there.

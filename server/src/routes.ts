@@ -107,6 +107,9 @@ import { registerHostedPages, registerHostedPrivate, registerHostedPublic, suspe
 import { TodayError, todayReport, todaySettings } from "./today.js";
 import { registerBotApi, registerBotApiOwner } from "./botapi.js";
 import { handleBotMcp } from "./botmcp.js";
+import { registerSentinelRoutes } from "./sentinel/routes.js";
+import { canWatch as sentinelWatcher } from "./sentinel/view.js";
+import { noteSignal } from "./sentinel/signals.js";
 import { answerCapCard, amountText, CapError, capName, caps as usageCaps, capsView, cleanCapInput, cm } from "./usagecaps.js";
 
 type Env = { Variables: { user: UserRecord } };
@@ -261,7 +264,9 @@ api.get("/me", (c) => {
   const locale = user?.locale ?? pickLocale(c.req.query("locale"), c.req.header("accept-language"));
   // Hosted mode only (no field at all otherwise): the public pages to link and, signed in, whether this is an operator.
   const hosted = hostedMode() ? { operator: !!user && isOperator(user.id), links: locale === "fr" ? { pricing: "/tarifs", terms: "/cgu", legal: "/mentions-legales", privacy: "/confidentialite" } : { pricing: "/pricing", terms: "/terms", legal: "/legal-notice", privacy: "/privacy" } } : undefined;
-  return c.json({ user: user ? publicUser(user) : null, signupOpen: signupOpen(), setupCodeRequired: setupCodeRequired(), imageGeneration: !!imageService(), video, firstBot: firstBotIdentity(locale), ...(hosted ? { hosted } : {}) });
+  // `sentinel`: the signed-in person watches this server (the owner, or a hosted operator): the Surveillance page is theirs.
+  const sentinel = !!user && sentinelWatcher(user.id);
+  return c.json({ user: user ? publicUser(user) : null, signupOpen: signupOpen(), setupCodeRequired: setupCodeRequired(), imageGeneration: !!imageService(), video, firstBot: firstBotIdentity(locale), ...(hosted ? { hosted } : {}), ...(sentinel ? { sentinel } : {}) });
 });
 
 // Slows down password guessing: a handful of attempts per account, and a few dozen per client address,
@@ -351,8 +356,9 @@ api.post("/auth/login", async (c) => {
   throttle(`login:${email}`);
   const user = users.byEmail(email);
   const password = String(b.password ?? "");
-  if (!user) { dummyCheck(password); fail(401, "Wrong email or password."); }
-  if (!verifyPassword(password, user!.passHash)) fail(401, "Wrong email or password.");
+  // Each refused password counts for the Sentinelle (a burst of them may be someone trying passwords): the address only.
+  if (!user) { dummyCheck(password); noteSignal("login_failure", clientIp(c)); fail(401, "Wrong email or password."); }
+  if (!verifyPassword(password, user!.passHash)) { noteSignal("login_failure", clientIp(c)); fail(401, "Wrong email or password."); }
   attempts.delete(`login:${email}`);
   audit(user!.id, "account", "Signed in");
   startSession(c, user!.id);
@@ -1311,6 +1317,8 @@ registerGooglePrivate(api, googleDeps);
 registerAccountMailPrivate(api, googleDeps);
 // "Sauvegarde automatique" (autobackup.ts): the owner's off-server backup to S3-compatible storage.
 registerAutoBackupRoutes(api, googleDeps);
+// "Surveillance" (sentinel/): the Sentinelle's incidents and alert settings, for the owner and hosted operators only.
+registerSentinelRoutes(api);
 api.put("/account/password", async (c) => {
   const user = c.get("user");
   const b = await body(c);

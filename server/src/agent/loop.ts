@@ -45,6 +45,7 @@ import { engineBlock, hostedMode, isHostedStop, isPlanLimit, operatorBlock, oper
 import { pauses } from "../pauses.js";
 import { blockingCap, capCard, caps as usageCaps, clearTurn, cm, markTurn, noteAttended, noteSkip, skipText, turnAttended } from "../usagecaps.js";
 import type { CapStateView } from "../shared.js";
+import { noteTurnFailure } from "../sentinel/signals.js";
 import { callSignal, EngineGone, endWatch, isWatchStop, takeSwitch, TurnStalled, watchKind, watchNextModel, watchOutput, watchTool, watchTurn, watchWait, type WatchHandle } from "./watch.js";
 
 /** A skill the user asked for with "/skill <name>" in the composer. */
@@ -692,7 +693,7 @@ async function runScopedTurn(botId: string, trigger: Trigger, thread: number): P
         const switched = !thrown && outcome?.switched ? takeSwitch(botId) : null;
         // The subscription tool failed: the turn goes on with the first backup API model, if there is one (and money left).
         const backup = switched ?? (failure ? modelChain({ ...bot, model: bot.model }).slice(1)[0] : undefined);
-        if (failure) engineFailed = failure;
+        if (failure) { engineFailed = failure; noteTurnFailure(engineOf(bot.model) === "codex" ? "codex" : "claude_code", failure); }
         if (!backup || overBudget(user.id)) { if (thrown) throw thrown; throw new EngineDone(); }
         turn = await engineFallback(bot, user, trigger, thread, turn, { failure: switched ? "no answer" : failure, steps: outcome?.steps ?? [], prompt, backup, extra, switched: !!switched });
         watchKind(botId, "api");
@@ -1007,6 +1008,8 @@ async function modelLoop(turn: Turn) {
           turn.modelRef = next;
           continue;
         }
+        // The Sentinelle counts each failed model call by provider and error class (never the message itself).
+        noteTurnFailure(turn.modelRef.split(":")[0], (err as Error)?.message ?? err, err instanceof ProviderError ? err.status : null, err instanceof ProviderError ? err.code : null);
         // Whatever this failed call had started to write is taken back: the next try writes the reply afresh.
         stream.rollback(tr(loc, "The reply was interrupted. Trying again…"));
         // Too long for the model: summarise the older steps (keeping less than usual) and try the same model once more,

@@ -3,6 +3,7 @@ import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { config } from "./config.js";
 import { now } from "./store.js";
+import { noteSignal } from "./sentinel/signals.js";
 import type { ClickTarget } from "./computer.js";
 import { ELEMENTS_PY, type ElementAnswer, type ElementRequest, type ElementSnapshot } from "./screen-elements.js";
 
@@ -13,6 +14,13 @@ import { ELEMENTS_PY, type ElementAnswer, type ElementRequest, type ElementSnaps
  */
 
 export interface Exec { code: number | null; stdout: Buffer; stderr: string; timedOut: boolean }
+
+/** Whether a failed docker call's error is about Docker itself: refused by Sklubot's proxy, or Docker unreachable. */
+export function dockerTrouble(stderr: string): "proxy_refused" | "daemon_unreachable" | null {
+  if (/Refused by Sklubot's Docker proxy/.test(stderr)) return "proxy_refused";
+  if (/Cannot connect to the Docker daemon|error during connect|spawn docker ENOENT/.test(stderr)) return "daemon_unreachable";
+  return null;
+}
 
 /** Runs the docker CLI without a shell, so no argument is ever interpreted. */
 export function docker(args: string[], opts: { timeoutMs?: number; signal?: AbortSignal; maxBytes?: number; input?: string } = {}): Promise<Exec> {
@@ -28,7 +36,13 @@ export function docker(args: string[], opts: { timeoutMs?: number; signal?: Abor
     const kill = () => child.kill("SIGKILL");
     const timer = setTimeout(() => { timedOut = true; kill(); }, opts.timeoutMs ?? 30_000);
     opts.signal?.addEventListener("abort", kill, { once: true });
-    const done = (code: number | null) => { clearTimeout(timer); opts.signal?.removeEventListener("abort", kill); resolve({ code, stdout: Buffer.concat(chunks), stderr, timedOut }); };
+    const done = (code: number | null) => {
+      clearTimeout(timer);
+      opts.signal?.removeEventListener("abort", kill);
+      // The Sentinelle counts Docker calls refused by Sklubot's proxy or that cannot reach Docker at all (not a command's own failure).
+      if (code !== 0) { const cls = dockerTrouble(stderr); if (cls) noteSignal("docker_error", cls); }
+      resolve({ code, stdout: Buffer.concat(chunks), stderr, timedOut });
+    };
     child.on("error", (err) => { stderr = String(err.message); done(null); });
     child.on("close", done);
   });

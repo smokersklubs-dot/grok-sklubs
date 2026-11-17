@@ -17,6 +17,8 @@ import { startDiskWatchdog } from "./diskwatch.js";
 import { startScheduler } from "./scheduler.js";
 import { startAutoBackup } from "./autobackup.js";
 import { startHealthChecks } from "./health.js";
+import { startSentinel } from "./sentinel/index.js";
+import { installErrorCounter, noteSignal } from "./sentinel/signals.js";
 import { attachLiveScreens } from "./vnc.js";
 import { relayUpgrade } from "./relay.js";
 import { closeLeftOpenWatchNotices } from "./agent/watch.js";
@@ -28,6 +30,8 @@ import { receiving, startMailReceiver, stopMailReceiver } from "./botmail.js";
 import { voiceUpgrade } from "./voice/session.js";
 import { appCsp, inlineScriptHashes, limitBodies, openSetupProblem, securityHeaders } from "./hardening.js";
 
+// The Sentinelle's error counter (sentinel/signals.ts): from here on, every console.error line counts.
+installErrorCounter();
 try { assertConfig(); } catch (err) { console.error(`\nCannot start: ${(err as Error).message}\n`); process.exit(1); }
 // M6: a fresh install open to others needs its setup code; one that already has accounts always starts.
 {
@@ -88,6 +92,8 @@ if (uncertain) console.log(`${uncertain} action(s) cut off by the restart are ma
 startScheduler();
 startAutoBackup();
 startHealthChecks();
+// The Sentinelle (sentinel/): a read-only scan every SENTINEL_EVERY_MIN minutes, incidents and alerts to the owner/operators.
+startSentinel();
 // M2: the disk watchdog (DISK_FREE_MIN_MB; Linux computers only).
 startDiskWatchdog();
 if (!config.schedulerOff) { telegram.start(); recoverInterruptedTurns(); startJobWatch(); }
@@ -98,7 +104,7 @@ const server = serve({ fetch: app.fetch, port: config.port }, () => {
   console.log(computerNote);
   // From here on the server is up: one bad request or a stray failure in the background is logged, never
   // allowed to stop the whole server. Start-up failures above still stop it, as they should.
-  process.on("uncaughtException", (err) => console.error("[uncaught]", err));
+  process.on("uncaughtException", (err) => { noteSignal("uncaught", "exception"); console.error("[uncaught]", err); });
   process.on("unhandledRejection", (err) => console.error("[unhandled rejection]", err));
 });
 

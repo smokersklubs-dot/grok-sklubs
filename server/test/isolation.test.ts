@@ -101,6 +101,9 @@ test("setup: A owns one of everything, V is a viewer of A's workspace with bot1 
     ids[`apikey_${b}`] = made.json.key.id;
     ids[`apisecret_${b}`] = made.json.secret;
   }
+  // "Surveillance" (sentinel/): an incident about A's bot1 — only the server's owner (A) may see or acknowledge it.
+  ins("INSERT INTO sentinel_incidents (id, fingerprint, kind, severity, status, params, user_id, bot_id, count, peak, seen, first_at, last_at) VALUES ('a_incident', ?, 'tool_errors', 'critical', 'open', ?, ?, ?, 25, 25, 1, ?, ?)",
+    `tool_errors:${ids.bot1}:alphasecret_tool`, JSON.stringify({ tool: "alphasecret_tool", failed: 25, total: 25 }), userA, ids.bot1, t, t);
   ins("INSERT INTO vault (id, user_id, name, username, password_enc, created_at) VALUES ('a_vault', ?, 'ALPHASECRET vault', 'alice', ?, ?)", userA, seal("ALPHASECRET password"), t);
   ins("INSERT INTO connectors (id, user_id, name, url, token_enc, created_at) VALUES ('a_conn', ?, 'ALPHASECRET connector', 'https://mcp.example.com', ?, ?)", userA, seal("ALPHASECRET token"), t);
   ins("INSERT INTO bot_sections (id, user_id, name, created_at) VALUES ('a_section', ?, 'ALPHASECRET section', ?)", userA, t);
@@ -157,6 +160,8 @@ function resolve(routePath: string, param: string, bot: "bot1" | "bot2"): string
     "stops:stopId": "a_capstop",
     // "Accès API" (botapi.ts): A's key of the bot, a message of A's conversation, a goal of A's bot.
     "api-keys:keyId": ids[`apikey_${b}`] ?? "bak_none", "messages:seq": "1", "tasks:taskId": ids[`goal_${b}`],
+    // "Surveillance" (sentinel/): A's incident.
+    "incidents:incidentId": "a_incident",
   };
   if (param === "action" && prev2 === "reach") return "login";
   if (param === "rid" && prev2 === "resources") return "a_conn";
@@ -370,6 +375,25 @@ test("the automatic backup's routes (owner only): B and V get 403 on every one, 
   assert.equal(mine.status, 200);
   assert.equal(mine.json.bucket, "alphasecret-bucket");
   assert.ok(!mine.text.includes("ALPHASECRET-SK") && !mine.text.includes("ALPHASECRET-AK"));
+});
+
+test("Surveillance (sentinel/): owner only — B and V get 404 on every route and see nothing of A's incidents", async () => {
+  const routes = discover().filter((r) => r.app === api && r.path.startsWith("/surveillance")).map((r) => r.key).sort();
+  assert.deepEqual(routes, ["GET /surveillance", "GET /surveillance/settings", "POST /surveillance/incidents/:incidentId/ack", "POST /surveillance/scan", "PUT /surveillance/settings"]);
+  const problems: string[] = [];
+  for (const who of ["b", "v"] as const) {
+    for (const r of discover().filter((x) => x.app === api && x.path.startsWith("/surveillance"))) {
+      const res = await call(api, who, methodOf(r.method), fill(r.path, "bot1"), { minSeverity: "info" });
+      if (res.status !== 404 || leakIn(res.text) || res.text.includes("a_incident")) problems.push(`${who} ${r.key} → ${res.status} ${res.text.slice(0, 120)}`);
+    }
+    assert.equal((await call(api, who, "GET", "/me")).json.sentinel, undefined);
+  }
+  assert.deepEqual(problems, []);
+  assert.equal(q.get<{ acked_at: number | null }>("SELECT acked_at FROM sentinel_incidents WHERE id = 'a_incident'")!.acked_at, null, "nobody but A acknowledged it");
+  // A, the server's owner, sees it — with the bot's name, since it is A's own bot.
+  const mine = await A("GET", "/surveillance");
+  assert.equal(mine.status, 200);
+  assert.ok(mine.json.incidents.some((i: any) => i.id === "a_incident" && /ALPHASECRET One/.test(i.explanation)));
 });
 
 test("Pause (agent/pause.ts): owner only — B and V get 404 on A's bots and section, and 'everything' pauses only their own", async () => {

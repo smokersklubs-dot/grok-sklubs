@@ -18,6 +18,7 @@ import { SignIn } from "./components/SignIn";
 import { EmailConfirmPage, ResetPasswordPage, takeLinkAction } from "./components/AccountRecovery";
 import { TasksView } from "./components/TasksView";
 import { TodayView } from "./components/TodayView";
+import { SurveillanceView } from "./components/SurveillanceView";
 import { ThreadPanel } from "./components/ThreadPanel";
 import { DownloadPage, isDownloadPath } from "./components/DownloadPage";
 import { useDesktopBadge } from "./lib/desktop";
@@ -102,6 +103,7 @@ function Shell() {
   const relayViewerId = useStore((s) => s.relayViewerId);
   const toast = useStore((s) => s.toast);
   const history = useStore((s) => s.history);
+  const sentinel = useStore((s) => s.sentinel);
   const openModal = useStore((s) => s.openModal);
   const close = () => openModal(null);
   const openThread = useStore((s) => (s.openThread && s.openThread.botId === s.selectedId ? s.openThread : null));
@@ -111,7 +113,7 @@ function Shell() {
   return (
     <div className={`shell ${showDetails || showThread ? "has-details" : ""}`}>
       <Sidebar />
-      {view === "tasks" ? <TasksView /> : view === "today" ? <TodayView /> : <ChatView />}
+      {view === "tasks" ? <TasksView /> : view === "today" ? <TodayView /> : view === "surveillance" && sentinel ? <SurveillanceView /> : <ChatView />}
       {showDetails && <DetailsPanel />}
       {showThread && openThread && <ThreadPanel key={`${openThread.botId}:${openThread.seq}`} botId={openThread.botId} seq={openThread.seq} />}
 
