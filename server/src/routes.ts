@@ -105,6 +105,8 @@ import { healthReport } from "./monitor.js";
 import { accountCreated, HostedError, hostedMode, isOperator, isPlanLimit, lentProviderIds, planInviteOpens, signupChoice, subscriptionEnginesFor, suspended, type SignupChoice } from "./hosted.js";
 import { registerHostedPages, registerHostedPrivate, registerHostedPublic, suspendedText } from "./hostedroutes.js";
 import { TodayError, todayReport, todaySettings } from "./today.js";
+import { registerBotApi, registerBotApiOwner } from "./botapi.js";
+import { handleBotMcp } from "./botmcp.js";
 import { answerCapCard, amountText, CapError, capName, caps as usageCaps, capsView, cleanCapInput, cm } from "./usagecaps.js";
 
 type Env = { Variables: { user: UserRecord } };
@@ -399,6 +401,12 @@ api.post("/hooks/:token", async (c) => {
   if (fired === "capped") return c.json({ ok: true, skipped: "usage_cap" });
   return c.json({ ok: true });
 });
+
+/**
+ * "Accès API" (botapi.ts, docs/API-BOT.md): the Bot API and its MCP control server, under /api/v1, authenticated by a
+ * bot's API key (Bearer), never by a session — registered here, before the session check, like the webhooks above.
+ */
+registerBotApi(api, handleBotMcp);
 
 // The browser comes back here from an app's OAuth sign-in page (the redirect URI shown in the app).
 // The state parameter alone identifies the sign-in (single use, 10 minutes); a session, when present, must match it.
@@ -723,6 +731,9 @@ api.delete("/sections/:id", (c) => {
 // Owner only: pausing decides about the owner's bots, spend and subscriptions. Someone of a workspace a bot is shared
 // with — viewer, member or admin — cannot pause or resume it (ownAgent / sections.owned answer 404, as for any other
 // account's thing); a stranger's call to "everything" pauses only their own bots. Each change is an audit line.
+// "Accès API" (botapi.ts): the owner's API keys of one bot — owner only (a workspace member never manages them).
+registerBotApiOwner(api, (c) => ownAgent(c as Context<Env>));
+
 api.get("/pauses", (c) => c.json(pauses.state(c.get("user").id)));
 api.post("/bots/:id/pause", (c) => { const bot = ownAgent(c); return c.json(setPause(c.get("user"), "bot", bot.id, true, bot.name)); });
 api.post("/bots/:id/resume", (c) => { const bot = ownAgent(c); return c.json(setPause(c.get("user"), "bot", bot.id, false, bot.name)); });

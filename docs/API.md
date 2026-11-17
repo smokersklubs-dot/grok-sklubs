@@ -1,8 +1,8 @@
 # Sklubot HTTP API
 
 All paths are under `/api`. JSON in, JSON out. Errors: `{ "error": "message" }` with an HTTP status.
-Authentication is an HTTP-only session cookie; every route except the auth routes, `/health` and `/hooks/*`
-answers 401 without it. Types named below are defined in `server/src/shared.ts`.
+Authentication is an HTTP-only session cookie; every route except the auth routes, `/health`, `/hooks/*` and the Bot API `/v1/*` (an API key,
+`docs/API-BOT.md`) answers 401 without it. Types named below are defined in `server/src/shared.ts`.
 
 ## Account
 | Method | Path | Body | Returns |
@@ -69,6 +69,10 @@ answers 401 without it. Types named below are defined in `server/src/shared.ts`.
 | GET | `/tasks` | – | `{ tasks: Task[] }` (all bots) |
 | GET | `/bots/:id/tasks` | – | `{ tasks: Task[] }` |
 | POST | `/hooks/:token` | any JSON | `{ ok }` — fires a webhook routine (no session needed) |
+| GET | `/bots/:id/api-keys` | – | `BotApiKeysView` `{ keys: BotApiKeyView[], max, baseUrl, mcpUrl }` — owner only ("Accès API", botapi.ts) |
+| POST | `/bots/:id/api-keys` | `{ name, scopes: ("read"\|"write"\|"tasks")[] }` | `{ key: BotApiKeyView, secret, …BotApiKeysView }` — `secret` (`sk_bot_…`) is returned this once only; 409 `too_many_keys` |
+| DELETE | `/bots/:id/api-keys/:keyId` | – | `BotApiKeysView` — revokes the key at once; 404 if unknown or already revoked |
+| * | `/v1/…` | – | The Bot API (Bearer key, no session) and its MCP server `/v1/mcp`: see `docs/API-BOT.md` |
 
 ## Computer and files
 | Method | Path | Body | Returns |

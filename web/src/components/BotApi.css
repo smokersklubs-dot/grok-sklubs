@@ -1,0 +1,29 @@
+/* Bot settings → "Accès API" (BotApi.tsx). */
+.bot-api .row-start { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.bot-api-safety { background: var(--surface-2); color: var(--text-2); font-weight: 500; line-height: 1.45; }
+.bot-api-fresh { display: flex; flex-direction: column; gap: 8px; padding: 12px 13px; border-radius: var(--r-md); background: var(--warn-soft); }
+.bot-api-fresh p { margin: 0; line-height: 1.45; }
+.bot-api-fresh-title { display: flex; align-items: center; gap: 7px; font-weight: 650; }
+.bot-api-secret { display: block; max-width: 100%; padding: 8px 10px; border-radius: var(--r-sm, 6px); background: var(--surface); border: 1px solid var(--border); font-family: var(--mono, ui-monospace, monospace); font-size: 12.5px; font-weight: 600; overflow-wrap: anywhere; word-break: break-all; user-select: all; }
+.bot-api-keys { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.bot-api-key { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-top: 1px solid var(--border); min-width: 0; }
+.bot-api-key:first-child { border-top: 0; }
+.bot-api-key.is-revoked { opacity: 0.6; }
+.bot-api-key-main { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; flex: 1; min-width: 0; }
+.bot-api-key-name { font-weight: 600; max-width: 100%; }
+.bot-api-key-prefix { font-family: var(--mono, ui-monospace, monospace); font-size: 12px; color: var(--text-2); }
+.bot-api-key-main .muted { flex-basis: 100%; }
+.bot-api-scopes { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.bot-api-scope-set { border: 0; margin: 0; padding: 0; min-width: 0; }
+.bot-api-scope { align-items: flex-start; padding: 6px 4px; }
+.bot-api-scope input { margin-top: 3px; flex: none; }
+.bot-api-scope > span { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.bot-api-scope-title { font-weight: 600; font-size: 13.5px; }
+.bot-api-new .row-end { flex-wrap: wrap; }
+.bot-api-client-hint { margin: 0; line-height: 1.5; color: var(--text-2); }
+.bot-api-snippet { margin: 0; max-width: 100%; padding: 10px 12px; border-radius: var(--r-md); background: var(--surface-2); border: 1px solid var(--border); overflow-x: auto; font-size: 12px; line-height: 1.5; }
+.bot-api-snippet code { font-family: var(--mono, ui-monospace, monospace); white-space: pre-wrap; overflow-wrap: anywhere; }
+@media (max-width: 560px) {
+  .bot-api-key { flex-direction: column; align-items: stretch; }
+  .bot-api-key .btn { align-self: flex-start; }
+}

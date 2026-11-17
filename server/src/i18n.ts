@@ -5,6 +5,10 @@ import type { Locale } from "./shared.js";
  * English is the key; French is looked up here. Anything missing falls back to English.
  */
 const FR: Record<string, string> = {
+  // Bot API (botapi.ts, agent/authorize.ts).
+  "A program asked for this through the Bot API: an action that cannot be undone needs your own yes.": "Un programme l'a demandé par l'API du bot : une action irréversible demande ton propre oui.",
+  "Allow {bot} to do this? A program asked for it through the Bot API.": "Autoriser {bot} à faire ceci ? Un programme l'a demandé par l'API du bot.",
+  "Bot API": "API du bot",
   // "Pause" (agent/pause.ts, loop.ts, team.ts, telegram.ts).
   "its bot is paused": "son bot est en pause", "the section “{name}”": "la section « {name} »",
   "{bot} is paused: this message is kept and will be handled when it is resumed.": "{bot} est en pause : ce message est gardé et sera traité à la reprise.",

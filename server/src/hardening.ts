@@ -22,6 +22,8 @@ export const BODY_LIMITS: { test: RegExp; max: number }[] = [
   { test: /^\/egress\//, max: 21 * MB },
   { test: /^\/mcp\//, max: 21 * MB },
   { test: /^\/api\/hooks\//, max: 256 * 1024 },
+  // The Bot API (botapi.ts): a message or an objective (20,000 characters), an MCP request.
+  { test: /^\/api\/v1\//, max: 256 * 1024 },
 ];
 export const DEFAULT_BODY_LIMIT = 1 * MB;
 export const bodyLimitFor = (path: string) => BODY_LIMITS.find((l) => l.test.test(path))?.max ?? DEFAULT_BODY_LIMIT;

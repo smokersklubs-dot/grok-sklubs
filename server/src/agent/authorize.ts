@@ -83,8 +83,18 @@ export interface ReviewAnswer { decision: "allow" | "ask" | "deny"; reason: stri
  */
 export async function authorize(turn: Turn, call: ToolUseBlock): Promise<Decision> {
   const d = await decide(turn, call);
-  if (d.kind !== "ask") return d;
   const irr = irreversibility(turn, call.name, call.input);
+  // Bot API (botapi.ts): work an outside program started with an API key. Its words are never the owner's (grounding.ts
+  // typedByUser leaves origin "api" out), and an action that cannot be undone always waits for the owner's own yes — even
+  // when a policy, the bot's trust level or an older quote of the owner would let it through. Only a refusal stays a
+  // refusal, and a "Retry" the owner pressed on a card for this exact action (a grant) is the owner's yes already.
+  if (irr && turn.origin === "api" && (d.kind === "ask" || (d.kind === "allow" && d.grant?.by !== "retry"))) {
+    const loc = turn.user.locale;
+    const why = tr(loc, "A program asked for this through the Bot API: an action that cannot be undone needs your own yes.");
+    const base: Ask = d.kind === "ask" ? d : { kind: "ask", policyKey: `api: ${call.name}`, title: tr(loc, "Allow {bot} to do this? A program asked for it through the Bot API.", { bot: turn.bot.name }), reason: tr(loc, irr.reason), source: tr(loc, "Bot API"), fixed: true };
+    return { ...base, once: true, fixed: true, irreversible: tr(loc, irr.reason), why: base.why ? `${why} ${base.why}` : why };
+  }
+  if (d.kind !== "ask") return d;
   return irr ? { ...d, once: true, irreversible: tr(turn.user.locale, irr.reason) } : d;
 }
 

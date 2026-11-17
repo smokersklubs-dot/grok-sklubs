@@ -180,6 +180,14 @@ function SenderLabel({ origin, role }: { origin: Origin; role: "user" | "assista
       </div>
     );
   }
+  if (origin.kind === "api") {
+    return (
+      <div className="sender">
+        <Icon name="key" size={14} />
+        <span>{t("msg.api", { name: origin.name })}</span>
+      </div>
+    );
+  }
   if (origin.kind === "webhook") {
     return (
       <div className="sender">

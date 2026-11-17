@@ -268,7 +268,20 @@ export interface Live {
  * the owner's: they do not authorise actions (grounding ignores them) and the turn they start is careful from its first
  * step. `email`: a mail received at the bot's own address (outside content).
  */
-export interface Origin { kind: "bot" | "routine" | "voice" | "webhook" | "nudge" | "member" | "email"; id: string; name: string }
+/** `api`: sent by an outside program through one of the owner's Bot API keys (botapi.ts): `id` is the key's id, `name` its name. */
+export interface Origin { kind: "bot" | "routine" | "voice" | "webhook" | "nudge" | "member" | "email" | "api"; id: string; name: string }
+
+/**
+ * Bot API (botapi.ts, docs/API-BOT.md): what a key may do. `read`: the bot's info and its conversation (messages and
+ * replies only). `write`: send it a message. `tasks`: give it a goal (goal mode). No scope reaches approvals, deletion,
+ * settings, the vault, connectors or another bot.
+ */
+export const BOT_API_SCOPES = ["read", "write", "tasks"] as const;
+export type BotApiScope = (typeof BOT_API_SCOPES)[number];
+/** A key as its owner sees it in the bot's settings: never the key itself (shown once, at creation), only its start. */
+export interface BotApiKeyView { id: string; name: string; prefix: string; scopes: BotApiScope[]; createdAt: number; lastUsedAt: number | null; revokedAt: number | null }
+/** Bot API settings of one bot: its keys, the most it may have, and the addresses to call. */
+export interface BotApiKeysView { keys: BotApiKeyView[]; max: number; baseUrl: string; mcpUrl: string }
 
 /** The small set of reactions anyone (the user or a bot) can put under a message. */
 export const REACTIONS = ["👍", "❤️", "😂", "🎉", "🤔", "👀", "🙏", "👎"] as const;

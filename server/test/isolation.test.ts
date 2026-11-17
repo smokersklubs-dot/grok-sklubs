@@ -94,6 +94,13 @@ test("setup: A owns one of everything, V is a viewer of A's workspace with bot1 
   // Usage caps (usagecaps.ts): a cap of A's on bot1, and the card of a reached cap with work set aside on it.
   ins("INSERT INTO usage_caps (user_id, bot_id, period, unit, limit_value, updated_at) VALUES (?, ?, 'day', 'usd', 7, ?)", userA, ids.bot1, t);
   ins("INSERT INTO usage_cap_stops (id, user_id, card_bot_id, cap_key, period_key, generation, held, created_at) VALUES ('a_capstop', ?, ?, 'self:account:day:usd', '2026-01-01@7', 1, ?, ?)", userA, ids.bot1, JSON.stringify([{ botId: ids.bot1, trigger: { kind: "user", text: "ALPHASECRET held" } }]), t);
+  // "Accès API": a key of A's on each bot (read, write, tasks), made through the owner's route.
+  for (const b of ["bot1", "bot2"]) {
+    const made = await A("POST", `/bots/${ids[b]}/api-keys`, { name: "ALPHASECRET key", scopes: ["read", "write", "tasks"] });
+    assert.equal(made.status, 200, made.text);
+    ids[`apikey_${b}`] = made.json.key.id;
+    ids[`apisecret_${b}`] = made.json.secret;
+  }
   ins("INSERT INTO vault (id, user_id, name, username, password_enc, created_at) VALUES ('a_vault', ?, 'ALPHASECRET vault', 'alice', ?, ?)", userA, seal("ALPHASECRET password"), t);
   ins("INSERT INTO connectors (id, user_id, name, url, token_enc, created_at) VALUES ('a_conn', ?, 'ALPHASECRET connector', 'https://mcp.example.com', ?, ?)", userA, seal("ALPHASECRET token"), t);
   ins("INSERT INTO bot_sections (id, user_id, name, created_at) VALUES ('a_section', ?, 'ALPHASECRET section', ?)", userA, t);
@@ -148,6 +155,8 @@ function resolve(routePath: string, param: string, bot: "bot1" | "bot2"): string
     "plan-invites:token": "not-a-real-invite", "webhook:provider": "stripe",
     // Usage caps: the card of a reached cap.
     "stops:stopId": "a_capstop",
+    // "Accès API" (botapi.ts): A's key of the bot, a message of A's conversation, a goal of A's bot.
+    "api-keys:keyId": ids[`apikey_${b}`] ?? "bak_none", "messages:seq": "1", "tasks:taskId": ids[`goal_${b}`],
   };
   if (param === "action" && prev2 === "reach") return "login";
   if (param === "rid" && prev2 === "resources") return "a_conn";
@@ -175,6 +184,11 @@ function fill(routePath: string, bot: "bot1" | "bot2"): string {
 const PUBLIC = new Set(["POST /hooks/:token", "GET /invites/:token", "GET /native/:vendor/callback", "GET /p/:token", "GET /l/:token", "HEAD /l/:token", "GET /plan-invites/:token", "POST /billing/webhook/:provider"]);
 /** Whether this run is the hosted-mode one (isolation-hosted.test.ts). */
 const HOSTED = process.env.HOSTED_MODE === "1";
+/**
+ * The Bot API (botapi.ts, botmcp.ts): a bot's API key (Bearer) is its only credential; a session cookie is not one. Every
+ * route under /v1 answers 401 to a session alone (and to no credential at all); keys themselves are tested below.
+ */
+const BOT_KEY = (key: string) => / \/v1\//.test(key);
 /** The bots' own channel (engine token or socket): never a browser session. Refused without that token. */
 const BOT_CHANNEL = new Set(["POST /mcp/:botId", "GET /mcp/:botId", "DELETE /mcp/:botId", "ALL /egress/:botId/*"]);
 /**
@@ -264,6 +278,7 @@ test("B, a stranger, gets 403/404 on every parameterised route with A's ids, and
       const nr = NOT_REVEALING[r.key];
       if (nr) { if (res.status !== nr.status || (nr.body && !nr.body.test(res.text))) problems.push(`${r.key} (${bot}) → ${res.status} ${res.text.slice(0, 120)} (expected the non-revealing ${nr.status})`); continue; }
       if (BOT_CHANNEL.has(r.key)) { if (![401, 403, 404, 405].includes(res.status)) problems.push(`${r.key} (${bot}) → ${res.status}`); continue; }
+      if (BOT_KEY(r.key)) { if (res.status !== 401) problems.push(`${r.key} (${bot}) → ${res.status} (a session is not an API key)`); continue; }
       if (![403, 404].includes(res.status)) problems.push(`${r.key} (${bot}) → ${res.status} ${res.text.slice(0, 120)}`);
     }
   }
@@ -302,6 +317,7 @@ test("V, a viewer of A's workspace: the shared bot only through the allowed rout
         if (res.status !== expected) problems.push(`${r.key} (${bot}) allowed for a viewer: expected ${expected}, got ${res.status}`);
         continue;
       }
+      if (BOT_KEY(r.key)) { if (res.status !== 401) problems.push(`${r.key} (${bot}) → ${res.status} (a session is not an API key)`); continue; }
       const nr = NOT_REVEALING[r.key];
       if (nr ? res.status !== nr.status || (nr.body && !nr.body.test(res.text)) : ![403, 404].includes(res.status)) problems.push(`${r.key} (${bot}) → ${res.status} ${res.text.slice(0, 120)}`);
       // On the unshared bot, nothing at all may come back, not even its name.
@@ -376,6 +392,30 @@ test("Pause (agent/pause.ts): owner only — B and V get 404 on A's bots and sec
   }
   assert.equal(q.get<{ n: number }>("SELECT COUNT(*) AS n FROM bot_pauses WHERE user_id = ?", userA)!.n, 0, "nothing of A's was paused");
   assert.equal((await A("GET", "/bots")).json.bots.find((b: any) => b.id === ids.bot1).pause, null);
+});
+
+test("Bot API keys (botapi.ts): A's key of bot1 reaches bot1 only; B's key reaches nothing of A; every /v1 route is covered", async () => {
+  const v1 = discover().filter((r) => r.app === api && r.path.startsWith("/v1/"));
+  assert.deepEqual(v1.map((r) => r.key).sort(), ["DELETE /v1/mcp", "GET /v1/bot", "GET /v1/bot/messages", "GET /v1/bot/messages/:seq/wait", "GET /v1/bot/tasks/:taskId", "GET /v1/mcp", "POST /v1/bot/messages", "POST /v1/bot/tasks", "POST /v1/mcp"], "a new /v1 route must be added to this test");
+  const withKey = (secret: string, method: string, url: string, body?: unknown) =>
+    api.request(url, { method, headers: { "content-type": "application/json", authorization: `Bearer ${secret}`, accept: "application/json, text/event-stream" }, body: body === undefined || method === "GET" ? undefined : JSON.stringify(body) }).then(async (r) => ({ status: r.status, text: await r.text() }));
+  // B makes a key of B's own bot.
+  const bBot = (await call(api, "b", "GET", "/bots")).json.bots[0].id;
+  const bKey = (await call(api, "b", "POST", `/bots/${bBot}/api-keys`, { name: "B key", scopes: ["read", "write", "tasks"] })).json.secret as string;
+  const problems: string[] = [];
+  for (const r of v1) {
+    const url = fill(r.path, "bot1").replace(/\?.*$/, "") + (r.path.endsWith("/wait") ? "?timeout=0" : "");
+    const body = r.path === "/v1/mcp" ? { jsonrpc: "2.0", id: 1, method: "tools/list", params: {} } : r.path.endsWith("/tasks") ? { objective: "probe" } : { text: "probe" };
+    const b = await withKey(bKey, methodOf(r.method), url, body);
+    if (leakIn(b.text) || b.text.includes(ids.bot1) || b.text.includes(ids.bot2)) problems.push(`B's key: ${r.key} → ${b.status} LEAKS ${b.text.slice(0, 160)}`);
+    const a = await withKey(ids.apisecret_bot1, methodOf(r.method), url, body);
+    if (a.text.includes(ids.bot2) || /ALPHASECRET Two/.test(a.text)) problems.push(`A's bot1 key: ${r.key} → ${a.status} reaches bot2 ${a.text.slice(0, 160)}`);
+    if (a.status >= 500) problems.push(`A's bot1 key: ${r.key} → ${a.status}`);
+  }
+  assert.deepEqual(problems, []);
+  // The keys' management routes: owner only (B and V were refused above); A's keys are intact and A's bots got no message from B.
+  assert.equal(q.get<{ n: number }>("SELECT COUNT(*) AS n FROM bot_api_keys WHERE user_id = ? AND revoked_at IS NULL", userA)!.n, 2);
+  assert.equal(q.get<{ n: number }>("SELECT COUNT(*) AS n FROM rows WHERE bot_id IN (?, ?) AND body LIKE '%\"B key\"%'", ids.bot1, ids.bot2)!.n, 0);
 });
 
 test("A's things are all still there (nothing B or V tried changed them)", async () => {
