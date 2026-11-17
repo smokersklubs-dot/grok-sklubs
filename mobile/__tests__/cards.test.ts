@@ -8,7 +8,7 @@ import { cardReq } from "../src/lib/cardActions";
 import { answersCard, rankApps, sameUrl } from "../src/lib/catalog";
 import type { CatalogApp } from "../../server/src/shared";
 
-const web = ["Cards.tsx", "Wave5.tsx", "Wave5b.tsx", "Modals.tsx"].map((f) => readFileSync(join(__dirname, "../../web/src/components", f), "utf8")).join("\n");
+const web = ["Cards.tsx", "RulesAndNudges.tsx", "SpendSkillsFiles.tsx", "Modals.tsx"].map((f) => readFileSync(join(__dirname, "../../web/src/components", f), "utf8")).join("\n");
 const routes = readFileSync(join(__dirname, "../../server/src/routes.ts"), "utf8");
 
 describe("card requests", () => {
