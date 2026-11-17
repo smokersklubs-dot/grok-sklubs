@@ -1,6 +1,10 @@
 # Étape 3 : ouvrir la discussion avec le bot, envoyer un message, attendre la réponse du serveur (mode démo).
 appId: ${APP_ID}
 ---
+# Un dialogue système de l'émulateur (« … isn't responding ») peut recouvrir l'appli : on le laisse attendre.
+- tapOn:
+    text: "Wait"
+    optional: true
 - tapOn: "Juno"
 - extendedWaitUntil:
     visible: "Écris à Juno.*"

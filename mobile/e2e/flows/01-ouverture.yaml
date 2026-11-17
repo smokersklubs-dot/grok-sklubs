@@ -4,6 +4,10 @@ appId: ${APP_ID}
 ---
 - launchApp:
     clearState: true
+# Un dialogue système de l'émulateur (« … isn't responding ») peut recouvrir l'appli : on le laisse attendre.
+- tapOn:
+    text: "Wait"
+    optional: true
 - extendedWaitUntil:
     visible:
       id: "server-url"

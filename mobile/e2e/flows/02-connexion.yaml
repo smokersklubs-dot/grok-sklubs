@@ -2,6 +2,10 @@
 # avec le compte créé par le workflow. Jusqu'à l'écran des bots.
 appId: ${APP_ID}
 ---
+# Un dialogue système de l'émulateur (« … isn't responding ») peut recouvrir l'appli : on le laisse attendre.
+- tapOn:
+    text: "Wait"
+    optional: true
 - tapOn:
     id: "server-url"
 - eraseText: 60

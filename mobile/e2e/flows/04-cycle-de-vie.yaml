@@ -2,6 +2,10 @@
 # la relancer : elle doit revenir connectée (session gardée) sans planter.
 appId: ${APP_ID}
 ---
+# Un dialogue système de l'émulateur (« … isn't responding ») peut recouvrir l'appli : on le laisse attendre.
+- tapOn:
+    text: "Wait"
+    optional: true
 - pressKey: home
 - takeScreenshot: 09-arriere-plan
 - launchApp:

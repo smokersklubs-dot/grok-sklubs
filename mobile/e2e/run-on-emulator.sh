@@ -76,6 +76,16 @@ no_crash() {
   [ "$bad" = 0 ]
 }
 
+# A freshly booted emulator often shows "Pixel Launcher isn't responding" over everything (seen on the first runs):
+# let the system settle, ask Android not to show error dialogs (we read crashes from logcat instead), close dialogs.
+settle() {
+  sleep 20
+  adb shell settings put global hide_error_dialogs 1 || true
+  adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS > /dev/null || true
+  adb shell input keyevent KEYCODE_HOME || true
+}
+
+settle
 adb logcat -c || true
 step "Installation de l'APK sur le téléphone virtuel (adb install)" install_apk
 step "Ouverture depuis l'icône : l'appli est au premier plan" launch_activity
