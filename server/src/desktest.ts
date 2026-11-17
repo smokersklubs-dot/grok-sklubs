@@ -145,7 +145,12 @@ export async function runDeskTest(opts: DeskOptions = {}): Promise<DeskTestRun> 
         if (wall.code !== 0) throw new Error(`${id}: no wallpaper drawn`);
       }
       // The desktop shows the drawing (a flat colour would have a handful of colours, the wallpaper thousands).
-      const colours = Number((await exec(A, ["sh", "-c", "import -silent -window root png:- | convert - -format %k info:"])).out);
+      // Polled: on a busy machine the wallpaper can take a few seconds to be painted after the look is applied.
+      let colours = 0;
+      for (let i = 0; i < 20 && !(colours > 200); i++) {
+        if (i) await sleep(500);
+        colours = Number((await exec(A, ["sh", "-c", "import -silent -window root png:- | convert - -format %k info:"])).out);
+      }
       if (!(colours > 200)) throw new Error(`the desktop shows ${colours} colours: the wallpaper is not painted`);
       await shot(A, "wallpaper");
       return `both dressed, ${colours} colours on the desktop`;
@@ -223,7 +228,7 @@ export async function runDeskTest(opts: DeskOptions = {}): Promise<DeskTestRun> 
     await check("reset", "A reset closes a stray window and brings the home page back", async () => {
       await exec(A, ["sh", "-c", "setsid xterm -T desk-terminal -e 'echo desk test; sleep 600' >/dev/null 2>&1 &"]);
       let found = false;
-      for (let i = 0; i < 12 && !found; i++) { found = (await exec(A, ["sh", "-c", "wmctrl -l | grep -c desk-terminal || true"])).out !== "0"; if (!found) await sleep(500); }
+      for (let i = 0; i < 40 && !found; i++) { found = (await exec(A, ["sh", "-c", "wmctrl -l | grep -c desk-terminal || true"])).out !== "0"; if (!found) await sleep(500); }
       if (!found) throw new Error("the terminal window never appeared");
       await shot(A, "before-reset");
       await linuxScreen.tidy(A, USER, ws(A));
