@@ -20,6 +20,7 @@ import { MemorySettingsSection, RulesSection } from "./Wave5";
 import { JournalView, PageVisibility, SpendSettingsBlock } from "./Wave5b";
 import { MailSection, VoiceSection, WorkspacesSection } from "./Wave6";
 import { KeysSection, PublicLinksBlock } from "./Wave7";
+import { TodaySettingsSection } from "./TodayView";
 import { GrokImportButton } from "./GrokImport";
 import { GoogleAccountBlock, GoogleLoginSettings } from "./GoogleLogin";
 import { AccountEmailBlock, ServerMailSettings } from "./AccountRecovery";
@@ -28,6 +29,7 @@ import { BackupSettings } from "./BackupSettings";
 
 const SECTIONS: { id: AppSection; icon: IconName }[] = [
   { id: "general", icon: "settings" },
+  { id: "today", icon: "sun" },
   { id: "profile", icon: "user" },
   { id: "models", icon: "brain" },
   { id: "notifications", icon: "bell" },
@@ -1235,6 +1237,7 @@ export function AppSettings({ section }: { section: AppSection }) {
         <IconButton icon="close" label={t("settings.close")} className="app-settings-close" onClick={closeAppSettings} />
         <div className={`app-settings-content settings-pane ${section === "admin" ? "is-wide" : ""}`}>
           {section === "general" && <GeneralSection />}
+          {section === "today" && <TodaySettingsSection />}
           {section === "profile" && <ProfileSection />}
           {section === "models" && <ModelsSection />}
           {section === "notifications" && <NotificationsSection />}

@@ -13,7 +13,9 @@ import { readLibraryFile, resolveInWorkspace } from "./computer.js";
 import { isNativeTrigger, onRunEnded, ROUTINE_FAIL_PAUSE, ROUTINE_FAIL_PUSH, routines, runs, type RoutineRecord } from "./routines.js";
 import { accounts as nativeAccounts } from "./native/accounts.js";
 import { inboxFingerprint } from "./native/access.js";
-import { pushLater } from "./push.js";
+import { pushLater, sendPush } from "./push.js";
+import { runDigests, type DigestSender } from "./today.js";
+import { mailConfigured, sendSystemMail } from "./accountmail.js";
 import { audit } from "./store.js";
 import { checkNative, setFire, syncSlackSockets } from "./native/triggers.js";
 import { tr } from "./i18n.js";
@@ -266,6 +268,14 @@ onRunEnded((r, status, note) => {
   emit(bot.userId, { type: "routines", botId: bot.id });
 });
 
+/** "Aujourd'hui": the daily digest, by push and/or e-mail, for the accounts that switched it on (off by default). */
+export const digestSender: DigestSender = {
+  push: (userId, title, body) => sendPush(userId, { kind: "digest", title, body, tag: "digest" }),
+  mail: (to, subject, text) => sendSystemMail(to, subject, text),
+  mailReady: () => mailConfigured(),
+};
+const tickDigests = () => runDigests(now(), digestSender, config.publicUrl);
+
 /** When the scheduler last ran its routine tick (monitor.ts: a scheduler that stopped ticking makes /api/health degraded). */
 let lastBeat = 0;
 export const schedulerBeat = () => lastBeat;
@@ -279,6 +289,7 @@ export function startScheduler() {
   const guard = (fn: () => unknown) => () => { try { void Promise.resolve(fn()).catch((e) => console.error("[scheduler]", e)); } catch (e) { console.error("[scheduler]", e); } };
   setInterval(guard(() => { lastBeat = Date.now(); return tickRoutines(); }), 15_000).unref();
   setInterval(guard(tickCheckins), 60_000).unref();
+  setInterval(guard(tickDigests), 60_000).unref();
   setInterval(guard(consolidationSweep), 60_000).unref();
   setInterval(guard(sweepIdleDesktops), 60_000).unref();
   setInterval(guard(syncSlackSockets), 60_000).unref();

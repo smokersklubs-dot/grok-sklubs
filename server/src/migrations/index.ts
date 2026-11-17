@@ -10,6 +10,7 @@ import { botPauses } from "./006-bot-pauses.js";
 import { botVoices } from "./007-bot-voices.js";
 import { usageCaps } from "./008-usage-caps.js";
 import { skillDrafts } from "./009-skill-drafts.js";
+import { today } from "./010-today.js";
 
 /**
  * Versioned migrations (SK-P0-05). The database's version is SQLite's own `PRAGMA user_version` (0 on a database made
@@ -32,6 +33,7 @@ export const MIGRATIONS: Migration[] = [
   { version: 7, name: "bot-voices", up: botVoices },
   { version: 8, name: "usage-caps", up: usageCaps },
   { version: 9, name: "skill-drafts", up: skillDrafts },
+  { version: 10, name: "today", up: today },
 ];
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;
 

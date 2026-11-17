@@ -91,7 +91,7 @@ export function userTimezone(userId: string): string {
 }
 
 /** The instant of local midnight starting y-m-d (month 1–12, values may overflow: Date.UTC normalises) in `tz`. */
-function localMidnight(y: number, m: number, d: number, tz: string): number {
+export function localMidnight(y: number, m: number, d: number, tz: string): number {
   const n = new Date(Date.UTC(y, m - 1, d));
   const want = n.getTime();
   let guess = want;

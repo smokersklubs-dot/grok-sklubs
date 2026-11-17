@@ -103,6 +103,7 @@ self.addEventListener("notificationclick", (event) => {
       const open = windows.find((w) => new URL(w.url).origin === self.location.origin);
       if (open) {
         if (botId) open.postMessage({ type: "sklubot-open-bot", botId });
+        else if (url && url.indexOf("view=today") !== -1) open.postMessage({ type: "sklubot-open-view", view: "today" });
         return open.focus();
       }
       return self.clients.openWindow(url || "/");

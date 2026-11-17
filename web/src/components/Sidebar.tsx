@@ -199,6 +199,7 @@ export function Sidebar() {
   const collapsedPref = useStore((s) => s.sidebarCollapsed);
   const mobileNav = useStore((s) => s.mobileNav);
   const tasks = useStore((s) => s.tasks);
+  const todayReport = useStore((s) => s.today);
   const user = useStore((s) => s.user);
   const online = useStore((s) => s.online);
   const pausedAll = useStore((s) => !!s.pauses.all);
@@ -236,6 +237,8 @@ export function Sidebar() {
     try { await api("POST", "/sections", { name }); await useStore.getState().loadSections(); } catch (e) { useStore.getState().showToast(errText(e)); }
   };
   const waiting = tasks?.filter((t) => t.state === "needs_input").length ?? 0;
+  // "Aujourd'hui": what waits for the user right now (from the last report loaded; its needs are always "now").
+  const needs = todayReport?.needs.length ?? 0;
   const chatActive = view === "chat";
   const primaryLive = primary ? (live[primary.id] ?? IDLE_LIVE) : IDLE_LIVE;
   const primaryStatus = primary ? statusOf(primary, primaryLive) : null;
@@ -263,6 +266,22 @@ export function Sidebar() {
             <IconButton icon="close" className="sidebar-close" label={t("sidebar.closeMenu")} onClick={() => setMobileNav(false)} />
           </span>
         </div>
+
+        <button
+          type="button"
+          className={`nav-row ${view === "today" ? "is-active" : ""}`}
+          onClick={() => setView(view === "today" ? "chat" : "today")}
+          aria-pressed={view === "today"}
+          title={collapsed ? t("sidebar.today") : undefined}
+          aria-label={collapsed ? `${t("sidebar.today")}${needs ? `, ${tn("sidebar.todayNeeds", needs)}` : ""}` : undefined}
+        >
+          <span className="nav-row-icon">
+            <Icon name="sun" size={19} />
+            {collapsed && needs > 0 && <span className="dot dot-attention" />}
+          </span>
+          {!collapsed && <span className="nav-row-label">{t("sidebar.today")}</span>}
+          {!collapsed && needs > 0 && <span className="count-badge is-attention" aria-label={tn("sidebar.todayNeeds", needs)}>{needs}</span>}
+        </button>
 
         <button
           type="button"

@@ -4,7 +4,7 @@ import { getLocale, isLocale, setLocale as applyLocale, t } from "./i18n";
 import { notifyBot } from "./lib/notify";
 import { startPresence } from "./lib/push";
 import { playShout, startEuphoria } from "./lib/cheer";
-import type { Attachment, Bot, BotBundle, BotSection, ComputerState, PauseState, Connector, Live, Locale, NativeAccount, NativeApp, NativeVendorSetup, ReactionEmoji, Recording, RelayDevice, RelayDownloads, Routine, Row, ServerEvent, Task, User, VideoStatus } from "./types";
+import type { Attachment, Bot, BotBundle, BotSection, ComputerState, PauseState, Connector, Live, Locale, NativeAccount, NativeApp, NativeVendorSetup, ReactionEmoji, Recording, RelayDevice, RelayDownloads, Routine, Row, ServerEvent, Task, TodayReport, User, VideoStatus } from "./types";
 
 export interface NativeState { apps: NativeApp[]; vendors: NativeVendorSetup[]; accounts: NativeAccount[] }
 
@@ -17,7 +17,7 @@ export type ModalState =
   | { kind: "duplicate"; botId: string }
   | { kind: "connectors"; prefill?: { name: string; botId: string; seq: number } };
 export type BotSettingsTab = "general" | "skills" | "memories" | "routines" | "localTools" | "reach" | "telegram" | "email" | "sharing";
-export type AppSection = "general" | "profile" | "models" | "notifications" | "computer" | "devices" | "permissions" | "rules" | "memory" | "connectors" | "vault" | "keys" | "pages" | "usage" | "checkins" | "activity" | "team" | "workspaces" | "voice" | "email" | "account" | "subscription" | "admin";
+export type AppSection = "general" | "today" | "profile" | "models" | "notifications" | "computer" | "devices" | "permissions" | "rules" | "memory" | "connectors" | "vault" | "keys" | "pages" | "usage" | "checkins" | "activity" | "team" | "workspaces" | "voice" | "email" | "account" | "subscription" | "admin";
 /** Hosted mode (server/src/hosted.ts): only present when the server runs with HOSTED_MODE=1. */
 export interface HostedInfo { operator: boolean; links: { pricing: string; terms: string; legal: string; privacy: string } }
 
@@ -156,6 +156,8 @@ interface Store {
   threads: Record<string, Thread>;
   bundles: Record<string, BotBundle>;
   tasks: Task[] | null;
+  /** "Aujourd'hui": the last report loaded (the sidebar's badge counts its needs when it is today's). */
+  today: TodayReport | null;
   computer: ComputerState | null;
   /** The user's own computers linked with Sklubot Relais (null until loaded), and where to download the app. */
   relay: RelayDevice[] | null;
@@ -196,7 +198,7 @@ interface Store {
   history: HistoryTarget | null;
 
   selectedId: string | null;
-  view: "chat" | "tasks";
+  view: "chat" | "tasks" | "today";
   detailsOpen: boolean;
   sidebarCollapsed: boolean;
   mobileNav: boolean;
@@ -226,6 +228,8 @@ interface Store {
   mutateBundle(id: string, fn: (b: BotBundle) => BotBundle): void;
   toggleRoutine(routine: Routine, enabled: boolean): Promise<void>;
   loadTasks(): Promise<void>;
+  /** Loads the Today page's report for `date` (YYYY-MM-DD, the user's day; default: today). Throws on failure. */
+  loadToday(date?: string): Promise<TodayReport>;
   loadComputer(): Promise<void>;
   loadRelay(): Promise<void>;
   openRelayViewer(deviceId: string): void;
@@ -252,7 +256,7 @@ interface Store {
   removeUpload(botId: string, id: string): void;
   clearUploads(botId: string, ids: string[]): void;
   setTheme(theme: Theme): void;
-  setView(view: "chat" | "tasks"): void;
+  setView(view: "chat" | "tasks" | "today"): void;
   toggleDetails(open?: boolean): void;
   toggleSidebar(): void;
   setMobileNav(open: boolean): void;
@@ -289,6 +293,8 @@ let started = false;
 let uploadSeq = 0;
 let toastSeq = 0;
 let jumpSeq = 0;
+/** A card or a notice came or changed: the Today badge is refreshed a few seconds later (once for a burst). */
+let todayTimer: number | undefined;
 
 const firstWords = (text: string, max = 120): string => {
   const flat = text.replace(/\s+/g, " ").trim();
@@ -314,6 +320,7 @@ export const useStore = create<Store>((set, get) => ({
   threads: {},
   bundles: {},
   tasks: null,
+  today: null,
   computer: null,
   relay: null,
   relayDownloads: null,
@@ -396,6 +403,7 @@ export const useStore = create<Store>((set, get) => ({
     }
     set({ boot: "ready" });
     void get().loadTasks();
+    void get().loadToday().catch(() => undefined);
     void get().loadComputer();
     void get().loadRelay();
     void get().loadConnectors();
@@ -405,6 +413,11 @@ export const useStore = create<Store>((set, get) => ({
     const wanted = new URLSearchParams(window.location.search).get("bot");
     if (wanted && get().bots[wanted]) get().selectBot(wanted);
     if (wanted) window.history.replaceState(null, "", window.location.pathname);
+    // Opened from the daily digest (/?view=today): the Today page.
+    if (new URLSearchParams(window.location.search).get("view") === "today") {
+      get().setView("today");
+      window.history.replaceState(null, "", window.location.pathname);
+    }
     // Wave 6: opened from a workspace invitation while signed in: join, then show the bots shared there.
     const invite = new URLSearchParams(window.location.search).get("invite");
     if (invite) {
@@ -439,7 +452,7 @@ export const useStore = create<Store>((set, get) => ({
       if (next) {
         const view = get().view;
         get().selectBot(next.id);
-        if (view === "tasks") set({ view });
+        if (view !== "chat") set({ view });
       } else {
         set({ selectedId: null });
       }
@@ -555,6 +568,11 @@ export const useStore = create<Store>((set, get) => ({
     }
   },
 
+  async loadToday(date) {
+    const r = await api<TodayReport>("GET", `/today${date ? `?date=${encodeURIComponent(date)}` : ""}`);
+    set({ today: r });
+    return r;
+  },
   async loadTasks() {
     try {
       const r = await api<{ tasks: Task[] }>("GET", "/tasks");
@@ -671,6 +689,10 @@ export const useStore = create<Store>((set, get) => ({
   applyEvent(ev) {
     switch (ev.type) {
       case "rows": {
+        if (ev.rows.some((r) => r.body.kind === "card" || r.body.kind === "notice")) {
+          window.clearTimeout(todayTimer);
+          todayTimer = window.setTimeout(() => { if (get().view !== "today") void get().loadToday().catch(() => undefined); }, 4000);
+        }
         // A finished reply, for a bot that isn't the open one or while the window is hidden.
         const before = get();
         const hidden = document.visibilityState !== "visible";

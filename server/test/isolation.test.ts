@@ -412,3 +412,33 @@ test("usage caps: B can neither read nor set A's caps (nor cap A's bot), nor ans
   assert.equal(q.get<{ limit_value: number }>("SELECT limit_value FROM usage_caps WHERE user_id = ? AND bot_id = ?", userA, ids.bot1)?.limit_value, 7);
   assert.equal(q.get<{ status: string }>("SELECT status FROM usage_cap_stops WHERE id = 'a_capstop'")?.status, "pending");
 });
+
+test("Aujourd'hui (today.ts): B sees nothing of A; V sees only the shared bot's chat-visible results, never the other bot nor A's lists or costs", async () => {
+  const routes = discover().filter((r) => r.app === api && r.path.startsWith("/today")).map((r) => r.key).sort();
+  assert.deepEqual(routes, ["GET /today", "GET /today/settings", "PUT /today/settings"]);
+  // Something finished today on each bot, A's own records (task list, journal, usage) and an approval waiting on bot1.
+  const now = Date.now();
+  for (const b of ["bot1", "bot2"] as const) {
+    q.run("INSERT INTO bot_goals (id, bot_id, user_id, generation, objective, status, max_rounds, evidence, created_at, updated_at) VALUES (?, ?, ?, 1, ?, 'complete', 5, 'ALPHASECRET evidence', ?, ?)", `a_done_${b}`, ids[b], userA, `ALPHASECRET goal done ${b}`, now, now);
+    q.run("INSERT INTO tasks (id, bot_id, title, state, created_at, updated_at) VALUES (?, ?, 'ALPHASECRET task done', 'done', ?, ?)", `a_tdone_${b}`, ids[b], now, now);
+    q.run("INSERT INTO action_journal (user_id, bot_id, at, tool, label, decision, status) VALUES (?, ?, ?, 'bot_email_send', 'ALPHASECRET email', 'words', 'done')", userA, ids[b], now);
+  }
+  q.run("INSERT INTO usage (user_id, bot_id, at, model, input_tokens, output_tokens, cached_tokens, cost_usd) VALUES (?, ?, ?, 'x:y', 5, 5, 0, 4.2)", userA, ids.bot1, now);
+  const own = await A("GET", "/today");
+  assert.equal(own.status, 200);
+  assert.ok(own.text.includes("ALPHASECRET goal done bot2") && own.text.includes("ALPHASECRET email"), "A sees A's day");
+  const b = await call(api, "b", "GET", "/today?date=");
+  assert.equal(b.status, 200);
+  assert.ok(!leakIn(b.text) && !b.text.includes(ids.bot1) && !b.text.includes(ids.bot2), `B got: ${b.text.slice(0, 200)}`);
+  const v = await call(api, "v", "GET", "/today");
+  assert.equal(v.status, 200);
+  assert.deepEqual(v.json.done.map((g: any) => g.botId), [ids.bot1]);
+  assert.ok(v.text.includes("ALPHASECRET goal done bot1"));
+  for (const s of [ids.bot2, "goal done bot2", "ALPHASECRET task done", "ALPHASECRET email", "a_appr_"]) assert.ok(!v.text.includes(s), `V saw ${s}`);
+  assert.equal(v.json.cost.usd, 0, "V's own costs, not A's");
+  assert.deepEqual(v.json.needs, [], "a viewer answers nothing for A");
+  // Settings are per account: B's change is B's alone.
+  assert.equal((await call(api, "b", "PUT", "/today/settings", { minutes: { goal: 1 }, digest: { enabled: true } })).status, 200);
+  assert.equal((await A("GET", "/today")).json.minutes.table.goal, 30);
+  assert.equal((await A("GET", "/today/settings")).json.digest.enabled, false);
+});

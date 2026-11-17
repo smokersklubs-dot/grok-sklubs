@@ -16,6 +16,7 @@ import { Sidebar } from "./components/Sidebar";
 import { SignIn } from "./components/SignIn";
 import { EmailConfirmPage, ResetPasswordPage, takeLinkAction } from "./components/AccountRecovery";
 import { TasksView } from "./components/TasksView";
+import { TodayView } from "./components/TodayView";
 import { ThreadPanel } from "./components/ThreadPanel";
 import { DownloadPage, isDownloadPath } from "./components/DownloadPage";
 import { useDesktopBadge } from "./lib/desktop";
@@ -109,7 +110,7 @@ function Shell() {
   return (
     <div className={`shell ${showDetails || showThread ? "has-details" : ""}`}>
       <Sidebar />
-      {view === "tasks" ? <TasksView /> : <ChatView />}
+      {view === "tasks" ? <TasksView /> : view === "today" ? <TodayView /> : <ChatView />}
       {showDetails && <DetailsPanel />}
       {showThread && openThread && <ThreadPanel key={`${openThread.botId}:${openThread.seq}`} botId={openThread.botId} seq={openThread.seq} />}
 

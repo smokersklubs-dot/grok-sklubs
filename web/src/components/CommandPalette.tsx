@@ -46,6 +46,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
         const dark = document.documentElement.getAttribute("data-theme") === "dark";
         s.setTheme(dark ? "light" : "dark");
       } },
+      { id: "today", icon: "sun", label: t("palette.cmd.today"), keywords: "today aujourd'hui journée résumé digest", run: () => s.setView("today") },
       { id: "tasks", icon: "tasks", label: t("palette.cmd.tasks"), keywords: "tasks tâches", run: () => s.setView("tasks") },
       { id: "sidebar", icon: "sidebar", label: t("palette.cmd.sidebar"), hint: `${modKey}B`, keywords: "sidebar barre latérale", run: () => s.toggleSidebar() },
       { id: "apps", icon: "plug", label: t("palette.cmd.apps"), keywords: "apps connectors connecter applis", run: () => s.openModal({ kind: "connectors" }) },

@@ -2,6 +2,7 @@
  * Wire contract between the Sklubot server and web app.
  * Type-only: the web app imports this file with `import type`.
  */
+import type { TodayKind } from "./todayminutes.js";
 
 export const AVATAR_SHAPES = ["pebble", "egg", "mochi", "bean", "cloud", "cat", "bear", "ghost", "circle", "squircle", "hexagon", "diamond", "shield", "drop", "arch", "star", "clover", "pill", "triangle", "octagon"] as const;
 export const AVATAR_COLORS = ["ink", "clay", "ember", "amber", "moss", "teal", "sky", "indigo", "plum", "rose", "slate"] as const;
@@ -1178,3 +1179,48 @@ export interface AdminCustomer {
 }
 export interface AdminAuditEntry { id: number; at: number; actorLabel: string; targetId: string | null; targetEmail: string | null; action: string; detail: string }
 export interface PlanInviteView { id: string; planId: string; email: string; expiresAt: number; usedAt: number | null; createdAt: number; link?: string }
+
+// ── "Aujourd'hui" (today.ts) ─────────────────────────────────────────────────────────────────────────────────────
+/** What a "Today" item opens: a row of a bot's chat (in a thread when `thread` is set), a bot, its settings, or a settings section. */
+export type TodayLink =
+  | { kind: "row"; botId: string; seq: number; thread?: number }
+  | { kind: "bot"; botId: string }
+  | { kind: "botSettings"; botId: string; tab: "general" | "routines" }
+  | { kind: "settings"; section: "usage" | "connectors" | "keys" | "subscription" };
+/**
+ * Something only the user can fix. `kind`: approval, question (a question card, or a background task asking), cap (a
+ * usage cap card), spend (a spend checkpoint), paused (a paused bot holding `count` messages), stalled / silent (the turn
+ * watch's notice), continue (stopped at its step limit), routine (a failed or server-paused routine), connector (a
+ * built-in app or a connection to sign in again, or a "connect" card), disk (its computer's disk is nearly full),
+ * takeover (it needs you on its screen), secret (it asks for a key), uncertain (an action whose outcome is unknown),
+ * goal (a proposed goal), review (a skill, an API connector, a memory conflict or a pasted secret to look at),
+ * plan (hosted mode: the account's plan stops work). `title`: the card's own words (data, not translated).
+ */
+export type TodayNeedKind = "approval" | "question" | "cap" | "spend" | "paused" | "stalled" | "silent" | "continue" | "routine" | "connector" | "disk" | "takeover" | "secret" | "uncertain" | "goal" | "review" | "plan";
+export interface TodayNeed { kind: TodayNeedKind; botId: string | null; botName: string; title: string; detail: string; at: number; count?: number; shared?: boolean; link: TodayLink }
+/** One thing a bot finished. `count`: how many it stands for (files of a turn, reads of a research); minutes = counted × table. */
+export interface TodayDone { kind: TodayKind; at: number; title: string; detail: string; count: number; counted: number; minutes: number; link: TodayLink | null }
+export interface TodayBotDone { botId: string; botName: string; shared: boolean; items: TodayDone[]; minutes: number }
+export interface TodayCost {
+  /** Priced model cost, plus the conservative estimate for models without a known price (as the usage page counts). */
+  usd: number; estimatedUsd: number; inputTokens: number; outputTokens: number; turns: number;
+  /** Tokens of turns on a Claude / ChatGPT subscription (no per-token charge). */
+  subscriptionTokens: number;
+  byBot: { botId: string; botName: string; usd: number; tokens: number }[];
+  /** Hosted mode, a customer: what the service's keys cost that day in euros, and what is left of the month's budget. */
+  hosted?: { spentEur: number; budgetLeftEur: number };
+}
+export interface TodayReport {
+  date: string; timezone: string; start: number; end: number; today: boolean; generatedAt: number;
+  needs: TodayNeed[];
+  done: TodayBotDone[];
+  minutes: { total: number; table: Record<TodayKind, number>; counts: Partial<Record<TodayKind, number>>; overridden: string[] };
+  /** The caller's own account only (a shared bot's costs are its owner's). */
+  cost: TodayCost;
+}
+/** Settings → Aujourd'hui: the morning digest and the owner's minutes. `hour`: 0–23 in the user's timezone. */
+export interface TodayDigestSettings { enabled: boolean; hour: number; push: boolean; email: boolean }
+export interface TodaySettingsView {
+  digest: TodayDigestSettings; overrides: Partial<Record<TodayKind, number>>;
+  defaults: Record<TodayKind, number>; timezone: string; mailConfigured: boolean; pushDevices: number; lastSent: string | null;
+}

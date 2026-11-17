@@ -169,7 +169,8 @@ export function inQuietHours(s: PushSettings, at = new Date()): boolean {
 }
 
 // ── Sending ──────────────────────────────────────────────────────────────────
-export interface PushMessage { kind: PushKind | "test"; title: string; body: string; botId?: string; tag?: string }
+/** `digest`: the daily summary ("Aujourd'hui", today.ts) — its own switch and hour, so no kind switch applies; quiet hours do. */
+export interface PushMessage { kind: PushKind | "test" | "digest"; title: string; body: string; botId?: string; tag?: string }
 const recent = new Map<string, number>();
 
 /**
@@ -178,7 +179,7 @@ const recent = new Map<string, number>();
  */
 export async function sendPush(userId: string, msg: PushMessage): Promise<number> {
   const settings = pushSettings(userId);
-  if (msg.kind !== "test" && (!settings.kinds[msg.kind] || inQuietHours(settings))) return 0;
+  if (msg.kind === "digest" ? inQuietHours(settings) : msg.kind !== "test" && (!settings.kinds[msg.kind] || inQuietHours(settings))) return 0;
   const subs = q.all<SubRow>("SELECT * FROM push_subscriptions WHERE user_id = ? AND enabled = 1", userId);
   if (!subs.length) return 0;
   const tag = msg.tag ?? (msg.botId ? `${msg.kind}-${msg.botId}` : msg.kind);
@@ -187,7 +188,7 @@ export async function sendPush(userId: string, msg: PushMessage): Promise<number
   recent.set(key, Date.now());
   if (recent.size > 2000) for (const [k, v] of recent) if (v < Date.now() - 60_000) recent.delete(k);
   // Kept well under the 4096 octets a push service must accept (RFC 8030 section 7.2 / RFC 8291 section 4).
-  const payload = Buffer.from(JSON.stringify({ kind: msg.kind, title: clip(msg.title, 80), body: clip(msg.body.replace(/\s+/g, " ").trim(), 300), botId: msg.botId ?? null, tag, url: msg.botId ? `/?bot=${encodeURIComponent(msg.botId)}` : "/" }));
+  const payload = Buffer.from(JSON.stringify({ kind: msg.kind, title: clip(msg.title, 80), body: clip(msg.body.replace(/\s+/g, " ").trim(), 300), botId: msg.botId ?? null, tag, url: msg.kind === "digest" ? "/?view=today" : msg.botId ? `/?bot=${encodeURIComponent(msg.botId)}` : "/" }));
   let ok = 0;
   await Promise.all(subs.map(async (s) => {
     const auth = unseal(s.auth_enc);

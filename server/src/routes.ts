@@ -94,7 +94,7 @@ import { closeBotLink } from "./botlink.js";
 import { SharedComputerInUseError } from "./linux.js";
 import { sharedComputers, sharedHolder, SharedLimitError } from "./sharedcomputers.js";
 import { ownerId, registerGooglePrivate, registerGooglePublic, type GoogleDeps } from "./googlelogin.js";
-import { dropResetLinks, registerAccountMailPrivate, registerAccountMailPublic } from "./accountmail.js";
+import { dropResetLinks, mailConfigured, registerAccountMailPrivate, registerAccountMailPublic } from "./accountmail.js";
 import { registerAutoBackupRoutes } from "./autobackup.js";
 import { createGoal, goalAction, GoalError, goalCommand, goals, pauseGoalsOf } from "./agent/goals.js";
 import { afterMove, setPause } from "./agent/pause.js";
@@ -103,6 +103,7 @@ import { publicJobs, stopJob } from "./jobs.js";
 import { healthReport } from "./monitor.js";
 import { accountCreated, HostedError, hostedMode, isOperator, isPlanLimit, lentProviderIds, planInviteOpens, signupChoice, subscriptionEnginesFor, suspended, type SignupChoice } from "./hosted.js";
 import { registerHostedPages, registerHostedPrivate, registerHostedPublic, suspendedText } from "./hostedroutes.js";
+import { TodayError, todayReport, todaySettings } from "./today.js";
 import { answerCapCard, amountText, CapError, capName, caps as usageCaps, capsView, cleanCapInput, cm } from "./usagecaps.js";
 
 type Env = { Variables: { user: UserRecord } };
@@ -124,6 +125,8 @@ api.onError((err, c) => {
   if (err instanceof GrokImportError) return c.json({ error: err.text((c.get("user") as UserRecord | undefined)?.locale), code: err.code }, err.status);
   // Usage caps (usagecaps.ts): a refusal in the caller's language.
   if (err instanceof CapError) return c.json({ error: err.text((c.get("user") as UserRecord | undefined)?.locale) }, err.status);
+  // "Aujourd'hui" (today.ts): a date or a setting that cannot be read.
+  if (err instanceof TodayError) return c.json({ error: err.message }, err.status);
   // MAX_BOTS reached: a clear refusal, never a silent eviction.
   if (err instanceof TeamFullError) {
     const loc = (c.get("user") as UserRecord | undefined)?.locale ?? pickLocale(undefined, c.req.header("accept-language"));
@@ -1221,6 +1224,19 @@ api.delete("/routines/:id", (c) => {
 });
 
 api.get("/tasks", (c) => c.json({ tasks: tasks.forUser(c.get("user").id) }));
+
+// ── "Aujourd'hui" (today.ts) ─────────────────────────────────────────────────────────────────────────────────────
+// The caller's own day: their bots, plus what a workspace lets them see of shared bots (today.ts says what). Unknown
+// query parameters are ignored; `date` is YYYY-MM-DD in the user's timezone (default: today there).
+api.get("/today", (c) => c.json(todayReport(c.get("user").id, c.req.query("date") ?? undefined)));
+const todaySettingsView = (userId: string) => todaySettings.view(userId, { mailConfigured: mailConfigured(), pushDevices: q.get<{ n: number }>("SELECT COUNT(*) AS n FROM push_subscriptions WHERE user_id = ? AND enabled = 1", userId)?.n ?? 0 });
+api.get("/today/settings", (c) => c.json(todaySettingsView(c.get("user").id)));
+api.put("/today/settings", async (c) => {
+  const user = c.get("user");
+  const b = await body(c);
+  todaySettings.save(user.id, { minutes: b.minutes, digest: b.digest });
+  return c.json(todaySettingsView(user.id));
+});
 api.get("/bots/:id/tasks", (c) => c.json({ tasks: tasks.forBot(ownBot(c).id) }));
 
 // ── Voice calls, search, earlier conversations ───────────────────────────────

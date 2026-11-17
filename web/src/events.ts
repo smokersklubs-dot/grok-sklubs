@@ -57,8 +57,10 @@ export function connectEvents(): void {
     listening = true;
     // A click on a push notification while the app is open: the service worker says which bot to show.
     navigator.serviceWorker?.addEventListener("message", (e: MessageEvent) => {
-      const data = e.data as { type?: string; botId?: string } | null;
+      const data = e.data as { type?: string; botId?: string; view?: string } | null;
       if (data?.type === "sklubot-open-bot" && data.botId) useStore.getState().selectBot(data.botId);
+      // The daily digest ("Aujourd'hui") opens the Today page.
+      if (data?.type === "sklubot-open-view" && data.view === "today") useStore.getState().setView("today");
     });
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState !== "visible") return;
