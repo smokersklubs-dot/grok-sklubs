@@ -1,4 +1,5 @@
 import { BotReachTab } from "./Wave7";
+import { BotCapsField } from "./UsageCaps";
 import { LocalToolsTab } from "./LocalTools";
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { api, enc, errText } from "../api";
@@ -209,6 +210,7 @@ function General({ bot, onClose }: { bot: Bot; onClose: () => void }) {
           </div>
           <BotRulesAndNudges bot={bot} />
           <BotSpendField bot={bot} />
+          <BotCapsField botId={bot.id} />
           <div className="field">
             <span className="field-label">{t("bot.usedAs")}</span>
             <ChoiceList label={t("bot.usedAs")} value={form.mode} options={modes} onChange={(v) => set("mode", v)} />

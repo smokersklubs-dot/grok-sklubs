@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
+import { UsageCapsBlock } from "./UsageCaps";
 import { api, ApiError, enc, errText } from "../api";
 import { LOCALES, tn, useT, type Key } from "../i18n";
 import { useStore, type AppSection, type Theme } from "../store";
@@ -581,8 +582,6 @@ function UsageSection() {
     }
   };
 
-  const over = usage && usage.budgetUsd !== null && usage.budgetUsd > 0 ? Math.min(100, Math.round(((usage.totals.costUsd + (usage.totals.estimatedUsd ?? 0)) / usage.budgetUsd) * 100)) : null;
-
   return (
     <>
       <h2>{t("settings.section.usage")}</h2>
@@ -614,12 +613,8 @@ function UsageSection() {
               <span>{t("usage.unknownCost", { tokens: compactNumber(usage.totals.unknownTokens), models: (usage.unknownModels ?? []).join(", "), estimate: money(usage.totals.estimatedUsd) })}</span>
             </div>
           )}
-          {over !== null && (
-            <div className="meter-box">
-              <div className="meter-head"><span>{t("usage.meter", { percent: over, budget: money(usage.budgetUsd ?? 0) })}</span></div>
-              <div className={`meter ${over >= 100 ? "is-over" : ""}`} role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={over} aria-label={t("usage.meterLabel")}><span style={{ width: `${over}%` }} /></div>
-            </div>
-          )}
+          {/* The monthly budget's bar is with the caps (UsageCapsBlock): one place for every limit. */}
+          <UsageCapsBlock />
           {(usage.subscriptions ?? []).length > 0 && <SubscriptionUsageBlock subs={usage.subscriptions} />}
           <h3 className="pane-heading">{t("usage.byBot")}</h3>
           {usage.byBot.length === 0 ? (

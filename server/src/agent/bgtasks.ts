@@ -154,7 +154,7 @@ export const bgTaskHooks = {
     if (!parent) return;
     audit(parent.userId, "tool", `${parent.name}: background task done — ${t.title}`, parent.id);
     void import("./loop.js").then(({ enqueue }) => enqueue(parent.id, {
-      kind: "system", tainted: info.tainted,
+      kind: "system", tainted: info.tainted, unattended: true,
       text: `Your background task "${t.title}" is finished. Its report (the user can read it in full on the task card):\n${clip(info.lastText, 8000)}\n\nTell the user its main conclusion in one or two short lines, in the main chat.`,
     }));
   },

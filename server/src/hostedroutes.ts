@@ -9,7 +9,8 @@ import {
 import { legalNoticePage, PAGE_CSP, pricingPage, termsPage } from "./hostedpages.js";
 import { pickLocale } from "./i18n.js";
 import type { Locale } from "./shared.js";
-import type { UserRecord } from "./store.js";
+import { users, type UserRecord } from "./store.js";
+import { amountText, caps as usageCaps, cleanCapInput, operatorCapsOf } from "./usagecaps.js";
 
 /**
  * The hosted mode's routes (hosted.ts). They are always registered — so the route table, and the isolation suite that
@@ -105,6 +106,24 @@ export function registerHostedPrivate(api: Hono<any>) {
   api.post("/admin/customers/:uid/credit", onCustomer((a, uid, b) => adminActions.credit(a, uid, b.amountEur, b.note)));
   api.post("/admin/customers/:uid/trial", onCustomer((a, uid, b) => adminActions.extendTrial(a, uid, b.days)));
   api.put("/admin/customers/:uid/operator", onCustomer((a, uid, b) => adminActions.setOperator(a, uid, b.on === true)));
+  // Usage caps the operator sets on a customer's account (usagecaps.ts, set_by 'operator'): they count what the service's
+  // keys pay for, the customer sees them and cannot change them. Not on an operator's account (they have no plan).
+  const capCustomer = (uid: string) => {
+    if (!users.byId(uid)) throw new HostedError(404, "That account does not exist.");
+    if (isOperator(uid)) throw new HostedError(409, "This account is an operator of the server: it has no plan.");
+    return uid;
+  };
+  api.get("/admin/customers/:uid/caps", admin((c) => c.json({ caps: operatorCapsOf(capCustomer(c.req.param("uid") ?? "")) })));
+  api.put("/admin/customers/:uid/caps", admin(async (c) => {
+    const u = userOf(c);
+    const uid = capCustomer(c.req.param("uid") ?? "");
+    const f = cleanCapInput({ ...(await json(c)), botId: null });
+    if (usageCaps.set(uid, f, "operator", u.id)) {
+      const what = `${f.period === "day" ? "daily" : "monthly"} ${f.unit === "usd" ? "spending" : "token"} cap`;
+      adminLog(actorOf(u), uid, "cap", f.limit === null ? `${what} removed` : `${what}: ${amountText(f.unit, f.limit, "en")}, stops ${f.mode === "everything" ? "everything" : "unattended work"}, warning at ${f.warnPercent}%`);
+    }
+    return c.json({ caps: operatorCapsOf(uid), audit: adminLogList(100) });
+  }));
 
   api.get("/admin/plans", admin((c) => c.json({ plans: plans.list() })));
   api.post("/admin/plans", admin(async (c) => {

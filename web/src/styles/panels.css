@@ -783,3 +783,40 @@ a.btn { text-decoration: none; }
   .bot-pill .pause-badge { width: 18px; padding: 0; justify-content: center; }
   .bot-pill .pause-badge > span { display: none; }
 }
+
+/* ---------- Usage caps (UsageCaps.tsx) ---------- */
+.meter.is-warn span { background: var(--warn); }
+.cap-meter { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
+.cap-meter .meter-head { gap: 8px; font-size: 12.5px; flex-wrap: wrap; }
+.cap-meter .field-hint { margin: 0; }
+.cap-figure { font-variant-numeric: tabular-nums; font-weight: 600; }
+.cap-figure.is-warn { color: var(--warn); }
+.cap-figure.is-over { color: var(--danger); }
+.cap-chip { margin-left: 6px; }
+.caps-rows { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.caps-row { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; background: var(--surface); }
+.caps-row-name { margin: 0 0 6px; font-weight: 650; font-size: 13.5px; }
+.caps-periods { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+.caps-period { min-width: 0; }
+.caps-period-title { margin: 0; font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-3, var(--text-2)); font-weight: 600; }
+.caps-figures { margin: 2px 0 0; font-size: 13px; font-variant-numeric: tabular-nums; }
+.caps-subheading { margin: 18px 0 4px; font-size: 13.5px; }
+.caps-editor { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+.caps-editor-head, .caps-line { display: grid; grid-template-columns: minmax(120px, 1.2fr) minmax(120px, 1fr) minmax(150px, 1.1fr) 84px auto; gap: 8px; align-items: center; }
+.caps-editor-head { font-size: 11.5px; color: var(--text-2); font-weight: 600; }
+.caps-line-label { font-size: 13px; font-weight: 550; }
+.caps-line-limit, .caps-line-warn, .caps-line-save { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.caps-line .input { min-width: 0; width: 100%; }
+.caps-line-error { grid-column: 1 / -1; margin: 0; }
+.caps-editor.is-compact .caps-editor-head, .caps-editor.is-compact .caps-line { grid-template-columns: minmax(110px, 1fr) minmax(110px, 1fr) minmax(130px, 1fr) 76px auto; }
+.caps-bot-meters { display: flex; flex-direction: column; }
+.caps-explain { margin-top: 12px; font-size: 13px; color: var(--text-2); }
+.caps-explain summary { cursor: pointer; font-weight: 600; color: var(--text); }
+.caps-explain ul { margin: 6px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
+.caps-admin { grid-column: 1 / -1; }
+.cap-card .cap-raise { margin-top: 8px; }
+@media (max-width: 720px) {
+  .caps-editor-head { display: none; }
+  .caps-line, .caps-editor.is-compact .caps-line { grid-template-columns: 1fr 1fr; padding: 8px 0; border-top: 1px solid var(--border); }
+  .caps-line-label { grid-column: 1 / -1; }
+}

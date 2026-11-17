@@ -9,6 +9,7 @@ import { findQuote, typedByUser } from "./grounding.js";
 import { looksSecret, memoryVerdict, sensitiveCategory } from "./sensitive.js";
 import { record } from "../usage.js";
 import { hostedHoldsBot, isBusy, isPaused } from "./loop.js";
+import { capHolds } from "../usagecaps.js";
 import { isHostedStop } from "../hosted.js";
 
 /** A short side request to the model (summaries, fact extraction): no tools, low effort. */
@@ -310,7 +311,7 @@ export async function consolidationSweep() {
        GROUP BY r.bot_id HAVING MAX(r.created_at) <= ? AND MAX(r.created_at) > COALESCE((SELECT mark FROM consolidation c WHERE c.bot_id = b.id), 0))`, quietBefore);
   for (const { id } of due) {
     const bot = bots.byId(id);
-    if (!bot || isBusy(id) || getLive(id).running || paused.get(id) || hostedHoldsBot(bot) || isPaused(bot)) continue;
+    if (!bot || isBusy(id) || getLive(id).running || paused.get(id) || hostedHoldsBot(bot) || isPaused(bot) || capHolds(bot)) continue;
     await consolidate(bot).catch((err) => console.error("[consolidation]", err?.message ?? err));
   }
 }

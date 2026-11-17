@@ -17,6 +17,7 @@ import { pushLater } from "./push.js";
 import { audit } from "./store.js";
 import { checkNative, setFire, syncSlackSockets } from "./native/triggers.js";
 import { tr } from "./i18n.js";
+import { blockingCap, caps, capHolds, noteSkip, skipText } from "./usagecaps.js";
 import { guardedFetch } from "./net.js";
 import { approvals, bots, clip, now, rows, settings, tasks, users } from "./store.js";
 
@@ -41,7 +42,7 @@ export const unschedule = (routineId: string) => { due.delete(routineId); };
  * Runs a routine now: notes it in the chat and queues the work behind whatever the bot is doing.
  * `outside`: the payload came from outside (a webhook call); the turn treats it as outside content.
  */
-export function fireRoutine(r: RoutineRecord, payload?: unknown, opts: { outside?: boolean; label?: string; note?: string } = {}): "fired" | "busy" | "paused" {
+export function fireRoutine(r: RoutineRecord, payload?: unknown, opts: { outside?: boolean; label?: string; note?: string; byHand?: boolean } = {}): "fired" | "busy" | "paused" | "capped" {
   const bot = bots.byId(r.botId);
   if (!bot) return "busy";
   // Hosted mode: a suspended account's routines are paused, and one whose models only the operator's keys pay for waits
@@ -63,6 +64,17 @@ export function fireRoutine(r: RoutineRecord, payload?: unknown, opts: { outside
     emit(bot.userId, { type: "routines", botId: bot.id });
     return "paused";
   }
+  // Usage caps (usagecaps.ts): a cap that stops this bot's work no person started skips the run — recorded as skipped in
+  // its run log, counted on the cap's card, logged once per cap and period; no model call. A one-off routine is not used
+  // up: it waits for the reset. "Run now" by hand is a person's own work: only an "everything" cap stops it.
+  const capped = caps.any(bot.userId) ? blockingCap(bot, !!opts.byHand) : null;
+  if (capped) {
+    if (r.trigger === "once" && r.runAt && !r.lastRunAt && !opts.byHand) { due.set(r.id, capped.resetAt + 60_000); return "capped"; }
+    runs.skipped(r.id, skipText(bot.userId, capped, "skip"));
+    noteSkip(bot, capped, `routine "${r.name}"`);
+    emit(bot.userId, { type: "routines", botId: bot.id });
+    return "capped";
+  }
   // One run at a time (spec 07 A7): a due time that comes while a run is still under way is skipped (a one-off
   // routine is tried again a minute later).
   if (runs.active(r.id)) {
@@ -74,7 +86,7 @@ export function fireRoutine(r: RoutineRecord, payload?: unknown, opts: { outside
   routines.markRun(r.id, now());
   rows.append(bot, { kind: "event", event: "routine", text: tr(users.localeOf(bot.userId), "Running routine: {name}", { name: r.name }) });
   const extra = payload === undefined ? "" : `\n\n${opts.label ?? "[Data received with this call]"}\n${clip(JSON.stringify(payload, null, 2), 8000)}`;
-  enqueue(bot.id, { kind: "routine", name: r.name, text: r.prompt + extra + (opts.note ? `\n\n${opts.note}` : ""), runId: runs.start(r.id), tainted: !!opts.outside && payload !== undefined });
+  enqueue(bot.id, { kind: "routine", name: r.name, text: r.prompt + extra + (opts.note ? `\n\n${opts.note}` : ""), runId: runs.start(r.id), tainted: !!opts.outside && payload !== undefined, byHand: opts.byHand || undefined });
   emit(bot.userId, { type: "routines", botId: bot.id });
   return "fired";
 }
@@ -105,7 +117,7 @@ export async function inputsFingerprint(r: RoutineRecord): Promise<string | null
  * routine checks its inputs: unchanged since the last run → skipped, no model call. Its first run and the run after a
  * failure always happen. Running more than 10 minutes late is said in the instruction.
  */
-export async function dueRoutine(r: RoutineRecord, slot: number): Promise<"fired" | "skipped" | "busy" | "claimed" | "paused"> {
+export async function dueRoutine(r: RoutineRecord, slot: number): Promise<"fired" | "skipped" | "busy" | "claimed" | "paused" | "capped"> {
   if (!routines.claimSlot(r.id, String(slot))) return "claimed";
   let note = "";
   const late = now() - slot;
@@ -183,6 +195,9 @@ export function fireCheckin(userId: string, quietStreak: number) {
   const primary = bots.primary(userId);
   // A paused main bot has no check-in (it would be stale by the time it is resumed).
   if (!primary || isPaused(primary)) return;
+  // A usage cap that stops unattended work: no check-in (it is counted on the cap's card).
+  const capped = capHolds(primary);
+  if (capped) { noteSkip(primary, capped, "a check-in"); return; }
   const all = bots.list(userId);
   const name = (id: string) => all.find((b) => b.id === id)?.name ?? "a bot";
   const waiting = tasks.forUser(userId).filter((t) => t.state === "needs_input").slice(0, 10);
@@ -190,7 +205,7 @@ export function fireCheckin(userId: string, quietStreak: number) {
   const ran = routines.ranSince(userId, now() - 12 * 3600_000);
   const others = all.filter((b) => b.kind === "agent" && b.id !== primary.id);
   enqueue(primary.id, {
-    kind: "system",
+    kind: "system", unattended: true,
     text: [
       "This is a scheduled check-in: the user did not ask for anything. Look at what is going on — connected apps such as calendar and mail if you have them, what you remember, what the other bots are doing.",
       "If there is something genuinely useful to raise (a decision the user owes, something that changed, today's schedule, a result that came in), send ONE short message. If not, call stay_quiet.",

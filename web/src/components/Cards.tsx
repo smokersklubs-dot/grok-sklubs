@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { CapCardView } from "./UsageCaps";
 import { useTick } from "./ui";
 import { api, errText } from "../api";
 import { useT } from "../i18n";
@@ -349,6 +350,8 @@ export function CardView({ card, botId, seq }: { card: Card; botId: string; seq:
       return <NudgeCardView card={card} botId={botId} />;
     case "spend":
       return <SpendCardView card={card} />;
+    case "cap":
+      return <CapCardView card={card} botId={botId} />;
     case "skill":
       return <SkillCardView card={card} botId={botId} seq={seq} />;
     case "apiconnector":

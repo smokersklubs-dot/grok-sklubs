@@ -159,7 +159,7 @@ export function dispatchToRoom(room: BotRecord, user: UserRecord, text: string, 
     : "";
   for (const target of targets) {
     enqueue(target.id, {
-      kind: "system", depth: depth + 1, tainted: !!fromBot && tainted,
+      kind: "system", depth: depth + 1, tainted: !!fromBot && tainted, unattended: !!fromBot || undefined,
       text: `New message in the group chat "${room.name}" (members: ${roster}).\n${about}${fromBot ? fromBot.name : user.name} wrote: ${text}\n\n` +
         `If you have something useful to add, answer in the group with room_post (room "${room.name}"${thread ? `, thread ${thread}` : ""}). Mention a teammate with @Name to bring them in. If there is nothing worth saying, call stay_quiet.`,
     });

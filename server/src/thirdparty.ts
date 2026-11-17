@@ -4,6 +4,7 @@ import type { ThirdPartySpend } from "./shared.js";
 import { bots, newId, now, settings } from "./store.js";
 import { record as recordUsage, spentThisMonth } from "./usage.js";
 import { operatorBlock, toolRefusal } from "./hosted.js";
+import { capName, moneyLeft, turnAttended } from "./usagecaps.js";
 
 /**
  * Wave 7 (spec 08) — what paid third-party tools cost (A4) and a cache for read-only data calls (A5).
@@ -52,7 +53,7 @@ export type Reservation =
   | { kind: "reserved"; id: string; reservedUsd: number }
   | { kind: "replay"; result: string }
   | { kind: "busy" }
-  | { kind: "refused"; reason: "daily_cap" | "budget"; message: string };
+  | { kind: "refused"; reason: "daily_cap" | "budget" | "usage_cap"; message: string };
 
 /** The key of "this same request": a key the caller gives, else the bot, the tool, the provider and the arguments. */
 export const idemKeyOf = (botId: string, tool: string, provider: string, args: unknown, given?: string) => hash(given ? `given|${botId}|${given}` : `${botId}|${tool}|${provider}|${stableJson(args)}`);
@@ -73,6 +74,13 @@ export function reserve(f: { userId: string; botId: string; tool: string; provid
         message: `Budget refusal: this paid call could cost up to ${usd(max)}. ${bot?.name ?? "This bot"}'s daily cap on paid tools is ${usd(toMicros(cap))} and ${usd(used)} is already used today (${usd(Math.max(0, toMicros(cap) - used))} left). Nothing was spent. Options: ask the user to raise the cap (your settings → Paid tools), wait until tomorrow (UTC), or use a free way.`,
       };
     }
+    // Usage caps (usagecaps.ts): a money cap that stops this work (an "everything" cap, or any cap for work no person
+    // started) must have room for the most this call can cost.
+    const room = bot ? moneyLeft(bot, turnAttended(bot.id)) : null;
+    if (room && max > toMicros(room.left)) return {
+      kind: "refused", reason: "usage_cap",
+      message: `Usage cap refusal: this paid call could cost up to ${usd(max)}, and ${capName(room.cap, "en")} of ${usd(toMicros(room.cap.limit))} has ${usd(toMicros(room.left))} left. Nothing was spent. Tell the user: they can raise the cap (Settings → Usage) or wait until it resets; or use a free way.`,
+    };
     const budget = settings.budget(f.userId);
     if (budget !== null && budget > 0) {
       const spent = monthUsage(f.userId) + reservedForUser(f.userId);

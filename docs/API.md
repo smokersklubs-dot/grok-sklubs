@@ -121,6 +121,9 @@ any route. Tokens are refreshed before they expire and on a 401; when the refres
 | POST | `/checkins/now` | – | `{ ok }` |
 | GET | `/usage` | – | `UsageSummary` |
 | PUT | `/usage/budget` | `{ budgetUsd: number \| null }` | `UsageSummary` |
+| GET | `/usage/caps` | – | `UsageCapsView` (today / this month per bot and account, caps measured; see docs/PLAFONDS.md) |
+| PUT | `/usage/caps` | `{ botId, period, unit, limit, mode?, warnPercent? }` | `UsageCapsView` |
+| POST | `/usage/caps/stops/:stopId` | `{ action: "wait" \| "continue" \| "raise", limit? }` | `{ ok }` |
 
 ## Notes for clients
 

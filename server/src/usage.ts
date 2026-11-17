@@ -6,6 +6,7 @@ import type { TurnUsage } from "./llm/types.js";
 import type { Engine, SubscriptionUsage, UsageSummary } from "./shared.js";
 import { addSpend } from "./agent/spend.js";
 import { noteCost } from "./journal.js";
+import { afterUsage } from "./usagecaps.js";
 
 /**
  * Latest known use of each account's subscription windows (Claude Code, Codex), as the tools report it. Kept in the
@@ -166,6 +167,9 @@ export const setActorHook = (fn: (botId: string) => string | null) => { actorHoo
 let payerHook: (userId: string, model: string, u: TurnUsage, status: string) => string = () => "";
 export const setPayerHook = (fn: typeof payerHook) => { payerHook = fn; };
 
+/** Usage caps (usagecaps.ts) hear of every usage line, for their warning and their "reached" card; never fails the line. */
+const told = (userId: string, botId: string) => { try { afterUsage(userId, botId); } catch (err) { console.error("[usage caps]", err); } };
+
 /** `costUsd`: the price the service itself reported (e.g. a video), used instead of our token price list. */
 export function record(userId: string, botId: string, model: string, u: TurnUsage, costUsd?: number) {
   const e = costUsd !== undefined ? { cost: costUsd, status: "reported" as const, estimate: 0 } : costEstimate(model, u, userId);
@@ -185,7 +189,7 @@ export function record(userId: string, botId: string, model: string, u: TurnUsag
     const main = bots.primary(userId);
     if (main) rows.append(main, { kind: "notice", tone: "warn", text: tr(users.localeOf(userId), "You have used 80% of this month's budget.") });
     audit(userId, "system", "80% of this month's budget is used");
-  }
+  }  told(userId, botId);
 }
 
 /**
@@ -197,6 +201,7 @@ export function recordEstimate(userId: string, botId: string, label: string, est
     userId, botId, now(), label, botId ? actorHook(botId) : null, Math.max(0, estimateUsd), payer);
   if (botId) addSpend(botId, Math.max(0, estimateUsd));
   emit(userId, { type: "usage" });
+  told(userId, botId);
 }
 
 /**
@@ -212,6 +217,7 @@ export function recordServiceCost(userId: string, botId: string, label: string, 
     userId, botId, now(), label, cost, botId ? actorHook(botId) : null);
   if (botId) { addSpend(botId, cost); noteCost(botId, cost); }
   emit(userId, { type: "usage" });
+  told(userId, botId);
 }
 
 function warnUnknown(userId: string, model: string) {

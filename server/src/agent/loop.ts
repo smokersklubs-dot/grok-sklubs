@@ -43,6 +43,8 @@ import { balancedCut, compactHistory, contextWindowOf, estimateTokens, prepareMe
 import { jobs, setJobBlocked, setJobWaker, startJobWatch } from "../jobs.js";
 import { engineBlock, hostedMode, isHostedStop, isPlanLimit, operatorBlock, operatorPaid, postStopNotice } from "../hosted.js";
 import { pauses } from "../pauses.js";
+import { blockingCap, capCard, caps as usageCaps, clearTurn, cm, markTurn, noteAttended, noteSkip, skipText, turnAttended } from "../usagecaps.js";
+import type { CapStateView } from "../shared.js";
 import { callSignal, EngineGone, endWatch, isWatchStop, takeSwitch, TurnStalled, watchKind, watchNextModel, watchOutput, watchTool, watchTurn, watchWait, type WatchHandle } from "./watch.js";
 
 /** A skill the user asked for with "/skill <name>" in the composer. */
@@ -63,7 +65,7 @@ setActorHook(actorOf);
 export type Trigger =
   /** `skill`: the user typed "/skill <name>": the bot is told to follow that skill, whose steps ride along. */
   | { kind: "user"; text: string; voice?: boolean; attachments?: Attachment[]; channel?: "telegram"; thread?: number; skill?: ForcedSkill; /** Wave 6: written by someone of a workspace the bot is shared with, not its owner. */ member?: MemberAuthor; /** Goal mode: this message is the objective of that goal (its first round). */ goal?: string }
-  | { kind: "routine"; name: string; text: string; runId?: string; tainted?: boolean }
+  | { kind: "routine"; name: string; text: string; runId?: string; tainted?: boolean; /** "Run now", pressed by the user (usage caps: a person's own work). */ byHand?: boolean }
   /** `ask`: the sender waits for the answer in its own turn (bot_message with wait): this turn's last words go back to it. */
   | { kind: "bot"; fromName: string; text: string; depth: number; tainted?: boolean; ask?: AskRoute }
   /**
@@ -72,7 +74,9 @@ export type Trigger =
    */
   | { kind: "system"; text: string; depth?: number; tainted?: boolean; thread?: number; resumeOf?: "steps" | "spend"; spendScope?: string; /** The origin of the work it continues (see Turn.origin). */ origin?: string;
       /** Goal mode: a round of that goal (goals.ts); skipped if the goal was paused or stopped meanwhile. */ goalRound?: string;
-      /** The background jobs this message reports the end of (jobs.ts); sent again later if the bot waits on the user. */ jobIds?: string[] }
+      /** The background jobs this message reports the end of (jobs.ts); sent again later if the bot waits on the user. */ jobIds?: string[];
+      /** Usage caps (usagecaps.ts): no person started this (a check-in, mail to the bot, a bot's post or report). */ unattended?: boolean;
+      /** Usage caps: a person asked for this just now (they pressed "Continue" on a cap's card). */ byPerson?: boolean }
   | { kind: "resume" };
 
 /** The thread a trigger belongs to (0: the main chat). */
@@ -597,6 +601,8 @@ async function runScopedTurn(botId: string, trigger: Trigger, thread: number): P
   setLive(user.id, botId, { running: true, activity: { kind: "thinking", since: Date.now() }, awaiting: null, startedAt: Date.now(), thread, steps: 0, caption: null });
   let turn: Turn | null = null;
   let failed = "";
+  /** A usage cap let this routine run go (its run log says so already). */
+  let capSkipped = false;
   /** The turn watch (watch.ts): started once the AI itself is asked, ended with the turn. */
   let watch: WatchHandle | null = null;
   const startWatch = (kind: "engine" | "api") => {
@@ -614,6 +620,15 @@ async function runScopedTurn(botId: string, trigger: Trigger, thread: number): P
     // only). The bot says why, with the way forward; background work says it once a day.
     const stop = hostedMode() ? hostedTurnStop(bot, trigger, held) : null;
     if (stop) { postStopNotice(bot, stop, { background: trigger.kind !== "user" && trigger.kind !== "resume", member: trigger.kind === "user" && !!trigger.member }); return; }
+    // Usage caps (usagecaps.ts): a reached cap stops work no person started ("unattended", the default) or everything.
+    // A person's own message under an "unattended" cap runs, with one notice.
+    const attended = attendedTrigger(trigger);
+    markTurn(botId, attended);
+    if (usageCaps.any(user.id)) {
+      const capped = blockingCap(bot, attended);
+      if (capped) { capSkipped = refuseForCap(bot, trigger, capped, attended, thread); return; }
+      if (attended) noteAttended(bot);
+    }
     if (trigger.kind === "resume") {
       if (!held) return;
       turn = await newTurn(bot, user, held.depth, controller.signal);
@@ -767,7 +782,8 @@ async function runScopedTurn(botId: string, trigger: Trigger, thread: number): P
     const job = runningJob.get(botId);
     if (job !== undefined) botQueue.finish(job);
     actors.delete(botId);
-    if (trigger.kind === "routine" && trigger.runId) {
+    clearTurn(botId);
+    if (trigger.kind === "routine" && trigger.runId && !capSkipped) {
       // Stopped by "Pause": the run is let go (skipped), not counted as a failure.
       if (pausedStop(controller.signal)) runs.finish(trigger.runId, "skipped", "The bot was paused: stopped.");
       else runs.finish(trigger.runId, failed ? "error" : paused.get(botId) ? "done" : turn?.spoke ? "done" : "quiet", failed || (paused.get(botId) ? "Waiting for your approval" : clip(turn?.lastText ?? "", 200)));
@@ -826,6 +842,58 @@ export function hostedHoldsBot(bot: BotRecord): "budget" | "suspended" | "byok" 
   return hostedMode() ? hostedTurnStop(bot, { kind: "system", text: "" }, null) : null;
 }
 
+/**
+ * Usage caps: whether a person started this work (their message, their answer to an approval, a button they pressed),
+ * as opposed to work no one started — routines and webhooks, goals' later rounds, bot-to-bot messages and background
+ * tasks (a helper's work comes as another bot's message), background-job reports, check-ins, mail to the bot. Work that
+ * continues other work (step limit, pause, stall) is what the work it continues was.
+ */
+export function attendedTrigger(trigger: Trigger): boolean {
+  if (trigger.kind === "user" || trigger.kind === "resume") return true;
+  if (trigger.kind === "routine") return !!trigger.byHand;
+  if (trigger.kind === "bot") return false;
+  if (trigger.byPerson) return true;
+  if (trigger.unattended || trigger.goalRound || trigger.jobIds?.length) return false;
+  if (trigger.resumeOf === "spend") return true; // the user pressed "Continue" on a spend checkpoint
+  if (trigger.resumeOf && trigger.origin) return trigger.origin === "user" || trigger.origin === "member" || trigger.origin === "resume";
+  return true;
+}
+
+/**
+ * Work a usage cap stops before it starts. A routine run is let go ("skipped" in its run log: it comes back at its next
+ * time), a goal round pauses its goal, a job report is sent again later, a bot that waits for an answer is told; anything
+ * else is set aside on the cap's card ("Continue" runs it once the cap allows). Background work is counted on the card
+ * and logged once per cap and period; a person's own message (an "everything" cap) gets a card and a notice. Returns
+ * true when a routine run was recorded as skipped.
+ */
+function refuseForCap(bot: BotRecord, trigger: Trigger, s: CapStateView, attended: boolean, thread: number): boolean {
+  const loc = users.localeOf(bot.userId);
+  const what = trigger.kind === "routine" ? `routine "${trigger.name}"` : trigger.kind === "bot" ? `a message from ${trigger.fromName}` : trigger.kind === "user" ? "a message" : trigger.kind === "system" && trigger.goalRound ? "a goal round" : "background work";
+  if (trigger.kind === "routine") {
+    if (trigger.runId) runs.finish(trigger.runId, "skipped", skipText(bot.userId, s, "skip"));
+    noteSkip(bot, s, what);
+    return !!trigger.runId;
+  }
+  if (trigger.kind === "system" && trigger.goalRound) {
+    const g = goals.byId(trigger.goalRound);
+    if (g && g.status === "active") goals.set(g, { status: "paused", reason: cm(loc, "a usage cap is reached"), queued: false, waiting: "" });
+    noteSkip(bot, s, what);
+    return false;
+  }
+  if (trigger.kind === "system" && trigger.jobIds?.length) { jobs.unnotify(trigger.jobIds); noteSkip(bot, s, what); return false; }
+  if (trigger.kind === "bot" && trigger.ask) {
+    settleAsk(bot, trigger.ask, { lastText: "", tainted: false, depth: trigger.depth, failed: `${bot.name} has reached a usage cap its owner set: it takes no work no person started until the cap resets. Do not route around it — carry on without it, or tell the user.`, paused: false });
+    noteSkip(bot, s, what);
+    return false;
+  }
+  const held = { botId: bot.id, trigger: trigger as unknown as Record<string, unknown> };
+  if (attended) {
+    capCard(bot.userId, s, bot, { held, force: true });
+    rows.append(bot, { kind: "notice", tone: "warn", text: skipText(bot.userId, s, "refused") }, thread);
+  } else noteSkip(bot, s, what, held);
+  return false;
+}
+
 /** What started a turn, as the journal and the tools see it. */
 function originOf(trigger: Exclude<Trigger, { kind: "resume" }>): string {
   if (trigger.kind === "user") return trigger.member ? "member" : "user";
@@ -867,6 +935,10 @@ async function modelLoop(turn: Turn) {
   let nudged = false;
   for (let step = 0; step < config.maxSteps; step++) {
     if (turn.signal.aborted) throw new Error("aborted");
+    // A usage cap (usagecaps.ts), at the same safe point: the turn stops before its next step; what it did is kept and a
+    // continuation waits on the cap's card. A person's own turn goes on under an "unattended" cap.
+    const capped = step > 0 && !carry && usageCaps.any(turn.user.id) ? blockingCap(bot, turnAttended(bot.id)) : null;
+    if (capped) { stopAtCap(turn, capped); return; }
     // A spend checkpoint (spec 07 A5): before the next step, never in the middle of one. The history is kept as it is.
     const key = turn.spendKey ?? activeScope(bot.id);
     const over = key && !carry ? overCheckpoint(bot, key) : null;
@@ -1061,6 +1133,18 @@ const TIMEOUT_CONTINUE_TEXT = "Your last turn was stopped because it reached its
 const GONE_CONTINUE_TEXT = "Your subscription tool stopped on your computer in the middle of your last turn, without finishing it. Pick the work back up where you left off — check what is already done, do not redo it — and finish it, or say plainly where things stand.";
 const STALL_CONTINUE_TEXT = "Your last turn made no progress for several minutes (nothing came from you and no tool was running), so the user stopped it and asked you to pick the work back up. Check what is already done, do not redo it, and finish the job — if something was hanging (a command that never returned, a page that never loaded), do it another way — or say plainly where things stand.";
 const BUSY_CONTINUE_TEXT = "Your last turn could not start because every computer of the server was busy. Carry on with what was asked now.";
+
+const CAP_CONTINUE_TEXT = "Your last turn was stopped at a usage cap the user set, and the user has now asked you to go on. Pick the work back up where you left off — do not redo what is already done — and finish it, or say plainly where things stand.";
+
+/** A turn stopped at a usage cap: its continuation is set aside on the cap's card (or, if that card was answered, logged). */
+function stopAtCap(turn: Turn, s: CapStateView) {
+  const { bot } = turn;
+  const held = { botId: bot.id, trigger: { kind: "system", text: CAP_CONTINUE_TEXT, thread: turn.thread || undefined, tainted: turn.tainted || undefined, depth: turn.depth, origin: turn.origin, spendScope: turn.spendKey } };
+  rows.append(bot, { kind: "notice", tone: "warn", text: skipText(bot.userId, s, "stopped") });
+  if (turnAttended(bot.id)) capCard(bot.userId, s, bot, { held, force: true });
+  else noteSkip(bot, s, `a turn of ${bot.name} (stopped before its next step)`, held);
+  audit(bot.userId, "system", `${bot.name}: turn stopped at a usage cap before its next step`, bot.id);
+}
 
 /** "Continue" pressed under a step-limit (or time-limit, or busy-computers) notice: resumes the work, once per notice. */
 export function continueAfterStepLimit(bot: BotRecord, seq: number): boolean {
@@ -1778,5 +1862,6 @@ setRelayAsker((bot, f) => askUser(bot, f, Math.min(config.approvalExpireMs, 5 * 
 // Background jobs (jobs.ts): a job that ended reaches its bot as a queued system message, never over an approval or a
 // spend checkpoint the bot waits on (jobs.ts sends it once that is settled).
 setJobWaker((botId, trigger) => enqueue(botId, trigger));
-setJobBlocked((botId) => { const b = bots.byId(botId); return !!paused.get(botId) || !!checkpoints.pendingFor(botId) || (!!b && isPaused(b)); });
+// A usage cap that stops this bot's unattended work holds the report too (it would only be set aside at every poll).
+setJobBlocked((botId) => { const b = bots.byId(botId); return !!paused.get(botId) || !!checkpoints.pendingFor(botId) || (!!b && isPaused(b)) || (!!b && usageCaps.any(b.userId) && !!blockingCap(b, false)); });
 export { startJobWatch };

@@ -283,6 +283,7 @@ const FR: Record<string, string> = {
   "My usual model is not answering ({detail}). I am finishing this on the backup model.": "Mon modèle habituel ne répond pas ({detail}). Je termine avec le modèle de secours.",
   "The server restarted while I was working. I am picking this back up.": "Le serveur a redémarré pendant que je travaillais. Je reprends là où j'en étais.",
   "You have used 80% of this month's budget.": "Tu as utilisé 80 % du budget de ce mois.",
+  "Usage cap reached": "Plafond d'usage atteint",
   "The price of the model {model} is unknown: its tokens are counted, and budgets and spend checkpoints count them at the highest known price ({in} $ / {out} $ per million tokens). The owner of this server can set its real price in Settings → Models.":
     "Le prix du modèle {model} est inconnu (coût inconnu) : ses tokens sont comptés, et le budget et les points de contrôle des dépenses les comptent au prix connu le plus élevé ({in} $ / {out} $ par million de tokens). Le propriétaire de ce serveur peut indiquer son vrai prix dans Réglages → Modèles.",
   "Voice call with {bot} started": "Appel vocal avec {bot} commencé", "Voice call ended · {duration}": "Appel vocal terminé · {duration}",

@@ -81,6 +81,9 @@ compte restent possibles ; tout le reste est refusé (403 clair) ; aucun bot ne 
   prend le relais. Le travail de fond (routines, objectifs, mémoire, points quotidiens, titres) s'arrête de la même
   façon, avec une seule notice par jour.
 - **Recharge** : Administration → Clients → Gérer → « Recharger le budget IA de ce mois ».
+- **Plafonds d'usage par client** (Administration → Clients → Gérer) : par jour ou par mois, en dollars ou en tokens,
+  sur ce que paient les clés du service ; ils s'ajoutent au budget de l'offre sans le remplacer. Le client les voit
+  et ne peut pas les changer. Voir `docs/PLAFONDS.md`.
 
 ### Abonnements Claude Code / Codex
 L'abonnement personnel de l'opérateur n'est **jamais** utilisé par les bots d'un autre compte : un bot « abonnement »
@@ -139,6 +142,7 @@ gérer (Stripe Tax). À vérifier dans leurs conditions actuelles.
 | `POST /api/admin/plans`, `PUT /api/admin/plans/:planId`, `PUT /api/admin/settings` | opérateurs | offres et réglages |
 | `POST /api/admin/invites`, `DELETE /api/admin/invites/:inviteId` | opérateurs | liens d'invitation avec offre |
 | `PUT /api/admin/providers/:pid/lend` | opérateurs | prêter un de ses fournisseurs d'API |
+| `GET`, `PUT /api/admin/customers/:uid/caps` | opérateurs | plafonds d'usage du client (journalisés) |
 | `/tarifs`, `/pricing`, `/cgu`, `/terms`, `/mentions-legales`, `/legal-notice` | public | pages sans script, CSP stricte |
 
 Inscription : `POST /api/auth/signup` accepte en plus `plan`, `planInvite` et `acceptTerms` (obligatoire en mode

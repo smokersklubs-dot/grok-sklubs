@@ -49,7 +49,7 @@ import { PUSH_KINDS, VAULT_KINDS, type VaultKind } from "./shared.js";
 import { q } from "./db.js";
 import { connectors as connectorStore } from "./connectors.js";
 import type { Attachment } from "./shared.js";
-import { csv as usageCsv, ownerPrices, PRICE_SOURCES, priceInfo, summary as usageSummary, UNKNOWN_ESTIMATE } from "./usage.js";
+import { csv as usageCsv, ownerPrices, PRICE_SOURCES, priceInfo, spentThisMonth, summary as usageSummary, UNKNOWN_ESTIMATE } from "./usage.js";
 import { accounts as nativeAccounts, clients as nativeClients, disconnect as nativeDisconnect, finishSignIn as nativeFinish, publicAccount, startSignIn as nativeStart } from "./native/accounts.js";
 import { appOf, appsFor, nativeRedirectUri, setupDocs, setupSteps, VENDOR_NAMES, VENDORS } from "./native/vendors.js";
 import { syncSlackSockets } from "./native/triggers.js";
@@ -102,6 +102,7 @@ import { publicJobs, stopJob } from "./jobs.js";
 import { healthReport } from "./monitor.js";
 import { accountCreated, HostedError, hostedMode, isOperator, isPlanLimit, lentProviderIds, planInviteOpens, signupChoice, subscriptionEnginesFor, suspended, type SignupChoice } from "./hosted.js";
 import { registerHostedPages, registerHostedPrivate, registerHostedPublic, suspendedText } from "./hostedroutes.js";
+import { answerCapCard, amountText, CapError, capName, caps as usageCaps, capsView, cleanCapInput, cm } from "./usagecaps.js";
 
 type Env = { Variables: { user: UserRecord } };
 export const api = new Hono<Env>();
@@ -118,6 +119,8 @@ api.onError((err, c) => {
     const loc = (c.get("user") as UserRecord | undefined)?.locale ?? pickLocale(undefined, c.req.header("accept-language"));
     return c.json({ error: err.text(loc), code: err instanceof HostedError ? err.code ?? "hosted" : "plan_limit", ...(isPlanLimit(err) ? { limit: err.kind } : {}) }, err instanceof HostedError ? err.status : 403);
   }
+  // Usage caps (usagecaps.ts): a refusal in the caller's language.
+  if (err instanceof CapError) return c.json({ error: err.text((c.get("user") as UserRecord | undefined)?.locale) }, err.status);
   // MAX_BOTS reached: a clear refusal, never a silent eviction.
   if (err instanceof TeamFullError) {
     const loc = (c.get("user") as UserRecord | undefined)?.locale ?? pickLocale(undefined, c.req.header("accept-language"));
@@ -383,7 +386,10 @@ api.post("/hooks/:token", async (c) => {
   // Whoever holds the hook's address can send anything: the payload is outside content for the turn it starts.
   // "Pause": a paused bot's webhook is recorded as skipped (like any routine run), and the sender is told so — with a
   // 2xx, so senders that retry on errors do not pile calls up while it is paused.
-  if (fireRoutine(r!, payload, { outside: true }) === "paused") return c.json({ ok: true, skipped: "paused" });
+  const fired = fireRoutine(r!, payload, { outside: true });
+  if (fired === "paused") return c.json({ ok: true, skipped: "paused" });
+  // A usage cap stops the bot's unattended work: recorded as skipped (usagecaps.ts), told with a 2xx for the same reason.
+  if (fired === "capped") return c.json({ ok: true, skipped: "usage_cap" });
   return c.json({ ok: true });
 });
 
@@ -635,6 +641,7 @@ api.delete("/bots/:id", async (c) => {
   if (bot.primary) fail(409, "Make another bot your main contact before deleting this one.");
   // Interrupt, routines and triggers, engine, screen, files, then the record: each failure logged, none blocking (U-003).
   await retireBot(bot);
+  usageCaps.forgetBot(bot.id);
   emit(bot.userId, { type: "roster" });
   return c.json({ ok: true });
 });
@@ -1193,8 +1200,10 @@ api.patch("/routines/:id", async (c) => {
 api.get("/routines/:id/runs", (c) => c.json({ runs: runs.list(ownRoutine(c).id) }));
 // "Run now" does not move the next due time and does not turn a paused routine back on; a run under way is not doubled.
 api.post("/routines/:id/run", (c) => {
-  const r = fireRoutine(ownRoutine(c));
+  // "Run now" is the user's own: only a usage cap set to stop everything refuses it.
+  const r = fireRoutine(ownRoutine(c), undefined, { byHand: true });
   if (r === "paused") fail(409, tr(c.get("user").locale, "This routine's bot is paused. Resume it to run the routine."));
+  if (r === "capped") fail(409, cm(c.get("user").locale, "This usage cap still stops this work. Raise it (Settings → Usage) or wait until it resets."));
   return r === "busy" ? fail(409, "This routine is already running.") : c.json({ ok: true });
 });
 api.delete("/routines/:id", (c) => {
@@ -2246,6 +2255,34 @@ api.put("/usage/budget", async (c) => {
   settings.setBudget(c.get("user").id, v);
   emit(c.get("user").id, { type: "usage" });
   return c.json(usageSummary(c.get("user").id));
+});
+
+/**
+ * Usage caps (usagecaps.ts): today and this month per bot and for the account, with the caps (GET); one cap set or
+ * removed (PUT: limit null or 0 removes it) — the account's own caps only (an operator's cap on a hosted customer is
+ * set in the administration); the answer on a cap's card (POST).
+ */
+const capsViewOf = (userId: string) => {
+  const d = new Date();
+  return capsView(userId, { owner: true, budgetUsd: settings.budget(userId), budgetSpentUsd: spentThisMonth(userId), budgetResetAt: Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1) });
+};
+api.get("/usage/caps", (c) => c.json(capsViewOf(c.get("user").id)));
+api.put("/usage/caps", async (c) => {
+  const user = c.get("user");
+  const f = cleanCapInput(await body(c));
+  if (f.botId) { const b = bots.owned(user.id, f.botId); if (!b || b.kind !== "agent" || b.hidden) throw new CapError(404, "Unknown bot."); }
+  if (usageCaps.set(user.id, f, "self", user.id)) {
+    const name = capName({ ...f, setBy: "self" }, "en");
+    audit(user.id, "account", f.limit === null ? `Usage cap removed: ${name}` : `Usage cap set: ${name} ${amountText(f.unit, f.limit, "en")}, stops ${f.mode === "everything" ? "everything" : "unattended work"}, warning at ${f.warnPercent}%`, f.botId);
+  }
+  emit(user.id, { type: "usage" });
+  return c.json(capsViewOf(user.id));
+});
+api.post("/usage/caps/stops/:stopId", async (c) => {
+  const user = c.get("user");
+  const b = await body(c);
+  await answerCapCard(user.id, c.req.param("stopId"), String(b.action ?? ""), b.limit);
+  return c.json({ ok: true });
 });
 
 /**

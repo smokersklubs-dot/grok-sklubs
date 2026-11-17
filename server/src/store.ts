@@ -57,6 +57,7 @@ function previewOf(body: RowBody, locale: Locale): string {
     if (c.type === "task") return tr(locale, "Background task: {title}", { title: c.title });
     if (c.type === "nudge") return c.title;
     if (c.type === "spend") return tr(locale, "Spend checkpoint: {title}", { title: c.title });
+    if (c.type === "cap") return tr(locale, "Usage cap reached");
     if (c.type === "skill") return tr(locale, "Skill to review: {name}", { name: c.name });
     if (c.type === "apiconnector") return tr(locale, "API connector to review: {name}", { name: c.name });
     if (c.type === "memory") return tr(locale, "Which is right? {text}", { text: c.newText });

@@ -395,7 +395,17 @@ export type Card =
    * line the bot gave (goal_update); `evidence`: what proves it is done; `reason`: why it paused or is blocked.
    */
   | { type: "goal"; goalId: string; objective: string; status: GoalStatus; rounds: number; maxRounds: number; summary?: string; evidence?: string; reason?: string; waiting?: GoalWaiting }
-  | { type: "disk"; checkId: string; usedPct: number; totalBytes: number; freeBytes: number; items: { path: string; bytes: number }[]; status: "pending" | "cleaned" | "dismissed"; deleted?: string[]; freedBytes?: number };
+  | { type: "disk"; checkId: string; usedPct: number; totalBytes: number; freeBytes: number; items: { path: string; bytes: number }[]; status: "pending" | "cleaned" | "dismissed"; deleted?: string[]; freedBytes?: number }
+  /**
+   * A usage cap is reached (usagecaps.ts): one card per cap, period and limit. `cap`: which one (scope, period, unit,
+   * limit, who set it, what it stops); `used`: what was counted when the card was made; `resetAt`: when the period ends,
+   * shown in `timezone` (the user's). `held`: how much work was set aside under it ("Continue" runs it once the cap no
+   * longer stops it); `skipped`: background work let go under it (routines come back at their next time). `canRaise`:
+   * the account's own cap (an operator's cap is not the customer's to raise). Status: "pending" (live buttons),
+   * "continued" (the held work went on), "raised" (the owner raised the cap here, then it went on), "waiting" (the user
+   * chose to wait for the reset). "Switch model" opens the bot's settings.
+   */
+  | { type: "cap"; stopId: string; botName: string; cap: UsageCapView; used: number; resetAt: number; timezone: string; held: number; skipped: number; canRaise: boolean; status: "pending" | "continued" | "raised" | "waiting" };
 
 export type GoalStatus = "proposed" | "active" | "paused" | "complete" | "blocked" | "limit" | "stopped" | "declined";
 export type GoalWaiting = "" | "approval" | "user" | "checkpoint";
@@ -738,6 +748,33 @@ export interface UsageSummary {
   subscriptions: SubscriptionUsage[];
   /** True once this month's spend has passed 80% of the budget. */
   nearBudget: boolean;
+}
+
+// ── Usage caps (usagecaps.ts) ─────────────────────────────────────────────────────────────────────────────────────
+export type CapPeriod = "day" | "month";
+/** "usd": money (known costs + the conservative estimate of unknown prices); "tokens": input (cached included) + output. */
+export type CapUnit = "usd" | "tokens";
+/** "unattended": stops only work no person started (the default); "everything": a person's own messages too. */
+export type CapMode = "unattended" | "everything";
+/** "self": the account's owner set it; "operator": the hosted service's operator set it on this customer (read-only to them). */
+export type CapSetBy = "self" | "operator";
+/** One cap as set: the account's (botId null) or one bot's (its helpers count with it). */
+export interface UsageCapView {
+  key: string; botId: string | null; period: CapPeriod; unit: CapUnit; limit: number; mode: CapMode; warnPercent: number; setBy: CapSetBy; updatedAt: number;
+}
+/** A cap measured now: `used` in its unit for its current period, `percent` of the limit, and when that period ends. */
+export interface CapStateView extends UsageCapView { used: number; percent: number; warn: boolean; reached: boolean; periodKey: string; resetAt: number }
+export interface UsageAmount { usd: number; tokens: number }
+/**
+ * GET /usage/caps: today and this month (in `timezone`, the user's), for the account and for each bot (its helpers
+ * included), with every cap and how far it is used. `budget`: the monthly budget (Settings → Usage, UTC month, stops
+ * everything) shown alongside, as it is a cap of its own kind.
+ */
+export interface UsageCapsView {
+  timezone: string; dayKey: string; monthKey: string; dayResetAt: number; monthResetAt: number; owner: boolean;
+  account: { today: UsageAmount; month: UsageAmount; caps: CapStateView[] };
+  bots: { botId: string; name: string; today: UsageAmount; month: UsageAmount; caps: CapStateView[] }[];
+  budget: { usd: number | null; spentUsd: number; resetAt: number };
 }
 
 /** How bots can make videos on this server: through the user's Higgsfield app, a video API, both or neither. */

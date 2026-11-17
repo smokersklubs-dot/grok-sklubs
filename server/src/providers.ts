@@ -89,7 +89,7 @@ export async function runChain<A, R>(capability: string, list: Provider<A, R>[],
     let reservation: string | null = null;
     if (p.tier === "paid") {
       const r = reserve({ userId: ctx.bot.userId, botId: ctx.bot.id, tool: capability, provider: p.id, maxUsd: estimate ?? cap - cost, idemKey: idemKeyOf(ctx.bot.id, capability, p.id, args) });
-      if (r.kind === "refused") { attempts.push({ provider: p.label, tier: p.tier, outcome: "too_expensive", detail: r.reason === "daily_cap" ? "daily cap reached" : "monthly budget reached", costUsd: 0 }); return out(null, null, { refusal: r.message }); }
+      if (r.kind === "refused") { attempts.push({ provider: p.label, tier: p.tier, outcome: "too_expensive", detail: r.reason === "daily_cap" ? "daily cap reached" : r.reason === "usage_cap" ? "usage cap reached" : "monthly budget reached", costUsd: 0 }); return out(null, null, { refusal: r.message }); }
       if (r.kind === "busy") { attempts.push({ provider: p.label, tier: p.tier, outcome: "error", detail: "the same request is still running", costUsd: 0 }); return out(null, null); }
       if (r.kind === "replay") { attempts.push({ provider: p.label, tier: p.tier, outcome: "served", detail: "same request: earlier result, not charged again", costUsd: 0 }); return out(JSON.parse(r.result) as R, p.label); }
       reservation = r.id;

@@ -91,6 +91,9 @@ test("setup: A owns one of everything, V is a viewer of A's workspace with bot1 
     ins("INSERT INTO local_tool_servers (id, user_id, bot_id, name, command, created_at) VALUES (?, ?, ?, 'alphasecret-tool', 'true', ?)", ids[`ltool_${b}`] = `a_ltool_${b}`, userA, bot, t);
   }
   q.run("UPDATE pages SET visibility = 'private' WHERE token = ?", ids.page_bot2);
+  // Usage caps (usagecaps.ts): a cap of A's on bot1, and the card of a reached cap with work set aside on it.
+  ins("INSERT INTO usage_caps (user_id, bot_id, period, unit, limit_value, updated_at) VALUES (?, ?, 'day', 'usd', 7, ?)", userA, ids.bot1, t);
+  ins("INSERT INTO usage_cap_stops (id, user_id, card_bot_id, cap_key, period_key, generation, held, created_at) VALUES ('a_capstop', ?, ?, 'self:account:day:usd', '2026-01-01@7', 1, ?, ?)", userA, ids.bot1, JSON.stringify([{ botId: ids.bot1, trigger: { kind: "user", text: "ALPHASECRET held" } }]), t);
   ins("INSERT INTO vault (id, user_id, name, username, password_enc, created_at) VALUES ('a_vault', ?, 'ALPHASECRET vault', 'alice', ?, ?)", userA, seal("ALPHASECRET password"), t);
   ins("INSERT INTO connectors (id, user_id, name, url, token_enc, created_at) VALUES ('a_conn', ?, 'ALPHASECRET connector', 'https://mcp.example.com', ?, ?)", userA, seal("ALPHASECRET token"), t);
   ins("INSERT INTO bot_sections (id, user_id, name, created_at) VALUES ('a_section', ?, 'ALPHASECRET section', ?)", userA, t);
@@ -143,6 +146,8 @@ function resolve(routePath: string, param: string, bot: "bot1" | "bot2"): string
     // Hosted mode (hosted.ts / hostedroutes.ts): A's account, A's plan invitation, A's provider; the public ones.
     "customers:uid": userA, "plans:planId": "free", "invites:inviteId": ids.planInvite, "providers:pid": "up-alpha",
     "plan-invites:token": "not-a-real-invite", "webhook:provider": "stripe",
+    // Usage caps: the card of a reached cap.
+    "stops:stopId": "a_capstop",
   };
   if (param === "action" && prev2 === "reach") return "login";
   if (param === "rid" && prev2 === "resources") return "a_conn";
@@ -390,4 +395,20 @@ test("A's things are all still there (nothing B or V tried changed them)", async
   assert.equal(n("SELECT COUNT(*) AS n FROM shared_computers WHERE id = 'a_shared'"), 1);
   assert.equal(q.get<{ name: string }>("SELECT name FROM workspaces WHERE id = ?", ids.ws)!.name, "ALPHASECRET Studio");
   assert.equal(q.get<{ bucket: string }>("SELECT bucket FROM instance_backup WHERE id = 1")?.bucket, "alphasecret-bucket");
+  // Usage caps: A's cap and A's card are untouched.
+  assert.equal(q.get<{ limit_value: number }>("SELECT limit_value FROM usage_caps WHERE user_id = ? AND bot_id = ?", userA, ids.bot1)?.limit_value, 7);
+  assert.equal(q.get<{ status: string }>("SELECT status FROM usage_cap_stops WHERE id = 'a_capstop'")?.status, "pending");
+});
+
+test("usage caps: B can neither read nor set A's caps (nor cap A's bot), nor answer A's cap card", async () => {
+  const B = (m: string, u: string, b?: unknown) => call(api, "b", m, u, b);
+  const mine = await B("GET", "/usage/caps");
+  assert.equal(mine.status, 200);
+  assert.ok(!leakIn(mine.text) && !mine.text.includes(ids.bot1), "B's view shows nothing of A");
+  assert.equal((await B("PUT", "/usage/caps", { botId: ids.bot1, period: "day", unit: "usd", limit: 1 })).status, 404);
+  assert.equal((await B("POST", "/usage/caps/stops/a_capstop", { action: "continue" })).status, 404);
+  assert.equal((await call(api, "v", "POST", "/usage/caps/stops/a_capstop", { action: "wait" })).status, 404, "a viewer of A's workspace neither");
+  assert.equal((await call(api, "v", "PUT", "/usage/caps", { botId: ids.bot1, period: "day", unit: "usd", limit: 1 })).status, 404);
+  assert.equal(q.get<{ limit_value: number }>("SELECT limit_value FROM usage_caps WHERE user_id = ? AND bot_id = ?", userA, ids.bot1)?.limit_value, 7);
+  assert.equal(q.get<{ status: string }>("SELECT status FROM usage_cap_stops WHERE id = 'a_capstop'")?.status, "pending");
 });

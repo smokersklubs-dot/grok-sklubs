@@ -9,6 +9,7 @@ import { costEstimate, record } from "../usage.js";
 import { hostedMode, operatorBlock, operatorPaid, suspended } from "../hosted.js";
 import { isEngineRef } from "./engine.js";
 import { enqueue, isBusy, isPaused } from "./loop.js";
+import { capHolds } from "../usagecaps.js";
 
 /**
  * Proactive nudges (spec 07 A6). Optional per bot (off by default). Every so often a quiet preparation pass looks at the
@@ -100,6 +101,8 @@ export async function preparationPass(botId: string, force = false): Promise<Pas
   if (!bot.nudges.enabled && !force) return { status: "skipped", reason: "off" };
   // "Pause": a paused bot makes no quiet pass either (no model call).
   if (isPaused(bot)) return { status: "skipped", reason: "paused" };
+  // Usage caps (usagecaps.ts): a quiet pass is work no person started (skipped quietly: passes come often).
+  if (capHolds(bot)) return { status: "skipped", reason: "usage cap" };
   if (inQuietHours(pushSettings(bot.userId))) return { status: "skipped", reason: "quiet hours" };
   const s = stats(bot.id);
   if (s.raised >= bot.nudges.perDay) return { status: "skipped", reason: "daily cap" };

@@ -4,6 +4,7 @@ import { tr } from "../i18n.js";
 import type { Card, GoalStatus, GoalWaiting } from "../shared.js";
 import { audit, bots, clip, newId, now, paused, rows, users, type BotRecord } from "../store.js";
 import { overBudget } from "../usage.js";
+import { capHolds, cm, noteSkip } from "../usagecaps.js";
 import { checkpoints } from "./spend.js";
 import type { BuiltinTool } from "./tools.js";
 import { enqueue, hostedHoldsBot, interrupt, isPaused, queuedBehind, runningThreadOf, tell } from "./loop.js";
@@ -194,6 +195,10 @@ function continueGoal(bot: BotRecord, g: GoalRecord) {
   // "Pause": the bot is paused — the goal is paused with it, and resumed with it (resumeGoalsAfterPause).
   if (isPaused(bot)) { pauseGoal(bot, g, tr(loc, GOAL_PAUSED_WITH_BOT)); return; }
   // Hosted mode: the plan holds this bot's work (budget on the service's keys, suspended account…): the goal waits, paused.
+  // Usage caps (usagecaps.ts): a later round is work no person started — a cap that stops it pauses the goal (said once
+  // on the cap's card and in the activity log); resuming the goal after the reset, or raising the cap, goes on.
+  const capped = capHolds(bot);
+  if (capped) { pauseGoal(bot, g, cm(loc, "a usage cap is reached")); noteSkip(bot, capped, "a goal round"); return; }
   const held = hostedHoldsBot(bot);
   if (held) { pauseGoal(bot, g, tr(loc, held === "suspended" ? "the account is suspended" : held === "budget" ? "this month's budget is used up" : "the plan does not allow this model")); return; }
   if (g.rounds >= g.maxRounds) {

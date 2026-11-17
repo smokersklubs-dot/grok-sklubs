@@ -39,7 +39,7 @@ Sklubot a été reconstruit **en salle blanche** : voir [docs/CLEANROOM.md](docs
 | **Équipe** | Messages entre bots, assistants temporaires en parallèle (4 max, compte rendu automatique), discussions de groupe avec @mentions |
 | **Tâches** | Suivi du travail en cours, en attente de toi, terminé |
 | **Voix** | Appel vocal et dictée dans le navigateur (reconnaissance et synthèse vocales du navigateur), voix / vitesse / langue par bot |
-| **Maîtrise** | Compteur de jetons et de coût par bot, **budget mensuel** qui met les bots en pause, garde-fou contre les boucles, limite d'étapes |
+| **Maîtrise** | Compteur de jetons et de coût par bot, **budget mensuel** qui met les bots en pause, **plafonds d'usage** par jour ou par mois (dollars ou tokens, compte ou bot, travail sans surveillance ou tout — voir `docs/PLAFONDS.md`), garde-fou contre les boucles, limite d'étapes |
 
 ## Télécharger les applications
 

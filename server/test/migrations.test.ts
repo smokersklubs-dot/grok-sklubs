@@ -38,7 +38,7 @@ test("a new database is created at the latest version, without a pre-migration c
   assert.deepEqual(r.applied, MIGRATIONS.map((m) => `${m.version}-${m.name}`));
   assert.equal(r.backup, null);
   assert.equal(userVersion(db), LATEST_VERSION);
-  for (const t of ["users", "bots", "rows", "usage", "bot_jobs", "model_prices", "subscription_usage", "instance_smtp", "password_resets", "email_changes"]) assert.equal(n(db, `SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'table' AND name = '${t}'`), 1, t);
+  for (const t of ["users", "bots", "rows", "usage", "bot_jobs", "model_prices", "subscription_usage", "instance_smtp", "password_resets", "email_changes", "usage_caps", "usage_cap_notices", "usage_cap_stops"]) assert.equal(n(db, `SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'table' AND name = '${t}'`), 1, t);
   assert.deepEqual(backups(file), []);
   db.close();
 });
