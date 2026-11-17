@@ -58,6 +58,8 @@ if (builtIndex) {
   const index = builtIndex;
   // Phones only offer to install the Android app when the file is announced as one.
   app.use("/download/*", async (c, next) => { await next(); if (c.req.path.endsWith(".apk")) c.header("content-type", "application/vnd.android.package-archive"); });
+  // Video captions (web/public/media/*.vtt, the landing and download pages): a <track> needs text/vtt (nosniff is on).
+  app.use("/media/*", async (c, next) => { await next(); if (c.req.path.endsWith(".vtt") && c.res.ok) c.header("content-type", "text/vtt; charset=utf-8"); });
   app.use("*", serveStatic({ root: path.relative(process.cwd(), config.webDist) || "." }));
   app.get("*", (c) => c.html(index));
 }

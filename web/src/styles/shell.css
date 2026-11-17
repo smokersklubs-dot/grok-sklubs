@@ -178,20 +178,5 @@
 @media (max-width: 420px) { .signin-firstbot-row { grid-template-columns: auto 1fr; } .signin-firstbot-row .field:last-child { grid-column: 1 / -1; } }
 
 /* Download page (/telecharger) */
-.download-page { height: 100%; overflow-y: auto; max-width: 720px; margin: 0 auto; padding: 24px 16px 48px; display: flex; flex-direction: column; gap: 14px; }
-.download-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-.download-brand { display: inline-flex; align-items: center; gap: 10px; font-weight: 700; font-size: 18px; color: var(--text); text-decoration: none; }
-.download-page h1 { font-size: 26px; font-weight: 700; letter-spacing: -0.02em; margin-top: 12px; }
-.download-intro { color: var(--text-2); font-size: 14.5px; max-width: 600px; }
-.download-list { list-style: none; display: flex; flex-direction: column; gap: 10px; padding: 0; margin: 0; }
-.download-card { display: flex; gap: 12px; align-items: flex-start; padding: 14px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg, 12px); }
-.download-card.is-mine { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
-.download-text { display: flex; flex-direction: column; gap: 6px; min-width: 0; flex: 1; }
-.download-text h2 { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 15.5px; font-weight: 650; }
-.download-mine { font-size: 11.5px; }
-.download-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 2px; }
-.download-actions .btn { max-width: 100%; }
-.download-foot { max-width: 600px; }
-.download-page > .btn { align-self: flex-start; }
 .signin-links { display: flex; flex-wrap: wrap; gap: 6px 14px; justify-content: center; text-align: center; font-size: 12.5px; }
 .signin-links a { color: var(--text-2); }

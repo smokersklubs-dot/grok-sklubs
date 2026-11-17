@@ -30,6 +30,7 @@ export const PAIRS = [
   ["--brand", "--brand-soft", "text", "landing chips on the brand fill"],
   ["--brand", "--bg", "text", "landing eyebrow text on the page"],
   ["--text", "--brand-soft", "text", "landing text on the brand fill"],
+  ["--text", "--ok-soft", "text", "landing: the Windows warning note on the apps card"],
   // Body text and secondary text on every surface.
   ["--text", "--bg", "text", "page text"],
   ["--text", "--surface", "text", "text in cards, panels, modals"],

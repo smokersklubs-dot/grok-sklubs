@@ -3,6 +3,7 @@
  * Surveillance) render without a server. Buttons answer after a short delay (to show their busy state), or fail with
  * a sample error when the gallery's "fail" switch is on. Development only.
  */
+import { landingData, sampleDownloads } from "./landingFixtures";
 import { announcementsAdmin, announcementsState, sentinelOverview, todayReport, type FixtureOptions } from "./fixtures";
 
 export interface FakeApiState extends FixtureOptions { empty: boolean; fail: boolean }
@@ -28,6 +29,8 @@ export function installFakeApi(get: () => FakeApiState): void {
     if (path === "/surveillance") return json(200, sentinelOverview(s, s.empty));
     if (path === "/announcements") return json(200, announcementsState(s, s.empty));
     if (path === "/announcements-admin") return json(200, announcementsAdmin(s, s.empty));
+    if (path === "/public/landing") return json(200, landingData(s.empty));
+    if (path === "/downloads") return json(200, sampleDownloads(s.empty));
     if (path === "/models") return json(200, { models: [] });
     return json(200, {});
   };

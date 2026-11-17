@@ -23,13 +23,15 @@ import { AnnouncementsView } from "./components/AnnouncementsView";
 import { SiteAnnouncementBanner } from "./components/AnnouncementCard";
 import { useAnnouncements } from "./lib/announcements";
 import { ThreadPanel } from "./components/ThreadPanel";
-import { DownloadPage, isDownloadPath } from "./components/DownloadPage";
+import { isDownloadPath } from "./lib/platform";
 import { useDesktopBadge } from "./lib/desktop";
 import { takeVerifyLink, VerifyEmailGate, VerifyEmailPage } from "./components/VerifyEmail";
 import { Onboarding } from "./components/Onboarding";
 
 // The public landing page (OPEN_SIGNUP): its own chunk, loaded only for signed-out visitors of an open server.
 const Landing = lazy(() => import("./components/Landing"));
+// The public download page (/telecharger): its own chunk too, it shares the landing page's styles and videos.
+const DownloadPage = lazy(() => import("./components/DownloadPage"));
 type Entry = "landing" | "login" | "signup";
 /** Where a signed-out visitor starts: ?auth=login|signup, or a link that needs the form (invitation, plan, expired link). */
 function entryFromUrl(): Entry {
@@ -160,7 +162,7 @@ function Shell() {
 
 export function App() {
   // /telecharger is public (linked from the sign-in page): no session needed, no app shell.
-  if (isDownloadPath()) return <DownloadPage />;
+  if (isDownloadPath()) return <Suspense fallback={<div className="boot" aria-busy="true" />}><DownloadPage /></Suspense>;
   return <MainApp />;
 }
 
