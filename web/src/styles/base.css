@@ -69,8 +69,8 @@ kbd { padding: 1px 5px; border: 1px solid var(--border); border-radius: 5px; col
 .btn-accent:hover:not(:disabled), .btn-accent:active:not(:disabled) { background: color-mix(in srgb, var(--accent) 88%, var(--text)); }
 .btn-ghost { border-color: transparent; background: transparent; color: var(--text-2); }
 .btn-ghost:hover:not(:disabled) { background: var(--hover); color: var(--text); }
-.btn-danger, .btn.is-armed { background: var(--danger); color: #fff; border-color: transparent; }
-.btn-danger:hover:not(:disabled), .btn.is-armed:hover:not(:disabled) { background: color-mix(in srgb, var(--danger) 88%, #000); }
+.btn-danger, .btn.is-armed { background: var(--danger); color: var(--on-strong); border-color: transparent; }
+.btn-danger:hover:not(:disabled), .btn.is-armed:hover:not(:disabled) { background: color-mix(in srgb, var(--danger) 88%, var(--text)); }
 .btn-ghost-danger { border-color: transparent; background: transparent; color: var(--danger); }
 .btn-ghost-danger:hover:not(:disabled) { background: var(--danger-soft); }
 
@@ -185,7 +185,7 @@ select.input { padding-right: 8px; }
 .dot-live { background: var(--danger); margin-right: 6px; animation: pulse 1.4s ease-in-out infinite; }
 .dot-pulse, .dot-step-running { background: var(--info); animation: pulse 1.2s ease-in-out infinite; }
 
-.count-badge { flex: none; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px; background: var(--info); color: #fff; font-size: 11.5px; font-weight: 650; line-height: 20px; text-align: center; }
+.count-badge { flex: none; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px; background: var(--info); color: var(--on-strong); font-size: 11.5px; font-weight: 650; line-height: 20px; text-align: center; }
 .count-badge.is-attention { background: var(--warn); }
 
 .avatar { position: relative; display: inline-flex; flex: none; line-height: 0; }
@@ -291,3 +291,16 @@ select.input { padding-right: 8px; }
 .check-list.is-tall { max-height: none; }
 .check-text { display: flex; flex-direction: column; flex: 1; min-width: 0; text-align: left; }
 .check-row .check-box { flex: none; }
+
+/* Touch screens (docs/DESIGN.md, "Accessibilité"): every control can be hit with a finger, at least 44 × 44 px.
+   Buttons and fields grow to 44 px high; compact controls keep their look and get an invisible 44 × 44 px hit area
+   (the ::after below, centred on them). web/scripts/touch-targets.test.mjs checks the stylesheets against these lists:
+   a new small button class goes in one of them. */
+@media (pointer: coarse) {
+  .btn, .btn-small, .input, .input-small, .search-field.is-inline, .google-btn, .account-btn, .list-row-btn, .menu-item, .check-row, .option, .files-row-head, .today-group-head { min-height: 44px; }
+  .btn { min-width: 44px; }
+  :where(.icon-btn, .round-btn, .tab, .segmented button, .toggle, .toast-action, .error-note-x, .upload-x, .goal-chip-x, .screen-pill-btn, .screen-pill-icon, .screen-pill-seg button, .seg-tab, .ws-tab, .voice-tab, .chip-link, .chip-button, .link, .swatch:not(.swatch-custom)) { position: relative; }
+  :where(.icon-btn, .round-btn, .tab, .segmented button, .toggle, .toast-action, .error-note-x, .upload-x, .goal-chip-x, .screen-pill-btn, .screen-pill-icon, .screen-pill-seg button, .seg-tab, .ws-tab, .voice-tab, .chip-link, .chip-button, .link, .swatch:not(.swatch-custom))::after {
+    content: ""; position: absolute; top: 50%; left: 50%; width: max(100%, 44px); height: max(100%, 44px); transform: translate(-50%, -50%);
+  }
+}

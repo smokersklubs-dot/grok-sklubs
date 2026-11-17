@@ -6,10 +6,10 @@ import { REACTIONS, type ActivityKind, type Attachment, type Bot, type Live, typ
 import { callClock, clockTime, dividerLabel, elapsed, fileSize, hostName, liveDuration, workDuration } from "../lib/format";
 import { accentStyle } from "../lib/colors";
 import { renderMarkdown } from "../lib/markdown";
-import { FirstTaskIdeas, MentionedFiles, previewable, usePreview } from "./Wave5b";
+import { FirstTaskIdeas, MentionedFiles, previewable, usePreview } from "./SpendSkillsFiles";
 import { Avatar, BotAvatar } from "./Avatar";
 import { CardView } from "./Cards";
-import { GrantLine } from "./Wave5";
+import { GrantLine } from "./RulesAndNudges";
 import { Icon, Spinner } from "./Icon";
 import { IconButton, useDialogFocus, useEscape, useTick } from "./ui";
 import { PlanNoticeActions } from "./Hosted";

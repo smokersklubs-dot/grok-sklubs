@@ -4,7 +4,7 @@ import { useT } from "../i18n";
 import type { ModelOption, ReliabilitySettings } from "../types";
 import { Icon } from "./Icon";
 import { ErrorNote, IconButton, Loading } from "./ui";
-import { ApiProvidersSection, ServerModelPricesSection } from "./Wave9";
+import { ApiProvidersSection, ServerModelPricesSection } from "./SecretsFilesProviders";
 
 /** The models offered on this server (API models only: subscription engines run a different kind of turn). */
 export function useApiModels(reload = 0) {

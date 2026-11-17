@@ -6,11 +6,11 @@ import { useT } from "../i18n";
 import { useStore } from "../store";
 import type { Card } from "../types";
 import { Icon } from "./Icon";
-import { NudgeCardView, TaskCardView, Uncertain } from "./Wave5";
-import { ApiConnectorCardView, MemoryCardView, SkillCardView, SpendCardView } from "./Wave5b";
-import { DiskCardView } from "./Wave8";
-import { FilesCardView, PastedSecretCardView } from "./Wave9";
-import { GoalCardView } from "./Wave10";
+import { NudgeCardView, TaskCardView, Uncertain } from "./RulesAndNudges";
+import { ApiConnectorCardView, MemoryCardView, SkillCardView, SpendCardView } from "./SpendSkillsFiles";
+import { DiskCardView } from "./DiskAndTeamFolder";
+import { FilesCardView, PastedSecretCardView } from "./SecretsFilesProviders";
+import { GoalCardView } from "./GoalsAndJobs";
 
 type ApprovalCard = Extract<Card, { type: "approval" }>;
 type QuestionCard = Extract<Card, { type: "question" }>;

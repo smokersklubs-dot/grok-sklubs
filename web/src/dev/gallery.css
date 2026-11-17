@@ -1,0 +1,33 @@
+/* Dev gallery layout only (web/src/dev/Gallery.tsx). Never shipped. */
+html:has(.gallery), html:has(.gallery) body, html:has(.gallery) #root { height: auto; min-height: 100%; }
+.gallery { min-height: 100vh; background: var(--bg); color: var(--text); }
+.gallery-bar { position: sticky; top: 0; z-index: 70; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 16px; background: var(--surface); border-bottom: 1px solid var(--border); }
+.gallery-title { font-size: 15px; display: inline-flex; align-items: center; gap: 6px; margin-right: 4px; }
+.gallery-field select { width: auto; }
+.gallery-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-2); }
+.gallery-body { display: flex; flex-direction: column; gap: 32px; max-width: 1180px; margin: 0 auto; padding: 24px 16px 64px; }
+.gallery.is-embed .gallery-body { padding: 12px 12px 48px; gap: 24px; }
+.gallery-section { display: flex; flex-direction: column; gap: 12px; }
+.gallery-h { font-size: 18px; font-weight: 650; }
+.gallery-h3 { font-size: 13px; font-weight: 600; color: var(--text-2); margin: 6px 0 2px; }
+.gallery-hint { font-size: 13px; color: var(--text-2); }
+.gallery-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.gallery-col { display: flex; flex-direction: column; gap: 10px; max-width: 560px; }
+.gallery-fields { max-width: 360px; }
+.gallery-group { display: flex; flex-direction: column; gap: 6px; }
+.gallery-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); gap: 14px; align-items: start; }
+.gallery-figure { margin: 0; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.gallery-figure figcaption { font-size: 11.5px; color: var(--text-2); }
+.gallery-box { border: 1px dashed var(--border-strong); border-radius: var(--r-lg); background: var(--surface); }
+.gallery-chat { max-width: 760px; padding: 12px; border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface); }
+.gallery-sidebar-sample { width: 280px; padding: 10px; border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--bg); }
+/* The Today and Surveillance pages are the app's main panel: they need a height to scroll in. */
+.gallery-page { display: flex; height: 820px; }
+.gallery-page > .main { flex: 1; margin: 0; }
+.gallery.is-embed .gallery-page { height: 760px; }
+.gallery-swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.gallery-swatch { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.gallery-swatch span { width: 28px; height: 28px; border-radius: var(--r-sm); border: 1px solid var(--border-strong); flex: none; }
+.gallery-phone { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 24px 16px 48px; }
+.gallery-phone-label { font-size: 12px; color: var(--text-2); }
+.gallery-phone iframe { border: 1px solid var(--border-strong); border-radius: 28px; background: var(--bg); box-shadow: var(--shadow-lg); }

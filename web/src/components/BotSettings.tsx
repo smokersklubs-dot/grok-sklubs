@@ -1,4 +1,4 @@
-import { BotReachTab } from "./Wave7";
+import { BotReachTab } from "./KeysHealthLinks";
 import { BotCapsField } from "./UsageCaps";
 import { LocalToolsTab } from "./LocalTools";
 import { BotApiTab } from "./BotApi";
@@ -6,9 +6,9 @@ import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { api, enc, errText } from "../api";
 import { tn, useT } from "../i18n";
 import { useStore, type BotSettingsTab } from "../store";
-import { BotEmailTab, BotSharingTab } from "./Wave6";
+import { BotEmailTab, BotSharingTab } from "./WorkspacesMailVoice";
 import { DEFAULT_CHARACTER, TOOL_GROUPS } from "../types";
-import { BotSpendField, ConfidenceBadge, RoutineExtras } from "./Wave5b";
+import { BotSpendField, ConfidenceBadge, RoutineExtras } from "./SpendSkillsFiles";
 import type { Autonomy, AvatarColor, AvatarShape, Bot, BotBundle, Character as CharacterLook, BotMode, Effort, Memory, MemoryStatus, ModelOption, NativeTrigger, RoomRule, Routine, RoutineRun, Skill, SkillExtras, SkillRef, TelegramStatus, ToolGroup } from "../types";
 import { useNative } from "./NativeApps";
 import { dateTime, nextRunLabel, relTime, shortDate } from "../lib/format";
@@ -21,7 +21,7 @@ import { routineWhen, TriggerChip } from "./DetailsPanel";
 import { Icon, Spinner } from "./Icon";
 import { MODE_IDS } from "./Modals";
 import { ConfirmButton, CopyButton, copyText, Empty, ErrorNote, IconButton, Loading, Modal, Toggle, useTick } from "./ui";
-import { BotRulesAndNudges } from "./Wave5";
+import { BotRulesAndNudges } from "./RulesAndNudges";
 import { runNote } from "./Pause";
 import { BotVoicePicker } from "./VoicePicker";
 

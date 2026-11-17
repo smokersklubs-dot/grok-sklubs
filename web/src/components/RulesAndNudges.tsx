@@ -6,7 +6,7 @@ import { relTime } from "../lib/format";
 import type { Bot, Card, Grant, MemorySettings, ModelOption, NudgeSettings, Rule, RulesState, SensitiveCategory } from "../types";
 import { Icon } from "./Icon";
 import { ConfirmButton, ErrorNote, Loading, Toggle } from "./ui";
-import { RuleChanges, RuleScopeChip } from "./Wave5b";
+import { RuleChanges, RuleScopeChip } from "./SpendSkillsFiles";
 
 const RULE_TRIGGER_LIST = ["email", "slack", "calendar", "cron", "watch", "webhook", "once"] as const;
 

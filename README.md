@@ -153,7 +153,11 @@ npm run dev -w server       # API sur le port 8787
 npm run dev -w web          # interface sur http://localhost:5173
 npm test                    # tests de bout en bout (modèle simulé, navigateur réel, connecteur réel)
 npm run typecheck
+npm run check:contrast -w web   # contraste des couleurs (clair et sombre)
+npm run check:size          # les gros fichiers ne grossissent plus (check:size:update après un découpage)
 ```
+
+Règles d'interface (principes, jetons, composants, écriture, accessibilité) : [docs/DESIGN.md](docs/DESIGN.md). Galerie des états, en développement seulement : `http://localhost:5173/?dev=gallery`.
 
 ### Mot de passe oublié
 
@@ -217,8 +221,9 @@ android/               application Android
 companion/             application Sklubot pour ordinateur (Electron) avec le Relais intégré
 Dockerfile.production, docker-compose.coolify.yml   mise en ligne
 server/test/           tests de bout en bout
-web/src/               interface React
+web/src/               interface React (web/src/dev/ : galerie des états, jamais livrée)
 docs/API.md            référence de l'API
+docs/DESIGN.md         règles d'interface
 docs/cleanroom/        cahiers des charges fonctionnels issus de l'étude
 ```
 

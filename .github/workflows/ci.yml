@@ -29,8 +29,16 @@ jobs:
       - run: npm ci
       - name: Types
         run: npm run typecheck
+      # docs/DESIGN.md: text contrast of the tokens (light and dark), 44 px touch targets, file-size ratchet.
+      - name: Design checks
+        run: |
+          npm run check:contrast -w web
+          npm run test -w web
+          npm run check:size
       - name: Web build
         run: npm run build -w web
+      - name: No dev gallery in the production build
+        run: npm run check:bundle -w web
       # The "browser" computer kind (screen, vault and card tools) needs a browser engine; Sklubot loads Playwright
       # if it is installed (server/src/computer.ts loadEngine), it is not a dependency. Same version as the dev setup.
       - name: Browser engine for the tests
@@ -41,7 +49,7 @@ jobs:
       - name: Bots' computer image
         run: npm run computer:build
       - name: Server tests
-        run: npm test
+        run: npm run test -w server
 
   mobile:
     runs-on: ubuntu-24.04

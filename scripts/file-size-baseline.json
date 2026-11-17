@@ -1,0 +1,11 @@
+{
+  "server/src/agent/loop.ts": 1887,
+  "server/src/agent/tools.ts": 1425,
+  "server/src/routes.ts": 2857,
+  "server/src/shared.ts": 1332,
+  "web/src/components/AppSettings.tsx": 1295,
+  "web/src/components/BotSettings.tsx": 1376,
+  "web/src/components/Character.tsx": 1131,
+  "web/src/components/Transcript.tsx": 1032,
+  "web/src/store.ts": 1043
+}

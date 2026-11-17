@@ -9,9 +9,9 @@ import { Composer } from "./Composer";
 import { Icon } from "./Icon";
 import { Transcript } from "./Transcript";
 import { FindBar } from "./FindBar";
-import { FilePreviewPanel } from "./Wave5b";
+import { FilePreviewPanel } from "./SpendSkillsFiles";
 import { PausedBadge, resumeWidest, setPaused } from "./Pause";
-import { SharedBadge } from "./Wave6";
+import { SharedBadge } from "./WorkspacesMailVoice";
 import { IconButton, Menu, MenuItem, isMac, modKey } from "./ui";
 
 export function ChatView() {

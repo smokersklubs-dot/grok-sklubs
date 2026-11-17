@@ -5,8 +5,8 @@ import { useStore } from "../store";
 import type { VaultImportResult, VaultItem, VaultKind } from "../types";
 import { Icon, type IconName } from "./Icon";
 import { ConfirmButton, Empty, ErrorNote, IconButton, Loading, Menu, MenuItem } from "./ui";
-import { CardVaultEditor, cardSub, PaymentsList } from "./Wave5b";
-import { HealthBadge, useHealth } from "./Wave7";
+import { CardVaultEditor, cardSub, PaymentsList } from "./SpendSkillsFiles";
+import { HealthBadge, useHealth } from "./KeysHealthLinks";
 
 const KIND_ICON: Record<VaultKind, IconName> = { login: "key", secret: "lock", totp: "clock", card: "bolt" };
 

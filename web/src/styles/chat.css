@@ -174,13 +174,13 @@
 .composer .icon-btn { width: 36px; height: 36px; border-radius: 50%; }
 .composer-input { flex: 1; min-width: 0; max-height: 200px; padding: 8px 6px; border: 0; background: none; resize: none; line-height: 1.45; font-size: 14.5px; overflow-y: auto; }
 .composer-input:focus-visible { outline: none; }
-.composer-mic.is-recording { background: var(--danger); color: #fff; animation: pulse 1.3s ease-in-out infinite; }
-.composer-mic.is-recording:hover:not(:disabled) { background: var(--danger); color: #fff; }
+.composer-mic.is-recording { background: var(--danger); color: var(--on-strong); animation: pulse 1.3s ease-in-out infinite; }
+.composer-mic.is-recording:hover:not(:disabled) { background: var(--danger); color: var(--on-strong); }
 .composer-action { display: grid; place-items: center; flex: none; width: 36px; height: 36px; border-radius: 50%; background: var(--accent); color: var(--accent-fg); transition: opacity 0.12s, transform 0.08s, background 0.12s; }
 .composer-action:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 88%, var(--text)); }
 .composer-action:active:not(:disabled) { transform: scale(0.94); }
 .composer-action:disabled { opacity: 0.4; }
-.composer-action.is-end { background: var(--danger); color: #fff; }
+.composer-action.is-end { background: var(--danger); color: var(--on-strong); }
 .composer-action.is-voice { background: var(--surface-3); color: var(--text); }
 .composer-action.is-voice:hover:not(:disabled) { background: var(--border-strong); }
 
@@ -203,8 +203,8 @@
 .callbar-actions { display: flex; align-items: center; gap: 4px; }
 .callbar-actions .icon-btn { border-radius: 50%; width: 34px; height: 34px; background: var(--surface); border: 1px solid var(--border); }
 .callbar-actions .icon-btn.is-active { background: var(--warn-soft); color: var(--warn); }
-.callbar-actions .is-hangup { background: var(--danger); color: #fff; border-color: transparent; }
-.callbar-actions .is-hangup:hover:not(:disabled) { background: color-mix(in srgb, var(--danger) 86%, #000); color: #fff; }
+.callbar-actions .is-hangup { background: var(--danger); color: var(--on-strong); border-color: transparent; }
+.callbar-actions .is-hangup:hover:not(:disabled) { background: color-mix(in srgb, var(--danger) 86%, var(--text)); color: var(--on-strong); }
 .captions { display: flex; flex-direction: column; gap: 2px; width: 100%; padding: 8px 10px; border-radius: var(--r-md); background: var(--surface); font-size: 13px; }
 button.captions:hover { box-shadow: 0 0 0 1px var(--border-strong); }
 .captions.is-open { gap: 6px; align-items: flex-start; }
