@@ -96,7 +96,6 @@ export function Onboarding() {
           <>
             <h3 className="onb-title">{t("onb.s3Title")}</h3>
             <p className="muted">{t("onb.s3Hint")}</p>
-            {user.emailUnverified && <p className="callout is-warn"><Icon name="mail" size={14} /> {t("onb.unverified")}</p>}
             <div className="onb-ideas">
               {done.ideas.map((idea) => (
                 <button key={idea.title} type="button" className="onb-idea" onClick={() => pickIdea(idea)}>

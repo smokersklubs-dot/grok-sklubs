@@ -13,6 +13,7 @@ import { clientAddress } from "./net.js";
 import { pushLater } from "./push.js";
 import type { AppDownloads, DesktopDownload, Locale, RelayDevice, RelayDownloads } from "./shared.js";
 import { audit, bots, clip, now, randomToken, rows, sha256, users, type UserRecord } from "./store.js";
+import { emailGateBlocks } from "./publicsignup.js";
 
 /**
  * Server side of Sklubot Relais, protocol v1 (docs/RELAIS-PROTOCOLE.md). The relay is a small desktop app on the
@@ -175,6 +176,7 @@ export function relayUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer)
     if (!originAllowed(req.headers.origin, req.headers.host)) { refuse(socket, 403, "Forbidden"); return true; }
     const user = userForToken(parseCookies(req.headers.cookie)[SESSION_COOKIE]);
     if (!user) { refuse(socket, 401, "Unauthorized"); return true; }
+    if (emailGateBlocks(user.id)) { refuse(socket, 403, "Forbidden"); return true; }
     const device = devices.owned(user.id, view[1]);
     if (!device) { refuse(socket, 404, "Not Found"); return true; }
     viewerWss.handleUpgrade(req, socket, head, (ws) => onViewer(ws, device));

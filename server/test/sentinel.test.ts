@@ -13,6 +13,8 @@ process.env.SESSION_SECRET = "test-secret-test-secret-test-secret";
 process.env.NO_SCHEDULER = "1";
 process.env.COMPUTER = "browser";
 process.env.OPEN_SIGNUP = "1";
+// Public servers verify e-mail addresses (publicsignup.ts); this file signs accounts up without an SMTP server.
+process.env.EMAIL_VERIFICATION = "0";
 process.env.PUBLIC_URL = "https://bots.example.test";
 process.env.DEFAULT_MODEL = "spy:spy-1";
 process.env.DISK_FREE_MIN_MB = "1";

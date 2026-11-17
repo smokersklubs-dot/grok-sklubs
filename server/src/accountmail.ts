@@ -35,6 +35,7 @@ import { relayAddress } from "./botmail.js";
 import { config } from "./config.js";
 import { q } from "./db.js";
 import { hasPassword, ownerId } from "./googlelogin.js";
+import { markVerified } from "./publicsignup.js";
 import type { Locale } from "./shared.js";
 import { audit, clip, now, randomToken, sha256, users, type UserRecord } from "./store.js";
 
@@ -284,7 +285,7 @@ export function registerAccountMailPublic(api: Hono<any>, deps: AccountMailDeps)
     const old = user.email;
     if (!applyEmail(user.id, r.new_email)) throw new AccountMailError(409, "This address is already used by another account.");
     // The link was opened from the new address: that address is proven (publicsignup.ts e-mail verification).
-    q.run("UPDATE users SET email_verify_pending = 0, email_verified_at = ? WHERE id = ?", now(), user.id);
+    markVerified(user.id);
     audit(user.id, "account", `E-mail address changed from ${old} to ${r.new_email} (confirmed by e-mail)`);
     return c.json({ ok: true, email: r.new_email });
   }));

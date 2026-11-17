@@ -13,6 +13,8 @@ process.env.SESSION_SECRET = "test-secret-test-secret-test-secret";
 process.env.NO_SCHEDULER = "1";
 process.env.COMPUTER = "browser";
 process.env.OPEN_SIGNUP = "1";
+// Public servers verify e-mail addresses (publicsignup.ts); this file signs accounts up without an SMTP server.
+process.env.EMAIL_VERIFICATION = "0";
 process.env.PUBLIC_URL = "https://bots.example.test";
 process.env.DEFAULT_MODEL = "isoscript:iso-1";
 for (const k of ["AUX_MODEL", "FALLBACK_MODEL", "FALLBACK_MODELS", "SETUP_CODE", "SKLUBOT_SETUP_CODE"]) delete process.env[k];
@@ -522,8 +524,66 @@ test("public sign-up (publicsignup.ts): the landing data, the first run and the 
   if (first.status === 200) assert.equal(q.get<{ user_id: string }>("SELECT user_id FROM bots WHERE id = ?", first.json.botId)!.user_id, userB);
   assert.equal((await call(api, "b", "POST", "/onboarding/skip")).status, 200);
   assert.equal((await call(api, "b", "POST", "/onboarding/commit", { template: "secretariat" })).status, 409);
-  // A verification link cannot be guessed, and resending is about the caller only (no SMTP here: nothing to confirm).
+  // A verification link cannot be guessed, and resending is about the caller only (B is not held: nothing to confirm).
   assert.equal((await call(api, "b", "POST", "/auth/verify-email", { token: "not-a-real-token" })).status, 400);
-  assert.equal((await call(api, "b", "POST", "/account/verify-email/resend")).status, 409);
+  const resend = await call(api, "b", "POST", "/account/verify-email/resend");
+  assert.equal(resend.status, 200); assert.equal(resend.json.verified, true);
   assert.deepEqual(q.all<{ id: string; name: string }>("SELECT id, name FROM bots WHERE user_id = ? ORDER BY id", userA), aBots, "A's bots are untouched");
+});
+
+test("mandatory e-mail verification: an unconfirmed account gets 403 email_unverified on EVERY session route but the few that let it confirm, sign out, export or leave", async () => {
+  const { users: userStore } = await import("../src/store.js");
+  const { createSession } = await import("../src/auth.js");
+  const ps = await import("../src/publicsignup.js");
+  // U: a new public account that has not opened its link yet (verification on: EMAIL_VERIFICATION not 0).
+  const u = userStore.create("ursula.unverified@example.com", "Ursula", "x", "en");
+  q.run("UPDATE users SET email_verify_pending = 1, first_bot = 'null' WHERE id = ?", u.id);
+  const saved = process.env.EMAIL_VERIFICATION;
+  delete process.env.EMAIL_VERIFICATION;
+  const cookie = `${SESSION_COOKIE}=${createSession(u.id).token}`;
+  try {
+    assert.equal(ps.emailGateBlocks(u.id), true);
+    assert.equal(ps.emailGateBlocks(userA), false, "the owner is never held");
+    const asU = async (method: string, url: string) => {
+      const res = await api.request(url, { method, headers: { "content-type": "application/json", origin: ORIGIN, host: "bots.example.test", cookie }, body: method === "GET" || method === "HEAD" ? undefined : "{}" });
+      const text = method === "HEAD" ? "" : await res.text();
+      let json: any = null; try { json = JSON.parse(text); } catch { /* not JSON */ }
+      return { status: res.status, json, text };
+    };
+    const problems: string[] = [];
+    let held = 0, allowed = 0;
+    for (const r of discover().filter((x) => x.app === api)) {
+      // Only routes behind the session check: those that answer 401 to nobody (the public ones are tested above).
+      const anon = await call(api, null, methodOf(r.method), fill(r.path, "bot1"), {});
+      if (anon.status !== 401 || BOT_KEY(r.key)) continue;
+      const method = methodOf(r.method);
+      if (method === "GET" && r.path === "/events") { if (ps.emailGateAllows("GET", "/events")) problems.push("events allowed"); held++; continue; }
+      const res = await asU(method, fill(r.path, "bot1"));
+      if (leakIn(res.text)) problems.push(`${r.key} LEAKS`);
+      if (ps.emailGateAllows(method, r.path)) {
+        allowed++;
+        if (res.json?.code === "email_unverified") problems.push(`${r.key} should stay open to a held account`);
+      } else {
+        held++;
+        if (res.status !== 403 || res.json?.code !== "email_unverified") problems.push(`${r.key} → ${res.status} ${res.text.slice(0, 100)} (expected 403 email_unverified)`);
+      }
+    }
+    assert.deepEqual(problems, []);
+    assert.ok(held > 200, `held on ${held} routes`);
+    assert.deepEqual(allowed, 8, "resend, the address (read, change, cancel), delete, export, language");
+    // What it may do: read itself (with the deadline), resend (no SMTP here: says so), its language; nothing was created.
+    const me = await asU("GET", "/me");
+    assert.equal(me.json.user.emailUnverified, true);
+    assert.ok(me.json.user.emailVerifyDeadline > Date.now());
+    assert.equal((await asU("POST", "/account/verify-email/resend")).status, 409);
+    assert.equal((await asU("PUT", "/prefs")).status, 200);
+    assert.equal(q.get<{ n: number }>("SELECT COUNT(*) AS n FROM bots WHERE user_id = ?", u.id)!.n, 0, "no bot before verification");
+    // Confirmed: everything opens, and the first bot appears.
+    ps.markVerified(u.id);
+    const after = await asU("GET", "/bots");
+    assert.equal(after.status, 200);
+    assert.equal(after.json.bots.filter((b: any) => b.primary).length, 1, "the first bot is made once the address is proven");
+  } finally {
+    if (saved === undefined) delete process.env.EMAIL_VERIFICATION; else process.env.EMAIL_VERIFICATION = saved;
+  }
 });

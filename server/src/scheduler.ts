@@ -6,6 +6,7 @@ import { isValidTimezone, localParts, nextRun } from "./cron.js";
 import { q } from "./db.js";
 import { enqueue, hostedHoldsBot, isPaused } from "./agent/loop.js";
 import { hostedTick, postStopNotice } from "./hosted.js";
+import { sweepUnverified } from "./publicsignup.js";
 import { consolidationSweep } from "./agent/memory.js";
 import { nudgeSweep } from "./agent/nudges.js";
 import { createHash } from "node:crypto";
@@ -300,4 +301,7 @@ export function startScheduler() {
   // Hosted mode: subscription statuses move by date (trial → active / past_due → suspended); nothing when it is off.
   guard(() => hostedTick())();
   setInterval(guard(() => hostedTick()), 10 * 60_000).unref();
+  // Mandatory e-mail verification: accounts unconfirmed past UNVERIFIED_ACCOUNT_TTL_HOURS are deleted (publicsignup.ts).
+  guard(() => sweepUnverified())();
+  setInterval(guard(() => sweepUnverified()), 10 * 60_000).unref();
 }

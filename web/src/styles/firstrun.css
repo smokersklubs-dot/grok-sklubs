@@ -1,11 +1,17 @@
-/* A new public account's first steps (server publicsignup.ts): the e-mail verification banner (VerifyEmail.tsx) and the
-   guided first run (Onboarding.tsx). Tokens only; 390 px first. */
+/* A new public account's first steps (server publicsignup.ts): the e-mail confirmation page that is the whole app until
+   the address is confirmed (VerifyEmail.tsx) and the guided first run (Onboarding.tsx). Tokens only; 390 px first. */
 
-/* Like .pause-banner (one bold sentence, one explanation, its buttons). */
-.verify-banner { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin-bottom: 8px; padding: 8px 10px; border-radius: 10px; border: 1px solid color-mix(in srgb, var(--info) 40%, transparent); background: var(--info-soft); font-size: 13px; line-height: 1.4; }
-.verify-banner-icon { flex: none; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 999px; background: color-mix(in srgb, var(--info) 18%, transparent); color: var(--info); }
-.verify-banner-text { flex: 1 1 220px; min-width: 0; color: var(--text); overflow-wrap: anywhere; }
-.verify-banner-actions { display: flex; gap: 6px; margin-left: auto; }
+.verify-gate .signin-card { max-width: 420px; }
+.verify-gate-icon { display: grid; place-items: center; width: 56px; height: 56px; border-radius: 999px; background: var(--info-soft); color: var(--info); }
+.verify-gate-text { font-size: 14px; line-height: 1.5; color: var(--text-2); text-align: center; overflow-wrap: anywhere; }
+.verify-gate-email { color: var(--text); font-weight: 650; }
+.signin-notice.verify-gate-deadline { background: var(--warn-soft); color: var(--warn); }
+.verify-gate .signin-brand h1 { font-size: 22px; text-wrap: balance; }
+.verify-gate-hint { text-align: center; margin-top: -6px; }
+.verify-gate-change { display: flex; flex-direction: column; gap: 12px; }
+.verify-gate-row { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+.verify-gate-links { display: flex; justify-content: center; flex-wrap: wrap; gap: 6px 18px; padding-top: 4px; font-size: 13px; }
+
 
 .onb .onb-body { gap: 10px; min-height: 0; padding-bottom: 12px; }
 .onb-step { font-size: 12px; font-weight: 650; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-3); }
@@ -27,7 +33,6 @@
 .onb-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex: none; padding: 12px 20px 16px; border-top: 1px solid var(--border); }
 .onb-foot-right { display: flex; gap: 8px; margin-left: auto; }
 @media (min-width: 640px) { .onb-grid { grid-template-columns: repeat(2, 1fr); } }
-@media (max-width: 420px) { .verify-banner-actions { width: 100%; } .verify-banner-actions .btn { flex: 1; } }
 
 /* Cloudflare Turnstile on the sign-up form (Turnstile.tsx): its room is kept while it loads (65 px, the widget's height). */
 .turnstile-box { min-height: 65px; }

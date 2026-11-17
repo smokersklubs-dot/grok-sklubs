@@ -404,6 +404,13 @@ export const useStore = create<Store>((set, get) => ({
         () => undefined,
       );
     }
+    // Mandatory e-mail verification (server publicsignup.ts): an unconfirmed account gets only the confirmation page
+    // (App.tsx); the server refuses everything else, so nothing is loaded until it is confirmed (VerifyEmail.tsx calls
+    // signedIn again then).
+    if (user.emailUnverified) {
+      set({ boot: "ready" });
+      return;
+    }
     try {
       await get().loadBots();
     } catch {

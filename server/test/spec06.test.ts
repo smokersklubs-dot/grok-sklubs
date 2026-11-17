@@ -12,6 +12,8 @@ process.env.SESSION_SECRET = "test-secret-test-secret-test-secret";
 process.env.NO_SCHEDULER = "1";
 process.env.COMPUTER = "browser";
 process.env.OPEN_SIGNUP = "1";
+// Public servers verify e-mail addresses (publicsignup.ts); this file signs accounts up without an SMTP server.
+process.env.EMAIL_VERIFICATION = "0";
 process.env.FIRST_BOT_NAME = "Atlas";
 process.env.APPROVAL_EXPIRE_MIN = "10";
 process.env.DEFAULT_MODEL = "script:script-1";

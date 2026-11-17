@@ -9,6 +9,7 @@ import { computerKind } from "./computer.js";
 import { containerName, linuxScreen } from "./linux.js";
 import { bots } from "./store.js";
 import { controlSocket } from "./takeover.js";
+import { emailGateBlocks } from "./publicsignup.js";
 
 /**
  * Live view of a bot's Linux computer. The browser speaks the standard remote-screen protocol (RFB, as
@@ -51,6 +52,7 @@ function upgrade(wss: WebSocketServer, req: IncomingMessage, socket: Duplex, hea
   if (!originAllowed(req.headers.origin, req.headers.host)) return reject(socket, 403, "Forbidden");
   const user = userForToken(parseCookies(req.headers.cookie)[SESSION_COOKIE]);
   if (!user) return reject(socket, 401, "Unauthorized");
+  if (emailGateBlocks(user.id)) return reject(socket, 403, "Forbidden");
   const bot = bots.owned(user.id, decodeURIComponent(match[1]));
   if (!bot || bot.kind !== "agent") return reject(socket, 404, "Not Found");
   if (computerKind() !== "linux" || !linuxScreen.isOpen(bot.id)) return reject(socket, 409, "Conflict");

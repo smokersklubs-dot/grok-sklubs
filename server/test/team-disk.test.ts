@@ -13,6 +13,8 @@ process.env.NO_SCHEDULER = "1";
 process.env.COMPUTER = "linux";
 process.env.MAX_DESKTOPS = "4";
 process.env.OPEN_SIGNUP = "1";
+// Public servers verify e-mail addresses (publicsignup.ts); this file signs accounts up without an SMTP server.
+process.env.EMAIL_VERIFICATION = "0";
 process.env.DEFAULT_MODEL = "demo:demo";
 // The highest threshold allowed: this machine's real disk must not be what raises the card in these tests.
 process.env.DISK_ALERT_PERCENT = "99";

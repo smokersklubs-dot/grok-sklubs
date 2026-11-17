@@ -7,7 +7,9 @@ import { simpleParser } from "mailparser";
 import { SMTPServer } from "smtp-server";
 
 // "Ouverture publique" (publicsignup.ts): the landing page's data, Turnstile (a fake Siteverify), the sign-up rate limits
-// and disposable addresses, e-mail verification (a fake SMTP server), the bots' wait for it, and the guided first run.
+// and disposable addresses, MANDATORY e-mail verification (a fake SMTP server): no SMTP → password sign-ups refused, the
+// held account's 403s and its deadline, the first bot made only once verified, the sweep of expired accounts, and the
+// guided first run.
 process.env.DATA_DIR = mkdtempSync(path.join(tmpdir(), "sklubot-public-"));
 process.env.SESSION_SECRET = "test-secret-test-secret-test-secret";
 process.env.NO_SCHEDULER = "1";
@@ -91,6 +93,34 @@ test("the landing page's data and /me: templates, the site key — never the sec
   assert.doesNotMatch(appCsp([]), /cloudflare/);
 });
 
+test("without SMTP: password sign-ups are refused with a clear message (Turnstile not spent); Google sign-ups still work; the Sentinelle says critical", async () => {
+  const n = verified.length;
+  const r = await call("POST", "/auth/signup", { body: { email: "nomail@example.org", password: "password-123", locale: "fr", turnstileToken: "t" } });
+  assert.equal(r.status, 403, r.text);
+  assert.equal(r.json.code, "email_signup_closed");
+  assert.match(r.json.error, /Les inscriptions par e-mail sont fermées tant que les e-mails du serveur ne sont pas réglés — utilise « Continuer avec Google »/);
+  assert.equal(users.byEmail("nomail@example.org"), null);
+  assert.equal(verified.length, n, "the single-use Turnstile token was not used");
+  // Google proves the address: such an account is not held (googlelogin.ts calls accountOpened with verified: true).
+  const g = users.create("googler@example.org", "G", "x", "en");
+  assert.equal(ps.accountOpened(g, { first: false, verified: true }), false);
+  assert.equal(ps.emailGateBlocks(g.id), false);
+  const { DETECTORS } = await import("../src/sentinel/detectors.js");
+  const obs = await DETECTORS.find((d) => d.name === "public_signup")!.run({ now: Date.now() });
+  assert.deepEqual(obs.map((o) => [o.fingerprint, o.severity]), [["public_signup:no_mail", "critical"]]);
+  // The operator may turn verification off explicitly (EMAIL_VERIFICATION=0): sign-ups work, verified from the start; warned.
+  process.env.EMAIL_VERIFICATION = "0";
+  const off = await call("POST", "/auth/signup", { body: { email: "carol@example.org", password: "password-123", turnstileToken: "t" } });
+  assert.equal(off.status, 200, off.text);
+  assert.equal(off.json.user.emailUnverified, undefined);
+  assert.ok(bots.primary(off.json.user.id), "its first bot right away");
+  const obs2 = await DETECTORS.find((d) => d.name === "public_signup")!.run({ now: Date.now() });
+  assert.deepEqual(obs2.map((o) => [o.fingerprint, o.severity]), [["public_signup:no_verification", "warn"]]);
+  delete process.env.EMAIL_VERIFICATION;
+  // From here on the server can send e-mails.
+  process.env.SMTP_HOST = "127.0.0.1"; process.env.SMTP_PORT = String(smtpPort); process.env.SMTP_TLS = "none"; process.env.SMTP_FROM = "robot@sklubot.example";
+});
+
 test("Turnstile: no token, a refused token, Siteverify down, another site's token → no account; a good one → account", async () => {
   const body = (email: string, extra: Record<string, unknown> = {}) => ({ email, password: "password-123", locale: "en", ...extra });
   let r = await call("POST", "/auth/signup", { body: body("nobody1@example.org") });
@@ -112,7 +142,7 @@ test("Turnstile: no token, a refused token, Siteverify down, another site's toke
   for (const e of ["nobody1", "nobody2", "nobody3", "nobody4", "nobody5", "nobody6"]) assert.equal(users.byEmail(`${e}@example.org`), null);
   answer = { success: true, hostname: "sklubot.example", action: "signup" };
   const n = verified.length;
-  r = await call("POST", "/auth/signup", { body: body("carol@example.org", { turnstileToken: "good-token" }), ip: "198.51.100.77" });
+  r = await call("POST", "/auth/signup", { body: body("frank@example.org", { turnstileToken: "good-token" }), ip: "198.51.100.77" });
   assert.equal(r.status, 200, r.text);
   const sent = verified[n];
   assert.equal(sent.secret, "secret-key-NEVER-SENT");
@@ -145,46 +175,54 @@ test("rate limits: SIGNUP_PER_IP attempts per address, then a refusal; another a
   delete process.env.SIGNUP_GLOBAL;
 });
 
-test("without SMTP, verification is skipped: the account is verified from the start", async () => {
-  const carol = users.byEmail("carol@example.org")!;
-  assert.equal(ps.emailUnverified(carol.id), false);
-  assert.ok(q.get<{ email_verified_at: number | null }>("SELECT email_verified_at FROM users WHERE id = ?", carol.id)!.email_verified_at);
-  assert.equal(inbox.length, 0);
-});
-
 let dana: Res;
-test("with SMTP: a new account gets a single-use 24 h link (hashed), can sign in, but its bots wait; resend; confirm", async () => {
-  process.env.SMTP_HOST = "127.0.0.1"; process.env.SMTP_PORT = String(smtpPort); process.env.SMTP_TLS = "none"; process.env.SMTP_FROM = "robot@sklubot.example";
+test("with SMTP: a held account — link valid until its deadline (hashed, single use), no bot yet, 403 email_unverified everywhere but resend/confirm; confirming makes its first bot", async () => {
   assert.equal(ps.verificationActive(), true);
-  dana = await call("POST", "/auth/signup", { body: { email: "dana@example.org", password: "password-123", locale: "fr", turnstileToken: "t" } });
+  dana = await call("POST", "/auth/signup", { body: { email: "dana@example.org", password: "password-123", locale: "fr", turnstileToken: "t", botName: "Iris", botLabel: "Assistante" } });
   assert.equal(dana.status, 200, dana.text);
   assert.equal(dana.json.user.emailUnverified, true);
   assert.equal(dana.json.user.onboarding, true);
+  const id = dana.json.user.id as string;
+  const created = q.get<{ created_at: number }>("SELECT created_at FROM users WHERE id = ?", id)!.created_at;
+  assert.equal(dana.json.user.emailVerifyDeadline, created + 5 * 3_600_000, "deleted 5 h after sign-up by default");
+  assert.equal(bots.primary(id), null, "no bot before the address is confirmed");
   const mail = await until(() => inbox.find((m) => m.to.includes("dana@example.org")), "verification e-mail");
   assert.match(mail.subject, /confirme ton adresse/);
+  assert.match(mail.text, /dans les 5 heure\(s\), le compte et ses données sont supprimés/);
   const token = /\?verify_email=([A-Za-z0-9_-]+)/.exec(mail.text)![1];
-  const row = q.get<{ token_hash: string; expires_at: number; created_at: number }>("SELECT * FROM email_verifications WHERE user_id = ?", users.byEmail("dana@example.org")!.id)!;
+  const row = q.get<{ token_hash: string; expires_at: number; created_at: number }>("SELECT * FROM email_verifications WHERE user_id = ?", id)!;
   assert.notEqual(row.token_hash, token, "only the hash is stored");
-  assert.equal(row.expires_at - row.created_at, 24 * 3_600_000);
+  assert.equal(row.expires_at, created + 5 * 3_600_000, "the link lives until the account's deadline, no longer");
   assert.ok(!printed.some((l) => l.includes(token)), "the token is never logged");
 
-  // Signed in, but the bot does not work: a message gets a notice instead of a turn.
-  const main = bots.primary(users.byEmail("dana@example.org")!.id)!;
-  const sent = await call("POST", `/bots/${main.id}/messages`, { cookie: dana.cookie, body: { text: "Bonjour" } });
-  assert.equal(sent.status, 200, sent.text);
-  await until(() => q.all<{ body: string }>("SELECT body FROM rows WHERE bot_id = ?", main.id).some((r) => /Confirme d'abord ton adresse e-mail/.test(r.body)), "the waiting notice");
+  // Signed in (and again with the password), but held: every other route answers 403 email_unverified.
+  const login = await call("POST", "/auth/login", { body: { email: "dana@example.org", password: "password-123" } });
+  assert.equal(login.status, 200); assert.equal(login.json.user.emailUnverified, true);
+  for (const [method, url] of [["GET", "/bots"], ["POST", "/bots"], ["POST", "/onboarding/commit"], ["GET", "/today"], ["POST", "/workspaces"], ["GET", "/usage"]] as const) {
+    const res = await call(method, url, { cookie: dana.cookie, ...(method === "GET" ? {} : { body: {} }) });
+    assert.equal(res.status, 403, `${method} ${url}`);
+    assert.equal(res.json.code, "email_unverified");
+    assert.match(res.json.error, /Confirme ton adresse e-mail pour utiliser Sklubot/);
+  }
+  assert.equal(q.get<{ n: number }>("SELECT COUNT(*) AS n FROM bots WHERE user_id = ?", id)!.n, 0);
 
-  // Resend: a new link replaces the old one (the old one stops working); throttled.
+  // Resend: a new link replaces the old one (the old one stops working) and does not go past the deadline; throttled.
   const resend = await call("POST", "/account/verify-email/resend", { cookie: dana.cookie });
   assert.equal(resend.status, 200); assert.equal(resend.json.verified, false);
   const mail2 = await until(() => inbox.filter((m) => m.to.includes("dana@example.org"))[1], "second e-mail");
   const token2 = /\?verify_email=([A-Za-z0-9_-]+)/.exec(mail2.text)![1];
+  assert.equal(q.get<{ expires_at: number }>("SELECT expires_at FROM email_verifications WHERE user_id = ?", id)!.expires_at, created + 5 * 3_600_000, "a resend does not extend the deadline");
   assert.equal((await call("POST", "/auth/verify-email", { body: { token } })).status, 400, "the replaced link");
   assert.equal((await call("POST", "/auth/verify-email", { body: { token: token2 }, cookie: "" })).status, 200);
   assert.equal((await call("POST", "/auth/verify-email", { body: { token: token2 } })).status, 400, "single use");
-  assert.equal(ps.emailUnverified(main.userId), false);
+  assert.equal(ps.emailGateBlocks(id), false);
   const me = await call("GET", "/me", { cookie: dana.cookie });
   assert.equal(me.json.user.emailUnverified, undefined);
+  assert.equal(me.json.user.emailVerifyDeadline, undefined);
+  // The first bot now exists, with the name and role chosen on the form; the app opens.
+  const main = bots.primary(id)!;
+  assert.equal(main.name, "Iris"); assert.equal(main.label, "Assistante");
+  assert.equal((await call("GET", "/bots", { cookie: dana.cookie })).status, 200);
   // Already verified: resend says so and sends nothing.
   assert.equal((await call("POST", "/account/verify-email/resend", { cookie: dana.cookie })).json.verified, true);
   // A link from another site is refused.
@@ -192,33 +230,60 @@ test("with SMTP: a new account gets a single-use 24 h link (hashed), can sign in
   assert.equal(cross.status, 403);
 });
 
-test("an expired link does not verify", async () => {
+test("an expired link does not verify; SMTP gone later: the account stays held (Google is the way out), resend says why", async () => {
   const eve = await call("POST", "/auth/signup", { body: { email: "eve@example.org", password: "password-123", turnstileToken: "t" } });
   const mail = await until(() => inbox.find((m) => m.to.includes("eve@example.org")), "e-mail");
   const token = /\?verify_email=([A-Za-z0-9_-]+)/.exec(mail.text)![1];
   q.run("UPDATE email_verifications SET expires_at = ? WHERE user_id = ?", Date.now() - 1, users.byEmail("eve@example.org")!.id);
   assert.equal((await call("POST", "/auth/verify-email", { body: { token } })).status, 400);
-  assert.equal(ps.emailUnverified(users.byEmail("eve@example.org")!.id), true);
-  // SMTP gone: verification can no longer happen, so the account is not held (the owner is warned by the Sentinelle).
+  assert.equal(ps.emailGateBlocks(users.byEmail("eve@example.org")!.id), true);
   const host = process.env.SMTP_HOST; delete process.env.SMTP_HOST;
-  assert.equal(ps.emailUnverified(users.byEmail("eve@example.org")!.id), false);
-  const { DETECTORS } = await import("../src/sentinel/detectors.js");
-  const obs = await DETECTORS.find((d) => d.name === "public_signup")!.run({ now: Date.now() });
-  assert.deepEqual(obs.map((o) => o.fingerprint).sort(), ["public_signup:no_mail"]);
+  assert.equal(ps.emailGateBlocks(users.byEmail("eve@example.org")!.id), true, "strict: never let in without proof");
+  const r = await call("POST", "/account/verify-email/resend", { cookie: eve.cookie });
+  assert.equal(r.status, 409); assert.equal(r.json.code, "no_mail");
   process.env.SMTP_HOST = host;
-  assert.ok(eve.cookie);
 });
 
-test("Google sign-in counts as verified", () => {
+test("Google sign-in counts as verified, and verifies an account waiting for its link (its first bot appears)", () => {
   const u = users.create("gina@example.org", "Gina", "x", "en");
   ps.accountOpened(u, { first: false, verified: true });
-  assert.equal(ps.emailUnverified(u.id), false);
+  assert.equal(ps.emailGateBlocks(u.id), false);
   assert.equal(inbox.some((m) => m.to.includes("gina@example.org")), false);
-  // An account waiting for its link is verified by a later Google sign-in (googlelogin.ts calls markVerified).
   const eve = users.byEmail("eve@example.org")!;
-  q.run("UPDATE users SET email_verify_pending = 1 WHERE id = ?", eve.id);
-  ps.markVerified(eve.id);
-  assert.equal(ps.emailUnverified(eve.id), false);
+  assert.equal(bots.primary(eve.id), null);
+  ps.markVerified(eve.id); // what googlelogin.ts does for an existing account with Google's verified address
+  assert.equal(ps.emailGateBlocks(eve.id), false);
+  assert.ok(bots.primary(eve.id));
+});
+
+test("the owner is never held, and accounts unconfirmed past UNVERIFIED_ACCOUNT_TTL_HOURS are deleted (with a line in the owner's log)", async () => {
+  const ownerId = owner.json.user.id as string;
+  const fresh = await call("POST", "/auth/signup", { body: { email: "late@example.org", password: "password-123", turnstileToken: "t" } });
+  assert.equal(fresh.status, 200);
+  const late = fresh.json.user.id as string;
+  const old = users.byEmail("burst0@example.org")!.id;
+  // Even marked pending, the owner passes.
+  q.run("UPDATE users SET email_verify_pending = 1 WHERE id = ?", ownerId);
+  assert.equal(ps.emailGateBlocks(ownerId), false);
+  assert.equal((await call("GET", "/bots", { cookie: owner.cookie })).status, 200);
+  ps.markVerified(users.byEmail("other@example.org")!.id); // confirmed: kept (the first run below uses it)
+  // Before the deadline: nothing goes.
+  assert.deepEqual(await ps.sweepUnverified(), []);
+  // 5 h and a minute later: every held account but the owner and the confirmed ones is deleted.
+  const done = await ps.sweepUnverified(Date.now() + 5 * 3_600_000 + 60_000);
+  assert.ok(done.includes("late@example.org") && done.includes("burst0@example.org"), done.join(","));
+  assert.equal(users.byId(late), null); assert.equal(users.byId(old), null);
+  assert.ok(users.byId(ownerId)); assert.ok(users.byEmail("dana@example.org")); assert.ok(users.byEmail("carol@example.org"));
+  assert.ok(q.all<{ text: string }>("SELECT text FROM audit WHERE user_id = ?", ownerId).some((a) => /Unverified account late@example\.org deleted automatically/.test(a.text)));
+  assert.equal((await call("GET", "/me", { cookie: fresh.cookie })).json.user, null, "its session is gone");
+  // The delay is the operator's (in hours), and a sign-up's link follows it.
+  process.env.UNVERIFIED_ACCOUNT_TTL_HOURS = "2";
+  const two = await call("POST", "/auth/signup", { body: { email: "two@example.org", password: "password-123", turnstileToken: "t" } });
+  const created = q.get<{ created_at: number }>("SELECT created_at FROM users WHERE id = ?", two.json.user.id)!.created_at;
+  assert.equal(two.json.user.emailVerifyDeadline, created + 2 * 3_600_000);
+  assert.equal(q.get<{ expires_at: number }>("SELECT expires_at FROM email_verifications WHERE user_id = ?", two.json.user.id)!.expires_at, created + 2 * 3_600_000);
+  delete process.env.UNVERIFIED_ACCOUNT_TTL_HOURS;
+  q.run("UPDATE users SET email_verify_pending = 0 WHERE id = ?", ownerId);
 });
 
 test("first run: a template within the plan's room, careful bots, first one renamed; once only; or one assistant; or skip", async () => {
@@ -236,12 +301,14 @@ test("first run: a template within the plan's room, careful bots, first one rena
   assert.equal((await call("POST", "/onboarding/commit", { cookie: dana.cookie, body: { template: "boutique-en-ligne" } })).status, 409);
   // "Un seul assistant": the main bot keeps its place and takes the name.
   const login = await call("POST", "/auth/login", { body: { email: "carol@example.org", password: "password-123" } });
+  q.run("UPDATE users SET onboarding_pending = 1 WHERE email = 'carol@example.org'");
   const one = await call("POST", "/onboarding/commit", { cookie: login.cookie, body: { name: "Rosa" } });
   assert.equal(one.status, 200, one.text);
   assert.equal(bots.byId(one.json.botId)!.name, "Rosa");
   assert.equal(bots.byId(one.json.botId)!.primary, true);
   assert.equal((await call("POST", "/onboarding/commit", { cookie: login.cookie, body: { template: "nope" } })).status, 409);
   const other = await call("POST", "/auth/login", { body: { email: "other@example.org", password: "password-123" } });
+  ps.markVerified(users.byEmail("other@example.org")!.id);
   assert.equal((await call("POST", "/onboarding/commit", { cookie: other.cookie, body: { template: "nope" } })).status, 404);
   assert.equal((await call("POST", "/onboarding/skip", { cookie: other.cookie })).status, 200);
   assert.equal((await call("GET", "/me", { cookie: other.cookie })).json.user.onboarding, undefined);

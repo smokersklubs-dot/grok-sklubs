@@ -142,9 +142,14 @@ const T: Record<string, Entry> = {
     fix: ["Redémarre le serveur. Si ça revient, lis le journal du serveur.", "Restart the server. If it comes back, read the server's log."],
   },
   "public_signup:no_mail": {
-    title: ["Inscriptions ouvertes sans e-mail : adresses non vérifiées", "Open sign-ups without e-mail: addresses not verified"],
-    explain: ["Le serveur accepte des inscriptions publiques mais ne sait pas envoyer d'e-mails : les nouveaux comptes ne confirment pas leur adresse et « Mot de passe oublié ? » ne marche pas.", "The server accepts public sign-ups but cannot send e-mails: new accounts do not confirm their address and “Forgot password?” does not work."],
+    title: ["Inscriptions par e-mail fermées : le serveur n'envoie pas d'e-mails", "E-mail sign-ups closed: the server sends no e-mails"],
+    explain: ["Le serveur est ouvert au public mais ne sait pas envoyer d'e-mails : la vérification de l'adresse étant obligatoire, les inscriptions par e-mail et mot de passe sont refusées (seul « Continuer avec Google » marche) et « Mot de passe oublié ? » ne marche pas.", "The server is open to the public but cannot send e-mails: since address verification is mandatory, sign-ups with an e-mail and password are refused (only “Continue with Google” works) and “Forgot password?” does not work."],
     fix: ["Réglages → Compte → E-mails du serveur : configure un compte SMTP (ou les variables SMTP_*), puis envoie un e-mail de test. Voir docs/OUVERTURE-PUBLIQUE.md.", "Settings → Account → Server e-mails: set up an SMTP account (or the SMTP_* variables), then send a test e-mail. See docs/OUVERTURE-PUBLIQUE.md."],
+  },
+  "public_signup:no_verification": {
+    title: ["Inscriptions ouvertes sans vérification d'adresse", "Open sign-ups without address verification"],
+    explain: ["EMAIL_VERIFICATION=0 : n'importe qui peut créer un compte avec l'adresse de quelqu'un d'autre et l'utiliser aussitôt (spam, abus, comptes jetables).", "EMAIL_VERIFICATION=0: anyone can create an account with someone else's address and use it at once (spam, abuse, throwaway accounts)."],
+    fix: ["Retire EMAIL_VERIFICATION=0 de l'environnement du serveur (avec un compte SMTP configuré) et redéploie.", "Remove EMAIL_VERIFICATION=0 from the server's environment (with an SMTP account set up) and redeploy."],
   },
   "public_signup:no_turnstile": {
     title: ["Inscriptions ouvertes sans vérification anti-robot", "Open sign-ups without an anti-robot check"],

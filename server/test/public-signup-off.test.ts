@@ -52,7 +52,13 @@ test("off: no landing, no site key, the first account and an invited one sign up
   assert.equal(ps.emailUnverified(u.id), false);
   assert.equal(q.get<{ onboarding_pending: number }>("SELECT onboarding_pending FROM users WHERE id = ?", u.id)!.onboarding_pending, 0);
   assert.equal((await call("POST", "/onboarding/commit", { template: "secretariat" }, owner.cookie)).status, 409);
-  assert.equal((await call("POST", "/account/verify-email/resend", undefined, owner.cookie)).status, 409);
+  const resend = await call("POST", "/account/verify-email/resend", undefined, owner.cookie);
+  assert.equal(resend.status, 200); assert.equal(resend.json.verified, true);
+  // Even a row marked pending is not held on a private server, and nothing is ever swept.
+  q.run("UPDATE users SET email_verify_pending = 1 WHERE id = ?", u.id);
+  assert.equal(ps.emailGateBlocks(u.id), false);
+  assert.deepEqual(await ps.sweepUnverified(Date.now() + 1000 * 3_600_000), []);
+  assert.ok(users.byId(u.id));
   // Every bot keeps its own computer (no free pool outside hosted mode).
   const main = bots.primary(users.byEmail("owner@example.test")!.id)!;
   assert.equal(machineOf(main.id), main.id);

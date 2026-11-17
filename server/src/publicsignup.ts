@@ -18,11 +18,19 @@
  *      · Rate limits on top of the existing per-address one: SIGNUP_PER_IP (default 5) and SIGNUP_GLOBAL (default 30)
  *        attempts per quarter hour, through routes.ts's throttle.
  *      · A small built-in list of disposable e-mail domains (DISPOSABLE_EMAIL_BLOCK=0 turns it off).
- *  - E-mail verification: when OPEN_SIGNUP or HOSTED_MODE is on AND the server can send e-mails (accountmail.ts), and
- *    EMAIL_VERIFICATION is not 0. A new password account gets a link (32 random bytes, only its SHA-256 stored, single
- *    use, 24 h). Until it is opened the account can sign in and look around, but its bots take no turns (agent/loop.ts).
- *    Google sign-in counts as verified (googlelogin.ts requires `email_verified`). Accounts that existed before
- *    migration 13 are grandfathered. Without SMTP, verification is skipped and the Sentinelle warns the owner.
+ *  - E-mail verification is MANDATORY whenever it applies (OPEN_SIGNUP or HOSTED_MODE, and EMAIL_VERIFICATION is not 0):
+ *    "compte obligatoire, sinon ça ne fonctionne pas". A new password account gets a link (32 random bytes, only its
+ *    SHA-256 stored, single use, valid until the account's deadline). Until it is opened the account can sign in, but
+ *    the session middleware (routes.ts → emailGateBlocks) answers 403 { code: "email_unverified" } to every route except
+ *    the few that let it confirm, change its address, sign out, export or delete itself (EMAIL_GATE_ALLOWED); the voice,
+ *    relay and screen sockets refuse it too; its first bot is only created once the address is proven (first_bot,
+ *    migration 14). Google sign-in counts as verified (googlelogin.ts requires `email_verified`). Accounts that existed
+ *    before migration 13, and the owner (the oldest account), are never held.
+ *  - Without SMTP the server cannot send the link: password sign-ups (other than the very first account) are refused
+ *    with a clear message ("utilise Continuer avec Google"); Google sign-ups still work. The Sentinelle raises it.
+ *  - An account still unverified UNVERIFIED_ACCOUNT_TTL_HOURS (default 5) after its creation is deleted by the
+ *    scheduler's sweep (sweepUnverified, every 10 minutes), with an entry in the owner's activity log. A resent link
+ *    never goes past that deadline.
  *  - First run: new public accounts get onboarding_pending; POST /onboarding/commit uses the team-file import
  *    (teamfile.ts: careful autonomy, draft skills, paused routines, the account's default model) within the plan's room.
  */
@@ -33,15 +41,16 @@ import { originAllowed } from "./auth.js";
 import { config } from "./config.js";
 import { q } from "./db.js";
 import { HostedError, hostedMode, hostedSettings, isPlanLimit, planLimitError, planRoom, plans } from "./hosted.js";
-import { pickLocale } from "./i18n.js";
+import { pickLocale, tr } from "./i18n.js";
 import { ideasFromSubjects } from "./ideas.js";
 import { freeMax } from "./freecomputers.js";
 import { guardedFetch } from "./net.js";
 import type { Locale } from "./shared.js";
-import { audit, bots, now, randomToken, sha256, users, type UserRecord } from "./store.js";
+import { audit, bots, now, randomToken, sha256, users, type BotRecord, type UserRecord } from "./store.js";
 import { commitTeamFile, previewTeamFile, templateList } from "./teamfile.js";
 
-export const VERIFY_MS = 24 * 3_600_000;
+/** How long an unverified account lives (UNVERIFIED_ACCOUNT_TTL_HOURS, default 5 h, between 1 h and 30 days). */
+export const unverifiedTtlMs = () => intEnv("UNVERIFIED_ACCOUNT_TTL_HOURS", 5, 1, 720) * 3_600_000;
 export const SITEVERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify";
 
 // ── Settings (environment only: the operator's choice, read each time so tests can change them) ───────────────────
@@ -56,8 +65,10 @@ export function turnstileKeys(): { siteKey: string; secret: string } | null {
 }
 /** Verification is wanted on a public server (open sign-ups or hosted mode), unless EMAIL_VERIFICATION=0. */
 export const verificationWanted = () => (config.openSignup || hostedMode()) && !["0", "false", "off"].includes(env("EMAIL_VERIFICATION").toLowerCase());
-/** …and possible only when this server can send e-mails. */
+/** …and links can be sent only when this server can send e-mails (without SMTP, password sign-ups are refused). */
 export const verificationActive = () => verificationWanted() && mailConfigured();
+/** The server's owner: the oldest account (never held by the verification). */
+const ownerIdOf = () => q.get<{ id: string }>("SELECT id FROM users ORDER BY created_at ASC, rowid ASC LIMIT 1")?.id ?? null;
 
 // ── Texts (English is the key) ───────────────────────────────────────────────────────────────────────────────────
 const FR: Record<string, string> = {
@@ -70,8 +81,11 @@ const FR: Record<string, string> = {
   "Cross-site request refused.": "Requête d'un autre site refusée.",
   "That template does not exist.": "Ce modèle n'existe pas.",
   "The first run is already done.": "La première prise en main est déjà faite.",
-  "Confirm your e-mail address first: open the link we sent to {email}. Your bots start working as soon as it is confirmed. (Banner at the top: “Resend the e-mail”.)":
-    "Confirme d'abord ton adresse e-mail : ouvre le lien envoyé à {email}. Tes bots se mettent au travail dès qu'elle est confirmée. (Bandeau en haut : « Renvoyer l'e-mail ».)",
+  "Confirm your e-mail address first: open the link we sent to {email}. Your bots start working as soon as it is confirmed.":
+    "Confirme d'abord ton adresse e-mail : ouvre le lien envoyé à {email}. Tes bots se mettent au travail dès qu'elle est confirmée.",
+  "Confirm your e-mail address to use Sklubot: open the link we sent to {email}.": "Confirme ton adresse e-mail pour utiliser Sklubot : ouvre le lien envoyé à {email}.",
+  "Sign-ups by e-mail are closed until this server's e-mails are set up — use “Continue with Google”.":
+    "Les inscriptions par e-mail sont fermées tant que les e-mails du serveur ne sont pas réglés — utilise « Continuer avec Google ».",
 };
 const m = (loc: Locale | undefined, english: string, vars: Record<string, string | number> = {}) =>
   (loc === "fr" ? FR[english] ?? english : english).replace(/\{(\w+)\}/g, (_x, k) => String(vars[k] ?? ""));
@@ -165,31 +179,55 @@ export function publicSignupChecks(c: Context, f: { email: string; first: boolea
 /**
  * A new account made by sign-up (form or Google): the first run for public servers, and the verification link when it
  * applies. `verified`: the address is proven already (Google). The very first account (the owner) gets neither.
+ * Returns true when the account must confirm its address first: then its first bot is NOT created now — `firstBot`
+ * (the name and role chosen on the form) is kept and the bot is made by markVerified.
  */
-export function accountOpened(user: UserRecord, o: { first: boolean; verified: boolean }) {
+export function accountOpened(user: UserRecord, o: { first: boolean; verified: boolean; firstBot?: { name: string; label: string } }): boolean {
   if (o.verified) q.run("UPDATE users SET email_verified_at = ? WHERE id = ?", now(), user.id);
-  if (o.first) return;
+  if (o.first) return false;
   if (config.openSignup || hostedMode()) q.run("UPDATE users SET onboarding_pending = 1 WHERE id = ?", user.id);
-  if (!o.verified && verificationActive()) {
-    q.run("UPDATE users SET email_verify_pending = 1 WHERE id = ?", user.id);
-    sendVerification(user);
-  } else if (!o.verified) {
-    // Nothing to verify with (no SMTP, or verification turned off): counted as verified from the start.
+  if (!o.verified && verificationWanted()) {
+    // Mandatory: held until the link is opened (signup refuses this case without SMTP, see emailSignupClosed).
+    q.run("UPDATE users SET email_verify_pending = 1, first_bot = ? WHERE id = ?", JSON.stringify(o.firstBot ?? null), user.id);
+    if (mailConfigured()) sendVerification(user);
+    return true;
+  }
+  if (!o.verified) {
+    // Verification turned off by the operator (EMAIL_VERIFICATION=0), or a private server: counted as verified.
     q.run("UPDATE users SET email_verified_at = ? WHERE id = ?", now(), user.id);
   }
+  return false;
 }
 
+/**
+ * Password sign-ups (not the very first account) need a verification e-mail: without SMTP they are refused, with a
+ * clear way forward (Google proves the address by itself). Throws PublicSignupError (403, code "email_signup_closed").
+ */
+export function assertEmailSignupPossible(first: boolean) {
+  if (!first && verificationWanted() && !mailConfigured())
+    throw new PublicSignupError(403, "Sign-ups by e-mail are closed until this server's e-mails are set up — use “Continue with Google”.", "email_signup_closed");
+}
+
+/** When an unverified account is deleted: its creation time + UNVERIFIED_ACCOUNT_TTL_HOURS. */
+export function verifyDeadline(userId: string): number | null {
+  const r = q.get<{ created_at: number }>("SELECT created_at FROM users WHERE id = ?", userId);
+  return r ? r.created_at + unverifiedTtlMs() : null;
+}
+
+const hoursLeft = (ms: number) => Math.max(1, Math.round(ms / 3_600_000));
 const MAIL = {
-  fr: (link: string) => ({ subject: "Sklubot : confirme ton adresse e-mail", text: `Bonjour,\n\nBienvenue sur Sklubot ! Pour confirmer ton adresse et laisser tes bots se mettre au travail, ouvre ce lien (valable 24 heures, une seule fois) :\n${link}\n\nSi tu n'as pas créé de compte, ignore cet e-mail.\n\n— Sklubot (${config.publicUrl})` }),
-  en: (link: string) => ({ subject: "Sklubot: confirm your e-mail address", text: `Hello,\n\nWelcome to Sklubot! To confirm your address and let your bots start working, open this link (valid 24 hours, once):\n${link}\n\nIf you did not create an account, ignore this e-mail.\n\n— Sklubot (${config.publicUrl})` }),
+  fr: (link: string, h: number) => ({ subject: "Sklubot : confirme ton adresse e-mail", text: `Bonjour,\n\nBienvenue sur Sklubot ! Pour confirmer ton adresse et pouvoir utiliser Sklubot, ouvre ce lien (une seule fois) :\n${link}\n\nSans confirmation dans les ${h} heure(s), le compte et ses données sont supprimés automatiquement.\nSi tu n'as pas créé de compte, ignore cet e-mail.\n\n— Sklubot (${config.publicUrl})` }),
+  en: (link: string, h: number) => ({ subject: "Sklubot: confirm your e-mail address", text: `Hello,\n\nWelcome to Sklubot! To confirm your address and start using Sklubot, open this link (once):\n${link}\n\nWithout confirmation within ${h} hour(s), the account and its data are deleted automatically.\nIf you did not create an account, ignore this e-mail.\n\n— Sklubot (${config.publicUrl})` }),
 };
 function sendVerification(user: UserRecord) {
   const token = randomToken(32);
+  // The link lives as long as the account may wait, never longer: a resend does not push the deadline back.
+  const expires = verifyDeadline(user.id) ?? now() + unverifiedTtlMs();
   q.tx(() => {
     q.run("DELETE FROM email_verifications WHERE user_id = ? OR expires_at < ?", user.id, now());
-    q.run("INSERT INTO email_verifications (token_hash, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)", sha256(token), user.id, now(), now() + VERIFY_MS);
+    q.run("INSERT INTO email_verifications (token_hash, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)", sha256(token), user.id, now(), expires);
   });
-  const mail = MAIL[user.locale](`${config.publicUrl}/?verify_email=${encodeURIComponent(token)}`);
+  const mail = MAIL[user.locale](`${config.publicUrl}/?verify_email=${encodeURIComponent(token)}`, hoursLeft(expires - now()));
   audit(user.id, "account", "E-mail verification link sent");
   // Sent after answering; the token is never logged.
   setImmediate(() => { void sendSystemMail(user.email, mail.subject, mail.text).catch((err) => console.error(`[account-mail] verification e-mail not sent: ${(err as Error).message}`)); });
@@ -197,23 +235,119 @@ function sendVerification(user: UserRecord) {
 
 interface Flags { email_verify_pending: number; onboarding_pending: number }
 const flagsOf = (userId: string) => q.get<Flags>("SELECT email_verify_pending, onboarding_pending FROM users WHERE id = ?", userId);
-/** Whether this account's bots wait for its e-mail to be confirmed (only while verification can actually happen). */
-export function emailUnverified(userId: string): boolean {
-  return flagsOf(userId)?.email_verify_pending === 1 && verificationActive();
+/**
+ * Whether this account is held until its address is confirmed: verification applies on this server, the account is
+ * pending, and it is not the owner. Read on every signed-in request (routes.ts's session middleware).
+ */
+export function emailGateBlocks(userId: string): boolean {
+  if (!verificationWanted()) return false;
+  if (flagsOf(userId)?.email_verify_pending !== 1) return false;
+  return ownerIdOf() !== userId;
 }
+/** Kept for the agent loop (defence in depth): a held account's bots take no turns. */
+export const emailUnverified = emailGateBlocks;
+
+/**
+ * What an unverified account may still do (paths under /api): sign out, read itself, resend the link, change its address
+ * (the new address's link verifies it), choose its language, export its data, delete itself. Everything else: 403.
+ */
+const EMAIL_GATE_ALLOWED: { method: string; path: RegExp }[] = [
+  { method: "GET", path: /^\/me$/ },
+  { method: "*", path: /^\/auth\// },
+  { method: "POST", path: /^\/account\/verify-email\/resend$/ },
+  { method: "GET", path: /^\/account\/email$/ },
+  { method: "POST", path: /^\/account\/email$/ },
+  { method: "DELETE", path: /^\/account\/email\/pending$/ },
+  { method: "DELETE", path: /^\/account$/ },
+  { method: "GET", path: /^\/export\/data$/ },
+  { method: "PUT", path: /^\/prefs$/ },
+];
+/** Whether a held account may call this route (`path` with or without the /api prefix). */
+export function emailGateAllows(method: string, path: string): boolean {
+  const p = path.replace(/^\/api(?=\/)/, "").replace(/\/+$/, "") || "/";
+  const m = method === "HEAD" ? "GET" : method;
+  return EMAIL_GATE_ALLOWED.some((r) => (r.method === "*" || r.method === m) && r.path.test(p));
+}
+/** The 403 answer of a held account. */
+export const emailGateBody = (user: Pick<UserRecord, "email" | "locale">) =>
+  ({ error: m(user.locale, "Confirm your e-mail address to use Sklubot: open the link we sent to {email}.", { email: user.email }), code: "email_unverified" as const });
+
 /** Extra fields of the signed-in person (present only when true, so nothing changes for anyone else). */
-export function accountFlags(userId: string): { emailUnverified?: true; onboarding?: true } {
+export function accountFlags(userId: string): { emailUnverified?: true; emailVerifyDeadline?: number; onboarding?: true } {
   const f = flagsOf(userId);
-  return { ...(f?.email_verify_pending === 1 && verificationActive() ? { emailUnverified: true as const } : {}), ...(f?.onboarding_pending === 1 ? { onboarding: true as const } : {}) };
+  const held = emailGateBlocks(userId);
+  return { ...(held ? { emailUnverified: true as const, emailVerifyDeadline: verifyDeadline(userId) ?? undefined } : {}), ...(f?.onboarding_pending === 1 ? { onboarding: true as const } : {}) };
 }
-/** The address is proven (link opened, or a sign-in with Google): bots may work. */
+/** The address is proven (link opened, a sign-in with Google, a confirmed change of address): the account is let in. */
 export function markVerified(userId: string) {
   q.run("UPDATE users SET email_verify_pending = 0, email_verified_at = ? WHERE id = ?", now(), userId);
   q.run("DELETE FROM email_verifications WHERE user_id = ?", userId);
+  ensureFirstBot(userId);
 }
+
+/**
+ * The first bot of an account whose creation waited for its address (first_bot, migration 14): made now, with the name
+ * and role chosen on the sign-up form. A full team (MAX_BOTS) leaves the marker: the next try (first run) makes it.
+ */
+export function ensureFirstBot(userId: string): BotRecord | null {
+  const r = q.get<{ first_bot: string | null; locale: string }>("SELECT first_bot, locale FROM users WHERE id = ?", userId);
+  if (!r || r.first_bot === null) return null;
+  const existing = bots.primary(userId);
+  if (existing) { q.run("UPDATE users SET first_bot = NULL WHERE id = ?", userId); return existing; }
+  const locale: Locale = r.locale === "fr" ? "fr" : "en";
+  let chosen: { name?: string; label?: string } | null = null;
+  try { chosen = JSON.parse(r.first_bot); } catch { /* the defaults */ }
+  const name = chosen?.name || config.firstBotName || "Juno";
+  const label = chosen?.label || config.firstBotLabel || tr(locale, "Chief of staff");
+  try {
+    bots.assertRoom();
+    const bot = bots.create(userId, {
+      name, label, primary: true, shape: "pebble", color: "indigo",
+      description: tr(locale, "Your main point of contact. Keeps track of what is open, checks in when something needs you, and coordinates the other bots."),
+    });
+    q.run("UPDATE users SET first_bot = NULL WHERE id = ?", userId);
+    return bot;
+  } catch (err) {
+    console.error(`[signup] first bot not created yet: ${(err as Error).message}`);
+    return null;
+  }
+}
+
+// ── Deleting accounts that never confirmed ──────────────────────────────────────────────────────────────────────
+type AccountRemover = (userId: string) => Promise<void>;
+let removeAccount: AccountRemover = async (userId) => { q.run("DELETE FROM users WHERE id = ?", userId); };
+/** routes.ts gives the full removal (bots, computers, connectors, team folder), the same as DELETE /account. */
+export const setAccountRemover = (fn: AccountRemover) => { removeAccount = fn; };
+
+/**
+ * Deletes every account still unverified UNVERIFIED_ACCOUNT_TTL_HOURS after its creation (scheduler: every 10 minutes).
+ * Only while verification applies; never the owner. Each deletion is written to the owner's activity log (the deleted
+ * account's own log goes with it) and the server's log. Returns the deleted addresses.
+ */
+export async function sweepUnverified(at = now()): Promise<string[]> {
+  if (!verificationWanted()) return [];
+  const owner = ownerIdOf();
+  const due = q.all<{ id: string; email: string; created_at: number }>(
+    "SELECT id, email, created_at FROM users WHERE email_verify_pending = 1 AND created_at <= ? ORDER BY created_at LIMIT 200", at - unverifiedTtlMs());
+  const done: string[] = [];
+  for (const u of due) {
+    if (u.id === owner) continue;
+    try {
+      await removeAccount(u.id);
+      done.push(u.email);
+      const hours = Math.round(unverifiedTtlMs() / 3_600_000);
+      if (owner) audit(owner, "account", `Unverified account ${u.email} deleted automatically (address not confirmed within ${hours} h)`);
+      console.info(`[signup] unverified account deleted after ${hours} h (created ${new Date(u.created_at).toISOString()})`);
+    } catch (err) {
+      console.error(`[signup] could not delete an unverified account: ${(err as Error).message}`);
+    }
+  }
+  return done;
+}
+
 /** The text a bot's chat shows when a turn waits for the address to be confirmed. */
 export const unverifiedText = (user: Pick<UserRecord, "email" | "locale">) =>
-  m(user.locale, "Confirm your e-mail address first: open the link we sent to {email}. Your bots start working as soon as it is confirmed. (Banner at the top: “Resend the e-mail”.)", { email: user.email });
+  m(user.locale, "Confirm your e-mail address first: open the link we sent to {email}. Your bots start working as soon as it is confirmed.", { email: user.email });
 
 /** What /me adds for a signed-out visitor: the landing page and the Turnstile site key (never the secret). */
 export function publicSignupInfo(): { landing?: true; turnstileSiteKey?: string } {
@@ -269,8 +403,8 @@ export function registerPublicSignupPrivate(api: Hono<any>) {
   api.post("/account/verify-email/resend", (c) => {
     const user = c.get("user") as UserRecord;
     try {
+      if (!emailGateBlocks(user.id)) return c.json({ ok: true, verified: true });
       if (!verificationActive()) throw new PublicSignupError(409, "This server cannot send e-mails, so there is nothing to confirm.", "no_mail");
-      if (flagsOf(user.id)?.email_verify_pending !== 1) return c.json({ ok: true, verified: true });
       deps?.throttle(`verify-resend:${user.id}`, 3);
       sendVerification(user);
       return c.json({ ok: true, verified: false, email: user.email });
@@ -306,7 +440,7 @@ export function registerPublicSignupPrivate(api: Hono<any>) {
         created = commitTeamFile(user, preview.previewId, choices).bots;
         botId = created[0].id;
       } else {
-        const main = bots.primary(user.id);
+        const main = bots.primary(user.id) ?? ensureFirstBot(user.id);
         if (!main) throw new PublicSignupError(404, "That template does not exist.", "not_found");
         if (name && name.toLowerCase() !== main.name.toLowerCase() && !bots.byName(user.id, name)) bots.patch(main.id, { name });
         botId = main.id;

@@ -52,6 +52,8 @@ services:
       SIGNUP_GLOBAL: "${SKLUBOT_SIGNUP_GLOBAL:-}"
       DISPOSABLE_EMAIL_BLOCK: "${SKLUBOT_DISPOSABLE_EMAIL_BLOCK:-}"
       EMAIL_VERIFICATION: "${SKLUBOT_EMAIL_VERIFICATION:-}"
+      # Comptes jamais confirmés : supprimés automatiquement après ce nombre d'heures (défaut 5).
+      UNVERIFIED_ACCOUNT_TTL_HOURS: "${SKLUBOT_UNVERIFIED_ACCOUNT_TTL_HOURS:-}"
       # Offre Gratuite (mode hébergé) : ordinateurs jetables partagés (pool), « personal » (comme avant) ; combien à la fois.
       FREE_PLAN_COMPUTER: "${SKLUBOT_FREE_PLAN_COMPUTER:-}"
       FREE_COMPUTERS_MAX: "${SKLUBOT_FREE_COMPUTERS_MAX:-}"

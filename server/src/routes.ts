@@ -110,7 +110,7 @@ import { handleBotMcp } from "./botmcp.js";
 import { registerSentinelRoutes } from "./sentinel/routes.js";
 import { canWatch as sentinelWatcher } from "./sentinel/view.js";
 import { noteSignal } from "./sentinel/signals.js";
-import { accountFlags, accountOpened, publicSignupGate, publicSignupInfo, registerPublicSignupPrivate, registerPublicSignupPublic } from "./publicsignup.js";
+import { accountFlags, accountOpened, assertEmailSignupPossible, PublicSignupError, emailGateAllows, emailGateBlocks, emailGateBody, publicSignupGate, publicSignupInfo, registerPublicSignupPrivate, registerPublicSignupPublic, setAccountRemover } from "./publicsignup.js";
 import { answerCapCard, amountText, CapError, capName, caps as usageCaps, capsView, cleanCapInput, cm } from "./usagecaps.js";
 
 type Env = { Variables: { user: UserRecord } };
@@ -328,6 +328,9 @@ api.post("/auth/signup", async (c) => {
   if (config.allowedEmails.length && !config.allowedEmails.includes(email.toLowerCase()) && !invited) fail(403, "This address is not allowed to create an account on this server.");
   const locale = pickLocale(b.locale, c.req.header("accept-language"));
   const firstAccount = users.count() === 0;
+  // Mandatory e-mail verification (publicsignup.ts): without SMTP no link can be sent, so password sign-ups are refused
+  // (Google still works). Checked before Turnstile, whose token is single use.
+  try { assertEmailSignupPossible(firstAccount); } catch (err) { if (err instanceof PublicSignupError) return c.json({ error: err.text(locale), code: err.code }, err.status); throw err; }
   // OPEN_SIGNUP (publicsignup.ts): rate limits, disposable addresses and Turnstile on open sign-ups, before anything is created.
   await publicSignupGate(c, { email, token: b.turnstileToken, first: firstAccount, invited: invited || planInviteOpens(b.planInvite, email) });
   // Hosted mode: the plan the account starts on and the terms of service, checked before anything is created.
@@ -336,11 +339,11 @@ api.post("/auth/signup", async (c) => {
   bots.assertRoom();
   const user = users.create(email, String(b.name ?? ""), hashPassword(password), locale);
   accountCreated(user.id, choice);
-  accountOpened(user, { first: firstAccount, verified: false });
   // Every account starts with one main bot so there is someone to talk to straight away. Its name and role: what the
   // person chose on the sign-up form, else the server's settings (FIRST_BOT_NAME / FIRST_BOT_LABEL), else the defaults.
+  // An account that must confirm its address first gets it only once the address is proven (publicsignup.ts markVerified).
   const first = firstBotIdentity(locale, b.botName, b.botLabel);
-  bots.create(user.id, {
+  if (!accountOpened(user, { first: firstAccount, verified: false, firstBot: first })) bots.create(user.id, {
     name: first.name, label: first.label, primary: true, shape: "pebble", color: "indigo",
     description: tr(locale, "Your main point of contact. Keeps track of what is open, checks in when something needs you, and coordinates the other bots."),
   });
@@ -502,6 +505,9 @@ api.use("*", async (c, next) => {
   // and delete itself; nothing else that changes something.
   if (c.req.method !== "GET" && c.req.method !== "HEAD" && suspended(user.id) && !/^(\/api)?\/(account(\/|$)|prefs$|push\/|auth\/|bots\/[^/]+\/read$)/.test(c.req.path))
     return c.json({ error: suspendedText(user.locale), code: "suspended" }, 403);
+  // Mandatory e-mail verification (publicsignup.ts): an account whose address is not confirmed may only confirm it,
+  // change it, sign out, export or delete itself — every other route answers 403 { code: "email_unverified" }.
+  if (emailGateBlocks(user.id) && !emailGateAllows(c.req.method, c.req.path)) return c.json(emailGateBody(user), 403);
   c.set("user", user);
   await next();
 });
@@ -1342,14 +1348,21 @@ api.put("/account/password", async (c) => {
   return c.json({ ok: true });
 });
 
+/** Removes an account and everything it owns (its bots and their computers, connectors, team folder). */
+async function removeAccountData(userId: string) {
+  for (const bot of bots.list(userId, true)) { if (bots.byId(bot.id)) { telegram.disconnect(bot); await retireBot(bot); removeWorkspace(bot.id); } }
+  for (const con of connectorStore.list(userId)) await connectorStore.remove(userId, con.id);
+  removeTeamFolder(userId);
+  account.remove(userId);
+}
+// Unverified accounts past their deadline are removed the same way (publicsignup.ts sweepUnverified).
+setAccountRemover(removeAccountData);
+
 api.delete("/account", async (c) => {
   const user = c.get("user");
   throttle(`pw:${user.id}`);
   if (!verifyPassword(String((await body(c)).password ?? ""), user.passHash)) fail(401, "The password is wrong.");
-  for (const bot of bots.list(user.id, true)) { if (bots.byId(bot.id)) { telegram.disconnect(bot); await retireBot(bot); removeWorkspace(bot.id); } }
-  for (const con of connectorStore.list(user.id)) await connectorStore.remove(user.id, con.id);
-  removeTeamFolder(user.id);
-  account.remove(user.id);
+  await removeAccountData(user.id);
   deleteCookie(c, SESSION_COOKIE, { path: "/" });
   return c.json({ ok: true });
 });

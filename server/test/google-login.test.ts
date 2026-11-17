@@ -254,3 +254,39 @@ test("linking from Settings: a Google account already linked elsewhere is refuse
   assert.equal(ok.headers.get("location"), "/?google=linked");
   assert.equal(q.get<{ user_id: string }>("SELECT user_id FROM google_identities WHERE sub = 'sub-member'")?.user_id, other.id);
 });
+
+test("mandatory e-mail verification (publicsignup.ts), open server without SMTP: an account held for its link is let in by Google (same address), its first bot appears; a new Google account is never held", async () => {
+  const { bots } = await import("../src/store.js");
+  const ps = await import("../src/publicsignup.js");
+  const cfg = config as { openSignup: boolean };
+  const was = cfg.openSignup;
+  cfg.openSignup = true;
+  delete process.env.EMAIL_VERIFICATION;
+  try {
+    // Password sign-ups are refused here (no SMTP): Google is the way in.
+    const refused = await call("POST", "/auth/signup", { body: { email: "pw@example.org", password: "password-123" } });
+    assert.equal(refused.status, 403); assert.equal(refused.json.code, "email_signup_closed");
+    // A held account (made when the server still had SMTP): only the verification screen's routes answer.
+    const held = users.create("held@example.org", "Held", hashPassword("held-password-1"));
+    q.run("UPDATE users SET email_verify_pending = 1, onboarding_pending = 1, first_bot = ? WHERE id = ?", JSON.stringify({ name: "Nova", label: "" }), held.id);
+    const heldCookie = `sklubot_session=${createSession(held.id).token}`;
+    const blocked = await call("GET", "/bots", { cookie: heldCookie });
+    assert.equal(blocked.status, 403); assert.equal(blocked.json.code, "email_unverified");
+    // "Continuer avec Google" with the same address: verified, the first bot is made with the chosen name.
+    const r = await viaGoogle({ sub: "sub-held", email: "held@example.org" });
+    assert.equal(r.status, 302);
+    assert.equal(ps.emailGateBlocks(held.id), false);
+    assert.equal(bots.primary(held.id)?.name, "Nova");
+    const me = await call("GET", "/me", { cookie: sessionOf(r) });
+    assert.equal(me.json.user.id, held.id);
+    assert.equal(me.json.user.emailUnverified, undefined);
+    assert.equal(me.json.user.onboarding, true, "the first run comes after verification");
+    assert.equal((await call("GET", "/bots", { cookie: heldCookie })).status, 200);
+    // A brand-new account through Google: verified from the start, with its bot.
+    const fresh = await viaGoogle({ sub: "sub-fresh", email: "fresh@example.org" });
+    assert.equal(fresh.status, 302);
+    const freshUser = users.byEmail("fresh@example.org")!;
+    assert.equal(ps.emailGateBlocks(freshUser.id), false);
+    assert.ok(bots.primary(freshUser.id));
+  } finally { cfg.openSignup = was; }
+});

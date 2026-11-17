@@ -22,7 +22,7 @@ import { SurveillanceView } from "./components/SurveillanceView";
 import { ThreadPanel } from "./components/ThreadPanel";
 import { DownloadPage, isDownloadPath } from "./components/DownloadPage";
 import { useDesktopBadge } from "./lib/desktop";
-import { takeVerifyLink, VerifyEmailPage } from "./components/VerifyEmail";
+import { takeVerifyLink, VerifyEmailGate, VerifyEmailPage } from "./components/VerifyEmail";
 import { Onboarding } from "./components/Onboarding";
 
 // The public landing page (OPEN_SIGNUP): its own chunk, loaded only for signed-out visitors of an open server.
@@ -167,6 +167,8 @@ function MainApp() {
   // The e-mail verification link (/?verify_email=…, publicsignup.ts), read once and removed from the address.
   const [verifyToken, setVerifyToken] = useState(takeVerifyLink);
   const landing = useStore((s) => s.publicSignup.landing);
+  // Mandatory e-mail verification (server publicsignup.ts): an unconfirmed account sees only the confirmation page.
+  const unverified = useStore((s) => !!s.user?.emailUnverified);
   const [entry, setEntry] = useState<Entry>(entryFromUrl);
   useEffect(() => {
     const onPop = () => setEntry(entryFromUrl());
@@ -202,5 +204,6 @@ function MainApp() {
     );
   }
   if (boot === "signedOut") return landing ? <SignIn key={entry} initialMode={entry === "signup" ? "signup" : "login"} onBack={goHome} /> : <SignIn />;
+  if (unverified) return <VerifyEmailGate />;
   return <Shell />;
 }

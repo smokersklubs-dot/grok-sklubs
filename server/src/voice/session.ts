@@ -10,6 +10,7 @@ import { bots, rows, type BotRecord, type UserRecord } from "../store.js";
 import { botAccess } from "../workspaces.js";
 import { Vad, wavDurationMs, wavOf } from "./vad.js";
 import { sttFor, ttsFor, voiceSettings, voiceStatus, type Stt, type Tts } from "./providers.js";
+import { emailGateBlocks } from "../publicsignup.js";
 
 /**
  * Server-mediated voice calls (wave 6). The browser streams the microphone as 16 kHz 16-bit mono PCM (from an
@@ -260,6 +261,7 @@ export function voiceUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer)
   if (!originAllowed(req.headers.origin, req.headers.host)) { refuse(socket, 403, "Forbidden"); return true; }
   const user = userForToken(parseCookies(req.headers.cookie)[SESSION_COOKIE]);
   if (!user) { refuse(socket, 401, "Unauthorized"); return true; }
+  if (emailGateBlocks(user.id)) { refuse(socket, 403, "Forbidden"); return true; }
   // The owner, or someone of the workspace whose role lets them talk to this bot (wave 6).
   const access = botAccess(user.id, m[1]);
   if (!access || !access.canTalk || access.bot.kind !== "agent") { refuse(socket, 404, "Not Found"); return true; }
