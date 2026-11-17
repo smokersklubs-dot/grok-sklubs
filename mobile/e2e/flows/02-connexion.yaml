@@ -8,8 +8,12 @@ appId: ${APP_ID}
     optional: true
 - tapOn:
     id: "server-url"
-- eraseText: 60
+# Le champ contient déjà l'adresse par défaut et le toucher place le curseur au milieu : flèche bas = fin du texte
+# (Selection.moveDown sur la dernière ligne), puis on efface tout.
+- pressKey: Remote Dpad Down
+- eraseText: 80
 - inputText: ${SERVER_URL}
+- assertVisible: ${SERVER_URL}
 - takeScreenshot: 03-adresse-saisie
 - hideKeyboard
 - tapOn: "Continuer"
