@@ -14,7 +14,8 @@ import { hostedMode, hostedOverBudget, subscriptions } from "./hosted.js";
  *    computers are Linux containers; Docker Engine API "Ping": https://docs.docker.com/reference/api/engine/version/v1.47/#tag/System/operation/SystemPing
  *  - disk: free space of the data folder (statfs) against DISK_FREE_MIN_MB (and a hard floor of 256 MB);
  *  - scheduler: its routine tick (every 15 s) ran in the last 2 minutes, unless the scheduler is switched off;
- *  - backup: age of the last backup deploy/backup.sh recorded in the data folder (backup-status.json), when there is one:
+ *  - backup: age of the last backup deploy/backup.sh or the in-app backup (autobackup.ts, "source": "app") recorded in
+ *    the data folder (backup-status.json), when there is one:
  *    older than 26 h is "degraded"; no record at all is reported, not counted (backups may live elsewhere);
  *  - queue: the oldest work waiting in a bot's queue (pending for more than 2 h is "degraded").
  * The public route returns only ok / degraded / down and the first problem's code; the detail is for the server's owner.
@@ -91,11 +92,12 @@ function checkScheduler(): Check {
 }
 
 /** What deploy/backup.sh wrote after its last run (in the data folder, so the server sees it on VPS and Coolify alike). */
-export function backupStatus(): { at: number; archive?: string; ok?: boolean; secrets?: string } | null {
+export function backupStatus(): { at: number; archive?: string; ok?: boolean; secrets?: string; source?: string } | null {
   const file = path.join(config.dataDir, BACKUP_STATUS_FILE);
   try {
     const v = JSON.parse(readFileSync(file, "utf8"));
-    return v && Number.isFinite(Number(v.at)) ? { at: Number(v.at), archive: typeof v.archive === "string" ? v.archive.slice(0, 200) : undefined, ok: v.ok !== false, secrets: typeof v.secrets === "string" ? v.secrets.slice(0, 40) : undefined } : null;
+    // source "app": written by the in-app backup to S3 (autobackup.ts); absent: deploy/backup.sh.
+    return v && Number.isFinite(Number(v.at)) ? { at: Number(v.at), archive: typeof v.archive === "string" ? v.archive.slice(0, 200) : undefined, ok: v.ok !== false, secrets: typeof v.secrets === "string" ? v.secrets.slice(0, 40) : undefined, source: v.source === "app" ? "app" : "script" } : null;
   } catch { return null; }
 }
 /** The last restore drill (deploy/restore-drill.sh), shown with the backup; it does not change the status. */
@@ -109,7 +111,7 @@ function checkBackup(): Check {
   const b = backupStatus();
   if (!b) return { state: "unknown", code: "no_backup_record", detail: { lastDrill: lastDrill() } };
   const ageH = Math.round(((Date.now() - b.at) / 3_600_000) * 10) / 10;
-  const detail = { lastAt: new Date(b.at).toISOString(), ageHours: ageH, archive: b.archive, secrets: b.secrets, lastDrill: lastDrill() };
+  const detail = { lastAt: new Date(b.at).toISOString(), ageHours: ageH, archive: b.archive, secrets: b.secrets, source: b.source, lastDrill: lastDrill() };
   if (b.ok === false) return { state: "degraded", code: "backup_failed", detail };
   return Date.now() - b.at > BACKUP_MAX_AGE_MS ? { state: "degraded", code: "backup_old", detail } : { state: "ok", code: "ok", detail };
 }

@@ -22,6 +22,7 @@ import { KeysSection, PublicLinksBlock } from "./Wave7";
 import { GoogleAccountBlock, GoogleLoginSettings } from "./GoogleLogin";
 import { AccountEmailBlock, ServerMailSettings } from "./AccountRecovery";
 import { AdminSection, SubscriptionSection } from "./Hosted";
+import { BackupSettings } from "./BackupSettings";
 
 const SECTIONS: { id: AppSection; icon: IconName }[] = [
   { id: "general", icon: "settings" },
@@ -1183,6 +1184,7 @@ function AccountSection() {
       <AccountEmailBlock />
       <GoogleLoginSettings />
       <ServerMailSettings />
+      <BackupSettings />
 
       <h3 className="pane-heading">{t("account.dataHeading")}</h3>
       <div className="action-row">

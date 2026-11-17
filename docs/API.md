@@ -22,6 +22,10 @@ answers 401 without it. Types named below are defined in `server/src/shared.ts`.
 | DELETE | `/account/email/pending` | – | `{ pending: null }` |
 | GET/PUT/DELETE | `/settings/smtp` | PUT: `{ host, port, tlsMode: "tls"\|"starttls"\|"none", username?, password?, from }` | `{ configured, source: "env"\|"saved"\|null, host, port, tlsMode, username, hasPassword, from }` — owner only (403 otherwise); 409 on PUT when `SMTP_HOST` is set in the environment |
 | POST | `/settings/smtp/test` | – | `{ ok, to }` — test e-mail to the owner's own address; 502 with the SMTP server's answer |
+| GET/PUT/DELETE | `/settings/backup` | PUT: `{ provider: "ovh"\|"hetzner"\|"scaleway"\|"other", endpoint, region, bucket, pathStyle, prefix, accessKey?, secretKey?, recipient: "age1…", hour: 0–23, timezone, keepDaily: 1–60, keepWeekly: 0–52, enabled? }` | `{ configured, enabled, provider, endpoint, region, bucket, pathStyle, prefix, recipient, accessKeyHint, hasSecret, hour, timezone, keepDaily, keepWeekly, failures, nextRun, running, last, lastOk, history }` — the automatic off-server backup (autobackup.ts), owner only (403 otherwise). The keys are sealed and never returned (empty keeps the saved ones); `recipient` is the owner's age public key; DELETE keeps the backups in the bucket |
+| POST | `/settings/backup/test` | same body as PUT (saved keys fill the empty ones), nothing saved | `{ ok, steps: ["write","read","list","delete"] }`; 502 with the step and the storage's reason |
+| POST | `/settings/backup/run` | – | 202 `{ started, id, view }` — "Sauvegarder maintenant" (background); 409 while one runs or before set-up |
+| GET | `/settings/backup/remote` | – | `{ backups: [{ name, size, at }] }` — the archives in the bucket, newest first |
 | GET | `/events` | – | SSE stream of `ServerEvent` |
 | GET | `/health` | – | `{ ok, model }` |
 | GET | `/models` | – | `{ models: ModelOption[], defaultRef }` |

@@ -104,6 +104,8 @@ test("setup: A owns one of everything, V is a viewer of A's workspace with bot1 
   ins("INSERT INTO user_providers (id, user_id, name, base_url, key_enc, created_at, updated_at) VALUES ('up-alpha', ?, 'ALPHASECRET provider', 'https://llm.example.com', ?, ?, ?)", userA, seal("ALPHASECRET key"), t, t);
   ins("INSERT INTO shared_computers (id, user_id, name, created_at) VALUES ('a_shared', ?, 'ALPHASECRET shared', ?)", userA, t);
   ins("INSERT INTO policies (user_id, tool, mode) VALUES (?, 'web_fetch', 'ask')", userA);
+  // The instance's automatic backup (autobackup.ts), set by A, the owner: bucket keys sealed, owner-only routes.
+  ins("INSERT INTO instance_backup (id, endpoint, region, bucket, access_key_enc, secret_key_enc, prefix, recipient, updated_at, updated_by) VALUES (1, 'https://s3.gra.io.cloud.ovh.net', 'gra', 'alphasecret-bucket', ?, ?, 'alphasecret/', 'age1zvkyg2lqzraa2lnjvqej32nkuu0ues2s82hzrye869xeexvn73equnujwj', ?, ?)", seal("ALPHASECRET-AK"), seal("ALPHASECRET-SK"), t, userA);
   // The workspace: V is a viewer, bot1 is shared with everyone of it, bot2 is not shared.
   ids.ws = (await A("POST", "/workspaces", { name: "ALPHASECRET Studio" })).json.workspace.id;
   const inv = (await A("POST", `/workspaces/${ids.ws}/invites`, { email: "vera@example.com", role: "viewer" })).json.invite;
@@ -331,6 +333,24 @@ test("events (SSE): B receives nothing of A, V nothing about the unshared bot", 
   assert.ok(!gotV.includes(ids.bot2) && !leakIn(gotV.replace(/"[^"]*ALPHASECRET One[^"]*"/g, "")), `V got: ${gotV.slice(0, 300)}`);
 });
 
+test("the automatic backup's routes (owner only): B and V get 403 on every one, and nothing of A's settings", async () => {
+  const problems: string[] = [];
+  const routes = discover().filter((r) => r.app === api && r.path.startsWith("/settings/backup"));
+  assert.ok(routes.length >= 6, `found ${routes.length} backup routes`);
+  for (const who of ["b", "v"] as const) {
+    for (const r of routes) {
+      const res = await call(api, who, methodOf(r.method), fill(r.path, "bot1"), { endpoint: "https://x.example", bucket: "abc-bucket", region: "x", accessKey: "k", secretKey: "s", recipient: "age1zvkyg2lqzraa2lnjvqej32nkuu0ues2s82hzrye869xeexvn73equnujwj", hour: 3, timezone: "UTC", keepDaily: 1, keepWeekly: 0 });
+      if (res.status !== 403 || leakIn(res.text)) problems.push(`${who} ${r.key} → ${res.status} ${res.text.slice(0, 120)}`);
+    }
+  }
+  assert.deepEqual(problems, []);
+  // A sees the settings, never the keys.
+  const mine = await A("GET", "/settings/backup");
+  assert.equal(mine.status, 200);
+  assert.equal(mine.json.bucket, "alphasecret-bucket");
+  assert.ok(!mine.text.includes("ALPHASECRET-SK") && !mine.text.includes("ALPHASECRET-AK"));
+});
+
 test("A's things are all still there (nothing B or V tried changed them)", async () => {
   const n = (sql: string, ...p: string[]) => q.get<{ n: number }>(sql, ...p)!.n;
   assert.equal(n("SELECT COUNT(*) AS n FROM bots WHERE user_id = ? AND kind = 'agent' AND name LIKE 'ALPHASECRET%'", userA), 2);
@@ -347,4 +367,5 @@ test("A's things are all still there (nothing B or V tried changed them)", async
   assert.equal(n("SELECT COUNT(*) AS n FROM policies WHERE user_id = ?", userA), 1);
   assert.equal(n("SELECT COUNT(*) AS n FROM shared_computers WHERE id = 'a_shared'"), 1);
   assert.equal(q.get<{ name: string }>("SELECT name FROM workspaces WHERE id = ?", ids.ws)!.name, "ALPHASECRET Studio");
+  assert.equal(q.get<{ bucket: string }>("SELECT bucket FROM instance_backup WHERE id = 1")?.bucket, "alphasecret-bucket");
 });

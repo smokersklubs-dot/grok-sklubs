@@ -5,6 +5,8 @@ import type { Locale } from "./shared.js";
  * English is the key; French is looked up here. Anything missing falls back to English.
  */
 const FR: Record<string, string> = {
+  // The in-app automatic backup (autobackup.ts).
+  "The automatic backup failed {n} times in a row: {detail}": "La sauvegarde automatique a échoué {n} fois de suite : {detail}", "Backup failed": "Sauvegarde en échec",
   // Goal mode (agent/goals.ts).
   "Goal: {objective}": "Objectif : {objective}", "replaced by a new goal": "remplacé par un nouvel objectif", "the conversation was reset": "la conversation a été remise à zéro",
   "the last round failed: {detail}": "le dernier tour a échoué : {detail}", "this month's budget is used up": "le budget du mois est épuisé",

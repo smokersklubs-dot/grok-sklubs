@@ -1,7 +1,14 @@
 # Sauvegarder et restaurer Sklubot (VPS et Coolify)
 
-Une sauvegarde qu'on n'a jamais restaurée n'est pas une sauvegarde. Sklubot fournit trois scripts, à lancer **sur la
-machine qui fait tourner Docker** (le VPS, ou le serveur que Coolify pilote, en SSH) :
+Une sauvegarde qu'on n'a jamais restaurée n'est pas une sauvegarde. Deux façons, complémentaires :
+
+- **la sauvegarde automatique de l'application** (Réglages → Compte → « Sauvegarde automatique ») : se règle depuis
+  un téléphone, sans SSH, et envoie chaque nuit une copie **chiffrée** hors du serveur, vers un stockage S3
+  (OVHcloud, Hetzner, Scaleway…). Elle ne contient pas les ordinateurs des bots (voir [plus bas](#sauvegarde-automatique-depuis-lapplication-sans-ssh)) ;
+- **les scripts** ci-dessous, en SSH sur la machine : sauvegarde complète, ordinateurs des bots compris.
+
+Sklubot fournit trois scripts, à lancer **sur la machine qui fait tourner Docker** (le VPS, ou le serveur que Coolify
+pilote, en SSH) :
 
 | Script | Rôle |
 |---|---|
@@ -143,11 +150,129 @@ nom que Coolify lui donne) et lisent les secrets dans son environnement (les var
 5. Restaurer sous Coolify : arrête l'application dans Coolify, `SKLUBOT_RESTORE_YES=OUI bash deploy/restore.sh <archive>`
    en SSH, remets le même `SKLUBOT_SESSION_SECRET` dans les variables Coolify, puis redémarre depuis Coolify.
 
+## Sauvegarde automatique depuis l'application (sans SSH)
+
+Réglages → **Compte** → **Sauvegarde automatique** (visible du seul propriétaire du serveur : le premier compte créé).
+Chaque nuit à l'heure choisie (dans ton fuseau horaire ; rattrapée dans les 6 heures si le serveur était arrêté), et
+quand tu appuies sur **Sauvegarder maintenant**, Sklubot :
+
+1. copie la base de façon cohérente (`VACUUM INTO`, dans un fil à part : l'application continue de répondre) ;
+2. met en archive (tar, au fil de l'eau) la copie de la base, le dossier de données et les **secrets** du conteneur
+   (`SESSION_SECRET`, clés d'API… : sans eux, coffre et connexions ne se rouvrent pas) ;
+3. compresse (gzip) et **chiffre** l'archive avant qu'elle ne quitte le serveur ([format age v1](https://age-encryption.org/v1),
+   destinataire X25519) ;
+4. l'envoie en plusieurs morceaux (envoi « multipart » S3 : un seul morceau de 16 Mo en mémoire à la fois ; fichiers
+   temporaires seulement dans `DATA_DIR/.backup-app-tmp`, effacés après) ;
+5. supprime les anciennes : garde les **N plus récentes** et la plus récente de chacune des **M semaines** d'avant (les
+   autres fichiers du bucket ne sont jamais touchés) ;
+6. écrit son résultat dans `backup-status.json` (le même que lit `/api/health` : `backup_old` après 26 h,
+   `backup_failed` après un échec). **Deux échecs de suite** : un message dans ta conversation principale et une
+   notification sur ton téléphone.
+
+Une seule sauvegarde à la fois, en arrière-plan ; chaque requête vers le stockage a un délai maximal, la sauvegarde
+entière aussi (`AUTO_BACKUP_TIMEOUT_HOURS`, 6 h). Taille des morceaux : `AUTO_BACKUP_PART_MB` (16, minimum 5).
+
+**Contenu de l'archive** `sklubot-auto-AAAAMMJJ-HHMMSS.tar.gz.age` (heure UTC) : `manifest.json` (format 3, comptes de
+lignes comme celles de `backup.sh`), `secrets.env`, `db.sqlite`, `data/…` (bibliothèques des bots, dossiers d'équipe,
+profils de navigateur sans leurs caches, enregistrements…), puis `SHA256SUMS`. Laissés de côté : les fichiers vivants
+de la base (remplacés par la copie), les copies `db-snapshots/` et d'avant migration, `botlink/` (prises des bots),
+`desk-test/`, les caches des navigateurs.
+
+**Pas dedans : les ordinateurs des bots** (volumes `sklubot-home-*`). Le conteneur de l'application ne les voit pas, et
+ne doit pas les voir (il n'a accès à Docker qu'à travers le proxy filtrant). Après une restauration, les installations
+et les connexions faites sur ces ordinateurs (Claude Code, Codex…) sont à refaire. `deploy/backup.sh` (SSH) les inclut :
+les deux se complètent.
+
+### La clé : pourquoi une paire de clés et pas une phrase de passe
+
+Le serveur doit chiffrer la nuit, sans toi. Avec une phrase de passe, il devrait la garder lisible (scellée avec
+`SESSION_SECRET`) : qui prend le serveur aurait à la fois les accès au stockage **et** de quoi lire toutes les
+sauvegardes. Ici, ton navigateur fabrique une paire de clés age (WebCrypto X25519) : la **clé privée**
+(`AGE-SECRET-KEY-1…`) t'est donnée à télécharger et ne quitte jamais ton appareil ; le serveur ne reçoit que la **clé
+publique** (`age1…`), qui sait chiffrer mais pas déchiffrer. Ni le fournisseur du stockage, ni quelqu'un qui volerait
+les clés du bucket ou le serveur lui-même ne peut lire les sauvegardes. En contrepartie : **sans la clé privée, personne
+ne peut restaurer.** Garde le fichier dans un gestionnaire de mots de passe et sur un second support. Tu peux aussi
+coller la clé publique d'une clé faite avec `age-keygen` (la même que `SKLUBOT_BACKUP_AGE_RECIPIENT`).
+
+Les clés d'accès du bucket sont chiffrées dans la base (`seal`, avec `SESSION_SECRET`) et ne sont jamais renvoyées au
+navigateur. Donne de préférence une clé qui n'a accès qu'à ce bucket.
+
+### Régler depuis un téléphone
+
+**OVHcloud** ([premiers pas](https://docs.ovhcloud.com/fr/guides/storage-and-backup/object-storage/s3-getting-started-with-object-storage),
+[adresses par région](https://docs.ovhcloud.com/fr/guides/storage-and-backup/object-storage/s3-location)) — adresse
+`https://s3.<région>.io.cloud.ovh.net` (ex. `gra`, `rbx`, `sbg`, `eu-west-par`, `de`, `uk`, `waw`…) :
+1. Espace client → Public Cloud → ton projet → Stockage → **Object Storage** ;
+2. onglet **Utilisateurs** : crée un utilisateur Object Storage ; note la clé d'accès et la clé secrète (bouton `…` →
+   *Afficher la clé secrète*) ;
+3. onglet **Conteneurs** → *Créer un conteneur d'objets* : type *API compatible S3*, nom en minuscules
+   (ex. `sklubot-sauvegardes`), région, associe l'utilisateur, *Créer*.
+
+**Hetzner** ([créer un bucket](https://docs.hetzner.com/storage/object-storage/getting-started/creating-a-bucket),
+[créer les clés](https://docs.hetzner.com/storage/object-storage/getting-started/generating-s3-keys)) — adresse
+`https://<emplacement>.your-objectstorage.com` (`fsn1`, `nbg1`, `hel1`) :
+1. Hetzner Console → ton projet → **Object Storage** → *Create Bucket* : emplacement, nom unique, visibilité *private* ;
+2. **Security** → onglet **S3 Credentials** → *Generate credentials* ; copie tout de suite les deux clés (la clé
+   secrète n'est affichée qu'une fois).
+
+**Scaleway** ([créer un bucket](https://www.scaleway.com/fr/docs/object-storage/how-to/create-a-bucket/),
+[clés d'API](https://www.scaleway.com/en/docs/iam/how-to/create-api-keys/), [adresses](https://www.scaleway.com/en/docs/object-storage/concepts/))
+— adresse `https://s3.<région>.scw.cloud` (`fr-par`, `nl-ams`, `pl-waw`, `it-mil`) :
+1. Console → **Object Storage** → *+ Create bucket* : région, nom, *Private* ;
+2. menu du compte → **IAM & API keys** → onglet *API keys* → *+ Generate API key* ; pour Object Storage, choisis le
+   projet du bucket comme projet préféré ; copie les deux clés (la secrète n'est affichée qu'une fois).
+
+Puis dans Sklubot : **1.** *Créer ma clé de sauvegarde* → télécharge le fichier → coche « J'ai enregistré… » → *Utiliser
+cette clé* ; **2.** fournisseur, région, nom du bucket, clé d'accès, clé secrète → *Tester la connexion* (écrit, relit,
+liste et supprime un petit fichier) ; **3.** heure et nombre à garder → *Enregistrer* → *Sauvegarder maintenant*.
+Les trois fournisseurs documentent l'adressage « virtual-hosted » (`https://<bucket>.<adresse>`), utilisé par défaut ;
+pour un autre stockage (MinIO…), « Autre stockage compatible S3 » propose l'adressage de type chemin.
+
+### Restaurer une sauvegarde automatique
+
+Il faut : le fichier de la clé privée, les accès au bucket, et un serveur où Sklubot est installé (même vide). Les
+commandes tournent **dans l'image de Sklubot** (elle contient Node et l'outil) ; aucune n'a besoin d'`age`, mais
+`age -d -i cle.txt <archive>` marche aussi (format standard).
+
+1. Télécharger et vérifier la dernière sauvegarde (déchiffrement complet + empreintes de chaque fichier). Les accès au
+   bucket passent par l'environnement, pas par la ligne de commande :
+   ```bash
+   mkdir -p /root/restauration && cp cle.txt /root/restauration/ && chmod 600 /root/restauration/cle.txt
+   docker run --rm -v /root/restauration:/r \
+     -e SKLUBOT_S3_ENDPOINT=https://s3.gra.io.cloud.ovh.net -e SKLUBOT_S3_REGION=gra \
+     -e SKLUBOT_S3_BUCKET=sklubot-sauvegardes -e SKLUBOT_S3_PREFIX=sklubot/ \
+     -e SKLUBOT_S3_ACCESS_KEY -e SKLUBOT_S3_SECRET_KEY \
+     sklubot-server node server/dist/backupcheck.js restore-from-s3 --identity /r/cle.txt --out /r
+   ```
+   (exporte d'abord `SKLUBOT_S3_ACCESS_KEY` et `SKLUBOT_S3_SECRET_KEY` dans le terminal ; `--name sklubot-auto-….tar.gz.age`
+   pour une autre que la dernière ; `s3-list` les liste ; sous Coolify, l'image est celle du conteneur Sklubot).
+2. Exercice sans risque, dans une copie isolée sans réseau :
+   `SKLUBOT_BACKUP_AGE_IDENTITY=/root/restauration/cle.txt bash deploy/restore-drill.sh /root/restauration/sklubot-auto-….tar.gz.age`
+3. Vraie restauration (Sklubot arrêté sous Coolify) :
+   `SKLUBOT_BACKUP_AGE_IDENTITY=/root/restauration/cle.txt bash deploy/restore.sh /root/restauration/sklubot-auto-….tar.gz.age`
+   — l'archive est entièrement vérifiée **avant** que les données soient remplacées ; les volumes des ordinateurs des
+   bots sont laissés tels quels. Remets le même `SESSION_SECRET` que la sauvegarde (le script affiche la commande pour
+   le relire), puis redémarre. La sauvegarde automatique reprend seule (ses réglages sont dans la base).
+
+Sans scripts ni Docker Compose (n'importe quel serveur avec l'image) : `node server/dist/backupcheck.js extract
+--identity cle.txt <archive> <dossier de données vide> --meta <dossier hors des données>` restaure le dossier de
+données et écrit `manifest.json` et `secrets.env` (droits 600) dans le dossier `--meta`. `verify` vérifie sans rien
+écrire, `decrypt` donne le `.tar.gz` en clair.
+
 ## Vérifié
 
 - Automatique (`server/test/backup-drill.test.ts`, avec le Docker de la machine et une image Sklubot ; ignoré sans
   elles, par exemple dans la CI qui ne construit que l'image des ordinateurs) : base copiée pendant que l'application
   tourne, un ordinateur, secrets chiffrés avec une phrase de passe, rotation, puis exercice : empreintes, démarrage,
   `/api/health`, comptes identiques, valeur du coffre déchiffrée ; avec une mauvaise phrase, l'exercice échoue.
+- Automatique, sauvegarde de l'application (`server/test/auto-backup.test.ts`, avec un faux stockage S3 local qui
+  vérifie chaque signature) : signature V4 contrôlée sur les exemples de la documentation AWS ; fichiers age ouverts
+  par l'outil `age` officiel et inversement ; clé du navigateur valide pour `age-keygen` ; réglages réservés au
+  propriétaire, clés jamais renvoyées ; envoi en plusieurs morceaux, interrompu proprement si le stockage tombe ;
+  archive ouverte par `age` et `tar`, `sha256sum -c` vert, exclusions respectées ; restauration par `restore-from-s3`
+  dans un dossier vide : base intègre, comptes identiques, valeur du coffre rouverte avec le `SESSION_SECRET` de
+  l'archive ; un octet changé ou une mauvaise clé sont refusés ; rotation ; alerte après deux échecs ; planning dans le
+  fuseau du propriétaire ; et, avec Docker et une image à jour (`SKLUBOT_TEST_APP_IMAGE`), `deploy/restore-drill.sh`
+  sur l'archive : copie isolée démarrée, `/api/health`, comptes, valeur scellée.
 - Manuel (version précédente) : installation de test (2 bots, 7 ordinateurs), données supprimées, restauration :
   empreinte de tous les fichiers identique, `PRAGMA integrity_check` = ok, connexions des ordinateurs retrouvées.

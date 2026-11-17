@@ -15,6 +15,7 @@ import { closeAllBotLinks, initBotLinks } from "./botlink.js";
 import { membersOf, sharedComputers } from "./sharedcomputers.js";
 import { startDiskWatchdog } from "./diskwatch.js";
 import { startScheduler } from "./scheduler.js";
+import { startAutoBackup } from "./autobackup.js";
 import { startHealthChecks } from "./health.js";
 import { attachLiveScreens } from "./vnc.js";
 import { relayUpgrade } from "./relay.js";
@@ -82,6 +83,7 @@ if (lapsed) console.log(`${lapsed} approval(s) left from before the restart are 
 const uncertain = sweepUncertain();
 if (uncertain) console.log(`${uncertain} action(s) cut off by the restart are marked uncertain.`);
 startScheduler();
+startAutoBackup();
 startHealthChecks();
 // M2: the disk watchdog (DISK_FREE_MIN_MB; Linux computers only).
 startDiskWatchdog();

@@ -92,6 +92,7 @@ import { SharedComputerInUseError } from "./linux.js";
 import { sharedComputers, sharedHolder, SharedLimitError } from "./sharedcomputers.js";
 import { ownerId, registerGooglePrivate, registerGooglePublic, type GoogleDeps } from "./googlelogin.js";
 import { dropResetLinks, registerAccountMailPrivate, registerAccountMailPublic } from "./accountmail.js";
+import { registerAutoBackupRoutes } from "./autobackup.js";
 import { createGoal, goalAction, GoalError, goalCommand, goals, pauseGoalsOf } from "./agent/goals.js";
 import { publicJobs, stopJob } from "./jobs.js";
 import { healthReport } from "./monitor.js";
@@ -1213,6 +1214,8 @@ api.delete("/pages/:token", (c) => {
 // ── Account and data ─────────────────────────────────────────────────────────
 registerGooglePrivate(api, googleDeps);
 registerAccountMailPrivate(api, googleDeps);
+// "Sauvegarde automatique" (autobackup.ts): the owner's off-server backup to S3-compatible storage.
+registerAutoBackupRoutes(api, googleDeps);
 api.put("/account/password", async (c) => {
   const user = c.get("user");
   const b = await body(c);

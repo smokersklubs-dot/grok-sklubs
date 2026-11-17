@@ -1,0 +1,34 @@
+/* Settings → Account → "Sauvegarde automatique" (BackupSettings.tsx). Reuses the Google/SMTP settings blocks. */
+.backup-settings .callout { font-weight: 500; line-height: 1.45; }
+.backup-homes span { min-width: 0; }
+.backup-status { display: flex; flex-direction: column; gap: 6px; padding: 12px 13px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); }
+.backup-status p { margin: 0; }
+.backup-line { display: flex; align-items: flex-start; gap: 7px; font-size: 13.5px; line-height: 1.45; overflow-wrap: anywhere; }
+.backup-line .icon { flex: none; margin-top: 2px; }
+.backup-line.is-ok .icon { color: var(--ok); }
+.backup-line.is-bad { color: var(--danger); }
+.backup-spinner { flex: none; width: 13px; height: 13px; margin-top: 3px; border-radius: 50%; border: 2px solid var(--border); border-top-color: var(--text); animation: backup-spin 0.9s linear infinite; }
+@keyframes backup-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .backup-spinner { animation: none; } }
+.backup-actions { flex-wrap: wrap; }
+.backup-remote, .backup-history { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.backup-remote li, .backup-history li { display: flex; flex-direction: column; gap: 1px; min-width: 0; padding: 6px 0; border-top: 1px solid var(--border); }
+.backup-remote-name { font-family: var(--font-mono, ui-monospace, monospace); font-size: 12px; overflow-wrap: anywhere; }
+.backup-history li.is-bad .small { color: var(--danger); overflow-wrap: anywhere; }
+.backup-step { display: flex; align-items: center; gap: 8px; margin: 6px 0 0; font-weight: 600; font-size: 13.5px; }
+.backup-step-n { display: inline-grid; place-items: center; width: 22px; height: 22px; flex: none; border-radius: 50%; background: var(--ink, var(--text)); color: var(--bg, #fff); font-size: 12px; font-weight: 700; }
+.backup-key { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.backup-key p { margin: 0; line-height: 1.45; }
+.backup-key.is-new { padding: 12px 13px; border-radius: var(--r-md); background: var(--warn-soft); }
+.backup-pub, .backup-secret, .backup-cmd { display: block; max-width: 100%; padding: 7px 9px; border-radius: var(--r-sm, 6px); background: var(--surface); border: 1px solid var(--border); font-size: 12px; overflow-wrap: anywhere; word-break: break-all; }
+.backup-secret { font-weight: 600; user-select: all; }
+.backup-key-actions { justify-content: flex-start; flex-wrap: wrap; }
+.backup-check { align-items: flex-start; align-self: stretch; padding: 2px 0; line-height: 1.4; }
+.backup-check input { margin-top: 2px; flex: none; }
+.backup-paste { padding-left: 0; }
+.backup-keep { display: flex; gap: 10px; flex-wrap: wrap; }
+.backup-keep label { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-2); }
+.backup-keep .input { width: 58px; text-align: center; }
+.backup-settings .google-actions { flex-wrap: wrap; }
+.backup-key-label { display: flex; align-items: flex-start; gap: 6px; }
+.backup-key-label .icon { flex: none; margin-top: 2px; }
