@@ -46,3 +46,4 @@ keystore.properties
 /dist/*.apk
 /dist/*.aab
 /dist/*.idsig
+/e2e-out

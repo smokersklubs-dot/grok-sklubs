@@ -1,0 +1,25 @@
+# Étape 4 : mettre l'appli en arrière-plan puis la rouvrir, faire pivoter l'écran, puis la fermer complètement et
+# la relancer : elle doit revenir connectée (session gardée) sans planter.
+appId: ${APP_ID}
+---
+- pressKey: home
+- takeScreenshot: 09-arriere-plan
+- launchApp:
+    stopApp: false
+- extendedWaitUntil:
+    visible: ".*mode démo.*"
+    timeout: 30000
+- takeScreenshot: 10-retour-premier-plan
+- setOrientation: LANDSCAPE_LEFT
+- takeScreenshot: 11-paysage
+- setOrientation: PORTRAIT
+- assertVisible: ".*mode démo.*"
+- stopApp
+- launchApp:
+    stopApp: true
+- extendedWaitUntil:
+    visible: "Juno"
+    timeout: 60000
+- assertNotVisible:
+    id: "server-url"
+- takeScreenshot: 12-relance-toujours-connecte

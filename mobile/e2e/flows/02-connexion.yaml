@@ -1,0 +1,31 @@
+# Étape 2 : adresse du serveur de test (l'ordinateur qui fait tourner l'émulateur = 10.0.2.2), puis connexion
+# avec le compte créé par le workflow. Jusqu'à l'écran des bots.
+appId: ${APP_ID}
+---
+- tapOn:
+    id: "server-url"
+- eraseText: 60
+- inputText: ${SERVER_URL}
+- takeScreenshot: 03-adresse-saisie
+- hideKeyboard
+- tapOn: "Continuer"
+- extendedWaitUntil:
+    visible:
+      id: "signin-email"
+    timeout: 30000
+- takeScreenshot: 04-ecran-connexion
+- tapOn:
+    id: "signin-email"
+- inputText: ${E2E_EMAIL}
+- tapOn:
+    id: "signin-password"
+- inputText: ${E2E_PASSWORD}
+- takeScreenshot: 05-identifiants-saisis
+# Le clavier « OK/Go » envoie le formulaire (onSubmitEditing), comme le bouton Se connecter.
+- pressKey: enter
+- extendedWaitUntil:
+    visible: "Juno"
+    timeout: 60000
+- assertNotVisible:
+    id: "signin-password"
+- takeScreenshot: 06-liste-des-bots

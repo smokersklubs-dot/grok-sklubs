@@ -1,0 +1,16 @@
+# Étape 3 : ouvrir la discussion avec le bot, envoyer un message, attendre la réponse du serveur (mode démo).
+appId: ${APP_ID}
+---
+- tapOn: "Juno"
+- extendedWaitUntil:
+    visible: "Écris à Juno.*"
+    timeout: 30000
+- takeScreenshot: 07-discussion-ouverte
+- tapOn: "Écris à Juno.*"
+- inputText: "Bonjour, test automatique"
+- tapOn: "Envoyer le message"
+- extendedWaitUntil:
+    visible: ".*mode démo.*"
+    timeout: 90000
+- hideKeyboard
+- takeScreenshot: 08-reponse-du-bot

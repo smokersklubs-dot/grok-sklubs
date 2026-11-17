@@ -62,7 +62,7 @@ export function ServerScreen() {
       <View style={[styles.card, { backgroundColor: c.surface, borderColor: c.border }]}>
         <Text accessibilityRole="header" style={[styles.title, { color: c.text }]}>{t("server.title")}</Text>
         <Text style={{ color: c.text2, fontSize: 15, lineHeight: 21 }}>{t("server.intro")}</Text>
-        <Field label={t("server.label")} value={value} onChangeText={setValue} autoCapitalize="none" autoCorrect={false} keyboardType="url" returnKeyType="go" onSubmitEditing={submit} textContentType="URL" />
+        <Field testID="server-url" label={t("server.label")} value={value} onChangeText={setValue} autoCapitalize="none" autoCorrect={false} keyboardType="url" returnKeyType="go" onSubmitEditing={submit} textContentType="URL" />
         <ErrorNote>{error}</ErrorNote>
         <Button label={busy ? t("server.check") : t("server.connect")} busy={busy} onPress={submit} />
       </View>
@@ -116,8 +116,8 @@ export function SignInScreen() {
       <View style={[styles.card, { backgroundColor: c.surface, borderColor: c.border }]}>
         <Text accessibilityRole="header" style={[styles.title, { color: c.text }]}>{t(creating ? "signin.create" : "signin.signIn")}</Text>
         {creating ? <Field label={t("signin.name")} value={name} onChangeText={setName} placeholder={t("signin.namePlaceholder")} autoComplete="name" maxLength={80} /> : null}
-        <Field label={t("signin.email")} value={email} onChangeText={setEmail} placeholder={t("signin.emailPlaceholder")} autoCapitalize="none" autoComplete="email" keyboardType="email-address" textContentType="emailAddress" returnKeyType="next" onSubmitEditing={() => pwRef.current?.focus()} />
-        <Field ref={pwRef} label={t("signin.password")} value={password} onChangeText={setPassword} secureTextEntry autoComplete={creating ? "new-password" : "current-password"} textContentType={creating ? "newPassword" : "password"} hint={creating ? t("signin.passwordHint") : undefined} returnKeyType="go" onSubmitEditing={submit} />
+        <Field testID="signin-email" label={t("signin.email")} value={email} onChangeText={setEmail} placeholder={t("signin.emailPlaceholder")} autoCapitalize="none" autoComplete="email" keyboardType="email-address" textContentType="emailAddress" returnKeyType="next" onSubmitEditing={() => pwRef.current?.focus()} />
+        <Field ref={pwRef} testID="signin-password" label={t("signin.password")} value={password} onChangeText={setPassword} secureTextEntry autoComplete={creating ? "new-password" : "current-password"} textContentType={creating ? "newPassword" : "password"} hint={creating ? t("signin.passwordHint") : undefined} returnKeyType="go" onSubmitEditing={submit} />
         {creating && setupCodeRequired ? <Field label={t("signin.setupCode")} value={setupCode} onChangeText={setSetupCode} autoCapitalize="none" autoCorrect={false} hint={t("signin.setupCodeHint")} /> : null}
         {creating ? (
           <View style={{ gap: 12 }}>

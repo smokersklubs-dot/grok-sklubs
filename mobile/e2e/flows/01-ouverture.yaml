@@ -1,0 +1,15 @@
+# Étape 1 : l'appli s'ouvre (données effacées) et montre son premier écran, l'adresse du serveur.
+# Syntaxe Maestro : https://docs.maestro.dev/api-reference/commands
+appId: ${APP_ID}
+---
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible:
+      id: "server-url"
+    timeout: 60000
+- takeScreenshot: 01-premier-ecran
+# Interface en français, quelle que soit la langue de l'émulateur.
+- tapOn: "Français"
+- assertVisible: "Ton serveur Sklubot"
+- takeScreenshot: 02-premier-ecran-francais
