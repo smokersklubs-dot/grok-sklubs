@@ -160,6 +160,12 @@ export function noticeRows(o: FixtureOptions): Row[] {
     row({ kind: "notice", tone: "error", text: L("La clé OpenAI ne fonctionne plus.", "The OpenAI key no longer works."), action: { kind: "settings", section: "keys" } }, at + 7),
     row({ kind: "notice", tone: "error", text: L("Le budget IA du mois est épuisé.", "This month's AI budget is used up."), action: { kind: "plan", reason: "budget", resetAt: NOW + 9 * 24 * HOUR } }, at + 8),
     row({ kind: "notice", tone: "error", text: L("Juno est en pause : ton message attend.", "Juno is paused: your message is waiting.") }, at + 9),
+    // The subscription at its usage limit (server/src/agent/sublimit.ts): to the backup, waiting with the reminder, back.
+    row({ kind: "notice", tone: "info", text: L("Ton abonnement Claude est à sa limite jusqu'à 18:40 : je passe par DeepSeek Chat.", "Your Claude subscription is at its limit until 18:40: I am using DeepSeek Chat.") }, at + 10),
+    row({ kind: "notice", tone: "warn", text: LONG(L("Ton abonnement Claude est à sa limite jusqu'à 18:40. Je n'ai pas de modèle de secours : ton travail attend ici et je le reprends dès que l'abonnement revient.", "Your Claude subscription is at its limit until 18:40. I have no backup model, so your work waits here and I will pick it up as soon as the subscription is back.")), action: { kind: "sublimit", engine: "claude-code", until: NOW + 2 * HOUR, notify: true, status: "waiting" } }, at + 11),
+    row({ kind: "notice", tone: "warn", text: L("Ton abonnement ChatGPT est à sa limite jusqu'à 21:05. Je n'ai pas de modèle de secours : ton travail attend ici et je le reprends dès que l'abonnement revient.", "Your ChatGPT subscription is at its limit until 21:05. I have no backup model, so your work waits here and I will pick it up as soon as the subscription is back."), action: { kind: "sublimit", engine: "codex", until: NOW + 4 * HOUR, notify: false, status: "waiting" } }, at + 12),
+    row({ kind: "notice", tone: "warn", text: L("Ton abonnement Claude est à sa limite jusqu'à 14:10. Je n'ai pas de modèle de secours : ton travail attend ici et je le reprends dès que l'abonnement revient.", "Your Claude subscription is at its limit until 14:10. I have no backup model, so your work waits here and I will pick it up as soon as the subscription is back."), action: { kind: "sublimit", engine: "claude-code", until: NOW - HOUR, notify: true, status: "back" } }, at + 13),
+    row({ kind: "notice", tone: "info", text: L("Ton abonnement Claude est de nouveau disponible. Je reprends ce qui attendait.", "Your Claude subscription is available again. I am picking up what was waiting.") }, at + 14),
   ];
 }
 
@@ -199,6 +205,10 @@ export function sentinelOverview(o: FixtureOptions, empty: boolean): SentinelOve
   for (const i of open) counts[i.severity]++;
   return {
     incidents: open, history, counts, everyMin: 10, nextScanAt: NOW + 7 * MIN,
+    limits: empty ? [] : [
+      { engine: "claude-code", until: NOW + 2 * HOUR, since: NOW - 3 * HOUR, source: "event", bots: 2, queued: 1, account: null },
+      { engine: "codex", until: NOW + 50 * MIN, since: NOW - 10 * MIN, source: "default", bots: 1, queued: 0, account: "marie@example.com" },
+    ],
     lastScan: { at: NOW - 3 * MIN, durationMs: 420, opened: open.length, resolved: 0, detectors: [
       { name: "routine_failures", ok: true, ms: 12 }, { name: "disk_low", ok: true, ms: 3 }, { name: "docker", ok: false, ms: 2000, error: "timeout" }, { name: "hosted_budget", ok: true, ms: 0, skipped: true },
     ] },
@@ -218,6 +228,7 @@ export function todayReport(o: FixtureOptions, empty: boolean): TodayReport {
   const link = { kind: "bot" as const, botId: GALLERY_BOT_ID };
   return {
     date: start.toISOString().slice(0, 10), timezone: Intl.DateTimeFormat().resolvedOptions().timeZone, start: s, end: s + 24 * HOUR, today: true, generatedAt: NOW,
+    limits: empty ? [] : [{ engine: "claude-code", until: NOW + 2 * HOUR, since: NOW - 3 * HOUR, source: "event", bots: 2, queued: 1 }],
     needs: empty ? [] : [
       { kind: "approval", botId: GALLERY_BOT_ID, botName: "Juno", title: LONG(L("Envoyer l'e-mail « Devis mars » à Claire", "Send the “March quote” email to Claire")), detail: "Gmail", at: NOW - 12 * MIN, link },
       { kind: "cap", botId: GALLERY_BOT_ID, botName: "Juno", title: L("Plafond du jour atteint", "Daily cap reached"), detail: "5,00 $", at: NOW - 40 * MIN, link },

@@ -5,7 +5,7 @@ import { Readable } from "node:stream";
 import { Hono, type Context } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { streamSSE } from "hono/streaming";
-import { chooseWatch, WatchChoiceRefused } from "./agent/watch.js";
+import { registerNoticeRoutes } from "./agent/noticeroutes.js";
 import { continueAfterStepLimit, decideApproval, enqueue, inQueue, interrupt, noteHandBack, submitUserMessage, type ForcedSkill } from "./agent/loop.js";
 import { cleanProfile, fetchSkillMarkdown, saveImportedSkill, undoRevision } from "./agent/tools-team.js";
 import { xSearchProvider } from "./xsearch.js";
@@ -915,20 +915,6 @@ api.post("/bots/:id/rows/:seq/continue", (c) => {
   return c.json({ ok: true });
 });
 
-/**
- * A choice under a notice of the turn watch (agent/watch.ts): "wait", "switch" (this message goes on with the next model
- * of the bot's chain) or "stop" (stopped after no progress, and picked back up).
- */
-api.post("/bots/:id/rows/:seq/watch", async (c) => {
-  const bot = ownAgent(c);
-  const body = await c.req.json().catch(() => ({})) as { choice?: unknown };
-  const choice = body.choice;
-  if (choice !== "wait" && choice !== "switch" && choice !== "stop") fail(400, "choice must be wait, switch or stop.");
-  try { chooseWatch(bot, Number(c.req.param("seq")), choice as "wait" | "switch" | "stop"); }
-  catch (err) { if (err instanceof WatchChoiceRefused) fail(409, err.message); throw err; }
-  return c.json({ ok: true });
-});
-
 /** "Undo" under a line saying the bot changed its own settings (self_update). */
 api.post("/bots/:id/rows/:seq/undo", (c) => {
   const bot = ownAgent(c);
@@ -1335,6 +1321,7 @@ registerAccountMailPrivate(api, googleDeps);
 registerAutoBackupRoutes(api, googleDeps);
 // "Surveillance" (sentinel/): the Sentinelle's incidents and alert settings, for the owner and hosted operators only.
 registerSentinelRoutes(api);
+registerNoticeRoutes(api);
 api.put("/account/password", async (c) => {
   const user = c.get("user");
   const b = await body(c);

@@ -15,6 +15,7 @@ import { botApiKeys } from "./011-bot-api-keys.js";
 import { sentinel } from "./012-sentinel.js";
 import { publicSignup } from "./013-public-signup.js";
 import { emailGate } from "./014-email-gate.js";
+import { subscriptionLimits } from "./015-subscription-limits.js";
 
 /**
  * Versioned migrations (SK-P0-05). The database's version is SQLite's own `PRAGMA user_version` (0 on a database made
@@ -42,6 +43,7 @@ export const MIGRATIONS: Migration[] = [
   { version: 12, name: "sentinel", up: sentinel },
   { version: 13, name: "public-signup", up: publicSignup },
   { version: 14, name: "email-gate", up: emailGate },
+  { version: 15, name: "subscription-limits", up: subscriptionLimits },
 ];
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;
 

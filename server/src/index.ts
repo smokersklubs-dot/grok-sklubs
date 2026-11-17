@@ -24,6 +24,7 @@ import { attachLiveScreens } from "./vnc.js";
 import { relayUpgrade } from "./relay.js";
 import { closeLeftOpenWatchNotices } from "./agent/watch.js";
 import { expireOrphanApprovals, recoverInterruptedTurns, startJobWatch } from "./agent/loop.js";
+import { startLimitWatch } from "./agent/sublimit.js";
 import { sweepUncertain } from "./agent/executions.js";
 import { telegram } from "./telegram.js";
 import { closeSlackSockets } from "./native/triggers.js";
@@ -100,7 +101,7 @@ startHealthChecks();
 startSentinel();
 // M2: the disk watchdog (DISK_FREE_MIN_MB; Linux computers only).
 startDiskWatchdog();
-if (!config.schedulerOff) { telegram.start(); recoverInterruptedTurns(); startJobWatch(); }
+if (!config.schedulerOff) { telegram.start(); recoverInterruptedTurns(); startJobWatch(); startLimitWatch(); }
 const server = serve({ fetch: app.fetch, port: config.port }, () => {
   const ready = listProviders().filter((p) => p.available()).map((p) => p.label);
   console.log(`Sklubot is running at ${config.publicUrl}`);

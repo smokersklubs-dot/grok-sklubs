@@ -14,6 +14,7 @@ import { buildSystemPrompt } from "./prompt.js";
 import { imageService } from "../images.js";
 import { browserAvailable } from "../computer.js";
 import { noteDiskTrouble } from "../disk.js";
+import { claudeLimitFrom, claudeLimitFromText, codexLimitFrom, noteEngineLimit, type LimitHit } from "./sublimit.js";
 import { callSignal, EngineGone, setEngineSampler, SwitchModel, watchExec, watchOutput, watchProgress, watchTool, watchToolsDone, watchWait, type EngineSample } from "./watch.js";
 
 /**
@@ -522,6 +523,17 @@ class Transcript {
   /** The user moved this message to the next model before the tool said anything ("Switch AI", watch.ts). */
   switched = false;
   lastFailure = "";
+  /** The subscription is at its usage limit (sublimit.ts): until when. Said by the loop, not as a failure notice. */
+  limited: { until: number; engine: Engine } | null = null;
+  /** The tool ended on the plan's usage limit: the account's engine is limited until T, and the turn says nothing itself. */
+  limit(hit: LimitHit, failure: string) {
+    this.endMessage();
+    const engine = engineOf(this.turn.bot.model);
+    this.limited = { until: noteEngineLimit(this.turn.user.id, engine, hit), engine };
+    this.failed = true;
+    this.fatal = true;
+    this.lastFailure = clip(failure, 300);
+  }
 }
 
 const textOf = (content: unknown): string =>
@@ -590,7 +602,11 @@ export const isEngineTimeout = (reason: unknown): reason is EngineTimeout => rea
  * How a subscription turn ended, for a backup model that may take over (loop.ts): `failure` is what the tool said when it
  * failed (empty: it did not); `steps` are the chat rows of what it did meanwhile (never done again by the backup).
  */
-export interface EngineOutcome { failure: string; steps: number[]; /** The user moved this message to the next model before the tool said anything (watch.ts). */ switched?: boolean }
+export interface EngineOutcome {
+  failure: string; steps: number[]; /** The user moved this message to the next model before the tool said anything (watch.ts). */ switched?: boolean;
+  /** The subscription is at its usage limit until `until` (sublimit.ts): the turn did not finish because of it. */
+  limited?: { until: number; engine: Engine };
+}
 
 export async function runEngineTurn(turn: Turn, prompt: string, attachments: Attachment[]): Promise<EngineOutcome> {
   const { bot } = turn;
@@ -667,7 +683,7 @@ async function engineTurnOn(turn: Turn, prompt: string, attachments: Attachment[
     else noteRuntime(bot.id, "ready");
   }
   if (turn.signal.aborted) throw new Error("aborted");
-  return { failure: t.fatal ? t.lastFailure || "the tool failed" : "", steps: t.steps.map((s) => s.seq), ...(t.switched ? { switched: true } : {}) };
+  return { failure: t.fatal ? t.lastFailure || "the tool failed" : "", steps: t.steps.map((s) => s.seq), ...(t.switched ? { switched: true } : {}), ...(t.limited ? { limited: t.limited } : {}) };
 }
 
 /**
@@ -715,6 +731,7 @@ async function claudeTurn(turn: Turn, t: Transcript, prompt: string, token: stri
     ...(resume ? ["--resume", resume] : []),
   ];
   let failure = "", sawResult = false, missingSession = false;
+  let limit: LimitHit | null = null;
   const res = await watchedExec(turn, t, args, { IS_SANDBOX: "1", MCP_TOOL_TIMEOUT: String(TOOL_TIMEOUT_MS) }, "/root/files", prompt, (line) => {
     let e: any;
     try { e = JSON.parse(line); } catch { return; }
@@ -737,7 +754,9 @@ async function claudeTurn(turn: Turn, t: Transcript, prompt: string, token: stri
     } else if (e.type === "rate_limit_event") {
       const w = e.rate_limit_info?.unifiedWindows ?? {};
       noteSubscription(turn.user.id, { engine: "claude-code", fiveHour: w.five_hour?.utilization ?? null, sevenDay: w.seven_day?.utilization ?? null, resetsAt: e.rate_limit_info?.resetsAt ? e.rate_limit_info.resetsAt * 1000 : null, at: Date.now() });
-      if (e.rate_limit_info?.status && e.rate_limit_info.status !== "allowed") failure = tr(turn.user.locale, "Your Claude subscription has reached its usage limit for now. I will be able to continue once it resets.");
+      // Only "rejected" without usage credits is the limit; "allowed_warning" is a warning (sublimit.ts claudeLimitFrom).
+      const hit = claudeLimitFrom(e.rate_limit_info);
+      if (hit) { limit = hit; failure = tr(turn.user.locale, "Your Claude subscription has reached its usage limit for now. I will be able to continue once it resets."); }
     } else if (e.type === "result") {
       sawResult = true;
       const u = e.usage ?? {};
@@ -745,6 +764,7 @@ async function claudeTurn(turn: Turn, t: Transcript, prompt: string, token: stri
       if (e.is_error || (typeof e.result === "string" && NOT_SIGNED_IN.test(e.result) && !turn.spoke)) {
         const msg = String(e.result ?? e.subtype ?? "");
         if (/no conversation found|session.*not found/i.test(msg)) missingSession = true;
+        else if (limit || claudeLimitFromText(msg)) { limit ??= claudeLimitFromText(msg); failure ||= clip(msg, 300); }
         else failure = NOT_SIGNED_IN.test(msg) ? signInHint(turn, "claude-code") : clip(msg, 300);
       }
     }
@@ -752,7 +772,8 @@ async function claudeTurn(turn: Turn, t: Transcript, prompt: string, token: stri
   if (turn.signal.aborted || t.switched) return;
   if (missingSession && !retried) { dropSession(bot.id, turn.generation, "claude-code"); return claudeTurn(turn, t, prompt, token, true); }
   if (!sawResult && !failure) failure = NOT_SIGNED_IN.test(res.stderr) ? signInHint(turn, "claude-code") : clip(res.stderr.trim() || `Claude Code stopped (code ${res.code}).`, 300);
-  if (failure) { t.notice(failure); t.fatal = true; }
+  if (failure && limit) t.limit(limit, failure);
+  else if (failure) { t.notice(failure); t.fatal = true; }
 }
 
 /**
@@ -782,6 +803,7 @@ async function codexTurn(turn: Turn, t: Transcript, prompt: string, system: stri
   ];
   const args = resume ? ["codex", "exec", "resume", ...common, resume, "-"] : ["codex", "exec", ...common, "-"];
   let failure = "", sawEnd = false, missingSession = false, produced = false;
+  let limit: LimitHit | null = null;
   await writeFile(bot.id, SECRET_ENV_FILE, secretEnvFile({ SKLUBOT_MCP_TOKEN: token }));
   const res = await watchedExec(turn, t, args, {}, "/root", prompt, (line) => {
     let e: any;
@@ -814,6 +836,7 @@ async function codexTurn(turn: Turn, t: Transcript, prompt: string, system: stri
       sawEnd = true;
       const msg = String(e.error?.message ?? e.message ?? "Codex stopped.");
       if (resume && CODEX_LOST_SESSION.test(msg)) missingSession = true;
+      else if ((limit ??= codexLimitFrom(msg))) failure ||= clip(msg, 300);
       else failure = NOT_SIGNED_IN.test(msg) ? signInHint(turn, "codex") : clip(msg, 300);
     }
   });
@@ -825,8 +848,9 @@ async function codexTurn(turn: Turn, t: Transcript, prompt: string, system: stri
     return codexTurn(turn, t, prompt, system, token, true);
   }
   if (turn.signal.aborted) return;
-  if (!sawEnd && !failure) failure = NOT_SIGNED_IN.test(res.stderr) ? signInHint(turn, "codex") : clip(res.stderr.trim() || `Codex stopped (code ${res.code}).`, 300);
-  if (failure) { t.notice(failure); t.fatal = true; }
+  if (!sawEnd && !failure) { limit ??= codexLimitFrom(res.stderr); failure = NOT_SIGNED_IN.test(res.stderr) ? signInHint(turn, "codex") : clip(res.stderr.trim() || `Codex stopped (code ${res.code}).`, 300); }
+  if (failure && limit) t.limit(limit, failure);
+  else if (failure) { t.notice(failure); t.fatal = true; }
 }
 
 const signInHint = (turn: Turn, engine: Engine) =>

@@ -312,7 +312,7 @@ export type RowBody =
    * pick the work back up; `reason: "gone"`, the subscription tool's process ended without finishing the turn.
    * "watch": the turn watch (agent/watch.ts), see WatchNoticeAction.
    */
-  | { kind: "notice"; tone: "info" | "warn" | "error"; text: string; action?: { kind: "continue"; status: "pending" | "done"; reason?: "timeout" | "busy" | "gone" } | { kind: "settings"; section: string } | HostedNoticeAction | WatchNoticeAction };
+  | { kind: "notice"; tone: "info" | "warn" | "error"; text: string; action?: { kind: "continue"; status: "pending" | "done"; reason?: "timeout" | "busy" | "gone" } | { kind: "settings"; section: string } | HostedNoticeAction | WatchNoticeAction | SubLimitNoticeAction };
 
 /**
  * The turn watch's notice (agent/watch.ts), at most one of each per turn. `watch`: "silent" — the AI has sent nothing yet
@@ -322,6 +322,13 @@ export type RowBody =
  * "stopped" (stopped, and a continuation queued), "settled" (the work moved again), "over" (the turn ended meanwhile).
  * `next`: the label of the next model of the bot's fallback chain. `engine`: the turn runs on a subscription tool.
  */
+/**
+ * Under the notice "your subscription is at its limit, your work waits" (agent/sublimit.ts): "Me prévenir à la reprise"
+ * (`notify`, on by default: a push when the subscription is back). `status`: "waiting" until `until`, then "back".
+ */
+export interface SubLimitNoticeAction { kind: "sublimit"; engine: Engine; until: number; notify: boolean; status: "waiting" | "back" }
+/** A subscription at its usage limit (agent/sublimit.ts). `source`: "event" (the tool gave the time) or "default" (1 h, looked at again). `account`: another account's e-mail (Surveillance). */
+export interface SubscriptionLimitView { engine: Engine; until: number; since: number; source: "event" | "default"; bots: number; queued: number; account?: string | null }
 export interface WatchNoticeAction { kind: "watch"; watch: "silent" | "stalled"; status: "pending" | "waiting" | "switched" | "stopped" | "settled" | "over"; minutes?: number; next?: string; engine?: Engine }
 
 /**
@@ -1285,6 +1292,8 @@ export interface TodayReport {
   minutes: { total: number; table: Record<TodayKind, number>; counts: Partial<Record<TodayKind, number>>; overridden: string[] };
   /** The caller's own account only (a shared bot's costs are its owner's). */
   cost: TodayCost;
+  /** The account's subscriptions at their usage limit now, with when they come back (agent/sublimit.ts). */
+  limits?: SubscriptionLimitView[];
 }
 /** Settings → Aujourd'hui: the morning digest and the owner's minutes. `hour`: 0–23 in the user's timezone. */
 export interface TodayDigestSettings { enabled: boolean; hour: number; push: boolean; email: boolean }
@@ -1329,6 +1338,8 @@ export interface SentinelOverview {
   lastScan: SentinelScanInfo | null;
   nextScanAt: number | null;
   everyMin: number;
+  /** Subscriptions at their usage limit now, on every account (agent/sublimit.ts). */
+  limits?: SubscriptionLimitView[];
 }
 export interface SentinelQuiet { enabled: boolean; start: string; end: string }
 export interface SentinelSettings {

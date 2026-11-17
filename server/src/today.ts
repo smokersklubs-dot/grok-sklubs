@@ -8,6 +8,7 @@ import { DEFAULT_MINUTES, FILES_PER_TURN, minutesSaved, minutesTable, RESEARCH_G
 import { localMidnight, userTimezone } from "./usagecaps.js";
 import { sharedBotsFor, type BotAccess } from "./workspaces.js";
 import { criticalNeeds } from "./sentinel/view.js";
+import { limitsFor } from "./sublimitview.js";
 
 /**
  * "Aujourd'hui" — one page for the day: what only the user can fix now ("Ce qui t'attend"), what their bots finished
@@ -401,6 +402,8 @@ export function todayReport(userId: string, date?: string, t = now()): TodayRepo
     done,
     minutes: { total: minutesSaved(counts, table), table, counts, overridden },
     cost: costOf(userId, day.start, day.end, t),
+    // Subscriptions at their usage limit now, and when they come back (agent/sublimit.ts): today only.
+    ...(day.today ? { limits: limitsFor(userId) } : {}),
   };
 }
 

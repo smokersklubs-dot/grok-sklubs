@@ -95,3 +95,11 @@
   .today-go { padding: 4px 8px; }
   .today-go .icon { display: none; }
 }
+
+/* Subscriptions at their usage limit (SubLimit.tsx), on Today and Surveillance. */
+.sublimit-list { grid-column: 1 / -1; border: 1px solid var(--warn); background: var(--warn-soft); border-radius: 12px; padding: 10px 14px; min-width: 0; }
+.sublimit-title { display: flex; align-items: center; gap: 6px; margin: 0 0 6px; font-size: 13.5px; color: var(--warn); }
+.sublimit-list ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.sublimit-item { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; overflow-wrap: anywhere; }
+.sublimit-item strong { font-size: 13.5px; color: var(--text); }
+.sublimit-back { display: inline-flex; align-items: center; gap: 4px; }

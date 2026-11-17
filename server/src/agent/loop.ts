@@ -47,6 +47,7 @@ import { emailUnverified, unverifiedText } from "../publicsignup.js";
 import { blockingCap, capCard, caps as usageCaps, clearTurn, cm, markTurn, noteAttended, noteSkip, skipText, turnAttended } from "../usagecaps.js";
 import type { CapStateView } from "../shared.js";
 import { noteTurnFailure } from "../sentinel/signals.js";
+import { holdForLimit, limitNote, noteLimitFallback, subLimitFor, waitForSubscription } from "./sublimit.js";
 import { callSignal, EngineGone, endWatch, isWatchStop, takeSwitch, TurnStalled, watchKind, watchNextModel, watchOutput, watchTool, watchTurn, watchWait, type WatchHandle } from "./watch.js";
 
 /** A skill the user asked for with "/skill <name>" in the composer. */
@@ -265,6 +266,8 @@ async function runQueued(id: number | null, botId: string, trigger: Trigger) {
   // "Pause": a paused bot starts nothing. Its work waits in the queue, in order, until it is resumed (or is let go, for
   // the kinds of work that have their own way back: routines, goal rounds, job ends). Checked right before the turn.
   if (holdIfPaused(id, botId, trigger)) return;
+  // The bot's subscription is at its usage limit and it has no backup model: the work waits for it (sublimit.ts).
+  if (holdForLimit(id, bots.byId(botId), trigger)) { liveJobs.delete(id!); return; }
   if (id !== null) { botQueue.start(id); runningJob.set(botId, id); }
   try { await runTurn(botId, trigger); } finally {
     if (id !== null) {
@@ -322,15 +325,20 @@ function holdIfPaused(id: number | null, botId: string, trigger: Trigger): boole
  * that comes after. Returns how many jobs were let go.
  */
 export function releaseHeld(botId: string): number {
-  let n = 0;
   // The turn "Pause" stopped picks up first; then everything else, in the order it came.
   const held = botQueue.heldFor(botId);
   const first = held.filter((r) => r.trigger.includes(JSON.stringify(PAUSE_CONTINUE_TEXT).slice(1, 60)));
-  for (const row of [...first, ...held.filter((r) => !first.includes(r))]) {
+  const list = [...first, ...held.filter((r) => !first.includes(r))];
+  for (const row of list) botQueue.unhold(row.id);
+  return runAgain(botId, list);
+}
+/** Queue rows that were set aside (paused, or waiting for the subscription: sublimit.ts) run again, in this order. */
+export function runAgain(botId: string, list: QueuedWork[]): number {
+  let n = 0;
+  for (const row of list) {
     let trigger: Trigger | null = null;
     try { trigger = JSON.parse(row.trigger) as Trigger; } catch { /* unreadable: dropped below */ }
     if (!trigger || typeof trigger !== "object" || !("kind" in trigger)) { botQueue.done(row.id); continue; }
-    botQueue.unhold(row.id);
     liveJobs.add(row.id);
     jobOf.set(trigger, row.id);
     const t = trigger;
@@ -517,11 +525,12 @@ export async function newTurn(bot: BotRecord, user: UserRecord, depth: number, s
  * what the tool already did and said, so nothing done is done twice, and it gets the recent conversation (a subscription
  * keeps its own session, which the backup cannot read).
  */
-async function engineFallback(bot: BotRecord, user: UserRecord, trigger: Exclude<Trigger, { kind: "resume" }>, thread: number, failed: Turn, o: { failure: string; steps: number[]; prompt: string; backup: string; extra: Block[]; switched?: boolean }): Promise<Turn> {
+async function engineFallback(bot: BotRecord, user: UserRecord, trigger: Exclude<Trigger, { kind: "resume" }>, thread: number, failed: Turn, o: { failure: string; steps: number[]; prompt: string; backup: string; extra: Block[]; switched?: boolean; limited?: EngineOutcome["limited"] }): Promise<Turn> {
   const loc = user.locale;
   const tool = engineOf(bot.model) === "codex" ? "Codex" : "Claude Code";
-  // "Switch AI" (watch.ts): its notice already says where the message went.
-  if (!o.switched) {
+  // "Switch AI" (watch.ts): its notice already says where the message went. The subscription at its limit: once per window.
+  if (o.limited) noteLimitFallback(bot, o.limited, o.backup);
+  else if (!o.switched) {
     rows.append(bot, { kind: "notice", tone: "info", text: tr(loc, "{tool} failed ({detail}). I am carrying on with the backup model {next}.", { tool, detail: clip(o.failure, 160), next: modelLabel(o.backup, user.id) }) });
     audit(user.id, "system", `${bot.name}: ${tool} failed (${clip(o.failure, 160)}), switched to the backup model ${o.backup}`, bot.id);
   }
@@ -548,7 +557,7 @@ async function engineFallback(bot: BotRecord, user: UserRecord, trigger: Exclude
   const recent = rows.recentMessages(bot.id, bot.generation, 10, thread).filter((r) => r.body.kind === "message")
     .map((r) => r.body.kind === "message" ? `${r.body.role === "user" ? "User" : "You"}: ${clip(r.body.text.replace(/\s+/g, " "), 600)}` : "");
   const note = [
-    o.switched
+    o.limited ? limitNote(o.limited) : o.switched
       ? `[System: your subscription tool (${tool}) did not answer this message at all, so the user moved it to a backup model: you. Nothing has been done or said for it yet. Carry on with this turn with your own tools.`
       : `[System: your subscription tool (${tool}) failed during this turn (${clip(o.failure, 300)}). You are now carrying on with this turn on a backup model, with your own tools.`,
     done.length ? `Before it failed, it already did this — do NOT do any of it again; check the current state first when it matters:\n${done.join("\n")}` : "It had not run any action yet.",
@@ -684,8 +693,10 @@ async function runScopedTurn(botId: string, trigger: Trigger, thread: number): P
         startWatch("engine");
         // "Switch AI" under the first-reply notice: the first backup model, when there is one and money left for it.
         watchNextModel(botId, () => (overBudget(user.id) ? undefined : modelChain(bot).slice(1)[0]));
+        // The subscription is at its usage limit (sublimit.ts): the turn goes straight to the backup model.
+        const limitedNow = subLimitFor(bot);
         try {
-          outcome = await runEngineTurn(turn, prompt, trigger.kind === "user" ? trigger.attachments ?? [] : []);
+          outcome = limitedNow ? { failure: "", steps: [], limited: limitedNow } : await runEngineTurn(turn, prompt, trigger.kind === "user" ? trigger.attachments ?? [] : []);
         } catch (err) {
           // Stopped (by the user or the time limit) or every computer busy: those have their own way out, never a backup.
           if (controller.signal.aborted || (err as Error)?.name === "ComputersBusyError") throw err;
@@ -695,10 +706,15 @@ async function runScopedTurn(botId: string, trigger: Trigger, thread: number): P
         // The user moved this message to the next model before the tool said anything (watch.ts "Switch AI").
         const switched = !thrown && outcome?.switched ? takeSwitch(botId) : null;
         // The subscription tool failed: the turn goes on with the first backup API model, if there is one (and money left).
-        const backup = switched ?? (failure ? modelChain({ ...bot, model: bot.model }).slice(1)[0] : undefined);
+        const backup = switched ?? (failure || outcome?.limited ? modelChain({ ...bot, model: bot.model }).slice(1)[0] : undefined);
         if (failure) { engineFailed = failure; noteTurnFailure(engineOf(bot.model) === "codex" ? "codex" : "claude_code", failure); }
-        if (!backup || overBudget(user.id)) { if (thrown) throw thrown; throw new EngineDone(); }
-        turn = await engineFallback(bot, user, trigger, thread, turn, { failure: switched ? "no answer" : failure, steps: outcome?.steps ?? [], prompt, backup, extra, switched: !!switched });
+        if (!backup || overBudget(user.id)) {
+          if (thrown) throw thrown;
+          // At its limit with no backup: this work waits for the subscription, in its place in the queue (sublimit.ts).
+          if (outcome?.limited) waitForSubscription(bot, runningJob.get(botId), trigger, outcome.steps.length > 0 || turn.spoke, thread);
+          throw new EngineDone();
+        }
+        turn = await engineFallback(bot, user, trigger, thread, turn, { failure: switched ? "no answer" : failure, steps: outcome?.steps ?? [], prompt, backup, extra, switched: !!switched, limited: outcome?.limited });
         watchKind(botId, "api");
       } else {
       if (overBudget(user.id)) {

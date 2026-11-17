@@ -6,6 +6,7 @@ import { dateTime, relTime } from "../lib/format";
 import type { SentinelHealth, SentinelIncidentView, SentinelLink, SentinelOverview, SentinelSettingsView, SentinelSeverity } from "../types";
 import { Icon, type IconName } from "./Icon";
 import { ErrorNote, IconButton, Loading, Toggle, useTick } from "./ui";
+import { SubLimitList } from "./SubLimit";
 import "../styles/surveillance.css";
 
 /**
@@ -93,6 +94,7 @@ export function SurveillanceView() {
               <Stat icon="info" value={data.counts.info} label={t("surv.stat.info")} />
               <Stat icon="check" tone="ok" value={data.history.filter((h) => (h.resolvedAt ?? 0) > now - 86_400_000).length} label={t("surv.stat.resolved")} />
             </div>
+            <SubLimitList limits={data.limits} />
 
             <Block icon="shield" title={t("surv.open.title")} count={open.length}>
               {open.length === 0 ? (

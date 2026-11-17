@@ -910,15 +910,15 @@ export const pages = {
  * A bot's queue, kept on disk (bot_queue) so that work waiting behind a turn survives a restart. The order of rows (id)
  * is the order of the queue. Done rows are kept a week, then dropped (prune).
  */
-export interface QueuedWork { id: number; bot_id: string; trigger: string; status: "pending" | "running" | "deferred" | "held" | "done" }
+export interface QueuedWork { id: number; bot_id: string; trigger: string; status: "pending" | "running" | "deferred" | "held" | "limited" | "done" }
 export const botQueue = {
   /** Writes a job; null when it cannot be written (a bot that is not in the database): it then runs from memory only. */
   add(botId: string, trigger: unknown): number | null {
     try { return Number(q.run("INSERT INTO bot_queue (bot_id, trigger, created_at) VALUES (?, ?, ?)", botId, JSON.stringify(trigger), now()).lastInsertRowid); } catch { return null; }
   },
   start: (id: number) => q.run("UPDATE bot_queue SET status = 'running', started_at = ? WHERE id = ?", now(), id),
-  /** Done, unless it was set aside meanwhile (deferred). */
-  finish: (id: number) => q.run("UPDATE bot_queue SET status = 'done', done_at = ? WHERE id = ? AND status <> 'deferred'", now(), id),
+  /** Done, unless it was set aside meanwhile (deferred, or waiting for the subscription: limited). */
+  finish: (id: number) => q.run("UPDATE bot_queue SET status = 'done', done_at = ? WHERE id = ? AND status NOT IN ('deferred', 'limited')", now(), id),
   done: (id: number) => q.run("UPDATE bot_queue SET status = 'done', done_at = ? WHERE id = ?", now(), id),
   defer: (id: number) => q.run("UPDATE bot_queue SET status = 'deferred' WHERE id = ?", id),
   /** Puts other work in a row's place, back to pending (the turn a restart cut off becomes its recovery, in its place). */
@@ -930,6 +930,14 @@ export const botQueue = {
   heldFor: (botId: string) => q.all<QueuedWork>("SELECT id, bot_id, trigger, status FROM bot_queue WHERE bot_id = ? AND status = 'held' ORDER BY id", botId),
   /** Back to pending (the bot was resumed): it runs again, in its place. */
   unhold: (id: number) => q.run("UPDATE bot_queue SET status = 'pending' WHERE id = ? AND status = 'held'", id),
+  /** The subscription is at its usage limit and there is no backup model (agent/sublimit.ts): the work waits, in its order. */
+  limit: (id: number) => q.run("UPDATE bot_queue SET status = 'limited', started_at = NULL WHERE id = ?", id),
+  /** The work of a bot that waits for its subscription, oldest first. */
+  limitedFor: (botId: string) => q.all<QueuedWork>("SELECT id, bot_id, trigger, status FROM bot_queue WHERE bot_id = ? AND status = 'limited' ORDER BY id", botId),
+  /** The bots with work waiting for their subscription. */
+  limitedBots: () => q.all<{ bot_id: string; n: number }>("SELECT bot_id, COUNT(*) AS n FROM bot_queue WHERE status = 'limited' GROUP BY bot_id"),
+  /** Back to pending (the subscription is back): it runs again, in its place. */
+  unlimit: (id: number) => q.run("UPDATE bot_queue SET status = 'pending' WHERE id = ? AND status = 'limited'", id),
   status: (id: number) => q.get<{ status: QueuedWork["status"] }>("SELECT status FROM bot_queue WHERE id = ?", id)?.status ?? null,
   prune: (olderThanMs = 7 * 86_400_000) => q.run("DELETE FROM bot_queue WHERE status = 'done' AND done_at < ?", now() - olderThanMs),
 };

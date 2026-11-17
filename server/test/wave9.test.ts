@@ -243,7 +243,8 @@ setEngineHost({
     emit({ type: "thread.started", thread_id: "th-1" });
     emit({ type: "item.started", item: { id: "c1", type: "command_execution", command: "touch report.md" } });
     emit({ type: "item.completed", item: { id: "c1", type: "command_execution", status: "completed", exit_code: 0 } });
-    if (engineMode === "fail") { emit({ type: "turn.failed", error: { message: "You've hit your usage limit." } }); return { code: 1, stderr: "" }; }
+    // A plain failure (a usage limit has its own way, agent/sublimit.ts, tested in sublimit.test.ts).
+    if (engineMode === "fail") { emit({ type: "turn.failed", error: { message: "stream disconnected before completion" } }); return { code: 1, stderr: "" }; }
     emit({ type: "item.completed", item: { type: "agent_message", text: "Done by Codex" } });
     emit({ type: "turn.completed", usage: {} });
     return { code: 0, stderr: "" };
@@ -257,7 +258,7 @@ test("without a backup model, a failed subscription turn stops as before", async
   await call("POST", `/bots/${cx.id}/messages`, { text: "Fais le rapport" });
   await idle(cx.id);
   const rows = await rowsOf(cx.id);
-  assert.ok(rows.some((r) => r.body.kind === "notice" && r.body.text.includes("usage limit")));
+  assert.ok(rows.some((r) => r.body.kind === "notice" && r.body.text.includes("stream disconnected")));
   assert.ok(!rows.some((r) => r.body.kind === "notice" && r.body.text.includes("modèle de secours")));
   assert.equal(scriptedSeen.length, 0);
 });

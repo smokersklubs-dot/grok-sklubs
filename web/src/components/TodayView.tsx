@@ -8,6 +8,7 @@ import type { TodayBotDone, TodayDone, TodayKind, TodayLink, TodayNeed, TodayRep
 import { BotAvatar } from "./Avatar";
 import { Icon, type IconName } from "./Icon";
 import { ErrorNote, IconButton, Loading, Toggle, useTick } from "./ui";
+import { SubLimitList } from "./SubLimit";
 
 /**
  * "Aujourd'hui": one page for the day — what only you can fix, what the bots finished (by bot), the time it saved as an
@@ -134,6 +135,7 @@ export function TodayView() {
               <Stat icon="clock" value={`≈ ${fmtMin(report.minutes.total)}`} label={t("today.stat.saved")} />
               <Stat icon="chart" value={money(spent)} label={t("today.stat.cost")} />
             </div>
+            <SubLimitList limits={report.limits} />
 
             <Block icon="bell" title={t("today.needs.title")} hint={report.today ? null : t("today.needs.now")} count={report.needs.length}>
               {report.needs.length === 0 ? (

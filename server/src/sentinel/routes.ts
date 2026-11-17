@@ -4,6 +4,7 @@ import { q } from "../db.js";
 import { healthReport } from "../monitor.js";
 import type { SentinelOverview, SentinelSettingsView } from "../shared.js";
 import { audit, users, type UserRecord } from "../store.js";
+import { allLimits } from "../sublimitview.js";
 import { acknowledge, scan, scanState, severityCounts } from "./index.js";
 import { activeRows, canWatch, historyRows, incidentRow, SentinelError, sentinelSettings, views } from "./view.js";
 
@@ -33,7 +34,7 @@ export async function overview(userId: string): Promise<SentinelOverview> {
     const r = await healthReport(5000);
     health = { status: r.status, code: r.code, at: r.at, checks: Object.entries(r.checks).map(([name, c]) => ({ name, state: c.state, code: c.code, detail: c.detail })) };
   } catch { /* shown as unknown */ }
-  return { incidents: views(activeRows(), userId), history: views(historyRows(50), userId), health, counts: severityCounts(), lastScan: st.lastScan, nextScanAt: st.nextScanAt, everyMin: st.everyMin };
+  return { incidents: views(activeRows(), userId), history: views(historyRows(50), userId), health, counts: severityCounts(), lastScan: st.lastScan, nextScanAt: st.nextScanAt, everyMin: st.everyMin, limits: allLimits(userId) };
 }
 
 const settingsView = (userId: string): SentinelSettingsView => ({
