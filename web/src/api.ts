@@ -1,5 +1,6 @@
 /** Small fetch helper for the JSON API under /api. */
 import { t } from "./i18n";
+import { MAX_UPLOAD_BYTES } from "../../server/src/uploadlimits";
 
 export class ApiError extends Error {
   status: number;
@@ -56,6 +57,12 @@ export function api<T = unknown>(method: string, path: string, body?: unknown, s
 
 /** POST one file as multipart form data (field `file`). The browser sets the multipart boundary itself. */
 export function apiUpload<T = unknown>(path: string, file: File): Promise<T> {
+  // Large chat and Studio media travel as the original Blob, without a multipart copy.
+  if (/^\/bots\/[^/]+\/uploads$/.test(path)) {
+    if (file.size > MAX_UPLOAD_BYTES) return Promise.reject(new ApiError(t("composer.tooBig", { name: file.name }), 413));
+    if (file.size > 25_000_000)
+      return request<T>(path, { method: "POST", headers: { "Content-Type": "application/octet-stream", "X-Sklubot-Filename": encodeURIComponent(file.name) }, body: file });
+  }
   const form = new FormData();
   form.append("file", file, file.name);
   return request<T>(path, { method: "POST", body: form });

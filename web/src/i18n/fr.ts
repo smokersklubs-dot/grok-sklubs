@@ -104,7 +104,7 @@ export const fr: Dict = {
   "composer.attach": "Joindre des fichiers",
   "composer.drop": "Dépose tes fichiers ici pour les joindre",
   "composer.attachments": "Pièces jointes",
-  "composer.tooBig": "« {name} » dépasse 25 Mo et ne peut pas être joint.",
+  "composer.tooBig": "« {name} » dépasse 96 Mo et ne peut pas être joint.",
   "composer.tooMany": "Tu peux joindre jusqu’à 10 fichiers par message.",
   "composer.uploading": "Envoi…",
   "composer.uploadFailed": "Envoi impossible",

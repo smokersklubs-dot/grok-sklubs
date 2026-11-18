@@ -91,7 +91,7 @@ export const fr = {
   "composer.uploading": "Envoi…",
   "composer.uploadFailed": "Envoi impossible",
   "composer.removeFile": "Retirer {name}",
-  "composer.tooBig": "« {name} » dépasse 25 Mo et ne peut pas être joint.",
+  "composer.tooBig": "« {name} » dépasse 96 Mo et ne peut pas être joint.",
   "composer.tooMany": "Tu peux joindre jusqu’à 10 fichiers par message.",
   "composer.waitUploads": "Attends la fin de l’envoi des fichiers",
   "composer.queued_one": "{n} message en attente",

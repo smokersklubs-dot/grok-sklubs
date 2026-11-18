@@ -1,7 +1,23 @@
 import sharp from "sharp";
 
 const MiB = 1024 * 1024;
-export const MAX_VISION_INPUT = 80 * MiB;
+export const MAX_VISION_INPUT = 160 * MiB;
+// Shared by direct model messages and the two subscription CLIs. This is a budget for
+// previews of one user message; the original media always remains in the bot library.
+export const PREVIEW_BATCH_BYTES = 6 * MiB;
+
+export async function imagePreview(bytes: Buffer, targetBytes: number): Promise<Buffer> {
+  const img = sharp(bytes, { limitInputPixels: 80_000_000, failOn: "error" });
+  if (!["png", "jpeg", "webp", "gif"].includes((await img.metadata()).format ?? "")) throw new Error("Unsupported image");
+  let best: Buffer | undefined;
+  for (const edge of [1920, 1280, 800, 512]) {
+    const preview = await img.clone().rotate().resize({ width: edge, height: edge, fit: "inside", withoutEnlargement: true })
+      .flatten({ background: "#ffffff" }).jpeg({ quality: 82, mozjpeg: true }).toBuffer();
+    if (!best || preview.length < best.length) best = preview;
+    if (best.length <= targetBytes) break;
+  }
+  return best!;
+}
 const MAX_FORWARD = 20 * MiB;
 
 /** Codex can send the full image history on resume, including images returned by tools. */
@@ -16,21 +32,20 @@ export async function visionPayload(body: Record<string, unknown>): Promise<stri
     }
   }
   const imageChars = parts.reduce((sum, p) => sum + p.image_url.length, 0);
-  if (imageChars > 8 * MiB) {
-    const perImage = Math.floor(8 * MiB / parts.length);
+  const imageParts = new Set(parts);
+  const otherBytes = Buffer.byteLength(JSON.stringify(body, function (key, value) {
+    return key === "image_url" && imageParts.has(this) ? "" : value;
+  }));
+  const allowance = Math.min(8 * MiB, MAX_FORWARD - otherBytes);
+  if (otherBytes > MAX_FORWARD) return null;
+  if (imageChars > allowance) {
+    const perImage = Math.floor(allowance / parts.length);
     for (const p of parts) {
       if (p.image_url.length <= perImage) continue;
       const bytes = Buffer.from(p.image_url.slice(p.image_url.indexOf(",") + 1), "base64");
-      // Only decode the four raster formats declared above, even for mislabeled uploads.
-      const img = sharp(bytes, { limitInputPixels: 48_000_000, failOn: "error" });
-      if (!["png", "jpeg", "webp", "gif"].includes((await img.metadata()).format ?? "")) throw new Error("Unsupported image");
-      for (const edge of [1920, 1280, 800]) {
-        const preview = await img.clone().rotate().resize({ width: edge, height: edge, fit: "inside", withoutEnlargement: true })
-          .flatten({ background: "#ffffff" }).jpeg({ quality: 82, mozjpeg: true }).toBuffer();
-        const url = "data:image/jpeg;base64," + preview.toString("base64");
-        if (url.length < p.image_url.length) p.image_url = url;
-        if (p.image_url.length <= perImage) break;
-      }
+      const preview = await imagePreview(bytes, Math.max(1, Math.floor((perImage - 23) * 3 / 4)));
+      const url = "data:image/jpeg;base64," + preview.toString("base64");
+      if (url.length < p.image_url.length) p.image_url = url;
     }
   }
   const json = JSON.stringify(body);
@@ -42,7 +57,8 @@ export async function readVisionRequest(request: Request): Promise<unknown> {
   if (Number(request.headers.get("content-length")) > MAX_VISION_INPUT) throw new RangeError();
   const reader = request.body?.getReader();
   if (!reader) throw new SyntaxError();
-  const chunks: Uint8Array[] = [];
+  const decoder = new TextDecoder();
+  const chunks: string[] = [];
   let length = 0;
   try {
     for (;;) {
@@ -50,8 +66,9 @@ export async function readVisionRequest(request: Request): Promise<unknown> {
       if (done) break;
       length += value.byteLength;
       if (length > MAX_VISION_INPUT) { await reader.cancel(); throw new RangeError(); }
-      chunks.push(value);
+      chunks.push(decoder.decode(value, { stream: true }));
     }
   } finally { reader.releaseLock(); }
-  return JSON.parse(Buffer.concat(chunks, length).toString("utf8"));
+  chunks.push(decoder.decode());
+  return JSON.parse(chunks.join(""));
 }

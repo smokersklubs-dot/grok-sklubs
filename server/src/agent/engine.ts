@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
-import { botPathOf, computerKind, screen } from "../computer.js";
+import { desktopAttachmentNotes } from "../attachmentpreviews.js";
+import { computerKind, screen } from "../computer.js";
 import { config } from "../config.js";
 import { personalActive, personalEnabled, personalModels, verifyPersonal } from "../personalplan.js";
 import { q } from "../db.js";
@@ -201,7 +202,7 @@ const dropSession = (botId: string, generation: number, engine: Engine) =>
 export interface EngineHost {
   /** Makes sure the computer is on (and its screen ready, see readyForTurn). */
   ensure(bot: BotRecord): Promise<void>;
-  writeFile(botId: string, path: string, content: string): Promise<void>;
+  writeFile(botId: string, path: string, content: string, encoding?: "base64"): Promise<void>;
   exec(bot: BotRecord, args: string[], env: Record<string, string>, cwd: string, input: string, signal: AbortSignal, onLine: (line: string) => void): Promise<{ code: number | null; stderr: string }>;
   /** Stops every engine process on the computer (a stuck tool, a helper it left behind). */
   kill(botId: string): Promise<void>;
@@ -230,7 +231,19 @@ const dockerHost: EngineHost = {
     if (computerKind() !== "linux") throw new Error("Subscriptions need the bots' Linux computers (Docker and the desktop image) on this server.");
     await screen.wake(bot.id, bot.userId);
   },
-  async writeFile(botId, path, content) {
+  async writeFile(botId, path, content, encoding) {
+    if (encoding === "base64") {
+      if (!/^\/root\/\.sklubot\/vision\/[a-f0-9]{64}\.jpg$/.test(path)) throw new Error("Invalid preview path");
+      const cmd = [
+        "set -eu", "umask 077", "dir=/root/.sklubot/vision", 'mkdir -p "$dir"',
+        'find "$dir" -maxdepth 1 -type f -name "*.jpg" -mtime +1 -delete',
+        'temp=$(mktemp "$dir/.new.XXXXXXXX")', `trap 'rm -f "$temp"' EXIT`,
+        'base64 -d > "$temp"', 'mv -f "$temp" "$1"',
+      ].join("\n");
+      const result = await docker(["exec", "-i", containerName(botId), "sh", "-c", cmd, "preview", path], { timeoutMs: 20_000, input: content });
+      if (result.code !== 0) throw new Error("Could not prepare the image preview");
+      return;
+    }
     const r = await docker(["exec", "-i", containerName(botId), "sh", "-c", `umask 077; mkdir -p "$(dirname '${path}')"; cat > '${path}'`], { timeoutMs: 20_000, input: content });
     if (r.code !== 0) throw new Error(`could not prepare the bot's computer: ${r.stderr.trim().slice(0, 200)}`);
   },
@@ -696,7 +709,7 @@ async function engineTurnOn(turn: Turn, prompt: string, attachments: Attachment[
   try { await host.ready(bot); } catch (err) { console.error(`[screen ready ${bot.id}]`, (err as Error)?.message ?? err); }
   if (turn.signal.aborted) throw new Error("aborted");
   const engine = engineOf(bot.model);
-  const files = attachments.length ? `\n\n[Files the user attached, in your library:]\n${attachments.map((a) => `- ${botPathOf(a.path)} (${a.mime})`).join("\n")}` : "";
+  const files = await desktopAttachmentNotes(bot.id, attachments, (dest, data) => host.writeFile(bot.id, dest, data, "base64"));
   const system = buildSystemPrompt(bot, turn.user, { connectorNames: [...new Set([...turn.remote.values()].map((r) => r.connectorName))], browser: browserAvailable(), shell: true, linux: true, images: !!imageService(), engine });
   await writeFile(bot.id, "/root/.sklubot/engine-prompt.md", system);
   const t = new Transcript(turn);

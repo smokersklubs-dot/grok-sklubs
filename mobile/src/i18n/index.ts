@@ -60,6 +60,7 @@ const SERVER_FR: Record<string, string> = {
   "Please sign in.": "Connecte-toi.",
   "That request no longer exists.": "Cette demande n’existe plus.",
   "Write a message first.": "Écris d’abord un message.",
+  "Files can be up to 96 MB.": "Les fichiers peuvent faire jusqu’à 96 Mo.",
   "Files can be up to 25 MB.": "Les fichiers peuvent faire jusqu’à 25 Mo.",
   "That file does not exist.": "Ce fichier n’existe pas.",
   "That file is empty.": "Ce fichier est vide.",

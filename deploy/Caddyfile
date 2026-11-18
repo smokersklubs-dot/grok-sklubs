@@ -6,11 +6,11 @@
 	@mcp path /mcp /mcp/* /egress /egress/*
 	respond @mcp 404
 
-	# Taille maximale d'une requête (revue de sécurité M7) : 30 Mo, juste au-dessus du plus gros envoi de l'application
-	# (un fichier de 25 Mo) ; l'application garde ses propres limites, plus fines (1 Mo pour le reste).
+	# Taille maximale d'une requête (revue de sécurité M7) : 97 Mo, juste au-dessus du plus gros envoi de l'application
+	# (un fichier de 96 Mo) ; l'application garde ses propres limites, plus fines (1 Mo pour le reste).
 	# Directive « request_body » : https://caddyserver.com/docs/caddyfile/directives/request_body
 	request_body {
-		max_size 30MB
+		max_size 97MB
 	}
 
 	# Caddy remplace X-Forwarded-For par l'adresse réelle du visiteur (il ne fait confiance à aucun en-tête reçu).

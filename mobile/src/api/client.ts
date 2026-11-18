@@ -79,12 +79,13 @@ export class ApiClient {
     return this.url(`/bots/${enc(botId)}/files/${kind}?path=${enc(filePath)}`);
   }
 
-  async request<T>(method: string, path: string, body?: unknown, extra?: { raw?: { body: Uint8Array; contentType: string }; timeoutMs?: number }): Promise<T> {
+  async request<T>(method: string, path: string, body?: unknown, extra?: { raw?: { body: Uint8Array | Blob; contentType: string; filename?: string }; timeoutMs?: number }): Promise<T> {
     const headers: Record<string, string> = { Accept: "application/json", ...this.authHeaders() };
     let payload: unknown;
     if (extra?.raw) {
       payload = extra.raw.body;
       headers["Content-Type"] = extra.raw.contentType;
+      if (extra.raw.filename) headers["X-Sklubot-Filename"] = encodeURIComponent(extra.raw.filename);
     } else if (body !== undefined) {
       headers["Content-Type"] = "application/json";
       payload = JSON.stringify(body);
@@ -164,6 +165,10 @@ export class ApiClient {
       return { status: res.status, bytes: null, header, error };
     }
     return { status: res.status, bytes: res.arrayBuffer ? new Uint8Array(await res.arrayBuffer()) : null, header, error: null };
+  }
+
+  uploadLargeFile<T>(path: string, name: string, file: Blob) {
+    return this.request<T>("POST", path, undefined, { raw: { body: file, contentType: "application/octet-stream", filename: name }, timeoutMs: 600_000 });
   }
 
   get<T>(path: string) { return this.request<T>("GET", path); }

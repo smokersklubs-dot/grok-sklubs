@@ -1,3 +1,4 @@
+import { MAX_UPLOAD_BYTES, MAX_ATTACHMENTS } from "../../server/src/uploadlimits";
 import { changeTab, handleArtifactRows, type ArtifactTab } from "./lib/artifactTabs";
 import { create } from "zustand";
 import { api, apiUpload, errText, setUnauthorizedHandler } from "./api";
@@ -76,8 +77,7 @@ export interface Upload {
   attachment: Attachment | null;
   error: string | null;
 }
-export const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
-export const MAX_ATTACHMENTS = 10;
+export { MAX_UPLOAD_BYTES, MAX_ATTACHMENTS };
 
 export const IDLE_LIVE: Live = { running: false, activity: null, awaiting: null, startedAt: null, queued: 0 };
 const PAGE = 200;

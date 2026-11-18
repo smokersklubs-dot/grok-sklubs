@@ -2,7 +2,7 @@ import type { Context } from "hono";
 import { engineTokenValid } from "./agent/engine.js";
 import { bots } from "./store.js";
 import { personalAccess, personalActive, personalModels, resource } from "./personalplan.js";
-import { readVisionRequest, visionPayload } from "./visionpayload.js";
+import { MAX_VISION_INPUT, readVisionRequest, visionPayload } from "./visionpayload.js";
 
 let preparing = 0;
 
@@ -48,7 +48,7 @@ export async function personalResponses(c: Context) {
     payload = await visionPayload(body);
     if (!payload) return c.json({ error: { message: "Model request too large. Send the images in smaller groups." } }, 413);
   } catch (err) {
-    if (err instanceof RangeError) return c.json({ error: { message: "Image batch exceeds 80 MiB. Send fewer images at once." } }, 413);
+    if (err instanceof RangeError) return c.json({ error: { message: `Image batch exceeds ${MAX_VISION_INPUT / (1024 * 1024)} MiB. Send fewer images at once.` } }, 413);
     return c.json({ error: { message: "Could not read the model request or one of its images." } }, 400);
   } finally { preparing--; }
   let access: string;

@@ -17,7 +17,7 @@ import { radius, useTheme } from "../theme";
 import { Icon } from "./Icon";
 import { tap } from "./ui";
 
-export const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
+export const MAX_UPLOAD_BYTES = 96_000_000;
 export const MAX_ATTACHMENTS = 10;
 
 interface Upload { id: string; name: string; mime: string; uri: string; status: "uploading" | "ready" | "error"; attachment: Attachment | null }
@@ -43,9 +43,13 @@ export function Composer({ bot, live }: { bot: Bot; live: Live | undefined }) {
       const id = `${Date.now()}-${Math.random()}`;
       setUploads((u) => [...u, { id, name: f.name, mime: f.mime, uri: f.uri, status: "uploading", attachment: null }]);
       try {
-        const bytes = await new File(f.uri).bytes();
+        const file = new File(f.uri);
+        if (file.size > MAX_UPLOAD_BYTES) throw new Error(t("composer.tooBig", { name: f.name }));
         const client = useStore.getState().client!;
-        const r = await client.upload<{ attachment: Attachment }>(`/bots/${encodeURIComponent(bot.id)}/uploads`, { name: f.name, type: f.mime, bytes });
+        const path = `/bots/${encodeURIComponent(bot.id)}/uploads`;
+        const r = file.size > 25_000_000
+          ? await client.uploadLargeFile<{ attachment: Attachment }>(path, f.name, file)
+          : await client.upload<{ attachment: Attachment }>(path, { name: f.name, type: f.mime, bytes: await file.bytes() });
         setUploads((u) => u.map((x) => (x.id === id ? { ...x, status: "ready", attachment: r.attachment } : x)));
       } catch (e) {
         setUploads((u) => u.map((x) => (x.id === id ? { ...x, status: "error" } : x)));

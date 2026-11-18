@@ -102,7 +102,7 @@ export const en = {
   "composer.attach": "Attach files",
   "composer.drop": "Drop files here to attach them",
   "composer.attachments": "Attachments",
-  "composer.tooBig": "“{name}” is larger than 25 MB and can't be attached.",
+  "composer.tooBig": "“{name}” is larger than 96 MB and can't be attached.",
   "composer.tooMany": "You can attach up to 10 files per message.",
   "composer.uploading": "Uploading…",
   "composer.uploadFailed": "Couldn't upload",

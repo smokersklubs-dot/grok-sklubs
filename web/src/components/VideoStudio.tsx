@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api, apiUpload, errText } from "../api";
-import { useStore } from "../store";
+import { MAX_UPLOAD_BYTES, useStore } from "../store";
 import { scenesFrom, validStory, type Story } from "../lib/studioStory";
 import type { Attachment } from "../types";
 import { ErrorNote, Modal } from "./ui";
@@ -38,8 +38,8 @@ export function VideoStudio({ onClose }: { onClose: () => void }) {
     setBusy(true);
     setError("");
     try {
-      if (files.length > 24 || [...files, ...(song ? [song] : [])].some((f) => f.size > 25000000))
-        throw Error(fr ? "Maximum 24 plans et 25 Mo par fichier." : "Up to 24 shots and 25 MB per file.");
+      if (files.length > 24 || [...files, ...(song ? [song] : [])].some((f) => f.size > MAX_UPLOAD_BYTES))
+        throw Error(fr ? "Maximum 24 plans et 96 Mo par fichier." : "Up to 24 shots and 96 MB per file.");
       const paths: string[] = [];
       for (const f of files) paths.push(await upload(f));
       const story: Story = {

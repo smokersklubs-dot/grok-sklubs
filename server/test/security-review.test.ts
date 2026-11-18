@@ -53,8 +53,8 @@ test("M3: security headers on every response, without replacing a page's own str
   assert.equal(own.headers.get("referrer-policy"), "no-referrer");
 });
 
-test("M7: bodies are limited per route — 1 MB of JSON, 26 MB for uploads — before any handler reads them", async () => {
-  assert.equal(bodyLimitFor("/api/bots/b1/uploads"), 26 * 1024 * 1024);
+test("M7: bodies are limited per route — 1 MB of JSON, 97 MB for multipart uploads — before any handler reads them", async () => {
+  assert.equal(bodyLimitFor("/api/bots/b1/uploads"), 97_000_000);
   assert.equal(bodyLimitFor("/api/bots/b1/rows"), 1024 * 1024);
   assert.equal(bodyLimitFor("/egress/b1/k/h/x"), 21 * 1024 * 1024);
   assert.equal(bodyLimitFor("/api/hooks/abc"), 256 * 1024);

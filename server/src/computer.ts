@@ -3,6 +3,8 @@ import { createRequire } from "node:module";
 import { closeSync, constants as FS, fstatSync, ftruncateSync, lstatSync, mkdirSync, openSync, readdirSync, readFileSync, readlinkSync, realpathSync, rmSync, unlinkSync, writeFileSync, type Stats } from "node:fs";
 import path from "node:path";
 import { config } from "./config.js";
+import { MAX_UPLOAD_BYTES } from "./uploadlimits.js";
+import { imagePreview } from "./visionpayload.js";
 import { layoutExpression } from "./artifact-design.js";
 import { assertPublicUrl } from "./net.js";
 import { emit } from "./bus.js";
@@ -536,10 +538,20 @@ export function storeBytes(botId: string, folder: string, name: string, bytes: B
 /** Where a library file sits from the bot's own point of view. */
 export const botPathOf = (rel: string) => (kind === "linux" ? `~/files/${rel}` : rel);
 
-/** Reads a library picture for a model to look at; null when it is not a picture or is too large. */
-export function imageForModel(botId: string, a: Attachment): { mediaType: string; data: string } | null {
-  if (!isInlineImage(a.mime) || a.size > 5_000_000) return null;
-  try { return { mediaType: a.mime, data: readLibraryFile(botId, a.path).toString("base64") }; } catch { return null; }
+/** Read the verified file and prepare only the bytes that will enter the model context. */
+export async function imageForModel(botId: string, a: Attachment, budget: number): Promise<{ mediaType: string; data: string } | null> {
+  if (!isInlineImage(a.mime)) return null;
+  try {
+    const { fd, size } = openLibraryFile(botId, a.path);
+    let bytes: Buffer;
+    try {
+      if (size > MAX_UPLOAD_BYTES || !size) return null;
+      bytes = readFileSync(fd);
+    } finally { closeSync(fd); }
+    if (bytes.length <= budget) return { mediaType: a.mime, data: bytes.toString("base64") };
+    const preview = await imagePreview(bytes, budget);
+    return { mediaType: "image/jpeg", data: preview.toString("base64") };
+  } catch { return null; }
 }
 
 export function removeWorkspace(botId: string) {

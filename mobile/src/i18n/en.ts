@@ -93,7 +93,7 @@ export const en: Record<Key, string> = {
   "composer.uploading": "Uploading…",
   "composer.uploadFailed": "Upload failed",
   "composer.removeFile": "Remove {name}",
-  "composer.tooBig": "“{name}” is over 25 MB and can’t be attached.",
+  "composer.tooBig": "“{name}” is over 96 MB and can’t be attached.",
   "composer.tooMany": "You can attach up to 10 files per message.",
   "composer.waitUploads": "Wait for the uploads to finish",
   "composer.queued_one": "{n} message waiting",

@@ -126,6 +126,8 @@ import { noteSignal } from "./sentinel/signals.js";
 import { accountFlags, accountOpened, assertEmailSignupPossible, PublicSignupError, emailGateAllows, emailGateBlocks, emailGateBody, publicSignupGate, publicSignupInfo, registerPublicSignupPrivate, registerPublicSignupPublic, setAccountRemover } from "./publicsignup.js";
 import { answerCapCard, amountText, CapError, capName, caps as usageCaps, capsView, cleanCapInput, cm } from "./usagecaps.js";
 
+import { MAX_ATTACHMENTS } from "./uploadlimits.js";
+import { receiveUpload } from "./uploads.js";
 import { personalResponses } from "./personalresponses.js";
 type Env = { Variables: { user: UserRecord } };
 export const api = new Hono<Env>();
@@ -851,7 +853,7 @@ api.post("/bots/:id/messages", async (c) => {
   const screened = screenSecrets(String(b.text ?? "").trim(), c.get("user").locale);
   const text = screened.text;
   // Only files this bot already holds under uploads/ can be attached; anything else is ignored.
-  const attachments = (Array.isArray(b.attachments) ? b.attachments : []).slice(0, 10)
+  const attachments = (Array.isArray(b.attachments) ? b.attachments : []).slice(0, MAX_ATTACHMENTS)
     .map((p: unknown) => (typeof p === "string" && p.startsWith("uploads/") ? attachmentAt(bot.id, p) : null))
     .filter((a: Attachment | null): a is Attachment => !!a);
   if (!text && !attachments.length) fail(400, "Write a message first.");
@@ -957,16 +959,7 @@ api.put("/profile", async (c) => {
 /** Which official API x_search uses here, if any. */
 api.get("/x-search", (c) => c.json({ provider: xSearchProvider() }));
 
-api.post("/bots/:id/uploads", async (c) => {
-  const bot = ownAgent(c);
-  if (Number(c.req.header("content-length") ?? 0) > 26_000_000) fail(413, "Files can be up to 25 MB.");
-  const form = await c.req.parseBody().catch(() => ({}) as Record<string, unknown>);
-  const file = form.file;
-  if (!(file instanceof File)) return fail(400, "No file was sent.");
-  if (file.size > 25_000_000) fail(413, "Files can be up to 25 MB.");
-  if (!file.size) fail(400, "That file is empty.");
-  return c.json({ attachment: storeBytes(bot.id, "uploads", file.name, Buffer.from(await file.arrayBuffer())) });
-});
+api.post("/bots/:id/uploads", (c) => receiveUpload(c, ownAgent(c).id));
 
 api.post("/bots/:id/stop", (c) => { interrupt(ownBot(c).id); return c.json({ ok: true }); });
 

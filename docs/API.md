@@ -45,7 +45,7 @@ Authentication is an HTTP-only session cookie; every route except the auth route
 | Method | Path | Body | Returns |
 |---|---|---|---|
 | GET | `/bots/:id/rows?limit=&before=` | – | `{ generation, rows: Row[] }` (newest 200 by default, ascending) |
-| POST | `/bots/:id/uploads` | multipart form, field `file` (max 25 MB) | `{ attachment: Attachment }` — stores the file in the bot's library under `uploads/` |
+| POST | `/bots/:id/uploads` | multipart form, field `file`, or raw bytes with percent-encoded name in `X-Sklubot-Filename` (max 96,000,000 bytes) | `{ attachment: Attachment }` — stores the file in the bot's library under `uploads/` |
 | POST | `/bots/:id/messages` | `{ text, origin?: "voice", attachments?: string[] }` | `{ row }` — `attachments` are `path` values returned by uploads; `text` may be empty when there is at least one |
 | POST | `/bots/:id/stop` | – | `{ ok }` |
 | POST | `/bots/:id/reset` | – | `{ generation }` |

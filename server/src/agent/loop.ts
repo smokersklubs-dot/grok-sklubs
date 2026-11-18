@@ -1,5 +1,6 @@
 import { clearLive, emit, getLive, setLive } from "../bus.js";
-import { botPathOf, browserAvailable, computerKind, imageForModel, screen, shellAvailable, shellOnHost } from "../computer.js";
+import { userBlocks } from "../attachmentpreviews.js";
+import { browserAvailable, computerKind, screen, shellAvailable, shellOnHost } from "../computer.js";
 import { config } from "../config.js";
 import { setRelayAsker } from "../egress.js";
 import { connectors } from "../connectors.js";
@@ -224,7 +225,7 @@ const queues = new Map<string, Promise<void>>();
 const pendingCount = new Map<string, number>();
 const controllers = new Map<string, AbortController>();
 /** Messages typed while the bot is mid-turn; folded into that turn at the next step. */
-const steering = new Map<string, Block[][]>();
+const steering = new Map<string, Array<() => Promise<Block[]>>>();
 /** The thread the running turn of each bot answers in (absent: the main chat). */
 const runningThread = new Map<string, number>();
 
@@ -388,11 +389,16 @@ export function submitUserMessage(bot: BotRecord, text: string, voice = false, a
   const task = bot.parentId ? bgTasks.byHelper(bot.id) : null;
   resetScope(bot.id, task ? scopeKey.task(task.id) : scopeKey.chat(thread));
   // Only a message for the same conversation (main chat or the same thread) joins the turn under way.
-  if (controllers.has(bot.id) && !paused.get(bot.id) && !isPaused(bot) && (runningThread.get(bot.id) ?? 0) === thread) {
+  // A running subscription CLI accepts text steering only. A new turn receives all
+  // attachment paths and prepares its previews on the locked desktop.
+  const needsDesktopFiles = attachments.length > 0 && isEngineRef(bot.model);
+  if (!needsDesktopFiles && controllers.has(bot.id) && !paused.get(bot.id) && !isPaused(bot) && (runningThread.get(bot.id) ?? 0) === thread) {
     const list = steering.get(bot.id) ?? [];
-    const blocks = userBlocks(bot.id, text, attachments);
-    if (skill) blocks.push({ type: "text", text: forcedSkillNote(skill) });
-    list.push(blocks);
+    list.push(async () => {
+      const blocks = await userBlocks(bot.id, text, attachments);
+      if (skill) blocks.push({ type: "text", text: forcedSkillNote(skill) });
+      return blocks;
+    });
     steering.set(bot.id, list);
     setLive(bot.userId, bot.id, { queued: list.length });
     return;
@@ -412,26 +418,15 @@ export function interrupt(botId: string, reason?: Error) {
   return true;
 }
 
-/** What the model sees for a user message: the words, any pictures, and where attached files were put. */
-function userBlocks(botId: string, words: string, attachments: Attachment[] = []): Block[] {
-  const blocks: Block[] = [];
-  for (const a of attachments) {
-    const img = imageForModel(botId, a);
-    if (img) blocks.push({ type: "image", mediaType: img.mediaType, data: img.data });
-  }
-  const notes = attachments.map((a) => `- ${botPathOf(a.path)} (${a.mime}, ${a.size} bytes)`);
-  const full = [words, notes.length ? `[The user attached ${notes.length === 1 ? "a file" : "files"}, saved in your library:]\n${notes.join("\n")}` : ""].filter(Boolean).join("\n\n");
-  if (full) blocks.push({ type: "text", text: full });
-  return blocks;
-}
-
-function drainSteering(bot: BotRecord): Block[] {
-  const list = (steering.get(bot.id) ?? []).flat();
+async function drainSteering(bot: BotRecord): Promise<Block[]> {
+  const list = steering.get(bot.id) ?? [];
   if (list.length) {
     steering.delete(bot.id);
     setLive(bot.userId, bot.id, { queued: 0 });
   }
-  return list;
+  const blocks: Block[] = [];
+  for (const prepare of list) blocks.push(...await prepare());
+  return blocks;
 }
 
 // ── Turn ─────────────────────────────────────────────────────────────────────
@@ -684,7 +679,7 @@ async function runScopedTurn(botId: string, trigger: Trigger, thread: number): P
         // is treated as having read outside content from the start.
         turn.tainted = true;
         if (trigger.kind === "user") for (const h of hostsIn(trigger.text)) turn.hosts.add(h);
-        const extra = drainSteering(bot);
+        const extra = await drainSteering(bot);
         const words = `[${new Date().toISOString().slice(0, 16).replace("T", " ")} UTC]\n${triggerMessage(trigger)}`;
         const note = handedBack.delete(botId) ? "[The user took control of your computer since your last turn and has handed it back. Look at the screen before relying on what you saw earlier.]\n" : "";
         const heard = feedbackNote(bot, thread);
@@ -750,11 +745,11 @@ async function runScopedTurn(botId: string, trigger: Trigger, thread: number): P
       turn.ruleScope = ruleScopeOf(turn.spendKey);
       const scoped = turn.ruleScope.routineId ? rules.scopedFor(user.id, bot.id, turn.ruleScope) : [];
       if (trigger.kind === "user") for (const h of hostsIn(trigger.text)) turn.hosts.add(h);
-      const extra = drainSteering(bot);
+      const extra = await drainSteering(bot);
       // The time travels with each message instead of sitting in the system prompt, so that prompt stays identical and cached.
       const ruleNote = scoped.length ? `[Rules ${user.name} set for this routine (their own words — follow them; a rule that says to ask first wins):\n${scoped.map((r) => `- ${r.text}`).join("\n")}]\n` : "";
       const stamped = `[${new Date().toISOString().slice(0, 16).replace("T", " ")} UTC]\n${ruleNote}${goalLine}${triggerMessage(trigger)}`;
-      const first = trigger.kind === "user" ? userBlocks(botId, stamped, trigger.attachments) : [text(stamped)];
+      const first = trigger.kind === "user" ? await userBlocks(botId, stamped, trigger.attachments) : [text(stamped)];
       const linkNote = userLinkHint(turn, trigger);
       if (linkNote) first.push(text(linkNote));
       if (trigger.kind === "user" && trigger.skill) first.push(text(forcedSkillNote(trigger.skill)));
@@ -847,7 +842,7 @@ async function runScopedTurn(botId: string, trigger: Trigger, thread: number): P
       catch (err) { console.error(`[ask ${bot.name}]`, err); }
     }
     bgTaskHooks.ended(bot, { failed, lastText: turn?.lastText ?? "", tainted: !!turn?.tainted, paused: pausedStop(controller.signal) });
-    const leftover = drainSteering(bot);
+    const leftover = await drainSteering(bot);
     if (!paused.get(botId)) clearLive(user.id, botId);
     // The owner's approval is settled: member messages that waited for it go now.
     const waiting = !paused.get(botId) ? deferredMember.get(botId) : undefined;
@@ -1091,7 +1086,7 @@ async function modelLoop(turn: Turn) {
       return;
     }
     if (!calls.length) {
-      const extra = drainSteering(bot);
+      const extra = await drainSteering(bot);
       if (extra.length) { history.append(bot.id, turn.generation, { role: "user", content: extra }, turn.thread); continue; }
       // The model gave back nothing at all, before saying or doing anything this turn: nudge it once.
       if (!said && !turn.spoke && !turn.toolsRun && !nudged) {
@@ -1514,7 +1509,7 @@ async function processCalls(turn: Turn, st: PausedTurn): Promise<"continue" | "e
     if (turn.loopStop) closeAfterLoopStop(turn, st);
   }
   // Anything the user typed meanwhile rides along with the results, so the model sees it at once.
-  const extra = st.endTurn ? [] : drainSteering(bot);
+  const extra = st.endTurn ? [] : await drainSteering(bot);
   history.append(bot.id, st.generation, { role: "user", content: [...st.results, ...extra] }, st.thread ?? 0);
   paused.clear(bot.id);
   return st.endTurn ? "end" : "continue";
