@@ -273,3 +273,11 @@ keyPassword=…
 
 **Garde précieusement le fichier de clé et son mot de passe** : une mise à jour de l'application ne
 s'installe par-dessus l'ancienne que si elle est signée avec la même clé.
+
+## Un abonnement ChatGPT pour les bots du propriétaire
+
+Sur une installation personnelle avec `BOT_LINK=socket`, le propriétaire peut autoriser son propre forfait une fois. Sous le répertoire de données du serveur, créer `personal-chatgpt` avec les droits `0700`. Dans ce répertoire, le fichier `owner` doit contenir l’identifiant du compte Sklubot du propriétaire, sur une seule ligne. Le serveur lit ce réglage à la demande.
+
+Dans **Réglages → Modèles → ChatGPT pour mes bots**, choisir **Continuer avec ChatGPT**. Le bureau Linux choisi affiche la demande d’OpenAI. Le propriétaire vérifie le compte et les permissions. Après autorisation, les bots configurés avec un modèle ChatGPT utilisent le forfait personnel. Chacun conserve sa bibliothèque, son historique et son bureau. Le bouton **Déconnecter l’abonnement partagé** révoque cet accès.
+
+Le serveur conserve l’autorisation de cette installation dans son répertoire privé. Chaque bot n’accède qu’au service de génération, sur son propre socket et pendant son tour. Une installation destinée à des clients doit appliquer les conditions du fournisseur avant de proposer l’intégration à ces clients. Les abonnements Claude utilisent le client officiel Claude Code sur le bureau du bot. [Parcours OpenAI pour les installations personnelles](https://developers.openai.com/siwc/token-sharing-open-source) · [Conditions de Claude Code](https://code.claude.com/docs/en/legal-and-compliance)

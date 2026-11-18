@@ -126,6 +126,7 @@ import { noteSignal } from "./sentinel/signals.js";
 import { accountFlags, accountOpened, assertEmailSignupPossible, PublicSignupError, emailGateAllows, emailGateBlocks, emailGateBody, publicSignupGate, publicSignupInfo, registerPublicSignupPrivate, registerPublicSignupPublic, setAccountRemover } from "./publicsignup.js";
 import { answerCapCard, amountText, CapError, capName, caps as usageCaps, capsView, cleanCapInput, cm } from "./usagecaps.js";
 
+import { personalResponses } from "./personalresponses.js";
 type Env = { Variables: { user: UserRecord } };
 export const api = new Hono<Env>();
 
@@ -234,6 +235,7 @@ export function botLinkRoutes(allowed: (botId: string) => boolean): Hono {
   link.use("/:kind/:botId/*", async (c, next) => { if (!allowed(c.req.param("botId"))) return c.json({ error: "not found" }, 404); await next(); });
   link.use("/:kind/:botId", async (c, next) => { if (!allowed(c.req.param("botId"))) return c.json({ error: "not found" }, 404); await next(); });
   link.post("/mcp/:botId", mcpRoute);
+  link.post("/personal-plan/:botId/v1/responses", personalResponses);
   link.on(["GET", "DELETE"], "/mcp/:botId", (c) => c.json({ error: "method not allowed" }, 405));
   link.all("/egress/:botId/*", (c) => handleEgress(c));
   link.all("*", (c) => c.json({ error: "not found" }, 404));

@@ -410,6 +410,7 @@ export const en = {
   "teamModels.main": "main bot",
   "teamModels.check": "Check connection",
   "teamModels.connected": "Signed in on this desktop",
+  "teamModels.shared": "Connected with my shared plan",
   "teamModels.missing": "Sign-in needed on this desktop",
   "teamModels.connect": "Sign in to {brand}",
   "teamModels.copy": "Use the same model as {name}",

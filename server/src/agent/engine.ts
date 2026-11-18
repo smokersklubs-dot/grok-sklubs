@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { botPathOf, computerKind, screen } from "../computer.js";
 import { config } from "../config.js";
+import { personalActive, personalEnabled, personalModels, verifyPersonal } from "../personalplan.js";
 import { q } from "../db.js";
 import { tr } from "../i18n.js";
 import { botBaseUrl, containerName, docker, machineOf, mayControlProcesses } from "../linux.js";
@@ -135,6 +136,8 @@ async function readCodexCatalog(key: string, read: () => Promise<string | null>)
  * cached 10 minutes; on any failure or timeout, the configured CODEX_MODELS. "default" (Codex picks) always comes first.
  */
 export async function engineModelsFor(userId: string, prefer?: string) {
+  const shared = personalModels(userId);
+  if (shared.length) return [...config.claudeCodeModels.map(claudeOption), ...["default", ...shared.filter((m) => m !== "default")].map(codexOption)];
   return computerKind() === "linux" ? subscriptionChoices(userId, prefer) : [];
 }
 /** engineModelsFor without the check for Linux computers (tests run without them). */
@@ -828,6 +831,17 @@ async function claudeTurn(turn: Turn, t: Transcript, prompt: string, token: stri
  */
 export const CODEX_LOST_SESSION = /no rollout found for thread id/i;
 
+function personalCodexArgs(bot: BotRecord): string[] {
+  if (!personalActive(bot.userId)) return [];
+  return ["-c", 'model_provider="sklubot_personal"',
+    "-c", "features.image_generation=false", "-c", "features.code_mode_tool_search=false",
+    "-c", 'model_providers.sklubot_personal.name="ChatGPT"',
+    "-c", `model_providers.sklubot_personal.base_url="${botBaseUrl()}/personal-plan/${encodeURIComponent(bot.id)}/v1"`,
+    "-c", 'model_providers.sklubot_personal.env_key="SKLUBOT_MCP_TOKEN"',
+    "-c", 'model_providers.sklubot_personal.wire_api="responses"',
+    "-c", "model_providers.sklubot_personal.requires_openai_auth=false",
+    "-c", "model_providers.sklubot_personal.supports_websockets=false"];
+}
 async function codexTurn(turn: Turn, t: Transcript, prompt: string, system: string, token: string, retried = false) {
   const { bot } = turn;
   // Codex reads its standing instructions from AGENTS.md in its working folder.
@@ -836,6 +850,7 @@ async function codexTurn(turn: Turn, t: Transcript, prompt: string, system: stri
   const model = modelOf(bot.model);
   const common = [
     "--json", "--skip-git-repo-check",
+    ...personalCodexArgs(bot),
     // As above: the computer itself is the sandbox.
     "--dangerously-bypass-approvals-and-sandbox",
     "-c", `mcp_servers.sklubot.url="${botBaseUrl()}/mcp/${encodeURIComponent(bot.id)}"`,
@@ -919,8 +934,13 @@ async function engineAskOn(bot: BotRecord, system: string, prompt: string): Prom
       await host.exec(bot, ["claude", "-p", "--output-format", "stream-json", "--verbose", "--tools", "", "--no-session-persistence", "--append-system-prompt-file", "/root/.sklubot/side-prompt.md", ...(modelOf(bot.model) !== "default" ? ["--model", modelOf(bot.model)] : []), ...effortArgs("claude-code", bot.effort)],
         { IS_SANDBOX: "1" }, "/root", prompt, ctrl, (line) => { try { const e = JSON.parse(line); if (e.type === "result" && !e.is_error) out = String(e.result ?? ""); } catch { /* ignore */ } });
     } else {
-      await host.exec(bot, ["codex", "exec", "--json", "--skip-git-repo-check", "--ephemeral", "--sandbox", "read-only", ...effortArgs("codex", bot.effort), "-"], {}, "/tmp", `${system}\n\n${prompt}`, ctrl,
-        (line) => { try { const e = JSON.parse(line); if (e.type === "item.completed" && e.item?.type === "agent_message") out = String(e.item.text ?? ""); } catch { /* ignore */ } });
+      const personal = personalCodexArgs(bot);
+      const proof = personal.length ? issueEngineToken(bot.id) : null;
+      try {
+        if (proof) await writeFile(bot.id, SECRET_ENV_FILE, secretEnvFile({ SKLUBOT_MCP_TOKEN: proof }));
+        await host.exec(bot, ["codex", "exec", "--json", "--skip-git-repo-check", "--ephemeral", "--sandbox", "read-only", ...personal, ...effortArgs("codex", bot.effort), "-"], {}, "/tmp", `${system}\n\n${prompt}`, ctrl,
+          (line) => { try { const e = JSON.parse(line); if (e.type === "item.completed" && e.item?.type === "agent_message") out = String(e.item.text ?? ""); } catch { /* ignore */ } });
+      } finally { if (proof) revokeEngineToken(bot.id); }
     }
     return out.trim();
   }
@@ -936,15 +956,20 @@ export async function engineStatus(bot: BotRecord): Promise<EngineStatus[]> {
   try { c = JSON.parse(claude.stdout.toString("utf8")); } catch { /* not JSON */ }
   const codexText = codex.stdout.toString("utf8").trim();
   const claudePlan = claude.code === 0 && !!c.loggedIn && ["claude.ai", "oauth_token"].includes(c.authMethod);
-  const codexPlan = codex.code === 0 && /logged in (?:using|with) chatgpt/i.test(codexText);
+  const shared = personalActive(bot.userId);
+  const codexPlan = shared ? await verifyPersonal(bot.userId) : codex.code === 0 && /logged in (?:using|with) chatgpt/i.test(codexText);
   return [
     { engine: "claude-code", installed: claude.code !== 9, signedIn: claudePlan, account: claudePlan ? c.email ?? c.account?.email ?? null : null, detail: claude.code === 9 ? "not installed" : null },
-    { engine: "codex", installed: codex.code !== 9, signedIn: codexPlan, account: codexPlan ? "ChatGPT" : null, detail: codex.code === 9 ? "not installed" : null },
+    { engine: "codex", installed: codex.code !== 9, signedIn: codexPlan, account: codexPlan ? "ChatGPT" : null, detail: shared ? "personal_plan" : codex.code === 9 ? "not installed" : null },
   ];
 }
 
 /** Opens a terminal on the bot's screen running the provider's sign-in; its page opens in the bot's browser. */
 export async function engineLogin(bot: BotRecord, engine: Engine) {
+  if (engine === "codex" && personalEnabled(bot.userId)) {
+    (await import("../personalsignin.js")).startPersonalLogin(bot);
+    return;
+  }
   await ensureComputer(bot);
   const fr = (await import("../store.js")).users.localeOf(bot.userId) === "fr";
   const done = fr ? "Connexion terminée. Tu peux fermer cette fenêtre et rendre la main." : "Signed in. You can close this window and hand back.";
@@ -955,6 +980,7 @@ export async function engineLogin(bot: BotRecord, engine: Engine) {
 }
 
 export async function engineLogout(bot: BotRecord, engine: Engine) {
+  if (engine === "codex" && personalActive(bot.userId)) throw new Error("Manage the shared ChatGPT connection in Settings → Models.");
   await ensureComputer(bot);
   await docker(["exec", containerName(bot.id), "sh", "-c", engine === "codex" ? "codex logout" : "claude auth logout"], { timeoutMs: 30_000 });
 }

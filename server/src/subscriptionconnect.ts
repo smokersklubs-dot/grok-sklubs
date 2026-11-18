@@ -1,5 +1,7 @@
 import type { Context, Hono } from "hono";
 import { engineLogin, engineStatus } from "./agent/engine.js";
+import { disconnectPersonal, personalActive, personalEnabled, verifyPersonal } from "./personalplan.js";
+import { startPersonalLogin, personalLoginState } from "./personalsignin.js";
 import { computerKind } from "./computer.js";
 import { config } from "./config.js";
 import { engineBlock, subscriptionEnginesFor } from "./hosted.js";
@@ -21,6 +23,8 @@ type Why = "engines" | "suspended" | "computer";
 const FR: Record<string, string> = {
   "That bot does not exist.": "Ce bot n'existe pas.",
   "Create a bot first.": "Crée d'abord un bot.",
+  "Use a private desktop for personal sign-in.": "Choisis un bot disposant de son propre bureau pour autoriser ton abonnement.",
+  "The personal authorization expired or was declined. Try again.": "L’autorisation personnelle a expiré ou a été refusée. Relance la connexion.",
   "Finish signing in on this bot's desktop first.": "Termine la connexion sur le bureau de ce bot.",
   "Could not verify the subscription. Try again.": "La vérification de l’abonnement a échoué. Réessaie.",
   "Signing in with a subscription needs Linux computers for the bots, which this server does not have.": "La connexion avec un abonnement demande des ordinateurs Linux pour les bots, que ce serveur n'a pas.",
@@ -68,7 +72,7 @@ export function registerSubscriptionConnectRoutes(api: Hono<any>) {
     const u = user(c);
     const why = connectBlock(u.id);
     const list = agents(u.id);
-    return c.json({ allowed: !why, why, whyText: why ? say(u.locale, WHY_TEXT[why]) : null, bots: list.map((b) => ({ id: b.id, name: b.name, primary: b.primary, model: b.model })), mainBotId: bots.primary(u.id)?.id ?? list[0]?.id ?? null });
+    return c.json({ allowed: !why, why, whyText: why ? say(u.locale, WHY_TEXT[why]) : null, personalChatGPT: personalEnabled(u.id), personalConnected: personalActive(u.id), bots: list.map((b) => ({ id: b.id, name: b.name, primary: b.primary, model: b.model })), mainBotId: bots.primary(u.id)?.id ?? list[0]?.id ?? null });
   });
   api.post("/connect-subscription/start", async (c) => {
     const u = user(c);
@@ -78,6 +82,10 @@ export function registerSubscriptionConnectRoutes(api: Hono<any>) {
     if (why) return err(c, why === "computer" ? 409 : 403, WHY_TEXT[why], { code: why });
     const bot = pick(u.id, b.botId);
     if (!bot) return err(c, 404, b.botId ? "That bot does not exist." : "Create a bot first.");
+    if (b.personal === true && engine === "codex" && personalEnabled(u.id)) {
+      try { return c.json({ botId: startPersonalLogin(bot), engine, defaultRef: defaultEngineRef(engine) }); }
+      catch { return err(c, 409, "Use a private desktop for personal sign-in."); }
+    }
     try { await deps.login(bot, engine); }
     catch (e) { return err(c, 502, "The sign-in window could not open on the bot's computer: {detail}", {}, { detail: String((e as Error)?.message ?? e).slice(0, 200) }); }
     audit(u.id, "account", `${bot.name}: sign-in to ${engine === "codex" ? "ChatGPT" : "Claude"} started on its computer`, bot.id);
@@ -91,6 +99,11 @@ export function registerSubscriptionConnectRoutes(api: Hono<any>) {
     if (why) return err(c, why === "computer" ? 409 : 403, WHY_TEXT[why], { code: why });
     const engine = engineOf(c.req.query("engine"));
     try {
+      if (engine === "codex" && personalEnabled(u.id) && (c.req.query("personal") === "1" || personalActive(u.id))) {
+        if (personalLoginState(u.id)?.error && c.req.query("poll") === "1") return err(c, 409, "The personal authorization expired or was declined. Try again.");
+        const signedIn = await verifyPersonal(u.id);
+        return c.json({ signedIn, account: signedIn ? "ChatGPT" : null, personal: true });
+      }
       const s = (await deps.status(bot)).find((x) => x.engine === engine);
       return c.json({ signedIn: !!s?.signedIn, account: s?.account ?? null });
     } catch { return err(c, 502, "Could not verify the subscription. Try again."); }
@@ -104,13 +117,19 @@ export function registerSubscriptionConnectRoutes(api: Hono<any>) {
     const bot = pick(u.id, b.botId);
     if (!bot) return err(c, 404, "That bot does not exist.");
     try {
-      const status = (await deps.status(bot)).find((s) => s.engine === engine);
-      if (!status?.signedIn) return err(c, 409, "Finish signing in on this bot's desktop first.");
+      const connected = engine === "codex" && personalActive(u.id) ? await verifyPersonal(u.id) : (await deps.status(bot)).find((s) => s.engine === engine)?.signedIn;
+      if (!connected) return err(c, 409, "Finish signing in on this bot's desktop first.");
     } catch { return err(c, 502, "Could not verify the subscription. Try again."); }
     const ref = bot.model.startsWith(engine + ":") ? bot.model : defaultEngineRef(engine);
     bots.patch(bot.id, { model: ref });
     bots.announce(bot);
     audit(u.id, "account", `${bot.name}: now thinks with ${engine === "codex" ? "ChatGPT" : "Claude"} (${ref})`, bot.id);
     return c.json({ botId: bot.id, model: ref });
+  });
+  api.delete("/connect-subscription/personal", async (c) => {
+    if (!personalEnabled(user(c).id)) return err(c, 404, "That bot does not exist.");
+    if (personalLoginState(user(c).id) && !personalLoginState(user(c).id)?.error) return err(c, 409, "Could not verify the subscription. Try again.");
+    try { await disconnectPersonal(user(c).id); return c.json({ ok: true }); }
+    catch { return err(c, 502, "Could not verify the subscription. Try again."); }
   });
 }

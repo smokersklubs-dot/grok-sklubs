@@ -251,7 +251,8 @@ function EngineStatusBox({ bot, engine }: { bot: Bot; engine: Engine }) {
           <Icon name="check" size={14} />
           {status.account ? t("engine.signedInAs", { account: status.account }) : t("engine.signedIn")}
         </span>
-        <ConfirmButton label={t("engine.signOut")} confirmLabel={t("engine.signOutConfirm")} busyLabel={t("engine.signingOut")} className="btn btn-ghost btn-small" onConfirm={signOut} />
+        {status.detail === "personal_plan" ? <button className="btn btn-ghost btn-small" type="button" onClick={() => { useStore.getState().closeBotSettings(); useStore.getState().openAppSettings("models"); }}>{t("settings.section.models")}</button> :
+          <ConfirmButton label={t("engine.signOut")} confirmLabel={t("engine.signOutConfirm")} busyLabel={t("engine.signingOut")} className="btn btn-ghost btn-small" onConfirm={signOut} />}
       </div>
     );
   } else {

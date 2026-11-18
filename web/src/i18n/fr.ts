@@ -412,6 +412,7 @@ export const fr: Dict = {
   "teamModels.main": "bot principal",
   "teamModels.check": "Vérifier la connexion",
   "teamModels.connected": "Connecté sur ce bureau",
+  "teamModels.shared": "Connecté avec mon abonnement partagé",
   "teamModels.missing": "À connecter sur ce bureau",
   "teamModels.connect": "Se connecter à {brand}",
   "teamModels.copy": "Utiliser le même modèle que {name}",

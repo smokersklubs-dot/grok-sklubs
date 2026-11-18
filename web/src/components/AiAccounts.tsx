@@ -33,6 +33,8 @@ const TEXT = {
     gptTitle: "Mon compte ChatGPT", gptText: "Choisis le bot qui utilisera Codex avec ton abonnement ChatGPT.", gptBtn: "Connecter mon compte ChatGPT",
     clTitle: "Mon compte Claude", clText: "Ouvre Claude Code sur le bureau du bot et connecte ton abonnement Claude.", clBtn: "Connecter mon compte Claude",
     own: "Ton abonnement reste à toi : seuls tes bots l'utilisent.", otherKey: "Une autre clé d'API (DeepSeek, OpenAI…)",
+    sharedTitle: "ChatGPT pour mes bots", sharedHint: "Autorise Sklubot une fois sur ton installation personnelle. Chaque bot utilise ensuite ce compte avec son propre modèle, son bureau et ses fichiers.",
+    sharedButton: "Continuer avec ChatGPT", sharedDone: "Ton abonnement ChatGPT est connecté pour tes bots.", disconnect: "Déconnecter l’abonnement partagé",
     flowTitle: "Connexion à {provider}", whichBot: "Sur l'ordinateur de quel bot ?", start: "Ouvrir la page de connexion", starting: "Réveil de l'ordinateur et ouverture…",
     instr: "Connecte-toi sur la page qui s'ouvre, puis reviens ici.",
     instr2: "Tu tapes ton mot de passe sur la page de {provider} elle-même, dans le navigateur de ton bot : Sklubot ne le voit jamais.",
@@ -56,6 +58,8 @@ const TEXT = {
     gptTitle: "My ChatGPT account", gptText: "Choose the bot that will use Codex with your ChatGPT subscription.", gptBtn: "Connect my ChatGPT account",
     clTitle: "My Claude account", clText: "Open Claude Code on the bot’s desktop and sign in with your Claude subscription.", clBtn: "Connect my Claude account",
     own: "Your subscription stays yours: only your bots use it.", otherKey: "Another API key (DeepSeek, OpenAI…)",
+    sharedTitle: "ChatGPT for my bots", sharedHint: "Authorize Sklubot once on your personal installation. Each bot then uses this account with its own model, desktop and files.",
+    sharedButton: "Continue with ChatGPT", sharedDone: "Your ChatGPT plan is connected for your bots.", disconnect: "Disconnect the shared plan",
     flowTitle: "Signing in to {provider}", whichBot: "On which bot's computer?", start: "Open the sign-in page", starting: "Waking the computer and opening…",
     instr: "Sign in on the page that opens, then come back here.",
     instr2: "You type your password on {provider}'s own page, in your bot's browser: Sklubot never sees it.",
@@ -223,7 +227,7 @@ export function OpenRouterCard({ onChanged }: { onChanged?: () => void }) {
 
 /* ---------- ChatGPT / Claude subscriptions ---------- */
 
-interface ConnectInfo { allowed: boolean; why: string | null; whyText: string | null; bots: { id: string; name: string; primary: boolean }[]; mainBotId: string | null }
+interface ConnectInfo { allowed: boolean; why: string | null; whyText: string | null; personalChatGPT?: boolean; personalConnected?: boolean; bots: { id: string; name: string; primary: boolean }[]; mainBotId: string | null }
 const BRAND: Record<Engine, string> = { codex: "ChatGPT", "claude-code": "Claude" };
 const POLL_MS = 5000;
 const WAIT_MAX_MS = 5 * 60_000;
@@ -232,6 +236,7 @@ const WAIT_MAX_MS = 5 * 60_000;
 export function ConnectFlow({ engine, info, onClose }: { engine: Engine; info: ConnectInfo; onClose: () => void }) {
   const a = useA();
   const provider = BRAND[engine];
+  const shared = engine === "codex" && !!info.personalChatGPT;
   const openViewer = useStore((s) => s.openViewer);
   const selectedId = useStore.getState().selectedId;
   const [botId, setBotId] = useState(info.bots.find((b) => b.id === selectedId)?.id ?? info.mainBotId ?? info.bots[0]?.id ?? "");
@@ -249,7 +254,7 @@ export function ConnectFlow({ engine, info, onClose }: { engine: Engine; info: C
     if (checking.current) return;
     checking.current = true;
     try {
-      const r = await api<{ signedIn: boolean; account: string | null }>("GET", `/connect-subscription/status?bot=${enc(botId)}&engine=${engine}`);
+      const r = await api<{ signedIn: boolean; account: string | null }>("GET", `/connect-subscription/status?bot=${enc(botId)}&engine=${engine}${shared ? "&personal=1&poll=1" : ""}`);
       if (alive.current && r.signedIn) { setAccount(r.account); setStage("done"); }
     } catch (e) { if (alive.current) setError(errText(e)); }
     finally { checking.current = false; }
@@ -269,11 +274,12 @@ export function ConnectFlow({ engine, info, onClose }: { engine: Engine; info: C
   const start = async () => {
     setStage("starting"); setError(null); setStopped(false);
     try {
-      const status = await api<{ signedIn: boolean; account: string | null }>("GET", `/connect-subscription/status?bot=${enc(botId)}&engine=${engine}`);
+      const status = await api<{ signedIn: boolean; account: string | null }>("GET", `/connect-subscription/status?bot=${enc(botId)}&engine=${engine}${shared ? "&personal=1" : ""}`);
       if (!alive.current) return;
       if (status.signedIn) { setAccount(status.account); setStage("done"); return; }
-      await api("POST", "/connect-subscription/start", { engine, botId });
+      const flow = await api<{botId: string}>("POST", "/connect-subscription/start", { engine, botId, personal: shared });
       if (!alive.current) return;
+      setBotId(flow.botId);
       setSince(Date.now());
       setStage("screen");
     } catch (e) { if (alive.current) { setError(errText(e)); setStage("pick"); } }
@@ -312,7 +318,7 @@ export function ConnectFlow({ engine, info, onClose }: { engine: Engine; info: C
           </>
         ) : (
           <>
-            <p className="ai-flow-done" role="status"><Icon name="check" size={18} /> {a("done", { bot: bot?.name ?? "", provider })}</p>
+            <p className="ai-flow-done" role="status"><Icon name="check" size={18} /> {shared ? a("sharedDone") : a("done", { bot: bot?.name ?? "", provider })}</p>
             {account && <p className="muted small">{a("account", { account })}</p>}
             <label className="check-row"><input type="checkbox" checked={useBrain} onChange={(e) => setUseBrain(e.target.checked)} /><span>{a("useBrain", { bot: bot?.name ?? "", provider })}</span></label>
           </>
@@ -325,21 +331,29 @@ export function ConnectFlow({ engine, info, onClose }: { engine: Engine; info: C
   );
 }
 
-function SubscriptionCard({ engine, info }: { engine: Engine; info: ConnectInfo | null }) {
+function SubscriptionCard({ engine, info, reload }: { engine: Engine; info: ConnectInfo | null; reload: () => void }) {
   const a = useA();
   const [open, setOpen] = useState(false);
   const gpt = engine === "codex";
+  const personal = gpt && !!info?.personalChatGPT;
+  const [disconnectError, setDisconnectError] = useState("");
+  async function disconnect() {
+    try { await api("DELETE", "/connect-subscription/personal"); setDisconnectError(""); reload(); }
+    catch (e) { setDisconnectError(errText(e)); }
+  }
   return (
     <article className="ai-account">
       <div className="ai-account-head">
         <span className="ai-account-icon" aria-hidden="true"><Icon name="brain" size={18} /></span>
-        <h4>{a(gpt ? "gptTitle" : "clTitle")}</h4>
+        <h4>{a(personal ? "sharedTitle" : gpt ? "gptTitle" : "clTitle")}</h4>
       </div>
-      <p className="muted small">{a(gpt ? "gptText" : "clText")}</p>
+      <p className="muted small">{a(personal ? "sharedHint" : gpt ? "gptText" : "clText")}</p>
       {info && !info.allowed && <p className="muted small ai-blocked"><Icon name="info" size={13} /> {info.whyText}</p>}
-      <button type="button" className="btn btn-small btn-primary" disabled={!info || !info.allowed || !info.bots.length} onClick={() => setOpen(true)}>{a(gpt ? "gptBtn" : "clBtn")}</button>
+      <button type="button" className="btn btn-small btn-primary" disabled={!info || !info.allowed || !info.bots.length} onClick={() => setOpen(true)}>{a(personal ? "sharedButton" : gpt ? "gptBtn" : "clBtn")}</button>
+      {personal && info?.personalConnected && <button type="button" className="btn btn-ghost btn-small" onClick={() => void disconnect()}>{a("disconnect")}</button>}
+      {disconnectError && <ErrorNote>{disconnectError}</ErrorNote>}
       <p className="muted small ai-own">{a("own")}</p>
-      {open && info && <ConnectFlow engine={engine} info={info} onClose={() => setOpen(false)} />}
+      {open && info && <ConnectFlow engine={engine} info={info} onClose={() => { setOpen(false); reload(); }} />}
     </article>
   );
 }
@@ -360,8 +374,8 @@ export function AiAccountCards({ onOtherKey, subscriptionsOnly = false }: { onOt
     <div className="ai-accounts">
       {error && <><ErrorNote>{error}</ErrorNote><button type="button" className="btn btn-small" onClick={() => { setError(""); setAttempt((n) => n + 1); }}>{a("check")}</button></>}
       <div className="ai-account-grid">
-        <SubscriptionCard engine="codex" info={info} />
-        <SubscriptionCard engine="claude-code" info={info} />
+        <SubscriptionCard engine="codex" info={info} reload={() => setAttempt((n) => n + 1)} />
+        <SubscriptionCard engine="claude-code" info={info} reload={() => setAttempt((n) => n + 1)} />
         {!subscriptionsOnly && <OpenRouterCard />}
       </div>
       {!subscriptionsOnly && <button type="button" className="btn btn-ghost btn-small ai-other" onClick={onOtherKey ?? (() => openAppSettings("models"))}><Icon name="key" size={13} /> {a("otherKey")}</button>}

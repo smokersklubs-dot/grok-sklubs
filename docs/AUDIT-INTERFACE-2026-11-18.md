@@ -8,7 +8,7 @@ L’écran « Modèles » montrait d’abord des fournisseurs API, puis une list
 
 La page présente désormais les connexions ChatGPT et Claude ainsi que le modèle de chaque bot. La création manuelle reprend le modèle du bot principal. Lorsqu’un bot en crée un autre, le créateur transmet son propre choix. Le sélecteur permet de choisir une exception dès la création ou de modifier un bot existant. Cela évite d’écraser les réglages d’une équipe lors de la mise à jour.
 
-L’écran de connexion vérifie l’état déclaré par le client officiel sur le bureau choisi. Un utilisateur peut sélectionner un modèle avant de se connecter. La présence d’un nom au catalogue ne garantit pas que le fournisseur acceptera une requête avec cet abonnement. Un bureau personnel supplémentaire peut encore demander une autorisation. La preuve de bout en bout reste une réponse reçue sur ce bureau.
+L’écran de connexion vérifie l’état déclaré par le client officiel sur le bureau choisi. Un utilisateur peut sélectionner un modèle avant de se connecter. Le mode personnel ChatGPT permet au propriétaire d’autoriser une fois son installation puis de faire travailler plusieurs bots sur leurs bureaux respectifs. Les connexions natives individuelles, notamment Claude Code, se vérifient sur chaque bureau. La preuve de bout en bout reste une réponse reçue du fournisseur.
 
 ## Comprendre l’activité du bot
 
