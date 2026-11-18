@@ -900,8 +900,8 @@ async function codexTurn(turn: Turn, t: Transcript, prompt: string, system: stri
 
 const signInHint = (turn: Turn, engine: Engine) =>
   tr(turn.user.locale, engine === "codex"
-    ? "My ChatGPT session needs attention. Open Settings → Models, select ChatGPT and check the connection for this bot."
-    : "My Claude session needs attention. Open Settings → Models, select Claude and check the connection for this bot.");
+    ? "I am not signed in to ChatGPT on this desktop. Open Settings → Models and check my connection."
+    : "I am not signed in to Claude on this desktop. Open Settings → Models and check my connection.");
 
 // ── A short side request (memory, summaries) through the subscription ───────
 export async function engineAsk(bot: BotRecord, system: string, prompt: string): Promise<string> {
