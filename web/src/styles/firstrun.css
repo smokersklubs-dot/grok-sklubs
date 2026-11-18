@@ -34,6 +34,28 @@
 .onb-foot-right { display: flex; gap: 8px; margin-left: auto; }
 @media (min-width: 640px) { .onb-grid { grid-template-columns: repeat(2, 1fr); } }
 
+/* "Choisis comment tes bots travaillent" and "Active les notifications" (Onboarding.tsx), and Today's push banner. */
+.onb-ways { display: flex; flex-direction: column; gap: 8px; }
+.onb-way { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px; min-height: 64px; padding: 12px 14px; border-radius: var(--r-lg); border: 1px solid var(--border); background: var(--surface); text-align: left; color: var(--text); }
+.onb-way:hover:not(:disabled) { background: var(--surface-2); }
+.onb-way:disabled { opacity: 0.6; cursor: not-allowed; }
+.onb-way.is-selected { border-color: var(--ink); box-shadow: 0 0 0 1px var(--ink); }
+.onb-way-icon { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 12px; background: var(--brand-soft); color: var(--brand); }
+.onb-way-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; overflow-wrap: anywhere; }
+.onb-way-check { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; border: 1px solid var(--border-strong, var(--border)); }
+.onb-way.is-selected .onb-way-check { background: var(--ink); border-color: var(--ink); color: var(--ink-fg); }
+.onb-push { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 4px 0; }
+.onb-push-btn { min-height: 44px; gap: 8px; }
+.onb-push-ok { display: flex; align-items: center; gap: 8px; color: var(--ok); font-weight: 600; }
+.onb-push-ios { font-size: 14px; line-height: 1.5; }
+.onb-push-ios ol { list-style: decimal; margin: 8px 0 0; padding-left: 22px; display: flex; flex-direction: column; gap: 4px; }
+.onb-next { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 12px 14px; border-radius: var(--r-lg); background: var(--brand-soft); margin-bottom: 6px; }
+.onb-next-title { font-size: 12px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--brand); }
+.push-banner { margin-bottom: 14px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; padding: 12px 14px; border-radius: var(--r-lg); border: 1px solid var(--border); background: var(--surface); }
+.push-banner > .icon { flex: none; color: var(--brand); }
+.push-banner-text { flex: 1 1 220px; min-width: 0; display: flex; flex-direction: column; gap: 2px; font-size: 13.5px; }
+.push-banner-actions { display: flex; gap: 8px; margin-left: auto; }
+
 /* Cloudflare Turnstile on the sign-up form (Turnstile.tsx): its room is kept while it loads (65 px, the widget's height). */
 .turnstile-box { min-height: 65px; }
 .field-hint.is-error { color: var(--danger); }

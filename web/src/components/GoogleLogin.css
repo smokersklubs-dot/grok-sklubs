@@ -4,6 +4,13 @@
 .google-btn { display: inline-flex; align-items: center; justify-content: center; gap: 10px; background: #fff; color: #1f1f1f; border: 1px solid #747775; font-weight: 550; }
 .google-btn:hover:not(:disabled) { background: #f6f8fc; }
 .google-mark { flex: none; }
+.google-mark-wrap { display: inline-grid; place-items: center; flex: none; }
+/* The main way in ("Connexion ou inscription"): Google's dark button style (filled); its light one in the dark theme. */
+.google-btn.is-primary { min-height: 48px; font-size: 15px; background: #131314; color: #e3e3e3; border-color: #8e918f; }
+.google-btn.is-primary:hover:not(:disabled) { background: #2a2a2c; }
+.google-btn.is-primary .google-mark-wrap { width: 26px; height: 26px; border-radius: 50%; background: #fff; }
+:root[data-theme="dark"] .google-btn.is-primary { background: #fff; color: #1f1f1f; border-color: #747775; }
+:root[data-theme="dark"] .google-btn.is-primary:hover:not(:disabled) { background: #f0f4f9; }
 
 .google-settings { display: flex; flex-direction: column; gap: 12px; }
 .google-status { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-2); margin: 0; }

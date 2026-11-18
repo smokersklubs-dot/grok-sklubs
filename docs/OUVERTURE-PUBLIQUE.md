@@ -106,7 +106,13 @@ Un client qui passe d'une offre Gratuite à une offre payante retrouve son ordin
    tarifs (mode hébergé), la sécurité, les questions fréquentes, et les liens CGU, mentions légales, confidentialité.
    Français par défaut, anglais d'un clic, clair et sombre. Les liens d'invitation (`/?invite=…`, `/?plan_invite=…`)
    ouvrent directement le formulaire.
-2. **Inscription** : e-mail, mot de passe, offre et CGU (mode hébergé), widget Turnstile.
+2. **« Connexion ou inscription »** (un seul écran) : « Continuer avec Google » en premier (s'il est configuré), puis
+   l'adresse e-mail → mot de passe **ou** « Recevoir un lien de connexion par e-mail » (le même écran pour toutes les
+   adresses : rien ne dit si un compte existe). Le lien (15 min, une fois, empreinte SHA-256 seulement, 3 demandes par
+   adresse et 10 par IP par quart d'heure, Turnstile et adresses jetables vérifiés pour tout le monde) connecte un compte,
+   ou en crée un pour une adresse nouvelle après une dernière étape (prénom + CGU en mode hébergé) — l'adresse est alors
+   vérifiée. « Créer un compte avec un mot de passe » reste là (e-mail, mot de passe, CGU, Turnstile). La double
+   authentification s'applique partout.
 3. **Vérification obligatoire** (« compte obligatoire, sinon ça ne fonctionne pas ») : un e-mail avec un lien (une seule
    fois ; seule son empreinte SHA-256 est gardée). Tant qu'il n'est pas ouvert, le compte peut se connecter mais ne voit
    **que** l'écran « Confirme ton adresse e-mail » : l'adresse, l'heure de suppression (« Sans confirmation, ce compte
@@ -132,8 +138,11 @@ Un client qui passe d'une offre Gratuite à une offre payante retrouve son ordin
      avec Google ») ; « Continuer avec Google » marche toujours. Un compte déjà en attente quand le SMTP disparaît reste
      bloqué (Google le débloque, sinon il est supprimé à l'échéance).
    - `EMAIL_VERIFICATION=0` coupe tout ça (choix explicite de l'opérateur, risqué : voir les réglages plus haut).
-4. **Première prise en main** (3 étapes, « Passer » à tout moment) : un modèle d'équipe ou « un seul assistant », son
-   nom, puis une première tâche proposée, écrite dans la zone de saisie. Les bots créés sont prudents : compétences en
+4. **Première prise en main** (« Passer » à tout moment) : en mode hébergé, « Choisis comment tes bots travaillent »
+   (abonnement Claude/ChatGPT, clé d'API ou crédits — voir MODE-HEBERGE.md) ; « Active les notifications » (Web Push,
+   avec les cas bloqué, iPhone sans l'icône sur l'écran d'accueil et navigateur sans notifications ; demandé une seule
+   fois : la réponse est gardée sur le serveur, `users.push_prompt`, et « Plus tard » laisse un seul rappel sur
+   Aujourd'hui) ; un modèle d'équipe ou « un seul assistant », son nom et son rôle, puis une première tâche proposée. Les bots créés sont prudents : compétences en
    brouillon, routines en pause, modèle par défaut du compte, dans la limite de l'offre.
 
 ## À vérifier avant d'ouvrir
@@ -177,7 +186,10 @@ Un client qui passe d'une offre Gratuite à une offre payante retrouve son ordin
 | `GET /api/public/landing` | public, seulement avec `OPEN_SIGNUP=1` (sinon 404) | modèles (titres, descriptions, apparences), offres, présence de Turnstile et de la vérification |
 | `POST /api/auth/verify-email` | public (le jeton est le secret ; même origine exigée) | confirme l'adresse (et crée le premier bot) ; ne connecte personne |
 | `POST /api/account/verify-email/resend` | compte connecté | renvoie le lien (3 par quart d'heure) |
-| `POST /api/onboarding/commit`, `POST /api/onboarding/skip` | compte connecté, une seule fois | première prise en main |
+| `POST /api/onboarding/commit`, `POST /api/onboarding/skip` | compte connecté, une seule fois | première prise en main (`commit` accepte `label`, le rôle du premier bot) |
+| `POST /api/auth/email-link`, `POST /api/auth/email-link/use` | public (même origine ; le jeton est le secret) | lien de connexion / d'inscription par e-mail (`server/src/emaillink.ts`) |
+| `POST /api/auth/google/pending`, `POST /api/auth/google/finish` | public (jeton à usage unique) | mode hébergé : l'étape CGU après Google pour un nouveau compte |
+| `PUT /api/account/push-prompt` | compte connecté | `later` / `enabled` / `dismissed` (« Active les notifications ») |
 
 `POST /api/auth/signup` accepte en plus `turnstileToken` ; sans SMTP (vérification active), il répond
 `403 { code: "email_signup_closed" }`. `GET /api/me` ajoute `landing` et `turnstileSiteKey` quand c'est utile, et

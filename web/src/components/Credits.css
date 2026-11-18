@@ -1,0 +1,17 @@
+/* Settings → Credits (Credits.tsx). Tokens only; one column on a phone, three cards from 900 px. */
+.credits { display: flex; flex-direction: column; gap: 10px; }
+.credit-ways { display: grid; grid-template-columns: 1fr; gap: 10px; }
+.credit-way { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 14px; border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface); min-width: 0; }
+.credit-way-head { display: flex; align-items: center; gap: 10px; }
+.credit-way-head h4 { margin: 0; font-size: 14.5px; font-weight: 650; }
+.credit-way-icon { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; background: var(--brand-soft); color: var(--brand); flex: none; }
+.credit-way .btn { min-height: 40px; }
+.credit-way-hint { margin: 0; }
+.credit-balance { display: flex; align-items: baseline; gap: 8px; margin: 2px 0; }
+.credit-balance b { font-size: 26px; font-weight: 750; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.credit-packs { display: flex; flex-wrap: wrap; gap: 6px; }
+.credit-pack { font-variant-numeric: tabular-nums; }
+.credit-soon { margin: 0; }
+.credit-amount { margin-left: auto; font-weight: 650; font-variant-numeric: tabular-nums; color: var(--ok); white-space: nowrap; }
+.credit-amount.is-spend { color: var(--text-2); }
+@media (min-width: 900px) { .credit-ways { grid-template-columns: repeat(3, minmax(0, 1fr)); } }

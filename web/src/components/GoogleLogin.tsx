@@ -18,7 +18,7 @@ const TEXT = {
     settingsTitle: "Connexion avec Google",
     settingsIntro: "Permet à chacun de se connecter à ce Sklubot avec son compte Google (bouton «\u00a0Continuer avec Google\u00a0»). Les mêmes règles d'inscription s'appliquent\u00a0: un nouveau compte n'est créé que si les inscriptions sont ouvertes ou avec une invitation.",
     statusOn: "Activée\u00a0: le bouton apparaît sur la page de connexion.",
-    statusOff: "Pas encore configurée.",
+    statusOff: "Pas encore configurée : l'inscription et la connexion avec Google sont désactivées, les visiteurs ne voient pas le bouton « Continuer avec Google » (ils passent par l'e-mail).",
     fromEnv: "Les clés viennent de l'environnement du serveur (GOOGLE_LOGIN_CLIENT_ID / GOOGLE_LOGIN_CLIENT_SECRET). Pour les changer, modifie le fichier .env du serveur.",
     guideTitle: "Comment obtenir les clés (5 minutes)",
     step1: "Ouvre Google Cloud Console (console.cloud.google.com) et crée un projet, par exemple «\u00a0Sklubot\u00a0».",
@@ -58,7 +58,7 @@ const TEXT = {
     settingsTitle: "Sign in with Google",
     settingsIntro: "Lets people sign in to this Sklubot with their Google account (the “Continue with Google” button). The same sign-up rules apply: a new account is only created when sign-ups are open or with an invitation.",
     statusOn: "On: the button shows on the sign-in page.",
-    statusOff: "Not set up yet.",
+    statusOff: "Not set up yet: signing up and in with Google is off, visitors do not see the “Continue with Google” button (they use their e-mail).",
     fromEnv: "The keys come from the server's environment (GOOGLE_LOGIN_CLIENT_ID / GOOGLE_LOGIN_CLIENT_SECRET). To change them, edit the server's .env file.",
     guideTitle: "How to get the keys (5 minutes)",
     step1: "Open Google Cloud Console (console.cloud.google.com) and create a project, for example “Sklubot”.",
@@ -111,13 +111,14 @@ function GoogleMark() {
 }
 
 /** The sign-in page's "Continuer avec Google" (also for invitation links). Hidden while the server has no Google keys. */
-export function GoogleSignInButton({ invite, setupCode, setupCodeRequired, onError, hosted, check }: { invite?: string; setupCode?: string; setupCodeRequired?: boolean; onError: (message: string | null) => void; /** Hosted mode: the plan, the plan invitation and the terms ticked on the form. */ hosted?: { plan?: string; planInvite?: string; acceptTerms: boolean }; /** An error to show instead of starting (e.g. the terms not ticked). */ check?: () => string | null }) {
+export function GoogleSignInButton({ invite, setupCode, setupCodeRequired, onError, hosted, check, primary = false, divider = "before", onEnabled }: { invite?: string; setupCode?: string; setupCodeRequired?: boolean; onError: (message: string | null) => void; /** Hosted mode: the plan, the plan invitation and the terms ticked on the form. */ hosted?: { plan?: string; planInvite?: string; acceptTerms: boolean }; /** An error to show instead of starting (e.g. the terms not ticked). */ check?: () => string | null; /** The main way in (filled), on the "Connexion ou inscription" screen. */ primary?: boolean; /** Where the "ou" line goes. */ divider?: "before" | "after" | "none"; /** Told whether Google sign-in is configured here. */ onEnabled?: (on: boolean) => void }) {
   const g = useG();
   const locale = useStore((s) => s.locale);
   const [enabled, setEnabled] = useState(false);
   const [busy, setBusy] = useState(false);
   useEffect(() => {
-    api<{ enabled: boolean }>("GET", "/auth/google/status").then((r) => setEnabled(r.enabled), () => setEnabled(false));
+    api<{ enabled: boolean }>("GET", "/auth/google/status").then((r) => { setEnabled(r.enabled); onEnabled?.(r.enabled); }, () => { setEnabled(false); onEnabled?.(false); });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   if (!enabled) return null;
   const go = async () => {
@@ -135,13 +136,15 @@ export function GoogleSignInButton({ invite, setupCode, setupCodeRequired, onErr
       setBusy(false);
     }
   };
+  const or = <div className="google-or" aria-hidden="true"><span>{g("or")}</span></div>;
   return (
     <>
-      <div className="google-or" aria-hidden="true"><span>{g("or")}</span></div>
-      <button type="button" className="btn btn-block google-btn" onClick={() => void go()} disabled={busy}>
-        <GoogleMark />
+      {divider === "before" && or}
+      <button type="button" className={`btn btn-block google-btn ${primary ? "is-primary" : ""}`} onClick={() => void go()} disabled={busy}>
+        <span className="google-mark-wrap"><GoogleMark /></span>
         <span>{g(busy ? "opening" : "continue")}</span>
       </button>
+      {divider === "after" && or}
     </>
   );
 }

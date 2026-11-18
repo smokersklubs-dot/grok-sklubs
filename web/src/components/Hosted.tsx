@@ -4,6 +4,7 @@
  * buttons under a notice that the plan stopped some work. Texts live here (French and English), like GoogleLogin.tsx.
  */
 import { AdminCapsEditor } from "./UsageCaps";
+import { CreditsSection } from "./Credits";
 import { AdminRevokeSessions } from "./TwoFactor";
 import { useEffect, useId, useState, type ReactNode } from "react";
 import { api, enc, errText } from "../api";
@@ -19,7 +20,7 @@ const TEXT = {
     operatorTitle: "Tu gères ce service",
     operatorBody: "Ton compte est opérateur : il n'a ni offre ni limite, et ses dépenses ne sont pas comptées dans un budget. Les clients, les offres et les réglages sont dans Administration.",
     openAdmin: "Ouvrir l'administration",
-    plan: "Offre", status: "Statut", perMonth: "/ mois", free: "Gratuit",
+    yourPlan: "Ton offre et ses limites", plan: "Offre", status: "Statut", perMonth: "/ mois", free: "Gratuit",
     st_trial: "Essai", st_active: "Actif", st_past_due: "Paiement en retard", st_suspended: "Suspendu",
     trialEnds: "Fin de l'essai : {date}", paidUntil: "Payé jusqu'au {date}", graceEnds: "À régler avant le {date}, sinon le compte sera suspendu.",
     suspendedNote: "Ton compte est suspendu : il est en lecture seule. Tu peux consulter et exporter tes données, ou supprimer ton compte. Règle ton abonnement pour le réactiver.",
@@ -45,7 +46,9 @@ const TEXT = {
     manage: "Gérer", close: "Fermer",
     aPlan: "Changer d'offre", apply: "Appliquer", aStatus: "Changer le statut", periodEnd: "Payé jusqu'au (facultatif)",
     aPaid: "Paiement reçu", until: "Actif jusqu'au", reference: "Référence (facultatif)", markPaid: "Enregistrer le paiement",
-    aCredit: "Recharger le budget IA de ce mois", amount: "Montant (€)", note: "Note (facultatif)", addCredit: "Ajouter",
+    aCredit: "Ajouter des crédits IA", lasting: "Crédits durables (ne s'arrêtent pas à la fin du mois) — décoché : budget de ce mois seulement",
+    sCredits: "Crédits", packs: "Packs proposés (€, séparés par des virgules)", packsHint: "De 1 à 6 montants entre 1 et 1000 €. Les clients choisissent un pack ; le montant vient toujours du serveur.",
+    payments: "Paiement en ligne (Stripe)", paymentsOn: "Branché : les boutons « Acheter » ouvrent Stripe Checkout.", paymentsOff: "Pas branché : les boutons affichent « Paiement bientôt disponible » et ton adresse de contact. Ajoute STRIPE_SECRET_KEY et STRIPE_WEBHOOK_SECRET (voir docs/MODE-HEBERGE.md). Tu peux toujours ajouter des crédits à la main.", amount: "Montant (€)", note: "Note (facultatif)", addCredit: "Ajouter",
     aTrial: "Prolonger l'essai", days: "Jours", extend: "Prolonger",
     aOperator: "Opérateur du serveur", operatorHint: "Un opérateur voit cette page et gère les clients. Seule la personne propriétaire peut nommer des opérateurs.",
     done: "C'est fait.",
@@ -70,18 +73,18 @@ const TEXT = {
     auditEmpty: "Rien pour l'instant.", system: "planificateur",
     // Sign-up
     choosePlan: "Choisis ton offre", trial: "{days} jours d'essai", budgetIncluded: "{budget} € de budget IA / mois", ownKeys: "Tes propres clés d'API",
-    accept: "J'accepte les {terms} et j'ai lu la {privacy}.", acceptTerms: "CGU / CGV", acceptPrivacy: "politique de confidentialité",
+    accept: "J'accepte les {terms} et la {privacy}.", acceptTerms: "CGU / CGV", acceptPrivacy: "politique de confidentialité",
     mustAccept: "Coche la case pour accepter les CGU.",
-    invitedPlan: "Invitation : ton compte sera créé avec l'offre « {plan} ».",
+    invitedPlan: "Ton compte sera créé avec l'offre « {plan} ».",
     // Notices
-    nTopUp: "Recharger / changer d'offre", nOwnKey: "Utiliser ma propre clé", nWait: "ou attendre le {date}", nSubscription: "Mon abonnement", nAddKey: "Ajouter ma clé", nBrain: "Choisir un modèle d'API",
+    nTopUp: "Recharger / changer d'offre", nOwnKey: "Utiliser ma propre clé", nWait: "ou attendre le {date}", nSubscription: "Crédits", nAddKey: "Ajouter ma clé", nBrain: "Choisir un modèle d'API", nBuyCredits: "Acheter des crédits", nConnectSub: "Connecter mon abonnement",
   },
   en: {
     loading: "Loading…",
     operatorTitle: "You run this service",
     operatorBody: "Your account is an operator: it has no plan and no limit, and its spending is not counted against a budget. Customers, plans and settings are in Administration.",
     openAdmin: "Open administration",
-    plan: "Plan", status: "Status", perMonth: "/ month", free: "Free",
+    yourPlan: "Your plan and its limits", plan: "Plan", status: "Status", perMonth: "/ month", free: "Free",
     st_trial: "Trial", st_active: "Active", st_past_due: "Payment overdue", st_suspended: "Suspended",
     trialEnds: "Trial ends: {date}", paidUntil: "Paid until {date}", graceEnds: "Settle before {date}, or the account will be suspended.",
     suspendedNote: "Your account is suspended: it is read-only. You can look at and export your data, or delete your account. Settle your subscription to reactivate it.",
@@ -106,7 +109,9 @@ const TEXT = {
     manage: "Manage", close: "Close",
     aPlan: "Change plan", apply: "Apply", aStatus: "Change status", periodEnd: "Paid until (optional)",
     aPaid: "Payment received", until: "Active until", reference: "Reference (optional)", markPaid: "Record the payment",
-    aCredit: "Top up this month's AI budget", amount: "Amount (€)", note: "Note (optional)", addCredit: "Add",
+    aCredit: "Add AI credits", lasting: "Lasting credits (they do not end with the month) — unticked: this month's budget only",
+    sCredits: "Credits", packs: "Packs offered (€, comma-separated)", packsHint: "1 to 6 amounts between €1 and €1000. Customers choose a pack; the amount always comes from the server.",
+    payments: "Online payment (Stripe)", paymentsOn: "Connected: the “Buy” buttons open Stripe Checkout.", paymentsOff: "Not connected: the buttons say “Online payment coming soon” and show your contact address. Add STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET (see docs/MODE-HEBERGE.md). You can still add credits by hand.", amount: "Amount (€)", note: "Note (optional)", addCredit: "Add",
     aTrial: "Extend the trial", days: "Days", extend: "Extend",
     aOperator: "Server operator", operatorHint: "An operator sees this page and manages customers. Only the owner can make operators.",
     done: "Done.",
@@ -130,10 +135,10 @@ const TEXT = {
     saveSettings: "Save the settings",
     auditEmpty: "Nothing yet.", system: "scheduler",
     choosePlan: "Choose your plan", trial: "{days}-day trial", budgetIncluded: "€{budget} AI budget / month", ownKeys: "Your own API keys",
-    accept: "I accept the {terms} and have read the {privacy}.", acceptTerms: "terms of service", acceptPrivacy: "privacy policy",
+    accept: "I accept the {terms} and the {privacy}.", acceptTerms: "terms of service", acceptPrivacy: "privacy policy",
     mustAccept: "Tick the box to accept the terms of service.",
-    invitedPlan: "Invitation: your account will be created on the \"{plan}\" plan.",
-    nTopUp: "Top up / change plan", nOwnKey: "Use my own key", nWait: "or wait until {date}", nSubscription: "My subscription", nAddKey: "Add my key", nBrain: "Choose an API model",
+    invitedPlan: "Your account will be created on the \"{plan}\" plan.",
+    nTopUp: "Top up / change plan", nOwnKey: "Use my own key", nWait: "or wait until {date}", nSubscription: "Credits", nAddKey: "Add my key", nBrain: "Choose an API model", nBuyCredits: "Buy credits", nConnectSub: "Connect my subscription",
   },
 } as const;
 type TextKey = keyof typeof TEXT.fr;
@@ -205,7 +210,9 @@ export function SubscriptionSection({ title }: { title: string }) {
           <div><button type="button" className="btn btn-small" onClick={() => openAppSettings("admin")}>{h("openAdmin")}</button></div>
         </div>
       )}
-      {view && !view.operator && view.plan && <CustomerView view={view} />}
+      {/* Hosted mode's free accounts: the three ways their bots work and the prepaid credits (Credits.tsx), then the plan. */}
+      {view && !view.operator && <CreditsSection />}
+      {view && !view.operator && view.plan && <><h3 className="pane-heading">{h("yourPlan")}</h3><CustomerView view={view} /></>}
       <h3 className="pane-heading">{h("linksTitle")}</h3>
       <HostedLinks className="hosted-doc-links" />
     </>
@@ -311,24 +318,25 @@ function PlanCards({ plans, current, selected, onSelect, trialDays, name }: { pl
 
 export interface HostedSignup { plan?: string; planInvite?: string; acceptTerms: boolean }
 
-/** The plan picker and the terms checkbox of the sign-up form (hosted mode only). */
-export function HostedSignupFields({ value, onChange }: { value: HostedSignup; onChange: (v: HostedSignup) => void }) {
+/**
+ * The hosted part of the sign-up step (hosted mode only): everyone starts on the free plan (the server's default), so no
+ * plan picker — only what a link fixed (a plan invitation, or ?plan= from the pricing page) and one compact line to
+ * accept the terms, which the server requires (hosted.ts signupChoice).
+ */
+export function HostedSignupFields({ value, onChange, missing }: { value: HostedSignup; onChange: (v: HostedSignup) => void; missing?: boolean }) {
   const hosted = useStore((s) => s.hosted);
   const h = useH();
   const loc = useLoc();
-  const name = useId();
-  const [plans, setPlans] = useState<{ plans: HostedPlan[]; trialDays: number; defaultPlan: string } | null>(null);
+  const [named, setNamed] = useState<HostedPlan | null>(null);
   const [invitePlan, setInvitePlan] = useState<HostedPlan | null>(null);
   useEffect(() => {
-    if (!hosted) return;
-    api<{ plans: HostedPlan[]; trialDays: number; defaultPlan: string }>("GET", `/plans?locale=${loc}`).then((r) => {
-      setPlans(r);
-      if (!value.plan && !value.planInvite) {
-        const wanted = new URLSearchParams(location.search).get("plan");
-        const pick = r.plans.find((p) => p.id === wanted) ?? r.plans.find((p) => p.id === r.defaultPlan) ?? r.plans[0];
-        if (pick) onChange({ ...value, plan: pick.id });
-      }
-    }, () => setPlans(null));
+    if (!hosted || value.planInvite) return;
+    const wanted = new URLSearchParams(location.search).get("plan");
+    if (!wanted) return;
+    api<{ plans: HostedPlan[]; defaultPlan: string }>("GET", `/plans?locale=${loc}`).then((r) => {
+      const pick = r.plans.find((p) => p.id === wanted);
+      if (pick) { onChange({ ...value, plan: pick.id }); if (pick.id !== r.defaultPlan) setNamed(pick); }
+    }, () => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hosted]);
   useEffect(() => {
@@ -336,18 +344,12 @@ export function HostedSignupFields({ value, onChange }: { value: HostedSignup; o
     api<{ invite: { plan: HostedPlan } }>("GET", `/plan-invites/${enc(value.planInvite)}`).then((r) => setInvitePlan(r.invite.plan), () => setInvitePlan(null));
   }, [value.planInvite]);
   if (!hosted) return null;
+  const shown = invitePlan ?? named;
   return (
     <div className="hosted-signup">
-      {invitePlan ? (
-        <p className="signin-notice is-invite" role="status"><Icon name="star" size={16} /><span>{h("invitedPlan", { plan: planName(invitePlan, loc) })}</span></p>
-      ) : plans && plans.plans.length > 0 ? (
-        <fieldset className="hosted-signup-plans">
-          <legend>{h("choosePlan")}</legend>
-          <PlanCards plans={plans.plans} selected={value.plan} onSelect={(id) => onChange({ ...value, plan: id })} trialDays={plans.trialDays} name={name} />
-        </fieldset>
-      ) : null}
-      <label className="hosted-terms">
-        <input type="checkbox" checked={value.acceptTerms} onChange={(e) => onChange({ ...value, acceptTerms: e.target.checked })} required />
+      {shown && <p className="signin-notice is-invite" role="status"><Icon name="star" size={16} /><span>{h("invitedPlan", { plan: planName(shown, loc) })}</span></p>}
+      <label className={`hosted-terms ${missing ? "is-missing" : ""}`}>
+        <input type="checkbox" checked={value.acceptTerms} onChange={(e) => onChange({ ...value, acceptTerms: e.target.checked })} required aria-invalid={missing || undefined} />
         <span>{splitAccept(h("accept", { terms: "\u0001", privacy: "\u0002" }), <a href={hosted.links.terms} target="_blank" rel="noopener noreferrer">{h("acceptTerms")}</a>, <a href={hosted.links.privacy} target="_blank" rel="noopener noreferrer">{h("acceptPrivacy")}</a>)}</span>
       </label>
     </div>
@@ -369,7 +371,14 @@ export function PlanNoticeActions({ action }: { action: HostedNoticeAction }) {
   const sub = <button type="button" className="btn btn-small notice-action" onClick={() => openAppSettings("subscription")}><Icon name="chart" size={13} /> {h("nSubscription")}</button>;
   return (
     <div className="hosted-notice-actions">
-      {action.reason === "budget" && (
+      {action.reason === "budget" && action.credits && (
+        <>
+          <button type="button" className="btn btn-small notice-action" onClick={() => openAppSettings("subscription")}><Icon name="bolt" size={13} /> {h("nBuyCredits")}</button>
+          <button type="button" className="btn btn-small notice-action" onClick={() => openAppSettings("subscription")}><Icon name="brain" size={13} /> {h("nConnectSub")}</button>
+          <button type="button" className="btn btn-small notice-action" onClick={() => openAppSettings("models")}><Icon name="key" size={13} /> {h("nOwnKey")}</button>
+        </>
+      )}
+      {action.reason === "budget" && !action.credits && (
         <>
           {contact ? <a className="btn btn-small notice-action" href={contact} target="_blank" rel="noopener noreferrer"><Icon name="bolt" size={13} /> {h("nTopUp")}</a> : sub}
           <button type="button" className="btn btn-small notice-action" onClick={() => openAppSettings("models")}><Icon name="key" size={13} /> {h("nOwnKey")}</button>
@@ -387,7 +396,7 @@ export function PlanNoticeActions({ action }: { action: HostedNoticeAction }) {
 
 interface Overview {
   customers: AdminCustomer[]; plans: HostedPlan[]; settings: HostedSettings; invites: PlanInviteView[]; audit: AdminAuditEntry[];
-  providers: { id: string; name: string; models: string[]; hasKey: boolean; lent: boolean }[]; owner: boolean; me: string;
+  providers: { id: string; name: string; models: string[]; hasKey: boolean; lent: boolean }[]; owner: boolean; me: string; payments?: boolean;
 }
 type AdminTab = "customers" | "plans" | "invites" | "providers" | "settings" | "audit";
 
@@ -477,6 +486,7 @@ function CustomerActions({ c, data, onChange, onError }: { c: AdminCustomer; dat
   const [ref, setRef] = useState("");
   const [amount, setAmount] = useState("");
   const [note, setNote] = useState("");
+  const [lasting, setLasting] = useState(true);
   const [days, setDays] = useState("7");
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
@@ -532,7 +542,8 @@ function CustomerActions({ c, data, onChange, onError }: { c: AdminCustomer; dat
           <input id={ids.amount} className="input" type="number" min="0" step="1" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} />
           <label className="field-label small" htmlFor={ids.note}>{h("note")}</label>
           <input id={ids.note} className="input" value={note} maxLength={200} onChange={(e) => setNote(e.target.value)} />
-          <button type="button" className="btn btn-small" disabled={busy || !(Number(amount) > 0)} onClick={() => void run("POST", "/credit", { amountEur: Number(amount), note })}>{h("addCredit")}</button>
+          <label className="hosted-terms small"><input type="checkbox" checked={lasting} onChange={(e) => setLasting(e.target.checked)} /><span>{h("lasting")}</span></label>
+          <button type="button" className="btn btn-small" disabled={busy || !(Number(amount) > 0)} onClick={() => void run("POST", "/credit", { amountEur: Number(amount), note, lasting })}>{h("addCredit")}</button>
         </div>
         <div className="hosted-box">
           <label className="field-label" htmlFor={ids.days}>{h("aTrial")}</label>
@@ -740,6 +751,13 @@ function SettingsTab({ data, onChange, onError }: { data: Overview; onChange: (s
         <div className="field"><label className="field-label" htmlFor={`${base}-contact`}>{h("contactUrl")}</label><input id={`${base}-contact`} className="input" value={s.contactUrl} placeholder="mailto:contact@example.com" onChange={(e) => upd({ contactUrl: e.target.value })} /></div>
         <div className="field"><label className="field-label" htmlFor={`${base}-default`}>{h("defaultPlan")}</label>
           <select id={`${base}-default`} className="input" value={s.signupDefaultPlan} onChange={(e) => upd({ signupDefaultPlan: e.target.value })}>{data.plans.filter((p) => !p.archived && p.public).map((p) => <option key={p.id} value={p.id}>{planName(p, loc)}</option>)}</select></div>
+      </div>
+      <h3 className="pane-heading">{h("sCredits")}</h3>
+      <div className="hosted-form-grid">
+        <div className="field"><label className="field-label" htmlFor={`${base}-packs`}>{h("packs")}</label>
+          <input id={`${base}-packs`} className="input" defaultValue={s.creditPacksEur.join(", ")} inputMode="decimal" placeholder="5, 10, 20" onChange={(e) => upd({ creditPacksEur: e.target.value as unknown as number[] })} />
+          <p className="field-hint">{h("packsHint")}</p></div>
+        <div className="field"><p className="field-label">{h("payments")}</p><p className={`muted small ${data.payments ? "hosted-pay-on" : ""}`}>{h(data.payments ? "paymentsOn" : "paymentsOff")}</p></div>
       </div>
       <div className="action-row hosted-engines"><div><p className="action-title">{h("engines")}</p><p className="muted small">{h("enginesHint")}</p></div><Toggle checked={s.subscriptionEngines} label={h("engines")} onChange={(on) => upd({ subscriptionEngines: on })} /></div>
       <h3 className="pane-heading">{h("sEstimates")}</h3>

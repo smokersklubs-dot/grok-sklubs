@@ -134,11 +134,25 @@ const MAILS = {
     fr: (next: string) => ({ subject: "Sklubot : changement d'adresse demandé", text: `Bonjour,\n\nUn changement de l'adresse de ton compte Sklubot vers ${next} vient d'être demandé, avec ton mot de passe. Il ne prendra effet que si le lien envoyé à cette nouvelle adresse est ouvert dans les 30 minutes.\n\nSi ce n'est pas toi : connecte-toi, change ton mot de passe (Réglages → Compte), puis annule le changement en attente.\n\n— Sklubot (${config.publicUrl})` }),
     en: (next: string) => ({ subject: "Sklubot: change of address requested", text: `Hello,\n\nA change of your Sklubot account's address to ${next} was just requested, with your password. It only takes effect if the link sent to that new address is opened within 30 minutes.\n\nIf it was not you: sign in, change your password (Settings → Account), then cancel the pending change.\n\n— Sklubot (${config.publicUrl})` }),
   },
+  signIn: {
+    fr: (link: string) => ({ subject: "Sklubot : ton lien de connexion", text: `Bonjour,\n\nVoici ton lien pour te connecter à Sklubot (valable 15 minutes, une seule fois) :\n${link}\n\nSi tu n'as rien demandé, ignore cet e-mail : personne ne peut se connecter sans ce lien.\n\n— Sklubot (${config.publicUrl})` }),
+    en: (link: string) => ({ subject: "Sklubot: your sign-in link", text: `Hello,\n\nHere is your link to sign in to Sklubot (valid 15 minutes, once):\n${link}\n\nIf you did not ask for it, ignore this e-mail: nobody can sign in without this link.\n\n— Sklubot (${config.publicUrl})` }),
+  },
+  signUp: {
+    fr: (link: string) => ({ subject: "Sklubot : crée ton compte", text: `Bonjour,\n\nPour créer ton compte Sklubot avec cette adresse, ouvre ce lien (valable 15 minutes, une seule fois) :\n${link}\n\nSi tu n'as rien demandé, ignore cet e-mail : aucun compte n'est créé.\n\n— Sklubot (${config.publicUrl})` }),
+    en: (link: string) => ({ subject: "Sklubot: create your account", text: `Hello,\n\nTo create your Sklubot account with this address, open this link (valid 15 minutes, once):\n${link}\n\nIf you did not ask for it, ignore this e-mail: no account is created.\n\n— Sklubot (${config.publicUrl})` }),
+  },
   test: {
     fr: () => ({ subject: "Sklubot : e-mail de test", text: `Bonjour,\n\nCet e-mail de test confirme que ton serveur Sklubot sait envoyer des e-mails (mot de passe oublié, changement d'adresse).\n\n— Sklubot (${config.publicUrl})` }),
     en: () => ({ subject: "Sklubot: test e-mail", text: `Hello,\n\nThis test e-mail confirms that your Sklubot server can send e-mails (forgotten password, change of address).\n\n— Sklubot (${config.publicUrl})` }),
   },
 };
+
+/** "Recevoir un lien de connexion par e-mail" (emaillink.ts): sent after answering, never logged with its link. */
+export function sendLinkMail(kind: "signIn" | "signUp", to: string, locale: Locale, link: string) {
+  const mail = MAILS[kind][locale](link);
+  setImmediate(() => { void sendSystemMail(to, mail.subject, mail.text).catch(logFailure(kind === "signIn" ? "sign-in link e-mail" : "sign-up link e-mail")); });
+}
 
 // ── Tokens ──────────────────────────────────────────────────────────────────
 function newResetToken(userId: string): string {

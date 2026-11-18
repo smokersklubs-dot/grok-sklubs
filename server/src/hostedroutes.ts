@@ -2,6 +2,7 @@ import type { Context, Hono } from "hono";
 import { apiProviders } from "./apimodels.js";
 import { PLANNED_PROVIDERS, PROVIDERS } from "./billing/provider.js";
 import { config } from "./config.js";
+import { creditPacks, paymentsOn, registerCreditsPrivate, registerCreditsPublic, stripeLegacyWebhook } from "./credits.js";
 import {
   accountView, adminActions, adminLog, adminLogList, customers, hm, HostedError, hostedMode, hostedSettings, isOperator, ownerAccountId,
   planInvites, plans,
@@ -50,7 +51,7 @@ export function registerHostedPublic(api: Hono<any>) {
   api.get("/plans", handle((c) => {
     const s = hostedSettings.get();
     const loc = pickLocale(c.req.query("locale"), c.req.header("accept-language"));
-    return c.json({ plans: plans.offered(), trialDays: s.trialDays, defaultPlan: s.signupDefaultPlan, contactUrl: s.contactUrl, links: publicLinks(loc) });
+    return c.json({ plans: plans.offered(), trialDays: s.trialDays, defaultPlan: s.signupDefaultPlan, contactUrl: s.contactUrl, links: publicLinks(loc), credits: { packs: creditPacks(), payments: paymentsOn() } });
   }));
   api.get("/plan-invites/:token", handle((c) => {
     const inv = planInvites.peek(c.req.param("token") ?? "");
@@ -58,8 +59,11 @@ export function registerHostedPublic(api: Hono<any>) {
     return c.json({ invite: { plan: inv.plan, email: inv.email } });
   }));
   // Payment providers' webhooks (billing/provider.ts). Stripe and Paddle are planned, not written: 501, nothing changes.
-  api.post("/billing/webhook/:provider", handle((c) => {
+  registerCreditsPublic(api);
+  api.post("/billing/webhook/:provider", handle(async (c) => {
     const id = c.req.param("provider") ?? "";
+    // Stripe, once configured (credits.ts): the same handler as /billing/stripe/webhook.
+    if (id === "stripe") { const r = await stripeLegacyWebhook(c); if (r) return r; }
     if ((PLANNED_PROVIDERS as readonly string[]).includes(id) && !PROVIDERS[id])
       throw new HostedError(501, "Payments by {provider} are not connected on this server yet: the operator marks payments by hand (manual). See docs/MODE-HEBERGE.md.", { provider: id }, "not_implemented");
     return c.json(NOT_FOUND, 404);
@@ -84,13 +88,15 @@ export function registerHostedPages(site: Hono<any>) {
 export function registerHostedPrivate(api: Hono<any>) {
   // "Mon abonnement": the caller's own plan, status and usage.
   api.get("/billing", handle((c) => c.json(accountView(userOf(c).id))));
+  // Settings → Credits: balance, packs, history, Stripe Checkout (credits.ts).
+  registerCreditsPrivate(api);
 
   // ── Administration (operators only) ──
   const admin = (fn: (c: Context) => Promise<Response> | Response) => handle(fn, { admin: true });
   const overview = (u: UserRecord) => ({
     customers: customers(), plans: plans.list(), settings: hostedSettings.get(), invites: planInvites.list(), audit: adminLogList(100),
     providers: apiProviders.list(u.id).map((p) => ({ id: p.id, name: p.name, models: p.models.map((m) => m.id), hasKey: p.hasKey, lent: !!apiProviders.lentFlags(u.id)[p.id] })),
-    owner: ownerAccountId() === u.id, me: u.id,
+    owner: ownerAccountId() === u.id, me: u.id, payments: paymentsOn(),
   });
   api.get("/admin/overview", admin((c) => c.json(overview(userOf(c)))));
   api.get("/admin/customers", admin((c) => c.json({ customers: customers() })));
@@ -103,7 +109,7 @@ export function registerHostedPrivate(api: Hono<any>) {
   api.put("/admin/customers/:uid/plan", onCustomer((a, uid, b) => adminActions.setPlan(a, uid, String(b.planId ?? ""))));
   api.put("/admin/customers/:uid/status", onCustomer((a, uid, b) => adminActions.setStatus(a, uid, b.status, b.periodEnd)));
   api.post("/admin/customers/:uid/paid", onCustomer((a, uid, b) => adminActions.markPaid(a, uid, b.until, b.reference)));
-  api.post("/admin/customers/:uid/credit", onCustomer((a, uid, b) => adminActions.credit(a, uid, b.amountEur, b.note)));
+  api.post("/admin/customers/:uid/credit", onCustomer((a, uid, b) => adminActions.credit(a, uid, b.amountEur, b.note, b.lasting === true)));
   api.post("/admin/customers/:uid/trial", onCustomer((a, uid, b) => adminActions.extendTrial(a, uid, b.days)));
   api.put("/admin/customers/:uid/operator", onCustomer((a, uid, b) => adminActions.setOperator(a, uid, b.on === true)));
   // Usage caps the operator sets on a customer's account (usagecaps.ts, set_by 'operator'): they count what the service's

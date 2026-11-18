@@ -370,3 +370,13 @@
 @media (prefers-reduced-motion: reduce) {
   .lp-reveal, .lp-in { opacity: 1; transform: none; transition: none; animation: none; }
 }
+
+/* ── Pricing in hosted mode: free to start, then the subscription, the key, or credits (Landing.tsx Ways) ── */
+.lp-ways { display: grid; grid-template-columns: 1fr; gap: 12px; max-width: 1100px; margin: 0 auto 28px; }
+.lp-way { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 22px; border-radius: 20px; border: 1px solid var(--border); background: var(--surface); box-shadow: var(--shadow-sm); }
+.lp-way.is-featured { border-color: color-mix(in srgb, var(--brand) 45%, var(--border)); background: color-mix(in srgb, var(--brand-soft) 55%, var(--surface)); }
+.lp-way h3 { margin: 4px 0 0; font-size: 18px; font-weight: 720; letter-spacing: -0.02em; }
+.lp-way p:not(.lp-chip) { margin: 0; color: var(--text-2); line-height: 1.5; }
+.lp-way-icon { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 12px; background: var(--brand-soft); color: var(--brand); }
+@media (min-width: 720px) { .lp-ways { grid-template-columns: repeat(2, 1fr); } }
+@media (min-width: 1100px) { .lp-ways { grid-template-columns: repeat(4, 1fr); } }

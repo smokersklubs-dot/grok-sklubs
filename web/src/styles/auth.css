@@ -1,0 +1,26 @@
+/* "Connexion ou inscription" (SignIn.tsx, AuthLinks.tsx): one centred card, the landing page's warm glow behind it, phone
+   first (16 px gutters, 48 px buttons), light and dark from the tokens only. */
+.auth { position: relative; isolation: isolate; overflow: hidden; background: var(--bg); }
+.auth-glow { position: absolute; z-index: -1; inset: 0; pointer-events: none; }
+.auth-glow::before, .auth-glow::after { content: ""; position: absolute; border-radius: 50%; filter: blur(70px); }
+.auth-glow::before { width: 520px; height: 420px; left: calc(50% - 460px); top: -120px; background: color-mix(in srgb, var(--brand) 20%, transparent); }
+.auth-glow::after { width: 460px; height: 380px; left: calc(50% - 20px); top: 40px; background: color-mix(in srgb, var(--info) 16%, transparent); }
+.auth-card { max-width: 400px; padding: 28px 22px; border-radius: 20px; }
+.auth-form { display: flex; flex-direction: column; gap: 14px; }
+.auth .signin-brand { flex-direction: row; justify-content: center; gap: 10px; padding-bottom: 0; }
+.signin-wordmark { font-weight: 760; font-size: 20px; letter-spacing: -0.03em; }
+.auth-head { text-align: center; display: flex; flex-direction: column; gap: 6px; }
+.auth-title { margin: 0; font-size: 24px; font-weight: 750; letter-spacing: -0.025em; line-height: 1.15; text-wrap: balance; }
+.auth-lead { margin: 0; color: var(--text-2); font-size: 14px; line-height: 1.45; text-wrap: pretty; }
+.auth-input { min-height: 46px; font-size: 16px; }
+.auth-btn { min-height: 48px; font-size: 15px; gap: 8px; }
+.auth-center { text-align: center; }
+.auth-email { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 12px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface-2); font-size: 14px; }
+.auth-email .icon { color: var(--text-3); flex: none; }
+.auth-email-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 550; }
+.auth-email .link { flex: none; min-height: 44px; }
+.auth-sent-icon { display: grid; place-items: center; width: 56px; height: 56px; margin: 0 auto; border-radius: 50%; background: var(--brand-soft); color: var(--brand); }
+.auth .signin-forgot { align-self: flex-start; margin-top: -6px; }
+.auth .signin-switch .link { min-height: 32px; }
+.hosted-terms.is-missing { padding: 8px 10px; border-radius: var(--r-md); outline: 2px solid var(--danger); outline-offset: 0; }
+@media (min-width: 560px) { .auth-card { padding: 36px 36px 30px; } .auth-title { font-size: 26px; } }

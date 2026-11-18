@@ -145,7 +145,7 @@ export type Locale = "fr" | "en";
  * `emailUnverified` / `onboarding` (publicsignup.ts): only present, and true, on a new public account that has them pending.
  * `emailVerifyDeadline`: with `emailUnverified`, when the account is deleted if its address is still not confirmed (ms).
  */
-export interface User { id: string; email: string; name: string; locale: Locale; emailUnverified?: true; emailVerifyDeadline?: number; onboarding?: true }
+export interface User { id: string; email: string; name: string; locale: Locale; emailUnverified?: true; emailVerifyDeadline?: number; onboarding?: true; /** skipped "Active les notifications": Today asks once more */ pushPrompt?: "later" }
 
 /** A file shown in the chat. `path` is relative to the bot's library; fetch it with GET /bots/:id/files/view?path=. */
 export interface Attachment { name: string; path: string; mime: string; size: number }
@@ -338,7 +338,7 @@ export interface WatchNoticeAction { kind: "watch"; watch: "silent" | "stalled";
  * subscription bot that this person may not run; "limit": a plan limit (`limit` says which); "payment": the trial or the
  * paid period is over (grace period before suspension).
  */
-export interface HostedNoticeAction { kind: "plan"; reason: HostedStopReason; limit?: PlanLimitKind; resetAt?: number; contactUrl?: string }
+export interface HostedNoticeAction { kind: "plan"; reason: HostedStopReason; limit?: PlanLimitKind; resetAt?: number; contactUrl?: string; /** budget: the plan has no budget of its own (credits only) */ credits?: boolean }
 
 /** One file a turn changed (see the "files" card). */
 export interface FileChange { path: string; change: "added" | "modified" | "deleted"; added: number | null; removed: number | null; binary: boolean; oldSize: number | null; newSize: number | null }
@@ -1239,6 +1239,7 @@ export interface HostedSettings {
   /** Whether customer accounts may run bots on their own Claude Code / Codex sign-in (never the operator's). */
   subscriptionEngines: boolean;
   estimates: HostedEstimates; legal: HostedLegal;
+  /** Credit packs offered in Settings → Credits (€, credits.ts). */ creditPacksEur: number[];
 }
 /** "Mon abonnement": what a customer sees of their own account. */
 export interface HostedAccountView {
@@ -1247,14 +1248,15 @@ export interface HostedAccountView {
   trialEndsAt: number | null; periodEnd: number | null; graceEndsAt: number | null;
   month: string; resetAt: number; spentEur: number; budgetEur: number; creditEur: number; operatorKeys: boolean;
   usage: { bots: number; maxBots: number | null; routines: number; maxRoutines: number | null; awake: number; maxAwake: number | null; storageBytes: number; storageLimitBytes: number | null };
-  contactUrl: string; plans: HostedPlan[];
+  contactUrl: string; plans: HostedPlan[]; /** Prepaid credits left (€, credits.ts). */ prepaidEur?: number;
 }
 export interface AdminCustomer {
   id: string; name: string; email: string; createdAt: number; operator: boolean; owner: boolean;
   planId: string | null; status: SubscriptionStatus | null; trialEndsAt: number | null; periodEnd: number | null; graceEndsAt: number | null;
-  spentEur: number; budgetEur: number; creditEur: number; lastActivity: number | null; bots: number; computers: number; awake: number;
+  spentEur: number; budgetEur: number; creditEur: number; prepaidEur?: number; lastActivity: number | null; bots: number; computers: number; awake: number;
 }
 export interface AdminAuditEntry { id: number; at: number; actorLabel: string; targetId: string | null; targetEmail: string | null; action: string; detail: string }
+export type * from "./credittypes.js";
 export interface PlanInviteView { id: string; planId: string; email: string; expiresAt: number; usedAt: number | null; createdAt: number; link?: string }
 
 // ── "Aujourd'hui" (today.ts) ─────────────────────────────────────────────────────────────────────────────────────

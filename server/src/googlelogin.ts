@@ -41,7 +41,7 @@ import { audit, bots, now, sha256, users, type UserRecord } from "./store.js";
 import { invites } from "./workspaces.js";
 import type { SecondStep } from "./twofactor.js";
 import { accountOpened, markVerified, publicSignupChecks } from "./publicsignup.js";
-import { accountCreated, HostedError, planInviteOpens, signupChoice, type SignupChoice } from "./hosted.js";
+import { accountCreated, HostedError, hm, hostedMode, planInviteOpens, signupChoice, type SignupChoice } from "./hosted.js";
 
 // ── Storage (additive) ──────────────────────────────────────────────────────
 db.exec(`
@@ -61,7 +61,7 @@ const FLOW_MS = 10 * 60_000;
 const APP_CODE_MS = 60_000;
 const APP_REDIRECT = "sklubot://auth";
 /** Accounts created with Google get this instead of a password hash: it never matches (verifyPassword wants scrypt$…). */
-const NO_PASSWORD_PREFIX = "google$";
+export const NO_PASSWORD_PREFIX = "google$";
 
 export const hasPassword = (u: UserRecord) => u.passHash.startsWith("scrypt$");
 export const callbackUrl = () => `${config.publicUrl}/api/auth/google/callback`;
@@ -200,6 +200,15 @@ interface Flow {
   hosted?: { plan?: string; planInvite?: string; acceptTerms: boolean };
 }
 const flows = new Map<string, Flow>();
+/**
+ * Hosted mode, a new account through Google whose terms of service were not ticked before leaving for Google (the
+ * "Connexion ou inscription" screen puts Google first): nothing is created yet. Google's verified claims wait here
+ * (memory, 15 minutes, single use, keyed by the SHA-256 of a random token) while the web app shows one step — the name
+ * from Google, prefilled, and the terms — then POST /auth/google/finish creates the account with the same rules.
+ */
+interface PendingGoogle { claims: GoogleClaims; flow: Flow; expires: number }
+const pendingGoogle = new Map<string, PendingGoogle>();
+class TermsNeeded extends Error { constructor() { super("terms"); this.name = "TermsNeeded"; } }
 interface AppCode { userId: string; challenge: string; expires: number }
 const appCodes = new Map<string, AppCode>();
 const MAX_PENDING = 5000;
@@ -292,6 +301,8 @@ function resolveAccount(c: Context, deps: GoogleDeps, flow: Flow, claims: Google
   const invited = !!invite && invite.email.toLowerCase() === claims.email;
   if (!signupOpen() && !invited && !planInviteOpens(flow.hosted?.planInvite, claims.email)) throw new GoogleError(403, "New accounts are closed on this server. Ask its owner for an invitation.");
   deps.throttle(`signup:${deps.clientIp(c)}`, 20);
+  // Hosted mode, terms not ticked yet (web only): the account waits for that step (pendingGoogle above).
+  if (hostedMode() && users.count() > 0 && flow.hosted?.acceptTerms !== true && !flow.appChallenge && !setupCodeRequired()) throw new TermsNeeded();
   // Hosted mode: the plan and the terms of service, checked before the account is created (the same rules as the form).
   let choice: SignupChoice | null = null;
   try { choice = signupChoice({ plan: flow.hosted?.plan, planInvite: flow.hosted?.planInvite, acceptTerms: flow.hosted?.acceptTerms, email: claims.email, first: users.count() === 0 }); }
@@ -369,6 +380,7 @@ export function registerGooglePublic(api: Hono<any>, deps: GoogleDeps) {
     deleteCookie(c, FLOW_COOKIE, cookieOpts());
     let locale = flow?.locale ?? pickLoc(undefined, c.req.header("accept-language"));
     const back = flow?.invite ? `/?invite=${encodeURIComponent(flow.invite)}` : "/";
+    let lastClaims: GoogleClaims | null = null;
     try {
       if (!flow || flow.expires < Date.now() || !browser || !sameText(sha256(browser), flow.browserHash)) throw new GoogleError(400, "This Google sign-in has expired or was started in another browser. Try again.");
       if (c.req.query("error")) throw new GoogleError(400, "The Google sign-in was cancelled.");
@@ -376,6 +388,7 @@ export function registerGooglePublic(api: Hono<any>, deps: GoogleDeps) {
       if (!code) throw new GoogleError(400, "Google did not confirm this sign-in. Try again.");
       deps.throttle(`ip:${deps.clientIp(c)}`, 30);
       const claims = await exchange(code, flow);
+      lastClaims = claims;
 
       // Linking from Settings → Account: the signed-in account gets this Google account.
       if (flow.linkUserId) {
@@ -403,10 +416,58 @@ export function registerGooglePublic(api: Hono<any>, deps: GoogleDeps) {
       if (deps.startSession(c, user.id, "Google")) return c.redirect("/?second=1", 302);
       return c.redirect("/", 302);
     } catch (err) {
+      if (err instanceof TermsNeeded && flow && lastClaims) {
+        prune(pendingGoogle);
+        const token = b64url(randomBytes(32));
+        pendingGoogle.set(sha256(token), { claims: lastClaims, flow, expires: Date.now() + 15 * 60_000 });
+        return c.redirect(`/?google_signup=${encodeURIComponent(token)}`, 302);
+      }
       if (err instanceof GoogleError) return errorPage(c, locale, err.message, err.status, back);
       if (err instanceof Error && /Too many attempts/.test(err.message)) return errorPage(c, locale, "Too many attempts. Wait a few minutes and try again.", 403, back);
       console.error("[google-login]", err);
       return errorPage(c, locale, "Google did not confirm this sign-in. Try again.", 502, back);
+    }
+  });
+
+  // The step after Google for a new hosted account (pendingGoogle): what to show, then the account once the terms are ticked.
+  const pendingOf = (token: unknown) => {
+    const key = typeof token === "string" && token.length <= 200 && token ? sha256(token) : "";
+    const p = key ? pendingGoogle.get(key) : undefined;
+    return p && p.expires > Date.now() ? { key, p } : null;
+  };
+  api.post("/auth/google/pending", async (c) => {
+    const b = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    const locale = pickLoc(b.locale, c.req.header("accept-language"));
+    if (!originAllowed(c.req.header("origin"), c.req.header("host"))) return c.json({ error: "Cross-site request refused." }, 403);
+    deps.throttle(`ip:${deps.clientIp(c)}`, 30);
+    const found = pendingOf(b.token);
+    if (!found) return c.json({ error: m(locale, "This Google sign-in has expired or was started in another browser. Try again.") }, 400);
+    return c.json({ email: found.p.claims.email, name: found.p.claims.name });
+  });
+  api.post("/auth/google/finish", async (c) => {
+    const b = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    let locale = pickLoc(b.locale, c.req.header("accept-language"));
+    try {
+      if (!originAllowed(c.req.header("origin"), c.req.header("host"))) throw new GoogleError(403, "Cross-site request refused.");
+      deps.throttle(`ip:${deps.clientIp(c)}`, 30);
+      const found = pendingOf(b.token);
+      if (!found) throw new GoogleError(400, "This Google sign-in has expired or was started in another browser. Try again.");
+      locale = found.p.flow.locale;
+      // Checked before the step is used up, so a missing tick can be fixed.
+      if (b.acceptTerms !== true) return c.json({ error: hm(locale, "You must accept the terms of service (CGU) to create an account."), code: "terms" }, 400);
+      pendingGoogle.delete(found.key);
+      const name = typeof b.name === "string" ? b.name.replace(/[\0-\x1f]/g, "").trim().slice(0, 80) : "";
+      const flow: Flow = { ...found.p.flow, hosted: { ...(found.p.flow.hosted ?? {}), acceptTerms: true } };
+      const { user } = resolveAccount(c, deps, flow, { ...found.p.claims, name: name || found.p.claims.name });
+      if (flow.invite) { try { invites.accept(flow.invite, user.id); invalidateAudience(); } catch { /* used, expired or for another address */ } }
+      audit(user.id, "account", "Signed in with Google");
+      const second = deps.startSession(c, user.id, "Google");
+      if (second) return c.json(second);
+      return c.json({ user: deps.publicUser(users.byId(user.id)!) });
+    } catch (err) {
+      if (err instanceof GoogleError) return c.json({ error: m(locale, err.message) }, err.status);
+      if (err instanceof Error && /Too many attempts/.test(err.message)) return c.json({ error: m(locale, "Too many attempts. Wait a few minutes and try again.") }, 403);
+      throw err;
     }
   });
 

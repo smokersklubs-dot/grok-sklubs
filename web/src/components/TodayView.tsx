@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useId, useMemo, useState, type ReactNode } from "react";
+import { PushPromptBanner } from "./PushPromptBanner";
 import { api, errText } from "../api";
 import { intlLocale, tn, useT, type Key } from "../i18n";
 import { useStore } from "../store";
@@ -128,6 +129,8 @@ export function TodayView() {
       <div className="tasks-body today-body">
         {/* « Annonces » from the server's owner, on top of the day (closed per reader). */}
         <TodayAnnouncements />
+        {/* "Active les notifications", skipped during the first run: asked once more, here (PushPromptBanner.tsx). */}
+        <PushPromptBanner />
         <ErrorNote onDismiss={() => setError(null)}>{error}</ErrorNote>
         {!report && !error && <Loading label={t("today.loading")} />}
         {report && (

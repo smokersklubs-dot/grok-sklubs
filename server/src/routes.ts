@@ -44,6 +44,7 @@ import { finishTakeover, holdControl, releaseControl } from "./takeover.js";
 import { deskRun, deskShot, startDeskTest } from "./desktest.js";
 import { notePresence, push, pushSettings, savePushSettings, sendPush } from "./push.js";
 import { parseTotp } from "./totp.js";
+import { registerEmailLinkPublic } from "./emaillink.js";
 import { registerTwoFactorPrivate, registerTwoFactorPublic, startSessionOrChallenge } from "./twofactor.js";
 import { registerDataKeyRoutes } from "./datakeyrotate.js";
 import { detectMapping, loginsFrom, parseCsv, type Mapping } from "./vault-import.js";
@@ -481,6 +482,8 @@ registerGooglePublic(api, googleDeps);
 registerAccountMailPublic(api, googleDeps);
 // "Ouverture publique" (publicsignup.ts): the landing page's data and the e-mail verification link.
 registerPublicSignupPublic(api, googleDeps);
+// "Recevoir un lien de connexion par e-mail" (emaillink.ts): passwordless sign-in and sign-up, through the same 2FA gate.
+registerEmailLinkPublic(api, googleDeps);
 // The second step of a sign-in with two-factor on (twofactor.ts).
 registerTwoFactorPublic(api, googleDeps);
 

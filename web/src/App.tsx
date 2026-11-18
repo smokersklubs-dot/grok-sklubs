@@ -27,6 +27,7 @@ import { isDownloadPath } from "./lib/platform";
 import { useDesktopBadge } from "./lib/desktop";
 import { takeVerifyLink, VerifyEmailGate, VerifyEmailPage } from "./components/VerifyEmail";
 import { Onboarding } from "./components/Onboarding";
+import { EmailLinkPage, GoogleSignupPage, takeEmailLink, takeGoogleSignup } from "./components/AuthLinks";
 
 // The public landing page (OPEN_SIGNUP): its own chunk, loaded only for signed-out visitors of an open server.
 const Landing = lazy(() => import("./components/Landing"));
@@ -175,6 +176,9 @@ function MainApp() {
   const [link, setLink] = useState(takeLinkAction);
   // The e-mail verification link (/?verify_email=…, publicsignup.ts), read once and removed from the address.
   const [verifyToken, setVerifyToken] = useState(takeVerifyLink);
+  // "Recevoir un lien de connexion par e-mail" (/?email_link=…) and the step after Google for a new hosted account.
+  const [emailLink, setEmailLink] = useState(takeEmailLink);
+  const [googleSignup, setGoogleSignup] = useState(takeGoogleSignup);
   const landing = useStore((s) => s.publicSignup.landing);
   // Mandatory e-mail verification (server publicsignup.ts): an unconfirmed account sees only the confirmation page.
   const unverified = useStore((s) => !!s.user?.emailUnverified);
@@ -197,6 +201,11 @@ function MainApp() {
   useEffect(() => {
     void init();
   }, [init]);
+  // Back from Stripe Checkout (/?credits=success|cancel, server credits.ts): Settings → Credits says how it went.
+  useEffect(() => {
+    const v = new URLSearchParams(location.search).get("credits");
+    if (boot === "ready" && (v === "success" || v === "cancel")) useStore.getState().openAppSettings("subscription");
+  }, [boot]);
   useShortcuts();
   useSystemTheme();
   useDesktopBadge();
@@ -205,6 +214,8 @@ function MainApp() {
   if (link?.kind === "reset") return <ResetPasswordPage token={link.token} onDone={() => setLink(null)} />;
   if (link?.kind === "emailChange") return <EmailConfirmPage token={link.token} />;
   if (verifyToken) return <VerifyEmailPage token={verifyToken} onDone={() => setVerifyToken(null)} />;
+  if (emailLink) return <EmailLinkPage token={emailLink} onDone={() => setEmailLink(null)} />;
+  if (googleSignup) return <GoogleSignupPage token={googleSignup} onDone={() => setGoogleSignup(null)} />;
   if (boot === "signedOut" && landing && entry === "landing") {
     return (
       <Suspense fallback={<div className="boot" aria-busy="true" aria-label={t("common.loading")} />}>

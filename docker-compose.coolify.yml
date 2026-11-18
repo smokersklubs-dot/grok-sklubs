@@ -39,6 +39,9 @@ services:
       # Cloudflare (la clé secrète ne quitte jamais le serveur). Limites d'inscription par quart d'heure : par adresse IP, et en tout.
       TURNSTILE_SITE_KEY: "${SKLUBOT_TURNSTILE_SITE_KEY:-}"
       TURNSTILE_SECRET_KEY: "${SKLUBOT_TURNSTILE_SECRET_KEY:-}"
+      # Prepaid AI credits with Stripe Checkout (docs/MODE-HEBERGE.md "Crédits"): both empty = payment off.
+      STRIPE_SECRET_KEY: "${SKLUBOT_STRIPE_SECRET_KEY:-}"
+      STRIPE_WEBHOOK_SECRET: "${SKLUBOT_STRIPE_WEBHOOK_SECRET:-}"
       SIGNUP_PER_IP: "${SKLUBOT_SIGNUP_PER_IP:-}"
       SIGNUP_GLOBAL: "${SKLUBOT_SIGNUP_GLOBAL:-}"
       DISPOSABLE_EMAIL_BLOCK: "${SKLUBOT_DISPOSABLE_EMAIL_BLOCK:-}"

@@ -23,6 +23,8 @@ const MODIFIERS = {
   "gem-hunt-btn": "btn",
   "sidebar-close": "icon-btn",
   "app-settings-close": "icon-btn",
+  "auth-btn": "btn",
+  "onb-push-btn": "btn",
 };
 
 function files(dir, ext) {

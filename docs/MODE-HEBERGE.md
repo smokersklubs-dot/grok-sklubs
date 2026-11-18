@@ -55,11 +55,35 @@ gratuits de l'offre « Gratuit », première prise en main), voir [OUVERTURE-PUB
 
 Les prix par défaut sont des **exemples à remplacer**.
 
-### Inscription
-Le formulaire propose les offres publiques et une case **« J'accepte les CGU »** obligatoire (refusée côté serveur sans
-elle). « Gratuit » démarre actif ; une offre payante démarre en **essai** (`trialDays`, 14 par défaut ; budget IA
-plafonné à `trialBudgetEur` pendant l'essai). Un lien d'invitation (`/?plan_invite=…`) fixe l'offre, peut être lié à
-une adresse, ne sert qu'une fois. « Continuer avec Google » suit les mêmes règles.
+### Inscription (« Connexion ou inscription »)
+Un seul écran pour se connecter et s'inscrire : **« Continuer avec Google »** en premier (bouton plein, seulement si
+Google est configuré), puis l'adresse e-mail → **le même écran pour tout le monde** (on ne dit jamais si un compte
+existe) : le mot de passe, ou **« Recevoir un lien de connexion par e-mail »** (`server/src/emaillink.ts` : lien unique,
+15 minutes, seule son empreinte SHA-256 est gardée ; pour une adresse nouvelle, le lien crée le compte après une
+dernière étape : prénom + case CGU), « Mot de passe oublié ? », et « Créer un compte avec un mot de passe ». La double
+authentification s'applique à toutes ces entrées. Plus de choix d'offre : **tout le monde démarre sur l'offre par
+défaut** (`signupDefaultPlan`, « Gratuit ») ; un lien `?plan=` ou une invitation `/?plan_invite=…` fixe encore l'offre.
+La case **CGU** reste obligatoire (refusée côté serveur sans elle) ; avec Google, si elle n'a pas été cochée, **le compte
+n'est pas créé** au retour de Google : une étape (prénom repris de Google + case CGU) le crée
+(`/api/auth/google/pending`, `/api/auth/google/finish`). Une offre payante démarre en **essai** (`trialDays`, budget
+IA plafonné à `trialBudgetEur`). « Le premier bot » se nomme pendant la première prise en main, plus à l'inscription.
+Pas de connexion par SMS ni par Apple pour l'instant.
+
+### Crédits (Réglages → Crédits)
+Le compte est gratuit ; pour que les bots travaillent, la personne choisit (première étape de la prise en main, puis
+Réglages → Crédits) : **son abonnement Claude ou ChatGPT** (connexion sur l'ordinateur de son bot : réglages du bot →
+Cerveau ; mets `FREE_PLAN_COMPUTER=personal` pour que la connexion reste), **sa clé d'API** (Réglages → Modèles), ou
+**des crédits** prépayés en € dépensés sur les clés d'IA du service. Code : `server/src/credits.ts`,
+`server/src/billing/stripe.ts`, `hosted.ts` (« Prepaid credits »), migration 21, `web/src/components/Credits.tsx`.
+- **Ordre de dépense** chaque mois : le budget de l'offre (0 € pour « Gratuit »), puis les recharges du mois, puis les
+  crédits. Les crédits **ne s'arrêtent pas à la fin du mois** (le reste est reporté). Sans crédit, la carte d'arrêt
+  propose « Acheter des crédits », « Connecter mon abonnement », « Utiliser ma propre clé ».
+- **Packs** : Administration → Réglages → Crédits (5, 10, 20 € par défaut ; de 1 à 6 montants). Le client envoie un
+  identifiant de pack, jamais un montant.
+- **À la main** : Administration → Clients → Gérer → « Ajouter des crédits IA » (case « Crédits durables » cochée :
+  ils se reportent ; décochée : budget de ce mois seulement, comme avant).
+- **Sans Stripe** (aujourd'hui) : les boutons « Acheter » affichent « Paiement en ligne bientôt disponible » et ton
+  adresse de contact.
 
 ### Statuts (le planificateur les fait avancer toutes les 10 minutes)
 `trial` → fin de l'essai : `active` si un paiement couvre la suite, sinon `past_due` → après `graceDays` (7 par défaut)
@@ -101,6 +125,23 @@ stockage (bibliothèques des bots et dossier d'équipe sur le serveur). Au-delà
 
 ## Paiement
 
+### Crédits par Stripe Checkout (à brancher quand l'entreprise existe)
+1. Crée le compte Stripe de l'entreprise (SIREN/SIRET, IBAN, identité) et active les paiements. Fais tout d'abord en
+   **mode test**.
+2. **Développeurs → Clés API** : copie la **clé secrète** (`sk_test_…`, puis `sk_live_…`). Une clé restreinte suffit
+   (écriture sur « Checkout Sessions »).
+3. **Développeurs → Webhooks** (Workbench) → « Ajouter une destination » : charge utile **Snapshot**, événements
+   **`checkout.session.completed`** et **`checkout.session.async_payment_succeeded`**, adresse
+   **`https://<ton domaine>/api/billing/stripe/webhook`**. Copie le **secret de signature** (`whsec_…`).
+4. Dans Coolify (ou le `.env` du VPS) : `SKLUBOT_STRIPE_SECRET_KEY` et `SKLUBOT_STRIPE_WEBHOOK_SECRET`, puis
+   **Redeploy**. Administration → Réglages → Crédits affiche « Branché ».
+5. Teste un achat avec la carte `4242 4242 4242 4242` (mode test) : le solde augmente dans Réglages → Crédits, une ligne
+   apparaît dans le journal d'administration et une notice dans le chat du client. Puis passe aux clés live.
+Sécurité : signature `Stripe-Signature` vérifiée sur le corps brut (HMAC-SHA256, 5 minutes de tolérance), seules les
+sessions créées par ce serveur sont créditées, au compte qui l'a créée et du montant fixé par le serveur, **une seule
+fois** (identifiant d'événement et de session). La TVA : à régler avec Stripe Tax ou ton comptable.
+
+### Abonnements (offres payantes)
 Aucun fournisseur n'est choisi. Le seul branché est **manuel** : Administration → Clients → Gérer → « Paiement reçu »
 (actif jusqu'à une date, référence facultative). Le planificateur fait le reste (retard, suspension).
 
@@ -138,7 +179,9 @@ gérer (Stripe Tax). À vérifier dans leurs conditions actuelles.
 |---|---|---|
 | `GET /api/plans` | public | offres proposées (formulaire d'inscription) |
 | `GET /api/plan-invites/:token` | public (le jeton est le secret) | offre d'une invitation |
-| `POST /api/billing/webhook/:provider` | public | `stripe`, `paddle` → 501 tant qu'aucun adaptateur n'existe |
+| `POST /api/billing/webhook/:provider` | public | `stripe` : le webhook Stripe une fois les clés posées (501 avant) ; `paddle` → 501 |
+| `POST /api/billing/stripe/webhook` | public (signature Stripe) | crédite un paiement Checkout ; 503 sans les clés |
+| `GET /api/billing/credits`, `POST /api/billing/credits/checkout` | compte connecté | Réglages → Crédits ; `{ pack }` → `{ url }` (503 `payments_off` sans Stripe) |
 | `GET /api/billing` | compte connecté | « Mon abonnement » |
 | `GET /api/admin/overview`, `/admin/customers`, `/admin/plans`, `/admin/settings`, `/admin/invites`, `/admin/audit` | opérateurs | lecture |
 | `PUT /api/admin/customers/:uid/plan`, `/status`, `/operator` ; `POST …/paid`, `…/credit`, `…/trial` | opérateurs (`/operator` : propriétaire seulement) | actions sur un client, chacune journalisée |

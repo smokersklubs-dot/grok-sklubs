@@ -42,24 +42,24 @@ export const hostedMode = () => process.env.HOSTED_MODE === "1" || process.env.H
 const FR: Record<string, string> = {
   "This month's AI budget of your plan ({budget} €) is used up on the service's AI keys. Top up your budget, switch this bot to your own API key (Settings → Models), or wait until {date}, when it starts again.":
     "Le budget IA du mois de ton offre ({budget} €) est épuisé sur les clés d'IA du service. Recharge ton budget, passe ce bot sur ta propre clé d'API (Réglages → Modèles), ou attends le {date}, quand il repart à zéro.",
-  "Your account is suspended, so your bots are paused and nothing runs. You can still sign in, look at and export your data, or delete your account. To reactivate it, settle your subscription (Settings → My subscription).":
-    "Ton compte est suspendu : tes bots sont en pause et rien ne tourne. Tu peux toujours te connecter, consulter et exporter tes données, ou supprimer ton compte. Pour le réactiver, règle ton abonnement (Réglages → Mon abonnement).",
+  "Your account is suspended, so your bots are paused and nothing runs. You can still sign in, look at and export your data, or delete your account. To reactivate it, settle your subscription (Settings → Credits).":
+    "Ton compte est suspendu : tes bots sont en pause et rien ne tourne. Tu peux toujours te connecter, consulter et exporter tes données, ou supprimer ton compte. Pour le réactiver, règle ton abonnement (Réglages → Crédits).",
   "Your plan uses your own API keys only, and this bot's model runs on the service's keys. Add your key in Settings → Models (API providers), then choose one of its models for this bot.":
     "Ton offre utilise uniquement tes propres clés d'API, et le modèle de ce bot tourne sur les clés du service. Ajoute ta clé dans Réglages → Modèles (fournisseurs d'API), puis choisis un de ses modèles pour ce bot.",
   "This bot runs on its owner's personal Claude or ChatGPT subscription, which only its owner may use. Ask its owner to give it an API model to share it.":
     "Ce bot tourne sur l'abonnement Claude ou ChatGPT personnel de son propriétaire, que lui seul peut utiliser. Demande-lui de lui donner un modèle d'API pour le partager.",
   "Claude Code and Codex subscriptions are not available on this service. Choose an API model for this bot (its settings → Brain).":
     "Les abonnements Claude Code et Codex ne sont pas disponibles sur ce service. Choisis un modèle d'API pour ce bot (ses réglages → Cerveau).",
-  "Your plan allows {n} bots. Remove one, or change plan (Settings → My subscription), to create another.":
-    "Ton offre permet {n} bots. Supprimes-en un, ou change d'offre (Réglages → Mon abonnement), pour en créer un autre.",
-  "Your plan allows {n} active routines. Pause or remove one, or change plan (Settings → My subscription), to add another.":
-    "Ton offre permet {n} routines actives. Mets-en une en pause ou supprime-la, ou change d'offre (Réglages → Mon abonnement), pour en ajouter une.",
-  "Your plan allows {n} computer(s) awake at once, and they are all busy. Wait a moment and try again, put one to sleep (Settings → Computers), or change plan (Settings → My subscription).":
-    "Ton offre permet {n} ordinateur(s) allumé(s) en même temps, et ils sont tous occupés. Attends un peu puis réessaie, mets-en un en veille (Réglages → Ordinateurs), ou change d'offre (Réglages → Mon abonnement).",
-  "Your plan's storage ({limit}) is full ({used} used). Delete files from your bots' libraries, or change plan (Settings → My subscription).":
-    "Le stockage de ton offre ({limit}) est plein ({used} utilisés). Supprime des fichiers des bibliothèques de tes bots, ou change d'offre (Réglages → Mon abonnement).",
-  "Your account is suspended: it is read-only. You can sign in, look at and export your data, or delete your account. To reactivate it, settle your subscription (Settings → My subscription).":
-    "Ton compte est suspendu : il est en lecture seule. Tu peux te connecter, consulter et exporter tes données, ou supprimer ton compte. Pour le réactiver, règle ton abonnement (Réglages → Mon abonnement).",
+  "Your plan allows {n} bots. Remove one, or change plan (Settings → Credits), to create another.":
+    "Ton offre permet {n} bots. Supprimes-en un, ou change d'offre (Réglages → Crédits), pour en créer un autre.",
+  "Your plan allows {n} active routines. Pause or remove one, or change plan (Settings → Credits), to add another.":
+    "Ton offre permet {n} routines actives. Mets-en une en pause ou supprime-la, ou change d'offre (Réglages → Crédits), pour en ajouter une.",
+  "Your plan allows {n} computer(s) awake at once, and they are all busy. Wait a moment and try again, put one to sleep (Settings → Computers), or change plan (Settings → Credits).":
+    "Ton offre permet {n} ordinateur(s) allumé(s) en même temps, et ils sont tous occupés. Attends un peu puis réessaie, mets-en un en veille (Réglages → Ordinateurs), ou change d'offre (Réglages → Crédits).",
+  "Your plan's storage ({limit}) is full ({used} used). Delete files from your bots' libraries, or change plan (Settings → Credits).":
+    "Le stockage de ton offre ({limit}) est plein ({used} utilisés). Supprime des fichiers des bibliothèques de tes bots, ou change d'offre (Réglages → Crédits).",
+  "Your account is suspended: it is read-only. You can sign in, look at and export your data, or delete your account. To reactivate it, settle your subscription (Settings → Credits).":
+    "Ton compte est suspendu : il est en lecture seule. Tu peux te connecter, consulter et exporter tes données, ou supprimer ton compte. Pour le réactiver, règle ton abonnement (Réglages → Crédits).",
   "You must accept the terms of service (CGU) to create an account.": "Tu dois accepter les conditions générales (CGU) pour créer un compte.",
   "This plan does not exist or is no longer offered.": "Cette offre n'existe pas ou n'est plus proposée.",
   "This invitation has expired or was already used. Ask for a new one.": "Cette invitation a expiré ou a déjà servi. Demandes-en une nouvelle.",
@@ -82,10 +82,13 @@ const FR: Record<string, string> = {
   "The owner is always an operator.": "La personne propriétaire est toujours opératrice.",
   "Payments by {provider} are not connected on this server yet: the operator marks payments by hand (manual). See docs/MODE-HEBERGE.md.":
     "Les paiements par {provider} ne sont pas encore branchés sur ce serveur : l'opérateur enregistre les paiements à la main (manuel). Voir docs/MODE-HEBERGE.md.",
-  "Your trial or your paid period is over. Settle your subscription (Settings → My subscription) to keep your bots running.":
-    "Ton essai ou ta période payée est terminé(e). Règle ton abonnement (Réglages → Mon abonnement) pour que tes bots continuent de tourner.",
+  "Your trial or your paid period is over. Settle your subscription (Settings → Credits) to keep your bots running.":
+    "Ton essai ou ta période payée est terminé(e). Règle ton abonnement (Réglages → Crédits) pour que tes bots continuent de tourner.",
   "Your free trial ends on {date}.": "Ton essai gratuit se termine le {date}.",
   "Your account moved from {from} to {to}.": "Ton compte est passé de {from} à {to}.",
+  "{amount} € of credits added to your account. Your bots can use the service's AI models again.": "{amount} € de crédits ajoutés à ton compte. Tes bots peuvent de nouveau utiliser les modèles d'IA du service.",
+  "You have no credits left on the service's AI keys ({budget} € this month). Buy credits (Settings → Credits), connect your Claude or ChatGPT subscription, or add your own API key (Settings → Models).":
+    "Tu n'as plus de crédits sur les clés d'IA du service ({budget} € ce mois-ci). Achète des crédits (Réglages → Crédits), connecte ton abonnement Claude ou ChatGPT, ou ajoute ta propre clé d'API (Réglages → Modèles).",
   trial: "essai", active: "actif", past_due: "paiement en retard", suspended: "suspendu",
 };
 export const hm = (locale: Locale | undefined, english: string, vars: Record<string, string | number> = {}) =>
@@ -97,7 +100,7 @@ export const bytesText = (n: number) => (n >= 1e9 ? `${(n / 1e9).toFixed(1)} GB`
 
 /** An error a route turns into JSON in the caller's language (status + English text + its variables). */
 export class HostedError extends Error {
-  constructor(public status: 400 | 402 | 403 | 404 | 409 | 501, public english: string, public vars: Record<string, string | number> = {}, public code?: string) { super(english); this.name = "HostedError"; }
+  constructor(public status: 400 | 402 | 403 | 404 | 409 | 429 | 501 | 502 | 503, public english: string, public vars: Record<string, string | number> = {}, public code?: string) { super(english); this.name = "HostedError"; }
   text(locale: Locale | undefined) { return hm(locale, this.english, this.vars); }
 }
 /** Work that may not run on this account's plan right now (budget, suspension, own keys only, subscription tools). */
@@ -119,7 +122,7 @@ const LEGAL_KEYS: (keyof HostedLegal)[] = ["company", "legalForm", "capital", "a
  * estimates stand for services that report no price per call; both are shown and editable in Settings → Administration.
  */
 export const DEFAULT_SETTINGS: HostedSettings = {
-  usdToEur: 0.92, trialDays: 14, graceDays: 7, trialBudgetEur: 2, contactUrl: "", signupDefaultPlan: "free", subscriptionEngines: true,
+  usdToEur: 0.92, trialDays: 14, graceDays: 7, trialBudgetEur: 2, contactUrl: "", signupDefaultPlan: "free", subscriptionEngines: true, creditPacksEur: [5, 10, 20],
   estimates: { imageUsd: 0.2, videoUsd: 2, sttUsdPerMinute: 0.02, ttsUsdPer1kChars: 0.03 },
   legal: Object.fromEntries(LEGAL_KEYS.map((k) => [k, ""])) as unknown as HostedLegal,
 };
@@ -144,7 +147,15 @@ export function cleanSettings(raw: any, base: HostedSettings = DEFAULT_SETTINGS)
       sttUsdPerMinute: num(e.sttUsdPerMinute, 0, 1000, base.estimates.sttUsdPerMinute), ttsUsdPer1kChars: num(e.ttsUsdPer1kChars, 0, 1000, base.estimates.ttsUsdPer1kChars),
     } satisfies HostedEstimates,
     legal: Object.fromEntries(LEGAL_KEYS.map((k) => [k, l[k] === undefined ? base.legal[k] : text(l[k], 400)])) as unknown as HostedLegal,
+    creditPacksEur: cleanPacks(r.creditPacksEur, base.creditPacksEur),
   };
+}
+/** Credit packs (€): 1 to 6 distinct amounts between 1 and 1000, at most 2 decimals, sorted. Anything else keeps the old list. */
+function cleanPacks(v: unknown, dflt: number[]): number[] {
+  const list = typeof v === "string" ? v.split(/[;,\s]+/).filter(Boolean) : v;
+  if (!Array.isArray(list)) return dflt;
+  const out = [...new Set(list.map((x) => Math.round(Number(String(x).replace(",", ".")) * 100) / 100))].filter((n) => Number.isFinite(n) && n >= 1 && n <= 1000).sort((a, b) => a - b);
+  return out.length >= 1 && out.length <= 6 && out.length === list.length ? out : dflt;
 }
 export const hostedSettings = {
   get(): HostedSettings {
@@ -335,16 +346,84 @@ export function monthBounds(t = now()): { start: number; end: number; label: str
 export function operatorSpendUsd(userId: string, t = now()): number {
   return q.get<{ c: number | null }>("SELECT SUM(cost_usd + est_cost_usd) AS c FROM usage WHERE user_id = ? AND payer = 'operator' AND at >= ?", userId, monthBounds(t).start)?.c ?? 0;
 }
-export const creditEur = (userId: string, t = now()) => q.get<{ s: number | null }>("SELECT SUM(amount_eur) AS s FROM credit_topups WHERE user_id = ? AND month = ?", userId, monthBounds(t).label)?.s ?? 0;
+/** The operator's top-ups for this calendar month only (they end with the month). */
+export const creditEur = (userId: string, t = now()) => q.get<{ s: number | null }>("SELECT SUM(amount_eur) AS s FROM credit_topups WHERE user_id = ? AND month = ? AND kind = 'month'", userId, monthBounds(t).label)?.s ?? 0;
 export function spentEur(userId: string, t = now()): number { return operatorSpendUsd(userId, t) * hostedSettings.get().usdToEur; }
 /** The month's AI budget on operator keys: the plan's (capped at the trial budget during a trial) plus top-ups. */
 export function budgetEur(userId: string, t = now()): number {
   const sub = subscriptions.ensure(userId);
   if (!sub) return Infinity;
-  const plan = plans.get(sub.planId);
-  if (!plan || plan.kind === "byok") return creditEur(userId, t);
-  const base = sub.status === "trial" ? Math.min(plan.aiBudgetEur, hostedSettings.get().trialBudgetEur) : plan.aiBudgetEur;
-  return base + creditEur(userId, t);
+  return planBaseEur(userId, t) + creditEur(userId, t) + prepaidAvailableEur(userId, t);
+}
+/** The plan's own AI budget this month (capped at the trial budget during a trial; none on "bring your own key"). */
+export function planBaseEur(userId: string, _t = now()): number {
+  const sub = subscriptions.ensure(userId);
+  const plan = sub ? plans.get(sub.planId) : null;
+  if (!sub || !plan || plan.kind === "byok") return 0;
+  return sub.status === "trial" ? Math.min(plan.aiBudgetEur, hostedSettings.get().trialBudgetEur) : plan.aiBudgetEur;
+}
+
+// ── Prepaid credits (kind 'prepaid': bought with Stripe or given by the operator; they do not end with the month) ─────
+// Each month the service's keys are paid first by the plan's budget, then by that month's top-ups, then by the prepaid
+// credits. What a closed month took from them is written once in credit_months (the plan's budget of that month is read
+// as the account's current plan: plans rarely change, and a change only moves which month the credits were spent in).
+const spendEurBetween = (userId: string, from: number, to: number) =>
+  (q.get<{ c: number | null }>("SELECT SUM(cost_usd + est_cost_usd) AS c FROM usage WHERE user_id = ? AND payer = 'operator' AND at >= ? AND at < ?", userId, from, to)?.c ?? 0) * hostedSettings.get().usdToEur;
+const prepaidBought = (userId: string, before = Infinity) =>
+  q.get<{ s: number | null }>("SELECT SUM(amount_eur) AS s FROM credit_topups WHERE user_id = ? AND kind = 'prepaid' AND at < ?", userId, Number.isFinite(before) ? before : Number.MAX_SAFE_INTEGER)?.s ?? 0;
+const prepaidUsedClosed = (userId: string, beforeMonth = "9999-99") =>
+  q.get<{ s: number | null }>("SELECT SUM(consumed_eur) AS s FROM credit_months WHERE user_id = ? AND month < ?", userId, beforeMonth)?.s ?? 0;
+/** Prepaid credits that may pay this month (before what this month spent): bought so far minus what closed months used. */
+export function prepaidAvailableEur(userId: string, t = now()): number {
+  const first = q.get<{ at: number | null }>("SELECT MIN(at) AS at FROM credit_topups WHERE user_id = ? AND kind = 'prepaid'", userId)?.at;
+  if (!first) return 0;
+  const cur = monthBounds(t);
+  const lastClosed = q.get<{ m: string | null }>("SELECT MAX(month) AS m FROM credit_months WHERE user_id = ?", userId)?.m ?? null;
+  let m = monthBounds(first);
+  while (lastClosed && m.label <= lastClosed) m = monthBounds(m.end);
+  for (; m.start < cur.start; m = monthBounds(m.end)) {
+    const avail = Math.max(0, prepaidBought(userId, m.end) - prepaidUsedClosed(userId, m.label));
+    const over = spendEurBetween(userId, m.start, m.end) - planBaseEur(userId) - creditEur(userId, m.start);
+    q.run("INSERT OR IGNORE INTO credit_months (user_id, month, consumed_eur, closed_at) VALUES (?, ?, ?, ?)", userId, m.label, round2(Math.min(avail, Math.max(0, over))), now());
+  }
+  return Math.max(0, prepaidBought(userId) - prepaidUsedClosed(userId));
+}
+/** Prepaid credits left right now: what may pay this month, minus what this month already took from them. */
+export function prepaidLeftEur(userId: string, t = now()): number {
+  const avail = prepaidAvailableEur(userId, t);
+  if (avail <= 0) return 0;
+  const over = spentEur(userId, t) - planBaseEur(userId, t) - creditEur(userId, t);
+  return round2(Math.max(0, avail - Math.max(0, over)));
+}
+/** What closed months (and this one so far) took from the prepaid credits, newest first. */
+export function prepaidUseByMonth(userId: string, t = now()): { month: string; spentEur: number; fromCreditsEur: number }[] {
+  prepaidAvailableEur(userId, t);
+  const closed = q.all<{ month: string; consumed_eur: number }>("SELECT month, consumed_eur FROM credit_months WHERE user_id = ? ORDER BY month DESC LIMIT 12", userId);
+  const cur = monthBounds(t);
+  const spent = spentEur(userId, t);
+  const thisMonth = { month: cur.label, spentEur: round2(spent), fromCreditsEur: round2(Math.min(prepaidAvailableEur(userId, t), Math.max(0, spent - planBaseEur(userId, t) - creditEur(userId, t)))) };
+  return [thisMonth, ...closed.map((r) => { const b = monthBounds(Date.UTC(Number(r.month.slice(0, 4)), Number(r.month.slice(5, 7)) - 1, 1)); return { month: r.month, spentEur: round2(spendEurBetween(userId, b.start, b.end)), fromCreditsEur: round2(r.consumed_eur) }; })];
+}
+/**
+ * Adds prepaid credits. `ref` (a Stripe Checkout Session id) is unique: a second call with the same ref adds nothing and
+ * returns false. Each addition is written to both logs and told in the account's main chat.
+ */
+export function addPrepaid(userId: string, amountEur: number, o: { source: "stripe" | "manual"; ref?: string; note?: string; actor: { id: string; label: string } | null }): boolean {
+  const a = round2(amountEur);
+  try {
+    q.run("INSERT INTO credit_topups (id, user_id, month, amount_eur, note, by_id, at, kind, source, external_ref) VALUES (?, ?, ?, ?, ?, ?, ?, 'prepaid', ?, ?)",
+      newId("top"), userId, monthBounds().label, a, text(o.note, 200), o.actor?.id ?? null, now(), o.source, o.ref ?? "");
+  } catch (err) {
+    if (/UNIQUE/i.test((err as Error).message)) return false;
+    throw err;
+  }
+  adminLog(o.actor, userId, "credit", `+${eur(a)} € prepaid credits (${o.source}${o.ref ? ` ${o.ref}` : ""})${text(o.note, 200) ? ` — ${text(o.note, 200)}` : ""}`);
+  audit(userId, "account", `Prepaid AI credits added: +${eur(a)} € (${o.source === "stripe" ? "payment" : "by the operator"})`);
+  const main = bots.primary(userId);
+  const loc = users.localeOf(userId);
+  if (main) rows.append(main, { kind: "notice", tone: "info", text: hm(loc, "{amount} € of credits added to your account. Your bots can use the service's AI models again.", { amount: eur(a) }) });
+  emit(userId, { type: "usage" });
+  return true;
 }
 
 export interface Access { operator: boolean; sub: SubRecord | null; plan: HostedPlan | null }
@@ -432,7 +511,7 @@ export const unitEstimate = (k: keyof HostedEstimates) => (hostedMode() ? hosted
 /** What a paid tool on the server's keys (image, video, voice, third-party) tells the bot when the plan stops it. */
 export function toolRefusal(reason: "budget" | "suspended" | "byok"): string {
   return reason === "budget"
-    ? "Refused by the account's plan: this month's AI budget on the service's keys is used up, and this tool runs on them. Nothing was spent. Tell the user: they can top up or change plan (Settings → My subscription), or wait until next month."
+    ? "Refused by the account's plan: this month's AI budget on the service's keys is used up, and this tool runs on them. Nothing was spent. Tell the user: they can top up or change plan (Settings → Credits), or wait until next month."
     : reason === "byok"
       ? "Refused by the account's plan: it uses the user's own API keys only, and this tool runs on the service's keys. Nothing was spent. Tell the user it is not included in their plan."
       : "Refused: the account is suspended. Nothing was spent.";
@@ -470,9 +549,9 @@ export const subscriptionEnginesFor = (userId: string) => !freeComputerPlan(user
 function stopEnglish(reason: HostedStopReason, userId: string): { text: string; vars: Record<string, string | number> } {
   switch (reason) {
     case "budget": return { text: "This month's AI budget of your plan ({budget} €) is used up on the service's AI keys. Top up your budget, switch this bot to your own API key (Settings → Models), or wait until {date}, when it starts again.", vars: { budget: eur(budgetEur(userId)), date: "" } };
-    case "suspended": return { text: "Your account is suspended, so your bots are paused and nothing runs. You can still sign in, look at and export your data, or delete your account. To reactivate it, settle your subscription (Settings → My subscription).", vars: {} };
+    case "suspended": return { text: "Your account is suspended, so your bots are paused and nothing runs. You can still sign in, look at and export your data, or delete your account. To reactivate it, settle your subscription (Settings → Credits).", vars: {} };
     case "byok": return { text: "Your plan uses your own API keys only, and this bot's model runs on the service's keys. Add your key in Settings → Models (API providers), then choose one of its models for this bot.", vars: {} };
-    case "payment": return { text: "Your trial or your paid period is over. Settle your subscription (Settings → My subscription) to keep your bots running.", vars: {} };
+    case "payment": return { text: "Your trial or your paid period is over. Settle your subscription (Settings → Credits) to keep your bots running.", vars: {} };
     default: return { text: "Claude Code and Codex subscriptions are not available on this service. Choose an API model for this bot (its settings → Brain).", vars: {} };
   }
 }
@@ -483,10 +562,12 @@ export function stopNotice(userId: string, reason: HostedStopReason, opts: { mem
   if (reason === "limit" && opts.limit) return { kind: "notice", tone: "warn", text: opts.limit.text(loc), action: { kind: "plan", reason: "limit", limit: opts.limit.kind, contactUrl } };
   const resetAt = monthBounds().end;
   let body: string;
-  if (reason === "budget") body = hm(loc, stopEnglish("budget", userId).text, { budget: eur(budgetEur(userId)), date: dateText(loc, resetAt) });
+  const creditsOnly = reason === "budget" && planBaseEur(userId) === 0;
+  if (creditsOnly) body = hm(loc, "You have no credits left on the service's AI keys ({budget} € this month). Buy credits (Settings → Credits), connect your Claude or ChatGPT subscription, or add your own API key (Settings → Models).", { budget: eur(budgetEur(userId)) });
+  else if (reason === "budget") body = hm(loc, stopEnglish("budget", userId).text, { budget: eur(budgetEur(userId)), date: dateText(loc, resetAt) });
   else if (reason === "engines" && opts.member) body = hm(loc, "This bot runs on its owner's personal Claude or ChatGPT subscription, which only its owner may use. Ask its owner to give it an API model to share it.");
   else body = hm(loc, stopEnglish(reason, userId).text);
-  return { kind: "notice", tone: reason === "suspended" ? "error" : "warn", text: body, action: { kind: "plan", reason, ...(reason === "budget" ? { resetAt } : {}), contactUrl } };
+  return { kind: "notice", tone: reason === "suspended" ? "error" : "warn", text: body, action: { kind: "plan", reason, ...(reason === "budget" && !creditsOnly ? { resetAt } : {}), ...(creditsOnly ? { credits: true } : {}), contactUrl } };
 }
 /** Background work (routines, check-ins, goals) is told once per account, reason and day, not at every attempt. */
 const toldToday = new Set<string>();
@@ -511,13 +592,13 @@ export const countRoutines = (userId: string) => q.get<{ n: number }>("SELECT CO
 setBotGuard((userId) => {
   const plan = limited(userId);
   if (plan?.maxBots !== null && plan?.maxBots !== undefined && countBots(userId) >= plan.maxBots)
-    throw new PlanLimitError("bots", "Your plan allows {n} bots. Remove one, or change plan (Settings → My subscription), to create another.", { n: plan.maxBots });
+    throw new PlanLimitError("bots", "Your plan allows {n} bots. Remove one, or change plan (Settings → Credits), to create another.", { n: plan.maxBots });
 });
 setRoutineGuard((botId) => {
   const owner = bots.byId(botId)?.userId;
   const plan = owner ? limited(owner) : null;
   if (owner && plan?.maxRoutines !== null && plan?.maxRoutines !== undefined && countRoutines(owner) >= plan.maxRoutines)
-    throw new PlanLimitError("routines", "Your plan allows {n} active routines. Pause or remove one, or change plan (Settings → My subscription), to add another.", { n: plan.maxRoutines });
+    throw new PlanLimitError("routines", "Your plan allows {n} active routines. Pause or remove one, or change plan (Settings → Credits), to add another.", { n: plan.maxRoutines });
 });
 /**
  * Room left on the account's plan before an import ("Importer depuis Grok Bot"): bots, and active routines (null: no
@@ -533,14 +614,14 @@ export function planRoom(userId: string): { bots: number | null; maxBots: number
 }
 /** The plan's refusal for `kind`, as the guards above throw it (for a check made before anything is created). */
 export const planLimitError = (kind: "bots" | "routines", n: number) => kind === "bots"
-  ? new PlanLimitError("bots", "Your plan allows {n} bots. Remove one, or change plan (Settings → My subscription), to create another.", { n })
-  : new PlanLimitError("routines", "Your plan allows {n} active routines. Pause or remove one, or change plan (Settings → My subscription), to add another.", { n });
+  ? new PlanLimitError("bots", "Your plan allows {n} bots. Remove one, or change plan (Settings → Credits), to create another.", { n })
+  : new PlanLimitError("routines", "Your plan allows {n} active routines. Pause or remove one, or change plan (Settings → Credits), to add another.", { n });
 /** How many computers this account may keep awake at once (null: only the server's own limit), and the error to give. */
 export function awakeLimitFor(userId: string): { max: number; error: () => PlanLimitError } | null {
   const plan = limited(userId);
   if (plan?.maxAwakeComputers === null || plan?.maxAwakeComputers === undefined) return null;
   const max = plan.maxAwakeComputers;
-  return { max, error: () => new PlanLimitError("computers", "Your plan allows {n} computer(s) awake at once, and they are all busy. Wait a moment and try again, put one to sleep (Settings → Computers), or change plan (Settings → My subscription).", { n: max }) };
+  return { max, error: () => new PlanLimitError("computers", "Your plan allows {n} computer(s) awake at once, and they are all busy. Wait a moment and try again, put one to sleep (Settings → Computers), or change plan (Settings → Credits).", { n: max }) };
 }
 setAwakeLimit(awakeLimitFor);
 
@@ -577,7 +658,7 @@ setLibraryWriteGuard((botId, size) => {
   if (!owner || plan?.storageGb === null || plan?.storageGb === undefined) return;
   const limit = plan.storageGb * 1e9;
   const used = storageBytes(owner);
-  if (used + size > limit) throw new PlanLimitError("storage", "Your plan's storage ({limit}) is full ({used} used). Delete files from your bots' libraries, or change plan (Settings → My subscription).", { limit: bytesText(limit), used: bytesText(used) });
+  if (used + size > limit) throw new PlanLimitError("storage", "Your plan's storage ({limit}) is full ({used} used). Delete files from your bots' libraries, or change plan (Settings → Credits).", { limit: bytesText(limit), used: bytesText(used) });
   storageCache.set(owner, { at: storageCache.get(owner)?.at ?? now(), bytes: used + size });
 });
 
@@ -669,7 +750,7 @@ export function accountView(userId: string): HostedAccountView {
       awake: awakeCount(userId).awake, maxAwake: plan?.maxAwakeComputers ?? null,
       storageBytes: storageBytes(userId), storageLimitBytes: plan?.storageGb !== null && plan?.storageGb !== undefined ? plan.storageGb * 1e9 : null,
     },
-    contactUrl: s.contactUrl, plans: plans.offered(),
+    contactUrl: s.contactUrl, plans: plans.offered(), prepaidEur: a.operator ? 0 : prepaidLeftEur(userId),
   };
 }
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -686,7 +767,7 @@ export function customers(): AdminCustomer[] {
     return {
       id: u.id, name: u.name, email: u.email, createdAt: created.get(u.id) ?? 0, operator: a.operator, owner: u.id === owner,
       planId: a.sub?.planId ?? null, status: a.sub?.status ?? null, trialEndsAt: a.sub?.trialEndsAt ?? null, periodEnd: a.sub?.periodEnd ?? null, graceEndsAt: a.sub?.graceEndsAt ?? null,
-      spentEur: round2(spentEur(u.id)), budgetEur: a.operator ? 0 : round2(budgetEur(u.id)), creditEur: round2(creditEur(u.id)),
+      spentEur: round2(spentEur(u.id)), budgetEur: a.operator ? 0 : round2(budgetEur(u.id)), creditEur: round2(creditEur(u.id)), prepaidEur: a.operator ? 0 : prepaidLeftEur(u.id),
       lastActivity: la || null, bots: countBots(u.id), computers: c.total, awake: c.awake,
     };
   });
@@ -751,10 +832,12 @@ export const adminActions = {
     if (cur.status !== "active") statusChanged(userId, cur.status, "active", actor);
     else emit(userId, { type: "usage" });
   },
-  credit(actor: Actor, userId: string, amount: unknown, note?: unknown) {
+  credit(actor: Actor, userId: string, amount: unknown, note?: unknown, lasting = false) {
     customer(userId);
     const a = Number(amount);
     if (!Number.isFinite(a) || a <= 0 || a > 10_000) throw new HostedError(400, "Enter an amount in euros (more than 0, at most 10000).");
+    // Credits that carry over (Settings → Credits): the same ledger as a purchase, by the operator.
+    if (lasting) { addPrepaid(userId, a, { source: "manual", note: text(note, 200), actor }); return; }
     q.run("INSERT INTO credit_topups (id, user_id, month, amount_eur, note, by_id, at) VALUES (?, ?, ?, ?, ?, ?, ?)", newId("top"), userId, monthBounds().label, round2(a), text(note, 200), actor.id, now());
     adminLog(actor, userId, "credit", `+${eur(a)} € for ${monthBounds().label}${text(note, 200) ? ` — ${text(note, 200)}` : ""}`);
     audit(userId, "account", `AI budget topped up by the operator: +${eur(a)} € this month`);

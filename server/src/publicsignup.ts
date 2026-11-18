@@ -39,6 +39,7 @@ import type { Context, Hono } from "hono";
 import { mailConfigured, sendSystemMail } from "./accountmail.js";
 import { originAllowed } from "./auth.js";
 import { config } from "./config.js";
+import { creditPacks, paymentsOn } from "./credits.js";
 import { q } from "./db.js";
 import { HostedError, hostedMode, hostedSettings, isPlanLimit, planLimitError, planRoom, plans } from "./hosted.js";
 import { pickLocale, tr } from "./i18n.js";
@@ -233,8 +234,8 @@ function sendVerification(user: UserRecord) {
   setImmediate(() => { void sendSystemMail(user.email, mail.subject, mail.text).catch((err) => console.error(`[account-mail] verification e-mail not sent: ${(err as Error).message}`)); });
 }
 
-interface Flags { email_verify_pending: number; onboarding_pending: number }
-const flagsOf = (userId: string) => q.get<Flags>("SELECT email_verify_pending, onboarding_pending FROM users WHERE id = ?", userId);
+interface Flags { email_verify_pending: number; onboarding_pending: number; push_prompt: string }
+const flagsOf = (userId: string) => q.get<Flags>("SELECT email_verify_pending, onboarding_pending, push_prompt FROM users WHERE id = ?", userId);
 /**
  * Whether this account is held until its address is confirmed: verification applies on this server, the account is
  * pending, and it is not the owner. Read on every signed-in request (routes.ts's session middleware).
@@ -273,10 +274,10 @@ export const emailGateBody = (user: Pick<UserRecord, "email" | "locale">) =>
   ({ error: m(user.locale, "Confirm your e-mail address to use Sklubot: open the link we sent to {email}.", { email: user.email }), code: "email_unverified" as const });
 
 /** Extra fields of the signed-in person (present only when true, so nothing changes for anyone else). */
-export function accountFlags(userId: string): { emailUnverified?: true; emailVerifyDeadline?: number; onboarding?: true } {
+export function accountFlags(userId: string): { emailUnverified?: true; emailVerifyDeadline?: number; onboarding?: true; pushPrompt?: "later" } {
   const f = flagsOf(userId);
   const held = emailGateBlocks(userId);
-  return { ...(held ? { emailUnverified: true as const, emailVerifyDeadline: verifyDeadline(userId) ?? undefined } : {}), ...(f?.onboarding_pending === 1 ? { onboarding: true as const } : {}) };
+  return { ...(held ? { emailUnverified: true as const, emailVerifyDeadline: verifyDeadline(userId) ?? undefined } : {}), ...(f?.onboarding_pending === 1 ? { onboarding: true as const } : {}), ...(f?.push_prompt === "later" ? { pushPrompt: "later" as const } : {}) };
 }
 /** The address is proven (link opened, a sign-in with Google, a confirmed change of address): the account is let in. */
 export function markVerified(userId: string) {
@@ -373,7 +374,7 @@ export function registerPublicSignupPublic(api: Hono<any>, d: PublicSignupDeps) 
     const loc = pickLocale(c.req.query("locale"), c.req.header("accept-language"));
     const templates = templateList().map((t) => ({ id: t.id, title: t.title, description: t.description, icon: t.icon, category: t.category, bots: t.bots.map((b) => ({ name: b.name, role: b.role, look: b.look })) }));
     const hosted = hostedMode()
-      ? { plans: plans.offered(), trialDays: hostedSettings.get().trialDays, freeComputers: env("FREE_PLAN_COMPUTER").toLowerCase() === "personal" ? "personal" : freeMax() > 0 ? "pool" : "none", links: loc === "fr" ? { pricing: "/tarifs", terms: "/cgu", legal: "/mentions-legales", privacy: "/confidentialite" } : { pricing: "/pricing", terms: "/terms", legal: "/legal-notice", privacy: "/privacy" } }
+      ? { plans: plans.offered(), credits: { packs: creditPacks(), payments: paymentsOn() }, trialDays: hostedSettings.get().trialDays, freeComputers: env("FREE_PLAN_COMPUTER").toLowerCase() === "personal" ? "personal" : freeMax() > 0 ? "pool" : "none", links: loc === "fr" ? { pricing: "/tarifs", terms: "/cgu", legal: "/mentions-legales", privacy: "/confidentialite" } : { pricing: "/pricing", terms: "/terms", legal: "/legal-notice", privacy: "/privacy" } }
       : null;
     return c.json({ templates, hosted, verification: verificationActive(), turnstile: !!turnstileKeys() }, 200, { "cache-control": "public, max-age=300" });
   });
@@ -411,6 +412,20 @@ export function registerPublicSignupPrivate(api: Hono<any>) {
     } catch (err) { return errorJson(c, err, user.locale); }
   });
 
+  /**
+   * "Active les notifications" (first run, then once on Today): asked once, remembered here. "later": skipped during the
+   * first run (Today shows one gentle banner); "enabled" / "dismissed": never asked again (users.push_prompt, migration 21).
+   */
+  api.put("/account/push-prompt", async (c) => {
+    const user = c.get("user") as UserRecord;
+    const b = await bodyOf(c);
+    const status = b.status === "later" || b.status === "enabled" || b.status === "dismissed" ? b.status : null;
+    if (!status) return c.json({ error: "status: later, enabled or dismissed." }, 400);
+    // "later" never brings back a prompt the person already answered for good.
+    q.run(status === "later" ? "UPDATE users SET push_prompt = 'later' WHERE id = ? AND push_prompt = ''" : "UPDATE users SET push_prompt = ? WHERE id = ?", ...(status === "later" ? [user.id] : [status, user.id]));
+    return c.json({ ok: true });
+  });
+
   api.post("/onboarding/skip", (c) => {
     const user = c.get("user") as UserRecord;
     q.run("UPDATE users SET onboarding_pending = 0 WHERE id = ?", user.id);
@@ -418,7 +433,7 @@ export function registerPublicSignupPrivate(api: Hono<any>) {
   });
 
   /**
-   * The guided first run: { template?: id, name?: string }. Without a template ("un seul assistant") the main bot keeps its
+   * The guided first run: { template?: id, name?: string, label?: string }. Without a template ("un seul assistant") the main bot keeps its
    * place and may take a new name. With one, its bots are created through the team-file import (careful autonomy, draft
    * skills, paused routines), as many as the plan has room for, the first one named `name` when given.
    */
@@ -428,6 +443,8 @@ export function registerPublicSignupPrivate(api: Hono<any>) {
     try {
       if (flagsOf(user.id)?.onboarding_pending !== 1) throw new PublicSignupError(409, "The first run is already done.", "done");
       const name = typeof b.name === "string" ? b.name.replace(/\s+/g, " ").trim().slice(0, 60) : "";
+      // The first bot's role ("Ton premier bot", asked here rather than on the sign-up form): optional.
+      const label = typeof b.label === "string" ? b.label.replace(/\s+/g, " ").trim().slice(0, 60) : "";
       let botId: string;
       let created: { id: string; name: string }[] = [];
       if (typeof b.template === "string" && b.template) {
@@ -443,6 +460,7 @@ export function registerPublicSignupPrivate(api: Hono<any>) {
         const main = bots.primary(user.id) ?? ensureFirstBot(user.id);
         if (!main) throw new PublicSignupError(404, "That template does not exist.", "not_found");
         if (name && name.toLowerCase() !== main.name.toLowerCase() && !bots.byName(user.id, name)) bots.patch(main.id, { name });
+        if (label && label !== main.label) bots.patch(main.id, { label });
         botId = main.id;
       }
       q.run("UPDATE users SET onboarding_pending = 0 WHERE id = ?", user.id);

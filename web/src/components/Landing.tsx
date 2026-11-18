@@ -20,7 +20,7 @@ import "../styles/landing.css";
 export interface LandingTemplate { id: string; title: string; description: string; icon: string; category: string; bots: { name: string; role: string; look: TeamFileLook }[] }
 export interface LandingData {
   templates: LandingTemplate[];
-  hosted: { plans: HostedPlan[]; trialDays: number; freeComputers: "pool" | "personal" | "none"; links: { pricing: string; terms: string; legal: string; privacy: string } } | null;
+  hosted: { plans: HostedPlan[]; credits?: { packs: { id: string; amountEur: number }[]; payments: boolean }; trialDays: number; freeComputers: "pool" | "personal" | "none"; links: { pricing: string; terms: string; legal: string; privacy: string } } | null;
   verification: boolean;
   turnstile: boolean;
 }
@@ -68,33 +68,29 @@ function Tile({ title, text, children, className = "", delay = 0 }: { title: str
   );
 }
 
-function PlanCard({ p, loc, trialDays, freeComputers, onChoose }: { p: HostedPlan; loc: "fr" | "en"; trialDays: number; freeComputers: "pool" | "personal" | "none"; onChoose: (id: string) => void }) {
+function Ways({ packs, loc, onStart }: { packs: { amountEur: number }[]; loc: "fr" | "en"; onStart: () => void }) {
   const t = useT();
-  const num = (n: number) => (loc === "fr" ? String(n).replace(".", ",") : String(n));
-  const name = loc === "fr" ? p.nameFr : p.nameEn;
-  const desc = loc === "fr" ? p.descriptionFr : p.descriptionEn;
-  const price = loc === "fr" ? `${num(p.priceEur)} €` : `€${p.priceEur}`;
-  const items: string[] = [];
-  if (p.kind === "byok") items.push(t("lp.price.ownKeys"));
-  else if (p.aiBudgetEur > 0) items.push(t("lp.price.budget", { n: num(p.aiBudgetEur) }));
-  if (p.maxBots !== null) items.push(tn("lp.price.bots", p.maxBots));
-  if (p.kind === "free" && freeComputers !== "personal") items.push(t(freeComputers === "pool" ? "lp.price.pcPool" : "lp.price.pcNone"));
-  else if (p.maxAwakeComputers !== null && p.maxAwakeComputers > 0) items.push(tn("lp.price.pcOwn", p.maxAwakeComputers));
-  if (p.maxRoutines !== null) items.push(t("lp.price.routines", { n: p.maxRoutines }));
-  if (p.storageGb !== null) items.push(t("lp.price.storage", { n: num(p.storageGb) }));
-  const free = p.kind === "free" && p.priceEur === 0;
+  const from = packs.length ? Math.min(...packs.map((p) => p.amountEur)) : null;
+  const items: { icon: "star" | "brain" | "key" | "bolt"; title: Key; text: Key; featured?: boolean }[] = [
+    { icon: "star", title: "lp.ways.freeT", text: "lp.ways.free", featured: true },
+    { icon: "brain", title: "lp.ways.subT", text: "lp.ways.sub" },
+    { icon: "key", title: "lp.ways.keyT", text: "lp.ways.key" },
+    { icon: "bolt", title: "lp.ways.creditsT", text: "lp.ways.credits" },
+  ];
   return (
-    <article className={`lp-plan lp-reveal ${free ? "is-featured" : ""}`}>
-      <div className="lp-plan-top">
-        <h3 className="lp-plan-name">{name}</h3>
-        {free && <span className="lp-chip is-brand">{t("lp.price.start")}</span>}
+    <>
+      <div className="lp-ways">
+        {items.map((w, i) => (
+          <article key={w.title} className={`lp-way lp-reveal ${w.featured ? "is-featured" : ""}`} style={{ transitionDelay: `${i * 60}ms` }}>
+            <span className="lp-way-icon" aria-hidden="true"><Icon name={w.icon} size={18} /></span>
+            <h3>{t(w.title)}</h3>
+            <p>{t(w.text)}</p>
+            {w.icon === "bolt" && from !== null && <p className="lp-chip">{t("lp.ways.from", { n: loc === "fr" ? `${String(from).replace(".", ",")} €` : `€${from}` })}</p>}
+          </article>
+        ))}
       </div>
-      <p className="lp-plan-price"><span>{price}</span><small>{t("lp.price.perMonth")}</small></p>
-      {p.priceEur > 0 && trialDays > 0 && <p className="lp-chip">{t("lp.price.trial", { n: trialDays })}</p>}
-      {desc && <p className="lp-plan-desc">{desc}</p>}
-      <ul className="lp-plan-list">{items.map((x) => <li key={x}><Icon name="check" size={15} />{x}</li>)}</ul>
-      <button type="button" className={`btn btn-block ${free ? "btn-primary" : ""}`} onClick={() => onChoose(p.id)}>{t(free ? "lp.price.chooseFree" : "lp.price.choose")}</button>
-    </article>
+      <div className="lp-center lp-reveal"><button type="button" className="btn btn-primary lp-big" onClick={onStart}>{t("lp.price.chooseFree")}</button></div>
+    </>
   );
 }
 
@@ -252,10 +248,9 @@ export default function Landing({ onAuth }: { onAuth: OnAuth }) {
         </Section>
 
         {plans.length > 0 && data?.hosted && (
-          <Section id="pricing" kicker={t("lp.price.kicker")} title={t("lp.price.title")} sub={t("lp.price.sub")}>
-            <div className={`lp-plans is-${Math.min(plans.length, 3)}`}>
-              {plans.map((p) => <PlanCard key={p.id} p={p} loc={loc} trialDays={data.hosted!.trialDays} freeComputers={data.hosted!.freeComputers} onChoose={(id) => onAuth("signup", { plan: id })} />)}
-            </div>
+          <Section id="pricing" kicker={t("lp.price.kicker")} title={t("lp.ways.title")} sub={t("lp.ways.sub2")}>
+            {/* Hosted mode: every account is free; the bots run on the person's subscription, their key, or credits. */}
+            <Ways packs={data.hosted.credits?.packs ?? []} loc={loc} onStart={() => onAuth("signup")} />
             <p className="lp-center lp-small"><a href={data.hosted.links.pricing}>{t("lp.price.all")}</a></p>
           </Section>
         )}
