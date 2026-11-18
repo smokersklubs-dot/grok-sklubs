@@ -3,6 +3,7 @@ import { tr } from "../i18n.js";
 import { bots, clip, newId, rows, users, type BotRecord, type UserRecord } from "../store.js";
 import { enqueue, isPaused } from "./loop.js";
 import { postBudget, roomChannel } from "./roombudget.js";
+import { answerOffer, noteBotPost, roomRouting, routeAuto } from "./roomrouting.js";
 
 export const MAX_HOPS = 3;
 export const MAX_HELPERS = 4;
@@ -124,14 +125,18 @@ function mentioned(text: string, members: BotRecord[]): BotRecord[] {
 }
 
 /**
- * Decides who answers a message in a group chat: whoever is mentioned; when nobody is, the first
- * member takes it. Bots reply into the room through their room_post tool, or stay quiet.
+ * Decides who answers a message in a group chat: whoever is mentioned; when nobody is, the room's rule — the first
+ * member ("lead"), all of them ("everyone"), nobody ("mentions"), or "auto": a quick choice of the best member for this
+ * message (agent/roomrouting.ts), which never overrides a mention. Bots reply into the room through their room_post
+ * tool, or stay quiet.
  * `thread`: the message was posted in a thread (the seq it hangs on). Mentions work the same; when nobody is
  * mentioned, the bots already in that thread (or the bot whose message started it) answer, else the room's rule.
  */
 export function dispatchToRoom(room: BotRecord, user: UserRecord, text: string, fromBot: BotRecord | null, depth: number, tainted = false, thread = 0) {
   // A human wrote in the room: its anti-loop breaker closes and its counters start over (roombudget.ts).
   if (!fromBot) postBudget.human(room.userId, roomChannel(room.id));
+  // A member's post may be the offer it was asked to make first (« Proposer avant de commencer »): note where it is.
+  else noteBotPost(room, fromBot, thread);
   // A member that belongs to someone else (however it got on the list) is never woken by this room.
   const all = room.memberIds.map((id) => bots.byId(id)).filter((b): b is BotRecord => !!b && b.kind === "agent" && b.userId === room.userId);
   // "Pause": a paused member is skipped and the room goes on with the others. One that was called by name says so in the
@@ -150,18 +155,38 @@ export function dispatchToRoom(room: BotRecord, user: UserRecord, text: string, 
       if (r.body.kind === "message" && r.body.origin?.kind === "bot") inThread.add(r.body.origin.id);
     targets = members.filter((m) => inThread.has(m.id));
   }
+  // A yes (or a no) to a member's offer to take a task goes to that member, without anything else (roomrouting.ts).
+  if (!targets.length && !fromBot && depth < MAX_HOPS && answerOffer(room, user, text, members, thread)) return;
+  // "auto": the choice takes a moment (at most ~1.5 s); the chosen member is woken from there, through wakeInRoom.
+  if (!targets.length && !fromBot && room.roomRule === "auto") { if (depth < MAX_HOPS) void routeAuto(room, user, text, members, thread); return; }
   // Nobody mentioned: the room's rule decides. "lead" = the first member; "everyone" = all of them; "mentions" = nobody.
   if (!targets.length && !fromBot) targets = room.roomRule === "everyone" ? members : room.roomRule === "mentions" ? [] : members.slice(0, 1);
   if (depth >= MAX_HOPS) return;
+  wakeInRoom(room, user, text, fromBot, depth, tainted, thread, targets);
+}
+
+/**
+ * Wakes these members of the room on a message: each gets the message, who wrote it, the roster, the thread it is in,
+ * and how to answer (room_post) or not (stay_quiet). `notes`: extra lines for one member (why it was picked, an offer to
+ * make first…). A discreet room (roomrouting.ts) tells them never to chime in unasked.
+ */
+export function wakeInRoom(room: BotRecord, user: UserRecord, text: string, fromBot: BotRecord | null, depth: number, tainted: boolean, thread: number, targets: BotRecord[], notes?: Map<string, string>) {
+  if (depth >= MAX_HOPS || !targets.length) return;
+  const members = room.memberIds.map((id) => bots.byId(id)).filter((b): b is BotRecord => !!b && b.kind === "agent" && b.userId === room.userId && !isPaused(b));
+  const parent = thread ? rows.get(room.id, room.generation, thread) : null;
   const roster = members.map((m) => m.name).join(", ");
   const about = parent && parent.body.kind === "message"
     ? `This was posted in thread number ${thread} of the group, a side conversation on this message${parent.body.origin?.kind === "bot" ? ` by ${parent.body.origin.name}` : parent.body.role === "user" ? ` by ${user.name}` : ""}: "${clip(parent.body.text || "(a file)", 600)}".\n`
     : "";
+  const quiet = roomRouting.get(room.id).discreet
+    ? "\nThis group is set to discreet: answer only what you were asked or what is clearly for you; never add unprompted remarks. When the message is not for you, call stay_quiet." : "";
   for (const target of targets) {
+    if (target.userId !== room.userId || target.kind !== "agent") continue;
+    const note = notes?.get(target.id);
     enqueue(target.id, {
       kind: "system", depth: depth + 1, tainted: !!fromBot && tainted, unattended: !!fromBot || undefined,
       text: `New message in the group chat "${room.name}" (members: ${roster}).\n${about}${fromBot ? fromBot.name : user.name} wrote: ${text}\n\n` +
-        `If you have something useful to add, answer in the group with room_post (room "${room.name}"${thread ? `, thread ${thread}` : ""}). Mention a teammate with @Name to bring them in. If there is nothing worth saying, call stay_quiet.`,
+        `If you have something useful to add, answer in the group with room_post (room "${room.name}"${thread ? `, thread ${thread}` : ""}). Mention a teammate with @Name to bring them in. If there is nothing worth saying, call stay_quiet.${quiet}${note ? `\n${note}` : ""}`,
     });
   }
 }

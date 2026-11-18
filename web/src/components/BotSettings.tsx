@@ -9,6 +9,7 @@ import { useStore, type BotSettingsTab } from "../store";
 import { BotEmailTab, BotSharingTab } from "./WorkspacesMailVoice";
 import { DEFAULT_CHARACTER, TOOL_GROUPS } from "../types";
 import { BotSpendField, ConfidenceBadge, RoutineExtras } from "./SpendSkillsFiles";
+import { RoomWhoAnswers } from "./RoomRouting";
 import type { Autonomy, AvatarColor, AvatarShape, Bot, BotBundle, Character as CharacterLook, BotMode, Effort, Memory, MemoryStatus, ModelOption, NativeTrigger, RoomRule, Routine, RoutineRun, Skill, SkillExtras, SkillRef, TelegramStatus, ToolGroup } from "../types";
 import { useNative } from "./NativeApps";
 import { dateTime, nextRunLabel, relTime, shortDate } from "../lib/format";
@@ -27,7 +28,6 @@ import { BotVoicePicker } from "./VoicePicker";
 
 const EFFORT_IDS: Effort[] = ["low", "medium", "high", "xhigh"];
 const AUTONOMY_IDS: Autonomy[] = ["careful", "balanced", "trusted", "auto"];
-const ROOM_RULE_IDS: RoomRule[] = ["lead", "everyone", "mentions"];
 
 function ChoiceList<T extends string>({ label, value, options, onChange }: { label: string; value: T; options: { id: T; title: string; text: string }[]; onChange: (v: T) => void }) {
   return (
@@ -76,7 +76,6 @@ function General({ bot, onClose }: { bot: Bot; onClose: () => void }) {
   const efforts = EFFORT_IDS.map((id) => ({ id, title: t(`effort.${id}.title`), text: t(`effort.${id}.text`) }));
   const autonomies = AUTONOMY_IDS.map((id) => ({ id, title: t(`autonomy.${id}.title`), text: t(`autonomy.${id}.text`) }));
   const modes = MODE_IDS.map((id) => ({ id, title: t(`mode.${id}.title`), text: t(`mode.${id}.text`) }));
-  const roomRules = ROOM_RULE_IDS.map((id) => ({ id, title: t(`roomRule.${id}.title`), text: t(`roomRule.${id}.text`) }));
   const [form, setForm] = useState<Form>(() => formOf(bot));
   const [lookOpen, setLookOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -247,12 +246,7 @@ function General({ bot, onClose }: { bot: Bot; onClose: () => void }) {
         </>
       )}
 
-      {isRoom && (
-        <div className="field">
-          <span className="field-label">{t("roomRule.heading")}</span>
-          <ChoiceList label={t("roomRule.heading")} value={form.roomRule} options={roomRules} onChange={(v) => set("roomRule", v)} />
-        </div>
-      )}
+      {isRoom && <RoomWhoAnswers room={bot} value={form.roomRule} onChange={(v) => set("roomRule", v)} />}
 
       <div className={`save-bar ${dirty || note ? "is-visible" : ""}`}>
         <span className={`save-note ${note?.tone === "error" ? "is-error" : ""}`} role="status">{note ? note.text : dirty ? t("bot.unsaved") : ""}</span>

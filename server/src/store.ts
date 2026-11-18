@@ -83,7 +83,7 @@ function toBot(r: any): BotRecord {
     instructions: r.instructions, shape: r.shape, color: r.color, mode: r.mode, primary: !!r.is_primary,
     effort: r.effort, model: r.model, autonomy: r.autonomy, voice, generation: r.generation, unread: r.unread,
     character: cleanCharacter(JSON.parse(r.character || "{}")),
-    roomRule: r.room_rule === "everyone" || r.room_rule === "mentions" ? r.room_rule : "lead",
+    roomRule: r.room_rule === "everyone" || r.room_rule === "mentions" || r.room_rule === "auto" ? r.room_rule : "lead",
     disabledTools: JSON.parse(r.disabled_tools || "[]"), telegram: r.telegram_username ?? null,
     pinned: !!r.pinned, sectionId: r.section_id ?? null, listHidden: !!r.list_hidden,
     pause: r.kind === "agent" ? pauses.of({ id: r.id, userId: r.user_id, sectionId: r.section_id ?? null, parentId: r.parent_id ?? null }) : null,
@@ -257,7 +257,7 @@ export const bots = {
       });
       if (self?.kind === "room") { sets.push("members = ?"); vals.push(JSON.stringify(members)); }
     }
-    if (patch.roomRule === "lead" || patch.roomRule === "everyone" || patch.roomRule === "mentions") { sets.push("room_rule = ?"); vals.push(patch.roomRule); }
+    if (patch.roomRule === "lead" || patch.roomRule === "everyone" || patch.roomRule === "mentions" || patch.roomRule === "auto") { sets.push("room_rule = ?"); vals.push(patch.roomRule); }
     if (typeof patch.pinned === "boolean") { sets.push("pinned = ?"); vals.push(patch.pinned ? 1 : 0); }
     if (typeof patch.listHidden === "boolean") { sets.push("list_hidden = ?"); vals.push(patch.listHidden ? 1 : 0); }
     if (patch.sectionId === null || typeof patch.sectionId === "string") {

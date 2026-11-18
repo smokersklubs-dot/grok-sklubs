@@ -1,0 +1,27 @@
+/* « Bot recruteur »: the main bot's proposal of a new specialist (RecruitCard.tsx). */
+.logo-tile.is-recruit { background: color-mix(in srgb, var(--accent) 16%, var(--surface)); color: var(--accent); }
+.recruit-why { display: flex; align-items: flex-start; gap: 6px; color: var(--text); }
+.recruit-why svg { flex: none; margin-top: 3px; color: var(--accent); }
+.recruit-setup { display: grid; gap: 8px; margin: 0; padding: 10px 12px; border-radius: var(--r-md); background: var(--surface-2); }
+.recruit-line { display: grid; gap: 3px; min-width: 0; }
+.recruit-line dt { font-size: 11.5px; font-weight: 650; letter-spacing: 0.02em; text-transform: uppercase; color: var(--text-2); }
+.recruit-line dd { margin: 0; font-size: 13.5px; color: var(--text); overflow-wrap: anywhere; min-width: 0; }
+.recruit-brain { display: flex; align-items: flex-start; gap: 6px; }
+.recruit-brain > svg { flex: none; margin-top: 3px; color: var(--text-2); }
+.recruit-brain-name { overflow-wrap: anywhere; }
+.recruit-instructions { white-space: pre-line; display: -webkit-box; -webkit-line-clamp: 4; line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+.recruit-task { white-space: pre-line; display: -webkit-box; -webkit-line-clamp: 3; line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.recruit-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.recruit-chips .chip { white-space: normal; background: var(--surface); border: 1px solid var(--border); color: var(--text); }
+.recruit-routines { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.recruit-routines li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; min-width: 0; }
+.recruit-routines li > svg { flex: none; color: var(--text-2); }
+.recruit-routine-name { font-weight: 550; min-width: 0; overflow-wrap: anywhere; }
+.recruit-routine-when { flex-basis: 100%; padding-left: 19px; font-size: 12.5px; }
+.recruit-edit { display: grid; gap: 6px; }
+.recruit-instructions-input { resize: vertical; min-height: 96px; }
+.recruit-limit { display: grid; gap: 8px; justify-items: start; padding: 10px 12px; border-radius: var(--r-md); background: var(--warn-soft); color: var(--text); font-size: 13.5px; }
+.recruit-limit svg { color: var(--warn); }
+.recruit-actions { row-gap: 8px; }
+.recruit-done { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.recruit-card.is-declined { opacity: 0.92; }

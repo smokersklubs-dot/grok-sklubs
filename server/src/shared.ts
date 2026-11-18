@@ -1,9 +1,9 @@
-export * from "./failuretypes.js"; // « Coordinateur d'échecs » (agent/failures.ts)
+export * from "./failuretypes.js"; export type * from "./recruittypes.js"; export type * from "./roomroutingtypes.js"; // « Coordinateur d'échecs », « Bot recruteur », « Qui répond »
 /**
  * Wire contract between the Sklubot server and web app.
  * Type-only: the web app imports this file with `import type`.
  */
-import type { TodayKind } from "./todayminutes.js";
+import type { TodayKind } from "./todayminutes.js"; import type { RecruitCard } from "./recruittypes.js"; import type { RouteNoticeAction } from "./roomroutingtypes.js";
 
 export const AVATAR_SHAPES = ["pebble", "egg", "mochi", "bean", "cloud", "cat", "bear", "ghost", "circle", "squircle", "hexagon", "diamond", "shield", "drop", "arch", "star", "clover", "pill", "triangle", "octagon"] as const;
 export const AVATAR_COLORS = ["ink", "clay", "ember", "amber", "moss", "teal", "sky", "indigo", "plum", "rose", "slate"] as const;
@@ -13,8 +13,8 @@ export type AvatarColor = (typeof AVATAR_COLORS)[number];
 /** Families of tools that can be switched off for a bot. */
 export const TOOL_GROUPS = ["computer", "shell", "web", "files", "memory", "routines", "tasks", "team", "apps", "vault", "images", "video", "pages", "mycomputer", "reach"] as const;
 export type ToolGroup = (typeof TOOL_GROUPS)[number];
-/** Who answers a message nobody is mentioned in: the first member, every member, or nobody. */
-export type RoomRule = "lead" | "everyone" | "mentions";
+/** Who answers a message nobody is mentioned in: the first member, every member, nobody, or "auto" (agent/roomrouting.ts). */
+export type RoomRule = "lead" | "everyone" | "mentions" | "auto";
 
 /** How a bot's animated character looks and moves. Every field has a default; old bots get them all. */
 export const EYE_STYLES = ["googly", "round", "oval", "wide", "dot", "sleepy", "visor"] as const;
@@ -314,7 +314,7 @@ export type RowBody =
    * pick the work back up; `reason: "gone"`, the subscription tool's process ended without finishing the turn.
    * "watch": the turn watch (agent/watch.ts), see WatchNoticeAction.
    */
-  | { kind: "notice"; tone: "info" | "warn" | "error"; text: string; action?: { kind: "continue"; status: "pending" | "done"; reason?: "timeout" | "busy" | "gone" } | { kind: "settings"; section: string } | HostedNoticeAction | WatchNoticeAction | SubLimitNoticeAction };
+  | { kind: "notice"; tone: "info" | "warn" | "error"; text: string; action?: { kind: "continue"; status: "pending" | "done"; reason?: "timeout" | "busy" | "gone" } | { kind: "settings"; section: string } | HostedNoticeAction | WatchNoticeAction | SubLimitNoticeAction | RouteNoticeAction };
 
 /**
  * The turn watch's notice (agent/watch.ts), at most one of each per turn. `watch`: "silent" — the AI has sent nothing yet
@@ -421,7 +421,7 @@ export type Card =
    * right now ("approval", "user": a question or a card, "checkpoint": a spend checkpoint). `summary`: the latest status
    * line the bot gave (goal_update); `evidence`: what proves it is done; `reason`: why it paused or is blocked.
    */
-  | { type: "goal"; goalId: string; objective: string; status: GoalStatus; rounds: number; maxRounds: number; summary?: string; evidence?: string; reason?: string; waiting?: GoalWaiting }
+  | { type: "goal"; goalId: string; objective: string; status: GoalStatus; rounds: number; maxRounds: number; summary?: string; evidence?: string; reason?: string; waiting?: GoalWaiting } | RecruitCard
   | { type: "disk"; checkId: string; usedPct: number; totalBytes: number; freeBytes: number; items: { path: string; bytes: number }[]; status: "pending" | "cleaned" | "dismissed"; deleted?: string[]; freedBytes?: number }
   /**
    * A usage cap is reached (usagecaps.ts): one card per cap, period and limit. `cap`: which one (scope, period, unit,

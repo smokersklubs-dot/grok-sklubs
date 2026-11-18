@@ -17,6 +17,7 @@ import { ListenButton, ListenPlayer } from "./ListenControls";
 import { IconButton, useDialogFocus, useEscape, useTick } from "./ui";
 import { PlanNoticeActions } from "./Hosted";
 import { SubLimitNoticeActions } from "./SubLimit";
+import { RouteNoticeActions } from "./RoomRouting";
 import { ENGINE_BRAND } from "../lib/engines";
 
 type MessageBody = Extract<RowBody, { kind: "message" }>;
@@ -559,6 +560,7 @@ function NoticeRow({ body, botId, seq, readOnly }: { body: NoticeBody; botId: st
       {action?.kind === "plan" && !readOnly && <PlanNoticeActions action={action} />}
       {action?.kind === "watch" && <WatchNoticeActions action={action} botId={botId} seq={seq} readOnly={readOnly} />}
       {action?.kind === "sublimit" && <SubLimitNoticeActions action={action} botId={botId} seq={seq} readOnly={readOnly} />}
+      {action?.kind === "route" && <RouteNoticeActions action={action} botId={botId} seq={seq} readOnly={readOnly} />}
       {failed && <span className="notice-error" role="alert">{failed}</span>}
     </div>
   );

@@ -503,7 +503,9 @@ export async function newTurn(bot: BotRecord, user: UserRecord, depth: number, s
     // Its own mailbox (wave 6): only for a bot with an email address that is on.
     .filter((t) => !t.spec.name.startsWith("bot_email_") || botEmail.has(bot.id))
     // Proposing a local tool server: only where bots have a Linux computer to run it on.
-    .filter((t) => t.spec.name !== "local_tool_server_add" || localTools.available());
+    .filter((t) => t.spec.name !== "local_tool_server_add" || localTools.available())
+    // « Bot recruteur »: only the main bot proposes a new teammate (agent/recruit.ts).
+    .filter((t) => t.spec.name !== "bot_propose" || (bot.primary && !bot.parentId));
   const connectorNames = [...new Set(remoteTools.map((t) => t.connectorName))];
   const builtinMap = new Map(builtins.map((b) => [b.spec.name, b]));
   const remoteMap = new Map<string, RemoteTool>([...remoteTools.map((r) => [r.spec.name, r] as const), ...nativeTools.map(({ spec, ...r }) => [spec.name, r] as const)]);

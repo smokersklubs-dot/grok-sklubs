@@ -30,7 +30,7 @@ import { seal } from "../auth.js";
 import { askAndWait, createRoom, deliverBotMessage, dispatchToRoom, MAX_HELPERS, MAX_HOPS, startHelper, waitsOn } from "./team.js";
 import { addressesNoBot, BREAKER_LINE, dmChannel, postBudget, roomChannel, type Verdict } from "./roombudget.js";
 import { myComputerTools } from "./mycomputer.js";
-import { botTools, profileTools, progressTools, skillImportTools, xSearchAvailable, xTools } from "./tools-team.js";
+import { botTools, profileTools, progressTools, skillImportTools, xSearchAvailable, xTools } from "./tools-team.js"; import { roomTools } from "./tools-room.js";
 import { bgTasks, bgTaskToolSpecs, publicTask, startTask, stopTask, TaskLimitError } from "./bgtasks.js";
 import { findCode, mailAccounts } from "../native/access.js";
 import { hideForAWhile } from "../store.js";
@@ -58,6 +58,7 @@ import { JobLimitError, jobLine, jobOutput, jobs, runCommand, stopJob } from "..
 import { officeAvailable, officeTools } from "../office.js";
 import { mediaAvailable, mediaTools } from "../media.js";
 import { goalTools } from "./goals.js";
+import { recruitTools } from "./recruit.js";
 import { botPath, spillPath, spillPreview } from "./context.js";
 
 export interface ToolContext {
@@ -1363,7 +1364,7 @@ function assemble(opts: { nativeSearch?: boolean; video?: "connector" | "api" | 
     ...(reachAvailable() ? inGroup("reach", reachTools) : []),
     ...(computerKind() === "linux" || reachAvailable() ? transcribeTools : []),
     ...publicLinkTools,
-    ...knowledgeTools, ...guideTools, ...ruleTools, ...pageTools, ...progressTools, ...profileTools, ...skillImportTools, ...botTools,
+    ...knowledgeTools, ...guideTools, ...ruleTools, ...pageTools, ...progressTools, ...profileTools, ...skillImportTools, ...botTools, ...recruitTools,
     ...(xSearchAvailable() ? xTools : []),
     ...shareTools.filter((t) => t.spec.name !== "image_generate" || imageService()).map((t): BuiltinTool => ({ ...t, group: t.spec.name === "image_generate" ? "images" : "files" })),
     ...inGroup("vault", vaultTools),
@@ -1377,6 +1378,6 @@ function assemble(opts: { nativeSearch?: boolean; video?: "connector" | "api" | 
     ...(opts.video ? inGroup("video", videoTools) : []),
     // The user's own computers (Sklubot Relais): offered by newTurn only to users who linked one.
     ...myComputerTools,
-    ...inGroup("memory", memoryTools), ...inGroup("routines", routineTools), ...inGroup("tasks", taskTools), ...(opts.bgTasks === false ? [] : inGroup("tasks", bgTaskTools)), ...goalTools, ...inGroup("team", teamTools), ...userTools.filter((t) => t.spec.name !== "ask_takeover" || browserAvailable()), ...reactTools,
+    ...inGroup("memory", memoryTools), ...inGroup("routines", routineTools), ...inGroup("tasks", taskTools), ...(opts.bgTasks === false ? [] : inGroup("tasks", bgTaskTools)), ...goalTools, ...inGroup("team", [...teamTools, ...roomTools]), ...userTools.filter((t) => t.spec.name !== "ask_takeover" || browserAvailable()), ...reactTools,
   ];
 }

@@ -12,6 +12,7 @@ import { DiskCardView } from "./DiskAndTeamFolder";
 import { FilesCardView, PastedSecretCardView } from "./SecretsFilesProviders";
 import { GoalCardView } from "./GoalsAndJobs";
 import { FailureCardView } from "./Incidents";
+import { RecruitCardView } from "./RecruitCard";
 
 type ApprovalCard = Extract<Card, { type: "approval" }>;
 type QuestionCard = Extract<Card, { type: "question" }>;
@@ -371,6 +372,8 @@ export function CardView({ card, botId, seq }: { card: Card; botId: string; seq:
       return <GoalCardView card={card} botId={botId} />;
     case "failure":
       return <FailureCardView card={card} botId={botId} />;
+    case "recruit":
+      return <RecruitCardView card={card} botId={botId} seq={seq} />;
     default:
       return null;
   }

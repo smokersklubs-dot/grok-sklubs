@@ -5,8 +5,9 @@ import { Readable } from "node:stream";
 import { Hono, type Context } from "hono";
 import { deleteCookie, getCookie } from "hono/cookie";
 import { streamSSE } from "hono/streaming";
-import { registerNoticeRoutes } from "./agent/noticeroutes.js";
+import { registerNoticeRoutes } from "./agent/noticeroutes.js"; import { registerRoomRoutingRoutes, roomReaction } from "./agent/roomroutes.js";
 import { registerFailureRoutes } from "./agent/failureroutes.js";
+import { registerRecruitRoutes } from "./agent/recruit.js";
 import { registerCommandRoutes } from "./command.js";
 import { continueAfterStepLimit, decideApproval, enqueue, inQueue, interrupt, noteHandBack, submitUserMessage, type ForcedSkill } from "./agent/loop.js";
 import { cleanProfile, fetchSkillMarkdown, saveImportedSkill, undoRevision } from "./agent/tools-team.js";
@@ -822,7 +823,7 @@ api.post("/bots/:id/rows/:seq/reactions", async (c) => {
   if (!row || row.body.kind !== "message" || row.body.streaming) return fail(400, "Only a message can get a reaction.");
   const user = c.get("user");
   const list = rows.react(bot, bot.generation, row.seq, { emoji, by: "user", name: user.name })!;
-  const on = list.some((r) => r.emoji === emoji && r.by === "user");
+  const on = list.some((r) => r.emoji === emoji && r.by === "user"); roomReaction(bot, user, row.seq, emoji, on); // a 👍 on a waiting offer
   const b = row.body;
   // Whose message it is: this bot's own reply, or (in a group chat) the member bot that posted it.
   const author = b.role === "assistant" ? (b.origin?.kind === "bot" ? bots.owned(user.id, b.origin.id) : bot.kind === "agent" ? bot : null) : null;
@@ -1324,8 +1325,9 @@ registerAutoBackupRoutes(api, googleDeps);
 registerSentinelRoutes(api);
 // « Annonces » (announcements.ts): readers' feed, and the owner/operators' page to write them.
 registerAnnouncementRoutes(api);
-registerNoticeRoutes(api);
+registerNoticeRoutes(api); registerRoomRoutingRoutes(api); // « Qui répond » in group chats (agent/roomrouting.ts)
 registerFailureRoutes(api); // « Coordinateur d'échecs » (agent/failures.ts)
+registerRecruitRoutes(api); // « Bot recruteur »: « Créer » / « Non merci » on a proposed teammate
 registerCommandRoutes(api); // « Centre de commandement » (command.ts): GET /command, read-only
 registerSkillsLibraryRoutes(api); // « Bibliothèque de compétences » (skillsroutes.ts)
 registerOpenRouterRoutes(api); registerSubscriptionConnectRoutes(api); // OpenRouter, « Connecter mon compte ChatGPT / Claude »

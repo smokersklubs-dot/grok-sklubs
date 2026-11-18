@@ -386,6 +386,7 @@ const FR: Record<string, string> = {
   "Adjusting check-ins": "Règle les points réguliers", "Tracking a task": "Suit une tâche", "Updating a task": "Met à jour une tâche",
   "Messaging a teammate": "Écrit à un coéquipier", "Starting a helper": "Lance un assistant", "Checking on helpers": "Fait le point avec ses assistants",
   "Messaging a helper": "Écrit à un assistant", "Stopping a helper": "Arrête un assistant", "Creating a group": "Crée un groupe",
+  "Handing over in a group": "Passe la main dans un groupe", "@{to}, I'm handing this over to you: {note}": "@{to}, je te passe la main : {note}",
   "Posting to a group": "Écrit dans un groupe", "Asking you": "Te pose une question", "Asking to connect an app": "Demande à connecter une application",
   "Nothing to report": "Rien à signaler", "Using {app}": "Utilise {app}", "an app": "une application",
   "Sending a file": "Envoie un fichier", "Creating an image": "Crée une image", "Checking saved logins": "Consulte le coffre", "Typing a saved login": "Saisit un identifiant enregistré",
@@ -547,6 +548,17 @@ const FR: Record<string, string> = {
   "This preview has expired. Open the template or the file again.": "Cet aperçu a expiré. Rouvre le modèle ou le fichier.",
   "Created from the template “{name}”.": "Créé à partir du modèle « {name} ».", "Created from a team file ({name}).": "Créé à partir d'un fichier d'équipe ({name}).",
   "It starts careful: it asks before acting.": "Il démarre en mode prudent : il demande avant d'agir.",
+  // « Bot recruteur » (agent/recruit.ts)
+  "Give it a name, a role and instructions.": "Donne-lui un nom, un rôle et des instructions.",
+  "A bot called \"{name}\" already exists. Pick another name.": "Un bot s'appelle déjà « {name} ». Choisis un autre nom.",
+  "Limit of your plan reached ({n} bots).": "Limite de ton offre atteinte ({n} bots).",
+  "Your bots already created {n} bots in the last 24 hours.": "Tes bots ont déjà créé {n} bots ces dernières 24 heures.",
+  "The team is full ({n} bots).": "L'équipe est complète ({n} bots).",
+  "{name} is ready, but its section is paused: resume it, then ask me to hand it the request.": "{name} est prêt, mais sa section est en pause : relance-la, puis demande-moi de lui confier la demande.",
+  "{user} asked for this, and I am handing it to you: {task}\nWhen it is done, answer with the result: I will pass it on.": "{user} a demandé ceci, et je te le confie : {task}\nQuand c'est fait, réponds-moi avec le résultat : je le transmets.",
+  "I handed this to {name}, I will keep you posted.": "J'ai confié ça à {name}, je te tiens au courant.",
+  "A group chat cannot do that.": "Un groupe ne peut pas faire ça.", "This was already answered.": "Tu as déjà répondu.", "Unknown action.": "Action inconnue.",
+  "That is not a proposed teammate.": "Ce n'est pas une proposition de coéquipier.", "Only the main bot can set up a new teammate.": "Seul le bot principal peut installer un nouveau coéquipier.",
   "Sunday": "dimanche", "Monday": "lundi", "Tuesday": "mardi", "Wednesday": "mercredi", "Thursday": "jeudi", "Friday": "vendredi", "Saturday": "samedi",
 };
 

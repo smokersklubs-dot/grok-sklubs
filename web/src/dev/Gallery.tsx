@@ -5,7 +5,7 @@
  *   npm run dev -w web   →   http://localhost:5173/?dev=gallery
  *
  * Everything is in the address, so a state can be shared or screenshotted:
- *   section=all|basics|cards|notices|banners|empty|today|command|incidents|surveillance|announcements|landing|download
+ *   section=all|basics|cards|notices|banners|empty|today|command|incidents|recruit|salons|surveillance|announcements|landing|download
  *   (chat: the real chat view on a long conversation, see GalleryChat.tsx;
  *   landing, download: the public landing page or /telecharger alone, as a signed-out visitor sees it; empty=1 = no
  *   templates, plans or files)
@@ -39,6 +39,8 @@ import { GalleryChat } from "./GalleryChat";
 import { GalleryCommand } from "./GalleryCommand";
 import { IncidentsSection } from "../components/Incidents";
 import { failureCardFixtures } from "./incidentsFixtures";
+import { recruitCardFixtures } from "./recruitFixtures";
+import { GalleryRooms } from "./GalleryRooms";
 import { SkillsLibrarySection } from "../components/SkillsLibrary";
 import { PagePreview, setPagePreviewSource } from "../components/PagePreview";
 import { PageVersions } from "../components/PageVersions";
@@ -48,7 +50,7 @@ import samplePage from "./sample-page.html?url";
 setPagePreviewSource(() => samplePage);
 import "./gallery.css";
 
-const SECTIONS = ["all", "basics", "cards", "notices", "banners", "empty", "today", "command", "incidents", "surveillance", "announcements", "skills", "pages", "landing", "download", "chat"] as const;
+const SECTIONS = ["all", "basics", "cards", "notices", "banners", "empty", "today", "command", "incidents", "recruit", "salons", "surveillance", "announcements", "skills", "pages", "landing", "download", "chat"] as const;
 type Section = (typeof SECTIONS)[number];
 
 interface GalleryState extends FakeApiState {
@@ -182,6 +184,8 @@ function Sections({ s }: { s: GalleryState }) {
       {show("banners") && <Banners o={o} />}
       {show("empty") && <EmptyStates />}
       {show("incidents") && <Section id="incidents" title="Incidents" hint="Coordinateur d'échecs : la section « Incidents » de l'onglet Activité (interrupteur « Vide » : aucun incident), puis les cartes d'échec."><div className="gallery-page is-auto"><IncidentsSection bot={fakeBot(o)} /><div className="gallery-cards">{failureCardFixtures(o).map((c) => <figure key={c.failureId} className="gallery-figure"><figcaption><code>{c.cls} · {c.status}</code></figcaption><CardView card={c} botId={GALLERY_BOT_ID} seq={1} /></figure>)}</div></div></Section>}
+      {show("recruit") && <Section id="recruit" title="Bot recruteur" hint="La carte où le bot principal propose un nouveau spécialiste : en attente (« Modifier » édite sur place), limites (offre, quota du jour), créé, refusé."><div className="gallery-cards recruit-gallery">{recruitCardFixtures(o).map((x) => <figure key={x.label} className="gallery-figure"><figcaption><code>recruit · {x.label}</code></figcaption><CardView card={x.card} botId={GALLERY_BOT_ID} seq={1} /></figure>)}</div></Section>}
+      {show("salons") && <GalleryRooms o={o} />}
       {show("today") && <Section id="today" title="Aujourd'hui" hint="La vraie page, avec des données factices (interrupteur « Vide » pour la journée calme)."><div className="gallery-page"><TodayView /></div></Section>}
       {show("command") && <Section id="command" title="Centre de commandement" hint="La vraie page : toute l'équipe en direct, avec ses liens (« Vide » : équipe vide). Les connecteurs apparaissent à partir de 1100 px de large."><div className="gallery-page is-tall"><GalleryCommand o={o} empty={s.empty} /></div></Section>}
       {show("announcements") && <Announcements o={o} empty={s.empty} />}

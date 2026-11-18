@@ -41,6 +41,7 @@ const PAGES = [
   "section=skills&long=1",
   "section=pages",
   "section=skills&theme=dark&lang=en",
+  "section=recruit&long=1",
 ];
 const SCROLLERS = "pre, .md-table, .card-detail, .segmented, .tabs, .gallery-bar, .cmd-states";
 

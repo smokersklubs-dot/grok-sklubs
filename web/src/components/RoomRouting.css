@@ -1,0 +1,13 @@
+/* « Qui répond » (RoomRouting.tsx). */
+.room-who-badge { margin-left: 8px; padding: 1px 7px; border-radius: 999px; font-size: 11px; font-weight: 600; background: var(--info-soft); color: var(--info); vertical-align: 1px; }
+.room-who-model { display: flex; align-items: center; gap: 5px; margin-top: 8px; }
+.room-who-switches { display: grid; gap: 4px; margin-top: 12px; }
+.room-who-switches .action-row { padding: 8px 0; }
+
+/* The line under a routed message: quieter than an ordinary notice, with « Plutôt demander à… » beside it. */
+.notice.has-action:has(.route-actions), .notice.has-action:has(.route-mark) { flex-direction: row; flex-wrap: wrap; justify-content: center; gap: 2px 4px; padding: 2px 0; }
+.notice.has-action:has(.route-actions) > span:first-child, .notice.has-action:has(.route-mark) > span:first-child { background: none; color: var(--text-2); padding: 3px 4px; font-size: 12.5px; }
+.route-actions { position: relative; }
+.notice.has-action .route-actions span { padding: 0; background: none; border-radius: 0; font-size: inherit; color: inherit; }
+.route-actions .route-ask { gap: 4px; color: var(--text-2); min-height: 28px; }
+.route-actions .menu { min-width: 200px; }
