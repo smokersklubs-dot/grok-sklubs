@@ -16,6 +16,7 @@ interface Project {
   title: string;
   botId: string;
   name: string;
+  studioMp4?: boolean;
   versions: Version[];
   files: string[];
 }
@@ -130,6 +131,8 @@ export function ArtifactPanel({
               name={project.name}
               preview={version.preview}
               version={version.id}
+              thread={thread}
+              mp4={project.studioMp4 && !readOnly}
               editable={!!canEdit}
             />
           ) : (

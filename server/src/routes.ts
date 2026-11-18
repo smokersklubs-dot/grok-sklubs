@@ -120,6 +120,7 @@ import { registerAnnouncementRoutes } from "./announceroutes.js";
 import { registerSkillsLibraryRoutes } from "./skillsroutes.js";
 import { registerOpenRouterRoutes } from "./openrouterroutes.js";
 import { registerSubscriptionConnectRoutes } from "./subscriptionconnect.js";
+import { registerStudioMp4 } from "./studiomp4.js";
 import { registerPageApi, registerPageSite, revisionTarget } from "./pageroutes.js";
 import { canWatch as sentinelWatcher } from "./sentinel/view.js";
 import { noteSignal } from "./sentinel/signals.js";
@@ -1317,6 +1318,7 @@ api.delete("/pages/:token", (c) => {
   emit(c.get("user").id, { type: "pages" });
   return c.json({ ok: true });
 });
+registerStudioMp4(api, threadParent);
 registerPageApi(api); // versions, restore, new address (pageroutes.ts)
 
 // ── Account and data ─────────────────────────────────────────────────────────

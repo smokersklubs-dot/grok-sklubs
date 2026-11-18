@@ -4,6 +4,7 @@ import { linuxExec } from "./linux.js";
 import type { BuiltinTool } from "./agent/tools.js";
 
 export const videoWorkflows = [
+  { id: "moneyprinter", repo: "harry0703/MoneyPrinterTurbo", rev: "92e0f9a55b91e353565015aab74b7c50cc28f148", entry: "README-en.md", use: "Shorts from a subject or keywords. Use the saved Studio timeline and video_studio_render for a local MP4 with captions and optional voice. Full upstream pipeline and CLI available for advanced jobs." },
   { id: "vox", repo: "CK42BB/vox-explainer-skill", rev: "7003225dc3ed1dee9e2ef8b91b05b82c04691aa9", entry: "SKILL.md", use: "Editorial collage explainer. The original pipeline uses paid Atlas Cloud services." },
   { id: "paint-mv", repo: "lintsinghua/paint-mv-skills", rev: "ca8f5f75f186d590e687542b106aa73ceff9133c", entry: "skills/paint-mv/SKILL.md", use: "Watercolour music video from a song and timed lyrics, with browser animation and ffmpeg." },
   { id: "hand-drawn", repo: "hi-nikola/hand-drawn-explainer-video-nikola", rev: "3ee5d1c01fe8d34f5162c4aace418753f85bd0d9", entry: "SKILL.md", use: "Illustrated whiteboard explainer from narration and subtitles. Check LICENSE-MEDIA.md for example media." },
@@ -15,7 +16,7 @@ export const videoWorkflows = [
 
 const checkout = readFileSync(new URL("../templates/video-workflow.py", import.meta.url), "utf8");
 export const videoWorkflowTool: BuiltinTool = {
-  spec: { name: "video_workflow", description: "List seven curated video workflows. Pass an id to prepare its pinned GitHub source, templates and rendering scripts on this bot's desktop. Read the returned entry file and work on a project copy in your library.", inputSchema: { type: "object", properties: { id: { type: "string", enum: videoWorkflows.map(w => w.id) } } } },
+  spec: { name: "video_workflow", description: "List curated video workflows. Pass an id to prepare its pinned GitHub source, templates and rendering scripts on this bot's desktop. Read the returned entry file and work on a project copy in your library.", inputSchema: { type: "object", properties: { id: { type: "string", enum: videoWorkflows.map(w => w.id) } } } },
   activity: "filming", label: "Video workflows", group: "computer", outside: true,
   run: async (a, c) => {
     if (!a.id) return { content: videoWorkflows.map(w => `${w.id}: ${w.use} https://github.com/${w.repo}`).join("\n") };

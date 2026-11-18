@@ -2,7 +2,7 @@ import type { Context, Hono } from "hono";
 import { getCookie } from "hono/cookie";
 import { SESSION_COOKIE, userForToken } from "./auth.js";
 import { emit } from "./bus.js";
-import { readLibraryFile, saveFile } from "./computer.js";
+import { computerKind, readLibraryFile, saveFile } from "./computer.js";
 import { config } from "./config.js";
 import { RateWindow } from "./hardening.js";
 import { cleanFileName, contentTypeOf, pageFiles, pageHeaders, pageVersions, signPage, verifySigned } from "./pagefiles.js";
@@ -137,7 +137,7 @@ export function registerPageApi(api: Hono<any>) {
     if (!page) return gone(c);
     const versions = pageVersions.list(page.botId, page.path).map((v) => ({ ...v, preview: versionUrl(page.token, v.id) }));
     c.header("Cache-Control", "private, no-store");
-    return c.json({ name: artifactName(page), botId: page.botId, title: page.title, versions, files: pageFiles.names(page.botId, page.path) });
+    return c.json({ name: artifactName(page), botId: page.botId, title: page.title, studioMp4: computerKind() === "linux", versions, files: pageFiles.names(page.botId, page.path) });
   });
   api.get("/pages/:token/versions/:id/view", (c) => {
     const page = mine(c);

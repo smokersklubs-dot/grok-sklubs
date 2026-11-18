@@ -14,7 +14,7 @@ interface Scene {
   media: string;
   style: string;
 }
-interface Story {
+export interface StudioStory {
   title: string;
   aspect: string;
   scenes: Scene[];
@@ -29,7 +29,7 @@ const clean = (v: unknown, max: number) => (typeof v === "string" ? v.trim().sli
 const escape = (s: string) =>
   s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 
-function storyFor(botId: string, input: any): Story | null {
+export function storyFor(botId: string, input: any): StudioStory | null {
   if (!input || !Array.isArray(input.scenes) || !input.scenes.length || input.scenes.length > 24) return null;
   const title = clean(input.title, 110);
   const asset = (value: unknown, ext: RegExp) =>
@@ -74,8 +74,9 @@ function storyFor(botId: string, input: any): Story | null {
 }
 
 /** The advanced render uses the same project and pinned sources as the native timeline. */
-function productionNotes(story: Story): string {
+function productionNotes(story: StudioStory): string {
   const selected = new Set<string>(["remotion"]);
+  if (story.aspect === "vertical") selected.add("moneyprinter");
   if (story.audio) selected.add("paint-mv");
   for (const scene of story.scenes) {
     if (scene.media) selected.add("shotcraft");
@@ -98,7 +99,7 @@ function productionNotes(story: Story): string {
     "Pour un rendu avancé, travaille dans la bibliothèque du bot. Examine les premières, intermédiaires et dernières images puis vérifie le fichier exporté avec ffprobe.",
   ].join("\n\n");
 }
-function saveProject(name: string, story: Story, ctx: Parameters<typeof publishPage>[1]) {
+function saveProject(name: string, story: StudioStory, ctx: Parameters<typeof publishPage>[1]) {
   const html =
     '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>' +
     escape(story.title) +
@@ -211,7 +212,7 @@ export const videoStudioTool: BuiltinTool = {
           content:
             "The private editable montage is open in the chat. Project " +
             name +
-            ". The movie can be exported from its timeline. " +
+            ". For a requested finished Reel, Short or MP4, call video_studio_render with this name. " +
             out.content,
           summary: story.title,
         };

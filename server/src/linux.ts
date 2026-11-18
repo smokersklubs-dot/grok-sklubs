@@ -845,11 +845,12 @@ export async function linuxShell(botId: string, userId: string, ws: string, comm
  * user or a model chose (a search query, an address) is passed as one argument and never interpreted. `env`: extra
  * variables for that program only.
  */
-export async function linuxExec(botId: string, userId: string, ws: string, argv: string[], timeoutSec: number, opts: { signal?: AbortSignal; env?: Record<string, string>; maxBytes?: number } = {}) {
+export async function linuxExec(botId: string, userId: string, ws: string, argv: string[], timeoutSec: number, opts: { signal?: AbortSignal; env?: Record<string, string>; maxBytes?: number; input?: string; binary?: boolean } = {}) {
   return onMachine(botId, userId, ws, async (n) => {
     const env = Object.entries(opts.env ?? {}).flatMap(([k, v]) => ["-e", `${k}=${v}`]);
-    const r = await docker(["exec", "-w", "/root", ...env, n, "timeout", "-k", "5", String(timeoutSec), ...argv], { timeoutMs: (timeoutSec + 15) * 1000, signal: opts.signal, maxBytes: opts.maxBytes ?? 4_000_000 });
-    return { code: r.code, stdout: r.stdout.toString("utf8"), raw: r.stdout, stderr: r.stderr, timedOut: r.timedOut || r.code === 124 };
+    const stdin = opts.input === undefined ? [] : ["-i"];
+    const r = await docker(["exec", ...stdin, "-w", "/root", ...env, n, "timeout", "-k", "5", String(timeoutSec), ...argv], { timeoutMs: (timeoutSec + 15) * 1000, signal: opts.signal, maxBytes: opts.maxBytes ?? 4_000_000, input: opts.input });
+    return { code: r.code, stdout: opts.binary ? "" : r.stdout.toString("utf8"), raw: r.stdout, stderr: r.stderr, timedOut: r.timedOut || r.code === 124 };
   });
 }
 

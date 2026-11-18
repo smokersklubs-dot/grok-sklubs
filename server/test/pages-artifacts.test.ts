@@ -241,6 +241,16 @@ test("the native studio is available to two new owners, isolates media and prote
   const retry=await A.api("POST",endpoint(ids.aBot),{key,story});assert.equal(retry.json.token,first.json.token);
   assert.equal((await B.api("POST",endpoint(ids.aBot),{key,story})).status,404);
   const second=await B.api("POST",endpoint(ids.bBot),{key,story});assert.equal(second.status,200);assert.notEqual(second.json.token,first.json.token);
+  const mp4 = "/bots/" + ids.aBot + "/studio-mp4";
+  const render = { name: "artifact-video-" + key, version: first.json.version, narration: true };
+  assert.equal((await B.api("POST", mp4, render)).status, 404);
+  assert.equal((await B.api("GET", mp4 + "/missing-job")).status, 404);
+  assert.equal((await A.api("POST", mp4, { name: render.name })).status, 400);
+  assert.equal((await A.api("POST", mp4, render)).status, 400); // Browser-only instance retains its client export.
+  const { videoWorkflows } = await import("../src/videoworkflows.js");
+  const mpt = videoWorkflows.find(w => w.id === "moneyprinter");
+  assert.equal(mpt?.repo, "harry0703/MoneyPrinterTurbo");
+  assert.match(mpt.rev, /^[a-f0-9]{40}$/);
   const update={key,version:first.json.version,story:{...story,title:"Nouveau titre"}};
   assert.equal((await A.api("POST",endpoint(ids.aBot),update)).status,200);
   assert.equal((await A.api("POST",endpoint(ids.aBot),update)).status,409);

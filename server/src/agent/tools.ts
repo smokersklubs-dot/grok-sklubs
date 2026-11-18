@@ -48,6 +48,7 @@ import { ruleTools } from "./ruletools.js";
 import { pageTools } from "./pagetools.js";
 import { craftReady } from "./creative-tools.js";
 import { videoStudioTool, updateVideoStudio } from "../videostudio.js";
+import { studioMp4Tool } from "../studiomp4.js";
 import { videoWorkflowTool } from "../videoworkflows.js";
 import { githubSearch } from "../githubsearch.js";
 import { reachAvailable, reachTools, youtubeBlockedGuide } from "../reach.js";
@@ -1366,7 +1367,7 @@ function assemble(opts: { nativeSearch?: boolean; video?: "connector" | "api" | 
     // Wave 7: Agent Reach (read-only) on the bot's Linux computer, transcription, temporary public links.
     ...(reachAvailable() ? inGroup("reach", reachTools) : []),
     ...(computerKind() === "linux" || reachAvailable() ? transcribeTools : []),
-    githubSearch, videoWorkflowTool, videoStudioTool, updateVideoStudio, ...publicLinkTools,
+    githubSearch, videoWorkflowTool, videoStudioTool, updateVideoStudio, ...(computerKind() === "linux" ? [studioMp4Tool] : []), ...publicLinkTools,
     ...knowledgeTools, ...guideTools, ...ruleTools, ...pageTools, ...progressTools, ...profileTools, ...skillImportTools, ...botTools, ...recruitTools,
     ...(xSearchAvailable() ? xTools : []),
     ...shareTools.filter((t) => t.spec.name !== "image_generate" || imageService()).map((t): BuiltinTool => ({ ...t, group: t.spec.name === "image_generate" ? "images" : "files" })),

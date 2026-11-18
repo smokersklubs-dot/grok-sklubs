@@ -1,0 +1,1 @@
+video_project.py is reproduced unmodified from harry0703/MoneyPrinterTurbo at revision 92e0f9a55b91e353565015aab74b7c50cc28f148, app/services/video_project.py. Copyright (c) 2024 Harry. See LICENSE (MIT). frames.py and render.py integrate this renderer with the Sklubot Studio timeline.

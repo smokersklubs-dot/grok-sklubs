@@ -3,6 +3,7 @@ import { api, apiUpload, errText } from "../api";
 import { duration, locate, styles, validStory, type Scene, type Story } from "../lib/studioStory";
 import { useStore } from "../store";
 import type { Attachment } from "../types";
+import { StudioMp4 } from "./StudioMp4";
 import { StudioPlayback } from "./StudioPlayback";
 import { ErrorNote, Loading } from "./ui";
 import "./VideoStudio.css";
@@ -12,13 +13,13 @@ export function StudioEditor({
   name,
   preview,
   version,
-  editable,
+  editable, mp4, thread,
 }: {
   bot: string;
   name: string;
   preview: string;
   version: number;
-  editable: boolean;
+  editable: boolean; mp4?: boolean; thread?: number;
 }) {
   const fr = useStore((s) => s.locale === "fr");
   const [story, setStory] = useState<Story | null>(null),
@@ -109,6 +110,7 @@ export function StudioEditor({
   return (
     <section className="studio-editor">
       <StudioPlayback story={story} bot={bot} time={time} onTime={setTime} fr={fr} />
+      {mp4 && <StudioMp4 key={name + "/" + version} bot={bot} name={name} version={version} dirty={dirty || busy} fr={fr} thread={thread} />}
       <div className="studio-tracks" aria-label={fr ? "Pistes de montage" : "Timeline tracks"}>
         {(["Image", fr ? "Titres" : "Titles", "Audio"] as const).map((label, i) => (
           <div className="studio-track" key={label}>
