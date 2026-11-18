@@ -78,6 +78,9 @@ test("setup: A owns one of everything, V is a viewer of A's workspace with bot1 
   const ins = (sql: string, ...p: (string | number | null)[]) => q.run(sql, ...p);
   for (const b of ["bot1", "bot2"]) {
     const bot = ids[b];
+    const upload = await A("POST", `/bots/${bot}/uploads/start`, { name: "ALPHASECRET.mp4", size: 4096 });
+    assert.equal(upload.status, 200, upload.text);
+    ids[`upload_${b}`] = upload.json.id;
     ins("INSERT INTO memories (id, bot_id, text, created_at) VALUES (?, ?, 'ALPHASECRET memory', ?)", ids[`mem_${b}`] = `a_mem_${b}`, bot, t);
     ins("INSERT INTO skills (id, bot_id, name, body, created_at, updated_at) VALUES (?, ?, 'alphasecret-skill', 'ALPHASECRET body', ?, ?)", ids[`skill_${b}`] = `a_skill_${b}`, bot, t, t);
     ins("INSERT INTO tasks (id, bot_id, title, created_at, updated_at) VALUES (?, ?, 'ALPHASECRET task', ?, ?)", `a_task_${b}`, bot, t, t);
@@ -153,6 +156,7 @@ function resolve(routePath: string, param: string, bot: "bot1" | "bot2"): string
   const prev2 = segs[i - 2] ?? "";
   const b = bot;
   const table: Record<string, string> = {
+    "uploads:uploadId": ids[`upload_${b}`],
     "bots:id": ids[b], "rows:seq": "1", "cards:seq": "1", "goals:goalId": ids[`goal_${b}`], "jobs:jobId": ids[`job_${b}`],
     "takeover:takeoverId": "tk_alpha", "approvals:approvalId": ids[`approval_${b}`], "skills:id": ids[`skill_${b}`],
     "memories:id": ids[`mem_${b}`], "routines:id": ids[`routine_${b}`], "calls:callId": "call_alpha", "history:generation": "1",
