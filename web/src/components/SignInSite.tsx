@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useId, useState, type FormEvent } from "react";
 import { api, errText } from "../api";
 import { useT } from "../i18n";
 import { useStore } from "../store";
@@ -10,7 +10,8 @@ import { Icon } from "./Icon";
  * the computer's home volume: the bot is signed in from then on, and never saw the password. While the owner drives,
  * the bot's own screen actions wait (takeover.ts). Linux computers only (their browser keeps its profile).
  */
-export function SignInSite({ botId, name }: { botId: string; name: string }) {
+export function SignInSite({ botId, name, address = "" }: { botId: string; name: string; address?: string }) {
+  const fieldId = useId();
   const t = useT();
   const [open, setOpen] = useState(false);
   const [url, setUrl] = useState("");
@@ -34,7 +35,7 @@ export function SignInSite({ botId, name }: { botId: string; name: string }) {
   };
   if (!open) {
     return (
-      <button type="button" className="btn btn-small btn-ghost signin-site-open" onClick={() => setOpen(true)} title={t("signinSite.hint", { name })}>
+      <button type="button" className="btn btn-small btn-ghost signin-site-open" onClick={() => { setUrl(address); setOpen(true); }} title={t("signinSite.hint", { name })}>
         <Icon name="key" size={14} /> {t("signinSite.button")}
       </button>
     );
@@ -43,8 +44,8 @@ export function SignInSite({ botId, name }: { botId: string; name: string }) {
     <form className="signin-site" onSubmit={(e) => void go(e)}>
       <p className="list-row-sub">{t("signinSite.hint", { name })}</p>
       <div className="viewer-url">
-        <label className="sr-only" htmlFor={`signin-${botId}`}>{t("signinSite.address")}</label>
-        <input id={`signin-${botId}`} className="input input-small" value={url} onChange={(e) => setUrl(e.target.value)} placeholder={t("signinSite.placeholder")} spellCheck={false} autoCapitalize="off" autoCorrect="off" autoFocus />
+        <label className="sr-only" htmlFor={fieldId}>{t("signinSite.address")}</label>
+        <input id={fieldId} className="input input-small" value={url} onChange={(e) => setUrl(e.target.value)} placeholder={t("signinSite.placeholder")} spellCheck={false} autoCapitalize="off" autoCorrect="off" autoFocus />
         <button type="submit" className="btn btn-small btn-primary" disabled={busy || !url.trim()}>{t("signinSite.go")}</button>
         <button type="button" className="btn btn-small btn-ghost" onClick={() => { setOpen(false); setError(null); }}>{t("common.cancel")}</button>
       </div>

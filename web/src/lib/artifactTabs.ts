@@ -5,6 +5,7 @@ export interface ArtifactTab {
   botId: string;
   thread?: number;
   readOnly?: boolean;
+  url?: string;
   kind?: "web" | "desktop";
 }
 export function changeTab(

@@ -6,6 +6,12 @@ Le studio est un produit de Sklubot disponible dans chaque compte. Une demande d
 
 Le montage conserve un titre, un format, des plans ordonnés, un style et une durée par plan, les références aux médias du bot ainsi qu’une bande-son avec décalage et sourdine. Le texte au format LRC sert à caler les changements de plan. Les pistes Image et Titres suivent les plans ; la musique a son propre départ. La version active peut être modifiée et enregistrée. Les autres versions restent consultables. Le lecteur et l’exporteur dessinent les mêmes images. Le navigateur encode la vidéo et la bande-son. Le fichier multimédia et l’archive des sources sont deux téléchargements distincts. Pour un nouveau moteur de rendu, partir du même format de montage et tester les images, les horodatages et le son.
 
+## Naviguer pendant le montage
+
+Dans le chat, **+ → Naviguer sur le web** ouvre un onglet indépendant du bureau. Saisir des mots lance une recherche avec les fournisseurs déjà disponibles pour le bot. Une adresse ouvre directement le lecteur. Un clic sur une source citée dans le chat ouvre cette source dans un nouvel onglet du panneau. Les flèches permettent de retrouver les résultats ou une page lue.
+
+**Applis connectées** ouvre les connecteurs du compte. **Se connecter à un site** reprend l’adresse en cours et ouvre le navigateur interactif du bot pour que le propriétaire s’identifie. Les onglets Web et les versions du montage restent accessibles au retour.
+
 ## Points d’entrée pour la suite
 
 - `server/src/videostudio.ts` valide la propriété des médias, les scènes et la version, puis écrit un artefact. Le point d’entrée du bot et celui de l’interface utilisent le même enregistrement.

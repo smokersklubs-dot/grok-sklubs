@@ -1,116 +1,11 @@
-import { useEffect, useRef, useState } from "react";
-import { api, errText } from "../api";
 import { useStore } from "../store";
 import { useScreen } from "../lib/screen";
 import { ArtifactPanel } from "./ArtifactPanel";
 import { SignInSite } from "./SignInSite";
 import { Icon } from "./Icon";
-import { ErrorNote } from "./ui";
+import { WebWorkspace } from "./WebWorkspace";
 
 type Tab = NonNullable<ReturnType<typeof useStore.getState>["artifact"]>;
-interface Page {
-  url: string;
-  title: string;
-  text: string;
-  links: { url: string; label: string }[];
-}
-function Reader({ bot, fr }: { bot: string; fr: boolean }) {
-  const [url, setUrl] = useState(""),
-    [history, setHistory] = useState<Page[]>([]),
-    [index, setIndex] = useState(-1),
-    [error, setError] = useState(""),
-    [busy, setBusy] = useState(false);
-  const page = history[index],
-    sequence = useRef(0);
-  useEffect(
-    () => () => {
-      sequence.current++;
-    },
-    [],
-  );
-  async function go(raw: string) {
-    const id = ++sequence.current;
-    setError("");
-    setBusy(true);
-    try {
-      const u = new URL(/^https?:\/\//i.test(raw) ? raw : "https://" + raw);
-      if (!["https:", "http:"].includes(u.protocol) || u.username || u.password) throw Error("URL");
-      const r = await api<Page>("POST", "/workspace/web/read", { url: u.href });
-      if (sequence.current === id) {
-        const next = [...history.slice(0, index + 1), r].slice(-20);
-        setHistory(next);
-        setIndex(next.length - 1);
-        setUrl(r.url);
-      }
-    } catch (e) {
-      if (sequence.current === id) setError(errText(e));
-    } finally {
-      if (sequence.current === id) setBusy(false);
-    }
-  }
-  const nav = (n: number) => {
-    setIndex(n);
-    setUrl(history[n].url);
-    setError("");
-  };
-  return (
-    <section className="dock-reader">
-      <form
-        className="studio-actions"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void go(url.trim());
-        }}
-      >
-        <button
-          type="button"
-          className="btn btn-small"
-          aria-label={fr ? "Précédent" : "Back"}
-          disabled={busy || index < 1}
-          onClick={() => nav(index - 1)}
-        >
-          ←
-        </button>
-        <button
-          type="button"
-          className="btn btn-small"
-          aria-label={fr ? "Suivant" : "Forward"}
-          disabled={busy || index >= history.length - 1}
-          onClick={() => nav(index + 1)}
-        >
-          →
-        </button>
-        <input
-          className="input"
-          aria-label="URL"
-          placeholder="https://…"
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-          autoCapitalize="off"
-        />
-        <button className="btn btn-small" disabled={busy || !url.trim()}>
-          {busy ? "…" : fr ? "Lire" : "Read"}
-        </button>
-      </form>
-      <SignInSite botId={bot} name={useStore.getState().bots[bot]?.name ?? ""} />
-      <ErrorNote>{error}</ErrorNote>
-      {page && (
-        <article>
-          <h3>{page.title}</h3>
-          <a href={page.url} target="_blank" rel="noopener noreferrer">
-            {fr ? "Ouvrir le site original" : "Open original site"}
-          </a>
-          <p>{page.text}</p>
-          {page.links.map((l) => (
-            <button className="btn btn-small" key={l.url} disabled={busy} onClick={() => void go(l.url)}>
-              {l.label}
-            </button>
-          ))}
-        </article>
-      )}
-    </section>
-  );
-}
 function Desktop({ bot, active, fr }: { bot: string; active: boolean; fr: boolean }) {
   const shot = useScreen(bot, 1800, active),
     open = useStore((s) => s.openViewer);
@@ -207,7 +102,7 @@ export function WorkspaceDock({ active }: { active: Tab }) {
           key={t.token}
         >
           {t.kind === "web" ? (
-            <Reader bot={t.botId} fr={fr} />
+            <WebWorkspace bot={t.botId} fr={fr} initialUrl={t.url} />
           ) : t.kind === "desktop" ? (
             <Desktop bot={t.botId} active={t.token === active.token} fr={fr} />
           ) : (

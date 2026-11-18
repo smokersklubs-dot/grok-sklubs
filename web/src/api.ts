@@ -45,9 +45,10 @@ async function request<T>(path: string, init: RequestInit): Promise<T> {
   return data as T;
 }
 
-export function api<T = unknown>(method: string, path: string, body?: unknown): Promise<T> {
+export function api<T = unknown>(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
   return request<T>(path, {
     method,
+    signal,
     headers: body !== undefined ? { "Content-Type": "application/json" } : undefined,
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });

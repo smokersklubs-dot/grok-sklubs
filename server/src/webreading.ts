@@ -2,8 +2,38 @@ import type { Hono } from "hono";
 import { guardedFetch } from "./net.js";
 import { RateWindow } from "./hardening.js";
 
+import { bots } from "./store.js";
+import { runChain, searchProviders } from "./providers.js";
+
+const searches = new RateWindow(12, 60000);
 const budget = new RateWindow(35, 60000);
 export function registerReader(api: Hono<any>) {
+  api.post("/bots/:id/workspace/web/search", async (c) => {
+    const user = c.get("user");
+    const bot = bots.owned(user.id, c.req.param("id"));
+    if (!bot || bot.kind !== "agent" || bot.hidden) return c.json({ error: "Bot introuvable." }, 404);
+    if (bot.disabledTools.includes("web")) return c.json({ error: "La recherche web est désactivée pour ce bot." }, 403);
+    const body = await c.req.json().catch(() => null);
+    const query = typeof body?.query === "string" ? body.query.trim() : "";
+    if (!query || query.length > 400) return c.json({ error: "Entre une recherche de 1 à 400 caractères." }, 400);
+    if (searches.over(user.id)) return c.json({ error: "Trop de recherches. Réessaie dans une minute." }, 429);
+    c.header("Cache-Control", "no-store");
+    const providers = searchProviders().filter((p) => p.tier !== "paid");
+    try {
+      const outcome = await runChain("web search", providers, { query }, {
+        bot, signal: AbortSignal.any([c.req.raw.signal, AbortSignal.timeout(25000)]),
+      });
+      const results = (outcome.result ?? []).filter((result) => {
+        try {
+          const u = new URL(result.url);
+          return ["https:", "http:"].includes(u.protocol) && !u.username && !u.password;
+        } catch { return false; }
+      }).slice(0, 8);
+      return c.json({ query, results, provider: outcome.servedBy });
+    } catch {
+      return c.json({ error: "La recherche a été interrompue." }, 503);
+    }
+  });
   api.post("/workspace/web/read", async (c) => {
     if (budget.over(c.get("user").id)) return c.json({ error: "Trop de lectures. Réessaie dans une minute." }, 429);
     const body = await c.req.json().catch(() => null);

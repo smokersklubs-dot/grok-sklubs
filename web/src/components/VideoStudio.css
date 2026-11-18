@@ -229,3 +229,16 @@
   width: 100%;
   object-fit: contain;
 }
+.dock-results {
+  padding-inline-start: 1.5rem;
+}
+.dock-results li {
+  margin-block: 1rem;
+}
+.dock-results small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.dock-results li p {
+  margin-top: .25rem;
+}

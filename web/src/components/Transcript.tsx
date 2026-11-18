@@ -410,7 +410,13 @@ function MessageGroup({ item }: { item: Extract<Item, { t: "msgs" }> }) {
             {b.sources && b.sources.length > 0 && (
               <div className="sources">
                 {b.sources.slice(0, 6).map((s, j) => (
-                  <a key={j} className="chip chip-link" href={s.url} target="_blank" rel="noopener noreferrer" title={s.title ?? s.url}>
+                  <a key={j} className="chip chip-link" href={s.url} target="_blank" rel="noopener noreferrer" title={s.title ?? s.url} onClick={(event) => {
+                    const store = useStore.getState();
+                    const bot = store.bots[row.botId];
+                    if (mode === "readonly" || store.selectedId !== row.botId || bot?.kind !== "agent" || bot.access || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey || !/^https?:\/\//i.test(s.url)) return;
+                    event.preventDefault();
+                    store.showArtifact({kind: "web", token: crypto.randomUUID(), botId: row.botId, url: s.url, title: hostName(s.url)});
+                  }}>
                     <Icon name="globe" size={12} />
                     {hostName(s.url)}
                   </a>

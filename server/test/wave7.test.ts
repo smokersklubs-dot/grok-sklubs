@@ -391,6 +391,27 @@ test("provider chain (web search): owned → free → paid, falls through on emp
   await replied(b, "Served by SearXNG");
 });
 
+test("workspace search uses the owner's bot, honours disabled web tools and returns readable links", async () => {
+  const b = await fresh("Recherche du panneau");
+  const url = `/bots/${b.id}/workspace/web/search`;
+  const previous = searxResults;
+  try {
+    searxResults = [
+      { title: "Exemple", url: "https://example.com/", content: "Page publique" },
+      { title: "Sans page", url: "about:blank", content: "" },
+    ];
+    assert.equal((await call("POST", url, { query: " " })).status, 400);
+    assert.equal((await call("POST", url, { query: "montage" }, "")).status, 401);
+    assert.equal((await call("POST", "/bots/missing/workspace/web/search", { query: "montage" })).status, 404);
+    const result = await call("POST", url, { query: "montage" });
+    assert.equal(result.status, 200);
+    assert.deepEqual(result.json.results, [{ title: "Exemple", url: "https://example.com/", snippet: "Page publique" }]);
+    assert.equal(result.json.provider, "SearXNG");
+    await call("PATCH", `/bots/${b.id}`, { disabledTools: ["web"] });
+    assert.equal((await call("POST", url, { query: "montage" })).status, 403);
+  } finally { searxResults = previous; }
+});
+
 test("provider chain engine: order, stop on a request error, at most two extra, cost cap, never silently paid, reservation settled", async () => {
   const b = bots.byId((await fresh("Moteur")).id)!;
   const ran: string[] = [];
