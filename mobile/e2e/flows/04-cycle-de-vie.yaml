@@ -11,13 +11,13 @@ appId: ${APP_ID}
 - launchApp:
     stopApp: false
 - extendedWaitUntil:
-    visible: ".*mode démo.*"
+    visible: ".*modèle de démonstration.*"
     timeout: 30000
 - takeScreenshot: 10-retour-premier-plan
 - setOrientation: LANDSCAPE_LEFT
 - takeScreenshot: 11-paysage
 - setOrientation: PORTRAIT
-- assertVisible: ".*mode démo.*"
+- assertVisible: ".*modèle de démonstration.*"
 - stopApp
 - launchApp:
     stopApp: true

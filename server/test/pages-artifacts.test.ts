@@ -117,8 +117,14 @@ test("page_edit: the HTML or a file, all or nothing, a version each time; restor
   assert.deepEqual(v.json.files, ["app.js", "css/site.css", "data/v.json", "extra.js"]);
   const first = v.json.versions[3];
   const view = await A.api("GET", `/pages/${ids.token}/versions/${first.id}/view`);
-  assert.equal(view.text, HTML);
-  assert.match(view.headers.get("content-security-policy")!, /^sandbox allow-scripts/);
+  assert.equal(view.status, 302);
+  const versionUrl = view.headers.get("location")!;
+  const rendered = await A.site(versionUrl, false);
+  assert.equal(rendered.text, HTML);
+  assert.match(rendered.headers.get("content-security-policy")!, /^sandbox allow-scripts/);
+  assert.equal((await A.site(versionUrl + "css/site.css", false)).text, "body{color:#123}");
+  assert.equal((await A.site(versionUrl + "extra.js", false)).status, 404);
+  assert.equal((await A.site(versionUrl.replace("/v/" + first.id + "/", "/v/" + v.json.versions[0].id + "/"), false)).status, 404);
   // B sees nothing of A's history and cannot restore it or move its address.
   assert.equal((await B.api("GET", `/pages/${ids.token}/versions`)).status, 404);
   assert.equal((await B.api("GET", `/pages/${ids.token}/versions/${first.id}/view`)).status, 404);
@@ -178,4 +184,58 @@ test("a single-file page is still served as before; a free hosted plan gets smal
     for (let i = 0; i < 7; i++) await edit.run({ name: "simple", edits: [{ find: i ? `v${i - 1}` : "hi", replace: `v${i}` }] }, ctx("b"));
     assert.equal((await B.api("GET", `/pages/${tokenOf(url)}/versions`)).json.versions.length, 5, "the oldest versions are dropped");
   } finally { delete process.env.HOSTED_MODE; }
+});
+
+test("private native artifact, OpenDesign theme, source, revision and owner-only full export", async () => {
+  const create = pageTools.find((tool) => tool.spec.name === "artifact_create")!;
+  const source = pageTools.find((tool) => tool.spec.name === "page_source")!;
+  const args = { title: "Studio [1]", html: "<!doctype html><html><head></head><body>First</body></html>", theme: "atelier-zero", files: [{ path: "js/demo.js", content: "let stage = 1;" }] };
+  const result = await create.run(args, ctx("a"));
+  assert.equal(result.isError, undefined, String(result.content));
+  const page = pages.list(ids.a, "").find((p) => p.title === args.title)!;
+  const name = path.basename(page.path, ".html");
+  assert.ok(page.path.startsWith("artifacts/"));
+  assert.equal(page.visibility, "private");
+  assert.match(name, /^artifact-/);
+  assert.equal((await B.site(page.url)).status, 404);
+  const owner = await A.api("GET", `/pages/${page.token}/versions`);
+  assert.equal(owner.json.name, name);
+  const first = owner.json.versions[0];
+  const snapshot = await A.site(first.preview, false);
+  assert.match(snapshot.text, /href="atelier-zero.css"/);
+  assert.match(snapshot.headers.get("content-security-policy")!, /^sandbox allow-scripts;/);
+  assert.doesNotMatch(snapshot.headers.get("content-security-policy")!, /allow-popups|allow-same-origin|unsafe-eval|cdn\.jsdelivr|img-src .*? https:;/);
+  assert.match((await A.site(first.preview + "atelier-zero.css", false)).text, /--font-display/);
+  assert.equal((await source.run({ name }, ctx("b"))).isError, true);
+  assert.match(String((await source.run({ name, file: "js/demo.js" }, ctx("a"))).content), /let stage = 1/);
+  assert.equal((await edit.run({ name, edits: [{ find: "First", replace: "Second" }] }, ctx("a"))).isError, undefined);
+  const link = `/pages/${page.token}/export?version=${first.id}`;
+  assert.equal((await B.api("GET", link)).status, 404);
+  const download = await A.api("GET", link);
+  assert.match(download.headers.get("content-disposition")!, /attachment;.*\.tar"/);
+  for (const expected of ["index.html", "atelier-zero.css", "js/demo.js", "let stage = 1", "First"]) assert.ok(download.text.includes(expected));
+  assert.ok(!download.text.includes("Second"));
+  assert.equal((await A.api("GET", `/pages/${page.token}/export?version=0`)).status, 404);
+  const updated = await publish.run({ name, title: "Rebuilt", html: "<h1>Rebuilt</h1>", visibility: "private" }, ctx("a"));
+  assert.equal(updated.isError, undefined);
+  assert.match((await A.site(page.url)).text, /Rebuilt/);
+  const legacyName = "artifact-existing-legacy";
+  await publish.run({ name: legacyName, title: "Legacy", html: "<h1>Legacy</h1>" }, ctx("a"));
+  const legacy = pages.forPath(ids.aBot, "pages/" + legacyName + ".html", "")!;
+  assert.match((await A.site(legacy.url)).headers.get("content-security-policy")!, /cdn\.jsdelivr/);
+});
+
+test("the native studio is available to two new owners, isolates media and protects concurrent revisions", async () => {
+  const key="e8613118-370b-46db-b1a7-f26794ef2700";
+  const story={title:"Montage",aspect:"wide",audio:"",offset:0,muted:false,scenes:[{style:"draw",text:"Premier",seconds:2,media:""}]};
+  const endpoint=(bot:string)=>"/bots/"+bot+"/video-studio";
+  const first=await A.api("POST",endpoint(ids.aBot),{key,story});
+  assert.equal(first.status,200,first.text);
+  const retry=await A.api("POST",endpoint(ids.aBot),{key,story});assert.equal(retry.json.token,first.json.token);
+  assert.equal((await B.api("POST",endpoint(ids.aBot),{key,story})).status,404);
+  const second=await B.api("POST",endpoint(ids.bBot),{key,story});assert.equal(second.status,200);assert.notEqual(second.json.token,first.json.token);
+  const update={key,version:first.json.version,story:{...story,title:"Nouveau titre"}};
+  assert.equal((await A.api("POST",endpoint(ids.aBot),update)).status,200);
+  assert.equal((await A.api("POST",endpoint(ids.aBot),update)).status,409);
+  assert.equal((await B.api("POST",endpoint(ids.bBot),{key,version:second.json.version,story:{...story,audio:"../secret.wav"}})).status,400);
 });

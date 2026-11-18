@@ -1,3 +1,4 @@
+import { changeTab, handleArtifactRows, type ArtifactTab } from "./lib/artifactTabs";
 import { create } from "zustand";
 import { api, apiUpload, errText, setUnauthorizedHandler } from "./api";
 import { getLocale, isLocale, setLocale as applyLocale, t } from "./i18n";
@@ -11,6 +12,7 @@ export interface NativeState { apps: NativeApp[]; vendors: NativeVendorSetup[]; 
 export type Theme = "system" | "light" | "dark";
 export type ModalState =
   | null
+  | { kind: "videoStudio" }
   | { kind: "createBot" }
   | { kind: "createRoom" }
   | { kind: "search"; mode?: "chat" }
@@ -178,6 +180,7 @@ interface Store {
   native: NativeState | null;
   usageTick: number;
   pagesTick: number;
+  pageChanges: Record<string, number>;
   /** Bumped when the shared profile changes (Settings or a bot's profile_update). */
   profileTick: number;
   /** Bumped when the user's rules or the reviewer model change (wave 5). */
@@ -211,6 +214,9 @@ interface Store {
   sidebarCollapsed: boolean;
   mobileNav: boolean;
   theme: Theme;
+  artifact: ArtifactTab | null;
+  artifactTabs: NonNullable<Store["artifact"]>[];
+  showArtifact(value: Store["artifact"]): void;
   modal: ModalState;
   botSettings: { botId: string; tab: BotSettingsTab } | null;
   appSettings: AppSection | null;
@@ -339,7 +345,7 @@ export const useStore = create<Store>((set, get) => ({
   connectorsError: null,
   native: null,
   usageTick: 0,
-  pagesTick: 0,
+  pagesTick: 0, pageChanges: {},
   profileTick: 0,
   rulesTick: 0,
   workspacesTick: 0,
@@ -361,6 +367,9 @@ export const useStore = create<Store>((set, get) => ({
   sidebarCollapsed: prefs.sidebarCollapsed,
   mobileNav: false,
   theme: prefs.theme,
+  artifact: null,
+  artifactTabs: [],
+  showArtifact: value => set(s => changeTab(s.artifactTabs,s.artifact,value,s.selectedId)),
   modal: null,
   botSettings: null,
   appSettings: null,
@@ -452,6 +461,7 @@ export const useStore = create<Store>((set, get) => ({
   },
 
   async logout() {
+    set({artifact:null,artifactTabs:[]});
     try {
       await api("POST", "/auth/logout");
     } finally {
@@ -483,6 +493,7 @@ export const useStore = create<Store>((set, get) => ({
   },
 
   selectBot(id) {
+    if (get().selectedId !== id) set({artifact:[...get().artifactTabs].reverse().find(t=>t.botId===id)??null});
     const bot = get().bots[id];
     if (!bot) return;
     writePrefs({ selectedId: id });
@@ -715,6 +726,7 @@ export const useStore = create<Store>((set, get) => ({
         // A finished reply, for a bot that isn't the open one or while the window is hidden.
         const before = get();
         const hidden = document.visibilityState !== "visible";
+        handleArtifactRows(before,ev,hidden);
         if (hidden || before.selectedId !== ev.botId || before.view !== "chat") {
           const known = before.threads[ev.botId];
           for (let i = ev.rows.length - 1; i >= 0; i--) {
@@ -815,7 +827,7 @@ export const useStore = create<Store>((set, get) => ({
         set((s) => ({ usageTick: s.usageTick + 1 }));
         break;
       case "pages":
-        set((s) => ({ pagesTick: s.pagesTick + 1 }));
+        set((s) => ({ pagesTick: s.pagesTick + 1, ...(ev.token ? { pageChanges: { ...s.pageChanges, [ev.token]: s.pagesTick + 1 } } : {}) }));
         break;
       case "profile":
         set((s) => ({ profileTick: s.profileTick + 1 }));

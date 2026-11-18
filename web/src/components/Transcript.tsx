@@ -401,7 +401,7 @@ function MessageGroup({ item }: { item: Extract<Item, { t: "msgs" }> }) {
               </div>
             )}
             {!item.mine && !b.streaming && b.text.includes("~/files/") && <MentionedFiles botId={row.botId} text={b.text} />}
-            {!item.mine && !b.streaming && b.text.includes("/p/") && <PagePreview text={b.text} />}
+            {!item.mine && !b.streaming && (b.page || b.text.includes("/p/")) && <PagePreview text={b.text} page={b.page} botId={row.botId} thread={row.thread} readOnly={mode === "readonly"} />}
             <time className="msg-time" dateTime={new Date(row.createdAt).toISOString()}>{clockTime(row.createdAt)}</time>
             {mode !== "readonly" && !b.streaming && <MessageActions row={row} canThread={mode === "main"} canListen={!item.mine && b.role === "assistant" && !!b.text.trim()} />}
             {!item.mine && b.role === "assistant" && <ListenPlayer row={row} />}

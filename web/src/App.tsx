@@ -1,6 +1,8 @@
+import { VideoStudio } from "./components/VideoStudio";
+import { WorkspaceDock } from "./components/WorkspaceDock";
 import { lazy, Suspense, useEffect, useState } from "react";
 import { useT } from "./i18n";
-import { errText } from "./api";
+import { api, errText } from "./api";
 import { applyTheme, useStore, type Toast } from "./store";
 import { AppSettings } from "./components/AppSettings";
 import { ConnectFlow } from "./components/AiAccounts";
@@ -41,6 +43,7 @@ function entryFromUrl(): Entry {
   const p = new URLSearchParams(location.search);
   const auth = p.get("auth");
   if (auth === "login" || auth === "signup") return auth;
+  if (p.has("artifact") || p.get("studio") === "video") return "login";
   if (p.get("connect") === "github") return "login";
   if (p.get("connect") === "claude" && p.get("bot")) return "login";
   if (p.get("invite") || p.get("plan_invite")) return "signup";
@@ -135,14 +138,18 @@ function Shell() {
   const openModal = useStore((s) => s.openModal);
   const close = () => openModal(null);
   const openThread = useStore((s) => (s.openThread && s.openThread.botId === s.selectedId ? s.openThread : null));
-  const showThread = view === "chat" && hasBot && !!openThread;
-  const showDetails = view === "chat" && hasBot && detailsOpen && !showThread;
+  const artifact = useStore(s=>s.artifact);
+  const activeArtifact = view === "chat" && hasBot ? artifact : null;
+  const showThread = !activeArtifact && view === "chat" && hasBot && !!openThread;
+  const showDetails = !activeArtifact && view === "chat" && hasBot && detailsOpen && !showThread;
 
   return (
-    <div className={`shell ${showDetails || showThread ? "has-details" : ""} ${siteBanner ? "has-site-banner" : ""}`}>
+    <div className={`shell ${activeArtifact ? "has-artifact" : ""} ${showDetails || showThread ? "has-details" : ""} ${siteBanner ? "has-site-banner" : ""}`}>
       <SiteAnnouncementBanner />
       <Sidebar />
       {view === "tasks" ? <TasksView /> : view === "today" ? <TodayView /> : view === "command" ? <CommandView /> : view === "surveillance" && sentinel ? <SurveillanceView /> : view === "announcements" && author ? <AnnouncementsView /> : <ChatView />}
+      {activeArtifact && <WorkspaceDock active={activeArtifact}/>}
+      {modal?.kind === "videoStudio" && <VideoStudio onClose={close}/>}
       {showDetails && <DetailsPanel />}
       {showThread && openThread && <ThreadPanel key={`${openThread.botId}:${openThread.seq}`} botId={openThread.botId} seq={openThread.seq} />}
 
@@ -216,6 +223,28 @@ function MainApp() {
     useStore.getState().openModal({ kind: "connectors", catalogId: "github-repositories" });
     url.searchParams.delete("connect");
     history.replaceState(history.state, "", url);
+  }, [boot, unverified]);
+  useEffect(() => {
+    if (boot !== "ready" || unverified) return;
+    const url = new URL(location.href);
+    const s = useStore.getState();
+    if (url.searchParams.get("studio") === "video") {
+      s.openModal({kind:"videoStudio"});
+      url.searchParams.delete("studio");
+      history.replaceState(history.state, "", url);
+      return;
+    }
+    const token = url.searchParams.get("artifact");
+    if (!token || !/^[A-Za-z0-9_-]{16,64}$/.test(token)) return;
+    let active = true;
+    api<{botId:string;title:string}>("GET", "/pages/"+token+"/versions").then(project=>{
+      if (!active) return;
+      s.selectBot(project.botId);
+      s.showArtifact({token,title:project.title,botId:project.botId});
+      url.searchParams.delete("artifact");
+      history.replaceState(history.state, "", url);
+    }, e=>{if(active)s.showToast(errText(e));});
+    return ()=>{active=false;};
   }, [boot, unverified]);
   // Back from the Paddle checkout (/?credits=success|cancel, server credits.ts): Settings → Credits says how it went.
   useEffect(() => {

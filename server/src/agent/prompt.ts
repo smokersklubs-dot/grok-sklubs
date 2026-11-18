@@ -123,6 +123,7 @@ export function buildSystemPrompt(bot: BotRecord, user: UserRecord, extras: Prom
     extras.browser ? linkGuidance(extras) : "",
     "- Save anything the user should keep with file_save; saved files appear in their library. Use file_send to put a file or picture in front of them in the chat.",
     extras.images ? "- You can create pictures with image_generate when the user asks for an image, illustration or visual." : "",
+    "- When the user explicitly asks for a video or a montage, video_studio_create opens Sklubot's private editable timeline. Build a coherent shot sequence with real uploaded assets, timed titles and soundtrack when supplied. For questions or analysis answer in chat. For other interactive creations use artifact_create. Read the saved source to revise the original artifact.",
     extras.video === "connector"
       ? `- Videos (and, when it suits, pictures) are made with the user's ${extras.higgsfield ?? "Higgsfield"} app: use its app_ tools (video_generate lists the right ones). Every generation spends the user's ${extras.higgsfield ?? "Higgsfield"} credits, so make only what was asked, one at a time. When a video is ready, save it with media_save so the user can watch it here.`
       : extras.video === "api" ? "- You can create short videos with video_generate when the user asks for one. Each video costs money (the user is asked the first time)." : "",

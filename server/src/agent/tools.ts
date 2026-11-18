@@ -1,3 +1,4 @@
+import { htmlToText } from "../webreading.js";
 import { unseal } from "../auth.js";
 import { emit, getLive, setLive } from "../bus.js";
 import { attachmentAt, botPathOf, browserAvailable, computerKind, isInlineImage, lastKnownUrl, readLibraryFile, readsTeamFolder, runShell, saveFile, screen, shellAvailable, storeBytes, teamEnabledFor, type Shot } from "../computer.js";
@@ -45,6 +46,7 @@ import { apiTools, scrubSecret } from "../apiconnectors.js";
 import { botMailTools } from "../botmail.js";
 import { ruleTools } from "./ruletools.js";
 import { pageTools } from "./pagetools.js";
+import { videoStudioTool, updateVideoStudio } from "../videostudio.js";
 import { videoWorkflowTool } from "../videoworkflows.js";
 import { githubSearch } from "../githubsearch.js";
 import { reachAvailable, reachTools, youtubeBlockedGuide } from "../reach.js";
@@ -242,16 +244,6 @@ function respectDriver(t: BuiltinTool): BuiltinTool {
 
 function hostOf(url: unknown): string | undefined {
   try { return new URL(/^[a-z]+:/i.test(String(url)) ? String(url) : `https://${url}`).hostname.replace(/^www\./, ""); } catch { return undefined; }
-}
-
-/** Crude but dependable HTML → text: enough for a model to read an article or a docs page. */
-function htmlToText(html: string): string {
-  return html
-    .replace(/<(script|style|noscript|svg|template)[\s\S]*?<\/\1>/gi, " ")
-    .replace(/<(br|\/p|\/div|\/li|\/h[1-6]|\/tr)[^>]*>/gi, "\n")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'")
-    .replace(/[ \t]+/g, " ").replace(/\n\s*\n\s*/g, "\n\n").trim();
 }
 
 /** A command that reads a tool result kept whole on the computer (it may be a web page or an app's answer). */
@@ -1365,7 +1357,7 @@ function assemble(opts: { nativeSearch?: boolean; video?: "connector" | "api" | 
     // Wave 7: Agent Reach (read-only) on the bot's Linux computer, transcription, temporary public links.
     ...(reachAvailable() ? inGroup("reach", reachTools) : []),
     ...(computerKind() === "linux" || reachAvailable() ? transcribeTools : []),
-    githubSearch, videoWorkflowTool, ...publicLinkTools,
+    githubSearch, videoWorkflowTool, videoStudioTool, updateVideoStudio, ...publicLinkTools,
     ...knowledgeTools, ...guideTools, ...ruleTools, ...pageTools, ...progressTools, ...profileTools, ...skillImportTools, ...botTools, ...recruitTools,
     ...(xSearchAvailable() ? xTools : []),
     ...shareTools.filter((t) => t.spec.name !== "image_generate" || imageService()).map((t): BuiltinTool => ({ ...t, group: t.spec.name === "image_generate" ? "images" : "files" })),

@@ -14,7 +14,7 @@ appId: ${APP_ID}
 - inputText: "Bonjour, test automatique"
 - tapOn: "Envoyer le message"
 - extendedWaitUntil:
-    visible: ".*mode démo.*"
+    visible: ".*modèle de démonstration.*"
     timeout: 90000
 - hideKeyboard
 - takeScreenshot: 08-reponse-du-bot

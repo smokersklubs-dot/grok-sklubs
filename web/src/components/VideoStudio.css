@@ -1,0 +1,231 @@
+.shell.has-artifact {
+  grid-template-columns: auto minmax(270px, 1fr) minmax(420px, 46%);
+}
+.artifact-dock {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  margin: 8px 8px 8px 0;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+}
+.dock-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.dock-head strong {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.studio-form,
+.studio-controls,
+.studio-editor {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+.studio-form label,
+.studio-controls label {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  font-size: 13px;
+}
+.studio-form input,
+.studio-controls input {
+  max-width: 100%;
+  min-width: 0;
+}
+.studio-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.studio-form > button {
+  justify-self: end;
+}
+.studio-editor {
+  padding: 0 12px 12px;
+}
+.studio-player {
+  background: var(--surface-2);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+.studio-player canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 36vh;
+  object-fit: contain;
+  background: #191b22;
+}
+.studio-transport,
+.studio-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 5px;
+}
+.studio-transport input {
+  min-width: 70px;
+  flex: 1;
+}
+.studio-transport output {
+  font:
+    11px ui-monospace,
+    monospace;
+}
+.studio-tracks {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.studio-track {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  align-items: center;
+  min-height: 32px;
+  font-size: 12px;
+}
+.studio-clips {
+  display: flex;
+  gap: 2px;
+  min-height: 30px;
+  background: var(--surface-2);
+  border-radius: 4px;
+  overflow: hidden;
+  align-items: stretch;
+}
+.studio-clips button,
+.studio-clips span {
+  border: 0;
+  border-radius: 3px;
+  padding: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  text-align: left;
+  color: #fff;
+}
+.track-0 button {
+  background: #4b4795;
+}
+.track-1 button {
+  background: #84422d;
+}
+.track-2 span {
+  background: #245b4c;
+  flex: 1;
+}
+.studio-clips button[aria-pressed="true"] {
+  outline: 2px solid var(--text);
+  outline-offset: -2px;
+}
+.studio-controls {
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 12px;
+  gap: 9px;
+}
+.studio-controls legend {
+  padding: 0 5px;
+  font-size: 13px;
+  font-weight: 600;
+}
+@media (max-width: 950px) {
+  .shell.has-artifact {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .artifact-dock {
+    position: fixed;
+    inset: 0 0 0 auto;
+    width: min(660px, 100vw);
+    margin: 0;
+    z-index: 32;
+    border-radius: 0;
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+@media (max-width: 650px) {
+  .shell.has-artifact {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .artifact-dock {
+    width: 100%;
+  }
+  .studio-pair {
+    gap: 7px;
+  }
+  .studio-transport button,
+  .dock-head button {
+    min-height: 42px;
+  }
+}
+
+.dock-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 7px;
+  border-bottom: 1px solid var(--border);
+}
+.dock-tabs {
+  display: flex;
+  min-width: 0;
+  gap: 3px;
+  overflow-x: auto;
+  flex: 1;
+}
+.dock-tabs button {
+  flex: none;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dock-tabs button[aria-selected="true"] {
+  background: var(--text);
+  color: var(--surface);
+}
+.dock-pane,
+.artifact-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: auto;
+}
+.dock-pane[hidden] {
+  display: none;
+}
+.dock-reader {
+  padding: 12px;
+  overflow: auto;
+}
+.dock-reader form .input {
+  flex: 1;
+  min-width: 100px;
+}
+.dock-reader article p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.dock-reader article .btn {
+  margin: 3px;
+}
+.dock-screen {
+  width: 100%;
+  object-fit: contain;
+}

@@ -131,11 +131,9 @@ export const pageVersions = {
     q.run("DELETE FROM page_versions WHERE bot_id = ? AND path = ? AND id NOT IN (SELECT id FROM page_versions WHERE bot_id = ? AND path = ? ORDER BY id DESC LIMIT ?)", botId, path, botId, path, keep);
   },
   list(botId: string, path: string): PageVersion[] {
-    const rows = q.all<{ id: number; note: string; created_at: number; bytes: number; files: string }>("SELECT id, note, created_at, length(html) AS bytes, files FROM page_versions WHERE bot_id = ? AND path = ? ORDER BY id ASC", botId, path);
+    const rows = q.all<{ id: number; note: string; created_at: number; bytes: number; files: number }>("SELECT id, note, created_at, length(CAST(html AS BLOB)) AS bytes, CASE WHEN json_valid(files) THEN json_array_length(files) ELSE 0 END AS files FROM page_versions WHERE bot_id = ? AND path = ? ORDER BY id ASC", botId, path);
     return rows.map((r, i) => {
-      let files = 0;
-      try { files = (JSON.parse(r.files) as unknown[]).length; } catch { /* unreadable: none */ }
-      return { id: r.id, n: i + 1, note: r.note, createdAt: r.created_at, bytes: r.bytes, files, current: i === rows.length - 1 };
+      return { id: r.id, n: i + 1, note: r.note, createdAt: r.created_at, bytes: r.bytes, files: r.files, current: i === rows.length - 1 };
     }).reverse();
   },
   get(botId: string, path: string, id: number): { html: string; files: PageFile[]; note: string } | null {

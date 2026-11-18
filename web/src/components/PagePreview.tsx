@@ -21,15 +21,23 @@ export const setPagePreviewOrigin = (fn: () => string) => { ownOrigin = fn; };
 export function pageLinkIn(text: string): { title: string; url: string } | null {
   const m = LINK.exec(text);
   if (!m) return null;
-  try { if (new URL(m[2]).origin !== ownOrigin()) return null; } catch { return null; }
+  try {
+    const url = new URL(m[2]);
+    if (url.origin !== ownOrigin() || url.pathname !== "/p/" + m[3] || url.username || url.password || url.search || url.hash) return null;
+  } catch { return null; }
   return { title: m[1], url: m[2] };
 }
 
-export function PagePreview({ text }: { text: string }) {
+export function PagePreview({ text, page, botId, thread, readOnly }: {
+  text: string; page?: { token: string; title: string }; botId?: string; thread?: number; readOnly?: boolean;
+}) {
   const t = useT();
-  const openAppSettings = useStore((s) => s.openAppSettings);
+  const showArtifact = useStore(s=>s.showArtifact);
   const [shown, setShown] = useState(true);
-  const link = pageLinkIn(text);
+  const link = page && /^[A-Za-z0-9_-]{16,64}$/.test(page.token)
+    ? { title: page.title, url: `${ownOrigin()}/p/${page.token}` } : pageLinkIn(text);
+  const token = link?.url.split("/").pop() ?? "";
+  const revision = useStore((s) => s.pageChanges[token] ?? 0);
   if (!link) return null;
   return (
     <figure className="page-preview" aria-label={t("pagePreview.label", { title: link.title })}>
@@ -42,13 +50,13 @@ export function PagePreview({ text }: { text: string }) {
       </figcaption>
       {shown && (
         <div className="page-preview-frame">
-          <iframe src={sourceOf(link.url)} title={link.title} sandbox="allow-scripts allow-popups" loading="lazy" referrerPolicy="no-referrer" />
+          <iframe key={revision} src={sourceOf(link.url)} title={link.title} sandbox="allow-scripts allow-popups" loading="lazy" referrerPolicy="no-referrer" />
         </div>
       )}
       <div className="page-preview-actions">
         <a className="btn btn-small" href={link.url} target="_blank" rel="noopener noreferrer"><Icon name="external" size={13} /> {t("pagePreview.open")}</a>
         <CopyButton text={link.url} label={t("pagePreview.copy")} />
-        <button type="button" className="btn btn-small" onClick={() => openAppSettings("pages")}><Icon name="history" size={13} /> {t("pagePreview.versions")}</button>
+        {botId && <button type="button" className="btn btn-small" onClick={() => showArtifact({token,title:link.title,botId,thread,readOnly})}><Icon name="edit" size={13} /> {t("artifact.workspace")}</button>}
       </div>
     </figure>
   );

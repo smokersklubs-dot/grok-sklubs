@@ -298,7 +298,7 @@ export interface Reaction { emoji: ReactionEmoji; by: string; name: string }
 export interface Replies { count: number; lastAt: number }
 
 export type RowBody =
-  | { kind: "message"; role: "user" | "assistant"; text: string; streaming?: boolean; origin?: Origin; sources?: { url: string; title?: string }[]; attachments?: Attachment[]; reactions?: Reaction[]; replies?: Replies }
+  | { kind: "message"; role: "user" | "assistant"; text: string; page?: { token: string; title: string; open?: boolean }; streaming?: boolean; origin?: Origin; sources?: { url: string; title?: string }[]; attachments?: Attachment[]; reactions?: Reaction[]; replies?: Replies }
   /** `grant`: what allowed this state-changing action (the user's quote, the reviewer's reason, a card). */
   | { kind: "step"; callId: string; tool: string; label: string; status: "running" | "done" | "error" | "waiting" | "denied"; args: Record<string, unknown>; summary?: string; grant?: Grant }
   | { kind: "card"; card: Card }
@@ -944,7 +944,7 @@ export type ServerEvent =
   /** Built-in app accounts or their OAuth clients changed. */
   | { type: "native" }
   | { type: "usage" }
-  | { type: "pages" }
+  | { type: "pages"; token?: string }
   /** The bot found a gem for the user (celebrate tool): play its euphoria now. */
   | { type: "cheer"; botId: string; reason: string; gem?: Gem }
   /** A demonstration on a bot's screen started, moved on, or ended (null: nothing recorded any more). */

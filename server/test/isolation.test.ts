@@ -177,7 +177,7 @@ function resolve(routePath: string, param: string, bot: "bot1" | "bot2"): string
     // « Annonces »: A's announcement (for A only), on the readers' route and on the authors' ones.
     "announcements:annId": ids.ann, "announcements-admin:annId": ids.ann,
     // Pages (pageroutes.ts): a version of A's page; a signed address that is not valid.
-    "versions:id": "1", "s:sig": "1700000000.not-a-real-signature-not-a-real",
+    "versions:id": "1", "v:id": "1", ":id:sig": "1700000000.not-a-real-signature-not-a-real", "s:sig": "1700000000.not-a-real-signature-not-a-real",
     // « Bibliothèque de compétences »: a bundled skill (adding it acts on the caller's own bots only).
     "skills-library:id": "methode-de-travail",
     // « Coordinateur d'échecs » (agent/failures.ts): an incident of A's bot.
@@ -206,7 +206,7 @@ function fill(routePath: string, bot: "bot1" | "bot2"): string {
  * token, an invitation) or they say nothing about anyone. They are still called below: with A's tokens unknown to B
  * (not-a-real-…) they must say nothing; with A's real hook token they do what a hook does (that token IS the secret).
  */
-const PUBLIC = new Set(["POST /hooks/:token", "GET /invites/:token", "GET /native/:vendor/callback", "GET /p/:token", "GET /p/:token/", "GET /p/:token/*", "GET /p/:token/s/:sig/*", "GET /l/:token", "HEAD /l/:token", "GET /plan-invites/:token", "POST /billing/webhook/:provider"]);
+const PUBLIC = new Set(["POST /hooks/:token", "GET /invites/:token", "GET /native/:vendor/callback", "GET /p/:token", "GET /p/:token/", "GET /p/:token/*", "GET /p/:token/s/:sig/*", "GET /p/:token/v/:id/:sig/*", "GET /l/:token", "HEAD /l/:token", "GET /plan-invites/:token", "POST /billing/webhook/:provider"]);
 /** Whether this run is the hosted-mode one (isolation-hosted.test.ts). */
 const HOSTED = process.env.HOSTED_MODE === "1";
 /**

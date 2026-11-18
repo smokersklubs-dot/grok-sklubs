@@ -19,3 +19,12 @@
 .page-versions-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .page-version { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); }
 .page-version-text { flex: 1 1 200px; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; color: var(--text); }
+
+.artifact-panel { width: min(96vw, 1200px); height: min(90dvh, 920px); display: flex; flex-direction: column; overflow: auto; }
+.artifact-tools, .artifact-edit { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 10px 16px; }
+.artifact-tools { justify-content: space-between; }
+.artifact-tools label { display: flex; align-items: center; gap: 8px; }
+.artifact-tools select { width: auto; }
+.artifact-canvas { width: 100%; min-height: 140px; flex: 1; border: 0; background: white; }
+.artifact-edit textarea { flex: 1 1 180px; resize: vertical; }
+.artifact-state { padding: 0 16px; }

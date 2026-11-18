@@ -325,6 +325,13 @@ export function Composer({ bot, live }: { bot: Bot; live: Live }) {
             >
               {t("composer.attach")}
             </MenuItem>
+            {bot.kind === "agent" && <MenuItem icon="globe" onClick={() => {
+              setMenu(false);
+              setDraft(bot.id, t("artifact.createPrompt") + " " + draft);
+              requestAnimationFrame(() => area.current?.focus());
+            }}>{t("artifact.create")}</MenuItem>}
+            {bot.kind === "agent" && !bot.access && <MenuItem icon="globe" onClick={()=>{setMenu(false);useStore.getState().showArtifact({kind:"web",token:crypto.randomUUID(),botId:bot.id,title:t("workspace.web")});}}>{t("workspace.web")}</MenuItem>}
+            {bot.kind === "agent" && !bot.access && <MenuItem icon="play" onClick={()=>{setMenu(false);openModal({kind:"videoStudio"});}}>{t("studio.create")}</MenuItem>}
             {bot.kind === "agent" && (
               <MenuItem icon="target" onClick={() => { setMenu(false); setGoalMode((v) => !v); area.current?.focus(); }}>
                 {t(goalMode ? "composer.goalOff" : "composer.goal")}

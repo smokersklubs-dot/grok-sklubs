@@ -6,6 +6,8 @@ import { readLibraryFile, saveFile } from "./computer.js";
 import { config } from "./config.js";
 import { RateWindow } from "./hardening.js";
 import { cleanFileName, contentTypeOf, pageFiles, pageHeaders, pageVersions, signPage, verifySigned } from "./pagefiles.js";
+import { registerVideoStudio } from "./videostudio.js";
+import { exportArtifact } from "./artifact-export.js";
 import { audit, pages, randomToken, type UserRecord } from "./store.js";
 import { q } from "./db.js";
 
@@ -25,8 +27,20 @@ import { q } from "./db.js";
 type PageRow = NonNullable<ReturnType<typeof pages.byToken>>;
 const NOT_SHARED = "This page is no longer shared.";
 const owns = (c: Context, page: PageRow) => userForToken(getCookie(c, SESSION_COOKIE))?.id === page.userId;
+const artifactName = (page: PageRow) => page.path.split("/").pop()!.replace(/\.html$/, "");
+const isArtifact = (page: PageRow) => page.path.startsWith("artifacts/");
+function documentHeaders(page: PageRow, directory: string) {
+  if (!isArtifact(page)) return pageHeaders();
+  const assets = new URL(directory, config.publicUrl).href;
+  return pageHeaders({ "content-security-policy": [
+    "sandbox allow-scripts", "default-src 'none'", `script-src 'unsafe-inline' ${assets}`,
+    `style-src 'unsafe-inline' ${assets}`, `img-src data: blob: ${assets}`,
+    `font-src data: ${assets}`, `connect-src ${assets}`, `media-src data: blob: ${assets}`,
+    "form-action 'none'", "base-uri 'none'", "frame-ancestors 'self'",
+  ].join("; ") });
+}
 const html = (c: Context, page: PageRow, body: string) =>
-  c.body(body, 200, pageHeaders({ "content-type": "text/html; charset=utf-8", "x-frame-options": "SAMEORIGIN", ...(page.visibility === "private" ? { "cache-control": "private, no-store" } : { "cache-control": "no-cache" }) }));
+  c.body(body, 200, { ...documentHeaders(page, c.req.path.endsWith("/") ? c.req.path : `${c.req.path}/`), "content-type": "text/html; charset=utf-8", "x-frame-options": "SAMEORIGIN", "cache-control": page.visibility === "private" ? "private, no-store" : "no-cache" });
 
 function readHtml(page: PageRow): string | null {
   // Read through the library guard: a page file the bot replaced with a link is refused, never served.
@@ -37,7 +51,7 @@ function serveFile(c: Context, page: PageRow, rest: string) {
   const content = file ? pageFiles.get(page.botId, page.path, file) : null;
   if (content === null) return c.text("Not found.", 404, pageHeaders());
   // CORS *: the page's own fetch() comes from its opaque (sandboxed) origin; these files are as visible as the page.
-  return c.body(content, 200, pageHeaders({ "content-type": contentTypeOf(file!), "access-control-allow-origin": "*", "x-frame-options": "SAMEORIGIN", "cache-control": page.visibility === "private" ? "private, no-store" : "no-cache" }));
+  return c.body(content, 200, { ...documentHeaders(page, c.req.path.slice(0, -rest.length)), "content-type": contentTypeOf(file!), "access-control-allow-origin": "*", "x-frame-options": "SAMEORIGIN", "cache-control": page.visibility === "private" ? "private, no-store" : "no-cache" });
 }
 
 export function registerPageSite(site: Hono<any>) {
@@ -54,6 +68,21 @@ export function registerPageSite(site: Hono<any>) {
   };
   site.get("/p/:token", (c) => top(c, false));
   site.get("/p/:token/", (c) => top(c, true));
+  site.get("/p/:token/v/:id/:sig/*", (c) => {
+    const { token, id, sig } = c.req.param();
+    const page = pages.byToken(token, config.publicUrl);
+    if (!page || !verifySigned(`version:${token}:${id}`, sig)) return c.text(NOT_SHARED, 404, pageHeaders());
+    const snapshot = pageVersions.get(page.botId, page.path, Number(id));
+    if (!snapshot) return c.text(NOT_SHARED, 404, pageHeaders());
+    const dir = `/p/${token}/v/${id}/${sig}/`;
+    const rest = c.req.path.slice(dir.length);
+    const file = rest ? snapshot.files.find((f) => f.file === cleanFileName(rest)) : null;
+    if (rest && !file) return c.text("Not found.", 404, pageHeaders());
+    return c.body(file ? file.content : snapshot.html, 200, {
+      ...documentHeaders(page, dir), "content-type": file ? contentTypeOf(file.file) : "text/html; charset=utf-8",
+      "x-frame-options": "SAMEORIGIN", "cache-control": "private, no-store", ...(file ? { "access-control-allow-origin": "*" } : {}),
+    });
+  });
   site.get("/p/:token/s/:sig/*", (c) => {
     const page = pages.byToken(c.req.param("token")!, config.publicUrl);
     if (!page || !verifySigned(page.token, c.req.param("sig")!)) return c.text("This address has expired. Open the page again from Sklubot.", 404, pageHeaders());
@@ -72,6 +101,7 @@ export function registerPageSite(site: Hono<any>) {
 
 const restores = new RateWindow(30, 60_000);
 export function registerPageApi(api: Hono<any>) {
+  registerVideoStudio(api);
   const mine = (c: Context): PageRow | null => {
     const user = c.get("user") as UserRecord;
     const page = pages.byToken(c.req.param("token")!, config.publicUrl);
@@ -80,16 +110,28 @@ export function registerPageApi(api: Hono<any>) {
   const loc = (c: Context) => (c.get("user") as UserRecord).locale;
   const gone = (c: Context) => c.json({ error: loc(c) === "fr" ? "Cette page n'existe pas." : "That page does not exist." }, 404);
 
+  const versionUrl = (token: string, id: number) => `/p/${token}/v/${id}/${signPage(`version:${token}:${id}`)}/`;
+  api.get("/pages/:token/export", (c) => {
+    const page = mine(c);
+    if (!page) return gone(c);
+    const id = c.req.query("version");
+    const snapshot = id === undefined ? { html: readHtml(page), files: pageFiles.list(page.botId, page.path) }
+      : pageVersions.get(page.botId, page.path, Number(id));
+    if (snapshot?.html == null) return gone(c);
+    return exportArtifact(artifactName(page).replace(/[^\w-]/g, "-"), snapshot.html, snapshot.files);
+  });
   api.get("/pages/:token/versions", (c) => {
     const page = mine(c);
     if (!page) return gone(c);
-    return c.json({ versions: pageVersions.list(page.botId, page.path), files: pageFiles.names(page.botId, page.path) });
+    const versions = pageVersions.list(page.botId, page.path).map((v) => ({ ...v, preview: versionUrl(page.token, v.id) }));
+    c.header("Cache-Control", "private, no-store");
+    return c.json({ name: artifactName(page), botId: page.botId, title: page.title, versions, files: pageFiles.names(page.botId, page.path) });
   });
   api.get("/pages/:token/versions/:id/view", (c) => {
     const page = mine(c);
     const v = page ? pageVersions.get(page.botId, page.path, Number(c.req.param("id"))) : null;
     if (!page || !v) return gone(c);
-    // A version's own files are not served: its preview shows its HTML (scripts and styles from its files are missing).
+    if (v.files.length || isArtifact(page)) return c.redirect(versionUrl(page.token, Number(c.req.param("id"))), 302);
     return c.body(v.html, 200, pageHeaders({ "content-type": "text/html; charset=utf-8", "cache-control": "private, no-store", "x-frame-options": "SAMEORIGIN" }));
   });
   api.post("/pages/:token/versions/:id/restore", (c) => {
@@ -103,7 +145,7 @@ export function registerPageApi(api: Hono<any>) {
     pageFiles.replace(page.botId, page.path, v.files);
     pageVersions.record(user.id, page.botId, page.path, v.html, `restored version ${n}`);
     audit(user.id, "account", `Page ${page.title}: version ${n} restored`, page.botId);
-    emit(user.id, { type: "pages" });
+    emit(user.id, { type: "pages", token: page.token });
     return c.json({ ok: true });
   });
   api.post("/pages/:token/rotate", (c) => {
@@ -113,7 +155,7 @@ export function registerPageApi(api: Hono<any>) {
     const token = randomToken(18);
     q.run("UPDATE pages SET token = ? WHERE token = ? AND user_id = ?", token, page.token, user.id);
     audit(user.id, "account", `Page ${page.title}: new address, the old link no longer works`, page.botId);
-    emit(user.id, { type: "pages" });
+    emit(user.id, { type: "pages", token: page.token });
     return c.json({ url: `${config.publicUrl}/p/${token}`, token });
   });
 }
