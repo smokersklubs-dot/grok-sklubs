@@ -20,7 +20,7 @@ import "../styles/landing.css";
 export interface LandingTemplate { id: string; title: string; description: string; icon: string; category: string; bots: { name: string; role: string; look: TeamFileLook }[] }
 export interface LandingData {
   templates: LandingTemplate[];
-  hosted: { plans: HostedPlan[]; credits?: { packs: { id: string; amountEur: number }[]; payments: boolean }; trialDays: number; freeComputers: "pool" | "personal" | "none"; links: { pricing: string; terms: string; legal: string; privacy: string } } | null;
+  hosted: { plans: HostedPlan[]; credits?: { packs: { id: string; amountEur: number }[]; payments: boolean; forSale?: boolean }; trialDays: number; freeComputers: "pool" | "personal" | "none"; links: { pricing: string; terms: string; legal: string; privacy: string } } | null;
   verification: boolean;
   turnstile: boolean;
 }
@@ -68,10 +68,15 @@ function Tile({ title, text, children, className = "", delay = 0 }: { title: str
   );
 }
 
-function Ways({ packs, loc, onStart }: { packs: { amountEur: number }[]; loc: "fr" | "en"; onStart: () => void }) {
+function Ways({ packs, forSale, loc, onStart }: { packs: { amountEur: number }[]; forSale: boolean; loc: "fr" | "en"; onStart: () => void }) {
   const t = useT();
   const from = packs.length ? Math.min(...packs.map((p) => p.amountEur)) : null;
-  const items: { icon: "star" | "brain" | "key" | "bolt"; title: Key; text: Key; featured?: boolean }[] = [
+  // No Sklubot credits for sale (the default): free, on the person's own OpenRouter, ChatGPT or Claude account.
+  const items: { icon: "star" | "brain" | "key" | "bolt" | "globe"; title: Key; text: Key; featured?: boolean }[] = !forSale ? [
+    { icon: "star", title: "lp.ways.freeOwnT", text: "lp.ways.freeOwn", featured: true },
+    { icon: "globe", title: "lp.ways.orT", text: "lp.ways.or" },
+    { icon: "brain", title: "lp.ways.subT", text: "lp.ways.sub" },
+  ] : [
     { icon: "star", title: "lp.ways.freeT", text: "lp.ways.free", featured: true },
     { icon: "brain", title: "lp.ways.subT", text: "lp.ways.sub" },
     { icon: "key", title: "lp.ways.keyT", text: "lp.ways.key" },
@@ -248,9 +253,9 @@ export default function Landing({ onAuth }: { onAuth: OnAuth }) {
         </Section>
 
         {plans.length > 0 && data?.hosted && (
-          <Section id="pricing" kicker={t("lp.price.kicker")} title={t("lp.ways.title")} sub={t("lp.ways.sub2")}>
+          <Section id="pricing" kicker={t("lp.price.kicker")} title={t("lp.ways.title")} sub={t(data.hosted.credits?.forSale ? "lp.ways.sub2" : "lp.ways.sub2Own")}>
             {/* Hosted mode: every account is free; the bots run on the person's subscription, their key, or credits. */}
-            <Ways packs={data.hosted.credits?.packs ?? []} loc={loc} onStart={() => onAuth("signup")} />
+            <Ways packs={data.hosted.credits?.packs ?? []} forSale={data.hosted.credits?.forSale === true} loc={loc} onStart={() => onAuth("signup")} />
             <p className="lp-center lp-small"><a href={data.hosted.links.pricing}>{t("lp.price.all")}</a></p>
           </Section>
         )}

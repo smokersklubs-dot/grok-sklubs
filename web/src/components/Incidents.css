@@ -1,0 +1,37 @@
+/* « Coordinateur d'échecs »: the failure card, the Incidents section (Activité tab) and the Aujourd'hui summary. */
+.logo-tile.is-ok { background: var(--ok-soft); color: var(--ok); }
+.failure-count { font-weight: 600; color: var(--warn); }
+.failure-tried ul { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 3px; }
+.failure-try { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 13px; color: var(--text-2); }
+.failure-try.is-ok svg { color: var(--ok); }
+.failure-try.is-ko svg { color: var(--danger); }
+.failure-actions { flex-wrap: wrap; row-gap: 8px; }
+.failure-card.is-resolved, .failure-card.is-handed, .failure-card.is-dismissed { opacity: 0.92; }
+
+.incident-list { display: grid; gap: 2px; }
+.incident-row { display: flex; align-items: center; gap: 10px; padding: 8px 4px; border-bottom: 1px solid var(--border); min-width: 0; }
+.incident-row:last-child { border-bottom: 0; }
+.incident-icon { flex: none; display: grid; place-items: center; width: 28px; height: 28px; border-radius: var(--r-sm); background: var(--surface-2); color: var(--text-2); }
+.incident-row.is-warn .incident-icon { background: var(--warn-soft); color: var(--warn); }
+.incident-row.is-ok .incident-icon { background: var(--ok-soft); color: var(--ok); }
+.incident-text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.incident-title { font-size: 13.5px; font-weight: 550; color: var(--text); overflow-wrap: anywhere; }
+.incident-sub { font-size: 12.5px; color: var(--text-2); overflow-wrap: anywhere; }
+.incident-result { flex: none; font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: var(--surface-2); color: var(--text-2); }
+.incident-result.is-ok { background: var(--ok-soft); color: var(--ok); }
+.incident-result.is-warn { background: var(--warn-soft); color: var(--warn); }
+
+.failure-summary { display: grid; gap: 8px; grid-column: 1 / -1; }
+.failure-summary-line { display: flex; align-items: center; gap: 8px; margin: 0; padding: 10px 12px; border-radius: var(--r-md); font-size: 14px; font-weight: 550; background: var(--ok-soft); color: var(--text); }
+.failure-summary-line.is-warn { background: var(--warn-soft); }
+.failure-summary-line svg { flex: none; color: var(--ok); }
+.failure-summary-line.is-warn svg { color: var(--warn); }
+.failure-outage { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); }
+.failure-outage > svg { flex: none; color: var(--warn); }
+.failure-outage-text { flex: 1; min-width: 180px; }
+.failure-outage-title { margin: 0; font-size: 14px; font-weight: 600; color: var(--text); }
+.failure-outage-text p.small { margin: 2px 0 0; }
+.failure-card .card-note { display: flex; align-items: center; gap: 6px; margin: 0; }
+.failure-card .card-note svg { flex: none; }
+.failure-actions .btn-ghost { order: 10; }
+@media (max-width: 600px) { .failure-actions .spacer { display: none; } .failure-actions .btn { flex: 1 1 100%; justify-content: center; } }

@@ -3,6 +3,7 @@ import { api, enc, errText } from "../api";
 import { t, tn, useT, type Key } from "../i18n";
 import { useStore, type AppSection, type Thread } from "../store";
 import { REACTIONS, type ActivityKind, type Attachment, type Bot, type Live, type Origin, type Reaction, type ReactionEmoji, type Row, type RowBody } from "../types";
+import { isHumanSummary } from "../lib/callSummary";
 import { callClock, clockTime, dividerLabel, elapsed, fileSize, hostName, liveDuration, workDuration } from "../lib/format";
 import { accentStyle } from "../lib/colors";
 import { renderMarkdown } from "../lib/markdown";
@@ -12,6 +13,7 @@ import { Avatar, BotAvatar } from "./Avatar";
 import { CardView } from "./Cards";
 import { GrantLine } from "./RulesAndNudges";
 import { Icon, Spinner } from "./Icon";
+import { ListenButton, ListenPlayer } from "./ListenControls";
 import { IconButton, useDialogFocus, useEscape, useTick } from "./ui";
 import { PlanNoticeActions } from "./Hosted";
 import { SubLimitNoticeActions } from "./SubLimit";
@@ -318,7 +320,7 @@ function ReactionBar({ row, reactions }: { row: Row; reactions: Reaction[] }) {
   );
 }
 
-function MessageActions({ row, canThread }: { row: Row; canThread: boolean }) {
+function MessageActions({ row, canThread, canListen }: { row: Row; canThread: boolean; canListen?: boolean }) {
   const [open, setOpen] = useState(false);
   const t = useT();
   const pick = (emoji: ReactionEmoji) => {
@@ -327,6 +329,7 @@ function MessageActions({ row, canThread }: { row: Row; canThread: boolean }) {
   };
   return (
     <div className={`msg-actions ${open ? "is-open" : ""}`}>
+      {canListen && <ListenButton row={row} />}
       <button type="button" className="msg-action" aria-label={t("react.add")} title={t("react.add")} aria-expanded={open} onClick={() => setOpen((v) => !v)}>
         <Icon name="smile" size={15} />
       </button>
@@ -399,7 +402,8 @@ function MessageGroup({ item }: { item: Extract<Item, { t: "msgs" }> }) {
             {!item.mine && !b.streaming && b.text.includes("~/files/") && <MentionedFiles botId={row.botId} text={b.text} />}
             {!item.mine && !b.streaming && b.text.includes("/p/") && <PagePreview text={b.text} />}
             <time className="msg-time" dateTime={new Date(row.createdAt).toISOString()}>{clockTime(row.createdAt)}</time>
-            {mode !== "readonly" && !b.streaming && <MessageActions row={row} canThread={mode === "main"} />}
+            {mode !== "readonly" && !b.streaming && <MessageActions row={row} canThread={mode === "main"} canListen={!item.mine && b.role === "assistant" && !!b.text.trim()} />}
+            {!item.mine && b.role === "assistant" && <ListenPlayer row={row} />}
             {b.reactions && b.reactions.length > 0 && <ReactionBar row={row} reactions={b.reactions} />}
             {b.replies && b.replies.count > 0 && <RepliesLink row={row} count={b.replies.count} lastAt={b.replies.lastAt} />}
             {b.sources && b.sources.length > 0 && (
@@ -691,7 +695,7 @@ function EventRow({ body, botName, botId, seq }: { body: EventBody; botName: str
           </span>
         )}
       </span>
-      {call?.summary && <span className="event-summary">{call.summary}</span>}
+      {call?.summary && isHumanSummary(call.summary) && <span className="event-summary">{call.summary}</span>}
       {lines.length > 0 && (
         <>
           <button type="button" className="link" onClick={() => setOpen((v) => !v)} aria-expanded={open}>

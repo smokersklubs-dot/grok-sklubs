@@ -286,6 +286,26 @@ button.captions:hover { box-shadow: 0 0 0 1px var(--border-strong); }
 .msg { position: relative; }
 .msg-actions { position: relative; display: inline-flex; gap: 1px; align-self: center; opacity: 0; transition: opacity 0.12s; }
 .msg:hover .msg-actions, .msg-actions:focus-within, .msg-actions.is-open { opacity: 1; }
+/* Touch screens have no hover: the actions stay visible (« Écouter » included). */
+@media (hover: none) { .msg-actions { opacity: 1; } }
+.msg-action.is-active { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+/* « Écouter les réponses »: the player under the reply being read (ListenControls.tsx). */
+.listen-player { flex-basis: 100%; display: flex; align-items: center; gap: 6px; max-width: min(100%, 540px); padding: 4px 10px 4px 4px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); font-size: 12px; color: var(--text-2); min-width: 0; }
+.listen-track { position: relative; flex: 1 1 60px; min-width: 40px; height: 4px; border-radius: 999px; background: var(--border); overflow: hidden; }
+.listen-fill { position: absolute; inset: 0 auto 0 0; background: var(--accent); border-radius: inherit; transition: width 0.25s linear; }
+.listen-player.is-loading .listen-fill { width: 30% !important; animation: listen-wait 1.1s ease-in-out infinite alternate; }
+@keyframes listen-wait { from { transform: translateX(-100%); } to { transform: translateX(240%); } }
+.listen-status { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.listen-note { color: var(--text-3); }
+.listen-player.is-error { border-color: color-mix(in srgb, var(--danger) 45%, var(--border)); color: var(--danger); }
+.listen-player.is-error .listen-track { display: none; }
+.listen-player.is-error { border-radius: 14px; }
+.listen-player.is-error .listen-status { white-space: normal; }
+@media (max-width: 520px) { .listen-note { display: none; } }
+@media (prefers-reduced-motion: reduce) { .listen-fill { transition: none; } .listen-player.is-loading .listen-fill { animation: none; } }
+.read-aloud-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 10px 0; }
+.read-aloud-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.read-aloud-chip.is-muted { color: var(--text-3); }
 .msg-action { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 8px; color: var(--text-3); }
 .msg-action:hover { background: var(--hover); color: var(--text); }
 .emoji-pick { position: absolute; z-index: 20; bottom: calc(100% + 4px); left: 0; display: flex; gap: 2px; padding: 4px; background: var(--surface); border: 1px solid var(--border); border-radius: 999px; box-shadow: var(--shadow-md); }

@@ -1262,7 +1262,7 @@ export function AppSettings({ section }: { section: AppSection }) {
         {sections.map((s) => (
           <button key={s.id} type="button" className={`settings-nav-item ${section === s.id ? "is-active" : ""}`} aria-current={section === s.id ? "page" : undefined} onClick={() => openAppSettings(s.id)}>
             <Icon name={s.icon} size={16} />
-            <span>{t(`settings.section.${s.id}`)}</span>
+            <span>{t(s.id === "subscription" && !hosted?.creditsForSale ? "settings.section.aiAccounts" : `settings.section.${s.id}`)}</span>
           </button>
         ))}
       </nav>
@@ -1293,7 +1293,7 @@ export function AppSettings({ section }: { section: AppSection }) {
           {section === "usage" && <UsageSection />}
           {section === "checkins" && <CheckinsSection />}
           {section === "account" && <AccountSection />}
-          {section === "subscription" && hosted && <SubscriptionSection title={t("settings.section.subscription")} />}
+          {section === "subscription" && hosted && <SubscriptionSection title={t(hosted.creditsForSale ? "settings.section.subscription" : "settings.section.aiAccounts")} />}
           {section === "admin" && hosted?.operator && <AdminSection title={t("settings.section.admin")} />}
         </div>
       </div>

@@ -89,6 +89,7 @@ test("setup: A owns one of everything, V is a viewer of A's workspace with bot1 
     ins("INSERT INTO pages (token, bot_id, user_id, title, path, created_at) VALUES (?, ?, ?, 'ALPHASECRET page', 'ALPHA.txt', ?)", ids[`page_${b}`] = `a_page_${b}`, bot, userA, t);
     ins("INSERT INTO public_links (id, user_id, bot_id, path, mime, size, token_hash, expires_at, created_at) VALUES (?, ?, ?, 'ALPHA.txt', 'text/plain', 16, ?, ?, ?)", ids[`link_${b}`] = `a_link_${b}`, userA, bot, `hash_${b}`, t + 3_600_000, t);
     ins("INSERT INTO executions (id, bot_id, user_id, tool, label, action_hash, status, started_at) VALUES (?, ?, ?, 'send_email', 'ALPHASECRET action', 'h', 'uncertain', ?)", ids[`exec_${b}`] = `a_exec_${b}`, bot, userA, t);
+    ins("INSERT INTO bot_failures (id, user_id, bot_id, class, detail, status, first_at, last_at) VALUES (?, ?, ?, 'tool_error', 'ALPHASECRET failure', 'waiting', ?, ?)", ids[`failure_${b}`] = `a_fail_${b}`, userA, bot, t, t);
     ins("INSERT INTO spend_checkpoints (id, worker_id, card_bot_id, scope_key, generation, spent_usd, threshold_usd, created_at) VALUES (?, ?, ?, 'chat:0', 1, 6, 5, ?)", ids[`spend_${b}`] = `a_spend_${b}`, bot, bot, t);
     ins("INSERT INTO bg_tasks (id, bot_id, title, goal, generation, created_at, updated_at) VALUES (?, ?, 'ALPHASECRET bg', 'ALPHASECRET', 1, ?, ?)", ids[`bg_${b}`] = `a_bg_${b}`, bot, t, t);
     ins("INSERT INTO nudges (id, bot_id, matter, title, body, created_at, updated_at) VALUES (?, ?, 'm', 'ALPHASECRET nudge', 'ALPHASECRET', ?, ?)", ids[`nudge_${b}`] = `a_nudge_${b}`, bot, t, t);
@@ -124,6 +125,8 @@ test("setup: A owns one of everything, V is a viewer of A's workspace with bot1 
   ins("INSERT INTO native_accounts (id, user_id, app, label, created_at) VALUES ('a_native', ?, 'gmail', 'ALPHASECRET gmail', ?)", userA, t);
   ins("INSERT INTO api_connectors (id, user_id, name, base_url, host, secret, created_at) VALUES ('a_apiconn', ?, 'ALPHASECRET api', 'https://api.example.com', 'api.example.com', 'a_vault', ?)", userA, t);
   ins("INSERT INTO user_providers (id, user_id, name, base_url, key_enc, created_at, updated_at) VALUES ('up-alpha', ?, 'ALPHASECRET provider', 'https://llm.example.com', ?, ?, ?)", userA, seal("ALPHASECRET key"), t, t);
+  // OpenRouter (openrouterroutes.ts): A's own, with its key; B's /openrouter, /openrouter/test and /connect-subscription see nothing of it.
+  ins("INSERT INTO user_providers (id, user_id, name, base_url, key_enc, models, preset, created_at, updated_at) VALUES ('up-alphaor', ?, 'ALPHASECRET OpenRouter', 'https://openrouter.ai/api/v1', ?, '[]', 'openrouter', ?, ?)", userA, seal("ALPHASECRET orkey"), t, t);
   ins("INSERT INTO shared_computers (id, user_id, name, created_at) VALUES ('a_shared', ?, 'ALPHASECRET shared', ?)", userA, t);
   ins("INSERT INTO policies (user_id, tool, mode) VALUES (?, 'web_fetch', 'ask')", userA);
   // The instance's automatic backup (autobackup.ts), set by A, the owner: bucket keys sealed, owner-only routes.
@@ -177,6 +180,8 @@ function resolve(routePath: string, param: string, bot: "bot1" | "bot2"): string
     "versions:id": "1", "s:sig": "1700000000.not-a-real-signature-not-a-real",
     // « Bibliothèque de compétences »: a bundled skill (adding it acts on the caller's own bots only).
     "skills-library:id": "methode-de-travail",
+    // « Coordinateur d'échecs » (agent/failures.ts): an incident of A's bot.
+    "failures:failureId": ids[`failure_${b}`],
   };
   if (param === "action" && prev2 === "reach") return "login";
   if (param === "rid" && prev2 === "resources") return "a_conn";
@@ -247,6 +252,8 @@ const BODY: Record<string, unknown> = { "POST /approvals/:approvalId": { decisio
 const VIEWER_SHARED: Record<string, number> = {
   "GET /bots/:id/rows": 200,
   "POST /bots/:id/read": 200, // answers ok without changing anything: the unread mark is the owner's
+  // « Écouter les réponses » (voice/speak.ts): who may read the chat may listen to it. Row 1 is A's own message, not a reply.
+  "POST /bots/:id/rows/:seq/speak": 400,
 };
 /** Workspace routes a viewer of A's workspace may read (the workspace itself, not A's private things). */
 const VIEWER_WORKSPACE: Record<string, number> = {
@@ -314,7 +321,7 @@ test("without a session, every non-public route says 401 (and nothing else)", as
     const res = await call(api, null, methodOf(r.method), fill(r.path, "bot1"), {});
     if (leakIn(res.text)) problems.push(`${r.key} LEAKS`);
     // A handful of public routes have no parameter (health, me, downloads, sign-in, forgot-password status…): they must not leak either.
-    if (res.status !== 401 && !/^(GET \/(health|me|downloads|plans|public\/landing|auth\/link|connectors\/oauth\/callback|auth\/google.*|auth\/password\/status)|POST \/auth\/.*|POST \/billing\/stripe\/webhook)$/.test(r.key)) problems.push(`${r.key} → ${res.status}`);
+    if (res.status !== 401 && !/^(GET \/(health|me|downloads|plans|public\/landing|auth\/link|connectors\/oauth\/callback|auth\/google.*|auth\/password\/status)|POST \/auth\/.*|POST \/billing\/paddle\/webhook)$/.test(r.key)) problems.push(`${r.key} → ${res.status}`);
   }
   assert.deepEqual(problems, []);
 });
@@ -624,6 +631,23 @@ test("mandatory e-mail verification: an unconfirmed account gets 403 email_unver
     assert.equal(after.json.bots.filter((b: any) => b.primary).length, 1, "the first bot is made once the address is proven");
   } finally {
     if (saved === undefined) delete process.env.EMAIL_VERIFICATION; else process.env.EMAIL_VERIFICATION = saved;
+  }
+});
+
+test("« Écouter » (POST /bots/:id/rows/:seq/speak): a reply is heard by whoever may read the chat, through its owner's voice only", async () => {
+  const reply = (await A("GET", `/bots/${ids.bot1}/rows`)).json.rows.find((r: any) => r.body.kind === "message" && r.body.role === "assistant" && !r.body.streaming).seq;
+  // A (no speech service on this server): the app is told to use the browser's own voice; nothing of A in the answer to V.
+  const own = await A("POST", `/bots/${ids.bot1}/rows/${reply}/speak`, {});
+  assert.equal(own.status, 409);
+  assert.equal(own.json.code, "no_tts");
+  const v = await call(api, "v", "POST", `/bots/${ids.bot1}/rows/${reply}/speak`, {});
+  assert.equal(v.status, 409, "the viewer reads the chat, so may listen to it");
+  assert.ok(!leakIn(v.text));
+  // B, a stranger, and V on the bot that is not shared: as if it did not exist.
+  for (const [who, bot] of [["b", ids.bot1], ["b", ids.bot2], ["v", ids.bot2]] as const) {
+    const r = await call(api, who, "POST", `/bots/${bot}/rows/${reply}/speak`, {});
+    assert.equal(r.status, 404);
+    assert.ok(!leakIn(r.text));
   }
 });
 

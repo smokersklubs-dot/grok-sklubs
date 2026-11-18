@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useId, useMemo, useState, type ReactNode } from "react";
+import { FailureSummaryLine } from "./Incidents";
 import { PushPromptBanner } from "./PushPromptBanner";
 import { api, errText } from "../api";
 import { intlLocale, tn, useT, type Key } from "../i18n";
@@ -19,7 +20,7 @@ import { TodayAnnouncements } from "./AnnouncementCard";
 
 const NEED_ICON: Record<TodayNeed["kind"], IconName> = {
   approval: "shield", question: "chat", cap: "chart", spend: "chart", paused: "pause", stalled: "clock", silent: "clock", continue: "play",
-  routine: "alert", connector: "plug", disk: "folder", takeover: "hand", secret: "key", uncertain: "alert", goal: "target", review: "eye", plan: "star", incident: "shield",
+  routine: "alert", connector: "plug", disk: "folder", takeover: "hand", secret: "key", uncertain: "alert", goal: "target", review: "eye", plan: "star", incident: "shield", failure: "alert",
 };
 const DONE_ICON: Record<TodayKind, IconName> = {
   task: "tasks", bgTask: "bolt", goal: "target", routine: "clock", job: "terminal", fileEdit: "file", emailSent: "mail",
@@ -142,6 +143,7 @@ export function TodayView() {
               <Stat icon="chart" value={money(spent)} label={t("today.stat.cost")} />
             </div>
             <SubLimitList limits={report.limits} />
+            <FailureSummaryLine summary={report.failures} onChanged={() => void load(day, todayDate)} />
 
             <Block icon="bell" title={t("today.needs.title")} hint={report.today ? null : t("today.needs.now")} count={report.needs.length}>
               {report.needs.length === 0 ? (

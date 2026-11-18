@@ -409,6 +409,10 @@ export const fr = {
   "relay.off.open": "Réactiver dans les réglages",
   "relay.off.restricted": "Option grisée ? Autorise d’abord les paramètres restreints",
   "relay.off.later": "Plus tard",
+  "listen.play": "Écouter",
+  "listen.playLabel": "Écouter cette réponse",
+  "listen.stop": "Arrêter",
+  "listen.failed": "Lecture impossible, réessayer",
 } as const;
 
 export type Key = keyof typeof fr;

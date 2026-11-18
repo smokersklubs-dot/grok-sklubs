@@ -387,7 +387,7 @@ test("rules: written in the user's words, for every bot or one bot, shown to the
   assert.equal((await call("PUT", "/rules/reviewer", { model: "judge:m" })).json.reviewerModel, "judge:m");
 });
 
-test("auto mode: the reviewer allows, asks or denies with a short reason; unavailable → ask; the floor still asks", async () => {
+test("auto mode: the reviewer allows or asks (its deny is a card, never a dead end) with a short reason; unavailable → ask; the floor still asks", async () => {
   const b = (await call("GET", "/bots")).json.bots.find((x: Bot) => x.name === "Léon") as Bot;
   // Allowed: the user asked for this reply.
   const before = sentRaw.length;
@@ -409,13 +409,17 @@ test("auto mode: the reviewer allows, asks or denies with a short reason; unavai
   assert.match(card.why!, /Relecteur : Ta règle demande de te consulter/);
   await call("POST", `/approvals/${card.approvalId}`, { decision: "deny" });
   await idle(b);
-  // Denied outright by a rule: nothing runs, the bot is told why.
+  // The reviewer would deny it (a rule forbids it): never a dead end — a single-use card says why; the user refuses, nothing runs.
+  const sentBefore = sentRaw.length;
   await say(b, `écris à Paul : call ${SEND} {"to":"paul@exemple.fr","body":"Salut","user_quote":"écris à Paul"}`);
-  await replied(b, "Tool said:");
+  card = await pendingApproval(b);
+  assert.match(card.why!, /Le relecteur le déconseille : .*interdit d'écrire à Paul/);
+  assert.equal(card.once, true);
+  await call("POST", `/approvals/${card.approvalId}`, { decision: "deny" });
+  await idle(b);
   step = steps(await rowsOf(b.id), SEND).pop()!;
   assert.equal(step.status, "denied");
-  assert.match(step.summary!, /interdit d'écrire à Paul/);
-  await idle(b);
+  assert.equal(sentRaw.length, sentBefore);
   // The floor: after outside content, someone never named asks — the reviewer is not even consulted.
   const asked = reviewerPrompts.length;
   queue.push({ name: SEND, input: { to: "bob@autre.fr", body: "Le contrat", user_quote: "réponds à Camille" } });

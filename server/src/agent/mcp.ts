@@ -9,6 +9,7 @@ import { clip } from "../store.js";
 import { tr } from "../i18n.js";
 import { DECLINED, runReserved, waitForApproval, type Turn } from "./loop.js";
 import { authorize } from "./authorize.js";
+import { bindCall } from "./bind.js";
 import { actionHash } from "./executions.js";
 import type { Grant } from "../shared.js";
 import { LoopGuard, loopStopText } from "./reliability.js";
@@ -54,6 +55,11 @@ export async function handleMcp(botId: string, req: IncomingMessage, res: Server
     const call: ToolUseBlock = { type: "tool_use", id: randomCallId(), name, input: (request.params.arguments ?? {}) as Record<string, unknown> };
     const step = await claimStep(botId, name);
     const loc = turn.user.locale;
+    // What the server itself sees is bound into the action before it is judged, exactly as in the built-in loop: the
+    // user's words a rule change cites (checked in their messages), a click's target, a payment's page. Whatever the
+    // engine put in those fields is replaced — without this, a subscription bot's rule change never carried the user's
+    // words, and the engine could have named a click's target or a payment's page itself.
+    await bindCall(turn, call);
     const verdict = await authorize(turn, call);
     if (verdict.kind === "block") { markStep(botId, step, "denied", verdict.reason ? clip(verdict.reason, 200) : tr(loc, "not allowed")); return { content: [{ type: "text", text: verdict.reason ? `${DECLINED} Why: ${verdict.reason}` : DECLINED }], isError: true }; }
     let grant: Grant | undefined = verdict.kind === "allow" ? verdict.grant : undefined;

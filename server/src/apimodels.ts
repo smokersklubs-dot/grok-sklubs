@@ -8,6 +8,7 @@ import type { ApiProvider, ApiProviderModel } from "./shared.js";
 import { now } from "./store.js";
 import { setPriceSource } from "./usage.js";
 import { lentProviderIds } from "./hosted.js";
+import { OPENROUTER_HEADERS, OPENROUTER_PRESET, openRouterError } from "./openrouter.js";
 
 /**
  * Model providers a user sets up in Settings → Models: any endpoint speaking the OpenAI chat-completions format, with
@@ -36,7 +37,8 @@ export const DEEPSEEK_PRESET = {
     { id: "deepseek-v4-pro", contextWindow: 1_000_000, input: 1.32, output: 3.96, cached: 0.044 },
   ] as ApiProviderModel[],
 };
-export const PRESETS = { deepseek: DEEPSEEK_PRESET } as const;
+/** OpenRouter: see openrouter.ts (its models come from the live catalog, chosen in its own picker). */
+export const PRESETS = { deepseek: DEEPSEEK_PRESET, openrouter: OPENROUTER_PRESET } as const;
 
 interface Row { id: string; user_id: string; name: string; base_url: string; key_enc: string | null; models: string; preset: string; images: number; created_at: number; updated_at: number; shared_hosted?: number }
 
@@ -57,7 +59,7 @@ export function cleanModels(raw: unknown): ApiProviderModel[] {
     const id = typeof m === "string" ? m.trim() : typeof m?.id === "string" ? m.id.trim() : "";
     if (!id || id.length > 100 || !/^[A-Za-z0-9._:/@+-]+$/.test(id) || out.some((x) => x.id === id)) continue;
     const ctx = Number(m?.contextWindow);
-    out.push({ id, contextWindow: Number.isInteger(ctx) && ctx > 0 && ctx <= 100_000_000 ? ctx : null, input: price(m?.input), output: price(m?.output), cached: price(m?.cached) });
+    out.push({ id, contextWindow: Number.isInteger(ctx) && ctx > 0 && ctx <= 100_000_000 ? ctx : null, input: price(m?.input), output: price(m?.output), cached: price(m?.cached), ...(typeof m?.images === "boolean" ? { images: m.images } : {}) });
     if (out.length >= MAX_MODELS) break;
   }
   return out;
@@ -94,12 +96,20 @@ function instanceOf(r: Row): OpenAiCompatProvider {
   const cached = instances.get(r.id);
   if (cached && cached.at === r.updated_at) return cached.provider;
   const keyEnc = r.key_enc;
+  const models = cleanModels(safe(r.models));
+  const openRouter = r.preset === "openrouter";
   const provider = new OpenAiCompatProvider({
     id: r.id, label: r.name, baseUrl: r.base_url, apiKeyEnv: "", models: cleanModels(safe(r.models)).map((m) => m.id),
     apiKey: () => (keyEnc ? unseal(keyEnc) : null),
     fetch: (url, init) => guardedFetch(url, init),
     echoReasoning: r.preset === "deepseek" || /(^|\.)deepseek\.com$/i.test(hostOf(r.base_url)),
     images: !!r.images,
+    // OpenRouter (openrouter.ts): attribution headers, the reported cost of each call, which model reads images, and its 402.
+    ...(openRouter ? {
+      headers: OPENROUTER_HEADERS, reportsCost: true,
+      imagesFor: (model: string) => models.find((m) => m.id === model)?.images,
+      httpError: (status: number, detail: string, retryAfterMs: number | null) => openRouterError(r.user_id, status, detail, retryAfterMs),
+    } : {}),
   });
   instances.set(r.id, { at: r.updated_at, provider });
   return provider;

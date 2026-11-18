@@ -27,7 +27,9 @@ import { CARRIES_FURTHER, describeArgs, judge, type Turn, type Verdict } from ".
  *     go ahead, and the step shows the quote. Ambiguous: the reviewer judges, if one is available. Otherwise: the card,
  *     saying why.
  *  6. "auto": the reviewer model checks the action against the user's rules, their own words and whether outside
- *     content was read, and answers allow / ask / deny with a short reason. Unavailable or unclear: ask.
+ *     content was read, and answers allow / ask / deny with a short reason. Unavailable or unclear: ask. "deny" is a card
+ *     too (single use, saying why the reviewer objects): only the user's own "blocked" policy refuses without asking.
+ *  7. rule_propose only proposes: its card is the confirmation, so it never needs the user's words to reach it.
  */
 
 /** Built-in tools whose effect lasts or reaches others, beyond those judge already treats as sensitive. */
@@ -103,9 +105,18 @@ async function decide(turn: Turn, call: ToolUseBlock): Promise<Decision> {
   const loc = turn.user.locale;
   let name = actionName(turn, call.name, call.input);
   const isGroundable = groundable(turn, call.name);
-  // A rule change needs the user's own words asking for it, checked by the server (bind.ts) — after outside content too.
-  if (call.name === "rule_propose" && verdict.kind !== "block" && !String(call.input.seen_quote ?? "").trim())
-    return { kind: "block", reason: tr(loc, turn.tainted ? "After outside content, a rule can only change when your own words in this conversation ask for it." : "A rule only changes when your own words ask for it: the bot must quote them.") };
+  // A rule change only PROPOSES: its card (a strict, single-use gate: ruletools.ts) is the user's own yes, whatever the
+  // bot quoted. So it is never refused for want of words — that left the user who had asked for it with a dead end.
+  // The card says when the words the bot cited could not be found (bind.ts checked them), or when outside content was read.
+  if (call.name === "rule_propose" && verdict.kind === "ask") {
+    const cited = String(call.input[QUOTE_ARG] ?? "").trim();
+    const found = !!String(call.input.seen_quote ?? "").trim();
+    const why = [
+      turn.tainted ? tr(loc, "Outside content was read in this turn: accept only if you asked for this rule yourself.") : "",
+      found ? "" : tr(loc, cited ? "Sklubot did not find these words in your recent messages: read the rule before you accept." : "The bot did not cite any words of yours asking for this."),
+    ].filter(Boolean).join(" ");
+    return { ...verdict, ...(cited ? { quote: cited } : {}), ...(why ? { why } : {}) };
+  }
   // A payment over a card's daily or monthly cap never reaches a card: it is refused (spec 07 A12).
   if (call.name === "card_fill" && verdict.kind !== "block") {
     const over = capProblem(turn.user.id, call.input);
@@ -143,7 +154,7 @@ async function decide(turn: Turn, call: ToolUseBlock): Promise<Decision> {
   if (grants.take(turn.bot.id, actionHash(call.name, call.input))) return { kind: "allow", grant: { by: "retry" } };
   if (verdict.fixed || !isGroundable) {
     // A per-call gate still says when the deterministic floor is why it asks (a payment, a deletion…).
-    const floor = isGroundable ? floorReason(name, withoutQuote(call.input), turn.tainted, userWordsFor(turn.bot, turn.thread)) : null;
+    const floor = isGroundable ? floorReason(name, withoutQuote(call.input), turn.tainted, userWordsFor(turn.bot, turn.thread, Date.now(), { narrow: true })) : null;
     return { ...verdict, ...(quote ? { quote } : {}), ...(floor ? { why: tr(loc, floor.reason, floor.vars) } : {}) };
   }
   // From here, the action's name may be a committing click's (click_pay, click_send…).
@@ -151,7 +162,8 @@ async function decide(turn: Turn, call: ToolUseBlock): Promise<Decision> {
   const args = withoutQuote(call.input);
   const g = ground(name, call.input, words);
   const shown = g.quote || undefined;
-  const floor = floorReason(name, args, turn.tainted, words);
+  // The floor keeps its own narrow window: a wider search for the user's request never loosens it.
+  const floor = floorReason(name, args, turn.tainted, userWordsFor(turn.bot, turn.thread, Date.now(), { narrow: true }));
   if (floor) return { ...verdict, why: [tr(loc, floor.reason, floor.vars), g.status === "missing" || g.status === "notfound" ? tr(loc, g.reason, g.vars) : ""].filter(Boolean).join(" "), quote: shown, once: verdict.once };
   const mode = turn.bot.autonomy;
   if (mode === "careful") return { ...verdict, why: g.status === "ok" ? tr(loc, "This bot is set to always ask.") : tr(loc, g.reason, g.vars), quote: shown };
@@ -159,7 +171,8 @@ async function decide(turn: Turn, call: ToolUseBlock): Promise<Decision> {
     const answer = await review(turn, call, g, words);
     if (!answer) return { ...verdict, why: tr(loc, "The automatic reviewer is not available, so I ask."), quote: shown };
     if (answer.decision === "allow") return { kind: "allow", grant: { by: "reviewer", reason: answer.reason, ...(g.status === "ok" ? { quote: g.quote } : {}) } };
-    if (answer.decision === "deny") return { kind: "block", reason: answer.reason };
+    // A reviewer's "deny" is never a dead end: the user decides, on a card that says why the reviewer objects.
+    if (answer.decision === "deny") return { ...verdict, why: tr(loc, "The reviewer advises against it: {reason}", { reason: answer.reason }), quote: shown, once: true };
     return { ...verdict, why: tr(loc, "Reviewer: {reason}", { reason: answer.reason }), quote: shown };
   }
   // balanced, trusted

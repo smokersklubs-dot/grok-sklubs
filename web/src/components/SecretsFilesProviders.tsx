@@ -4,6 +4,7 @@ import { tn, useT } from "../i18n";
 import { fileSize } from "../lib/format";
 import { useStore } from "../store";
 import type { ApiProvider, ApiProviderModel, Card, FileChange } from "../types";
+import { OpenRouterCard } from "./AiAccounts";
 import { Icon } from "./Icon";
 import { ErrorNote, IconButton, Loading } from "./ui";
 
@@ -271,6 +272,8 @@ export function ApiProvidersSection({ onChanged }: { onChanged: () => void }) {
   const [editing, setEditing] = useState<Draft | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [confirmDel, setConfirmDel] = useState<string | null>(null);
+  /** OpenRouter has its own panel (AiAccounts.tsx): the key and the live, priced model picker. */
+  const [orOpen, setOrOpen] = useState(false);
   const load = () => api<{ providers: ApiProvider[]; presets: Presets }>("GET", "/api-providers").then(setState, (e) => setError(errText(e)));
   useEffect(() => { void load(); }, []);
   const done = () => { setEditing(null); void load(); onChanged(); };
@@ -294,16 +297,27 @@ export function ApiProvidersSection({ onChanged }: { onChanged: () => void }) {
                 <span className="list-row-title">{p.name}</span>
                 <span className="list-row-sub">{p.baseUrl} · {p.models.map((m) => m.id).join(", ") || t("providers.noModels")}{p.hasKey ? "" : ` · ${t("providers.noKey")}`}</span>
               </span>
-              <button type="button" className="btn btn-small btn-ghost" onClick={() => setEditing({ id: p.id, name: p.name, baseUrl: p.baseUrl, key: "", hasKey: p.hasKey, models: p.models, images: p.images, preset: p.preset ?? "" })}>{t("providers.edit")}</button>
+              <button type="button" className="btn btn-small btn-ghost" onClick={() => (p.preset === "openrouter" ? setOrOpen(true) : setEditing({ id: p.id, name: p.name, baseUrl: p.baseUrl, key: "", hasKey: p.hasKey, models: p.models, images: p.images, preset: p.preset ?? "" }))}>{t("providers.edit")}</button>
               <button type="button" className={`btn btn-small ${confirmDel === p.id ? "btn-danger" : "btn-ghost"}`} onClick={() => void remove(p)}>{t(confirmDel === p.id ? "common.confirmDelete" : "common.delete")}</button>
             </li>
           ))}
         </ul>
       )}
+      {orOpen && (
+        <div className="provider-or">
+          <OpenRouterCard onChanged={() => { void load(); onChanged(); }} />
+          <button type="button" className="btn btn-ghost btn-small" onClick={() => setOrOpen(false)}>{t("common.close")}</button>
+        </div>
+      )}
       {editing ? (
         <ProviderForm start={editing} onDone={done} onCancel={() => setEditing(null)} />
       ) : (
         <div className="provider-actions">
+          {!orOpen && !state.providers.some((p) => p.preset === "openrouter") && (
+            <button type="button" className="btn btn-small provider-tile" onClick={() => setOrOpen(true)}>
+              <Icon name="globe" size={14} /> {t("providers.addOpenRouter")}
+            </button>
+          )}
           <button type="button" className="btn btn-small" onClick={() => setEditing({ id: null, name: ds.name, baseUrl: ds.baseUrl, key: "", hasKey: false, models: ds.models, images: ds.images, preset: "deepseek" })}>
             <Icon name="plus" size={14} /> {t("providers.addDeepseek")}
           </button>

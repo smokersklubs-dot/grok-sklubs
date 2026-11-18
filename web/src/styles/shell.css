@@ -162,6 +162,12 @@
 .screen-actions .icon-btn { width: 26px; height: 26px; color: var(--text-2); border-radius: 999px; }
 .screen-actions .icon-btn.is-busy { animation: pulse 1.2s ease-in-out infinite; }
 @media (hover: none) { .screen-actions { opacity: 1; pointer-events: auto; transform: none; } }
+/* "Sign in to a site" under the computer (SignInSite.tsx). */
+.signin-site-open { margin-top: 8px; }
+.signin-site { display: grid; gap: 6px; margin-top: 8px; }
+.signin-site .viewer-url { width: 100%; flex-wrap: wrap; }
+.signin-site .viewer-url .input { flex: 1 1 100%; min-width: 0; max-width: none; }
+.signin-site .viewer-error { text-align: left; color: var(--danger, #c0392b); }
 
 .signin-notice { display: flex; align-items: flex-start; gap: 8px; padding: 9px 11px; border-radius: var(--r-md); background: var(--info-soft); color: var(--info); font-size: 13px; line-height: 1.4; }
 .signin-notice .icon { flex: none; margin-top: 1px; }

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { IncidentsSection } from "./Incidents";
 import { api, enc, errText } from "../api";
 import { t, useT } from "../i18n";
 import { useStore } from "../store";
@@ -15,8 +16,10 @@ import { LiveScreen } from "./LiveScreen";
 import { ScreenFrame } from "./ScreenFrame";
 import { MyComputerSection } from "./MyComputer";
 import { JobsList } from "./GoalsAndJobs";
+import { SignInSite } from "./SignInSite";
 import { TeamFolderSection } from "./DiskAndTeamFolder";
 import { Icon, Spinner } from "./Icon";
+import { ReadAloudToggle } from "./ListenControls";
 import { BotVoicePicker } from "./VoicePicker";
 import { Empty, ErrorNote, IconButton, Loading, Toggle } from "./ui";
 
@@ -338,7 +341,7 @@ function ComputerSection({ bot }: { bot: Bot }) {
           <span className="screen-card-text">
             <span className="list-row-title">{t(linux ? (bot.computerMode === "shared" ? "details.linuxShared" : "details.linuxOf") : "details.desktopOf", { name: bot.name })}</span>
             <span className="list-row-sub truncate">
-              {live && liveUp && <span className="dot-inline dot-live" />}
+              {live && liveUp && <span className="dot-inline dot-awake" />}
               {text}
             </span>
           </span>
@@ -356,6 +359,7 @@ function ComputerSection({ bot }: { bot: Bot }) {
           </div>
         )}
       </div>
+      {linux && engine && bot.kind === "agent" && <SignInSite botId={bot.id} name={bot.name} />}
       {linux && bot.kind === "agent" && <JobsList botId={bot.id} />}
     </section>
   );
@@ -444,6 +448,7 @@ function VoiceSection({ bot }: { bot: Bot }) {
         </select>
       </div>
       <ErrorNote>{error}</ErrorNote>
+      <ReadAloudToggle bot={bot} />
       {!bot.access && <BotVoicePicker bot={bot} />}
       <button
         type="button"
@@ -641,6 +646,7 @@ export function DetailsPanel() {
           <>
             <Upcoming bot={bot} />
             {!isRoom && <GemsSection key={`g${bot.id}`} bot={bot} />}
+            {!isRoom && <IncidentsSection key={`i${bot.id}`} bot={bot} />}
             {isRoom && <Members room={bot} />}
             {!isRoom && <ComputerSection key={`c${bot.id}`} bot={bot} />}
             {!isRoom && !bot.disabledTools.includes("mycomputer") && <MyComputerSection />}

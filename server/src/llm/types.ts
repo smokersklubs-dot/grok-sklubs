@@ -30,7 +30,9 @@ export type StopReason = "end" | "tool_use" | "max_tokens" | "refusal" | "pause"
  * `via`: the id of the provider that served the call. Set only in hosted mode (hosted.ts tags the providers it hands out),
  * so the usage line can say who pays: the operator's keys or the customer's own.
  */
-export interface TurnUsage { inputTokens: number; outputTokens: number; cachedTokens: number; via?: string }
+export interface TurnUsage { inputTokens: number; outputTokens: number; cachedTokens: number; via?: string;
+  /** The call's cost in USD as the provider itself reported it (OpenRouter `usage.cost`), used instead of our price list. */
+  costUsd?: number }
 
 export interface TurnResult {
   content: Block[];
@@ -106,7 +108,7 @@ export function alternate(messages: ChatMessage[]): ChatMessage[] {
  */
 export class ProviderError extends Error {
   /** `code` "context_length": the request is longer than the model's context window (the turn compacts and tries once more). */
-  constructor(message: string, readonly opts: { status?: number; transient: boolean; retryAfterMs?: number | null; code?: "context_length" } = { transient: false }) {
+  constructor(message: string, readonly opts: { status?: number; transient: boolean; retryAfterMs?: number | null; code?: "context_length" | "out_of_credit" } = { transient: false }) {
     super(message);
     this.name = "ProviderError";
   }

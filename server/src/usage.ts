@@ -172,7 +172,9 @@ const told = (userId: string, botId: string) => { try { afterUsage(userId, botId
 
 /** `costUsd`: the price the service itself reported (e.g. a video), used instead of our token price list. */
 export function record(userId: string, botId: string, model: string, u: TurnUsage, costUsd?: number) {
-  const e = costUsd !== undefined ? { cost: costUsd, status: "reported" as const, estimate: 0 } : costEstimate(model, u, userId);
+  // A cost the provider reported for this very call (OpenRouter's usage.cost) wins over the listed token prices.
+  const reported = costUsd ?? (typeof u.costUsd === "number" && Number.isFinite(u.costUsd) && u.costUsd >= 0 ? u.costUsd : undefined);
+  const e = reported !== undefined ? { cost: reported, status: "reported" as const, estimate: 0 } : costEstimate(model, u, userId);
   const payer = payerHook(userId, model, u, e.status);
   // actor_id (wave 6): the workspace member whose message started the turn, for per-member usage (null: the owner).
   if (payer) q.run("INSERT INTO usage (user_id, bot_id, at, model, input_tokens, output_tokens, cached_tokens, cost_usd, actor_id, price_status, est_cost_usd, payer) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",

@@ -15,6 +15,7 @@ import { compactIfNeeded } from "./memory.js";
 import { turnEnded, turnStarted } from "../snapshots.js";
 import { EngineTimeout, engineOf, engineTurnOf, isEngineRef, isEngineTimeout, runEngineTurn, type EngineOutcome } from "./engine.js";
 import { buildSystemPrompt } from "./prompt.js";
+import { userLinkHint } from "./links.js";
 import { deliverBotMessage, settleAsk, type AskRoute } from "./team.js";
 import { noteDiskTrouble } from "../disk.js";
 import { builtinTools, higgsfieldFor, videoRoute, type BuiltinTool, type ToolOutput } from "./tools.js";
@@ -47,6 +48,9 @@ import { emailUnverified, unverifiedText } from "../publicsignup.js";
 import { blockingCap, capCard, caps as usageCaps, clearTurn, cm, markTurn, noteAttended, noteSkip, skipText, turnAttended } from "../usagecaps.js";
 import type { CapStateView } from "../shared.js";
 import { noteTurnFailure } from "../sentinel/signals.js";
+import { handleFailure, noteFallback, noteTurnOk } from "./failures.js";
+import { attendedTrigger } from "./attended.js"; // usage caps: moved out of this file
+export { attendedTrigger };
 import { holdForLimit, limitNote, noteLimitFallback, subLimitFor, waitForSubscription } from "./sublimit.js";
 import { callSignal, EngineGone, endWatch, isWatchStop, takeSwitch, TurnStalled, watchKind, watchNextModel, watchOutput, watchTool, watchTurn, watchWait, type WatchHandle } from "./watch.js";
 
@@ -532,6 +536,7 @@ async function engineFallback(bot: BotRecord, user: UserRecord, trigger: Exclude
   if (o.limited) noteLimitFallback(bot, o.limited, o.backup);
   else if (!o.switched) {
     rows.append(bot, { kind: "notice", tone: "info", text: tr(loc, "{tool} failed ({detail}). I am carrying on with the backup model {next}.", { tool, detail: clip(o.failure, 160), next: modelLabel(o.backup, user.id) }) });
+    noteFallback(bot, o.failure, bot.model, o.backup, thread);
     audit(user.id, "system", `${bot.name}: ${tool} failed (${clip(o.failure, 160)}), switched to the backup model ${o.backup}`, bot.id);
   }
   const turn = await newTurn(bot, user, failed.depth, failed.signal);
@@ -619,6 +624,7 @@ async function runScopedTurn(botId: string, trigger: Trigger, thread: number): P
   const goalLine = goalRound && !(trigger.kind === "system" && trigger.goalRound)
     ? `${goalNote(goalRound, goalRound.rounds, goalCreated || (trigger.kind === "user" && trigger.goal === goalRound.id))}\n` : "";
   let engineFailed = "";
+  const turnSince = Date.now(); let turnOk = false; // failures.ts: the turn's start; whether it went through (settles incidents)
   const controller = new AbortController();
   controllers.set(botId, controller);
   if (thread) runningThread.set(botId, thread); else runningThread.delete(botId);
@@ -687,7 +693,8 @@ async function runScopedTurn(botId: string, trigger: Trigger, thread: number): P
         // forever. It stops the turn through the same path as "Stop", with its own reason (told apart below).
         const limit = config.engineTurnTimeoutMs;
         const timer = limit > 0 ? setTimeout(() => controller.abort(new EngineTimeout(limit)), limit) : null;
-        const prompt = note + (heard ? heard + "\n" : "") + inThread + goalLine + words + forced + extraText(extra);
+        const linkNote = userLinkHint(turn, trigger); // a link the user typed is opened on the bot's own screen (links.ts)
+        const prompt = note + (heard ? heard + "\n" : "") + inThread + goalLine + words + (linkNote ? `\n\n${linkNote}` : "") + forced + extraText(extra);
         let outcome: EngineOutcome | null = null;
         let thrown: unknown = null;
         startWatch("engine");
@@ -712,6 +719,8 @@ async function runScopedTurn(botId: string, trigger: Trigger, thread: number): P
           if (thrown) throw thrown;
           // At its limit with no backup: this work waits for the subscription, in its place in the queue (sublimit.ts).
           if (outcome?.limited) waitForSubscription(bot, runningJob.get(botId), trigger, outcome.steps.length > 0 || turn.spoke, thread);
+          // No backup: the failure coordinator classifies it and decides (new try, teammate, or one card with remedies).
+          if (failure) handleFailure({ bot, trigger, thread, since: turnSince, text: failure, provider: engineOf(bot.model), didSomething: (outcome?.steps.length ?? 0) > 0 || turn.spoke, origin: originOf(trigger), tainted: true });
           throw new EngineDone();
         }
         turn = await engineFallback(bot, user, trigger, thread, turn, { failure: switched ? "no answer" : failure, steps: outcome?.steps ?? [], prompt, backup, extra, switched: !!switched, limited: outcome?.limited });
@@ -744,6 +753,8 @@ async function runScopedTurn(botId: string, trigger: Trigger, thread: number): P
       const ruleNote = scoped.length ? `[Rules ${user.name} set for this routine (their own words — follow them; a rule that says to ask first wins):\n${scoped.map((r) => `- ${r.text}`).join("\n")}]\n` : "";
       const stamped = `[${new Date().toISOString().slice(0, 16).replace("T", " ")} UTC]\n${ruleNote}${goalLine}${triggerMessage(trigger)}`;
       const first = trigger.kind === "user" ? userBlocks(botId, stamped, trigger.attachments) : [text(stamped)];
+      const linkNote = userLinkHint(turn, trigger);
+      if (linkNote) first.push(text(linkNote));
       if (trigger.kind === "user" && trigger.skill) first.push(text(forcedSkillNote(trigger.skill)));
       if (handedBack.delete(botId)) first.unshift(text("[The user took control of your computer since your last turn and has handed it back. Windows, pages and fields may have changed: look at the screen before relying on what you saw earlier.]"));
       const heard = feedbackNote(bot, thread);
@@ -764,9 +775,9 @@ async function runScopedTurn(botId: string, trigger: Trigger, thread: number): P
     if (trigger.kind === "system" && bot.primary) noteCheckinOutcome(user.id, turn.spoke);
     // Replies to messages that came from a phone, and anything the bot says on its own initiative, go back out there.
     if (turn.lastText && !paused.get(botId) && (trigger.kind === "routine" || trigger.kind === "system" || turn.channel === "telegram")) tell({ type: "reply", bot, text: turn.lastText });
-    pushOutcome(bot, user, trigger, turn.lastText);
+    pushOutcome(bot, user, trigger, turn.lastText); turnOk = true;
   } catch (err) {
-    if (err instanceof EngineDone) { finishEngineTurn(bot, user, trigger, turn); return; }
+    if (err instanceof EngineDone) { finishEngineTurn(bot, user, trigger, turn); turnOk = !engineFailed && !subLimitFor(bot); return; }
     const stopped = controller.signal.aborted;
     const timedOut = stopped && isEngineTimeout(controller.signal.reason);
     const watchStop = stopped && isWatchStop(controller.signal.reason) ? controller.signal.reason : null;
@@ -780,12 +791,14 @@ async function runScopedTurn(botId: string, trigger: Trigger, thread: number): P
         const minutes = Math.round((controller.signal.reason as EngineTimeout).limitMs / 60_000);
         rows.append(bot, { kind: "notice", tone: "warn", text: tr(user.locale, "I stopped this turn after {min} minutes: that is the time limit for one turn on a subscription. What I did so far is kept. Press Continue, or just tell me to continue, to pick it back up.", { min: minutes }), action: { kind: "continue", status: "pending", reason: "timeout" } });
         audit(user.id, "system", `${bot.name}: subscription turn stopped at its time limit (${minutes} min)`, bot.id);
+        handleFailure({ bot, trigger, thread, since: turnSince, err: controller.signal.reason, existingRemedy: true });
       } else if (watchStop instanceof EngineGone) {
         // The tool's process ended in the computer while the turn still waited on it (watch.ts): said at once, with
         // Continue, instead of waiting for the time limit. What it did and said is kept (its session too).
         const tool = engineOf(bot.model) === "codex" ? "Codex" : "Claude Code";
         rows.append(bot, { kind: "notice", tone: "warn", text: tr(user.locale, "{tool} stopped on my computer without finishing this turn. What I did so far is kept. Press Continue, or just tell me to continue, to pick it back up.", { tool }), action: { kind: "continue", status: "pending", reason: "gone" } });
         audit(user.id, "system", `${bot.name}: ${tool} ended without finishing the turn`, bot.id);
+        handleFailure({ bot, trigger, thread, since: turnSince, err: watchStop, existingRemedy: true });
       } else if (watchStop instanceof TurnStalled) {
         // "Stop and resume" under the stall notice (watch.ts; the notice says so): the work goes on in a new turn, as with
         // Continue after the time limit. A goal round needs none: the goal's next round picks it up.
@@ -797,17 +810,20 @@ async function runScopedTurn(botId: string, trigger: Trigger, thread: number): P
         postStopNotice(bot, "limit", { limit: err });
       } else if ((err as Error)?.name === "ComputersBusyError") {
         rows.append(bot, { kind: "notice", tone: "warn", text: tr(user.locale, "All the computers of this server are busy with other work right now, so mine could not start. Nothing was stopped. Tell me to continue in a few minutes."), action: { kind: "continue", status: "pending", reason: "busy" } });
+        handleFailure({ bot, trigger, thread, since: turnSince, err, existingRemedy: true });
       } else if (pausedStop(controller.signal)) {
         // "Pause": stopped at a safe point. What it did so far is kept; the work goes on once the bot is resumed (the
         // continuation waits in its queue), except a routine run (skipped) and a goal round (the goal resumes with the bot).
         rows.append(bot, { kind: "notice", tone: "info", text: tr(user.locale, "Paused. What I did so far is kept; I will pick this back up when I am resumed.") });
         if (trigger.kind !== "routine" && !(trigger.kind === "system" && trigger.goalRound))
           enqueue(botId, { kind: "system", text: PAUSE_CONTINUE_TEXT, thread: thread || undefined, tainted: turn?.tainted || undefined, depth: turn?.depth, origin: turn?.origin ?? (trigger.kind === "resume" ? "resume" : originOf(trigger)), spendScope: turn?.spendKey });
-      } else rows.append(bot, stopped ? { kind: "notice", tone: "info", text: tr(user.locale, "Stopped.") } : { kind: "notice", tone: "error", text: tr(user.locale, "Something went wrong: {detail}", { detail: clip(String((err as Error)?.message ?? err), 400) }) });
+      } else if (stopped) rows.append(bot, { kind: "notice", tone: "info", text: tr(user.locale, "Stopped.") });
+      // failures.ts: a new try, a teammate or one card with remedies; only a hidden helper gets the plain notice.
+      else if (!handleFailure({ bot, trigger, thread, since: turnSince, err, provider: turn && !isEngineRef(turn.modelRef) ? turn.modelRef.split(":")[0] : undefined, origin: turn?.origin, tainted: turn?.tainted })) rows.append(bot, { kind: "notice", tone: "error", text: tr(user.locale, "Something went wrong: {detail}", { detail: clip(String((err as Error)?.message ?? err), 400) }) });
     }
     if (!stopped && !isHostedStop(err) && !isPlanLimit(err)) console.error(`[turn ${bot.name}]`, err);
   } finally {
-    endWatch(watch);
+    endWatch(watch); if (turnOk) noteTurnOk(bot);
     turnEnded(bot, snapBase, thread);
     endScope(botId);
     activeTurns.end(botId);
@@ -873,25 +889,6 @@ function hostedTurnStop(bot: BotRecord, trigger: Trigger, held: PausedTurn | nul
 /** Hosted mode: why background work of this bot (goal rounds, routines) may not run now, or null. */
 export function hostedHoldsBot(bot: BotRecord): "budget" | "suspended" | "byok" | "engines" | null {
   return hostedMode() ? hostedTurnStop(bot, { kind: "system", text: "" }, null) : null;
-}
-
-/**
- * Usage caps: whether a person started this work (their message, their answer to an approval, a button they pressed),
- * as opposed to work no one started — routines and webhooks, goals' later rounds, bot-to-bot messages and background
- * tasks (a helper's work comes as another bot's message), background-job reports, check-ins, mail to the bot. Work that
- * continues other work (step limit, pause, stall) is what the work it continues was.
- */
-export function attendedTrigger(trigger: Trigger): boolean {
-  // Bot API (botapi.ts): no person is watching an outside program's call, so it is unattended work (docs/API-BOT.md).
-  if (trigger.kind === "user") return !trigger.api;
-  if (trigger.kind === "resume") return true;
-  if (trigger.kind === "routine") return !!trigger.byHand;
-  if (trigger.kind === "bot") return false;
-  if (trigger.byPerson) return true;
-  if (trigger.unattended || trigger.goalRound || trigger.jobIds?.length) return false;
-  if (trigger.resumeOf === "spend") return true; // the user pressed "Continue" on a spend checkpoint
-  if (trigger.resumeOf && trigger.origin) return trigger.origin === "user" || trigger.origin === "member" || trigger.origin === "resume";
-  return true;
 }
 
 /**
@@ -1058,6 +1055,7 @@ async function modelLoop(turn: Turn) {
         turn.modelRef = next;
         rows.append(bot, { kind: "notice", tone: "info", text: tr(loc, "My model {model} is not answering ({detail}). I am carrying on with the backup model {next}.", { model: modelLabel(from, turn.user.id), detail: errorDetail(err), next: modelLabel(next, turn.user.id) }) });
         audit(turn.user.id, "system", `${bot.name}: ${from} failed (${errorDetail(err)}), switched to ${next}`, bot.id);
+        noteFallback(bot, err, from, next, turn.thread);
       }
     }
     record(turn.user.id, bot.id, result.model, result.usage);
@@ -1118,6 +1116,7 @@ async function modelLoop(turn: Turn) {
       const w = turn.loopStop;
       const why = tr(loc, w.kind === "fail" ? "the tool {tool} failed {n} times in a row" : "the tool {tool} returned exactly the same result {n} times in a row", { tool: w.tool, n: w.count });
       rows.append(bot, { kind: "notice", tone: "warn", text: tr(loc, "I stopped because I was going round in circles: {why}. Tell me how you would like me to go on.", { why }) });
+      handleFailure({ bot, trigger: { kind: "system", text: "" }, thread: turn.thread, since: Date.now(), loopStop: w, text: why, origin: turn.origin, tainted: turn.tainted }); // + a card with remedies (failures.ts)
       audit(turn.user.id, "system", `${bot.name}: stopped by the loop guard (${loopStopText(w)})`, bot.id);
       return;
     }

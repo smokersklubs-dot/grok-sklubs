@@ -73,6 +73,14 @@ export interface OpenAiCompatOptions {
   echoReasoning?: boolean;
   /** False for a model that does not read images: pictures are replaced by a short note. */
   images?: boolean;
+  /** Per model, when the provider knows which of its models read images (OpenRouter's catalog); else `images`. */
+  imagesFor?: (model: string) => boolean | undefined;
+  /** Extra request headers (OpenRouter's app attribution: HTTP-Referer, X-OpenRouter-Title). */
+  headers?: Record<string, string>;
+  /** The endpoint reports each call's cost in `usage.cost` (OpenRouter): it is recorded instead of our price list. */
+  reportsCost?: boolean;
+  /** A provider's own reading of a failed call (OpenRouter's 402: out of credit); null leaves the generic error. */
+  httpError?: (status: number, detail: string, retryAfterMs: number | null) => ProviderError | null;
 }
 
 /** Any endpoint speaking the widely adopted chat-completions wire format (xAI, OpenAI, local servers…). */
@@ -99,7 +107,7 @@ export class OpenAiCompatProvider implements LlmProvider {
       model: req.model,
       stream: true,
       stream_options: { include_usage: true },
-      messages: toWire(req.system, req.messages, { providerId: this.id, echoReasoning: !!this.opts.echoReasoning, images: this.opts.images !== false }),
+      messages: toWire(req.system, req.messages, { providerId: this.id, echoReasoning: !!this.opts.echoReasoning, images: this.opts.imagesFor?.(req.model) ?? this.opts.images !== false }),
     };
     if (req.tools.length)
       body.tools = req.tools.map((t) => ({ type: "function", function: { name: t.name, description: t.description, parameters: t.inputSchema } }));
@@ -109,7 +117,7 @@ export class OpenAiCompatProvider implements LlmProvider {
     try {
       res = await (this.opts.fetch ?? fetch)(`${this.opts.baseUrl.replace(/\/$/, "")}/chat/completions`, {
         method: "POST",
-        headers: { "content-type": "application/json", authorization: `Bearer ${this.key()}` },
+        headers: { ...this.opts.headers, "content-type": "application/json", authorization: `Bearer ${this.key()}` },
         body: JSON.stringify(body),
         signal: req.signal,
       });
@@ -120,6 +128,8 @@ export class OpenAiCompatProvider implements LlmProvider {
     }
     if (!res.ok || !res.body) {
       const detail = (await res.text().catch(() => "")).slice(0, 400);
+      const own = this.opts.httpError?.(res.status, detail, retryAfterOf(res.headers));
+      if (own) throw own;
       if (isContextTooLong(res.status, detail)) throw new ProviderError(`${this.label}: the request is too long for the model (${detail})`, { status: res.status, transient: false, code: "context_length" });
       throw new ProviderError(`${this.label} API error ${res.status}: ${detail}`, { status: res.status, transient: isTransientStatus(res.status), retryAfterMs: retryAfterOf(res.headers) });
     }
@@ -128,7 +138,7 @@ export class OpenAiCompatProvider implements LlmProvider {
     let reasoning = "";
     let finish = "";
     const calls = new Map<number, { id: string; name: string; args: string }>();
-    const usage = { inputTokens: 0, outputTokens: 0, cachedTokens: 0 };
+    const usage: TurnResult["usage"] = { inputTokens: 0, outputTokens: 0, cachedTokens: 0 };
     const decoder = new TextDecoder();
     let buffer = "";
     for await (const chunk of res.body as unknown as AsyncIterable<Uint8Array>) {
@@ -147,6 +157,8 @@ export class OpenAiCompatProvider implements LlmProvider {
           usage.outputTokens = evt.usage.completion_tokens ?? 0;
           // DeepSeek also reports it as prompt_cache_hit_tokens (https://api-docs.deepseek.com/api/create-chat-completion).
           usage.cachedTokens = evt.usage.prompt_tokens_details?.cached_tokens ?? evt.usage.prompt_cache_hit_tokens ?? 0;
+          // OpenRouter: `usage.cost`, "Cost of the completion" in USD (openrouter.ai/docs/api/api-reference/chat/create-a-chat-completion).
+          if (this.opts.reportsCost && typeof evt.usage.cost === "number" && Number.isFinite(evt.usage.cost) && evt.usage.cost >= 0) usage.costUsd = evt.usage.cost;
         }
         const choice = evt.choices?.[0];
         if (!choice) continue;

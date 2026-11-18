@@ -7,9 +7,12 @@
  *   &panel=thread                          with the thread panel open
  *   &nav=1                                 with the phone drawer open
  *   &running=1                             the bot still at work (thinking block, Stop button)
+ *   &listen=playing|paused|loading|browser|error   « Écouter »: the last reply in the player, in that state
+ *                                          (with « Lire les réponses à voix haute » on: the header's mute button)
  */
 import { useEffect } from "react";
 import { useStore } from "../store";
+import { listenKey, useListen, type ListenStatus } from "../lib/listen";
 import { DEFAULT_CHARACTER, type Bot, type Live } from "../types";
 import { ChatView } from "../components/ChatView";
 import { Sidebar } from "../components/Sidebar";
@@ -28,10 +31,17 @@ export function GalleryChat({ o }: { o: FixtureOptions }) {
   const p = new URLSearchParams(location.search);
   const panel = p.get("panel");
   const running = p.get("running") === "1";
+  const listenAs = p.get("listen");
   const rows = chatRows(o);
   const parent = rows.find((r) => r.body.kind === "message" && r.body.replies);
   useEffect(() => {
-    const bot = chatBot(o);
+    const bot = listenAs ? { ...chatBot(o), voice: { name: "", rate: 1, lang: "auto", readAloud: true } } : chatBot(o);
+    if (listenAs) {
+      // The last reply of the conversation, as the player shows it while it reads (no sound in the gallery).
+      const last = [...rows].reverse().find((r) => !r.thread && r.body.kind === "message" && r.body.role === "assistant" && r.body.text.trim());
+      const status = listenAs === "browser" ? "playing" : ((["playing", "paused", "loading", "error"].includes(listenAs) ? listenAs : "playing") as ListenStatus);
+      if (last) useListen.setState({ key: listenKey(bot.id, last.seq), status, progress: status === "loading" ? 0 : 0.42, engine: listenAs === "browser" ? "browser" : "server", voice: listenAs === "browser" ? "" : "Camille", error: status === "error" ? (o.lang === "fr" ? "Le service de voix n'a pas répondu. Réessaie dans un instant." : "The voice service did not answer. Try again in a moment.") : null });
+    }
     const live: Live = running ? { running: true, activity: { kind: "thinking", since: NOW - 40_000 }, awaiting: null, startedAt: NOW - 40_000, queued: 0, steps: 2 } : { running: false, activity: null, awaiting: null, startedAt: null, queued: 0 };
     useStore.setState({
       bots: { [bot.id]: bot }, selectedId: bot.id, view: "chat", detailsOpen: false, boot: "ready",

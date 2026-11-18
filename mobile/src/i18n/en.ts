@@ -411,4 +411,8 @@ export const en: Record<Key, string> = {
   "relay.off.open": "Turn it back on in Settings",
   "relay.off.restricted": "Greyed out? First allow restricted settings",
   "relay.off.later": "Later",
+  "listen.play": "Listen",
+  "listen.playLabel": "Listen to this reply",
+  "listen.stop": "Stop",
+  "listen.failed": "Could not read it, try again",
 };

@@ -46,10 +46,40 @@ RUN curl -fsSL -o /tmp/agent-reach.zip "$AGENT_REACH_URL" \
     && agent-reach setup > /opt/agent-reach/setup.json \
     && python3 -c "import json; d=json.load(open('/opt/agent-reach/setup.json')); assert d['ok'], d; print('agent-reach', d['result']['version'])"
 
-COPY start-desktop.sh page-text.py open-browser.sh screen-relay.sh dress.py home-server.py tidy.sh /opt/sklubot/
+# Seeing, hearing and reading on the computer (server/src/media.ts, docs/ORDINATEUR.md), Debian bookworm packages, about
+# +130 MB in all (installed sizes from packages.debian.org): Tesseract 5.3 OCR with the French and English data (~25 MB,
+# Apache-2.0); PulseAudio 16.1, a virtual sound card the browser plays into so listen_screen can record it (~15 MB,
+# LGPL-2.1+); xclip for the clipboard (~0.1 MB, GPL-2+); and the usual Python libraries for data work, Debian's own builds
+# so the system python3 has them without pip — requests, Beautiful Soup, lxml, Pillow, openpyxl, python-docx, pandas with
+# numpy (~80 MB). Recommends stay out (no ghostscript: it is AGPL).
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      tesseract-ocr tesseract-ocr-fra tesseract-ocr-eng pulseaudio pulseaudio-utils xclip \
+      python3-requests python3-bs4 python3-lxml python3-pil python3-openpyxl python3-docx python3-pandas \
+    && rm -rf /var/lib/apt/lists/* \
+    && tesseract --list-langs 2>&1 | grep -qx fra && pactl --version >/dev/null
+
+# yt-dlp (Unlicense, https://github.com/yt-dlp/yt-dlp): the official zipimport release 2026.10.26 (3.1 MB; its bundled
+# meriyah/astring are ISC/MIT; it needs Python 3.11+, bookworm has 3.11), checked against the release's SHA2-256SUMS.
+# YouTube needs a JavaScript runtime: Node 22 of this image, enabled in the system configuration (--js-runtimes node,
+# README "Configuration": /etc/yt-dlp.conf). Used by video_download and transcribe.
+ARG YTDLP_URL=https://github.com/yt-dlp/yt-dlp/releases/download/2026.10.26/yt-dlp
+ARG YTDLP_SHA256=e51e69e89489f199530f13d32a4342da3ddb2cf34842f364603a066db05afbf3
+RUN curl -fsSL -o /usr/local/bin/yt-dlp "$YTDLP_URL" \
+    && echo "$YTDLP_SHA256  /usr/local/bin/yt-dlp" | sha256sum -c - \
+    && chmod 755 /usr/local/bin/yt-dlp \
+    && printf '%s\n' '--js-runtimes node' > /etc/yt-dlp.conf \
+    && yt-dlp --version
+
+# Clients of the sound card find it here (docker/desktop/sound.sh). What the bot installs in its home folder stays (the
+# home is a volume): ~/.local/bin comes last on the PATH, so it never hides the computer's own programs.
+ENV PULSE_SERVER=unix:/tmp/pulse/native PATH=$PATH:/root/.local/bin
+
+COPY start-desktop.sh page-text.py open-browser.sh screen-relay.sh dress.py home-server.py tidy.sh sound.sh /opt/sklubot/
 # The credential relay's helper (spec 08 A1): programs call APIs with the user's keys without ever holding them.
 COPY sklubot-api /usr/local/bin/sklubot-api
-RUN chmod +x /opt/sklubot/*.sh /opt/sklubot/page-text.py /usr/local/bin/sklubot-api
+# Installs Debian packages that come back after a rebuild (the list is kept in the home volume).
+COPY sklubot-install /usr/local/bin/sklubot-install
+RUN chmod +x /opt/sklubot/*.sh /opt/sklubot/page-text.py /usr/local/bin/sklubot-api /usr/local/bin/sklubot-install
 
 WORKDIR /root
 CMD ["/opt/sklubot/start-desktop.sh"]

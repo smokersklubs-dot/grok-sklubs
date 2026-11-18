@@ -11,6 +11,7 @@ import { stepSummary } from "../state/items";
 import { useStore } from "../state/store";
 import { radius, useTheme } from "../theme";
 import { Icon } from "./Icon";
+import { listenAvailable, listenKey, listenReply, stopListening, useListen } from "../voice/listen";
 import { Markdown } from "./Markdown";
 import { tap } from "./ui";
 
@@ -87,12 +88,36 @@ export const MessageBubble = memo(function MessageBubble({ bot, row, body, mine,
           {body.attachments.map((a) => <AttachmentView key={a.path} botId={bot.id} file={a} mine={mine} />)}
         </View>
       ) : null}
+      {!mine && !body.streaming && body.role === "assistant" && body.text.trim() && listenAvailable ? <ListenButton bot={bot} row={row} body={body} /> : null}
       {body.sources?.length ? (
         <Text style={[styles.sources, { color: c.text3 }]} numberOfLines={2}>{body.sources.map((s) => s.title || s.url.replace(/^https?:\/\//, "").split("/")[0]).join(" · ")}</Text>
       ) : null}
     </View>
   );
 });
+
+/** « Écouter »: reads the reply in the bot's voice (voice/listen.ts); a 44-point target, labelled for screen readers. */
+function ListenButton({ bot, row, body }: { bot: Bot; row: Row; body: MessageBody }) {
+  const { c } = useTheme();
+  const t = useT();
+  const st = useListen((s) => (s.key === listenKey(row.botId, row.seq) ? s.status : "idle"));
+  const active = st === "loading" || st === "playing";
+  const voice = body.origin?.kind === "bot" ? useStore.getState().bots[body.origin.id]?.voice ?? bot.voice : bot.voice;
+  const label = active ? t("listen.stop") : st === "error" ? t("listen.failed") : t("listen.play");
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={active ? t("listen.stop") : t("listen.playLabel")}
+      accessibilityState={{ busy: st === "loading", selected: active }}
+      hitSlop={6}
+      onPress={() => { tap(); if (active) stopListening(); else listenReply(row.botId, row.seq, body.text, voice); }}
+      style={[styles.listen, { borderColor: active ? c.info : c.border, backgroundColor: active ? c.surface2 : "transparent" }]}
+    >
+      {st === "loading" ? <ActivityIndicator size="small" color={c.text2} /> : <Icon name={active ? "stop" : st === "error" ? "alert" : "speaker"} size={16} color={active ? c.info : st === "error" ? c.warn : c.text2} />}
+      <Text style={{ color: active ? c.info : c.text2, fontSize: 13, fontWeight: "600" }}>{label}</Text>
+    </Pressable>
+  );
+}
 
 const STEP_MARK: Partial<Record<StepBody["status"], Key>> = { error: "step.mark.error", denied: "step.mark.denied", waiting: "step.mark.waiting", running: "step.mark.running" };
 
@@ -185,6 +210,7 @@ const styles = StyleSheet.create({
   thumb: { width: 220, height: 220, borderRadius: radius.lg },
   file: { flexDirection: "row", alignItems: "center", gap: 10, padding: 10, borderRadius: radius.md, borderWidth: StyleSheet.hairlineWidth, minWidth: 220 },
   sources: { fontSize: 12, marginTop: 4, marginHorizontal: 6 },
+  listen: { flexDirection: "row", alignItems: "center", gap: 6, minHeight: 44, minWidth: 44, paddingHorizontal: 12, marginTop: 4, borderRadius: 22, borderWidth: StyleSheet.hairlineWidth },
   lightbox: { flex: 1, backgroundColor: "#000" },
   lightboxBar: { position: "absolute", left: 12, right: 12, flexDirection: "row", justifyContent: "space-between" },
   lightboxBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: "rgba(0,0,0,0.5)", alignItems: "center", justifyContent: "center" },

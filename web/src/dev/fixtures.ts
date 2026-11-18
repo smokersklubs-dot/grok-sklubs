@@ -4,6 +4,7 @@
  */
 import type { AnnouncementAdminItem, AnnouncementsAdmin, AnnouncementsState, AnnouncementView, Bot, Card, Row, SentinelIncidentView, SentinelOverview, TodayReport } from "../types";
 import { DEFAULT_MINUTES } from "../types";
+import { failureCardFixtures, failureSummaryFixture } from "./incidentsFixtures";
 
 export interface FixtureOptions { lang: "fr" | "en"; long: boolean }
 
@@ -132,6 +133,8 @@ export function cardFixtures(o: FixtureOptions): CardFixture[] {
     ],
     restored: status === "undone" ? ["files/rapport.md"] : undefined,
   }));
+  // « Coordinateur d'échecs »: one card per class shown, in each status (incidentsFixtures.ts).
+  for (const card of failureCardFixtures(o)) list.push({ type: "failure", status: card.status, card });
   add("goal", ["proposed", "active", "paused", "complete", "blocked", "limit", "stopped", "declined"], (status) => ({
     type: "goal", goalId: `gl_${status}`, status, rounds: 3, maxRounds: 10,
     objective: LONG(L("Trouver 20 prospects dans la restauration à Lyon", "Find 20 restaurant prospects in Lyon")),
@@ -234,6 +237,7 @@ export function todayReport(o: FixtureOptions, empty: boolean): TodayReport {
       { kind: "cap", botId: GALLERY_BOT_ID, botName: "Juno", title: L("Plafond du jour atteint", "Daily cap reached"), detail: "5,00 $", at: NOW - 40 * MIN, link },
       { kind: "paused", botId: "bot_other", botName: "Atlas", title: L("En pause", "Paused"), detail: "", count: 3, at: NOW - 2 * HOUR, link: { kind: "bot", botId: "bot_other" } },
       { kind: "incident", botId: null, botName: "", title: L("Les routines échouent en série", "Routines are failing in a row"), detail: "", at: NOW - 3 * HOUR, link: { kind: "surveillance", incidentId: "inc_crit" } },
+      { kind: "failure", botId: GALLERY_BOT_ID, botName: "Juno", title: L("Le compte doit être reconnecté", "The account needs signing in again"), detail: "Invalid API key · Please run /login", at: NOW - 3 * MIN, link },
     ],
     done: empty ? [] : [
       { botId: GALLERY_BOT_ID, botName: "Juno", shared: false, minutes: 50, items: [
@@ -246,6 +250,7 @@ export function todayReport(o: FixtureOptions, empty: boolean): TodayReport {
       ] },
     ],
     minutes: { total: empty ? 0 : 65, table: { ...DEFAULT_MINUTES }, counts: empty ? {} : { emailSent: 1, research: 1, fileEdit: 3, routine: 1 }, overridden: [] },
+    failures: failureSummaryFixture(empty),
     cost: { usd: empty ? 0 : 1.84, estimatedUsd: empty ? 0 : 0.12, inputTokens: 412_000, outputTokens: 38_000, turns: 23, subscriptionTokens: 0, byBot: empty ? [] : [{ botId: GALLERY_BOT_ID, botName: "Juno", usd: 1.5, tokens: 380_000 }, { botId: "bot_other", botName: "Atlas", usd: 0.46, tokens: 70_000 }] },
   };
 }

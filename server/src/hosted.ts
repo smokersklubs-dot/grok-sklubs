@@ -87,8 +87,11 @@ const FR: Record<string, string> = {
   "Your free trial ends on {date}.": "Ton essai gratuit se termine le {date}.",
   "Your account moved from {from} to {to}.": "Ton compte est passé de {from} à {to}.",
   "{amount} € of credits added to your account. Your bots can use the service's AI models again.": "{amount} € de crédits ajoutés à ton compte. Tes bots peuvent de nouveau utiliser les modèles d'IA du service.",
+  "A payment was refunded: {amount} € of credits removed from your account.": "Un paiement a été remboursé : {amount} € de crédits retirés de ton compte.",
   "You have no credits left on the service's AI keys ({budget} € this month). Buy credits (Settings → Credits), connect your Claude or ChatGPT subscription, or add your own API key (Settings → Models).":
     "Tu n'as plus de crédits sur les clés d'IA du service ({budget} € ce mois-ci). Achète des crédits (Réglages → Crédits), connecte ton abonnement Claude ou ChatGPT, ou ajoute ta propre clé d'API (Réglages → Modèles).",
+  "Connect your OpenRouter, ChatGPT or Claude account so your bots can think (Settings → My AI accounts). It bills you directly; nothing is paid here.":
+    "Connecte ton compte OpenRouter, ChatGPT ou Claude pour que tes bots puissent réfléchir (Réglages → Mes comptes IA). Il te facture directement ; rien n'est payé ici.",
   trial: "essai", active: "actif", past_due: "paiement en retard", suspended: "suspendu",
 };
 export const hm = (locale: Locale | undefined, english: string, vars: Record<string, string | number> = {}) =>
@@ -122,7 +125,7 @@ const LEGAL_KEYS: (keyof HostedLegal)[] = ["company", "legalForm", "capital", "a
  * estimates stand for services that report no price per call; both are shown and editable in Settings → Administration.
  */
 export const DEFAULT_SETTINGS: HostedSettings = {
-  usdToEur: 0.92, trialDays: 14, graceDays: 7, trialBudgetEur: 2, contactUrl: "", signupDefaultPlan: "free", subscriptionEngines: true, creditPacksEur: [5, 10, 20],
+  usdToEur: 0.92, trialDays: 14, graceDays: 7, trialBudgetEur: 2, contactUrl: "", signupDefaultPlan: "free", subscriptionEngines: true, creditPacksEur: [5, 10, 20], creditsForSale: false,
   estimates: { imageUsd: 0.2, videoUsd: 2, sttUsdPerMinute: 0.02, ttsUsdPer1kChars: 0.03 },
   legal: Object.fromEntries(LEGAL_KEYS.map((k) => [k, ""])) as unknown as HostedLegal,
 };
@@ -148,6 +151,7 @@ export function cleanSettings(raw: any, base: HostedSettings = DEFAULT_SETTINGS)
     } satisfies HostedEstimates,
     legal: Object.fromEntries(LEGAL_KEYS.map((k) => [k, l[k] === undefined ? base.legal[k] : text(l[k], 400)])) as unknown as HostedLegal,
     creditPacksEur: cleanPacks(r.creditPacksEur, base.creditPacksEur),
+    creditsForSale: typeof r.creditsForSale === "boolean" ? r.creditsForSale : base.creditsForSale,
   };
 }
 /** Credit packs (€): 1 to 6 distinct amounts between 1 and 1000, at most 2 decimals, sorted. Anything else keeps the old list. */
@@ -363,7 +367,7 @@ export function planBaseEur(userId: string, _t = now()): number {
   return sub.status === "trial" ? Math.min(plan.aiBudgetEur, hostedSettings.get().trialBudgetEur) : plan.aiBudgetEur;
 }
 
-// ── Prepaid credits (kind 'prepaid': bought with Stripe or given by the operator; they do not end with the month) ─────
+// ── Prepaid credits (kind 'prepaid': bought through Paddle or given by the operator; they do not end with the month) ────
 // Each month the service's keys are paid first by the plan's budget, then by that month's top-ups, then by the prepaid
 // credits. What a closed month took from them is written once in credit_months (the plan's budget of that month is read
 // as the account's current plan: plans rarely change, and a change only moves which month the credits were spent in).
@@ -404,11 +408,13 @@ export function prepaidUseByMonth(userId: string, t = now()): { month: string; s
   const thisMonth = { month: cur.label, spentEur: round2(spent), fromCreditsEur: round2(Math.min(prepaidAvailableEur(userId, t), Math.max(0, spent - planBaseEur(userId, t) - creditEur(userId, t)))) };
   return [thisMonth, ...closed.map((r) => { const b = monthBounds(Date.UTC(Number(r.month.slice(0, 4)), Number(r.month.slice(5, 7)) - 1, 1)); return { month: r.month, spentEur: round2(spendEurBetween(userId, b.start, b.end)), fromCreditsEur: round2(r.consumed_eur) }; })];
 }
+/** Where prepaid credits come from: the operator by hand, or a payment (`paddle`; `stripe` only on rows from before). */
+export type PrepaidSource = "manual" | "paddle";
 /**
- * Adds prepaid credits. `ref` (a Stripe Checkout Session id) is unique: a second call with the same ref adds nothing and
- * returns false. Each addition is written to both logs and told in the account's main chat.
+ * Adds prepaid credits. `ref` (the payment provider's transaction id) is unique: a second call with the same ref adds
+ * nothing and returns false. Each addition is written to both logs and told in the account's main chat.
  */
-export function addPrepaid(userId: string, amountEur: number, o: { source: "stripe" | "manual"; ref?: string; note?: string; actor: { id: string; label: string } | null }): boolean {
+export function addPrepaid(userId: string, amountEur: number, o: { source: PrepaidSource; ref?: string; note?: string; actor: { id: string; label: string } | null }): boolean {
   const a = round2(amountEur);
   try {
     q.run("INSERT INTO credit_topups (id, user_id, month, amount_eur, note, by_id, at, kind, source, external_ref) VALUES (?, ?, ?, ?, ?, ?, ?, 'prepaid', ?, ?)",
@@ -418,12 +424,34 @@ export function addPrepaid(userId: string, amountEur: number, o: { source: "stri
     throw err;
   }
   adminLog(o.actor, userId, "credit", `+${eur(a)} € prepaid credits (${o.source}${o.ref ? ` ${o.ref}` : ""})${text(o.note, 200) ? ` — ${text(o.note, 200)}` : ""}`);
-  audit(userId, "account", `Prepaid AI credits added: +${eur(a)} € (${o.source === "stripe" ? "payment" : "by the operator"})`);
+  audit(userId, "account", `Prepaid AI credits added: +${eur(a)} € (${o.source === "manual" ? "by the operator" : "payment"})`);
   const main = bots.primary(userId);
   const loc = users.localeOf(userId);
   if (main) rows.append(main, { kind: "notice", tone: "info", text: hm(loc, "{amount} € of credits added to your account. Your bots can use the service's AI models again.", { amount: eur(a) }) });
   emit(userId, { type: "usage" });
   return true;
+}
+/**
+ * Removes prepaid credits after a refund (credits.ts): a negative 'prepaid' row, so the balance and the closed months stay
+ * a plain sum. Never more than what is left right now (the balance never goes below 0); `ref` (the refund's id) is unique,
+ * so a refund told twice removes once. Returns what was removed (0 when nothing was left, or when `ref` was seen before).
+ */
+export function removePrepaid(userId: string, amountEur: number, o: { source: PrepaidSource; ref: string; note?: string; actor: { id: string; label: string } | null }): number {
+  const take = round2(Math.min(Math.max(0, amountEur), prepaidLeftEur(userId)));
+  if (take <= 0) return 0;
+  try {
+    q.run("INSERT INTO credit_topups (id, user_id, month, amount_eur, note, by_id, at, kind, source, external_ref) VALUES (?, ?, ?, ?, ?, ?, ?, 'prepaid', ?, ?)",
+      newId("top"), userId, monthBounds().label, -take, text(o.note, 200), o.actor?.id ?? null, now(), o.source, o.ref);
+  } catch (err) {
+    if (/UNIQUE/i.test((err as Error).message)) return 0;
+    throw err;
+  }
+  adminLog(o.actor, userId, "credit-removed", `−${eur(take)} € prepaid credits (${o.source} ${o.ref})${text(o.note, 200) ? ` — ${text(o.note, 200)}` : ""}`);
+  audit(userId, "account", `Prepaid AI credits removed after a refund: −${eur(take)} €`);
+  const main = bots.primary(userId);
+  if (main) rows.append(main, { kind: "notice", tone: "info", text: hm(users.localeOf(userId), "A payment was refunded: {amount} € of credits removed from your account.", { amount: eur(take) }) });
+  emit(userId, { type: "usage" });
+  return take;
 }
 
 export interface Access { operator: boolean; sub: SubRecord | null; plan: HostedPlan | null }
@@ -563,11 +591,13 @@ export function stopNotice(userId: string, reason: HostedStopReason, opts: { mem
   const resetAt = monthBounds().end;
   let body: string;
   const creditsOnly = reason === "budget" && planBaseEur(userId) === 0;
-  if (creditsOnly) body = hm(loc, "You have no credits left on the service's AI keys ({budget} € this month). Buy credits (Settings → Credits), connect your Claude or ChatGPT subscription, or add your own API key (Settings → Models).", { budget: eur(budgetEur(userId)) });
+  const forSale = hostedSettings.get().creditsForSale;
+  if (creditsOnly && !forSale) body = hm(loc, "Connect your OpenRouter, ChatGPT or Claude account so your bots can think (Settings → My AI accounts). It bills you directly; nothing is paid here.");
+  else if (creditsOnly) body = hm(loc, "You have no credits left on the service's AI keys ({budget} € this month). Buy credits (Settings → Credits), connect your Claude or ChatGPT subscription, or add your own API key (Settings → Models).", { budget: eur(budgetEur(userId)) });
   else if (reason === "budget") body = hm(loc, stopEnglish("budget", userId).text, { budget: eur(budgetEur(userId)), date: dateText(loc, resetAt) });
   else if (reason === "engines" && opts.member) body = hm(loc, "This bot runs on its owner's personal Claude or ChatGPT subscription, which only its owner may use. Ask its owner to give it an API model to share it.");
   else body = hm(loc, stopEnglish(reason, userId).text);
-  return { kind: "notice", tone: reason === "suspended" ? "error" : "warn", text: body, action: { kind: "plan", reason, ...(reason === "budget" && !creditsOnly ? { resetAt } : {}), ...(creditsOnly ? { credits: true } : {}), contactUrl } };
+  return { kind: "notice", tone: reason === "suspended" ? "error" : "warn", text: body, action: { kind: "plan", reason, ...(reason === "budget" && !creditsOnly ? { resetAt } : {}), ...(creditsOnly ? { credits: true, forSale } : {}), contactUrl } };
 }
 /** Background work (routines, check-ins, goals) is told once per account, reason and day, not at every attempt. */
 const toldToday = new Set<string>();

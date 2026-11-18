@@ -28,6 +28,7 @@ const PAGES = [
   "section=chat&long=1&running=1",
   "section=chat&panel=thread",
   "section=chat&theme=dark&lang=en",
+  "section=chat&listen=playing&long=1",
   "section=notices&long=1",
   "section=cards&long=1",
   "section=today",

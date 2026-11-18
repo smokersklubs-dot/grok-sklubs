@@ -22,6 +22,7 @@ import { twoFactor } from "./018-two-factor.js";
 import { freePlanOwnKeys } from "./019-free-plan-own-keys.js";
 import { serverMailFromRelay } from "./020-server-mail-from-relay.js";
 import { prepaidCredits } from "./021-prepaid-credits.js";
+import { botFailures } from "./022-bot-failures.js";
 
 /**
  * Versioned migrations (SK-P0-05). The database's version is SQLite's own `PRAGMA user_version` (0 on a database made
@@ -56,6 +57,7 @@ export const MIGRATIONS: Migration[] = [
   { version: 19, name: "free-plan-own-keys", up: freePlanOwnKeys },
   { version: 20, name: "server-mail-from-relay", up: serverMailFromRelay },
   { version: 21, name: "prepaid-credits", up: prepaidCredits },
+  { version: 22, name: "bot-failures", up: botFailures },
 ];
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;
 

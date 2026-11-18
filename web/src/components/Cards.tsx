@@ -11,6 +11,7 @@ import { ApiConnectorCardView, MemoryCardView, SkillCardView, SpendCardView } fr
 import { DiskCardView } from "./DiskAndTeamFolder";
 import { FilesCardView, PastedSecretCardView } from "./SecretsFilesProviders";
 import { GoalCardView } from "./GoalsAndJobs";
+import { FailureCardView } from "./Incidents";
 
 type ApprovalCard = Extract<Card, { type: "approval" }>;
 type QuestionCard = Extract<Card, { type: "question" }>;
@@ -368,6 +369,8 @@ export function CardView({ card, botId, seq }: { card: Card; botId: string; seq:
       return <FilesCardView card={card} botId={botId} seq={seq} />;
     case "goal":
       return <GoalCardView card={card} botId={botId} />;
+    case "failure":
+      return <FailureCardView card={card} botId={botId} />;
     default:
       return null;
   }

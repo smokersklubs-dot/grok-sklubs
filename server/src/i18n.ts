@@ -5,6 +5,16 @@ import type { Locale } from "./shared.js";
  * English is the key; French is looked up here. Anything missing falls back to English.
  */
 const FR: Record<string, string> = {
+  // « Coordinateur d'échecs » (agent/failures.ts).
+  "The AI service is not answering": "Le service d'IA ne répond pas", "Too many requests for now": "Trop de demandes pour l'instant",
+  "The subscription is at its limit": "L'abonnement est à sa limite", "The account needs signing in again": "Le compte doit être reconnecté",
+  "No credit left for the AI": "Plus de crédit pour l'IA", "A step failed": "Une étape a échoué", "The computer is not working": "L'ordinateur ne marche pas",
+  "It took too long": "C'était trop long", "It was going round in circles": "Il tournait en rond", "The AI could not take this request": "L'IA n'a pas pu prendre cette demande",
+  "Something went wrong": "Un problème est survenu", "A problem needs you": "Un souci t'attend", "This bot does not run on a subscription.": "Ce bot ne tourne pas sur un abonnement.",
+  "{provider} is not answering": "{provider} ne répond pas",
+  "{n} of your bots are affected. Their work is kept and will be tried again on its own.": "{n} de tes bots sont touchés. Leur travail est gardé et sera relancé tout seul.",
+  "No other bot of yours has a working brain right now.": "Aucun autre de tes bots n'a un cerveau qui marche en ce moment.",
+  "{from} could not finish this work ({why}) and hands it to you. Do it yourself and answer {owner} in your own chat — do not send it back to {from}, whose brain is not working right now.\n\nThe request:\n{task}": "{from} n'a pas pu finir ce travail ({why}) et te le confie. Fais-le toi-même et réponds à {owner} dans ton propre chat — ne le renvoie pas à {from}, dont le cerveau ne marche pas en ce moment.\n\nLa demande :\n{task}",
   // Bot API (botapi.ts, agent/authorize.ts).
   "A program asked for this through the Bot API: an action that cannot be undone needs your own yes.": "Un programme l'a demandé par l'API du bot : une action irréversible demande ton propre oui.",
   "Allow {bot} to do this? A program asked for it through the Bot API.": "Autoriser {bot} à faire ceci ? Un programme l'a demandé par l'API du bot.",
@@ -40,6 +50,9 @@ const FR: Record<string, string> = {
   "the computer stopped": "l'ordinateur s'est arrêté", "its process ended without an exit code": "son processus s'est terminé sans code de sortie",
   "the computer was put to sleep or reset": "l'ordinateur a été mis en veille ou réinitialisé",
   "Converting a document": "Convertit un document", "Recalculating a spreadsheet": "Recalcule un tableur", "Looking at a document": "Regarde un document",
+  // Seeing and hearing on the bot's computer (media.ts).
+  "Listening to the computer": "Écoute l'ordinateur", "Watching a video": "Regarde une vidéo", "Downloading a video": "Télécharge une vidéo", "Reading text with OCR": "Lit le texte d'une image (OCR)",
+  "no speech-to-text": "pas de reconnaissance vocale", "not recorded": "pas enregistré", "silence": "silence", "not downloaded": "pas téléchargé", "screen": "écran", "characters": "caractères",
   // A subscription turn that failed goes on with a backup API model (loop.ts engineFallback).
   "{tool} failed ({detail}). I am carrying on with the backup model {next}.": "{tool} a échoué ({detail}). Je continue avec le modèle de secours {next}.",
   // The turn watch (agent/watch.ts, loop.ts): a turn whose AI says nothing, a turn that makes no progress, a tool that stopped.
@@ -95,6 +108,10 @@ const FR: Record<string, string> = {
   "Searching with Agent Reach": "Cherche avec Agent Reach", "Reading with Agent Reach": "Lit avec Agent Reach", "Checking Agent Reach": "Vérifie Agent Reach",
   "Transcribing a video": "Transcrit une vidéo", "Publishing a temporary link": "Publie un lien temporaire",
   "cached": "réponse en mémoire", "YouTube blocks this server": "YouTube bloque ce serveur", "YouTube blocks this server — your computer can help": "YouTube bloque ce serveur — ton ordinateur peut aider",
+  "Open the video on my own computer (Relais)": "Ouvrir la vidéo sur mon ordinateur à moi (Relais)",
+  "Paste the transcript": "Coller la transcription",
+  "Skip it": "Ignorer",
+  "YouTube refuses my server, so I could not read this video's transcript. How do we go on?": "YouTube refuse mon serveur : je n'ai pas pu lire la transcription de cette vidéo. Comment on continue ?",
   "served by {who}": "servi par {who}", "nobody answered": "personne n'a répondu", "tried: {list}": "essayé : {list}",
   "served": "servi", "empty": "vide", "error": "erreur", "not set up": "pas configuré", "too expensive": "trop cher", "paid: needs your yes": "payant : il faut ton accord",
   "budget refused": "budget refusé", "in progress": "en cours", "same request, not charged again": "même demande, pas refacturée",
@@ -134,6 +151,12 @@ const FR: Record<string, string> = {
   "Too many dictations. Wait a minute and try again.": "Trop de dictées. Attends une minute et réessaie.",
   "Speech recognition is not set up on the server. Turn it on in Settings → Voice.": "La reconnaissance vocale du serveur n'est pas activée. Active-la dans Réglages → Voix.",
   "The speech recognition service did not answer. Try again in a moment.": "Le service de reconnaissance vocale n'a pas répondu. Réessaie dans un instant.",
+  // « Écouter les réponses » (voice/speak.ts)
+  "That message does not exist.": "Ce message n'existe pas.",
+  "Only a finished reply can be listened to.": "Seule une réponse terminée peut être écoutée.",
+  "That part of the reply does not exist.": "Cette partie de la réponse n'existe pas.",
+  "Too many replies listened to. Wait a minute and try again.": "Trop de réponses écoutées. Attends une minute et réessaie.",
+  "The voice service did not answer. Try again in a moment.": "Le service de voix n'a pas répondu. Réessaie dans un instant.",
   "New email": "Nouvel e-mail",
   "Read the new email. If it needs an answer, draft a short reply and ask me before sending it.": "Lis le nouvel e-mail. S'il appelle une réponse, rédige une courte réponse et demande-moi avant de l'envoyer.",
   // Wave 5b: spend checkpoints, committing clicks, card payments, files on the user's computer, Telegram commands, routines, first-task ideas.
@@ -239,6 +262,9 @@ const FR: Record<string, string> = {
   "Rule changed from the chat: “{text}” ({scope})": "Règle modifiée depuis la discussion : « {text} » ({scope})",
   "After outside content, a rule can only change when your own words in this conversation ask for it.": "Après du contenu extérieur, une règle ne change que si tes propres mots dans cette discussion le demandent.",
   "A rule only changes when your own words ask for it: the bot must quote them.": "Une règle ne change que si tes propres mots le demandent : le bot doit les citer.",
+  "Outside content was read in this turn: accept only if you asked for this rule yourself.": "Du contenu extérieur a été lu pendant ce tour : n'accepte que si c'est toi qui as demandé cette règle.",
+  "Sklubot did not find these words in your recent messages: read the rule before you accept.": "Sklubot n'a pas retrouvé ces mots dans tes messages récents : relis la règle avant d'accepter.",
+  "The reviewer advises against it: {reason}": "Le relecteur le déconseille : {reason}",
   "Which is right? {text}": "Laquelle est juste ? {text}",
   "Allow {bot} to delete {path} through {connector}?": "Autoriser {bot} à supprimer {path} via {connector} ?",
   "delete through {connector}": "supprimer via {connector}",

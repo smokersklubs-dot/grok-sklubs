@@ -374,7 +374,7 @@ export function registerPublicSignupPublic(api: Hono<any>, d: PublicSignupDeps) 
     const loc = pickLocale(c.req.query("locale"), c.req.header("accept-language"));
     const templates = templateList().map((t) => ({ id: t.id, title: t.title, description: t.description, icon: t.icon, category: t.category, bots: t.bots.map((b) => ({ name: b.name, role: b.role, look: b.look })) }));
     const hosted = hostedMode()
-      ? { plans: plans.offered(), credits: { packs: creditPacks(), payments: paymentsOn() }, trialDays: hostedSettings.get().trialDays, freeComputers: env("FREE_PLAN_COMPUTER").toLowerCase() === "personal" ? "personal" : freeMax() > 0 ? "pool" : "none", links: loc === "fr" ? { pricing: "/tarifs", terms: "/cgu", legal: "/mentions-legales", privacy: "/confidentialite" } : { pricing: "/pricing", terms: "/terms", legal: "/legal-notice", privacy: "/privacy" } }
+      ? { plans: plans.offered(), credits: { packs: creditPacks(), payments: paymentsOn(), forSale: hostedSettings.get().creditsForSale }, trialDays: hostedSettings.get().trialDays, freeComputers: env("FREE_PLAN_COMPUTER").toLowerCase() === "personal" ? "personal" : freeMax() > 0 ? "pool" : "none", links: loc === "fr" ? { pricing: "/tarifs", terms: "/cgu", legal: "/mentions-legales", privacy: "/confidentialite" } : { pricing: "/pricing", terms: "/terms", legal: "/legal-notice", privacy: "/privacy" } }
       : null;
     return c.json({ templates, hosted, verification: verificationActive(), turnstile: !!turnstileKeys() }, 200, { "cache-control": "public, max-age=300" });
   });

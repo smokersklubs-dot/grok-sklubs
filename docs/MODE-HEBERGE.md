@@ -74,7 +74,7 @@ Le compte est gratuit ; pour que les bots travaillent, la personne choisit (prem
 Réglages → Crédits) : **son abonnement Claude ou ChatGPT** (connexion sur l'ordinateur de son bot : réglages du bot →
 Cerveau ; mets `FREE_PLAN_COMPUTER=personal` pour que la connexion reste), **sa clé d'API** (Réglages → Modèles), ou
 **des crédits** prépayés en € dépensés sur les clés d'IA du service. Code : `server/src/credits.ts`,
-`server/src/billing/stripe.ts`, `hosted.ts` (« Prepaid credits »), migration 21, `web/src/components/Credits.tsx`.
+`server/src/billing/paddle.ts`, `hosted.ts` (« Prepaid credits »), migration 21, `web/src/components/Credits.tsx`.
 - **Ordre de dépense** chaque mois : le budget de l'offre (0 € pour « Gratuit »), puis les recharges du mois, puis les
   crédits. Les crédits **ne s'arrêtent pas à la fin du mois** (le reste est reporté). Sans crédit, la carte d'arrêt
   propose « Acheter des crédits », « Connecter mon abonnement », « Utiliser ma propre clé ».
@@ -82,8 +82,14 @@ Cerveau ; mets `FREE_PLAN_COMPUTER=personal` pour que la connexion reste), **sa 
   identifiant de pack, jamais un montant.
 - **À la main** : Administration → Clients → Gérer → « Ajouter des crédits IA » (case « Crédits durables » cochée :
   ils se reportent ; décochée : budget de ce mois seulement, comme avant).
-- **Sans Stripe** (aujourd'hui) : les boutons « Acheter » affichent « Paiement en ligne bientôt disponible » et ton
-  adresse de contact.
+- **Sans Paddle** (tant que les variables ne sont pas posées) : les boutons « Acheter » affichent « Paiement en ligne
+  bientôt disponible » et ton adresse de contact.
+- **Remboursements** : un remboursement (ou une contestation bancaire) **approuvé** par Paddle retire du solde les
+  crédits correspondants **encore disponibles**, une seule fois, jamais plus que le pack payé. Ce qui a déjà été
+  dépensé sur les clés d'IA du service ne peut pas être repris : le solde reste à 0 € et le journal d'administration
+  affiche une ligne « refund-unrecovered » avec le montant. Un remboursement « en attente d'approbation » ne change rien
+  (ligne « refund-pending ») ; une contestation finalement gagnée (« chargeback_reverse ») n'est **pas** recréditée
+  automatiquement (ligne « refund-reversed ») : à toi de décider avec « Ajouter des crédits IA ».
 
 ### Statuts (le planificateur les fait avancer toutes les 10 minutes)
 `trial` → fin de l'essai : `active` si un paiement couvre la suite, sinon `past_due` → après `graceDays` (7 par défaut)
@@ -125,29 +131,72 @@ stockage (bibliothèques des bots et dossier d'équipe sur le serveur). Au-delà
 
 ## Paiement
 
-### Crédits par Stripe Checkout (à brancher quand l'entreprise existe)
-1. Crée le compte Stripe de l'entreprise (SIREN/SIRET, IBAN, identité) et active les paiements. Fais tout d'abord en
-   **mode test**.
-2. **Développeurs → Clés API** : copie la **clé secrète** (`sk_test_…`, puis `sk_live_…`). Une clé restreinte suffit
-   (écriture sur « Checkout Sessions »).
-3. **Développeurs → Webhooks** (Workbench) → « Ajouter une destination » : charge utile **Snapshot**, événements
-   **`checkout.session.completed`** et **`checkout.session.async_payment_succeeded`**, adresse
-   **`https://<ton domaine>/api/billing/stripe/webhook`**. Copie le **secret de signature** (`whsec_…`).
-4. Dans Coolify (ou le `.env` du VPS) : `SKLUBOT_STRIPE_SECRET_KEY` et `SKLUBOT_STRIPE_WEBHOOK_SECRET`, puis
-   **Redeploy**. Administration → Réglages → Crédits affiche « Branché ».
-5. Teste un achat avec la carte `4242 4242 4242 4242` (mode test) : le solde augmente dans Réglages → Crédits, une ligne
-   apparaît dans le journal d'administration et une notice dans le chat du client. Puis passe aux clés live.
-Sécurité : signature `Stripe-Signature` vérifiée sur le corps brut (HMAC-SHA256, 5 minutes de tolérance), seules les
-sessions créées par ce serveur sont créditées, au compte qui l'a créée et du montant fixé par le serveur, **une seule
-fois** (identifiant d'événement et de session). La TVA : à régler avec Stripe Tax ou ton comptable.
+### Crédits payés par Paddle (revendeur officiel)
+Paddle est le **vendeur officiel** (« merchant of record ») des crédits : c'est lui qui vend au client en son nom,
+encaisse, facture, applique la TVA et verse ensuite l'argent sur ton compte bancaire (moins ses frais). Ses propres
+conditions (pays acceptés, activités autorisées, vérification de l'entreprise, frais, délais de versement)
+s'appliquent : lis-les avant de t'engager. Ce n'est pas un conseil juridique ni fiscal : fais valider par ton
+comptable. Documentation suivie : <https://developer.paddle.com> (liens précis dans `server/src/billing/paddle.ts`).
+
+Comment ça marche : le client choisit un pack ; le serveur crée chez Paddle une **transaction** au prix du pack (prix
+TTC fixé par le serveur, quantité 1, en euros), puis l'envoie sur **`https://<ton domaine>/paiement`**, une petite page
+qui charge Paddle.js : la fenêtre de paiement Paddle s'ouvre par-dessus. Une fois payé, Paddle prévient le serveur
+(webhook signé) et les crédits arrivent. Le prix du pack est **toutes taxes comprises** : 10 € payés = 10 € de crédits ;
+Paddle prélève la TVA et ses frais sur ce montant.
+
+**D'abord en test (sandbox), puis en réel** — les deux comptes Paddle sont séparés (clés, produit, webhook, réglages) :
+1. **Compte de test** : inscris-toi sur <https://sandbox-vendors.paddle.com/signup> et confirme ton adresse e-mail
+   (pas de vérification d'entreprise en sandbox).
+2. **Produit** : Paddle → **Catalog → Products** → nouveau produit, par exemple « Crédits IA Sklubot », avec la
+   **catégorie de taxe** qui convient (à confirmer avec ton comptable). Copie son identifiant **`pro_…`**. Pas besoin de
+   créer un prix par pack : le serveur envoie le prix de chaque achat (« prix hors catalogue » rattaché à ce produit).
+   Si tu changes tes packs (Administration → Réglages → Crédits), rien à changer chez Paddle.
+3. **Clé d'API** : Paddle → **My account → Settings → Authentication** → onglet **API keys** → « New API key », avec la
+   permission **`transaction.write`** (créer des transactions) ; note la date d'expiration (90 jours par défaut, un an
+   au plus) pour la renouveler à temps. La clé commence par `pdl_sdbx_apikey_` (test) ou `pdl_live_apikey_` (réel).
+4. **Jeton côté client** (pour la page `/paiement`) : même écran, onglet des **client-side tokens** → nouveau jeton.
+   Il commence par `test_` (sandbox) ou `live_` (réel). Ce jeton est public par nature ; la clé d'API, elle, reste
+   secrète (jamais dans le navigateur).
+5. **Lien de paiement par défaut** : Paddle → **Checkout → Checkout configuration → Default payment link** :
+   **`https://<ton domaine>/paiement`**. Paddle l'exige avant toute transaction. En réel, ton domaine doit d'abord être
+   **approuvé** : Paddle → **My account → Settings → Website approval** (en sandbox, rien à approuver).
+6. **Webhook** : Paddle → **Events → Notifications** → « New destination » : type **URL**, adresse
+   **`https://<ton domaine>/api/billing/paddle/webhook`**, version d'API **1**, événements **`transaction.paid`**,
+   **`transaction.completed`**, **`adjustment.created`** et **`adjustment.updated`**. Enregistre, puis rouvre la
+   destination (« Edit destination ») et copie la **clé secrète** (`pdl_ntfset_…`). Ne supprime pas une destination
+   pour la recréer : cela change la clé.
+7. **Coolify** (ou le `.env` du VPS) — les cinq, sinon le paiement reste éteint :
+   `SKLUBOT_PADDLE_ENV=sandbox` (puis `production`), `SKLUBOT_PADDLE_API_KEY`, `SKLUBOT_PADDLE_WEBHOOK_SECRET`,
+   `SKLUBOT_PADDLE_CLIENT_TOKEN`, `SKLUBOT_PADDLE_PRODUCT_ID`, puis **Redeploy**. Administration → Réglages → Crédits
+   affiche « Fournisseur : Paddle », le mode (test ou réel) et « Branché » — ou la liste des variables qui manquent
+   (une clé de test avec `production`, ou l'inverse, est refusée).
+8. **Teste un achat** (sandbox) avec la carte **`4242 4242 4242 4242`** (sans 3-D Secure ; `4000 0038 0000 0446` avec),
+   n'importe quel nom et une date future : le solde augmente dans Réglages → Crédits, une ligne apparaît au journal
+   d'administration et une notice dans le chat du client. Teste aussi un remboursement depuis le tableau de bord Paddle
+   (en sandbox, Paddle approuve les remboursements toutes les 10 minutes) : le solde diminue. Les e-mails de Paddle en
+   sandbox ne partent qu'aux adresses de ton domaine ; les autres sont renvoyés vers ton adresse principale.
+9. **Passage en réel** : inscris-toi sur <https://vendors.paddle.com/signup>, fais la **vérification de l'entreprise et
+   de l'identité** demandée par Paddle et l'**approbation du domaine** ; Paddle regarde aussi que le site montre des
+   conditions de vente, une politique de confidentialité et une politique de remboursement. Refais les étapes 2 à 7
+   dans le compte réel (nouveaux identifiants : rien n'est partagé avec la sandbox), mets
+   `SKLUBOT_PADDLE_ENV=production`, redéploie, puis fais un vrai petit achat et rembourse-le.
+
+Sécurité : signature `Paddle-Signature` (`ts=…;h1=…`, HMAC-SHA256 de `ts:corps brut` avec la clé secrète de la
+destination) vérifiée sur le corps brut, 5 minutes de tolérance ; seules les transactions créées par ce serveur sont
+créditées, au compte inscrit dans la transaction (données personnalisées vérifiées), du montant et en euros comme fixé
+par le serveur, **une seule fois** (identifiant d'événement et de transaction). Un écart (autre montant, autre devise,
+code de réduction, autre compte) n'est pas crédité et apparaît au journal (« credit-refused »). La page `/paiement` est
+la seule à charger un script tiers (Paddle.js, depuis `cdn.paddle.com`), avec sa propre politique de sécurité ; le
+reste de l'application garde la sienne. Les codes de réduction sont masqués dans la fenêtre de paiement.
 
 ### Abonnements (offres payantes)
 Aucun fournisseur n'est choisi. Le seul branché est **manuel** : Administration → Clients → Gérer → « Paiement reçu »
 (actif jusqu'à une date, référence facultative). Le planificateur fait le reste (retard, suspension).
 
-### Brancher un fournisseur de paiement (Stripe ou Paddle)
-Interface : `server/src/billing/provider.ts` (`PaymentProvider`). Étapes :
-1. Écrire `server/src/billing/stripe.ts` ou `paddle.ts` **à partir de la documentation officielle uniquement**
+### Brancher un fournisseur de paiement pour les abonnements
+Interface : `server/src/billing/provider.ts` (`PaymentProvider`). Les appels à Paddle et la vérification de signature
+existent déjà (`server/src/billing/paddle.ts`, utilisés pour les crédits). Étapes :
+1. Écrire l'adaptateur **à partir de la documentation officielle uniquement**
    (citer chaque point d'API et en-tête en commentaire, comme le reste du dépôt). Rien dans le code actuel ne suppose
    une API de fournisseur.
 2. `verifyWebhook` : vérifier la signature du corps brut avec le secret de signature (variable d'environnement, jamais
@@ -158,11 +207,9 @@ Interface : `server/src/billing/provider.ts` (`PaymentProvider`). Étapes :
    `billing_events` (un même événement reçu deux fois ne change rien la seconde fois).
 4. Facultatif : `checkoutUrl` pour envoyer le client vers la page de paiement du fournisseur à la place de l'adresse de
    contact.
-5. L'enregistrer dans `PROVIDERS`. D'ici là, `POST /api/billing/webhook/stripe` et `/paddle` répondent **501** et ne
-   changent rien.
-
-À savoir pour choisir : Paddle agit comme revendeur officiel (il gère la TVA européenne) ; avec Stripe, la TVA est à
-gérer (Stripe Tax). À vérifier dans leurs conditions actuelles.
+5. L'enregistrer dans `PROVIDERS`. D'ici là, `POST /api/billing/webhook/paddle` répond **501** tant que Paddle n'est
+   pas configuré (ensuite c'est le webhook des crédits), et `/stripe` (adresse d'une ancienne version) répond **501** et
+   ne change rien.
 
 ## Décisions qui restent à la propriétaire / au propriétaire
 - **Prix** et contenu des offres (les valeurs par défaut sont des exemples), taux USD → EUR, estimations.
@@ -170,8 +217,9 @@ gérer (Stripe Tax). À vérifier dans leurs conditions actuelles.
   publication, hébergeur, médiateur de la consommation, conditions de résiliation, TVA (TTC/HT), et **relecture
   juridique** des CGU / CGV et des mentions légales. La politique de confidentialité (`/confidentialite`) décrit
   encore une installation personnelle : à compléter pour le service (sous-traitants : fournisseurs de modèles,
-  hébergeur, paiement).
-- **Fournisseur de paiement** (Stripe, Paddle ou autre) et facturation (factures numérotées).
+  hébergeur, paiement : Paddle).
+- **Paddle** : ouvrir les comptes (test puis réel), vérification de l'entreprise, choix de la catégorie de taxe du
+  produit, montant des packs (prix TTC) ; les abonnements payants restent en paiement manuel pour l'instant.
 - Vérifier les **conditions d'utilisation commerciale** des fournisseurs de modèles et des outils Claude Code / Codex.
 
 ## Routes (toutes en 404 quand `HOSTED_MODE` n'est pas à 1)
@@ -179,9 +227,10 @@ gérer (Stripe Tax). À vérifier dans leurs conditions actuelles.
 |---|---|---|
 | `GET /api/plans` | public | offres proposées (formulaire d'inscription) |
 | `GET /api/plan-invites/:token` | public (le jeton est le secret) | offre d'une invitation |
-| `POST /api/billing/webhook/:provider` | public | `stripe` : le webhook Stripe une fois les clés posées (501 avant) ; `paddle` → 501 |
-| `POST /api/billing/stripe/webhook` | public (signature Stripe) | crédite un paiement Checkout ; 503 sans les clés |
-| `GET /api/billing/credits`, `POST /api/billing/credits/checkout` | compte connecté | Réglages → Crédits ; `{ pack }` → `{ url }` (503 `payments_off` sans Stripe) |
+| `POST /api/billing/webhook/:provider` | public | `paddle` : le webhook Paddle une fois configuré (501 avant) ; `stripe` → 501 |
+| `POST /api/billing/paddle/webhook` | public (signature Paddle) | crédite une transaction payée, retire les crédits d'un remboursement ; 503 sans les variables |
+| `GET /paiement` | public | page de paiement (Paddle.js ouvre la transaction `?_ptxn=…`) ; seulement quand Paddle est configuré |
+| `GET /api/billing/credits`, `POST /api/billing/credits/checkout` | compte connecté | Réglages → Crédits ; `{ pack }` → `{ url }` (503 `payments_off` sans Paddle) |
 | `GET /api/billing` | compte connecté | « Mon abonnement » |
 | `GET /api/admin/overview`, `/admin/customers`, `/admin/plans`, `/admin/settings`, `/admin/invites`, `/admin/audit` | opérateurs | lecture |
 | `PUT /api/admin/customers/:uid/plan`, `/status`, `/operator` ; `POST …/paid`, `…/credit`, `…/trial` | opérateurs (`/operator` : propriétaire seulement) | actions sur un client, chacune journalisée |

@@ -20,6 +20,10 @@ if [ "$KB" != us ]; then
   done
 fi
 mkdir -p /root/files /root/.sklubot
+# The virtual sound card (sound.sh): what the browser plays can be listened to by the bot (listen_screen).
+/opt/sklubot/sound.sh >/dev/null 2>&1 || true
+# Debian packages the bot installed with sklubot-install come back after the computer was made again from a new image.
+[ -s /root/.sklubot/apt-packages.txt ] && (sklubot-install --restore >>/root/.sklubot/apt-restore.log 2>&1 &)
 # Put the bot's look back on (it is kept in the home volume), or start plain until the server sends one.
 if [ -f /root/.sklubot/look.json ]; then rm -f /root/.sklubot/applied; python3 /opt/sklubot/dress.py </dev/null >/dev/null 2>&1; else tint2 >/dev/null 2>&1 & fi
 # The way to Sklubot (security review H2): this computer's own socket, offered on 127.0.0.1 to its programs (Claude

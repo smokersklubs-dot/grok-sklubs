@@ -1,7 +1,7 @@
 /**
  * Settings → Credits (hosted mode, server credits.ts): the three ways bots work — the person's own Claude / ChatGPT
  * subscription (signed in on their bot's computer: its settings → Brain), their own API key (Settings → Models), or
- * prepaid credits on the service's AI keys: the balance in €, the owner's packs (Stripe Checkout when configured, else
+ * prepaid credits on the service's AI keys: the balance in €, the owner's packs (Paddle checkout when configured, else
  * "bientôt disponible" and the owner's contact), and the history of top-ups and spending.
  */
 import { useEffect, useState, type ReactNode } from "react";
@@ -9,13 +9,14 @@ import { api, ApiError, errText } from "../api";
 import { useStore } from "../store";
 import type { CreditsView } from "../types";
 import { Icon, type IconName } from "./Icon";
+import { AiAccountCards } from "./AiAccounts";
 import { ErrorNote, Loading } from "./ui";
 import "./Credits.css";
 
 const TEXT = {
   fr: {
     howTitle: "Comment tes bots travaillent",
-    howLead: "Ton compte est gratuit. Pour réfléchir, tes bots utilisent un modèle d'IA : choisis une façon (ou plusieurs).",
+    howLead: "Ton compte est gratuit. Pour réfléchir, tes bots utilisent ton propre compte d'IA : connecte-en un (ou plusieurs). Il te facture directement.",
     subTitle: "Mon abonnement Claude ou ChatGPT",
     subText: "Claude Pro/Max ou ChatGPT Plus/Pro : connecte-le sur l'ordinateur de ton bot. Rien de plus à payer ici.",
     subBtn: "Connecter mon abonnement",
@@ -38,7 +39,8 @@ const TEXT = {
     monthBudget: "Ton offre inclut {budget} par mois, utilisés avant tes crédits.",
     history: "Historique",
     noHistory: "Aucun crédit pour l'instant.",
-    hStripe: "Achat de crédits", hGift: "Crédits offerts", hMonth: "Budget ajouté pour le mois",
+    hPaid: "Achat de crédits", hRefund: "Remboursement", hGift: "Crédits offerts", hMonth: "Budget ajouté pour le mois",
+    reseller: "Paiement sécurisé par Paddle, notre revendeur : il gère la TVA et t'envoie le reçu.",
     spend: "Dépenses par mois",
     spendLine: "{spent} sur les modèles du service, dont {credits} payés par tes crédits",
     success: "Merci ! Ton paiement est reçu : les crédits apparaissent ici dans quelques secondes.",
@@ -46,7 +48,7 @@ const TEXT = {
   },
   en: {
     howTitle: "How your bots work",
-    howLead: "Your account is free. To think, your bots use an AI model: choose one way (or several).",
+    howLead: "Your account is free. To think, your bots use your own AI account: connect one (or several). It bills you directly.",
     subTitle: "My Claude or ChatGPT subscription",
     subText: "Claude Pro/Max or ChatGPT Plus/Pro: sign in on your bot's computer. Nothing more to pay here.",
     subBtn: "Connect my subscription",
@@ -69,7 +71,8 @@ const TEXT = {
     monthBudget: "Your plan includes {budget} a month, used before your credits.",
     history: "History",
     noHistory: "No credits yet.",
-    hStripe: "Credits bought", hGift: "Credits given", hMonth: "Budget added for the month",
+    hPaid: "Credits bought", hRefund: "Refund", hGift: "Credits given", hMonth: "Budget added for the month",
+    reseller: "Secure payment by Paddle, our reseller: it handles VAT and sends you the receipt.",
     spend: "Spending by month",
     spendLine: "{spent} on the service's models, {credits} of it paid by your credits",
     success: "Thank you! Your payment is in: the credits show here within a few seconds.",
@@ -85,13 +88,12 @@ const money = (n: number, loc: "fr" | "en") => n.toLocaleString(loc === "fr" ? "
 const date = (ts: number, loc: "fr" | "en") => new Date(ts).toLocaleDateString(loc === "fr" ? "fr-FR" : "en-GB", { day: "numeric", month: "short", year: "numeric" });
 const monthName = (m: string, loc: "fr" | "en") => new Date(Date.UTC(Number(m.slice(0, 4)), Number(m.slice(5, 7)) - 1, 1)).toLocaleDateString(loc === "fr" ? "fr-FR" : "en-GB", { month: "long", year: "numeric", timeZone: "UTC" });
 
-/** Back from Stripe (/?credits=success|cancel): read once, removed from the address. */
+/** Back from the Paddle checkout (/?credits=success|cancel): read once, removed from the address. */
 function takeReturn(): "success" | "cancel" | null {
   const url = new URL(location.href);
   const v = url.searchParams.get("credits");
   if (v !== "success" && v !== "cancel") return null;
   url.searchParams.delete("credits");
-  url.searchParams.delete("session_id");
   history.replaceState(history.state, "", `${url.pathname}${url.search}${url.hash}`);
   return v;
 }
@@ -141,30 +143,24 @@ export function CreditsSection() {
       {back && <div className={`callout ${back === "success" ? "is-ok" : "is-info"}`} role="status"><Icon name={back === "success" ? "check" : "info"} size={16} /><span>{c(back)}</span></div>}
       <h3 className="pane-heading">{c("howTitle")}</h3>
       <p className="muted small">{c("howLead")}</p>
+      {/* Each account brings its own AI account (OpenRouter, ChatGPT, Claude): AiAccounts.tsx. */}
+      <AiAccountCards />
+      {/* Sklubot credits only when the owner sells them (Administration → Settings, off by default). */}
+      {view.creditsForSale && (
       <div className="credit-ways">
-        <WayCard icon="brain" title={c("subTitle")} text={view.subscriptionEngines ? c("subText") : c("subOff")}>
-          {view.subscriptionEngines && view.mainBot && (
-            <>
-              <button type="button" className="btn btn-small" onClick={() => openBotSettings(view.mainBot!.id, "general")}>{c("subBtn")}</button>
-              <p className="muted small credit-way-hint">{c("subHow", { bot: view.mainBot.name })}</p>
-            </>
-          )}
-        </WayCard>
-        <WayCard icon="key" title={c("keyTitle")} text={c("keyText")}>
-          <button type="button" className="btn btn-small" onClick={() => openAppSettings("models")}>{c("keyBtn")}</button>
-        </WayCard>
         <WayCard icon="bolt" title={c("creditsTitle")} text={c("creditsText")}>
           <p className="credit-balance"><span className="muted small">{c("balance")}</span><b>{money(view.balanceEur, loc)}</b></p>
           {!view.operatorKeys ? <p className="muted small">{c("byok")}</p> : (
             <>
               <div className="credit-packs">
                 {view.packs.map((p) => (
-                  <button key={p.id} type="button" className="btn btn-small credit-pack" disabled={view.payments !== "stripe" || busy !== null} onClick={() => void buy(p.id)}>
+                  <button key={p.id} type="button" className="btn btn-small credit-pack" disabled={view.payments !== "paddle" || busy !== null} onClick={() => void buy(p.id)}>
                     {busy === p.id ? c("buying") : c("buy", { amount: money(p.amountEur, loc) })}
                   </button>
                 ))}
               </div>
-              {view.payments !== "stripe" && (
+              {view.payments === "paddle" && <p className="muted small credit-soon">{c("reseller")}</p>}
+              {view.payments !== "paddle" && (
                 <p className="muted small credit-soon">
                   <b>{c("soon")}</b>{" "}
                   {contact ? <>{c("soonContact")} <a href={contact} target="_blank" rel="noopener noreferrer">{c("contact")}</a>.</> : c("noContact")}
@@ -174,19 +170,20 @@ export function CreditsSection() {
           )}
         </WayCard>
       </div>
+      )}
       <ErrorNote onDismiss={() => setError(null)}>{error}</ErrorNote>
-      <p className="muted small">{c("month", { month: monthName(view.month, loc), spent: money(view.spentEur, loc) })}{view.planBudgetEur > 0 ? ` ${c("monthBudget", { budget: money(view.planBudgetEur, loc) })}` : ""}</p>
+      {(view.creditsForSale || view.spentEur > 0) && <p className="muted small">{c("month", { month: monthName(view.month, loc), spent: money(view.spentEur, loc) })}{view.planBudgetEur > 0 ? ` ${c("monthBudget", { budget: money(view.planBudgetEur, loc) })}` : ""}</p>}
 
-      <h3 className="pane-heading">{c("history")}</h3>
-      {view.history.length === 0 ? <p className="muted small">{c("noHistory")}</p> : (
+      {(view.creditsForSale || view.history.length > 0) && <h3 className="pane-heading">{c("history")}</h3>}
+      {!view.creditsForSale && view.history.length === 0 ? null : view.history.length === 0 ? <p className="muted small">{c("noHistory")}</p> : (
         <ul className="list credit-history">
           {view.history.map((h) => (
             <li key={h.id} className="list-row">
               <div className="list-row-text">
-                <span className="list-row-title">{h.kind === "month" ? c("hMonth") : h.source === "stripe" ? c("hStripe") : c("hGift")}</span>
-                <span className="list-row-sub">{date(h.at, loc)}{h.note && h.source !== "stripe" ? ` · ${h.note}` : ""}</span>
+                <span className="list-row-title">{h.kind === "month" ? c("hMonth") : h.source === "payment" ? c("hPaid") : h.source === "refund" ? c("hRefund") : c("hGift")}</span>
+                <span className="list-row-sub">{date(h.at, loc)}{h.note && h.source === "manual" ? ` · ${h.note}` : ""}</span>
               </div>
-              <span className="credit-amount">+{money(h.amountEur, loc)}</span>
+              <span className={`credit-amount${h.amountEur < 0 ? " is-spend" : ""}`}>{h.amountEur < 0 ? "−" : "+"}{money(Math.abs(h.amountEur), loc)}</span>
             </li>
           ))}
         </ul>

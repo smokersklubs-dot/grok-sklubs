@@ -47,8 +47,11 @@ const TEXT = {
     aPlan: "Changer d'offre", apply: "Appliquer", aStatus: "Changer le statut", periodEnd: "Payé jusqu'au (facultatif)",
     aPaid: "Paiement reçu", until: "Actif jusqu'au", reference: "Référence (facultatif)", markPaid: "Enregistrer le paiement",
     aCredit: "Ajouter des crédits IA", lasting: "Crédits durables (ne s'arrêtent pas à la fin du mois) — décoché : budget de ce mois seulement",
+    forSale: "Vendre des crédits Sklubot", forSaleHint: "Éteint : les clients ne voient ni crédits, ni packs, ni bouton d'achat ; chacun utilise son propre compte OpenRouter, ChatGPT ou Claude.",
+    nConnectOwn: "Connecter mon compte OpenRouter, ChatGPT ou Claude",
     sCredits: "Crédits", packs: "Packs proposés (€, séparés par des virgules)", packsHint: "De 1 à 6 montants entre 1 et 1000 €. Les clients choisissent un pack ; le montant vient toujours du serveur.",
-    payments: "Paiement en ligne (Stripe)", paymentsOn: "Branché : les boutons « Acheter » ouvrent Stripe Checkout.", paymentsOff: "Pas branché : les boutons affichent « Paiement bientôt disponible » et ton adresse de contact. Ajoute STRIPE_SECRET_KEY et STRIPE_WEBHOOK_SECRET (voir docs/MODE-HEBERGE.md). Tu peux toujours ajouter des crédits à la main.", amount: "Montant (€)", note: "Note (facultatif)", addCredit: "Ajouter",
+    payments: "Paiement en ligne des crédits", payProvider: "Fournisseur : Paddle (revendeur officiel, il gère la TVA)", payEnv: "Mode : {env}", envSandbox: "test (sandbox, aucun vrai paiement)", envProduction: "réel (production)",
+    paymentsOn: "Branché : les boutons « Acheter » ouvrent le paiement Paddle.", paymentsOff: "Pas branché : les boutons affichent « Paiement bientôt disponible » et ton adresse de contact. Tu peux toujours ajouter des crédits à la main.", payMissing: "À renseigner dans l'environnement du serveur (voir docs/MODE-HEBERGE.md) : {vars}", amount: "Montant (€)", note: "Note (facultatif)", addCredit: "Ajouter",
     aTrial: "Prolonger l'essai", days: "Jours", extend: "Prolonger",
     aOperator: "Opérateur du serveur", operatorHint: "Un opérateur voit cette page et gère les clients. Seule la personne propriétaire peut nommer des opérateurs.",
     done: "C'est fait.",
@@ -110,8 +113,11 @@ const TEXT = {
     aPlan: "Change plan", apply: "Apply", aStatus: "Change status", periodEnd: "Paid until (optional)",
     aPaid: "Payment received", until: "Active until", reference: "Reference (optional)", markPaid: "Record the payment",
     aCredit: "Add AI credits", lasting: "Lasting credits (they do not end with the month) — unticked: this month's budget only",
+    forSale: "Sell Sklubot credits", forSaleHint: "Off: customers see no credits, packs or buy button; everyone uses their own OpenRouter, ChatGPT or Claude account.",
+    nConnectOwn: "Connect my OpenRouter, ChatGPT or Claude account",
     sCredits: "Credits", packs: "Packs offered (€, comma-separated)", packsHint: "1 to 6 amounts between €1 and €1000. Customers choose a pack; the amount always comes from the server.",
-    payments: "Online payment (Stripe)", paymentsOn: "Connected: the “Buy” buttons open Stripe Checkout.", paymentsOff: "Not connected: the buttons say “Online payment coming soon” and show your contact address. Add STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET (see docs/MODE-HEBERGE.md). You can still add credits by hand.", amount: "Amount (€)", note: "Note (optional)", addCredit: "Add",
+    payments: "Online payment for credits", payProvider: "Provider: Paddle (merchant of record, handles VAT)", payEnv: "Mode: {env}", envSandbox: "test (sandbox, no real payment)", envProduction: "live (production)",
+    paymentsOn: "Connected: the “Buy” buttons open the Paddle checkout.", paymentsOff: "Not connected: the buttons say “Online payment coming soon” and show your contact address. You can still add credits by hand.", payMissing: "To set in the server's environment (see docs/MODE-HEBERGE.md): {vars}", amount: "Amount (€)", note: "Note (optional)", addCredit: "Add",
     aTrial: "Extend the trial", days: "Days", extend: "Extend",
     aOperator: "Server operator", operatorHint: "An operator sees this page and manages customers. Only the owner can make operators.",
     done: "Done.",
@@ -371,7 +377,10 @@ export function PlanNoticeActions({ action }: { action: HostedNoticeAction }) {
   const sub = <button type="button" className="btn btn-small notice-action" onClick={() => openAppSettings("subscription")}><Icon name="chart" size={13} /> {h("nSubscription")}</button>;
   return (
     <div className="hosted-notice-actions">
-      {action.reason === "budget" && action.credits && (
+      {action.reason === "budget" && action.credits && action.forSale === false && (
+        <button type="button" className="btn btn-small notice-action" onClick={() => openAppSettings("subscription")}><Icon name="brain" size={13} /> {h("nConnectOwn")}</button>
+      )}
+      {action.reason === "budget" && action.credits && action.forSale !== false && (
         <>
           <button type="button" className="btn btn-small notice-action" onClick={() => openAppSettings("subscription")}><Icon name="bolt" size={13} /> {h("nBuyCredits")}</button>
           <button type="button" className="btn btn-small notice-action" onClick={() => openAppSettings("subscription")}><Icon name="brain" size={13} /> {h("nConnectSub")}</button>
@@ -396,7 +405,7 @@ export function PlanNoticeActions({ action }: { action: HostedNoticeAction }) {
 
 interface Overview {
   customers: AdminCustomer[]; plans: HostedPlan[]; settings: HostedSettings; invites: PlanInviteView[]; audit: AdminAuditEntry[];
-  providers: { id: string; name: string; models: string[]; hasKey: boolean; lent: boolean }[]; owner: boolean; me: string; payments?: boolean;
+  providers: { id: string; name: string; models: string[]; hasKey: boolean; lent: boolean }[]; owner: boolean; me: string; payments?: boolean; paymentsInfo?: { provider: string; env: "sandbox" | "production" | null; missing: string[] };
 }
 type AdminTab = "customers" | "plans" | "invites" | "providers" | "settings" | "audit";
 
@@ -753,11 +762,16 @@ function SettingsTab({ data, onChange, onError }: { data: Overview; onChange: (s
           <select id={`${base}-default`} className="input" value={s.signupDefaultPlan} onChange={(e) => upd({ signupDefaultPlan: e.target.value })}>{data.plans.filter((p) => !p.archived && p.public).map((p) => <option key={p.id} value={p.id}>{planName(p, loc)}</option>)}</select></div>
       </div>
       <h3 className="pane-heading">{h("sCredits")}</h3>
+      <div className="action-row hosted-engines"><div><p className="action-title">{h("forSale")}</p><p className="muted small">{h("forSaleHint")}</p></div><Toggle checked={!!s.creditsForSale} label={h("forSale")} onChange={(on) => upd({ creditsForSale: on })} /></div>
       <div className="hosted-form-grid">
         <div className="field"><label className="field-label" htmlFor={`${base}-packs`}>{h("packs")}</label>
           <input id={`${base}-packs`} className="input" defaultValue={s.creditPacksEur.join(", ")} inputMode="decimal" placeholder="5, 10, 20" onChange={(e) => upd({ creditPacksEur: e.target.value as unknown as number[] })} />
           <p className="field-hint">{h("packsHint")}</p></div>
-        <div className="field"><p className="field-label">{h("payments")}</p><p className={`muted small ${data.payments ? "hosted-pay-on" : ""}`}>{h(data.payments ? "paymentsOn" : "paymentsOff")}</p></div>
+        <div className="field"><p className="field-label">{h("payments")}</p>
+          <p className="muted small">{h("payProvider")}</p>
+          {data.paymentsInfo?.env && <p className="muted small">{h("payEnv", { env: h(data.paymentsInfo.env === "sandbox" ? "envSandbox" : "envProduction") })}</p>}
+          <p className={`muted small ${data.payments ? "hosted-pay-on" : ""}`}>{h(data.payments ? "paymentsOn" : "paymentsOff")}</p>
+          {!data.payments && !!data.paymentsInfo?.missing.length && <p className="field-hint">{h("payMissing", { vars: data.paymentsInfo.missing.map((v) => `SKLUBOT_${v}`).join(", ") })}</p>}</div>
       </div>
       <div className="action-row hosted-engines"><div><p className="action-title">{h("engines")}</p><p className="muted small">{h("enginesHint")}</p></div><Toggle checked={s.subscriptionEngines} label={h("engines")} onChange={(on) => upd({ subscriptionEngines: on })} /></div>
       <h3 className="pane-heading">{h("sEstimates")}</h3>

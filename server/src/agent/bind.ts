@@ -90,7 +90,7 @@ const COMMITTING: [ActionKind | "submit", string[]][] = [
   ["submit", ["confirmer", "valider", "soumettre", "enregistrer", "sauvegarder", "accepter et continuer", "confirm", "submit", "save", "apply", "sign", "signer"]],
 ];
 /** Phrases that make a control a mere step even if it also has a committing word ("add to cart", "save for later"…). */
-const STEP_PHRASES = ["ajouter au panier", "add to cart", "add to basket", "plus tard", "for later", "brouillon", "draft", "accepter les cookies", "reject all", "accept all", "tout accepter", "tout refuser", "cookies"];
+const STEP_PHRASES = ["ajouter au panier", "add to cart", "add to basket", "plus tard", "for later", "brouillon", "draft", "accepter les cookies", "reject all", "accept all", "tout accepter", "tout refuser", "accepter tout", "refuser tout", "cookies"];
 /** Whole labels that only close or go back. */
 const STEP_LABELS = ["annuler", "cancel", "fermer", "close", "retour", "back", "refuser", "non", "no"];
 

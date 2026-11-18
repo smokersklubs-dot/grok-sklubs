@@ -87,7 +87,8 @@ registerProvider({
       const r = results[0];
       content = [{ type: "text", text: `Tool said: ${r.type === "tool_result" ? r.content.map((c) => (c.type === "text" ? c.text : "[image]")).join(" ") : ""}` }];
     } else {
-      const said = (texts[texts.length - 1] ?? "").replace(/^(\[[^\]\n]*\]\n)+/, "");
+      // The user's message, not a note the server adds after it (e.g. the link hint of agent/links.ts).
+      const said = ([...texts].reverse().find((t) => /call \w+ \{/.test(t)) ?? texts[texts.length - 1] ?? "").replace(/^(\[[^\]\n]*\]\n)+/, "");
       const m = /call (\w+) (\{[^\n]*\})\s*$/.exec(said);
       content = m ? [{ type: "tool_use", id: `call_${requests.length}`, name: m[1], input: JSON.parse(m[2]) }] : [{ type: "text", text: `Echo: ${said.slice(0, 300)}` }];
     }
@@ -200,7 +201,13 @@ test("Agent Reach: cached reads say their age; fresh forces a new call; errors a
   youtubeBlocked = true;
   await say(b, 'call reach_search {"channel":"youtube","query":"tuto"}');
   const blocked = await replied(b, "YouTube is refusing this server");
-  assert.match(blocked.body.kind === "message" ? blocked.body.text : "", /pair their own computer/);
+  const said = blocked.body.kind === "message" ? blocked.body.text : "";
+  assert.match(said, /pair it with Sklubot Relais/);
+  // The way round, in order: the bot's own browser (consent accepted, transcript panel), the owner's computer, the
+  // sound, and only then ONE card with the remedies — never a bare "YouTube blocks access".
+  const order = ["1. Open the video in YOUR computer's browser", "Tout accepter", "Afficher la transcription", "2. If your browser is refused too", "3. If your computer can hear the video", "4. Only when all of that failed: call ask_user ONCE"].map((p) => said.indexOf(p));
+  assert.ok(order.every((i, k) => i >= 0 && (k === 0 || i > order[k - 1])), said);
+  assert.match(said, /"Ouvrir la vidéo sur mon ordinateur à moi \(Relais\)","Coller la transcription","Ignorer"/);
   assert.equal(steps(await rowsOf(b.id), "reach_search").at(-1)!.summary, "YouTube bloque ce serveur");
   q.run("INSERT INTO relay_devices (id, user_id, name, token_hash, rotated_at, created_at) VALUES ('dev_w7', ?, 'Mon Mac', 'x', 0, 0)", userId);
   await say(b, 'call reach_search {"channel":"youtube","query":"autre"}');

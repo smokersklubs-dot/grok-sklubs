@@ -5,11 +5,13 @@ import type { DatabaseSync } from "node:sqlite";
  *  - credit_topups.kind: 'month' (what every row was until now: AI budget the operator adds for one calendar month) or
  *    'prepaid' (credits bought or given that do not end with the month: they are spent once the plan's budget and the
  *    month's top-ups are used up, then carried over).
- *  - credit_topups.source: 'manual' (the operator, Administration) or 'stripe' (a paid Stripe Checkout Session).
- *  - credit_topups.external_ref: the Stripe Checkout Session id of a purchase; unique when set, so one payment can never
- *    be credited twice (whatever arrives twice: the same event, or two events for the same session).
- *  - credit_checkouts: the Checkout Sessions this server created (who, which pack, how much). A webhook only credits a
- *    session found here, to the account that created it, for the amount the server set — never what a client sends.
+ *  - credit_topups.source: 'manual' (the operator, Administration) or the payment provider of a purchase ('paddle'
+ *    since the provider was chosen; this migration was first written for a Stripe adapter that never went live).
+ *  - credit_topups.external_ref: the provider's id of a purchase (or of a refund); unique when set, so one payment can
+ *    never be credited twice (whatever arrives twice: the same event, or two events for the same purchase).
+ *  - credit_checkouts: the purchases this server started (session_id = the provider's transaction id; who, which pack,
+ *    how much). A webhook only credits one found here, to the account that started it, for the amount the server set —
+ *    never what a client sends.
  *  - credit_months: how much of the prepaid credits each closed calendar month used (written once, when the month is
  *    over and looked at), so the balance carries over without walking all past usage again.
  *  - email_link_signups: "Recevoir un lien de connexion par e-mail" for an address with no account yet (emaillink.ts):

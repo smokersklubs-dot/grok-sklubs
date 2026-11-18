@@ -11,9 +11,10 @@ import { tr } from "../i18n.js";
 /**
  * The bot edits the user's rules from the chat (wave 5b): rule_propose adds, changes or removes one rule, for every bot,
  * one bot, one routine or a trigger kind. Never applied silently: the call always stops on an approval card showing the
- * exact text and its scope (a per-call gate, "Always" never offered), it needs the user's own words asking for it
- * (authorize.ts refuses it otherwise — also after outside content), and it is recorded as "added from the chat" with
- * those words, undoable in one click (Settings → Rules, or the line it leaves in the chat).
+ * exact text and its scope (a per-call gate, "Always" never offered): that card IS the user's confirmation, so the call
+ * is never refused for want of words — the bot cites the user's words (user_quote), the server looks for them in the
+ * user's own messages (bind.ts) and the card says when they could not be found or when outside content was read. It is
+ * recorded as "added from the chat" with the words found, undoable in one click (Settings → Rules, or its chat line).
  */
 const obj = (properties: Record<string, unknown>, required: string[] = []): ToolSpec["inputSchema"] => ({ type: "object", properties, required });
 const str = (description: string) => ({ type: "string", description });
@@ -53,7 +54,7 @@ function findRule(userId: string, ref: string): Rule | null {
 export const ruleTools: BuiltinTool[] = [{
   spec: {
     name: "rule_propose",
-    description: "Add, change or remove one of the user's rules when they ask you to (\"from now on never…\", \"forget the rule about…\"). The user always sees a card with the exact rule and where it applies, and decides. Give user_quote with their words asking for it. Scope: account (every bot), bot (one bot, by default you), routine (only when that routine runs) or trigger (only for routines started by that kind of event, e.g. email).",
+    description: "Add, change or remove one of the user's rules when they ask you to (\"from now on never…\", \"forget the rule about…\"). The user always sees a card with the exact rule and where it applies, and decides: that card is their confirmation, so when they asked for a rule, call this (do not refuse or wait for other words). Give user_quote with their words asking for it, copied from their message. Scope: account (every bot), bot (one bot, by default you), routine (only when that routine runs) or trigger (only for routines started by that kind of event, e.g. email).",
     inputSchema: obj({
       action: { type: "string", enum: ["add", "change", "remove"] },
       text: str("The rule, in the user's own words (for add and change)"),

@@ -1,7 +1,8 @@
 /**
  * The guided first run of a new public account (server publicsignup.ts, POST /api/onboarding/commit). Steps:
- *  - hosted mode, customers: "Choisis comment tes bots travaillent" — their own Claude / ChatGPT subscription, their own
- *    API key, or prepaid credits (server credits.ts). The choice comes back as the last step's main button.
+ *  - hosted mode, customers: "Choisis comment tes bots travaillent" — their own OpenRouter, ChatGPT or Claude account,
+ *    connected right there (AiAccounts.tsx), "another API key" as a small link; prepaid credits (server credits.ts) only
+ *    when the owner sells them. A credits or key choice comes back as the last step's main button.
  *  - "Active les notifications": the Web Push subscription of Settings → Notifications (lib/push.ts), with what to do
  *    when it cannot (blocked, iPhone without the Home Screen icon, unsupported). Asked once: the answer is kept on the
  *    server (PUT /account/push-prompt); "Plus tard" leaves one gentle banner on Today (PushPromptBanner).
@@ -14,6 +15,7 @@ import { useT } from "../i18n";
 import { useStore } from "../store";
 import type { CreditsView, PushState, TaskIdea, TemplateSummary } from "../types";
 import { enablePush, pushActiveHere, pushSupport } from "../lib/push";
+import { AiAccountCards } from "./AiAccounts";
 import { Character } from "./Character";
 import { Icon, type IconName } from "./Icon";
 import { ErrorNote, Modal } from "./ui";
@@ -126,11 +128,10 @@ export function Onboarding() {
     else if (way === "key") s.openAppSettings("models");
     else if (way === "credits") s.openAppSettings("subscription");
   };
-  const ways: { id: Way; icon: IconName; title: string; text: string; off?: boolean }[] = [
-    { id: "subscription", icon: "brain", title: t("onb.howSub"), text: credits && !credits.subscriptionEngines ? t("onb.howSubOff") : t("onb.howSubText"), off: !!credits && !credits.subscriptionEngines },
-    { id: "key", icon: "key", title: t("onb.howKey"), text: t("onb.howKeyText") },
-    { id: "credits", icon: "bolt", title: t("onb.howCredits"), text: t("onb.howCreditsText"), off: !!credits && !credits.operatorKeys },
-  ];
+  // Sklubot credits are offered only when the owner sells them (off by default): the own accounts come first.
+  const ways: { id: Way; icon: IconName; title: string; text: string; off?: boolean }[] = credits?.creditsForSale
+    ? [{ id: "credits", icon: "bolt", title: t("onb.howCredits"), text: t("onb.howCreditsText"), off: !credits.operatorKeys }]
+    : [];
   const wayLabel = way === "subscription" ? t("onb.doSub") : way === "key" ? t("onb.doKey") : way === "credits" ? t("onb.doCredits") : null;
 
   return (
@@ -142,7 +143,8 @@ export function Onboarding() {
           <>
             <h3 className="onb-title">{t("onb.howTitle")}</h3>
             <p className="muted">{t("onb.howHint")}</p>
-            <div className="onb-ways" role="radiogroup" aria-label={t("onb.howTitle")}>
+            <AiAccountCards onOtherKey={() => { setWay("key"); next(); }} />
+            {ways.length > 0 && <div className="onb-ways" role="radiogroup" aria-label={t("onb.howTitle")}>
               {ways.map((w) => (
                 <button key={w.id} type="button" role="radio" aria-checked={way === w.id} disabled={w.off} className={`onb-way ${way === w.id ? "is-selected" : ""}`} onClick={() => setWay(w.id)}>
                   <span className="onb-way-icon" aria-hidden="true"><Icon name={w.icon} size={18} /></span>
@@ -150,7 +152,7 @@ export function Onboarding() {
                   <span className="onb-way-check" aria-hidden="true">{way === w.id && <Icon name="check" size={14} />}</span>
                 </button>
               ))}
-            </div>
+            </div>}
           </>
         )}
         {step === "notify" && (

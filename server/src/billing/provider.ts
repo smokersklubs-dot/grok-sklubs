@@ -1,12 +1,13 @@
 /**
- * Payment providers for the hosted mode (SK-P1-07). The provider is NOT chosen yet: only the "manual" one exists — the
+ * Payment providers for the hosted mode's SUBSCRIPTIONS (SK-P1-07). Only the "manual" one exists for plans — the
  * operator records a payment in Settings → Administration (hosted.ts adminActions.markPaid) and the account is active
  * until the date they enter; the scheduler then moves it to past_due → suspended if nothing new is recorded.
+ * (Prepaid AI credits are paid online through Paddle: credits.ts and billing/paddle.ts, outside this interface.)
  *
  * How a real provider plugs in (docs/MODE-HEBERGE.md, "Brancher un fournisseur de paiement"):
- *  1. Write `stripe.ts` or `paddle.ts` here implementing PaymentProvider, from the provider's OFFICIAL documentation
- *     only (cite each endpoint and header in comments, as the rest of this repository does). Nothing below names or
- *     guesses any provider API.
+ *  1. Write an adapter here implementing PaymentProvider (paddle.ts already holds Paddle's API calls and signature check),
+ *     from the provider's OFFICIAL documentation only (cite each endpoint and header in comments, as the rest of this
+ *     repository does). Nothing below names or guesses any provider API.
  *  2. `verifyWebhook` checks the signature of the raw request body with the provider's signing secret (an environment
  *     variable, never in the database or the code) and returns the events it carries; a bad signature → throw (the
  *     route answers 400).
@@ -15,8 +16,8 @@
  *     `billing_events` first, so the same event delivered twice changes nothing the second time.
  *  4. `checkoutUrl` (optional) returns the provider's hosted payment page for an account and a plan; until then the
  *     "Upgrade" buttons use the contact address of the hosted settings.
- *  5. Register it in PROVIDERS below. Until a provider is registered, POST /api/billing/webhook/stripe and
- *     /api/billing/webhook/paddle answer 501 (not implemented) and change nothing.
+ *  5. Register it in PROVIDERS below. Until then, POST /api/billing/webhook/<name> answers 501 (not implemented) for the
+ *     names in PLANNED_PROVIDERS and changes nothing — except `paddle` once configured, which is the credits webhook.
  */
 import type { SubscriptionStatus } from "../shared.js";
 
@@ -42,5 +43,8 @@ export const manualProvider: PaymentProvider = { id: "manual", label: "Manuel / 
 /** Registered providers by id. Add a real adapter here once it is written from the provider's documentation. */
 export const PROVIDERS: Record<string, PaymentProvider> = { manual: manualProvider };
 
-/** Providers that are planned but not written: their webhook route answers 501 instead of 404, to say so. */
-export const PLANNED_PROVIDERS = ["stripe", "paddle"] as const;
+/**
+ * Names whose webhook route answers 501 instead of 404, to say "not connected here": `paddle` (until configured) and
+ * `stripe`, an address earlier versions documented (Stripe is no longer used; an old webhook pointed at it changes nothing).
+ */
+export const PLANNED_PROVIDERS = ["paddle", "stripe"] as const;

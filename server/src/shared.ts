@@ -1,3 +1,4 @@
+export * from "./failuretypes.js"; // « Coordinateur d'échecs » (agent/failures.ts)
 /**
  * Wire contract between the Sklubot server and web app.
  * Type-only: the web app imports this file with `import type`.
@@ -165,7 +166,8 @@ export interface Bot {
   /** "provider:model" or "" for the server default. */
   model: string;
   autonomy: Autonomy;
-  voice: { name: string; rate: number; lang: string };
+  /** `readAloud`: « Lire les réponses à voix haute » — each new reply is spoken while the chat is open (voice/speak.ts). */
+  voice: { name: string; rate: number; lang: string; readAloud?: boolean };
   character: Character;
   /** Rooms only. */
   roomRule: RoomRule;
@@ -338,7 +340,7 @@ export interface WatchNoticeAction { kind: "watch"; watch: "silent" | "stalled";
  * subscription bot that this person may not run; "limit": a plan limit (`limit` says which); "payment": the trial or the
  * paid period is over (grace period before suspension).
  */
-export interface HostedNoticeAction { kind: "plan"; reason: HostedStopReason; limit?: PlanLimitKind; resetAt?: number; contactUrl?: string; /** budget: the plan has no budget of its own (credits only) */ credits?: boolean }
+export interface HostedNoticeAction { kind: "plan"; reason: HostedStopReason; limit?: PlanLimitKind; resetAt?: number; contactUrl?: string; /** budget: the plan has no budget of its own (credits only) */ credits?: boolean; /** credits: false when the owner sells no credits (connect an own account instead) */ forSale?: boolean }
 
 /** One file a turn changed (see the "files" card). */
 export interface FileChange { path: string; change: "added" | "modified" | "deleted"; added: number | null; removed: number | null; binary: boolean; oldSize: number | null; newSize: number | null }
@@ -430,7 +432,8 @@ export type Card =
    * "continued" (the held work went on), "raised" (the owner raised the cap here, then it went on), "waiting" (the user
    * chose to wait for the reset). "Switch model" opens the bot's settings.
    */
-  | { type: "cap"; stopId: string; botName: string; cap: UsageCapView; used: number; resetAt: number; timezone: string; held: number; skipped: number; canRaise: boolean; status: "pending" | "continued" | "raised" | "waiting" };
+  | { type: "cap"; stopId: string; botName: string; cap: UsageCapView; used: number; resetAt: number; timezone: string; held: number; skipped: number; canRaise: boolean; status: "pending" | "continued" | "raised" | "waiting" }
+  | { type: "failure"; /** A failure the server could not fix alone, with its remedies (failuretypes.ts). */ failureId: string; cls: import("./failuretypes.js").FailureClass; tool?: string; detail: string; tried: import("./failuretypes.js").FailureTry[]; remedies: import("./failuretypes.js").FailureRemedy[]; count: number; status: "pending" | "retrying" | "handed" | "resolved" | "dismissed"; engine?: Engine; teammate?: { id: string; name: string }; retryAt?: number };
 
 export type GoalStatus = "proposed" | "active" | "paused" | "complete" | "blocked" | "limit" | "stopped" | "declined";
 export type GoalWaiting = "" | "approval" | "user" | "checkpoint";
@@ -490,9 +493,9 @@ export interface Profile { name: string; timezone: string; company: string; pref
  * How turns survive a failing model. `fallbackModels`: the account's backup models, tried in order (a bot can override
  * the list). `maxRetries`: new tries of the same model on a passing error (rate limit, overload, 5xx, network) before
  * the next model. `maxContinuations`: automatic continuations of a reply cut off by the output limit.
- * `envFallbacks`: backups set by the server's admin (FALLBACK_MODELS), used when the account sets none.
+ * `envFallbacks`: backups set by the server's admin (FALLBACK_MODELS), used when the account sets none. `mutualAid`: « Entraide entre bots » (agent/failures.ts, on by default).
  */
-export interface ReliabilitySettings { fallbackModels: string[]; maxRetries: number; maxContinuations: number; envFallbacks: string[] }
+export interface ReliabilitySettings { fallbackModels: string[]; maxRetries: number; maxContinuations: number; envFallbacks: string[]; mutualAid: boolean }
 export const RELIABILITY_LIMITS = { maxRetries: 6, maxContinuations: 5, fallbackModels: 5 } as const;
 
 /** Which official API x_search uses: the X API v2 recent search (X_BEARER_TOKEN), xAI's x_search tool (XAI_API_KEY), or none. */
@@ -717,7 +720,7 @@ export interface ModelOption { ref: string; provider: string; model: string; kin
  * A model of a provider the user set up (Settings → Models → API providers). `contextWindow` in tokens; prices in $ per
  * million tokens (input, output, cached input); null: not given (the use is then counted in tokens only).
  */
-export interface ApiProviderModel { id: string; contextWindow: number | null; input: number | null; output: number | null; cached: number | null }
+export interface ApiProviderModel { id: string; contextWindow: number | null; input: number | null; output: number | null; cached: number | null; /** Reads images (OpenRouter's catalog). */ images?: boolean }
 /**
  * An OpenAI-compatible provider the user set up, for their account only. Its models are referenced as "<id>:<model>"
  * (ids start with "up-"). `hasKey`: a key is saved — the key itself never leaves the server. `preset`: "deepseek" when
@@ -1239,7 +1242,7 @@ export interface HostedSettings {
   /** Whether customer accounts may run bots on their own Claude Code / Codex sign-in (never the operator's). */
   subscriptionEngines: boolean;
   estimates: HostedEstimates; legal: HostedLegal;
-  /** Credit packs offered in Settings → Credits (€, credits.ts). */ creditPacksEur: number[];
+  /** Credit packs offered in Settings → Credits (€, credits.ts); `creditsForSale` off (default): nothing is sold or shown. */ creditPacksEur: number[]; creditsForSale: boolean;
 }
 /** "Mon abonnement": what a customer sees of their own account. */
 export interface HostedAccountView {
@@ -1275,9 +1278,9 @@ export type TodayLink =
  * takeover (it needs you on its screen), secret (it asks for a key), uncertain (an action whose outcome is unknown),
  * goal (a proposed goal), review (a skill, an API connector, a memory conflict or a pasted secret to look at),
  * plan (hosted mode: the account's plan stops work), incident (the server's owner or an operator: a critical incident of
- * the Sentinelle is open — `title` is its title, already in the user's language). `title`: the card's own words (data, not translated).
+ * the Sentinelle is open — `title` is its title, already in the user's language), failure (a failure card waits). `title`: the card's own words (data, not translated).
  */
-export type TodayNeedKind = "approval" | "question" | "cap" | "spend" | "paused" | "stalled" | "silent" | "continue" | "routine" | "connector" | "disk" | "takeover" | "secret" | "uncertain" | "goal" | "review" | "plan" | "incident";
+export type TodayNeedKind = "approval" | "question" | "cap" | "spend" | "paused" | "stalled" | "silent" | "continue" | "routine" | "connector" | "disk" | "takeover" | "secret" | "uncertain" | "goal" | "review" | "plan" | "incident" | "failure";
 export interface TodayNeed { kind: TodayNeedKind; botId: string | null; botName: string; title: string; detail: string; at: number; count?: number; shared?: boolean; link: TodayLink }
 /** One thing a bot finished. `count`: how many it stands for (files of a turn, reads of a research); minutes = counted × table. */
 export interface TodayDone { kind: TodayKind; at: number; title: string; detail: string; count: number; counted: number; minutes: number; link: TodayLink | null }
@@ -1299,7 +1302,7 @@ export interface TodayReport {
   /** The caller's own account only (a shared bot's costs are its owner's). */
   cost: TodayCost;
   /** The account's subscriptions at their usage limit now, with when they come back (agent/sublimit.ts). */
-  limits?: SubscriptionLimitView[];
+  limits?: SubscriptionLimitView[]; /** The day's incidents (agent/failures.ts). */ failures?: import("./failuretypes.js").FailureSummary;
 }
 /** Settings → Aujourd'hui: the morning digest and the owner's minutes. `hour`: 0–23 in the user's timezone. */
 export interface TodayDigestSettings { enabled: boolean; hour: number; push: boolean; email: boolean }

@@ -1,13 +1,15 @@
+import { randomBytes } from "node:crypto";
 import type { Context, Hono } from "hono";
 import { apiProviders } from "./apimodels.js";
 import { PLANNED_PROVIDERS, PROVIDERS } from "./billing/provider.js";
 import { config } from "./config.js";
-import { creditPacks, paymentsOn, registerCreditsPrivate, registerCreditsPublic, stripeLegacyWebhook } from "./credits.js";
+import { paddleKeys } from "./billing/paddle.js";
+import { creditPacks, paddleLegacyWebhook, PAY_PATH, paymentsInfo, paymentsOn, registerCreditsPrivate, registerCreditsPublic } from "./credits.js";
 import {
   accountView, adminActions, adminLog, adminLogList, customers, hm, HostedError, hostedMode, hostedSettings, isOperator, ownerAccountId,
   planInvites, plans,
 } from "./hosted.js";
-import { legalNoticePage, PAGE_CSP, pricingPage, termsPage } from "./hostedpages.js";
+import { legalNoticePage, PAGE_CSP, payPage, payPageCsp, pricingPage, termsPage } from "./hostedpages.js";
 import { pickLocale } from "./i18n.js";
 import type { Locale } from "./shared.js";
 import { users, type UserRecord } from "./store.js";
@@ -58,12 +60,12 @@ export function registerHostedPublic(api: Hono<any>) {
     if (!inv) throw new HostedError(404, "This invitation has expired or was already used. Ask for a new one.");
     return c.json({ invite: { plan: inv.plan, email: inv.email } });
   }));
-  // Payment providers' webhooks (billing/provider.ts). Stripe and Paddle are planned, not written: 501, nothing changes.
+  // Payment webhooks. Paddle's (credits.ts) at /billing/paddle/webhook; the older /billing/webhook/:provider address
+  // (billing/provider.ts): Paddle once configured, else 501 "not connected" for the providers it names; nothing changes.
   registerCreditsPublic(api);
   api.post("/billing/webhook/:provider", handle(async (c) => {
     const id = c.req.param("provider") ?? "";
-    // Stripe, once configured (credits.ts): the same handler as /billing/stripe/webhook.
-    if (id === "stripe") { const r = await stripeLegacyWebhook(c); if (r) return r; }
+    if (id === "paddle") { const r = await paddleLegacyWebhook(c); if (r) return r; }
     if ((PLANNED_PROVIDERS as readonly string[]).includes(id) && !PROVIDERS[id])
       throw new HostedError(501, "Payments by {provider} are not connected on this server yet: the operator marks payments by hand (manual). See docs/MODE-HEBERGE.md.", { provider: id }, "not_implemented");
     return c.json(NOT_FOUND, 404);
@@ -82,13 +84,23 @@ export function registerHostedPages(site: Hono<any>) {
     ["/legal-notice", (l) => legalNoticePage(l, hostedSettings.get().legal), "en"],
   ];
   for (const [p, render, loc] of pages) site.get(p, async (c, next) => (hostedMode() ? c.html(render(loc), 200, headers) : next()));
+  // Paddle's checkout links land here (credits.ts PAY_PATH): Paddle.js opens the checkout. Only once Paddle is configured.
+  site.get(PAY_PATH, async (c, next) => {
+    const keys = hostedMode() ? paddleKeys() : null;
+    if (!keys) return next();
+    const nonce = randomBytes(16).toString("base64");
+    const loc = pickLocale(undefined, c.req.header("accept-language")) === "fr" ? "fr" : "en";
+    return c.html(payPage(loc, { env: keys.env, clientToken: keys.clientToken, publicUrl: config.publicUrl, nonce }), 200, {
+      "cache-control": "no-store", "x-content-type-options": "nosniff", "referrer-policy": "strict-origin-when-cross-origin", "content-security-policy": payPageCsp(nonce),
+    });
+  });
 }
 
 /** Routes for signed-in people (after the session middleware). */
 export function registerHostedPrivate(api: Hono<any>) {
   // "Mon abonnement": the caller's own plan, status and usage.
   api.get("/billing", handle((c) => c.json(accountView(userOf(c).id))));
-  // Settings → Credits: balance, packs, history, Stripe Checkout (credits.ts).
+  // Settings → Credits: balance, packs, history, Paddle checkout (credits.ts).
   registerCreditsPrivate(api);
 
   // ── Administration (operators only) ──
@@ -96,7 +108,7 @@ export function registerHostedPrivate(api: Hono<any>) {
   const overview = (u: UserRecord) => ({
     customers: customers(), plans: plans.list(), settings: hostedSettings.get(), invites: planInvites.list(), audit: adminLogList(100),
     providers: apiProviders.list(u.id).map((p) => ({ id: p.id, name: p.name, models: p.models.map((m) => m.id), hasKey: p.hasKey, lent: !!apiProviders.lentFlags(u.id)[p.id] })),
-    owner: ownerAccountId() === u.id, me: u.id, payments: paymentsOn(),
+    owner: ownerAccountId() === u.id, me: u.id, payments: paymentsOn(), paymentsInfo: paymentsInfo(),
   });
   api.get("/admin/overview", admin((c) => c.json(overview(userOf(c)))));
   api.get("/admin/customers", admin((c) => c.json({ customers: customers() })));

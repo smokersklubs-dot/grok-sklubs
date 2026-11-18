@@ -6,6 +6,7 @@ import { Hono, type Context } from "hono";
 import { deleteCookie, getCookie } from "hono/cookie";
 import { streamSSE } from "hono/streaming";
 import { registerNoticeRoutes } from "./agent/noticeroutes.js";
+import { registerFailureRoutes } from "./agent/failureroutes.js";
 import { continueAfterStepLimit, decideApproval, enqueue, inQueue, interrupt, noteHandBack, submitUserMessage, type ForcedSkill } from "./agent/loop.js";
 import { cleanProfile, fetchSkillMarkdown, saveImportedSkill, undoRevision } from "./agent/tools-team.js";
 import { xSearchProvider } from "./xsearch.js";
@@ -85,6 +86,7 @@ import { callEnded, callStarted } from "./calls.js";
 import { saveVoiceSettings, sttFor, ttsFor, voiceSettings, voiceStatus } from "./voice/providers.js";
 import { registerVoiceRoutes } from "./voice/routes.js";
 import { registerTranscribeRoute } from "./voice/transcribe.js";
+import { registerSpeakRoute } from "./voice/speak.js";
 import { adminView, approversOf, botAccess, exportWorkspace, invites, resources, SHARED_SETTINGS, sharedBotsFor, sharedBotView, shares, workspaces, WorkspaceError, wsAudit, type BotAccess } from "./workspaces.js";
 import { invalidateAudience } from "./bus.js";
 import { fileDiff, listedPathOk, undoFiles } from "./snapshots.js";
@@ -106,7 +108,7 @@ import { afterMove, setPause } from "./agent/pause.js";
 import { pauses } from "./pauses.js";
 import { publicJobs, stopJob } from "./jobs.js";
 import { healthReport } from "./monitor.js";
-import { accountCreated, HostedError, hostedMode, isOperator, isPlanLimit, lentProviderIds, planInviteOpens, signupChoice, subscriptionEnginesFor, suspended, type SignupChoice } from "./hosted.js";
+import { accountCreated, HostedError, hostedMode, hostedSettings, isOperator, isPlanLimit, lentProviderIds, planInviteOpens, signupChoice, subscriptionEnginesFor, suspended, type SignupChoice } from "./hosted.js";
 import { registerHostedPages, registerHostedPrivate, registerHostedPublic, suspendedText } from "./hostedroutes.js";
 import { TodayError, todayReport, todaySettings } from "./today.js";
 import { registerBotApi, registerBotApiOwner } from "./botapi.js";
@@ -114,6 +116,8 @@ import { handleBotMcp } from "./botmcp.js";
 import { registerSentinelRoutes } from "./sentinel/routes.js";
 import { registerAnnouncementRoutes } from "./announceroutes.js";
 import { registerSkillsLibraryRoutes } from "./skillsroutes.js";
+import { registerOpenRouterRoutes } from "./openrouterroutes.js";
+import { registerSubscriptionConnectRoutes } from "./subscriptionconnect.js";
 import { registerPageApi, registerPageSite } from "./pageroutes.js";
 import { canWatch as sentinelWatcher } from "./sentinel/view.js";
 import { noteSignal } from "./sentinel/signals.js";
@@ -253,7 +257,7 @@ api.get("/me", (c) => {
   const video: VideoStatus = { provider: videoService()?.id ?? null, higgsfield: !!user && !!higgsfieldFor(user.id) };
   const locale = user?.locale ?? pickLocale(c.req.query("locale"), c.req.header("accept-language"));
   // Hosted mode only (no field at all otherwise): the public pages to link and, signed in, whether this is an operator.
-  const hosted = hostedMode() ? { operator: !!user && isOperator(user.id), links: locale === "fr" ? { pricing: "/tarifs", terms: "/cgu", legal: "/mentions-legales", privacy: "/confidentialite" } : { pricing: "/pricing", terms: "/terms", legal: "/legal-notice", privacy: "/privacy" } } : undefined;
+  const hosted = hostedMode() ? { operator: !!user && isOperator(user.id), creditsForSale: hostedSettings.get().creditsForSale, links: locale === "fr" ? { pricing: "/tarifs", terms: "/cgu", legal: "/mentions-legales", privacy: "/confidentialite" } : { pricing: "/pricing", terms: "/terms", legal: "/legal-notice", privacy: "/privacy" } } : undefined;
   // `sentinel`: the signed-in person watches this server (the owner, or a hosted operator): the Surveillance page is theirs.
   const sentinel = !!user && sentinelWatcher(user.id);
   return c.json({ user: user ? publicUser(user) : null, signupOpen: signupOpen(), setupCodeRequired: setupCodeRequired(), imageGeneration: !!imageService(), video, firstBot: firstBotIdentity(locale), ...(hosted ? { hosted } : {}), ...(sentinel ? { sentinel } : {}), ...publicSignupInfo() });
@@ -931,6 +935,7 @@ api.put("/reliability", async (c) => {
     ...(b.fallbackModels !== undefined ? { fallbackModels: cleanModelList(b.fallbackModels) } : {}),
     ...(b.maxRetries !== undefined ? { maxRetries: int(b.maxRetries, RELIABILITY_LIMITS.maxRetries) } : {}),
     ...(b.maxContinuations !== undefined ? { maxContinuations: int(b.maxContinuations, RELIABILITY_LIMITS.maxContinuations) } : {}),
+    ...(b.mutualAid !== undefined ? { mutualAid: typeof b.mutualAid === "boolean" ? b.mutualAid : fail(400, "mutualAid must be true or false.") } : {}),
   });
   return c.json(reliabilityOf(c.get("user").id));
 });
@@ -1319,7 +1324,9 @@ registerSentinelRoutes(api);
 // « Annonces » (announcements.ts): readers' feed, and the owner/operators' page to write them.
 registerAnnouncementRoutes(api);
 registerNoticeRoutes(api);
+registerFailureRoutes(api); // « Coordinateur d'échecs » (agent/failures.ts)
 registerSkillsLibraryRoutes(api); // « Bibliothèque de compétences » (skillsroutes.ts)
+registerOpenRouterRoutes(api); registerSubscriptionConnectRoutes(api); // OpenRouter, « Connecter mon compte ChatGPT / Claude »
 api.put("/account/password", async (c) => {
   const user = c.get("user");
   const b = await body(c);
@@ -2865,3 +2872,5 @@ api.post("/voice/test", async (c) => {
 registerVoiceRoutes(api);
 // One-shot dictation for browsers without working speech recognition (iOS Safari, Firefox…): voice/transcribe.ts.
 registerTranscribeRoute(api);
+// « Écouter les réponses »: a reply read out in the bot's own voice (voice/speak.ts).
+registerSpeakRoute(api);

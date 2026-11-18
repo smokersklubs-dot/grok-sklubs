@@ -21,7 +21,7 @@ export type ModalState =
 export type BotSettingsTab = "general" | "skills" | "memories" | "routines" | "localTools" | "reach" | "telegram" | "email" | "sharing" | "api";
 export type AppSection = "general" | "today" | "surveillance" | "profile" | "models" | "notifications" | "computer" | "devices" | "permissions" | "rules" | "memory" | "skills" | "connectors" | "vault" | "keys" | "pages" | "usage" | "checkins" | "activity" | "team" | "workspaces" | "voice" | "email" | "account" | "subscription" | "admin";
 /** Hosted mode (server/src/hosted.ts): only present when the server runs with HOSTED_MODE=1. */
-export interface HostedInfo { operator: boolean; links: { pricing: string; terms: string; legal: string; privacy: string } }
+export interface HostedInfo { operator: boolean; /** The owner sells Sklubot credits (off by default: "Mes comptes IA"). */ creditsForSale?: boolean; links: { pricing: string; terms: string; legal: string; privacy: string } }
 
 /** A short message at the bottom of the window, optionally with one action (usually "Undo"). */
 export interface Toast { id: number; text: string; action?: { label: string; run: () => void | Promise<void> } }

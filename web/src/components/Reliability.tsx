@@ -3,7 +3,7 @@ import { api, errText } from "../api";
 import { useT } from "../i18n";
 import type { ModelOption, ReliabilitySettings } from "../types";
 import { Icon } from "./Icon";
-import { ErrorNote, IconButton, Loading } from "./ui";
+import { ErrorNote, IconButton, Loading, Toggle } from "./ui";
 import { ApiProvidersSection, ServerModelPricesSection } from "./SecretsFilesProviders";
 
 /** The models offered on this server (API models only: subscription engines run a different kind of turn). */
@@ -116,6 +116,14 @@ export function ModelsSection() {
               </select>
               <span className="field-hint">{t("models.continuationsHint")}</span>
             </label>
+          </div>
+          <h3 className="pane-heading">{t("models.mutualAid")}</h3>
+          <div className="action-row">
+            <div>
+              <p className="action-title">{t("models.mutualAid")}</p>
+              <p className="muted small">{t("models.mutualAidHint")}</p>
+            </div>
+            <Toggle checked={state.mutualAid} label={t("models.mutualAid")} onChange={(mutualAid) => void save({ mutualAid })} />
           </div>
           <ul className="list reliability-facts">
             <li className="list-row is-card"><Icon name="refresh" size={16} /><span className="list-row-text"><span className="list-row-title">{t("models.fact.retry")}</span><span className="list-row-sub">{t("models.fact.retryText")}</span></span></li>

@@ -141,6 +141,31 @@ export class ApiClient {
     return { status: res.status, bytes: new Uint8Array(await res.arrayBuffer()) };
   }
 
+  /**
+   * POST JSON, answer as raw bytes (« Écouter »: POST /bots/:id/rows/:seq/speak answers audio/wav). Not ok → the
+   * status with the server's JSON error, no bytes.
+   */
+  async postBytes(path: string, body: unknown, timeoutMs = 40_000): Promise<{ status: number; bytes: Uint8Array | null; header(name: string): string | null; error: string | null }> {
+    const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+    const timer = ctrl ? setTimeout(() => ctrl.abort(), timeoutMs) : null;
+    let res: Awaited<ReturnType<FetchLike>>;
+    try {
+      res = await this.doFetch(this.url(path), { method: "POST", headers: { "Content-Type": "application/json", ...this.authHeaders() }, body: JSON.stringify(body), credentials: "omit", signal: ctrl?.signal });
+    } catch {
+      throw new ApiError("unreachable", 0);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+    if (res.status === 401) this.opts.onUnauthorized?.();
+    const header = (name: string) => res.headers.get(name);
+    if (!res.ok) {
+      let error: string | null = null;
+      try { const j = JSON.parse(await res.text()) as { error?: unknown }; if (typeof j.error === "string") error = j.error; } catch { /* not JSON */ }
+      return { status: res.status, bytes: null, header, error };
+    }
+    return { status: res.status, bytes: res.arrayBuffer ? new Uint8Array(await res.arrayBuffer()) : null, header, error: null };
+  }
+
   get<T>(path: string) { return this.request<T>("GET", path); }
   post<T>(path: string, body?: unknown) { return this.request<T>("POST", path, body ?? {}); }
   patch<T>(path: string, body: unknown) { return this.request<T>("PATCH", path, body); }

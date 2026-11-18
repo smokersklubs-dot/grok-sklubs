@@ -1,6 +1,6 @@
 # Feuille de route technique de Sklubot
 
-Relevé fait le 16/11/2026 sur la branche `claude/trusting-knuth-awqogb` (dernier commit `b3d4b03`), en lisant le code.
+Mise à jour partielle le 18/11/2026 (tableau 1.6 des correctifs de sécurité, vérifications 1.5 et statuts des tickets, revérifiés dans le code). Relevé fait le 16/11/2026 sur la branche `claude/trusting-knuth-awqogb` (dernier commit `b3d4b03`), en lisant le code.
 Objectif : passer de « techniquement riche » à « fiable, sûr, multi-clients, vendable », en partant de ce qui existe
 vraiment, pas d'une liste théorique.
 
@@ -39,7 +39,7 @@ vraiment, pas d'une liste théorique.
 |---|---|---|---|
 | Isolation multi-utilisateurs | **Partiel** | Chaque ressource est rattachée à `user_id` (`db.ts:12-90`). Les routes passent par `ownBot` / `accessBot` qui répondent 404 sans révéler l'existence (`routes.ts:115-126`). Bots, volume personnel et conteneur séparés par bot (`linux.ts:38`, `linux.ts:256-271`). Dossier d'équipe par compte (`computer.ts:328`). Tests ponctuels : `test/security.test.ts:296` (le bot d'un autre compte ne peut pas être ajouté à un groupe). | Pas de suite de tests systématique « le compte B tente chaque route sur les ressources du compte A ». Les ordinateurs de **tous** les comptes sont sur le même réseau Docker que le serveur (`linux.ts:261`, `docker-compose.vps.yml` `DESKTOP_NETWORK`) → **H2, en cours**. |
 | Isolation multi-entreprises | **Partiel** | Espaces d'équipe avec rôles (`workspaces.ts:10-55`, `shared.ts:740-745`), partage de bots (`db.ts:365`), journal d'équipe non modifiable (`db.ts:376-381`). | Un espace d'équipe n'est **pas** un client facturable : pas de plan, de quota, de budget, ni de données rattachées à l'espace (les bots restent la propriété d'un utilisateur). L'évaluation a raison sur le fond. |
-| Sécurité des ordinateurs Linux | **Partiel / En cours** | Le serveur n'a pas le socket Docker : il passe par `docker-socket-proxy` (`docker-compose.vps.yml`, service `docker-proxy`). Serveur en lecture seule, `cap_drop: ALL`, `no-new-privileges`. Conteneurs des bots : capacités réduites (`linux.ts:136`, `linux.ts:266`), mémoire/CPU/pids limités (`linux.ts:262`). | Restent ouverts et **en cours** : H2 (réseau des bots), H3 (le proxy ne filtre pas le corps des requêtes : un `POST /containers/create` peut demander un montage de l'hôte), H4 (Chromium en root / sans bac à sable), M2 (quota disque), L10 (swap). |
+| Sécurité des ordinateurs Linux | **Existe** (18/11 : H2, H3, M2, L10 corrigés ; H4 accepté) | Le serveur n'a pas le socket Docker : il passe par `docker-socket-proxy` (`docker-compose.vps.yml`, service `docker-proxy`). Serveur en lecture seule, `cap_drop: ALL`, `no-new-privileges`. Conteneurs des bots : capacités réduites (`linux.ts:136`, `linux.ts:266`), mémoire/CPU/pids limités (`linux.ts:262`). | Relevé du 16/11 : H2, H3, H4, M2, L10 ouverts. **18/11** : H2, H3, M2, L10 corrigés (voir 1.6) ; H4 accepté (Chromium en root dans le conteneur, gVisor facultatif). |
 | Gestion des coûts IA | **Partiel** | Comptage par appel (table `usage`, `db.ts:81`), par bot et par personne (`usage.actor_id`). Budget mensuel par compte avec alerte à 80 % et arrêt (`usage.ts:57-101`, appliqué dans `agent/loop.ts:574` et `agent/goals.ts:193`). Points d'arrêt par tâche, 5 $ par défaut (`agent/spend.ts:8-17`). Plafond journalier des outils payants par bot (`bots.third_party_cap_usd`). Export CSV (`routes.ts:1222`). | **Prix connus pour 4 modèles seulement** (`usage.ts:19-24`) : `grok-4.7` et `gpt-5` (`llm/index.ts:15-19`) comptent 0 $ → budget et points d'arrêt inopérants pour eux. Usage des abonnements Claude Code / Codex gardé **en mémoire** (`usage.ts:11`), perdu au redémarrage. Pas de budget par espace d'équipe ni par client. |
 | Sauvegardes et restauration | **Partiel** | `deploy/backup.sh` : copie le volume `sklubot_data` (base + bibliothèques) et chaque volume `sklubot-home-*` (ordinateurs des bots), Sklubot à l'arrêt pendant la copie. `deploy/restore.sh` restaure tout. `docs/SAUVEGARDE.md` : un essai manuel documenté (empreintes identiques, `integrity_check` ok). | Ne sauvegarde **pas** `.env` (donc ni `SESSION_SECRET` qui déchiffre le coffre, ni les clés) — seulement un rappel à l'écran. Pas de copie hors du VPS, pas de rotation, pas de chiffrement de l'archive, pas d'essai de restauration automatique, `deploy/update.sh` ne sauvegarde pas avant de mettre à jour, coupure de service pendant la copie. |
 | Tests de bout en bout | **Partiel** | ~40 fichiers de tests serveur (`server/test/`), dont des scénarios complets avec un modèle scripté (`test/app.test.ts:94-191` : message, outils, validation, routines par webhook, bots qui se parlent). Mode démo sans modèle (`llm/demo.ts:3-6`). Test d'un vrai ordinateur de bot (`desktest.ts:9-18`, `npm run desk:test`). | Aucun test « un vrai modèle reçoit une tâche, agit, termine, rend compte ». **Aucune CI ne lance les tests du serveur** : le seul workflow (`.github/workflows/desktop.yml`) ne tourne que sur les tags `desktop-v*` et ne teste que l'appli de bureau. |
@@ -50,7 +50,7 @@ vraiment, pas d'une liste théorique.
 |---|---|---|---|
 | Supervision centralisée | **Partiel** | État en direct de chaque bot poussé par SSE (`bus.ts:43-71`). Vue des tâches de tout le compte (`routes.ts:1081`, `web/src/components/TasksView.tsx`). Rappels de travail bloqué (`agent/stuck.ts:7-10`). Santé des clés et connexions (`health.ts:15-30`). Arrêt d'un bot (`routes.ts:811`), d'une tâche, d'un job (`routes.ts:747`, `2275`). | Pas d'écran unique « tous les agents / missions / ordinateurs / consommation » ; pas de pause/reprise globale ; aucune vue opérateur sur tout le serveur. |
 | Utilisateurs et rôles | **Partiel** | Rôles owner / admin / member / viewer par espace (`shared.ts:740-745`), invitations par lien à usage unique (`db.ts:360`). | Le rôle « manager » de l'évaluation correspond à « admin ». Il manque un **rôle opérateur du serveur** (aujourd'hui, aucune notion d'administrateur global : `grep isAdmin` ne trouve rien). |
-| Facturation et abonnements | **Partiel** | Mode hébergé derrière `HOSTED_MODE=1` (`hosted.ts`, `docs/MODE-HEBERGE.md`) : offres, statuts, budget IA en €, paiement manuel. | Fournisseur de paiement (Stripe / Paddle) à choisir et brancher (`billing/provider.ts`). |
+| Facturation et abonnements | **Partiel** | Mode hébergé derrière `HOSTED_MODE=1` (`hosted.ts`, `docs/MODE-HEBERGE.md`) : offres, statuts, budget IA en €, paiement manuel. | Crédits prépayés payés par Paddle (`billing/paddle.ts`, `credits.ts`) ; abonnements payants encore en paiement manuel (`billing/provider.ts`). |
 | Documentation et installation simple | **Existe** | Installateur double-clic (`deploy/Installer Sklubot sur mon VPS.*`, `deploy/install.sh`), `docs/INSTALLATION-VPS.md`, `docs/DEPLOIEMENT.md`, `docs/API.md`, mise à jour (`deploy/update.sh`), désinstallation. | `docs/API.md` n'est pas tenu à jour automatiquement (supposé : écrit à la main). Pas de doc « exploitant » (alertes, restauration, incident). |
 
 ### 1.3 Différenciants
@@ -83,18 +83,18 @@ vraiment, pas d'une liste théorique.
 | Vérification | État | Preuves / remarque |
 |---|---|---|
 | Isolation entre clients | **Partiel** | Voir 1.1. Pas de suite de tests dédiée. |
-| Socket Docker / hôte | **Partiel / En cours** | Proxy filtrant présent ; filtrage du corps (H3) en cours. |
-| Secrets chiffrés, jamais dans le navigateur | **Existe / En cours** | AES-256-GCM avec clé dérivée de `SESSION_SECRET` (`auth.ts:80-104`), tag de 16 octets imposé (L2). Relais d'identifiants : la clé n'entre pas dans l'ordinateur du bot (`egress.ts:14-29`). Secrets collés masqués (`pastedsecrets.ts`). M1 corrigé (`d94b0c6`), M4 (`secret_use`) en cours. Une seule clé maître, pas de rotation (Manque). |
-| Authentification : sessions | **Partiel** | Jeton haché en base, 30 jours (`auth.ts:6-38`), limite de tentatives (`routes.ts:205-219`), connexion Google (`googlelogin.ts`). Pas de liste des appareils connectés ni de révocation par appareil (supposé : aucune route trouvée). |
-| MFA | **Manque** | `totp.ts` existe mais sert au **coffre des bots** (codes 2FA des sites), pas à la connexion à Sklubot (`routes.ts:1586`). |
+| Socket Docker / hôte | **Existe** (18/11) | Proxy filtrant à nous qui inspecte le corps des créations de conteneur (H3, `dockerproxy.ts`, `dockerproxy.test.ts`). |
+| Secrets chiffrés, jamais dans le navigateur | **Existe / En cours** | AES-256-GCM avec clé dérivée de `SESSION_SECRET` (`auth.ts:80-104`), tag de 16 octets imposé (L2). Relais d'identifiants : la clé n'entre pas dans l'ordinateur du bot (`egress.ts:14-29`). Secrets collés masqués (`pastedsecrets.ts`). M1 corrigé (`d94b0c6`), M4 corrigé. **18/11** : clé de données séparée de `SESSION_SECRET` avec rotation (`datakey.ts`, `datakeyrotate.ts`, `rotatekey.ts`, `data-key.test.ts`). |
+| Authentification : sessions | **Partiel** | Jeton haché en base, 30 jours (`auth.ts:6-38`), limite de tentatives (`routes.ts:205-219`), connexion Google (`googlelogin.ts`). **18/11** : lien de connexion par e-mail (`emaillink.ts`), « se déconnecter des autres appareils » (`twofactor.ts`). Pas encore de liste des appareils ni de révocation d'un appareil précis. |
+| MFA | **Existe** (18/11) | Double authentification TOTP + 10 codes de secours à la connexion, pour toutes les façons d'entrer (`twofactor.ts`, `TwoFactor.tsx`, `totp.test.ts`). Pas encore imposée aux opérateurs. |
 | Récupération de compte | **Fait (partiel)** | « Mot de passe oublié ? » par e-mail et changement d'adresse confirmé par lien (`accountmail.ts`, SMTP du serveur : Réglages → Compte ou `SMTP_*`). Sans SMTP : commande `reset-password.ts`. Restent : alerte « nouvelle connexion », MFA (SK-P0-09). |
-| Premier compte sans code d'installation | **En cours** (M6) | `auth.ts:66-67`, `routes.ts:256`. |
+| Premier compte sans code d'installation | **Existe** (M6 corrigé) | Installation neuve ouverte aux autres : refus de démarrer sans `SETUP_CODE` (`index.ts`, test « M6 » de `security-review.test.ts`). |
 | Base : sauvegarde, migrations, restauration testées | **Partiel** | Sauvegarde : voir 1.1. Migrations : schéma idempotent + `ALTER TABLE ADD COLUMN` (`db.ts:10`, `db.ts:106`), **sans numéro de version** ni test de montée de version. |
 | Détection de boucles / blocages | **Existe** | `LoopGuard` (`agent/reliability.ts:78-87`), limite de temps par tour des moteurs abonnement (`config.ts:86`, `agent/engine.ts:525`), rappels de travail bloqué (`agent/stuck.ts`), interblocage entre bots détecté (`agent/team.ts:47`). |
 | Charge (dizaines d'agents) | **Manque** | Aucun test de charge. Un seul processus Node, SQLite, 4 ordinateurs allumés par défaut (`config.ts:60`). |
 | Android réel et notifications | **Partiel** | Appli Expo avec tests unitaires (`mobile/__tests__/`), Web Push côté serveur (`push.ts:9-20`). L'appli native n'a **que des notifications locales** (`mobile/app.config.ts:54`, `enableRemoteNotifications: false`). Pas de test sur appareil réel automatisé (supposé). |
-| Paiement, quotas, factures, suspension | **Partiel** | Mode hébergé : limites par offre côté serveur, suspension en lecture seule, paiement manuel (`hosted.ts`). Reste : fournisseur de paiement, factures. |
-| Surveillance (alertes, erreurs, disponibilité, consommation) | **Manque** | `/api/health` répond `{ ok, model }` sans rien vérifier (`routes.ts:194`) ; healthcheck Docker ; erreurs non rattrapées seulement écrites dans la console (`index.ts:71-72`). |
+| Paiement, quotas, factures, suspension | **Partiel** | Mode hébergé : limites par offre côté serveur, suspension en lecture seule (`hosted.ts`) ; crédits prépayés par Paddle, cachés sans `PADDLE_*` (`credits.ts`, `billing/paddle.ts`). Reste : abonnements récurrents par Paddle, factures. |
+| Surveillance (alertes, erreurs, disponibilité, consommation) | **Existe** (18/11) | `/api/health` vérifie base, Docker, disque, planificateur, sauvegarde, file (`monitor.ts`) ; Sentinelle (incidents, alertes push/e-mail, page Surveillance, `server/src/sentinel/`). Pas de `/metrics`. |
 | Licences open source | **Partiel** | Projet sous MIT (`LICENSE`). Code inspiré de deepseek-harness (MIT) cité dans les fichiers (`jobs.ts:13`, `snapshots.ts:14`, `agent/goals.ts:20`). Aucun inventaire des licences des dépendances ni de l'image des ordinateurs (Chromium, polices, Piper/voix, whisper). |
 | Conditions Claude Code / Codex pour un accès commercial partagé | **Manque** (vérification juridique) | La doc dit déjà « usage personnel, ne fais pas travailler les bots de quelqu'un d'autre sur ton abonnement » (`docs/INSTALLATION-VPS.md:235-245`). Non vérifié contre les conditions actuelles des fournisseurs. |
 
@@ -104,20 +104,20 @@ vraiment, pas d'une liste théorique.
 |---|---|---|
 | H1 | Liens publics SVG (XSS) | **Corrigé** (`d94b0c6`) |
 | M1 | Connecteur proposé par un bot qui étend un secret à un nouvel hôte | **Corrigé** (`d94b0c6`) |
-| H2 | Isolation réseau des ordinateurs des bots | En cours |
-| H3 | Filtrage du corps des requêtes par le proxy Docker | En cours |
-| H4 | Chromium en root / `--no-sandbox` | En cours |
-| M2 | Quota disque des ordinateurs | En cours |
-| M3 | En-têtes CSP + images distantes dans le markdown | En cours |
-| M4 | Nettoyage de `secret_use` | En cours |
-| M5 | Pas de vérification d'e-mail | En cours |
-| M6 | Premier visiteur qui prend le serveur sans `SETUP_CODE` | En cours |
-| M7 | Limites de taille des corps de requête | En cours |
-| L1 | `X-Forwarded-For` | En cours |
-| L2 | Longueur du tag de scellement | En cours (le code actuel l'impose déjà, `auth.ts:98-99`) |
-| L4 | Test du poste (desk test) | En cours |
-| L7 | Limite de fréquence des webhooks | En cours |
-| L10 | Swap mémoire | En cours |
+| H2 | Isolation réseau des ordinateurs des bots | **Corrigé** (`b8096fa`, vérifié le 18/11) — socket dédiée par ordinateur qui ne sert que l'outil de ses bots et le relais (`botlink.ts`), le port web ne les sert plus ; pare-feu `deploy/bots-firewall.sh`. Tests : `server/test/security-review.test.ts` « H2 », `botlink-live.test.ts` |
+| H3 | Filtrage du corps des requêtes par le proxy Docker | **Corrigé** (`b8096fa`) — proxy filtrant à nous (`dockerproxy.ts`) : création de conteneur inspectée (montages, privilèges, réseaux refusés), routes limitées, listes réduites aux conteneurs de Sklubot, exec vérifiés. Tests : `dockerproxy.test.ts` (6) |
+| H4 | Chromium en root / `--no-sandbox` | **Accepté, atténué** — toujours root + `--no-sandbox` (`docker/desktop/open-browser.sh`) : le bac à sable de Chromium demande setuid ou des espaces de noms que seccomp interdit. Frontière = le conteneur (aucune capacité dangereuse, réseau à part, `no-new-privileges`) ; gVisor (`SKLUBOT_DESKTOP_RUNTIME=runsc`) et userns-remap documentés (`docs/INSTALLATION-VPS.md`, « Renforcements facultatifs ») |
+| M2 | Quota disque des ordinateurs | **Corrigé** (`b8096fa`) — `--storage-opt size` tenté là où Docker le permet (`linux.ts`, « M2 »), tailles lues par `docker ps`, surveillance `diskwatch.ts` + carte disque plein. Test : `server/test/security-review.test.ts` « M2 » |
+| M3 | En-têtes CSP + images distantes dans le markdown | **Corrigé** (`b8096fa`) — CSP et en-têtes de sécurité sur chaque réponse (`hardening.ts`), pas d'images distantes (`web/src/lib/markdown.ts`). Tests : `server/test/security-review.test.ts` « M3 » (2) |
+| M4 | Nettoyage de `secret_use` | **Corrigé** — secret renvoyé par une API masqué (texte) ou réponse refusée (binaire) (`apiconnectors.ts` `scrubSecret`, `egress.ts` `binaryHoldsSecret`). Test : `server/test/security-review.test.ts` « M4 » |
+| M5 | Pas de vérification d'e-mail | **Corrigé** (`84df25b`, `0b15252`) — vérification obligatoire en inscription publique ou mode hébergé : 403 `email_unverified` sur toutes les routes sauf la vérification (`publicsignup.ts`, `routes.ts` `emailGateBlocks`), comptes non confirmés supprimés après 5 h, Google = vérifié. Tests : `public-signup.test.ts`, `public-signup-off.test.ts` |
+| M6 | Premier visiteur qui prend le serveur sans `SETUP_CODE` | **Corrigé** (`b8096fa`) — une installation neuve ouverte aux autres refuse de démarrer sans `SETUP_CODE` (`auth.ts`, `index.ts`). Test : `server/test/security-review.test.ts` « M6 » |
+| M7 | Limites de taille des corps de requête | **Corrigé** (`b8096fa`) — 1 Mo de JSON, 26 Mo pour les envois, avant tout traitement (`hardening.ts`). Test : `server/test/security-review.test.ts` « M7 » |
+| L1 | `X-Forwarded-For` | **Corrigé** (`b8096fa`) — cru seulement depuis l'adresse du proxy inverse (`net.ts`). Test : `server/test/security-review.test.ts` « L1 » |
+| L2 | Longueur du tag de scellement | **Corrigé** — tag de 16 octets exigé, anciennes valeurs lisibles, tag raccourci refusé (`datakey.ts`, `authTagLength: 16`). Test : `server/test/security-review.test.ts` « L2 » |
+| L4 | Test du poste (desk test) | **Corrigé** (`b8096fa`) — réservé au propriétaire du serveur (le plus ancien compte) (`routes.ts`, `desktest.ts`). Test : `server/test/security-review.test.ts` « L4 » |
+| L7 | Limite de fréquence des webhooks | **Corrigé** (`b8096fa`) — par adresse et par webhook (`routes.ts` `/hooks/:token`). Test : `server/test/security-review.test.ts` « L7 » |
+| L10 | Swap mémoire | **Corrigé** (`03b9759`) — `deploy/memory-guard.sh` (fichier d'échange selon la mémoire, earlyoom qui épargne node/ssh/docker), lancé par `install.sh` sans bloquer. Tests : `memory-guard.test.ts` (7) |
 
 ---
 
@@ -154,6 +154,7 @@ Les phases suivent l'ordre voulu par le propriétaire : 1 fiabilité/sécurité 
 - **Tests** : automatiques — un test par réf. (ex. H3 : `POST /containers/create` avec `Binds: ["/:/host"]` → 403 du
   proxy ; H2 : depuis un ordinateur de bot, `curl http://sklubot:3000/api/health` échoue, `/mcp/<son id>` répond ;
   M7 : corps de 10 Mo → 413). Manuel — `npm run desk:test` vert sur le VPS de test.
+- **Statut (2026-11-18)** : fait (vérifié le 18/11) — H2, H3, M2–M7, L1, L2, L4, L7, L10 corrigés avec leurs tests (`server/test/security-review.test.ts`, `dockerproxy.test.ts`, `memory-guard.test.ts`, `public-signup.test.ts`) ; H4 accepté et atténué (voir 1.6). Reste manuel : `npm run desk:test` sur le VPS de test.
 - **Effort** : L (déjà engagé). **Dépendances** : aucune.
 
 #### SK-P0-02 · CI : lancer typecheck et tous les tests du serveur à chaque push
@@ -163,6 +164,7 @@ Les phases suivent l'ordre voulu par le propriétaire : 1 fiabilité/sécurité 
   `npm run typecheck`, `npm test -w server` (ou équivalent), tests web et `mobile/__tests__`. Job séparé, manuel,
   pour `desk:test` sur un runner avec Docker.
 - **Tests** : une PR contenant une assertion volontairement fausse doit être rouge ; la même corrigée, verte.
+- **Statut (2026-11-18)** : fait — `.github/workflows/ci.yml` (push + pull request : types, contrastes, tests web, taille des fichiers, build et bundle web, image des ordinateurs, `npm run test -w server`) ; `android.yml` (APK installée et essayée sur un émulateur) ; `desktop.yml`.
 - **Effort** : S. **Dépendances** : aucune.
 
 #### SK-P0-03 · Suite de tests d'isolation entre comptes
@@ -257,6 +259,7 @@ Les phases suivent l'ordre voulu par le propriétaire : 1 fiabilité/sécurité 
   documentation d'un moniteur externe (Uptime Kuma auto-hébergé ou service tiers) sur `/api/health`.
 - **Tests** : unitaires sur chaque vérification (proxy coupé → `docker: down`) ; manuel : arrêter `docker-proxy`,
   recevoir l'alerte en < 5 min.
+- **Statut (2026-11-18)** : fait en grande partie — `/api/health` vérifie base, Docker, disque, planificateur, sauvegarde, file (`monitor.ts`), détail pour le propriétaire (`GET /api/health/deep`) ; Sentinelle : analyse sans IA toutes les 10 min, incidents regroupés, alertes push/e-mail sans doublon, page Surveillance (`server/src/sentinel/`, `sentinel.test.ts`, `monitor.test.ts`). Reste : `/metrics` Prometheus, journaux JSON.
 - **Effort** : M. **Dépendances** : SK-P1-01 (rôle opérateur) pour les alertes ciblées.
 
 #### SK-P0-09 · MFA à la connexion (TOTP) et codes de secours
@@ -269,6 +272,7 @@ Les phases suivent l'ordre voulu par le propriétaire : 1 fiabilité/sécurité 
   Compte. Connexion Google : MFA aussi demandée si activée.
 - **Tests** : code juste/faux/rejoué (même pas de temps refusé deux fois) ; code de secours à usage unique ;
   10 essais → blocage ; test d'isolation : session intermédiaire inutilisable sur `/api/*`.
+- **Statut (2026-11-18)** : fait — `twofactor.ts` : TOTP (RFC 6238, graine scellée), 10 codes de secours à usage unique (hachés), connexion en 2 temps pour toutes les entrées (mot de passe, Google, lien par e-mail, réinitialisation, appli mobile), jeton intermédiaire 5 min / 5 essais, Réglages → Compte (`web/src/components/TwoFactor.tsx`), désactivation en ligne de commande (`reset-password.js --disable-2fa`) ; `totp.test.ts`. Reste : MFA imposable par l'owner d'un espace, appareil reconnu 30 j.
 - **Effort** : M. **Dépendances** : SK-P0-03.
 
 #### SK-P0-10 · Récupération de compte et e-mails système
@@ -280,6 +284,7 @@ Les phases suivent l'ordre voulu par le propriétaire : 1 fiabilité/sécurité 
   secours exigé en plus ; e-mail d'alerte « nouvelle connexion » ; réutiliser le flux de M5 pour la vérification.
 - **Tests** : jeton expiré/réutilisé refusé ; réponse identique que l'adresse existe ou non ; sessions supprimées
   après changement.
+- **Statut (2026-11-18)** : fait en grande partie — SMTP du serveur réglable par le propriétaire ou repris du relais des bots (`accountmail.ts`, `1b2a72b`) ; « Mot de passe oublié ? » (jeton haché, 30 min, usage unique, toutes les sessions coupées, même réponse que l'adresse existe ou non) ; changement d'adresse confirmé ; vérification d'e-mail (M5) ; lien de connexion par e-mail (`emaillink.ts`) ; 2FA exigée après réinitialisation ; `account-mail.test.ts`, `email-link.test.ts`. Reste : e-mail « nouvelle connexion ».
 - **Effort** : M. **Dépendances** : M5 (en cours), SK-P0-09.
 
 #### SK-P1-01 · Rôle opérateur et page d'administration du serveur
@@ -290,6 +295,7 @@ Les phases suivent l'ordre voulu par le propriétaire : 1 fiabilité/sécurité 
   chaque action d'opérateur dans un journal non modifiable.
 - **Tests** : un non-opérateur reçoit 404 sur `/api/admin/*` (ajouté à SK-P0-03) ; opérateur sans MFA → refus.
 - **Statut (2026-11-16)** : partiel, en mode hébergé — colonne `users.server_role` (la propriétaire est toujours opératrice), page Administration (clients, offres, invitations, réglages, journal non modifiable `admin_audit`), 404 pour les autres comptes, couvert par `isolation-hosted.test.ts`. Reste : MFA exigée des opérateurs (SK-P0-09), vue opérateur hors mode hébergé.
+- **Statut (2026-11-18)** : toujours partiel — en plus : déconnexion d'un client partout par l'opérateur (`POST /api/admin/customers/:uid/sessions/revoke`, `twofactor.ts`). Reste : 2FA **exigée** des opérateurs (pas trouvée dans le code), vue opérateur hors mode hébergé.
 - **Effort** : M. **Dépendances** : SK-P0-09. Prérequis du mode hébergé.
 
 #### SK-P1-02 · Sessions : appareils connectés et révocation
@@ -299,6 +305,7 @@ Les phases suivent l'ordre voulu par le propriétaire : 1 fiabilité/sécurité 
   déconnecter partout » ; ré-authentification récente exigée pour les actions sensibles (changer MFA, exporter,
   supprimer le compte).
 - **Tests** : révoquer une session → 401 immédiat sur SSE et API.
+- **Statut (2026-11-18)** : partiel — « Se déconnecter de tous les autres appareils » (`POST /api/account/sessions/revoke-others`, `twofactor.ts`) et nombre de sessions ; l'opérateur peut déconnecter un client partout. Reste : liste des appareils (navigateur, IP, dernière activité) et révocation d'un appareil précis, ré-authentification avant les actions sensibles.
 - **Effort** : S. **Dépendances** : aucune.
 
 #### SK-P1-03 · Tests de charge
@@ -347,6 +354,7 @@ Les phases suivent l'ordre voulu par le propriétaire : 1 fiabilité/sécurité 
   nouvelle table `native_push_tokens`, envoi depuis `push.ts` ; procédure de test manuelle sur 2 appareils Android
   réels (Android 13+ autorisation de notification, appli tuée, mode économie).
 - **Tests** : unitaires sur l'envoi (faux FCM local) ; manuel : carte d'accord → notification en < 10 s, appli fermée.
+- **Statut (2026-11-18)** : inchangé — notifications locales seulement (`mobile/app.config.ts` : `enableRemoteNotifications: false`) ; test automatique sur émulateur Android fait en CI (`.github/workflows/android.yml`). Bloqué par un compte Firebase (FCM) / APNs.
 - **Effort** : M. **Dépendances** : SK-P1-05 (conditions Google/Apple).
 
 ### Phase H — Mode hébergé (commercialisation, avant le multi-VPS)
@@ -374,7 +382,7 @@ Prérequis : SK-P0-01, -03, -04, -06, -09, -10, SK-P1-01, SK-P1-05.
   carte « limite du plan » avec remède (changer de plan) ; suspension → bots en pause, ordinateurs endormis, données
   gardées.
 - **Tests** : un test par quota ; compte suspendu → aucun tour ne démarre, routine sautée et notée.
-- **Statut (2026-11-16)** : fait dans `hosted.ts` (bots, routines actives, ordinateurs allumés, stockage ; suspendu = lecture seule ; carte avec la façon d'avancer). La vérification d'e-mail avant le premier tour (anti-abus) reste à faire.
+- **Statut (2026-11-16)** : fait dans `hosted.ts` (bots, routines actives, ordinateurs allumés, stockage ; suspendu = lecture seule ; carte avec la façon d'avancer). La vérification d'e-mail avant le premier tour (anti-abus) reste à faire. — **2026-11-18** : faite (M5 : accès bloqué côté serveur tant que l'adresse n'est pas confirmée, premier bot après confirmation, `publicsignup.ts`).
 - **Effort** : M. **Dépendances** : SK-P0-11, SK-P0-06.
 
 #### SK-P0-13 · Clés opérateur (plan gratuit) et BYOK
@@ -388,15 +396,15 @@ Prérequis : SK-P0-01, -03, -04, -06, -09, -10, SK-P1-01, SK-P1-05.
 - **Statut (2026-11-16)** : fait autrement sur un point — un budget mensuel en € par offre (plus recharges) au lieu d'un plafond par jour ; coupure nette au budget atteint, y compris au milieu d'un tour ; « J'apporte ma clé » ne retombe jamais sur les clés du service ; fournisseurs de l'opérateur prêtables aux comptes hébergés.
 - **Effort** : M. **Dépendances** : SK-P0-06, SK-P0-12.
 
-#### SK-P1-07 · Paiement : manuel d'abord, puis Stripe ou Paddle
+#### SK-P1-07 · Paiement : manuel d'abord, puis Paddle
 - **Pourquoi** : encaisser, facturer, relancer, suspendre.
 - **Modifications** : interface `PaymentProvider` (`server/src/billing/`), implémentation « manuelle » (l'opérateur
-  marque payé dans la page admin, facture PDF numérotée) ; puis Stripe Billing ou Paddle (webhooks signés,
-  idempotence par identifiant d'événement, statut `past_due` → délai de grâce → `suspended`). Paddle (vendeur
-  officiel) simplifie la TVA européenne ; Stripe demande de la gérer (Stripe Tax). Ne pas inventer d'API : citer la
-  doc officielle dans le code, comme le reste du dépôt.
+  marque payé dans la page admin, facture PDF numérotée) ; puis Paddle (webhooks signés, idempotence par
+  identifiant d'événement, statut `past_due` → délai de grâce → `suspended`). Paddle (vendeur officiel) gère la TVA
+  européenne. Ne pas inventer d'API : citer la doc officielle dans le code, comme le reste du dépôt.
 - **Tests** : webhooks rejoués (même événement deux fois → un seul effet), signature fausse → 400.
 - **Statut (2026-11-16)** : partiel — interface `billing/provider.ts`, fournisseur « manuel » (l'opérateur marque payé), table `billing_events` prête pour l'idempotence, `POST /api/billing/webhook/stripe|paddle` → 501. Fournisseur à choisir ; pas encore de factures PDF.
+- **Statut (2026-11-18)** : fournisseur choisi : **Paddle** (vendeur officiel). Les **crédits prépayés** se paient par Paddle (`billing/paddle.ts`, `credits.ts` : transaction créée par le serveur, page `/paiement`, webhook signé `POST /api/billing/paddle/webhook`, remboursements) ; l'adaptateur Stripe écrit auparavant est retiré sans avoir servi. Les abonnements payants restent manuels.
 - **Effort** : L. **Dépendances** : SK-P0-11, SK-P1-01.
 
 #### SK-P1-08 · Pages publiques : tarifs, mentions légales, CGV, confidentialité
@@ -508,6 +516,7 @@ Prérequis : SK-P0-01, -03, -04, -06, -09, -10, SK-P1-01, SK-P1-05.
   `/api/v1/*` stables ; limite de fréquence par clé ; webhooks sortants signés (HMAC, horodatage, nouvelles tentatives)
   sur événements (tâche finie, accord demandé, objectif terminé) ; `docs/API.md` généré depuis les routes.
 - **Tests** : clé sans portée « gérer » → 403 ; clé révoquée → 401 ; signature vérifiable ; isolation (SK-P0-03).
+- **Statut (2026-11-18)** : partiel — clés d'API par bot (hachées, portées `read` / `write` / `tasks`), API REST `/api/v1` et serveur MCP de pilotage (`botapi.ts`, `botmcp.ts`, `docs/API-BOT.md`, `bot-api.test.ts`). Reste : webhooks sortants, clés au niveau du compte.
 - **Effort** : L. **Dépendances** : SK-P0-03, SK-P1-01.
 
 #### SK-P2-04 · Constructeur visuel de workflows (sur les routines et objectifs existants)
@@ -540,27 +549,27 @@ Prérequis : SK-P0-01, -03, -04, -06, -09, -10, SK-P1-01, SK-P1-05.
 
 | ID | Titre | Phase | Effort | Dépend de |
 |---|---|---|---|---|
-| SK-P0-01 | Correctifs revue de sécurité (en cours) | 1 | L | — |
-| SK-P0-02 | CI des tests serveur | 1 | S | — |
-| SK-P0-03 | Tests d'isolation entre comptes | 1 | M | 02 |
-| SK-P0-04 | Sauvegarde complète + restauration testée | 1 | M | 01, 08 |
-| SK-P0-05 | Migrations versionnées | 1 | M | 02 |
-| SK-P0-06 | Coûts IA justes pour tous les modèles | 1 | M | — |
+| SK-P0-01 | Correctifs revue de sécurité (**fait**, H4 accepté) | 1 | L | — |
+| SK-P0-02 | CI des tests serveur (**fait**) | 1 | S | — |
+| SK-P0-03 | Tests d'isolation entre comptes (**fait**) | 1 | M | 02 |
+| SK-P0-04 | Sauvegarde complète + restauration testée (**fait** ; + sauvegarde S3 automatique) | 1 | M | 01, 08 |
+| SK-P0-05 | Migrations versionnées (**fait**) | 1 | M | 02 |
+| SK-P0-06 | Coûts IA justes pour tous les modèles (**fait** ; plafonds en jetons : `usagecaps.ts`) | 1 | M | — |
 | SK-P0-07 | Bout en bout démo + vrai modèle | 1 | M | 02, 06 |
-| SK-P0-08 | Surveillance et alertes | 1 | M | P1-01 |
-| SK-P0-09 | MFA TOTP + codes de secours | 1 | M | 03 |
-| SK-P0-10 | Récupération de compte, e-mails système | 1 | M | 09, M5 |
-| SK-P1-01 | Rôle opérateur, page admin | 1 | M | 09 |
-| SK-P1-02 | Appareils connectés, révocation | 1 | S | — |
+| SK-P0-08 | Surveillance et alertes (**fait**, sauf `/metrics`) | 1 | M | P1-01 |
+| SK-P0-09 | MFA TOTP + codes de secours (**fait**) | 1 | M | 03 |
+| SK-P0-10 | Récupération de compte, e-mails système (**fait**, sauf alerte « nouvelle connexion ») | 1 | M | 09, M5 |
+| SK-P1-01 | Rôle opérateur, page admin (partiel : 2FA des opérateurs non exigée) | 1 | M | 09 |
+| SK-P1-02 | Appareils connectés, révocation (partiel : « déconnecter les autres », pas de liste) | 1 | S | — |
 | SK-P1-03 | Tests de charge | 1 | L | 01, 08 |
 | SK-P1-04 | Inventaire des licences | 1 | S–M | 02 |
 | SK-P1-05 | Conditions des fournisseurs | 1 | S + lecture | — |
-| SK-P1-06 | Notifications mobiles distantes | 1 | M | P1-05 |
-| SK-P0-11 | Plans et statuts | H | L | 05 |
-| SK-P0-12 | Quotas côté serveur | H | M | 11, 06 |
-| SK-P0-13 | Clés opérateur / BYOK | H | M | 06, 12 |
-| SK-P1-07 | Paiement manuel puis Stripe/Paddle | H | L | 11, P1-01 |
-| SK-P1-08 | Tarifs et pages légales | H | M | 11 |
+| SK-P1-06 | Notifications mobiles distantes (bloqué : compte FCM/APNs) | 1 | M | P1-05 |
+| SK-P0-11 | Plans et statuts (**fait**) | H | L | 05 |
+| SK-P0-12 | Quotas côté serveur (**fait**) | H | M | 11, 06 |
+| SK-P0-13 | Clés opérateur / BYOK (**fait**) | H | M | 06, 12 |
+| SK-P1-07 | Paiement manuel puis Paddle (crédits par Paddle **faits**, cachés sans `PADDLE_*` ; abonnements manuels) | H | L | 11, P1-01 |
+| SK-P1-08 | Tarifs et pages légales (**fait**, relecture juridique à faire) | H | M | 11 |
 | SK-P0-14 | Décision stockage multi-VPS | 2 | S | ordinateurs partagés |
 | SK-P0-15 | WireGuard entre VPS | 2 | M | 14, 01 |
 | SK-P0-16 | Docker distant par nœud | 2 | L | 15 |
@@ -571,7 +580,7 @@ Prérequis : SK-P0-01, -03, -04, -06, -09, -10, SK-P1-01, SK-P1-05.
 | SK-P2-02 | Labo d'évaluation | 3 | L | 07, 06 |
 | SK-P2-03 | Choix auto du modèle | 3 | M | P2-02 |
 | SK-P1-12 | Centre de commande | 4 | L | P1-01 |
-| SK-P1-13 | API publique + webhooks sortants | 4 | L | 03, P1-01 |
+| SK-P1-13 | API publique + webhooks sortants (partiel : API par bot faite) | 4 | L | 03, P1-01 |
 | SK-P2-04 | Constructeur de workflows | 4 | XL | 07, P1-12 |
 | SK-P2-05 | Recherche dans les fichiers | 4 | M | P1-11 |
 | SK-P2-06 | Place de marché / plugins | 4 | XL | P2-01, P1-13 |

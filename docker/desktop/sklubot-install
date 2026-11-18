@@ -1,0 +1,33 @@
+#!/bin/sh
+# Installs Debian packages on this computer AND remembers them, so they come back by themselves when the computer is
+# made again from a newer image (what apt-get installs lives outside your home folder and would otherwise be lost).
+#
+#   sklubot-install <package> [more packages…]     e.g. sklubot-install gh rclone pandoc
+#   sklubot-install --list                         the packages kept this way
+#   sklubot-install --forget <package>             stop bringing one back (it stays installed until the next rebuild)
+#
+# Programs installed in your home folder stay too, without this: pip install --user --break-system-packages <pkg>,
+# uv tool install <pkg>, npm install -g --prefix ~/.local <pkg>, or a binary copied into ~/.local/bin.
+set -eu
+LIST=/root/.sklubot/apt-packages.txt
+mkdir -p /root/.sklubot; touch "$LIST"
+valid() { case "$1" in ""|-*|*[!a-z0-9.+-]*) return 1;; esac; return 0; }
+case "${1:-}" in
+  ""|-h|--help) sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2 ;;
+  --list) cat "$LIST"; exit 0 ;;
+  --forget) shift; for p in "$@"; do valid "$p" || exit 2; grep -vx -- "$p" "$LIST" > "$LIST.new" || true; mv "$LIST.new" "$LIST"; done; exit 0 ;;
+  --restore)
+    # At start-up (start-desktop.sh): only the kept packages that are missing, in the background, logged.
+    missing=""
+    while read -r p; do valid "$p" || continue; dpkg-query -W -f='${Status}' "$p" 2>/dev/null | grep -q "ok installed" || missing="$missing $p"; done < "$LIST"
+    [ -n "$missing" ] || exit 0
+    echo "$(date -u +%FT%TZ) restoring:$missing"
+    # shellcheck disable=SC2086
+    apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends $missing
+    exit $? ;;
+esac
+for p in "$@"; do valid "$p" || { echo "Not a package name: $p" >&2; exit 2; }; done
+apt-get update -qq
+DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "$@"
+for p in "$@"; do grep -qx -- "$p" "$LIST" || echo "$p" >> "$LIST"; done
+echo "Installed and kept: $* (they come back if this computer is rebuilt)."

@@ -15,7 +15,7 @@ import type { DatabaseSync } from "node:sqlite";
  * - hosted_settings: one JSON row (exchange rate, trial and grace days, contact address, estimates, legal details).
  * - plan_invites: invitation links that create an account on a given plan (hashed token, single use, expiry).
  * - admin_audit: what operators (and the scheduler) did to customer accounts. A record: lines are never changed.
- * - billing_events: provider webhook event ids already handled (idempotency for a future Stripe or Paddle adapter).
+ * - billing_events: provider webhook event ids already handled (idempotency of the payment webhooks: Paddle, credits.ts).
  * - users.server_role: 'operator' for accounts the owner made operators ('' otherwise). The owner (oldest account) is
  *   always an operator, whatever this column says.
  * - user_providers.shared_hosted: an operator's own API provider lent to hosted accounts whose plan uses operator keys.

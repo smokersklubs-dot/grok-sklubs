@@ -1,30 +1,195 @@
 # Couverture des cahiers des charges (salle blanche)
 
-Vérification faite dans le code (pas dans la doc), fonction par fonction, sur les 5 cahiers des charges de `docs/cleanroom/`. La spec 06 (mise à jour « HQ ») a sa propre section plus bas.
+Mise à jour du **2026-11-18** (dernier commit lu : `517a8e7`, plus l'arbre de travail non commité du jour). Vérification faite dans le code (pas dans la doc), sur les 5 cahiers des charges de `docs/cleanroom/` (seule description du produit d'origine utilisée). Les specs 06, 07 et 08 ont leurs propres sections plus bas.
+
+## Ce qui reste vraiment (2026-11-18)
+
+Une ligne = un manque ; elle peut regrouper plusieurs puces du cahier (références entre crochets : `04 #n` = n-ième case de la « Capabilities list » du cahier 04 ; `RKZ-`, `OMB-` = numéros des cahiers 02 et 03). Taille : **S** ≤ 1 jour, **M** 2 à 4 jours, **L** 1 à 2 semaines. « En cours » : du code est en train d'être écrit par une autre session, pas encore jugé.
+
+### Bots et organisation
+| Manque | État | Taille | Où regarder |
+|---|---|---|---|
+| Avatar en image (téléversée ou générée) [04 #5, RKZ-820] : seulement forme, couleur et personnage | Manquant | S | `server/src/shared.ts` (`Bot.shape/color/character`) |
+| Modèle de bot publié par un lien géré (mise à jour, retrait, portée équipe), place de marché [04 #13–16, RKZ-847] : galerie de 9 modèles et fichier d'équipe à importer existent | Partiel | M | `server/src/teamfile.ts`, `web/src/components/TeamTemplates.tsx` |
+| Lien qui ouvre un bot avec un texte déjà écrit [04 #18] | Manquant | S | — |
+| Mettre une discussion en sourdine jusqu'à une heure (« snooze ») [RKZ-804] : n'existe que pour les coups de coude | Manquant | S | `server/src/agent/nudges.ts` |
+| Mode Simple / Avancé de l'interface [OMB-007] | Manquant | M | — |
+
+### Discussion et cartes
+| Manque | État | Taille | Où regarder |
+|---|---|---|---|
+| @mention d'un groupe, d'une routine ou d'un connecteur [04 #21] : seulement les bots | Partiel | S | `server/src/agent/team.ts` |
+| Carte de brouillon modifiable dans la discussion (envoyer / jeter), brouillon périmé si la pièce jointe change, réglage « sans brouillon » par bot [04 #28–30] : aujourd'hui brouillon dans la boîte (`mail_draft`) + carte d'accord | Partiel | M | `server/src/native/tools.ts` |
+| Aperçu d'un lien au survol [04 #32] | Manquant | S | — |
+| Fiche produit et carte de commande (payer / annuler / expiration) [04 #33–34] : `card_fill` et liste des paiements existent | Partiel | M | `server/src/agent/payments.ts` |
+| Graphiques, mini-applis et cartes riches (lieux, vols) dans la discussion [RKZ-029, RKZ-265, RKZ-506] | Manquant | M | — |
+| Message d'erreur avec identifiant de requête et « signaler un problème » à l'opérateur [04 #42, RKZ-224] | Manquant | S | — |
+| Vue hors ligne des discussions déjà lues [04 #45] : le service worker ne garde que la coque de l'appli | Partiel | M | `web/public/sw.js` |
+| Demander avant d'ouvrir un lien sortant, liste de sites de confiance [RKZ-650] | Manquant | S | — |
+
+### Ordinateurs
+| Manque | État | Taille | Où regarder |
+|---|---|---|---|
+| Clé de sécurité matérielle passée par l'appli de bureau [04 #53] | Manquant | L | — |
+| Faire passer le trafic de l'ordinateur du bot par l'ordinateur de l'utilisateur [04 #54] | Manquant | L | — |
+| Renommer un appareil relié, règles propres à chaque appareil [04 #56] : liste et retrait existent | Partiel | S | `server/src/relay.ts`, `web/src/components/MyComputer.tsx` |
+| Copier des fichiers entre l'ordinateur du bot, le tien et un stockage en ligne [04 #162, spec 07 A15] | Partiel | M | `server/src/agent/mycomputer.ts` |
+| Agents de code distants avec carte de suivi [RKZ-277, 04 #62] : Codex / Claude Code tournent déjà dans l'ordinateur du bot | Partiel | M | `server/src/agent/engine.ts` |
+| Scripts d'installation et secrets d'équipe pour tous les ordinateurs, sudo marche/arrêt [04 #183–185] : `sklubot-install` par ordinateur arrive | Partiel / En cours | M | `docker/desktop/sklubot-install` (non commité) |
+| Écouter le son de l'ordinateur, lire le texte d'une image (OCR), télécharger une vidéo (yt-dlp) | En cours | — | `server/src/media.ts`, `docker/desktop/sound.sh` (non commités) |
+
+### Connecteurs et déclencheurs
+| Manque | État | Taille | Où regarder |
+|---|---|---|---|
+| Déclencheurs GitHub / Linear / Sentry / PagerDuty avec leurs événements [04 #98, RKZ-411] : webhook générique seulement | Partiel | M | `server/src/routes.ts` (`/hooks/:token`) |
+| Connecteurs tickets / incidents et BI avec requête en langage courant [04 #77–78] : GitHub, Notion, Amplitude, Mixpanel au catalogue MCP | Partiel | M | `server/src/catalog.ts` |
+| Liste de connecteurs autorisés / interdits pour une équipe [04 #179] | Manquant | S | — |
+
+### Mémoire et compétences
+| Manque | État | Taille | Où regarder |
+|---|---|---|---|
+| Mémoire d'équipe partagée avec file « accepter / refuser » [04 #92, RKZ-241] | Manquant | L | — |
+| Rappel automatique des souvenirs avant le message (plein texte ou sémantique) [OMB-062, RKZ-242, RKZ-303] : recherche par mots-clés à la demande | Partiel | M | `server/src/agent/tools.ts` |
+| Publier / synchroniser une compétence vers l'équipe, avec versions [04 #83] : bibliothèque intégrée, import GitHub et partage entre bots du compte existent | Partiel | M | `server/src/skillslibrary.ts`, `skillsgithub.ts` |
+| Liste de choses à faire propre au bot / tableau de tickets [RKZ-250–251] : objectifs et tâches de fond seulement | Partiel | S | `server/src/agent/goals.ts`, `bgtasks.ts` |
+
+### Routines
+| Manque | État | Taille | Où regarder |
+|---|---|---|---|
+| Quota horaire d'exécutions de routines [04 #103] : limites d'offre et une exécution à la fois existent | Partiel | S | `server/src/hosted.ts`, `scheduler.ts` |
+| Proposer de mettre les routines en pause après une longue absence [04 #104] | Manquant | S | — |
+| Escalade : faire sonner la personne après 3 rappels sans réponse [RKZ-422] | Manquant | S | — |
+
+### Équipe, partage et administration
+| Manque | État | Taille | Où regarder |
+|---|---|---|---|
+| Coffre, connecteurs, compétences, fichiers partagés **utilisables** par les bots des autres membres ; modes « compte du gérant / compte du bot » [04 #115–117] : registre seulement | Partiel | L | `server/src/workspaces.ts` (`resources`) |
+| Bot partagé en brouillon / publié, recherche des bots partagés, ajout automatique dans les barres latérales [04 #112–114] | Manquant | M | — |
+| Contexte et facturation par demandeur, statistiques d'un bot partagé, routines visibles sur un bot partagé [04 #118–120] : consommation par membre dans la console | Partiel | M | `server/src/workspaces.ts` (`adminView`) |
+| Réglages d'admin d'un espace (délégation, partages, e-mail, pages), relecteur et règles imposés à toute l'équipe, réglages par groupe [04 #177–181, #192] : règles par compte et par bot | Partiel | M | `server/src/rules.ts` |
+| Politique de sortie réseau réglable par liste [04 #182, RKZ-544] : réseau des bots isolé et pare-feu fixe | Partiel | M | `deploy/bots-firewall.sh`, `server/src/net.ts` |
+| Opérations groupées sur les ordinateurs, politiques de conservation (bots, messages) [04 #186–187] : rétention des sauvegardes seulement | Partiel | M | `server/src/autobackup.ts` |
+| Export OpenTelemetry / SIEM, API d'organisation, analyse des conversations, webhook d'inspection des requêtes au modèle [04 #188–191, #193] : journal + CSV | Manquant | L | `server/src/journal.ts` |
+| Accès à un réseau privé de l'entreprise [04 #198] | Manquant | M | (WireGuard prévu : SK-P0-15) |
+
+### Voix
+| Manque | État | Taille | Où regarder |
+|---|---|---|---|
+| Choisir son micro [04 #126] | Manquant | S | — |
+| Reconnexion automatique d'un appel dans l'appli web [04 #123] : faite dans l'appli mobile | Partiel | S | `mobile/src/voice/serverCall.ts` |
+| Carte de fin d'appel (transcription, avis) [04 #124] | En cours | — | `web/src/lib/callSummary.ts` (non commité) |
+| Mémos vocaux envoyés par le bot [04 #125] : les réponses peuvent être écoutées | Partiel | S | `server/src/voice/speak.ts` |
+| Le bot appelle la personne (sonnerie sur ses appareils) [RKZ-223] | Manquant | M | — |
+
+### Applis
+| Manque | État | Taille | Où regarder |
+|---|---|---|---|
+| Mise à jour automatique de l'appli de bureau [04 #127] | Manquant | S | `companion/` |
+| Plusieurs comptes dans une même appli [04 #128] | Manquant | M | — |
+| Partager vers Sklubot depuis le téléphone [04 #130] | Manquant | S | — |
+| Outils du téléphone : agenda, contacts, position, rappels [04 #132] | Manquant | M | — |
+| Notifications : ordinateur d'abord puis téléphone, marche/arrêt par bot [04 #143–144] : types et heures calmes existent | Partiel | S | `server/src/push.ts` |
+
+### Canaux et e-mail
+| Manque | État | Taille | Où regarder |
+|---|---|---|---|
+| Bot utilisable **dans** Slack (MP, mentions, accords dans le fil, liaison de compte, écoute d'un salon) [04 #133, RKZ-510/515/516] : outils et déclencheurs Slack, canal complet = Telegram | Partiel | L | `server/src/native/`, `telegram.ts` |
+| Alias de l'adresse du bot, désabonnement, liste d'exclusion [04 #137–138] : adresse et 50 envois/jour existent | Partiel | S | `server/src/botmail.ts` |
+
+### Coffre et paiements
+| Manque | État | Taille | Où regarder |
+|---|---|---|---|
+| Scanner une carte avec l'appareil photo [04 #152] | Manquant | S | — |
+| Plusieurs paiements sous un seul accord [04 #158] | Manquant | M | — |
+
+### Fichiers, médias, pages
+| Manque | État | Taille | Où regarder |
+|---|---|---|---|
+| Images avec images de référence et format choisi [04 #163, RKZ-267] | Partiel | S | `server/src/images.ts` |
+| Visionneuse : zoom, galerie, vitesse, téléchargement [04 #165] | Partiel | S | `web/src/components/MediaVideo.tsx` |
+| Partager une page à des invités ou à l'équipe ; tableau des pages partagées [04 #168–169] : « lien » ou « moi seulement » | Partiel | S | `server/src/pageroutes.ts`, `routes.ts` (`/p/:token`) |
+| Bibliothèque : filtres par type, épingles, recherche plein texte [04 #170, RKZ-853, SK-P2-05] | Partiel | M | `server/src/routes.ts` (bibliothèque) |
+
+### Consommation, langues, service
+| Manque | État | Taille | Où regarder |
+|---|---|---|---|
+| Graphiques de consommation par bot et par source [04 #174] : tableaux et CSV | Partiel | S | `server/src/usage.ts` |
+| Parrainage, jetons de remise à zéro [04 #175] | Manquant | S | — |
+| 38 langues et correcteur [04 #199] : français et anglais | Partiel | M | `web/src/i18n/` |
+| Page d'état publique, version affichée [04 #200] : `/api/health` et Sentinelle pour le propriétaire | Partiel | S | `server/src/monitor.ts`, `server/src/sentinel/` |
+| Paquets versionnés, flux de versions, déploiement MDM [04 #195] : publications GitHub | Partiel | S | `.github/workflows/desktop.yml` |
+
+### Moteur (idées du cahier 03)
+| Manque | État | Taille | Où regarder |
+|---|---|---|---|
+| Envoi en rafale à plusieurs aides en parallèle [OMB-155] | Manquant | M | — |
+| Choix automatique d'un modèle rapide pour les petites décisions [OMB-106, SK-P2-03] | Manquant | M | — |
+| Dossier prêté synchronisé avec l'ordinateur de l'utilisateur [OMB-210] | Manquant | L | — |
+| Relais téléphone chiffré de bout en bout [OMB-334] | Manquant | L | — |
+| Coordinateur des défaillances (bot en échec, reprise) | En cours | — | `server/src/agent/failures.ts`, `failureroutes.ts` (non commités) |
+| Corrections de l'ancrage sur les mots de l'utilisateur (liens tapés par l'utilisateur…) | En cours | — | `server/src/agent/links.ts`, `grounding.ts` (non commités) |
+
+### Bloqué par un fournisseur / un compte
+Le code peut s'écrire, mais rien ne marche sans un compte (souvent payant) chez un tiers.
+
+| Manque | Ce qu'il faut |
+|---|---|
+| Appels téléphoniques sortants avec transcription, prise de main, enregistrement [04 #140] | Un opérateur téléphonique par API (numéro, minutes payantes) |
+| Réunions Meet / Zoom / Teams : présence, notes, questions, résumé [04 #135–136] | Un service de bot de réunion ou les comptes développeur des plateformes |
+| Portefeuilles de paiement, carte virtuelle à usage unique [04 #73, #159] | Un émetteur de cartes (compte professionnel vérifié) |
+| Appli iOS native, raccourcis Siri, activités en direct, bouton Action [04 #129, #131] | Compte Apple Developer (Android et bureau : faits) |
+| Bot dans Microsoft Teams [04 #134] | Enregistrement d'un bot Azure + locataire Microsoft 365 |
+| Messages privés d'un réseau social, mention publique [04 #141–142] | Accès API validé par la plateforme |
+| Notifications distantes de l'appli mobile [SK-P1-06] | Projet Firebase (FCM) / clé APNs ; aujourd'hui notifications locales (`mobile/app.config.ts`) |
+| Abonnements payants récurrents [04 #173, SK-P1-07] | Compte vendeur Paddle validé ; aujourd'hui crédits prépayés par Paddle (caché sans `PADDLE_*`), abonnements en paiement manuel |
+
+## Bilan chiffré
 
 | Cahier | Fait | Partiel | Manquant | Différent exprès | Total |
 |---|---|---|---|---|---|
-| 01 — produit de base | 50 | 3 | 5 | 11 | 69 |
-| 02 — capacités (inventaire large) | 21 | 32 | 34 | 3 | 90 |
-| 03 — capacités (inventaire large) | 19 | 35 | 25 | 4 | 83 |
-| 04 — documentation publique | 36 | 38 | 43 | 3 | 120 |
-| 05 — évolutions du successeur | 26 | 9 | 2 | 12 | 49 |
-| **Total** | **152** | **117** | **109** | **33** | **411** |
+| 01 — produit de base | 58 | 0 | 0 | 11 | 69 |
+| 02 — capacités (inventaire large) | 75 | 6 | 6 | 3 | 90 |
+| 03 — capacités (inventaire large) | 70 | 4 | 5 | 4 | 83 |
+| 04 — documentation publique | 61 | 30 | 24 | 5 | 120 |
+| 05 — évolutions du successeur | 37 | 0 | 0 | 12 | 49 |
+| **Total** | **301** | **40** | **35** | **35** | **411** |
 
-Le produit de base (01, 05) est presque complet ; les écarts viennent surtout des inventaires larges : équipe et entreprise, canaux, voix, paiements.
+14/11/2026 : 152 / 117 / 109 / 33. Comment lire ces chiffres :
+- Le relevé du 14/11 n'avait pas gardé sa liste ligne par ligne, seulement les totaux. Désormais la liste fait foi : « Partiel » et « Manquant » = les lignes de « Ce qui reste vraiment » (bloqué par un fournisseur compris ; « En cours » compté en Partiel), « Fait » = le reste du cahier hors « Différent exprès ». Une ligne regroupe parfois plusieurs puces du cahier : les chiffres sont donc plutôt optimistes pour 04.
+- 01 et 05 : aucun manque trouvé par les vérifications ciblées (le produit de base et la spec 06 sont couverts) ; pas relus exigence par exigence cette fois.
+- « Différent exprès » ajoutés dans 04 : réglages par formulaire en plus de la discussion [04 #7] et budget mensuel au lieu d'une allocation hebdomadaire [04 #172] (déjà comptés : SSO/SCIM [04 #194], résidence des données — auto-hébergé [04 #196], WhatsApp).
+- 20 « Fait » revérifiés dans le code ce jour : épingler, sections, masquer, dupliquer, ordre de suppression (`agent/retire.ts`), palette de commandes, recherche dans la discussion, `ask_takeover`, import CSV du coffre, `password_generate`, TOTP, « Lancer maintenant » (`POST /routines/:id/run`), webhooks `/hooks/:token`, règles de salon (`RoomRule`), commandes Telegram, journal non modifiable (déclencheur SQLite), `page_edit`, `file_public_link`, export de la mémoire, `x_search`, `task_start`. Tous présents.
+
+### Ce qui est passé à « Fait » depuis le 14/11 (hors vagues détaillées plus bas)
+| Élément | Où |
+|---|---|
+| Réactions, réponses et fils · vidéo · compétence apprise par démonstration (vague 1) | `web/src/components/ThreadPanel.tsx`, `server/src/video.ts`, `server/src/teach.ts` |
+| Mode hébergé : offres, statuts, limites, administration, crédits prépayés payés par Paddle (caché sans `PADDLE_*`) | `server/src/hosted.ts`, `hostedroutes.ts`, `credits.ts`, `billing/paddle.ts` |
+| Inscription publique, vérification de l'e-mail, lien de connexion par e-mail, « Continuer avec Google », double authentification TOTP + codes de secours, « se déconnecter des autres appareils » | `server/src/publicsignup.ts`, `emaillink.ts`, `googlelogin.ts`, `twofactor.ts` |
+| Clé de données avec rotation | `server/src/datakey.ts`, `datakeyrotate.ts`, `rotatekey.ts` |
+| Annonces du propriétaire · page « Aujourd'hui » (résumé quotidien) | `server/src/announcements.ts`, `today.ts`, `web/src/components/TodayView.tsx` |
+| Bibliothèque de compétences + import depuis GitHub · pages interactives versionnées | `server/src/skillslibrary.ts`, `skillsgithub.ts`, `pageroutes.ts`, `web/src/components/PageVersions.tsx` |
+| Voix par bot (Piper, Kokoro, Fish Audio) · écouter les réponses · appels | `server/src/voice/botvoice.ts`, `kokoro.ts`, `fish.ts`, `speak.ts`, `server/src/speechtext.ts`, `calls.ts` |
+| OpenRouter · connecter son abonnement ChatGPT / Claude · bascule à la limite de l'abonnement | `server/src/openrouter.ts`, `subscriptionconnect.ts`, `agent/sublimit.ts` |
+| Sentinelle (surveillance sans IA, incidents, alertes) · `/api/health` utile | `server/src/sentinel/`, `monitor.ts` |
+| Modèles d'équipes (galerie, fichier d'équipe) · import depuis Grok Bot | `server/src/teamfile.ts`, `grokimport.ts` |
+| Accès API par bot (REST + serveur MCP de pilotage) | `server/src/botapi.ts`, `botmcp.ts` |
+| Plafonds de consommation (jour/mois, $ ou jetons) · pauses (bot, section, tout) | `server/src/usagecaps.ts`, `pauses.ts`, `agent/pause.ts` |
+| Sauvegarde automatique chiffrée vers S3 | `server/src/autobackup.ts`, `s3.ts`, `agecrypt.ts` |
+| Appli Android (relais téléphone) + test sur émulateur en CI · appli de bureau · contrôle du rendu sur téléphone/tablette | `android/`, `.github/workflows/android.yml`, `companion/`, `web/scripts/check-responsive.mjs` |
 
 ## Plan de rattrapage (par vagues, une à la fois)
 
 | Vague | Contenu |
 |---|---|
-| 1 (en cours) | Réactions, réponses et fils · vidéo (Higgsfield en priorité, OpenAI/Google en secours) · apprendre une compétence par démonstration |
+| 1 (fait) | ✅ Réactions, réponses et fils · ✅ vidéo (Higgsfield en priorité, OpenAI/Google en secours) · ✅ apprendre une compétence par démonstration |
 | 2 (fait) | ✅ Gmail, Google Agenda, Drive, Outlook, Slack au catalogue · ✅ déclencheurs natifs (e-mail entrant, message Slack, événement à venir) · ✅ plusieurs comptes étiquetés par appli |
 | 3 (fait) | ✅ Notifications push (Web Push) · ✅ le bot demande la prise de main (CAPTCHA, 2FA) et attend · ✅ coffre étendu (clés API en saisie sécurisée, codes TOTP, génération de mot de passe, import CSV) · ✅ épingles, sections, masquer, dupliquer, marquer non lu · ✅ palette de commandes et recherche dans la discussion |
-| 4 (fait, sauf pages privées) | ✅ Fiabilité : modèles de secours ordonnés, nouvelles tentatives, reprise après coupure, messages de progression, rappels de travail bloqué, garde anti-boucle plus fine · ✅ bibliothèque de compétences et profil partagés entre bots · ✅ un bot qui crée des bots / se met à jour · ✅ recherche X · ⏳ pages privées/lien et éditions ciblées (reportées) |
-| 5 (fait, sauf routines) | ✅ Autorisation fondée sur les mots de l'utilisateur · ✅ approbations liées à l'action, exécution unique, résultat « incertain » · ✅ règles en langage naturel + mode « Auto » avec relecteur · ✅ tâches de fond suivies depuis la discussion · ✅ coups de coude proactifs · ✅ mémoire mieux encadrée (sujets sensibles, statuts, import/export, style d'écriture) · ✅ codes de vérification privés et e-mails d'accès masqués · ⏳ routines : retard affiché, quotas, surveillance de commandes |
+| 4 (fait) | ✅ Fiabilité : modèles de secours ordonnés, nouvelles tentatives, reprise après coupure, messages de progression, rappels de travail bloqué, garde anti-boucle plus fine · ✅ bibliothèque de compétences et profil partagés entre bots · ✅ un bot qui crée des bots / se met à jour · ✅ recherche X · ✅ pages privées/lien et éditions ciblées (faites en vague 5b) |
+| 5 (fait) | ✅ Autorisation fondée sur les mots de l'utilisateur · ✅ approbations liées à l'action, exécution unique, résultat « incertain » · ✅ règles en langage naturel + mode « Auto » avec relecteur · ✅ tâches de fond suivies depuis la discussion · ✅ coups de coude proactifs · ✅ mémoire mieux encadrée (sujets sensibles, statuts, import/export, style d'écriture) · ✅ codes de vérification privés et e-mails d'accès masqués · ✅ routines : retard affiché, une exécution à la fois, surveillance (`agent/watch.ts`) ; quota horaire : voir « Ce qui reste » |
 | 6 (fait) | ✅ Voix temps réel avec interruption (whisper.cpp + Piper auto-hébergés, OpenAI facultatif) · ✅ e-mail propre au bot (réception SMTP intégrée, SPF/DKIM/DMARC, relais DKIM) · ✅ espaces d'équipe : bots partagés, rôles, administration |
 | 7 (fait) | ✅ Agent Reach dans chaque ordinateur de bot (lecture seule) et connexions de lecture · ✅ spec 08 (« treg », côté reconstruction) : relais d'identifiants, santé des clés, chaînes de fournisseurs, coût annoncé et réservé, cache, import de projet, liens publics temporaires |
-| 8 | Avec fournisseur externe : appels téléphoniques, réunions, paiements et cartes virtuelles · applis natives iOS / bureau |
+| 8 | Voir « Ce qui reste vraiment » ; avec fournisseur externe : appels téléphoniques, réunions, paiements et cartes virtuelles, appli iOS (appli de bureau : faite, `companion/`) |
 
 ## Vague 2 — ce qui est fait
 
@@ -63,7 +228,7 @@ Le produit de base (01, 05) est presque complet ; les écarts viennent surtout d
 | Profil partagé | Fait — Réglages › Profil (nom, fuseau, entreprise, préférences), outil `profile_update` (accord après contenu extérieur), injecté dans le prompt de chaque bot | `web/src/components/ProfileSection.tsx`, `server/src/agent/prompt.ts` |
 | Un bot crée un bot / se met à jour | Fait — `bot_create` (accord toujours, 3 par jour, démarre « prudent », lien `createdBy`) ; `self_update` (consignes, apparence, familles d'outils ; jamais autonomie, modèle ni nom ; bouton « Annuler » ; accord pour réactiver un outil coupé et après contenu extérieur) | `server/src/agent/tools-team.ts`, table `bot_revisions` |
 | Recherche X | Fait — `x_search` : API X v2 « recent search » avec `X_BEARER_TOKEN` (préférée), sinon outil `x_search` de l'API xAI (Responses) avec `XAI_API_KEY` ; résultats = contenu extérieur | `server/src/xsearch.ts` |
-| Pages privées / éditions ciblées | Reporté à une vague suivante | |
+| Pages privées / éditions ciblées | Fait en vague 5b (voir plus bas) | `server/src/routes.ts` (`/p/:token`), `agent/tools.ts` (`page_edit`) |
 | Tests | `server/test/wave4.test.ts` (faux modèles en panne/surchargés/coupés/muets, fausse API X, fausse API xAI, faux service push) | |
 
 ## Vague 6 — ce qui est fait

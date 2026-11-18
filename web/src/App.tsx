@@ -201,7 +201,7 @@ function MainApp() {
   useEffect(() => {
     void init();
   }, [init]);
-  // Back from Stripe Checkout (/?credits=success|cancel, server credits.ts): Settings → Credits says how it went.
+  // Back from the Paddle checkout (/?credits=success|cancel, server credits.ts): Settings → Credits says how it went.
   useEffect(() => {
     const v = new URLSearchParams(location.search).get("credits");
     if (boot === "ready" && (v === "success" || v === "cancel")) useStore.getState().openAppSettings("subscription");

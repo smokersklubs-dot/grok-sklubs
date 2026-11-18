@@ -33,9 +33,29 @@ export function callEnded(bot: BotRecord, callId: string, rawTranscript: unknown
   const row = rows.append(bot, { kind: "event", event: "call", text: base, call: record });
   // A one-line summary is added to the row a moment later; the call is already recorded without it.
   if (transcript.length)
-    void ask(bot, "You summarise voice calls between a user and their AI teammate.",
+    void ask(bot, "You summarise voice calls between a user and their AI teammate. Answer with the sentence only, in plain words: no JSON, no list, no quotes, no preamble.",
       `Write ONE sentence, past tense, third person, at most 25 words, in ${locale === "fr" ? "French" : "English"}, saying what the call was about and what was agreed.\n\n${transcript.map((l) => `${l.role === "user" ? "User" : bot.name}: ${l.text}`).join("\n").slice(-12_000)}`)
-      .then((summary) => { if (summary) rows.rewrite(bot, row.generation, row.seq, { kind: "event", event: "call", text: base, call: { ...record, summary: clip(summary.replace(/\s+/g, " "), 240) } }); })
+      .then((answer) => {
+        // Only a short human sentence is shown; anything else (an empty memory list, JSON, code) leaves the row as it is.
+        const summary = callSummaryText(answer);
+        if (summary) rows.rewrite(bot, row.generation, row.seq, { kind: "event", event: "call", text: base, call: { ...record, summary } });
+      })
       .catch(() => {});
   return true;
+}
+
+/**
+ * The side model's answer as a call summary, or "" when it is not a plain sentence: a side answer meant for something
+ * else (the memory pass's {"facts": [...]}), any JSON or code, a list, or no words at all is never shown in the chat.
+ */
+export function callSummaryText(raw: unknown): string {
+  let s = String(raw ?? "").trim();
+  if (!s) return "";
+  // A sentence wrapped in quotes or a single code span is unwrapped; a fenced block is code, never a summary.
+  if (/^```/.test(s) || /"\w+"\s*:/.test(s)) return "";
+  s = s.replace(/^["'«“`]+|["'»”`]+$/gu, "").trim();
+  if (!s || /^[[{<]/.test(s) || /[{}]/.test(s)) return "";
+  try { const j = JSON.parse(s); if (j !== null && typeof j === "object") return ""; } catch { /* not JSON: good */ }
+  if (!/\p{L}{2,}/u.test(s) || s.length > 600) return "";
+  return clip(s.replace(/\s+/g, " "), 240);
 }

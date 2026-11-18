@@ -106,16 +106,37 @@ export function formatItems(items: any[], perItem = 1500, total = 15_000): strin
   return out.join("\n\n") || "No results.";
 }
 
+/**
+ * YouTube refuses this server (data-centre addresses). Never a dead end, and never left to the owner while there is a
+ * way the bot can try itself — in this order:
+ *  1. the bot's own computer browser: open the video page, accept YouTube's cookie consent if it shows one (a cookie
+ *     choice, reversible: not a commitment — bind.ts treats "Tout accepter" / "Accept all" as a step), then read the
+ *     transcript panel with the element tools;
+ *  2. if that page is refused too: the owner's own computer through Sklubot Relais, only with their yes (ask_user);
+ *  3. the video's sound on the bot's computer (play it and listen), when its tools can;
+ *  4. when all of that fails: ONE question card with the remedies (open it on my own computer (Relais), paste the
+ *     transcript, skip) — never a bare "YouTube blocks access".
+ */
+export function youtubeBlockedGuide(c: Pick<ToolContext, "user" | "bot">, done: { browser?: boolean } = {}): string {
+  const loc = c.user.locale;
+  const paired = relayDevices.count(c.user.id) > 0 && !c.bot.disabledTools.includes("mycomputer");
+  const options = [tr(loc, "Open the video on my own computer (Relais)"), tr(loc, "Paste the transcript"), tr(loc, "Skip it")];
+  const steps = [
+    done.browser ? "" : "1. Open the video in YOUR computer's browser (browser_open with its address). If YouTube shows a cookie consent page (consent.youtube.com, \"Before you continue\" / \"Avant d'accéder à YouTube\"), accept it (\"Tout accepter\" / \"Accept all\"): it is only a cookie choice, reversible, and needs no approval. Then expand the description, press \"Show transcript\" / \"Afficher la transcription\" (element_snapshot, element_click) and read it with page_read.",
+    `${done.browser ? "1" : "2"}. If your browser is refused too ("Sign in to confirm you're not a bot"): ${paired
+      ? "the user's own computer is paired with Sklubot Relais — ask them (ask_user) whether you may open the video there (my_open, then my_screen), and only do it if they agree."
+      : "the user's own computer could open it if they pair it with Sklubot Relais (Settings → Computers): that is one of the choices of the card below."}`,
+    `${done.browser ? "2" : "3"}. If your computer can hear the video (play it, then listen_screen, or its own audio tools), transcribe its sound that way.`,
+    `${done.browser ? "3" : "4"}. Only when all of that failed: call ask_user ONCE, with question "${tr(loc, "YouTube refuses my server, so I could not read this video's transcript. How do we go on?")}" and options ${JSON.stringify(options)}. Do not just tell the user that YouTube blocks access: the card is the message.`,
+  ].filter(Boolean);
+  return `YouTube is refusing this server ("Sign in to confirm you're not a bot"): it blocks many data-centre addresses. Do not retry this tool and do not try another tool on this server for this video. Go on in this order:\n${steps.join("\n")}`;
+}
+
 function failure(env: Envelope, channel: string, c: ToolContext): ToolOutput {
   const loc = c.user.locale;
   if (youtubeBlocked(env, channel)) {
     const paired = relayDevices.count(c.user.id) > 0 && !c.bot.disabledTools.includes("mycomputer");
-    return {
-      content: `YouTube is refusing this server ("Sign in to confirm you're not a bot"): it blocks many data-centre addresses. Do not retry and do not try another tool on this server. Tell the user plainly.${paired
-        ? " The user's own computer is paired with Sklubot Relais: suggest that you open the video or its subtitles from there (your \"my computer\" tools), and only do it if they agree."
-        : " If they pair their own computer with Sklubot Relais (Settings → Computers), you could open the video from there instead."}`,
-      isError: true, summary: tr(loc, paired ? "YouTube blocks this server — your computer can help" : "YouTube blocks this server"),
-    };
+    return { content: youtubeBlockedGuide(c), isError: true, summary: tr(loc, paired ? "YouTube blocks this server — your computer can help" : "YouTube blocks this server") };
   }
   const e = env.error ?? {};
   const code = e.code ?? "ERROR";

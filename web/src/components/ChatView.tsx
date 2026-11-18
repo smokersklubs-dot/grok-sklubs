@@ -14,6 +14,7 @@ import { FilePreviewPanel } from "./SpendSkillsFiles";
 import { PausedBadge, resumeWidest, setPaused } from "./Pause";
 import { SharedBadge } from "./WorkspacesMailVoice";
 import { IconButton, Menu, MenuItem, isMac, modKey } from "./ui";
+import { ReadAloudChip, ReadAloudMenuItem, useReadAloud } from "./ListenControls";
 
 export function ChatView() {
   const bot = useStore((s) => (s.selectedId ? s.bots[s.selectedId] : undefined));
@@ -26,6 +27,7 @@ export function ChatView() {
   const [menu, setMenu] = useState(false);
   const [confirmNew, setConfirmNew] = useState(false);
   const t = useT();
+  useReadAloud(bot, thread);
 
   if (!bot) {
     return (
@@ -100,6 +102,7 @@ export function ChatView() {
             >
               {t(confirmNew ? "chat.confirmNew" : "chat.newConversation")}
             </MenuItem>}
+            <ReadAloudMenuItem bot={bot} onDone={close} />
             <MenuItem
               icon="search"
               onClick={() => {
@@ -127,6 +130,7 @@ export function ChatView() {
         </div>
         <span className="chat-head-right">
           <SharedBadge bot={bot} />
+          <ReadAloudChip bot={bot} />
           <CallHeadButton bot={bot} />
           {recording && recording.status !== "error" && (
             <button type="button" className="rec-chip" onClick={() => openViewer(bot.id, { control: true })} title={t("teach.openViewer")}>

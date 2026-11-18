@@ -66,6 +66,7 @@ function previewOf(body: RowBody, locale: Locale): string {
     if (c.type === "pastedsecret") return tr(locale, "A secret was masked in your message");
     if (c.type === "files") return tr(locale, "Files changed: {n}", { n: c.files.length + c.more });
     if (c.type === "goal") return tr(locale, "Goal: {objective}", { objective: c.objective });
+    if (c.type === "failure") return tr(locale, "A problem needs you");
     return tr(locale, "Connect {name}", { name: c.name });
   }
   return "";
@@ -232,11 +233,14 @@ export const bots = {
     if (patch.voice && typeof patch.voice === "object") {
       const v = patch.voice as Record<string, unknown>;
       const rate = Number(v.rate);
+      // « Lire les réponses à voix haute » (voice/speak.ts): kept as it was when a patch does not say (older apps).
+      const was = v.readAloud === undefined ? !!(safeJson(q.get<{ voice: string }>("SELECT voice FROM bots WHERE id = ?", id)?.voice || "{}") as { readAloud?: unknown } | null)?.readAloud : false;
       sets.push("voice = ?");
       vals.push(JSON.stringify({
         name: typeof v.name === "string" ? v.name.slice(0, 120) : "",
         rate: Number.isFinite(rate) ? Math.min(1.5, Math.max(0.7, rate)) : 1,
         lang: typeof v.lang === "string" ? v.lang.slice(0, 20) : "auto",
+        ...((v.readAloud === undefined ? was : v.readAloud === true) ? { readAloud: true } : {}),
       }));
     }
     if (patch.character && typeof patch.character === "object") {
@@ -665,7 +669,7 @@ export const settings = {
   reliability(userId: string): Omit<ReliabilitySettings, "envFallbacks"> {
     const raw = (safeJson(q.get<{ reliability: string }>("SELECT reliability FROM settings WHERE user_id = ?", userId)?.reliability ?? "{}") ?? {}) as Record<string, unknown>;
     const int = (v: unknown, max: number, fallback: number) => (Number.isInteger(v) ? Math.min(max, Math.max(0, v as number)) : fallback);
-    return { fallbackModels: cleanModelList(raw.fallbackModels), maxRetries: int(raw.maxRetries, RELIABILITY_LIMITS.maxRetries, 3), maxContinuations: int(raw.maxContinuations, RELIABILITY_LIMITS.maxContinuations, 3) };
+    return { fallbackModels: cleanModelList(raw.fallbackModels), maxRetries: int(raw.maxRetries, RELIABILITY_LIMITS.maxRetries, 3), maxContinuations: int(raw.maxContinuations, RELIABILITY_LIMITS.maxContinuations, 3), mutualAid: raw.mutualAid !== false };
   },
   saveReliability(userId: string, f: Partial<Omit<ReliabilitySettings, "envFallbacks">>) {
     const cur = settings.reliability(userId);

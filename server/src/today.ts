@@ -9,6 +9,8 @@ import { localMidnight, userTimezone } from "./usagecaps.js";
 import { sharedBotsFor, type BotAccess } from "./workspaces.js";
 import { criticalNeeds } from "./sentinel/view.js";
 import { limitsFor } from "./sublimitview.js";
+import { CLASS_TITLES, failureSummary } from "./agent/failures.js";
+import { tr } from "./i18n.js";
 
 /**
  * "Aujourd'hui" — one page for the day: what only the user can fix now ("Ce qui t'attend"), what their bots finished
@@ -186,6 +188,7 @@ function cardNeeds(bot: BotRecord, opts: { approveOnly: boolean; shared: boolean
       case "cap": if (c.status === "pending") out.push(need("cap", c.botName || bot.name, c.cap ? `${c.cap.period} ${c.cap.unit}` : "")); break;
       case "spend": if (c.status === "pending") out.push(need("spend", c.title, `${c.spentUsd.toFixed(2)} $ / ${c.thresholdUsd.toFixed(2)} $`)); break;
       case "disk": if (c.status === "pending") out.push(need("disk", `${c.usedPct} %`, "")); break;
+      case "failure": if (c.status === "pending") out.push(need("failure", tr(users.localeOf(bot.userId), CLASS_TITLES[c.cls]), c.tool ? `${c.tool} · ${c.detail}` : c.detail)); break;
       case "connect": if (c.status === "pending") out.push(need("connector", c.name, c.reason)); break;
       case "secret": if (c.status === "pending") out.push(need("secret", c.name, c.reason)); break;
       case "takeover": if (c.status === "pending" && c.expiresAt > now()) out.push(need("takeover", c.detail || c.reason)); break;
@@ -245,7 +248,7 @@ function needsOf(userId: string, scope: Scope, t: number): TodayNeed[] {
   }
   // The server's owner (and hosted operators): a critical incident of the Sentinelle not acknowledged yet → Surveillance.
   for (const i of criticalNeeds(userId)) out.push({ kind: "incident", botId: null, botName: "", title: i.title, detail: clip(i.detail, 240), at: i.at, link: { kind: "surveillance", incidentId: i.id } });
-  const order: TodayNeed["kind"][] = ["incident", "plan", "approval", "question", "takeover", "secret", "cap", "spend", "uncertain", "disk", "connector", "stalled", "silent", "continue", "paused", "routine", "goal", "review"];
+  const order: TodayNeed["kind"][] = ["incident", "plan", "approval", "question", "takeover", "secret", "cap", "spend", "uncertain", "failure", "disk", "connector", "stalled", "silent", "continue", "paused", "routine", "goal", "review"];
   return out.sort((x, y) => order.indexOf(x.kind) - order.indexOf(y.kind) || y.at - x.at);
 }
 
@@ -404,6 +407,8 @@ export function todayReport(userId: string, date?: string, t = now()): TodayRepo
     cost: costOf(userId, day.start, day.end, t),
     // Subscriptions at their usage limit now, and when they come back (agent/sublimit.ts): today only.
     ...(day.today ? { limits: limitsFor(userId) } : {}),
+    // « Coordinateur d'échecs »: incidents fixed automatically and waiting for the owner, providers down now (failures.ts).
+    failures: failureSummary(userId, day.start, day.end, t),
   };
 }
 

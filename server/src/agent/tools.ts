@@ -45,7 +45,7 @@ import { apiTools, scrubSecret } from "../apiconnectors.js";
 import { botMailTools } from "../botmail.js";
 import { ruleTools } from "./ruletools.js";
 import { pageTools } from "./pagetools.js";
-import { reachAvailable, reachTools } from "../reach.js";
+import { reachAvailable, reachTools, youtubeBlockedGuide } from "../reach.js";
 import { attemptsText, DEFAULT_MAX_COST_USD, paidConsents, paidGate, runChain, searchChainAvailable, searchProviders, servedLine, transcribeProviders } from "../providers.js";
 import { cached, cachePolicy, idemKeyOf, release, remember, reserve, settle } from "../thirdparty.js";
 import { commandEnded, commandStarted, provisionRelay, relayHint } from "../egress.js";
@@ -56,6 +56,7 @@ import { writeComputerFile } from "../linux.js";
 import { workspaceOf } from "../computer.js";
 import { JobLimitError, jobLine, jobOutput, jobs, runCommand, stopJob } from "../jobs.js";
 import { officeAvailable, officeTools } from "../office.js";
+import { mediaAvailable, mediaTools } from "../media.js";
 import { goalTools } from "./goals.js";
 import { botPath, spillPath, spillPreview } from "./context.js";
 
@@ -835,7 +836,8 @@ const transcribeTools: BuiltinTool[] = [
       if (o.needsConsent) return { content: `The free ways did not work. The next way is paid: ${o.needsConsent.label} (price not known in advance). Ask the user, or call transcribe again with allow_paid: true.\n${attemptsText(o)}`, summary: line };
       if (!o.result) {
         const blocked = o.attempts.some((x) => /blocks this server|confirm you|not a bot/i.test(x.detail));
-        return { content: `No transcript.${blocked ? " YouTube blocks this server; if the user's own computer is paired with Sklubot Relais, suggest opening the video from there." : ""}\n${attemptsText(o)}`, isError: true, summary: blocked ? tr(c.user.locale, "YouTube blocks this server") : line };
+        // Blocked: the ordered way round (the bot's own browser, the owner's computer, the sound, then one card) — reach.ts.
+        return { content: `No transcript.${blocked ? ` ${youtubeBlockedGuide(c)}` : ""}\n${attemptsText(o)}`, isError: true, summary: blocked ? tr(c.user.locale, "YouTube blocks this server") : line };
       }
       const text = clip(o.result, 60_000);
       remember(c.user.id, "transcribe", "chain", args, text, cachePolicy(c.user.id, "transcribe"));
@@ -1352,6 +1354,8 @@ function assemble(opts: { nativeSearch?: boolean; video?: "connector" | "api" | 
     // Background jobs and office documents: on the bots' own Linux computers only (shell_run starts the jobs).
     ...(computerKind() === "linux" && shellAvailable() ? inGroup("shell", jobTools) : []),
     ...(officeAvailable() ? officeTools : []),
+    // Listening, watching a video, downloading one, OCR: on the bots' own Linux computers only (media.ts).
+    ...(mediaAvailable() ? inGroup("computer", mediaTools) : []),
     ...workTools.filter((t) => t.spec.name !== "shell_run" || shellAvailable())
       .map((t): BuiltinTool => ({ ...t, group: t.spec.name === "shell_run" ? "shell" : t.spec.name === "web_fetch" ? "web" : "files", sensitive: t.spec.name === "shell_run" && computerKind() === "linux" ? false : t.sensitive })),
     ...(searchChainAvailable() && !opts.nativeSearch ? searchTools : []),
