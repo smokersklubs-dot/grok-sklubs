@@ -1,0 +1,11 @@
+html, body { margin: 0; background: transparent; overflow: hidden; pointer-events: none; }
+#tip { position: absolute; width: 0; height: 0; --ink: #5034a1; }
+#tip i { position: absolute; top: -10px; left: -10px; width: 16px; height: 16px; border: 2px solid white; border-radius: 50%; box-shadow: 0 0 0 2px var(--ink); }
+#tip.pressed i { background: #7655c950; box-shadow: 0 0 0 3px var(--ink); }
+#tip::after { content: ''; position: absolute; width: 11px; height: 16px; background: var(--ink); clip-path: polygon(0 0, 100% 55%, 58% 62%, 45% 100%); transform-origin: 0 0; }
+#tip.left::after { transform: scaleX(-1); }
+#tip.above::after { transform: scaleY(-1); }
+#tip.left.above::after { transform: scale(-1); }
+#name { position: absolute; top: 10px; left: 10px; max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border: 1px solid white; border-radius: 3px 10px 10px 10px; padding: 2px 8px; background: var(--ink); color: white; font: 600 12px/16px system-ui, sans-serif; }
+#tip.left #name { left: auto; right: 10px; }
+#tip.above #name { top: auto; bottom: 10px; }

@@ -1,7 +1,7 @@
 {
   "name": "sklubot-desktop",
   "productName": "Sklubot",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Sklubot : ton équipe de bots dans une fenêtre, avec le Relais intégré pour qu'ils pilotent ton ordinateur, avec ton accord.",
   "license": "MIT",
   "private": true,

@@ -299,6 +299,13 @@ test("a bot looks at the user's computer: approval card first, then the relay's 
 });
 
 test("a click inside the session: no new card, coordinates scaled from the screenshot to the screen", async () => {
+  const beforePoint = relay.reqs.length;
+  await say(bot, 'call my_point {"x":80,"y":40}');
+  const move = await relay.waitReq("mouse.move", beforePoint);
+  assert.deepEqual([move.args.x, move.args.y], [160, 80]);
+  await replied(bot, "Pointed at (80, 40)");
+  assert.ok(!relay.reqs.slice(beforePoint).some((r) => r.op === "mouse.click"));
+  await idle(bot);
   const from = relay.reqs.length;
   await say(bot, 'call my_click {"x":100,"y":50}');
   const click = await relay.waitReq("mouse.click", from);

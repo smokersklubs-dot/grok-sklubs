@@ -130,6 +130,8 @@ test(`relay end-to-end (${MODE})`, { timeout: 240_000 }, async (t) => {
     assert.equal((await server.request('mouse.move', { x: 640, y: 700 }, ALICE)).ok, true);
     const pos = h.robot.getMousePos();
     assert.deepEqual([pos.x, pos.y], [640, 700]);
+    await h.waitColor({ x: 624, y: 684, w: 150, h: 60 }, '#5034a1', 1800);
+    h.screenshot(`${MODE}-bot-pointer.png`, '160x66+624+684');
     assert.equal((await server.request('mouse.drag', { fromX: 120, fromY: 300, toX: 300, toY: 320 }, ALICE)).ok, true);
   });
 

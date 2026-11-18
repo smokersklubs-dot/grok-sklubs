@@ -47,6 +47,10 @@ Limite connue : la **dictée** qui s'appuie sur la reconnaissance vocale intégr
 
 ## Le Relais (laisser tes bots piloter cet ordinateur)
 
+Quand tu donnes la main, un pointeur violet porte le nom du bot. Il marque l’endroit où le bot pointe, clique, défile ou dépose un élément. Il s’efface après deux secondes d’inactivité. Le bandeau reste affiché pendant toute la prise de contrôle. **Stop** dans le bandeau ou **Ctrl + Alt + Maj + S** sous Windows rend immédiatement la main.
+
+Essaie « Montre-moi où cliquer pour ouvrir les réglages, puis rends-moi la main ». Le bot observe ton écran avec `my_screen`, utilise `my_point` pour désigner le bouton et termine avec `my_release`. Pour un clic demandé, `my_click` renvoie une nouvelle capture afin que le bot vérifie le résultat. Les coordonnées se lisent depuis le coin supérieur gauche de la dernière capture. Par exemple, le centre d’une capture de 800 × 450 pixels est `{"x":400,"y":225}`, quel que soit le zoom de Windows.
+
 Menu **Sklubot › Relais…** (ou l'icône de la barre › **Relais…**) ouvre le panneau du Relais.
 
 - Il se connecte à **ton** serveur Sklubot ; il n'ouvre aucun port sur ton ordinateur.

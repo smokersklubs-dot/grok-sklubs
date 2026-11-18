@@ -19,8 +19,9 @@ const { execFile } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
 
-/** @param {typeof import('electron')} electron */
-function createDesktopCaps(electron) {
+/** @param {typeof import('electron')} electron @param {(action: string) => void} [showPointer]
+ * @param {() => object|null} [getSession] */
+function createDesktopCaps(electron, showPointer = () => {}, getSession) {
   const { desktopCapturer, screen, shell, systemPreferences } = electron;
   /** @type {any} */
   let robot = null;
@@ -104,6 +105,7 @@ function createDesktopCaps(electron) {
   function mouseMove(a) {
     const p = toRobot(a.x, a.y);
     getRobot().moveMouse(p.x, p.y);
+    showPointer('move');
     return {};
   }
 
@@ -112,6 +114,7 @@ function createDesktopCaps(electron) {
     const r = getRobot();
     if (a.x !== null && a.y !== null) { const p = toRobot(a.x, a.y); r.moveMouse(p.x, p.y); }
     r.mouseClick(a.button, a.double);
+    showPointer('click');
     return {};
   }
 
@@ -120,14 +123,18 @@ function createDesktopCaps(electron) {
     const r = getRobot();
     const from = toRobot(a.fromX, a.fromY);
     const to = toRobot(a.toX, a.toY);
+    const session = getSession?.();
     r.moveMouse(from.x, from.y);
     r.mouseToggle('down', a.button);
-    const steps = 12;
-    for (let i = 1; i <= steps; i++) {
-      r.dragMouse(Math.round(from.x + ((to.x - from.x) * i) / steps), Math.round(from.y + ((to.y - from.y) * i) / steps));
-      await new Promise((res) => setTimeout(res, 8));
-    }
-    r.mouseToggle('up', a.button);
+    try {
+      const steps = 12;
+      for (let i = 1; i <= steps; i++) {
+        if (getSession && (!session || getSession() !== session)) throw new Error('Control session interrupted');
+        r.dragMouse(Math.round(from.x + ((to.x - from.x) * i) / steps), Math.round(from.y + ((to.y - from.y) * i) / steps));
+        showPointer('drag');
+        await new Promise((res) => setTimeout(res, 8));
+      }
+    } finally { r.mouseToggle('up', a.button); }
     return {};
   }
 
@@ -142,6 +149,7 @@ function createDesktopCaps(electron) {
     if (a.x !== null && a.y !== null) { const p = toRobot(a.x, a.y); r.moveMouse(p.x, p.y); }
     const unit = process.platform === 'win32' ? 120 : process.platform === 'darwin' ? 40 : 1;
     r.scrollMouse(-a.dx * unit, -a.dy * unit);
+    showPointer('scroll');
     return {};
   }
 

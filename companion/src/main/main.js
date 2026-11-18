@@ -19,6 +19,7 @@ const { RelayCore } = require('./relay-core');
 const { RelayConnection } = require('./connection');
 const { normalizeServer, OPS, LIMITS, PROTOCOL_REVISION } = require('./protocol');
 const { createDesktopCaps } = require('./capabilities/desktop');
+const { createBotPointer } = require('./bot-pointer');
 const { runShell } = require('./capabilities/shell');
 const { createFileCaps, shareProblem } = require('./capabilities/files');
 const i18n = require('./i18n');
@@ -68,6 +69,7 @@ if (!app.requestSingleInstanceLock()) {
 /** @type {RelayConnection | null} */ let conn = null;
 /** @type {Electron.BrowserWindow | null} */ let mainWin = null;
 /** @type {Electron.BrowserWindow | null} */ let bannerWin = null;
+/** @type {ReturnType<typeof createBotPointer>} */ let pointer;
 /** @type {Electron.Tray | null} */ let tray = null;
 /** @type {AppSettings} */ let appSettings;
 /** @type {ReturnType<typeof createAppShell> | null} */ let appShell = null;
@@ -112,7 +114,8 @@ async function boot() {
   if (process.platform === 'win32') app.setAppUserModelId('fr.sklubot.desktop');
   appSettings = new AppSettings(userData).load();
 
-  const desktop = createDesktopCaps(electron);
+  pointer = createBotPointer(electron);
+  const desktop = createDesktopCaps(electron, (action) => pointer.mark(action), () => core?.state().prompt ? null : core?.session);
   core = new RelayCore({
     send: (msg) => (conn ? conn.send(msg) : false),
     // Files: only in the folders the user shares below; the previous version of a file goes to the OS trash.
@@ -254,7 +257,8 @@ const consentUI = {
   },
   /** @param {any} session */
   onSession(session) {
-    if (session) showBanner(session.botName); else hideBanner();
+    if (session) { showBanner(session.botName); pointer.start(session.botName); }
+    else { pointer.close(); hideBanner(); }
     updateTray();
     pushState();
   },

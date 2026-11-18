@@ -207,7 +207,7 @@ async function capture(c: ToolContext, t: Target): Promise<{ text: string; image
   if (typeof res.data !== "string" || !res.data) return { ok: false, code: "internal", message: "empty capture" };
   const text = t.kind === "phone"
     ? `Screenshot of the phone ${t.label}: ${res.width}×${res.height} pixels (the screen itself is ${res.screenWidth}×${res.screenHeight}). Give coordinates to my_click (a tap), my_drag and my_scroll in pixels of this picture, from its top-left corner. my_windows lists the text on screen with positions.`
-    : `Screenshot of ${t.label}: ${res.width}×${res.height} pixels (the screen itself is ${res.screenWidth}×${res.screenHeight}). Give coordinates to my_click, my_drag and my_scroll in pixels of this picture, from its top-left corner.`;
+    : `Screenshot of ${t.label}: ${res.width}×${res.height} pixels. Use this picture’s pixels from the top left. Use my_point to show a visible control without clicking. Use my_click or my_drag only for the requested action, check the result on the next screenshot, then my_release. The named pointer is feedback from the desktop app.`;
   return { text, image: { type: "image", mediaType: res.format === "png" ? "image/png" : "image/jpeg", data: res.data } };
 }
 
@@ -391,6 +391,19 @@ export const myComputerTools: BuiltinTool[] = [
       const shot = await capture(c, t);
       if (!("image" in shot)) return failed(c, t, shot);
       return { content: [{ type: "text", text: shot.text }, shot.image], summary: t.name };
+    }),
+  }),
+  tool("my_point", "Point to a visible item on the user’s linked PC without clicking. Use my_screen first. Report which item you indicated. If the item moved or is missing, look again.",
+    obj({ device: DEVICE, x: numb("Pixels from the left of the latest screenshot"), y: numb("Pixels from the top") }, ["x", "y"]), {
+    activity: "computer", label: "Pointing on your computer", audited: true, outside: true, gate: controlGate,
+    run: async (a, c) => inSession(c, a, "session-only", "", async (t) => {
+      if (t.kind === "phone") return { content: "Pointing is available on linked computers only.", isError: true };
+      const shot = liveDevice(c.user.id, t.id)?.lastCapture;
+      if (!shot || !Number.isFinite(a.x) || !Number.isFinite(a.y) || a.x < 0 || a.y < 0 || a.x >= shot.width || a.y >= shot.height)
+        return { content: "Use my_screen and choose a point inside that picture.", isError: true };
+      const r = await act(c, t, "mouse.move", toScreen(c, t, a.x, a.y));
+      if (!r.ok) return failed(c, t, r);
+      return { content: `Pointed at (${a.x}, ${a.y}) on ${t.label}. No click was sent.`, summary: `${a.x}, ${a.y}` };
     }),
   }),
   tool("my_click", "Click on the user's own computer, or tap on their phone, at a position in your last my_screen screenshot (pixels from its top-left corner). Returns a new screenshot.",
