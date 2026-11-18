@@ -32,6 +32,8 @@ Sklubot a été reconstruit **en salle blanche** : voir [docs/CLEANROOM.md](docs
 | **Langue** | Interface, textes du serveur et réponses des bots en **français ou en anglais** |
 | **Téléphone** | Version mobile installable sur l'écran d'accueil (iPhone, iPad) et **application Android (APK)** à télécharger depuis ton serveur |
 | **Ordinateur (application)** | **Application Sklubot pour Windows, macOS et Linux** : ton Sklubot dans sa propre fenêtre, notifications, icône dans la barre avec les non-lus, et le **Relais intégré** pour que tes bots pilotent ton ordinateur avec ton accord — voir [companion/LISEZMOI.md](companion/LISEZMOI.md) |
+| **Artefacts web** | Créer un prototype privé dans le chat, le modifier, consulter ses versions et télécharger ses fichiers. [Guide des artefacts](docs/ARTEFACTS.md) |
+| **Méthodes de travail** | Claude Code, Codex et Grok disposent de 60 procédures françaises consultables par titre avec `guide_read` et d’un index de 169 ressources OpenDesign. [Manuel portable](server/templates/methodes/manuel.md) · [Répertoire OpenDesign](server/templates/methodes/opendesign.md) |
 | **Mise en ligne** | **Installation sur un VPS en une commande** (Docker, HTTPS automatique, mises à jour, sauvegarde) — voir [docs/INSTALLATION-VPS.md](docs/INSTALLATION-VPS.md) ; ou Coolify — voir [docs/DEPLOIEMENT.md](docs/DEPLOIEMENT.md) |
 | **Mémoire** | Souvenirs enregistrés par le bot, **apprentissage automatique** après les conversations (avec dédoublonnage), sélection des souvenirs pertinents à chaque tour, **résumé automatique** des longues conversations |
 | **Compétences** | Procédures rédigées par toi, injectées dans le bot |

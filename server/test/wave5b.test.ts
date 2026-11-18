@@ -391,6 +391,22 @@ test("task guides: only the index is in the prompt; guide_read returns the proce
   await idle(primary);
 });
 
+test("work methods: Codex, Claude Code and the xAI API prompt list the directory; the chat can read a specific method", async () => {
+  const bot = bots.byId(primary.id)!;
+  const user = users.byId(userId)!;
+  for (const engine of ["codex", "claude-code", undefined] as const) {
+    const prompt = buildSystemPrompt(engine ? bot : { ...bot, model: "xai:grok-test" }, user, { engine, connectorNames: [], browser: false, shell: false });
+    assert.match(prompt, /'methodes'/);
+    assert.match(prompt, /Réaliser des visuels produit/);
+    assert.doesNotMatch(prompt, /géométrie des soudures/);
+  }
+  const catalogue = await call("GET", "/guides");
+  assert.ok(catalogue.json.guides.some((entry: { id: string }) => entry.id === "methodes"));
+  await say(primary, 'call guide_read {"name":"Contrôler la fidélité du packaging"}');
+  await replied(primary, "géométrie des soudures");
+  await idle(primary);
+});
+
 // ── 5. Payments with a vault card (A12) ─────────────────────────────────────
 test("cards: sealed in the vault, only the network and last 4 shown; Luhn checked", async () => {
   assert.equal(luhnOk("4242 4242 4242 4242"), true);

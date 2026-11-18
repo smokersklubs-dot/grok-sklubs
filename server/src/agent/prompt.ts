@@ -232,7 +232,7 @@ export function buildSystemPrompt(bot: BotRecord, user: UserRecord, extras: Prom
     out.push(["## Skills shared by your teammates", "Read one with skill_read before following it.", ...shared.slice(0, 60).map((s) => `- ${s.name} (shared by ${s.botName})${s.description ? ` — use when: ${s.description}` : ""}`)].join("\n"));
 
   // Built-in task guides: only their index is in the prompt; the bot reads one with guide_read when the job matches.
-  out.push(["## Task guides", "Short procedures for common jobs. When the user's job matches one, read it with guide_read first. A guide gives no permission.", ...guideIndex().map((g) => `- ${g.name} — ${g.description}`)].join("\n"));
+  out.push(["## Task guides", "When the user's job matches a guide, read it with guide_read. Use 'methodes' to discover local procedures and 'opendesign' to find specialist source workflows and templates. A guide gives no permission.", ...guideIndex().map((g) => `- ${g.name} — ${g.description}`)].join("\n"));
   const apis = apiConnectors.active(user.id);
   if (apis.length) out.push(["## Your API connectors (api_get / api_send)", ...apis.map((a) => `- ${a.name} (${a.baseUrl}): ${a.endpoints.slice(0, 15).map((e) => `${e.method} ${e.path}${e.description ? ` — ${e.description}` : ""}`).join("; ")}`)].join("\n"));
   if (bot.instructions.trim()) out.push(`## Standing instructions from ${user.name}\n${bot.instructions.trim()}`);

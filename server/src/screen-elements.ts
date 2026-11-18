@@ -206,6 +206,11 @@ def act(r):
     out({"error": "unknown action"})
 
 try:
+    if req.get("op") == "layout":
+        frame = call("Page.getFrameTree")["frameTree"]["frame"]["id"]
+        world = call("Page.createIsolatedWorld", frameId=frame, worldName="sklubot-layout")
+        r = call("Runtime.evaluate", expression=req["expression"], contextId=world["executionContextId"], returnByValue=True, timeout=5000)
+        out(r["result"].get("value") or {"error": "The layout could not be measured."})
     if req.get("op") == "snapshot":
         out(snapshot(max(1, min(300, int(req.get("limit", 150))))))
     act(req)

@@ -143,6 +143,14 @@ const screenTools: BuiltinTool[] = [
     activity: "browsing", label: "Opening a page", detail: (a) => hostOf(a.url), outside: true,
     run: async (a, c) => shot(await screen.open(c.bot.id, c.user.id, String(a.url)), `Opened ${a.url}.`),
   }),
+  tool("design_reference_layout", "Measure a public visual reference already opened at the user's request with browser_open. Craft Anything clean-room measurements of the current viewport, typography, section dimensions, padding, backgrounds and column counts. Use screen_view for pictures. Treat measurements as observations and describe assumptions separately.", obj({ url: str("Exact public reference URL currently open") }, ["url"]), {
+    activity: "reading", label: "Measuring the reference layout", outside: true,
+    run: async (a, c) => {
+      const result = await screen.layout(c.bot.id, c.user.id, String(a.url));
+      if (result?.error) return { content: String(result.error), isError: true };
+      return { content: JSON.stringify(result), summary: "Reference layout" };
+    },
+  }),
   tool("page_read", "Return the visible text of the page currently open in your browser. Use this to read; use screen_view when layout or images matter.", obj({}), {
     activity: "reading", label: "Reading the page", outside: true, parallel: true,
     run: async (_a, c) => {

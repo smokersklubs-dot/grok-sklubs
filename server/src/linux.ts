@@ -658,6 +658,8 @@ async function runElements<T>(name: string, req: object): Promise<T> {
 }
 
 export const linuxScreen = {
+  layout: (botId: string, userId: string, ws: string, expression: string) =>
+    onMachine(botId, userId, ws, (name) => runElements<{ error?: string }>(name, { op: "layout", expression })),
   view: (botId: string, userId: string, ws: string) => onMachine(botId, userId, ws, async (n) => { await pause(300); return capture(n); }),
   open: (botId: string, userId: string, ws: string, url: string) => onMachine(botId, userId, ws, async (n) => {
     const target = /^[a-z][a-z0-9+.-]*:/i.test(url) ? url : `https://${url}`;

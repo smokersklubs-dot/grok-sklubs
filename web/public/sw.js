@@ -3,7 +3,7 @@
  * It caches the app shell only (the page, its scripts and styles, the icons).
  * Requests under /api/ are never handled here, so they always go straight to the network.
  */
-const CACHE = "sklubot-shell-v2";
+const CACHE = "sklubot-shell-v3";
 const SHELL = ["/", "/manifest.webmanifest", "/icon.svg", "/icon-192.png", "/icon-512.png", "/apple-touch-icon.png"];
 
 self.addEventListener("install", (event) => {
@@ -39,7 +39,7 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
   // Network only: the API (data, files, the event stream) is never cached or answered from here.
-  if (url.pathname === "/api" || url.pathname.startsWith("/api/") || url.pathname.startsWith("/download/")) return;
+  if (url.pathname === "/api" || url.pathname.startsWith("/api/") || url.pathname.startsWith("/p/") || url.pathname.startsWith("/download/")) return;
 
   // Opening the app: try the network for a fresh page, fall back to the cached shell when offline.
   if (request.mode === "navigate") {

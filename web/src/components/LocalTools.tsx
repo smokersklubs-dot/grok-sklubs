@@ -35,6 +35,9 @@ function AddForm({ bot, onDone, onState }: { bot: Bot; onDone: () => void; onSta
   };
   return (
     <form className="editor" onSubmit={submit}>
+      <button className="btn btn-small" type="button" onClick={() => {
+        setName("Claude Artifacts"); setCommand("npx"); setArgs("-y\n--package\nclaude-artifacts@0.1.18\nclaude-artifacts-mcp");
+      }}>{t("artifact.mcpPreset")}</button>
       <div className="field">
         <label className="field-label" htmlFor={`${id}n`}>{t("common.name")}</label>
         <input id={`${id}n`} className="input" value={name} maxLength={40} onChange={(e) => setName(e.target.value)} placeholder={t("localTools.namePlaceholder")} autoFocus />

@@ -3,6 +3,7 @@ import { createRequire } from "node:module";
 import { closeSync, constants as FS, fstatSync, ftruncateSync, lstatSync, mkdirSync, openSync, readdirSync, readFileSync, readlinkSync, realpathSync, rmSync, unlinkSync, writeFileSync, type Stats } from "node:fs";
 import path from "node:path";
 import { config } from "./config.js";
+import { layoutExpression } from "./artifact-design.js";
 import { assertPublicUrl } from "./net.js";
 import { emit } from "./bus.js";
 import { bots, now, settings } from "./store.js";
@@ -241,6 +242,20 @@ const noteUrl = <T extends { url: string }>(botId: string, r: T): T => { if (r.u
 
 /** The bot's screen, whichever kind of computer it has. */
 export const screen = {
+  async layout(botId: string, userId: string, reference: string) {
+    const expr = layoutExpression(reference);
+    await assertPublicUrl(reference);
+    return kind === "linux" ? linuxScreen.layout(botId, userId, workspaceOf(botId), expr)
+      : withDesktop(botId, userId, async (d) => {
+        const session = await d.context.newCDPSession(d.page);
+        try {
+          const { frameTree } = await session.send("Page.getFrameTree");
+          const { executionContextId } = await session.send("Page.createIsolatedWorld", { frameId: frameTree.frame.id, worldName: "sklubot-layout" });
+          const { result } = await session.send("Runtime.evaluate", { expression: expr, contextId: executionContextId, returnByValue: true, timeout: 5000 });
+          return result.value ?? { error: "The layout could not be measured." };
+        } finally { await session.detach(); }
+      });
+  },
   view: (botId: string, userId: string) => (kind === "linux" ? linuxScreen.view(botId, userId, workspaceOf(botId)) : browserScreen.view(botId, userId)),
   open: (botId: string, userId: string, url: string) => (kind === "linux" ? linuxScreen.open(botId, userId, workspaceOf(botId), url) : browserScreen.open(botId, userId, url)).then((r) => { reportedUrl.set(botId, r.url || url); return r; }),
   click: (botId: string, userId: string, x: number, y: number, button: "left" | "right" | "middle" = "left", double = false) =>
