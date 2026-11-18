@@ -1,5 +1,27 @@
 import { ApiClient, ApiError, checkHealth, multipartBody, type FetchLike } from "../src/api/client";
 
+it("sends large files in server-sized reads and closes the native handle", async () => {
+  const bytes = new Uint8Array([1, 2, 3, 4, 5]);
+  const handle = {
+    offset: 0,
+    readBytes: async (count: number) => bytes.slice(handle.offset, handle.offset + count),
+    close: jest.fn(),
+  };
+  const parts: number[][] = [];
+  const client = new ApiClient({ origin: "https://example.org", token: "test", fetch: async (url, init) => {
+    if (url.endsWith("/start")) return fakeFetch({ body: { id: "transfer", partBytes: 2 } })(url, init);
+    const offset = Number(new URL(url).searchParams.get("offset"));
+    const body = Array.from(init.body as Uint8Array);
+    parts.push(body);
+    const received = offset + body.length;
+    return fakeFetch({ body: received === bytes.length ? { attachment: { size: received } } : { received } })(url, init);
+  } });
+  const result = await client.uploadLargeFile("/bots/b/uploads", "clip.mp4", { size: bytes.length, open: () => handle });
+  expect(parts).toEqual([[1, 2], [3, 4], [5]]);
+  expect(result).toEqual({ attachment: { size: 5 } });
+  expect(handle.close).toHaveBeenCalledTimes(1);
+});
+
 function fakeFetch(answer: { status?: number; body?: unknown; setCookie?: string }, calls: { url: string; init: Record<string, unknown> }[] = []): FetchLike {
   return async (url, init) => {
     calls.push({ url, init });

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type { MiddlewareHandler } from "hono";
-import { MAX_UPLOAD_BODY, MAX_UPLOAD_MB } from "./uploadlimits.js";
+import { MAX_UPLOAD_BODY, PART_BYTES } from "./uploadlimits.js";
 import { bodyLimit } from "hono/body-limit";
 
 /**
@@ -12,12 +12,13 @@ const MB = 1024 * 1024;
 /**
  * The largest body each kind of request may send. Every route reads its body whole (JSON, a form), so without a limit one
  * request could fill the server's memory. The larger ones match what those routes already accept (they still check
- * their own, smaller, limits): file uploads 96 MB (+ form overhead), project import (a .env and a 5 MB zip as base64),
+ * their own, smaller, limits): uploads in 8 MB parts or 96 MB legacy requests (+ form overhead), project import (a .env and a 5 MB zip as base64),
  * vault import 5 MB, the credential relay 20 MB (egress.ts MAX_BODY), the tool endpoint of subscription bots (a file
  * written through it). Everything else is JSON: 1 MB.
  */
 export const BODY_LIMITS: { test: RegExp; max: number }[] = [
   { test: /^\/api\/bots\/[^/]+\/uploads$/, max: MAX_UPLOAD_BODY },
+  { test: /^\/api\/bots\/[^/]+\/uploads\/[0-9a-f-]{36}$/, max: PART_BYTES },
   { test: /^\/api\/import\/project\/(preview|commit)$/, max: 8 * MB },
   { test: /^\/api\/vault\/import$/, max: 5 * MB },
   { test: /^\/egress\//, max: 21 * MB },
@@ -41,8 +42,8 @@ export const limitBodies: MiddlewareHandler = async (c, next) => {
   // This endpoint counts every byte as it reads, after authenticating the owner.
   // Avoid buffering chunked uploads here and again in the file handler.
   const max = bodyLimitFor(c.req.path);
-  if (max === MAX_UPLOAD_BODY && c.req.method === "POST") {
-    if (Number(c.req.header("content-length")) > max) return c.json({ error: `Files can be up to ${MAX_UPLOAD_MB} MB.` }, 413);
+  if ((max === MAX_UPLOAD_BODY || max === PART_BYTES && /\/uploads\//.test(c.req.path)) && c.req.method === "POST") {
+    if (Number(c.req.header("content-length")) > max) return c.json({ error: "Upload request too large." }, 413);
     return next();
   }
   return limiter(max)(c, next);

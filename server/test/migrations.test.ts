@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
 import { gunzipSync } from "node:zlib";
@@ -9,7 +10,7 @@ import { LATEST_VERSION, MIGRATIONS, migrate, NewerDatabaseError, type Migration
 
 // SK-P0-05: versioned migrations. The fixture is a database written by the schema code of commit b8096fa (before
 // versions existed: user_version 0), with one account, one bot, three chat rows and two usage lines.
-const here = path.dirname(new URL(import.meta.url).pathname);
+const here = path.dirname(fileURLToPath(import.meta.url));
 const dir = mkdtempSync(path.join(tmpdir(), "sklubot-mig-"));
 const open = (file: string) => { const db = new DatabaseSync(file); db.exec("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;"); return db; };
 const userVersion = (db: DatabaseSync) => (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version;

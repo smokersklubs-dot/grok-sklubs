@@ -39,7 +39,7 @@ Sklubot écoute alors sur le port 3000 du conteneur ; place un proxy HTTPS (Cadd
   ne touchent que les conteneurs étiquetés `sklubot`. Cela reste un accès à Docker : réserve ce serveur à Sklubot.
 - L'application tourne sans privilège Linux et sur un système de fichiers en lecture seule (seuls `/data` et
   `/tmp` s'écrivent). Elle envoie une politique de sécurité du contenu (CSP) stricte et limite la taille des
-  requêtes (1 Mo, 96 Mo pour un fichier envoyé).
+  requêtes (1 Mo pour le JSON, 8 Mo par bloc pour un fichier allant jusqu’à 1 Go, 96 Mo pour l’ancien envoi direct).
 - Les ordinateurs des bots sont sur leur propre réseau Docker, `sklubot_bots` (créé par Sklubot, sans trafic entre
   conteneurs). Ils joignent Sklubot par une prise (socket) qui leur est propre, dans `sklubot_data/botlink/`, qui ne
   sert que leurs outils (`/mcp/…`) et le relais d'identifiants (`/egress/…`) : ni le port 3000, ni le courrier, ni le

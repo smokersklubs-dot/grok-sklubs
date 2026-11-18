@@ -18,6 +18,7 @@ export function VideoStudio({ onClose }: { onClose: () => void }) {
   const [files, setFiles] = useState<File[]>([]),
     [song, setSong] = useState<File | null>(null),
     [busy, setBusy] = useState(false),
+    [progress, setProgress] = useState(""),
     [error, setError] = useState("");
   const key = useRef(crypto.randomUUID()),
     pending = useRef(false),
@@ -28,7 +29,9 @@ export function VideoStudio({ onClose }: { onClose: () => void }) {
   async function upload(f: File) {
     const prior = uploaded.current.get(f);
     if (prior?.bot === bot) return prior.path;
-    const r = await apiUpload<{ attachment: Attachment }>("/bots/" + bot + "/uploads", f);
+    setProgress(f.name);
+    const r = await apiUpload<{ attachment: Attachment }>("/bots/" + bot + "/uploads", f, percent => setProgress(`${f.name} · ${percent}%`));
+    setProgress("");
     uploaded.current.set(f, { bot, path: r.attachment.path });
     return r.attachment.path;
   }
@@ -39,7 +42,7 @@ export function VideoStudio({ onClose }: { onClose: () => void }) {
     setError("");
     try {
       if (files.length > 24 || [...files, ...(song ? [song] : [])].some((f) => f.size > MAX_UPLOAD_BYTES))
-        throw Error(fr ? "Maximum 24 plans et 96 Mo par fichier." : "Up to 24 shots and 96 MB per file.");
+        throw Error(fr ? "Maximum 24 plans et 1 Go par fichier." : "Up to 24 shots and 1 GB per file.");
       const paths: string[] = [];
       for (const f of files) paths.push(await upload(f));
       const story: Story = {
@@ -154,7 +157,7 @@ export function VideoStudio({ onClose }: { onClose: () => void }) {
         </div>
         <ErrorNote>{error}</ErrorNote>
         <button className="btn btn-primary" disabled={busy || !title.trim() || !bot}>
-          {busy ? (fr ? "Préparation…" : "Preparing…") : fr ? "Ouvrir le montage" : "Open timeline"}
+          {busy ? progress || (fr ? "Préparation…" : "Preparing…") : fr ? "Ouvrir le montage" : "Open timeline"}
         </button>
       </form>
     </Modal>

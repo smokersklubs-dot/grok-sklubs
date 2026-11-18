@@ -682,14 +682,14 @@ export function storageBytes(userId: string, fresh = false): number {
   storageCache.set(userId, { at: now(), bytes });
   return bytes;
 }
-setLibraryWriteGuard((botId, size) => {
+setLibraryWriteGuard((botId, size, checkOnly) => {
   const owner = bots.byId(botId)?.userId;
   const plan = owner ? limited(owner) : null;
   if (!owner || plan?.storageGb === null || plan?.storageGb === undefined) return;
   const limit = plan.storageGb * 1e9;
   const used = storageBytes(owner);
   if (used + size > limit) throw new PlanLimitError("storage", "Your plan's storage ({limit}) is full ({used} used). Delete files from your bots' libraries, or change plan (Settings → Credits).", { limit: bytesText(limit), used: bytesText(used) });
-  storageCache.set(owner, { at: storageCache.get(owner)?.at ?? now(), bytes: used + size });
+  if (!checkOnly) storageCache.set(owner, { at: storageCache.get(owner)?.at ?? now(), bytes: used + size });
 });
 
 // ── Plan invitations ─────────────────────────────────────────────────────────────────────────────────────────────

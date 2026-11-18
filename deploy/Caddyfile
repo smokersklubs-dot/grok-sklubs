@@ -6,8 +6,8 @@
 	@mcp path /mcp /mcp/* /egress /egress/*
 	respond @mcp 404
 
-	# Taille maximale d'une requête (revue de sécurité M7) : 97 Mo, juste au-dessus du plus gros envoi de l'application
-	# (un fichier de 96 Mo) ; l'application garde ses propres limites, plus fines (1 Mo pour le reste).
+	# Les fichiers de 1 Go arrivent par blocs de 8 Mo. Le plafond de 97 Mo permet aussi
+	# les anciens envois directs de 96 Mo et leur enveloppe multipart.
 	# Directive « request_body » : https://caddyserver.com/docs/caddyfile/directives/request_body
 	request_body {
 		max_size 97MB

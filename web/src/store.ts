@@ -1,7 +1,7 @@
 import { MAX_UPLOAD_BYTES, MAX_ATTACHMENTS } from "../../server/src/uploadlimits";
 import { changeTab, handleArtifactRows, type ArtifactTab } from "./lib/artifactTabs";
 import { create } from "zustand";
-import { api, apiUpload, errText, setUnauthorizedHandler } from "./api";
+import { api, apiUpload, errText, setUnauthorizedHandler, type Upload } from "./api";
 import { getLocale, isLocale, setLocale as applyLocale, t } from "./i18n";
 import { notifyBot } from "./lib/notify";
 import { startPresence } from "./lib/push";
@@ -65,18 +65,7 @@ export interface CallState {
   providers?: string;
 }
 
-/** A file picked for the next message: uploaded straight away, sent by its `attachment.path`. */
-export interface Upload {
-  id: string;
-  name: string;
-  size: number;
-  mime: string;
-  status: "uploading" | "ready" | "error";
-  /** Object URL for a local thumbnail (images only). */
-  preview: string | null;
-  attachment: Attachment | null;
-  error: string | null;
-}
+export type { Upload } from "./api";
 export { MAX_UPLOAD_BYTES, MAX_ATTACHMENTS };
 
 export const IDLE_LIVE: Live = { running: false, activity: null, awaiting: null, startedAt: null, queued: 0 };
@@ -305,6 +294,7 @@ interface Store {
 let toastTimer: number | undefined;
 let started = false;
 let uploadSeq = 0;
+const uploadControllers = new Map<string, AbortController>();
 let toastSeq = 0;
 let jumpSeq = 0;
 /** A card or a notice came or changed: the Today badge is refreshed a few seconds later (once for a burst). */
@@ -924,12 +914,14 @@ export const useStore = create<Store>((set, get) => ({
       }
       room--;
       const id = `u${++uploadSeq}`;
+      const controller = new AbortController();
+      uploadControllers.set(id, controller);
       const mime = file.type || "application/octet-stream";
       added.push({ id, name: file.name, size: file.size, mime, status: "uploading", preview: mime.startsWith("image/") ? URL.createObjectURL(file) : null, attachment: null, error: null });
-      apiUpload<{ attachment: Attachment }>(`/bots/${botId}/uploads`, file).then(
+      apiUpload<{ attachment: Attachment }>(`/bots/${botId}/uploads`, file, percent => patch(id, { percent }), controller.signal).then(
         (r) => patch(id, { status: "ready", attachment: r.attachment }),
         (e: unknown) => patch(id, { status: "error", error: errText(e) }),
-      );
+      ).finally(() => uploadControllers.delete(id));
     }
     if (added.length) set((s) => ({ uploads: { ...s.uploads, [botId]: [...(s.uploads[botId] ?? []), ...added] } }));
     return problem;
@@ -938,6 +930,7 @@ export const useStore = create<Store>((set, get) => ({
     get().clearUploads(botId, [id]);
   },
   clearUploads(botId, ids) {
+    for (const id of ids) uploadControllers.get(id)?.abort();
     set((s) => {
       const list = s.uploads[botId] ?? [];
       for (const u of list) if (ids.includes(u.id) && u.preview) URL.revokeObjectURL(u.preview);

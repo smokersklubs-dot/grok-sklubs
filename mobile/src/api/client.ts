@@ -10,6 +10,7 @@
  * - No Origin header is sent: the server treats such requests as a non-browser client (routes.ts, originAllowed).
  */
 import { cookieHeader, sessionFromSetCookie } from "./cookie";
+import { sendFileParts } from "../../shared/uploadParts";
 
 export class ApiError extends Error {
   status: number;
@@ -167,8 +168,18 @@ export class ApiClient {
     return { status: res.status, bytes: res.arrayBuffer ? new Uint8Array(await res.arrayBuffer()) : null, header, error: null };
   }
 
-  uploadLargeFile<T>(path: string, name: string, file: Blob) {
-    return this.request<T>("POST", path, undefined, { raw: { body: file, contentType: "application/octet-stream", filename: name }, timeoutMs: 600_000 });
+  async uploadLargeFile<T>(path: string, name: string, file: { size: number; open(): { offset: number | null; readBytes(count: number): Promise<Uint8Array>; close(): void } }, progress?: (value: number) => void) {
+    const handle = file.open();
+    try {
+      const size = file.size;
+      const session = await this.post<{ id: string; partBytes: number }>(path + "/start", { name, size });
+      return await sendFileParts<T, Uint8Array>(size, session, {
+        read: (start, end) => { handle.offset = start; return handle.readBytes(end - start); },
+        send: (id, offset, bytes) => this.request("POST", path + "/" + enc(id) + "?offset=" + offset, undefined, { raw: { body: bytes, contentType: "application/octet-stream" }, timeoutMs: 600_000 }),
+        cancel: id => this.request("DELETE", path + "/" + enc(id)),
+        progress,
+      });
+    } finally { handle.close(); }
   }
 
   get<T>(path: string) { return this.request<T>("GET", path); }

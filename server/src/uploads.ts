@@ -1,6 +1,6 @@
 import type { Context } from "hono";
 import { storeBytes } from "./computer.js";
-import { MAX_UPLOAD_BODY, MAX_UPLOAD_BYTES, MAX_UPLOAD_MB } from "./uploadlimits.js";
+import { MAX_UPLOAD_BODY, SINGLE_UPLOAD_BYTES } from "./uploadlimits.js";
 
 let largeUploads = 0;
 
@@ -14,9 +14,9 @@ export async function receiveUpload(c: Context, botId: string) {
     try { rawFilename = decodeURIComponent(rawName); } catch { /* invalid header */ }
     if (!rawFilename || rawFilename.length > 1024) return c.json({ error: "Invalid file name." }, 400);
   }
-  const limit = rawFilename === undefined ? MAX_UPLOAD_BODY : MAX_UPLOAD_BYTES;
+  const limit = rawFilename === undefined ? MAX_UPLOAD_BODY : SINGLE_UPLOAD_BYTES;
   const length = Number(request.headers.get("content-length"));
-  const tooLarge = () => c.json({ error: `Files can be up to ${MAX_UPLOAD_MB} MB.` }, 413);
+  const tooLarge = () => c.json({ error: "Use a multipart upload session for files over 96 MB." }, 413);
   if (length > limit) return tooLarge();
   if (!request.body) return c.json({ error: "No file was sent." }, 400);
   const large = !length || length > 25_000_000;
@@ -43,7 +43,7 @@ export async function receiveUpload(c: Context, botId: string) {
       } else {
         const file = (await body.formData()).get("file");
         if (!(file instanceof File)) return c.json({ error: "No file was sent." }, 400);
-        if (file.size > MAX_UPLOAD_BYTES) return tooLarge();
+        if (file.size > SINGLE_UPLOAD_BYTES) return tooLarge();
         name = file.name;
         bytes = Buffer.from(await file.arrayBuffer());
       }

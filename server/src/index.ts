@@ -10,6 +10,7 @@ import { bots, users } from "./store.js";
 import { assertConfig, config } from "./config.js";
 import { checkDataKeys } from "./datakey.js";
 import { startSessionSweep } from "./twofactor.js";
+import { startUploadSweep } from "./uploadparts.js";
 import { connectors } from "./connectors.js";
 import { localTools } from "./localtools.js";
 import { defaultModelRef, listProviders } from "./llm/index.js";
@@ -102,6 +103,7 @@ if (uncertain) console.log(`${uncertain} action(s) cut off by the restart are ma
 startScheduler();
 // Expired sessions, pending two-factor sign-ins and one-time links are deleted (twofactor.ts), now and every hour.
 startSessionSweep();
+startUploadSweep();
 startAutoBackup();
 startHealthChecks();
 // The Sentinelle (sentinel/): a read-only scan every SENTINEL_EVERY_MIN minutes, incidents and alerts to the owner/operators.

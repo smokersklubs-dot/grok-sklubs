@@ -12,6 +12,7 @@ RUN npm ci
 COPY tsconfig.base.json ./
 COPY server server
 COPY web web
+COPY mobile/shared mobile/shared
 RUN npm run build && npm prune --omit=dev
 
 FROM ${NODE_IMAGE}

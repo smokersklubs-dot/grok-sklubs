@@ -34,7 +34,7 @@ function UploadChip({ upload, onRemove }: { upload: Upload; onRemove: () => void
       </span>
       <span className="upload-text">
         <span className="upload-name truncate">{upload.name}</span>
-        <span className="upload-sub truncate" role={upload.status === "error" ? "alert" : undefined}>{sub}</span>
+        <span className="upload-sub truncate" role={upload.status === "error" ? "alert" : undefined}>{sub}{upload.status === "uploading" && upload.percent !== undefined ? ` · ${upload.percent}%` : ""}</span>
       </span>
       <button type="button" className="upload-x" aria-label={t("composer.removeFile", { name: upload.name })} title={t("composer.removeFile", { name: upload.name })} onClick={onRemove}>
         <Icon name="close" size={13} />

@@ -1,6 +1,21 @@
 /** Small fetch helper for the JSON API under /api. */
 import { t } from "./i18n";
 import { MAX_UPLOAD_BYTES } from "../../server/src/uploadlimits";
+import { sendFileParts } from "../../mobile/shared/uploadParts";
+import type { Attachment } from "./types";
+
+/** A file picked for the next message, sent by its attachment path after upload. */
+export interface Upload {
+  id: string;
+  name: string;
+  size: number;
+  mime: string;
+  percent?: number;
+  status: "uploading" | "ready" | "error";
+  preview: string | null;
+  attachment: Attachment | null;
+  error: string | null;
+}
 
 export class ApiError extends Error {
   status: number;
@@ -21,6 +36,7 @@ async function request<T>(path: string, init: RequestInit): Promise<T> {
   try {
     res = await fetch("/api" + path, { credentials: "same-origin", ...init });
   } catch {
+    if (init.signal?.aborted) throw init.signal.reason;
     throw new ApiError(t("api.unreachable"), 0);
   }
   if (res.status === 204) return undefined as T;
@@ -56,16 +72,22 @@ export function api<T = unknown>(method: string, path: string, body?: unknown, s
 }
 
 /** POST one file as multipart form data (field `file`). The browser sets the multipart boundary itself. */
-export function apiUpload<T = unknown>(path: string, file: File): Promise<T> {
-  // Large chat and Studio media travel as the original Blob, without a multipart copy.
+export async function apiUpload<T = unknown>(path: string, file: File, progress?: (percent: number) => void, signal?: AbortSignal): Promise<T> {
   if (/^\/bots\/[^/]+\/uploads$/.test(path)) {
     if (file.size > MAX_UPLOAD_BYTES) return Promise.reject(new ApiError(t("composer.tooBig", { name: file.name }), 413));
-    if (file.size > 25_000_000)
-      return request<T>(path, { method: "POST", headers: { "Content-Type": "application/octet-stream", "X-Sklubot-Filename": encodeURIComponent(file.name) }, body: file });
+    if (file.size > 25_000_000) {
+      const session = await api<{ id: string; partBytes: number }>("POST", path + "/start", { name: file.name, size: file.size });
+      return sendFileParts<T, Blob>(file.size, session, {
+        read: (start, end) => file.slice(start, end),
+        send: (id, offset, chunk) => request(path + "/" + enc(id) + "?offset=" + offset, { method: "POST", signal, headers: { "Content-Type": "application/octet-stream" }, body: chunk }),
+        cancel: id => api("DELETE", path + "/" + enc(id)),
+        progress,
+      });
+    }
   }
   const form = new FormData();
   form.append("file", file, file.name);
-  return request<T>(path, { method: "POST", body: form });
+  return request<T>(path, { method: "POST", body: form, signal });
 }
 
 /** POST raw bytes (an audio recording) with their own content type. */

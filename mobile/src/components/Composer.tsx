@@ -11,16 +11,16 @@ import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, StyleSheet, Tex
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { Attachment, Bot, Live } from "../api/types";
 import { errText, useT } from "../i18n";
-import { File } from "expo-file-system";
+import { File, FileMode } from "expo-file-system";
 import { useStore } from "../state/store";
 import { radius, useTheme } from "../theme";
 import { Icon } from "./Icon";
 import { tap } from "./ui";
 
-export const MAX_UPLOAD_BYTES = 96_000_000;
+export const MAX_UPLOAD_BYTES = 1_000_000_000;
 export const MAX_ATTACHMENTS = 10;
 
-interface Upload { id: string; name: string; mime: string; uri: string; status: "uploading" | "ready" | "error"; attachment: Attachment | null }
+interface Upload { id: string; name: string; mime: string; uri: string; percent?: number; status: "uploading" | "ready" | "error"; attachment: Attachment | null }
 interface Picked { uri: string; name: string; mime: string; size: number | null }
 
 export function Composer({ bot, live }: { bot: Bot; live: Live | undefined }) {
@@ -48,7 +48,7 @@ export function Composer({ bot, live }: { bot: Bot; live: Live | undefined }) {
         const client = useStore.getState().client!;
         const path = `/bots/${encodeURIComponent(bot.id)}/uploads`;
         const r = file.size > 25_000_000
-          ? await client.uploadLargeFile<{ attachment: Attachment }>(path, f.name, file)
+          ? await client.uploadLargeFile<{ attachment: Attachment }>(path, f.name, { size: file.size, open: () => file.open(FileMode.ReadOnly) }, percent => setUploads(list => list.map(item => item.id === id ? { ...item, percent } : item)))
           : await client.upload<{ attachment: Attachment }>(path, { name: f.name, type: f.mime, bytes: await file.bytes() });
         setUploads((u) => u.map((x) => (x.id === id ? { ...x, status: "ready", attachment: r.attachment } : x)));
       } catch (e) {
@@ -129,7 +129,7 @@ export function Composer({ bot, live }: { bot: Bot; live: Live | undefined }) {
             <View key={u.id} style={[styles.upload, { backgroundColor: c.surface, borderColor: u.status === "error" ? c.danger : c.border }]}>
               {u.mime.startsWith("image/") ? <Image source={{ uri: u.uri }} style={styles.uploadThumb} /> : <Icon name="file" size={18} color={c.text2} />}
               <Text numberOfLines={1} style={{ color: c.text, maxWidth: 110, fontSize: 13 }}>{u.name}</Text>
-              {u.status === "uploading" ? <ActivityIndicator size="small" color={c.text2} /> : null}
+              {u.status === "uploading" && u.percent !== undefined ? <Text style={{ color: c.text2 }}>{u.percent}%</Text> : u.status === "uploading" ? <ActivityIndicator size="small" color={c.text2} /> : null}
               <Pressable accessibilityRole="button" accessibilityLabel={t("composer.removeFile", { name: u.name })} hitSlop={10} onPress={() => setUploads((x) => x.filter((y) => y.id !== u.id))}>
                 <Icon name="close" size={16} color={c.text3} />
               </Pressable>

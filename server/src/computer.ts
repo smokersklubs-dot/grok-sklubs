@@ -3,8 +3,8 @@ import { createRequire } from "node:module";
 import { closeSync, constants as FS, fstatSync, ftruncateSync, lstatSync, mkdirSync, openSync, readdirSync, readFileSync, readlinkSync, realpathSync, rmSync, unlinkSync, writeFileSync, type Stats } from "node:fs";
 import path from "node:path";
 import { config } from "./config.js";
-import { MAX_UPLOAD_BYTES } from "./uploadlimits.js";
-import { imagePreview } from "./visionpayload.js";
+import { MAX_UPLOAD_BYTES, SINGLE_UPLOAD_BYTES } from "./uploadlimits.js";
+import { imagePreview, largeFilePreview } from "./visionpayload.js";
 import { layoutExpression } from "./artifact-design.js";
 import { assertPublicUrl } from "./net.js";
 import { emit } from "./bus.js";
@@ -453,8 +453,9 @@ export function readLibraryFile(botId: string, rel: string): Buffer {
 
 /** Writes a library file. `exclusive`: fail if anything already has that name. Returns the full path. */
 /** Hosted mode (hosted.ts): the account's plan may limit its storage. Throws before anything is written when it is full. */
-let libraryWriteGuard: (botId: string, bytes: number) => void = () => {};
-export const setLibraryWriteGuard = (fn: (botId: string, bytes: number) => void) => { libraryWriteGuard = fn; };
+let libraryWriteGuard: (botId: string, bytes: number, checkOnly?: boolean) => void = () => {};
+export const setLibraryWriteGuard = (fn: typeof libraryWriteGuard) => { libraryWriteGuard = fn; };
+export const checkLibraryUpload = (botId: string, bytes: number, checkOnly = false) => libraryWriteGuard(botId, bytes, checkOnly);
 
 function writeLibraryFile(botId: string, rel: string, data: string | Buffer, exclusive = false): string {
   libraryWriteGuard(botId, typeof data === "string" ? Buffer.byteLength(data) : data.length);
@@ -520,19 +521,27 @@ export function attachmentAt(botId: string, rel: string): Attachment | null {
 }
 
 /** Stores an uploaded or generated file in the library without ever overwriting an existing one. */
-export function storeBytes(botId: string, folder: string, name: string, bytes: Buffer): Attachment {
+export function storeLibraryFile(botId: string, folder: string, name: string, write: (target: string) => void, isReplay?: (full: string) => boolean): Attachment {
   const base = name.replace(/[^a-zA-Z0-9._ -]/g, "_").replace(/^\.+/, "").slice(-100) || "file";
   const dir = resolveInWorkspace(botId, folder);
   const rel = path.relative(realRootOf(botId), dir).split(path.sep).join("/");
   for (let i = 1; i < 10_000; i++) {
     const dot = base.lastIndexOf(".");
     const candidate = i === 1 ? base : dot > 0 ? `${base.slice(0, dot)}-${i}${base.slice(dot)}` : `${base}-${i}`;
-    if (lstatOrNull(path.join(dir, candidate))) continue;
     const target = rel ? `${rel}/${candidate}` : candidate;
-    try { writeLibraryFile(botId, target, bytes, true); } catch (err) { if ((err as NodeJS.ErrnoException).code === "EEXIST") continue; throw err; }
+    const existing = path.join(dir, candidate);
+    if (lstatOrNull(existing)) {
+      if (isReplay?.(existing)) return attachmentAt(botId, target)!;
+      continue;
+    }
+    try { write(target); } catch (err) { if ((err as NodeJS.ErrnoException).code === "EEXIST") continue; throw err; }
     return attachmentAt(botId, target)!;
   }
   throw new Error("could not find a free file name");
+}
+
+export function storeBytes(botId: string, folder: string, name: string, bytes: Buffer): Attachment {
+  return storeLibraryFile(botId, folder, name, target => { writeLibraryFile(botId, target, bytes, true); });
 }
 
 /** Where a library file sits from the bot's own point of view. */
@@ -542,10 +551,14 @@ export const botPathOf = (rel: string) => (kind === "linux" ? `~/files/${rel}` :
 export async function imageForModel(botId: string, a: Attachment, budget: number): Promise<{ mediaType: string; data: string } | null> {
   if (!isInlineImage(a.mime)) return null;
   try {
-    const { fd, size } = openLibraryFile(botId, a.path);
+    const { fd, size, full } = openLibraryFile(botId, a.path);
     let bytes: Buffer;
     try {
       if (size > MAX_UPLOAD_BYTES || !size) return null;
+      if (size > SINGLE_UPLOAD_BYTES) {
+        const preview = await largeFilePreview(fd, full, budget);
+        return { mediaType: "image/jpeg", data: preview.toString("base64") };
+      }
       bytes = readFileSync(fd);
     } finally { closeSync(fd); }
     if (bytes.length <= budget) return { mediaType: a.mime, data: bytes.toString("base64") };
