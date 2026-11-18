@@ -127,8 +127,7 @@ import { accountFlags, accountOpened, assertEmailSignupPossible, PublicSignupErr
 import { answerCapCard, amountText, CapError, capName, caps as usageCaps, capsView, cleanCapInput, cm } from "./usagecaps.js";
 
 import { MAX_ATTACHMENTS } from "./uploadlimits.js";
-import { receiveUpload } from "./uploads.js";
-import { beginUpload, cancelUpload, receivePart } from "./uploadparts.js";
+import { registerUploadRoutes } from "./uploads.js";
 import { personalResponses } from "./personalresponses.js";
 type Env = { Variables: { user: UserRecord } };
 export const api = new Hono<Env>();
@@ -967,10 +966,7 @@ api.put("/profile", async (c) => {
 /** Which official API x_search uses here, if any. */
 api.get("/x-search", (c) => c.json({ provider: xSearchProvider() }));
 
-api.post("/bots/:id/uploads", (c) => receiveUpload(c, ownAgent(c).id));
-api.post("/bots/:id/uploads/start", async c => { const bot = ownAgent(c); return beginUpload(c, bot.id, bot.userId, await body(c)); });
-api.post("/bots/:id/uploads/:uploadId", c => receivePart(c, ownAgent(c).id, c.req.param("uploadId")));
-api.delete("/bots/:id/uploads/:uploadId", c => cancelUpload(c, ownAgent(c).id, c.req.param("uploadId")));
+registerUploadRoutes(api, ownAgent);
 
 api.post("/bots/:id/stop", (c) => { interrupt(ownBot(c).id); return c.json({ ok: true }); });
 

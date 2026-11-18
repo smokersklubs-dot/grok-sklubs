@@ -1,6 +1,18 @@
-import type { Context } from "hono";
+import type { Context, Hono, Env } from "hono";
 import { storeBytes } from "./computer.js";
 import { MAX_UPLOAD_BODY, SINGLE_UPLOAD_BYTES } from "./uploadlimits.js";
+import { beginUpload, cancelUpload, receivePart } from "./uploadparts.js";
+
+export function registerUploadRoutes<E extends Env>(api: Hono<E>, ownAgent: (c: Context<E>) => { id: string; userId: string }) {
+  api.post("/bots/:id/uploads", c => receiveUpload(c, ownAgent(c).id));
+  api.post("/bots/:id/uploads/start", async c => {
+    const bot = ownAgent(c);
+    const fields = await c.req.json().catch(() => null);
+    return beginUpload(c, bot.id, bot.userId, fields && typeof fields === "object" ? fields : {});
+  });
+  api.post("/bots/:id/uploads/:uploadId", c => receivePart(c, ownAgent(c).id, c.req.param("uploadId")));
+  api.delete("/bots/:id/uploads/:uploadId", c => cancelUpload(c, ownAgent(c).id, c.req.param("uploadId")));
+}
 
 let largeUploads = 0;
 
