@@ -325,7 +325,7 @@ export function SubscriptionBadge({ model }: { model: string }) {
   if (!engine) return null;
   return (
     <span className="chip sub-badge" title={t("badge.subscriptionTitle", { brand: ENGINE_BRAND[engine], tool: ENGINE_TOOL[engine] })}>
-      <Icon name="key" size={11} /> {t("badge.subscription")}
+      <Icon name="key" size={11} /> {ENGINE_BRAND[engine]} · {model.endsWith(":default") ? t("badge.subscription") : prettyModel(model.slice(model.indexOf(":") + 1))}
     </span>
   );
 }

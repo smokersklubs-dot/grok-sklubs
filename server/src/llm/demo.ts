@@ -247,8 +247,8 @@ export class DemoProvider implements LlmProvider {
       content = plan(said, (name) => req.tools.some((t) => t.name === name)) ?? [{
         type: "text",
         text: /Write to the user in French/.test(req.system)
-          ? `Ceci est le mode démo : je suis des mots-clés, je ne réfléchis pas. Tu as dit : « ${said.slice(0, 200)} ».\n\nEssaie : **open https://example.com**, **remember "je préfère les réponses courtes"**, **run "ls -la"**, **save "une note"**, **routine**, **task "Appeler la banque"**, **analyse mes ventes** ou **question**. Ajoute une clé de modèle dans .env pour avoir un vrai coéquipier.`
-          : `This is demo mode, so I am following keywords rather than thinking. You said: “${said.slice(0, 200)}”.\n\nTry: **open https://example.com**, **remember "I prefer short answers"**, **run "ls -la"**, **save "a note"**, **set up a routine**, **add a task "Call the bank"**, **analyze my sales**, or **ask me a question**. Add a model key to .env to get a real teammate.`,
+          ? "Ce bot utilise le modèle de démonstration. Dans Réglages → Modèles, choisis ChatGPT ou Claude et connecte ton abonnement pour discuter."
+          : "This bot uses the demo model. Open Settings → Models, choose ChatGPT or Claude and connect your subscription to chat.",
       }];
     }
     // A short pause before each tool call, as a real model takes: the thinking block and its step counter can be seen.

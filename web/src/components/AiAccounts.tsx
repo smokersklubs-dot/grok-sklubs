@@ -30,8 +30,8 @@ const TEXT = {
     pkSearch: "Chercher un modèle", pkRecommended: "Recommandés", pkAll: "Tous les modèles ({n})", pkPrice: "{in} $ / {out} $ par million de tokens (entrée / sortie)",
     pkFree: "gratuit, limité", pkCtx: "{n} de contexte", pkImages: "lit les images", pkNone: "Aucun modèle ne correspond.", pkSave: "Garder ces {n} modèles", pkMax: "30 modèles au plus.",
     pkTools: "Seuls les modèles qui savent utiliser des outils sont proposés (tes bots en ont besoin). Prix d'OpenRouter, relus toutes les 6 heures.", pkClose: "Fermer",
-    gptTitle: "Mon compte ChatGPT", gptText: "ChatGPT Plus ou Pro : tes bots l'utilisent, rien de plus à payer ici.", gptBtn: "Connecter mon compte ChatGPT",
-    clTitle: "Mon compte Claude", clText: "Claude Pro ou Max : tes bots l'utilisent, rien de plus à payer ici.", clBtn: "Connecter mon compte Claude",
+    gptTitle: "Mon compte ChatGPT", gptText: "Choisis le bot qui utilisera Codex avec ton abonnement ChatGPT.", gptBtn: "Connecter mon compte ChatGPT",
+    clTitle: "Mon compte Claude", clText: "Ouvre Claude Code sur le bureau du bot et connecte ton abonnement Claude.", clBtn: "Connecter mon compte Claude",
     own: "Ton abonnement reste à toi : seuls tes bots l'utilisent.", otherKey: "Une autre clé d'API (DeepSeek, OpenAI…)",
     flowTitle: "Connexion à {provider}", whichBot: "Sur l'ordinateur de quel bot ?", start: "Ouvrir la page de connexion", starting: "Réveil de l'ordinateur et ouverture…",
     instr: "Connecte-toi sur la page qui s'ouvre, puis reviens ici.",
@@ -53,8 +53,8 @@ const TEXT = {
     pkSearch: "Search a model", pkRecommended: "Recommended", pkAll: "All models ({n})", pkPrice: "${in} / ${out} per million tokens (input / output)",
     pkFree: "free, rate-limited", pkCtx: "{n} context", pkImages: "reads images", pkNone: "No model matches.", pkSave: "Keep these {n} models", pkMax: "30 models at most.",
     pkTools: "Only models that can use tools are offered (your bots need them). OpenRouter's prices, read again every 6 hours.", pkClose: "Close",
-    gptTitle: "My ChatGPT account", gptText: "ChatGPT Plus or Pro: your bots use it, nothing more to pay here.", gptBtn: "Connect my ChatGPT account",
-    clTitle: "My Claude account", clText: "Claude Pro or Max: your bots use it, nothing more to pay here.", clBtn: "Connect my Claude account",
+    gptTitle: "My ChatGPT account", gptText: "Choose the bot that will use Codex with your ChatGPT subscription.", gptBtn: "Connect my ChatGPT account",
+    clTitle: "My Claude account", clText: "Open Claude Code on the bot’s desktop and sign in with your Claude subscription.", clBtn: "Connect my Claude account",
     own: "Your subscription stays yours: only your bots use it.", otherKey: "Another API key (DeepSeek, OpenAI…)",
     flowTitle: "Signing in to {provider}", whichBot: "On which bot's computer?", start: "Open the sign-in page", starting: "Waking the computer and opening…",
     instr: "Sign in on the page that opens, then come back here.",
@@ -229,11 +229,12 @@ const POLL_MS = 5000;
 const WAIT_MAX_MS = 5 * 60_000;
 
 /** The sign-in flow: pick the bot (if several), open the provider's page on its screen, show it live, poll, then switch its brain. */
-function ConnectFlow({ engine, info, onClose }: { engine: Engine; info: ConnectInfo; onClose: () => void }) {
+export function ConnectFlow({ engine, info, onClose }: { engine: Engine; info: ConnectInfo; onClose: () => void }) {
   const a = useA();
   const provider = BRAND[engine];
   const openViewer = useStore((s) => s.openViewer);
-  const [botId, setBotId] = useState(info.mainBotId ?? info.bots[0]?.id ?? "");
+  const selectedId = useStore.getState().selectedId;
+  const [botId, setBotId] = useState(info.bots.find((b) => b.id === selectedId)?.id ?? info.mainBotId ?? info.bots[0]?.id ?? "");
   const [stage, setStage] = useState<"pick" | "starting" | "screen" | "done">("pick");
   const [since, setSince] = useState(0);
   const [stopped, setStopped] = useState(false);
@@ -241,13 +242,17 @@ function ConnectFlow({ engine, info, onClose }: { engine: Engine; info: ConnectI
   const [useBrain, setUseBrain] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const alive = useRef(true);
-  useEffect(() => () => { alive.current = false; }, []);
+  const checking = useRef(false);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
   const bot = info.bots.find((b) => b.id === botId);
   const check = async () => {
+    if (checking.current) return;
+    checking.current = true;
     try {
       const r = await api<{ signedIn: boolean; account: string | null }>("GET", `/connect-subscription/status?bot=${enc(botId)}&engine=${engine}`);
       if (alive.current && r.signedIn) { setAccount(r.account); setStage("done"); }
-    } catch { /* the next tick tries again */ }
+    } catch (e) { if (alive.current) setError(errText(e)); }
+    finally { checking.current = false; }
   };
   // While the screen is shown: control is held (renewed every 25 s, as the viewer does) and the status polled.
   useEffect(() => {
@@ -264,6 +269,9 @@ function ConnectFlow({ engine, info, onClose }: { engine: Engine; info: ConnectI
   const start = async () => {
     setStage("starting"); setError(null); setStopped(false);
     try {
+      const status = await api<{ signedIn: boolean; account: string | null }>("GET", `/connect-subscription/status?bot=${enc(botId)}&engine=${engine}`);
+      if (!alive.current) return;
+      if (status.signedIn) { setAccount(status.account); setStage("done"); return; }
       await api("POST", "/connect-subscription/start", { engine, botId });
       if (!alive.current) return;
       setSince(Date.now());
@@ -286,7 +294,7 @@ function ConnectFlow({ engine, info, onClose }: { engine: Engine; info: ConnectI
             {info.bots.length > 1 && (
               <label className="field">
                 <span className="field-label">{a("whichBot")}</span>
-                <select className="input" value={botId} onChange={(e) => setBotId(e.target.value)}>{info.bots.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</select>
+                <select className="input" disabled={stage === "starting"} value={botId} onChange={(e) => setBotId(e.target.value)}>{info.bots.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</select>
               </label>
             )}
             <div className="ai-actions">
@@ -337,19 +345,26 @@ function SubscriptionCard({ engine, info }: { engine: Engine; info: ConnectInfo 
 }
 
 /** The three own-account cards, and "another API key" as a small link to Settings → Models. */
-export function AiAccountCards({ onOtherKey }: { onOtherKey?: () => void }) {
+export function AiAccountCards({ onOtherKey, subscriptionsOnly = false }: { onOtherKey?: () => void; subscriptionsOnly?: boolean }) {
   const a = useA();
   const openAppSettings = useStore((s) => s.openAppSettings);
   const [info, setInfo] = useState<ConnectInfo | null>(null);
-  useEffect(() => { api<ConnectInfo>("GET", "/connect-subscription").then(setInfo, () => setInfo(null)); }, []);
+  const [error, setError] = useState("");
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    let active = true;
+    api<ConnectInfo>("GET", "/connect-subscription").then((r) => { if (active) setInfo(r); }, (e) => { if (active) setError(errText(e)); });
+    return () => { active = false; };
+  }, [attempt]);
   return (
     <div className="ai-accounts">
+      {error && <><ErrorNote>{error}</ErrorNote><button type="button" className="btn btn-small" onClick={() => { setError(""); setAttempt((n) => n + 1); }}>{a("check")}</button></>}
       <div className="ai-account-grid">
-        <OpenRouterCard />
         <SubscriptionCard engine="codex" info={info} />
         <SubscriptionCard engine="claude-code" info={info} />
+        {!subscriptionsOnly && <OpenRouterCard />}
       </div>
-      <button type="button" className="btn btn-ghost btn-small ai-other" onClick={onOtherKey ?? (() => openAppSettings("models"))}><Icon name="key" size={13} /> {a("otherKey")}</button>
+      {!subscriptionsOnly && <button type="button" className="btn btn-ghost btn-small ai-other" onClick={onOtherKey ?? (() => openAppSettings("models"))}><Icon name="key" size={13} /> {a("otherKey")}</button>}
     </div>
   );
 }

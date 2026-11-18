@@ -21,6 +21,8 @@ type Why = "engines" | "suspended" | "computer";
 const FR: Record<string, string> = {
   "That bot does not exist.": "Ce bot n'existe pas.",
   "Create a bot first.": "Crée d'abord un bot.",
+  "Finish signing in on this bot's desktop first.": "Termine la connexion sur le bureau de ce bot.",
+  "Could not verify the subscription. Try again.": "La vérification de l’abonnement a échoué. Réessaie.",
   "Signing in with a subscription needs Linux computers for the bots, which this server does not have.": "La connexion avec un abonnement demande des ordinateurs Linux pour les bots, que ce serveur n'a pas.",
   "Subscriptions are not available on this service for your plan.": "Les abonnements ne sont pas disponibles sur ce service avec ton offre.",
   "Your account is suspended.": "Ton compte est suspendu.",
@@ -85,11 +87,13 @@ export function registerSubscriptionConnectRoutes(api: Hono<any>) {
     const u = user(c);
     const bot = pick(u.id, c.req.query("bot") || "");
     if (!bot) return err(c, 404, "That bot does not exist.");
+    const why = connectBlock(u.id);
+    if (why) return err(c, why === "computer" ? 409 : 403, WHY_TEXT[why], { code: why });
     const engine = engineOf(c.req.query("engine"));
     try {
       const s = (await deps.status(bot)).find((x) => x.engine === engine);
       return c.json({ signedIn: !!s?.signedIn, account: s?.account ?? null });
-    } catch { return c.json({ signedIn: false, account: null }); }
+    } catch { return err(c, 502, "Could not verify the subscription. Try again."); }
   });
   api.post("/connect-subscription/use", async (c) => {
     const u = user(c);
@@ -99,7 +103,11 @@ export function registerSubscriptionConnectRoutes(api: Hono<any>) {
     if (why) return err(c, why === "computer" ? 409 : 403, WHY_TEXT[why], { code: why });
     const bot = pick(u.id, b.botId);
     if (!bot) return err(c, 404, "That bot does not exist.");
-    const ref = defaultEngineRef(engine);
+    try {
+      const status = (await deps.status(bot)).find((s) => s.engine === engine);
+      if (!status?.signedIn) return err(c, 409, "Finish signing in on this bot's desktop first.");
+    } catch { return err(c, 502, "Could not verify the subscription. Try again."); }
+    const ref = bot.model.startsWith(engine + ":") ? bot.model : defaultEngineRef(engine);
     bots.patch(bot.id, { model: ref });
     bots.announce(bot);
     audit(u.id, "account", `${bot.name}: now thinks with ${engine === "codex" ? "ChatGPT" : "Claude"} (${ref})`, bot.id);

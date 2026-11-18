@@ -416,10 +416,8 @@ function VoiceSection({ bot }: { bot: Bot }) {
 
   const off = !speech ? t("voice.unsupported") : undefined;
   return (
-    <section className="section">
-      <div className="section-head">
-        <h3>{t("voice.heading")}</h3>
-      </div>
+    <details className="section voice-disclosure">
+      <summary>{t("voice.heading")}</summary>
       <div className="form-grid" title={off}>
         <label className="field-label" htmlFor={`voice-${bot.id}`}>{t("voice.voice")}</label>
         <div className="row-gap">
@@ -459,7 +457,7 @@ function VoiceSection({ bot }: { bot: Bot }) {
       >
         <Icon name={inCall ? "phoneOff" : "wave"} size={16} /> {t(inCall ? "composer.endCall" : "composer.startCall")}
       </button>
-    </section>
+    </details>
   );
 }
 

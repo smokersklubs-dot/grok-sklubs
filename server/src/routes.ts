@@ -542,18 +542,16 @@ api.put("/prefs", async (c) => {
 });
 
 // `bot`: the bot whose settings are open; the subscription tools' real model list is read on its computer first (if on).
-api.get("/models", async (c) => c.json({
-  models: [
+const availableModels = async (userId: string, botId?: string) => [
     // Hosted mode: the server's own models only for plans that use the operator's keys (never "bring your own key").
-    ...listProviders().filter((p) => p.available() && modelAvailable(`${p.id}:${p.models[0] ?? ""}`, c.get("user").id)).flatMap((p) => p.models.map((m) => ({ ref: `${p.id}:${m}`, provider: p.label, model: m, kind: "api" as const }))),
+    ...listProviders().filter((p) => p.available() && modelAvailable(`${p.id}:${p.models[0] ?? ""}`, userId)).flatMap((p) => p.models.map((m) => ({ ref: `${p.id}:${m}`, provider: p.label, model: m, kind: "api" as const }))),
     // The user's own providers (Settings → Models): theirs only.
-    ...apiProviders.list(c.get("user").id).filter((p) => p.hasKey).flatMap((p) => p.models.map((m) => ({ ref: `${p.id}:${m.id}`, provider: p.name, model: m.id, kind: "api" as const }))),
+    ...apiProviders.list(userId).filter((p) => p.hasKey).flatMap((p) => p.models.map((m) => ({ ref: `${p.id}:${m.id}`, provider: p.name, model: m.id, kind: "api" as const }))),
     // Hosted mode: an operator's providers lent to this account's plan (by name and models only).
-    ...(lentProviderIds(c.get("user").id).length ? apiProviders.lentTo(c.get("user").id).flatMap((p) => p.models.map((m) => ({ ref: `${p.id}:${m}`, provider: p.name, model: m, kind: "api" as const }))) : []),
-    ...(subscriptionEnginesFor(c.get("user").id) ? await engineModelsFor(c.get("user").id, c.req.query("bot") || undefined) : []),
-  ],
-  defaultRef: defaultModelRef(),
-}));
+    ...(lentProviderIds(userId).length ? apiProviders.lentTo(userId).flatMap((p) => p.models.map((m) => ({ ref: `${p.id}:${m}`, provider: p.name, model: m, kind: "api" as const }))) : []),
+    ...(subscriptionEnginesFor(userId) ? await engineModelsFor(userId, botId) : []),
+  ];
+api.get("/models", async (c) => c.json({ models: await availableModels(c.get("user").id, c.req.query("bot")), defaultRef: defaultModelRef() }));
 
 // ── The user's own model providers (Settings → Models → API providers) ────────
 // The key is accepted here and sealed; no answer ever carries it back (hasKey only).
@@ -640,7 +638,9 @@ api.get("/bots", (c) => {
 api.post("/bots", async (c) => {
   const b = await body(c);
   if (!String(b.name ?? "").trim()) fail(400, "Give the bot a name.");
-  const bot = bots.create(c.get("user").id, { name: b.name, label: b.label, description: b.description, instructions: b.instructions, shape: b.shape, color: b.color, mode: b.mode, primary: !!b.primary, character: b.character });
+  const userId = c.get("user").id;
+  if (b.model !== undefined && (typeof b.model !== "string" || (b.model && !(await availableModels(userId)).some((m) => m.ref === b.model)))) fail(400, tr(c.get("user").locale, "Choose an available model."));
+  const bot = bots.create(userId, { model: b.model, name: b.name, label: b.label, description: b.description, instructions: b.instructions, shape: b.shape, color: b.color, mode: b.mode, primary: !!b.primary, character: b.character });
   emit(bot.userId, { type: "roster" });
   return c.json({ bot: publicBot(bot) });
 });

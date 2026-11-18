@@ -3,7 +3,7 @@ import { api, enc, errText } from "../api";
 import { tn, useT } from "../i18n";
 import { sortedBots, useStore } from "../store";
 import { DEFAULT_CHARACTER } from "../types";
-import type { AvatarColor, AvatarShape, Bot, BotMode, CatalogApp, Character as CharacterLook, Connector, SearchHit } from "../types";
+import type { AvatarColor, AvatarShape, Bot, BotMode, ModelOption, CatalogApp, Character as CharacterLook, Connector, SearchHit } from "../types";
 import { botTitle, relTime } from "../lib/format";
 import { connectorError } from "../lib/connectorError";
 import { openSignInWindow, onSignInDone, startSignIn } from "../lib/oauth";
@@ -28,6 +28,14 @@ export function CreateBotModal({ onClose }: { onClose: () => void }) {
   const [color, setColor] = useState<AvatarColor>("ember");
   const [character, setCharacter] = useState<CharacterLook>(DEFAULT_CHARACTER);
   const [mode, setMode] = useState<BotMode>("personal");
+  const [model, setModel] = useState("");
+  const [models, setModels] = useState<ModelOption[]>([]);
+  const main = useStore((s) => Object.values(s.bots).find((b) => b.primary && !b.access));
+  useEffect(() => {
+    let active = true;
+    api<{ models: ModelOption[] }>("GET", "/models").then((r) => { if (active) setModels(r.models); }, (e) => { if (active) setError(errText(e)); });
+    return () => { active = false; };
+  }, []);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const id = useId();
@@ -39,7 +47,7 @@ export function CreateBotModal({ onClose }: { onClose: () => void }) {
     setBusy(true);
     setError(null);
     try {
-      const r = await api<{ bot: Bot }>("POST", "/bots", { name: n, shape, color, mode, character });
+      const r = await api<{ bot: Bot }>("POST", "/bots", { name: n, shape, color, mode, character, model: model || undefined });
       upsertBot(r.bot);
       selectBot(r.bot.id);
       onClose();
@@ -59,6 +67,13 @@ export function CreateBotModal({ onClose }: { onClose: () => void }) {
           <label className="field-label" htmlFor={id}>{t("common.name")}</label>
           <input id={id} className="input" value={name} maxLength={60} onChange={(e) => setName(e.target.value)} placeholder={t("createBot.namePlaceholder")} autoComplete="off" />
         </div>
+        <label className="field">
+          <span className="field-label">{t("createBot.model")}</span>
+          <select className="input" value={model} onChange={(e) => setModel(e.target.value)}>
+            <option value="">{t("createBot.inherit")}{main?.model ? ` · ${main.model}` : ""}</option>
+            {models.map((m) => <option key={m.ref} value={m.ref}>{m.provider} · {m.model}</option>)}
+          </select>
+        </label>
         <div className="field">
           <span className="field-label">{t("look.type")}</span>
           <TypeCards shape={shape} color={color} character={character} onChange={setCharacter} compact />

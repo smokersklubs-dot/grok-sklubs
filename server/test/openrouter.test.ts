@@ -247,9 +247,10 @@ test("« Connecter mon compte ChatGPT / Claude »: refused without Linux compute
   signedIn = true;
   const st = (await me("GET", `/connect-subscription/status?bot=${mainBot}&engine=codex`)).json;
   assert.deepEqual(st, { signedIn: true, account: "me@example.com" });
-  const used = await me("POST", "/connect-subscription/use", { engine: "claude-code", botId: mainBot });
+  assert.equal((await me("POST", "/connect-subscription/use", { engine: "claude-code", botId: mainBot })).status, 409);
+  const used = await me("POST", "/connect-subscription/use", { engine: "codex", botId: mainBot });
   assert.equal(used.status, 200);
-  assert.match(used.json.model, /^claude-code:/);
+  assert.equal(used.json.model, "codex:default");
   assert.equal((await me("GET", "/bots")).json.bots.find((b: any) => b.id === mainBot).model, used.json.model);
   assert.equal((await other("GET", "/bots")).json.bots.find((b: any) => b.id === otherBot).model, `${providerId}:deepseek/deepseek-v4.1-flash`, "the other account's bot is untouched");
   setConnectDeps({ linux: () => false });

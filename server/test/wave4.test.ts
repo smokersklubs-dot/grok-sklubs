@@ -493,6 +493,9 @@ test("bot_create: approval card, the new bot with its role, look and maker; dail
   await replied(b, "not a model set up");
   await say(b, 'call bot_create {"name": "Nina", "role": "x", "instructions": "x"}');
   await replied(b, "Created Nina");
+  const nina = (await call("GET", "/bots")).json.bots.find((x: Bot) => x.name === "Nina");
+  assert.equal(nina.model, "script:script-1", "inherits the creating bot's model");
+  assert.equal(nina.createdBy, b.id);
   await say(b, 'call bot_create {"name": "Omar", "role": "x", "instructions": "x"}');
   await replied(b, "the limit is 2");
   policies.remove(userId, "bot_create");

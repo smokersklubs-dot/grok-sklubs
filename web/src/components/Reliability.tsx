@@ -5,13 +5,15 @@ import type { ModelOption, ReliabilitySettings } from "../types";
 import { Icon } from "./Icon";
 import { ErrorNote, IconButton, Loading, Toggle } from "./ui";
 import { ApiProvidersSection, ServerModelPricesSection } from "./SecretsFilesProviders";
+import { AiAccountCards } from "./AiAccounts";
+import { TeamModels } from "./TeamModels";
 
 /** The models offered on this server (API models only: subscription engines run a different kind of turn). */
 export function useApiModels(reload = 0) {
   const [models, setModels] = useState<ModelOption[] | null>(null);
   useEffect(() => {
     let dead = false;
-    api<{ models: ModelOption[] }>("GET", "/models").then((r) => !dead && setModels(r.models.filter((m) => m.kind === "api")), () => !dead && setModels([]));
+    api<{ models: ModelOption[] }>("GET", "/models").then((r) => !dead && setModels(r.models.filter((m) => m.kind === "api" && !m.ref.startsWith("demo:"))), () => !dead && setModels([]));
     return () => { dead = true; };
   }, [reload]);
   return models;
@@ -89,10 +91,14 @@ export function ModelsSection() {
   return (
     <>
       <h2>{t("settings.section.models")}</h2>
-      <p className="muted">{t("models.intro")}</p>
+      <AiAccountCards subscriptionsOnly />
+      <TeamModels />
       <ErrorNote onDismiss={() => setError(null)}>{error}</ErrorNote>
-      <ApiProvidersSection onChanged={() => setReload((n) => n + 1)} />
-      <ServerModelPricesSection />
+      <details className="model-advanced">
+        <summary>{t("models.advancedApi")}</summary>
+        <ApiProvidersSection onChanged={() => setReload((n) => n + 1)} />
+        <ServerModelPricesSection />
+      </details>
       {!state || !models ? <Loading /> : (
         <>
           <h3 className="pane-heading">{t("models.fallbacks")}</h3>

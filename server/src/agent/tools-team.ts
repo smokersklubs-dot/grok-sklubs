@@ -1,5 +1,6 @@
 import { emit } from "../bus.js";
 import { config } from "../config.js";
+import { subscriptionEnginesFor } from "../hosted.js";
 import { isValidTimezone } from "../cron.js";
 import { tr } from "../i18n.js";
 import { modelAvailable, type ToolSpec } from "../llm/index.js";
@@ -7,7 +8,7 @@ import { fetchProblem, guardedFetch } from "../net.js";
 import { ACCESSORIES, AVATAR_COLORS, AVATAR_SHAPES, CHARACTER_TYPES, EYE_STYLES, IDLE_MOTIONS, TOOL_GROUPS, type ToolGroup } from "../shared.js";
 import { audit, bots, clip, publicBot, revisions, rows, settings, skills, type BotRecord } from "../store.js";
 import { formatXResult, xSearch, xSearchProvider } from "../xsearch.js";
-import { engineModels, isEngineRef } from "./engine.js";
+import { engineModelsFor, isEngineRef } from "./engine.js";
 import type { BuiltinTool, ToolContext } from "./tools.js";
 
 /**
@@ -168,9 +169,9 @@ const LOOK_SCHEMA = {
 };
 
 /** Model references a bot may give a new bot: "" (the server's default), an API model set up here, or a subscription choice offered here. */
-function modelAllowed(ref: string, userId: string): boolean {
+async function modelAllowed(ref: string, userId: string): Promise<boolean> {
   if (!ref) return true;
-  if (isEngineRef(ref)) return engineModels().some((m) => m.ref === ref);
+  if (isEngineRef(ref)) return subscriptionEnginesFor(userId) && (await engineModelsFor(userId)).some((m) => m.ref === ref);
   return modelAvailable(ref, userId);
 }
 
@@ -204,13 +205,13 @@ export const botTools: BuiltinTool[] = [
     obj({
       name: str("Its name (unique on the team)"), role: str("Its role in a few words, e.g. \"SEO analyst\""),
       instructions: str("Its standing instructions: what it does, how, for whom"),
-      look: LOOK_SCHEMA, model: str("Model reference (\"provider:model\" as listed in Settings), or empty for the server default"),
+      look: LOOK_SCHEMA, model: str("An optional model from Settings. Omit to use your own model."),
     }, ["name", "role", "instructions"]), {
     activity: "messaging", label: "Creating a bot", group: "team", audited: true, detail: (a) => String(a.name ?? ""),
     gate: (a, ctx) => ({
       key: "bot_create", strict: ctx.tainted,
       title: ctx.tainted ? "{bot} has read outside content. Allow it to create a new bot, {name}?" : "Allow {bot} to create a new bot, {name}?",
-      reason: "create a bot", source: "Team", vars: { name: clip(String(a.name ?? "").trim(), 60) || "?", role: clip(String(a.role ?? ""), 80), model: String(a.model ?? "") || "default", n: String(config.botCreatePerDay) },
+      reason: "create a bot", source: "Team", vars: { name: clip(String(a.name ?? "").trim(), 60) || "?", role: clip(String(a.role ?? ""), 80), model: String(a.model ?? "").trim() || bots.byId(ctx.botId)?.model || "default", n: String(config.botCreatePerDay) },
       note: "Role: {role} · Model: {model}. A bot can create at most {n} bots a day; you can delete it at any time.",
     }),
     run: async (a, c) => {
@@ -221,10 +222,10 @@ export const botTools: BuiltinTool[] = [
       const used = bots.createdByBotsSince(c.user.id, Date.now() - 86_400_000);
       if (used >= config.botCreatePerDay) return { content: `Not created: bots already created ${used} bots in the last 24 hours (the limit is ${config.botCreatePerDay}). Tell the user they can create one in the sidebar.`, isError: true };
       const model = String(a.model ?? "").trim();
-      if (!modelAllowed(model, c.user.id)) return { content: `"${model}" is not a model set up on this server. Leave model empty for the default.`, isError: true };
+      if (!await modelAllowed(model, c.user.id)) return { content: `"${model}" is not a model set up for this account. Leave model empty to use your own model.`, isError: true };
       const look = lookPatch(a.look);
       const created = bots.create(c.user.id, {
-        name, label: clip(String(a.role ?? "").trim(), 60), instructions: String(a.instructions ?? "").slice(0, 8000), model,
+        name, label: clip(String(a.role ?? "").trim(), 60), instructions: String(a.instructions ?? "").slice(0, 8000), model: model || undefined,
         shape: look.shape as BotRecord["shape"] | undefined, color: look.color as BotRecord["color"] | undefined,
         character: look.character as BotRecord["character"] | undefined, createdBy: c.bot.id,
       });

@@ -447,7 +447,7 @@ export function guessOutcome(raw: string, ok: boolean): { status: StepStatus; su
  * installed there) within a small share of the context, and drops their descriptions when there are too many. Sklubot
  * gives Codex no skills of its own (the bot's skills are in its instructions, AGENTS.md), so there is nothing to fix here.
  */
-const TOOL_NOISE: RegExp[] = [/skills? context budget/i];
+const TOOL_NOISE: RegExp[] = [/skills? context budget/i, /^falling back from websockets to https transport\b/i];
 
 /** Turns the tool's own events into chat rows: streamed replies, steps, the thinking caption and the step counter. */
 class Transcript {
@@ -607,7 +607,8 @@ function runInComputer(bot: BotRecord, args: string[], env: Record<string, strin
 /** Where a turn's secret variables wait for the wrapper (mode 600, removed as soon as read). */
 export const SECRET_ENV_FILE = "/root/.sklubot/turn-secrets.env";
 /** Writes the pid down (for "stop"), loads and deletes the secret variables if any, then runs the tool. */
-export const ENGINE_WRAPPER = `echo $$ > /tmp/sklubot-engine.pid; if [ -f ${SECRET_ENV_FILE} ]; then set -a; . ${SECRET_ENV_FILE}; set +a; rm -f ${SECRET_ENV_FILE}; fi; exec "$@"`;
+const SUBSCRIPTION_ENV = "unset OPENAI_API_KEY CODEX_API_KEY ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN ANTHROPIC_BASE_URL CLAUDE_CODE_USE_BEDROCK CLAUDE_CODE_USE_VERTEX CLAUDE_CODE_USE_FOUNDRY";
+export const ENGINE_WRAPPER = `echo $$ > /tmp/sklubot-engine.pid; if [ -f ${SECRET_ENV_FILE} ]; then set -a; . ${SECRET_ENV_FILE}; set +a; rm -f ${SECRET_ENV_FILE}; fi; ${SUBSCRIPTION_ENV}; exec "$@"`;
 /** The file's content: KEY='value' lines (values are hex tokens; single quotes inside are escaped anyway). */
 export const secretEnvFile = (vars: Record<string, string>) => Object.entries(vars).map(([k, v]) => `${k}='${v.replace(/'/g, `'\\''`)}'`).join("\n") + "\n";
 
@@ -899,8 +900,8 @@ async function codexTurn(turn: Turn, t: Transcript, prompt: string, system: stri
 
 const signInHint = (turn: Turn, engine: Engine) =>
   tr(turn.user.locale, engine === "codex"
-    ? "I am not signed in to ChatGPT on my computer yet. Open my settings → Brain → Sign in, then sign in on my screen."
-    : "I am not signed in to Claude on my computer yet. Open my settings → Brain → Sign in, then sign in on my screen.");
+    ? "My ChatGPT session needs attention. Open Settings → Models, select ChatGPT and check the connection for this bot."
+    : "My Claude session needs attention. Open Settings → Models, select Claude and check the connection for this bot.");
 
 // ── A short side request (memory, summaries) through the subscription ───────
 export async function engineAsk(bot: BotRecord, system: string, prompt: string): Promise<string> {
@@ -929,14 +930,16 @@ async function engineAskOn(bot: BotRecord, system: string, prompt: string): Prom
 export async function engineStatus(bot: BotRecord): Promise<EngineStatus[]> {
   await ensureComputer(bot);
   const name = containerName(bot.id);
-  const claude = await docker(["exec", name, "sh", "-c", "command -v claude >/dev/null || exit 9; claude auth status --json"], { timeoutMs: 30_000 });
-  const codex = await docker(["exec", name, "sh", "-c", "command -v codex >/dev/null || exit 9; codex login status 2>&1"], { timeoutMs: 30_000 });
+  const claude = await docker(["exec", name, "sh", "-c", `${SUBSCRIPTION_ENV}; command -v claude >/dev/null || exit 9; claude auth status --json`], { timeoutMs: 30_000 });
+  const codex = await docker(["exec", name, "sh", "-c", `${SUBSCRIPTION_ENV}; command -v codex >/dev/null || exit 9; codex login status 2>&1`], { timeoutMs: 30_000 });
   let c: any = {};
   try { c = JSON.parse(claude.stdout.toString("utf8")); } catch { /* not JSON */ }
   const codexText = codex.stdout.toString("utf8").trim();
+  const claudePlan = claude.code === 0 && !!c.loggedIn && ["claude.ai", "oauth_token"].includes(c.authMethod);
+  const codexPlan = codex.code === 0 && /logged in (?:using|with) chatgpt/i.test(codexText);
   return [
-    { engine: "claude-code", installed: claude.code !== 9, signedIn: claude.code === 9 ? false : !!c.loggedIn, account: c.email ?? c.account?.email ?? (c.authMethod && c.authMethod !== "none" ? String(c.authMethod) : null), detail: claude.code === 9 ? "not installed" : null },
-    { engine: "codex", installed: codex.code !== 9, signedIn: codex.code === 9 ? false : codex.code === 0 && !/not logged in/i.test(codexText), account: codex.code === 0 ? clip(codexText, 120) : null, detail: codex.code === 9 ? "not installed" : null },
+    { engine: "claude-code", installed: claude.code !== 9, signedIn: claudePlan, account: claudePlan ? c.email ?? c.account?.email ?? null : null, detail: claude.code === 9 ? "not installed" : null },
+    { engine: "codex", installed: codex.code !== 9, signedIn: codexPlan, account: codexPlan ? "ChatGPT" : null, detail: codex.code === 9 ? "not installed" : null },
   ];
 }
 
@@ -945,7 +948,7 @@ export async function engineLogin(bot: BotRecord, engine: Engine) {
   await ensureComputer(bot);
   const fr = (await import("../store.js")).users.localeOf(bot.userId) === "fr";
   const done = fr ? "Connexion terminée. Tu peux fermer cette fenêtre et rendre la main." : "Signed in. You can close this window and hand back.";
-  const cmd = engine === "codex" ? "codex login" : "claude auth login --claudeai";
+  const cmd = `${SUBSCRIPTION_ENV}; ${engine === "codex" ? "codex login" : "claude auth login --claudeai"}`;
   const title = engine === "codex" ? "ChatGPT" : "Claude";
   const r = await docker(["exec", "-d", containerName(bot.id), "xterm", "-T", title, "-geometry", "100x24+80+60", "-e", "sh", "-c", `${cmd} && echo && echo '${done}'; sleep 3600`], { timeoutMs: 20_000 });
   if (r.code !== 0) throw new Error(`could not open the sign-in window: ${r.stderr.trim().slice(0, 200)}`);

@@ -203,12 +203,19 @@ export const bots = {
     const shape = AVATAR_SHAPES.includes(input.shape as any) ? input.shape! : stablePick(id + "s", AVATAR_SHAPES);
     const color = AVATAR_COLORS.includes(input.color as any) ? input.color! : stablePick(id + "c", AVATAR_COLORS.filter((c) => c !== "ink"));
     const t = now();
+    // A human creates from the main bot; a teammate creates from its own model.
+    // An explicit empty model still means the server default (imports and settings).
+    let model = input.model;
+    if (model === undefined && (input.kind ?? "agent") === "agent") {
+      const creator = input.createdBy ?? input.parentId;
+      model = (creator ? bots.owned(userId, creator) : bots.primary(userId))?.model;
+    }
     q.run(
       `INSERT INTO bots (id, user_id, kind, name, label, description, instructions, shape, color, mode, effort, model, autonomy, hidden, parent_id, members, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       id, userId, input.kind ?? "agent", name, (input.label ?? "").slice(0, 60), (input.description ?? "").slice(0, 500),
       (input.instructions ?? "").slice(0, 8000), shape, color, input.mode === "teammate" ? "teammate" : "personal",
-      ENUMS.effort.includes(input.effort ?? "") ? input.effort! : "medium", input.model ?? "",
+      ENUMS.effort.includes(input.effort ?? "") ? input.effort! : "medium", model ?? "",
       ENUMS.autonomy.includes(input.autonomy ?? "") ? input.autonomy! : "careful",
       input.hidden ? 1 : 0, input.parentId ?? null, JSON.stringify(input.memberIds ?? []), t, t,
     );

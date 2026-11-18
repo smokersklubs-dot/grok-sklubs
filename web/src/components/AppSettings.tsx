@@ -29,38 +29,8 @@ import { AdminSection, SubscriptionSection } from "./Hosted";
 import { BackupSettings } from "./BackupSettings";
 import { SurveillanceSettingsSection } from "./SurveillanceView";
 import { SkillsLibrarySection } from "./SkillsLibrary";
+import { SettingsNavigation, KeyboardShortcuts } from "./SettingsNavigation";
 import { PageVersions } from "./PageVersions";
-
-const SECTIONS: { id: AppSection; icon: IconName }[] = [
-  { id: "general", icon: "settings" },
-  { id: "today", icon: "sun" },
-  // The server's owner and hosted operators only: the Sentinelle's alerts (SurveillanceView.tsx).
-  { id: "surveillance", icon: "shield" },
-  { id: "profile", icon: "user" },
-  { id: "models", icon: "brain" },
-  { id: "notifications", icon: "bell" },
-  { id: "computer", icon: "monitor" },
-  { id: "devices", icon: "cursor" },
-  { id: "permissions", icon: "shield" },
-  { id: "rules", icon: "book" },
-  { id: "memory", icon: "brain" },
-  { id: "skills", icon: "book" },
-  { id: "connectors", icon: "plug" },
-  { id: "vault", icon: "key" },
-  { id: "keys", icon: "shield" },
-  { id: "pages", icon: "globe" },
-  { id: "usage", icon: "chart" },
-  { id: "checkins", icon: "bell" },
-  { id: "activity", icon: "history" },
-  { id: "team", icon: "users" },
-  { id: "workspaces", icon: "users" },
-  { id: "voice", icon: "mic" },
-  { id: "email", icon: "mail" },
-  { id: "account", icon: "user" },
-  // Hosted mode only (HOSTED_MODE=1 on the server): the customer's subscription, and the operators' administration.
-  { id: "subscription", icon: "star" },
-  { id: "admin", icon: "shield" },
-];
 
 /* ---------- General ---------- */
 
@@ -1249,27 +1219,16 @@ export function AppSettings({ section }: { section: AppSection }) {
   const t = useT();
   const hosted = useStore((s) => s.hosted);
   const sentinel = useStore((s) => s.sentinel);
-  const sections = SECTIONS.filter((s) => (s.id === "subscription" ? !!hosted : s.id === "admin" ? !!hosted?.operator : s.id === "surveillance" ? sentinel : true));
   useEscape(closeAppSettings, !blocked);
   useDialogFocus(root);
   return (
     <div className="app-settings" ref={root} role="dialog" aria-modal="true" aria-label={t("settings.title")} tabIndex={-1}>
-      <nav className="app-settings-nav" aria-label={t("settings.sections")}>
-        <button type="button" className="btn btn-ghost btn-small back" onClick={closeAppSettings}>
-          <Icon name="arrowLeft" size={15} /> {t("settings.back")}
-        </button>
-        <h1>{t("settings.title")}</h1>
-        {sections.map((s) => (
-          <button key={s.id} type="button" className={`settings-nav-item ${section === s.id ? "is-active" : ""}`} aria-current={section === s.id ? "page" : undefined} onClick={() => openAppSettings(s.id)}>
-            <Icon name={s.icon} size={16} />
-            <span>{t(s.id === "subscription" && !hosted?.creditsForSale ? "settings.section.aiAccounts" : `settings.section.${s.id}`)}</span>
-          </button>
-        ))}
-      </nav>
+      <SettingsNavigation section={section} />
       <div className="app-settings-main">
         <IconButton icon="close" label={t("settings.close")} className="app-settings-close" onClick={closeAppSettings} />
         <div className={`app-settings-content settings-pane ${section === "admin" ? "is-wide" : ""}`}>
           {section === "general" && <GeneralSection />}
+          {section === "shortcuts" && <KeyboardShortcuts />}
           {section === "today" && <TodaySettingsSection />}
           {section === "surveillance" && sentinel && <SurveillanceSettingsSection />}
           {section === "profile" && <ProfileSection />}
