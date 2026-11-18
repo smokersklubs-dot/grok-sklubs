@@ -712,7 +712,9 @@ test("memory confidence: mentioned once → confirmed when the user says it agai
   memoFacts = [];
   await consolidate(bots.byId(b.id)!);
   assert.equal(memories.owned(userId, note.id)!.confidence, "once");
-  // The user says it again in a later message: confirmed.
+  // The user says it again in a later message: confirmed. (A later millisecond: consolidation reads the messages
+  // written after the last one it saw, by time; on a fast machine both rows could otherwise share one.)
+  await new Promise((r) => setTimeout(r, 5));
   rowStore.append(bots.byId(b.id)!, { kind: "message", role: "user", text: "Comme je te l'ai dit, je travaille chez SKLUBS depuis 2020." });
   await consolidate(bots.byId(b.id)!);
   assert.equal(memories.owned(userId, note.id)!.confidence, "confirmed");
