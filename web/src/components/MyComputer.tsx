@@ -290,7 +290,7 @@ export function DevicesSection() {
             <span className="relay-downloads">
               {(downloads?.files ?? []).map((f) => (
                 <a key={f.name} className="chip chip-link" href={f.url} download>
-                  <Icon name="download" size={12} /> {t(`relay.platform.${f.platform}`)}
+                  <Icon name="download" size={12} /> {t(`relay.platform.${f.platform}`)}{(() => { const k = relayKind(f.name); return k ? <span className="muted"> · {t(`relay.kind.${k}`)}</span> : null; })()}
                 </a>
               ))}
               {downloads && (
@@ -365,4 +365,10 @@ export function DevicesSection() {
       <p className="muted small">{t("relay.privacy")}</p>
     </>
   );
+}
+
+/** Which kind of file a download is, so two Windows (or Linux) buttons read differently. */
+function relayKind(name: string): "exe" | "zip" | "deb" | "appimage" | "dmg" | null {
+  const m = /\.(exe|zip|deb|AppImage|dmg)$/i.exec(name);
+  return m ? (m[1].toLowerCase() as "exe" | "zip" | "deb" | "appimage" | "dmg") : null;
 }
