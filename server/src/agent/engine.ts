@@ -441,6 +441,14 @@ export function guessOutcome(raw: string, ok: boolean): { status: StepStatus; su
   return { status: "done", summary: clip(text.replace(/\s+/g, " "), 80) };
 }
 
+/**
+ * Tool-internal warnings that mean nothing to the person chatting, logged instead of shown. "Exceeded skills context budget.
+ * All skill descriptions were removed…": Codex lists the skills it finds on the computer (its own bundled ones and any
+ * installed there) within a small share of the context, and drops their descriptions when there are too many. Sklubot
+ * gives Codex no skills of its own (the bot's skills are in its instructions, AGENTS.md), so there is nothing to fix here.
+ */
+const TOOL_NOISE: RegExp[] = [/skills? context budget/i];
+
 /** Turns the tool's own events into chat rows: streamed replies, steps, the thinking caption and the step counter. */
 class Transcript {
   readonly stream: StreamingRow;
@@ -517,6 +525,27 @@ class Transcript {
     this.failed = true;
     this.lastFailure = clip(text, 300);
   }
+  /**
+   * A non-fatal message from the tool (Codex's `error` item: "Describes a non-fatal error surfaced as an item" —
+   * codex-rs/exec/src/exec_events.rs). It never fails the turn. Known tool-internal noise (TOOL_NOISE) goes to the server
+   * log only; anything else is shown as a notice.
+   */
+  warning(text: string) {
+    const clean = clip(text.replace(/\s+/g, " ").trim(), 300);
+    if (!clean) return;
+    if (TOOL_NOISE.some((re) => re.test(clean))) { console.warn(`[engine ${this.turn.bot.name}] ${clean}`); return; }
+    this.endMessage();
+    noteDiskTrouble(this.turn.bot, clean);
+    rows.append(this.turn.bot, { kind: "notice", tone: "warn", text: clean });
+  }
+  /** The tool reported the end of its turn (its reply is delivered): a stop from now on is not "Stopped." (see watchedExec). */
+  ended = false;
+  /** Set by watchedExec while the tool runs: ends a process that does not exit by itself after the turn's end. */
+  onEnded: (() => void) | null = null;
+  turnEnded() {
+    this.ended = true;
+    this.onEnded?.();
+  }
   failed = false;
   /** The tool itself ended on this failure (not a passing error item): a backup model may take the turn over. */
   fatal = false;
@@ -555,7 +584,7 @@ function runInComputer(bot: BotRecord, args: string[], env: Record<string, strin
     void docker(["exec", name, "sh", "-c", "kill -INT $(cat /tmp/sklubot-engine.pid) 2>/dev/null"], { timeoutMs: 10_000 });
     // A process already gone (its helpers may still hold the output open) or a tool that never said a word and whose
     // message goes to another model: nothing to save, so no grace (watch.ts).
-    const quick = signal.reason instanceof EngineGone || signal.reason instanceof SwitchModel;
+    const quick = signal.reason instanceof EngineGone || signal.reason instanceof SwitchModel || signal.reason instanceof EngineFinished;
     escalate = setTimeout(() => { void killEngineProcesses(bot.id).finally(() => { if (child.exitCode === null) child.kill("SIGKILL"); }); }, quick ? 1000 : ENGINE_KILL_GRACE_MS);
   };
   signal.addEventListener("abort", stop, { once: true });
@@ -595,6 +624,10 @@ const NOT_SIGNED_IN = /not logged in|please run \/login|login required|not authe
  */
 export class EngineTimeout extends Error {
   constructor(readonly limitMs: number) { super(`the turn reached its time limit (${Math.round(limitMs / 60_000)} min)`); this.name = "EngineTimeout"; }
+}
+/** Why a tool's process is ended after it reported the end of its turn: it did not exit by itself (watchedExec). */
+export class EngineFinished extends Error {
+  constructor() { super("the tool reported the end of its turn but did not exit"); this.name = "EngineFinished"; }
 }
 export const isEngineTimeout = (reason: unknown): reason is EngineTimeout => reason instanceof EngineTimeout;
 
@@ -675,14 +708,15 @@ async function engineTurnOn(turn: Turn, prompt: string, attachments: Attachment[
     revokeEngineToken(bot.id);
     runningTurns.delete(bot.id);
     t.endMessage();
-    const aborted = turn.signal.aborted;
+    // Stopped after the tool already reported the end of its turn (its reply is out): that is a finished turn.
+    const aborted = turn.signal.aborted && !t.ended;
     t.close(!aborted && !threw && !t.failed, aborted, isEngineTimeout(turn.signal.reason));
     if (aborted && turn.signal.reason instanceof EngineGone) noteRuntime(bot.id, "error", "the tool's process ended without finishing the turn");
     else if (aborted || t.switched) noteRuntime(bot.id, "ready");
     else if (threw || t.failed) noteRuntime(bot.id, "error", t.lastFailure || null);
     else noteRuntime(bot.id, "ready");
   }
-  if (turn.signal.aborted) throw new Error("aborted");
+  if (turn.signal.aborted && !t.ended) throw new Error("aborted");
   return { failure: t.fatal ? t.lastFailure || "the tool failed" : "", steps: t.steps.map((s) => s.seq), ...(t.switched ? { switched: true } : {}), ...(t.limited ? { limited: t.limited } : {}) };
 }
 
@@ -692,12 +726,19 @@ async function engineTurnOn(turn: Turn, prompt: string, attachments: Attachment[
  */
 async function watchedExec(turn: Turn, t: Transcript, args: string[], env: Record<string, string>, cwd: string, input: string, onLine: (line: string) => void) {
   const { bot } = turn;
-  const signal = callSignal(bot.id, turn.signal);
+  // The turn's end is reported but the process stays (a helper it started can hold its output open, so the reply looks
+  // "still working" and the bot's queue waits): after a short grace it is ended, and the turn counts as finished.
+  const finished = new AbortController();
+  let exitTimer: NodeJS.Timeout | null = null;
+  t.onEnded = () => { exitTimer ??= setTimeout(() => finished.abort(new EngineFinished()), config.engineExitGraceMs); };
+  const signal = AbortSignal.any([callSignal(bot.id, turn.signal), finished.signal]);
   setEngineSampler(sampleEngine);
   watchExec(bot.id, true);
   try {
     return await host.exec(bot, args, env, cwd, input, signal, (line) => { watchProgress(bot.id); onLine(line); });
   } finally {
+    if (exitTimer) clearTimeout(exitTimer);
+    t.onEnded = null;
     watchExec(bot.id, false);
     if (!turn.signal.aborted && signal.aborted && signal.reason instanceof SwitchModel) t.switched = true;
   }
@@ -759,6 +800,7 @@ async function claudeTurn(turn: Turn, t: Transcript, prompt: string, token: stri
       if (hit) { limit = hit; failure = tr(turn.user.locale, "Your Claude subscription has reached its usage limit for now. I will be able to continue once it resets."); }
     } else if (e.type === "result") {
       sawResult = true;
+      if (!e.is_error && !turn.signal.aborted) t.turnEnded();
       const u = e.usage ?? {};
       record(turn.user.id, bot.id, bot.model, { inputTokens: (u.input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0), outputTokens: u.output_tokens ?? 0, cachedTokens: u.cache_read_input_tokens ?? 0 });
       if (e.is_error || (typeof e.result === "string" && NOT_SIGNED_IN.test(e.result) && !turn.spoke)) {
@@ -826,9 +868,11 @@ async function codexTurn(turn: Turn, t: Transcript, prompt: string, system: stri
       else if (it.type === "command_execution") t.stepEnd(it.id, it.status === "completed" && (it.exit_code ?? 0) === 0, `exit ${it.exit_code ?? "?"}`);
       else if (it.type === "mcp_tool_call") t.stepEnd(it.id, it.status === "completed" && !it.error, it.error?.message ?? textOf(it.result?.content));
       else if (it.type === "web_search" || it.type === "file_change") t.stepEnd(it.id, it.status !== "failed", it.query ?? "");
-      else if (it.type === "error") t.notice(clip(String(it.message ?? "error"), 300));
+      else if (it.type === "error") t.warning(String(it.message ?? ""));
     } else if (e.type === "turn.completed") {
       sawEnd = true;
+      // Only an end reported before any stop counts (a tool that is interrupted may still print one).
+      if (!turn.signal.aborted) t.turnEnded();
       const u = e.usage ?? {};
       record(turn.user.id, bot.id, bot.model, { inputTokens: u.input_tokens ?? 0, outputTokens: (u.output_tokens ?? 0) + (u.reasoning_output_tokens ?? 0), cachedTokens: u.cached_input_tokens ?? 0 });
       noteSubscription(turn.user.id, { engine: "codex", fiveHour: null, sevenDay: null, resetsAt: null, at: Date.now() });

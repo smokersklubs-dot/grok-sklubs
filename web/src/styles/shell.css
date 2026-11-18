@@ -126,6 +126,11 @@
   .details { position: fixed; z-index: 40; top: 8px; right: 8px; bottom: 8px; width: min(340px, calc(100vw - 16px)); background: var(--bg); border: 1px solid var(--border); border-radius: var(--r-lg); box-shadow: var(--shadow-lg); }
 }
 
+/* Tablets: a narrower sidebar leaves the conversation more room. */
+@media (min-width: 721px) and (max-width: 1024px) {
+  .sidebar:not(.is-collapsed) { width: 264px; }
+}
+
 /* Phone width: the sidebar becomes an overlay */
 @media (max-width: 720px) {
   .only-mobile, .icon-btn.only-mobile { display: inline-flex; }

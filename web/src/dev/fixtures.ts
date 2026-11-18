@@ -284,3 +284,48 @@ export function announcementsAdmin(o: FixtureOptions, empty: boolean): Announcem
   };
 }
 const pick = (v: AnnouncementView) => ({ id: v.id, kind: v.kind, title: v.title, body: v.body, link: v.link, startsAt: v.startsAt, endsAt: v.endsAt, siteBanner: v.siteBanner });
+
+/**
+ * A whole conversation for the gallery's « chat » page (the real chat view, phone or desktop): what broke on an iPhone —
+ * long replies with a long link, a code block and a table, the raw warning of a subscription tool, several « Stopped. »
+ * notices in a row, a finished turn's steps, a progress line, empty rows (skipped) and a thread.
+ */
+export function chatRows(o: FixtureOptions): Row[] {
+  const { L } = texts(o);
+  const at = NOW - 3 * HOUR;
+  const url = "https://www.example.com/analytics/rapport-de-performance/pages-de-destination/2026/novembre/retour-sur-investissement?utm_source=sklubot&utm_medium=chat&utm_campaign=roi-des-pages-longues&ref=comparatif-mensuel-detaille";
+  const user = (text: string, t: number) => row({ kind: "message", role: "user", text }, t);
+  const bot = (text: string, t: number, extra: Partial<Extract<Row["body"], { kind: "message" }>> = {}) => row({ kind: "message", role: "assistant", text, ...extra }, t);
+  const step = (label: string, t: number) => row({ kind: "step", callId: `c${t}`, tool: "web_search", label, status: "done", args: {}, summary: L("3 résultats", "3 results") }, t);
+  const stopped = (t: number) => row({ kind: "notice", tone: "info", text: L("Arrêté.", "Stopped.") }, t);
+  const list: Row[] = [
+    user(L("Salut, tu peux regarder le ROI de mes pages ? La fin était coupée la dernière fois.", "Hi, can you look at the ROI of my pages? The end was cut off last time."), at),
+    step(L("Recherche sur le web", "Web search"), at + 5_000),
+    step(L("Lecture de la page des statistiques", "Reading the analytics page"), at + 9_000),
+    // The raw warning a subscription tool printed (shown as is by older servers): it must wrap, not overflow.
+    row({ kind: "notice", tone: "warn", text: "Exceeded skills context budget. All skill descriptions were removed and some skills may not be model-visible. Reduce the number of installed skills or disable unused skills in ~/.codex/config.toml." }, at + 10_000),
+    bot(L(
+      `Tu parles du retour sur investissement de tes pages ? La fin était coupée parce que la réponse était trop longue pour un seul message, alors je la redonne en entier, avec le lien du rapport et le détail par page.\n\nLe rapport complet : ${url}\n\n| Page | Visites | Conversions | Coût | ROI |\n|---|---:|---:|---:|---:|\n| /accueil-et-presentation-generale | 12 480 | 312 | 1 250 € | 148 % |\n| /tarifs | 8 902 | 401 | 980 € | 212 % |\n| /blog/comment-choisir-son-hebergement-web-en-2026 | 5 117 | 64 | 420 € | 37 % |\n\nPour recalculer toi-même :\n\n\`\`\`js\nconst roi = (gain, cout) => ((gain - cout) / cout) * 100; // ROI en pourcentage, arrondi à l'unité la plus proche pour le tableau ci-dessus\nconsole.log(roi(3100, 1250).toFixed(0) + " %");\n\`\`\`\n\nLe mot le plus long du rapport : \`identifiant_de_suivi_de_campagne_publicitaire_pour_les_pages_de_destination_longues\`.`,
+      `Are you talking about the return on investment of your pages? The end was cut off because the answer was too long for one message, so here it is in full, with the report link and the detail per page.\n\nThe full report: ${url}\n\n| Page | Visits | Conversions | Cost | ROI |\n|---|---:|---:|---:|---:|\n| /home-and-general-presentation | 12,480 | 312 | €1,250 | 148% |\n| /pricing | 8,902 | 401 | €980 | 212% |\n| /blog/how-to-choose-web-hosting-in-2026 | 5,117 | 64 | €420 | 37% |\n\nTo compute it yourself:\n\n\`\`\`js\nconst roi = (gain, cost) => ((gain - cost) / cost) * 100; // ROI as a percentage, rounded to the nearest unit for the table above\nconsole.log(roi(3100, 1250).toFixed(0) + "%");\n\`\`\`\n\nThe longest word of the report: \`campaign_tracking_identifier_for_the_long_landing_pages_of_the_monthly_comparison\`.`,
+    ), at + 60_000),
+    stopped(at + 61_000),
+    // Empty rows a turn can leave (a message with no words): never shown, never a gap.
+    bot("", at + 62_000),
+    bot("   ", at + 62_500),
+    user(L("Merci ! Et pour la page tarifs ?", "Thanks! And for the pricing page?"), at + 120_000),
+    row({ kind: "event", event: "progress", text: L("Je compare avec le mois dernier, encore une minute…", "Comparing with last month, one more minute…") }, at + 125_000),
+    bot(L("La page tarifs est la plus rentable : 212 %. Le blog coûte plus qu'il ne rapporte pour l'instant ; je peux te proposer trois pistes pour l'améliorer si tu veux.", "The pricing page is the most profitable: 212%. The blog costs more than it brings in for now; I can suggest three ways to improve it if you like."), at + 150_000, { replies: { count: 2, lastAt: at + 200_000 } }),
+    stopped(at + 151_000),
+    user(L("Oui vas-y", "Yes go ahead"), at + 180_000),
+    step(L("Lecture du blog", "Reading the blog"), at + 185_000),
+    bot(L("1. Ajouter un appel à l'action en fin d'article.\n2. Relier chaque article à la page tarifs.\n3. Réécrire les titres des cinq articles les plus lus.", "1. Add a call to action at the end of each post.\n2. Link each post to the pricing page.\n3. Rewrite the titles of the five most read posts."), at + 240_000),
+    stopped(at + 241_000),
+    stopped(at + 242_000),
+  ];
+  const parent = list.find((r) => r.body.kind === "message" && r.body.replies)!;
+  list.push(
+    { ...user(L("Tu peux détailler la piste 2 ?", "Can you detail idea 2?"), at + 190_000), thread: parent.seq },
+    { ...bot(L(`Oui : un lien en fin d'article vers ${url}`, `Yes: a link at the end of each post to ${url}`), at + 200_000), thread: parent.seq },
+  );
+  return list;
+}

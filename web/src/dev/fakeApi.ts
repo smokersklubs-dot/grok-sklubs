@@ -32,6 +32,8 @@ export function installFakeApi(get: () => FakeApiState): void {
     if (path === "/public/landing") return json(200, landingData(s.empty));
     if (path === "/downloads") return json(200, sampleDownloads(s.empty));
     if (path === "/models") return json(200, { models: [] });
+    // The chat page (GalleryChat.tsx): the call button asks for the bot's voice.
+    if (/^\/bots\/[^/]+\/voice$/.test(path)) return json(200, { status: { mode: "browser" } });
     return json(200, {});
   };
 }

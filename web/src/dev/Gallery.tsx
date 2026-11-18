@@ -6,7 +6,8 @@
  *
  * Everything is in the address, so a state can be shared or screenshotted:
  *   section=all|basics|cards|notices|banners|empty|today|surveillance|announcements|landing|download
- *   (landing, download: the public landing page or /telecharger alone, as a signed-out visitor sees it; empty=1 = no
+ *   (chat: the real chat view on a long conversation, see GalleryChat.tsx;
+ *   landing, download: the public landing page or /telecharger alone, as a signed-out visitor sees it; empty=1 = no
  *   templates, plans or files)
  *   theme=light|dark   lang=fr|en   frame=390 (phone frame)   long=1 (very long texts)
  *   empty=1 (Today/Surveillance with no data)   fail=1 (buttons answer with an error)
@@ -34,9 +35,10 @@ import Landing from "../components/Landing";
 import DownloadPage from "../components/DownloadPage";
 import { announcementsState, cardFixtures, fakeBot, GALLERY_BOT_ID, noticeRows, NOW, type FixtureOptions } from "./fixtures";
 import { installFakeApi, type FakeApiState } from "./fakeApi";
+import { GalleryChat } from "./GalleryChat";
 import "./gallery.css";
 
-const SECTIONS = ["all", "basics", "cards", "notices", "banners", "empty", "today", "surveillance", "announcements", "landing", "download"] as const;
+const SECTIONS = ["all", "basics", "cards", "notices", "banners", "empty", "today", "surveillance", "announcements", "landing", "download", "chat"] as const;
 type Section = (typeof SECTIONS)[number];
 
 interface GalleryState extends FakeApiState {
@@ -117,7 +119,7 @@ function Gallery() {
   return (
     <div className={`gallery ${s.embed ? "is-embed" : ""}`} data-gallery="sklubot-dev-gallery">
       {!s.embed && <Toolbar s={s} set={set} />}
-      {s.section === "landing" ? <Landing key={`${s.lang}:${s.empty}`} onAuth={() => undefined} /> : s.section === "download" ? <DownloadPage key={`${s.lang}:${s.empty}`} /> : <Sections key={`${s.lang}:${s.long}:${s.empty}`} s={s} />}
+      {s.section === "chat" ? <GalleryChat key={`${s.lang}`} o={{ lang: s.lang, long: s.long }} /> : s.section === "landing" ? <Landing key={`${s.lang}:${s.empty}`} onAuth={() => undefined} /> : s.section === "download" ? <DownloadPage key={`${s.lang}:${s.empty}`} /> : <Sections key={`${s.lang}:${s.long}:${s.empty}`} s={s} />}
     </div>
   );
 }

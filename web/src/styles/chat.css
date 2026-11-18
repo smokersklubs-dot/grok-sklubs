@@ -502,3 +502,35 @@ button.captions:hover { box-shadow: 0 0 0 1px var(--border-strong); }
 }
 .bubble, .bubble p, .bubble li, .bubble code, .event-line, .event-summary { word-break: break-word; overflow-wrap: break-word; overflow-wrap: anywhere; }
 .bubble pre { max-width: 100%; overflow-x: auto; }
+
+/*
+ * Responsive, v2. The chat column never grows wider than the screen: a flex item's default minimum width is its content's
+ * widest unbreakable piece (a code block, a table, a long link), so without `min-width: 0` here the whole transcript took
+ * that width (800 px on a 390-px phone): replies cut at the right edge, the user's own bubbles and the « Stopped. » pills
+ * pushed off screen (they looked like big empty gaps). Code blocks and tables scroll inside their own box.
+ */
+.chat-body-row, .transcript-wrap, .transcript-inner, .group, .msg, .bubble, .md, .notice, .event, .steps, .work { min-width: 0; }
+.transcript-inner { width: 100%; }
+.md, .md pre, .md .md-table, .md blockquote, .md img { max-width: 100%; }
+.md a { overflow-wrap: anywhere; word-break: break-word; }
+.md pre { -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; }
+.md pre code { overflow-wrap: normal; word-break: normal; white-space: pre; }
+.md th, .md td { overflow-wrap: break-word; word-break: normal; }
+.md td { min-width: 8ch; }
+.notice { flex-wrap: wrap; align-items: center; gap: 6px; }
+/* A long notice wraps on several lines: a rounded box, not a stretched pill. */
+.notice > span { min-width: 0; border-radius: 14px; }
+.event, .event-line, .event-line > span { max-width: 100%; }
+.steps-toggle, .steps-current, .steps-last { min-width: 0; }
+/* A long bot name in the field's hint stays on one line (cut with « … ») instead of making the field four lines high. */
+.composer-input::placeholder { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 720px) {
+  /* The header: menu | bot name (cut with « … ») | buttons, never wider than the screen. */
+  .chat-head { grid-template-columns: auto minmax(0, 1fr) auto; gap: 4px; padding: 0 max(6px, env(safe-area-inset-right)) 0 max(6px, env(safe-area-inset-left)); }
+  .chat-head-center { justify-self: center; max-width: 100%; }
+  .bot-pill { max-width: 100%; min-width: 0; padding-right: 8px; }
+  .chat-head-right { min-width: 0; }
+  /* The thread panel floats over the chat: clear of the notch and the home bar. */
+  .thread-panel { top: calc(8px + env(safe-area-inset-top)); bottom: calc(8px + env(safe-area-inset-bottom)); }
+  .md pre { padding: 10px 11px; }
+}

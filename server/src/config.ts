@@ -118,6 +118,12 @@ export const config = {
   snapshotMaxMb: Math.max(10, num("SNAPSHOT_MAX_MB", 300)),
   engineTurnTimeoutMs: Math.max(0, num("ENGINE_TURN_TIMEOUT_MINUTES", 60)) * 60_000,
   /**
+   * ENGINE_EXIT_GRACE_SEC: once a subscription tool has reported the end of its turn (Codex `turn.completed`, Claude Code
+   * `result`), how long its process may take to exit by itself before it is ended (a helper it started can hold its output
+   * open). The reply is already delivered: the turn ends as finished, never as "Stopped.". Fractions are accepted.
+   */
+  engineExitGraceMs: Math.max(0.05, num("ENGINE_EXIT_GRACE_SEC", 5)) * 1000,
+  /**
    * The turn watch (agent/watch.ts). FIRST_REPLY_RESCUE_SEC: a turn whose AI has sent nothing at all (no text, thinking,
    * tool call or progress) for this long gets one notice in its chat (0 = off). STALL_NOTICE_MIN: a turn with no progress
    * at all for this long gets one notice "seems stuck" (0 = off). ENGINE_CPU_SAMPLE_SEC: how often a subscription turn's

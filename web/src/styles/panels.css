@@ -126,7 +126,7 @@
 @media (max-width: 720px) {
   .modal-xl { height: 100%; }
   .backdrop { padding: 8px; }
-  .bot-settings .settings-layout { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); }
+  .bot-settings .settings-layout { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
   .settings-nav { flex-direction: row; border-right: 0; border-bottom: 1px solid var(--border); padding: 8px; overflow-x: auto; }
   .settings-nav-item { width: auto; }
   .settings-pane { padding: 16px 14px 24px; }
@@ -146,7 +146,7 @@
   .backdrop { padding-top: calc(8px + env(safe-area-inset-top)); padding-bottom: calc(8px + env(safe-area-inset-bottom)); }
   /* 16px keeps iOS from zooming the page when a field takes focus. */
   .input, .search-input { font-size: 16px; }
-  .app-settings { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); }
+  .app-settings { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
   .app-settings-nav { flex-direction: row; align-items: center; padding: 8px; overflow-x: auto; }
   .app-settings-nav h1 { display: none; }
   .app-settings-nav .settings-nav-item { width: auto; }
@@ -310,7 +310,7 @@ a.btn { text-decoration: none; }
 .vault-row .list-row-title .chip { margin-left: 6px; }
 .vault-import .file-pick { align-self: flex-start; cursor: pointer; }
 .import-map { display: flex; flex-direction: column; gap: 6px; }
-.import-map-row { display: grid; grid-template-columns: 140px 1fr; align-items: center; gap: 10px; font-size: 13px; }
+.import-map-row { display: grid; grid-template-columns: minmax(0, 140px) minmax(0, 1fr); align-items: center; gap: 10px; font-size: 13px; }
 .quiet-hours { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 14px; margin-top: 8px; }
 .quiet-hours label { display: flex; flex-direction: column; gap: 4px; }
 .callout.is-info { background: var(--info-soft); color: var(--info); margin-bottom: 10px; }
