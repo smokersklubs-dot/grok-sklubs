@@ -379,6 +379,22 @@ export function registerAccountMailPrivate(api: Hono<any>, deps: AccountMailDeps
     return c.json(view());
   }));
 
+  // The owner's bot relay (Settings → E-mail) reused for the server's own e-mails: the sealed password is copied on the
+  // server, never sent to the browser. Sender = the relay's user name, which must be an e-mail address.
+  api.post("/settings/smtp/from-relay", handle(userLoc, (c) => {
+    const user = ownerOnly(c);
+    if (smtpSettings()?.source === "env") throw new AccountMailError(409, "These settings come from the server's environment (SMTP_HOST…): change them there.");
+    const r = q.get<{ host: string; port: number; secure: number; username: string; pass_enc: string | null }>("SELECT host, port, secure, username, pass_enc FROM mail_relays WHERE user_id = ?", user.id);
+    if (!r || !r.pass_enc) throw new AccountMailError(409, "Your bots' relay (Settings → E-mail) has no saved password.");
+    const from = cleanEmail(r.username);
+    if (!validEmail(from)) throw new AccountMailError(409, "Your bots' relay user name is not an e-mail address: fill in this form instead.");
+    q.run(`INSERT INTO instance_smtp (id, host, port, tls_mode, username, pass_enc, from_addr, updated_at, updated_by) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET host = excluded.host, port = excluded.port, tls_mode = excluded.tls_mode, username = excluded.username, pass_enc = excluded.pass_enc,
+      from_addr = excluded.from_addr, updated_at = excluded.updated_at, updated_by = excluded.updated_by`, r.host, r.port, r.secure ? "tls" : "starttls", r.username.trim(), r.pass_enc, from, now(), user.id);
+    audit(user.id, "account", `Server e-mail (SMTP) set from the bots' relay: ${r.host}:${r.port}`);
+    return c.json(view());
+  }));
+
   api.delete("/settings/smtp", handle(userLoc, (c) => {
     const user = ownerOnly(c);
     q.run("DELETE FROM instance_smtp WHERE id = 1");

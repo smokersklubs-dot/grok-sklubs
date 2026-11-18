@@ -356,6 +356,15 @@ export function ServerMailSettings() {
           </p>
         </details>
 
+        {!fromEnv && !view.configured && (
+          <div className="row-end">
+            <button type="button" className="btn btn-small" disabled={busy} onClick={async () => {
+              setBusy(true); setError(null);
+              try { fill(await api<SmtpView>("POST", "/settings/smtp/from-relay")); setNote(t("smtp.fromRelayDone")); } catch (err) { setError(errText(err)); }
+              setBusy(false);
+            }}>{t("smtp.fromRelay")}</button>
+          </div>
+        )}
         {!fromEnv && (
           <form className="google-form" onSubmit={save}>
             <div className="form-cols is-even">

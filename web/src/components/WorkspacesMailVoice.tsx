@@ -467,20 +467,39 @@ export function MailSection() {
           </div>
           <h3 className="pane-heading">{t("mail.relay")}</h3>
           <p className="muted small">{t("mail.relayIntro")}</p>
+          <p className="muted small">{t("mail.notServerMail")}</p>
           <form className="editor" onSubmit={save} autoComplete="off">
-            <div className="field-inline">
-              <input className="input" value={f.host} onChange={(e) => setF({ ...f, host: e.target.value })} placeholder="smtp.example.com" aria-label={t("mail.host")} />
-              <input className="input input-small" value={f.port} onChange={(e) => setF({ ...f, port: e.target.value })} placeholder="587" aria-label={t("mail.port")} />
-              <label className="check-row"><input type="checkbox" checked={f.secure} onChange={(e) => setF({ ...f, secure: e.target.checked })} /> {t("mail.secure")}</label>
+            <div className="form-cols is-even">
+              <div className="field">
+                <label className="field-label" htmlFor="relay-host">{t("mail.host")}</label>
+                <input id="relay-host" className="input" value={f.host} onChange={(e) => setF({ ...f, host: e.target.value })} placeholder="smtp.example.com" spellCheck={false} />
+              </div>
+              <div className="field">
+                <label className="field-label" htmlFor="relay-port">{t("mail.port")}</label>
+                <input id="relay-port" className="input" inputMode="numeric" value={f.port} onChange={(e) => setF({ ...f, port: e.target.value })} placeholder="587" />
+              </div>
             </div>
-            <div className="field-inline">
-              <input className="input" value={f.username} onChange={(e) => setF({ ...f, username: e.target.value })} placeholder={t("mail.username")} aria-label={t("mail.username")} />
-              <input className="input" type="password" value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} placeholder={info.relay?.hasPassword ? t("voice.keySaved") : t("mail.password")} aria-label={t("mail.password")} />
+            <label className="check-row"><input type="checkbox" checked={f.secure} onChange={(e) => setF({ ...f, secure: e.target.checked })} /> {t("mail.secure")}</label>
+            <div className="form-cols is-even">
+              <div className="field">
+                <label className="field-label" htmlFor="relay-user">{t("mail.username")}</label>
+                <input id="relay-user" className="input" value={f.username} onChange={(e) => setF({ ...f, username: e.target.value })} spellCheck={false} />
+              </div>
+              <div className="field">
+                <label className="field-label" htmlFor="relay-pass">{t("mail.password")}</label>
+                <input id="relay-pass" className="input" type="password" value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} placeholder={info.relay?.hasPassword ? t("voice.keySaved") : ""} />
+              </div>
             </div>
             <h4 className="pane-subheading">{t("mail.dkim")}</h4>
-            <div className="field-inline">
-              <input className="input" value={f.fromDomain} onChange={(e) => setF({ ...f, fromDomain: e.target.value })} placeholder={info.domain ?? "bots.example.com"} aria-label={t("mail.fromDomain")} />
-              <input className="input input-small" value={f.dkimSelector} onChange={(e) => setF({ ...f, dkimSelector: e.target.value })} placeholder="sklubot" aria-label={t("mail.selector")} />
+            <div className="form-cols is-even">
+              <div className="field">
+                <label className="field-label" htmlFor="relay-domain">{t("mail.fromDomain")}</label>
+                <input id="relay-domain" className="input" value={f.fromDomain} onChange={(e) => setF({ ...f, fromDomain: e.target.value })} placeholder={info.domain ?? "bots.example.com"} spellCheck={false} />
+              </div>
+              <div className="field">
+                <label className="field-label" htmlFor="relay-selector">{t("mail.selector")}</label>
+                <input id="relay-selector" className="input" value={f.dkimSelector} onChange={(e) => setF({ ...f, dkimSelector: e.target.value })} placeholder="sklubot" spellCheck={false} />
+              </div>
             </div>
             <textarea className="input mono" rows={3} value={f.dkimKey} onChange={(e) => setF({ ...f, dkimKey: e.target.value })} placeholder={info.relay?.hasDkimKey ? t("mail.dkimSaved") : t("mail.dkimKey")} aria-label={t("mail.dkimKey")} />
             <p className="field-hint">{t("mail.sealed")}</p>
