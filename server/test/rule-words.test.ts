@@ -279,7 +279,7 @@ test("the floor is unchanged: payments and deletions ask; after outside content,
   assert.equal(send.kind, "ask");
   if (send.kind === "ask") assert.match(send.why ?? "", /jamais nommé/, "named 11 messages ago: outside the floor's window, as before");
   turn.tainted = false;
-  // (A trusted bot's app calls are allowed before the floor is reached, as before; a balanced bot's go through it.)
+  // (A trusted bot's payments and deletions ask too, even when judge would allow them: floor-autonomy.test.ts.)
   turn.bot = { ...turn.bot, autonomy: "balanced" };
   const pay = await authorize(turn, { type: "tool_use", id: "p1", name: "pay__create_payment", input: { amount: 5, user_quote: "autre message 9" } });
   assert.equal(pay.kind, "ask");

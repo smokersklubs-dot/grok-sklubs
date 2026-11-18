@@ -38,6 +38,7 @@ const local = createServer(async (req, res) => {
   if (url.pathname === "/mcp") {
     const mcp = new McpServer({ name: "notes", version: "1.0.0" });
     mcp.registerTool("delete_note", { description: "Delete a note", inputSchema: {} }, async () => { appCalls.push("delete"); return { content: [{ type: "text", text: "deleted" }] }; });
+    mcp.registerTool("add_note", { description: "Add a note", inputSchema: {} }, async () => { appCalls.push("add"); return { content: [{ type: "text", text: "added" }] }; });
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
     await mcp.connect(transport);
     await transport.handleRequest(req, res, body ? JSON.parse(body) : undefined);
@@ -203,11 +204,18 @@ test("outside content is marked, and makes even a trusted bot ask before changin
   const con = (await call("POST", "/connectors", { name: "Notes", url: `${base}/mcp` })).json.connector;
   assert.equal(con.status, "ready");
   // Trusted and untainted: the write goes through without asking.
+  await say(bot, "call app_notes__add_note {}");
+  await replied(bot, "added");
+  assert.deepEqual(appCalls, ["add"]);
+  // A deletion always asks (the floor), even for a trusted bot that read nothing from outside.
   await say(bot, "call app_notes__delete_note {}");
-  await replied(bot, "deleted");
-  assert.deepEqual(appCalls, ["delete"]);
+  const floorCard = await pendingApproval(bot);
+  assert.equal(floorCard.once, true, "never \"Always\"");
+  assert.deepEqual(appCalls, ["add"], "the deletion waits for the user");
+  await call("POST", `/approvals/${floorCard.approvalId}`, { decision: "deny" });
+  await replied(bot, "did not allow");
   // Same bot, but it has just read a web page that tries to give orders.
-  await say(bot, `chain web_fetch {"url":"${base}/watched"} >> app_notes__delete_note {}`);
+  await say(bot, `chain web_fetch {"url":"${base}/watched"} >> app_notes__add_note {}`);
   const card = await pendingApproval(bot);
   assert.equal(appCalls.length, 1, "the write waits for the user");
   const fed = JSON.stringify(requests[requests.length - 1].messages.at(-1));

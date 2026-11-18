@@ -21,7 +21,8 @@ import { CARRIES_FURTHER, describeArgs, judge, type Turn, type Verdict } from ".
  *  2. Asks that come from a per-call gate (vault, secrets, the user's computer…), from an explicit "needs approval"
  *     policy, from a command on the server itself or from opening a new web host after outside content stay asks.
  *  3. The deterministic floor always asks: payments, deletions, writing to someone the user never named after outside
- *     content, commands on the user's own computer after outside content.
+ *     content, commands on the user's own computer after outside content. It also holds when judge would allow (a
+ *     trusted bot, a standing "always allow" policy): those never lift it, and its cards never offer "Always".
  *  4. "careful" bots always ask (the card shows the words the bot cited, and whether they check out).
  *  5. "balanced" / "trusted": the bot's quote of the user's words is checked (grounding.ts). Found and within scope:
  *     go ahead, and the step shows the quote. Ambiguous: the reviewer judges, if one is available. Otherwise: the card,
@@ -143,6 +144,16 @@ async function decide(turn: Turn, call: ToolUseBlock): Promise<Decision> {
   }
   const quote = String(call.input[QUOTE_ARG] ?? "").trim();
   if (verdict.kind === "block") return verdict;
+  // The deterministic floor holds whatever let the action through (a trusted bot, a standing "always allow", an app
+  // account's own rules): only a "Retry" the user pressed for this exact action is their yes. Never "Always": a saved
+  // "always allow" does not lift the floor, so offering one would be a promise the next call breaks.
+  if (verdict.kind === "allow" && isGroundable) {
+    const floor = floorReason(name, withoutQuote(call.input), turn.tainted, userWordsFor(turn.bot, turn.thread, Date.now(), { narrow: true }));
+    if (floor) {
+      if (grants.take(turn.bot.id, actionHash(call.name, call.input))) return { kind: "allow", grant: { by: "retry" } };
+      return { ...floorAsk(turn, call), why: tr(loc, floor.reason, floor.vars), ...(quote ? { quote } : {}), once: true };
+    }
+  }
   if (verdict.kind === "allow") {
     // Allowed anyway (a trusted bot, an "always" policy…): still show the user's words when they check out.
     if (isGroundable && quote) {
@@ -155,7 +166,7 @@ async function decide(turn: Turn, call: ToolUseBlock): Promise<Decision> {
   if (verdict.fixed || !isGroundable) {
     // A per-call gate still says when the deterministic floor is why it asks (a payment, a deletion…).
     const floor = isGroundable ? floorReason(name, withoutQuote(call.input), turn.tainted, userWordsFor(turn.bot, turn.thread, Date.now(), { narrow: true })) : null;
-    return { ...verdict, ...(quote ? { quote } : {}), ...(floor ? { why: tr(loc, floor.reason, floor.vars) } : {}) };
+    return { ...verdict, ...(quote ? { quote } : {}), ...(floor ? { why: tr(loc, floor.reason, floor.vars), once: true } : {}) };
   }
   // From here, the action's name may be a committing click's (click_pay, click_send…).
   const words = userWordsFor(turn.bot, turn.thread);
@@ -164,7 +175,7 @@ async function decide(turn: Turn, call: ToolUseBlock): Promise<Decision> {
   const shown = g.quote || undefined;
   // The floor keeps its own narrow window: a wider search for the user's request never loosens it.
   const floor = floorReason(name, args, turn.tainted, userWordsFor(turn.bot, turn.thread, Date.now(), { narrow: true }));
-  if (floor) return { ...verdict, why: [tr(loc, floor.reason, floor.vars), g.status === "missing" || g.status === "notfound" ? tr(loc, g.reason, g.vars) : ""].filter(Boolean).join(" "), quote: shown, once: verdict.once };
+  if (floor) return { ...verdict, why: [tr(loc, floor.reason, floor.vars), g.status === "missing" || g.status === "notfound" ? tr(loc, g.reason, g.vars) : ""].filter(Boolean).join(" "), quote: shown, once: true };
   const mode = turn.bot.autonomy;
   if (mode === "careful") return { ...verdict, why: g.status === "ok" ? tr(loc, "This bot is set to always ask.") : tr(loc, g.reason, g.vars), quote: shown };
   if (mode === "auto") {
@@ -183,6 +194,26 @@ async function decide(turn: Turn, call: ToolUseBlock): Promise<Decision> {
     return { ...verdict, why: answer ? tr(loc, "Reviewer: {reason}", { reason: answer.reason }) : tr(loc, g.reason, g.vars), quote: shown };
   }
   return { ...verdict, why: tr(loc, g.reason, g.vars), quote: shown };
+}
+
+/** The card for an action judge allowed but the floor stops: worded like judge's own card for that tool. */
+function floorAsk(turn: Turn, call: ToolUseBlock): Ask {
+  const loc = turn.user.locale;
+  const bot = turn.bot.name;
+  const remote = turn.remote.get(call.name);
+  if (remote) {
+    const action = remote.remoteName.replace(/[_-]+/g, " ");
+    return { kind: "ask", policyKey: `${remote.connectorName}: ${remote.remoteName}`, title: tr(loc, "Allow {bot} to use {app}: {action}?", { bot, app: remote.connectorName, action }), reason: tr(loc, "use {app}: {action}", { app: remote.connectorName, action }), source: remote.connectorName };
+  }
+  const b = turn.builtin.get(call.name);
+  const gate = b?.gate?.(call.input, { botId: turn.bot.id, tainted: turn.tainted });
+  if (gate) {
+    const vars = { ...gate.vars, ...(gate.vars.field ? { field: tr(loc, gate.vars.field) } : {}) };
+    return { kind: "ask", policyKey: gate.key, title: tr(loc, gate.title, { bot, ...vars }), reason: tr(loc, gate.reason, vars), source: tr(loc, gate.source), note: gate.note ? tr(loc, gate.note, vars) : undefined, fixed: true };
+  }
+  if (b?.appWrite) return { kind: "ask", policyKey: call.name, title: tr(loc, b.appWrite.title, { bot }), reason: tr(loc, b.appWrite.reason), source: tr(loc, b.appWrite.source) };
+  const what = tr(loc, b?.label ?? call.name);
+  return { kind: "ask", policyKey: call.name, title: tr(loc, "Allow {bot} to do this: {action}?", { bot, action: what }), reason: what, source: "Sklubot" };
 }
 
 // ── The reviewer ────────────────────────────────────────────────────────────

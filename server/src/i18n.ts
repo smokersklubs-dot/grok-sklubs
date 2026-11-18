@@ -347,6 +347,7 @@ const FR: Record<string, string> = {
   "save a memory": "mémoriser une information", "message another bot": "écrire à un autre bot", "start a helper": "lancer un assistant", "message a helper": "écrire à un assistant", "post in a group chat": "écrire dans un groupe",
   "Saved for: {site}. Page the bot's computer says is open: {page}. Sklubot checks the page against the saved site using what that computer reports, which it cannot fully verify: only allow it if you expected this login now.": "Enregistré pour : {site}. Page ouverte d'après l'ordinateur du bot : {page}. Sklubot compare la page au site enregistré à partir de ce que rapporte cet ordinateur, sans pouvoir le vérifier entièrement : n'autorise que si tu attendais cette connexion maintenant.",
   "Allow {bot} to use {app}: {action}?": "Autoriser {bot} à utiliser {app} : {action} ?",
+  "Allow {bot} to do this: {action}?": "Autoriser {bot} à faire ceci : {action} ?",
   "Allow {bot} to type the saved {field} for {item}?": "Autoriser {bot} à saisir {field} enregistré pour {item} ?",
   "username": "l'identifiant", "password": "le mot de passe",
   "run a command": "exécuter une commande",
