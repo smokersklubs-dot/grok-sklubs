@@ -36,9 +36,16 @@ import DownloadPage from "../components/DownloadPage";
 import { announcementsState, cardFixtures, fakeBot, GALLERY_BOT_ID, noticeRows, NOW, type FixtureOptions } from "./fixtures";
 import { installFakeApi, type FakeApiState } from "./fakeApi";
 import { GalleryChat } from "./GalleryChat";
+import { SkillsLibrarySection } from "../components/SkillsLibrary";
+import { PagePreview, setPagePreviewSource } from "../components/PagePreview";
+import { PageVersions } from "../components/PageVersions";
+import samplePage from "./sample-page.html?url";
+
+// Pages published by bots are not served by the dev server: the previews show a sample page instead.
+setPagePreviewSource(() => samplePage);
 import "./gallery.css";
 
-const SECTIONS = ["all", "basics", "cards", "notices", "banners", "empty", "today", "surveillance", "announcements", "landing", "download", "chat"] as const;
+const SECTIONS = ["all", "basics", "cards", "notices", "banners", "empty", "today", "surveillance", "announcements", "skills", "pages", "landing", "download", "chat"] as const;
 type Section = (typeof SECTIONS)[number];
 
 interface GalleryState extends FakeApiState {
@@ -174,6 +181,8 @@ function Sections({ s }: { s: GalleryState }) {
       {show("today") && <Section id="today" title="Aujourd'hui" hint="La vraie page, avec des données factices (interrupteur « Vide » pour la journée calme)."><div className="gallery-page"><TodayView /></div></Section>}
       {show("announcements") && <Announcements o={o} empty={s.empty} />}
       {show("surveillance") && <Section id="surveillance" title="Surveillance" hint="La vraie page : incidents critiques, à surveiller, acquittés, info ; historique ; santé."><div className="gallery-page"><SurveillanceView /></div></Section>}
+      {show("skills") && <Section id="skills" title="Bibliothèque de compétences" hint="Réglages → Compétences : les cartes de la bibliothèque, puis l'import depuis GitHub (« Chercher » répond avec un dépôt d'exemple)."><div className="gallery-page is-auto"><SkillsLibrarySection /></div></Section>}
+      {show("pages") && <Section id="pages" title="Pages publiées" hint="L'aperçu d'une page dans la discussion (une page d'exemple dans le bac à sable), puis son historique (Réglages → Pages)."><div className="gallery-page is-auto"><PagePreview text={`[${s.lang === "fr" ? "Ventes de novembre" : "November sales"}](${location.origin}/p/galleryDemoPageToken0001)`} /><PageVersions page={{ token: "galleryDemoPageToken0001", botId: GALLERY_BOT_ID, title: "Ventes de novembre", url: `${location.origin}/p/galleryDemoPageToken0001`, createdAt: NOW, visibility: "link" }} defaultOpen /></div></Section>}
     </main>
   );
 }

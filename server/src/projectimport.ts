@@ -90,9 +90,11 @@ export function guessVariable(name: string): Omit<ImportVariable, "exists"> {
 /**
  * Reads the files of a zip archive (stored or deflated entries, from the central directory; APPNOTE.TXT 4.3.12,
  * 4.3.16). Folders, links (Unix mode in the external attributes) and anything outside the archive's own tree are
- * skipped. Limits: 300 entries, 1 MB per file, 5 MB in all.
+ * skipped. Limits (by default): 300 entries, 1 MB per file, 5 MB in all; `want` keeps only the entries it accepts.
  */
-export function readZip(buf: Buffer): { path: string; data: Buffer }[] {
+export interface ZipLimits { maxEntries?: number; maxFile?: number; maxTotal?: number; want?: (path: string, size: number) => boolean }
+export function readZip(buf: Buffer, limits: ZipLimits = {}): { path: string; data: Buffer }[] {
+  const { maxEntries = 300, maxFile = 1_000_000, maxTotal = 5_000_000, want } = limits;
   let eocd = -1;
   for (let i = buf.length - 22; i >= Math.max(0, buf.length - 65_557); i--) if (buf.readUInt32LE(i) === 0x06054b50) { eocd = i; break; }
   if (eocd < 0) throw new Error("This is not a zip file.");
@@ -100,7 +102,7 @@ export function readZip(buf: Buffer): { path: string; data: Buffer }[] {
   let p = buf.readUInt32LE(eocd + 16);
   const out: { path: string; data: Buffer }[] = [];
   let total = 0;
-  for (let n = 0; n < Math.min(count, 300); n++) {
+  for (let n = 0; n < Math.min(count, maxEntries); n++) {
     if (p + 46 > buf.length || buf.readUInt32LE(p) !== 0x02014b50) break;
     const method = buf.readUInt16LE(p + 10), csize = buf.readUInt32LE(p + 20), usize = buf.readUInt32LE(p + 24);
     const nlen = buf.readUInt16LE(p + 28), xlen = buf.readUInt16LE(p + 30), clen = buf.readUInt16LE(p + 32);
@@ -109,11 +111,13 @@ export function readZip(buf: Buffer): { path: string; data: Buffer }[] {
     p += 46 + nlen + xlen + clen;
     const mode = (ext >>> 16) & 0o170000;
     if (name.endsWith("/") || mode === 0o120000 || name.includes("..") || name.startsWith("/") || /^[A-Za-z]:/.test(name) || name.includes("\\")) continue;
-    if (usize > 1_000_000 || (total += usize) > 5_000_000) throw new Error("The skills folder is too large (1 MB per file, 5 MB in all).");
+    // Entries the caller does not want are skipped before they count (a repository's pictures, fonts…).
+    if (want && !want(name, usize)) continue;
+    if (usize > maxFile || (total += usize) > maxTotal) throw new Error(`The skills folder is too large (${Math.round(maxFile / 1e6)} MB per file, ${Math.round(maxTotal / 1e6)} MB in all).`);
     if (local + 30 > buf.length || buf.readUInt32LE(local) !== 0x04034b50) continue;
     const start = local + 30 + buf.readUInt16LE(local + 26) + buf.readUInt16LE(local + 28);
     const raw = buf.subarray(start, start + csize);
-    const data = method === 0 ? Buffer.from(raw) : method === 8 ? inflateRawSync(raw, { maxOutputLength: 1_000_000 }) : null;
+    const data = method === 0 ? Buffer.from(raw) : method === 8 ? inflateRawSync(raw, { maxOutputLength: maxFile }) : null;
     if (data) out.push({ path: name, data });
   }
   return out;

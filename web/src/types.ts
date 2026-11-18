@@ -1,5 +1,7 @@
 /** Wire types shared with the server (type-only, plus the avatar and tool-group constant lists). */
 export type * from "../../server/src/shared";
+/** « Bibliothèque de compétences »: the bundled skills and the GitHub import. */
+export type * from "../../server/src/skillstypes";
 export { AVATAR_SHAPES, AVATAR_COLORS, TOOL_GROUPS, EYE_STYLES, ACCESSORIES, IDLE_MOTIONS, CHARACTER_TYPES, DEFAULT_CHARACTER, REACTIONS, GROK_EXPORT_PROMPT_FR, GROK_EXPORT_PROMPT_EN, TEMPLATE_ICONS, TEMPLATE_CATEGORIES, BOT_API_SCOPES } from "../../server/src/shared";
 /** "Aujourd'hui": the time-saved table (kinds, default minutes, how research and file edits are counted). */
 export type { TodayKind } from "../../server/src/todayminutes";

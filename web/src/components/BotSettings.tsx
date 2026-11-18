@@ -498,6 +498,7 @@ function TeamSkills({ bot, tick }: { bot: Bot; tick: unknown }) {
 
 function Skills({ bot, bundle }: { bot: Bot; bundle: BotBundle | undefined }) {
   const loadBundle = useStore((s) => s.loadBundle);
+  const openAppSettings = useStore((s) => s.openAppSettings);
   const showToast = useStore((s) => s.showToast);
   const t = useT();
   const [editing, setEditing] = useState<Skill | "new" | "import" | null>(null);
@@ -529,6 +530,9 @@ function Skills({ bot, bundle }: { bot: Bot; bundle: BotBundle | undefined }) {
         <p className="muted">{t("skill.intro", { name: bot.name })}</p>
         {editing === null && (
           <div className="pane-intro-actions">
+            <button type="button" className="btn btn-small" onClick={() => openAppSettings("skills")}>
+              <Icon name="book" size={14} /> {t("skill.libraryLink")}
+            </button>
             <button type="button" className="btn btn-small" onClick={() => setEditing("import")}>
               <Icon name="download" size={14} /> {t("skill.importButton")}
             </button>

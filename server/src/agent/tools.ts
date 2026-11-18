@@ -44,6 +44,7 @@ import { anonymise } from "./anonymise.js";
 import { apiTools, scrubSecret } from "../apiconnectors.js";
 import { botMailTools } from "../botmail.js";
 import { ruleTools } from "./ruletools.js";
+import { pageTools } from "./pagetools.js";
 import { reachAvailable, reachTools } from "../reach.js";
 import { attemptsText, DEFAULT_MAX_COST_USD, paidConsents, paidGate, runChain, searchChainAvailable, searchProviders, servedLine, transcribeProviders } from "../providers.js";
 import { cached, cachePolicy, idemKeyOf, release, remember, reserve, settle } from "../thirdparty.js";
@@ -839,54 +840,6 @@ const transcribeTools: BuiltinTool[] = [
       const text = clip(o.result, 60_000);
       remember(c.user.id, "transcribe", "chain", args, text, cachePolicy(c.user.id, "transcribe"));
       return { content: `${text}\n\n${attemptsText(o)}`, summary: line };
-    },
-  }),
-];
-
-const pageTools: BuiltinTool[] = [
-  tool("page_publish", "Publish a web page (a report, a dashboard, a tracker) at an address: by default anyone with the link can open it; \"private\" means only the user, signed in to Sklubot. Write complete, self-contained HTML: inline styles and scripts only. Publishing again under the same name updates the page at the same address; for small changes to a page already published, use page_edit instead of rewriting it.",
-    obj({ name: str("Short file name without extension, e.g. weekly-report"), title: str("Page title"), html: str("The full HTML document"), visibility: { type: "string", enum: ["link", "private"], description: "link (default): anyone with the address; private: only the user, signed in" } }, ["name", "title", "html"]), {
-    activity: "saving", label: "Publishing a page", group: "pages", audited: true, detail: (a) => String(a.title ?? ""),
-    run: async (a, c) => {
-      const html = String(a.html);
-      if (html.length > 2_000_000) return { content: "That page is too large (2 MB at most).", isError: true };
-      const rel = saveFile(c.bot.id, `pages/${String(a.name).replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 60) || "page"}.html`, html);
-      const existing = pages.forPath(c.bot.id, rel, appConfig.publicUrl);
-      const visibility = a.visibility === "private" ? "private" : a.visibility === "link" ? "link" : undefined;
-      if (existing) { pages.retitle(existing.token, String(a.title)); if (visibility) pages.setVisibility(existing.token, visibility); }
-      const page = existing ?? pages.create(c.bot, String(a.title), rel, appConfig.publicUrl, visibility ?? "link");
-      if (!existing) {
-        rows.append(c.bot, { kind: "message", role: "assistant", text: `[${String(a.title)}](${page.url})` });
-        bots.bumpUnread(c.bot.id);
-      }
-      emit(c.user.id, { type: "pages" });
-      const vis = visibility ?? existing?.visibility ?? "link";
-      return { content: `${existing ? "Updated" : "Published"} at ${page.url}${existing ? "" : " — the link is in the chat"}. ${vis === "private" ? "Private: only the user, signed in, can open it." : "Anyone with the link can open it."}`, summary: String(a.title) };
-    },
-  }),
-  tool("page_edit", "Change a page you already published with targeted edits instead of rewriting it: each edit replaces one exact piece of its HTML (which must appear exactly once) with new text. The address stays the same.",
-    obj({ name: str("The page's file name, as given to page_publish"), edits: { type: "array", description: "[{\"find\": \"exact old text\", \"replace\": \"new text\"}], applied in order (at most 20)", items: { type: "object", properties: { find: { type: "string" }, replace: { type: "string" } }, required: ["find", "replace"] } } }, ["name", "edits"]), {
-    activity: "saving", label: "Editing a page", group: "pages", audited: true, detail: (a) => String(a.name ?? ""),
-    run: async (a, c) => {
-      const rel = `pages/${String(a.name).replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 60) || "page"}.html`;
-      const page = pages.forPath(c.bot.id, rel, appConfig.publicUrl);
-      if (!page) return { content: `You have no published page called "${a.name}". Publish it first with page_publish.`, isError: true };
-      let html: string;
-      try { html = readLibraryFile(c.bot.id, rel).toString("utf8"); } catch { return { content: "That page's file is gone. Publish it again with page_publish.", isError: true }; }
-      const edits = (Array.isArray(a.edits) ? a.edits : []).slice(0, 20);
-      if (!edits.length) return { content: "Give at least one edit.", isError: true };
-      // All or nothing: every edit must find its text exactly once (in the page as the previous edits left it).
-      for (const [i, e] of edits.entries()) {
-        const find = String(e?.find ?? "");
-        if (!find) return { content: `Edit ${i + 1} has no text to find. Nothing was changed.`, isError: true };
-        const count = html.split(find).length - 1;
-        if (count !== 1) return { content: `Edit ${i + 1}: the text to find appears ${count} times (it must appear exactly once). Nothing was changed.`, isError: true, summary: "not applied" };
-        html = html.replace(find, () => String(e?.replace ?? ""));
-      }
-      if (html.length > 2_000_000) return { content: "The page would be too large (2 MB at most). Nothing was changed.", isError: true };
-      saveFile(c.bot.id, rel, html);
-      emit(c.user.id, { type: "pages" });
-      return { content: `Applied ${edits.length} edit${edits.length > 1 ? "s" : ""} to ${page.url}.`, summary: `${page.title} · ${edits.length}` };
     },
   }),
 ];

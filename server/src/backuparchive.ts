@@ -10,7 +10,7 @@
  *               manifest.json   {"format":3,"kind":"sklubot-app-backup","stamp","at","source":"app","dbPath",
  *                                "db":{"integrity","userVersion","counts":{users,bots,rows…}},"homes":0,
  *                                "secrets":"included","excluded":[…]}
- *               secrets.env     the app container's environment (SESSION_SECRET, API keys…) — only ever inside the
+ *               secrets.env     the app container's environment (SESSION_SECRET, DATA_KEYS, API keys…) — only ever inside the
  *                               encrypted archive
  *               db.sqlite       a consistent copy of the database (VACUUM INTO)
  *               data/…          the data folder (bot libraries, team folders, browser profiles without caches…)
@@ -75,6 +75,8 @@ export interface ArchiveReport {
   problems: string[];
   hasSecrets: boolean;
   sessionSecret: boolean;
+  /** secrets.env holds a dedicated data key (DATA_KEYS / DATA_KEY, datakey.ts): needed with it to open the sealed values. */
+  dataKeys: boolean;
 }
 
 /**
@@ -151,7 +153,7 @@ export async function readArchive(input: Readable, identityText: string, opts: {
   }
   let files = 0, bytes = 0;
   for (const [n, s] of sizes) if (n.startsWith("data/")) { files++; bytes += s; }
-  return { ok: problems.length === 0, manifest, files, bytes, checked, problems, hasSecrets: !!secretsText, sessionSecret: /^(SKLUBOT_)?SESSION_SECRET=./m.test(secretsText) };
+  return { ok: problems.length === 0, manifest, files, bytes, checked, problems, hasSecrets: !!secretsText, sessionSecret: /^(SKLUBOT_)?SESSION_SECRET=./m.test(secretsText), dataKeys: /^(SKLUBOT_)?DATA_KEYS?=./m.test(secretsText) };
 }
 
 /** Decrypts an archive to a plain .tar.gz stream (for `tar xzf`), without checking it. */

@@ -39,7 +39,8 @@ function entryFromUrl(): Entry {
   const auth = p.get("auth");
   if (auth === "login" || auth === "signup") return auth;
   if (p.get("invite") || p.get("plan_invite")) return "signup";
-  if (p.get("link") || p.get("plan")) return p.get("plan") ? "signup" : "login";
+  // ?second=1: back from Google, a sign-in link or a reset with two-factor on (the code is asked on the sign-in page).
+  if (p.get("link") || p.get("plan") || p.get("second")) return p.get("plan") ? "signup" : "login";
   return "landing";
 }
 

@@ -34,6 +34,9 @@ const PAGES = [
   "section=surveillance",
   "section=announcements&long=1",
   "section=basics",
+  "section=skills&long=1",
+  "section=pages",
+  "section=skills&theme=dark&lang=en",
 ];
 const SCROLLERS = "pre, .md-table, .card-detail, .segmented, .tabs, .gallery-bar";
 

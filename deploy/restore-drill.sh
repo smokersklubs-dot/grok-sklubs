@@ -138,6 +138,14 @@ for f in "$WORK"/x/homes/*.tar.gz; do [ -e "$f" ] || continue; gzip -t "$f" && H
 [ "$HOK" = "$NH" ] && ok "dossiers des ordinateurs lisibles ($HOK/$NH archives)" || ko "dossiers des ordinateurs : $HOK/$NH archives lisibles"
 fi
 
+# Clé de données dédiée (SKLUBOT_DATA_KEYS / DATA_KEY) : sans elle, les secrets scellés avec ne s'ouvriraient pas.
+DATAKEYS=""; DATAKEY=""
+if [ -n "${SECRETS:-}" ] && [ -f "$SECRETS" ]; then
+  unq() { tail -n1 | sed -e 's/^"\(.*\)"$/\1/' -e "s/^'\(.*\)'$/\1/"; }
+  DATAKEYS="$(sed -n 's/^SKLUBOT_DATA_KEYS=//p; s/^DATA_KEYS=//p' "$SECRETS" | unq)"
+  DATAKEY="$(sed -n 's/^SKLUBOT_DATA_KEY=//p; s/^DATA_KEY=//p' "$SECRETS" | unq)"
+fi
+export DRILL_DATA_KEYS="$DATAKEYS" DRILL_DATA_KEY="$DATAKEY"
 cat > "$WORK/drill.yml" <<EOF
 # Généré par deploy/restore-drill.sh : une copie jetable, sans réseau, détruite à la fin.
 services:
@@ -146,6 +154,8 @@ services:
     network_mode: "none"
     environment:
       SESSION_SECRET: "\${DRILL_SESSION_SECRET}"
+      DATA_KEYS: "\${DRILL_DATA_KEYS}"
+      DATA_KEY: "\${DRILL_DATA_KEY}"
       DATA_DIR: "/data"
       DB_PATH: "/data/$DBREL"
       PORT: "3000"

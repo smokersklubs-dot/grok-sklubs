@@ -24,9 +24,12 @@ import { TodaySettingsSection } from "./TodayView";
 import { GrokImportButton } from "./GrokImport";
 import { GoogleAccountBlock, GoogleLoginSettings } from "./GoogleLogin";
 import { AccountEmailBlock, ServerMailSettings } from "./AccountRecovery";
+import { TwoFactorSettings } from "./TwoFactor";
 import { AdminSection, SubscriptionSection } from "./Hosted";
 import { BackupSettings } from "./BackupSettings";
 import { SurveillanceSettingsSection } from "./SurveillanceView";
+import { SkillsLibrarySection } from "./SkillsLibrary";
+import { PageVersions } from "./PageVersions";
 
 const SECTIONS: { id: AppSection; icon: IconName }[] = [
   { id: "general", icon: "settings" },
@@ -41,6 +44,7 @@ const SECTIONS: { id: AppSection; icon: IconName }[] = [
   { id: "permissions", icon: "shield" },
   { id: "rules", icon: "book" },
   { id: "memory", icon: "brain" },
+  { id: "skills", icon: "book" },
   { id: "connectors", icon: "plug" },
   { id: "vault", icon: "key" },
   { id: "keys", icon: "shield" },
@@ -866,6 +870,7 @@ function PagesSection() {
                     <Icon name="external" size={13} /> {t("pages.open")}
                   </a>
                 </div>
+                <PageVersions page={page} />
               </li>
             );
           })}
@@ -1213,6 +1218,7 @@ function AccountSection() {
       <h3 className="pane-heading">{t("account.passwordHeading")}</h3>
       <GoogleAccountBlock><PasswordForm /></GoogleAccountBlock>
       <AccountEmailBlock />
+      <TwoFactorSettings />
       <GoogleLoginSettings />
       <ServerMailSettings />
       <BackupSettings />
@@ -1274,6 +1280,7 @@ export function AppSettings({ section }: { section: AppSection }) {
           {section === "permissions" && <PermissionsSection />}
           {section === "rules" && <RulesSection />}
           {section === "memory" && <MemorySettingsSection />}
+          {section === "skills" && <SkillsLibrarySection />}
           {section === "connectors" && <ConnectorsSection />}
           {section === "vault" && <VaultSection />}
           {section === "keys" && <KeysSection />}

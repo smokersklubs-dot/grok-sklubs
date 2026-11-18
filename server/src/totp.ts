@@ -1,4 +1,4 @@
-import { createHmac, randomInt } from "node:crypto";
+import { createHmac, randomInt, timingSafeEqual } from "node:crypto";
 
 /**
  * Two-factor codes and generated passwords.
@@ -63,6 +63,37 @@ export function hotp(key: Buffer, counter: number, digits = 6, algorithm: TotpAl
 export function totpNow(seed: TotpSeed, at = Date.now()): { code: string; remaining: number } {
   const step = Math.floor(at / 1000 / seed.period);
   return { code: hotp(base32Decode(seed.secret), step, seed.digits, seed.algorithm), remaining: seed.period - (Math.floor(at / 1000) % seed.period) };
+}
+
+/** Base32 without padding (RFC 4648, section 6): how a new seed is shown to an authenticator app. */
+export function base32Encode(buf: Buffer): string {
+  let bits = 0, value = 0, out = "";
+  for (const byte of buf) {
+    value = (value << 8) | byte;
+    bits += 8;
+    while (bits >= 5) { out += B32[(value >>> (bits - 5)) & 31]; bits -= 5; }
+  }
+  if (bits > 0) out += B32[(value << (5 - bits)) & 31];
+  return out;
+}
+
+/**
+ * Checks a 6-digit sign-in code against a base32 seed (SHA-1, 30-second steps: RFC 6238 section 4 defaults), accepting
+ * the step before and after the current one (section 5.2 recommends at most one step of network delay / clock drift).
+ * `afterStep`: steps up to this one were already used (section 5.2: "the verifier MUST NOT accept the second attempt of
+ * the same OTP"), so a code seen once is refused afterwards. Returns the matching step, or null. Constant-time compare.
+ */
+export function verifyTotp(secret: string, code: string, at = Date.now(), afterStep = -1, window = 1): number | null {
+  const clean = String(code ?? "").replace(/[\s-]/g, "");
+  if (!/^\d{6}$/.test(clean)) return null;
+  const key = base32Decode(secret);
+  const step = Math.floor(at / 1000 / 30);
+  let found: number | null = null;
+  for (let s = step - window; s <= step + window; s++) {
+    const expected = Buffer.from(hotp(key, s, 6, "SHA1"));
+    if (s > afterStep && timingSafeEqual(expected, Buffer.from(clean)) && found === null) found = s;
+  }
+  return found;
 }
 
 // ── Passwords ────────────────────────────────────────────────────────────────

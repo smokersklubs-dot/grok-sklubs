@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Ventes de novembre</title>
+<style>
+:root { --bg: #f6f3ee; --card: #ffffff; --ink: #1d2433; --muted: #566074; --line: #e3ded4; --a: #1f6f5c; --b: #c2662d; }
+@media (prefers-color-scheme: dark) { :root { --bg: #14171c; --card: #1c2027; --ink: #eef1f5; --muted: #a9b1bf; --line: #2c323c; --a: #5fc4a8; --b: #f0a46b; } }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width: 960px; margin: 0 auto; padding: 20px 16px 32px; }
+h1 { font-size: clamp(1.4rem, 4vw, 2rem); margin: 0 0 4px; }
+p.lead { margin: 0 0 18px; color: var(--muted); }
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 16px; }
+.kpi { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
+.kpi b { display: block; font-size: 1.5rem; }
+.kpi span { color: var(--muted); font-size: .9rem; }
+.chart { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px; }
+.bars { display: flex; align-items: flex-end; gap: 8px; height: 140px; }
+.bar { flex: 1; background: var(--a); border-radius: 6px 6px 0 0; }
+.bar.alt { background: var(--b); }
+.labels { display: flex; gap: 8px; margin-top: 6px; color: var(--muted); font-size: .8rem; }
+.labels span { flex: 1; text-align: center; }
+button { margin-top: 12px; font: inherit; padding: 8px 14px; min-height: 44px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); color: var(--ink); cursor: pointer; }
+button:focus-visible { outline: 3px solid var(--a); outline-offset: 2px; }
+</style>
+</head>
+<body>
+<main>
+<h1>Ventes de novembre</h1>
+<p class="lead">Exemple de page interactive (galerie de développement, données fictives).</p>
+<section class="kpis" aria-label="Chiffres clés">
+<div class="kpi"><b>48</b><span>commandes</span></div>
+<div class="kpi"><b>3 120 €</b><span>chiffre d'affaires</span></div>
+<div class="kpi"><b>65 €</b><span>panier moyen</span></div>
+</section>
+<section class="chart" aria-label="Commandes par semaine">
+<div class="bars" id="bars"></div>
+<div class="labels"><span>S1</span><span>S2</span><span>S3</span><span>S4</span></div>
+<button type="button" id="swap">Voir le mois précédent</button>
+</section>
+</main>
+<script>
+const data = { now: [9, 12, 11, 16], before: [7, 8, 12, 10] };
+let showing = "now";
+function draw() {
+  const el = document.getElementById("bars"); el.textContent = "";
+  for (const v of data[showing]) { const d = document.createElement("div"); d.className = "bar" + (showing === "before" ? " alt" : ""); d.style.height = (v / 16 * 100) + "%"; el.appendChild(d); }
+}
+document.getElementById("swap").addEventListener("click", () => { showing = showing === "now" ? "before" : "now"; document.getElementById("swap").textContent = showing === "now" ? "Voir le mois précédent" : "Voir novembre"; draw(); });
+draw();
+</script>
+</body>
+</html>

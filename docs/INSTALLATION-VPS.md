@@ -279,6 +279,21 @@ manque de mémoire. Il peut être relancé sans risque : il ne refait que ce qui
 - `ALLOWED_EMAILS` n'est **pas** une authentification : l'adresse n'est pas vérifiée. Garde les inscriptions fermées
   et invite les gens.
 
+### Clé de données dédiée et rotation (facultatif)
+
+Par défaut, les secrets de la base (coffre, connexions, sauvegarde automatique, double authentification…) sont
+scellés avec une clé dérivée de `SKLUBOT_SESSION_SECRET`. Pour pouvoir un jour changer l'un sans perdre l'autre :
+```bash
+cd /opt/sklubot
+echo "SKLUBOT_DATA_KEYS=k1:$(openssl rand -base64 32)" | sudo tee -a .env
+sudo docker compose up -d sklubot                                            # redémarre avec la clé
+sudo docker compose exec sklubot node server/dist/rotatekey.js --dry-run     # ce qui serait rechiffré
+sudo docker compose exec sklubot node server/dist/rotatekey.js               # rechiffre tout sous k1
+```
+Pour changer de clé : `SKLUBOT_DATA_KEYS=k2:<nouvelle>,k1:<ancienne>` (la nouvelle d'abord), redémarre, relance
+`rotatekey.js`, puis retire `k1` quand le rapport dit « illisibles : 0 ». Détails : docs/DEPLOIEMENT.md, « Clé de
+données ». La clé fait partie des secrets sauvegardés (chiffrés) : garde aussi une copie de `.env` hors du VPS.
+
 ### Renforcements facultatifs (rien n'est imposé)
 
 - **Navigateur des bots** : Chromium tourne en root avec `--no-sandbox` dans l'ordinateur du bot. Son bac à sable

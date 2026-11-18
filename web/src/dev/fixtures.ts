@@ -321,6 +321,8 @@ export function chatRows(o: FixtureOptions): Row[] {
     bot(L("1. Ajouter un appel à l'action en fin d'article.\n2. Relier chaque article à la page tarifs.\n3. Réécrire les titres des cinq articles les plus lus.", "1. Add a call to action at the end of each post.\n2. Link each post to the pricing page.\n3. Rewrite the titles of the five most read posts."), at + 240_000),
     stopped(at + 241_000),
     stopped(at + 242_000),
+    // A page the bot published: the chat shows its preview card (PagePreview.tsx), here with the gallery's sample page.
+    bot(L(`J'ai mis le suivi des ventes dans une page : [Ventes de novembre](${location.origin}/p/galleryDemoPageToken0001)`, `I put the sales tracking in a page: [November sales](${location.origin}/p/galleryDemoPageToken0001)`), at + 300_000),
   ];
   const parent = list.find((r) => r.body.kind === "message" && r.body.replies)!;
   list.push(

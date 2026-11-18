@@ -17,6 +17,8 @@ import { publicSignup } from "./013-public-signup.js";
 import { emailGate } from "./014-email-gate.js";
 import { subscriptionLimits } from "./015-subscription-limits.js";
 import { announcements } from "./016-announcements.js";
+import { pageVersions } from "./017-page-versions.js";
+import { twoFactor } from "./018-two-factor.js";
 
 /**
  * Versioned migrations (SK-P0-05). The database's version is SQLite's own `PRAGMA user_version` (0 on a database made
@@ -46,6 +48,8 @@ export const MIGRATIONS: Migration[] = [
   { version: 14, name: "email-gate", up: emailGate },
   { version: 15, name: "subscription-limits", up: subscriptionLimits },
   { version: 16, name: "announcements", up: announcements },
+  { version: 17, name: "page-versions", up: pageVersions },
+  { version: 18, name: "two-factor", up: twoFactor },
 ];
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;
 

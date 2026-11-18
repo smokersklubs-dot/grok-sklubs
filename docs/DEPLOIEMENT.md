@@ -72,6 +72,57 @@ Sklubot écoute alors sur le port 3000 du conteneur ; place un proxy HTTPS (Cadd
   aussi par « Mot de passe oublié ? ». Sans e-mails du serveur, seule la commande reste : Coolify → service `sklubot`
   → *Terminal* → `node server/dist/reset-password.js ton@email.fr`. Il n'y a volontairement pas d'autre porte de secours.
 
+### Clé de données (facultative, recommandée) et rotation
+
+Les secrets que Sklubot garde dans sa base (coffre, jetons des connexions et des applis, clés de la sauvegarde
+automatique, clés des voix, graines de double authentification…) sont scellés en AES-256-GCM. Sans réglage, la clé
+est dérivée de `SKLUBOT_SESSION_SECRET` (identifiant `s0`) : rien à faire, tout continue de marcher. Mais alors,
+changer `SKLUBOT_SESSION_SECRET` rendrait ces secrets illisibles. Une **clé de données dédiée** sépare les deux.
+
+1. Génère une clé : `openssl rand -base64 32`.
+2. Ajoute-la avec un identifiant court de ton choix (lettres, chiffres, `-`, `_`) :
+   - VPS : dans `/opt/sklubot/.env`, `SKLUBOT_DATA_KEYS=k1:<la clé>` ;
+   - Coolify : variable `SKLUBOT_DATA_KEYS` avec la même valeur ;
+   puis redémarre Sklubot. Les **nouveaux** secrets sont scellés avec `k1` ; les anciens restent lisibles (avec
+   `SESSION_SECRET`). Une clé mal écrite empêche le démarrage, avec la raison dans le journal.
+3. Rechiffre tout de suite les anciens secrets sous `k1` (essai à blanc d'abord, rien n'est modifié) :
+   ```bash
+   docker compose exec sklubot node server/dist/rotatekey.js --dry-run   # Coolify : « Terminal » du conteneur Sklubot
+   docker compose exec sklubot node server/dist/rotatekey.js
+   ```
+   Le rapport liste chaque emplacement (table et colonne), combien de valeurs étaient sous quelle clé, combien ont
+   été rechiffrées, et celles qu'aucune clé n'ouvre (laissées telles quelles). Tout se fait en une seule transaction :
+   tout ou rien. Le Cerveau peut rester allumé.
+
+**Changer de clé plus tard (rotation).** Ajoute la nouvelle clé **en tête** et garde l'ancienne derrière :
+`SKLUBOT_DATA_KEYS=k2:<nouvelle>,k1:<ancienne>`, redémarre, lance `rotatekey.js` (comme au 3). Quand le rapport dit
+« illisibles : 0 », tu peux retirer `k1` : `SKLUBOT_DATA_KEYS=k2:<nouvelle>`. Garde l'ancienne clé avec tes anciennes
+sauvegardes : elles en ont encore besoin. Le propriétaire du serveur peut aussi voir l'état sans SSH :
+`GET /api/admin/data-key` (essai à blanc) et `POST /api/admin/data-key/rotate` avec `{"dryRun": false}`.
+
+Format : `SKLUBOT_DATA_KEYS="id:clé,id:clé"` (la plus récente d'abord ; clé de 32 octets en base64 ou 64 caractères
+hexadécimaux). `DATA_KEY=<clé>` seule marche aussi (identifiant tiré de l'empreinte de la clé). L'identifiant `s0`
+est réservé à la clé dérivée de `SESSION_SECRET`. Une valeur scellée commence par `v2:<id>:` ; une valeur sans ce
+préfixe date d'avant et s'ouvre avec la clé `s0`. La sauvegarde chiffrée emporte `DATA_KEYS` (docs/SAUVEGARDE.md).
+
+### Comptes : double authentification et sessions
+
+- **Double authentification** (Réglages → Compte) : chacun peut l'activer avec une appli comme Google Authenticator,
+  Aegis ou 1Password (codes TOTP, RFC 6238, 6 chiffres, 30 s). Le QR code est dessiné dans la page, la graine est
+  scellée avec la clé de données, 10 codes de secours (chacun une fois) sont affichés une seule fois et gardés hachés.
+- Elle s'applique à **toutes** les entrées : mot de passe, « Continuer avec Google » (Google prouve qui tu es, pas que
+  tu as le téléphone : le code est demandé aussi), lien de connexion imprimé par le serveur, appli mobile, et la
+  réinitialisation du mot de passe par e-mail (le nouveau mot de passe est enregistré, mais la connexion demande
+  encore le code ou un code de secours : une boîte mail seule ne suffit pas).
+- Deuxième étape limitée : 5 minutes, 5 essais par connexion, 10 codes faux par compte par quart d'heure, 30 essais
+  par adresse ; un même code ne sert qu'une fois.
+- Téléphone **et** codes de secours perdus : le propriétaire du serveur la retire en ligne de commande :
+  `docker compose exec sklubot node server/dist/reset-password.js <e-mail> --disable-2fa`.
+- **Sessions** : Réglages → Compte → « Se déconnecter de tous les appareils » (celui-ci reste connecté). En mode
+  hébergé, un opérateur peut déconnecter un compte partout : `POST /api/admin/customers/<id>/sessions/revoke`
+  (inscrit au journal d'administration). Les sessions durent 30 jours ; les sessions expirées, les connexions en
+  attente du code et les liens de connexion périmés sont effacés au démarrage puis toutes les heures.
+
 ### Mise à jour depuis une version précédente (Coolify)
 
 Rien à faire à la main : redéploie comme d'habitude. Au démarrage, la nouvelle version met la base à jour par

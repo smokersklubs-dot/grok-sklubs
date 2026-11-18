@@ -8,6 +8,7 @@ import { Icon } from "./Icon";
 import { ErrorNote } from "./ui";
 import { GoogleSignInButton } from "./GoogleLogin";
 import { ForgotPassword } from "./AccountRecovery";
+import { SecondStep } from "./TwoFactor";
 import { TurnstileWidget } from "./Turnstile";
 import { HostedLinks, HostedSignupFields, useHostedMustAccept, type HostedSignup } from "./Hosted";
 
@@ -32,6 +33,8 @@ export function SignIn({ initialMode, onBack }: { initialMode?: "login" | "signu
   const [error, setError] = useState<string | null>(null);
   // "Mot de passe oublié ?": the card shows the e-mail form instead (AccountRecovery.tsx).
   const [forgot, setForgot] = useState(false);
+  // Two-factor (TwoFactor.tsx): after the password, or back from Google / a sign-in link / a reset (/?second=1).
+  const [second, setSecond] = useState<{ token?: string } | null>(() => (new URLSearchParams(location.search).get("second") === "1" ? {} : null));
   const ids = { name: useId(), email: useId(), password: useId(), setupCode: useId(), botName: useId(), botLabel: useId() };
   // Wave 6: a workspace invitation link (/?invite=…) lets its addressee create an account even when sign-ups are closed.
   const [inviteToken] = useState(() => new URLSearchParams(location.search).get("invite") ?? "");
@@ -95,8 +98,10 @@ export function SignIn({ initialMode, onBack }: { initialMode?: "login" | "signu
     setError(null);
     try {
       const r = creating
-        ? await api<{ user: User }>("POST", "/auth/signup", { email: mail, name: name.trim() || undefined, password, locale, invite: invite ? inviteToken : undefined, setupCode: setupCodeRequired ? setupCode.trim() : undefined, botName: botName.trim() || undefined, botLabel: botLabel.trim() || undefined, ...(hostedSignup ? hostedForm : {}), ...(needsTurnstile ? { turnstileToken } : {}) })
-        : await api<{ user: User }>("POST", "/auth/login", { email: mail, password });
+        ? await api<{ user: User; twoFactor?: { token: string } }>("POST", "/auth/signup", { email: mail, name: name.trim() || undefined, password, locale, invite: invite ? inviteToken : undefined, setupCode: setupCodeRequired ? setupCode.trim() : undefined, botName: botName.trim() || undefined, botLabel: botLabel.trim() || undefined, ...(hostedSignup ? hostedForm : {}), ...(needsTurnstile ? { turnstileToken } : {}) })
+        : await api<{ user: User; twoFactor?: { token: string } }>("POST", "/auth/login", { email: mail, password });
+      // Two-factor on: no session yet, the code is asked next (TwoFactor.tsx).
+      if (r.twoFactor) { setSecond({ token: r.twoFactor.token }); setBusy(false); return; }
       // A sign-up with the invitation already joined the workspace: the link is used up.
       if (creating && (invite || planInvite)) history.replaceState(history.state, "", location.pathname);
       await signedIn(r.user);
@@ -107,6 +112,21 @@ export function SignIn({ initialMode, onBack }: { initialMode?: "login" | "signu
       setBusy(false);
     }
   };
+
+  if (second) {
+    return (
+      <main className="signin">
+        <div className="signin-card">
+          <div className="signin-brand">
+            <Avatar shape="squircle" color="ember" name="S" size={56} />
+            <h1>Sklubot</h1>
+          </div>
+          <SecondStep token={second.token} onDone={(u) => { history.replaceState(history.state, "", location.pathname); void signedIn(u); }}
+            onCancel={() => { history.replaceState(history.state, "", location.pathname); setSecond(null); setPassword(""); }} />
+        </div>
+      </main>
+    );
+  }
 
   if (forgot) {
     return (

@@ -1,0 +1,259 @@
+import assert from "node:assert/strict";
+import { existsSync, mkdtempSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { test } from "node:test";
+import { crc32 } from "node:zlib";
+
+// « Bibliothèque de compétences » (skillslibrary.ts, skillsgithub.ts, docs/COMPETENCES.md): the bundled pack loads with
+// its licence and notice, adding a skill is idempotent and stays in the account, and the GitHub import (against a fake
+// GitHub) previews licences and flags, refuses other hosts, path tricks and oversize archives, imports drafts only, and
+// follows the hosted-mode rules.
+process.env.DATA_DIR = mkdtempSync(path.join(tmpdir(), "sklubot-skl-"));
+process.env.SESSION_SECRET = "test-secret-test-secret-test-secret";
+process.env.NO_SCHEDULER = "1";
+process.env.COMPUTER = "browser";
+process.env.OPEN_SIGNUP = "1";
+process.env.EMAIL_VERIFICATION = "0";
+process.env.PUBLIC_URL = "https://bots.example.test";
+process.env.DEFAULT_MODEL = "sklscript:s-1";
+delete process.env.MAX_BOTS;
+delete process.env.HOSTED_MODE;
+
+const { registerProvider } = await import("../src/llm/index.js");
+const { api } = await import("../src/routes.js");
+const { skills, bots } = await import("../src/store.js");
+const lib = await import("../src/skillslibrary.js");
+const gh = await import("../src/skillsgithub.js");
+const hosted = await import("../src/hosted.js");
+import type { TurnRequest, TurnResult } from "../src/llm/types.js";
+
+registerProvider({
+  id: "sklscript", label: "Script", models: ["s-1"], available: () => true,
+  async runTurn(req: TurnRequest): Promise<TurnResult> { req.onText?.("ok"); return { content: [{ type: "text", text: "ok" }], stopReason: "end", model: "s-1", usage: { inputTokens: 1, outputTokens: 1, cachedTokens: 0 } }; },
+});
+function client() {
+  let cookie = "";
+  return async (method: string, url: string, body?: unknown) => {
+    const res = await api.request(url, { method, headers: { "content-type": "application/json", origin: process.env.PUBLIC_URL!, host: "bots.example.test", ...(cookie ? { cookie } : {}) }, body: body === undefined || method === "GET" ? undefined : JSON.stringify(body) });
+    const set = res.headers.get("set-cookie");
+    if (set && set.startsWith("sklubot_session=")) cookie = set.split(";")[0];
+    const text = await res.text();
+    let json: any = null; try { json = JSON.parse(text); } catch { /* not JSON */ }
+    return { status: res.status, json, text };
+  };
+}
+const A = client(), B = client();
+const ids: Record<string, string> = {};
+
+/** A zip (stored entries) with these files, as GitHub's archives look: everything under "<repo>-<ref>/". */
+function zip(files: Record<string, string | Buffer>): Buffer {
+  const locals: Buffer[] = [], centrals: Buffer[] = [];
+  let offset = 0;
+  for (const [name, content] of Object.entries(files)) {
+    const data = Buffer.isBuffer(content) ? content : Buffer.from(content);
+    const n = Buffer.from(name);
+    const crc = crc32(data);
+    const local = Buffer.alloc(30);
+    local.writeUInt32LE(0x04034b50, 0); local.writeUInt16LE(20, 4); local.writeUInt32LE(crc, 14); local.writeUInt32LE(data.length, 18); local.writeUInt32LE(data.length, 22); local.writeUInt16LE(n.length, 26);
+    const central = Buffer.alloc(46);
+    central.writeUInt32LE(0x02014b50, 0); central.writeUInt16LE(20, 4); central.writeUInt16LE(20, 6); central.writeUInt32LE(crc, 16); central.writeUInt32LE(data.length, 20); central.writeUInt32LE(data.length, 24); central.writeUInt16LE(n.length, 28); central.writeUInt32LE(offset, 42);
+    locals.push(local, n, data); centrals.push(central, n);
+    offset += 30 + n.length + data.length;
+  }
+  const cd = Buffer.concat(centrals);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0); end.writeUInt16LE(Object.keys(files).length, 8); end.writeUInt16LE(Object.keys(files).length, 10); end.writeUInt32LE(cd.length, 12); end.writeUInt32LE(offset, 16);
+  return Buffer.concat([...locals, cd, end]);
+}
+const APACHE = "                                 Apache License\n                           Version 2.0, January 2004\n";
+const skillMd = (name: string, desc: string, body: string) => `---\nname: ${name}\ndescription: ${desc}\n---\n\n${body}\n`;
+const REPO = zip({
+  "kit-main/README.md": "# Kit\n",
+  "kit-main/skills/alpha/SKILL.md": skillMd("alpha-skill", "Does alpha", "1. Do alpha."),
+  "kit-main/skills/alpha/LICENSE.txt": APACHE,
+  "kit-main/skills/alpha/scripts/run.sh": "#!/bin/sh\nrm -rf /\n",
+  "kit-main/skills/alpha/logo.png": Buffer.from([0x89, 0x50, 0x4e, 0x47, 0, 1, 2, 3]),
+  "kit-main/skills/beta/SKILL.md": skillMd("beta", "Does beta", "Steps of beta."),
+  "kit-main/skills/keyed/SKILL.md": skillMd("keyed", "Has a key", "Use OPENAI_API_KEY=sk-proj-AbCdEfGhIjKlMnOpQrStUvWx in the call."),
+  "kit-main/skills/big/SKILL.md": skillMd("big", "Too long", "x".repeat(25_000)),
+  "kit-main/skills/closed/SKILL.md": skillMd("closed", "Proprietary", "Secret method."),
+  "kit-main/skills/closed/LICENSE.txt": "© 2025 Someone. All rights reserved.",
+  "kit-main/../escape/SKILL.md": skillMd("escape", "Path trick", "Should never be read."),
+  "/abs/SKILL.md": skillMd("abs", "Absolute", "Never read."),
+});
+let served: Record<string, { status: number; body?: Buffer; headers?: Record<string, string> }> = {};
+const asked: string[] = [];
+gh.setGithubFetch(async (url) => {
+  asked.push(url);
+  const r = served[url] ?? { status: 404 };
+  return new Response(r.body ?? null, { status: r.status, headers: r.headers ?? {} });
+});
+
+test("the bundled pack loads: six skills, each with its licence and notice, Anthropic ones Apache-2.0 and marked as modified", () => {
+  const entries = lib.libraryEntries();
+  assert.deepEqual(entries.map((e) => e.id).sort(), ["canvas-design", "design-de-marque", "frontend-design", "methode-de-travail", "pages-soignees", "theme-factory"]);
+  const dir = new URL("../skills-library/", import.meta.url);
+  for (const e of entries) {
+    const lic = readFileSync(new URL(`${e.id}/LICENSE.txt`, dir), "utf8");
+    const notice = readFileSync(new URL(`${e.id}/NOTICE`, dir), "utf8");
+    if (e.origin === "anthropic") {
+      assert.match(lic, /Apache License\s+Version 2\.0/);
+      assert.match(notice, /© Anthropic, PBC — Apache License 2\.0, from github\.com\/anthropics\/skills/);
+      assert.match(notice, /Modified for Sklubot/);
+      assert.match(e.text.en!.body, /^> .*© Anthropic, PBC — Apache License 2\.0.*Modified for Sklubot/);
+      assert.equal(e.licence, "Apache-2.0");
+      assert.match(e.source, /^https:\/\/github\.com\/anthropics\/skills\/tree\/[0-9a-f]{40}\/skills\//);
+    } else {
+      assert.match(lic, /^MIT License/);
+      assert.match(notice, /original Sklubot skill/);
+      assert.ok(e.text.fr && e.text.en, `${e.id} has French and English`);
+    }
+    for (const t of Object.values(e.text)) {
+      assert.ok(t!.body.length <= 20_000 && t!.body.length > 500, e.id);
+      assert.doesNotMatch(t!.body, /claude\.ai|Grok|xAI|theme-showcase\.pdf|canvas-fonts|templates\/viewer/);
+    }
+  }
+  // No executable, font, picture or PDF is bundled: only texts.
+  for (const e of entries) for (const f of ["scripts", "canvas-fonts", "theme-showcase.pdf", "themes"]) assert.equal(existsSync(new URL(`${e.id}/${f}`, dir)), false);
+  // The working method (the owner's extra request) is there in both languages.
+  const m = entries.find((e) => e.id === "methode-de-travail")!;
+  assert.match(m.text.fr!.body, /Vérifier avant de dire « c'est fait »/);
+  assert.match(m.text.en!.body, /Check before saying "done"/);
+});
+
+test("adding from the library: in the account's language, idempotent, on its own bots only", async () => {
+  ids.a = (await A("POST", "/auth/signup", { email: "a@example.com", name: "Alice", password: "password123", locale: "fr", acceptTerms: true })).json.user.id;
+  ids.b = (await B("POST", "/auth/signup", { email: "b@example.com", name: "Bob", password: "password123", acceptTerms: true })).json.user.id;
+  ids.a2 = (await A("POST", "/bots", { name: "Capucine" })).json.bot.id;
+  ids.bBot = bots.list(ids.b).find((x) => x.kind === "agent")!.id;
+  const list = await A("GET", "/skills-library");
+  assert.equal(list.status, 200, list.text);
+  assert.equal(list.json.skills.length, 6);
+  const meth = list.json.skills.find((s: any) => s.id === "methode-de-travail");
+  assert.equal(meth.title, "Méthode de travail");
+  assert.equal(meth.language, "fr");
+  assert.equal(list.json.github, true);
+  const agents = bots.list(ids.a).filter((x) => x.kind === "agent");
+  assert.equal(meth.botCount, agents.length);
+  assert.equal(meth.addedTo, 0);
+
+  const first = await A("POST", "/skills-library/methode-de-travail/add", { target: "all" });
+  assert.equal(first.status, 200, first.text);
+  assert.equal(first.json.report.added.length, agents.length);
+  const again = await A("POST", "/skills-library/methode-de-travail/add", { target: "all" });
+  assert.equal(again.json.report.added.length, 0);
+  assert.equal(again.json.report.already.length, agents.length);
+  for (const b of agents) {
+    const own = skills.list(b.id).filter((k) => k.name === "Méthode de travail");
+    assert.equal(own.length, 1, "exactly one copy");
+    assert.equal(own[0].draft, false);
+    assert.match(own[0].body, /Comprendre le but/);
+  }
+  // English account: the English text; one bot only.
+  const en = await B("POST", "/skills-library/frontend-design/add", { target: ids.bBot });
+  assert.equal(en.status, 200, en.text);
+  const k = skills.list(ids.bBot).find((s) => s.name === "Frontend design")!;
+  assert.match(k.body, /Apache License 2\.0/);
+  // Nothing crossed accounts: B has no "Méthode de travail", A cannot add to B's bot, B cannot add to A's.
+  assert.equal(skills.list(ids.bBot).some((s) => s.name === "Méthode de travail" || s.name === "Working method"), false);
+  assert.equal((await A("POST", "/skills-library/pages-soignees/add", { target: ids.bBot })).status, 404);
+  assert.equal((await B("POST", "/skills-library/pages-soignees/add", { target: ids.a2 })).status, 404);
+  assert.equal(skills.list(ids.a2).some((s) => s.name === "Polished pages" || s.name === "Pages soignées"), false);
+  assert.equal((await A("POST", "/skills-library/../../etc/add", { target: "all" })).status, 404);
+  assert.equal((await A("POST", "/skills-library/nope/add", { target: "all" })).status, 404);
+});
+
+test("GitHub addresses: only public github.com repositories and their folders", () => {
+  assert.deepEqual(gh.parseGithubUrl("https://github.com/anthropics/skills"), { owner: "anthropics", repo: "skills", ref: "", path: "" });
+  assert.deepEqual(gh.parseGithubUrl("github.com/o/r.git"), { owner: "o", repo: "r", ref: "", path: "" });
+  assert.deepEqual(gh.parseGithubUrl("https://github.com/o/r/tree/main/skills/x"), { owner: "o", repo: "r", ref: "main", path: "skills/x" });
+  assert.deepEqual(gh.parseGithubUrl("https://github.com/o/r/blob/v1.2/skills/x/SKILL.md"), { owner: "o", repo: "r", ref: "v1.2", path: "skills/x" });
+  for (const bad of ["https://gitlab.com/o/r", "http://github.com/o/r", "https://github.com.evil.test/o/r", "https://evil.test/github.com/o/r", "https://user:pw@github.com/o/r",
+    "https://github.com:8443/o/r", "https://github.com/o", "https://github.com/o/r/tree/main/../../x", "https://github.com/o/r/tree/main/%2e%2e/x", "https://github.com/o/r/issues/3", "file:///etc/passwd", "https://raw.githubusercontent.com/o/r/main/SKILL.md", "https://127.0.0.1/o/r"])
+    assert.throws(() => gh.parseGithubUrl(bad), gh.GithubError, bad);
+});
+
+test("GitHub preview: licences, flags, path tricks left out; import as drafts; another account cannot use the preview", async () => {
+  served = { "https://github.com/acme/kit/archive/HEAD.zip": { status: 302, headers: { location: "https://codeload.github.com/acme/kit/zip/refs/heads/main" } }, "https://codeload.github.com/acme/kit/zip/refs/heads/main": { status: 200, body: REPO, headers: { "content-type": "application/zip" } } };
+  const p = await A("POST", "/skills-library/github/preview", { url: "https://github.com/acme/kit" });
+  assert.equal(p.status, 200, p.text);
+  const by = Object.fromEntries(p.json.preview.skills.map((s: any) => [s.name, s]));
+  assert.deepEqual(Object.keys(by).sort(), ["alpha skill", "beta", "big", "closed", "keyed"]);
+  assert.equal(by["alpha skill"].licence, "Apache-2.0"); assert.equal(by["alpha skill"].licenceFrom, "skill"); assert.equal(by["alpha skill"].permissive, true);
+  assert.equal(by["alpha skill"].ignoredFiles, 2, "the script and the picture are left out");
+  assert.equal(by.beta.licence, "none"); assert.equal(by.beta.permissive, false);
+  assert.equal(by.closed.licence, "restrictive"); assert.equal(by.closed.permissive, false);
+  assert.equal(by.keyed.mentionsKey, true);
+  assert.equal(by.big.tooLarge, true);
+  assert.equal(JSON.stringify(p.json).includes("rm -rf"), false);
+  assert.equal(JSON.stringify(p.json).includes("Should never be read"), false);
+  // The body is not sent in the preview; B cannot commit A's preview.
+  assert.equal((await B("POST", "/skills-library/github/commit", { previewId: p.json.preview.previewId, paths: ["skills/beta/SKILL.md"], target: "all" })).status, 400);
+  const c = await A("POST", "/skills-library/github/commit", { previewId: p.json.preview.previewId, paths: ["skills/alpha/SKILL.md", "skills/big/SKILL.md", "../escape/SKILL.md"], target: ids.a2 });
+  assert.equal(c.status, 200, c.text);
+  assert.deepEqual(c.json.report.imported, ["alpha skill"]);
+  assert.deepEqual(c.json.report.skipped, ["big"]);
+  const imported = skills.list(ids.a2).find((s) => s.name === "alpha skill")!;
+  assert.equal(imported.draft, true, "pending the owner's review");
+  assert.equal(imported.outside, true);
+  assert.match(imported.body, /Source: https:\/\/github\.com\/acme\/kit\/tree\/HEAD\/skills\/alpha — licence: Apache-2\.0/);
+  assert.equal(skills.usable(ids.a2).some((s) => s.name === "alpha skill"), false, "a draft is not given to the bot");
+  // The preview is single use.
+  assert.equal((await A("POST", "/skills-library/github/commit", { previewId: p.json.preview.previewId, paths: ["skills/beta/SKILL.md"] })).status, 400);
+});
+
+test("GitHub download: other hosts refused, private/missing repositories, oversize archives, a folder of a repository", async () => {
+  served = { "https://github.com/acme/evil/archive/HEAD.zip": { status: 302, headers: { location: "https://evil.test/x.zip" } } };
+  const r1 = await A("POST", "/skills-library/github/preview", { url: "https://github.com/acme/evil" });
+  assert.equal(r1.status, 502); assert.match(r1.json.error, /ailleurs|refus/);
+  assert.equal(asked.includes("https://evil.test/x.zip"), false, "never fetched");
+  served = {};
+  const r2 = await A("POST", "/skills-library/github/preview", { url: "https://github.com/acme/private" });
+  assert.equal(r2.status, 404); assert.match(r2.json.error, /privé|introuvable/);
+  served = { "https://github.com/acme/huge/archive/HEAD.zip": { status: 200, body: Buffer.alloc(10), headers: { "content-length": String(gh.MAX_ARCHIVE + 1) } } };
+  assert.equal((await A("POST", "/skills-library/github/preview", { url: "https://github.com/acme/huge" })).status, 413);
+  served = { "https://github.com/acme/huge2/archive/HEAD.zip": { status: 200, body: Buffer.alloc(gh.MAX_ARCHIVE + 10) } };
+  assert.equal((await A("POST", "/skills-library/github/preview", { url: "https://github.com/acme/huge2" })).status, 413);
+  assert.equal((await A("POST", "/skills-library/github/preview", { url: "https://gitlab.com/acme/kit" })).status, 400);
+  // A folder: only the skills under it; the branch is tried as refs/heads first.
+  served = { "https://github.com/acme/kit/archive/refs/heads/main.zip": { status: 200, body: REPO } };
+  const r3 = await A("POST", "/skills-library/github/preview", { url: "https://github.com/acme/kit/tree/main/skills/beta" });
+  assert.equal(r3.status, 200, r3.text);
+  assert.deepEqual(r3.json.preview.skills.map((s: any) => s.name), ["beta"]);
+  // A repository-level licence applies to skills without their own; a README licence line too.
+  served = { "https://github.com/acme/mit/archive/HEAD.zip": { status: 200, body: zip({ "mit-main/LICENSE": "MIT License\n\nPermission is hereby granted, free of charge, to any person", "mit-main/x/SKILL.md": skillMd("x", "d", "steps") }) } };
+  const r4 = await A("POST", "/skills-library/github/preview", { url: "https://github.com/acme/mit" });
+  assert.equal(r4.json.preview.skills[0].licence, "MIT"); assert.equal(r4.json.preview.skills[0].licenceFrom, "repository");
+  served = { "https://github.com/acme/none/archive/HEAD.zip": { status: 200, body: zip({ "none-main/README.md": "# Nothing\n" }) } };
+  assert.equal((await A("POST", "/skills-library/github/preview", { url: "https://github.com/acme/none" })).status, 404);
+});
+
+test("licence detection", () => {
+  assert.equal(gh.classifyLicence(APACHE), "Apache-2.0");
+  assert.equal(gh.classifyLicence("GNU GENERAL PUBLIC LICENSE\nVersion 3"), "GPL");
+  assert.equal(gh.classifyLicence("Creative Commons Attribution-NonCommercial 4.0"), "restrictive");
+  assert.equal(gh.classifyLicence("Creative Commons Attribution 4.0 International"), "CC-BY");
+  assert.equal(gh.classifyLicence("MIT"), "MIT");
+  assert.equal(gh.classifyLicence("whatever"), "unknown");
+  assert.equal(gh.isPermissive("GPL"), false);
+  assert.equal(gh.isPermissive("BSD"), true);
+});
+
+test("hosted mode: operators and paid plans may import from GitHub, a free plan may not (the library stays open to all)", async () => {
+  process.env.HOSTED_MODE = "1";
+  try {
+    if (!hosted.plans.get("free")) hosted.plans.save({ id: "free", kind: "free", nameFr: "Gratuit", nameEn: "Free" }, ids.a);
+    if (!hosted.plans.get("pro-test")) hosted.plans.save({ id: "pro-test", kind: "included", nameFr: "Pro", nameEn: "Pro" }, ids.a);
+    assert.equal(gh.githubImportAllowed(ids.a), true, "the owner is an operator");
+    hosted.subscriptions.ensure(ids.b);
+    hosted.subscriptions.update(ids.b, { planId: "free", status: "active" });
+    assert.equal(gh.githubImportAllowed(ids.b), false);
+    const r = await B("POST", "/skills-library/github/preview", { url: "https://github.com/acme/kit" });
+    assert.equal(r.status, 403);
+    assert.equal((await B("GET", "/skills-library")).json.github, false);
+    assert.equal((await B("POST", "/skills-library/theme-factory/add", { target: "all" })).status, 200, "bundled skills: every plan");
+    hosted.subscriptions.update(ids.b, { planId: "pro-test", status: "active" });
+    assert.equal(gh.githubImportAllowed(ids.b), true);
+  } finally { delete process.env.HOSTED_MODE; }
+});

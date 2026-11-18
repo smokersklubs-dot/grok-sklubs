@@ -8,6 +8,8 @@ import { startFreeComputers } from "./freecomputers.js";
 import { setLookSource } from "./linux.js";
 import { bots, users } from "./store.js";
 import { assertConfig, config } from "./config.js";
+import { checkDataKeys } from "./datakey.js";
+import { startSessionSweep } from "./twofactor.js";
 import { connectors } from "./connectors.js";
 import { localTools } from "./localtools.js";
 import { defaultModelRef, listProviders } from "./llm/index.js";
@@ -36,7 +38,7 @@ import { appCsp, inlineScriptHashes, limitBodies, openSetupProblem, securityHead
 
 // The Sentinelle's error counter (sentinel/signals.ts): from here on, every console.error line counts.
 installErrorCounter();
-try { assertConfig(); } catch (err) { console.error(`\nCannot start: ${(err as Error).message}\n`); process.exit(1); }
+try { assertConfig(); checkDataKeys(); } catch (err) { console.error(`\nCannot start: ${(err as Error).message}\n`); process.exit(1); }
 // M6: a fresh install open to others needs its setup code; one that already has accounts always starts.
 {
   const problem = openSetupProblem({ users: users.all().length, setupCode: config.setupCode, publicUrl: config.publicUrl });
@@ -98,6 +100,8 @@ closeLeftOpenWatchNotices();
 const uncertain = sweepUncertain();
 if (uncertain) console.log(`${uncertain} action(s) cut off by the restart are marked uncertain.`);
 startScheduler();
+// Expired sessions, pending two-factor sign-ins and one-time links are deleted (twofactor.ts), now and every hour.
+startSessionSweep();
 startAutoBackup();
 startHealthChecks();
 // The Sentinelle (sentinel/): a read-only scan every SENTINEL_EVERY_MIN minutes, incidents and alerts to the owner/operators.

@@ -1,0 +1,43 @@
+/** The dev gallery's « Bibliothèque de compétences » and page history (section=skills, section=pages). Development only. */
+import type { GithubPreview, LibrarySkill } from "../types";
+import type { FixtureOptions } from "./fixtures";
+
+export function libraryFixture(o: FixtureOptions): { skills: LibrarySkill[]; github: boolean } {
+  const fr = o.lang === "fr";
+  const L = (a: string, b: string) => (fr ? a : b);
+  const base = { botCount: 3, body: "# …\n\n1. …", notice: "", source: "" };
+  const skills: LibrarySkill[] = [
+    { ...base, id: "methode-de-travail", origin: "sklubot", licence: "MIT", title: L("Méthode de travail", "Working method"), summary: L("Comprendre le but, agir, vérifier avant de dire « fini », demander l'accord avant l'irréversible, rendre compte simplement.", "Understand the goal, act, check before saying \"done\", ask before anything irreversible, report simply."), language: o.lang, addedTo: 3, notice: L("methode-de-travail — une compétence originale de Sklubot (MIT).", "methode-de-travail — an original Sklubot skill (MIT).") },
+    { ...base, id: "pages-soignees", origin: "sklubot", licence: "MIT", title: L("Pages soignées", "Polished pages"), summary: L("Quand faire une page plutôt qu'un message, et comment la construire, la vérifier et la partager (comme des artefacts).", "When to make a page instead of a message, and how to build, check and share it (like artifacts)."), language: o.lang, addedTo: 1, body: L("# Pages soignées (comme des artefacts)\n\n## 1. Page ou message ?\n\nFais une page quand le résultat sera relu, gardé ou montré…", "# Polished pages (like artifacts)\n\n## 1. Page or message?\n\nMake a page when the result will be re-read, kept or shown…") },
+    { ...base, id: "design-de-marque", origin: "sklubot", licence: "MIT", title: L("Design de marque", "Brand design"), summary: L("Retrouver et appliquer les couleurs, polices, logo et ton du compte au lieu d'en inventer.", "Find and apply the account's colours, fonts, logo and tone instead of inventing them."), language: o.lang, addedTo: 0 },
+    { ...base, id: "frontend-design", origin: "anthropic", licence: "Apache-2.0", title: L("Design soigné (pages web)", "Frontend design"), summary: L("Une direction visuelle affirmée pour chaque page : palette, typographie, mise en page, sans l'air « généré ». Texte en anglais.", "A deliberate visual direction for each page: palette, typography, layout, without the generated look."), language: "en", addedTo: 0, notice: "frontend-design — © Anthropic, PBC — Apache License 2.0, from github.com/anthropics/skills", source: "https://github.com/anthropics/skills" },
+    { ...base, id: "canvas-design", origin: "anthropic", licence: "Apache-2.0", title: L("Affiches et visuels (PNG, PDF)", "Canvas design (PNG, PDF)"), summary: L("Créer une affiche ou un visuel artistique en PNG ou PDF sur l'ordinateur du bot. Texte en anglais.", "Create a poster or an art piece as PNG or PDF on the bot's computer."), language: "en", addedTo: 0 },
+    { ...base, id: "theme-factory", origin: "anthropic", licence: "Apache-2.0", title: L("Thèmes de couleurs", "Theme factory"), summary: L("Dix thèmes prêts (couleurs et polices) à appliquer à une page, un document ou des diapos. Texte en anglais.", "Ten ready themes (colours and fonts) to apply to a page, a document or slides."), language: "en", addedTo: o.long ? 3 : 0 },
+  ];
+  return { skills, github: true };
+}
+
+export function githubPreviewFixture(): GithubPreview {
+  const s = (name: string, extra: Partial<GithubPreview["skills"][number]>) => ({ path: `skills/${name}/SKILL.md`, name, description: "", size: 4000, licence: "Apache-2.0" as const, licenceFrom: "skill" as const, permissive: true, mentionsKey: false, tooLarge: false, ignoredFiles: 0, exists: false, ...extra });
+  return {
+    previewId: "demo", repo: "acme/skills", ref: "", path: "", truncated: false,
+    skills: [
+      s("frontend-design", { description: "Distinctive web pages.", ignoredFiles: 0 }),
+      s("slides", { description: "Slide decks.", licence: "restrictive", permissive: false, ignoredFiles: 14 }),
+      s("notes", { licence: "none", licenceFrom: "none", permissive: false, mentionsKey: true }),
+    ],
+  };
+}
+
+export const versionsFixture = () => {
+  const now = Date.now();
+  return {
+    versions: [
+      { id: 4, n: 4, note: "edited css/site.css", createdAt: now - 60_000, bytes: 4200, files: 3, current: true },
+      { id: 3, n: 3, note: "edited", createdAt: now - 3_600_000, bytes: 4100, files: 3, current: false },
+      { id: 2, n: 2, note: "published again", createdAt: now - 86_400_000, bytes: 3900, files: 2, current: false },
+      { id: 1, n: 1, note: "published", createdAt: now - 2 * 86_400_000, bytes: 3000, files: 0, current: false },
+    ],
+    files: ["app.js", "css/site.css", "data/ventes.json"],
+  };
+};

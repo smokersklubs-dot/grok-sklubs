@@ -4,6 +4,7 @@
  * buttons under a notice that the plan stopped some work. Texts live here (French and English), like GoogleLogin.tsx.
  */
 import { AdminCapsEditor } from "./UsageCaps";
+import { AdminRevokeSessions } from "./TwoFactor";
 import { useEffect, useId, useState, type ReactNode } from "react";
 import { api, enc, errText } from "../api";
 import { useStore } from "../store";
@@ -543,6 +544,7 @@ function CustomerActions({ c, data, onChange, onError }: { c: AdminCustomer; dat
           {c.periodEnd && <p className="muted small">{h("paidUntil", { date: day(c.periodEnd, loc) })}</p>}
         </div>
         <AdminCapsEditor uid={c.id} />
+        <AdminRevokeSessions uid={c.id} />
         {data.owner && (
           <div className="hosted-box">
             <div className="action-row"><p className="field-label">{h("aOperator")}</p><Toggle checked={false} label={h("aOperator")} disabled={busy} onChange={(on) => void run("PUT", "/operator", { on })} /></div>

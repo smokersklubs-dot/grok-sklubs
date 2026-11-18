@@ -8,7 +8,8 @@
     "start": "node dist/index.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "tsx --test --test-timeout=120000 test/*.test.ts",
-    "desk:test": "tsx src/desk-cli.ts"
+    "desk:test": "tsx src/desk-cli.ts",
+    "rotate-data-key": "node dist/rotatekey.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.8.0",

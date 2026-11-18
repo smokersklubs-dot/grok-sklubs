@@ -12,6 +12,7 @@ Authentication is an HTTP-only session cookie; every route except the auth route
 | POST | `/auth/signup` | `{ email, name?, password, locale? }` | `{ user }` (403 when signup is closed) |
 | POST | `/auth/login` | `{ email, password }` | `{ user }` (401 on bad credentials) |
 | POST | `/auth/logout` | – | `{ ok: true }` |
+| POST | `/auth/2fa` | `{ token?, code }` | `{ user, recoveryLeft? }` + session cookie — second step when the account has two-factor on: `/auth/login`, `/auth/password/reset`, `/auth/app/exchange` then answer `{ twoFactor: { token, expiresIn: 300 } }` instead of `{ user }` (no session yet; the token is also in the `sklubot_2fa` cookie, which the Google callback and `/auth/link` leave before redirecting to `/?second=1`). `code`: 6 digits (TOTP, RFC 6238) or a recovery code. 400 `{ error, attemptsLeft }` on a wrong code, 410 once expired (5 min) or after 5 wrong codes, 429 when throttled |
 | GET | `/auth/password/status` | – | `{ mail: boolean }` — whether the server can send its own e-mails (SMTP set up) |
 | POST | `/auth/password/forgot` | `{ email, locale? }` | `{ ok: true }` — always the same answer whether the address has an account; the link (`/?reset=<token>`, 30 min, single use) is sent afterwards. 409 when no SMTP account is set up; 403 when throttled |
 | POST | `/auth/password/reset/check` | `{ token }` | `{ valid: boolean }` — does not use the link up |
@@ -110,7 +111,7 @@ metadata (RFC 9728) and authorization-server metadata discovery, PKCE (S256), dy
 when offered, resource indicators (RFC 8707). The redirect URI is `${PUBLIC_URL}/api/connectors/oauth/callback`, so
 `PUBLIC_URL` must be the address the browser really uses. A pending sign-in (`oauth_pending`: hash of `state` → user,
 connector, sealed code verifier) lives 10 minutes and is used once. Access and refresh tokens, client registration and
-discovery state are sealed (AES-256-GCM, key from `SESSION_SECRET`) in `connectors.oauth_enc` and never returned by
+discovery state are sealed (AES-256-GCM, with the data key: `DATA_KEYS`, else derived from `SESSION_SECRET`) in `connectors.oauth_enc` and never returned by
 any route. Tokens are refreshed before they expire and on a 401; when the refresh fails the connector shows
 `status: "needs_auth"` and a "Sign in" button. Every step is written to the activity log.
 
@@ -152,6 +153,15 @@ any route. Tokens are refreshed before they expire and on a 401; when the refres
 | GET | `/pages` | – | `{ pages: SharedPage[] }` |
 | DELETE | `/pages/:token` | – | `{ ok }` — the public address stops working |
 | PUT | `/account/password` | `{ current, next }` | `{ ok }` (401 if `current` is wrong; `next` needs 8+ characters) |
+| GET | `/account/2fa` | – | `{ twoFactor: { enabled, enabledAt, recoveryLeft, hasPassword }, sessions }` |
+| POST | `/account/2fa/setup` | – | `{ secret, uri }` — a new base32 seed and its `otpauth://totp/…` URI (Key Uri Format); not on until confirmed (30 min). 409 if already on |
+| POST | `/account/2fa/confirm` | `{ code }` | `{ recoveryCodes: string[10], twoFactor }` — turns it on; the codes are shown this once (stored hashed) |
+| POST | `/account/2fa/recovery` | `{ code }` | `{ recoveryCodes, twoFactor }` — new recovery codes (a code from the app, not a recovery code); the old ones stop working |
+| POST | `/account/2fa/disable` | `{ password, code }` | `{ twoFactor }` — `password` when the account has one (401 if wrong); `code` from the app or a recovery code |
+| POST | `/account/sessions/revoke-others` | – | `{ ok, revoked, sessions }` — every other session of the account ends (and pending sign-ins) |
+| POST | `/admin/customers/:uid/sessions/revoke` | – | `{ ok, revoked }` — hosted mode, operators only (404 otherwise): signs an account out everywhere, written to the administration log |
+| GET | `/admin/data-key` | – | `{ report }` — server owner only (404 otherwise): the sealed values per location and key id (a dry run of the rotation) |
+| POST | `/admin/data-key/rotate` | `{ dryRun }` | `{ report }` — re-seals every sealed value under the newest data key in one transaction; a dry run unless `dryRun: false` |
 | DELETE | `/account` | `{ password }` | `{ ok }` — deletes the account and everything in it |
 | GET | `/export/data` | – | JSON file download: everything the account holds (no passwords or tokens) |
 | GET | `/export/team` | – | JSON file download: bots with their settings, skills and routines (no chats, memories or secrets) |

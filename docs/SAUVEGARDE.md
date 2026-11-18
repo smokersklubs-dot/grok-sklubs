@@ -27,7 +27,8 @@ L'archive `sklubot-sauvegarde-AAAAMMJJ-HHMMSS.tar` contient :
 - `homes/sklubot-home-*.tar.gz` : le dossier personnel de chaque ordinateur (bots **et** ordinateurs partagés :
   connexions Claude / ChatGPT, outils installés). Un ordinateur allumé est mis en pause (`docker pause`) le temps de sa
   seule copie, puis repart là où il en était ;
-- les **secrets** qui déchiffrent le coffre et les connexions (`SESSION_SECRET`, clés d'API) : le fichier `.env` du VPS,
+- les **secrets** qui déchiffrent le coffre et les connexions (`SESSION_SECRET`, la clé de données `DATA_KEYS` /
+  `SKLUBOT_DATA_KEYS` si tu en as réglé une, clés d'API) : le fichier `.env` du VPS,
   et l'environnement du conteneur Sklubot (sous Coolify, c'est là que sont les variables saisies dans Coolify) —
   **chiffrés** dans `secrets.env.age` ou `secrets.env.enc` (voir ci-dessous) ;
 - `manifest.json` (date, intégrité de la base, nombre de comptes / bots / messages…, version du schéma) et
@@ -37,7 +38,8 @@ Ne sont pas sauvegardés : les certificats HTTPS (`caddy_data`, réémis seuls) 
 
 ## Chiffrer les secrets (à faire une fois)
 
-Sans `SESSION_SECRET`, une sauvegarde ne rouvre ni le coffre ni les connexions. Mais il ne doit pas traîner en clair à
+Sans `SESSION_SECRET` (et sans `SKLUBOT_DATA_KEYS`, si tu as réglé une clé de données dédiée : docs/DEPLOIEMENT.md),
+une sauvegarde ne rouvre ni le coffre ni les connexions. Mais il ne doit pas traîner en clair à
 côté des archives. Deux façons, à mettre dans le `.env` de `/opt/sklubot` (ou en variables d'environnement du cron) :
 
 **Recommandé : une clé `age`** (`apt install age`). La clé **privée** reste hors du serveur (ton ordinateur, un
@@ -258,6 +260,19 @@ Sans scripts ni Docker Compose (n'importe quel serveur avec l'image) : `node ser
 --identity cle.txt <archive> <dossier de données vide> --meta <dossier hors des données>` restaure le dossier de
 données et écrit `manifest.json` et `secrets.env` (droits 600) dans le dossier `--meta`. `verify` vérifie sans rien
 écrire, `decrypt` donne le `.tar.gz` en clair.
+
+## Clé de données : sauvegarder et restaurer avec la bonne clé
+
+- Les deux sauvegardes (script `deploy/backup.sh` et sauvegarde automatique) emportent l'environnement de Sklubot,
+  donc `DATA_KEYS` quand il est réglé, **chiffré** avec le reste des secrets. `backupcheck.js` le signale
+  (`"dataKeys": true`) et l'exercice de restauration (`deploy/restore-drill.sh`) passe `DATA_KEYS` à la copie jetable :
+  « une valeur scellée s'ouvre » vérifie donc la vraie clé.
+- **Restaurer** : remets dans `.env` (ou Coolify) le `SKLUBOT_SESSION_SECRET` **et** le `SKLUBOT_DATA_KEYS` de la
+  sauvegarde (`… | tar xzO secrets.env | grep -E 'SESSION_SECRET|DATA_KEY'`). Une sauvegarde faite avant une rotation
+  a besoin de l'ancienne clé : mets-la derrière la nouvelle (`k2:<nouvelle>,k1:<ancienne>`), redémarre, puis
+  `rotatekey.js` rechiffre tout sous la nouvelle (docs/DEPLOIEMENT.md, « Clé de données »).
+- Une clé absente ou fausse ne fait rien planter : la valeur concernée se lit comme vide, et le journal dit une fois
+  laquelle manque (« A secret was sealed with the data key "k1", which is no longer in DATA_KEYS… »).
 
 ## Vérifié
 

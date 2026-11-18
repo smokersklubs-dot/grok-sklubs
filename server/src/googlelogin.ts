@@ -39,6 +39,7 @@ import { guardedFetch } from "./net.js";
 import type { Locale } from "./shared.js";
 import { audit, bots, now, sha256, users, type UserRecord } from "./store.js";
 import { invites } from "./workspaces.js";
+import type { SecondStep } from "./twofactor.js";
 import { accountOpened, markVerified, publicSignupChecks } from "./publicsignup.js";
 import { accountCreated, HostedError, planInviteOpens, signupChoice, type SignupChoice } from "./hosted.js";
 
@@ -222,7 +223,8 @@ function linkIdentity(userId: string, c: GoogleClaims) {
 export interface GoogleDeps {
   throttle(key: string, limit?: number): void;
   clientIp(c: Context): string;
-  startSession(c: Context, userId: string): void;
+  /** A session, or (two-factor on) the pending second step to answer with instead (twofactor.ts). */
+  startSession(c: Context, userId: string, via?: string): SecondStep | null;
   publicUser(u: UserRecord): unknown;
   firstBotIdentity(locale: Locale, name?: unknown, label?: unknown): { name: string; label: string };
 }
@@ -397,7 +399,8 @@ export function registerGooglePublic(api: Hono<any>, deps: GoogleDeps) {
         appCodes.set(sha256(one), { userId: user.id, challenge: flow.appChallenge, expires: Date.now() + APP_CODE_MS });
         return c.redirect(`${APP_REDIRECT}?code=${encodeURIComponent(one)}`, 302);
       }
-      deps.startSession(c, user.id);
+      // Two-factor on: Google proved who this is, the code is still asked (the web app shows the second step).
+      if (deps.startSession(c, user.id, "Google")) return c.redirect("/?second=1", 302);
       return c.redirect("/", 302);
     } catch (err) {
       if (err instanceof GoogleError) return errorPage(c, locale, err.message, err.status, back);
@@ -422,7 +425,8 @@ export function registerGooglePublic(api: Hono<any>, deps: GoogleDeps) {
     }
     const user = users.byId(entry.userId);
     if (!user) return c.json({ error: m(locale, "This code is wrong, used or expired. Sign in again.") }, 400);
-    deps.startSession(c, user.id);
+    const second = deps.startSession(c, user.id, "Google (app)");
+    if (second) return c.json(second);
     return c.json({ user: deps.publicUser(user) });
   });
 }

@@ -3,7 +3,7 @@ import { closeSync, createReadStream } from "node:fs";
 import path from "node:path";
 import { Readable } from "node:stream";
 import { Hono, type Context } from "hono";
-import { deleteCookie, getCookie, setCookie } from "hono/cookie";
+import { deleteCookie, getCookie } from "hono/cookie";
 import { streamSSE } from "hono/streaming";
 import { registerNoticeRoutes } from "./agent/noticeroutes.js";
 import { continueAfterStepLimit, decideApproval, enqueue, inQueue, interrupt, noteHandBack, submitUserMessage, type ForcedSkill } from "./agent/loop.js";
@@ -20,7 +20,7 @@ import { RESPONSE_ALREADY_SENT } from "@hono/node-server/utils/response";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createRoom, dispatchToRoom, validMembers } from "./agent/team.js";
 import { retireBot } from "./agent/tools.js";
-import { createSession, dropSession, hashPassword, originAllowed, seal, SESSION_COOKIE, setupCodeMatches, setupCodeRequired, signupOpen, userForToken, verifyPassword } from "./auth.js";
+import { dropSession, hashPassword, originAllowed, seal, SESSION_COOKIE, setupCodeMatches, setupCodeRequired, signupOpen, userForToken, verifyPassword } from "./auth.js";
 import { emit, getLive, subscribe } from "./bus.js";
 import { workspaceOf } from "./computer.js";
 import { attachmentAt, computerKind, computerState, isInlineImage, isInlineVideo, listFiles, listTeamFiles, mimeOf, openLibraryFile, openTeamFile, readLibraryFile, removeTeamFolder, removeWorkspace, resolveInTeam, resolveInWorkspace, screen, storeBytes, teamFolderState } from "./computer.js";
@@ -44,6 +44,8 @@ import { finishTakeover, holdControl, releaseControl } from "./takeover.js";
 import { deskRun, deskShot, startDeskTest } from "./desktest.js";
 import { notePresence, push, pushSettings, savePushSettings, sendPush } from "./push.js";
 import { parseTotp } from "./totp.js";
+import { registerTwoFactorPrivate, registerTwoFactorPublic, startSessionOrChallenge } from "./twofactor.js";
+import { registerDataKeyRoutes } from "./datakeyrotate.js";
 import { detectMapping, loginsFrom, parseCsv, type Mapping } from "./vault-import.js";
 import { PUSH_KINDS, VAULT_KINDS, type VaultKind } from "./shared.js";
 import { q } from "./db.js";
@@ -110,6 +112,8 @@ import { registerBotApi, registerBotApiOwner } from "./botapi.js";
 import { handleBotMcp } from "./botmcp.js";
 import { registerSentinelRoutes } from "./sentinel/routes.js";
 import { registerAnnouncementRoutes } from "./announceroutes.js";
+import { registerSkillsLibraryRoutes } from "./skillsroutes.js";
+import { registerPageApi, registerPageSite } from "./pageroutes.js";
 import { canWatch as sentinelWatcher } from "./sentinel/view.js";
 import { noteSignal } from "./sentinel/signals.js";
 import { accountFlags, accountOpened, assertEmailSignupPossible, PublicSignupError, emailGateAllows, emailGateBlocks, emailGateBody, publicSignupGate, publicSignupInfo, registerPublicSignupPrivate, registerPublicSignupPublic, setAccountRemover } from "./publicsignup.js";
@@ -176,32 +180,13 @@ onTurnEvent((e) => {
   for (const u of approversOf(e.bot.id)) if (u !== e.bot.userId) void sendPush(u, { kind: "needs", title: e.bot.name, body: e.text, botId: e.bot.id }).catch(() => {});
 });
 
-function startSession(c: Context, userId: string) {
-  const s = createSession(userId);
-  setCookie(c, SESSION_COOKIE, s.token, { httpOnly: true, sameSite: "Lax", path: "/", maxAge: s.maxAgeSec, secure: config.publicUrl.startsWith("https://") });
-}
+/** A session, or with two-factor on a pending second step and no session (twofactor.ts): every sign-in comes here. */
+const startSession = (c: Context, userId: string, via?: string) => startSessionOrChallenge(c, userId, via);
 
 /** Routes outside /api. */
 export const site = new Hono();
-// Pages published by bots. They are served in a sandbox: their scripts run, but as a stranger to this
-// site — no cookies, no access to the app or its API.
-site.get("/p/:token", (c) => {
-  const page = pages.byToken(c.req.param("token"), config.publicUrl);
-  // A private page is only for its owner, signed in to this Sklubot (the session cookie); anyone else gets a 404.
-  if (page?.visibility === "private") {
-    const viewer = userForToken(getCookie(c, SESSION_COOKIE));
-    if (!viewer || viewer.id !== page.userId) return c.text("This page is private. Sign in to Sklubot as its owner to open it.", 404, { "cache-control": "no-store", "x-robots-tag": "noindex" });
-  }
-  let html: string | null = null;
-  // Read through the library guard: a page file the bot replaced with a link (to the database, to the
-  // server's environment…) is refused, never served.
-  try { if (page) html = readLibraryFile(page.botId, page.path).toString("utf8"); } catch { /* removed, or not a plain file of the library */ }
-  if (!html) return c.text("This page is no longer shared.", 404);
-  return c.body(html, 200, {
-    "content-type": "text/html; charset=utf-8", "x-content-type-options": "nosniff", "referrer-policy": "no-referrer", "x-robots-tag": "noindex", ...(page?.visibility === "private" ? { "cache-control": "private, no-store" } : {}),
-    "content-security-policy": "sandbox allow-scripts allow-popups; default-src 'self' data: blob: https: 'unsafe-inline' 'unsafe-eval'; frame-ancestors 'none'",
-  });
-});
+// Pages published by bots, in a sandbox (their scripts run as a stranger to this site): pageroutes.ts, pagefiles.ts.
+registerPageSite(site);
 
 /** The apps' privacy policy (stores and visitors read it without a session): French and English. */
 site.get("/confidentialite", (c) => c.html(privacyPage("fr"), 200, { "cache-control": "public, max-age=3600", "x-content-type-options": "nosniff", "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'" }));
@@ -371,8 +356,9 @@ api.post("/auth/login", async (c) => {
   if (!user) { dummyCheck(password); noteSignal("login_failure", clientIp(c)); fail(401, "Wrong email or password."); }
   if (!verifyPassword(password, user!.passHash)) { noteSignal("login_failure", clientIp(c)); fail(401, "Wrong email or password."); }
   attempts.delete(`login:${email}`);
+  const second = startSession(c, user!.id, "password");
+  if (second) return c.json(second);
   audit(user!.id, "account", "Signed in");
-  startSession(c, user!.id);
   return c.json({ user: publicUser(user!) });
 });
 
@@ -387,8 +373,8 @@ api.get("/auth/link", (c) => {
     const text = tr(loc, "This sign-in link has expired or was already used. Ask for a new one (it is valid 15 minutes and works once).");
     return c.html(`<!doctype html><html lang="${loc}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>Sklubot</title><style>body{font-family:system-ui,sans-serif;display:grid;place-items:center;min-height:100vh;margin:0;padding:16px;background:#f6f6f8;color:#1d1d24}main{max-width:420px;text-align:center;line-height:1.5}a{color:#4f46e5}</style></head><body><main><p>${escHtml(text)}</p><p><a href="/?link=expired">${escHtml(tr(loc, "Back to Sklubot"))}</a></p></main></body></html>`, 410, { "cache-control": "no-store", "referrer-policy": "no-referrer" });
   }
+  if (startSession(c, row.user_id, "one-time link")) return c.redirect("/?second=1");
   audit(row.user_id, "account", "Signed in with a one-time link");
-  startSession(c, row.user_id);
   return c.redirect("/");
 });
 
@@ -495,6 +481,8 @@ registerGooglePublic(api, googleDeps);
 registerAccountMailPublic(api, googleDeps);
 // "Ouverture publique" (publicsignup.ts): the landing page's data and the e-mail verification link.
 registerPublicSignupPublic(api, googleDeps);
+// The second step of a sign-in with two-factor on (twofactor.ts).
+registerTwoFactorPublic(api, googleDeps);
 
 // ── Everything below needs a session ─────────────────────────────────────────
 api.use("*", async (c, next) => {
@@ -515,6 +503,8 @@ api.use("*", async (c, next) => {
 });
 registerHostedPrivate(api);
 registerPublicSignupPrivate(api);
+registerTwoFactorPrivate(api, googleDeps);
+registerDataKeyRoutes(api);
 
 api.get("/events", (c) =>
   streamSSE(c, async (stream) => {
@@ -1314,6 +1304,7 @@ api.delete("/pages/:token", (c) => {
   emit(c.get("user").id, { type: "pages" });
   return c.json({ ok: true });
 });
+registerPageApi(api); // versions, restore, new address (pageroutes.ts)
 
 // ── Account and data ─────────────────────────────────────────────────────────
 registerGooglePrivate(api, googleDeps);
@@ -1325,6 +1316,7 @@ registerSentinelRoutes(api);
 // « Annonces » (announcements.ts): readers' feed, and the owner/operators' page to write them.
 registerAnnouncementRoutes(api);
 registerNoticeRoutes(api);
+registerSkillsLibraryRoutes(api); // « Bibliothèque de compétences » (skillsroutes.ts)
 api.put("/account/password", async (c) => {
   const user = c.get("user");
   const b = await body(c);

@@ -38,6 +38,7 @@ import { hasPassword, ownerId } from "./googlelogin.js";
 import { markVerified } from "./publicsignup.js";
 import type { Locale } from "./shared.js";
 import { audit, clip, now, randomToken, sha256, users, type UserRecord } from "./store.js";
+import type { SecondStep } from "./twofactor.js";
 
 export const TOKEN_MS = 30 * 60_000;
 const EMAIL_RE = /^[^@\s<>"'(),;:\\]+@[^@\s<>"'(),;:\\]+\.[^@\s<>"'(),;:\\]+$/;
@@ -198,7 +199,7 @@ const allowedHere = (e: string) => !config.allowedEmails.length || config.allowe
 export interface AccountMailDeps {
   throttle(key: string, limit?: number): void;
   clientIp(c: Context): string;
-  startSession(c: Context, userId: string): void;
+  startSession(c: Context, userId: string, via?: string): SecondStep | null;
   publicUser(u: UserRecord): unknown;
 }
 
@@ -267,7 +268,9 @@ export function registerAccountMailPublic(api: Hono<any>, deps: AccountMailDeps)
       q.run("DELETE FROM sign_in_links WHERE user_id = ?", user.id);
     });
     audit(user.id, "account", "Password reset with an e-mail link (every device signed out)");
-    deps.startSession(c, user.id);
+    // Two-factor stays on: the new password is saved, but signing in still needs the code (or a recovery code).
+    const second = deps.startSession(c, user.id, "password reset");
+    if (second) return c.json(second);
     return c.json({ user: deps.publicUser(users.byId(user.id)!) });
   }));
 

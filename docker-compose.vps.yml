@@ -27,6 +27,9 @@ services:
       PORT: "3000"
       PUBLIC_URL: "${SKLUBOT_PUBLIC_URL}"
       SESSION_SECRET: "${SKLUBOT_SESSION_SECRET}"
+      # Clé de données dédiée (facultative) qui scelle les secrets (coffre, connexions, sauvegardes, double authentification).
+      # Vide : clé dérivée de SESSION_SECRET, comme avant. Format et rotation : docs/DEPLOIEMENT.md, « Clé de données ».
+      DATA_KEYS: "${SKLUBOT_DATA_KEYS:-}"
       # Code à donner pour créer le premier compte (affiché à la fin de l'installation). Inutile ensuite.
       SETUP_CODE: "${SKLUBOT_SETUP_CODE:-}"
       # Derrière Caddy : l'adresse du visiteur est la dernière entrée de X-Forwarded-For (limite des tentatives de connexion).

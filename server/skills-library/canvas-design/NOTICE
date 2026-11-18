@@ -1,0 +1,6 @@
+canvas-design — © Anthropic, PBC — Apache License 2.0, from github.com/anthropics/skills
+Source: https://github.com/anthropics/skills/tree/e4bb5d960d87126ff3b3a8af1a104b7db67560ba/skills/canvas-design
+Licence: Apache License, Version 2.0 (the full text is in LICENSE.txt in this folder, copied unchanged from the source folder).
+
+Modified for Sklubot (2026-11-18): the bundled font folder (binary .ttf files, not included) is replaced by open-licence fonts the bot downloads; "the next Claude" is reworded as "the next pass"; a section "Using this skill in Sklubot" was added at the end.
+Only SKILL.md and the licence are included; no script, font, image or PDF of the original folder is bundled.

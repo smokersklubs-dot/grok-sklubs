@@ -89,6 +89,9 @@ export function SignInScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const pwRef = useRef<React.ComponentRef<typeof TextInput>>(null);
+  // Two-factor on (server twofactor.ts): the password answered with a pending token; the code is asked next.
+  const [pending, setPending] = useState<string | null>(null);
+  const [code, setCode] = useState("");
   useEffect(() => { if (!signupOpen) setMode("login"); }, [signupOpen]);
 
   const submit = async () => {
@@ -103,12 +106,46 @@ export function SignInScreen() {
     try {
       const s = useStore.getState();
       if (creating) await s.signUp({ email: mail, password, name: name.trim() || undefined, setupCode: setupCodeRequired ? setupCode.trim() : undefined, botName: botName.trim() || undefined, botLabel: botLabel.trim() || undefined });
-      else await s.signIn(mail, password);
+      else {
+        const r = await s.signIn(mail, password);
+        if (r?.twoFactor) { setPending(r.twoFactor); setBusy(false); return; }
+      }
     } catch (e) {
       setError(errText(e));
       setBusy(false);
     }
   };
+
+  const verify = async () => {
+    if (busy || !pending || !code.trim()) return;
+    setBusy(true);
+    setError(null);
+    try { await useStore.getState().verifySecondStep(pending, code); } catch (e) {
+      setError(errText(e));
+      setCode("");
+      // Expired or too many wrong codes: back to the password.
+      if (e instanceof Error && "status" in e && (e as { status?: number }).status === 410) setPending(null);
+      setBusy(false);
+    }
+  };
+
+  if (pending) {
+    return (
+      <Frame>
+        <Brand />
+        <View style={[styles.card, { backgroundColor: c.surface, borderColor: c.border }]}>
+          <Text accessibilityRole="header" style={[styles.title, { color: c.text }]}>{t("signin.secondTitle")}</Text>
+          <Text style={{ color: c.text2, fontSize: 15, lineHeight: 21 }}>{t("signin.secondHint")}</Text>
+          <Field testID="signin-code" label={t("signin.codeLabel")} value={code} onChangeText={setCode} autoCapitalize="none" autoCorrect={false} autoComplete="one-time-code" textContentType="oneTimeCode" returnKeyType="go" onSubmitEditing={verify} />
+          <ErrorNote>{error}</ErrorNote>
+          <Button label={t(busy ? "signin.signingIn" : "signin.signIn")} busy={busy} onPress={verify} />
+          <Pressable accessibilityRole="button" onPress={() => { setPending(null); setCode(""); setError(null); }} style={{ alignSelf: "center", padding: 8 }}>
+            <Text style={{ color: c.info, fontWeight: "600" }}>{t("signin.secondBack")}</Text>
+          </Pressable>
+        </View>
+      </Frame>
+    );
+  }
 
   return (
     <Frame>

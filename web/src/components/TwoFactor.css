@@ -1,0 +1,27 @@
+/* Two-factor sign-in: settings panel, QR code, recovery codes, and the sign-in second step (TwoFactor.tsx). */
+.tfa-panel { display: flex; flex-direction: column; gap: 12px; padding: 14px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface-2); margin: 4px 0 12px; }
+.tfa-panel > p { margin: 0; line-height: 1.45; }
+.tfa-steps { margin: 0; padding-left: 18px; list-style: decimal; display: flex; flex-direction: column; gap: 4px; font-size: 13px; line-height: 1.45; color: var(--text); }
+.tfa-setup { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
+/* The code stays black on white in dark mode too: authenticator apps read it best that way. */
+.tfa-qr { width: 168px; height: 168px; flex: none; border-radius: var(--r-sm); border: 1px solid var(--border); background: #fff; }
+.tfa-seed { display: flex; flex-direction: column; gap: 8px; flex: 1 1 200px; min-width: 0; }
+.tfa-seed > p { margin: 0; line-height: 1.45; }
+.tfa-secret { display: block; padding: 8px 10px; border-radius: var(--r-sm); background: var(--surface); border: 1px solid var(--border); font-family: var(--mono); font-size: 13px; letter-spacing: .04em; overflow-wrap: anywhere; color: var(--text); }
+.tfa-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.row-end.tfa-actions { justify-content: flex-end; }
+.tfa-code { font-family: var(--mono); font-size: 18px; letter-spacing: .14em; max-width: 220px; }
+.tfa-recovery { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 6px; }
+.tfa-recovery code { display: block; padding: 6px 8px; border-radius: var(--r-sm); background: var(--surface); border: 1px solid var(--border); font-family: var(--mono); font-size: 13px; color: var(--text); text-align: center; }
+.tfa-state { display: flex; align-items: center; gap: 8px; }
+.tfa-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--text-3); flex: none; }
+.tfa-dot.is-on { background: var(--ok); }
+.tfa-second { display: flex; flex-direction: column; gap: 14px; }
+.tfa-second > p.muted { margin: 0; line-height: 1.45; }
+.tfa-second .tfa-code { max-width: none; text-align: center; }
+.tfa-second-title { display: flex; align-items: center; gap: 7px; }
+.tfa-second-title svg { color: var(--brand); flex: none; }
+@media (max-width: 520px) {
+  .tfa-setup { flex-direction: column; align-items: center; }
+  .tfa-seed { width: 100%; flex: none; }
+}

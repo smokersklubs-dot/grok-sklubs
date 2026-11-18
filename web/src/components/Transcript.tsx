@@ -6,6 +6,7 @@ import { REACTIONS, type ActivityKind, type Attachment, type Bot, type Live, typ
 import { callClock, clockTime, dividerLabel, elapsed, fileSize, hostName, liveDuration, workDuration } from "../lib/format";
 import { accentStyle } from "../lib/colors";
 import { renderMarkdown } from "../lib/markdown";
+import { PagePreview } from "./PagePreview";
 import { FirstTaskIdeas, MentionedFiles, previewable, usePreview } from "./SpendSkillsFiles";
 import { Avatar, BotAvatar } from "./Avatar";
 import { CardView } from "./Cards";
@@ -396,6 +397,7 @@ function MessageGroup({ item }: { item: Extract<Item, { t: "msgs" }> }) {
               </div>
             )}
             {!item.mine && !b.streaming && b.text.includes("~/files/") && <MentionedFiles botId={row.botId} text={b.text} />}
+            {!item.mine && !b.streaming && b.text.includes("/p/") && <PagePreview text={b.text} />}
             <time className="msg-time" dateTime={new Date(row.createdAt).toISOString()}>{clockTime(row.createdAt)}</time>
             {mode !== "readonly" && !b.streaming && <MessageActions row={row} canThread={mode === "main"} />}
             {b.reactions && b.reactions.length > 0 && <ReactionBar row={row} reactions={b.reactions} />}

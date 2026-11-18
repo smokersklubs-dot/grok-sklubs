@@ -38,7 +38,10 @@ interface State {
   setServer(origin: string): Promise<{ ok: true } | { ok: false; reason: "unreachable" | "notSklubot" }>;
   forgetServer(): Promise<void>;
   refreshMe(): Promise<void>;
-  signIn(email: string, password: string): Promise<void>;
+  /** Resolves with the pending token when the account has two-factor on (no session yet: verifySecondStep next). */
+  signIn(email: string, password: string): Promise<{ twoFactor: string } | void>;
+  /** The second step of a sign-in with two-factor on (server twofactor.ts): a 6-digit code or a recovery code. */
+  verifySecondStep(token: string, code: string): Promise<void>;
   signUp(fields: { email: string; password: string; name?: string; setupCode?: string; botName?: string; botLabel?: string }): Promise<void>;
   signOut(): Promise<void>;
   deleteAccount(password: string): Promise<void>;
@@ -210,7 +213,13 @@ export const useStore = create<State>((set, get) => ({
   },
 
   async signIn(email, password) {
-    const r = await needClient().post<{ user: User }>("/auth/login", { email, password });
+    const r = await needClient().post<{ user?: User; twoFactor?: { token: string } }>("/auth/login", { email, password });
+    if (r.twoFactor) return { twoFactor: r.twoFactor.token };
+    await signedIn(r.user!);
+  },
+
+  async verifySecondStep(token, code) {
+    const r = await needClient().post<{ user: User }>("/auth/2fa", { token, code });
     await signedIn(r.user);
   },
 

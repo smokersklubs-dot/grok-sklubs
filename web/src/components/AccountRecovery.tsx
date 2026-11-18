@@ -141,9 +141,10 @@ export function ResetPasswordPage({ token, onDone }: { token: string; onDone: ()
     setBusy(true);
     setError(null);
     try {
-      await api<{ user: User }>("POST", "/auth/password/reset", { token, password: next, locale });
+      const r = await api<{ user?: User; twoFactor?: unknown }>("POST", "/auth/password/reset", { token, password: next, locale });
       // A fresh start: the new session cookie is set; any other account open in this browser was another session.
-      location.replace("/");
+      // Two-factor on: the reset does not get past it — the sign-in page asks for the code (TwoFactor.tsx SecondStep).
+      location.replace(r.twoFactor ? "/?second=1" : "/");
     } catch (err) {
       if (err instanceof ApiError && err.status === 400 && next.length >= 8) setValid(false);
       else setError(errText(err));

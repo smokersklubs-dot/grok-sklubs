@@ -5,6 +5,7 @@
  */
 import { landingData, sampleDownloads } from "./landingFixtures";
 import { announcementsAdmin, announcementsState, sentinelOverview, todayReport, type FixtureOptions } from "./fixtures";
+import { githubPreviewFixture, libraryFixture, versionsFixture } from "./skillsFixtures";
 
 export interface FakeApiState extends FixtureOptions { empty: boolean; fail: boolean }
 
@@ -22,6 +23,9 @@ export function installFakeApi(get: () => FakeApiState): void {
     if (method !== "GET") {
       // The editor's check on « Annonces »: how many accounts it reaches.
       if (path === "/announcements-admin/preview" && !s.fail) { await wait(150); return json(200, { ok: true, recipients: 42, view: null }); }
+      // « Bibliothèque de compétences »: the GitHub lookup answers with a sample repository.
+      if (path === "/skills-library/github/preview" && !s.fail) { await wait(150); return json(200, { preview: githubPreviewFixture() }); }
+      if (/^\/skills-library\/[^/]+\/add$/.test(path) && !s.fail) { await wait(150); return json(200, { report: { added: [{ botId: "b", botName: "jiren" }], already: [] } }); }
       await wait(600);
       return s.fail ? json(500, { error: s.lang === "fr" ? "Exemple d'erreur : le serveur n'a pas pu le faire." : "Sample error: the server could not do it." }) : json(200, {});
     }
@@ -32,6 +36,8 @@ export function installFakeApi(get: () => FakeApiState): void {
     if (path === "/public/landing") return json(200, landingData(s.empty));
     if (path === "/downloads") return json(200, sampleDownloads(s.empty));
     if (path === "/models") return json(200, { models: [] });
+    if (path === "/skills-library") return json(200, libraryFixture(s));
+    if (/^\/pages\/[^/]+\/versions$/.test(path)) return json(200, versionsFixture());
     // The chat page (GalleryChat.tsx): the call button asks for the bot's voice.
     if (/^\/bots\/[^/]+\/voice$/.test(path)) return json(200, { status: { mode: "browser" } });
     return json(200, {});

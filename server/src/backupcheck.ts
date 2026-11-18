@@ -130,8 +130,8 @@ export async function restoreFromS3(o: { identity: string; name?: string; outDir
   const extracted = await readArchive(createReadStream(file), o.identity, { dest: o.extract, metaDir: meta, keepOwner: true });
   return { file, name, verify: check, extracted, meta };
 }
-const summary = (r: { ok: boolean; manifest: Record<string, any> | null; files: number; bytes: number; checked: number; problems: string[]; hasSecrets: boolean; sessionSecret: boolean }) =>
-  ({ ok: r.ok, files: r.files, bytes: r.bytes, checked: r.checked, problems: r.problems.slice(0, 20), secrets: r.hasSecrets, sessionSecret: r.sessionSecret, stamp: r.manifest?.stamp, dbPath: r.manifest?.dbPath, db: r.manifest?.db });
+const summary = (r: { ok: boolean; manifest: Record<string, any> | null; files: number; bytes: number; checked: number; problems: string[]; hasSecrets: boolean; sessionSecret: boolean; dataKeys?: boolean }) =>
+  ({ ok: r.ok, files: r.files, bytes: r.bytes, checked: r.checked, problems: r.problems.slice(0, 20), secrets: r.hasSecrets, sessionSecret: r.sessionSecret, dataKeys: !!r.dataKeys, stamp: r.manifest?.stamp, dbPath: r.manifest?.dbPath, db: r.manifest?.db });
 
 async function archiveCommand(cmd: string, argv: string[]): Promise<number> {
   const { decryptTo, readArchive } = await import("./backuparchive.js");

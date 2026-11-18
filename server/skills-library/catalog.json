@@ -1,0 +1,24 @@
+{
+  "format": "sklubot-skills-library",
+  "version": 1,
+  "skills": [
+    { "id": "methode-de-travail", "origin": "sklubot", "licence": "MIT", "source": "",
+      "title": { "fr": "Méthode de travail", "en": "Working method" },
+      "summary": { "fr": "Comprendre le but, agir, vérifier avant de dire « fini », demander l'accord avant l'irréversible, rendre compte simplement.", "en": "Understand the goal, act, check before saying \"done\", ask before anything irreversible, report simply." } },
+    { "id": "pages-soignees", "origin": "sklubot", "licence": "MIT", "source": "",
+      "title": { "fr": "Pages soignées", "en": "Polished pages" },
+      "summary": { "fr": "Quand faire une page plutôt qu'un message, et comment la construire, la vérifier et la partager (comme des artefacts).", "en": "When to make a page instead of a message, and how to build, check and share it (like artifacts)." } },
+    { "id": "design-de-marque", "origin": "sklubot", "licence": "MIT", "source": "",
+      "title": { "fr": "Design de marque", "en": "Brand design" },
+      "summary": { "fr": "Retrouver et appliquer les couleurs, polices, logo et ton du compte au lieu d'en inventer.", "en": "Find and apply the account's colours, fonts, logo and tone instead of inventing them." } },
+    { "id": "frontend-design", "origin": "anthropic", "licence": "Apache-2.0", "source": "https://github.com/anthropics/skills/tree/e4bb5d960d87126ff3b3a8af1a104b7db67560ba/skills/frontend-design",
+      "title": { "fr": "Design soigné (pages web)", "en": "Frontend design" },
+      "summary": { "fr": "Une direction visuelle affirmée pour chaque page : palette, typographie, mise en page, sans l'air « généré ». Texte en anglais.", "en": "A deliberate visual direction for each page: palette, typography, layout, without the generated look." } },
+    { "id": "canvas-design", "origin": "anthropic", "licence": "Apache-2.0", "source": "https://github.com/anthropics/skills/tree/e4bb5d960d87126ff3b3a8af1a104b7db67560ba/skills/canvas-design",
+      "title": { "fr": "Affiches et visuels (PNG, PDF)", "en": "Canvas design (PNG, PDF)" },
+      "summary": { "fr": "Créer une affiche ou un visuel artistique en PNG ou PDF sur l'ordinateur du bot, à partir d'une « philosophie » de design. Texte en anglais.", "en": "Create a poster or an art piece as PNG or PDF on the bot's computer, from a design philosophy." } },
+    { "id": "theme-factory", "origin": "anthropic", "licence": "Apache-2.0", "source": "https://github.com/anthropics/skills/tree/e4bb5d960d87126ff3b3a8af1a104b7db67560ba/skills/theme-factory",
+      "title": { "fr": "Thèmes de couleurs", "en": "Theme factory" },
+      "summary": { "fr": "Dix thèmes prêts (couleurs et polices) à appliquer à une page, un document ou des diapos, ou un thème sur mesure. Texte en anglais.", "en": "Ten ready themes (colours and fonts) to apply to a page, a document or slides, or a custom one." } }
+  ]
+}

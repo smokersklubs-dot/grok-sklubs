@@ -169,10 +169,10 @@ async function* walkData(root: string, rel = ""): AsyncGenerator<TarEntry> {
   }
 }
 
-/** The container's environment, for restoring SESSION_SECRET and the API keys (only ever inside the encrypted archive). */
+/** The container's environment, for restoring SESSION_SECRET, DATA_KEYS (datakey.ts) and the API keys (only ever inside the encrypted archive). */
 function secretsFile(stamp: string): string {
   const noise = /^(PATH|HOME|HOSTNAME|NODE_VERSION|YARN_VERSION|NODE_ENV|PWD|OLDPWD|SHLVL|TERM|_|npm_.*|INIT_CWD|COLOR|EDITOR)$/;
-  const lines = [`# Secrets de Sklubot au ${stamp} (environnement du conteneur Sklubot). SESSION_SECRET déchiffre le coffre et les connexions.`];
+  const lines = [`# Secrets de Sklubot au ${stamp} (environnement du conteneur Sklubot). SESSION_SECRET (ou DATA_KEYS s'il est réglé) déchiffre le coffre et les connexions.`];
   for (const [k, v] of Object.entries(process.env).sort(([a], [b]) => a.localeCompare(b))) {
     if (v === undefined || noise.test(k) || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(k)) continue;
     lines.push(/[\n\r]/.test(v) ? `${k}=${JSON.stringify(v)}` : `${k}=${v}`);

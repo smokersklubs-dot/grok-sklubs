@@ -170,6 +170,10 @@ function resolve(routePath: string, param: string, bot: "bot1" | "bot2"): string
     "incidents:incidentId": "a_incident",
     // « Annonces »: A's announcement (for A only), on the readers' route and on the authors' ones.
     "announcements:annId": ids.ann, "announcements-admin:annId": ids.ann,
+    // Pages (pageroutes.ts): a version of A's page; a signed address that is not valid.
+    "versions:id": "1", "s:sig": "1700000000.not-a-real-signature-not-a-real",
+    // « Bibliothèque de compétences »: a bundled skill (adding it acts on the caller's own bots only).
+    "skills-library:id": "methode-de-travail",
   };
   if (param === "action" && prev2 === "reach") return "login";
   if (param === "rid" && prev2 === "resources") return "a_conn";
@@ -194,7 +198,7 @@ function fill(routePath: string, bot: "bot1" | "bot2"): string {
  * token, an invitation) or they say nothing about anyone. They are still called below: with A's tokens unknown to B
  * (not-a-real-…) they must say nothing; with A's real hook token they do what a hook does (that token IS the secret).
  */
-const PUBLIC = new Set(["POST /hooks/:token", "GET /invites/:token", "GET /native/:vendor/callback", "GET /p/:token", "GET /l/:token", "HEAD /l/:token", "GET /plan-invites/:token", "POST /billing/webhook/:provider"]);
+const PUBLIC = new Set(["POST /hooks/:token", "GET /invites/:token", "GET /native/:vendor/callback", "GET /p/:token", "GET /p/:token/", "GET /p/:token/*", "GET /p/:token/s/:sig/*", "GET /l/:token", "HEAD /l/:token", "GET /plan-invites/:token", "POST /billing/webhook/:provider"]);
 /** Whether this run is the hosted-mode one (isolation-hosted.test.ts). */
 const HOSTED = process.env.HOSTED_MODE === "1";
 /**
@@ -225,6 +229,8 @@ const NOT_REVEALING: Record<string, { status: number; body?: RegExp; why: string
   "PUT /native/clients/:vendor": { status: 400, body: /client ID/, why: "the caller's own OAuth client for that vendor (validated first)" },
   "DELETE /native/clients/:vendor": { status: 200, body: /^\{"ok":true\}$/, why: "removes the caller's own client for that vendor" },
   "DELETE /policies/:tool": { status: 200, body: /^\{"ok":true\}$/, why: "removes the caller's own policy for that tool" },
+  // The parameter is the id of a skill bundled with Sklubot (the same for everyone): it is added to the caller's own bots.
+  "POST /skills-library/:id/add": { status: 200, body: /^\{"report":\{"added":\[.*\],"already":\[.*\]\}\}$/, why: "addFromLibrary(user, id): only the caller's own bots" },
   // In-process requests have no socket, so the bots' tool endpoint answers 503 before its own token check.
   "POST /mcp/:botId": { status: 503, why: "no socket in an in-process request; the engine token check is covered in security.test.ts" },
 };
@@ -280,7 +286,7 @@ test("B, a stranger, gets 403/404 on every parameterised route with A's ids, and
       tried++;
       if (PUBLIC.has(r.key)) {
         // A page shared "with the link" is public by design (its token is the secret); a private one is not.
-        if (r.key === "GET /p/:token") { if (res.status !== (bot === "bot1" ? 200 : 404) || (bot === "bot2" && leakIn(res.text))) problems.push(`${r.key} (${bot}, ${bot === "bot1" ? "link" : "private"}) → ${res.status}`); continue; }
+        if (r.key === "GET /p/:token" || r.key === "GET /p/:token/") { if (res.status !== (bot === "bot1" ? 200 : 404) || (bot === "bot2" && leakIn(res.text))) problems.push(`${r.key} (${bot}, ${bot === "bot1" ? "link" : "private"}) → ${res.status}`); continue; }
         if (leakIn(res.text)) problems.push(`${r.key} (${bot}) → ${res.status} LEAKS: ${res.text.slice(0, 160)}`);
         // The payment webhook of a provider that is planned but not written: 501 in hosted mode (nothing changes), else 404.
         const want = r.key === "POST /hooks/:token" ? [200] : r.key === "GET /native/:vendor/callback" ? [400] : r.key === "POST /billing/webhook/:provider" ? [HOSTED ? 501 : 404] : [404, 410];
