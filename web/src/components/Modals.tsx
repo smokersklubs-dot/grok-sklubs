@@ -381,6 +381,7 @@ type Prefill = { name: string; botId: string; seq: number };
 /** One catalogue app: "Add" opens an inline form (token, client ID or nothing), then connects or opens the app's sign-in page. */
 function CatalogCard({ app, existing, redirectUri, open, onToggle, prefill, onAdded }: { app: CatalogApp; existing: Connector | undefined; redirectUri: string; open: boolean; onToggle: () => void; prefill?: Prefill; onAdded: (resolvedCard: boolean) => void }) {
   const t = useT();
+  const [endpoint, setEndpoint] = useState("");
   const [token, setToken] = useState("");
   const [clientId, setClientId] = useState("");
   const [clientSecret, setClientSecret] = useState("");
@@ -394,7 +395,7 @@ function CatalogCard({ app, existing, redirectUri, open, onToggle, prefill, onAd
   // When the modal was opened from a bot's "connect X" card, adding that same app also resolves the card.
   const answersCard = !!prefill && (app.name.toLowerCase().includes(prefill.name.trim().toLowerCase()) || prefill.name.toLowerCase().includes(app.name.toLowerCase()));
   const card = answersCard && prefill ? { botId: prefill.botId, seq: prefill.seq } : {};
-  const blocked = busy || (needsToken && !token.trim()) || (oauth && askClient && !clientId.trim());
+  const blocked = busy || (app.instanceUrl && !/^https:\/\/\S+$/i.test(endpoint.trim())) || (needsToken && !token.trim()) || (oauth && askClient && !clientId.trim());
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -409,11 +410,17 @@ function CatalogCard({ app, existing, redirectUri, open, onToggle, prefill, onAd
       if (!target) {
         target = (await api<{ connector: Connector }>("POST", "/connectors", {
           name: app.name,
-          url: app.url,
+          url: app.instanceUrl ? endpoint.trim() : app.url,
+          ...(app.instanceUrl ? { catalogId: app.id } : {}),
           ...(needsToken ? { token: token.trim() } : {}),
           ...(oauth ? { auth: "oauth", ...client } : {}),
           ...(oauth ? {} : card),
         })).connector;
+      }
+      if (target.status === "error" && !oauth) {
+        await useStore.getState().loadConnectors();
+        setError(connectorError(target, t, t("catalog.failed")));
+        return;
       }
       if (oauth) {
         const r = await startSignIn(target.id, win, { ...client, ...card });
@@ -454,6 +461,7 @@ function CatalogCard({ app, existing, redirectUri, open, onToggle, prefill, onAd
       </div>
       {open && !signedIn && (
         <form id={`${id}f`} className="catalog-form" onSubmit={submit}>
+          {app.instanceUrl && <div className="field"><label className="field-label" htmlFor={id + "url"}>{t("manual.url")}</label><input id={id + "url"} className="input" type="url" placeholder="https://…/mcp/" value={endpoint} onChange={e => setEndpoint(e.target.value)} required /></div>}
           {needsToken ? (
             <div className="field">
               <label className="field-label" htmlFor={`${id}t`}>{t("catalog.token")}</label>
@@ -491,7 +499,7 @@ function Catalog({ connectors, prefill, onClose, catalogId }: { catalogId?: stri
   const [apps, setApps] = useState<CatalogApp[] | null>(null);
   const [redirectUri, setRedirectUri] = useState("");
   const [failed, setFailed] = useState(false);
-  const [q, setQ] = useState(catalogId === "github-repositories" ? "GitHub Repositories" : "");
+  const [q, setQ] = useState(catalogId === "github-repositories" ? "GitHub Repositories" : catalogId === "voicestudio" ? "VoiceStudio" : "");
   const [openId, setOpenId] = useState<string | null>(catalogId ?? null);
 
   useEffect(() => {
@@ -543,7 +551,7 @@ function Catalog({ connectors, prefill, onClose, catalogId }: { catalogId?: stri
               <CatalogCard
                 key={app.id}
                 app={app}
-                existing={connectors?.find((c) => sameUrl(c.url, app.url))}
+                existing={connectors?.find((c) => app.instanceUrl ? c.name === app.name && c.status === "ready" : sameUrl(c.url, app.url))}
                 redirectUri={redirectUri}
                 open={openId === app.id}
                 onToggle={() => setOpenId((cur) => (cur === app.id ? null : app.id))}

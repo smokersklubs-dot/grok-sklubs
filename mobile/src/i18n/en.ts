@@ -2,6 +2,16 @@ import type { Key } from "./fr";
 
 /** English texts (same keys as fr.ts; the type checks it). Wording follows web/src/i18n/en.ts where it applies. */
 export const en: Record<Key, string> = {
+  "mention.sources": "Tools and connections",
+  "connect.failed": "Connection failed. Check the address and credentials.",
+  "mention.gh": "GitHub · Choose a repository",
+  "mention.connected": "Use {name}",
+  "mention.setup": "Connect {name}",
+  "mention.public": "Search public GitHub",
+  "mention.account": "Search with my GitHub account",
+  "mention.query": "Repository URL or keywords",
+  "mention.join": "Attach repository",
+  "mention.none": "No repositories found.",
   "common.loading": "Loading…",
   "common.cancel": "Cancel",
   "common.close": "Close",

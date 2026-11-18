@@ -6,7 +6,7 @@
 import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
 import { Image } from "expo-image";
-import { useState } from "react";
+import { useRef, useState, type ComponentRef } from "react";
 import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { Attachment, Bot, Live } from "../api/types";
@@ -16,6 +16,8 @@ import { useStore } from "../state/store";
 import { radius, useTheme } from "../theme";
 import { Icon } from "./Icon";
 import { tap } from "./ui";
+import { ChatSources } from "./ChatSources";
+import { mentionAt, replaceMention } from "../../../server/src/clientshared/chatmentions";
 
 export const MAX_UPLOAD_BYTES = 1_000_000_000;
 export const MAX_ATTACHMENTS = 10;
@@ -27,6 +29,8 @@ export function Composer({ bot, live }: { bot: Bot; live: Live | undefined }) {
   const { c } = useTheme();
   const t = useT();
   const [text, setText] = useState("");
+  const [caret, setCaret] = useState(-1);
+  const input = useRef<ComponentRef<typeof TextInput>>(null);
   const [uploads, setUploads] = useState<Upload[]>([]);
   const [sending, setSending] = useState(false);
   const [stopping, setStopping] = useState(false);
@@ -34,6 +38,7 @@ export function Composer({ bot, live }: { bot: Bot; live: Live | undefined }) {
   const running = !!live?.running;
   const canTalk = !bot.access || bot.access.canTalk;
   const canAttach = bot.kind === "agent" && !bot.access;
+  const mention = canAttach ? mentionAt(text, caret) : null;
 
   const upload = async (files: Picked[]) => {
     const room = MAX_ATTACHMENTS - uploads.length;
@@ -138,6 +143,11 @@ export function Composer({ bot, live }: { bot: Bot; live: Live | undefined }) {
         </ScrollView>
       ) : null}
       {live?.queued ? <Text style={{ color: c.text3, fontSize: 12, marginLeft: 16, marginBottom: 4 }}>{t.n("composer.queued", live.queued)}</Text> : null}
+      {mention && <ChatSources botId={bot.id} query={mention.query} insert={value => {
+        const next = replaceMention(text, mention, value);
+        setText(next.text); setCaret(next.caret);
+        requestAnimationFrame(() => { input.current?.focus(); input.current?.setSelection(next.caret, next.caret); });
+      }} />}
       <View style={[styles.box, { backgroundColor: c.surface, borderColor: c.border }]}>
         {canAttach ? (
           <Pressable accessibilityRole="button" accessibilityLabel={t("composer.attach")} onPress={attach} style={styles.iconBtn} hitSlop={6}>
@@ -145,7 +155,9 @@ export function Composer({ bot, live }: { bot: Bot; live: Live | undefined }) {
           </Pressable>
         ) : <View style={{ width: 8 }} />}
         <TextInput
+          ref={input}
           value={text}
+          onSelectionChange={e => { const { start, end } = e.nativeEvent.selection; setCaret(start === end ? start : -1); }}
           onChangeText={setText}
           placeholder={t("composer.placeholder", { name: bot.name })}
           placeholderTextColor={c.text3}

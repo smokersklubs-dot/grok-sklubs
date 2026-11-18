@@ -331,7 +331,15 @@ test("without a session, every non-public route says 401 (and nothing else)", as
   assert.deepEqual(problems, []);
 });
 
-test("B's own lists and searches (routes without a parameter) show nothing of A", async () => {
+test("B's own lists and searches (routes without a parameter) show nothing of A", async t => {
+  // The marker also occurs in real public repository names. Keep the public GitHub service deterministic.
+  const original = globalThis.fetch;
+  t.mock.method(globalThis, "fetch", (input: RequestInfo | URL, init?: RequestInit) => {
+    if (String(input).startsWith("https://api.github.com/search/repositories?")) {
+      return Promise.resolve(Response.json({ items: [{ full_name: "public/example", description: "Public fixture", license: null }] }));
+    }
+    return original(input, init);
+  });
   const problems: string[] = [];
   for (const r of discover().filter((x) => x.app === api && (x.method === "GET") && !x.path.includes(":") && x.path !== "/events")) {
     const res = await call(api, "b", "GET", fill(r.path, "bot1"));

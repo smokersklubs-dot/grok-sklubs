@@ -1,5 +1,15 @@
 /** Textes français (tutoiement), repris de l'appli web quand le même sens existe (web/src/i18n/fr.ts). */
 export const fr = {
+  "mention.sources": "Outils et connexions",
+  "connect.failed": "La connexion a échoué. Vérifie l’adresse et les identifiants.",
+  "mention.gh": "GitHub · Choisir un dépôt",
+  "mention.connected": "Utiliser {name}",
+  "mention.setup": "Connecter {name}",
+  "mention.public": "Rechercher sur GitHub public",
+  "mention.account": "Rechercher avec mon compte GitHub",
+  "mention.query": "Lien du dépôt ou mots-clés",
+  "mention.join": "Joindre ce dépôt",
+  "mention.none": "Aucun dépôt trouvé.",
   "common.loading": "Chargement…",
   "common.cancel": "Annuler",
   "common.close": "Fermer",

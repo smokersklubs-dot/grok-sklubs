@@ -2,6 +2,24 @@ import type { Dict } from "./en";
 
 /** Textes français (tutoiement). Le type `Dict` impose exactement les mêmes clés que en.ts. */
 export const fr: Dict = {
+  "mention.title": "Outils et discussions",
+  "mention.connected": "Connecté",
+  "mention.chat": "Ouvrir la discussion",
+  "mention.plugin": "Outil",
+  "mention.setup": "À connecter",
+  "mention.github": "Consulter un dépôt",
+  "mention.ghTitle": "Choisir un dépôt GitHub",
+  "mention.sample": "Dépôts proposés",
+  "mention.field": "Lien GitHub, propriétaire/dépôt ou mots-clés",
+  "mention.search": "Rechercher sur GitHub public",
+  "mention.attach": "Joindre ce dépôt",
+  "mention.accountSearch": "Rechercher avec mon compte GitHub",
+  "mention.none": "Aucun dépôt trouvé.",
+  "mention.connect": "Connecter mes dépôts privés",
+  "mention.manage": "Gérer ma connexion GitHub",
+  "mention.direct": "Le lien sera ajouté à ton message. L’accès aux dépôts privés dépend des autorisations de ton compte GitHub.",
+  "mention.apps": "Toutes les connexions",
+  "mention.results": "Résultats de la recherche publique",
   // Commun
   "common.loading": "Chargement…",
   "common.close": "Fermer",

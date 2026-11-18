@@ -1,5 +1,23 @@
 /** English texts. This file defines the set of keys; fr.ts must have exactly the same ones. */
 export const en = {
+  "mention.title": "Tools and chats",
+  "mention.connected": "Connected",
+  "mention.chat": "Open chat",
+  "mention.plugin": "Tool",
+  "mention.setup": "Connect to use",
+  "mention.github": "Browse a repository",
+  "mention.ghTitle": "Choose a GitHub repository",
+  "mention.sample": "Suggested repositories",
+  "mention.field": "GitHub URL, owner/repository or keywords",
+  "mention.search": "Search public GitHub",
+  "mention.attach": "Attach repository",
+  "mention.accountSearch": "Search with my GitHub account",
+  "mention.none": "No repositories found.",
+  "mention.connect": "Connect my private repositories",
+  "mention.manage": "Manage my GitHub connection",
+  "mention.direct": "The link will be added to your message. Access to private repositories depends on your GitHub account permissions.",
+  "mention.apps": "All connections",
+  "mention.results": "Public search results",
   // Common
   "common.loading": "Loading…",
   "common.close": "Close",

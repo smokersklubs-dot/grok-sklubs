@@ -400,6 +400,15 @@ button.captions:hover { box-shadow: 0 0 0 1px var(--border-strong); }
 .skill-picker-name { font-weight: 600; font-size: 13.5px; }
 .skill-picker-desc { flex-basis: 100%; font-size: 12px; color: var(--text-3); }
 .skill-picker .pill { margin-left: 0; }
+.mention-picker { max-height: min(300px, 38dvh); }
+.mention-picker .skill-picker-item { min-height: 44px; flex-wrap: nowrap; gap: 10px; }
+.mention-picker strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mention-picker small { margin-left: auto; color: var(--text-3); text-align: right; }
+.repository-picker, .repository-picker form, .repository-picker section { display: grid; gap: 10px; }
+.repository-picker { gap: 20px; }
+.repository-picker form .btn { justify-self: start; }
+.repository-option { display: grid; gap: 3px; min-height: 44px; align-content: center; text-align: left; overflow-wrap: anywhere; padding: 8px 12px; border: 1px solid var(--border-strong); border-radius: 8px; }
+.repository-option:hover, .repository-option:focus-visible { background: var(--hover); }
 
 /* ── Thinking block (B-7): avatar on a dark pill, caption, "working for … · N steps" ── */
 .thinking { display: flex; align-items: center; gap: 14px; margin-top: 12px; min-height: 52px; }

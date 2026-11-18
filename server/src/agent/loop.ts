@@ -1423,7 +1423,7 @@ export async function execute(turn: Turn, raw: ToolUseBlock): Promise<ToolOutput
   }
   if (remote) {
     activity(turn, "connector", remote.connectorName);
-    const r = await connectors.call(remote.connectorId, remote.remoteName, call.input);
+    const r = await connectors.call(remote.connectorId, remote.remoteName, call.input, turn.bot.id, turn.signal);
     return { content: r.text, isError: r.isError, summary: r.isError ? "failed" : "done" };
   }
   return { content: `There is no tool called "${call.name}".`, isError: true, summary: "unknown tool" };

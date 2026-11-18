@@ -19,10 +19,11 @@ import { Icon } from "./Icon";
 import { Button, ErrorNote, Loading } from "./ui";
 
 
-function AppRow({ app, existing, asked, botId, seq, redirectUri, onDone }: { app: CatalogApp; existing?: Connector; asked: string; botId: string; seq: number; redirectUri: string; onDone: (msg: string | null) => void }) {
+function AppRow({ app, existing, asked, botId, seq, redirectUri, onDone }: { app: CatalogApp; existing?: Connector; asked: string; botId: string; seq?: number; redirectUri: string; onDone: (msg: string | null) => void }) {
   const { c } = useTheme();
   const t = useT();
   const [open, setOpen] = useState(false);
+  const [endpoint, setEndpoint] = useState("");
   const [token, setToken] = useState("");
   const [clientId, setClientId] = useState("");
   const [clientSecret, setClientSecret] = useState("");
@@ -30,9 +31,9 @@ function AppRow({ app, existing, asked, botId, seq, redirectUri, onDone }: { app
   const { busy, error, run } = useBusy();
   const needsToken = app.auth === "token";
   const oauth = app.auth === "oauth";
-  const card = answersCard(app.name, asked) ? { botId, seq } : {};
-  const signedIn = !!existing && existing.status !== "needs_auth";
-  const blocked = !!busy || (needsToken && !token.trim()) || (oauth && askClient && !clientId.trim());
+  const card = seq !== undefined && answersCard(app.name, asked) ? { botId, seq } : {};
+  const signedIn = existing?.status === "ready";
+  const blocked = !!busy || (app.instanceUrl && !/^https:\/\/\S+$/i.test(endpoint.trim())) || (needsToken && !token.trim()) || (oauth && askClient && !clientId.trim());
   useEffect(() => () => { setToken(""); setClientSecret(""); }, []);
 
   const submit = () => run("go", async () => {
@@ -41,11 +42,13 @@ function AppRow({ app, existing, asked, botId, seq, redirectUri, onDone }: { app
     let target = existing;
     if (!target) {
       target = (await s.call<{ connector: Connector }>("POST", "/connectors", {
-        name: app.name, url: app.url,
+        name: app.name, url: app.instanceUrl ? endpoint.trim() : app.url,
+        ...(app.instanceUrl ? { catalogId: app.id } : {}),
         ...(needsToken ? { token: token.trim() } : {}),
         ...(oauth ? { auth: "oauth", ...client } : card),
       })).connector;
     }
+    if (target.status === "error" && !oauth) throw new Error(target.error || t("connect.failed"));
     setToken("");
     setClientSecret("");
     if (oauth) {
@@ -75,6 +78,7 @@ function AppRow({ app, existing, asked, botId, seq, redirectUri, onDone }: { app
       {app.native ? <Text style={{ color: c.text3, fontSize: 13 }}>{t("connect.builtin")}</Text> : null}
       {open && !signedIn && !app.native ? (
         <View style={{ gap: 8 }}>
+          {app.instanceUrl && <TextInput value={endpoint} onChangeText={setEndpoint} accessibilityLabel="URL VoiceStudio" placeholder="https://…/mcp/" autoCapitalize="none" keyboardType="url" style={[styles.input, { color: c.text, borderColor: c.border }]} />}
           {needsToken ? (
             <>
               <View style={{ flexDirection: "row" }}><SecretInput value={token} onChangeText={setToken} placeholder={t("connect.token")} label={t("connect.token")} /></View>
@@ -104,7 +108,7 @@ function AppRow({ app, existing, asked, botId, seq, redirectUri, onDone }: { app
 }
 
 /** "Another app": a name, the address of its remote MCP server and an optional token (POST /connectors, like the web). */
-function Manual({ asked, botId, seq, onDone }: { asked: string; botId: string; seq: number; onDone: (msg: string | null) => void }) {
+function Manual({ asked, botId, seq, onDone }: { asked: string; botId: string; seq?: number; onDone: (msg: string | null) => void }) {
   const { c } = useTheme();
   const t = useT();
   const [open, setOpen] = useState(false);
@@ -128,7 +132,7 @@ function Manual({ asked, botId, seq, onDone }: { asked: string; botId: string; s
           <View style={{ flexDirection: "row" }}><SecretInput value={token} onChangeText={setToken} placeholder={t("connect.token")} label={t("connect.token")} /></View>
           <ErrorNote>{error}</ErrorNote>
           <Button small variant="primary" label={t("connect.btn")} busy={!!busy} disabled={!valid || !!busy} style={{ alignSelf: "flex-end" }} onPress={() => void run("m", async () => {
-            const r = await useStore.getState().call<{ connector: Connector }>("POST", "/connectors", { name: name.trim(), url: url.trim(), ...(token.trim() ? { token: token.trim() } : {}), botId, seq });
+            const r = await useStore.getState().call<{ connector: Connector }>("POST", "/connectors", { name: name.trim(), url: url.trim(), ...(token.trim() ? { token: token.trim() } : {}), ...(seq !== undefined ? { botId, seq } : {}) });
             setToken("");
             onDone(r.connector.status === "needs_auth" ? t("connect.added", { name: r.connector.name }) : null);
           })} />
@@ -138,7 +142,7 @@ function Manual({ asked, botId, seq, onDone }: { asked: string; botId: string; s
   );
 }
 
-export function ConnectSheet({ name, botId, seq, onClose }: { name: string; botId: string; seq: number; onClose: () => void }) {
+export function ConnectSheet({ name, botId, seq, onClose }: { name: string; botId: string; seq?: number; onClose: () => void }) {
   const { c } = useTheme();
   const t = useT();
   const insets = useSafeAreaInsets();
@@ -175,7 +179,7 @@ export function ConnectSheet({ name, botId, seq, onClose }: { name: string; botI
             <TextInput value={q} onChangeText={setQ} placeholder={t("connect.search")} placeholderTextColor={c.text3} accessibilityLabel={t("connect.search")} style={[styles.input, { borderColor: c.border, color: c.text, backgroundColor: c.surface }]} />
           ) : null}
           {apps && list.length === 0 && q.trim() ? <Text style={{ color: c.text3 }}>{t("connect.none", { q: q.trim() })}</Text> : null}
-          {list.map((app) => <AppRow key={app.id} app={app} existing={connectors.find((k) => sameUrl(k.url, app.url))} asked={name} botId={botId} seq={seq} redirectUri={redirectUri} onDone={done} />)}
+          {list.map((app) => <AppRow key={app.id} app={app} existing={connectors.find((k) => app.instanceUrl ? k.name === app.name && k.status === "ready" : sameUrl(k.url, app.url))} asked={name} botId={botId} seq={seq} redirectUri={redirectUri} onDone={done} />)}
           {apps !== null || failed ? <Manual asked={name} botId={botId} seq={seq} onDone={done} /> : null}
         </ScrollView>
       </KeyboardAvoidingView>

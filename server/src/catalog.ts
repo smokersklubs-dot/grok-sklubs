@@ -8,6 +8,11 @@ import { appsFor } from "./native/vendors.js";
  */
 export const CATALOG: CatalogApp[] = [
   {
+    id: "voicestudio", name: "VoiceStudio", category: "Audio", url: "", instanceUrl: true, auth: "token",
+    description: "Narrate a script, list voices and transcribe audio through your own VoiceStudio instance.",
+    tokenHelp: "Use the HTTPS /mcp/ address of your VoiceStudio server behind an authenticated gateway, and its bearer token. A localhost address on your PC is only reachable from that PC.",
+  },
+  {
     id: "github-repositories", name: "GitHub Repositories", category: "Development", url: "https://api.githubcopilot.com/mcp/readonly", auth: "oauth",
     description: "Search and read selected repositories, files, issues and pull requests with your GitHub account.",
     tokenHelp: "Continue on GitHub and select the repositories your bots may read. On first setup, GitHub offers to create your private Sklubot app.",
@@ -136,6 +141,7 @@ export const CATALOG: CatalogApp[] = [
 ];
 
 const FR: Record<string, { category: string; description: string; tokenHelp: string }> = {
+  voicestudio: { category: "Audio", description: "Faire lire un texte, choisir une voix et transcrire un enregistrement avec ton instance VoiceStudio.", tokenHelp: "Saisis l’adresse HTTPS /mcp/ de ton instance VoiceStudio protégée par une passerelle et son jeton d’accès. Une adresse localhost sur ton PC est accessible uniquement depuis ce PC." },
   "github-repositories": { category: "Développement", description: "Recherche et lecture des dépôts, fichiers, tickets et pull requests que tu autorises.", tokenHelp: "Continue sur GitHub et choisis les dépôts accessibles à tes bots. À la première connexion, GitHub te propose de créer ton application Sklubot privée." },
   github: { category: "Développement", description: "Dépôts, tickets, demandes de fusion, recherche de code et actions.", tokenHelp: "Crée un jeton d'accès personnel dans GitHub → Settings → Developer settings → Personal access tokens, limité aux dépôts et aux droits que tu veux donner aux bots." },
   stripe: { category: "Activité", description: "Clients, paiements, factures, produits et abonnements.", tokenHelp: "Utilise une clé d'API restreinte depuis le tableau de bord Stripe → Développeurs → Clés API, avec seulement les droits nécessaires aux bots." },

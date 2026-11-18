@@ -2179,10 +2179,10 @@ api.post("/connectors", async (c) => {
   const opts = b.auth === "oauth"
     ? { auth: "oauth" as const, clientId: b.clientId ? String(b.clientId) : undefined, clientSecret: b.clientSecret ? String(b.clientSecret) : undefined }
     : { token: b.token ? String(b.token) : undefined };
-  try { connector = await connectors.add(user.id, String(b.name ?? ""), String(b.url ?? ""), opts); }
+  try { connector = await connectors.add(user.id, String(b.name ?? ""), String(b.url ?? ""), { ...opts, catalogId: b.catalogId }); }
   catch (err) { return fail(400, (err as Error).message); }
   emit(user.id, { type: "connectors" });
-  audit(user.id, "apps", connector.status === "needs_auth" ? `App added, waiting for sign-in: ${connector.name}` : `App connected: ${connector.name}`);
+  audit(user.id, "apps", connector.status === "needs_auth" ? `App added, waiting for sign-in: ${connector.name}` : `App ${connector.status === "ready" ? "connected" : "connection failed"}: ${connector.name}`);
   const bot = typeof b.botId === "string" ? bots.owned(user.id, b.botId) : null;
   if (bot && connector.status === "ready") {
     if (Number.isInteger(b.seq)) rows.updateCard(bot, bot.generation, b.seq, (k) => (k.type === "connect" ? { ...k, status: "connected" } : k));

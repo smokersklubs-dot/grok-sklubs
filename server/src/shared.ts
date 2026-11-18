@@ -660,18 +660,7 @@ export interface PushSettings {
 /** `publicKey`: the server's VAPID key (base64url, uncompressed P-256 point) to subscribe with. */
 export interface PushState { publicKey: string; devices: PushDevice[]; settings: PushSettings }
 
-/** A well-known app that can be added as a connector in one step. */
-export interface CatalogApp {
-  id: string; name: string; category: string; description: string; url: string;
-  /** "token": the user pastes an access token. "none": no credential needed. "oauth": the user signs in on the app's own page. */
-  auth: ConnectorAuth;
-  /** Set for a built-in app: it is connected through Settings → Apps → Built-in apps, not as a tool server. */
-  native?: NativeAppId;
-  /** OAuth apps: "dynamic" = Sklubot registers itself; "manual" = the user creates an app/connector there and pastes its client ID (and secret). */
-  oauthClient?: "dynamic" | "manual";
-  /** Where to get the token (or the client ID), in plain words. */
-  tokenHelp: string;
-}
+export type { CatalogApp } from "./catalogtypes.js";
 
 export interface Policy { tool: string; mode: "always_allow" | "needs_approval" | "blocked" }
 

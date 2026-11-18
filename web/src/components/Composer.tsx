@@ -11,6 +11,7 @@ import { canRecord, useDictation } from "../lib/dictation";
 import { Icon, Spinner } from "./Icon";
 import { ErrorNote, Menu, MenuItem, useEscape } from "./ui";
 import { PauseBanner } from "./Pause";
+import { useComposerMentions } from "./ComposerMentions";
 
 const NO_UPLOADS: Upload[] = [];
 
@@ -113,6 +114,7 @@ export function Composer({ bot, live }: { bot: Bot; live: Live }) {
   const [micUnavailable, setMicUnavailable] = useState(false);
   const dictation = useDictation(bot.id, recognitionLang(bot.voice), insertAtCaret, (m) => { setMicUnavailable(false); setError(m); }, () => { setError(null); setMicUnavailable(true); });
   const skillCmd = useSkillCommand(bot.id, draft, bot.kind === "agent");
+  const mentions = useComposerMentions(bot, draft, area, anyModal || menu || skillCmd.open);
   const pickSkill = (name: string) => {
     setDraft(bot.id, `/skill ${name} `);
     requestAnimationFrame(() => { const el = area.current; if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } });
@@ -295,6 +297,7 @@ export function Composer({ bot, live }: { bot: Bot; live: Live }) {
           ))}
         </ul>
       )}
+      {mentions.view}
       {skillCmd.open && (
         <div className="skill-picker" role="listbox" aria-label={t("composer.skills")}>
           <div className="skill-picker-head"><Icon name="book" size={13} /> {t("composer.skillsHint")}</div>
@@ -370,7 +373,8 @@ export function Composer({ bot, live }: { bot: Bot; live: Live }) {
           value={draft}
           placeholder={placeholder}
           aria-label={placeholder}
-          onChange={(e) => setDraft(bot.id, e.target.value)}
+          onChange={(e) => { setDraft(bot.id, e.target.value); mentions.sync(e.target, true); }}
+          onSelect={e => mentions.sync(e.currentTarget)}
           onPaste={(e) => {
             // Pasted images (screenshots, copied pictures) become attachments; pasted text stays text.
             const files = Array.from(e.clipboardData.files);
@@ -379,6 +383,7 @@ export function Composer({ bot, live }: { bot: Bot; live: Live }) {
             addFiles(files);
           }}
           onKeyDown={(e) => {
+            if (e.nativeEvent.isComposing || e.keyCode === 229 || mentions.keyDown(e)) return;
             if (skillCmd.open && skillCmd.matches.length) {
               if (e.key === "ArrowDown" || e.key === "ArrowUp") {
                 e.preventDefault();
@@ -398,7 +403,9 @@ export function Composer({ bot, live }: { bot: Bot; live: Live }) {
             }
           }}
           aria-autocomplete="list"
-          aria-expanded={skillCmd.open}
+          aria-expanded={skillCmd.open || mentions.open}
+          aria-controls={mentions.open ? mentions.listId : undefined}
+          aria-activedescendant={mentions.activeId}
         />
         <button
           type="button"

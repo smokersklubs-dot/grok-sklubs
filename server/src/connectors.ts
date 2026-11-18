@@ -241,7 +241,7 @@ const recordsFor = (userId: string) => q.all("SELECT * FROM connectors WHERE use
 const recordOf = (userId: string, id: string) => { const r = q.get("SELECT * FROM connectors WHERE id = ? AND user_id = ?", id, userId); return r ? toRecord(r) : null; };
 export const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 24) || "app";
 
-export interface AddOptions { token?: string; auth?: "oauth"; clientId?: string; clientSecret?: string }
+export interface AddOptions { token?: string; auth?: "oauth"; clientId?: string; clientSecret?: string; catalogId?: string }
 
 function setManualClient(id: string, clientId: string, clientSecret?: string, github = false) {
   const client: OAuthClientInformationMixed = { client_id: clientId.trim().slice(0, 500), ...(github ? { token_endpoint_auth_method: "client_secret_post" } : {}), ...(clientSecret?.trim() ? { client_secret: clientSecret.trim().slice(0, 500) } : {}) };
@@ -261,6 +261,9 @@ export const connectors = {
     let parsed: URL;
     try { parsed = new URL(url); } catch { throw new Error("That does not look like a valid URL."); }
     if (!/^https?:$/.test(parsed.protocol)) throw new Error("Connector URLs must start with http:// or https://");
+    if (o.catalogId === "voicestudio" && (parsed.protocol !== "https:" || parsed.username || parsed.password || !o.token?.trim())) {
+      throw new Error("VoiceStudio requires an HTTPS endpoint and its gateway token.");
+    }
     const id = newId("con");
     const oauth = o.auth === "oauth";
     q.run("INSERT INTO connectors (id, user_id, name, url, token_enc, auth, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -388,7 +391,7 @@ export const connectors = {
     }
     return out;
   },
-  async call(connectorId: string, tool: string, args: Record<string, unknown>): Promise<{ text: string; isError: boolean }> {
+  async call(connectorId: string, tool: string, args: Record<string, unknown>, botId?: string, signal?: AbortSignal): Promise<{ text: string; isError: boolean }> {
     const entry = entries.get(connectorId);
     if (!entry?.live) throw new Error("this connector is not connected right now");
     const signInAgain = () => {
@@ -402,11 +405,18 @@ export const connectors = {
       if (provider.needsSignIn) throw signInAgain();
     }
     const live = entry.live;
+    const voiceStudio = entry.record.name.toLowerCase() === "voicestudio";
+    const longAudio = voiceStudio && (tool === "generate_speech" || tool === "transcribe");
     let res;
-    try { res = await live.client.callTool({ name: tool, arguments: args }); }
+    try { res = await live.client.callTool({ name: tool, arguments: args }, undefined, { signal, ...(longAudio ? { timeout: 300_000 } : {}) }); }
     catch (err) { if (err instanceof UnauthorizedError || live.provider?.needsSignIn) throw signInAgain(); throw err; }
     const parts = Array.isArray(res.content) ? res.content : [];
     const text = parts.map((p: any) => (p.type === "text" ? p.text : `[${p.type} content]`)).join("\n") || JSON.stringify(res.structuredContent ?? {});
+    if (botId && !res.isError && tool === "generate_speech" && voiceStudio) {
+      const { saveVoiceResult } = await import("./voiceconnector.js");
+      const saved = saveVoiceResult(botId, text);
+      if (saved) return saved;
+    }
     return { text: text.length > 60_000 ? text.slice(0, 60_000) + "\n…[truncated]" : text, isError: res.isError === true };
   },
 };
