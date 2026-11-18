@@ -46,6 +46,7 @@ import { apiTools, scrubSecret } from "../apiconnectors.js";
 import { botMailTools } from "../botmail.js";
 import { ruleTools } from "./ruletools.js";
 import { pageTools } from "./pagetools.js";
+import { craftReady } from "./creative-tools.js";
 import { videoStudioTool, updateVideoStudio } from "../videostudio.js";
 import { videoWorkflowTool } from "../videoworkflows.js";
 import { githubSearch } from "../githubsearch.js";
@@ -1355,7 +1356,7 @@ function assemble(opts: { nativeSearch?: boolean; video?: "connector" | "api" | 
     ...(computerKind() === "linux" ? inGroup("computer", elementTools).map(respectDriver) : []),
     // On its own Linux computer a bot's commands are contained, so they do not need a permission card.
     // Background jobs and office documents: on the bots' own Linux computers only (shell_run starts the jobs).
-    ...(computerKind() === "linux" && shellAvailable() ? inGroup("shell", jobTools) : []),
+    ...(computerKind() === "linux" && shellAvailable() ? [...inGroup("shell", jobTools), craftReady] : []),
     ...(officeAvailable() ? officeTools : []),
     // Listening, watching a video, downloading one, OCR: on the bots' own Linux computers only (media.ts).
     ...(mediaAvailable() ? inGroup("computer", mediaTools) : []),

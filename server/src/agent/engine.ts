@@ -187,11 +187,15 @@ export const engineTurnOf = (botId: string) => runningTurns.get(botId) ?? null;
 
 // ── Sessions: each bot keeps one tool session per conversation ───────────────
 q.run("CREATE TABLE IF NOT EXISTS engine_sessions (bot_id TEXT NOT NULL, generation INTEGER NOT NULL, engine TEXT NOT NULL, session_id TEXT NOT NULL, PRIMARY KEY (bot_id, generation, engine))");
-const sessionOf = (botId: string, generation: number, engine: Engine) =>
+function sessionScope(turn: Turn, engine: Engine): string {
+  const caller = turn.engineCaller ?? (turn.origin === "api" || turn.origin === "member" ? turn.origin : "");
+  return [engine, caller, turn.thread || ""].filter(Boolean).join(":");
+}
+const sessionOf = (botId: string, generation: number, engine: string) =>
   q.get<{ session_id: string }>("SELECT session_id FROM engine_sessions WHERE bot_id = ? AND generation = ? AND engine = ?", botId, generation, engine)?.session_id ?? null;
-const saveSession = (botId: string, generation: number, engine: Engine, id: string) =>
+const saveSession = (botId: string, generation: number, engine: string, id: string) =>
   q.run("INSERT INTO engine_sessions (bot_id, generation, engine, session_id) VALUES (?, ?, ?, ?) ON CONFLICT(bot_id, generation, engine) DO UPDATE SET session_id = excluded.session_id", botId, generation, engine, id);
-const dropSession = (botId: string, generation: number, engine: Engine) =>
+const dropSession = (botId: string, generation: number, engine: string) =>
   q.run("DELETE FROM engine_sessions WHERE bot_id = ? AND generation = ? AND engine = ?", botId, generation, engine);
 
 // ── Talking to the bot's computer ────────────────────────────────────────────
@@ -774,7 +778,8 @@ async function claudeTurn(turn: Turn, t: Transcript, prompt: string, token: stri
   const { bot } = turn;
   const mcp = { mcpServers: { sklubot: { type: "http", url: `${botBaseUrl()}/mcp/${encodeURIComponent(bot.id)}`, headers: { Authorization: `Bearer ${token}` }, timeout: TOOL_TIMEOUT_MS } } };
   await writeFile(bot.id, "/root/.sklubot/mcp.json", JSON.stringify(mcp));
-  const resume = sessionOf(bot.id, turn.generation, "claude-code");
+  const scope = sessionScope(turn, "claude-code");
+  const resume = sessionOf(bot.id, turn.generation, scope);
   const model = modelOf(bot.model);
   const args = [
     "claude", "-p", "--output-format", "stream-json", "--verbose", "--include-partial-messages",
@@ -795,7 +800,7 @@ async function claudeTurn(turn: Turn, t: Transcript, prompt: string, token: stri
     try { e = JSON.parse(line); } catch { return; }
     // The model's own stream (words, thinking, a tool call or its result) is its answer starting (watch.ts).
     if (e.type === "stream_event" || e.type === "assistant" || e.type === "user") watchOutput(bot.id);
-    if (e.type === "system" && e.subtype === "init" && e.session_id) saveSession(bot.id, turn.generation, "claude-code", e.session_id);
+    if (e.type === "system" && e.subtype === "init" && e.session_id) saveSession(bot.id, turn.generation, scope, e.session_id);
     else if (e.type === "stream_event") {
       const d = e.event?.delta;
       if (e.parent_tool_use_id) return; // a helper's own words stay inside its step
@@ -829,7 +834,7 @@ async function claudeTurn(turn: Turn, t: Transcript, prompt: string, token: stri
     }
   });
   if (turn.signal.aborted || t.switched) return;
-  if (missingSession && !retried) { dropSession(bot.id, turn.generation, "claude-code"); return claudeTurn(turn, t, prompt, token, true); }
+  if (missingSession && !retried) { dropSession(bot.id, turn.generation, scope); return claudeTurn(turn, t, prompt, token, true); }
   if (!sawResult && !failure) failure = NOT_SIGNED_IN.test(res.stderr) ? signInHint(turn, "claude-code") : clip(res.stderr.trim() || `Claude Code stopped (code ${res.code}).`, 300);
   if (failure && limit) t.limit(limit, failure);
   else if (failure) { t.notice(failure); t.fatal = true; }
@@ -859,7 +864,8 @@ async function codexTurn(turn: Turn, t: Transcript, prompt: string, system: stri
   const { bot } = turn;
   // Codex reads its standing instructions from AGENTS.md in its working folder.
   await writeFile(bot.id, "/root/AGENTS.md", system);
-  const resume = sessionOf(bot.id, turn.generation, "codex");
+  const scope = sessionScope(turn, "codex");
+  const resume = sessionOf(bot.id, turn.generation, scope);
   const model = modelOf(bot.model);
   const common = [
     "--json", "--skip-git-repo-check",
@@ -884,7 +890,7 @@ async function codexTurn(turn: Turn, t: Transcript, prompt: string, system: stri
     if (typeof e.type === "string" && e.type.startsWith("item.")) watchOutput(bot.id);
     // Anything beyond the thread's start means the turn already did or said something: it is never run a second time.
     if (e.type !== "thread.started" && e.type !== "turn.started" && e.type !== "turn.failed" && e.type !== "error") produced = true;
-    if (e.type === "thread.started" && e.thread_id) saveSession(bot.id, turn.generation, "codex", e.thread_id);
+    if (e.type === "thread.started" && e.thread_id) saveSession(bot.id, turn.generation, scope, e.thread_id);
     else if (e.type === "item.started" && it) {
       if (it.type === "command_execution") t.stepStart(it.id, "command_execution", { command: it.command });
       else if (it.type === "mcp_tool_call") t.stepStart(it.id, `mcp__${it.server}__${it.tool}`, it.arguments ?? {});
@@ -917,8 +923,8 @@ async function codexTurn(turn: Turn, t: Transcript, prompt: string, system: stri
   // — only when nothing came out of this attempt (no step, no words), so no work is ever done twice.
   if (t.switched) return;
   if (resume && !retried && !turn.signal.aborted && !produced && !turn.spoke && (missingSession || CODEX_LOST_SESSION.test(res.stderr))) {
-    dropSession(bot.id, turn.generation, "codex");
-    const recent = rows.recentMessages(bot.id, turn.generation, 10, turn.thread).flatMap(({ body }) =>
+    dropSession(bot.id, turn.generation, scope);
+    const recent = turn.engineCaller ? [] : rows.recentMessages(bot.id, turn.generation, 10, turn.thread).flatMap(({ body }) =>
       body.kind === "message" && body.text && !body.streaming ? [{ role: body.role, text: clip(body.text, 800) }] : []);
     const context = recent.length ? `Recent messages for context only. Answer the current request below.\n${JSON.stringify(recent)}\n\n` : "";
     return codexTurn(turn, t, context + prompt, system, token, true);

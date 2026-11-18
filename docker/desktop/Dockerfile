@@ -81,5 +81,8 @@ COPY sklubot-api /usr/local/bin/sklubot-api
 COPY sklubot-install /usr/local/bin/sklubot-install
 RUN chmod +x /opt/sklubot/*.sh /opt/sklubot/page-text.py /usr/local/bin/sklubot-api /usr/local/bin/sklubot-install
 
+COPY install-craft.sh /opt/sklubot/install-craft.sh
+RUN sh /opt/sklubot/install-craft.sh
+
 WORKDIR /root
 CMD ["/opt/sklubot/start-desktop.sh"]

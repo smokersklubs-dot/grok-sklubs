@@ -1,5 +1,6 @@
+import { closeSync, readSync } from "node:fs";
 import { emit } from "../bus.js";
-import { readLibraryFile, saveFile } from "../computer.js";
+import { openLibraryFile, readLibraryFile, saveFile } from "../computer.js";
 import { config as appConfig } from "../config.js";
 import type { ToolSpec } from "../llm/types.js";
 import { checkFiles, cleanFileName, FILE_EXT, PAGE_CDNS, pageFiles, pageLimits, PageFileError, pageVersions } from "../pagefiles.js";
@@ -58,6 +59,31 @@ export function publishPage(a: Record<string, unknown>, c: Pick<ToolContext, "bo
 
 export const pageTools: BuiltinTool[] = [
   publish,
+  tool("artifact_from_file", "Deliver an existing self-contained HTML tool from this bot's own file library as a private artifact in the current chat. Use after generating a tool with Craft Anything. For subsequent edits use page_source and page_edit on the returned name.", obj({
+    title: str("User-facing title"), file: str("Relative library path to a standalone .html file"),
+  }, ["title", "file"]), {
+    group: "pages", activity: "saving", audited: true, label: "Opening the created tool",
+    run: async (a, c) => {
+      const path = String(a.file ?? "");
+      if (!/\.html?$/i.test(path)) return { isError: true, content: "Choose a self-contained HTML file from the bot library." };
+      const { fd, size } = openLibraryFile(c.bot.id, path);
+      let html: string;
+      try {
+        if (!size || size > pageLimits(c.user.id).htmlBytes) return { isError: true, content: "The HTML file is empty or over the page size limit." };
+        const buffer = Buffer.alloc(size);
+        let offset = 0;
+        while (offset < size) {
+          const count = readSync(fd, buffer, offset, size - offset, offset);
+          if (!count) return { isError: true, content: "The file changed while reading. Try again after the build finishes." };
+          offset += count;
+        }
+        html = buffer.toString("utf8");
+      } finally { closeSync(fd); }
+      const name = `artifact-${randomToken(12)}`;
+      const result = await publishPage({ name, title: a.title, html, visibility: "private" }, c, true);
+      return result.isError ? result : { ...result, content: `Artifact name: ${name}. ${result.content}` };
+    },
+  }),
   tool("artifact_create", "Create a private, interactive web artifact in this chat. Provide self-contained HTML and optional relative CSS/JS files. Scripts may use only bundled resources. Returns its stable name for revisions.", obj({
     title: str("Artifact title"), html: str("Complete HTML document"),
     files: fileSchema,

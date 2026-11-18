@@ -116,3 +116,18 @@ test("retried at most once, even if the fresh attempt fails the same way", async
   assert.ok((await rowsOf()).some((r) => r.body.kind === "notice" && /no rollout found/.test(r.body.text)));
   mode = "ok";
 });
+
+test("a Bot API conversation starts independently of the owner's previous Codex project", async () => {
+  q.run("INSERT OR REPLACE INTO engine_sessions (bot_id,generation,engine,session_id) SELECT id,generation,'codex','owner-project' FROM bots WHERE id=?", bot.id);
+  const result = await call("POST", `/bots/${bot.id}/api-keys`, { name: "Artifact regression", scopes: ["write"] });
+  const before = execs.length;
+  const response = await api.request("/v1/bot/messages", { method: "POST",
+    headers: { authorization: "Bearer " + result.json.secret, "content-type": "application/json" },
+    body: JSON.stringify({ text: "Create a private calculator" }) });
+  assert.equal(response.status, 202);
+  await until(() => execs.length > before, "API turn");
+  await idle();
+  assert.ok(!execs[before].includes("resume"));
+  assert.equal(saved(), "owner-project");
+  assert.ok(q.get("SELECT 1 FROM engine_sessions WHERE bot_id=? AND engine=?", bot.id, "codex:api/" + result.json.key.id));
+});

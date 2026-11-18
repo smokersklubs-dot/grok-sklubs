@@ -239,3 +239,15 @@ test("the native studio is available to two new owners, isolates media and prote
   assert.equal((await A.api("POST",endpoint(ids.aBot),update)).status,409);
   assert.equal((await B.api("POST",endpoint(ids.bBot),{key,version:second.json.version,story:{...story,audio:"../secret.wav"}})).status,400);
 });
+
+test("a published Craft file is private and scoped to its bot library", async () => {
+  const { saveFile } = await import("../src/computer.js");
+  const file = saveFile(ids.aBot, "craft/result/index.html", "<main>Generated calculator</main>");
+  const create = pageTools.find((t) => t.spec.name === "artifact_from_file")!;
+  const result = await create.run({ title: "Calculator from Craft", file }, ctx("a"));
+  assert.equal(result.isError, undefined);
+  const project = pages.list(ids.a, "").find((p) => p.title === "Calculator from Craft")!;
+  assert.equal(project.visibility, "private");
+  assert.match((await A.site(project.url)).text, /Generated calculator/);
+  await assert.rejects(create.run({ title: "Another bot's file", file }, ctx("b")));
+});

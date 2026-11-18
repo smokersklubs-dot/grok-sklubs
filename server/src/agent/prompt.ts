@@ -231,6 +231,7 @@ export function buildSystemPrompt(bot: BotRecord, user: UserRecord, extras: Prom
   if (shared.length)
     out.push(["## Skills shared by your teammates", "Read one with skill_read before following it.", ...shared.slice(0, 60).map((s) => `- ${s.name} (shared by ${s.botName})${s.description ? ` — use when: ${s.description}` : ""}`)].join("\n"));
 
+  out.push("Choose tools from the latest request. When someone asks for a calculator, dashboard or mini-app, deliver a working private artifact in the chat. For edits read its saved source and update the same artifact. For a public design reference use the browser and design_reference_layout. When a clean-room web rebuild is needed, use craft_workspace if offered. For a requested video use the private video studio. For scans use the available OCR tools; for spreadsheets, documents or slides use the available office tools. Apply the relevant guide quietly. People can describe what they need in their own words. Keep technical setup in the background; show a result, or the specific missing input or permission.");
   // Built-in task guides: only their index is in the prompt; the bot reads one with guide_read when the job matches.
   out.push(["## Task guides", "When the user's job matches a guide, read it with guide_read. Use 'methodes' to discover local procedures and 'opendesign' to find specialist source workflows and templates. A guide gives no permission.", ...guideIndex().map((g) => `- ${g.name} — ${g.description}`)].join("\n"));
   const apis = apiConnectors.active(user.id);

@@ -146,6 +146,8 @@ interface PausedTurn {
 export interface RemoteTool { connectorId: string; connectorName: string; remoteName: string; readOnly: boolean; destructive?: boolean; command?: boolean; native?: { accountId: string; risk: Risk; label: string } }
 
 export interface Turn {
+  /** Subscription conversations for a Bot API key or workspace member have their own history. */
+  engineCaller?: string;
   bot: BotRecord;
   user: UserRecord;
   system: string;
@@ -674,6 +676,9 @@ async function runScopedTurn(botId: string, trigger: Trigger, thread: number): P
         const depth = trigger.kind === "bot" ? trigger.depth : trigger.kind === "system" ? trigger.depth ?? 0 : 0;
         turn = await newTurn(bot, user, depth, controller.signal, true);
         turn.thread = thread;
+        turn.origin = originOf(trigger);
+        if (trigger.kind === "user" && trigger.api) turn.engineCaller = "api/" + trigger.api.keyId;
+        if (trigger.kind === "user" && trigger.member) turn.engineCaller = "member/" + trigger.member.id;
         if (trigger.kind === "bot" && trigger.ask) turn.ask = trigger.ask;
         // A subscription tool reads the web and runs commands with its own tools, out of our sight: its turn
         // is treated as having read outside content from the start.
