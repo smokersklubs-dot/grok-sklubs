@@ -206,7 +206,7 @@ interface Store {
   history: HistoryTarget | null;
 
   selectedId: string | null;
-  view: "chat" | "tasks" | "today" | "surveillance" | "announcements";
+  view: "chat" | "tasks" | "today" | "surveillance" | "announcements" | "command";
   detailsOpen: boolean;
   sidebarCollapsed: boolean;
   mobileNav: boolean;
@@ -264,7 +264,7 @@ interface Store {
   removeUpload(botId: string, id: string): void;
   clearUploads(botId: string, ids: string[]): void;
   setTheme(theme: Theme): void;
-  setView(view: "chat" | "tasks" | "today" | "surveillance" | "announcements"): void;
+  setView(view: "chat" | "tasks" | "today" | "surveillance" | "announcements" | "command"): void;
   toggleDetails(open?: boolean): void;
   toggleSidebar(): void;
   setMobileNav(open: boolean): void;
@@ -432,7 +432,8 @@ export const useStore = create<Store>((set, get) => ({
     if (wanted) window.history.replaceState(null, "", window.location.pathname);
     // Opened from the daily digest (/?view=today): the Today page; from a Sentinelle alert (/?view=surveillance): Surveillance.
     const wantedView = new URLSearchParams(window.location.search).get("view");
-    if (wantedView === "today" || wantedView === "surveillance") {
+    // « Centre de commandement »: /?view=command.
+    if (wantedView === "today" || wantedView === "surveillance" || wantedView === "command") {
       get().setView(wantedView);
       window.history.replaceState(null, "", window.location.pathname);
     }

@@ -40,3 +40,5 @@ html:has(.gallery-app), html:has(.gallery-app) body, html:has(.gallery-app) #roo
 .gallery:has(.gallery-app) { min-height: 0; height: 100%; display: flex; flex-direction: column; }
 .gallery-app.shell { flex: 1; min-height: 0; height: auto; }
 .gallery-page.is-auto, .gallery.is-embed .gallery-page.is-auto { display: block; height: auto; max-width: 980px; }
+/* « Centre de commandement »: the page at its full height (screenshots take it whole). */
+.gallery-page.is-tall, .gallery.is-embed .gallery-page.is-tall { height: auto; min-height: 760px; }

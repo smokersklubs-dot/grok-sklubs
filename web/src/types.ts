@@ -9,3 +9,6 @@ export type { TodayKind } from "../../server/src/todayminutes";
 export type * from "../../server/src/announcetext";
 export { ANNOUNCE_KINDS, ANNOUNCE_LIMITS, linkify, safeHttpsUrl } from "../../server/src/announcetext";
 export { TODAY_KINDS, DEFAULT_MINUTES, FILES_PER_TURN, RESEARCH_MIN_READS, RESEARCH_GAP_MIN, MAX_MINUTES } from "../../server/src/todayminutes";
+/** « Centre de commandement » (server command.ts): the wire types and the state rule. */
+export type * from "../../server/src/commandtypes";
+export { COMMAND_STATES, commandStateOf } from "../../server/src/commandtypes";

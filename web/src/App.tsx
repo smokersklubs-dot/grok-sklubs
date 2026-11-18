@@ -19,6 +19,7 @@ import { EmailConfirmPage, ResetPasswordPage, takeLinkAction } from "./component
 import { TasksView } from "./components/TasksView";
 import { TodayView } from "./components/TodayView";
 import { SurveillanceView } from "./components/SurveillanceView";
+import { CommandView } from "./components/CommandView";
 import { AnnouncementsView } from "./components/AnnouncementsView";
 import { SiteAnnouncementBanner } from "./components/AnnouncementCard";
 import { useAnnouncements } from "./lib/announcements";
@@ -138,7 +139,7 @@ function Shell() {
     <div className={`shell ${showDetails || showThread ? "has-details" : ""} ${siteBanner ? "has-site-banner" : ""}`}>
       <SiteAnnouncementBanner />
       <Sidebar />
-      {view === "tasks" ? <TasksView /> : view === "today" ? <TodayView /> : view === "surveillance" && sentinel ? <SurveillanceView /> : view === "announcements" && author ? <AnnouncementsView /> : <ChatView />}
+      {view === "tasks" ? <TasksView /> : view === "today" ? <TodayView /> : view === "command" ? <CommandView /> : view === "surveillance" && sentinel ? <SurveillanceView /> : view === "announcements" && author ? <AnnouncementsView /> : <ChatView />}
       {showDetails && <DetailsPanel />}
       {showThread && openThread && <ThreadPanel key={`${openThread.botId}:${openThread.seq}`} botId={openThread.botId} seq={openThread.seq} />}
 

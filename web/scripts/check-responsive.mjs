@@ -32,6 +32,9 @@ const PAGES = [
   "section=notices&long=1",
   "section=cards&long=1",
   "section=today",
+  "section=command",
+  "section=command&long=1&theme=dark&lang=en",
+  "section=command&empty=1",
   "section=surveillance",
   "section=announcements&long=1",
   "section=basics",
@@ -39,7 +42,7 @@ const PAGES = [
   "section=pages",
   "section=skills&theme=dark&lang=en",
 ];
-const SCROLLERS = "pre, .md-table, .card-detail, .segmented, .tabs, .gallery-bar";
+const SCROLLERS = "pre, .md-table, .card-detail, .segmented, .tabs, .gallery-bar, .cmd-states";
 
 const server = await createServer({ root: ROOT, logLevel: "error", server: { port: 0, strictPort: false } });
 await server.listen();

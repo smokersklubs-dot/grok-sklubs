@@ -300,6 +300,19 @@ export function Sidebar() {
           {!collapsed && needs > 0 && <span className="count-badge is-attention" aria-label={tn("sidebar.todayNeeds", needs)}>{needs}</span>}
         </button>
 
+        {/* « Centre de commandement » (CommandView.tsx): the whole team, live. */}
+        <button
+          type="button"
+          className={`nav-row ${view === "command" ? "is-active" : ""}`}
+          onClick={() => setView(view === "command" ? "chat" : "command")}
+          aria-pressed={view === "command"}
+          title={collapsed ? t("sidebar.command") : undefined}
+          aria-label={collapsed ? t("sidebar.command") : undefined}
+        >
+          <span className="nav-row-icon"><Icon name="users" size={19} /></span>
+          {!collapsed && <span className="nav-row-label">{t("sidebar.command")}</span>}
+        </button>
+
         {sentinel && (
           <button
             type="button"

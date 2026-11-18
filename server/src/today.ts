@@ -147,7 +147,7 @@ const marks = (n: number) => Array(n).fill("?").join(", ");
 interface RowHit { seq: number; thread: number; created_at: number; body: string; generation: number }
 
 /** The open cards and notices of a bot's current conversation, as needs. `approveOnly`: a shared bot (only its approvals). */
-function cardNeeds(bot: BotRecord, opts: { approveOnly: boolean; shared: boolean }): TodayNeed[] {
+export function cardNeeds(bot: BotRecord, opts: { approveOnly: boolean; shared: boolean }): TodayNeed[] {
   const found = q.all<RowHit>(
     `SELECT seq, thread, created_at, body, generation FROM rows WHERE bot_id = ? AND generation = ? AND kind IN ('card', 'notice')
        AND (json_extract(body, '$.card.status') = 'pending' OR json_extract(body, '$.card.state') = 'waiting' OR json_extract(body, '$.action.status') = 'pending')

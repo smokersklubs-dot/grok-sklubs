@@ -7,6 +7,7 @@ import { landingData, sampleDownloads } from "./landingFixtures";
 import { announcementsAdmin, announcementsState, sentinelOverview, todayReport, type FixtureOptions } from "./fixtures";
 import { githubPreviewFixture, libraryFixture, versionsFixture } from "./skillsFixtures";
 import { incidentsFixture } from "./incidentsFixtures";
+import { commandFixture, fakeScreen } from "./commandFixtures";
 
 export interface FakeApiState extends FixtureOptions { empty: boolean; fail: boolean }
 
@@ -39,6 +40,9 @@ export function installFakeApi(get: () => FakeApiState): void {
       return s.fail ? json(500, { error: s.lang === "fr" ? "Exemple d'erreur : le serveur n'a pas pu le faire." : "Sample error: the server could not do it." }) : json(200, {});
     }
     if (path === "/today") return json(200, todayReport(s, s.empty));
+    // « Centre de commandement »: the team, and a drawn screen for the computers that are on.
+    if (path === "/command") return json(200, commandFixture(s));
+    if (/^\/bots\/[^/]+\/screen$/.test(path)) return new Response(fakeScreen(path.split("/")[2].replace(/^cmd_/, "")), { headers: { "content-type": "image/svg+xml" } });
     if (path === "/surveillance") return json(200, sentinelOverview(s, s.empty));
     if (path === "/announcements") return json(200, announcementsState(s, s.empty));
     if (path === "/announcements-admin") return json(200, announcementsAdmin(s, s.empty));

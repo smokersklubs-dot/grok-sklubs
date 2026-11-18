@@ -7,6 +7,7 @@ import { deleteCookie, getCookie } from "hono/cookie";
 import { streamSSE } from "hono/streaming";
 import { registerNoticeRoutes } from "./agent/noticeroutes.js";
 import { registerFailureRoutes } from "./agent/failureroutes.js";
+import { registerCommandRoutes } from "./command.js";
 import { continueAfterStepLimit, decideApproval, enqueue, inQueue, interrupt, noteHandBack, submitUserMessage, type ForcedSkill } from "./agent/loop.js";
 import { cleanProfile, fetchSkillMarkdown, saveImportedSkill, undoRevision } from "./agent/tools-team.js";
 import { xSearchProvider } from "./xsearch.js";
@@ -1325,6 +1326,7 @@ registerSentinelRoutes(api);
 registerAnnouncementRoutes(api);
 registerNoticeRoutes(api);
 registerFailureRoutes(api); // « Coordinateur d'échecs » (agent/failures.ts)
+registerCommandRoutes(api); // « Centre de commandement » (command.ts): GET /command, read-only
 registerSkillsLibraryRoutes(api); // « Bibliothèque de compétences » (skillsroutes.ts)
 registerOpenRouterRoutes(api); registerSubscriptionConnectRoutes(api); // OpenRouter, « Connecter mon compte ChatGPT / Claude »
 api.put("/account/password", async (c) => {

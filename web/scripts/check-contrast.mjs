@@ -71,6 +71,15 @@ export const PAIRS = [
   ["--warn", "--surface", "ui", "attention dot"],
   ["--ok", "--surface", "ui", "ok / working dot"],
   ["--info", "--surface", "ui", "unread dot"],
+  // « Centre de commandement » (command.css): the connectors and their arrows on the canvas, the state dots on the filters.
+  ["--info", "--bg", "ui", "command center: message connectors on the canvas"],
+  ["--warn", "--bg", "ui", "command center: handoff connectors on the canvas"],
+  ["--text-3", "--bg", "ui", "command center: group-chat connectors on the canvas"],
+  ["--ok", "--surface-2", "ui", "command center: « au travail » dot on a raised row"],
+  ["--warn", "--surface-2", "ui", "command center: « en attente » dot on a raised row"],
+  ["--danger", "--surface-2", "ui", "command center: « en erreur » dot on a raised row"],
+  ["--info", "--surface-2", "ui", "command center: « en pause » dot on a raised row"],
+  ["--on-strong", "--danger", "text", "command center: the incidents count on its button"],
 ];
 
 /** `--name: value;` declarations of a block body. */

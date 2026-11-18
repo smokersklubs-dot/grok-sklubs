@@ -555,6 +555,31 @@ test("Aujourd'hui (today.ts): B sees nothing of A; V sees only the shared bot's 
   assert.equal((await A("GET", "/today/settings")).json.digest.enabled, false);
 });
 
+test("Centre de commandement (command.ts): B sees nothing of A; V only the shared bot, without A's tasks, costs, incidents, computer or owner actions", async () => {
+  const routes = discover().filter((r) => r.app === api && r.path.startsWith("/command")).map((r) => r.key).sort();
+  assert.deepEqual(routes, ["GET /command"]);
+  const own = await A("GET", "/command");
+  assert.equal(own.status, 200);
+  const ownIds = own.json.cards.map((c: any) => c.botId);
+  assert.ok(ownIds.includes(ids.bot1) && ownIds.includes(ids.bot2) && !ownIds.includes(ids.room), "A sees A's bots (not the group chat as a card)");
+  assert.ok(own.json.cards.find((c: any) => c.botId === ids.bot2).incidents >= 1, "A sees A's incidents");
+  const b = await call(api, "b", "GET", "/command");
+  assert.equal(b.status, 200);
+  assert.ok(!leakIn(b.text) && !b.text.includes(ids.bot1) && !b.text.includes(ids.bot2) && !b.text.includes(ids.room), `B got: ${b.text.slice(0, 200)}`);
+  const v = await call(api, "v", "GET", "/command");
+  assert.equal(v.status, 200);
+  // V's own first bot, and of A's only the shared one.
+  assert.deepEqual(v.json.cards.filter((c: any) => c.shared).map((c: any) => c.botId), [ids.bot1]);
+  const c = v.json.cards.find((x: any) => x.botId === ids.bot1);
+  assert.equal(c.usage, null);
+  assert.equal(c.incidents, null);
+  assert.equal(c.computer, null);
+  assert.deepEqual(c.can, { pause: false, stop: false, chat: true, computer: false, incidents: false });
+  for (const s of [ids.bot2, ids.room, "ALPHASECRET Two", "ALPHASECRET Room", "ALPHASECRET task", "ALPHASECRET failure", "echo ALPHASECRET"]) assert.ok(!v.text.includes(s), `V saw ${s}`);
+  assert.equal(v.json.kpis.incidents, 0);
+  assert.equal(v.json.kpis.usage.usd, 0, "V's own consumption, not A's");
+});
+
 test("public sign-up (publicsignup.ts): the landing data, the first run and the verification routes only touch the caller", async () => {
   const routes = discover().filter((r) => r.app === api && /^\/(public\/|onboarding\/|account\/verify-email|auth\/verify-email)/.test(r.path)).map((r) => r.key).sort();
   assert.deepEqual(routes, ["GET /public/landing", "POST /account/verify-email/resend", "POST /auth/verify-email", "POST /onboarding/commit", "POST /onboarding/skip"]);
