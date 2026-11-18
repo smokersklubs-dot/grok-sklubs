@@ -433,7 +433,7 @@ function CatalogCard({ app, existing, redirectUri, open, onToggle, prefill, onAd
     }
   };
 
-  const signedIn = connected && existing.status !== "needs_auth";
+  const signedIn = connected && existing.status === "ready";
   return (
     <li className={`catalog-card ${open ? "is-open" : ""}`}>
       <div className="catalog-card-main">
@@ -485,14 +485,14 @@ function CatalogCard({ app, existing, redirectUri, open, onToggle, prefill, onAd
   );
 }
 
-function Catalog({ connectors, prefill, onClose }: { connectors: Connector[] | null; prefill?: Prefill; onClose: () => void }) {
+function Catalog({ connectors, prefill, onClose, catalogId }: { catalogId?: string; connectors: Connector[] | null; prefill?: Prefill; onClose: () => void }) {
   const loadConnectors = useStore((s) => s.loadConnectors);
   const t = useT();
   const [apps, setApps] = useState<CatalogApp[] | null>(null);
   const [redirectUri, setRedirectUri] = useState("");
   const [failed, setFailed] = useState(false);
-  const [q, setQ] = useState("");
-  const [openId, setOpenId] = useState<string | null>(null);
+  const [q, setQ] = useState(catalogId === "github-repositories" ? "GitHub Repositories" : "");
+  const [openId, setOpenId] = useState<string | null>(catalogId ?? null);
 
   useEffect(() => {
     let dead = false;
@@ -562,7 +562,7 @@ function Catalog({ connectors, prefill, onClose }: { connectors: Connector[] | n
   );
 }
 
-export function ConnectorsModal({ onClose, prefill }: { onClose: () => void; prefill?: Prefill }) {
+export function ConnectorsModal({ onClose, prefill, catalogId }: { catalogId?: string; onClose: () => void; prefill?: Prefill }) {
   const connectors = useStore((s) => s.connectors);
   const loadError = useStore((s) => s.connectorsError);
   const loadConnectors = useStore((s) => s.loadConnectors);
@@ -636,7 +636,7 @@ export function ConnectorsModal({ onClose, prefill }: { onClose: () => void; pre
         )}
         {connectors && connectors.length + nativeAccounts.length === 0 && !prefill && <Empty icon="plug" title={t("connectors.emptyTitle")}>{t("connectors.emptyText")}</Empty>}
 
-        <Catalog connectors={connectors} prefill={prefill} onClose={onClose} />
+        <Catalog catalogId={catalogId} connectors={connectors} prefill={prefill} onClose={onClose} />
 
         <div className="disclosure">
           <button type="button" className="disclosure-toggle" aria-expanded={formOpen} aria-controls={ids.form} onClick={() => setFormOpen((v) => !v)}>

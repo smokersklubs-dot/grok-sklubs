@@ -28,7 +28,7 @@ import { emit, getLive, subscribe } from "./bus.js";
 import { workspaceOf } from "./computer.js";
 import { attachmentAt, computerKind, computerState, isInlineImage, isInlineVideo, listFiles, listTeamFiles, mimeOf, openLibraryFile, openTeamFile, readLibraryFile, removeTeamFolder, removeWorkspace, resolveInTeam, resolveInWorkspace, screen, storeBytes, teamFolderState } from "./computer.js";
 import { checkDisk, deleteListed } from "./disk.js";
-import { catalogFor } from "./catalog.js";
+import { registerConnectorCatalog } from "./connectorcatalogroutes.js";
 import { imageService } from "./images.js";
 import { config } from "./config.js";
 import { connectors, NeedsClientIdError, oauthRedirectUri } from "./connectors.js";
@@ -513,6 +513,7 @@ api.use("*", async (c, next) => {
   await next();
 });
 registerHostedPrivate(api);
+registerConnectorCatalog(api);
 registerPublicSignupPrivate(api);
 registerTwoFactorPrivate(api, googleDeps);
 registerDataKeyRoutes(api);
@@ -2132,8 +2133,6 @@ api.post("/presence", async (c) => {
   return c.json({ ok: true });
 });
 
-// ── Connectors and permissions ───────────────────────────────────────────────
-api.get("/connectors/catalog", (c) => c.json({ apps: catalogFor(c.get("user").locale), oauthRedirectUri: oauthRedirectUri() }));
 // ── Local tool servers (localtools.ts): owner only (ownAgent), each on one bot's own Linux computer ──
 api.get("/bots/:id/local-tools", (c) => c.json(localTools.state(ownAgent(c).id, c.get("user").locale)));
 api.post("/bots/:id/local-tools", async (c) => {
@@ -2170,7 +2169,6 @@ api.delete("/local-tools/:id", async (c) => {
   return c.json(localTools.state(rec.botId, c.get("user").locale));
 });
 
-api.get("/connectors", (c) => c.json({ connectors: connectors.list(c.get("user").id), oauthRedirectUri: oauthRedirectUri() }));
 
 api.post("/connectors", async (c) => {
   const user = c.get("user");

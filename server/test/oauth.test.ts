@@ -290,3 +290,26 @@ test("the catalogue lists business apps with a sign-in", async () => {
   assert.ok(apps.filter((a: any) => a.auth === "oauth").length >= 8);
   assert.ok(apps.some((a: any) => a.category === "Analytique & SEO"), "French categories");
 });
+
+test("GitHub setup is session-bound, read-only and invalidated when restarted", async () => {
+  const added = await call("POST", "/connectors", { name: "GitHub Repositories", url: "https://api.githubcopilot.com/mcp/readonly", auth: "oauth" });
+  const id = added.json.connector.id;
+  const start = async () => {
+    const res = await call("POST", `/connectors/${id}/oauth/start`, {});
+    assert.equal(res.status, 200, res.text);
+    return new URL(res.json.authorizeUrl);
+  };
+  const first = await start();
+  const route = (url: URL) => url.pathname.slice(4) + url.search;
+  assert.equal(first.pathname, "/api/github-app/register");
+  assert.equal((await api.request(route(first))).status, 401);
+  const second = await start();
+  assert.equal((await call("GET", route(first))).status, 400);
+  const page = await call("GET", route(second));
+  assert.equal(page.status, 200, page.text);
+  assert.match(page.text, /https:\/\/github.com\/settings\/apps\/new/);
+  assert.match(page.text, /&quot;contents&quot;:&quot;read&quot;/);
+  assert.doesNotMatch(page.text, /&quot;write&quot;|client_secret/);
+  assert.equal((await call("GET", "/github-app/created?state=invalid&code=12345678")).status, 400);
+  assert.equal((await call("GET", "/github-app/installed/unknown")).status, 404);
+});

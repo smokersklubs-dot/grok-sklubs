@@ -41,6 +41,7 @@ function entryFromUrl(): Entry {
   const p = new URLSearchParams(location.search);
   const auth = p.get("auth");
   if (auth === "login" || auth === "signup") return auth;
+  if (p.get("connect") === "github") return "login";
   if (p.get("connect") === "claude" && p.get("bot")) return "login";
   if (p.get("invite") || p.get("plan_invite")) return "signup";
   // ?second=1: back from Google, a sign-in link or a reset with two-factor on (the code is asked on the sign-in page).
@@ -153,7 +154,7 @@ function Shell() {
       {modal?.kind === "templates" && <TemplatesModal onClose={close} tab={modal.tab} />}
       {modal?.kind === "exportTemplate" && <ExportTemplateModal onClose={close} sectionId={modal.sectionId} botIds={modal.botIds} />}
       {modal?.kind === "duplicate" && <DuplicateBotModal key={modal.botId} botId={modal.botId} onClose={close} />}
-      {modal?.kind === "connectors" && <ConnectorsModal key={modal.prefill ? `${modal.prefill.botId}:${modal.prefill.seq}` : "all"} onClose={close} prefill={modal.prefill} />}
+      {modal?.kind === "connectors" && <ConnectorsModal key={modal.prefill ? `${modal.prefill.botId}:${modal.prefill.seq}` : "all"} onClose={close} prefill={modal.prefill} catalogId={modal.catalogId} />}
       {viewerBotId && <ComputerViewer key={viewerBotId} botId={viewerBotId} />}
       {relayViewerId && <RelayViewer key={relayViewerId} deviceId={relayViewerId} />}
 
@@ -209,6 +210,13 @@ function MainApp() {
   useEffect(() => {
     void init();
   }, [init]);
+  useEffect(() => {
+    const url = new URL(location.href);
+    if (boot !== "ready" || unverified || url.searchParams.get("connect") !== "github") return;
+    useStore.getState().openModal({ kind: "connectors", catalogId: "github-repositories" });
+    url.searchParams.delete("connect");
+    history.replaceState(history.state, "", url);
+  }, [boot, unverified]);
   // Back from the Paddle checkout (/?credits=success|cancel, server credits.ts): Settings → Credits says how it went.
   useEffect(() => {
     const v = new URLSearchParams(location.search).get("credits");

@@ -158,7 +158,7 @@ function resolve(routePath: string, param: string, bot: "bot1" | "bot2"): string
     "memories:id": ids[`mem_${b}`], "routines:id": ids[`routine_${b}`], "calls:callId": "call_alpha", "history:generation": "1",
     "pages:token": ids[`page_${b}`], "shots:name": "shot-1.png", "shared:sid": "a_shared", "vault:id": "a_vault",
     "reach:channel": "telegram", "public-links:id": ids[`link_${b}`], "local-tools:id": ids[`ltool_${b}`],
-    "connectors:id": "a_conn", "clients:vendor": "google", "accounts:id": "a_native", "policies:tool": "web_fetch",
+    "connectors:id": "a_conn", "installed:id": "a_conn", "clients:vendor": "google", "accounts:id": "a_native", "policies:tool": "web_fetch",
     "rooms:id": ids.room, "model-prices:model": "alpha-model", "rules:id": "a_rule", "changes:id": "a_rulechange",
     "spend:id": ids[`spend_${b}`], "api-connectors:id": "a_apiconn", "executions:id": ids[`exec_${b}`],
     "bgtasks:taskId": ids[`bg_${b}`], "nudges:nudgeId": ids[`nudge_${b}`], "workspaces:wid": ids.ws, "members:uid": userA,

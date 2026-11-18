@@ -90,9 +90,9 @@ gh.setGithubFetch(async (url) => {
   return new Response(r.body ?? null, { status: r.status, headers: r.headers ?? {} });
 });
 
-test("the bundled pack loads: six skills, each with its licence and notice, Anthropic ones Apache-2.0 and marked as modified", () => {
+test("the bundled pack loads: seven skills, each with its licence and notice, Anthropic ones Apache-2.0 and marked as modified", () => {
   const entries = lib.libraryEntries();
-  assert.deepEqual(entries.map((e) => e.id).sort(), ["canvas-design", "design-de-marque", "frontend-design", "methode-de-travail", "pages-soignees", "theme-factory"]);
+  assert.deepEqual(entries.map((e) => e.id).sort(), ["canvas-design", "design-de-marque", "frontend-design", "methode-de-travail", "pages-soignees", "theme-factory", "video-github"]);
   const dir = new URL("../skills-library/", import.meta.url);
   for (const e of entries) {
     const lic = readFileSync(new URL(`${e.id}/LICENSE.txt`, dir), "utf8");
@@ -129,7 +129,7 @@ test("adding from the library: in the account's language, idempotent, on its own
   ids.bBot = bots.list(ids.b).find((x) => x.kind === "agent")!.id;
   const list = await A("GET", "/skills-library");
   assert.equal(list.status, 200, list.text);
-  assert.equal(list.json.skills.length, 6);
+  assert.equal(list.json.skills.length, 7);
   const meth = list.json.skills.find((s: any) => s.id === "methode-de-travail");
   assert.equal(meth.title, "Méthode de travail");
   assert.equal(meth.language, "fr");

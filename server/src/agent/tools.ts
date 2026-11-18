@@ -45,6 +45,8 @@ import { apiTools, scrubSecret } from "../apiconnectors.js";
 import { botMailTools } from "../botmail.js";
 import { ruleTools } from "./ruletools.js";
 import { pageTools } from "./pagetools.js";
+import { videoWorkflowTool } from "../videoworkflows.js";
+import { githubSearch } from "../githubsearch.js";
 import { reachAvailable, reachTools, youtubeBlockedGuide } from "../reach.js";
 import { attemptsText, DEFAULT_MAX_COST_USD, paidConsents, paidGate, runChain, searchChainAvailable, searchProviders, servedLine, transcribeProviders } from "../providers.js";
 import { cached, cachePolicy, idemKeyOf, release, remember, reserve, settle } from "../thirdparty.js";
@@ -1363,7 +1365,7 @@ function assemble(opts: { nativeSearch?: boolean; video?: "connector" | "api" | 
     // Wave 7: Agent Reach (read-only) on the bot's Linux computer, transcription, temporary public links.
     ...(reachAvailable() ? inGroup("reach", reachTools) : []),
     ...(computerKind() === "linux" || reachAvailable() ? transcribeTools : []),
-    ...publicLinkTools,
+    githubSearch, videoWorkflowTool, ...publicLinkTools,
     ...knowledgeTools, ...guideTools, ...ruleTools, ...pageTools, ...progressTools, ...profileTools, ...skillImportTools, ...botTools, ...recruitTools,
     ...(xSearchAvailable() ? xTools : []),
     ...shareTools.filter((t) => t.spec.name !== "image_generate" || imageService()).map((t): BuiltinTool => ({ ...t, group: t.spec.name === "image_generate" ? "images" : "files" })),

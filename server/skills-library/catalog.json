@@ -2,6 +2,9 @@
   "format": "sklubot-skills-library",
   "version": 1,
   "skills": [
+    { "id": "video-github", "origin": "sklubot", "licence": "MIT", "source": "",
+      "title": { "fr": "Atelier vidéo GitHub", "en": "GitHub Video Workshop" },
+      "summary": { "fr": "Sept ateliers pour animer tes captures, produire un clip ou réaliser une vidéo explicative sur le bureau du bot.", "en": "Seven workflows for screenshot demos, music videos, motion graphics and explainers on the bot desktop." } },
     { "id": "methode-de-travail", "origin": "sklubot", "licence": "MIT", "source": "",
       "title": { "fr": "Méthode de travail", "en": "Working method" },
       "summary": { "fr": "Comprendre le but, agir, vérifier avant de dire « fini », demander l'accord avant l'irréversible, rendre compte simplement.", "en": "Understand the goal, act, check before saying \"done\", ask before anything irreversible, report simply." } },

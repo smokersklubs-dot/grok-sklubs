@@ -1,3 +1,4 @@
+import { beginGithubSetup, GITHUB_READ_URL } from "./githubapp.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport, StreamableHTTPError } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { auth, discoverOAuthProtectedResourceMetadata, UnauthorizedError, type OAuthClientProvider, type OAuthDiscoveryState } from "@modelcontextprotocol/sdk/client/auth.js";
@@ -242,13 +243,18 @@ export const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "_").r
 
 export interface AddOptions { token?: string; auth?: "oauth"; clientId?: string; clientSecret?: string }
 
-function setManualClient(id: string, clientId: string, clientSecret?: string) {
-  const client: OAuthClientInformationMixed = { client_id: clientId.trim().slice(0, 500), ...(clientSecret?.trim() ? { client_secret: clientSecret.trim().slice(0, 500) } : {}) };
+function setManualClient(id: string, clientId: string, clientSecret?: string, github = false) {
+  const client: OAuthClientInformationMixed = { client_id: clientId.trim().slice(0, 500), ...(github ? { token_endpoint_auth_method: "client_secret_post" } : {}), ...(clientSecret?.trim() ? { client_secret: clientSecret.trim().slice(0, 500) } : {}) };
   // A new client means new sign-in: tokens issued to the previous client are dropped.
   saveOAuth(id, (d) => ({ discovery: d.discovery, client, manualClient: true }));
 }
 
 export const connectors = {
+  configureGithub(userId: string, id: string, clientId: string, secret: string) {
+    const r = recordOf(userId, id);
+    if (r?.url !== GITHUB_READ_URL || r.auth !== "oauth") throw new Error("Unknown GitHub connector");
+    setManualClient(id, clientId, secret, true);
+  },
   list: (userId: string): Connector[] => recordsFor(userId).map((r) => view(ensure(r))),
   async add(userId: string, name: string, url: string, opts: AddOptions | string = {}): Promise<Connector> {
     const o: AddOptions = typeof opts === "string" ? { token: opts } : opts;
@@ -298,6 +304,11 @@ export const connectors = {
       record.auth = "oauth";
     }
     if (opts.clientId?.trim()) setManualClient(id, opts.clientId, opts.clientSecret);
+    if (record.url === GITHUB_READ_URL && !loadOAuth(id).client) {
+      if (process.env.GITHUB_MCP_CLIENT_ID && process.env.GITHUB_MCP_CLIENT_SECRET)
+        setManualClient(id, process.env.GITHUB_MCP_CLIENT_ID, process.env.GITHUB_MCP_CLIENT_SECRET, true);
+      else return { authorizeUrl: beginGithubSetup(userId, id) };
+    }
     const state = randomToken(24);
     const provider = new ConnectorOAuth(id, { kind: "start", state });
     let result;

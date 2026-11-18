@@ -8,6 +8,11 @@ import { appsFor } from "./native/vendors.js";
  */
 export const CATALOG: CatalogApp[] = [
   {
+    id: "github-repositories", name: "GitHub Repositories", category: "Development", url: "https://api.githubcopilot.com/mcp/readonly", auth: "oauth",
+    description: "Search and read selected repositories, files, issues and pull requests with your GitHub account.",
+    tokenHelp: "Continue on GitHub and select the repositories your bots may read. On first setup, GitHub offers to create your private Sklubot app.",
+  },
+  {
     id: "github", name: "GitHub", category: "Development", url: "https://api.githubcopilot.com/mcp/", auth: "token",
     description: "Repositories, issues, pull requests, code search and actions.",
     tokenHelp: "Create a personal access token in GitHub → Settings → Developer settings → Personal access tokens, with the repositories and permissions you want the bots to have.",
@@ -131,6 +136,7 @@ export const CATALOG: CatalogApp[] = [
 ];
 
 const FR: Record<string, { category: string; description: string; tokenHelp: string }> = {
+  "github-repositories": { category: "Développement", description: "Recherche et lecture des dépôts, fichiers, tickets et pull requests que tu autorises.", tokenHelp: "Continue sur GitHub et choisis les dépôts accessibles à tes bots. À la première connexion, GitHub te propose de créer ton application Sklubot privée." },
   github: { category: "Développement", description: "Dépôts, tickets, demandes de fusion, recherche de code et actions.", tokenHelp: "Crée un jeton d'accès personnel dans GitHub → Settings → Developer settings → Personal access tokens, limité aux dépôts et aux droits que tu veux donner aux bots." },
   stripe: { category: "Activité", description: "Clients, paiements, factures, produits et abonnements.", tokenHelp: "Utilise une clé d'API restreinte depuis le tableau de bord Stripe → Développeurs → Clés API, avec seulement les droits nécessaires aux bots." },
   huggingface: { category: "IA", description: "Recherche de modèles, de jeux de données, d'articles et de Spaces ; outils de la communauté.", tokenHelp: "Crée un jeton d'accès dans Hugging Face → Settings → Access Tokens." },

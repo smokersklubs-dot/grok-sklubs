@@ -41,7 +41,8 @@ export function openBotLink(key: string): Promise<void> {
     const file = botSocketPath(key);
     try { if (lstatSync(file).isSocket()) unlinkSync(file); } catch { /* none */ }
     const app = new Hono();
-    app.use("*", limitBodies);
+    // The personal relay authenticates the individual turn before reading its bounded vision payload.
+    app.use("*", (c, next) => /^\/personal-plan\/[^/]+\/v1\/responses$/.test(c.req.path) ? next() : limitBodies(c, next));
     // The members are read at each request: a bot that stops sharing a computer loses its way in at once.
     app.route("/", routesFor!((botId) => (isSharedMachine(key) ? membersOf(key) : machineMembers(key)).includes(botId)));
     const server = http.createServer(getRequestListener(app.fetch));
