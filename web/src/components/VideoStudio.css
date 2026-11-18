@@ -195,7 +195,8 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.dock-tabs button[aria-selected="true"] {
+.dock-tabs .btn[aria-selected="true"],
+.dock-tabs .btn[aria-selected="true"]:is(:hover, :active) {
   background: var(--text);
   color: var(--surface);
 }
