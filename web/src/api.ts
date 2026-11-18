@@ -3,7 +3,7 @@ import { t } from "./i18n";
 
 export class ApiError extends Error {
   status: number;
-  constructor(message: string, status: number) {
+  constructor(message: string, status: number, readonly code?: string) {
     super(message);
     this.name = "ApiError";
     this.status = status;
@@ -39,7 +39,8 @@ async function request<T>(path: string, init: RequestInit): Promise<T> {
         : null;
     // A wrong password on the account routes also answers 401; that is not a lost session.
     if (res.status === 401 && !path.startsWith("/auth/") && !path.startsWith("/account") && path !== "/me") unauthorizedHandler?.();
-    throw new ApiError(serverMessage ?? t("api.failed", { status: res.status }), res.status);
+    const code = data && typeof data === "object" && "code" in data && typeof data.code === "string" ? data.code : undefined;
+    throw new ApiError(serverMessage ?? t("api.failed", { status: res.status }), res.status, code);
   }
   return data as T;
 }

@@ -224,10 +224,12 @@ test("« Connecter mon compte ChatGPT / Claude »: refused without Linux compute
   assert.equal((await me("POST", "/connect-subscription/start", { engine: "codex" })).status, 409);
   const logins: string[] = [];
   let signedIn = false;
+  let claudeConnected = false;
   setConnectDeps({
     linux: () => true,
     login: async (bot, engine) => { logins.push(`${bot.id}:${engine}`); },
-    status: async () => [{ engine: "codex", installed: true, signedIn, account: signedIn ? "me@example.com" : null, detail: null }, { engine: "claude-code", installed: true, signedIn: false, account: null, detail: null }],
+    models: async () => [{ ref: "claude-code:opus" }, { ref: "codex:default" }],
+    status: async () => [{ engine: "codex", installed: true, signedIn, account: signedIn ? "me@example.com" : null, detail: null }, { engine: "claude-code", installed: true, signedIn: claudeConnected, account: null, detail: null }],
   });
   const ok = await me("GET", "/connect-subscription");
   assert.equal(ok.json.allowed, true);
@@ -252,6 +254,16 @@ test("« Connecter mon compte ChatGPT / Claude »: refused without Linux compute
   assert.equal(used.status, 200);
   assert.equal(used.json.model, "codex:default");
   assert.equal((await me("GET", "/bots")).json.bots.find((b: any) => b.id === mainBot).model, used.json.model);
+  const choose = (model: string) => me("POST", "/connect-subscription/use", { engine: "claude-code", botId: mainBot, model });
+  const waiting = await choose("claude-code:opus");
+  assert.equal(waiting.status, 409);
+  assert.equal(waiting.json.code, "sign_in_required");
+  assert.equal((await me("GET", "/bots")).json.bots.find((b: any) => b.id === mainBot).model, "codex:default");
+  claudeConnected = true;
+  assert.equal((await choose("codex:default")).status, 400);
+  assert.equal((await choose("claude-code:unknown")).status, 400);
+  assert.equal((await choose("claude-code:opus")).json.model, "claude-code:opus");
+  assert.equal((await me("GET", "/bots")).json.bots.find((b: any) => b.id === mainBot).model, "claude-code:opus");
   assert.equal((await other("GET", "/bots")).json.bots.find((b: any) => b.id === otherBot).model, `${providerId}:deepseek/deepseek-v4.1-flash`, "the other account's bot is untouched");
   setConnectDeps({ linux: () => false });
 });

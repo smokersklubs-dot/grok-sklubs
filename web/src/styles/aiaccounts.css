@@ -39,6 +39,8 @@
 .ai-flow-hint { display: flex; gap: 8px; align-items: flex-start; padding: 10px 12px; border-radius: var(--r-md); background: var(--info-soft); color: var(--text); }
 .ai-flow-screen { position: relative; width: 100%; aspect-ratio: 16 / 10; border-radius: var(--r-md); overflow: hidden; background: var(--surface-3); border: 1px solid var(--border); }
 .ai-flow-screen .live-screen { width: 100%; height: 100%; }
+.ai-flow-expanded.modal-lg { max-width: min(96vw, 1440px); }
+.ai-flow-expanded .ai-flow-screen { height: min(65dvh, 900px); aspect-ratio: auto; }
 .ai-flow-done { display: flex; align-items: center; gap: 8px; color: var(--ok); font-weight: 650; }
 .provider-or { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; margin-bottom: 10px; }
 .provider-or > .ai-account { width: 100%; }

@@ -1,5 +1,5 @@
 import type { Context, Hono } from "hono";
-import { engineLogin, engineStatus } from "./agent/engine.js";
+import { engineLogin, engineModelsFor, engineStatus } from "./agent/engine.js";
 import { disconnectPersonal, personalActive, personalEnabled, verifyPersonal } from "./personalplan.js";
 import { startPersonalLogin, personalLoginState } from "./personalsignin.js";
 import { computerKind } from "./computer.js";
@@ -26,6 +26,7 @@ const FR: Record<string, string> = {
   "Use a private desktop for personal sign-in.": "Choisis un bot disposant de son propre bureau pour autoriser ton abonnement.",
   "The personal authorization expired or was declined. Try again.": "L’autorisation personnelle a expiré ou a été refusée. Relance la connexion.",
   "Finish signing in on this bot's desktop first.": "Termine la connexion sur le bureau de ce bot.",
+  "Choose an available model for this subscription.": "Choisis un modèle disponible avec cet abonnement.",
   "Could not verify the subscription. Try again.": "La vérification de l’abonnement a échoué. Réessaie.",
   "Signing in with a subscription needs Linux computers for the bots, which this server does not have.": "La connexion avec un abonnement demande des ordinateurs Linux pour les bots, que ce serveur n'a pas.",
   "Subscriptions are not available on this service for your plan.": "Les abonnements ne sont pas disponibles sur ce service avec ton offre.",
@@ -40,8 +41,8 @@ const WHY_TEXT: Record<Why, string> = {
 };
 
 /** The engine calls, replaceable in tests (they run without Linux computers). */
-let deps: { login: (bot: BotRecord, engine: Engine) => Promise<void>; status: (bot: BotRecord) => Promise<EngineStatus[]>; linux: () => boolean } = {
-  login: engineLogin, status: engineStatus, linux: () => computerKind() === "linux",
+let deps: { login: (bot: BotRecord, engine: Engine) => Promise<void>; status: (bot: BotRecord) => Promise<EngineStatus[]>; models: (userId: string, botId: string) => Promise<{ ref: string }[]>; linux: () => boolean } = {
+  login: engineLogin, status: engineStatus, models: engineModelsFor, linux: () => computerKind() === "linux",
 };
 export const setConnectDeps = (d: Partial<typeof deps>) => { deps = { ...deps, ...d }; };
 
@@ -116,11 +117,15 @@ export function registerSubscriptionConnectRoutes(api: Hono<any>) {
     if (why) return err(c, why === "computer" ? 409 : 403, WHY_TEXT[why], { code: why });
     const bot = pick(u.id, b.botId);
     if (!bot) return err(c, 404, "That bot does not exist.");
+    const requested = b.model;
+    if (requested !== undefined && (typeof requested !== "string" || !requested.startsWith(engine + ":") || !(await deps.models(u.id, bot.id)).some((m) => m.ref === requested))) {
+      return err(c, 400, "Choose an available model for this subscription.");
+    }
     try {
       const connected = engine === "codex" && personalActive(u.id) ? await verifyPersonal(u.id) : (await deps.status(bot)).find((s) => s.engine === engine)?.signedIn;
-      if (!connected) return err(c, 409, "Finish signing in on this bot's desktop first.");
+      if (!connected) return err(c, 409, "Finish signing in on this bot's desktop first.", { code: "sign_in_required" });
     } catch { return err(c, 502, "Could not verify the subscription. Try again."); }
-    const ref = bot.model.startsWith(engine + ":") ? bot.model : defaultEngineRef(engine);
+    const ref = typeof requested === "string" ? requested : bot.model.startsWith(engine + ":") ? bot.model : defaultEngineRef(engine);
     bots.patch(bot.id, { model: ref });
     bots.announce(bot);
     audit(u.id, "account", `${bot.name}: now thinks with ${engine === "codex" ? "ChatGPT" : "Claude"} (${ref})`, bot.id);

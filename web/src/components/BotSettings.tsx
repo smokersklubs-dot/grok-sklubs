@@ -2,6 +2,7 @@ import { BotReachTab } from "./KeysHealthLinks";
 import { BotCapsField } from "./UsageCaps";
 import { LocalToolsTab } from "./LocalTools";
 import { BotApiTab } from "./BotApi";
+import { engineOfRef } from "../lib/engines";
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { api, enc, errText } from "../api";
 import { tn, useT } from "../i18n";
@@ -126,6 +127,11 @@ function General({ bot, onClose }: { bot: Bot; onClose: () => void }) {
     const botId = bot.id;
     setSaving(true);
     try {
+      const nextEngine = patch.model && engineOfRef(patch.model);
+      if (nextEngine) {
+        const state = await api<{ signedIn: boolean }>("GET", `/connect-subscription/status?bot=${enc(botId)}&engine=${nextEngine}`);
+        if (!state.signedIn) { setNote({ tone: "error", text: t("engine.signIn", { name: bot.name }) }); return; }
+      }
       const r = await api<{ bot: Bot }>("PATCH", `/bots/${botId}`, patch);
       upsertBot(r.bot);
       setForm(formOf(r.bot));

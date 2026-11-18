@@ -40,7 +40,8 @@ const TEXT = {
     instr2: "Tu tapes ton mot de passe sur la page de {provider} elle-même, dans le navigateur de ton bot : Sklubot ne le voit jamais.",
     waiting: "En attente de la connexion…", done: "C'est fait : {bot} est connecté à {provider}.", account: "Compte : {account}",
     useBrain: "Faire réfléchir {bot} avec {provider}", finish: "Terminer", big: "Agrandir l'écran", check: "Vérifier",
-    stopped: "Toujours pas connecté. Termine sur la page de connexion, puis vérifie.", screen: "Écran de l'ordinateur de {bot}",
+    stopped: "La connexion est toujours en attente. Si la page a expiré, tu peux la rouvrir.", screen: "Écran de l'ordinateur de {bot}",
+    target: "Bureau de {bot}", currentUntilDone: "{bot} garde son modèle actuel jusqu’à la confirmation.", reopen: "Rouvrir la connexion", smallScreen: "Réduire l’écran",
   },
   en: {
     orTitle: "My OpenRouter account",
@@ -65,7 +66,8 @@ const TEXT = {
     instr2: "You type your password on {provider}'s own page, in your bot's browser: Sklubot never sees it.",
     waiting: "Waiting for the sign-in…", done: "Done: {bot} is signed in to {provider}.", account: "Account: {account}",
     useBrain: "Make {bot} think with {provider}", finish: "Finish", big: "Enlarge the screen", check: "Check",
-    stopped: "Still not signed in. Finish on the sign-in page, then check.", screen: "Screen of {bot}'s computer",
+    stopped: "Still waiting for sign-in. If the page expired, you can reopen it.", screen: "Screen of {bot}'s computer",
+    target: "{bot}’s desktop", currentUntilDone: "{bot} keeps its current model until you confirm.", reopen: "Reopen sign-in", smallScreen: "Reduce screen size",
   },
 } as const;
 type K = keyof typeof TEXT.fr;
@@ -232,14 +234,22 @@ const BRAND: Record<Engine, string> = { codex: "ChatGPT", "claude-code": "Claude
 const POLL_MS = 5000;
 const WAIT_MAX_MS = 5 * 60_000;
 
+export async function applySubscriptionModel(botId: string, engine: Engine, model?: string) {
+  const saved = await api<{ model: string }>("POST", "/connect-subscription/use", { botId, engine, model });
+  const state = useStore.getState();
+  if (state.bots[botId]) state.upsertBot({ ...state.bots[botId], model: saved.model });
+}
+
 /** The sign-in flow: pick the bot (if several), open the provider's page on its screen, show it live, poll, then switch its brain. */
-export function ConnectFlow({ engine, info, onClose }: { engine: Engine; info: ConnectInfo; onClose: () => void }) {
+export function ConnectFlow({ engine, info, model, onClose }: { engine: Engine; info: ConnectInfo; model?: string; onClose: () => void }) {
   const a = useA();
   const provider = BRAND[engine];
   const shared = engine === "codex" && !!info.personalChatGPT;
-  const openViewer = useStore((s) => s.openViewer);
+  const [expanded, setExpanded] = useState(false);
   const selectedId = useStore.getState().selectedId;
   const [botId, setBotId] = useState(info.bots.find((b) => b.id === selectedId)?.id ?? info.mainBotId ?? info.bots[0]?.id ?? "");
+  const [screenId, setScreenId] = useState("");
+  const screenName = useStore((s) => s.bots[screenId]?.name);
   const [stage, setStage] = useState<"pick" | "starting" | "screen" | "done">("pick");
   const [since, setSince] = useState(0);
   const [stopped, setStopped] = useState(false);
@@ -262,15 +272,15 @@ export function ConnectFlow({ engine, info, onClose }: { engine: Engine; info: C
   // While the screen is shown: control is held (renewed every 25 s, as the viewer does) and the status polled.
   useEffect(() => {
     if (stage !== "screen") return;
-    const hold = () => void api("POST", `/bots/${enc(botId)}/desktop/control`, { on: true }).catch(() => undefined);
+    const hold = () => void api("POST", `/bots/${enc(screenId)}/desktop/control`, { on: true }).catch(() => undefined);
     hold();
     const h = window.setInterval(hold, 25_000);
     const p = window.setInterval(() => {
       if (Date.now() - since > WAIT_MAX_MS) { setStopped(true); return; }
       void check();
     }, POLL_MS);
-    return () => { window.clearInterval(h); window.clearInterval(p); void api("POST", `/bots/${enc(botId)}/desktop/control`, { on: false }).catch(() => undefined); };
-  }, [stage, botId, since]); // eslint-disable-line react-hooks/exhaustive-deps
+    return () => { window.clearInterval(h); window.clearInterval(p); void api("POST", `/bots/${enc(screenId)}/desktop/control`, { on: false }).catch(() => undefined); };
+  }, [stage, botId, screenId, since]); // eslint-disable-line react-hooks/exhaustive-deps
   const start = async () => {
     setStage("starting"); setError(null); setStopped(false);
     try {
@@ -279,24 +289,26 @@ export function ConnectFlow({ engine, info, onClose }: { engine: Engine; info: C
       if (status.signedIn) { setAccount(status.account); setStage("done"); return; }
       const flow = await api<{botId: string}>("POST", "/connect-subscription/start", { engine, botId, personal: shared });
       if (!alive.current) return;
-      setBotId(flow.botId);
+      setScreenId(flow.botId);
       setSince(Date.now());
       setStage("screen");
     } catch (e) { if (alive.current) { setError(errText(e)); setStage("pick"); } }
   };
   const finish = async () => {
     if (stage === "done" && useBrain) {
-      try { await api("POST", "/connect-subscription/use", { engine, botId }); } catch (e) { setError(errText(e)); return; }
+      try { await applySubscriptionModel(botId, engine, model); } catch (e) { setError(errText(e)); return; }
     }
     onClose();
   };
   return (
-    <Modal title={a("flowTitle", { provider })} onClose={onClose} size="lg" className="ai-flow">
+    <Modal title={a("flowTitle", { provider })} onClose={onClose} size="lg" className={expanded && stage === "screen" ? "ai-flow ai-flow-expanded" : "ai-flow"}>
       <div className="modal-body ai-flow-body">
         {stage === "pick" || stage === "starting" ? (
           <>
+            {info.bots.length === 1 && <strong>{a("target", { bot: bot?.name ?? "" })}</strong>}
             <p>{a("instr")}</p>
             <p className="muted small">{a("instr2", { provider })}</p>
+            {model && bot && <p className="muted small">{a("currentUntilDone", { bot: bot.name })}</p>}
             {info.bots.length > 1 && (
               <label className="field">
                 <span className="field-label">{a("whichBot")}</span>
@@ -310,10 +322,11 @@ export function ConnectFlow({ engine, info, onClose }: { engine: Engine; info: C
         ) : stage === "screen" ? (
           <>
             <div className="ai-flow-hint" role="status"><Icon name="info" size={16} /><span><b>{a("instr")}</b> <span className="muted">{stopped ? a("stopped") : a("waiting")}</span></span></div>
-            <div className="ai-flow-screen"><LiveScreen botId={botId} control label={a("screen", { bot: bot?.name ?? "" })} /></div>
+            <div className="ai-flow-screen"><LiveScreen botId={screenId} control label={a("screen", { bot: screenName ?? bot?.name ?? "" })} /></div>
             <div className="ai-actions">
               <button type="button" className="btn btn-small" onClick={() => void check()}><Icon name="refresh" size={14} /> {a("check")}</button>
-              <button type="button" className="btn btn-small btn-ghost" onClick={() => { onClose(); openViewer(botId, { control: true }); }}><Icon name="fullscreen" size={14} /> {a("big")}</button>
+              {stopped && <button type="button" className="btn btn-small" onClick={() => void start()}>{a("reopen")}</button>}
+              <button type="button" className="btn btn-small btn-ghost" aria-pressed={expanded} onClick={() => setExpanded(!expanded)}><Icon name="fullscreen" size={14} /> {a(expanded ? "smallScreen" : "big")}</button>
             </div>
           </>
         ) : (

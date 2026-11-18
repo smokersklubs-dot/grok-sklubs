@@ -3,6 +3,7 @@ import { useT } from "./i18n";
 import { errText } from "./api";
 import { applyTheme, useStore, type Toast } from "./store";
 import { AppSettings } from "./components/AppSettings";
+import { ConnectFlow } from "./components/AiAccounts";
 import { BotSettings } from "./components/BotSettings";
 import { ChatView } from "./components/ChatView";
 import { ComputerViewer } from "./components/ComputerViewer";
@@ -40,6 +41,7 @@ function entryFromUrl(): Entry {
   const p = new URLSearchParams(location.search);
   const auth = p.get("auth");
   if (auth === "login" || auth === "signup") return auth;
+  if (p.get("connect") === "claude" && p.get("bot")) return "login";
   if (p.get("invite") || p.get("plan_invite")) return "signup";
   // ?second=1: back from Google, a sign-in link or a reset with two-factor on (the code is asked on the sign-in page).
   if (p.get("link") || p.get("plan") || p.get("second")) return p.get("plan") ? "signup" : "login";
@@ -184,6 +186,11 @@ function MainApp() {
   // Mandatory e-mail verification (server publicsignup.ts): an unconfirmed account sees only the confirmation page.
   const unverified = useStore((s) => !!s.user?.emailUnverified);
   const [entry, setEntry] = useState<Entry>(entryFromUrl);
+  const [connectBot, setConnectBot] = useState(() => {
+    const params = new URLSearchParams(location.search);
+    return params.get("connect") === "claude" ? params.get("bot") : null;
+  });
+  const target = useStore((s) => connectBot ? s.bots[connectBot] : undefined);
   useEffect(() => {
     const onPop = () => setEntry(entryFromUrl());
     window.addEventListener("popstate", onPop);
@@ -226,5 +233,7 @@ function MainApp() {
   }
   if (boot === "signedOut") return landing ? <SignIn key={entry} initialMode={entry === "signup" ? "signup" : "login"} onBack={goHome} /> : <SignIn />;
   if (unverified) return <VerifyEmailGate />;
-  return <Shell />;
+  return <><Shell />{target?.kind === "agent" && !target.access &&
+    <ConnectFlow engine="claude-code" info={{ allowed: true, why: null, whyText: null, bots: [target], mainBotId: target.id }} onClose={() => setConnectBot(null)} />}
+  </>;
 }

@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
-import { api, enc, errText } from "../api";
+import { api, ApiError, enc, errText } from "../api";
 import { useT } from "../i18n";
 import { ENGINE_BRAND, engineOfRef, prettyModel } from "../lib/engines";
 import { useStore } from "../store";
 import type { Bot, ModelOption } from "../types";
 import { ErrorNote } from "./ui";
-import { ConnectFlow } from "./AiAccounts";
+import { applySubscriptionModel, ConnectFlow } from "./AiAccounts";
 
 function modelName(m: ModelOption) {
   const engine = engineOfRef(m.ref);
@@ -17,7 +17,8 @@ function ModelRow({ bot, models, main, personal }: { bot: Bot; models: ModelOpti
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [connection, setConnection] = useState<"unchecked" | "connected" | "shared" | "missing">("unchecked");
-  const [connecting, setConnecting] = useState(false);
+  const [connecting, setConnecting] = useState("");
+  const requestedEngine = engineOfRef(connecting);
   const engine = engineOfRef(bot.model);
   async function checkConnection() {
     if (!engine) return;
@@ -31,9 +32,17 @@ function ModelRow({ bot, models, main, personal }: { bot: Bot; models: ModelOpti
   async function save(model: string) {
     setBusy(true); setError("");
     try {
+      const next = engineOfRef(model);
+      if (next) {
+        await applySubscriptionModel(bot.id, next, model);
+        return;
+      }
       const result = await api<{ bot: Bot }>("PATCH", `/bots/${enc(bot.id)}`, { model });
       useStore.getState().upsertBot(result.bot);
-    } catch (err) { setError(errText(err)); }
+    } catch (err) {
+      if (err instanceof ApiError && err.code === "sign_in_required") setConnecting(model);
+      else setError(errText(err));
+    }
     finally { setBusy(false); }
   }
   const choices = models.filter((m) => !m.ref.startsWith("demo:") || m.ref === bot.model);
@@ -46,11 +55,11 @@ function ModelRow({ bot, models, main, personal }: { bot: Bot; models: ModelOpti
     </select>
     {engine && <div className="team-model-connection">
       {connection !== "unchecked" && <span role="status">{t(connection === "shared" ? "teamModels.shared" : connection === "connected" ? "teamModels.connected" : "teamModels.missing")}</span>}
-      {connection === "missing" ? <button type="button" className="link" disabled={busy} onClick={() => setConnecting(true)}>{t("teamModels.connect", { brand: ENGINE_BRAND[engine] })}</button> :
+      {connection === "missing" ? <button type="button" className="link" disabled={busy} onClick={() => setConnecting(bot.model)}>{t("teamModels.connect", { brand: ENGINE_BRAND[engine] })}</button> :
         <button type="button" className="link" disabled={busy} onClick={() => void checkConnection()}>{t("teamModels.check")}</button>}
     </div>}
-    {connecting && engine && <ConnectFlow engine={engine} info={{ allowed: true, why: null, whyText: null, personalChatGPT: personal, bots: [bot], mainBotId: bot.id }}
-      onClose={() => { setConnecting(false); void checkConnection(); }} />}
+    {requestedEngine && <ConnectFlow engine={requestedEngine} model={connecting} info={{ allowed: true, why: null, whyText: null, personalChatGPT: personal, bots: [bot], mainBotId: bot.id }}
+      onClose={() => { setConnecting(""); if (connecting === bot.model) void checkConnection(); }} />}
     {main?.model && main.id !== bot.id && main.model !== bot.model && choices.some((m) => m.ref === main.model) &&
       <button type="button" disabled={busy} className="link" onClick={() => void save(main.model)}>{t("teamModels.copy", { name: main.name })}</button>}
     {error && <ErrorNote>{error}</ErrorNote>}
