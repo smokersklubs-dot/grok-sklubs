@@ -201,9 +201,16 @@ test("private native artifact, OpenDesign theme, source, revision and owner-only
   const owner = await A.api("GET", `/pages/${page.token}/versions`);
   assert.equal(owner.json.name, name);
   const first = owner.json.versions[0];
+  const request = { text: "Ajoute une remise.", artifact: page.token, artifactVersion: first.id };
+  assert.equal((await B.api("POST", `/bots/${ids.bBot}/messages`, request)).status, 404);
+  assert.equal((await A.api("POST", `/bots/${ids.aBot}/messages`, { ...request, artifactVersion: -1 })).status, 409);
+  const revisionRequest = await A.api("POST", `/bots/${ids.aBot}/messages`, request);
+  assert.equal(revisionRequest.status, 200);
+  assert.equal(revisionRequest.json.row.body.text, request.text);
   const snapshot = await A.site(first.preview, false);
   assert.match(snapshot.text, /href="atelier-zero.css"/);
-  assert.match(snapshot.headers.get("content-security-policy")!, /^sandbox allow-scripts;/);
+  assert.match(snapshot.headers.get("content-security-policy")!, /^sandbox allow-scripts allow-forms;/);
+  assert.match(snapshot.headers.get("content-security-policy")!, /form-action 'none'/);
   assert.doesNotMatch(snapshot.headers.get("content-security-policy")!, /allow-popups|allow-same-origin|unsafe-eval|cdn\.jsdelivr|img-src .*? https:;/);
   assert.match((await A.site(first.preview + "atelier-zero.css", false)).text, /--font-display/);
   assert.equal((await source.run({ name }, ctx("b"))).isError, true);

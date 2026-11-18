@@ -34,7 +34,6 @@ export function ArtifactPanel({
   readOnly?: boolean;
 }) {
   const t = useT();
-  const fr = useStore((s) => s.locale === "fr");
   const revision = useStore((s) => s.pageChanges[token] ?? 0);
   const live = useStore((s) => (botId ? s.live[botId] : undefined));
   const [project, setProject] = useState<Project | null>(null);
@@ -72,21 +71,9 @@ export function ArtifactPanel({
     setBusy(true);
     setError("");
     try {
-      const text =
-        project.name.startsWith("artifact-video-") && current
-          ? (fr ? "Modifie le montage" : "Edit video project") +
-            " " +
-            project.name +
-            " (version " +
-            current.id +
-            "). " +
-            request.trim() +
-            "\n" +
-            (fr
-              ? "Lis studio.json et applique la modification avec video_studio_update. Pour un rendu avancé, utilise les sources de production.md."
-              : "Read studio.json and apply the change with video_studio_update. For advanced rendering use the sources in production.md.")
-          : t("artifact.revisePrompt", { name: project.name, change: request.trim() });
-      const { row } = await api<{ row: Row }>("POST", `/bots/${botId}/messages`, { text, thread });
+      const { row } = await api<{ row: Row }>("POST", `/bots/${botId}/messages`, {
+        text: request.trim(), thread, artifact: token, artifactVersion: current?.id,
+      });
       useStore.getState().addRows(botId, [row]);
       setRequest("");
     } catch (e) {
@@ -149,7 +136,7 @@ export function ArtifactPanel({
             <iframe
               className="artifact-canvas"
               src={version?.preview ?? `/p/${token}`}
-              sandbox="allow-scripts"
+              sandbox="allow-scripts allow-forms"
               referrerPolicy="no-referrer"
               title={project.title}
             />

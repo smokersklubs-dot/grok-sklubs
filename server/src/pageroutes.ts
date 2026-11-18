@@ -29,11 +29,23 @@ const NOT_SHARED = "This page is no longer shared.";
 const owns = (c: Context, page: PageRow) => userForToken(getCookie(c, SESSION_COOKIE))?.id === page.userId;
 const artifactName = (page: PageRow) => page.path.split("/").pop()!.replace(/\.html$/, "");
 const isArtifact = (page: PageRow) => page.path.startsWith("artifacts/");
+/** Context for a revision requested from the open panel. Only the user's words appear in chat. */
+export function revisionTarget(userId: string, botId: string, token: string) {
+  const page = pages.byToken(token, config.publicUrl);
+  if (!page || page.userId !== userId || page.botId !== botId || !isArtifact(page)) return null;
+  const version = pageVersions.list(botId, page.path)[0];
+  if (!version) return null;
+  const name = artifactName(page);
+  const instruction = /^artifact-video-[a-f0-9-]{36}$/.test(name)
+    ? `Edit video project ${name} from version ${version.id}. Read studio.json and use video_studio_update. For an advanced render consult production.md.`
+    : `Revise the open artifact ${name}. Read its saved source and update the same files and address.`;
+  return { version: version.id, instruction };
+}
 function documentHeaders(page: PageRow, directory: string) {
   if (!isArtifact(page)) return pageHeaders();
   const assets = new URL(directory, config.publicUrl).href;
   return pageHeaders({ "content-security-policy": [
-    "sandbox allow-scripts", "default-src 'none'", `script-src 'unsafe-inline' ${assets}`,
+    "sandbox allow-scripts allow-forms", "default-src 'none'", `script-src 'unsafe-inline' ${assets}`,
     `style-src 'unsafe-inline' ${assets}`, `img-src data: blob: ${assets}`,
     `font-src data: ${assets}`, `connect-src ${assets}`, `media-src data: blob: ${assets}`,
     "form-action 'none'", "base-uri 'none'", "frame-ancestors 'self'",

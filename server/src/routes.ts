@@ -120,7 +120,7 @@ import { registerAnnouncementRoutes } from "./announceroutes.js";
 import { registerSkillsLibraryRoutes } from "./skillsroutes.js";
 import { registerOpenRouterRoutes } from "./openrouterroutes.js";
 import { registerSubscriptionConnectRoutes } from "./subscriptionconnect.js";
-import { registerPageApi, registerPageSite } from "./pageroutes.js";
+import { registerPageApi, registerPageSite, revisionTarget } from "./pageroutes.js";
 import { canWatch as sentinelWatcher } from "./sentinel/view.js";
 import { noteSignal } from "./sentinel/signals.js";
 import { accountFlags, accountOpened, assertEmailSignupPossible, PublicSignupError, emailGateAllows, emailGateBlocks, emailGateBody, publicSignupGate, publicSignupInfo, registerPublicSignupPrivate, registerPublicSignupPublic, setAccountRemover } from "./publicsignup.js";
@@ -852,6 +852,13 @@ api.post("/bots/:id/messages", async (c) => {
   // gets a card to put it in the vault, or forget it (pastedsecrets.ts).
   const screened = screenSecrets(String(b.text ?? "").trim(), c.get("user").locale);
   const text = screened.text;
+  let agentText = text;
+  if (b.artifact !== undefined) {
+    const target = typeof b.artifact === "string" && revisionTarget(c.get("user").id, bot.id, b.artifact);
+    if (!target) return c.json({ error: c.get("user").locale === "fr" ? "Outil introuvable." : "Tool not found." }, 404);
+    if (b.artifactVersion !== target.version) return c.json({ error: c.get("user").locale === "fr" ? "Cet outil vient de changer. Rouvre sa dernière version." : "This tool has changed. Reopen its latest version." }, 409);
+    agentText = `${target.instruction}\n\n${text}`;
+  }
   // Only files this bot already holds under uploads/ can be attached; anything else is ignored.
   const attachments = (Array.isArray(b.attachments) ? b.attachments : []).slice(0, MAX_ATTACHMENTS)
     .map((p: unknown) => (typeof p === "string" && p.startsWith("uploads/") ? attachmentAt(bot.id, p) : null))
@@ -873,7 +880,7 @@ api.post("/bots/:id/messages", async (c) => {
     goalId = createGoal(bot, { objective, thread, origin: "user", maxRounds: Number(b.goalMaxRounds) || undefined }).id;
   }
   if (bot.kind === "room") dispatchToRoom(bot, c.get("user"), text, null, 0, false, thread);
-  else { relayUserSpoke(bot.id); submitUserMessage(bot, text, voice, attachments, undefined, thread, skillCommand(bot, text), goalId); }
+  else { relayUserSpoke(bot.id); submitUserMessage(bot, agentText, voice, attachments, undefined, thread, skillCommand(bot, text), goalId); }
   return c.json({ row });
 });
 
