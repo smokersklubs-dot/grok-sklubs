@@ -19,6 +19,7 @@ import { subscriptionLimits } from "./015-subscription-limits.js";
 import { announcements } from "./016-announcements.js";
 import { pageVersions } from "./017-page-versions.js";
 import { twoFactor } from "./018-two-factor.js";
+import { freePlanOwnKeys } from "./019-free-plan-own-keys.js";
 
 /**
  * Versioned migrations (SK-P0-05). The database's version is SQLite's own `PRAGMA user_version` (0 on a database made
@@ -50,6 +51,7 @@ export const MIGRATIONS: Migration[] = [
   { version: 16, name: "announcements", up: announcements },
   { version: 17, name: "page-versions", up: pageVersions },
   { version: 18, name: "two-factor", up: twoFactor },
+  { version: 19, name: "free-plan-own-keys", up: freePlanOwnKeys },
 ];
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;
 

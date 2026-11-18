@@ -27,6 +27,9 @@ for (const k of ["AUX_MODEL", "FALLBACK_MODEL", "FALLBACK_MODELS", "SETUP_CODE",
 const { registerProvider, resolveModel, modelAvailable } = await import("../src/llm/index.js");
 const { api, site } = await import("../src/routes.js");
 const { q } = await import("../src/db.js");
+// These tests meter a free plan that uses the operator's keys with a 2 € budget (migration 4's default); migration 19
+// turns the seeded "Gratuit" plan into "own key only" (0 €), so the budget is put back for them.
+q.run("UPDATE plans SET ai_budget_eur = 2 WHERE id = 'free'");
 const { config } = await import("../src/config.js");
 const hosted = await import("../src/hosted.js");
 const { ownerPrices } = await import("../src/usage.js");
