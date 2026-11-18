@@ -829,7 +829,7 @@ async function claudeTurn(turn: Turn, t: Transcript, prompt: string, token: stri
  * "Error: thread/resume: thread/resume failed: no rollout found for thread id <id> (code -32600)". A "rollout" is Codex's
  * file of a saved conversation (~/.codex/sessions). The same words are accepted in a turn.failed / error event.
  */
-export const CODEX_LOST_SESSION = /no rollout found for thread id/i;
+export const CODEX_LOST_SESSION = /no rollout found for thread id|cannot change this thread's model provider from .+ on resume/i;
 
 function personalCodexArgs(bot: BotRecord): string[] {
   if (!personalActive(bot.userId)) return [];
@@ -905,7 +905,10 @@ async function codexTurn(turn: Turn, t: Transcript, prompt: string, system: stri
   if (t.switched) return;
   if (resume && !retried && !turn.signal.aborted && !produced && !turn.spoke && (missingSession || CODEX_LOST_SESSION.test(res.stderr))) {
     dropSession(bot.id, turn.generation, "codex");
-    return codexTurn(turn, t, prompt, system, token, true);
+    const recent = rows.recentMessages(bot.id, turn.generation, 10, turn.thread).flatMap(({ body }) =>
+      body.kind === "message" && body.text && !body.streaming ? [{ role: body.role, text: clip(body.text, 800) }] : []);
+    const context = recent.length ? `Recent messages for context only. Answer the current request below.\n${JSON.stringify(recent)}\n\n` : "";
+    return codexTurn(turn, t, context + prompt, system, token, true);
   }
   if (turn.signal.aborted) return;
   if (!sawEnd && !failure) { limit ??= codexLimitFrom(res.stderr); failure = NOT_SIGNED_IN.test(res.stderr) ? signInHint(turn, "codex") : clip(res.stderr.trim() || `Codex stopped (code ${res.code}).`, 300); }

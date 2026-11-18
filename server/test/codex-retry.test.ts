@@ -73,6 +73,7 @@ test("setup", async () => {
 
 test("the error Codex really prints for a lost conversation is recognised", () => {
   assert.match(LOST, CODEX_LOST_SESSION);
+  assert.match("Cannot change this thread's model provider from `openai` to `sklubot_personal` on resume. (code -32600)", CODEX_LOST_SESSION);
   assert.doesNotMatch("Error: stream disconnected before completion", CODEX_LOST_SESSION);
 });
 
