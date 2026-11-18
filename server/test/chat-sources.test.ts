@@ -65,6 +65,32 @@ test("account search only calls the signed-in owner's official GitHub search too
   assert.equal(remote.mock.callCount(), 1);
 });
 
+test("public source reads honor path, ref, continuation and text-only results", async t => {
+  const ctx = { signal: new AbortController().signal } as ToolContext;
+  const file = "docs/édition #1.md";
+  const ref = "topic/docs";
+  const call = (path: string, start = 1) => githubRead.run({ repository: "owner/project", path, ref, start }, ctx);
+  const html_url = "https://github.com/owner/project";
+  const fetcher = t.mock.method(globalThis, "fetch", async (url: URL, options: RequestInit) => {
+    assert.equal(url.hostname, "api.github.com");
+    assert.equal(url.searchParams.get("ref"), ref);
+    assert.equal(new Headers(options.headers).has("Authorization"), false);
+    const path = decodeURIComponent(url.pathname);
+    if (path.endsWith("/contents")) return Response.json({ type: "dir", html_url, entries: [{ name: file, type: "file" }] });
+    if (path.endsWith("/contents/bin")) return Response.json({ type: "file", encoding: "base64", content: "AAAA", size: 3 });
+    assert.equal(path, "/repos/owner/project/contents/" + file);
+    return Response.json({ type: "file", html_url, sha: "abc", encoding: "base64", size: 7, content: Buffer.from("one\ntwo").toString("base64") });
+  });
+  assert.equal((await call("../other")).isError, true);
+  assert.equal((await call(file, 0)).isError, true);
+  assert.equal(fetcher.mock.callCount(), 0);
+  assert.match(String((await call("")).content), /file  docs\/édition #1.md/);
+  const result = await call(file, 2);
+  assert.match(String(result.content), /start line 2\ntwo$/);
+  assert.doesNotMatch(String(result.content), /one\n/);
+  assert.equal((await call("bin")).isError, true);
+});
+
 test("VoiceStudio turns a WAV response into a private file without filling the chat with base64", async () => {
   const { saveVoiceResult } = await import("../src/voiceconnector.js");
   const { resolveInWorkspace, attachmentAt } = await import("../src/computer.js");
@@ -79,6 +105,11 @@ test("VoiceStudio turns a WAV response into a private file without filling the c
   assert.equal(file.mime, "audio/wav");
   assert.deepEqual(readFileSync(resolveInWorkspace("bot_voice_fixture", file.path)), bytes);
   assert.equal(attachmentAt("bot_other_fixture", file.path), null);
+  const { storyFor } = await import("../src/videostudio.js");
+  const story = { title: "Voice", scenes: [{ text: "Bonjour", seconds: 1, style: "type", media: "" }], aspect: "wide", audio: file.path, offset: 0, muted: false };
+  assert.equal(storyFor("bot_voice_fixture", story)?.audio, file.path);
+  assert.equal(storyFor("bot_other_fixture", story), null);
+  assert.equal(storyFor("bot_voice_fixture", { ...story, audio: "audio/../" + file.path }), null);
   assert.equal(saveVoiceResult("bot_voice_fixture", '{"wav_base64":"aGVsbG8="}')?.isError, true);
   assert.equal(saveVoiceResult("bot_voice_fixture", '{"audio_url":"https://source.example/audio/test.wav"}'), null);
 });

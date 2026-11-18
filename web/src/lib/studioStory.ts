@@ -36,7 +36,7 @@ export function validStory(s: Story): boolean {
         (c.media === "" || validUpload(c.media)),
     ) &&
     duration(s) <= 120 &&
-    (s.audio === "" || validUpload(s.audio)) &&
+    (s.audio === "" || validUpload(s.audio) || (typeof s.audio === "string" && /^audio\/[^/\\]{1,180}\.(wav|mp3|m4a|aac|ogg|flac|opus)$/i.test(s.audio))) &&
     Number.isFinite(s.offset) &&
     s.offset >= 0 &&
     s.offset <= 120

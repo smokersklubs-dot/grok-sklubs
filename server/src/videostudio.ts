@@ -32,10 +32,10 @@ const escape = (s: string) =>
 export function storyFor(botId: string, input: any): StudioStory | null {
   if (!input || !Array.isArray(input.scenes) || !input.scenes.length || input.scenes.length > 24) return null;
   const title = clean(input.title, 110);
-  const asset = (value: unknown, ext: RegExp) =>
+  const asset = (value: unknown, ext: RegExp, location: RegExp) =>
     typeof value === "string" &&
     value.length < 200 &&
-    /^uploads\/[^/\\]+$/.test(value) &&
+    location.test(value) &&
     ext.test(value) &&
     !!attachmentAt(botId, value);
   const scenes: Scene[] = [];
@@ -48,7 +48,7 @@ export function storyFor(botId: string, input: any): StudioStory | null {
       s.seconds < 0.5 ||
       s.seconds > 60 ||
       !styles.has(s.style) ||
-      (s.media !== "" && !asset(s.media, visual))
+      (s.media !== "" && !asset(s.media, visual, /^uploads\/[^/\\]+$/))
     )
       return null;
     scenes.push({ text: s.text.trim(), seconds: s.seconds, style: s.style, media: s.media });
@@ -57,7 +57,7 @@ export function storyFor(botId: string, input: any): StudioStory | null {
     !title ||
     !["wide", "vertical", "square"].includes(input.aspect) ||
     scenes.reduce((v, s) => v + s.seconds, 0) > 120 ||
-    (input.audio !== "" && !asset(input.audio, sound)) ||
+    (input.audio !== "" && !asset(input.audio, sound, /^(?:uploads|audio)\/[^/\\]+$/)) ||
     !Number.isFinite(input.offset) ||
     input.offset < 0 ||
     input.offset > 120
@@ -166,7 +166,7 @@ export const videoStudioTool: BuiltinTool = {
       properties: {
         title: { type: "string" },
         aspect: { type: "string", enum: ["wide", "vertical", "square"] },
-        audio: { type: "string", description: "Optional existing uploads/ soundtrack path." },
+        audio: { type: "string", description: "Soundtrack from this bot's uploads/ or audio/ library, including a WAV returned by VoiceStudio generate_speech." },
         scenes: {
           type: "array",
           items: {

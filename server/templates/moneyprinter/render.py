@@ -29,13 +29,17 @@ def asset_files(bot, paths, temp, stack):
         raise ValueError("invalid library")
     root_fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
     stack.callback(os.close, root_fd)
-    uploads = os.open("uploads", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=root_fd)
-    stack.callback(os.close, uploads)
     result = {}
+    folders = {}
     for index, name in enumerate(sorted(paths)):
-        if not re.fullmatch(r"uploads/[^/\\]+", name):
+        if not (re.fullmatch(r"uploads/[^/\\]+", name) or
+                re.fullmatch(r"audio/[^/\\]+\.(?i:wav|mp3|m4a|aac|ogg|flac|opus)", name)):
             raise ValueError("invalid asset")
-        fd = os.open(name.split("/")[1], os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=uploads)
+        folder, filename = name.split("/")
+        if folder not in folders:
+            folders[folder] = os.open(folder, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=root_fd)
+            stack.callback(os.close, folders[folder])
+        fd = os.open(filename, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=folders[folder])
         stack.callback(os.close, fd)
         if not stat.S_ISREG(os.fstat(fd).st_mode):
             raise ValueError("invalid asset")

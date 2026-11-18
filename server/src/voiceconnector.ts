@@ -17,5 +17,5 @@ export function saveVoiceResult(botId: string, input: string) {
     return { text: "VoiceStudio returned an invalid WAV recording.", isError: true };
   }
   const saved = storeBytes(botId, "audio", "voice-" + randomUUID() + ".wav", bytes);
-  return { text: JSON.stringify({ path: saved.path, mime: saved.mime, bytes: saved.size, next: "Use file_send with this path to deliver the audio in chat." }), isError: false };
+  return { text: JSON.stringify({ path: saved.path, mime: saved.mime, bytes: saved.size, next: "Use file_send to deliver the audio in chat. For a requested video, use this path as the studio project's audio track." }), isError: false };
 }

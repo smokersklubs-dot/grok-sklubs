@@ -1,5 +1,6 @@
 import type { BuiltinTool } from "./agent/tools.js";
 import { repositoryName } from "./clientshared/chatmentions.js";
+import { readPublicPath } from "./githubcontents.js";
 
 export interface PublicRepository { name: string; description: string; license: string | null }
 class GithubResponseError extends Error {
@@ -38,11 +39,14 @@ export const githubSearch: BuiltinTool = {
 };
 
 export const githubRead: BuiltinTool = {
-  spec: { name: "github_read_repository", description: "Read the README of a specified public GitHub repository by URL or owner/name. For private repositories, use the signed-in GitHub connector.", inputSchema: { type: "object", properties: { repository: { type: "string" } }, required: ["repository"] } },
-  label: "Read GitHub README", group: "reach", activity: "reading", outside: true, parallel: true,
+  spec: { name: "github_read_repository", description: "Browse a public GitHub repository. Omit path for its default README. Use an empty path to list the root, a directory to list its entries, or a file path to read source, tests or documentation. Set ref to a commit for reproducible results. For private repositories use the signed-in connector.", inputSchema: { type: "object", properties: {
+    repository: { type: "string" }, path: { type: "string" }, ref: { type: "string", description: "Branch, tag or commit; with no path lists its root." }, start: { type: "integer", minimum: 1, description: "1-based file line or directory entry for path reads." },
+  }, required: ["repository"] } },
+  label: "Read GitHub repository", group: "reach", activity: "reading", outside: true, parallel: true,
   run: async (args, ctx) => {
     const name = repositoryName(String(args.repository ?? ""));
     if (!name) return { content: "Supply a GitHub repository URL or owner/name.", isError: true };
+    if (args.path !== undefined || args.ref !== undefined) return readPublicPath(name, args, ctx.signal);
     const res = await githubRequest(new URL(`https://api.github.com/repos/${name}/readme`), ctx.signal, "application/vnd.github.raw+json");
     if (!res.ok || !res.body) return { content: `README unavailable (GitHub HTTP ${res.status}). For private repositories use the connected account.`, isError: true };
     const reader = res.body.getReader();

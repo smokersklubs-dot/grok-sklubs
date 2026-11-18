@@ -5,6 +5,8 @@ import { useStore } from "../store";
 import type { Attachment } from "../types";
 import { StudioMp4 } from "./StudioMp4";
 import { StudioPlayback } from "./StudioPlayback";
+import { StudioLibraryAudio } from "./StudioLibraryAudio";
+import { StudioSubtitles } from "./StudioSubtitles";
 import { ErrorNote, Loading } from "./ui";
 import "./VideoStudio.css";
 
@@ -110,6 +112,7 @@ export function StudioEditor({
   return (
     <section className="studio-editor">
       <StudioPlayback story={story} bot={bot} time={time} onTime={setTime} fr={fr} />
+      <StudioSubtitles story={story} fr={fr} />
       {mp4 && <StudioMp4 key={name + "/" + version} bot={bot} name={name} version={version} dirty={dirty || busy} fr={fr} thread={thread} />}
       <div className="studio-tracks" aria-label={fr ? "Pistes de montage" : "Timeline tracks"}>
         {(["Image", fr ? "Titres" : "Titles", "Audio"] as const).map((label, i) => (
@@ -234,6 +237,7 @@ export function StudioEditor({
             <label>
               {fr ? "Bande-son" : "Soundtrack"}
               <input
+                key={model.audio}
                 type="file"
                 accept=".mp3,.m4a,.ogg,.wav,.aac,.flac,.opus"
                 onChange={(e) => {
@@ -243,6 +247,7 @@ export function StudioEditor({
               />
             </label>
           </div>
+          <StudioLibraryAudio key={bot} bot={bot} value={model.audio} fr={fr} onPick={audio => update({ ...model, audio })} />
           {model.audio && (
             <div className="studio-pair">
               <label>

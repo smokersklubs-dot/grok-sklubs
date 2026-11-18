@@ -4,6 +4,7 @@ import { MAX_UPLOAD_BYTES, useStore } from "../store";
 import { scenesFrom, validStory, type Story } from "../lib/studioStory";
 import type { Attachment } from "../types";
 import { ErrorNote, Modal } from "./ui";
+import { StudioLibraryAudio } from "./StudioLibraryAudio";
 import "./VideoStudio.css";
 
 export function VideoStudio({ onClose }: { onClose: () => void }) {
@@ -23,6 +24,8 @@ export function VideoStudio({ onClose }: { onClose: () => void }) {
   const key = useRef(crypto.randomUUID()),
     pending = useRef(false),
     uploaded = useRef(new WeakMap<File, { bot: string; path: string }>());
+  const [libraryAudio, setLibraryAudio] = useState("");
+  const songInput = useRef<HTMLInputElement>(null);
   useEffect(() => {
     if (!bot && choices[0]) setBot(choices[0].id);
   }, [choices, bot]);
@@ -49,7 +52,7 @@ export function VideoStudio({ onClose }: { onClose: () => void }) {
         title: title.trim(),
         aspect,
         scenes: scenesFrom(lines, paths, title.trim()),
-        audio: song ? await upload(song) : "",
+        audio: song ? await upload(song) : libraryAudio,
         offset: 0,
         muted: false,
       };
@@ -104,7 +107,7 @@ export function VideoStudio({ onClose }: { onClose: () => void }) {
         <div className="studio-pair">
           <label>
             {fr ? "Bureau du bot" : "Bot workspace"}
-            <select className="input" value={bot} onChange={(e) => setBot(e.target.value)}>
+            <select className="input" value={bot} onChange={(e) => { setBot(e.target.value); setLibraryAudio(""); }}>
               {choices.map((b) => (
                 <option key={b.id} value={b.id}>
                   {b.name}
@@ -151,10 +154,14 @@ export function VideoStudio({ onClose }: { onClose: () => void }) {
             <input
               type="file"
               accept=".mp3,.m4a,.wav,.ogg,.aac,.flac,.opus"
-              onChange={(e) => setSong(e.target.files?.[0] ?? null)}
+              ref={songInput}
+              onChange={(e) => { const file = e.target.files?.[0]; if (file) { setSong(file); setLibraryAudio(""); } }}
             />
           </label>
         </div>
+        <StudioLibraryAudio key={bot} bot={bot} value={libraryAudio} fr={fr} onPick={path => {
+          setLibraryAudio(path); setSong(null); if (songInput.current) songInput.current.value = "";
+        }} />
         <ErrorNote>{error}</ErrorNote>
         <button className="btn btn-primary" disabled={busy || !title.trim() || !bot}>
           {busy ? progress || (fr ? "Préparation…" : "Preparing…") : fr ? "Ouvrir le montage" : "Open timeline"}
