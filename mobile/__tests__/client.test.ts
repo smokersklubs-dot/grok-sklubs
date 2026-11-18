@@ -8,16 +8,21 @@ it("sends large files in server-sized reads and closes the native handle", async
     close: jest.fn(),
   };
   const parts: number[][] = [];
+  let lostAcknowledgement = true;
   const client = new ApiClient({ origin: "https://example.org", token: "test", fetch: async (url, init) => {
     if (url.endsWith("/start")) return fakeFetch({ body: { id: "transfer", partBytes: 2 } })(url, init);
     const offset = Number(new URL(url).searchParams.get("offset"));
     const body = Array.from(init.body as Uint8Array);
     parts.push(body);
+    if (offset === 2 && lostAcknowledgement) {
+      lostAcknowledgement = false;
+      return fakeFetch({ status: 503 })(url, init);
+    }
     const received = offset + body.length;
     return fakeFetch({ body: received === bytes.length ? { attachment: { size: received } } : { received } })(url, init);
   } });
   const result = await client.uploadLargeFile("/bots/b/uploads", "clip.mp4", { size: bytes.length, open: () => handle });
-  expect(parts).toEqual([[1, 2], [3, 4], [5]]);
+  expect(parts).toEqual([[1, 2], [3, 4], [3, 4], [5]]);
   expect(result).toEqual({ attachment: { size: 5 } });
   expect(handle.close).toHaveBeenCalledTimes(1);
 });

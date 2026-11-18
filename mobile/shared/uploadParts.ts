@@ -12,6 +12,7 @@ export async function sendFileParts<T, P>(size: number, session: { id: string; p
     while (offset < size) {
       const end = Math.min(size, offset + partBytes);
       const part = await io.read(offset, end);
+      const retryUntil = Date.now() + 90_000;
       for (let attempt = 0;; attempt++) {
         try {
           const reply = await io.send(id, offset, part);
@@ -20,8 +21,9 @@ export async function sendFileParts<T, P>(size: number, session: { id: string; p
           break;
         } catch (err) {
           const status = (err as { status?: number })?.status;
-          if (attempt >= 3 || !(status === 0 || status === 408 || status === 429 || (status !== undefined && status >= 500 && status !== 507))) throw err;
-          await new Promise<void>(resolve => setTimeout(resolve, 500 * 2 ** attempt));
+          const transient = status === 0 || status === 408 || status === 429 || (status !== undefined && status >= 500 && status !== 507);
+          if (!transient || Date.now() >= retryUntil) throw err;
+          await new Promise<void>(resolve => setTimeout(resolve, Math.min(10_000, 1000 * 2 ** attempt)));
         }
       }
       offset = end;
