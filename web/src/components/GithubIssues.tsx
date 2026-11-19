@@ -23,6 +23,7 @@ type Detail = {
 const labels: Record<string, [string, string]> = {
   prepare: ["Préparation du correctif", "Preparing patch"],
   review: ["Relecture du correctif", "Reviewing patch"],
+  connect: ["Compte requis pour publier", "Connect an account to publish"],
   approval: ["Ta validation est attendue", "Awaiting your approval"],
   commit: ["Création du commit", "Creating commit"],
   publish: ["Publication du brouillon", "Publishing draft"],
@@ -32,16 +33,27 @@ const labels: Record<string, [string, string]> = {
   declined: ["Publication refusée", "Declined"],
   changes: ["Corrections demandées", "Changes requested"],
 };
-export function GithubIssues({ bot, launched, initialUrl = "", close }: { bot: string; launched?: boolean; initialUrl?: string; close?: () => void }) {
+export function GithubIssues({
+  bot,
+  launched,
+  initialUrl = "",
+  close,
+}: {
+  bot: string;
+  launched?: boolean;
+  initialUrl?: string;
+  close?: () => void;
+}) {
   const fr = useStore((s) => s.locale === "fr");
   const base = "/bots/" + encodeURIComponent(bot) + "/github-issues";
-  const origin = useStore(s => s.openThread);
-  const [inThread,setInThread] = useState(false);
+  const origin = useStore((s) => s.openThread);
+  const [inThread, setInThread] = useState(false);
   const [open, setOpen] = useState(!!launched),
     [cfg, setCfg] = useState<Config | null>(null),
     [error, setError] = useState(""),
     [url, setUrl] = useState(initialUrl),
     [account, setAccount] = useState(""),
+    [publishAccount, setPublishAccount] = useState(""),
     [reviewer, setReviewer] = useState(""),
     [busy, setBusy] = useState(false),
     [refresh, tick] = useState(0),
@@ -105,11 +117,16 @@ export function GithubIssues({ bot, launched, initialUrl = "", close }: { bot: s
       setBusy(false);
     }
   }
-  const connector = account || cfg?.accounts[0]?.id || "",
+  const connector = account === "public" ? "" : account || cfg?.accounts[0]?.id || "",
     peer = reviewer || cfg?.reviewers[0]?.id || "";
+  const connect = () => {
+    close?.();
+    useStore.getState().openModal({ kind: "connectors", catalogId: "github-code" });
+  };
   return (
     <details
-      className="github-activity" open={launched ? true : undefined}
+      className="github-activity"
+      open={launched ? true : undefined}
       onToggle={(e) => {
         if (e.target === e.currentTarget) setOpen(e.currentTarget.open);
       }}
@@ -119,10 +136,20 @@ export function GithubIssues({ bot, launched, initialUrl = "", close }: { bot: s
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            void post({ url, reviewer: peer, connector, thread: inThread && origin?.botId === bot ? origin.seq : 0 }, true);
+            void post(
+              { url, reviewer: peer, connector, thread: inThread && origin?.botId === bot ? origin.seq : 0 },
+              true,
+            );
           }}
         >
-          {origin?.botId === bot && <label><span><input type="checkbox" checked={inThread} onChange={e=>setInThread(e.target.checked)}/> {fr ? "Suivre dans le fil ouvert" : "Report to the open thread"}</span></label>}
+          {origin?.botId === bot && (
+            <label>
+              <span>
+                <input type="checkbox" checked={inThread} onChange={(e) => setInThread(e.target.checked)} />{" "}
+                {fr ? "Suivre dans le fil ouvert" : "Report to the open thread"}
+              </span>
+            </label>
+          )}
           <label>
             {fr ? "Lien du ticket" : "Issue URL"}
             <input
@@ -137,7 +164,8 @@ export function GithubIssues({ bot, launched, initialUrl = "", close }: { bot: s
           {cfg.accounts.length > 0 ? (
             <label>
               {fr ? "Compte GitHub" : "GitHub account"}
-              <select className="input" value={connector} onChange={(e) => setAccount(e.target.value)}>
+              <select className="input" value={connector || "public"} onChange={(e) => setAccount(e.target.value)}>
+                <option value="public">{fr ? "Lecture publique" : "Public read access"}</option>
                 {cfg.accounts.map((a) => (
                   <option key={a.id} value={a.id}>
                     {a.name}
@@ -146,13 +174,16 @@ export function GithubIssues({ bot, launched, initialUrl = "", close }: { bot: s
               </select>
             </label>
           ) : (
-            <button
-              className="btn btn-small"
-              type="button"
-              onClick={() => {close?.();useStore.getState().openModal({ kind: "connectors", catalogId: "github-code" });}}
-            >
-              {fr ? "Connecter GitHub Code" : "Connect GitHub Code"}
-            </button>
+            <>
+              <small>
+                {fr
+                  ? "Un ticket public peut être préparé et relu dès maintenant."
+                  : "Public issues can be prepared and reviewed now."}
+              </small>
+              <button className="btn btn-small" type="button" onClick={connect}>
+                {fr ? "Connecter GitHub Code" : "Connect GitHub Code"}
+              </button>
+            </>
           )}
           {cfg.reviewers.length > 0 ? (
             <label>
@@ -170,7 +201,7 @@ export function GithubIssues({ bot, launched, initialUrl = "", close }: { bot: s
               {fr ? "Ajoute un deuxième bot pour la relecture." : "Add a second bot to review changes."}
             </small>
           )}
-          <button className="btn btn-small" disabled={busy || !connector || !peer || !url.trim()}>
+          <button className="btn btn-small" disabled={busy || !peer || !url.trim()}>
             {fr ? "Confier le ticket" : "Assign issue"}
           </button>
         </form>
@@ -218,6 +249,44 @@ export function GithubIssues({ bot, launched, initialUrl = "", close }: { bot: s
                   <pre>{f.after}</pre>
                 </details>
               ))}
+              {j.phase === "connect" &&
+                (cfg.accounts.length ? (
+                  <div>
+                    <label>
+                      {fr ? "Compte de publication" : "Publishing account"}
+                      <select
+                        className="input"
+                        value={publishAccount}
+                        onChange={(e) => setPublishAccount(e.target.value)}
+                      >
+                        <option value="">{fr ? "Choisir un compte" : "Choose an account"}</option>
+                        {cfg.accounts.map((a) => (
+                          <option key={a.id} value={a.id}>
+                            {a.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <button
+                      className="btn btn-small"
+                      disabled={busy || !publishAccount}
+                      onClick={() =>
+                        void post({
+                          job: j.id,
+                          decision: "connect",
+                          revision: detail.data.revision,
+                          connector: publishAccount,
+                        })
+                      }
+                    >
+                      {fr ? "Associer ce compte au correctif" : "Link account to this patch"}
+                    </button>
+                  </div>
+                ) : (
+                  <button className="btn btn-small" onClick={connect}>
+                    {fr ? "Connecter GitHub Code" : "Connect GitHub Code"}
+                  </button>
+                ))}
               {j.phase === "approval" && (
                 <div className="studio-actions">
                   <button

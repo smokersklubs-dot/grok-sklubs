@@ -15,7 +15,7 @@ const { q } = await import("../src/db.js");
 const { bots, users, rows } = await import("../src/store.js");
 const { seal } = await import("../src/auth.js");
 const { registerProvider } = await import("../src/llm/index.js");
-const { createIssueJob, registerGithubIssueRoutes, runGithubIssueOnce } = await import("../src/githubissues.js");
+const { registerGithubIssueRoutes, runGithubIssueOnce } = await import("../src/githubissues.js");
 const { checkCI, openDraft, prepareChange, GitHubError } = await import("../src/githubissuegit.js");
 const { githubWriteToken } = await import("../src/connectors.js");
 const { GITHUB_WRITE_URL, GITHUB_READ_URL } = await import("../src/githubapp.js");
@@ -95,145 +95,158 @@ registerProvider({
     };
   },
 });
-test("owner-only issue → two selected models → human-approved draft → offline Actions notification exactly once after a process restart", async () => {
-  const mine = app(owner),
-    other = app(guest);
-  assert.equal((await other.request(base)).status, 404);
-  await assert.rejects(githubWriteToken(guest.id, "write"));
-  await assert.rejects(githubWriteToken(owner.id, "read"));
-  const cfg = (await (await mine.request(base)).json()) as any;
-  assert.deepEqual(
-    cfg.accounts.map((a: any) => a.id),
-    ["write"],
-  );
-  assert.deepEqual(
-    cfg.reviewers.map((a: any) => a.id),
-    [peer.id],
-  );
-  const payload = { url, reviewer: peer.id, connector: "write" };
-  for (const bad of [
-    { ...payload, reviewer: stranger.id },
-    { ...payload, reviewer: author.id },
-    { ...payload, connector: "read" },
-    { ...payload, connector: "guestwrite" },
-    { ...payload, url: "https://git.example/issues/7" },
-  ])
-    assert.equal((await post(mine, bad)).status, 422);
-  const start = await post(mine, payload);
-  assert.equal(start.status, 200);
-  const job = (await start.json()) as { id: string; thread: number };
-  assert.ok(job.thread >= 0);
-  assert.deepEqual(await (await post(mine, payload)).json(), job);
-  const state = () => q.get<any>("SELECT * FROM github_issue_jobs WHERE id=?", job.id)!;
-  const messages = () =>
-    rows
-      .list(author.id, author.generation, 100, undefined, job.thread)
-      .map((r) => r.body)
-      .filter((b) => b.kind === "message")
-      .map((b) => b.text);
-  const detail = async () => (await (await mine.request(base + "?job=" + job.id)).json()) as any;
-  const original = globalThis.fetch,
-    writes: string[] = [];
-  let branch = "",
-    lost = true;
-  globalThis.fetch = async (input, init) => {
-    const u = new URL(String(input)),
-      prefix = "/repos/" + full;
-    assert.equal(u.origin, "https://api.github.com");
-    assert.ok(u.pathname.startsWith(prefix));
-    assert.equal(new Headers(init?.headers).get("authorization"), "Bearer test-only-write");
-    assert.equal(init?.redirect, "error");
-    const path = u.pathname.slice(prefix.length),
-      body = init?.body ? JSON.parse(String(init.body)) : null;
-    if (body) writes.push(path);
-    const resp = (data: object, status = 200) => Response.json(data, { status });
-    if (path === "/issues/7")
-      return resp({ state: "open", title: "Update n", body: "Please change src/n.ts to n=2" });
-    if (!path) return resp({ default_branch: "main" });
-    if (path === "/git/ref/heads/main") return resp({ object: { sha: A } });
-    if (path === "/git/commits/" + A) return resp({ tree: { sha: B } });
-    if (path === "/git/trees/" + B)
-      return resp({ tree: [{ path: "src/n.ts", mode: "100644", type: "blob", sha: C, size: orig.length }] });
-    if (path === "/git/blobs/" + C)
-      return resp({ encoding: "base64", content: Buffer.from(orig).toString("base64") });
-    if (path === "/git/trees") {
-      assert.deepEqual(body, {
-        base_tree: B,
-        tree: [{ path: "src/n.ts", mode: "100644", type: "blob", content: after }],
-      });
-      return resp({ sha: D }, 201);
-    }
-    if (path === "/git/commits") {
-      assert.deepEqual(body.parents, [A]);
-      assert.equal(body.tree, D);
-      return resp({ sha: E }, 201);
-    }
-    if (path.startsWith("/git/ref/heads/sklubot/")) return branch ? resp({ object: { sha: E } }) : resp({}, 404);
-    if (path === "/git/refs") {
-      assert.equal(body.sha, E);
-      assert.match(body.ref, /^refs\/heads\/sklubot\/issue-7-/);
-      branch = body.ref.slice("refs/heads/".length);
-      return resp({}, 201);
-    }
-    if (path === "/pulls" && !body) return resp([]);
-    if (path === "/pulls") {
-      assert.equal(body.draft, true);
-      assert.equal(body.base, "main");
-      assert.equal(body.head, branch);
-      if (lost) {
-        lost = false;
-        throw new TypeError("response lost after remote write");
-      }
-    }
-    if (path === "/actions/runs") {
-      assert.equal(u.searchParams.get("head_sha"), E);
-      return resp({
-        total_count: 1,
-        workflow_runs: [{ head_sha: E, status: "completed", conclusion: "failure", name: "Integration tests" }],
-      });
-    }
-    throw Error("Unexpected GitHub call " + path);
-  };
-  try {
-    await Promise.all([runGithubIssueOnce(), runGithubIssueOnce()]);
-    assert.equal(state().phase, "review", state().note);
-    await runGithubIssueOnce();
-    assert.equal(state().phase, "approval", state().note);
-    assert.deepEqual(writes, []);
-    const result = await detail();
-    assert.equal(result.changes[0].before, orig);
-    assert.equal(result.changes[0].after, after);
-    assert.equal((await post(mine, { job: job.id, decision: "approve", revision: "old" })).status, 422);
-    assert.equal((await post(other, { job: job.id, decision: "approve", revision: result.revision })).status, 404);
-    assert.equal(await runGithubIssueOnce(), false);
-    assert.equal((await post(mine, { job: job.id, decision: "approve", revision: result.revision })).status, 200);
-    assert.equal((await post(mine, { job: job.id, decision: "approve", revision: result.revision })).status, 422);
-    await runGithubIssueOnce();
-    assert.equal(state().phase, "publish", state().note);
-    assert.equal(state().commit_sha, E);
-    await runGithubIssueOnce();
-    assert.equal(state().phase, "publish");
-    assert.equal(state().failures, 1);
-    q.run("UPDATE github_issue_jobs SET next=0,lease='expired-worker',expires=1 WHERE id=?", job.id);
-    const child = spawnSync(
-      process.execPath,
-      ["--import", "tsx", fileURLToPath(new URL("./fixtures/github-issue-resume.ts", import.meta.url))],
-      { encoding: "utf8", timeout: 60000, windowsHide: true },
+test(
+  "owner-only issue → two selected models → human-approved draft → offline Actions notification exactly once after a process restart",
+  { timeout: 660_000 },
+  async () => {
+    const mine = app(owner),
+      other = app(guest);
+    assert.equal((await other.request(base)).status, 404);
+    await assert.rejects(githubWriteToken(guest.id, "write"));
+    await assert.rejects(githubWriteToken(owner.id, "read"));
+    const cfg = (await (await mine.request(base)).json()) as any;
+    assert.deepEqual(
+      cfg.accounts.map((a: any) => a.id),
+      ["write"],
     );
-    assert.equal(child.status, 0, String(child.stderr) + " " + String(child.stdout));
-    assert.equal(state().phase, "ci");
-    q.run("UPDATE github_issue_jobs SET next=0 WHERE id=?", job.id);
-    await runGithubIssueOnce();
-    assert.equal(state().phase, "done", state().note);
-    assert.deepEqual(writes, ["/git/trees", "/git/commits", "/git/refs", "/pulls"]);
-    assert.equal(calls, 3);
-    assert.equal(messages().filter((m) => m.includes("Integration tests · failure")).length, 1);
-    assert.equal(messages().filter((m) => m.startsWith("Pull request en brouillon")).length, 1);
-    assert.equal(await runGithubIssueOnce(), false);
-  } finally {
-    globalThis.fetch = original;
-  }
-});
+    assert.deepEqual(
+      cfg.reviewers.map((a: any) => a.id),
+      [peer.id],
+    );
+    const payload = { url, reviewer: peer.id, connector: "write" };
+    for (const bad of [
+      { ...payload, reviewer: stranger.id },
+      { ...payload, reviewer: author.id },
+      { ...payload, connector: "read" },
+      { ...payload, connector: "guestwrite" },
+      { ...payload, url: "https://git.example/issues/7" },
+    ])
+      assert.equal((await post(mine, bad)).status, 422);
+    const start = await post(mine, payload);
+    assert.equal(start.status, 200);
+    const job = (await start.json()) as { id: string; thread: number };
+    assert.ok(job.thread >= 0);
+    assert.deepEqual(await (await post(mine, payload)).json(), job);
+    const state = () => q.get<any>("SELECT * FROM github_issue_jobs WHERE id=?", job.id)!;
+    const messages = () =>
+      rows
+        .list(author.id, author.generation, 100, undefined, job.thread)
+        .map((r) => r.body)
+        .filter((b) => b.kind === "message")
+        .map((b) => b.text);
+    const detail = async () => (await (await mine.request(base + "?job=" + job.id)).json()) as any;
+    const original = globalThis.fetch,
+      writes: string[] = [];
+    let branch = "",
+      lost = true;
+    globalThis.fetch = async (input, init) => {
+      const u = new URL(String(input)),
+        prefix = "/repos/" + full;
+      assert.equal(u.origin, "https://api.github.com");
+      assert.ok(u.pathname.startsWith(prefix));
+      assert.equal(new Headers(init?.headers).get("authorization"), "Bearer test-only-write");
+      assert.equal(init?.redirect, "error");
+      const path = u.pathname.slice(prefix.length),
+        body = init?.body ? JSON.parse(String(init.body)) : null;
+      if (body) writes.push(path);
+      const resp = (data: object, status = 200) => Response.json(data, { status });
+      if (path === "/issues/7")
+        return resp({ state: "open", title: "Update n", body: "Please change src/n.ts to n=2" });
+      if (!path) return resp({ default_branch: "main" });
+      if (path === "/git/ref/heads/main") return resp({ object: { sha: A } });
+      if (path === "/git/commits/" + A) return resp({ tree: { sha: B } });
+      if (path === "/git/trees/" + B)
+        return resp({ tree: [{ path: "src/n.ts", mode: "100644", type: "blob", sha: C, size: orig.length }] });
+      if (path === "/git/blobs/" + C)
+        return resp({ encoding: "base64", content: Buffer.from(orig).toString("base64") });
+      if (path === "/git/trees") {
+        assert.deepEqual(body, {
+          base_tree: B,
+          tree: [{ path: "src/n.ts", mode: "100644", type: "blob", content: after }],
+        });
+        return resp({ sha: D }, 201);
+      }
+      if (path === "/git/commits") {
+        assert.deepEqual(body.parents, [A]);
+        assert.equal(body.tree, D);
+        return resp({ sha: E }, 201);
+      }
+      if (path.startsWith("/git/ref/heads/sklubot/")) return branch ? resp({ object: { sha: E } }) : resp({}, 404);
+      if (path === "/git/refs") {
+        assert.equal(body.sha, E);
+        assert.match(body.ref, /^refs\/heads\/sklubot\/issue-7-/);
+        branch = body.ref.slice("refs/heads/".length);
+        return resp({}, 201);
+      }
+      if (path === "/pulls" && !body) return resp([]);
+      if (path === "/pulls") {
+        assert.equal(body.draft, true);
+        assert.equal(body.base, "main");
+        assert.equal(body.head, branch);
+        if (lost) {
+          lost = false;
+          throw new TypeError("response lost after remote write");
+        }
+      }
+      if (path === "/actions/runs") {
+        assert.equal(u.searchParams.get("head_sha"), E);
+        return resp({
+          total_count: 1,
+          workflow_runs: [{ head_sha: E, status: "completed", conclusion: "failure", name: "Integration tests" }],
+        });
+      }
+      throw Error("Unexpected GitHub call " + path);
+    };
+    try {
+      await Promise.all([runGithubIssueOnce(), runGithubIssueOnce()]);
+      assert.equal(state().phase, "review", state().note);
+      await runGithubIssueOnce();
+      assert.equal(state().phase, "approval", state().note);
+      assert.deepEqual(writes, []);
+      const result = await detail();
+      assert.equal(result.changes[0].before, orig);
+      assert.equal(result.changes[0].after, after);
+      assert.equal((await post(mine, { job: job.id, decision: "approve", revision: "old" })).status, 422);
+      assert.equal(
+        (await post(other, { job: job.id, decision: "approve", revision: result.revision })).status,
+        404,
+      );
+      assert.equal(await runGithubIssueOnce(), false);
+      assert.equal(
+        (await post(mine, { job: job.id, decision: "approve", revision: result.revision })).status,
+        200,
+      );
+      assert.equal(
+        (await post(mine, { job: job.id, decision: "approve", revision: result.revision })).status,
+        422,
+      );
+      await runGithubIssueOnce();
+      assert.equal(state().phase, "publish", state().note);
+      assert.equal(state().commit_sha, E);
+      await runGithubIssueOnce();
+      assert.equal(state().phase, "publish");
+      assert.equal(state().failures, 1);
+      q.run("UPDATE github_issue_jobs SET next=0,lease='expired-worker',expires=1 WHERE id=?", job.id);
+      const child = spawnSync(
+        process.execPath,
+        ["--import", "tsx", fileURLToPath(new URL("./fixtures/github-issue-resume.ts", import.meta.url))],
+        { encoding: "utf8", timeout: 600_000, windowsHide: true },
+      );
+      assert.equal(child.status, 0, [child.error?.message, child.stderr, child.stdout].filter(Boolean).join(" "));
+      assert.equal(state().phase, "ci");
+      q.run("UPDATE github_issue_jobs SET next=0 WHERE id=?", job.id);
+      await runGithubIssueOnce();
+      assert.equal(state().phase, "done", state().note);
+      assert.deepEqual(writes, ["/git/trees", "/git/commits", "/git/refs", "/pulls"]);
+      assert.equal(calls, 3);
+      assert.equal(messages().filter((m) => m.includes("Integration tests · failure")).length, 1);
+      assert.equal(messages().filter((m) => m.startsWith("Pull request en brouillon")).length, 1);
+      assert.equal(await runGithubIssueOnce(), false);
+    } finally {
+      globalThis.fetch = original;
+    }
+  },
+);
 test("no workflow is never reported as a pass and another writer's branch is preserved", async () => {
   const none = async () => ({ total_count: 0, workflow_runs: [] });
   assert.equal(await checkCI(none, A, Date.now()), null);
@@ -281,4 +294,114 @@ test("output file must be one of the inspected regular text files; a hidden or t
     ),
     /hors/,
   );
+});
+
+test("public ticket is reviewed in its original thread without credentials, then explicitly bound and approved again", async () => {
+  const mine = app(owner),
+    repo = "demo/public",
+    original = globalThis.fetch;
+  const root = rows.append(author, { kind: "message", role: "user", text: "Can you fix this ticket?" }, 0);
+  const submit = (suffix: string) =>
+    post(mine, { url: "https://github.com/demo/" + suffix + "/issues/8", reviewer: peer.id, thread: root.seq });
+  let allow = false,
+    authorizedReads = 0,
+    writes = 0,
+    privateReads = 0;
+  globalThis.fetch = async (input, init) => {
+    const url = new URL(String(input)),
+      auth = new Headers(init?.headers).get("authorization");
+    assert.equal(url.origin, "https://api.github.com");
+    if (init?.method !== "GET") {
+      writes++;
+      throw Error("No writes during review or binding");
+    }
+    if (url.pathname.startsWith("/repos/demo/private")) {
+      assert.equal(auth, null);
+      privateReads++;
+      return Response.json({ message: "Not found" }, { status: 404 });
+    }
+    const path = url.pathname.slice(("/repos/" + repo).length);
+    if (auth !== null) {
+      assert.equal(auth, "Bearer test-only-write");
+      authorizedReads++;
+      assert.equal(path, "");
+      return Response.json({ full_name: repo, permissions: { push: allow } });
+    }
+    if (!path) return Response.json({ default_branch: "main", private: false });
+    if (path === "/issues/8")
+      return Response.json({ state: "open", title: "Update", body: "Please change src/n.ts" });
+    if (path.startsWith("/git/ref/")) return Response.json({ object: { sha: A } });
+    if (path.startsWith("/git/commits/")) return Response.json({ tree: { sha: B } });
+    if (path.startsWith("/git/trees/"))
+      return Response.json({
+        tree: [{ path: "src/n.ts", mode: "100644", type: "blob", sha: C, size: orig.length }],
+      });
+    if (path.startsWith("/git/blobs/"))
+      return Response.json({ encoding: "base64", content: Buffer.from(orig).toString("base64") });
+    throw Error(path);
+  };
+  try {
+    const job = (await (await submit("public")).json()) as { id: string; thread: number };
+    assert.equal(job.thread, root.seq);
+    const latest = () => q.get<any>("SELECT phase,revision,connector FROM github_issue_jobs WHERE id=?", job.id)!;
+    await runGithubIssueOnce();
+    await runGithubIssueOnce();
+    assert.equal(latest().phase, "connect");
+    const old = latest().revision;
+    const thread = () =>
+      rows
+        .list(author.id, author.generation, 100, undefined, root.seq)
+        .map((r) => r.body)
+        .filter((b) => b.kind === "message")
+        .map((b) => b.text)
+        .join("\n");
+    assert.match(thread(), /src\/n\.ts/);
+    assert.ok(thread().includes(old.slice(0, 12)));
+    assert.equal(authorizedReads, 0);
+    const decision = (d: string, revision: string, connector?: string) =>
+      post(mine, { job: job.id, decision: d, revision, connector });
+    assert.equal((await decision("approve", old)).status, 422);
+    assert.equal((await decision("connect", old, "read")).status, 422);
+    assert.equal((await decision("connect", old, "guestwrite")).status, 422);
+    assert.equal((await decision("connect", old, "write")).status, 422);
+    assert.equal(latest().phase, "connect");
+    allow = true;
+    assert.equal((await decision("connect", old, "write")).status, 200);
+    const fresh = latest();
+    assert.equal(fresh.phase, "approval");
+    assert.equal(fresh.connector, "write");
+    assert.notEqual(fresh.revision, old);
+    assert.ok(thread().includes(fresh.revision.slice(0, 12)));
+    assert.equal((await decision("approve", old)).status, 422);
+    assert.equal((await decision("decline", fresh.revision)).status, 200);
+    const privateJob = (await (await submit("private")).json()) as any;
+    await runGithubIssueOnce();
+    assert.equal(q.get("SELECT phase FROM github_issue_jobs WHERE id=?", privateJob.id)?.phase, "error");
+    assert.equal(privateReads, 1);
+    assert.equal(authorizedReads, 2);
+    assert.equal(writes, 0);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test("GitHub Code OAuth verifies that its installation includes the selected repository before binding", async () => {
+  const {verifyIssueRepository}=await import("../src/githubissuegit.js");
+  const oauth={id:"app-write",auth:"oauth"};
+  q.run("INSERT INTO connectors(id,user_id,name,url,oauth_enc,auth,created_at) VALUES(?,?,?,?,?,'oauth',?)",oauth.id,owner.id,"GitHub Code",GITHUB_WRITE_URL,seal(JSON.stringify({tokens:{access_token:"local-oauth-placeholder"}})),Date.now());
+  const saved=globalThis.fetch;let selected=false;
+  globalThis.fetch=async(input,init)=>{
+    assert.equal(init?.method,"GET");
+    const u=new URL(String(input));
+    assert.equal(u.origin,"https://api.github.com");
+    assert.equal(new Headers(init?.headers).get("authorization"),"Bearer local-oauth-placeholder");
+    if(u.pathname==="/repos/demo/public")return Response.json({id:42,owner:{id:10},full_name:"demo/public",permissions:{push:true}});
+    if(u.pathname==="/user/installations")return Response.json({installations:[{id:16,account:{id:10},repository_selection:"selected",permissions:{contents:"write",pull_requests:"write"}}]});
+    if(u.pathname==="/user/installations/16/repositories")return Response.json({repositories:[{id:selected?42:999}]});
+    throw Error(u.pathname);
+  };
+  try {
+    await assert.rejects(verifyIssueRepository(owner.id,oauth,"demo/public"),/Autorise ce dépôt/);
+    selected=true;await verifyIssueRepository(owner.id,oauth,"demo/public");
+  }finally{globalThis.fetch=saved;}
 });

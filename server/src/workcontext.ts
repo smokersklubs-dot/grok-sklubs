@@ -7,6 +7,7 @@ import { defaultModelRef, resolveModel } from "./llm/index.js";
 import { engineOf, isEngineRef } from "./agent/engine.js";
 import { subLimitFor } from "./agent/sublimit.js";
 import { sharedView } from "./sharedcomputers.js";
+import { connectBlock } from "./subscriptionconnect.js";
 
 /** Opening a conversation must not wake another computer or consume a model turn. */
 export function registerWorkContext(api: Hono<any>) {
@@ -17,6 +18,7 @@ export function registerWorkContext(api: Hono<any>) {
     const ref = bot.model || defaultModelRef();
     const engine = isEngineRef(ref) ? engineOf(ref) : null;
     let label = ref, state = "unchecked";
+    if (engine && connectBlock(owner)) state = "unavailable";
     if (!engine) {
       try {
         const { provider, model } = resolveModel(ref, owner);

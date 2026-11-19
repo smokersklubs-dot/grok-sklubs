@@ -13,6 +13,7 @@ import { parseReview } from "./peerreview.js";
 import { pushLater } from "./push.js";
 import {
   validRepo,
+  verifyIssueRepository,
   loadContext,
   prepareChange,
   makeCommit,
@@ -86,7 +87,19 @@ const cleanJSON = (s: string) =>
       .replace(/\s*\x60{3}$/, ""),
   );
 type Fields = Partial<
-  Pick<Job, "context" | "patch" | "review" | "revision" | "commit_sha" | "pr" | "ci_since" | "resume" | "failures">
+  Pick<
+    Job,
+    | "connector"
+    | "context"
+    | "patch"
+    | "review"
+    | "revision"
+    | "commit_sha"
+    | "pr"
+    | "ci_since"
+    | "resume"
+    | "failures"
+  >
 > & { next?: number };
 function advance(j: Job, phase: string, notice: string, fields: Fields = {}) {
   const update = () => {
@@ -117,7 +130,7 @@ function advance(j: Job, phase: string, notice: string, fields: Fields = {}) {
     bots.bumpUnread(bot.id);
   });
   pushLater(j.owner, {
-    kind: phase === "approval" ? "needs" : "reply",
+    kind: ["approval", "connect"].includes(phase) ? "needs" : "reply",
     title: "Sklubot · GitHub",
     body: "Une mission GitHub a été mise à jour.",
     botId: bot.id,
@@ -137,8 +150,10 @@ export function createIssueJob(
   if (q.get("SELECT 1 FROM bot_shares WHERE bot_id=?", bot.id))
     throw Error("Choisis une discussion privée pour cette mission.");
   if (inThread !== 0) {
-    const parent = Number.isSafeInteger(inThread) && inThread > 0 ? rows.get(bot.id, bot.generation, inThread) : null;
-    if (!parent || parent.thread || parent.body.kind !== "message") throw Error("Discussion d’origine introuvable.");
+    const parent =
+      Number.isSafeInteger(inThread) && inThread > 0 ? rows.get(bot.id, bot.generation, inThread) : null;
+    if (!parent || parent.thread || parent.body.kind !== "message")
+      throw Error("Discussion d’origine introuvable.");
   }
   const reviewer = safeBot(bot.userId, reviewerId);
   if (!reviewer || reviewer.id === bot.id) throw Error("Choisis un autre bot de ton compte pour la relecture.");
@@ -152,7 +167,7 @@ export function createIssueJob(
     );
   const past = previous();
   if (past) return past;
-  if (!githubWriteAccounts(bot.userId).some((a) => a.id === connector))
+  if (connector && !githubWriteAccounts(bot.userId).some((a) => a.id === connector))
     throw Error("Connecte GitHub Code à ton compte et autorise ce dépôt.");
   allowed(bot);
   allowed(reviewer);
@@ -257,7 +272,7 @@ export async function runGithubIssueOnce(services = deps) {
         );
       };
       if (j.phase === "prepare") {
-        const ctx = await loadContext(get, j.issue);
+        const ctx = await loadContext(get, j.issue, !j.connector);
         ctx.title = mask(j.owner, ctx.title);
         ctx.body = mask(j.owner, ctx.body);
         const patch = await prepareChange(
@@ -287,22 +302,25 @@ export async function runGithubIssueOnce(services = deps) {
             j.owner,
             await call(
               'Independently review these exact original and proposed files. Assess regressions and whether they solve the ticket. Return only JSON {"verdict":"approved|changes|inconclusive","reason":"specific findings and test evidence"}. No test has run at this stage.',
-              { issue: { title: ctx.title, body: ctx.body }, patch: JSON.parse(j.patch) },
+              { issue: { title: ctx.title, body: ctx.body }, patch: JSON.parse(j.patch), evidence: ctx.evidence ?? [] },
             ),
           ),
           false,
         );
         const review = actor.name + " · " + result.verdict + "\n" + result.reason;
         const ok = result.verdict === "approved";
-        advance(
-          j,
-          ok ? "approval" : "changes",
-          review +
-            (ok
-              ? "\nVérifie les fichiers dans GitHub · Missions puis autorise la pull request en brouillon."
-              : "\nLe correctif doit être repris."),
-          { review, revision: approvedHash({ ...j, review }) },
-        );
+        const revision = approvedHash({ ...j, review });
+        const files = (JSON.parse(j.patch) as Change[]).map((f) => f.path).join(", ");
+        const next = ok ? (j.connector ? "approval" : "connect") : "changes";
+        const decision = !ok
+          ? "Le correctif doit être repris."
+          : j.connector
+            ? "Examine les fichiers dans @GitHub Code, puis autorise la publication en brouillon."
+            : "Dans @GitHub Code, associe un compte autorisé à ce dépôt. Tu valideras ensuite la publication du correctif.";
+        advance(j, next, review + "\n" + files + " · " + revision.slice(0, 12) + "\n" + decision, {
+          review,
+          revision,
+        });
       }
     } else if (j.phase === "commit" || j.phase === "publish") {
       allowed(source);
@@ -391,9 +409,30 @@ export function startGithubIssueWorker() {
   timer.unref();
   void run();
 }
-export function decideIssue(j: Job, decision: string, revision: string) {
+export async function decideIssue(j: Job, decision: string, revision: string, connectorId?: string) {
   enforceOwner(j);
   if (j.lease) throw Error("Cette mission est en cours de traitement.");
+  if (decision === "connect") {
+    if (j.phase !== "connect" || !revision || revision !== approvedHash(j) || j.revision !== revision)
+      throw Error("Cette version du correctif a changé.");
+    const selected = githubWriteAccounts(j.owner).find((c) => c.id === connectorId);
+    if (!selected) throw Error("Choisis un connecteur GitHub Code de ton compte.");
+    await verifyIssueRepository(j.owner, selected, j.repo);
+    const newRevision = approvedHash({ ...j, connector: selected.id });
+    advance(
+      j,
+      "approval",
+      "Compte " +
+        selected.name +
+        " associé à " +
+        j.repo +
+        ". Révision " +
+        newRevision.slice(0, 12) +
+        ". Examine les fichiers dans @GitHub Code puis autorise la publication en brouillon.",
+      { connector: selected.id, revision: newRevision },
+    );
+    return;
+  }
   if (decision === "retry" && (j.phase === "error" || j.phase === "changes")) {
     const phase = j.phase === "changes" ? "prepare" : j.resume;
     if (!["prepare", "review", "commit", "publish", "ci"].includes(phase)) throw Error("Étape indisponible.");
@@ -402,6 +441,7 @@ export function decideIssue(j: Job, decision: string, revision: string) {
   }
   if (j.phase !== "approval" || !revision || j.revision !== revision || approvedHash(j) !== revision)
     throw Error("Cette version du correctif n’attend plus de validation.");
+  if (!j.connector) throw Error("Associe un compte GitHub avant de publier.");
   if (decision === "approve")
     advance(j, "commit", "Publication du correctif en brouillon autorisée par le propriétaire.");
   else if (decision === "decline") advance(j, "declined", "Publication refusée par le propriétaire.");
@@ -444,15 +484,26 @@ export function registerGithubIssueRoutes(api: Hono<any>, throttle: (key: string
       if (data.decision) {
         const j = typeof data.job === "string" ? getJob(data.job) : null;
         if (!j || j.bot !== bot.id || j.generation !== bot.generation) return c.notFound();
-        decideIssue(j, data.decision, data.revision);
+        await decideIssue(j, data.decision, data.revision, data.connector);
         return c.json({ thread: j.thread });
       }
       const match = /^https:\/\/github\.com\/([^/\s]+\/[^/\s]+)\/issues\/([1-9]\d*)\/?$/.exec(
         String(data.url ?? "").trim(),
       );
-      if (!match || typeof data.connector !== "string" || typeof data.reviewer !== "string")
+      if (
+        !match ||
+        (data.connector != null && typeof data.connector !== "string") ||
+        typeof data.reviewer !== "string"
+      )
         throw Error("Renseigne le lien du ticket, le compte et le relecteur.");
-      const j = createIssueJob(bot, data.reviewer, match[1].toLowerCase(), Number(match[2]), data.connector, data.thread ?? 0);
+      const j = createIssueJob(
+        bot,
+        data.reviewer,
+        match[1].toLowerCase(),
+        Number(match[2]),
+        data.connector ?? "",
+        data.thread ?? 0,
+      );
       return c.json({ id: j.id, thread: j.thread });
     } catch (e) {
       return c.json({ error: (e as Error).message }, 422);

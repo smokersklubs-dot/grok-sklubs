@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import type { Hono } from "hono";
 import type { BuiltinTool } from "./agent/tools.js";
 import { RateWindow } from "./hardening.js";
+import { q } from "./db.js";
 import { createReport, listReports, resumeReport } from "./researchreports.js";
 import { bots, type UserRecord } from "./store.js";
 import { hasPersonalX, setPersonalX, xSearchProvider } from "./xsearch.js";
@@ -84,16 +85,13 @@ export const researchTool: BuiltinTool = {
     if (c.origin !== "user" || c.tainted)
       return { content: "Ask the user to start a research report from the + menu.", isError: true };
     try {
+      const message = q.get<{ seq: number }>(
+        "SELECT seq FROM rows WHERE bot_id=? AND generation=? AND thread=? AND kind='message' AND json_extract(body,'$.role')='user' ORDER BY seq DESC LIMIT 1",
+        c.bot.id, c.bot.generation, c.thread ?? 0,
+      );
+      if (!message) throw Error("Demande de recherche introuvable dans la discussion.");
       const key = createHash("sha256")
-        .update(
-          JSON.stringify([
-            c.thread ?? 0,
-            a.subject,
-            a.plan,
-            a.seeds ?? [],
-            Math.floor(Date.now() / 3_600_000),
-          ]),
-        )
+        .update(JSON.stringify([c.thread ?? 0, message.seq, a.subject, a.plan, a.seeds ?? []]))
         .digest("hex");
       const job = createReport(
         c.bot,

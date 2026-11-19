@@ -245,7 +245,7 @@ export function githubAccounts(owner:string) {
   return recordsFor(owner).filter(r=>r.url===GITHUB_READ_URL).map(r=>({id:r.id,name:r.name}));
 }
 export function githubWriteAccounts(owner: string) {
-  return recordsFor(owner).filter(r => r.url === GITHUB_WRITE_URL && (r.auth === "oauth" ? !!loadOAuth(r.id).tokens : !!r.tokenEnc)).map(r => ({id:r.id,name:r.name}));
+  return recordsFor(owner).filter(r => r.url === GITHUB_WRITE_URL && (r.auth === "oauth" ? !!loadOAuth(r.id).tokens : !!r.tokenEnc)).map(r => ({id:r.id,name:r.name,auth:r.auth}));
 }
 async function githubToken(rec: ReturnType<typeof toRecord>) {
     let token:string|null|undefined;

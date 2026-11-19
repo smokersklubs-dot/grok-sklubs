@@ -22,7 +22,7 @@ export function WorkContext({bot}: {bot: Bot}) {
         const ctx = await api<Context>("GET", "/bots/" + enc(bot.id) + "/work-context", undefined, signal);
         if (signal.aborted) return;
         setData(ctx);
-        if (!ctx.engine) { setState(ctx.state); return; }
+        if (!ctx.engine || ctx.state === "unavailable") { setState(ctx.state); return; }
         const auth = await api<{signedIn:boolean | null;personal?:boolean}>("GET", "/connect-subscription/status?bot=" + enc(bot.id) + "&engine=" + ctx.engine + (attempt ? "" : "&passive=1"), undefined, signal);
         if (!signal.aborted) setState(auth.signedIn == null ? "unknown" : auth.signedIn ? (auth.personal ? "personal" : "connected") : "missing");
       } catch { if (!signal.aborted) setState("unknown"); }

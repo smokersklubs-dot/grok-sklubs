@@ -1,6 +1,6 @@
 import { q } from "../db.js";
 import { tr } from "../i18n.js";
-import { modelAvailable, ProviderError } from "../llm/index.js";
+import { defaultModelRef, modelAvailable, ProviderError } from "../llm/index.js";
 import { isHostedStop } from "../hosted.js";
 import { pushLater, type PushMessage } from "../push.js";
 import { maskSecrets, type Card, type Engine, type FailureAuto, type FailureClass, type FailureRemedy, type FailureStatus, type FailureSummary, type FailureTry, type FailureView, type Locale } from "../shared.js";
@@ -268,7 +268,10 @@ function planRetry(r: FailureRow, delayMs: number, why: string) {
 }
 
 // ── Teammates (« Entraide entre bots ») ─────────────────────────────────────────────────────────────────────────
-const brainOf = (ref: string) => (isEngineRef(ref) ? engineOf(ref) : ref.split(":")[0] ?? "");
+const brainOf = (model: string) => {
+  const ref = model || defaultModelRef();
+  return isEngineRef(ref) ? engineOf(ref) : ref.split(":")[0];
+};
 /**
  * A bot of the same account whose brain is not the failing one and works now: an agent (not a helper, not hidden, not
  * paused), on another provider or subscription, not at its subscription's limit, with no open brain failure and whose
@@ -428,7 +431,9 @@ export function noteTurnOk(bot: Pick<BotRecord, "id">, model: string, thread: nu
   try {
     const t = now();
     for (const r of failures.open(bot.id)) {
-      if (r.provider !== brainOf(model) || (TASK_LEVEL.has(r.class) && (r.status === "waiting" || r.thread !== thread))) continue;
+      if (TASK_LEVEL.has(r.class)) {
+        if (r.status === "waiting" || r.thread !== thread) continue;
+      } else if (r.provider !== brainOf(model)) continue;
       const tried = triedOf(r);
       for (const x of tried) if (x.ok === null) x.ok = true;
       const next: FailureRow = { ...r, tried: JSON.stringify(tried), status: "resolved", resolved_by: r.status === "auto" ? "auto" : "user", resolved_at: t };

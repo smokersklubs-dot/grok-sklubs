@@ -405,7 +405,7 @@ test("model, desktop and recovery evidence belong to the same owner's bot and pr
   assert.equal((await call("B", "GET", `/bots/${a.id}/work-context`)).status, 404);
   const context = await call("A", "GET", `/bots/${a.id}/work-context`);
   assert.equal(context.status, 200);
-  assert.equal(context.json.target, "browser");
+  assert.equal(context.json.target, (await import("../src/computer.js")).computerKind());
   const report = { bot, trigger: { kind: "user" as const, text: "images" }, thread: 0, since: Date.now(), provider: "codex", didSomething: true };
   const size = f.handleFailure({ ...report, text: "unexpected status 413 Payload Too Large" })!;
   const incident = f.failures.byId(size.id)!;

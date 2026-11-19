@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { mkdir, open, readdir, stat, unlink } from "node:fs/promises";
+import { mkdir, open, readdir, stat, statfs, unlink } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { publishStagedFile } from "./stagedfile.js";
@@ -30,14 +30,16 @@ const staging = path.join(config.dataDir, "studio-encoding");
 const message = (fr: boolean, local: string, english: string) => (fr ? local : english);
 export function startStudioExports() {
   // A stopped process may leave a partial export outside the bot library.
-  void (async () => {
+  const sweep = async () => {
     for (const name of await readdir(staging).catch(() => [])) {
       if (!/^[a-f0-9-]{36}$/.test(name)) continue;
       const file = path.join(staging, name);
       const info = await stat(file).catch(() => null);
       if (info && Date.now() - info.mtimeMs > 86400000) await unlink(file).catch(() => {});
     }
-  })();
+  };
+  void sweep();
+  setInterval(() => void sweep(), 6 * 3600_000).unref();
   drainExports(encode);
   setInterval(() => drainExports(encode), 15_000).unref();
 }
@@ -101,13 +103,22 @@ async function encode(
   const staged = path.join(staging, randomUUID());
   const file = await open(staged, "wx+", 0o600);
   try {
+    let untilDiskCheck = 0;
     const rendered = await linuxExec(
       bot.id,
       bot.userId,
       workspaceOf(bot.id),
       ["python3", "-I", "-B", "-c", template("render.py")],
       Math.max(900, Math.ceil(seconds * 15)),
-      { input, binary: true, maxBytes: MAX_UPLOAD_BYTES, output: chunk => file.writeFile(chunk) },
+      { input, binary: true, maxBytes: MAX_UPLOAD_BYTES, output: async chunk => {
+        if (untilDiskCheck < chunk.length) {
+          const disk = await statfs(staging);
+          if (disk.bavail * disk.bsize < 256_000_000) throw Error("STUDIO_STORAGE_FULL");
+          untilDiskCheck = 8_000_000;
+        }
+        await file.writeFile(chunk);
+        untilDiskCheck -= chunk.length;
+      } },
     );
     const {size} = await file.stat();
     const header = Buffer.alloc(8);
@@ -120,6 +131,8 @@ async function encode(
     ) {
       if (/VIDEO_TOO_LARGE/.test(rendered.stderr))
         throw Error(message(fr, "Le MP4 dépasse 1 Go. Raccourcis le montage.", "The MP4 exceeds 1 GB. Shorten the timeline."));
+      if (/STUDIO_STORAGE_FULL|ENOSPC/.test(rendered.stderr))
+        throw Error(message(fr, "Le serveur manque d’espace pour enregistrer le MP4.", "The server needs more storage to save the MP4."));
       const long = /VOICE_TOO_LONG:(\d+)/.exec(rendered.stderr);
       if (long)
         throw Error(

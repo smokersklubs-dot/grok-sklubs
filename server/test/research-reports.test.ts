@@ -45,7 +45,7 @@ const site = "http://127.0.0.1:" + addr.port;
 process.env.X_API_BASE_URL = site;
 const { users, bots, rows } = await import("../src/store.js");
 const { q } = await import("../src/db.js");
-const { registerResearch } = await import("../src/researchroutes.js");
+const { registerResearch, researchTool } = await import("../src/researchroutes.js");
 const { nextResearchSection, browseSection } = await import("../src/researchreports.js");
 const { checkedFindings, extractEvidence } = await import("../src/researchevidence.js");
 const { xSearch } = await import("../src/xsearch.js");
@@ -163,4 +163,14 @@ test("account-specific X settings are encrypted, can be revoked and never return
     personal: false,
     provider: null,
   });
+});
+test("chat retries use the originating message; a later request can run the same plan again", async () => {
+  const ctx = { bot, user: owner, depth: 0, signal: AbortSignal.timeout(5000), origin: "user" };
+  const request = { subject: "Lunar telescope", plan: ["Who operates the lunar telescope?"] };
+  rows.append(bot, { kind: "message", role: "user", text: "Research the telescope." }, 0);
+  const first = await researchTool.run(request, ctx);
+  assert.ok(!first.isError);
+  assert.equal((await researchTool.run(request, ctx)).content, first.content);
+  rows.append(bot, { kind: "message", role: "user", text: "Repeat this research." }, 0);
+  assert.notEqual((await researchTool.run(request, ctx)).content, first.content);
 });

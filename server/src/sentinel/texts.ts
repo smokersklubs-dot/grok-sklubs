@@ -29,7 +29,7 @@ const T: Record<string, Entry> = {
   "turn_failures:auth": {
     title: ["Connexion refusée par {provider}", "{provider} refuses the sign-in"],
     explain: ["{n} échec(s) d'authentification dans la dernière heure : la clé ou la session n'est plus acceptée (par exemple un « refresh token » expiré pour Claude Code ou Codex).", "{n} authentication failure(s) in the last hour: the key or the session is no longer accepted (for example an expired “refresh token” for Claude Code or Codex)."],
-    fix: ["Reconnecte le compte : pour Claude Code ou Codex, Réglages du bot → Cerveau → « Se connecter » ; pour une clé d'API, remplace-la dans Réglages → Modèles.", "Sign in again: for Claude Code or Codex, the bot's settings → Brain → “Sign in”; for an API key, replace it in Settings → Models."],
+    fix: ["Ouvre Réglages → Modèles. Choisis ton abonnement Claude ou ChatGPT et vérifie la connexion du bot. Pour un fournisseur API, vérifie sa clé sur cette même page.", "Open Settings → Models. Choose your Claude or ChatGPT subscription and check the bot’s connection. For an API provider, check its key on the same page."],
   },
   "turn_failures:rate_limit": {
     title: ["Limite de débit atteinte chez {provider}", "{provider} rate limit reached"],
@@ -54,7 +54,7 @@ const T: Record<string, Entry> = {
   "engine_watch:gone": {
     title: ["L'outil d'abonnement s'arrête en plein travail", "The subscription tool stops mid-turn"],
     explain: ["{n} fois ces 6 dernières heures, Claude Code ou Codex s'est arrêté avant la fin du tour.", "{n} time(s) in the last 6 hours, Claude Code or Codex stopped before the end of the turn."],
-    fix: ["Souvent une session expirée ou un manque de mémoire dans l'ordinateur du bot : reconnecte l'abonnement (Réglages du bot → Cerveau) et vérifie la mémoire libre du serveur.", "Often an expired session or a lack of memory in the bot's computer: sign in to the subscription again (bot settings → Brain) and check the server's free memory."],
+    fix: ["Vérifie la connexion de l’abonnement dans Réglages → Modèles, puis la mémoire disponible sur le bureau du bot.", "Check the subscription connection in Settings → Models, then check the free memory on the bot’s computer."],
   },
   "engine_watch:silent": {
     title: ["L'IA tarde à répondre", "The AI is slow to answer"],
