@@ -88,7 +88,7 @@ if [ "$FORMAT" = 3 ]; then
   mkdir -p "$WORK/meta"
   docker volume create "$VOLD" >/dev/null
   if docker run --rm --network none -v "$VOLD":/data -v "$ARCHIVE":/b/archive.age:ro -v "$ID":/b/key:ro -v "$WORK/meta":/meta "$APP_IMG" \
-      node --no-warnings server/dist/backupcheck.js extract --identity /b/key /b/archive.age /data --meta /meta >"$WORK/extract.json" 2>"$WORK/extract.err"; then
+      sh -ec 'node --no-warnings server/dist/backupcheck.js extract --identity /b/key /b/archive.age /data --meta /meta && chown "$1:$2" /meta/secrets.env /meta/manifest.json' sh "$(id -u)" "$(id -g)" >"$WORK/extract.json" 2>"$WORK/extract.err"; then
     ok "archive déchiffrée avec la clé privée, empreintes SHA256SUMS vérifiées ($(sed -n 's/.*"checked":\([0-9]*\).*/\1/p' "$WORK/extract.json") fichiers), données restaurées dans la copie"
   else
     ko "archive non restaurée : $(tail -c 300 "$WORK/extract.err" "$WORK/extract.json" 2>/dev/null | tr '\n' ' ')"
