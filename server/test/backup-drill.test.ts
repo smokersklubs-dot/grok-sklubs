@@ -11,7 +11,7 @@ import { after, test } from "node:test";
 // /api/health, counts, one sealed value opened). Everything is made under test names and removed afterwards; the real
 // install's volumes (sklubot_data, sklubot-home-*) are never touched.
 // Needs Docker and a Sklubot server image (SKLUBOT_TEST_APP_IMAGE, else "sklubot-server"); skipped cleanly without them
-// (the CI builds only the bots' computer image).
+// (CI builds both the bots' computer image and the server image).
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const docker = (...args: string[]) => spawnSync("docker", args, { encoding: "utf8", timeout: 120_000 });
 const IMG = process.env.SKLUBOT_TEST_APP_IMAGE || "sklubot-server";
