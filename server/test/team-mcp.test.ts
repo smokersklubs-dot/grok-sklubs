@@ -12,7 +12,32 @@ process.env.SESSION_SECRET = "team-mcp-unique-test-only-secret";
 process.env.NO_SCHEDULER = "1";
 process.env.COMPUTER = "browser";
 process.env.HOSTED_MODE = "0";
-process.env.DEFAULT_MODEL = "demo";
+const fixtureModel = "team-mcp-test:local";
+process.env.DEFAULT_MODEL = fixtureModel;
+process.env.AUX_MODEL = fixtureModel;
+for (const name of [
+  "ANTHROPIC_API_KEY",
+  "OPENAI_API_KEY",
+  "XAI_API_KEY",
+  "FALLBACK_MODEL",
+  "FALLBACK_MODELS",
+])
+  process.env[name] = "";
+const { registerProvider } = await import("../src/llm/index.js");
+registerProvider({
+  id: "team-mcp-test",
+  label: "Local MCP fixture",
+  models: ["local"],
+  available: () => true,
+  async runTurn() {
+    return {
+      content: [{ type: "text", text: "Sklubot local fixture reply." }],
+      stopReason: "end",
+      model: "local",
+      usage: { inputTokens: 1, outputTokens: 1, cachedTokens: 0 },
+    };
+  },
+});
 const { q } = await import("../src/db.js");
 const { users, bots, rows } = await import("../src/store.js");
 const { registerTeamMcp, registerTeamMcpOwner } = await import("../src/teammcp.js");
@@ -21,7 +46,7 @@ const { screen, holdAndOffer } = await import("../src/pastedsecrets.js");
 const { teamClaudeSetup } = await import("../../web/src/lib/teamClaudeSetup.js");
 const owner = users.create("team@example.test", "Owner", "unused", "en"),
   outside = users.create("other@example.test", "Other", "unused", "en");
-const agent = bots.create(owner.id, { name: "Jiren" }),
+const agent = bots.create(owner.id, { name: "Jiren", model: fixtureModel }),
   foreign = bots.create(outside.id, { name: "Foreign confidential" });
 bots.create(owner.id, { name: "Hidden confidential", hidden: true });
 bots.create(owner.id, { name: "Group room", kind: "room" });
@@ -130,6 +155,18 @@ test("an outside writer starts work through the bot API, respects an unattended 
     );
     const row = rows.get(agent.id, agent.generation, sent.seq);
     assert.ok(row?.body.kind === "message" && row.body.origin?.kind === "api");
+    const replied = () =>
+      rows
+        .list(agent.id, agent.generation, 30)
+        .some(
+          (r) =>
+            r.body.kind === "message" &&
+            r.body.role === "assistant" &&
+            r.body.text === "Sklubot local fixture reply.",
+        );
+    const deadline = Date.now() + 8000;
+    while (!replied() && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 30));
+    assert.ok(replied(), "the message was answered by the isolated local fixture model");
     assert.equal(
       (await api.callTool({ name: "approve", arguments: { bot_id: agent.id } })).isError,
       true,

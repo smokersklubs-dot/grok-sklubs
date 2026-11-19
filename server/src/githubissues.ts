@@ -11,6 +11,7 @@ import { githubWriteAccounts } from "./connectors.js";
 import { screen } from "./pastedsecrets.js";
 import { parseReview } from "./peerreview.js";
 import { pushLater } from "./push.js";
+import { draftNumber, verifyPublishedDraft } from "./githubpublished.js";
 import {
   validRepo,
   verifyIssueRepository,
@@ -305,10 +306,10 @@ export async function runGithubIssueOnce(services = deps) {
           mask(
             j.owner,
             await call(
-              'Independently review these exact original and proposed files. Assess regressions and whether they solve the ticket. Return only JSON {"verdict":"approved|changes|inconclusive","reason":"specific findings and test evidence"}. No test has run at this stage.',
+              'Independently review these exact original and proposed files. Assess regressions and whether they solve the ticket. The server hides protected lines and enforces that they remain at the same positions. Review public changes without guessing hidden values. Return only JSON {"verdict":"approved|changes|inconclusive","reason":"specific findings and test evidence"}. No test has run at this stage.',
               {
                 issue: { title: ctx.title, body: ctx.body },
-                patch: JSON.parse(j.patch),
+                patch: (JSON.parse(j.patch) as Change[]).map(({path,before,after})=>({path,before,after})),
                 evidence: ctx.evidence ?? [],
               },
             ),
@@ -426,9 +427,25 @@ export function startGithubIssueWorker() {
   timer.unref();
   void run();
 }
-export async function decideIssue(j: Job, decision: string, revision: string, connectorId?: string) {
+export async function decideIssue(j: Job, decision: string, revision: string, connectorId?: string, published?: unknown) {
   enforceOwner(j);
   if (j.lease) throw Error("Cette mission est en cours de traitement.");
+  if (decision === "follow-published") {
+    if (!["connect", "approval"].includes(j.phase) || !revision || j.revision !== revision || approvedHash(j) !== revision)
+      throw Error("Cette version du correctif n’attend plus de validation.");
+    const pr = draftNumber(j.repo, published);
+    const head = await verifyPublishedDraft(forRepository(j.owner, "", j.repo), j.repo, j.branch, pr,
+      JSON.parse(j.context) as Context, JSON.parse(j.patch) as Change[]);
+    const fresh = getJob(j.id);
+    if (!fresh || fresh.owner !== j.owner || fresh.phase !== j.phase || fresh.lease ||
+        fresh.revision !== revision || approvedHash(fresh) !== revision)
+      throw Error("La mission a changé pendant la vérification.");
+    enforceOwner(fresh);
+    advance(fresh, "ci", "PR brouillon vérifiée · https://github.com/" + j.repo + "/pull/" + pr +
+      "\nBranche " + j.branch + " · " + head.slice(0, 8) + ". Suivi GitHub Actions dans cette discussion.",
+      { connector: "", commit_sha: head, pr, ci_since: Date.now(), next: 0 });
+    return;
+  }
   if (decision === "connect") {
     if (j.phase !== "connect" || !revision || revision !== approvedHash(j) || j.revision !== revision)
       throw Error("Cette version du correctif a changé.");
@@ -500,8 +517,8 @@ export function registerGithubIssueRoutes(api: Hono<any>, throttle: (key: string
     try {
       if (data.decision) {
         const j = typeof data.job === "string" ? getJob(data.job) : null;
-        if (!j || j.bot !== bot.id || j.generation !== bot.generation) return c.notFound();
-        await decideIssue(j, data.decision, data.revision, data.connector);
+        if (!j || j.owner !== owner || j.bot !== bot.id || j.generation !== bot.generation) return c.notFound();
+        await decideIssue(j, data.decision, data.revision, data.connector, data.pr);
         return c.json({ thread: j.thread });
       }
       const match = /^https:\/\/github\.com\/([^/\s]+\/[^/\s]+)\/issues\/([1-9]\d*)\/?$/.exec(

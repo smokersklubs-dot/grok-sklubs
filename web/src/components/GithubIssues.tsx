@@ -54,6 +54,7 @@ export function GithubIssues({
     [url, setUrl] = useState(initialUrl),
     [account, setAccount] = useState(""),
     [publishAccount, setPublishAccount] = useState(""),
+    [publishedPr, setPublishedPr] = useState(""),
     [reviewer, setReviewer] = useState(""),
     [busy, setBusy] = useState(false),
     [refresh, tick] = useState(0),
@@ -104,6 +105,7 @@ export function GithubIssues({
     }
   }
   async function inspect(job: Job) {
+    setPublishedPr("");
     if (detail?.job === job.id) {
       setDetail(null);
       return;
@@ -304,6 +306,23 @@ export function GithubIssues({
                     {fr ? "Refuser" : "Decline"}
                   </button>
                 </div>
+              )}
+              {["connect", "approval"].includes(j.phase) && (
+                <details>
+                  <summary>{fr ? "Suivre une PR brouillon déjà publiée" : "Follow an existing draft PR"}</summary>
+                  <small>{fr ? "Branche attendue dans le dépôt public" : "Expected public repository branch"} · <code>{j.branch}</code></small>
+                  <form onSubmit={e => {
+                    e.preventDefault();
+                    void post({ job: j.id, decision: "follow-published", revision: detail.data.revision, pr: publishedPr });
+                  }}>
+                    <label>{fr ? "Numéro ou URL de la PR" : "PR number or URL"}
+                      <input className="input" maxLength={250} required value={publishedPr}
+                        onChange={e => setPublishedPr(e.target.value)} /></label>
+                    <button type="submit" className="btn btn-small" disabled={busy || !publishedPr.trim()}>
+                      {fr ? "Vérifier et suivre dans la discussion" : "Verify and follow in this conversation"}
+                    </button>
+                  </form>
+                </details>
               )}
             </div>
           )}
