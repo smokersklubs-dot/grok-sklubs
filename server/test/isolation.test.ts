@@ -156,6 +156,7 @@ function resolve(routePath: string, param: string, bot: "bot1" | "bot2"): string
   const prev2 = segs[i - 2] ?? "";
   const b = bot;
   const table: Record<string, string> = {
+    "research:report": "alpha-report",
     "studio-mp4:job": "7f72c1e2-97d1-440a-accc-2f672603972a",
     "uploads:uploadId": ids[`upload_${b}`],
     "bots:id": ids[b], "rows:seq": "1", "cards:seq": "1", "goals:goalId": ids[`goal_${b}`], "jobs:jobId": ids[`job_${b}`],

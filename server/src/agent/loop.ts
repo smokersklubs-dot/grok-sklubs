@@ -492,7 +492,7 @@ export async function newTurn(bot: BotRecord, user: UserRecord, depth: number, s
   // A subscription tool has its own shell, file and web tools; ours would only duplicate them.
   // Videos go through the user's Higgsfield app when it is connected (and apps are on for this bot), else a video API.
   const video = bot.disabledTools.includes("video") ? null : bot.disabledTools.includes("apps") ? (videoService() ? "api" : null) : videoRoute(user.id);
-  const builtins = builtinTools({ nativeSearch: nativeSearch || forEngine, disabled: bot.disabledTools, video }).filter((t) => !forEngine || !["shell_run", "web_fetch", "search_web", "job_output", "job_stop", "job_list"].includes(t.spec.name))
+  const builtins = builtinTools({ owner: bot.userId, nativeSearch: nativeSearch || forEngine, disabled: bot.disabledTools, video }).filter((t) => !forEngine || !["shell_run", "web_fetch", "search_web", "job_output", "job_stop", "job_list"].includes(t.spec.name))
     // The user's own computers: only for users who linked one with Sklubot Relais.
     .filter((t) => t.group !== "mycomputer" || relayDevices.count(user.id) > 0)
     // Phones only (protocol 1.2): no commands, shared files or windows to offer.
@@ -825,7 +825,7 @@ async function runScopedTurn(botId: string, trigger: Trigger, thread: number): P
     }
     if (!stopped && !isHostedStop(err) && !isPlanLimit(err)) console.error(`[turn ${bot.name}]`, err);
   } finally {
-    endWatch(watch); if (turnOk) noteTurnOk(bot);
+    endWatch(watch); if (turnOk && turn) noteTurnOk(bot, turn.modelRef, thread);
     turnEnded(bot, snapBase, thread);
     endScope(botId);
     activeTurns.end(botId);

@@ -3542,6 +3542,8 @@ export const en = {
   "failure.auto.handoff": "Handed to {note}",
   "failure.auto.wait": "Waiting for the reset",
   "failure.auto.provider_wait": "Waiting for the service to come back",
+  "failure.auto.image_check": "The model processed the original images. You can resume the request.",
+  "failure.auto.quota_check": "The model answered a verification request.",
   "failure.tried.pending": "under way",
   "failure.tried.ok": "worked",
   "failure.tried.ko": "did not work",

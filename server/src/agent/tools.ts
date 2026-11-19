@@ -46,6 +46,7 @@ import { apiTools, scrubSecret } from "../apiconnectors.js";
 import { botMailTools } from "../botmail.js";
 import { ruleTools } from "./ruletools.js";
 import { pageTools } from "./pagetools.js";
+import { researchTool } from "../researchroutes.js";
 import { craftReady } from "./creative-tools.js";
 import { videoStudioTool, updateVideoStudio } from "../videostudio.js";
 import { studioMp4Tool } from "../studiomp4.js";
@@ -1347,11 +1348,11 @@ const jobTools: BuiltinTool[] = [
   }),
 ];
 
-export function builtinTools(opts: { nativeSearch?: boolean; disabled?: readonly string[]; video?: "connector" | "api" | null; bgTasks?: boolean } = {}): BuiltinTool[] {
+export function builtinTools(opts: { owner?: string; nativeSearch?: boolean; disabled?: readonly string[]; video?: "connector" | "api" | null; bgTasks?: boolean } = {}): BuiltinTool[] {
   return assemble(opts).filter((t) => !t.group || !(opts.disabled ?? []).includes(t.group));
 }
 
-function assemble(opts: { nativeSearch?: boolean; video?: "connector" | "api" | null; bgTasks?: boolean }): BuiltinTool[] {
+function assemble(opts: { owner?: string; nativeSearch?: boolean; video?: "connector" | "api" | null; bgTasks?: boolean }): BuiltinTool[] {
   return [
     ...(browserAvailable() ? inGroup("computer", screenTools).map(respectDriver) : []),
     ...(computerKind() === "linux" ? inGroup("computer", elementTools).map(respectDriver) : []),
@@ -1369,7 +1370,7 @@ function assemble(opts: { nativeSearch?: boolean; video?: "connector" | "api" | 
     ...(computerKind() === "linux" || reachAvailable() ? transcribeTools : []),
     githubSearch, githubRead, videoWorkflowTool, videoStudioTool, updateVideoStudio, ...(computerKind() === "linux" ? [studioMp4Tool] : []), ...publicLinkTools,
     ...knowledgeTools, ...guideTools, ...ruleTools, ...pageTools, ...progressTools, ...profileTools, ...skillImportTools, ...botTools, ...recruitTools,
-    ...(xSearchAvailable() ? xTools : []),
+    researchTool, ...(xSearchAvailable(opts.owner) ? xTools : []),
     ...shareTools.filter((t) => t.spec.name !== "image_generate" || imageService()).map((t): BuiltinTool => ({ ...t, group: t.spec.name === "image_generate" ? "images" : "files" })),
     ...inGroup("vault", vaultTools),
     ...(browserAvailable() ? inGroup("vault", screenVaultTools).map(respectDriver) : []),

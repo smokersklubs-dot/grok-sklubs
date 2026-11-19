@@ -44,8 +44,8 @@ export function VideoStudio({ onClose }: { onClose: () => void }) {
     setBusy(true);
     setError("");
     try {
-      if (files.length > 24 || [...files, ...(song ? [song] : [])].some((f) => f.size > MAX_UPLOAD_BYTES))
-        throw Error(fr ? "Maximum 24 plans et 1 Go par fichier." : "Up to 24 shots and 1 GB per file.");
+      if (files.length > 60 || [...files, ...(song ? [song] : [])].some((f) => f.size > MAX_UPLOAD_BYTES))
+        throw Error(fr ? "Maximum 60 plans et 1 Go par fichier." : "Up to 60 shots and 1 GB per file.");
       const paths: string[] = [];
       for (const f of files) paths.push(await upload(f));
       const story: Story = {
@@ -59,8 +59,8 @@ export function VideoStudio({ onClose }: { onClose: () => void }) {
       if (!validStory(story))
         throw Error(
           fr
-            ? "Vérifie les repères et les durées. Le montage accepte 0,5 à 60 s par plan et 120 s au total."
-            : "Check the timings. Use 0.5–60 seconds per shot and up to 120 seconds overall.",
+            ? "Vérifie les repères et les durées. Le montage accepte 0,5 à 60 s par plan et 5 minutes au total."
+            : "Check the timings. Use 0.5–60 seconds per shot and up to 5 minutes overall.",
         );
       const result = await api<{ token: string; title: string }>("POST", "/bots/" + bot + "/video-studio", {
         key: key.current,

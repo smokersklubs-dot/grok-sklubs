@@ -1,9 +1,10 @@
 import { randomUUID } from "node:crypto";
-import { closeSync, constants, fdatasyncSync, linkSync, lstatSync, mkdirSync, openSync, realpathSync, statfsSync, unlinkSync, writeSync } from "node:fs";
+import { closeSync, constants, fdatasyncSync, mkdirSync, openSync, statfsSync, unlinkSync, writeSync } from "node:fs";
 import path from "node:path";
 import type { Context } from "hono";
 import { config } from "./config.js";
-import { checkLibraryUpload, resolveInWorkspace, storeLibraryFile } from "./computer.js";
+import { checkLibraryUpload } from "./computer.js";
+import { publishStagedFile } from "./stagedfile.js";
 import { q } from "./db.js";
 import { MAX_UPLOAD_BYTES, PART_BYTES } from "./uploadlimits.js";
 import type { Attachment } from "./shared.js";
@@ -46,27 +47,6 @@ export function beginUpload(c: Context, bot: string, owner: string, input: Recor
   });
 }
 
-// Publish the completed file on the same volume, atomically and exclusively. On Linux the destination
-// directory is pinned by descriptor, even if a desktop changes a directory entry during publication.
-function publish(bot: string, row: Session) {
-  const source = stagedPath(row);
-  const original = lstatSync(source, { bigint: true });
-  const dir = resolveInWorkspace(bot, "uploads");
-  mkdirSync(dir, { recursive: true });
-  const fd = process.platform === "linux" ? openSync(dir, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW) : null;
-  try {
-    const anchor = fd === null ? dir : `/proc/self/fd/${fd}`;
-    if (realpathSync(anchor) !== resolveInWorkspace(bot, "uploads")) throw new Error("Upload directory changed.");
-    return storeLibraryFile(bot, "uploads", row.name, target => {
-      checkLibraryUpload(bot, row.total, true);
-      linkSync(source, path.join(anchor, path.basename(target)));
-      checkLibraryUpload(bot, row.total);
-    }, existing => {
-      const st = lstatSync(existing, { bigint: true });
-      return st.isFile() && st.dev === original.dev && st.ino === original.ino;
-    });
-  } finally { if (fd !== null) closeSync(fd); }
-}
 async function readPart(req: Request, length: number): Promise<Buffer | null> {
   const reader = req.body?.getReader();
   if (!reader) return null;
@@ -111,7 +91,7 @@ export async function receivePart(c: Context, bot: string, id: string) {
         fdatasyncSync(fd);
       } finally { closeSync(fd); }
       const received = offset + length;
-      const attachment = received === current.total ? publish(bot, current) : undefined;
+      const attachment = received === current.total ? publishStagedFile(bot, "uploads", stagedPath(current), current.name, current.total) : undefined;
       q.run("UPDATE upload_sessions SET received=?, receipt=?, touched=? WHERE id=?", received, attachment ? JSON.stringify(attachment) : null, Date.now(), id);
       return attachment ? { attachment } : { received };
     });

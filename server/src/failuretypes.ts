@@ -17,7 +17,7 @@ export type FailureRemedy = (typeof FAILURE_REMEDIES)[number];
 /** What the coordinator did on its own: a new try, the backup model, a teammate, waiting for a reset or for the provider. */
 export type FailureAuto = "retry" | "fallback" | "handoff" | "wait" | "provider_wait";
 /** One automatic attempt. `ok`: null while it is under way; `note`: the backup model or the teammate's name. */
-export interface FailureTry { action: FailureAuto; at: number; ok: boolean | null; note?: string }
+export interface FailureTry { action: FailureAuto | "image_check" | "quota_check"; at: number; ok: boolean | null; note?: string }
 /** auto: handled automatically, still under way; waiting: waits for the owner; retrying: the owner asked for a new try. */
 export type FailureStatus = "auto" | "waiting" | "retrying" | "resolved" | "handed" | "dismissed";
 /** One line of the bot's « Incidents » (Activité tab). `resolvedBy`: "auto" (fixed without the owner) or "user". */

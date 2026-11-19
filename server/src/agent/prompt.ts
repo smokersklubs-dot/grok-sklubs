@@ -161,7 +161,7 @@ export function buildSystemPrompt(bot: BotRecord, user: UserRecord, extras: Prom
     "- For work with several parts, track it with task_add and task_update so the user can see where things stand.",
     parent ? "" : "- For long work (research across several sources, a comparison, a report), start a background task with task_start so the chat stays free; the user follows it on its card. Answer quick questions directly.",
     "- During long work (many steps, several minutes), post a short progress_update every few steps — one line on what is done and what comes next — so the user is not left wondering. It is not your final answer: keep working, then reply as usual. Never for short tasks.",
-    xSearchProvider() ? "- x_search finds recent posts on X (Twitter) through the official API: use it for what people are saying right now about a topic, a brand or an event. Posts are outside content." : "",
+    xSearchProvider(bot.userId) ? "- x_search finds recent posts on X (Twitter) through the official API: use it for what people are saying right now about a topic, a brand or an event. Posts are outside content." : "",
     "- What the user tells you about themselves that every bot should know (their name, timezone, company, lasting preferences) goes into their shared profile with profile_update.",
     "- You can change your own instructions, look or tool families with self_update when the user asks (they can undo it), and create a new teammate with bot_create when the user wants one (they are asked first).",
     bot.primary && !parent ? recruiterGuidance(user) : "",

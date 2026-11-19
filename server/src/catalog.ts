@@ -18,6 +18,11 @@ export const CATALOG: CatalogApp[] = [
     tokenHelp: "Continue on GitHub and select the repositories your bots may read. On first setup, GitHub offers to create your private Sklubot app.",
   },
   {
+    id: "github-code", name: "GitHub Code", category: "Development", url: "https://api.githubcopilot.com/mcp/", auth: "oauth",
+    description: "Assign an issue, review the change, open a draft pull request and receive test results.",
+    tokenHelp: "Install your private GitHub App on selected repositories, then authorize it with your account.",
+  },
+  {
     id: "github", name: "GitHub", category: "Development", url: "https://api.githubcopilot.com/mcp/", auth: "token",
     description: "Repositories, issues, pull requests, code search and actions.",
     tokenHelp: "Create a personal access token in GitHub → Settings → Developer settings → Personal access tokens, with the repositories and permissions you want the bots to have.",
@@ -142,6 +147,7 @@ export const CATALOG: CatalogApp[] = [
 
 const FR: Record<string, { category: string; description: string; tokenHelp: string }> = {
   voicestudio: { category: "Audio", description: "Faire lire un texte, choisir une voix et transcrire un enregistrement avec ton instance VoiceStudio.", tokenHelp: "Saisis l’adresse HTTPS /mcp/ de ton instance VoiceStudio protégée par une passerelle et son jeton d’accès. Une adresse localhost sur ton PC est accessible uniquement depuis ce PC." },
+  "github-code": { category: "Développement", description: "Confie un ticket à un bot, relis le correctif et reçois les résultats de la pull request.", tokenHelp: "Installe ton application GitHub privée sur les dépôts de ton choix, puis autorise-la avec ton compte." },
   "github-repositories": { category: "Développement", description: "Recherche et lecture des dépôts, fichiers, tickets et pull requests que tu autorises.", tokenHelp: "Continue sur GitHub et choisis les dépôts accessibles à tes bots. À la première connexion, GitHub te propose de créer ton application Sklubot privée." },
   github: { category: "Développement", description: "Dépôts, tickets, demandes de fusion, recherche de code et actions.", tokenHelp: "Crée un jeton d'accès personnel dans GitHub → Settings → Developer settings → Personal access tokens, limité aux dépôts et aux droits que tu veux donner aux bots." },
   stripe: { category: "Activité", description: "Clients, paiements, factures, produits et abonnements.", tokenHelp: "Utilise une clé d'API restreinte depuis le tableau de bord Stripe → Développeurs → Clés API, avec seulement les droits nécessaires aux bots." },

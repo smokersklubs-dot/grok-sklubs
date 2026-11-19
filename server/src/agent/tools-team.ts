@@ -297,7 +297,7 @@ export const xTools: BuiltinTool[] = [
     activity: "searching", label: "Searching X", group: "web", outside: true, audited: true, detail: (a) => clip(String(a.query ?? ""), 40),
     run: async (a, c: ToolContext) => {
       try {
-        const r = await xSearch({ query: String(a.query), max: Number(a.max_results) || undefined, sort: a.sort === "relevancy" ? "relevancy" : a.sort === "recency" ? "recency" : undefined, fromDate: a.from_date ? String(a.from_date) : undefined, toDate: a.to_date ? String(a.to_date) : undefined, handles: a.handles, excludeHandles: a.exclude_handles }, c.signal);
+        const r = await xSearch({ query: String(a.query), max: Number(a.max_results) || undefined, sort: a.sort === "relevancy" ? "relevancy" : a.sort === "recency" ? "recency" : undefined, fromDate: a.from_date ? String(a.from_date) : undefined, toDate: a.to_date ? String(a.to_date) : undefined, handles: a.handles, excludeHandles: a.exclude_handles }, c.signal, c.user.id);
         return { content: formatXResult(r), summary: r.provider === "x" ? `${r.posts.length} posts` : `${r.citations.length} sources · xAI` };
       } catch (err) {
         if (c.signal.aborted) throw err;
@@ -306,4 +306,4 @@ export const xTools: BuiltinTool[] = [
     },
   }),
 ];
-export const xSearchAvailable = () => xSearchProvider() !== null;
+export const xSearchAvailable = (owner?: string) => xSearchProvider(owner) !== null;

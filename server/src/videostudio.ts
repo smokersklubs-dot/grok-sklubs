@@ -7,6 +7,7 @@ import { publishPage } from "./agent/pagetools.js";
 import { videoWorkflows } from "./videoworkflows.js";
 import { pageFiles, pageVersions } from "./pagefiles.js";
 import { bots, pages } from "./store.js";
+import { MAX_CLIPS, MAX_PROJECT_SECONDS, MAX_SHOTS, validClips, type StudioClip } from "./studioclips.js";
 
 interface Scene {
   speech?: { speaker: string; text: string; voice: string; path: string };
@@ -16,6 +17,7 @@ interface Scene {
   style: string;
 }
 export interface StudioStory {
+  clips?: StudioClip[];
   title: string;
   aspect: string;
   scenes: Scene[];
@@ -31,7 +33,8 @@ const escape = (s: string) =>
   s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 
 export function storyFor(botId: string, input: any): StudioStory | null {
-  if (!input || !Array.isArray(input.scenes) || !input.scenes.length || input.scenes.length > 24) return null;
+  if (!input || !Array.isArray(input.scenes) || !input.scenes.length || input.scenes.length > MAX_SHOTS ||
+      !validClips(input.clips) || input.clips?.some((clip: StudioClip) => !attachmentAt(botId, clip.path))) return null;
   const title = clean(input.title, 110);
   const asset = (value: unknown, ext: RegExp, location: RegExp) =>
     typeof value === "string" &&
@@ -61,15 +64,19 @@ export function storyFor(botId: string, input: any): StudioStory | null {
   if (
     !title ||
     !["wide", "vertical", "square"].includes(input.aspect) ||
-    scenes.reduce((v, s) => v + s.seconds, 0) > 120 ||
+    scenes.reduce((v, s) => v + s.seconds, 0) > MAX_PROJECT_SECONDS ||
     (input.audio !== "" && !asset(input.audio, sound, /^(?:uploads|audio)\/[^/\\]+$/)) ||
     !Number.isFinite(input.offset) ||
     input.offset < 0 ||
-    input.offset > 120
+    input.offset > MAX_PROJECT_SECONDS
   )
     return null;
   return {
     title,
+    ...(input.clips?.length ? { clips: input.clips.map((c: StudioClip) => ({
+      id: c.id, kind: c.kind, name: c.name.trim(), path: c.path, start: c.start, inPoint: c.inPoint, outPoint: c.outPoint,
+      ...(c.kind === "audio" ? {volume: c.volume ?? 1} : {x: c.x ?? .5, y: c.y ?? .5, scale: c.scale ?? .5, opacity: c.opacity ?? 1}),
+    })) } : {}),
     scenes,
     aspect: input.aspect,
     audio: input.audio,
@@ -152,7 +159,7 @@ export function registerVideoStudio(api: Hono<any>) {
     const story = storyFor(bot.id, b.story);
     if (!story)
       return c.json(
-        { error: "Vérifie les médias, les durées et les pistes. Le montage accepte 24 plans et 120 secondes." },
+        { error: "Vérifie les médias et les repères. Le montage accepte 60 plans, 48 clips et 5 minutes." },
         400,
       );
     const published = saveProject(name, story, { bot, user });
@@ -172,6 +179,11 @@ export const videoStudioTool: BuiltinTool = {
         title: { type: "string" },
         aspect: { type: "string", enum: ["wide", "vertical", "square"] },
         audio: { type: "string", description: "Soundtrack from this bot's uploads/ or audio/ library, including a WAV returned by VoiceStudio generate_speech." },
+        clips: {type:"array", maxItems: MAX_CLIPS, description:"Independent overlapping tracks in back-to-front order. Visual clips use images or silent video. Use audio clips for music or overlapping recorded voices.", items:{
+          type:"object", properties:{id:{type:"string"},kind:{enum:["visual","audio"]},name:{type:"string"},path:{type:"string"},
+          start:{type:"number",description:"Timeline placement in seconds."},inPoint:{type:"number",description:"Source trim start in seconds."},outPoint:{type:"number",description:"Source trim end in seconds."},
+          x:{type:"number"},y:{type:"number"},scale:{type:"number"},opacity:{type:"number"},volume:{type:"number"}},
+          required:["id","kind","name","path","start","inPoint","outPoint"]}},
         scenes: {
           type: "array",
           items: {
@@ -200,6 +212,7 @@ export const videoStudioTool: BuiltinTool = {
     const story = storyFor(c.bot.id, {
       title: a.title,
       scenes: raw,
+      clips: a.clips,
       aspect: a.aspect || "wide",
       audio: a.audio ?? "",
       offset: 0,
@@ -207,7 +220,7 @@ export const videoStudioTool: BuiltinTool = {
     });
     if (!story)
       return {
-        content: "Check your scenes, media paths, and durations (0.5–60 seconds per scene, up to 120 seconds total).",
+        content: "Check the media paths and timing. Use 0.5–60 seconds per shot, up to 60 shots, 48 independent clips and 5 minutes overall.",
         isError: true,
       };
     const name = "artifact-video-" + randomUUID();

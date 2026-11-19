@@ -39,3 +39,12 @@
 .peer-review {
   padding-block: 0.5rem;
 }
+
+.github-activity pre {
+  max-block-size: 24rem;
+  overflow: auto;
+  padding: .6rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  border: 1px solid var(--line);
+}

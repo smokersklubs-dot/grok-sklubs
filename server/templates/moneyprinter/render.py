@@ -63,6 +63,23 @@ def prepare_voice(wav, seconds, index, temp):
     return str(target)
 
 
+def mix_tracks(clips, inputs, total, temp):
+    args, chains, labels = [], [], []
+    for index, clip in enumerate(clips):
+        length = clip["outPoint"] - clip["inPoint"]
+        args.extend(["-protocol_whitelist", "file", "-format_whitelist", "mov,matroska,mp3,wav,ogg,aac,flac",
+                     "-ss", clip["inPoint"], "-t", length, "-i", inputs[clip["path"]]])
+        delay = round(clip["start"] * 48000)
+        chains.append(f"[{index}:a:0]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,"
+                      f"asetpts=PTS-STARTPTS,volume={clip.get('volume', 1)},adelay={delay}S:all=1[a{index}]")
+        labels.append(f"[a{index}]")
+    chains.append("".join(labels) + f"amix=inputs={len(clips)}:normalize=0,apad[mixed]")
+    result = temp / "soundtrack.wav"
+    subprocess.run(ffmpeg(*args, "-filter_complex_threads", 1, "-filter_complex", ";".join(chains),
+                          "-map", "[mixed]", "-t", total, "-ar", 48000, "-ac", 2, result), check=True)
+    return str(result)
+
+
 def render(job, temp):
     from frames import StudioCanvas
     from video_project import VideoProject
@@ -70,18 +87,39 @@ def render(job, temp):
     story = job["story"]
     width, height = {"vertical": (720,1280), "wide": (1280,720), "square": (1280,1280)}[story["aspect"]]
     fps = 25
-    total = sum(scene["seconds"] for scene in story["scenes"])
-    visuals = {scene["media"] for scene in story["scenes"] if scene["media"]}
+    clips = story.get("clips", [])
+    base_seconds = sum(scene["seconds"] for scene in story["scenes"])
+    total = max([base_seconds] + [c["start"] + (c["outPoint"] - c["inPoint"]) for c in clips])
+    visuals = {s["media"]: s["media"] for s in story["scenes"] if s["media"]}
+    visuals.update({"clip:" + c["id"]: c["path"] for c in clips if c["kind"] == "visual"})
     audio = story["audio"] if not story["muted"] and story["offset"] < total else ""
     takes = {s["speech"]["path"] for s in story["scenes"] if s.get("speech")}
+    audio_clips = [c for c in clips if c["kind"] == "audio"]
+    if audio:
+        audio_clips.append({"path": audio, "start": story["offset"], "inPoint": 0,
+                            "outPoint": total-story["offset"], "volume": .18 if takes or any(job["voices"]) else 1})
     manifest = {"project_id": "studio", "settings": {"width": width, "height": height, "fps": fps,
-                "bgm_volume": .18 if takes or any(job["voices"]) else 1}, "scenes": []}
+                "bgm_volume": 1}, "scenes": []}
     with ExitStack() as stack:
-        inputs = asset_files(job["bot"], visuals | takes | ({audio} if audio else set()), temp, stack)
+        inputs = asset_files(job["bot"], set(visuals.values()) | takes | {c["path"] for c in audio_clips}, temp, stack)
         canvas = stack.enter_context(closing(StudioCanvas(temp / "chromium", job["javascript"], story,
-                                                width, height, {k: inputs[k] for k in visuals})))
+                                                width, height, {k: inputs[p] for k,p in visuals.items()})))
         elapsed = 0
-        for index, scene in enumerate(story["scenes"]):
+        segments = story["scenes"]
+        if clips:
+            # One frame clock and sample clock for the whole layered edit. Encoding
+            # shots separately would accumulate rounding at every fractional cut.
+            segments = [{"seconds": total, "text": ""}]
+            start = 0
+            for index, scene in enumerate(story["scenes"]):
+                source = scene.get("speech", {}).get("path")
+                if not source and job["voices"][index]:
+                    source = "generated:" + str(index)
+                    inputs[source] = prepare_voice(job["voices"][index], scene["seconds"], index, temp)
+                if source:
+                    audio_clips.append({"path": source, "start": start, "inPoint": 0, "outPoint": scene["seconds"]})
+                start += scene["seconds"]
+        for index, scene in enumerate(segments):
             seconds = scene["seconds"]
             footage = temp / f"shot-{index}.mp4"
             command = ffmpeg("-f", "image2pipe", "-c:v", "mjpeg", "-r", fps, "-i", "pipe:0", "-an",
@@ -102,18 +140,13 @@ def render(job, temp):
                                       "-ar", 48000, "-ac", 2, target), check=True)
                 item["audio"] = str(target)
                 item["narration"] = scene["speech"]["text"] or scene["speech"]["speaker"]
-            elif job["voices"][index]:
+            elif not clips and job["voices"][index]:
                 item["audio"] = prepare_voice(job["voices"][index], seconds, index, temp)
                 item["narration"] = scene["text"]
             manifest["scenes"].append(item)
             elapsed += seconds
-        if audio:
-            bgm = temp / "soundtrack.wav"
-            delay = round(story["offset"] * 1000)
-            subprocess.run(ffmpeg("-protocol_whitelist", "file", "-format_whitelist",
-                          "mov,matroska,mp3,wav,ogg,aac,flac", "-i", inputs[audio],
-                          "-af", f"adelay={delay}:all=1,apad", "-t", total, "-ar", 48000, "-ac", 2, bgm), check=True)
-            manifest["bgm"] = str(bgm)
+        if audio_clips:
+            manifest["bgm"] = mix_tracks(audio_clips, inputs, total, temp)
     project = VideoProject(temp / "project")
     revision = project.create_revision(manifest)
     result = project.render(revision["revision_id"])
@@ -126,7 +159,7 @@ def render(job, temp):
         raise ValueError("The exported video differs from the timeline")
     if not any(s["codec_name"] == "aac" for s in metadata["streams"]):
         raise ValueError("The audio stream is missing")
-    if output.stat().st_size > 80 * 1024**2:
+    if output.stat().st_size > 1_000_000_000:
         raise ValueError("VIDEO_TOO_LARGE")
     with output.open("rb") as movie:
         shutil.copyfileobj(movie, sys.stdout.buffer)

@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import { api, apiUpload, errText } from "../api";
-import { duration, locate, styles, validStory, type Scene, type Story } from "../lib/studioStory";
+import { duration, locate, shotDuration, styles, validStory, type Scene, type Story } from "../lib/studioStory";
 import { useStore } from "../store";
 import type { Attachment } from "../types";
 import { StudioMp4 } from "./StudioMp4";
 import { StudioSpeech } from "./StudioSpeech";
 import { StudioPlayback } from "./StudioPlayback";
+import { StudioClips } from "./StudioClips";
+import { MAX_PROJECT_SECONDS, MAX_SHOTS, validClips } from "../../../server/src/studioclips";
 import { StudioLibraryAudio } from "./StudioLibraryAudio";
 import { StudioSubtitles } from "./StudioSubtitles";
 import { ErrorNote, Loading } from "./ui";
@@ -42,7 +44,7 @@ export function StudioEditor({
       .then(async (r) => {
         if (!r.ok) throw Error("Studio " + r.status);
         const s = await r.json();
-        if (!validStory(s)) throw Error(fr ? "Projet illisible." : "Invalid project.");
+        if (!validClips(s?.clips) || !validStory(s)) throw Error(fr ? "Projet illisible." : "Invalid project.");
         if (active) setStory(s);
       })
       .catch((e) => {
@@ -56,6 +58,7 @@ export function StudioEditor({
   if (!story) return error ? <ErrorNote>{error}</ErrorNote> : <Loading />;
   const model = story,
     total = duration(story),
+    baseSeconds = shotDuration(story),
     shot = locate(story, time),
     s = shot.scene;
   const cast=model.scenes.flatMap(c=>c.speech ? [c.speech] : []);
@@ -78,7 +81,7 @@ export function StudioEditor({
     setTime(list.slice(0, j).reduce((n, c) => n + c.seconds, 0));
   };
   const save = async () => {
-    if (!validStory(model)) {
+    if (!validClips(model.clips) || !validStory(model)) {
       setError(fr ? "Vérifie les durées et les plans." : "Check the shots and timings.");
       return;
     }
@@ -145,6 +148,7 @@ export function StudioEditor({
                       : "No soundtrack"}
                 </span>
               )}
+              {i < 2 && total > baseSeconds && <span aria-hidden="true" style={{flex: total-baseSeconds,visibility:"hidden"}} />}
             </div>
           </div>
         ))}
@@ -152,8 +156,11 @@ export function StudioEditor({
           <button type="button" className="btn btn-small" aria-pressed={solo===speaker} title={fr?"Écouter seulement cette voix":"Solo this voice"} onClick={()=>setSolo(solo===speaker?"":speaker)}>{speaker} · Solo</button>
           <div className="studio-clips track-1">{model.scenes.map((c,i)=>c.speech?.speaker===speaker ?
             <button type="button" key={i} style={{flex:c.seconds}} onClick={()=>seek(i)}>{c.speech.text || speaker}</button> :
-            <span key={i} aria-hidden="true" style={{flex:c.seconds,visibility:"hidden"}}/>)}</div></div>)}
+            <span key={i} aria-hidden="true" style={{flex:c.seconds,visibility:"hidden"}}/>)}
+            {total > baseSeconds && <span aria-hidden="true" style={{flex: total-baseSeconds,visibility:"hidden"}} />}</div></div>)}
       </div>
+      <StudioClips bot={bot} story={model} time={time} fr={fr} editable={editable} busy={busy}
+        onBusy={setBusy} onSeek={setTime} onChange={clips => update({...model, clips})} />
       {editable && (
         <fieldset className="studio-controls" disabled={busy}>
           <legend>
@@ -184,7 +191,7 @@ export function StudioEditor({
                 value={s.seconds}
                 onChange={(e) => {
                   const v = e.target.valueAsNumber;
-                  if (v >= 0.5 && v <= 60 && total - s.seconds + v <= 120) patch({ seconds: v });
+                  if (v >= 0.5 && v <= 60 && baseSeconds - s.seconds + v <= MAX_PROJECT_SECONDS) patch({ seconds: v });
                 }}
               />
             </label>
@@ -216,7 +223,7 @@ export function StudioEditor({
             </button>
             <button
               className="btn btn-small"
-              disabled={model.scenes.length >= 24 || total > 116}
+              disabled={model.scenes.length >= MAX_SHOTS || baseSeconds + 4 > MAX_PROJECT_SECONDS}
               onClick={() => {
                 update({
                   ...model,
@@ -274,7 +281,7 @@ export function StudioEditor({
                   value={model.offset}
                   onChange={(e) => {
                     const v = e.target.valueAsNumber;
-                    if (v >= 0 && v <= 120) update({ ...model, offset: v });
+                    if (v >= 0 && v <= MAX_PROJECT_SECONDS) update({ ...model, offset: v });
                   }}
                 />
               </label>

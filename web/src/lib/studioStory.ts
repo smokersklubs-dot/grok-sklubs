@@ -1,3 +1,5 @@
+import type { StudioClip } from "../../../server/src/studioclips";
+
 export type Style = "editorial" | "draw" | "diagram" | "type" | "capture";
 export interface SpeechTake { speaker: string; text: string; voice: string; path: string }
 export interface Scene {
@@ -8,6 +10,7 @@ export interface Scene {
   media: string;
 }
 export interface Story {
+  clips?: StudioClip[];
   title: string;
   scenes: Scene[];
   aspect: "wide" | "vertical" | "square";
@@ -16,7 +19,22 @@ export interface Story {
   muted: boolean;
 }
 export type Visual = HTMLImageElement | HTMLVideoElement;
-export const duration = (s: Story) => s.scenes.reduce((n, c) => n + c.seconds, 0);
+export const shotDuration = (s: Story) => s.scenes.reduce((n, c) => n + c.seconds, 0);
+export const duration = (s: Story) => Math.max(shotDuration(s), ...(s.clips ?? []).map(c => c.start + (c.outPoint - c.inPoint)));
+export function visualSources(s: Story): [string, string][] {
+  const base = [...new Set(s.scenes.map(c => c.media).filter(Boolean))];
+  return [...base.map((path): [string, string] => [path, path]),
+    ...(s.clips ?? []).filter(c => c.kind === "visual").map((c): [string, string] => ["clip:" + c.id, c.path])];
+}
+export function visualTimes(s: Story, time: number) {
+  const { scene, local } = locate(s, time);
+  const times = new Map<string, number>();
+  if (scene.media) times.set(scene.media, Math.min(local, scene.seconds));
+  for (const c of s.clips ?? [])
+    if (c.kind === "visual" && time >= c.start && time < c.start + (c.outPoint - c.inPoint))
+      times.set("clip:" + c.id, c.inPoint + time - c.start);
+  return times;
+}
 export const validUpload = (s: unknown): s is string => typeof s === "string" && /^uploads\/[^/\\]{1,180}$/.test(s);
 export function validStory(s: Story): boolean {
   return (
@@ -25,7 +43,7 @@ export function validStory(s: Story): boolean {
     ["wide", "vertical", "square"].includes(s.aspect) &&
     Array.isArray(s.scenes) &&
     s.scenes.length > 0 &&
-    s.scenes.length <= 24 &&
+    s.scenes.length <= 60 &&
     s.scenes.every(
       (c) =>
         c &&
@@ -40,11 +58,12 @@ export function validStory(s: Story): boolean {
           typeof c.speech.text === "string" && c.speech.text.length <= 300 && typeof c.speech.voice === "string" && c.speech.voice.length <= 120 &&
           typeof c.speech.path === "string" && /^(?:audio|uploads)\/[^/\\]{1,180}\.(wav|mp3|m4a|aac|ogg|flac|opus)$/i.test(c.speech.path))),
     ) &&
-    duration(s) <= 120 &&
+    (s.clips === undefined || Array.isArray(s.clips) && s.clips.every(c => c && Number.isFinite(c.outPoint))) &&
+    duration(s) <= 300.000001 &&
     (s.audio === "" || validUpload(s.audio) || (typeof s.audio === "string" && /^audio\/[^/\\]{1,180}\.(wav|mp3|m4a|aac|ogg|flac|opus)$/i.test(s.audio))) &&
     Number.isFinite(s.offset) &&
     s.offset >= 0 &&
-    s.offset <= 120
+    s.offset <= 300
   );
 }
 export const mediaUrl = (bot: string, file: string) =>
@@ -151,6 +170,20 @@ export function drawFrame(canvas: HTMLCanvasElement, story: Story, assets: Map<s
       ctx.fillRect(-w * 0.14, -h * 0.13, w * 0.28, h * 0.26);
       ctx.restore();
     }
+  }
+  for (const c of story.clips ?? []) {
+    if (c.kind !== "visual" || time < c.start || time >= c.start + (c.outPoint - c.inPoint)) continue;
+    const el = assets.get("clip:" + c.id);
+    if (!el) continue;
+    const iw = el instanceof HTMLVideoElement ? el.videoWidth : el.naturalWidth;
+    const ih = el instanceof HTMLVideoElement ? el.videoHeight : el.naturalHeight;
+    if (!iw || !ih) continue;
+    const fit = Math.min(w / iw, h / ih) * (c.scale ?? .5);
+    const dw = iw * fit, dh = ih * fit;
+    ctx.save();
+    ctx.globalAlpha = c.opacity ?? 1;
+    ctx.drawImage(el, (w - dw) * (c.x ?? .5), (h - dh) * (c.y ?? .5), dw, dh);
+    ctx.restore();
   }
   const font = Math.floor(Math.min(w * 0.07, h * 0.098));
   ctx.fillStyle = fg;

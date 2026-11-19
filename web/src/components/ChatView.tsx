@@ -7,6 +7,7 @@ import { BotAvatar } from "./Avatar";
 import { CallBar } from "./CallBar";
 import { CallHeadButton } from "./CallHeadButton";
 import { Composer } from "./Composer";
+import { WorkContext } from "./WorkContext";
 import { Icon } from "./Icon";
 import { Transcript } from "./Transcript";
 import { FindBar } from "./FindBar";
@@ -142,6 +143,7 @@ export function ChatView() {
           {!detailsOpen && <IconButton icon="panel" label={t("chat.showDetails")} onClick={() => toggleDetails(true)} />}
         </span>
       </header>
+      {bot.kind === "agent" && !bot.access && <WorkContext key={bot.id + ":" + bot.model} bot={bot} />}
       {finding && <FindBar key={bot.id} botId={bot.id} />}
       <div className="chat-body-row">
         <Transcript bot={bot} thread={thread} live={live} />

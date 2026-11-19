@@ -1,0 +1,3 @@
+.work-context { display:flex; flex-wrap:wrap; justify-content:center; align-items:center; gap:.12rem .8rem; padding:.28rem .6rem; color:var(--muted); font-size:.78rem; border-bottom:1px solid var(--line); }
+.work-context span { overflow-wrap:anywhere; }
+.work-context button { font:inherit; }

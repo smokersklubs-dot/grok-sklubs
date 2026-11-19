@@ -2,7 +2,7 @@ import type { Context, Hono } from "hono";
 import { engineLogin, engineModelsFor, engineStatus } from "./agent/engine.js";
 import { disconnectPersonal, personalActive, personalEnabled, verifyPersonal } from "./personalplan.js";
 import { startPersonalLogin, personalLoginState } from "./personalsignin.js";
-import { computerKind } from "./computer.js";
+import { computerKind, screen } from "./computer.js";
 import { config } from "./config.js";
 import { engineBlock, subscriptionEnginesFor } from "./hosted.js";
 import type { Engine, EngineStatus, Locale } from "./shared.js";
@@ -41,7 +41,7 @@ const WHY_TEXT: Record<Why, string> = {
 };
 
 /** The engine calls, replaceable in tests (they run without Linux computers). */
-let deps: { login: (bot: BotRecord, engine: Engine) => Promise<void>; status: (bot: BotRecord) => Promise<EngineStatus[]>; models: (userId: string, botId: string) => Promise<{ ref: string }[]>; linux: () => boolean } = {
+let deps: { login: (bot: BotRecord, engine: Engine) => Promise<void>; status: (bot: BotRecord, engine?: Engine) => Promise<EngineStatus[]>; models: (userId: string, botId: string) => Promise<{ ref: string }[]>; linux: () => boolean } = {
   login: engineLogin, status: engineStatus, models: engineModelsFor, linux: () => computerKind() === "linux",
 };
 export const setConnectDeps = (d: Partial<typeof deps>) => { deps = { ...deps, ...d }; };
@@ -105,8 +105,9 @@ export function registerSubscriptionConnectRoutes(api: Hono<any>) {
         const signedIn = await verifyPersonal(u.id);
         return c.json({ signedIn, account: signedIn ? "ChatGPT" : null, personal: true });
       }
-      const s = (await deps.status(bot)).find((x) => x.engine === engine);
-      return c.json({ signedIn: !!s?.signedIn, account: s?.account ?? null });
+      if (c.req.query("passive") === "1" && !screen.isOpen(bot.id)) return c.json({ signedIn: null, account: null });
+      const s = (await deps.status(bot, engine)).find((x) => x.engine === engine);
+      return c.json({ signedIn: s?.signedIn ?? null, account: s?.account ?? null });
     } catch { return err(c, 502, "Could not verify the subscription. Try again."); }
   });
   api.post("/connect-subscription/use", async (c) => {
@@ -122,7 +123,7 @@ export function registerSubscriptionConnectRoutes(api: Hono<any>) {
       return err(c, 400, "Choose an available model for this subscription.");
     }
     try {
-      const connected = engine === "codex" && personalActive(u.id) ? await verifyPersonal(u.id) : (await deps.status(bot)).find((s) => s.engine === engine)?.signedIn;
+      const connected = engine === "codex" && personalActive(u.id) ? await verifyPersonal(u.id) : (await deps.status(bot, engine)).find((s) => s.engine === engine)?.signedIn;
       if (!connected) return err(c, 409, "Finish signing in on this bot's desktop first.", { code: "sign_in_required" });
     } catch { return err(c, 502, "Could not verify the subscription. Try again."); }
     const ref = typeof requested === "string" ? requested : bot.model.startsWith(engine + ":") ? bot.model : defaultEngineRef(engine);

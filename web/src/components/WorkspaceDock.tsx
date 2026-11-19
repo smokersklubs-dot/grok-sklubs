@@ -4,6 +4,7 @@ import { ArtifactPanel } from "./ArtifactPanel";
 import { SignInSite } from "./SignInSite";
 import { Icon } from "./Icon";
 import { WebWorkspace } from "./WebWorkspace";
+import { ResearchPanel } from "./ResearchPanel";
 
 type Tab = NonNullable<ReturnType<typeof useStore.getState>["artifact"]>;
 function Desktop({ bot, active, fr }: { bot: string; active: boolean; fr: boolean }) {
@@ -103,6 +104,8 @@ export function WorkspaceDock({ active }: { active: Tab }) {
         >
           {t.kind === "web" ? (
             <WebWorkspace bot={t.botId} fr={fr} initialUrl={t.url} />
+          ) : t.kind === "research" ? (
+            <ResearchPanel bot={t.botId} fr={fr} active={t.token === active.token} />
           ) : t.kind === "desktop" ? (
             <Desktop bot={t.botId} active={t.token === active.token} fr={fr} />
           ) : (

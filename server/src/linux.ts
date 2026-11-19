@@ -23,7 +23,8 @@ export function dockerTrouble(stderr: string): "proxy_refused" | "daemon_unreach
 }
 
 /** Runs the docker CLI without a shell, so no argument is ever interpreted. */
-export function docker(args: string[], opts: { timeoutMs?: number; signal?: AbortSignal; maxBytes?: number; input?: string } = {}): Promise<Exec> {
+type OutputSink = (chunk: Buffer) => Promise<void>;
+export function docker(args: string[], opts: { timeoutMs?: number; signal?: AbortSignal; maxBytes?: number; input?: string; output?: OutputSink } = {}): Promise<Exec> {
   return new Promise((resolve) => {
     const child = spawn("docker", args, { stdio: [opts.input === undefined ? "ignore" : "pipe", "pipe", "pipe"] });
     // A command that exits before reading its input raises EPIPE on it; that is not worth crashing over.
@@ -31,7 +32,18 @@ export function docker(args: string[], opts: { timeoutMs?: number; signal?: Abor
     const chunks: Buffer[] = [];
     let size = 0, stderr = "", timedOut = false;
     const max = opts.maxBytes ?? 20_000_000;
-    child.stdout!.on("data", (c: Buffer) => { size += c.length; chunks.push(c); while (size > max && chunks.length > 1) size -= chunks.shift()!.length; });
+    let writeError = "";
+    const sink = opts.output;
+    const writing = sink ? (async () => {
+      try {
+        for await (const chunk of child.stdout!) {
+          size += chunk.length;
+          if (size > max) throw Error("VIDEO_TOO_LARGE");
+          await sink(chunk);
+        }
+      } catch (err) { writeError = String(err); child.kill("SIGKILL"); }
+    })() : undefined;
+    if (!sink) child.stdout!.on("data", (c: Buffer) => { size += c.length; chunks.push(c); while (size > max && chunks.length > 1) size -= chunks.shift()!.length; });
     child.stderr!.on("data", (c: Buffer) => { stderr = (stderr + c.toString("utf8")).slice(-8000); });
     const kill = () => child.kill("SIGKILL");
     const timer = setTimeout(() => { timedOut = true; kill(); }, opts.timeoutMs ?? 30_000);
@@ -44,7 +56,11 @@ export function docker(args: string[], opts: { timeoutMs?: number; signal?: Abor
       resolve({ code, stdout: Buffer.concat(chunks), stderr, timedOut });
     };
     child.on("error", (err) => { stderr = String(err.message); done(null); });
-    child.on("close", done);
+    child.on("close", async code => {
+      await writing;
+      if (writeError) { stderr = writeError; done(1); }
+      else done(code);
+    });
   });
 }
 
@@ -845,11 +861,11 @@ export async function linuxShell(botId: string, userId: string, ws: string, comm
  * user or a model chose (a search query, an address) is passed as one argument and never interpreted. `env`: extra
  * variables for that program only.
  */
-export async function linuxExec(botId: string, userId: string, ws: string, argv: string[], timeoutSec: number, opts: { signal?: AbortSignal; env?: Record<string, string>; maxBytes?: number; input?: string; binary?: boolean } = {}) {
+export async function linuxExec(botId: string, userId: string, ws: string, argv: string[], timeoutSec: number, opts: { signal?: AbortSignal; env?: Record<string, string>; maxBytes?: number; input?: string; binary?: boolean; output?: OutputSink } = {}) {
   return onMachine(botId, userId, ws, async (n) => {
     const env = Object.entries(opts.env ?? {}).flatMap(([k, v]) => ["-e", `${k}=${v}`]);
     const stdin = opts.input === undefined ? [] : ["-i"];
-    const r = await docker(["exec", ...stdin, "-w", "/root", ...env, n, "timeout", "-k", "5", String(timeoutSec), ...argv], { timeoutMs: (timeoutSec + 15) * 1000, signal: opts.signal, maxBytes: opts.maxBytes ?? 4_000_000, input: opts.input });
+    const r = await docker(["exec", ...stdin, "-w", "/root", ...env, n, "timeout", "-k", "5", String(timeoutSec), ...argv], { timeoutMs: (timeoutSec + 15) * 1000, signal: opts.signal, maxBytes: opts.maxBytes ?? 4_000_000, input: opts.input, output: opts.output });
     return { code: r.code, stdout: opts.binary ? "" : r.stdout.toString("utf8"), raw: r.stdout, stderr: r.stderr, timedOut: r.timedOut || r.code === 124 };
   });
 }

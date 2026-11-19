@@ -173,8 +173,8 @@ export const failures = {
   open: (botId: string) => q.all<FailureRow>(`SELECT * FROM bot_failures WHERE bot_id = ? AND status IN ${OPEN} ORDER BY last_at DESC`, botId),
 };
 
-function sameOpen(botId: string, cls: FailureClass, tool: string, t: number): FailureRow | null {
-  return q.get<FailureRow>(`SELECT * FROM bot_failures WHERE bot_id = ? AND class = ? AND tool = ? AND status IN ${OPEN} AND last_at > ? ORDER BY last_at DESC LIMIT 1`, botId, cls, tool, t - DEDUPE_MS) ?? null;
+function sameOpen(botId: string, cls: FailureClass, tool: string, t: number, provider: string, thread: number): FailureRow | null {
+  return q.get<FailureRow>(`SELECT * FROM bot_failures WHERE bot_id = ? AND class = ? AND tool = ? AND provider = ? AND thread = ? AND status IN ${OPEN} AND last_at > ? ORDER BY last_at DESC LIMIT 1`, botId, cls, tool, provider, thread, t - DEDUPE_MS) ?? null;
 }
 
 function save(r: FailureRow) {
@@ -348,7 +348,7 @@ export function handleFailure(ctx: FailureContext): FailureOutcome | null {
   const provider = ctx.provider ?? brainOf(bot.model);
   const open = TRANSIENT.has(c.cls) ? noteProviderFailure(provider, bot, t) : breakerOpen(provider, t);
   const uncertain = !!ctx.didSomething || uncertainSince(bot.id, ctx.since);
-  const prev = sameOpen(bot.id, c.cls, c.tool, t);
+  const prev = sameOpen(bot.id, c.cls, c.tool, t, provider, ctx.thread);
   const mayHand = ctx.trigger.kind === "user" ? !ctx.trigger.member && !ctx.trigger.api : ctx.trigger.kind === "routine";
   const mate = mayHand && (HANDOFF_CLASSES.has(c.cls) || c.cls === "unknown" || c.cls === "subscription_limit") ? findTeammate(bot, provider) : null;
   const decision = decideFailure({ cls: c.cls, retries: prev?.retries ?? 0, uncertain, existingRemedy: ctx.existingRemedy, fallback: ctx.fallbackUsed ?? null, teammate: mate ? { id: mate.id, name: mate.name } : null, breakerOpen: open, engine });
@@ -409,7 +409,7 @@ export function noteFallback(bot: BotRecord, err: unknown, from: string, to: str
   try {
     const c = classifyFailure({ err, text: typeof err === "string" ? err : undefined });
     const t = now();
-    const prev = sameOpen(bot.id, c.cls, c.tool, t) ?? q.get<FailureRow>("SELECT * FROM bot_failures WHERE bot_id = ? AND class = ? AND status = 'resolved' AND resolved_by = 'auto' AND last_at > ? ORDER BY last_at DESC LIMIT 1", bot.id, c.cls, t - DEDUPE_MS) ?? null;
+    const prev = sameOpen(bot.id, c.cls, c.tool, t, brainOf(from), thread) ?? q.get<FailureRow>("SELECT * FROM bot_failures WHERE bot_id = ? AND class = ? AND provider = ? AND thread = ? AND status = 'resolved' AND resolved_by = 'auto' AND last_at > ? ORDER BY last_at DESC LIMIT 1", bot.id, c.cls, brainOf(from), thread, t - DEDUPE_MS) ?? null;
     const r: FailureRow = prev ? { ...prev, count: prev.count + 1, last_at: t } : { id: newId("fail"), user_id: bot.userId, bot_id: bot.id, class: c.cls, tool: "", provider: brainOf(from), detail: clip(redactSecrets(bot.userId, String((err as Error)?.message ?? err)), 400), tried: "[]", status: "resolved", resolved_by: "auto", count: 1, retries: 0, generation: null, seq: null, thread, first_at: t, last_at: t, resolved_at: t };
     const tried = triedOf(r);
     tried.push({ action: "fallback", at: t, ok: true, note: to });
@@ -424,11 +424,11 @@ export function noteFallback(bot: BotRecord, err: unknown, from: string, to: str
  * was handling them, by the owner otherwise), and the automatic try that led here worked. Task-level ones (a step, a loop,
  * the request) stay until the owner settles them, unless they were being retried.
  */
-export function noteTurnOk(bot: Pick<BotRecord, "id">) {
+export function noteTurnOk(bot: Pick<BotRecord, "id">, model: string, thread: number) {
   try {
     const t = now();
     for (const r of failures.open(bot.id)) {
-      if (TASK_LEVEL.has(r.class) && r.status === "waiting") continue;
+      if (r.provider !== brainOf(model) || (TASK_LEVEL.has(r.class) && (r.status === "waiting" || r.thread !== thread))) continue;
       const tried = triedOf(r);
       for (const x of tried) if (x.ok === null) x.ok = true;
       const next: FailureRow = { ...r, tried: JSON.stringify(tried), status: "resolved", resolved_by: r.status === "auto" ? "auto" : "user", resolved_at: t };
@@ -438,6 +438,21 @@ export function noteTurnOk(bot: Pick<BotRecord, "id">) {
       refreshCard(next);
     }
   } catch (err) { console.error("[failures]", (err as Error)?.message ?? err); }
+}
+
+/** A completed diagnostic request settles the incident only if it did not recur while the check ran. */
+export function confirmTransportRecovery(bot: BotRecord, id: string, lastAt: number, provider: string, originalBytes: number) {
+  const r = failures.byId(id);
+  if (!r || r.user_id !== bot.userId || r.bot_id !== bot.id || r.last_at !== lastAt ||
+      r.provider !== provider || r.status !== "waiting") return false;
+  const oversized = r.class === "bad_input" && /\b413\b.*payload too large/i.test(r.detail) && originalBytes > 21 * 1024 * 1024;
+  if (!oversized && r.class !== "rate_limited") return false;
+  const at = now();
+  const action = oversized ? "image_check" : "quota_check";
+  r.tried = JSON.stringify([...triedOf(r), { action, at, ok: true }].slice(-12));
+  r.status = "resolved"; r.resolved_by = "auto"; r.resolved_at = at;
+  save(r); refreshCard(r);
+  return true;
 }
 
 // ── The owner's buttons (failureroutes.ts) ──────────────────────────────────────────────────────────────────────

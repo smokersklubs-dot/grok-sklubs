@@ -20,6 +20,7 @@ import { membersOf, sharedComputers } from "./sharedcomputers.js";
 import { startDiskWatchdog } from "./diskwatch.js";
 import { startScheduler } from "./scheduler.js";
 import { startAutoBackup } from "./autobackup.js";
+import { startGithubIssueWorker } from "./githubissues.js";
 import { startStudioExports } from "./studiomp4.js";
 import { startHealthChecks } from "./health.js";
 import { startSentinel } from "./sentinel/index.js";
@@ -30,6 +31,7 @@ import { relayUpgrade } from "./relay.js";
 import { closeLeftOpenWatchNotices } from "./agent/watch.js";
 import { expireOrphanApprovals, recoverInterruptedTurns, startJobWatch } from "./agent/loop.js";
 import { startLimitWatch } from "./agent/sublimit.js";
+import { startResearchWorker } from "./researchreports.js";
 import { sweepUncertain } from "./agent/executions.js";
 import { telegram } from "./telegram.js";
 import { closeSlackSockets } from "./native/triggers.js";
@@ -105,6 +107,7 @@ startScheduler();
 // Expired sessions, pending two-factor sign-ins and one-time links are deleted (twofactor.ts), now and every hour.
 startSessionSweep();
 startUploadSweep();
+if (process.env.NO_SCHEDULER !== "1") startGithubIssueWorker();
 if (computerKind() === "linux") startStudioExports();
 startAutoBackup();
 startHealthChecks();
@@ -115,6 +118,7 @@ startAnnouncements();
 // M2: the disk watchdog (DISK_FREE_MIN_MB; Linux computers only).
 startDiskWatchdog();
 if (!config.schedulerOff) { telegram.start(); recoverInterruptedTurns(); startJobWatch(); startLimitWatch(); }
+if (!config.schedulerOff) startResearchWorker();
 const server = serve({ fetch: app.fetch, port: config.port }, () => {
   const ready = listProviders().filter((p) => p.available()).map((p) => p.label);
   console.log(`Sklubot is running at ${config.publicUrl}`);

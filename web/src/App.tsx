@@ -219,8 +219,9 @@ function MainApp() {
   }, [init]);
   useEffect(() => {
     const url = new URL(location.href);
-    if (boot !== "ready" || unverified || url.searchParams.get("connect") !== "github") return;
-    useStore.getState().openModal({ kind: "connectors", catalogId: "github-repositories" });
+    const connect = url.searchParams.get("connect");
+    if (boot !== "ready" || unverified || (connect !== "github" && connect !== "github-code")) return;
+    useStore.getState().openModal({ kind: "connectors", catalogId: connect === "github-code" ? connect : "github-repositories" });
     url.searchParams.delete("connect");
     history.replaceState(history.state, "", url);
   }, [boot, unverified]);

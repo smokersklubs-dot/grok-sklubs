@@ -10,7 +10,9 @@ Le montage conserve un titre, un format, des plans ordonnés, un style et une du
 
 Dans **Réplique de ce plan**, indique l’intervenant et son texte. Tu peux produire une prise avec une voix Piper disponible, importer un enregistrement ou le choisir dans le dossier audio de ce bot. Le montage regroupe les prises par intervenant. **Solo** isole sa piste à l’écoute. L’export mixe toutes les prises avec la bande-son. Une prise commence au début du plan et se termine au plus tard à sa fin. Pour corriger une phrase, refais sa prise et enregistre la version.
 
-Les exports MP4 demandés au bureau Linux entrent dans une file persistante. Tu peux fermer le panneau et retrouver le rendu en rouvrant la même version. Après un redémarrage du serveur, un travail interrompu recommence depuis le début avec cette version. Le fichier terminé arrive dans la conversation d’origine. Un export en échec peut être relancé depuis le Studio.
+Dans **Pistes libres**, importe un clip ou réutilise un média du projet. Le début du clip règle sa position sur le montage. L’entrée et la sortie choisissent le passage du fichier source. Place plusieurs voix au même instant pour les mixer. Les couches visuelles ont chacune une position, une échelle, une opacité et un ordre de superposition. **Scinder à la tête de lecture** coupe une piste en deux segments modifiables. Si une piste dépasse le dernier plan, son image reste à l’écran jusqu’à la fin du montage.
+
+Un montage accepte 60 plans, 48 clips indépendants et 5 minutes. Chaque import et chaque MP4 serveur peut atteindre 1 Go sous réserve du stockage disponible. Les exports MP4 demandés au bureau Linux entrent dans une file persistante. Tu peux fermer le panneau et retrouver le rendu en rouvrant la même version. Après un redémarrage du serveur, un travail interrompu recommence depuis le début avec cette version. Le fichier terminé arrive dans la conversation d’origine. Un export en échec peut être relancé depuis le Studio.
 
 ## Créer un Reel depuis la conversation
 
@@ -30,5 +32,5 @@ Dans le chat, **+ → Naviguer sur le web** ouvre un onglet indépendant du bure
 - `web/src/lib/studioStory.ts` décrit les scènes, les repères LRC, les styles et le dessin des images. `StudioEditor.tsx` gère les pistes et les révisions. `StudioPlayback.tsx` synchronise l’image et la musique et encode le fichier.
 - `WorkspaceDock.tsx` conserve les panneaux montés pendant le changement d’onglet. La lecture de pages publiques passe par `webreading.ts`. La connexion interactive à un site reprend le navigateur isolé du bot.
 - `server/src/videoworkflows.ts` référence les huit sources avec leur révision. Le produit commun utilise une chronologie et un moteur de rendu écrits pour Sklubot. Les huit projets amont restent disponibles dans les bureaux Linux pour les traitements spécialisés.
-- Pour étendre le montage à plusieurs couches vidéo superposées, commencer par des identifiants de piste et de clip, des points d’entrée et de sortie indépendants et une migration des projets existants. Ensuite seulement brancher les gestes de déplacement sur cette représentation.
+- `scripts/test-studio-export.py` vérifie le résultat du rendu sur des pixels et des fréquences connus. Il s’exécute depuis la racine dans un conteneur jetable de l’image `sklubot-desktop`.
 - Avant de livrer une modification, essayer deux comptes neufs, l’ouverture depuis le chat, deux onglets avec une modification en cours, la sauvegarde et la relecture d’une ancienne version. Exporter un montage avec audio et vérifier les flux et leur durée avec ffprobe.

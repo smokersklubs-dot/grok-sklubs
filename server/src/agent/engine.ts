@@ -969,21 +969,23 @@ async function engineAskOn(bot: BotRecord, system: string, prompt: string, isola
 }
 
 // ── Sign-in on the bot's own screen ─────────────────────────────────────────
-export async function engineStatus(bot: BotRecord): Promise<EngineStatus[]> {
+export async function engineStatus(bot: BotRecord, only?: Engine): Promise<EngineStatus[]> {
   await ensureComputer(bot);
   const name = containerName(bot.id);
-  const claude = await docker(["exec", name, "sh", "-c", `${SUBSCRIPTION_ENV}; command -v claude >/dev/null || exit 9; claude auth status --json`], { timeoutMs: 30_000 });
-  const codex = await docker(["exec", name, "sh", "-c", `${SUBSCRIPTION_ENV}; command -v codex >/dev/null || exit 9; codex login status 2>&1`], { timeoutMs: 30_000 });
-  let c: any = {};
-  try { c = JSON.parse(claude.stdout.toString("utf8")); } catch { /* not JSON */ }
-  const codexText = codex.stdout.toString("utf8").trim();
-  const claudePlan = claude.code === 0 && !!c.loggedIn && ["claude.ai", "oauth_token"].includes(c.authMethod);
-  const shared = personalActive(bot.userId);
-  const codexPlan = shared ? await verifyPersonal(bot.userId) : codex.code === 0 && /logged in (?:using|with) chatgpt/i.test(codexText);
-  return [
-    { engine: "claude-code", installed: claude.code !== 9, signedIn: claudePlan, account: claudePlan ? c.email ?? c.account?.email ?? null : null, detail: claude.code === 9 ? "not installed" : null },
-    { engine: "codex", installed: codex.code !== 9, signedIn: codexPlan, account: codexPlan ? "ChatGPT" : null, detail: shared ? "personal_plan" : codex.code === 9 ? "not installed" : null },
-  ];
+  const items: EngineStatus[] = [];
+  if (only !== "codex") {
+    const p = await docker(["exec", name, "sh", "-c", `${SUBSCRIPTION_ENV}; command -v claude >/dev/null || exit 9; claude auth status --json`], { timeoutMs: 30_000 });
+    const auth = p.code === 9 ? {} : JSON.parse(p.stdout.toString("utf8"));
+    const signedIn = p.code === 0 && !!auth.loggedIn && ["claude.ai", "oauth_token"].includes(auth.authMethod);
+    items.push({ engine: "claude-code", installed: p.code !== 9, signedIn, account: signedIn ? auth.email ?? auth.account?.email ?? null : null, detail: p.code === 9 ? "not installed" : null });
+  }
+  if (only !== "claude-code") {
+    const p = await docker(["exec", name, "sh", "-c", `${SUBSCRIPTION_ENV}; command -v codex >/dev/null || exit 9; codex login status 2>&1`], { timeoutMs: 30_000 });
+    const shared = personalActive(bot.userId);
+    const signedIn = shared ? await verifyPersonal(bot.userId) : p.code === 0 && /logged in (?:using|with) chatgpt/i.test(p.stdout.toString("utf8"));
+    items.push({ engine: "codex", installed: p.code !== 9, signedIn, account: signedIn ? "ChatGPT" : null, detail: shared ? "personal_plan" : p.code === 9 ? "not installed" : null });
+  }
+  return items;
 }
 
 /** Opens a terminal on the bot's screen running the provider's sign-in; its page opens in the bot's browser. */

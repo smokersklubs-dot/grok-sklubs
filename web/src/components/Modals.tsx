@@ -499,7 +499,7 @@ function Catalog({ connectors, prefill, onClose, catalogId }: { catalogId?: stri
   const [apps, setApps] = useState<CatalogApp[] | null>(null);
   const [redirectUri, setRedirectUri] = useState("");
   const [failed, setFailed] = useState(false);
-  const [q, setQ] = useState(catalogId === "github-repositories" ? "GitHub Repositories" : catalogId === "voicestudio" ? "VoiceStudio" : "");
+  const [q, setQ] = useState(catalogId === "github-code" ? "GitHub Code" : catalogId === "github-repositories" ? "GitHub Repositories" : catalogId === "voicestudio" ? "VoiceStudio" : "");
   const [openId, setOpenId] = useState<string | null>(catalogId ?? null);
 
   useEffect(() => {
@@ -551,7 +551,7 @@ function Catalog({ connectors, prefill, onClose, catalogId }: { catalogId?: stri
               <CatalogCard
                 key={app.id}
                 app={app}
-                existing={connectors?.find((c) => app.instanceUrl ? c.name === app.name && c.status === "ready" : sameUrl(c.url, app.url))}
+                existing={connectors?.find((c) => app.instanceUrl ? c.name === app.name && c.status === "ready" : sameUrl(c.url, app.url) && (!(app.id === "github" || app.id === "github-code") || c.auth === app.auth))}
                 redirectUri={redirectUri}
                 open={openId === app.id}
                 onToggle={() => setOpenId((cur) => (cur === app.id ? null : app.id))}

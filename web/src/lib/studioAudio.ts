@@ -1,7 +1,7 @@
-import { mediaUrl, type Story } from "./studioStory";
+import { duration, mediaUrl, type Story } from "./studioStory";
 
 export function audioSchedule(story: Story, solo = "") {
-  const clips: { path: string; start: number; end: number; volume: number }[] = [];
+  const clips: { path: string; start: number; end: number; volume: number; inPoint?: number }[] = [];
   let start = 0;
   for (const scene of story.scenes) {
     const end = start + scene.seconds;
@@ -9,8 +9,12 @@ export function audioSchedule(story: Story, solo = "") {
       clips.push({ path: scene.speech.path, start, end, volume: 1 });
     start = end;
   }
-  if (story.audio && !story.muted && !solo && story.offset < start)
-    clips.push({ path: story.audio, start: story.offset, end: start, volume: clips.length ? 0.18 : 1 });
+  const total = duration(story);
+  if (story.audio && !story.muted && !solo && story.offset < total)
+    clips.push({ path: story.audio, start: story.offset, end: total, volume: clips.length ? 0.18 : 1 });
+  for (const c of story.clips ?? [])
+    if (c.kind === "audio" && (!solo || c.name === solo))
+      clips.push({ path: c.path, start: c.start, end: c.start + (c.outPoint - c.inPoint), inPoint: c.inPoint, volume: c.volume ?? 1 });
   return clips;
 }
 
@@ -88,7 +92,7 @@ export async function timelineAudio(
         p.active = inside;
         if (!inside) p.el.pause();
         else {
-          p.el.currentTime = t - p.start;
+          p.el.currentTime = (p.inPoint ?? 0) + t - p.start;
           void p.el.play().catch(() => {
             if (!closed && p.active) failed();
           });

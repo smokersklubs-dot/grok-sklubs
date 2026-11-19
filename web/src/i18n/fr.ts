@@ -3544,6 +3544,8 @@ export const fr: Dict = {
   "failure.auto.handoff": "Confié à {note}",
   "failure.auto.wait": "Attente de la remise à zéro",
   "failure.auto.provider_wait": "Attente du retour du service",
+  "failure.auto.image_check": "Le modèle a traité les images d’origine. Tu peux reprendre ta demande.",
+  "failure.auto.quota_check": "Le modèle a répondu à une demande de vérification.",
   "failure.tried.pending": "en cours",
   "failure.tried.ok": "a marché",
   "failure.tried.ko": "n'a pas marché",

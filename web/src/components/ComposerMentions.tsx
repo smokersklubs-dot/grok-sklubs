@@ -4,6 +4,8 @@ import { useT } from "../i18n";
 import { useStore } from "../store";
 import type { Bot } from "../types";
 import { Icon, type IconName } from "./Icon";
+import { GithubIssues } from "./GithubIssues";
+import { Modal } from "./ui";
 import { RepositoryPicker } from "./RepositoryPicker";
 
 interface Choice { id: string; label: string; detail: string; icon: IconName; pick: () => void }
@@ -12,6 +14,8 @@ type Range = { start: number; end: number };
 export function useComposerMentions(bot: Bot, draft: string, area: RefObject<HTMLTextAreaElement | null>, disabled: boolean) {
   const t = useT();
   const bots = useStore(s => s.bots);
+  const fr = useStore(s => s.locale === "fr");
+  const [mission,setMission] = useState<{bot:string; url:string} | null>(null);
   const connectors = useStore(s => s.connectors);
   const { setDraft, selectBot, openModal, showArtifact } = useStore.getState();
   const [caret, setCaret] = useState(-1);
@@ -40,6 +44,10 @@ export function useComposerMentions(bot: Bot, draft: string, area: RefObject<HTM
   const choices: Choice[] = [];
   if (range) {
     choices.push({ id: "github", label: "GitHub", detail: t("mention.github"), icon: "plug", pick: () => setRepository({ range, draft, botId: bot.id }) });
+    choices.push({ id: "github-code", label: "GitHub Code", detail: fr ? "Confier un ticket à deux bots" : "Assign an issue to two bots", icon: "plug", pick: () => {
+      const url = draft.match(/https:\/\/github\.com\/[^\s/]+\/[^\s/]+\/issues\/[1-9]\d*/i)?.[0] ?? "";
+      replace(range, ""); setMission({bot:bot.id,url});
+    } });
     choices.push({ id: "voicestudio", label: "VoiceStudio", detail: t(voice ? "mention.connected" : "mention.setup"), icon: "mic", pick: () => {
       if (voice) replace(range, "@[VoiceStudio]");
       else { dismiss(true); openModal({ kind: "connectors", catalogId: "voicestudio" }); }
@@ -81,6 +89,7 @@ export function useComposerMentions(bot: Bot, draft: string, area: RefObject<HTM
         <Icon name={c.icon} size={16} /><strong>{c.label}</strong><small>{c.detail}</small>
       </button>)}
     </div>}
+    {own && mission?.bot === bot.id && <Modal title={fr ? "Mission GitHub" : "GitHub task"} onClose={() => setMission(null)}><div className="modal-body"><GithubIssues bot={bot.id} launched initialUrl={mission.url} close={() => setMission(null)} /></div></Modal>}
     {own && repository?.botId === bot.id && <RepositoryPicker connected={githubReady} close={() => { setRepository(null); dismiss(true); }}
       attach={name => { if (draft === repository.draft) replace(repository.range, "@GitHub https://github.com/" + name); setRepository(null); }}
       connect={() => { setRepository(null); dismiss(true); openModal({ kind: "connectors", catalogId: "github-repositories" }); }} />}

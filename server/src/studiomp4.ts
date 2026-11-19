@@ -1,4 +1,9 @@
 import { readFileSync } from "node:fs";
+import { mkdir, open, readdir, stat, unlink } from "node:fs/promises";
+import path from "node:path";
+import { randomUUID } from "node:crypto";
+import { publishStagedFile } from "./stagedfile.js";
+import { MAX_UPLOAD_BYTES } from "./uploadlimits.js";
 import { stripTypeScriptTypes } from "node:module";
 import {
   drainExports,
@@ -8,13 +13,12 @@ import {
   latestExport,
   ownedExport,
 } from "./studioqueue.js";
-import { computerKind, storeBytes, workspaceOf } from "./computer.js";
+import { computerKind, workspaceOf } from "./computer.js";
 import { config, LOCAL_TTS_URL } from "./config.js";
 import { linuxExec } from "./linux.js";
 import { pageVersions } from "./pagefiles.js";
 import { bots, pages, type BotRecord, type UserRecord } from "./store.js";
 import { piperTts } from "./voice/piper.js";
-import type { Attachment } from "./shared.js";
 import type { BuiltinTool } from "./agent/tools.js";
 import { storyFor, type StudioStory } from "./videostudio.js";
 import type { Hono } from "hono";
@@ -22,9 +26,18 @@ import type { Hono } from "hono";
 const namePattern = /^artifact-video-[a-f0-9-]{36}$/;
 const template = (name: string) =>
   readFileSync(new URL("../templates/moneyprinter/" + name, import.meta.url), "utf8");
-const maximumBytes = 80 * 1024 * 1024;
+const staging = path.join(config.dataDir, "studio-encoding");
 const message = (fr: boolean, local: string, english: string) => (fr ? local : english);
 export function startStudioExports() {
+  // A stopped process may leave a partial export outside the bot library.
+  void (async () => {
+    for (const name of await readdir(staging).catch(() => [])) {
+      if (!/^[a-f0-9-]{36}$/.test(name)) continue;
+      const file = path.join(staging, name);
+      const info = await stat(file).catch(() => null);
+      if (info && Date.now() - info.mtimeMs > 86400000) await unlink(file).catch(() => {});
+    }
+  })();
   drainExports(encode);
   setInterval(() => drainExports(encode), 15_000).unref();
 }
@@ -82,46 +95,61 @@ async function encode(
     "frames.py": template("frames.py"),
     "video_project.py": template("video_project.py"),
   });
-  const rendered = await linuxExec(
-    bot.id,
-    bot.userId,
-    workspaceOf(bot.id),
-    ["python3", "-I", "-B", "-c", template("render.py")],
-    900,
-    { input, binary: true, maxBytes: maximumBytes + 1 },
-  );
-  if (
-    rendered.code !== 0 ||
-    rendered.raw.length < 32 ||
-    rendered.raw.length > maximumBytes ||
-    rendered.raw.toString("ascii", 4, 8) !== "ftyp"
-  ) {
-    const long = /VOICE_TOO_LONG:(\d+)/.exec(rendered.stderr);
-    if (long)
+  const seconds = Math.max(story.scenes.reduce((sum, shot) => sum + shot.seconds, 0),
+    ...(story.clips ?? []).map(c => c.start + (c.outPoint - c.inPoint)));
+  await mkdir(staging, {recursive:true, mode:0o700});
+  const staged = path.join(staging, randomUUID());
+  const file = await open(staged, "wx+", 0o600);
+  try {
+    const rendered = await linuxExec(
+      bot.id,
+      bot.userId,
+      workspaceOf(bot.id),
+      ["python3", "-I", "-B", "-c", template("render.py")],
+      Math.max(900, Math.ceil(seconds * 15)),
+      { input, binary: true, maxBytes: MAX_UPLOAD_BYTES, output: chunk => file.writeFile(chunk) },
+    );
+    const {size} = await file.stat();
+    const header = Buffer.alloc(8);
+    await file.read(header, 0, header.length, 0);
+    if (
+      rendered.code !== 0 ||
+      size < 32 ||
+      size > MAX_UPLOAD_BYTES ||
+      header.toString("ascii", 4, 8) !== "ftyp"
+    ) {
+      if (/VIDEO_TOO_LARGE/.test(rendered.stderr))
+        throw Error(message(fr, "Le MP4 dépasse 1 Go. Raccourcis le montage.", "The MP4 exceeds 1 GB. Shorten the timeline."));
+      const long = /VOICE_TOO_LONG:(\d+)/.exec(rendered.stderr);
+      if (long)
+        throw Error(
+          message(
+            fr,
+            "Allonge le plan " + long[1] + " pour laisser le temps à la voix de le lire.",
+            "Give shot " + long[1] + " more time for its narration.",
+          ),
+        );
+      console.warn(
+        "[studio-mp4]",
+        bot.id,
+        "renderer exit",
+        rendered.code,
+        rendered.stderr.split("\n").filter(Boolean).at(-1)?.slice(0, 180),
+      );
       throw Error(
         message(
           fr,
-          "Allonge le plan " + long[1] + " pour laisser le temps à la voix de le lire.",
-          "Give shot " + long[1] + " more time for its narration.",
+          "Le rendu MP4 a échoué. Vérifie les médias du montage puis réessaie.",
+          "MP4 rendering failed. Check the timeline media and retry.",
         ),
       );
-    console.warn(
-      "[studio-mp4]",
-      bot.id,
-      "renderer exit",
-      rendered.code,
-      rendered.stderr.split("\n").filter(Boolean).at(-1)?.slice(0, 180),
-    );
-    throw Error(
-      message(
-        fr,
-        "Le rendu MP4 a échoué. Vérifie les médias du montage puis réessaie.",
-        "MP4 rendering failed. Check the timeline media and retry.",
-      ),
-    );
+    }
+    await file.sync();
+    if (!stillOwned()) throw Error("Render interrupted.");
+    return publishStagedFile(bot.id, "exports", staged, story.title + ".mp4", size);
+  } finally {
+    try { await file.close(); } finally { await unlink(staged); }
   }
-  if (!stillOwned()) throw Error("Render interrupted.");
-  return storeBytes(bot.id, "exports", story.title + ".mp4", rendered.raw);
 }
 
 function start(

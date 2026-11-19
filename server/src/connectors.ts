@@ -1,4 +1,4 @@
-import { beginGithubSetup, GITHUB_READ_URL } from "./githubapp.js";
+import { beginGithubSetup, GITHUB_READ_URL, GITHUB_WRITE_URL } from "./githubapp.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport, StreamableHTTPError } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { auth, discoverOAuthProtectedResourceMetadata, UnauthorizedError, type OAuthClientProvider, type OAuthDiscoveryState } from "@modelcontextprotocol/sdk/client/auth.js";
@@ -244,14 +244,10 @@ export const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "_").r
 export function githubAccounts(owner:string) {
   return recordsFor(owner).filter(r=>r.url===GITHUB_READ_URL).map(r=>({id:r.id,name:r.name}));
 }
-/** Only this fixed GitHub Actions origin receives an owner's GitHub credential. */
-export async function githubActionsRead(owner:string, connector:string|null, repo:string, suffix:string):Promise<unknown> {
-  if(!/^[a-z0-9-]+\/[a-z0-9_.-]+$/i.test(repo) || repo.endsWith("/.") || repo.endsWith("/..") ||
-    !/^runs(?:\?(?:per_page=1|status=failure&per_page=8)|\/\d+(?:\/attempts\/\d+\/jobs\?per_page=100)?)$/.test(suffix)) throw Error("Requête GitHub invalide.");
-  const headers:Record<string,string>={accept:"application/vnd.github+json","user-agent":"Sklubot"};
-  if(connector!==null) {
-    const rec=recordOf(owner,connector);
-    if(!rec || rec.url!==GITHUB_READ_URL)throw Error("Reconnecte GitHub dans les applis.");
+export function githubWriteAccounts(owner: string) {
+  return recordsFor(owner).filter(r => r.url === GITHUB_WRITE_URL && (r.auth === "oauth" ? !!loadOAuth(r.id).tokens : !!r.tokenEnc)).map(r => ({id:r.id,name:r.name}));
+}
+async function githubToken(rec: ReturnType<typeof toRecord>) {
     let token:string|null|undefined;
     if(rec.auth==="oauth") {
       if(tokenExpired(loadOAuth(rec.id))) {
@@ -262,6 +258,22 @@ export async function githubActionsRead(owner:string, connector:string|null, rep
       token=loadOAuth(rec.id).tokens?.access_token;
     } else token=rec.tokenEnc ? unseal(rec.tokenEnc) : null;
     if(!token)throw Error("Reconnecte GitHub dans les applis.");
+    return token;
+}
+export async function githubWriteToken(owner: string, id: string) {
+  const rec = recordOf(owner,id);
+  if (!rec || rec.url !== GITHUB_WRITE_URL || rec.auth === "none") throw Error("Reconnecte GitHub Code dans les applis.");
+  return githubToken(rec);
+}
+/** Only this fixed GitHub Actions origin receives an owner's GitHub credential. */
+export async function githubActionsRead(owner:string, connector:string|null, repo:string, suffix:string):Promise<unknown> {
+  if(!/^[a-z0-9-]+\/[a-z0-9_.-]+$/i.test(repo) || repo.endsWith("/.") || repo.endsWith("/..") ||
+    !/^runs(?:\?(?:per_page=1|status=failure&per_page=8)|\/\d+(?:\/attempts\/\d+\/jobs\?per_page=100)?)$/.test(suffix)) throw Error("Requête GitHub invalide.");
+  const headers:Record<string,string>={accept:"application/vnd.github+json","user-agent":"Sklubot"};
+  if(connector!==null) {
+    const rec=recordOf(owner,connector);
+    if(!rec || rec.url!==GITHUB_READ_URL)throw Error("Reconnecte GitHub dans les applis.");
+    const token = await githubToken(rec);
     headers.authorization="Bearer "+token;
   }
   const res=await fetch("https://api.github.com/repos/"+repo+"/actions/"+suffix,{headers,redirect:"error",signal:AbortSignal.timeout(12000)});
@@ -280,7 +292,7 @@ function setManualClient(id: string, clientId: string, clientSecret?: string, gi
 export const connectors = {
   configureGithub(userId: string, id: string, clientId: string, secret: string) {
     const r = recordOf(userId, id);
-    if (r?.url !== GITHUB_READ_URL || r.auth !== "oauth") throw new Error("Unknown GitHub connector");
+    if (!r || ![GITHUB_READ_URL,GITHUB_WRITE_URL].includes(r.url) || r.auth !== "oauth") throw new Error("Unknown GitHub connector");
     setManualClient(id, clientId, secret, true);
   },
   list: (userId: string): Connector[] => recordsFor(userId).map((r) => view(ensure(r))),
@@ -335,8 +347,8 @@ export const connectors = {
       record.auth = "oauth";
     }
     if (opts.clientId?.trim()) setManualClient(id, opts.clientId, opts.clientSecret);
-    if (record.url === GITHUB_READ_URL && !loadOAuth(id).client) {
-      if (process.env.GITHUB_MCP_CLIENT_ID && process.env.GITHUB_MCP_CLIENT_SECRET)
+    if ([GITHUB_READ_URL,GITHUB_WRITE_URL].includes(record.url) && !loadOAuth(id).client) {
+      if (record.url === GITHUB_READ_URL && process.env.GITHUB_MCP_CLIENT_ID && process.env.GITHUB_MCP_CLIENT_SECRET)
         setManualClient(id, process.env.GITHUB_MCP_CLIENT_ID, process.env.GITHUB_MCP_CLIENT_SECRET, true);
       else return { authorizeUrl: beginGithubSetup(userId, id) };
     }

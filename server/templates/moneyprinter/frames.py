@@ -40,13 +40,14 @@ class StudioCanvas:
                 node = self.call("DOM.querySelector", nodeId=document, selector="input")["nodeId"]
                 self.call("DOM.setFileInputFiles", nodeId=node, files=[str(path)])
                 self.js("""(async key => {
-                    const isVideo = /\.(mp4|webm|mov)$/i.test(key);
+                    const file = document.querySelector('input').files[0];
+                    const isVideo = /\.(mp4|webm|mov)$/i.test(file.name);
                     const el = isVideo ? document.createElement('video') : new Image();
                     const ready = new Promise((resolve,reject) => {
                        el.addEventListener(isVideo ? 'loadeddata' : 'load',resolve,{once:true});
                        el.addEventListener('error',reject,{once:true});
                     });
-                    el.src=URL.createObjectURL(document.querySelector('input').files[0]);
+                    el.src=URL.createObjectURL(file);
                     await ready; assets.set(key,el);
                 })(""" + json.dumps(key) + ")")
         except BaseException:
@@ -71,14 +72,15 @@ class StudioCanvas:
 
     def frame(self, t):
         jpeg = self.js("""(async t => {
-            const {scene,local}=timeline.locate(story,t), el=assets.get(scene.media);
-            if(el instanceof HTMLVideoElement) {
+            await Promise.all([...timeline.visualTimes(story,t)].map(async ([key,local]) => {
+                const el=assets.get(key);
+                if (!(el instanceof HTMLVideoElement)) return;
                 const pos=Math.min(local,Math.max(0,el.duration-.04));
                 if(Math.abs(pos-el.currentTime)>.005) {
                     const done=new Promise(resolve=>el.addEventListener('seeked',resolve,{once:true}));
                     el.currentTime=pos; await done;
                 }
-            }
+            }));
             timeline.drawFrame(canvas,story,assets,t);
             return canvas.toDataURL('image/jpeg', .93).split(',')[1];
         })(""" + str(t) + ")")

@@ -23,7 +23,9 @@ import { freePlanOwnKeys } from "./019-free-plan-own-keys.js";
 import { serverMailFromRelay } from "./020-server-mail-from-relay.js";
 import { prepaidCredits } from "./021-prepaid-credits.js";
 import { botFailures } from "./022-bot-failures.js";
+import { githubIssueJobs } from "./025-github-issue-jobs.js";
 import { studioAndGithub } from "./024-studio-and-github.js";
+import { research } from "./026-research.js";
 import { uploadSessions } from "./023-upload-sessions.js";
 
 /**
@@ -62,6 +64,8 @@ export const MIGRATIONS: Migration[] = [
   { version: 22, name: "bot-failures", up: botFailures },
   { version: 23, name: "upload-sessions", up: uploadSessions },
   { version: 24, name: "studio-and-github", up: studioAndGithub },
+  { version: 25, name: "github-issue-jobs", up: githubIssueJobs },
+  { version: 26, name: "research", up: research },
 ];
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;
 

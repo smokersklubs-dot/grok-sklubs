@@ -12,6 +12,7 @@ import { registerCommandRoutes } from "./command.js";
 import { continueAfterStepLimit, decideApproval, enqueue, inQueue, interrupt, noteHandBack, submitUserMessage, type ForcedSkill } from "./agent/loop.js";
 import { cleanProfile, fetchSkillMarkdown, saveImportedSkill, undoRevision } from "./agent/tools-team.js";
 import { xSearchProvider } from "./xsearch.js";
+import { registerResearch } from "./researchroutes.js";
 import { cleanModelList, TeamFullError } from "./store.js";
 import { localTools } from "./localtools.js";
 import { RELIABILITY_LIMITS, SKILL_EXTRA_KEYS, type RowBody, type SkillExtras } from "./shared.js";
@@ -91,7 +92,9 @@ import { registerTranscribeRoute } from "./voice/transcribe.js";
 import { registerSpeakRoute } from "./voice/speak.js";
 import { adminView, approversOf, botAccess, exportWorkspace, invites, resources, SHARED_SETTINGS, sharedBotsFor, sharedBotView, shares, workspaces, WorkspaceError, wsAudit, type BotAccess } from "./workspaces.js";
 import { invalidateAudience } from "./bus.js";
+import { registerGithubIssueRoutes } from "./githubissues.js";
 import { registerGithubActivity } from "./githubactivity.js";
+import { registerWorkContext } from "./workcontext.js";
 import { registerPeerReview } from "./peerreviewroutes.js";
 import { listedPathOk, undoFiles } from "./snapshots.js";
 import { forgetHeld, holdAndOffer, screen as screenSecrets, takeHeld } from "./pastedsecrets.js";
@@ -520,6 +523,8 @@ api.use("*", async (c, next) => {
 registerHostedPrivate(api);
 registerConnectorCatalog(api);
 registerGithubActivity(api,throttle);
+registerGithubIssueRoutes(api,throttle);
+registerWorkContext(api);
 registerPublicSignupPrivate(api);
 registerTwoFactorPrivate(api, googleDeps);
 registerDataKeyRoutes(api);
@@ -968,7 +973,8 @@ api.put("/profile", async (c) => {
   return c.json({ profile });
 });
 /** Which official API x_search uses here, if any. */
-api.get("/x-search", (c) => c.json({ provider: xSearchProvider() }));
+api.get("/x-search", (c) => c.json({ provider: xSearchProvider(c.get("user").id) }));
+registerResearch(api);
 
 registerUploadRoutes(api, ownAgent);
 

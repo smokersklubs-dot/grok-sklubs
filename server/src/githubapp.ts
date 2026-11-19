@@ -4,6 +4,7 @@ import { config } from "./config.js";
 import type { connectors as connectorStore } from "./connectors.js";
 
 export const GITHUB_READ_URL = "https://api.githubcopilot.com/mcp/readonly";
+export const GITHUB_WRITE_URL = "https://api.githubcopilot.com/mcp/";
 const prefix = "/github-app";
 type Setup = { userId: string; connectorId: string; expires: number };
 const pending = new Map<string, Setup>();
@@ -27,11 +28,14 @@ export function registerGithubApp(api: Hono<any>, connectors: typeof connectorSt
     const key = c.req.query("state") ?? "";
     const item = find(key, c.get("user").id);
     if (!item) return c.text("Connexion expirée. Rouvre GitHub dans les applis de Sklubot.", 400);
+    const connector = connectors.list(item.userId).find(r => r.id === item.connectorId);
+    if (!connector || ![GITHUB_READ_URL,GITHUB_WRITE_URL].includes(connector.url)) return c.notFound();
+    const access = connector.url === GITHUB_WRITE_URL ? "write" : "read";
     const manifest = {
       name: "Sklubot-" + item.connectorId.slice(-12), url: config.publicUrl, public: false,
       redirect_url: config.publicUrl + "/api" + prefix + "/created",
       callback_urls: [callbackUrl], setup_url: config.publicUrl + "/api" + prefix + "/installed/" + item.connectorId,
-      hook_attributes: { active: false }, default_permissions: { actions:"read", contents: "read", issues: "read", pull_requests: "read" },
+      hook_attributes: { active: false }, default_permissions: { actions:"read", contents: access, issues: "read", pull_requests: access },
     };
     const nonce = randomBytes(16).toString("hex");
     c.header("cache-control", "no-store");
@@ -58,7 +62,7 @@ export function registerGithubApp(api: Hono<any>, connectors: typeof connectorSt
   api.get(prefix + "/installed/:id", async c => {
     const owner = c.get("user").id;
     const id = c.req.param("id");
-    if (!id || !connectors.list(owner).some(con => con.id === id && con.url === GITHUB_READ_URL)) return c.text("Connexion inconnue.", 404);
+    if (!id || !connectors.list(owner).some(con => con.id === id && [GITHUB_READ_URL,GITHUB_WRITE_URL].includes(con.url))) return c.text("Connexion inconnue.", 404);
     try {
       const next = await connectors.startSignIn(owner, id);
       c.header("cache-control", "no-store"); c.header("referrer-policy", "no-referrer");

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { drawFrame, duration, locate, mediaUrl, type Story, type Visual } from "../lib/studioStory";
+import { drawFrame, duration, visualSources, visualTimes, mediaUrl, type Story, type Visual } from "../lib/studioStory";
 import { timelineAudio } from "../lib/studioAudio";
 import { ErrorNote } from "./ui";
 
@@ -28,7 +28,7 @@ export function StudioPlayback({
   const [ready, setReady] = useState(false),
     [mode, setMode] = useState(""),
     [error, setError] = useState("");
-  const sources = JSON.stringify([...new Set(story.scenes.map((s) => s.media).filter(Boolean))]);
+  const sources = JSON.stringify(visualSources(story));
   const total = duration(story),
     width = story.aspect === "vertical" ? 720 : 1280,
     height = story.aspect === "wide" ? 720 : story.aspect === "square" ? 1280 : 1280;
@@ -51,7 +51,7 @@ export function StudioPlayback({
         el.src = mediaUrl(bot, path);
       });
     }
-    const jobs = (JSON.parse(sources) as string[]).map((path) => {
+    const jobs = (JSON.parse(sources) as [string,string][]).map(([key,path]) => {
       const el = /\.(mp4|webm|mov)$/i.test(path) ? document.createElement("video") : new Image();
       if (el instanceof HTMLVideoElement) {
         el.muted = true;
@@ -60,7 +60,7 @@ export function StudioPlayback({
           if (active) refreshed.current();
         });
       }
-      all.set(path, el);
+      all.set(key, el);
       return load(el, path);
     });
     const song = story.audio ? new Audio() : null;
@@ -87,16 +87,17 @@ export function StudioPlayback({
   }, [sources, story.audio, bot, fr]);
   function paint(t: number, running: boolean) {
     if (!canvas.current) return;
-    const target = locate(story, t);
+    const target = visualTimes(story, t);
     for (const [path, el] of assets.current)
       if (el instanceof HTMLVideoElement) {
-        if (path !== target.scene.media) {
+        const wanted = target.get(path);
+        if (wanted === undefined) {
           if (!el.paused) el.pause();
           continue;
         }
-        const point = Math.min(target.local, Math.max(0, (el.duration || 0) - 0.04));
+        const point = Math.min(wanted, Math.max(0, (el.duration || 0) - 0.04));
         if (Math.abs(point - el.currentTime) > (running ? 0.22 : 0.035)) el.currentTime = point;
-        if (running && el.paused && target.local < el.duration) void el.play().catch(() => {});
+        if (running && el.paused && wanted < el.duration) void el.play().catch(() => {});
         else if (!running) el.pause();
       }
     drawFrame(canvas.current, story, assets.current, t);

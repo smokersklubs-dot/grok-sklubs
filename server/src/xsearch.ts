@@ -1,5 +1,7 @@
 import { config } from "./config.js";
 import { guardedFetch } from "./net.js";
+import { q } from "./db.js";
+import { sealValue, unsealValue } from "./datakey.js";
 import type { XSearchProvider } from "./shared.js";
 
 /**
@@ -21,7 +23,16 @@ import type { XSearchProvider } from "./shared.js";
  *
  * Whatever comes back is outside content (the tool is marked `outside`).
  */
-export function xSearchProvider(): XSearchProvider {
+export function hasPersonalX(owner: string): boolean {
+  return !!q.get("SELECT 1 FROM research_x_accounts WHERE owner=?",owner);
+}
+export function setPersonalX(owner: string, token: string | null) {
+  if (token === null) { q.run("DELETE FROM research_x_accounts WHERE owner=?",owner); return; }
+  if (token.length < 12 || token.length > 4096 || /\s/.test(token)) throw Error("Jeton X invalide.");
+  q.run("INSERT INTO research_x_accounts(owner,token_enc) VALUES(?,?) ON CONFLICT(owner) DO UPDATE SET token_enc=excluded.token_enc",owner,sealValue(token));
+}
+export function xSearchProvider(owner?: string): XSearchProvider {
+  if (owner && hasPersonalX(owner)) return "x";
   if (process.env.X_BEARER_TOKEN) return "x";
   if (process.env.XAI_API_KEY) return "xai";
   return null;
@@ -35,8 +46,8 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const HANDLE = /^[A-Za-z0-9_]{1,15}$/;
 export const cleanHandles = (list: unknown): string[] => (Array.isArray(list) ? list : []).map((h) => String(h).trim().replace(/^@/, "")).filter((h) => HANDLE.test(h)).slice(0, 20);
 
-export async function xSearch(input: XSearchInput, signal: AbortSignal): Promise<XSearchResult> {
-  const provider = xSearchProvider();
+export async function xSearch(input: XSearchInput, signal: AbortSignal, owner?: string): Promise<XSearchResult> {
+  const provider = xSearchProvider(owner);
   if (!provider) throw new Error("No X search is set up on this server (X_BEARER_TOKEN for the X API, or XAI_API_KEY for xAI).");
   const query = input.query.trim().slice(0, 4096);
   if (!query) throw new Error("Say what to search for.");
@@ -46,10 +57,14 @@ export async function xSearch(input: XSearchInput, signal: AbortSignal): Promise
   const excluded = cleanHandles(input.excludeHandles);
   if (handles.length && excluded.length) throw new Error("Use either handles or exclude_handles, not both.");
   const timeout = AbortSignal.any([signal, AbortSignal.timeout(60_000)]);
-  return provider === "x" ? viaXApi(query, input, handles, excluded, timeout) : viaXai(query, input, handles, excluded, timeout);
+  if (provider === "xai") return viaXai(query, input, handles, excluded, timeout);
+  const personal = owner && q.get<{token_enc:string}>("SELECT token_enc FROM research_x_accounts WHERE owner=?",owner);
+  const token = personal ? unsealValue(personal.token_enc) : process.env.X_BEARER_TOKEN;
+  if (!token) throw Error("Reconnecte le compte X.");
+  return viaXApi(query, input, handles, excluded, timeout,token);
 }
 
-async function viaXApi(query: string, input: XSearchInput, handles: string[], excluded: string[], signal: AbortSignal): Promise<XSearchResult> {
+async function viaXApi(query: string, input: XSearchInput, handles: string[], excluded: string[], signal: AbortSignal, token: string): Promise<XSearchResult> {
   // Handle filters become search operators (from:, -from:), which the recent search query language supports.
   const q = [query, handles.length ? `(${handles.map((h) => `from:${h}`).join(" OR ")})` : "", ...excluded.map((h) => `-from:${h}`)].filter(Boolean).join(" ").slice(0, 4096);
   const url = new URL(`${config.xApiBaseUrl}/2/tweets/search/recent`);
@@ -62,7 +77,7 @@ async function viaXApi(query: string, input: XSearchInput, handles: string[], ex
   url.searchParams.set("expansions", "author_id");
   url.searchParams.set("user.fields", "username,name");
   url.searchParams.set("post.fields", "created_at,author_id,public_metrics");
-  const res = await guardedFetch(url.toString(), { headers: { authorization: `Bearer ${process.env.X_BEARER_TOKEN}` }, redirect: "error", signal });
+  const res = await guardedFetch(url.toString(), { headers: { authorization: `Bearer ${token}` }, redirect: "error", signal });
   const body = await res.json().catch(() => null) as any;
   if (!res.ok) throw new Error(`The X API answered ${res.status}${body?.title ? `: ${String(body.title).slice(0, 120)}` : ""}${res.status === 429 ? " (rate limit — try later)" : ""}.`);
   const users = new Map<string, { username: string; name?: string }>((body?.includes?.users ?? []).map((u: any) => [String(u.id), { username: String(u.username ?? ""), name: u.name ? String(u.name) : undefined }]));

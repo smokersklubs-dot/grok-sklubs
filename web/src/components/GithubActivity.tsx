@@ -1,4 +1,5 @@
 import "./GithubActivity.css";
+import { GithubIssues } from "./GithubIssues";
 import { useEffect, useState } from "react";
 import { api, errText } from "../api";
 import { useStore } from "../store";
@@ -87,7 +88,8 @@ export function GithubActivity({ bot }: { bot: string }) {
       setBusy(false);
     }
   }
-  return (
+  return (<>
+    <GithubIssues bot={bot} />
     <details className="github-activity" onToggle={(e) => setOpen(e.currentTarget.open)}>
       <summary>GitHub Actions</summary>
       <form
@@ -169,5 +171,5 @@ export function GithubActivity({ bot }: { bot: string }) {
       ))}
       <ErrorNote>{error}</ErrorNote>
     </details>
-  );
+  </>);
 }

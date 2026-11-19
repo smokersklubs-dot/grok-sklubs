@@ -6,7 +6,7 @@ export interface ArtifactTab {
   thread?: number;
   readOnly?: boolean;
   url?: string;
-  kind?: "web" | "desktop";
+  kind?: "web" | "desktop" | "research";
 }
 export function changeTab(
   tabs: ArtifactTab[],
