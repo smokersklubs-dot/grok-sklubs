@@ -13,4 +13,3 @@ export function research(db: DatabaseSync) {
     owner TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, token_enc TEXT NOT NULL
   );`);
 }
-

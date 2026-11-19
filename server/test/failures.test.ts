@@ -409,7 +409,7 @@ test("model, desktop and recovery evidence belong to the same owner's bot and pr
   const report = { bot, trigger: { kind: "user" as const, text: "images" }, thread: 0, since: Date.now(), provider: "codex", didSomething: true };
   const size = f.handleFailure({ ...report, text: "unexpected status 413 Payload Too Large" })!;
   const incident = f.failures.byId(size.id)!;
-  const quota = f.handleFailure({ ...report, text: "429 Too Many Requests" })!;
+  const quota = f.handleFailure({ ...report, existingRemedy: true, text: "429 Too Many Requests" })!;
   f.noteTurnOk(bot, "claude-code:sonnet", 0);
   assert.equal(f.failures.byId(quota.id)?.status, "waiting");
   assert.equal(f.confirmTransportRecovery(bot, size.id, incident.last_at, "codex", 20*1024*1024), false);
