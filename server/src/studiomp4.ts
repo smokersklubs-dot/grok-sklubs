@@ -1,41 +1,46 @@
 import { readFileSync } from "node:fs";
 import { stripTypeScriptTypes } from "node:module";
-import { randomUUID } from "node:crypto";
-import { attachmentAt, computerKind, storeBytes, workspaceOf } from "./computer.js";
+import {
+  drainExports,
+  enqueueExport,
+  exportStatus,
+  findExport,
+  latestExport,
+  ownedExport,
+} from "./studioqueue.js";
+import { computerKind, storeBytes, workspaceOf } from "./computer.js";
 import { config, LOCAL_TTS_URL } from "./config.js";
 import { linuxExec } from "./linux.js";
 import { pageVersions } from "./pagefiles.js";
-import { bots, pages, rows, type BotRecord, type UserRecord } from "./store.js";
+import { bots, pages, type BotRecord, type UserRecord } from "./store.js";
 import { piperTts } from "./voice/piper.js";
 import type { Attachment } from "./shared.js";
 import type { BuiltinTool } from "./agent/tools.js";
 import { storyFor, type StudioStory } from "./videostudio.js";
 import type { Hono } from "hono";
 
-interface Job {
-  id: string;
-  key: string;
-  botId: string;
-  state: "working" | "ready" | "failed";
-  updated: number;
-  file?: Attachment;
-  error?: string;
-}
-const jobs = new Map<string, Job>();
 const namePattern = /^artifact-video-[a-f0-9-]{36}$/;
 const template = (name: string) =>
   readFileSync(new URL("../templates/moneyprinter/" + name, import.meta.url), "utf8");
 const maximumBytes = 80 * 1024 * 1024;
 const message = (fr: boolean, local: string, english: string) => (fr ? local : english);
-function publicJob(job: Job) {
-  return { id: job.id, state: job.state, file: job.file, error: job.error };
+export function startStudioExports() {
+  drainExports(encode);
+  setInterval(() => drainExports(encode), 15_000).unref();
 }
 
-async function encode(bot: BotRecord, story: StudioStory, voice: boolean, locale: string, language: string) {
+async function encode(
+  bot: BotRecord,
+  story: StudioStory,
+  voice: boolean,
+  locale: string,
+  language: string,
+  stillOwned: () => boolean,
+) {
   const fr = locale === "fr";
   const voices: (string | null)[] = [];
   for (const scene of story.scenes) {
-    if (!voice || !scene.text) {
+    if (scene.speech || !voice || !scene.text) {
       voices.push(null);
       continue;
     }
@@ -115,7 +120,7 @@ async function encode(bot: BotRecord, story: StudioStory, voice: boolean, locale
       ),
     );
   }
-  if (bots.byId(bot.id)?.userId !== bot.userId) throw Error("Bot unavailable.");
+  if (!stillOwned()) throw Error("Render interrupted.");
   return storeBytes(bot.id, "exports", story.title + ".mp4", rendered.raw);
 }
 
@@ -144,39 +149,9 @@ function start(
   const source = pageVersions.get(bot.id, path, id)?.files.find((f) => f.file === "studio.json")?.content;
   const story = source && storyFor(bot.id, JSON.parse(source));
   if (!story) throw Error(say("Version ou média introuvable.", "Version or media not found."));
-  const key = [bot.id, id, voice, language, thread ?? 0].join("/");
-  for (const [jobId, item] of jobs) {
-    if (item.state !== "working" && Date.now() - item.updated > 3_600_000) jobs.delete(jobId);
-    else if (item.key === key && (item.state === "working" || (item.file && attachmentAt(bot.id, item.file.path))))
-      return publicJob(item);
-  }
-  const working = [...jobs.values()].filter((j) => j.state === "working");
-  if (working.length >= 4 || working.some((j) => j.botId === bot.id))
-    throw Error(
-      say("Un rendu est en cours. Réessaie dans un instant.", "A render is in progress. Try again shortly."),
-    );
-  const job: Job = { id: randomUUID(), key, botId: bot.id, state: "working", updated: Date.now() };
-  jobs.set(job.id, job);
-  const destination = thread ?? 0;
-  const canDeliver = () => bots.byId(bot.id)?.generation === bot.generation;
-  void encode(bot, story, voice, user.locale, language)
-    .then((file) => {
-      job.file = file;
-      job.state = "ready";
-      if (canDeliver()) {
-        rows.append(bot, { kind: "message", role: "assistant", text: story.title, attachments: [file] }, destination);
-        bots.bumpUnread(bot.id);
-      }
-    })
-    .catch((e: unknown) => {
-      job.state = "failed";
-      job.error = e instanceof Error ? e.message : say("Le rendu a échoué.", "Render failed.");
-      if (canDeliver()) rows.append(bot, { kind: "message", role: "assistant", text: story.title + " — " + job.error }, destination);
-    })
-    .finally(() => {
-      job.updated = Date.now();
-    });
-  return publicJob(job);
+  const job = enqueueExport(bot, name, id, thread ?? 0, voice, language, user.locale, story);
+  drainExports(encode);
+  return job;
 }
 
 export function registerStudioMp4(api: Hono<any>, threadParent: (bot: BotRecord, thread: unknown) => number) {
@@ -189,17 +164,39 @@ export function registerStudioMp4(api: Hono<any>, threadParent: (bot: BotRecord,
       return c.json({ error: "Invalid project" }, 400);
     const thread = threadParent(bot, body.thread);
     try {
-      return c.json(start(bot, user, body.name, body.version, body.narration === true, thread), 202);
+      return c.json(
+        start(
+          bot,
+          user,
+          body.name,
+          body.version,
+          body.narration === true,
+          thread,
+          body.language === "en" || body.language === "fr" ? body.language : user.locale,
+        ),
+        202,
+      );
     } catch (e) {
       return c.json({ error: e instanceof Error ? e.message : "Invalid project" }, 400);
     }
   });
+  api.get("/bots/:id/studio-mp4", (c) => {
+    const user = c.get("user"),
+      bot = bots.owned(user.id, c.req.param("id") ?? "");
+    if (!bot || bot.hidden || bot.kind !== "agent") return c.notFound();
+    const name = c.req.query("name") ?? "",
+      version = Number(c.req.query("version")),
+      thread = threadParent(bot, Number(c.req.query("thread") || 0));
+    const job =
+      c.req.query("narration") === undefined
+        ? latestExport(bot, name, version, thread)
+        : findExport(bot, name, version, thread, c.req.query("narration") === "true", user.locale);
+    return c.json({ job: job ? exportStatus(job) : null }, 200, { "cache-control": "no-store" });
+  });
   api.get("/bots/:id/studio-mp4/:job", (c) => {
     const bot = bots.owned(c.get("user").id, c.req.param("id") ?? ""),
-      job = jobs.get(c.req.param("job") ?? "");
-    return bot && job && !bot.hidden && job.botId === bot.id
-      ? c.json(publicJob(job), 200, { "cache-control": "no-store" })
-      : c.notFound();
+      job = bot && !bot.hidden && ownedExport(bot, c.req.param("job") ?? "");
+    return job ? c.json(job, 200, { "cache-control": "no-store" }) : c.notFound();
   });
 }
 

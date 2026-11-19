@@ -20,6 +20,7 @@ import { membersOf, sharedComputers } from "./sharedcomputers.js";
 import { startDiskWatchdog } from "./diskwatch.js";
 import { startScheduler } from "./scheduler.js";
 import { startAutoBackup } from "./autobackup.js";
+import { startStudioExports } from "./studiomp4.js";
 import { startHealthChecks } from "./health.js";
 import { startSentinel } from "./sentinel/index.js";
 import { startAnnouncements } from "./announcements.js";
@@ -104,6 +105,7 @@ startScheduler();
 // Expired sessions, pending two-factor sign-ins and one-time links are deleted (twofactor.ts), now and every hour.
 startSessionSweep();
 startUploadSweep();
+if (computerKind() === "linux") startStudioExports();
 startAutoBackup();
 startHealthChecks();
 // The Sentinelle (sentinel/): a read-only scan every SENTINEL_EVERY_MIN minutes, incidents and alerts to the owner/operators.

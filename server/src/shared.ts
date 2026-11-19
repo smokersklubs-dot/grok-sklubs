@@ -297,6 +297,12 @@ export interface Reaction { emoji: ReactionEmoji; by: string; name: string }
 /** Under a message that has a thread: how many replies it has, and when the last one came. */
 export interface Replies { count: number; lastAt: number }
 
+export interface PeerReviewState {
+  state: "none" | "working" | "ready" | "failed";
+  review?: {reviewer:string;verdict:"approved"|"changes"|"inconclusive";reason:string;partial:boolean;at:number};
+  error?: string;
+}
+
 export type RowBody =
   | { kind: "message"; role: "user" | "assistant"; text: string; page?: { token: string; title: string; open?: boolean }; streaming?: boolean; origin?: Origin; sources?: { url: string; title?: string }[]; attachments?: Attachment[]; reactions?: Reaction[]; replies?: Replies }
   /** `grant`: what allowed this state-changing action (the user's quote, the reviewer's reason, a card). */
@@ -412,7 +418,7 @@ export type Card =
    * `baseId` / `snapId`: the private snapshots of the turn's start and end. "Annuler" (owner only, confirmed) restores
    * the listed files to the start; `restored` / `changedSince` (changed again after the turn, left as they are).
    */
-  | { type: "files"; snapId: string; baseId: string; files: FileChange[]; more: number; status: "available" | "undone" | "expired"; restored?: string[]; changedSince?: string[] }
+  | { type: "files"; hasReview?: boolean; snapId: string; baseId: string; files: FileChange[]; more: number; status: "available" | "undone" | "expired"; restored?: string[]; changedSince?: string[] }
   /**
    * Goal mode ("Objectif"): the bot keeps working across rounds, without the user pressing Continue, until it marks the
    * goal complete (with evidence) or blocked (with a reason), or reaches `maxRounds`. `status`: "proposed" (the bot

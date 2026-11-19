@@ -1,3 +1,4 @@
+import { GithubActivity } from "./GithubActivity";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { IncidentsSection } from "./Incidents";
 import { api, enc, errText } from "../api";
@@ -643,6 +644,7 @@ export function DetailsPanel() {
         {tab === "activity" && (
           <>
             <Upcoming bot={bot} />
+            {!isRoom && !bot.access && <GithubActivity key={"gh"+bot.id} bot={bot.id}/>}
             {!isRoom && <GemsSection key={`g${bot.id}`} bot={bot} />}
             {!isRoom && <IncidentsSection key={`i${bot.id}`} bot={bot} />}
             {isRoom && <Members room={bot} />}

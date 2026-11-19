@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { drawFrame, duration, locate, mediaUrl, type Story, type Visual } from "../lib/studioStory";
+import { timelineAudio } from "../lib/studioAudio";
 import { ErrorNote } from "./ui";
 
 export function StudioPlayback({
@@ -8,12 +9,14 @@ export function StudioPlayback({
   time,
   onTime,
   fr,
+  solo = "",
 }: {
   story: Story;
   bot: string;
   time: number;
   onTime: (n: number) => void;
   fr: boolean;
+  solo?: string;
 }) {
   const canvas = useRef<HTMLCanvasElement>(null),
     assets = useRef(new Map<string, Visual>()),
@@ -107,7 +110,7 @@ export function StudioPlayback({
   useEffect(() => () => stop.current(), []);
   useEffect(() => {
     stop.current();
-  }, [story]);
+  }, [story, solo]);
   async function start(exporting: boolean) {
     if (!ready || !canvas.current || playing.current) return;
     setError("");
@@ -115,20 +118,21 @@ export function StudioPlayback({
     setMode(exporting ? "export" : "play");
     let recorder: MediaRecorder | undefined,
       stream: MediaStream | undefined,
-      context: AudioContext | undefined,
-      song: HTMLAudioElement | undefined;
+      mixer: Awaited<ReturnType<typeof timelineAudio>> | undefined;
+    const controller = new AbortController();
     let finished = false,
       keep = false,
       current = exporting || time >= total - 0.05 ? 0 : time;
     const reset = () => {
       finished = true;
+      controller.abort();
       playing.current = false;
       cancelAnimationFrame(frame.current);
-      song?.pause();
+      mixer?.close();
       for (const e of assets.current.values()) if (e instanceof HTMLVideoElement) e.pause();
       if (recorder && recorder.state !== "inactive") recorder.stop();
       stream?.getTracks().forEach((t) => t.stop());
-      if (context) void context.close();
+
       setMode("");
       stop.current = () => {};
     };
@@ -144,17 +148,22 @@ export function StudioPlayback({
           ) ?? "";
         stream = canvas.current.captureStream(25);
       }
-      if (audio.current && !story.muted) {
-        song = audio.current.cloneNode(true) as HTMLAudioElement;
-        if (exporting && stream) {
-          context = new AudioContext();
-          await context.resume();
-          if (finished) return;
-          const src = context.createMediaElementSource(song),
-            dest = context.createMediaStreamDestination();
-          src.connect(dest);
-          dest.stream.getAudioTracks().forEach((tr) => stream!.addTrack(tr));
-        }
+      mixer = await timelineAudio(
+        bot,
+        story,
+        stream,
+        exporting ? "" : solo,
+        () => {
+          if (!finished) {
+            setError(fr ? "Lecture de la piste audio impossible." : "Cannot play audio.");
+            reset();
+          }
+        },
+        controller.signal,
+      );
+      if (finished) {
+        mixer.close();
+        return;
       }
       if (exporting && stream) {
         recorder = new MediaRecorder(stream, mime ? { mimeType: mime } : {});
@@ -183,22 +192,11 @@ export function StudioPlayback({
       onTime(current);
       recorder?.start(250);
       const startAt = performance.now() - current * 1000;
-      let audioStarted = false,
-        lastUi = -1;
+      let lastUi = -1;
       const tick = (now: number) => {
         if (finished) return;
         current = Math.min(total, (now - startAt) / 1000);
-        if (song && !audioStarted && current >= story.offset) {
-          audioStarted = true;
-          const pos = current - story.offset;
-          song.currentTime = pos;
-          void song.play().catch(() => {
-            if (!finished) {
-              setError(fr ? "Lecture de la piste audio impossible." : "Cannot play the audio track.");
-              reset();
-            }
-          });
-        }
+        mixer?.tick(current);
         paint(current, true);
         if (current - lastUi >= 0.08 || current >= total) {
           onTime(current);
@@ -211,8 +209,10 @@ export function StudioPlayback({
       };
       frame.current = requestAnimationFrame(tick);
     } catch (e) {
-      setError((e as Error).message);
-      reset();
+      if (!finished) {
+        setError((e as Error).message);
+        reset();
+      }
     }
   }
   return (

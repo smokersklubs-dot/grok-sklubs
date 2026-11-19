@@ -4,6 +4,7 @@ import { duration, locate, styles, validStory, type Scene, type Story } from "..
 import { useStore } from "../store";
 import type { Attachment } from "../types";
 import { StudioMp4 } from "./StudioMp4";
+import { StudioSpeech } from "./StudioSpeech";
 import { StudioPlayback } from "./StudioPlayback";
 import { StudioLibraryAudio } from "./StudioLibraryAudio";
 import { StudioSubtitles } from "./StudioSubtitles";
@@ -24,6 +25,7 @@ export function StudioEditor({
   editable: boolean; mp4?: boolean; thread?: number;
 }) {
   const fr = useStore((s) => s.locale === "fr");
+  const [solo,setSolo]=useState("");
   const [story, setStory] = useState<Story | null>(null),
     [time, setTime] = useState(0),
     [dirty, setDirty] = useState(false),
@@ -56,6 +58,8 @@ export function StudioEditor({
     total = duration(story),
     shot = locate(story, time),
     s = shot.scene;
+  const cast=model.scenes.flatMap(c=>c.speech ? [c.speech] : []);
+  const speakers=Array.from(new Set(cast.map(c=>c.speaker)));
   const update = (next: Story) => {
     setStory(next);
     setDirty(true);
@@ -111,7 +115,7 @@ export function StudioEditor({
     : ["Editorial", "Product capture", "Drawing", "Diagram", "Kinetic type"];
   return (
     <section className="studio-editor">
-      <StudioPlayback story={story} bot={bot} time={time} onTime={setTime} fr={fr} />
+      <StudioPlayback solo={speakers.includes(solo) ? solo : ""} story={story} bot={bot} time={time} onTime={setTime} fr={fr} />
       <StudioSubtitles story={story} fr={fr} />
       {mp4 && <StudioMp4 key={name + "/" + version} bot={bot} name={name} version={version} dirty={dirty || busy} fr={fr} thread={thread} />}
       <div className="studio-tracks" aria-label={fr ? "Pistes de montage" : "Timeline tracks"}>
@@ -144,6 +148,11 @@ export function StudioEditor({
             </div>
           </div>
         ))}
+        {speakers.map(speaker=><div className="studio-track" key={speaker}>
+          <button type="button" className="btn btn-small" aria-pressed={solo===speaker} title={fr?"Écouter seulement cette voix":"Solo this voice"} onClick={()=>setSolo(solo===speaker?"":speaker)}>{speaker} · Solo</button>
+          <div className="studio-clips track-1">{model.scenes.map((c,i)=>c.speech?.speaker===speaker ?
+            <button type="button" key={i} style={{flex:c.seconds}} onClick={()=>seek(i)}>{c.speech.text || speaker}</button> :
+            <span key={i} aria-hidden="true" style={{flex:c.seconds,visibility:"hidden"}}/>)}</div></div>)}
       </div>
       {editable && (
         <fieldset className="studio-controls" disabled={busy}>
@@ -159,6 +168,10 @@ export function StudioEditor({
               onChange={(e) => patch({ text: e.target.value })}
             />
           </label>
+          <StudioSpeech key={bot+"/"+shot.index+"/"+version+"/"+(s.speech?.path ?? "")} bot={bot} fr={fr} scene={s} cast={cast} onChange={speech=>{
+            setStory(current=>current && ({...current,scenes:current.scenes.map((scene,i)=>i===shot.index?{...scene,speech}:scene)}));
+            setDirty(true);
+          }}/>
           <div className="studio-pair">
             <label>
               {fr ? "Durée (s)" : "Duration (s)"}

@@ -241,6 +241,34 @@ const recordsFor = (userId: string) => q.all("SELECT * FROM connectors WHERE use
 const recordOf = (userId: string, id: string) => { const r = q.get("SELECT * FROM connectors WHERE id = ? AND user_id = ?", id, userId); return r ? toRecord(r) : null; };
 export const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 24) || "app";
 
+export function githubAccounts(owner:string) {
+  return recordsFor(owner).filter(r=>r.url===GITHUB_READ_URL).map(r=>({id:r.id,name:r.name}));
+}
+/** Only this fixed GitHub Actions origin receives an owner's GitHub credential. */
+export async function githubActionsRead(owner:string, connector:string|null, repo:string, suffix:string):Promise<unknown> {
+  if(!/^[a-z0-9-]+\/[a-z0-9_.-]+$/i.test(repo) || repo.endsWith("/.") || repo.endsWith("/..") ||
+    !/^runs(?:\?(?:per_page=1|status=failure&per_page=8)|\/\d+(?:\/attempts\/\d+\/jobs\?per_page=100)?)$/.test(suffix)) throw Error("Requête GitHub invalide.");
+  const headers:Record<string,string>={accept:"application/vnd.github+json","user-agent":"Sklubot"};
+  if(connector!==null) {
+    const rec=recordOf(owner,connector);
+    if(!rec || rec.url!==GITHUB_READ_URL)throw Error("Reconnecte GitHub dans les applis.");
+    let token:string|null|undefined;
+    if(rec.auth==="oauth") {
+      if(tokenExpired(loadOAuth(rec.id))) {
+        const provider=new ConnectorOAuth(rec.id,{kind:"background"});
+        const result=await auth(provider,{serverUrl:rec.url,fetchFn:guardedFetch});
+        if(result!=="AUTHORIZED" || provider.needsSignIn)throw Error("Reconnecte GitHub dans les applis.");
+      }
+      token=loadOAuth(rec.id).tokens?.access_token;
+    } else token=rec.tokenEnc ? unseal(rec.tokenEnc) : null;
+    if(!token)throw Error("Reconnecte GitHub dans les applis.");
+    headers.authorization="Bearer "+token;
+  }
+  const res=await fetch("https://api.github.com/repos/"+repo+"/actions/"+suffix,{headers,redirect:"error",signal:AbortSignal.timeout(12000)});
+  if(!res.ok)throw Error("GitHub HTTP "+res.status+(res.status===403 || res.status===404?" · Vérifie le dépôt, le quota GitHub et l’autorisation Actions en lecture.":""));
+  return res.json();
+}
+
 export interface AddOptions { token?: string; auth?: "oauth"; clientId?: string; clientSecret?: string; catalogId?: string }
 
 function setManualClient(id: string, clientId: string, clientSecret?: string, github = false) {

@@ -91,7 +91,9 @@ import { registerTranscribeRoute } from "./voice/transcribe.js";
 import { registerSpeakRoute } from "./voice/speak.js";
 import { adminView, approversOf, botAccess, exportWorkspace, invites, resources, SHARED_SETTINGS, sharedBotsFor, sharedBotView, shares, workspaces, WorkspaceError, wsAudit, type BotAccess } from "./workspaces.js";
 import { invalidateAudience } from "./bus.js";
-import { fileDiff, listedPathOk, undoFiles } from "./snapshots.js";
+import { registerGithubActivity } from "./githubactivity.js";
+import { registerPeerReview } from "./peerreviewroutes.js";
+import { listedPathOk, undoFiles } from "./snapshots.js";
 import { forgetHeld, holdAndOffer, screen as screenSecrets, takeHeld } from "./pastedsecrets.js";
 import { assertPublicUrl, BlockedAddressError, clientAddress } from "./net.js";
 import { hookLimits } from "./hardening.js";
@@ -517,6 +519,7 @@ api.use("*", async (c, next) => {
 });
 registerHostedPrivate(api);
 registerConnectorCatalog(api);
+registerGithubActivity(api,throttle);
 registerPublicSignupPrivate(api);
 registerTwoFactorPrivate(api, googleDeps);
 registerDataKeyRoutes(api);
@@ -1767,16 +1770,7 @@ const filesCard = (c: Context<Env>) => {
   const card = row?.body.kind === "card" && row.body.card.type === "files" ? row.body.card : fail(400, "That is not a list of changed files.");
   return { bot, row: row!, card };
 };
-api.get("/bots/:id/cards/:seq/files/diff", async (c) => {
-  const { bot, card } = filesCard(c);
-  const path = c.req.query("path") ?? "";
-  const f = card.files.find((x) => x.path === path);
-  if (!f || !listedPathOk(path)) fail(400, "That file is not on this card.");
-  if (f!.binary) return c.json({ diff: "", truncated: false, binary: true });
-  const d = await fileDiff(bot, card, path);
-  if (!d) fail(409, "The snapshot of this turn is no longer kept.");
-  return c.json({ ...d, binary: false });
-});
+registerPeerReview(api,filesCard,throttle);
 api.post("/bots/:id/cards/:seq/files", async (c) => {
   const { bot, row, card } = filesCard(c);
   if (card.status !== "available") fail(409, "These changes were already undone.");

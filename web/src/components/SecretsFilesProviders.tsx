@@ -1,3 +1,4 @@
+import { PeerReview } from "./PeerReview";
 import { useEffect, useState } from "react";
 import { api, enc, errText } from "../api";
 import { tn, useT } from "../i18n";
@@ -147,6 +148,7 @@ export function FilesCardView({ card, botId, seq }: { card: FilesCard; botId: st
           );
         })}
       </ul>
+      {own && card.status==="available" && <PeerReview bot={botId} seq={seq} saved={!!card.hasReview}/>}
       {card.more > 0 && <p className="muted small">{t("files.more", { n: card.more })}</p>}
       {card.status === "available" && own && (
         <>

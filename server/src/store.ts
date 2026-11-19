@@ -387,7 +387,7 @@ function keepMeta(cur: RowBody, next: RowBody): RowBody {
 
 export const rows = {
   /** Adds a row. `thread`: the seq of the message a thread reply hangs on; by default, the thread of the bot's turn under way (or the main chat). */
-  append(bot: { id: string; userId: string }, raw: RowBody, thread?: number): Row {
+  append(bot: { id: string; userId: string }, raw: RowBody, thread?: number, onStored?: () => void): Row {
     const th = thread ?? scopedThread(bot.id);
     const body = scrub(bot.userId, raw);
     const row = q.tx(() => {
@@ -396,6 +396,7 @@ export const rows = {
       const t = now();
       q.run("INSERT INTO rows (bot_id, generation, seq, rev, kind, body, created_at, thread) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", bot.id, b.generation, b.next_seq, b.rev + 1, body.kind, JSON.stringify(body), t, th);
       q.run("UPDATE bots SET next_seq = next_seq + 1, rev = rev + 1, updated_at = ? WHERE id = ?", t, bot.id);
+      onStored?.();
       return { botId: bot.id, generation: b.generation, seq: b.next_seq, rev: b.rev + 1, createdAt: t, body, ...(th ? { thread: th } : {}) } satisfies Row;
     });
     emit(bot.userId, { type: "rows", botId: bot.id, generation: row.generation, rows: [row] });

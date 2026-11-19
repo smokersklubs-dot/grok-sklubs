@@ -73,10 +73,11 @@ def render(job, temp):
     total = sum(scene["seconds"] for scene in story["scenes"])
     visuals = {scene["media"] for scene in story["scenes"] if scene["media"]}
     audio = story["audio"] if not story["muted"] and story["offset"] < total else ""
+    takes = {s["speech"]["path"] for s in story["scenes"] if s.get("speech")}
     manifest = {"project_id": "studio", "settings": {"width": width, "height": height, "fps": fps,
-                "bgm_volume": .18 if any(job["voices"]) else 1}, "scenes": []}
+                "bgm_volume": .18 if takes or any(job["voices"]) else 1}, "scenes": []}
     with ExitStack() as stack:
-        inputs = asset_files(job["bot"], visuals | ({audio} if audio else set()), temp, stack)
+        inputs = asset_files(job["bot"], visuals | takes | ({audio} if audio else set()), temp, stack)
         canvas = stack.enter_context(closing(StudioCanvas(temp / "chromium", job["javascript"], story,
                                                 width, height, {k: inputs[k] for k in visuals})))
         elapsed = 0
@@ -94,7 +95,14 @@ def render(job, temp):
                 if encoder.wait() != 0:
                     raise ValueError("The studio frames could not be encoded")
             item = {"id": f"shot-{index}", "duration": seconds, "footage": str(footage)}
-            if job["voices"][index]:
+            if scene.get("speech"):
+                target = temp / f"line-{index}.wav"
+                subprocess.run(ffmpeg("-protocol_whitelist", "file", "-format_whitelist", "mov,matroska,mp3,wav,ogg,aac,flac",
+                                      "-i", inputs[scene["speech"]["path"]], "-af", "apad", "-t", seconds,
+                                      "-ar", 48000, "-ac", 2, target), check=True)
+                item["audio"] = str(target)
+                item["narration"] = scene["speech"]["text"] or scene["speech"]["speaker"]
+            elif job["voices"][index]:
                 item["audio"] = prepare_voice(job["voices"][index], seconds, index, temp)
                 item["narration"] = scene["text"]
             manifest["scenes"].append(item)

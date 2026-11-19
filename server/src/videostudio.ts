@@ -9,6 +9,7 @@ import { pageFiles, pageVersions } from "./pagefiles.js";
 import { bots, pages } from "./store.js";
 
 interface Scene {
+  speech?: { speaker: string; text: string; voice: string; path: string };
   text: string;
   seconds: number;
   media: string;
@@ -51,7 +52,11 @@ export function storyFor(botId: string, input: any): StudioStory | null {
       (s.media !== "" && !asset(s.media, visual, /^uploads\/[^/\\]+$/))
     )
       return null;
-    scenes.push({ text: s.text.trim(), seconds: s.seconds, style: s.style, media: s.media });
+    const take = s.speech;
+    if (take !== undefined && (!take || typeof take.speaker !== "string" || !take.speaker.trim() || take.speaker.length > 64 ||
+        typeof take.text !== "string" || take.text.length > 300 || typeof take.voice !== "string" || take.voice.length > 120 ||
+        !asset(take.path, sound, /^(?:uploads|audio)\/[^/\\]+$/))) return null;
+    scenes.push({ ...(take ? {speech: {speaker:take.speaker.trim(),text:take.text,voice:take.voice,path:take.path}} : {}), text: s.text.trim(), seconds: s.seconds, style: s.style, media: s.media });
   }
   if (
     !title ||
@@ -175,6 +180,7 @@ export const videoStudioTool: BuiltinTool = {
               text: { type: "string" },
               seconds: { type: "number" },
               style: { type: "string", enum: ["editorial", "draw", "diagram", "type", "capture"] },
+              speech: { type:"object", description:"A recorded line on the named speaker's own track, starting at the shot boundary.", properties:{speaker:{type:"string"}, text:{type:"string"}, voice:{type:"string"}, path:{type:"string",description:"Existing audio/ or uploads/ clip in this bot's library."}}, required:["speaker","text","voice","path"] },
               media: { type: "string", description: "Optional existing uploads/ image or clip." },
             },
             required: ["text", "seconds", "style"],

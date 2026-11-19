@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+import { storeBytes } from "../computer.js";
 import type { Context, Hono } from "hono";
 import { audit, bots, clip, type BotRecord, type UserRecord } from "../store.js";
 import type { BotVoiceChoice } from "../shared.js";
@@ -109,6 +111,22 @@ export function registerVoiceRoutes(api: Hono<Env>) {
     }
     audit(c.get("user").id, "account", choice ? `Voice of the bot set: ${choice.provider} ${choice.name || choice.voiceId}` : "Voice of the bot reset to the account's", bot.id);
     return c.json({ choice, status: voiceStatus(c.get("user").id, bot.id) });
+  });
+
+  api.post("/bots/:id/voice/studio-take", async c => {
+    const bot = ownAgent(c);
+    if (!bot || bot.hidden) return err(c, 404, NOT_FOUND);
+    const user = c.get("user"), b = await json(c);
+    if (typeof b.text !== "string" || !b.text.trim() || b.text.length > 300 || typeof b.voice !== "string" || !piperVoice(b.voice))
+      return err(c, 400, "Invalid voice or line.");
+    if (!piperEndpoint(user.id)) return err(c, 409, "Piper indisponible.");
+    const synth = ttsFor(user.id, {botId:bot.id, voiceId:b.voice, provider:"piper"});
+    if (!synth) return err(c, 409, "Piper indisponible.");
+    try {
+      const wav = await synth(b.text.trim(), AbortSignal.timeout(45_000));
+      if (!bots.owned(user.id,bot.id)) return err(c,404,NOT_FOUND);
+      return c.json({path:storeBytes(bot.id,"audio","studio-"+randomUUID()+".wav",wav).path});
+    } catch { return err(c,502,"La voix n’a pas pu être générée."); }
   });
 
   api.post("/bots/:id/voice/preview", async (c) => {

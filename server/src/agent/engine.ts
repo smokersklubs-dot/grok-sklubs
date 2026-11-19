@@ -941,26 +941,26 @@ const signInHint = (turn: Turn, engine: Engine) =>
     : "I am not signed in to Claude on this desktop. Open Settings → Models and check my connection.");
 
 // ── A short side request (memory, summaries) through the subscription ───────
-export async function engineAsk(bot: BotRecord, system: string, prompt: string): Promise<string> {
+export async function engineAsk(bot: BotRecord, system: string, prompt: string, isolated = false): Promise<string> {
   await ensureComputer(bot);
   const release = (await host.hold?.(bot)) ?? (() => {});
-  try { return await withEngineLock(bot, 60_000, () => engineAskOn(bot, system, prompt)); } finally { release(); }
+  try { return await withEngineLock(bot, 60_000, () => engineAskOn(bot, system, prompt, isolated)); } finally { release(); }
 }
-async function engineAskOn(bot: BotRecord, system: string, prompt: string): Promise<string> {
+async function engineAskOn(bot: BotRecord, system: string, prompt: string, isolated: boolean): Promise<string> {
   {
     const engine = engineOf(bot.model);
     let out = "";
     const ctrl = AbortSignal.timeout(180_000);
     if (engine === "claude-code") {
       await writeFile(bot.id, "/root/.sklubot/side-prompt.md", system);
-      await host.exec(bot, ["claude", "-p", "--output-format", "stream-json", "--verbose", "--tools", "", "--no-session-persistence", "--append-system-prompt-file", "/root/.sklubot/side-prompt.md", ...(modelOf(bot.model) !== "default" ? ["--model", modelOf(bot.model)] : []), ...effortArgs("claude-code", bot.effort)],
+      await host.exec(bot, ["claude", "-p", "--output-format", "stream-json", "--verbose", "--tools", "", ...(isolated ? ["--strict-mcp-config","--mcp-config",'{"mcpServers":{}}'] : []), "--no-session-persistence", "--append-system-prompt-file", "/root/.sklubot/side-prompt.md", ...(modelOf(bot.model) !== "default" ? ["--model", modelOf(bot.model)] : []), ...effortArgs("claude-code", bot.effort)],
         { IS_SANDBOX: "1" }, "/root", prompt, ctrl, (line) => { try { const e = JSON.parse(line); if (e.type === "result" && !e.is_error) out = String(e.result ?? ""); } catch { /* ignore */ } });
     } else {
       const personal = personalCodexArgs(bot);
       const proof = personal.length ? issueEngineToken(bot.id) : null;
       try {
         if (proof) await writeFile(bot.id, SECRET_ENV_FILE, secretEnvFile({ SKLUBOT_MCP_TOKEN: proof }));
-        await host.exec(bot, ["codex", "exec", "--json", "--skip-git-repo-check", "--ephemeral", "--sandbox", "read-only", ...personal, ...effortArgs("codex", bot.effort), "-"], {}, "/tmp", `${system}\n\n${prompt}`, ctrl,
+        await host.exec(bot, ["codex", "exec", "--json", "--skip-git-repo-check", "--ephemeral", "--sandbox", "read-only", ...(isolated ? ["--ignore-user-config","-c","features.shell_tool=false","-c","features.unified_exec=false","-c","features.apps=false","-c","features.plugins=false","-c",'web_search="disabled"', ...(modelOf(bot.model) !== "default" ? ["--model", modelOf(bot.model)] : [])] : []), ...personal, ...effortArgs("codex", bot.effort), "-"], {}, "/tmp", `${system}\n\n${prompt}`, ctrl,
           (line) => { try { const e = JSON.parse(line); if (e.type === "item.completed" && e.item?.type === "agent_message") out = String(e.item.text ?? ""); } catch { /* ignore */ } });
       } finally { if (proof) revokeEngineToken(bot.id); }
     }

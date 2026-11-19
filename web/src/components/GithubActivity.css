@@ -1,0 +1,41 @@
+.github-activity {
+  padding: 0.75rem 0;
+  border-block-end: 1px solid var(--line);
+}
+.github-activity summary,
+.studio-speech summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.github-activity form,
+.github-activity li,
+.studio-speech fieldset {
+  display: grid;
+  gap: 0.5rem;
+  margin-block: 0.7rem;
+}
+.github-activity label {
+  display: grid;
+  gap: 0.3rem;
+}
+.github-activity ul {
+  list-style: none;
+  padding: 0;
+}
+.github-activity li {
+  padding: 0.5rem 0;
+  border-block-start: 1px solid var(--line);
+}
+.github-activity a,
+.github-activity strong {
+  overflow-wrap: anywhere;
+}
+.github-activity button {
+  justify-self: start;
+}
+.studio-speech audio {
+  width: 100%;
+}
+.peer-review {
+  padding-block: 0.5rem;
+}

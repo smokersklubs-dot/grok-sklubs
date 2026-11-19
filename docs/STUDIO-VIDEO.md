@@ -8,6 +8,10 @@ Chaque image, clip et bande-son importés peut peser jusqu’à 1 Go. Les aperç
 
 Le montage conserve un titre, un format, des plans ordonnés, un style et une durée par plan, les références aux médias du bot ainsi qu’une bande-son avec décalage et sourdine. Le texte au format LRC sert à caler les changements de plan. Les pistes Image et Titres suivent les plans ; la musique a son propre départ. La version active peut être modifiée et enregistrée. Les autres versions restent consultables. Le lecteur et l’exporteur dessinent les mêmes images. Le navigateur encode la vidéo et la bande-son. Le fichier multimédia et l’archive des sources sont deux téléchargements distincts. Pour un nouveau moteur de rendu, partir du même format de montage et tester les images, les horodatages et le son.
 
+Dans **Réplique de ce plan**, indique l’intervenant et son texte. Tu peux produire une prise avec une voix Piper disponible, importer un enregistrement ou le choisir dans le dossier audio de ce bot. Le montage regroupe les prises par intervenant. **Solo** isole sa piste à l’écoute. L’export mixe toutes les prises avec la bande-son. Une prise commence au début du plan et se termine au plus tard à sa fin. Pour corriger une phrase, refais sa prise et enregistre la version.
+
+Les exports MP4 demandés au bureau Linux entrent dans une file persistante. Tu peux fermer le panneau et retrouver le rendu en rouvrant la même version. Après un redémarrage du serveur, un travail interrompu recommence depuis le début avec cette version. Le fichier terminé arrive dans la conversation d’origine. Un export en échec peut être relancé depuis le Studio.
+
 ## Créer un Reel depuis la conversation
 
 « Fais-moi un Reel de quinze secondes sur la germination avec une voix off en français » demande au bot d’écrire le script, de créer les plans verticaux dans le studio, puis de livrer le film dans le chat. Pour modifier le film, corriger le montage et exporter sa nouvelle version. Depuis le studio, **Créer le MP4** exporte la version enregistrée et **Lire les titres en voix off** ajoute une narration.

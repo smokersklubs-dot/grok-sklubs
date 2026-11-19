@@ -13,12 +13,13 @@ import { capHolds } from "../usagecaps.js";
 import { isHostedStop } from "../hosted.js";
 
 /** A short side request to the model (summaries, fact extraction): no tools, low effort. */
-export async function ask(bot: BotRecord, system: string, prompt: string): Promise<string> {
+export async function ask(bot: BotRecord, system: string, prompt: string, selectedBot = false): Promise<string> {
   // A bot on a subscription does its side work there too, unless the server has its own model for it.
-  if (isEngineRef(bot.model) && !config.auxModel && !listProviders().some((p) => p.available())) return engineAsk(bot, system, prompt);
+  if (isEngineRef(bot.model) && (selectedBot || (!config.auxModel && !listProviders().some((p) => p.available())))) return engineAsk(bot, system, prompt, selectedBot);
   let res;
   try {
-    const { provider, model } = resolveModel(config.auxModel || bot.model || defaultModelRef(), bot.userId);
+    const { provider, model } = resolveModel((selectedBot ? bot.model : config.auxModel || bot.model) || defaultModelRef(), bot.userId);
+    if (selectedBot && (provider.id === "demo" || (bot.model && ![model, provider.id+":"+model].includes(bot.model)))) throw Error("Connecte un modèle au bot relecteur.");
     res = await provider.runTurn({ model, system, tools: [], effort: "low", maxTokens: 8000, messages: [{ role: "user", content: [{ type: "text", text: prompt }] }], signal: AbortSignal.timeout(180_000) });
   } catch (err) {
     // Hosted mode: the plan does not let the service's keys pay for this side request; a bot on its own subscription

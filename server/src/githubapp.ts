@@ -31,7 +31,7 @@ export function registerGithubApp(api: Hono<any>, connectors: typeof connectorSt
       name: "Sklubot-" + item.connectorId.slice(-12), url: config.publicUrl, public: false,
       redirect_url: config.publicUrl + "/api" + prefix + "/created",
       callback_urls: [callbackUrl], setup_url: config.publicUrl + "/api" + prefix + "/installed/" + item.connectorId,
-      hook_attributes: { active: false }, default_permissions: { contents: "read", issues: "read", pull_requests: "read" },
+      hook_attributes: { active: false }, default_permissions: { actions:"read", contents: "read", issues: "read", pull_requests: "read" },
     };
     const nonce = randomBytes(16).toString("hex");
     c.header("cache-control", "no-store");

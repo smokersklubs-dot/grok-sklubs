@@ -1,5 +1,7 @@
 export type Style = "editorial" | "draw" | "diagram" | "type" | "capture";
+export interface SpeechTake { speaker: string; text: string; voice: string; path: string }
 export interface Scene {
+  speech?: SpeechTake;
   text: string;
   seconds: number;
   style: Style;
@@ -33,7 +35,10 @@ export function validStory(s: Story): boolean {
         c.seconds >= 0.5 &&
         c.seconds <= 60 &&
         ["editorial", "draw", "diagram", "type", "capture"].includes(c.style) &&
-        (c.media === "" || validUpload(c.media)),
+        (c.media === "" || validUpload(c.media)) &&
+        (c.speech === undefined || (!!c.speech && typeof c.speech.speaker === "string" && !!c.speech.speaker.trim() && c.speech.speaker.length <= 64 &&
+          typeof c.speech.text === "string" && c.speech.text.length <= 300 && typeof c.speech.voice === "string" && c.speech.voice.length <= 120 &&
+          typeof c.speech.path === "string" && /^(?:audio|uploads)\/[^/\\]{1,180}\.(wav|mp3|m4a|aac|ogg|flac|opus)$/i.test(c.speech.path))),
     ) &&
     duration(s) <= 120 &&
     (s.audio === "" || validUpload(s.audio) || (typeof s.audio === "string" && /^audio\/[^/\\]{1,180}\.(wav|mp3|m4a|aac|ogg|flac|opus)$/i.test(s.audio))) &&
