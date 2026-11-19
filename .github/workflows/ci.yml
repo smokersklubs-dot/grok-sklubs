@@ -48,6 +48,13 @@ jobs:
       # The bots' computer image: the Linux, desk, jobs and office tests use it (they skip without it).
       - name: Bots' computer image
         run: npm run computer:build
+      - name: Backup and restore prerequisites
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y age
+          docker build -t sklubot-server -f Dockerfile.production .
+          docker run --rm --network none --entrypoint test sklubot-server -f /app/server/dist/backupcheck.js
+          age --version
       - name: Server tests
         run: npm run test -w server
 
