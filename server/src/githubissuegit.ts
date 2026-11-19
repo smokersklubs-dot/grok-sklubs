@@ -142,6 +142,7 @@ async function maybe(get: GitRequest, path: string) {
   }
 }
 export interface Context {
+  publicRepository?: boolean;
   /** GitHub Actions runs already observed for the published commit, independent of patch approval. */
   workflowRuns?: number[];
   evidence?: { path: string; text: string }[];
@@ -175,6 +176,7 @@ export async function loadContext(get: GitRequest, number: number, publicOnly = 
   const baseSha = sha((await get("/git/ref/heads/" + encoded(base))).object?.sha);
   const tree = sha((await get("/git/commits/" + baseSha)).tree?.sha);
   return {
+    publicRepository: repository.private === false,
     title: String(ticket.title).slice(0, 250),
     body: String(ticket.body ?? "").slice(0, 8000),
     base,

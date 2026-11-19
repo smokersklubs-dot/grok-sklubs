@@ -151,7 +151,7 @@ test("a multi-line account secret remains concealed, even when it crosses a line
   const masked = protectGithubText(raw, gitBlobSha(raw), vault, []);
   assert.ok(!masked.before.includes("left") && !masked.before.includes("right"));
   assert.ok(masked.protectedLines);
-  assert.deepEqual(masked.protectedLines.lines,[2,3]);
+  assert.deepEqual(masked.protectedLines.lines, [2, 3]);
   assert.ok(masked.before.startsWith("public\nup\n"));
   assert.ok(restoreGithubText(raw, masked.before, masked.before, masked.protectedLines) === raw);
 });

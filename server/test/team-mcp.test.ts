@@ -29,7 +29,8 @@ registerProvider({
   label: "Local MCP fixture",
   models: ["local"],
   available: () => true,
-  async runTurn() {
+  async runTurn(request) {
+    request.onText?.("Sklubot local fixture reply.");
     return {
       content: [{ type: "text", text: "Sklubot local fixture reply." }],
       stopReason: "end",

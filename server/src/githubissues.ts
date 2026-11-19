@@ -491,8 +491,10 @@ export function registerGithubIssueRoutes(api: Hono<any>, throttle: (key: string
     c.header("Cache-Control", "no-store");
     if (id) {
       const j = getJob(id);
-      if (!j || j.bot !== bot.id || j.generation !== bot.generation) return c.notFound();
-      return c.json({ changes: JSON.parse(j.patch) as Change[], review: j.review, revision: j.revision });
+      if (!j || j.owner !== owner || j.bot !== bot.id || j.generation !== bot.generation) return c.notFound();
+      const ctx = JSON.parse(j.context) as Context & { publicRepository?: boolean };
+      return c.json({ changes: JSON.parse(j.patch) as Change[], review: j.review, revision: j.revision,
+        base: ctx.base, baseSha: ctx.sha, publicRepository: ctx.publicRepository });
     }
     const jobs = q.all(
       "SELECT id,repo,issue,thread,branch,phase,pr,note FROM github_issue_jobs WHERE bot=? AND generation=? ORDER BY updated DESC LIMIT 30",

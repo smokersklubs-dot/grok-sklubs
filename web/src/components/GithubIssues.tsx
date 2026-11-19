@@ -19,6 +19,9 @@ type Detail = {
   changes: { path: string; before: string | null; after: string }[];
   review: string;
   revision: string;
+  base?: string;
+  baseSha?: string;
+  publicRepository?: boolean;
 };
 const labels: Record<string, [string, string]> = {
   prepare: ["Préparation du correctif", "Preparing patch"],
@@ -307,10 +310,11 @@ export function GithubIssues({
                   </button>
                 </div>
               )}
-              {["connect", "approval"].includes(j.phase) && (
+              {["connect", "approval"].includes(j.phase) && detail.data.publicRepository !== false && (
                 <details>
                   <summary>{fr ? "Suivre une PR brouillon déjà publiée" : "Follow an existing draft PR"}</summary>
                   <small>{fr ? "Branche attendue dans le dépôt public" : "Expected public repository branch"} · <code>{j.branch}</code></small>
+                  {detail.data.baseSha && <p>{fr ? "Base du correctif" : "Reviewed base"} · {detail.data.base} · <code>{detail.data.baseSha}</code></p>}
                   <form onSubmit={e => {
                     e.preventDefault();
                     void post({ job: j.id, decision: "follow-published", revision: detail.data.revision, pr: publishedPr });

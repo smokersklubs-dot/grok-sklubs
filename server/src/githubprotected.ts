@@ -53,25 +53,32 @@ export function protectGithubText(raw: string, blob: string, clean: (s: string) 
   const masked = (i: number) =>
     hidden.has(i) ? marker(nonce, i) + (lines[i].endsWith("\r") ? "\r" : "") : lines[i];
   // Locate account vault values without exporting them. A multiline value may cross two halves.
-  const dirty=(start:number,end:number)=>{
-    const text=lines.slice(start,end).map((_,n)=>masked(start+n)).join("\n");
-    return clean(text)!==text;
+  const dirty = (start: number, end: number) => {
+    const text = lines
+      .slice(start, end)
+      .map((_, n) => masked(start + n))
+      .join("\n");
+    return clean(text) !== text;
   };
-  while(dirty(0,lines.length)){
-    let left=0, right=lines.length-1;
-    while(left<right){
-      const mid=Math.ceil((left+right)/2);
-      if(dirty(mid,lines.length))left=mid;else right=mid-1;
+  while (dirty(0, lines.length)) {
+    let left = 0,
+      right = lines.length - 1;
+    while (left < right) {
+      const mid = Math.ceil((left + right) / 2);
+      if (dirty(mid, lines.length)) left = mid;
+      else right = mid - 1;
     }
-    const start=left;
-    left=start+1;right=lines.length;
-    while(left<right){
-      const mid=Math.floor((left+right)/2);
-      if(dirty(start,mid))right=mid;else left=mid+1;
+    const start = left;
+    left = start + 1;
+    right = lines.length;
+    while (left < right) {
+      const mid = Math.floor((left + right) / 2);
+      if (dirty(start, mid)) right = mid;
+      else left = mid + 1;
     }
-    const previousSize=hidden.size;
-    for(let i=start;i<left;i++)hidden.add(i);
-    if(previousSize===hidden.size)throw Error("Ce fichier ne peut pas être masqué intégralement.");
+    const previousSize = hidden.size;
+    for (let i = start; i < left; i++) hidden.add(i);
+    if (previousSize === hidden.size) throw Error("Ce fichier ne peut pas être masqué intégralement.");
   }
   const before = projected(lines, hidden, nonce);
   if (clean(before) !== before || values.some((v) => before.includes(v)))
