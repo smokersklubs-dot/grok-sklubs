@@ -30,7 +30,7 @@ COPY --from=build /app/server/templates server/templates
 COPY docker/desktop/install-craft.sh docker/desktop/install-craft.sh
 # The bundled skills library (server/src/skillslibrary.ts), with each skill's LICENSE.txt and NOTICE.
 COPY --from=build /app/server/skills-library server/skills-library
-COPY --from=build /app/web/src/lib/studioStory.ts web/src/lib/studioStory.ts
+COPY --from=build /app/web/src/lib/studioStory.ts /app/web/src/lib/studioTechniques.ts web/src/lib/
 COPY --from=build /app/web/dist web/dist
 EXPOSE 3000
 CMD ["node", "server/dist/index.js"]

@@ -2,6 +2,9 @@
   "format": "sklubot-skills-library",
   "version": 1,
   "skills": [
+    { "id": "studio-animation", "origin": "sklubot", "licence": "MIT", "source": "",
+      "title": { "fr": "Animation vidéo", "en": "Video animation" },
+      "summary": { "fr": "Anime chaque plan du Studio avec l’une des neuf techniques, du collage rétro au dessin accéléré. Garde les médias, la voix et les pistes de ton montage.", "en": "Animate individual Studio shots with nine techniques, from retro collage to drawing timelapse. Keep the project’s media, voices and timeline editable." } },
     { "id": "video-github", "origin": "sklubot", "licence": "MIT", "source": "",
       "title": { "fr": "Atelier vidéo GitHub", "en": "GitHub Video Workshop" },
       "summary": { "fr": "Sept ateliers pour animer tes captures, produire un clip ou réaliser une vidéo explicative sur le bureau du bot.", "en": "Seven workflows for screenshot demos, music videos, motion graphics and explainers on the bot desktop." } },

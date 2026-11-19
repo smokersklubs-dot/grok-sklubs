@@ -1,8 +1,11 @@
 import type { StudioClip } from "../../../server/src/studioclips";
+import type { StudioTechnique } from "../../../server/src/studiotechniques";
+import { drawTechnique, kineticTitle, techniqueColors, techniqueLabels } from "./studioTechniques.ts";
 
 export type Style = "editorial" | "draw" | "diagram" | "type" | "capture";
 export interface SpeechTake { speaker: string; text: string; voice: string; path: string }
 export interface Scene {
+  technique?: StudioTechnique;
   speech?: SpeechTake;
   text: string;
   seconds: number;
@@ -53,6 +56,7 @@ export function validStory(s: Story): boolean {
         c.seconds >= 0.5 &&
         c.seconds <= 60 &&
         ["editorial", "draw", "diagram", "type", "capture"].includes(c.style) &&
+        (c.technique === undefined || Object.hasOwn(techniqueLabels, c.technique)) &&
         (c.media === "" || validUpload(c.media)) &&
         (c.speech === undefined || (!!c.speech && typeof c.speech.speaker === "string" && !!c.speech.speaker.trim() && c.speech.speaker.length <= 64 &&
           typeof c.speech.text === "string" && c.speech.text.length <= 300 && typeof c.speech.voice === "string" && c.speech.voice.length <= 120 &&
@@ -121,13 +125,15 @@ export function drawFrame(canvas: HTMLCanvasElement, story: Story, assets: Map<s
   const { scene, local, index } = locate(story, time),
     w = canvas.width,
     h = canvas.height;
-  const [bg, fg, accent] = tones[scene.style],
+  const [bg, fg, accent] = scene.technique ? techniqueColors(scene.technique) : tones[scene.style],
     p = Math.min(1, local / scene.seconds),
     pad = Math.round(w * 0.065);
   ctx.fillStyle = bg;
   ctx.fillRect(0, 0, w, h);
   const image = assets.get(scene.media);
-  if (image) {
+  if (scene.technique) {
+    drawTechnique(ctx, scene.technique, w, h, p, story.title + "/" + index + "/" + scene.text, image, !!scene.text);
+  } else if (image) {
     const iw = image instanceof HTMLVideoElement ? image.videoWidth : image.naturalWidth,
       ih = image instanceof HTMLVideoElement ? image.videoHeight : image.naturalHeight;
     if (iw > 0 && ih > 0) {
@@ -189,7 +195,8 @@ export function drawFrame(canvas: HTMLCanvasElement, story: Story, assets: Map<s
   ctx.fillStyle = fg;
   ctx.font = "700 " + font + "px system-ui, sans-serif";
   ctx.textBaseline = "top";
-  const words = scene.text.split(/\s+/),
+  if (scene.technique === "motion-timing") kineticTitle(ctx, scene.text, w, h, p);
+  const words = scene.technique === "motion-timing" ? [] : scene.text.split(/\s+/),
     lines: string[] = [];
   let line = "";
   for (const word of words) {

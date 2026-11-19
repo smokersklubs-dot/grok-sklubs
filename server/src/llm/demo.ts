@@ -1,4 +1,5 @@
 import type { Block, LlmProvider, TurnRequest, TurnResult } from "./types.js";
+import { demoVideoTechnique } from "../studiotechniques.js";
 
 /**
  * A model-free stand-in, switched on with DEMO_MODE=1. It costs nothing and lets you try the whole
@@ -16,7 +17,7 @@ function plan(text: string, has: (name: string) => boolean): Block[] | null {
   const video = /^(?:cr[ée]+(?:r)?|fais(?:-moi)?|monte|g[ée]n[èe]re|je veux cr[ée]+r?|create|make|produce)\s+(?:(?:moi|une?|ma|mon|a|an|my)\s+){0,2}(?:vid[ée]o|montage|clip|video)\b[\s:,-]*(.*)$/iu.exec(text.trim());
   if (video) {
     const title = (video[1] || "Studio vidéo").slice(0,110);
-    return call("video_studio_create",{title,scenes:[{text:title,seconds:4,style:"editorial"}]});
+    return call("video_studio_create",{title,scenes:[{text:title,seconds:4,style:"editorial",technique:demoVideoTechnique(video[1])}]});
   }
   // The user's own computer (Sklubot Relais): "look at my screen", "run "ls" on my computer", "click 200 120 on my computer".
   if (/\b(my computer|my screen|my pc|mon ordinateur|mon ordi|mon écran|mon pc)\b/.test(lower)) {

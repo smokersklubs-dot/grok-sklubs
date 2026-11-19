@@ -2,7 +2,7 @@
 from pathlib import Path
 import subprocess,json
 tpl=Path("server/templates/moneyprinter")
-js=subprocess.check_output(["node","--disable-warning=ExperimentalWarning","--input-type=module","-e","import{stripTypeScriptTypes}from'node:module';import{readFileSync}from'node:fs';process.stdout.write(stripTypeScriptTypes(readFileSync('web/src/lib/studioStory.ts','utf8')));"],text=True,encoding="utf8")
+js=subprocess.check_output(["node","--disable-warning=ExperimentalWarning","--experimental-strip-types","--input-type=module","-e","import {studioCanvasSource} from './server/src/studiocanvassource.ts';process.stdout.write(studioCanvasSource());"],text=True,encoding="utf8")
 clip=lambda id,kind,path,start,srcin,srcout,**opts:dict(id=id,kind=kind,name=id,path=path,start=start,inPoint=srcin,outPoint=srcout,**opts)
 source="uploads/colors.mp4"
 # The same video and voice recordings overlap at independent source times.

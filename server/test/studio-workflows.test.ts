@@ -15,7 +15,9 @@ const { users, bots, rows } = await import("../src/store.js");
 const { q } = await import("../src/db.js");
 const { claimExport, enqueueExport, drainExports, ownedExport } = await import("../src/studioqueue.js");
 const { storeBytes } = await import("../src/computer.js");
-const { storyFor } = await import("../src/videostudio.js");
+const { storyFor, videoStudioTool, updateVideoStudio } = await import("../src/videostudio.js");
+const { studioTechniques } = await import("../src/studiotechniques.js");
+const { pageFiles, pageVersions } = await import("../src/pagefiles.js");
 const { reviewChanges, parseReview } = await import("../src/peerreview.js");
 const { registerProvider } = await import("../src/llm/index.js");
 const { snapRunner } = await import("../src/snapshots.js");
@@ -107,6 +109,27 @@ test("a replaced line belongs only to its speaker and its desktop", () => {
     }),
     null,
   );
+});
+
+test("the agent can create and revise a private project with a different animation on each shot", async () => {
+  const scenes = studioTechniques.map(technique => ({ ...story.scenes[0], technique }));
+  const context = { bot, user: owner, depth: 0, signal: new AbortController().signal, origin: "user" };
+  const created = await videoStudioTool.run({ ...story, scenes }, context);
+  assert.equal(created.isError, undefined);
+  assert.ok(typeof created.content === "string");
+  const name = created.content.match(/artifact-video-[a-f0-9-]{36}/)?.[0];
+  assert.ok(name);
+  const path = "artifacts/" + name + ".html";
+  const saved = () => JSON.parse(pageFiles.get(bot.id, path, "studio.json")!);
+  assert.deepEqual(saved().scenes, scenes);
+  assert.equal(pageFiles.get(peer.id, path, "studio.json"), null);
+
+  const version = pageVersions.list(bot.id, path)[0].id;
+  const renamed = await updateVideoStudio.run({ name, version, title: "Animation" }, context);
+  assert.equal(renamed.isError, undefined);
+  assert.deepEqual(saved().scenes, scenes);
+  assert.equal(storyFor(bot.id, { ...story, scenes: [{ ...scenes[0], technique: "unknown" }] }), null);
+  assert.deepEqual(storyFor(bot.id, story)?.scenes, story.scenes);
 });
 test("an independent bot sees a bounded diff and test evidence, with a verdict on the source card", async (t) => {
   const card: Extract<Card, { type: "files" }> = {

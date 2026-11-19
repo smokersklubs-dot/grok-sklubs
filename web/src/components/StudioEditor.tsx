@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { api, apiUpload, errText } from "../api";
 import { duration, locate, shotDuration, styles, validStory, type Scene, type Story } from "../lib/studioStory";
+import { techniqueLabels } from "../lib/studioTechniques";
+import { studioTechniques } from "../../../server/src/studiotechniques";
 import { useStore } from "../store";
 import type { Attachment } from "../types";
 import { StudioMp4 } from "./StudioMp4";
@@ -199,6 +201,7 @@ export function StudioEditor({
               Style
               <select
                 className="input"
+                disabled={!!s.technique}
                 value={s.style}
                 onChange={(e) => patch({ style: e.target.value as Scene["style"] })}
               >
@@ -210,6 +213,14 @@ export function StudioEditor({
               </select>
             </label>
           </div>
+          <label>
+            {fr ? "Animation du plan" : "Shot animation"}
+            <select className="input" value={s.technique ?? ""}
+              onChange={e => patch({technique: (e.target.value || undefined) as Scene["technique"]})}>
+              <option value="">{fr ? "Utiliser le style du plan" : "Use shot style"}</option>
+              {studioTechniques.map(id => <option key={id} value={id}>{techniqueLabels[id][fr ? 0 : 1]}</option>)}
+            </select>
+          </label>
           <div className="studio-actions">
             <button className="btn btn-small" disabled={!shot.index} onClick={() => move(-1)}>
               ← {fr ? "Avancer" : "Earlier"}

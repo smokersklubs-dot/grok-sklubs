@@ -106,8 +106,9 @@ def render(job, temp):
                                                 width, height, {k: inputs[p] for k,p in visuals.items()})))
         elapsed = 0
         segments = story["scenes"]
-        if clips:
-            # One frame clock and sample clock for the whole layered edit. Encoding
+        continuous = bool(clips) or any(s.get("technique") for s in segments)
+        if continuous:
+            # One frame/sample clock for layered edits and animated cuts. Encoding
             # shots separately would accumulate rounding at every fractional cut.
             segments = [{"seconds": total, "text": ""}]
             start = 0
@@ -140,7 +141,7 @@ def render(job, temp):
                                       "-ar", 48000, "-ac", 2, target), check=True)
                 item["audio"] = str(target)
                 item["narration"] = scene["speech"]["text"] or scene["speech"]["speaker"]
-            elif not clips and job["voices"][index]:
+            elif not continuous and job["voices"][index]:
                 item["audio"] = prepare_voice(job["voices"][index], seconds, index, temp)
                 item["narration"] = scene["text"]
             manifest["scenes"].append(item)

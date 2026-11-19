@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { computerKind, workspaceOf } from "./computer.js";
 import { linuxExec } from "./linux.js";
 import type { BuiltinTool } from "./agent/tools.js";
+import { animationSources, describeAnimationSource, readAnimationGuide } from "./animationreferences.js";
 
 export const videoWorkflows = [
   { id: "moneyprinter", repo: "harry0703/MoneyPrinterTurbo", rev: "92e0f9a55b91e353565015aab74b7c50cc28f148", entry: "README-en.md", use: "Shorts from a subject or keywords. Use the saved Studio timeline and video_studio_render for a local MP4 with captions and optional voice. Full upstream pipeline and CLI available for advanced jobs." },
@@ -16,10 +17,34 @@ export const videoWorkflows = [
 
 const checkout = readFileSync(new URL("../templates/video-workflow.py", import.meta.url), "utf8");
 export const videoWorkflowTool: BuiltinTool = {
-  spec: { name: "video_workflow", description: "List curated video workflows. Pass an id to prepare its pinned GitHub source, templates and rendering scripts on this bot's desktop. Read the returned entry file and work on a project copy in your library.", inputSchema: { type: "object", properties: { id: { type: "string", enum: videoWorkflows.map(w => w.id) } } } },
+  spec: {
+    name: "video_workflow",
+    description: "List native Studio animation techniques and specialist video workflows. A technique id returns its Studio usage. On request, add source_page: 1 to read the original guide from the pinned revision. A specialist workflow id prepares its pinned sources on this bot's Linux desktop.",
+    inputSchema: { type: "object", properties: {
+      id: { type: "string", enum: [...animationSources.map(s => s.id), ...videoWorkflows.map(w => w.id)] },
+      source_page: { type: "integer", minimum: 1, description: "Page of a native technique's upstream guide. Omit to show the summary." },
+    } },
+  },
   activity: "filming", label: "Video workflows", group: "computer", outside: true,
   run: async (a, c) => {
-    if (!a.id) return { content: videoWorkflows.map(w => `${w.id}: ${w.use} https://github.com/${w.repo}`).join("\n") };
+    if (a.source_page !== undefined) {
+      try {
+        return { content: await readAnimationGuide(a.id, a.source_page) };
+      } catch (error) {
+        return { content: error instanceof Error ? error.message : "Could not read this guide.", isError: true };
+      }
+    }
+    if (!a.id) return {
+      content: [
+        "Studio animation techniques · apply per scene in the video Studio",
+        ...animationSources.map(s => `${s.id}: ${s.use}`),
+        "",
+        "Specialist workflows · prepare upstream sources on the bot's Linux desktop",
+        ...videoWorkflows.map(w => `${w.id}: ${w.use} https://github.com/${w.repo}`),
+      ].join("\n"),
+    };
+    const source = animationSources.find(s => s.id === a.id);
+    if (source) return { content: describeAnimationSource(source) };
     const w = videoWorkflows.find(w => w.id === a.id);
     if (!w || computerKind() !== "linux") return { content: "Choose a listed video workflow on a Linux bot desktop.", isError: true };
     const r = await linuxExec(c.bot.id, c.user.id, workspaceOf(c.bot.id), ["python3", "-c", checkout, c.bot.id, w.repo, w.rev, w.entry], 180, { signal: c.signal, maxBytes: 4096 });

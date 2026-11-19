@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { crc32 } from "node:zlib";
+import { studioTechniques } from "../src/studiotechniques.js";
 
 // « Bibliothèque de compétences » (skillslibrary.ts, skillsgithub.ts, docs/COMPETENCES.md): the bundled pack loads with
 // its licence and notice, adding a skill is idempotent and stays in the account, and the GitHub import (against a fake
@@ -90,9 +91,9 @@ gh.setGithubFetch(async (url) => {
   return new Response(r.body ?? null, { status: r.status, headers: r.headers ?? {} });
 });
 
-test("the bundled pack loads: seven skills, each with its licence and notice, Anthropic ones Apache-2.0 and marked as modified", () => {
+test("the bundled pack loads each skill with its licence and notice and marks adapted skills", () => {
   const entries = lib.libraryEntries();
-  assert.deepEqual(entries.map((e) => e.id).sort(), ["canvas-design", "design-de-marque", "frontend-design", "methode-de-travail", "pages-soignees", "theme-factory", "video-github"]);
+  assert.deepEqual(entries.map((e) => e.id).sort(), ["canvas-design", "design-de-marque", "frontend-design", "methode-de-travail", "pages-soignees", "studio-animation", "theme-factory", "video-github"]);
   const dir = new URL("../skills-library/", import.meta.url);
   for (const e of entries) {
     const lic = readFileSync(new URL(`${e.id}/LICENSE.txt`, dir), "utf8");
@@ -129,7 +130,11 @@ test("adding from the library: in the account's language, idempotent, on its own
   ids.bBot = bots.list(ids.b).find((x) => x.kind === "agent")!.id;
   const list = await A("GET", "/skills-library");
   assert.equal(list.status, 200, list.text);
-  assert.equal(list.json.skills.length, 7);
+  assert.equal(list.json.skills.length, lib.libraryEntries().length);
+  const animation = list.json.skills.find((s: any) => s.id === "studio-animation");
+  assert.equal(animation.title, "Animation vidéo");
+  assert.equal(animation.language, "fr");
+  for (const technique of studioTechniques) assert.ok(animation.body.includes(technique));
   const meth = list.json.skills.find((s: any) => s.id === "methode-de-travail");
   assert.equal(meth.title, "Méthode de travail");
   assert.equal(meth.language, "fr");

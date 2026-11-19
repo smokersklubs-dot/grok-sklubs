@@ -4,7 +4,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { publishStagedFile } from "./stagedfile.js";
 import { MAX_UPLOAD_BYTES } from "./uploadlimits.js";
-import { stripTypeScriptTypes } from "node:module";
+import { studioCanvasSource } from "./studiocanvassource.js";
 import {
   drainExports,
   enqueueExport,
@@ -86,9 +86,7 @@ async function encode(
     });
     voices.push(wav.toString("base64"));
   }
-  const javascript = stripTypeScriptTypes(
-    readFileSync(new URL("../../web/src/lib/studioStory.ts", import.meta.url), "utf8"),
-  );
+  const javascript = studioCanvasSource();
   const input = JSON.stringify({
     bot: bot.id,
     story,

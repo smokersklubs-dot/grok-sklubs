@@ -8,8 +8,10 @@ import { videoWorkflows } from "./videoworkflows.js";
 import { pageFiles, pageVersions } from "./pagefiles.js";
 import { bots, pages } from "./store.js";
 import { MAX_CLIPS, MAX_PROJECT_SECONDS, MAX_SHOTS, validClips, type StudioClip } from "./studioclips.js";
+import { isStudioTechnique, studioTechniques, type StudioTechnique } from "./studiotechniques.js";
 
 interface Scene {
+  technique?: StudioTechnique;
   speech?: { speaker: string; text: string; voice: string; path: string };
   text: string;
   seconds: number;
@@ -52,6 +54,7 @@ export function storyFor(botId: string, input: any): StudioStory | null {
       s.seconds < 0.5 ||
       s.seconds > 60 ||
       !styles.has(s.style) ||
+      (s.technique !== undefined && !isStudioTechnique(s.technique)) ||
       (s.media !== "" && !asset(s.media, visual, /^uploads\/[^/\\]+$/))
     )
       return null;
@@ -59,7 +62,11 @@ export function storyFor(botId: string, input: any): StudioStory | null {
     if (take !== undefined && (!take || typeof take.speaker !== "string" || !take.speaker.trim() || take.speaker.length > 64 ||
         typeof take.text !== "string" || take.text.length > 300 || typeof take.voice !== "string" || take.voice.length > 120 ||
         !asset(take.path, sound, /^(?:uploads|audio)\/[^/\\]+$/))) return null;
-    scenes.push({ ...(take ? {speech: {speaker:take.speaker.trim(),text:take.text,voice:take.voice,path:take.path}} : {}), text: s.text.trim(), seconds: s.seconds, style: s.style, media: s.media });
+    scenes.push({
+      ...(take ? { speech: { speaker: take.speaker.trim(), text: take.text, voice: take.voice, path: take.path } } : {}),
+      ...(s.technique ? { technique: s.technique } : {}),
+      text: s.text.trim(), seconds: s.seconds, style: s.style, media: s.media,
+    });
   }
   if (
     !title ||
@@ -88,9 +95,11 @@ export function storyFor(botId: string, input: any): StudioStory | null {
 /** The advanced render uses the same project and pinned sources as the native timeline. */
 function productionNotes(story: StudioStory): string {
   const selected = new Set<string>(["remotion"]);
+  const animationTechniques = new Set<StudioTechnique>();
   if (story.aspect === "vertical") selected.add("moneyprinter");
   if (story.audio) selected.add("paint-mv");
   for (const scene of story.scenes) {
+    if (scene.technique) animationTechniques.add(scene.technique);
     if (scene.media) selected.add("shotcraft");
     selected.add(
       {
@@ -105,6 +114,7 @@ function productionNotes(story: StudioStory): string {
   return [
     "# Production du montage",
     "Lis studio.json et conserve les médias et les repères de cette version. Identifie les prérequis avant un rendu spécialisé. Le rendu natif du Studio reste disponible pour chaque compte.",
+    ...Array.from(animationTechniques, id => "- Animation du plan · " + id + ". Référence disponible avec video_workflow(" + id + ")."),
     ...videoWorkflows
       .filter((w) => selected.has(w.id))
       .map((w) => "- video_workflow(" + w.id + ") — " + w.use + " https://github.com/" + w.repo + "/tree/" + w.rev),
@@ -192,6 +202,7 @@ export const videoStudioTool: BuiltinTool = {
               text: { type: "string" },
               seconds: { type: "number" },
               style: { type: "string", enum: ["editorial", "draw", "diagram", "type", "capture"] },
+              technique: { type: "string", enum: [...studioTechniques], description: "Optional animation for this shot. The Studio renders it locally with the same timing in preview and export. Preserve it when revising other fields." },
               speech: { type:"object", description:"A recorded line on the named speaker's own track, starting at the shot boundary.", properties:{speaker:{type:"string"}, text:{type:"string"}, voice:{type:"string"}, path:{type:"string",description:"Existing audio/ or uploads/ clip in this bot's library."}}, required:["speaker","text","voice","path"] },
               media: { type: "string", description: "Optional existing uploads/ image or clip." },
             },
