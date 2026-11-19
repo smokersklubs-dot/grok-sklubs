@@ -15,6 +15,7 @@ import { getLive, setLive } from "../bus.js";
 import { buildSystemPrompt } from "./prompt.js";
 import { imageService } from "../images.js";
 import { browserAvailable } from "../computer.js";
+import { collectSideReply } from "./sidereply.js";
 import { noteDiskTrouble } from "../disk.js";
 import { claudeLimitFrom, claudeLimitFromText, codexLimitFrom, noteEngineLimit, type LimitHit } from "./sublimit.js";
 import { callSignal, EngineGone, setEngineSampler, SwitchModel, watchExec, watchOutput, watchProgress, watchTool, watchToolsDone, watchWait, type EngineSample } from "./watch.js";
@@ -949,22 +950,23 @@ export async function engineAsk(bot: BotRecord, system: string, prompt: string, 
 async function engineAskOn(bot: BotRecord, system: string, prompt: string, isolated: boolean): Promise<string> {
   {
     const engine = engineOf(bot.model);
-    let out = "";
+    const response = collectSideReply(engine);
+    let result: { code: number | null; stderr: string };
     const ctrl = AbortSignal.timeout(180_000);
     if (engine === "claude-code") {
       await writeFile(bot.id, "/root/.sklubot/side-prompt.md", system);
-      await host.exec(bot, ["claude", "-p", "--output-format", "stream-json", "--verbose", "--tools", "", ...(isolated ? ["--strict-mcp-config","--mcp-config",'{"mcpServers":{}}'] : []), "--no-session-persistence", "--append-system-prompt-file", "/root/.sklubot/side-prompt.md", ...(modelOf(bot.model) !== "default" ? ["--model", modelOf(bot.model)] : []), ...effortArgs("claude-code", bot.effort)],
-        { IS_SANDBOX: "1" }, "/root", prompt, ctrl, (line) => { try { const e = JSON.parse(line); if (e.type === "result" && !e.is_error) out = String(e.result ?? ""); } catch { /* ignore */ } });
+      result = await host.exec(bot, ["claude", "-p", "--output-format", "stream-json", "--verbose", "--tools", "", ...(isolated ? ["--strict-mcp-config","--mcp-config",'{"mcpServers":{}}'] : []), "--no-session-persistence", "--append-system-prompt-file", "/root/.sklubot/side-prompt.md", ...(modelOf(bot.model) !== "default" ? ["--model", modelOf(bot.model)] : []), ...effortArgs("claude-code", bot.effort)],
+        { IS_SANDBOX: "1" }, "/root", prompt, ctrl, response.line);
     } else {
       const personal = personalCodexArgs(bot);
       const proof = personal.length ? issueEngineToken(bot.id) : null;
       try {
         if (proof) await writeFile(bot.id, SECRET_ENV_FILE, secretEnvFile({ SKLUBOT_MCP_TOKEN: proof }));
-        await host.exec(bot, ["codex", "exec", "--json", "--skip-git-repo-check", "--ephemeral", "--sandbox", "read-only", ...(isolated ? ["--ignore-user-config","-c","features.shell_tool=false","-c","features.unified_exec=false","-c","features.apps=false","-c","features.plugins=false","-c",'web_search="disabled"', ...(modelOf(bot.model) !== "default" ? ["--model", modelOf(bot.model)] : [])] : []), ...personal, ...effortArgs("codex", bot.effort), "-"], {}, "/tmp", `${system}\n\n${prompt}`, ctrl,
-          (line) => { try { const e = JSON.parse(line); if (e.type === "item.completed" && e.item?.type === "agent_message") out = String(e.item.text ?? ""); } catch { /* ignore */ } });
+        result = await host.exec(bot, ["codex", "exec", "--json", "--skip-git-repo-check", "--ephemeral", "--sandbox", "read-only", ...(isolated ? ["--ignore-user-config","-c","features.shell_tool=false","-c","features.unified_exec=false","-c","features.apps=false","-c","features.plugins=false","-c",'web_search="disabled"', ...(modelOf(bot.model) !== "default" ? ["--model", modelOf(bot.model)] : [])] : []), ...personal, ...effortArgs("codex", bot.effort), "-"], {}, "/tmp", `${system}\n\n${prompt}`, ctrl,
+          response.line);
       } finally { if (proof) revokeEngineToken(bot.id); }
     }
-    return out.trim();
+    return response.finish(result, ctrl.aborted);
   }
 }
 

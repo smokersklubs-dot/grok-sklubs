@@ -9,6 +9,7 @@ import { hostedHoldsBot, isPaused, isBusy } from "./agent/loop.js";
 import { emailUnverified } from "./publicsignup.js";
 import { githubWriteAccounts } from "./connectors.js";
 import { screen } from "./pastedsecrets.js";
+import { structuredGithubReplies } from "./githubreplies.js";
 import { parseReview } from "./peerreview.js";
 import { pushLater } from "./push.js";
 import { draftNumber, verifyPublishedDraft } from "./githubpublished.js";
@@ -84,13 +85,6 @@ function allowed(bot: BotRecord) {
   )
     throw Error("Vérifie la connexion, les autorisations Applis, la pause et le budget du bot.");
 }
-const cleanJSON = (s: string) =>
-  JSON.parse(
-    s
-      .trim()
-      .replace(/^\x60{3}(?:json)?\s*/i, "")
-      .replace(/\s*\x60{3}$/, ""),
-  );
 type Fields = Partial<
   Pick<
     Job,
@@ -263,7 +257,7 @@ export async function runGithubIssueOnce(services = deps) {
         advance(j, j.phase, "", { next: Date.now() + 30000 });
         return true;
       }
-      const call = async (system: string, data: object) => {
+      const structured = structuredGithubReplies(async (system, data) => {
         assertLease(j);
         allowed(actor);
         return services.ask(
@@ -275,7 +269,7 @@ export async function runGithubIssueOnce(services = deps) {
           JSON.stringify(data),
           true,
         );
-      };
+      });
       if (j.phase === "prepare") {
         const ctx = await loadContext(get, j.issue, !j.connector);
         ctx.title = mask(j.owner, ctx.title);
@@ -283,7 +277,7 @@ export async function runGithubIssueOnce(services = deps) {
         const patch = await prepareChange(
           get,
           ctx,
-          (s, d) => call(s, { ...d, ...(j.review ? { priorReview: j.review } : {}) }).then(cleanJSON),
+          (s, d, stage) => structured(stage, s, { ...d, ...(j.review ? { priorReview: j.review } : {}) }),
           (s) => mask(j.owner, s),
         );
         advance(
@@ -305,14 +299,16 @@ export async function runGithubIssueOnce(services = deps) {
         const result = parseReview(
           mask(
             j.owner,
-            await call(
-              'Independently review these exact original and proposed files. Assess regressions and whether they solve the ticket. The server hides protected lines and enforces that they remain at the same positions. Review public changes without guessing hidden values. Return only JSON {"verdict":"approved|changes|inconclusive","reason":"specific findings and test evidence"}. No test has run at this stage.',
+            JSON.stringify(await structured("review",
+              'Independently review these exact original and proposed files. Assess regressions and whether they solve the ticket. The server hides protected lines and enforces that they remain at the same positions. Review public changes without guessing hidden values. Return only JSON {"verdict":"approved|changes|inconclusive","reason":"specific findings and test evidence"}. Review the correctness of the proposed change and its tests against the issue. All before files and evidence come from the supplied immutable base commit. This review precedes human approval, branch creation, draft PR publication and execution of CI. Treat those delivery steps as pending; do not require an existing PR or passing CI here. Report any actual defect, missing test coverage or insufficient source evidence.',
               {
-                issue: { title: ctx.title, body: ctx.body },
+                origin: { repository: j.repo, defaultBranch: ctx.base, commit: ctx.sha, tree: ctx.tree },
+                stage: "independent_review_before_publication",
+                issue: { number: j.issue, title: ctx.title, body: ctx.body },
                 patch: (JSON.parse(j.patch) as Change[]).map(({path,before,after})=>({path,before,after})),
                 evidence: ctx.evidence ?? [],
               },
-            ),
+            )),
           ),
           false,
         );
@@ -393,7 +389,7 @@ export async function runGithubIssueOnce(services = deps) {
         e instanceof GitHubError
           ? e.message + " · Vérifie l’installation GitHub, le dépôt et ses autorisations."
           : e instanceof SyntaxError
-            ? "Le modèle a renvoyé une réponse JSON incomplète."
+            ? "Les données de la mission ou de GitHub sont illisibles."
             : mask(j.owner, String((e as Error)?.message ?? "Étape interrompue.")).slice(0, 280);
       try {
         advance(j, "error", "Mission GitHub interrompue · " + message, { resume: j.phase });

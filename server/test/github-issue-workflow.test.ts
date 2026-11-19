@@ -85,10 +85,17 @@ registerProvider({
     } else {
       assert.equal(r.model, "reviewer");
       assert.match(JSON.stringify(r.messages), /const n=2/);
+      const payload = JSON.parse((r.messages[0].content[0] as {text: string}).text);
+      assert.equal(payload.stage, "independent_review_before_publication");
+      assert.equal(payload.origin.defaultBranch, "main");
+      assert.equal(payload.origin.commit, A);
+      assert.equal(payload.origin.tree, B);
+      assert.ok(payload.origin.repository.includes("/"));
+      assert.match(r.system, /before|precedes human approval/);
       reply = { verdict: "approved", reason: "Reviewed the exact change. CI pending." };
     }
     return {
-      content: [{ type: "text", text: JSON.stringify(reply) }],
+      content: [{ type: "text", text: "Voici le résultat.\n```json\n" + JSON.stringify(reply) + "\n```" }],
       stopReason: "end",
       model: r.model,
       usage: { inputTokens: 1, outputTokens: 1, cachedTokens: 0 },

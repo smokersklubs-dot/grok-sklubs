@@ -2,6 +2,7 @@ import { emit, getLive } from "../bus.js";
 import { config } from "../config.js";
 import { q } from "../db.js";
 import { defaultModelRef, listProviders, resolveModel, type ChatMessage } from "../llm/index.js";
+import { ModelOutputLimit } from "../llm/types.js";
 import { engineAsk, isEngineRef } from "./engine.js";
 import type { Memory, MemoryBookkeeping, SensitiveCategory } from "../shared.js";
 import { bots, clip, history, memories, now, paused, rows, settings, type BotRecord } from "../store.js";
@@ -28,6 +29,8 @@ export async function ask(bot: BotRecord, system: string, prompt: string, select
     throw err;
   }
   record(bot.userId, bot.id, res.model, res.usage);
+  if (selectedBot && res.stopReason === "max_tokens") throw new ModelOutputLimit("Le modèle a atteint sa limite de sortie.");
+  if (selectedBot && res.stopReason === "refusal") throw Error("Le modèle sélectionné a refusé cette demande.");
   return res.content.filter((b) => b.type === "text").map((b) => (b as { text: string }).text).join("").trim();
 }
 

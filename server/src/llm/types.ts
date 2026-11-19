@@ -24,6 +24,9 @@ export interface ToolSpec {
 }
 
 /** "pause" means the provider stopped mid-turn (e.g. a long hosted search) and expects the same turn to be continued. */
+/** The provider terminated a structured side reply at its output limit. Never trust partial data. */
+export class ModelOutputLimit extends Error {}
+
 export type StopReason = "end" | "tool_use" | "max_tokens" | "refusal" | "pause";
 
 /**
