@@ -129,6 +129,8 @@ async function maybe(get: GitRequest, path: string) {
   }
 }
 export interface Context {
+  /** GitHub Actions runs already observed for the published commit, independent of patch approval. */
+  workflowRuns?: number[];
   evidence?: { path: string; text: string }[];
   title: string;
   body: string;
@@ -244,8 +246,9 @@ export async function prepareChange(
     out.push({ ...src, after: f.content });
   }
   // The independent reviewer can check the same read-only implementation evidence as the author.
-  ctx.evidence = inputs.filter(f => f.before !== null && !out.some(change => change.path === f.path))
-    .map(f => ({ path: f.path, text: f.before! }));
+  ctx.evidence = inputs
+    .filter((f) => f.before !== null && !out.some((change) => change.path === f.path))
+    .map((f) => ({ path: f.path, text: f.before! }));
   return out;
 }
 /** Record the unreferenced commit before publishing its ref. Retries cannot reset an existing branch. */
@@ -316,19 +319,31 @@ export async function openDraft(
     throw Error("Impossible de retrouver la pull request.");
   return pull.number;
 }
-export async function checkCI(get: GitRequest, commit: string, started: number) {
+export async function checkCI(get: GitRequest, commit: string, started: number, observed: number[] = []) {
   const result = await get("/actions/runs?head_sha=" + sha(commit) + "&per_page=100");
-  const runs = (result.workflow_runs as any[]).filter((r) => r.head_sha === commit);
-  if (result.total_count > runs.length) throw Error("La liste des workflows est incomplète.");
-  const complete = runs.length > 0 && runs.every((r) => r.status === "completed");
-  const expired = Date.now() - started >= 2 * 60 * 60 * 1000;
-  if (!complete && !expired && (runs.length || Date.now() - started < 15 * 60000)) return null;
-  if (!runs.length)
-    return "Aucun workflow GitHub Actions observé sur ce commit après 15 minutes. Tests non vérifiés.";
-  const states = runs.map((r) => String(r.name).slice(0, 120) + " · " + (r.conclusion || r.status));
-  return (
-    (complete ? "GitHub Actions" : "Délai de suivi atteint, workflows encore actifs") +
-    " · " +
-    states.join("\n").slice(0, 3200)
-  );
+  const listed = (result.workflow_runs as any[]).filter((run) => run.head_sha === commit);
+  if (result.total_count > listed.length) throw Error("La liste des workflows est incomplète.");
+  const runs = new Map<number, { name: string; status: string; conclusion: string | null }>();
+  for (const run of listed) {
+    if (!Number.isSafeInteger(run.id) || run.id < 1) throw Error("Identifiant de workflow GitHub invalide.");
+    runs.set(run.id, run);
+  }
+  const ids = [...new Set([...observed, ...runs.keys()])];
+  // A temporarily incomplete listing must not turn a running check into a final result.
+  for (const id of observed) {
+    if (runs.has(id)) continue;
+    const run = await maybe(get, "/actions/runs/" + id);
+    if (run?.id === id && run.head_sha === commit) runs.set(id, run);
+  }
+  if (ids.length === 0) {
+    const text =
+      Date.now() - started >= 15 * 60000
+        ? "Aucun workflow GitHub Actions observé sur ce commit après 15 minutes. Tests non vérifiés."
+        : null;
+    return { ids, text };
+  }
+  if (ids.length !== runs.size || [...runs.values()].some((run) => run.status !== "completed" || !run.conclusion))
+    return { ids, text: null };
+  const states = [...runs.values()].map((run) => String(run.name).slice(0, 120) + " · " + run.conclusion);
+  return { ids, text: "GitHub Actions · " + states.join("\n").slice(0, 3200) };
 }

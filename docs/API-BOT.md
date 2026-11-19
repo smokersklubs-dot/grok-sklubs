@@ -8,6 +8,10 @@ Code : `server/src/botapi.ts` (clés et API REST), `server/src/botmcp.ts` (serve
 
 ## Créer une clé
 
+Pour piloter tous tes bots depuis le **Claude Code installé sur ton ordinateur**, ouvre plutôt **Réglages → Modèles → Piloter mes bots depuis Claude Code**. Choisis les permissions et crée ton accès d’équipe. Copie la commande adaptée à ton terminal, puis colle le jeton Sklubot à l’invite masquée. Dans une nouvelle session Claude Code, ouvre `/mcp` et demande « Liste mes bots Sklubot ». [Connexion HTTP de Claude Code](https://code.claude.com/docs/en/mcp)
+
+Ce client se connecte à `/api/v1/team/mcp`. Il découvre automatiquement tes nouveaux bots. Chaque lecture, message ou tâche vise le `bot_id` choisi. Les chats Sklubot continuent d’utiliser leur modèle et leur bureau configurés. L’écran Modèles indique la dernière utilisation et permet de révoquer l’accès. Si tu dois remplacer la configuration locale existante, retire son ancienne entrée avec `claude mcp remove --scope user sklubot-team`, puis utilise la nouvelle commande.
+
 Réglages du bot → **Accès API** → *Nouvelle clé* : un nom (le programme qui va s'en servir) et des permissions.
 
 | Permission | Ce qu'elle permet |

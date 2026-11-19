@@ -58,10 +58,14 @@ const busyPhases = "'prepare','review','commit','publish','ci'";
 const getJob = (id: string) => q.get<Job>("SELECT * FROM github_issue_jobs WHERE id=?", id);
 const mask = (owner: string, s: string) => screen(redactSecrets(owner, s), users.byId(owner)?.locale ?? "fr").text;
 const deps = { ask, forRepository };
-const approvedHash = (job: Job) =>
-  createHash("sha256")
-    .update(JSON.stringify([job.id, job.branch, job.context, job.patch, job.review, job.connector]))
+function approvedHash(job: Job) {
+  // Test progress may arrive after the user approved; it never changes the reviewed proposal.
+  const ctx = JSON.parse(job.context) as Context;
+  delete ctx.workflowRuns;
+  return createHash("sha256")
+    .update(JSON.stringify([job.id, job.branch, JSON.stringify(ctx), job.patch, job.review, job.connector]))
     .digest("hex");
+}
 function enforceOwner(j: Job) {
   const bot = safeBot(j.owner, j.bot);
   if (!bot || bot.generation !== j.generation || q.get("SELECT 1 FROM bot_shares WHERE bot_id=?", j.bot))
@@ -302,7 +306,11 @@ export async function runGithubIssueOnce(services = deps) {
             j.owner,
             await call(
               'Independently review these exact original and proposed files. Assess regressions and whether they solve the ticket. Return only JSON {"verdict":"approved|changes|inconclusive","reason":"specific findings and test evidence"}. No test has run at this stage.',
-              { issue: { title: ctx.title, body: ctx.body }, patch: JSON.parse(j.patch), evidence: ctx.evidence ?? [] },
+              {
+                issue: { title: ctx.title, body: ctx.body },
+                patch: JSON.parse(j.patch),
+                evidence: ctx.evidence ?? [],
+              },
             ),
           ),
           false,
@@ -347,12 +355,13 @@ export async function runGithubIssueOnce(services = deps) {
         );
       }
     } else {
-      const result = await checkCI(get, j.commit_sha, j.ci_since!);
-      if (result)
+      const ctx = JSON.parse(j.context) as Context;
+      const result = await checkCI(get, j.commit_sha, j.ci_since!, ctx.workflowRuns);
+      if (result.text)
         advance(
           j,
           "done",
-          mask(j.owner, result) +
+          mask(j.owner, result.text) +
             "\nhttps://github.com/" +
             j.repo +
             "/pull/" +
@@ -360,7 +369,15 @@ export async function runGithubIssueOnce(services = deps) {
             " · " +
             j.commit_sha.slice(0, 8),
         );
-      else advance(j, "ci", "", { next: Date.now() + 30000 });
+      else {
+        const delay = Date.now() - j.ci_since! >= 2 * 60 * 60 * 1000 ? 5 * 60000 : 30000;
+        advance(j, "ci", "", {
+          next: Date.now() + delay,
+          ...(result.ids.length !== (ctx.workflowRuns?.length ?? 0)
+            ? { context: JSON.stringify({ ...ctx, workflowRuns: result.ids }) }
+            : {}),
+        });
+      }
     }
   } catch (e) {
     if (getJob(j.id)?.lease !== j.lease) return true;

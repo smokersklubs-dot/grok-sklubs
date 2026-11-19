@@ -69,7 +69,7 @@ export const toolsFor = (scopes: BotApiScope[]) => MCP_TOOLS.filter((t) => !t.sc
 const result = (data: unknown) => ({ content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }] });
 const refusal = (text: string) => ({ content: [{ type: "text" as const, text }], isError: true });
 
-async function callTool(caller: Caller, name: string, args: Record<string, unknown>, signal: AbortSignal) {
+export async function callBotTool(caller: Caller, name: string, args: Record<string, unknown>, signal: AbortSignal) {
   const tool = toolsFor(caller.key.scopes).find((t) => t.name === name);
   if (!tool) return refusal(MCP_TOOLS.some((t) => t.name === name) ? `This key does not have the "${MCP_TOOLS.find((t) => t.name === name)!.scope}" permission.` : `Unknown tool: ${name}.`);
   if (args.bot_id !== undefined && args.bot_id !== caller.bot.id) return refusal("This key only reaches its own bot (see list_bots).");
@@ -90,11 +90,16 @@ async function callTool(caller: Caller, name: string, args: Record<string, unkno
 
 /** Answers one Streamable HTTP request (POST) for this caller. */
 export async function handleBotMcp(c: Context, caller: Caller): Promise<Response> {
-  const server = new Server({ name: "sklubot-bot-api", version: "1.0.0" }, { capabilities: { tools: {} } });
+  return serveControlMcp(c, "sklubot-bot-api", toolsFor(caller.key.scopes), (name,args,signal) => callBotTool(caller,name,args,signal));
+}
+
+export async function serveControlMcp(c: Context, serverName: string, definitions: ToolDef[],
+  call: (name:string,args:Record<string,unknown>,signal:AbortSignal) => ReturnType<typeof callBotTool>): Promise<Response> {
+  const server = new Server({ name: serverName, version: "1.0.0" }, { capabilities: { tools: {} } });
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
-    tools: toolsFor(caller.key.scopes).map(({ name, description, inputSchema, annotations }) => ({ name, description, inputSchema: inputSchema as { type: "object" }, annotations })),
+    tools: definitions.map(({ name, description, inputSchema, annotations }) => ({ name, description, inputSchema: inputSchema as { type: "object" }, annotations })),
   }));
-  server.setRequestHandler(CallToolRequestSchema, async (request, extra) => callTool(caller, request.params.name, (request.params.arguments ?? {}) as Record<string, unknown>, extra.signal));
+  server.setRequestHandler(CallToolRequestSchema, async (request, extra) => call(request.params.name, (request.params.arguments ?? {}) as Record<string, unknown>, extra.signal));
   const transport = new WebStandardStreamableHTTPServerTransport({ sessionIdGenerator: undefined, maxRequestBodySize: 256 * 1024 });
   await server.connect(transport);
   const res = await transport.handleRequest(c.req.raw);

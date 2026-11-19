@@ -482,7 +482,7 @@ test("Pause (agent/pause.ts): owner only — B and V get 404 on A's bots and sec
 
 test("Bot API keys (botapi.ts): A's key of bot1 reaches bot1 only; B's key reaches nothing of A; every /v1 route is covered", async () => {
   const v1 = discover().filter((r) => r.app === api && r.path.startsWith("/v1/"));
-  assert.deepEqual(v1.map((r) => r.key).sort(), ["DELETE /v1/mcp", "GET /v1/bot", "GET /v1/bot/messages", "GET /v1/bot/messages/:seq/wait", "GET /v1/bot/tasks/:taskId", "GET /v1/mcp", "POST /v1/bot/messages", "POST /v1/bot/tasks", "POST /v1/mcp"], "a new /v1 route must be added to this test");
+  assert.deepEqual(v1.map((r) => r.key).sort(), ["DELETE /v1/mcp", "DELETE /v1/team/mcp", "GET /v1/bot", "GET /v1/bot/messages", "GET /v1/bot/messages/:seq/wait", "GET /v1/bot/tasks/:taskId", "GET /v1/mcp", "GET /v1/team/mcp", "POST /v1/bot/messages", "POST /v1/bot/tasks", "POST /v1/mcp", "POST /v1/team/mcp"], "a new /v1 route must be added to this test");
   const withKey = (secret: string, method: string, url: string, body?: unknown) =>
     api.request(url, { method, headers: { "content-type": "application/json", authorization: `Bearer ${secret}`, accept: "application/json, text/event-stream" }, body: body === undefined || method === "GET" ? undefined : JSON.stringify(body) }).then(async (r) => ({ status: r.status, text: await r.text() }));
   // B makes a key of B's own bot.

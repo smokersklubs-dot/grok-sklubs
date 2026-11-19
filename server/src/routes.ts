@@ -120,6 +120,7 @@ import { registerHostedPages, registerHostedPrivate, registerHostedPublic, suspe
 import { TodayError, todayReport, todaySettings } from "./today.js";
 import { registerBotApi, registerBotApiOwner } from "./botapi.js";
 import { handleBotMcp } from "./botmcp.js";
+import { registerTeamMcp, registerTeamMcpOwner } from "./teammcp.js";
 import { registerSentinelRoutes } from "./sentinel/routes.js";
 import { registerAnnouncementRoutes } from "./announceroutes.js";
 import { registerSkillsLibraryRoutes } from "./skillsroutes.js";
@@ -427,6 +428,7 @@ api.post("/hooks/:token", async (c) => {
  * bot's API key (Bearer), never by a session — registered here, before the session check, like the webhooks above.
  */
 registerBotApi(api, handleBotMcp);
+registerTeamMcp(api);
 
 // The browser comes back here from an app's OAuth sign-in page (the redirect URI shown in the app).
 // The state parameter alone identifies the sign-in (single use, 10 minutes); a session, when present, must match it.
@@ -769,6 +771,7 @@ api.delete("/sections/:id", (c) => {
 // account's thing); a stranger's call to "everything" pauses only their own bots. Each change is an audit line.
 // "Accès API" (botapi.ts): the owner's API keys of one bot — owner only (a workspace member never manages them).
 registerBotApiOwner(api, (c) => ownAgent(c as Context<Env>));
+registerTeamMcpOwner(api);
 
 api.get("/pauses", (c) => c.json(pauses.state(c.get("user").id)));
 api.post("/bots/:id/pause", (c) => { const bot = ownAgent(c); return c.json(setPause(c.get("user"), "bot", bot.id, true, bot.name)); });

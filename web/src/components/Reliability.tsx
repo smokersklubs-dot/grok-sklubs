@@ -7,6 +7,7 @@ import { ErrorNote, IconButton, Loading, Toggle } from "./ui";
 import { ApiProvidersSection, ServerModelPricesSection } from "./SecretsFilesProviders";
 import { AiAccountCards } from "./AiAccounts";
 import { TeamModels } from "./TeamModels";
+import { ClaudeTeamAccess } from "./ClaudeTeamAccess";
 
 /** The models offered on this server (API models only: subscription engines run a different kind of turn). */
 export function useApiModels(reload = 0) {
@@ -93,6 +94,7 @@ export function ModelsSection() {
       <h2>{t("settings.section.models")}</h2>
       <AiAccountCards subscriptionsOnly />
       <TeamModels />
+      <ClaudeTeamAccess />
       <ErrorNote onDismiss={() => setError(null)}>{error}</ErrorNote>
       <details className="model-advanced">
         <summary>{t("models.advancedApi")}</summary>

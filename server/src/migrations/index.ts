@@ -26,6 +26,7 @@ import { botFailures } from "./022-bot-failures.js";
 import { githubIssueJobs } from "./025-github-issue-jobs.js";
 import { studioAndGithub } from "./024-studio-and-github.js";
 import { research } from "./026-research.js";
+import { teamMcp } from "./027-team-mcp.js";
 import { uploadSessions } from "./023-upload-sessions.js";
 
 /**
@@ -66,6 +67,7 @@ export const MIGRATIONS: Migration[] = [
   { version: 24, name: "studio-and-github", up: studioAndGithub },
   { version: 25, name: "github-issue-jobs", up: githubIssueJobs },
   { version: 26, name: "research", up: research },
+  { version: 27, name: "team-mcp", up: teamMcp },
 ];
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;
 

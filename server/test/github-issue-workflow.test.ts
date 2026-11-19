@@ -192,7 +192,9 @@ test(
         assert.equal(u.searchParams.get("head_sha"), E);
         return resp({
           total_count: 1,
-          workflow_runs: [{ head_sha: E, status: "completed", conclusion: "failure", name: "Integration tests" }],
+          workflow_runs: [
+            { id: 71, head_sha: E, status: "completed", conclusion: "failure", name: "Integration tests" },
+          ],
         });
       }
       throw Error("Unexpected GitHub call " + path);
@@ -249,8 +251,8 @@ test(
 );
 test("no workflow is never reported as a pass and another writer's branch is preserved", async () => {
   const none = async () => ({ total_count: 0, workflow_runs: [] });
-  assert.equal(await checkCI(none, A, Date.now()), null);
-  assert.match((await checkCI(none, A, Date.now() - 20 * 60000)) ?? "", /Tests non vérifiés/);
+  assert.equal((await checkCI(none, A, Date.now())).text, null);
+  assert.match((await checkCI(none, A, Date.now() - 20 * 60000)).text ?? "", /Tests non vérifiés/);
   const requests: string[] = [];
   await assert.rejects(
     openDraft(
@@ -386,22 +388,106 @@ test("public ticket is reviewed in its original thread without credentials, then
 });
 
 test("GitHub Code OAuth verifies that its installation includes the selected repository before binding", async () => {
-  const {verifyIssueRepository}=await import("../src/githubissuegit.js");
-  const oauth={id:"app-write",auth:"oauth"};
-  q.run("INSERT INTO connectors(id,user_id,name,url,oauth_enc,auth,created_at) VALUES(?,?,?,?,?,'oauth',?)",oauth.id,owner.id,"GitHub Code",GITHUB_WRITE_URL,seal(JSON.stringify({tokens:{access_token:"local-oauth-placeholder"}})),Date.now());
-  const saved=globalThis.fetch;let selected=false;
-  globalThis.fetch=async(input,init)=>{
-    assert.equal(init?.method,"GET");
-    const u=new URL(String(input));
-    assert.equal(u.origin,"https://api.github.com");
-    assert.equal(new Headers(init?.headers).get("authorization"),"Bearer local-oauth-placeholder");
-    if(u.pathname==="/repos/demo/public")return Response.json({id:42,owner:{id:10},full_name:"demo/public",permissions:{push:true}});
-    if(u.pathname==="/user/installations")return Response.json({installations:[{id:16,account:{id:10},repository_selection:"selected",permissions:{contents:"write",pull_requests:"write"}}]});
-    if(u.pathname==="/user/installations/16/repositories")return Response.json({repositories:[{id:selected?42:999}]});
+  const { verifyIssueRepository } = await import("../src/githubissuegit.js");
+  const oauth = { id: "app-write", auth: "oauth" };
+  q.run(
+    "INSERT INTO connectors(id,user_id,name,url,oauth_enc,auth,created_at) VALUES(?,?,?,?,?,'oauth',?)",
+    oauth.id,
+    owner.id,
+    "GitHub Code",
+    GITHUB_WRITE_URL,
+    seal(JSON.stringify({ tokens: { access_token: "local-oauth-placeholder" } })),
+    Date.now(),
+  );
+  const saved = globalThis.fetch;
+  let selected = false;
+  globalThis.fetch = async (input, init) => {
+    assert.equal(init?.method, "GET");
+    const u = new URL(String(input));
+    assert.equal(u.origin, "https://api.github.com");
+    assert.equal(new Headers(init?.headers).get("authorization"), "Bearer local-oauth-placeholder");
+    if (u.pathname === "/repos/demo/public")
+      return Response.json({ id: 42, owner: { id: 10 }, full_name: "demo/public", permissions: { push: true } });
+    if (u.pathname === "/user/installations")
+      return Response.json({
+        installations: [
+          {
+            id: 16,
+            account: { id: 10 },
+            repository_selection: "selected",
+            permissions: { contents: "write", pull_requests: "write" },
+          },
+        ],
+      });
+    if (u.pathname === "/user/installations/16/repositories")
+      return Response.json({ repositories: [{ id: selected ? 42 : 999 }] });
     throw Error(u.pathname);
   };
   try {
-    await assert.rejects(verifyIssueRepository(owner.id,oauth,"demo/public"),/Autorise ce dépôt/);
-    selected=true;await verifyIssueRepository(owner.id,oauth,"demo/public");
-  }finally{globalThis.fetch=saved;}
+    await assert.rejects(verifyIssueRepository(owner.id, oauth, "demo/public"), /Autorise ce dépôt/);
+    selected = true;
+    await verifyIssueRepository(owner.id, oauth, "demo/public");
+  } finally {
+    globalThis.fetch = saved;
+  }
+});
+
+test("a workflow still running at three hours is polled slowly until its real conclusion", async () => {
+  const start = await post(app(owner), {
+    url: "https://github.com/demo/slow/issues/9",
+    reviewer: peer.id,
+    connector: "write",
+  });
+  assert.equal(start.status, 200);
+  const { id, thread } = (await start.json()) as { id: string; thread: number };
+  const beginning = Date.now() - 3 * 60 * 60 * 1000;
+  q.run("UPDATE github_issue_jobs SET phase='ci', ci_since=?,commit_sha=?,pr=19 WHERE id=?", beginning, E, id);
+  const state = () => q.get<any>("SELECT phase,next,context,note FROM github_issue_jobs WHERE id=?", id)!;
+  let visible = true,
+    finished = false,
+    details = 0;
+  const original = globalThis.fetch;
+  globalThis.fetch = async (input, init) => {
+    const u = new URL(String(input));
+    assert.equal(init?.method, "GET");
+    const run = {
+      id: 7135,
+      head_sha: E,
+      name: "Long integration test",
+      status: finished ? "completed" : "in_progress",
+      conclusion: finished ? "failure" : null,
+    };
+    if (u.pathname.endsWith("/actions/runs/7135")) {
+      details++;
+      return Response.json(run);
+    }
+    assert.equal(u.pathname, "/repos/demo/slow/actions/runs");
+    assert.equal(u.searchParams.get("head_sha"), E);
+    return Response.json({ total_count: visible ? 1 : 0, workflow_runs: visible ? [run] : [] });
+  };
+  try {
+    const from = Date.now();
+    await runGithubIssueOnce();
+    assert.equal(state().phase, "ci");
+    assert.ok(state().next >= from + 300000);
+    assert.deepEqual(JSON.parse(state().context).workflowRuns, [7135]);
+    assert.equal(await runGithubIssueOnce(), false);
+    visible = false;
+    q.run("UPDATE github_issue_jobs SET next=0 WHERE id=?", id);
+    await runGithubIssueOnce();
+    assert.equal(state().phase, "ci");
+    finished = true;
+    q.run("UPDATE github_issue_jobs SET next=0 WHERE id=?", id);
+    await runGithubIssueOnce();
+    assert.equal(state().phase, "done");
+    assert.equal(details, 2);
+    assert.match(state().note, /Long integration test · failure/);
+    const outcomes = rows
+      .list(author.id, author.generation, 100, undefined, thread)
+      .map((r) => r.body)
+      .filter((b) => b.kind === "message" && b.text.includes("Long integration test"));
+    assert.equal(outcomes.length, 1);
+  } finally {
+    globalThis.fetch = original;
+  }
 });

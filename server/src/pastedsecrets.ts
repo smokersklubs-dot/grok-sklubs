@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { tr } from "./i18n.js";
 import { maskSecrets, type Card, type Locale, type SecretFound } from "./shared.js";
-import { hideForAWhile, now, rows, type BotRecord } from "./store.js";
+import { hideForAWhile, now, rows, users, type BotRecord } from "./store.js";
 
 /**
  * A secret the user pasted in a chat message (a key, a token, a password). Before the message is stored or reaches any
@@ -52,6 +52,13 @@ export function screen(text: string, locale: Locale): Screened {
 export function holdAndOffer(bot: BotRecord, userId: string, found: SecretFound[], thread = 0) {
   sweep();
   for (const s of found.slice(0, 5)) {
+    if (s.value.startsWith("sk-team-")) {
+      const text = users.localeOf(userId) === "fr"
+        ? "Jeton d’équipe Sklubot masqué. Utilise-le dans l’invite de connexion de Claude Code sur ton ordinateur."
+        : "Sklubot team token hidden. Use it at the Claude Code connection prompt on your computer.";
+      rows.append(bot, { kind: "notice", tone: "info", text }, thread);
+      continue;
+    }
     hideForAWhile(userId, s.value, TTL_MS);
     const mine = [...held.entries()].filter(([, h]) => h.userId === userId);
     if (mine.length >= MAX_HELD_PER_USER) held.delete(mine[0][0]);

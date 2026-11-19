@@ -342,7 +342,7 @@ async function jsonBody(c: Context): Promise<Record<string, unknown>> {
 }
 
 /** Runs a Bot API handler: refusals become `{error, code}` with their status; nothing is cached. */
-const handle = (fn: (c: Context) => Promise<Response> | Response) => async (c: Context) => {
+export const handleApiRequest = (fn: (c: Context) => Promise<Response> | Response) => async (c: Context) => {
   c.header("cache-control", "no-store");
   try { return await fn(c); } catch (err) {
     if (err instanceof BotApiError) {
@@ -354,6 +354,7 @@ const handle = (fn: (c: Context) => Promise<Response> | Response) => async (c: C
   }
 };
 
+const handle = handleApiRequest;
 /**
  * The REST API and the MCP endpoint (Bearer key, no session). Registered on the /api app before its session check, like
  * the webhooks: a request here never needs (nor uses) a session cookie.
