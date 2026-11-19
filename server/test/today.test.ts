@@ -63,6 +63,8 @@ test("setup: A (Paris) with three bots, a stranger B, and V a viewer of A's work
   userB = (await call("b", "POST", "/auth/signup", { email: "b@example.com", name: "Bob", password: "password123" })).json.user.id;
   userV = (await call("v", "POST", "/auth/signup", { email: "v@example.com", name: "Vera", password: "password123" })).json.user.id;
   settings.saveProfile(userA, { timezone: "Europe/Paris" });
+  // This isolation check compares the same reporting day for owner and viewer.
+  settings.saveProfile(userV, { timezone: "Europe/Paris" });
   id.ada = (await call("a", "POST", "/bots", { name: "Ada" })).json.bot.id;
   id.bea = (await call("a", "POST", "/bots", { name: "Bea" })).json.bot.id;
   id.cid = (await call("a", "POST", "/bots", { name: "Cid" })).json.bot.id;
