@@ -27,6 +27,13 @@ type WorkTrigger =
       /** Usage caps: a person asked for this just now (they pressed "Continue" on a cap's card). */ byPerson?: boolean }
   | { kind: "resume" };
 
+/** The thread a trigger belongs to (0: the main chat). */
+export const threadOf = (t: Trigger) => (t.kind === "user" || t.kind === "system" ? t.thread ?? 0 : 0);
+
+// A workspace member's message is not the owner's word: the turn it starts is careful from its first step (wave 6). Nor is
+// a message an outside program sent through the Bot API (botapi.ts): it is outside content too.
+export const startsTainted = (t: Trigger) => !!t.continuation || ((t.kind === "routine" || t.kind === "bot" || t.kind === "system") && !!t.tainted) || (t.kind === "user" && (!!t.member || !!t.api));
+
 const restartAdvice = "Check what was already done in this conversation, files and tools before taking action. Never repeat an action that already went through. Finish the outstanding work and report the verified result or the blocker.";
 const notes = {
   restart: "The server restarted in the middle of your last turn.",

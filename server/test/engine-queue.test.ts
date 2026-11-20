@@ -79,7 +79,7 @@ setEngineHost({
       emit({ type: "assistant", message: { content: [{ type: "tool_use", id: "read-fixture", name: "Read", input: {} }] } });
       emit({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: "read-fixture", content: "test data" }] } });
       const failed = input.includes("fixture final report failure");
-      emit({ type: "result", is_error: failed, result: failed ? "The fixture failed." : "", usage: {} });
+      emit({ type: "result", is_error: failed, result: failed ? "The fixture failed." : input.includes("fixture final report delivered") ? "Verified four lines." : "", usage: {} });
       return { code: failed ? 1 : 0, stderr: "" };
     }
     if (/hang forever/.test(input)) {
@@ -306,6 +306,11 @@ test("a subscription failure after progress is an error in the routine history",
 test("a subscription that stops after its tool gives the user an explicit missing report", async () => {
   await call("POST", `/bots/${sub.id}/messages`, {text: "fixture final report missing"});
   await until(async () => (await rowsOf(sub.id)).some((r) => r.body.kind === "notice" && /Completion is unconfirmed/.test(r.body.text)), "missing final report");
+});
+
+test("the final subscription report is delivered once without repeating the progress message", async () => {
+  await call("POST", `/bots/${sub.id}/messages`, {text: "fixture final report delivered"});
+  await until(async () => (await rowsOf(sub.id)).some((r) => r.body.kind === "message" && r.body.text === "Verified four lines."), "clean final report");
 });
 
 test("after a restart, a job marked running whose turn had not started yet runs again; work still in memory is never doubled", async () => {

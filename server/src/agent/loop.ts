@@ -3,7 +3,7 @@ import { userBlocks } from "../attachmentpreviews.js";
 import { browserAvailable, computerKind, screen, shellAvailable, shellOnHost } from "../computer.js";
 import { config } from "../config.js";
 export type { Trigger } from "./turn-request.js";
-import { type Trigger, interruptedTrigger, triggerMessage, needsWorkReport, missingReportText, noteMissingReport } from "./turn-request.js";
+import { type Trigger, interruptedTrigger, threadOf, startsTainted, triggerMessage, needsWorkReport, missingReportText, noteMissingReport } from "./turn-request.js";
 import { setRelayAsker } from "../egress.js";
 import { connectors } from "../connectors.js";
 import { defaultModelRef, modelLabel, ProviderError, resolveModel, validateToolInput, type TurnResult, type Block, type ChatMessage, type Effort, type TextBlock, type ToolResultBlock, type ToolSpec, type ToolUseBlock } from "../llm/index.js";
@@ -68,13 +68,6 @@ export interface ApiAuthor { keyId: string; name: string }
 const actors = new Map<string, string>();
 export const actorOf = (botId: string): string | null => actors.get(botId) ?? null;
 setActorHook(actorOf);
-
-/** The thread a trigger belongs to (0: the main chat). */
-const threadOf = (t: Trigger) => (t.kind === "user" || t.kind === "system" ? t.thread ?? 0 : 0);
-
-// A workspace member's message is not the owner's word: the turn it starts is careful from its first step (wave 6). Nor is
-// a message an outside program sent through the Bot API (botapi.ts): it is outside content too.
-const startsTainted = (t: Trigger) => !!t.continuation || ((t.kind === "routine" || t.kind === "bot" || t.kind === "system") && !!t.tainted) || (t.kind === "user" && (!!t.member || !!t.api));
 
 /** "https://www.Example.com/x" or "example.com" → "example.com"; "" when there is no usable host. */
 export function hostOf(url: unknown): string {
@@ -1276,6 +1269,8 @@ export class StreamingRow {
     rows.rewrite(this.turn.bot, this.row.generation, this.row.seq, { kind: "message", role: "assistant", text: said, sources: sources?.length ? sources.slice(0, 12) : undefined });
     bots.bumpUnread(this.turn.bot.id);
     this.row = null;
+    this.buffer = "";
+    this.kept = "";
     return said;
   }
 }
