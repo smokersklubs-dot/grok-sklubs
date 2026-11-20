@@ -48,6 +48,7 @@ import { ruleTools } from "./ruletools.js";
 import { pageTools } from "./pagetools.js";
 import { researchTool } from "../researchroutes.js";
 import { craftReady } from "./creative-tools.js";
+import { openmanWorkspace } from "./openman-tool.js";
 import { videoStudioTool, updateVideoStudio } from "../videostudio.js";
 import { studioMp4Tool } from "../studiomp4.js";
 import { videoWorkflowTool } from "../videoworkflows.js";
@@ -1358,7 +1359,7 @@ function assemble(opts: { owner?: string; nativeSearch?: boolean; video?: "conne
     ...(computerKind() === "linux" ? inGroup("computer", elementTools).map(respectDriver) : []),
     // On its own Linux computer a bot's commands are contained, so they do not need a permission card.
     // Background jobs and office documents: on the bots' own Linux computers only (shell_run starts the jobs).
-    ...(computerKind() === "linux" && shellAvailable() ? [...inGroup("shell", jobTools), craftReady] : []),
+    ...(computerKind() === "linux" && shellAvailable() ? [...inGroup("shell", jobTools), craftReady, openmanWorkspace] : []),
     ...(officeAvailable() ? officeTools : []),
     // Listening, watching a video, downloading one, OCR: on the bots' own Linux computers only (media.ts).
     ...(mediaAvailable() ? inGroup("computer", mediaTools) : []),

@@ -1,0 +1,34 @@
+OpenMan
+Copyright (c) 2026 Organic Intelligence, Inc.
+
+This product is licensed under the MIT License. See the LICENSE file for the
+full text.
+
+No warranty
+-----------
+The software is provided "as is", without warranty of any kind, express or
+implied. See the LICENSE file for the full disclaimer of warranty and
+limitation of liability, and DISCLAIMER.md for what running autonomous agents
+involves.
+
+Trademarks
+----------
+"OpenMan" and "Orgo", and the OpenMan and Orgo names, logos and other brand
+features, are trademarks of Organic Intelligence, Inc. They are not licensed
+under the MIT License. The MIT License grants rights in the code; it grants no
+right to use these trademarks except as needed to describe the origin of the
+software and to reproduce this NOTICE. See TRADEMARKS.md.
+
+Third-party names and logos
+---------------------------
+Names, logos and other marks of third-party products and services that appear
+in this software (for example the icons in public/brands/) are trademarks of
+their respective owners. They are used only to identify integrations and
+services the software can work with. Their use does not imply any endorsement
+of, sponsorship by, or affiliation with Organic Intelligence, Inc. or OpenMan.
+
+Third-party software and content
+--------------------------------
+This software depends on, and in some places references or installs, software
+and content from third parties under their own licences. See
+THIRD_PARTY_NOTICES.md.
