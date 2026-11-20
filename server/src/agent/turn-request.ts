@@ -71,7 +71,7 @@ function originalRequest(trigger: Exclude<Trigger, { kind: "resume" }>): string 
 
 export const missingReportText = "The model stopped after a step without giving a final report. Completion is unconfirmed. Ask me to check the result and report what remains.";
 export function needsWorkReport(turn: Turn): boolean {
-  return !turn.waitsUser && (!!turn.ask || ["user", "api", "member"].includes(turn.origin ?? ""));
+  return !turn.goalId && !turn.waitsUser && (!!turn.ask || ["user", "api", "member"].includes(turn.origin ?? ""));
 }
 
 export function noteMissingReport(turn: Turn) {

@@ -271,8 +271,8 @@ test("after a restart, pending work runs again in order; done work never; the cu
 
 test("an interrupted reply stays in its thread, and one original routine run finishes", async () => {
   const { routines, runs } = await import("../src/routines.js");
-  const { rows } = await import("../src/store.js");
-  const parent = rows.append(plain, { kind: "message", role: "user", text: "Thread fixture." });
+  const { bots, rows } = await import("../src/store.js");
+  const parent = rows.append(bots.byId(plain.id)!, { kind: "message", role: "user", text: "Thread fixture." });
   const makeRunning = (trigger: unknown) => {
     const id = botQueue.add(plain.id, trigger)!;
     botQueue.start(id);

@@ -642,6 +642,7 @@ async function runScopedTurn(botId: string, trigger: Trigger, thread: number): P
         const depth = trigger.kind === "bot" ? trigger.depth : trigger.kind === "system" ? trigger.depth ?? 0 : 0;
         turn = await newTurn(bot, user, depth, controller.signal, true);
         turn.thread = thread;
+        if (goalRound) turn.goalId = goalRound.id;
         turn.origin = originOf(trigger);
         if (trigger.kind === "user" && trigger.api) turn.engineCaller = "api/" + trigger.api.keyId;
         if (trigger.kind === "user" && trigger.member) turn.engineCaller = "member/" + trigger.member.id;
@@ -1036,6 +1037,7 @@ async function modelLoop(turn: Turn) {
     record(turn.user.id, bot.id, result.model, result.usage);
     // A reply that did not stream (or only called tools) is the AI's answer all the same.
     if (result.content.length) watchOutput(bot.id);
+    stream.acceptUnstreamedText(result.content);
     if (result.sources?.length) { turn.tainted = true; for (const src of result.sources) { const h = hostOf(src.url); if (h) turn.hosts.add(h); } }
     const calls = result.content.filter((b): b is ToolUseBlock => b.type === "tool_use");
     history.append(bot.id, turn.generation, { role: "assistant", content: result.content }, turn.thread);
@@ -1233,6 +1235,12 @@ export class StreamingRow {
   private lastFlush = 0;
   constructor(private turn: Turn) {}
   get started() { return this.row !== null; }
+  /** Some providers return the complete text without emitting deltas. Keep earlier pieces of a cut-off answer. */
+  acceptUnstreamedText(content: Block[]) {
+    if (this.buffer !== this.kept) return;
+    const returned = content.filter((b): b is TextBlock => b.type === "text").map((b) => b.text).join("\n");
+    if (returned) this.push(returned);
+  }
   /** Keeps the row open for the continuation of a reply that was cut off; returns itself. */
   hold(): StreamingRow {
     this.kept = this.buffer;

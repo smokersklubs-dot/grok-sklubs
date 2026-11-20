@@ -162,7 +162,7 @@ registerProvider({ id: "report", label: "Reporting fixture", models: ["r"], avai
     content.push({type: "text", text: "I am checking."}, {type: "tool_use", id: "report-tool", name: "task_add", input: {title: "Fixture"}});
   }
   if (reportCalls.length === 3) {
-    req.onText?.("Verified the fixture.");
+    // A provider may deliver its final answer without streaming any deltas.
     content.push({type: "text", text: "Verified the fixture."});
   }
   return {content, stopReason: reportCalls.length === 1 ? "tool_use" : "end", model: "r", usage};
