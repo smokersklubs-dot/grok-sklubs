@@ -76,6 +76,8 @@ export function irreversibility(turn: Pick<Turn, "builtin" | "remote">, name: st
   if (remote) {
     if (remote.native) return remote.native.risk === "read" ? null : byName(remote.remoteName);
     if (remote.readOnly) return null;
+    if (/^make_(?:conversation_)?call$/i.test(remote.remoteName)) return { kind: "send", reason: "placing this phone call contacts the recipient and may incur a charge." };
+    if (/^COMPOSIO_(?:MULTI_EXECUTE_TOOL|REMOTE_(?:BASH_TOOL|WORKBENCH))$/i.test(remote.remoteName)) return { kind: "destructive", reason: "this tool can run actions in your connected accounts." };
     return byName(remote.remoteName) ?? (remote.destructive ? of("destructive") : null);
   }
   if (!turn.builtin.has(name)) return null;

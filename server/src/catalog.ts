@@ -8,6 +8,21 @@ import { appsFor } from "./native/vendors.js";
  */
 export const CATALOG: CatalogApp[] = [
   {
+    id: "agentphone", name: "AgentPhone", category: "Communication", url: "https://mcp.agentphone.ai/mcp", auth: "oauth", oauthClient: "dynamic",
+    description: "Choose a phone number, read incoming messages, send texts and place calls from your AgentPhone account.",
+    tokenHelp: "Sign in to AgentPhone to see your numbers. Calls, messages and number rental use your AgentPhone plan. Incoming messages can be read from the conversation history.",
+  },
+  {
+    id: "agentmail", name: "AgentMail", category: "Communication", url: "https://mcp.agentmail.to/mcp", auth: "oauth", oauthClient: "dynamic",
+    description: "Give your bots access to dedicated mailboxes, conversations, attachments and drafts.",
+    tokenHelp: "Sign in to AgentMail and choose the organization whose inboxes you want to use.",
+  },
+  {
+    id: "composio-connect", name: "Composio Connect", category: "Tools", url: "https://connect.composio.dev/mcp", auth: "oauth", oauthClient: "dynamic",
+    description: "Find actions across your apps and use the accounts you connect through Composio.",
+    tokenHelp: "Sign in to Composio. The first time an app needs access, follow its sign-in link to choose the account.",
+  },
+  {
     id: "voicestudio", name: "VoiceStudio", category: "Audio", url: "", instanceUrl: true, auth: "token",
     description: "Narrate a script, list voices and transcribe audio through your own VoiceStudio instance.",
     tokenHelp: "Use the HTTPS /mcp/ address of your VoiceStudio server behind an authenticated gateway, and its bearer token. A localhost address on your PC is only reachable from that PC.",
@@ -146,6 +161,9 @@ export const CATALOG: CatalogApp[] = [
 ];
 
 const FR: Record<string, { category: string; description: string; tokenHelp: string }> = {
+  agentphone: { category: "Communication", description: "Choisis un numéro, consulte les messages reçus, envoie des SMS et passe des appels depuis ton compte AgentPhone.", tokenHelp: "Connecte-toi à AgentPhone pour retrouver tes numéros. Les numéros, appels et SMS utilisent ton forfait AgentPhone. Ton bot peut consulter l’historique des messages reçus." },
+  agentmail: { category: "Communication", description: "Donne à tes bots accès à des boîtes e-mail dédiées, aux conversations, aux pièces jointes et aux brouillons.", tokenHelp: "Connecte-toi à AgentMail et choisis l’organisation dont tu veux utiliser les boîtes e-mail." },
+  "composio-connect": { category: "Outils", description: "Trouve des actions dans tes applications et utilise les comptes que tu connectes dans Composio.", tokenHelp: "Connecte-toi à Composio. Au premier accès à une application, son lien de connexion te permet de choisir le compte." },
   voicestudio: { category: "Audio", description: "Faire lire un texte, choisir une voix et transcrire un enregistrement avec ton instance VoiceStudio.", tokenHelp: "Saisis l’adresse HTTPS /mcp/ de ton instance VoiceStudio protégée par une passerelle et son jeton d’accès. Une adresse localhost sur ton PC est accessible uniquement depuis ce PC." },
   "github-code": { category: "Développement", description: "Confie un ticket à un bot, relis le correctif et reçois les résultats de la pull request.", tokenHelp: "Installe ton application GitHub privée sur les dépôts de ton choix, puis autorise-la avec ton compte." },
   "github-repositories": { category: "Développement", description: "Recherche et lecture des dépôts, fichiers, tickets et pull requests que tu autorises.", tokenHelp: "Continue sur GitHub et choisis les dépôts accessibles à tes bots. À la première connexion, GitHub te propose de créer ton application Sklubot privée." },

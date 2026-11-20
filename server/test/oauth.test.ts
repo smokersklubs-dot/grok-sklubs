@@ -283,6 +283,11 @@ test("the catalogue lists business apps with a sign-in", async () => {
   const r = await call("GET", "/connectors/catalog");
   const apps = r.json.apps;
   assert.equal(r.json.oauthRedirectUri, REDIRECT);
+  for (const [id, url] of Object.entries({ agentphone: "https://mcp.agentphone.ai/mcp", agentmail: "https://mcp.agentmail.to/mcp", "composio-connect": "https://connect.composio.dev/mcp" })) {
+    const entry = apps.find((a: any) => a.id === id);
+    assert.deepEqual([entry?.auth, entry?.oauthClient, entry?.url], ["oauth", "dynamic", url], id);
+    assert.match(entry.tokenHelp, /Connecte-toi/);
+  }
   const hubspot = apps.find((a: any) => a.id === "hubspot");
   assert.equal(hubspot.auth, "oauth");
   assert.equal(hubspot.oauthClient, "manual");

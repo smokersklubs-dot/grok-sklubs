@@ -33,6 +33,7 @@ const toRecord = (r: any): ConnectorRecord => ({ id: r.id, userId: r.user_id, na
 const READ_WORDS = new Set(["get", "list", "search", "fetch", "find", "read", "retrieve", "query", "lookup", "check", "describe", "view", "count", "show"]);
 /** A tool is treated as read-only when the server says so, or when its name reads like a lookup. */
 export function looksReadOnly(name: string, hint?: boolean): boolean {
+  if (/^(?:make_(?:conversation_)?call|buy_number|send_message|COMPOSIO_(?:MULTI_EXECUTE_TOOL|REMOTE_(?:BASH_TOOL|WORKBENCH)|MANAGE_CONNECTIONS))$/i.test(name)) return false;
   if (hint !== undefined) return hint;
   return name.split(/[^a-zA-Z0-9]+|(?<=[a-z])(?=[A-Z])/).some((word) => READ_WORDS.has(word.toLowerCase()));
 }

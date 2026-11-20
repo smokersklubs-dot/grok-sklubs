@@ -22,7 +22,7 @@ const { api } = await import("../src/routes.js");
 const { initComputer } = await import("../src/computer.js");
 const { policies, skills, skillText } = await import("../src/store.js");
 const { irreversibility, destructiveCommand } = await import("../src/agent/irreversible.js");
-const { destructiveHint } = await import("../src/connectors.js");
+const { destructiveHint, looksReadOnly } = await import("../src/connectors.js");
 const { setLauncher, setLocalToolTimeouts, dockerExecArgs, checkCommand, localTools } = await import("../src/localtools.js");
 const { linuxScreen } = await import("../src/linux.js");
 const { builtinTools } = await import("../src/agent/tools.js");
@@ -129,6 +129,12 @@ test("irreversibility: decided from the tool, the server-read click target and t
   ]);
   const turn = { builtin, remote } as any;
   const kind = (name: string, input: Record<string, unknown> = {}) => irreversibility(turn, name, input)?.kind ?? null;
+  for (const [name, expected] of Object.entries({ make_call: "send", make_conversation_call: "send", buy_number: "pay", send_message: "send", COMPOSIO_MULTI_EXECUTE_TOOL: "destructive" })) {
+    const readOnly = looksReadOnly(name, true);
+    assert.equal(readOnly, false, name);
+    remote.set(name, { connectorId: "c", connectorName: "Connected account", remoteName: name, readOnly });
+    assert.equal(kind(name), expected, name);
+  }
   assert.equal(kind("bot_email_send", { to: "a@b.c" }), "send");
   assert.equal(kind("card_fill", { amount: 12 }), "pay");
   assert.equal(kind("page_publish", { name: "x" }), "publish");
