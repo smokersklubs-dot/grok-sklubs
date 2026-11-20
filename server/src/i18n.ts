@@ -471,6 +471,8 @@ const FR: Record<string, string> = {
   "The reply was interrupted. Trying again…": "La réponse a été interrompue. Je réessaie…",
   "The model is busy ({detail}). New try in {s} s…": "Le modèle est occupé ({detail}). Nouvel essai dans {s} s…",
   "My model {model} is not answering ({detail}). I am carrying on with the backup model {next}.": "Mon modèle {model} ne répond pas ({detail}). Je continue avec le modèle de secours {next}.",
+  "The model stopped after a step without giving a final report. Completion is unconfirmed. Ask me to check the result and report what remains.": "Le modèle s’est arrêté après une étape sans rendre son bilan. La fin du travail reste à vérifier. Demande-moi de vérifier le résultat et de te dire ce qui reste à faire.",
+  "Interrupted while resuming. Check the last action and tell me what to continue.": "La reprise a été interrompue. Vérifie la dernière action et indique-moi où reprendre.",
   "The model sent back an empty reply, twice. Try asking again, maybe in other words.": "Le modèle a renvoyé une réponse vide, deux fois. Redemande-moi, peut-être autrement.",
   "I stopped because I was going round in circles: {why}. Tell me how you would like me to go on.": "Je me suis arrêté parce que je tournais en rond : {why}. Dis-moi comment tu veux que je continue.",
   "the tool {tool} failed {n} times in a row": "l'outil {tool} a échoué {n} fois de suite",

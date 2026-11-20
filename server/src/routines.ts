@@ -17,6 +17,15 @@ export const ROUTINE_FAIL_PUSH = 3;
 export const ROUTINE_FAIL_PAUSE = 5;
 /** A run still "running" after this long was cut off (a restart): it no longer blocks the next one. */
 const STALE_RUN_MS = 2 * 3600_000;
+
+// A subscription can be limited longer than the timeout for abandoned runs.
+const queuedRun = `EXISTS (SELECT 1 FROM bot_queue b
+  WHERE b.bot_id = (SELECT bot_id FROM routines WHERE id = routine_runs.routine_id)
+    AND b.status IN ('pending', 'running', 'limited', 'held')
+    AND CASE WHEN json_valid(b.trigger) THEN json_extract(b.trigger, '$.runId') END = routine_runs.id)`;
+function hasActiveRun(id: string): boolean {
+  return !!q.get(`SELECT 1 FROM routine_runs WHERE routine_id = ? AND status = 'running' AND (at > ? OR ${queuedRun})`, id, now() - STALE_RUN_MS);
+}
 export const isNativeTrigger = (t: string): t is NativeTrigger => (NATIVE_TRIGGERS as readonly string[]).includes(t);
 const APP_NAMES: Record<string, string> = { gmail: "Gmail", gcalendar: "Google Calendar", gdrive: "Google Drive", outlook: "Outlook", slack: "Slack" };
 
@@ -103,7 +112,7 @@ function toRoutine(r: any): RoutineRecord {
     enabled, lastRunAt: r.last_run_at, nextRunAt: next, describe: describeRoutine({ trigger: r.trigger, schedule: r.schedule, runAt: r.run_at, timezone: r.timezone, native }),
     createdAt: r.created_at,
     skipUnchanged: !!r.skip_unchanged, inputs: rawInputs.map(inputLabel), failures: r.failures ?? 0, pausedReason: r.paused_reason ?? null,
-    running: !!q.get("SELECT 1 FROM routine_runs WHERE routine_id = ? AND status = 'running' AND at > ?", r.id, now() - STALE_RUN_MS),
+    running: hasActiveRun(r.id),
     projectedMonthlyUsd: projected(r),
   };
 }
@@ -181,11 +190,14 @@ export const runs = {
     const id = newId("run");
     q.run("INSERT INTO routine_runs (id, routine_id, at) VALUES (?, ?, ?)", id, routineId, now());
     // Keep the newest 30 per routine.
-    q.run("DELETE FROM routine_runs WHERE routine_id = ? AND id NOT IN (SELECT id FROM routine_runs WHERE routine_id = ? ORDER BY at DESC, rowid DESC LIMIT 30)", routineId, routineId);
+    q.run(`DELETE FROM routine_runs WHERE routine_id = ? AND id NOT IN (SELECT id FROM routine_runs WHERE routine_id = ? ORDER BY at DESC, rowid DESC LIMIT 30) AND (status != 'running' OR NOT ${queuedRun})`, routineId, routineId);
     return id;
   },
-  finish(id: string, status: RoutineRun["status"], note: string) {
-    q.run("UPDATE routine_runs SET status = ?, note = ? WHERE id = ?", status, note.slice(0, 300), id);
+  finish(id: string, status: RoutineRun["status"], note: string, finishWork?: () => void) {
+    q.tx(() => {
+      q.run("UPDATE routine_runs SET status = ?, note = ? WHERE id = ?", status, note.slice(0, 300), id);
+      finishWork?.();
+    });
     const r = q.get<{ routine_id: string }>("SELECT routine_id FROM routine_runs WHERE id = ?", id);
     const routine = r ? routines.byId(r.routine_id) : null;
     if (routine) for (const fn of runListeners) { try { fn(routine, status, note); } catch (err) { console.error("[routine run]", err); } }
@@ -198,7 +210,7 @@ export const runs = {
   },
   addCost: (id: string, usd: number) => q.run("UPDATE routine_runs SET cost_usd = cost_usd + ? WHERE id = ?", usd, id),
   /** Whether a run of this routine is still under way (not one a restart left behind). */
-  active: (routineId: string) => !!q.get("SELECT 1 FROM routine_runs WHERE routine_id = ? AND status = 'running' AND at > ?", routineId, now() - STALE_RUN_MS),
+  active: hasActiveRun,
   list: (routineId: string): RoutineRun[] =>
     q.all<any>("SELECT * FROM routine_runs WHERE routine_id = ? ORDER BY at DESC, rowid DESC LIMIT 30", routineId).map((r) => ({ id: r.id, routineId: r.routine_id, at: r.at, status: r.status, note: r.note, costUsd: r.cost_usd ?? 0 })),
 };

@@ -1,3 +1,4 @@
+import { needsWorkReport, noteMissingReport } from "./turn-request.js";
 import { spawn } from "node:child_process";
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { desktopAttachmentNotes } from "../attachmentpreviews.js";
@@ -472,6 +473,7 @@ const TOOL_NOISE: RegExp[] = [/skills? context budget/i, /^falling back from web
 
 /** Turns the tool's own events into chat rows: streamed replies, steps, the thinking caption and the step counter. */
 class Transcript {
+  awaitingReport = false;
   readonly stream: StreamingRow;
   readonly caption: Caption;
   readonly steps: EngineStep[] = [];
@@ -486,7 +488,7 @@ class Transcript {
   }
   endMessage() {
     const said = this.stream.finish();
-    if (said) { this.turn.spoke = true; this.turn.lastText = said; }
+    if (said) { this.turn.spoke = true; this.turn.lastText = said; this.awaitingReport = false; }
   }
   /** A whole message that was not streamed piece by piece. */
   message(text: string) {
@@ -501,6 +503,7 @@ class Transcript {
     if (this.steps.some((x) => x.callId === id)) return;
     this.endMessage();
     const { name, server } = normalizeToolName(this.turn, raw);
+    this.awaitingReport = name !== "stay_quiet";
     const short: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(args ?? {})) short[k] = typeof v === "string" ? clip(v, 400) : v;
     const seq = rows.append(bot, { kind: "step", callId: id, tool: name, label: toolLabel(name, server, this.turn), status: "running", args: short }).seq;
@@ -739,6 +742,9 @@ async function engineTurnOn(turn: Turn, prompt: string, attachments: Attachment[
     else noteRuntime(bot.id, "ready");
   }
   if (turn.signal.aborted && !t.ended) throw new Error("aborted");
+  if (!t.fatal && !t.switched && !turn.signal.aborted && t.awaitingReport && needsWorkReport(turn)) {
+    noteMissingReport(turn);
+  }
   return { failure: t.fatal ? t.lastFailure || "the tool failed" : "", steps: t.steps.map((s) => s.seq), ...(t.switched ? { switched: true } : {}), ...(t.limited ? { limited: t.limited } : {}) };
 }
 
@@ -823,7 +829,10 @@ async function claudeTurn(turn: Turn, t: Transcript, prompt: string, token: stri
       if (hit) { limit = hit; failure = tr(turn.user.locale, "Your Claude subscription has reached its usage limit for now. I will be able to continue once it resets."); }
     } else if (e.type === "result") {
       sawResult = true;
-      if (!e.is_error && !turn.signal.aborted) t.turnEnded();
+      if (!e.is_error && !limit && !turn.signal.aborted) {
+        if (typeof e.result === "string" && e.result.trim() && !NOT_SIGNED_IN.test(e.result) && (t.awaitingReport || !turn.spoke)) t.message(e.result);
+        t.turnEnded();
+      }
       const u = e.usage ?? {};
       record(turn.user.id, bot.id, bot.model, { inputTokens: (u.input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0), outputTokens: u.output_tokens ?? 0, cachedTokens: u.cache_read_input_tokens ?? 0 });
       if (e.is_error || (typeof e.result === "string" && NOT_SIGNED_IN.test(e.result) && !turn.spoke)) {

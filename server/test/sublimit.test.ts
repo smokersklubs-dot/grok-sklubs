@@ -288,8 +288,9 @@ test("a limit hit after the tool already said something: what waits is a continu
   await A("POST", `/bots/${solo.id}/messages`, { text: "say something, then hit the limit" });
   await until(() => botQueue.limitedFor(solo.id).length === 1, "the continuation waiting");
   const waiting = JSON.parse(botQueue.limitedFor(solo.id)[0].trigger);
-  assert.equal(waiting.kind, "system");
-  assert.equal(waiting.text, sl.LIMIT_CONTINUE_TEXT);
+  assert.equal(waiting.kind, "user");
+  assert.equal(waiting.continuation, "quota");
+  assert.equal(waiting.text, "say something, then hit the limit");
   assert.ok((await rowsOf(solo.id)).some((r) => r.body.kind === "message" && r.body.text === "Half of the work is done."), "what it said is kept");
   claudeAtLimit = false;
   const at = limitRow(userA, "claude-code")!.until + 1;
@@ -297,6 +298,28 @@ test("a limit hit after the tool already said something: what waits is a continu
   sl.sweepLimits();
   sl.setLimitClock(null);
   await until(() => execs.some((e) => e.botId === solo.id && e.input.includes("usage limit in the middle of your last turn")), "the continuation on the subscription");
+});
+
+test("a routine waiting through a long quota keeps one run and closes it when the quota resets", async () => {
+  const { routines, runs } = await import("../src/routines.js");
+  const { fireRoutine } = await import("../src/scheduler.js");
+  await idle(solo.id);
+  claudeAtLimit = true;
+  const r = routines.create(solo.id, { name: "Daily quota fixture", trigger: "cron", schedule: "0 9 * * *", timezone: "Europe/Paris", prompt: "say something, then hit the limit" });
+  assert.equal(fireRoutine(r), "fired");
+  await until(() => botQueue.limitedFor(solo.id).length === 1, "routine waiting");
+  const original = runs.list(r.id)[0];
+  assert.equal(original.status, "running");
+  assert.equal(JSON.parse(botQueue.limitedFor(solo.id)[0].trigger).runId, original.id);
+  q.run("UPDATE routine_runs SET at = ? WHERE id = ?", Date.now() - 3 * 3600_000, original.id);
+  assert.equal(fireRoutine(r), "busy", "the next scheduled slot does not start another job");
+  assert.ok(routines.byId(r.id)?.running);
+  claudeAtLimit = false;
+  const reset = limitRow(userA, "claude-code")!.until + 1;
+  sl.setLimitClock(() => reset);
+  try { sl.sweepLimits(); } finally { sl.setLimitClock(null); }
+  await until(() => runs.list(r.id).find((x) => x.id === original.id)?.status === "done", "original routine finished");
+  assert.ok(!runs.active(r.id));
 });
 
 test("Pause still applies: work released at T for a paused bot is set aside until it is resumed", async () => {

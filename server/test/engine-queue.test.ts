@@ -74,6 +74,14 @@ setEngineHost({
   async exec(_bot, args, _env, _cwd, input, signal, onLine) {
     execs.push({ args, input });
     const emit = (e: unknown) => onLine(JSON.stringify(e));
+    if (input.includes("fixture final report")) {
+      emit({ type: "assistant", message: { content: [{ type: "text", text: "Checking the fixture." }] } });
+      emit({ type: "assistant", message: { content: [{ type: "tool_use", id: "read-fixture", name: "Read", input: {} }] } });
+      emit({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: "read-fixture", content: "test data" }] } });
+      const failed = input.includes("fixture final report failure");
+      emit({ type: "result", is_error: failed, result: failed ? "The fixture failed." : "", usage: {} });
+      return { code: failed ? 1 : 0, stderr: "" };
+    }
     if (/hang forever/.test(input)) {
       // A tool that says a little, starts a step, then never returns until it is stopped.
       emit({ type: "system", subtype: "init", session_id: "sess-hang" });
@@ -250,14 +258,54 @@ test("after a restart, pending work runs again in order; done work never; the cu
   const iSecond = order.findIndex((a) => a.includes("replay second"));
   assert.ok(iRecovery >= 0 && iRecovery < iFirst && iFirst < iSecond, `in order: ${order.join(" | ")}`);
   assert.equal(order.some((a) => a.includes("already done earlier")), false, "done work is not replayed");
-  assert.equal(order.some((a) => a.includes("the turn that was cut off")), false, "the cut-off turn is not run twice: its recovery runs instead");
-  assert.match(JSON.parse(q.get<{ trigger: string }>("SELECT trigger FROM bot_queue WHERE id = ?", cut)!.trigger).text, /server restarted/);
+  assert.deepEqual(order.filter((a) => a.includes("the turn that was cut off")), [order[iRecovery]]);
+  const saved = JSON.parse(q.get<{ trigger: string }>("SELECT trigger FROM bot_queue WHERE id = ?", cut)!.trigger);
+  assert.equal(saved.continuation, "restart_after_action");
   await until(() => botQueue.unfinished().filter((r) => r.bot_id === plain.id).length === 0, "all done");
   // A second recovery (nothing left) runs nothing again.
   const again = asked.length;
   recoverInterruptedTurns();
   await sleep(200);
   assert.equal(asked.length, again);
+});
+
+test("an interrupted reply stays in its thread, and one original routine run finishes", async () => {
+  const { routines, runs } = await import("../src/routines.js");
+  const { rows } = await import("../src/store.js");
+  const parent = rows.append(plain, { kind: "message", role: "user", text: "Thread fixture." });
+  const makeRunning = (trigger: unknown) => {
+    const id = botQueue.add(plain.id, trigger)!;
+    botQueue.start(id);
+    activeTurns.begin(plain.id);
+    return id;
+  };
+  const id = makeRunning({ kind: "user", thread: parent.seq, text: "Report in this thread." });
+  recoverInterruptedTurns();
+  await until(() => botQueue.status(id) === "done", "thread recovery");
+  const inThread = q.all<{thread: number}>("SELECT thread FROM rows WHERE bot_id = ? AND seq > ?", plain.id, parent.seq);
+  assert.ok(inThread.length >= 2);
+  assert.ok(inThread.every((row) => row.thread === parent.seq));
+  const routine = routines.create(plain.id, { name: "Daily fixture", prompt: "Check the fixture.", trigger: "cron", schedule: "0 9 * * *", timezone: "Europe/Paris" });
+  const runId = runs.start(routine.id);
+  const job = makeRunning({ kind: "routine", name: routine.name, text: routine.prompt, runId });
+  recoverInterruptedTurns();
+  await until(() => botQueue.status(job) === "done", "routine recovery");
+  assert.deepEqual(runs.list(routine.id).map((r) => [r.id, r.status]), [[runId, "done"]]);
+});
+
+test("a subscription failure after progress is an error in the routine history", async () => {
+  const { routines, runs } = await import("../src/routines.js");
+  const { fireRoutine } = await import("../src/scheduler.js");
+  const r = routines.create(sub.id, { name: "Failure fixture", prompt: "fixture final report failure", trigger: "cron", schedule: "0 9 * * *", timezone: "Europe/Paris" });
+  assert.equal(fireRoutine(r), "fired");
+  await until(() => runs.list(r.id)[0]?.status !== "running", "routine ended");
+  assert.equal(runs.list(r.id)[0].status, "error");
+  assert.match(runs.list(r.id)[0].note, /fixture failed/);
+});
+
+test("a subscription that stops after its tool gives the user an explicit missing report", async () => {
+  await call("POST", `/bots/${sub.id}/messages`, {text: "fixture final report missing"});
+  await until(async () => (await rowsOf(sub.id)).some((r) => r.body.kind === "notice" && /Completion is unconfirmed/.test(r.body.text)), "missing final report");
 });
 
 test("after a restart, a job marked running whose turn had not started yet runs again; work still in memory is never doubled", async () => {

@@ -3,7 +3,7 @@ import { tr } from "../i18n.js";
 import { modelLabel } from "../llm/index.js";
 import { pushLater } from "../push.js";
 import type { Engine, Locale, SubLimitNoticeAction } from "../shared.js";
-import { audit, botQueue, bots, rows, users, type BotRecord } from "../store.js";
+import { activeTurns, audit, botQueue, bots, rows, users, type BotRecord } from "../store.js";
 import { overBudget } from "../usage.js";
 import { userTimezone } from "../usagecaps.js";
 import { runAgain, type Trigger } from "./loop.js";
@@ -216,16 +216,19 @@ export function holdForLimit(id: number | null, bot: BotRecord | null, trigger: 
  * The limit was hit during this job's turn and there is no backup model: the job waits for the subscription. When the
  * tool already did or said something, what waits is a continuation in its place (never the same work twice).
  */
-export function waitForSubscription(bot: BotRecord, jobId: number | undefined, trigger: Trigger, didSomething: boolean, thread: number) {
+export function waitForSubscription(bot: BotRecord, jobId: number | undefined, trigger: Trigger, thread: number): boolean {
   const limit = subLimitFor(bot);
-  if (!limit) return;
+  if (!limit) return false;
   if (jobId !== undefined) {
-    if (didSomething) botQueue.replace(jobId, { kind: "system", text: LIMIT_CONTINUE_TEXT, thread: thread || undefined, origin: trigger.kind === "user" ? (trigger.member ? "member" : trigger.api ? "api" : "user") : trigger.kind });
-    botQueue.limit(jobId);
+    q.tx(() => {
+      botQueue.replace(jobId, { ...trigger, continuation: "quota" });
+      botQueue.limit(jobId);
+      activeTurns.end(bot.id);
+    });
   }
   noteWaiting(bot, limit.engine, limit.until, thread);
+  return jobId !== undefined;
 }
-export const LIMIT_CONTINUE_TEXT = "Your subscription reached its usage limit in the middle of your last turn, and it is available again now. Pick the work back up where you left off — check what is already done, do not redo it — and finish it, or say plainly where things stand.";
 
 /** "Me prévenir à la reprise" under a waiting notice: on or off. False when the row is not such a notice. */
 export function setLimitNotify(bot: BotRecord, seq: number, notify: boolean): boolean {

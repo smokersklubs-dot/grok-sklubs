@@ -153,6 +153,20 @@ registerProvider({ id: "mute", label: "Mute", models: ["m"], available: () => tr
   req.onText?.("Here I am.");
   return { content: [{ type: "text", text: "Here I am." }], stopReason: "end", model: "mute-m", usage };
 } });
+let reportCalls: TurnRequest[] = [];
+registerProvider({ id: "report", label: "Reporting fixture", models: ["r"], available: () => true, async runTurn(req) {
+  reportCalls.push(req);
+  const content: Block[] = [];
+  if (reportCalls.length === 1) {
+    req.onText?.("I am checking.");
+    content.push({type: "text", text: "I am checking."}, {type: "tool_use", id: "report-tool", name: "task_add", input: {title: "Fixture"}});
+  }
+  if (reportCalls.length === 3) {
+    req.onText?.("Verified the fixture.");
+    content.push({type: "text", text: "Verified the fixture."});
+  }
+  return {content, stopReason: reportCalls.length === 1 ? "tool_use" : "end", model: "r", usage};
+} });
 registerProvider(scripted);
 after(() => { local.closeAllConnections(); local.close(); });
 
@@ -295,6 +309,17 @@ test("empty reply: one nudge, then a notice if it stays empty", async () => {
   await say(b, "hi again?");
   await until(async () => notices(await rowsOf(b.id)).some((t) => /réponse vide/.test(t)), "empty notice");
   assert.equal(emptyFor, 0, "nudged exactly once");
+});
+
+test("after progress, a tool and an empty reply, request one text-only report", async () => {
+  const b = await fresh("Reporter", { model: "report:r" });
+  reportCalls = [];
+  await say(b, "Check the fixture and report.");
+  await replied(b, "Verified the fixture.");
+  assert.equal(reportCalls.length, 3);
+  assert.deepEqual(reportCalls[2].tools, []);
+  assert.equal(reportCalls[2].webSearch, false);
+  assert.equal((await rowsOf(b.id)).filter((r) => r.body.kind === "step" && r.body.tool === "task_add").length, 1);
 });
 
 test("step limit: a Continue button resumes the work once; a routine carries on by itself once", async () => {
