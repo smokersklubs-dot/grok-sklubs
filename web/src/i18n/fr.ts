@@ -118,6 +118,7 @@ export const fr: Dict = {
 
   // Zone de saisie
   "composer.placeholder": "Écris à {name}…",
+  "composer.meeting": "Réunion",
   "composer.more": "Plus d’actions",
   "composer.attach": "Joindre des fichiers",
   "composer.drop": "Dépose tes fichiers ici pour les joindre",

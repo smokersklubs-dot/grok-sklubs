@@ -116,6 +116,7 @@ export const en = {
 
   // Composer
   "composer.placeholder": "Message {name}",
+  "composer.meeting": "Meeting",
   "composer.more": "More actions",
   "composer.attach": "Attach files",
   "composer.drop": "Drop files here to attach them",

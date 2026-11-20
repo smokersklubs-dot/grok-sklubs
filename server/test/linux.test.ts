@@ -17,6 +17,23 @@ const linux = computerKind() === "linux";
 const skip = !linux && "no container runtime or desktop image here (npm run computer:build)";
 
 const A = "bot_linux_a", B = "bot_linux_b", USER = "usr_1";
+test("a silent meeting on the bot's desktop saves the exact end of its own upload", { skip }, async () => {
+  const { meetingTranscribe } = await import("../src/meetings.js");
+  const { wavOf } = await import("../src/voice/vad.js");
+  const { users, bots } = await import("../src/store.js");
+  const user = users.create("meeting@desktop.test", "Meeting", "x", "fr");
+  const bot = bots.create(user.id, { name: "Meeting" });
+  try {
+    const file = storeBytes(bot.id, "uploads", "reunion.wav", wavOf(new Int16Array(16000)));
+    const ctx = { user, bot, depth: 0, signal: AbortSignal.timeout(90000) };
+    const result = await meetingTranscribe.run({ file: file.path }, ctx);
+    assert.equal(result.isError, undefined, String(result.content));
+    const match = /Saved (meetings\/[0-9a-f]+\/00000000\.txt)/.exec(String(result.content));
+    assert.ok(match);
+    assert.match(readLibraryFile(bot.id, match[1]).toString(), /0s – 1\.0s/);
+    assert.throws(() => readLibraryFile(B, match[1]));
+  } finally { await screen.reset(bot.id); }
+});
 // A page served from this machine, reachable from inside the bot's computer through the container bridge.
 const site = createServer((_req, res) => {
   res.setHeader("content-type", "text/html");

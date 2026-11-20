@@ -49,6 +49,7 @@ import { pageTools } from "./pagetools.js";
 import { researchTool } from "../researchroutes.js";
 import { craftReady } from "./creative-tools.js";
 import { openmanWorkspace } from "./openman-tool.js";
+import { meetingTranscribe } from "../meetings.js";
 import { videoStudioTool, updateVideoStudio } from "../videostudio.js";
 import { studioMp4Tool } from "../studiomp4.js";
 import { videoWorkflowTool } from "../videoworkflows.js";
@@ -1362,7 +1363,7 @@ function assemble(opts: { owner?: string; nativeSearch?: boolean; video?: "conne
     ...(computerKind() === "linux" && shellAvailable() ? [...inGroup("shell", jobTools), craftReady, openmanWorkspace] : []),
     ...(officeAvailable() ? officeTools : []),
     // Listening, watching a video, downloading one, OCR: on the bots' own Linux computers only (media.ts).
-    ...(mediaAvailable() ? inGroup("computer", mediaTools) : []),
+    ...(mediaAvailable() ? inGroup("computer", [...mediaTools, meetingTranscribe]) : []),
     ...workTools.filter((t) => t.spec.name !== "shell_run" || shellAvailable())
       .map((t): BuiltinTool => ({ ...t, group: t.spec.name === "shell_run" ? "shell" : t.spec.name === "web_fetch" ? "web" : "files", sensitive: t.spec.name === "shell_run" && computerKind() === "linux" ? false : t.sensitive })),
     ...(searchChainAvailable() && !opts.nativeSearch ? searchTools : []),

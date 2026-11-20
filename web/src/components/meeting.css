@@ -1,0 +1,4 @@
+.meeting-body { display: grid; gap: 12px; padding: 16px 20px 20px; }
+.meeting-body p, .meeting-body h3 { margin: 0; }
+.meeting-saved { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.meeting-saved span { flex: 1 0 100%; }

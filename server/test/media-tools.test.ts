@@ -18,6 +18,15 @@ const { mediaTools, setMediaTestHooks, listenArgs, framesArgs, ocrArgs, download
 const { users, bots } = await import("../src/store.js");
 const { paidConsents } = await import("../src/providers.js");
 const { builtinTools } = await import("../src/agent/tools.js");
+const { meetingInput } = await import("../src/meetings.js");
+test("meeting segments accept only an audio upload and a valid resume offset", () => {
+  assert.equal(meetingInput("~/files/uploads/réunion.webm", 120).rel, "uploads/réunion.webm");
+  assert.equal(meetingInput("uploads/réunion.webm", undefined).offset, 0);
+  for (const path of ["../other/audio.wav", "uploads/../private.wav", "https://vendor.invalid/a.wav", "uploads/file.html"])
+    assert.throws(() => meetingInput(path, 0));
+  assert.throws(() => meetingInput("uploads/a.wav", -120));
+  assert.throws(() => meetingInput("uploads/a.wav", 1));
+});
 const { buildSystemPrompt } = await import("../src/agent/prompt.js");
 const { linkHint } = await import("../src/agent/links.js");
 import type { ToolContext } from "../src/agent/tools.js";

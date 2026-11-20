@@ -12,6 +12,7 @@ import { Icon, Spinner } from "./Icon";
 import { ErrorNote, Menu, MenuItem, useEscape } from "./ui";
 import { PauseBanner } from "./Pause";
 import { useComposerMentions } from "./ComposerMentions";
+import { MeetingRecorder } from "./MeetingRecorder";
 
 const NO_UPLOADS: Upload[] = [];
 
@@ -80,6 +81,8 @@ export function Composer({ bot, live }: { bot: Bot; live: Live }) {
   const [stopping, setStopping] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [menu, setMenu] = useState(false);
+  const [meetingBot, setMeetingBot] = useState<string | null>(null);
+  useEffect(() => setMeetingBot(null), [bot.id]);
   const [confirmNew, setConfirmNew] = useState(false);
   const [dragging, setDragging] = useState(false);
   // Goal mode ("Objectif"): the next message becomes an objective the bot keeps working on until it is done.
@@ -319,6 +322,7 @@ export function Composer({ bot, live }: { bot: Bot; live: Live }) {
             <Icon name="plus" size={20} />
           </button>
           <Menu open={menu} onClose={() => setMenu(false)} side="top" label={t("composer.more")}>
+            {bot.kind === "agent" && !bot.access && <MenuItem icon="record" onClick={() => { setMenu(false); setMeetingBot(bot.id); }}>{t("composer.meeting")}</MenuItem>}
             <MenuItem
               icon="clip"
               onClick={() => {
@@ -358,6 +362,7 @@ export function Composer({ bot, live }: { bot: Bot; live: Live }) {
               {t("sidebar.connectApps")}
             </MenuItem>
           </Menu>
+          {meetingBot === bot.id && <MeetingRecorder key={bot.id} botId={bot.id} close={() => setMeetingBot(null)} />}
           <input
             ref={picker}
             type="file"
