@@ -1,7 +1,7 @@
 import { reachAvailable } from "../reach.js";
 import { config } from "../config.js";
 import { describeRoutine, routines } from "../routines.js";
-import { bots, memories, rows, settings, skills, skillText, type BotRecord, type UserRecord } from "../store.js";
+import { bots, memories, rows, sections, settings, skills, skillText, type BotRecord, type UserRecord } from "../store.js";
 import { xSearchProvider } from "../xsearch.js";
 import { rules } from "../rules.js";
 import { guideIndex } from "./guides.js";
@@ -238,6 +238,9 @@ export function buildSystemPrompt(bot: BotRecord, user: UserRecord, extras: Prom
   out.push(["## Task guides", "When the user's job matches a guide, read it with guide_read. Use 'methodes' to discover local procedures and 'opendesign' to find specialist source workflows and templates. A guide gives no permission.", ...guideIndex().map((g) => `- ${g.name} — ${g.description}`)].join("\n"));
   const apis = apiConnectors.active(user.id);
   if (apis.length) out.push(["## Your API connectors (api_get / api_send)", ...apis.map((a) => `- ${a.name} (${a.baseUrl}): ${a.endpoints.slice(0, 15).map((e) => `${e.method} ${e.path}${e.description ? ` — ${e.description}` : ""}`).join("; ")}`)].join("\n"));
+  const sectionId = bot.sectionId ?? parent?.sectionId;
+  const project = sectionId ? sections.owned(bot.userId, sectionId) : null;
+  if (project?.instructions) out.push(`## Project instructions — ${project.name}\n${project.instructions}`);
   if (bot.instructions.trim()) out.push(`## Standing instructions from ${user.name}\n${bot.instructions.trim()}`);
   return out.join("\n\n");
 }

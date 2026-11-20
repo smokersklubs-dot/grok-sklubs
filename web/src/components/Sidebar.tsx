@@ -1,4 +1,5 @@
 import { useMemo, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { api, errText } from "../api";
 import { IDLE_LIVE, primaryBot, sortedBots, useStore } from "../store";
 import type { Bot, BotSection, Live } from "../types";
@@ -6,7 +7,7 @@ import { tn, useT, t as tt } from "../i18n";
 import { botTitle, initials } from "../lib/format";
 import { BotAvatar } from "./Avatar";
 import { Icon } from "./Icon";
-import { IconButton, Menu, MenuItem, modKey } from "./ui";
+import { IconButton, Menu, MenuItem, Modal, modKey } from "./ui";
 import { PauseAllNotice, PausedBadge, setPaused } from "./Pause";
 import { AnnouncementBell } from "./AnnouncementCard";
 import { useAnnouncements } from "../lib/announcements";
@@ -164,6 +165,9 @@ function Group({ id, title, count, folded, onFold, onDropBot, actions, children 
 /** The menu of a section of the user's: rename, delete (its bots go back to the team). */
 function SectionActions({ section }: { section: BotSection }) {
   const [open, setOpen] = useState(false);
+  const [instructions, setInstructions] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
   const t = useT();
   const { showToast, loadSections } = useStore.getState();
   const rename = async () => {
@@ -177,6 +181,17 @@ function SectionActions({ section }: { section: BotSection }) {
     if (!window.confirm(t("sections.deleteConfirm", { name: section.name }))) return;
     try { await api("DELETE", `/sections/${section.id}`); await loadSections(); } catch (e) { showToast(errText(e)); }
   };
+  const saveInstructions = async () => {
+    if (instructions === null || saving) return;
+    setSaving(true);
+    setError("");
+    try {
+      await api("PATCH", `/sections/${section.id}`, { instructions });
+      await loadSections();
+      setInstructions(null);
+    } catch (e) { setError(errText(e)); }
+    finally { setSaving(false); }
+  };
   return (
     <span className="menu-wrap sidebar-group-actions">
       {section.paused && <span className="pause-badge is-compact" title={t("pause.sectionPaused")} aria-label={t("pause.sectionPaused")}><Icon name="pause" size={10} /></span>}
@@ -188,9 +203,26 @@ function SectionActions({ section }: { section: BotSection }) {
           ? <MenuItem icon="play" onClick={() => { setOpen(false); void setPaused({ kind: "section", section }, false); }}>{t("pause.resumeSection")}</MenuItem>
           : <MenuItem icon="pause" onClick={() => { setOpen(false); void setPaused({ kind: "section", section }, true); }}>{t("pause.pauseSection")}</MenuItem>}
         <MenuItem icon="download" onClick={() => { setOpen(false); useStore.getState().openModal({ kind: "exportTemplate", sectionId: section.id }); }}>{t("tpl.export")}…</MenuItem>
+        <MenuItem icon="edit" onClick={() => { setOpen(false); setInstructions(section.instructions ?? ""); setError(""); }}>{t("sections.instructions")}</MenuItem>
         <MenuItem icon="edit" onClick={() => void rename()}>{t("sections.rename")}</MenuItem>
         <MenuItem icon="trash" danger onClick={() => void remove()}>{t("sections.delete")}</MenuItem>
       </Menu>
+      {instructions !== null && createPortal(
+        <Modal title={t("sections.project", { name: section.name })} onClose={() => { if (!saving) setInstructions(null); }} size="sm">
+          <form onSubmit={e => { e.preventDefault(); void saveInstructions(); }}>
+            <div className="modal-body">
+              <label className="field"><span>{t("sections.instructions")}</span>
+                <textarea className="input" rows={6} maxLength={4000} value={instructions} onChange={e => setInstructions(e.target.value)} />
+              </label>
+              <p className="muted">{t("sections.instructionsHelp")}</p>
+              {error && <p role="alert">{error}</p>}
+            </div>
+            <div className="modal-foot">
+              <button type="button" className="btn" disabled={saving} onClick={() => setInstructions(null)}>{t("common.cancel")}</button>
+              <button type="submit" className="btn btn-primary" disabled={saving}>{t("common.save")}</button>
+            </div>
+          </form>
+        </Modal>, document.body)}
     </span>
   );
 }
@@ -212,6 +244,7 @@ export function Sidebar() {
   const { toggleSidebar, openModal, setView, selectBot, openAppSettings, logout, setMobileNav } = useStore.getState();
   const [menuOpen, setMenuOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
+  const [primaryProjects, setPrimaryProjects] = useState(false);
   const t = useT();
 
   const collapsed = collapsedPref && !mobileNav;
@@ -267,6 +300,7 @@ export function Sidebar() {
                   <IconButton icon="plus" label={t("sidebar.newBot")} onClick={() => setAddOpen((v) => !v)} active={addOpen} />
                   <Menu open={addOpen} onClose={() => setAddOpen(false)} align="right" label={t("sidebar.newBot")}>
                     <MenuItem icon="plus" onClick={() => { setAddOpen(false); openModal({ kind: "createBot" }); }}>{t("sidebar.newBot")}</MenuItem>
+                    <MenuItem icon="folder" onClick={() => { setAddOpen(false); void addSection(); }}>{t("sections.newProject")}</MenuItem>
                     <MenuItem icon="star" onClick={() => { setAddOpen(false); openModal({ kind: "templates" }); }}>{t("tpl.open")}…</MenuItem>
                     <MenuItem icon="upload" onClick={() => { setAddOpen(false); openModal({ kind: "templates", tab: "file" }); }}>{t("tpl.importFile")}…</MenuItem>
                   </Menu>
@@ -364,6 +398,7 @@ export function Sidebar() {
 
         <div className="sidebar-scroll">
           {primary && (
+            <div className="primary-project-wrap">
             <button
               type="button"
               className={`primary-tile ${chatActive && selectedId === primary.id ? "is-active" : ""}`}
@@ -386,6 +421,14 @@ export function Sidebar() {
                 </>
               )}
             </button>
+            {!collapsed && sections.length > 0 && <span className="menu-wrap primary-project-menu">
+              <IconButton icon="folder" label={t("sections.selectProject", { name: primary.name })} onClick={() => setPrimaryProjects(v => !v)} />
+              <Menu open={primaryProjects} onClose={() => setPrimaryProjects(false)} align="right" label={t("sections.selectProject", { name: primary.name })}>
+                <MenuItem icon={!primary.sectionId ? "check" : "folder"} onClick={() => { setPrimaryProjects(false); void organise(primary.id, { sectionId: null }); }}>{t("sections.noProject")}</MenuItem>
+                {sections.map(sec => <MenuItem key={sec.id} icon={primary.sectionId === sec.id ? "check" : "folder"} onClick={() => { setPrimaryProjects(false); void organise(primary.id, { sectionId: sec.id }); }}>{sec.name}</MenuItem>)}
+              </Menu>
+            </span>}
+            </div>
           )}
 
           {collapsed ? (
@@ -398,8 +441,10 @@ export function Sidebar() {
                 </Group>
               )}
               {sections.map((sec) => (
-                <Group key={sec.id} id={sec.id} title={sec.name} count={bySection(sec.id).length} folded={!!folds[sec.id]} onFold={() => fold(sec.id)} onDropBot={(id) => void organise(id, { sectionId: sec.id, pinned: false })} actions={<SectionActions section={sec} />}>
-                  {bySection(sec.id).length ? rowsOf(bySection(sec.id)) : <p className="sidebar-drop-hint">{t("sections.empty")}</p>}
+                <Group key={sec.id} id={sec.id} title={sec.name} count={bySection(sec.id).length + (primary?.sectionId === sec.id ? 1 : 0)} folded={!!folds[sec.id]} onFold={() => fold(sec.id)} onDropBot={(id) => void organise(id, { sectionId: sec.id, pinned: false })} actions={<SectionActions section={sec} />}>
+                  {primary?.sectionId === sec.id && <button className="nav-row" onClick={() => selectBot(primary.id)}><Icon name="star" size={15} />{botTitle(primary)}</button>}
+                  {rowsOf(bySection(sec.id))}
+                  {!bySection(sec.id).length && primary?.sectionId !== sec.id && <p className="sidebar-drop-hint">{t("sections.empty")}</p>}
                 </Group>
               ))}
               {(team.length > 0 || sections.length > 0) && others.length > 0 && (

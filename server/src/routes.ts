@@ -732,12 +732,18 @@ api.post("/bots/:id/duplicate", async (c) => {
 
 // ── Sidebar sections ─────────────────────────────────────────────────────────
 api.get("/sections", (c) => c.json({ sections: sections.list(c.get("user").id) }));
+function projectInstructions(value: unknown): string | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== "string" || value.length > 4000) return fail(400, "Use up to 4000 characters for the project instructions.");
+  return value.trim();
+}
 api.post("/sections", async (c) => {
   const user = c.get("user");
-  const name = String((await body(c)).name ?? "").trim();
+  const b = await body(c);
+  const name = String(b.name ?? "").trim();
   if (!name) fail(400, "Give the section a name.");
   if (sections.list(user.id).length >= 30) fail(409, "You already have 30 sections.");
-  const section = sections.create(user.id, name);
+  const section = sections.create(user.id, name, projectInstructions(b.instructions));
   emit(user.id, { type: "sections" });
   return c.json({ section });
 });
@@ -747,7 +753,7 @@ api.patch("/sections/:id", async (c) => {
   const b = await body(c);
   if (b.name !== undefined && !String(b.name).trim()) fail(400, "Give the section a name.");
   const pos = b.position === undefined || b.position === null ? undefined : Number(b.position);
-  sections.update(cur.id, { name: b.name === undefined ? undefined : String(b.name), position: pos !== undefined && Number.isFinite(pos) ? pos : undefined });
+  sections.update(cur.id, { name: b.name === undefined ? undefined : String(b.name), position: pos !== undefined && Number.isFinite(pos) ? pos : undefined, instructions: projectInstructions(b.instructions) });
   emit(user.id, { type: "sections" });
   return c.json({ section: sections.owned(user.id, cur.id) });
 });

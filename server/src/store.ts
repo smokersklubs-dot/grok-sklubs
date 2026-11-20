@@ -344,17 +344,18 @@ export const bots = {
 };
 
 // ── Sidebar sections ─────────────────────────────────────────────────────────
-const toSection = (r: any): BotSection => ({ id: r.id, name: r.name, position: r.position, createdAt: r.created_at, paused: pauses.sectionPaused(r.user_id, r.id) });
+const toSection = (r: any): BotSection => ({ id: r.id, name: r.name, position: r.position, createdAt: r.created_at, paused: pauses.sectionPaused(r.user_id, r.id), instructions: r.instructions });
 export const sections = {
   list: (userId: string) => q.all("SELECT * FROM bot_sections WHERE user_id = ? ORDER BY position, created_at", userId).map(toSection),
   owned(userId: string, id: string) { const r = q.get("SELECT * FROM bot_sections WHERE id = ? AND user_id = ?", id, userId); return r ? toSection(r) : null; },
-  create(userId: string, name: string): BotSection {
+  create(userId: string, name: string, instructions = ""): BotSection {
     const id = newId("sec");
     const pos = (q.get<{ p: number | null }>("SELECT MAX(position) AS p FROM bot_sections WHERE user_id = ?", userId)?.p ?? -1) + 1;
-    q.run("INSERT INTO bot_sections (id, user_id, name, position, created_at) VALUES (?, ?, ?, ?, ?)", id, userId, clip(name.trim(), 40), pos, now());
+    q.run("INSERT INTO bot_sections (id, user_id, name, position, created_at, instructions) VALUES (?, ?, ?, ?, ?, ?)", id, userId, clip(name.trim(), 40), pos, now(), instructions);
     return sections.owned(userId, id)!;
   },
-  update(id: string, f: { name?: string; position?: number }) {
+  update(id: string, f: { name?: string; position?: number; instructions?: string }) {
+    if (f.instructions !== undefined) q.run("UPDATE bot_sections SET instructions = ? WHERE id = ?", f.instructions, id);
     if (f.name !== undefined) q.run("UPDATE bot_sections SET name = ? WHERE id = ?", clip(f.name.trim(), 40), id);
     if (f.position !== undefined) q.run("UPDATE bot_sections SET position = ? WHERE id = ?", Math.max(0, Math.round(f.position)), id);
   },

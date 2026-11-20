@@ -470,6 +470,7 @@ test("Pause (agent/pause.ts): owner only — B and V get 404 on A's bots and sec
       }
     }
     assert.equal((await call(api, who, "POST", "/sections/a_section/pause", {})).status, 404);
+    assert.equal((await call(api, who, "PATCH", "/sections/a_section", { instructions: "outside" })).status, 404);
     // Their own "pause everything" and their own state: nothing of A's.
     assert.equal((await call(api, who, "POST", "/pauses/all", { paused: true })).status, 200);
     const mine = await call(api, who, "GET", "/pauses");

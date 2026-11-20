@@ -229,7 +229,7 @@ export interface Bot {
 }
 
 /** A sidebar section the user created to file bots under. `paused`: the owner paused the whole section (pauses.ts). */
-export interface BotSection { id: string; name: string; position: number; createdAt: number; paused: boolean }
+export interface BotSection { id: string; name: string; position: number; createdAt: number; paused: boolean; instructions?: string }
 
 /**
  * Why a bot is paused (pauses.ts). `by`: the widest pause that holds it — "all" (every bot of the account), "section"

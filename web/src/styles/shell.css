@@ -37,6 +37,8 @@
 
 .primary-tile { display: flex; flex-direction: column; align-items: center; gap: 3px; width: 100%; padding: 16px 12px 12px; border-radius: var(--r-lg); text-align: center; flex: none; }
 .primary-tile:hover { background: var(--hover); }
+.primary-project-wrap { position: relative; flex: none; }
+.primary-project-menu { position: absolute; top: 3px; right: 3px; }
 .primary-tile.is-active { background: var(--surface); box-shadow: var(--shadow-sm), 0 0 0 1px var(--border); }
 .primary-tile .bot-row-avatar { margin-bottom: 6px; }
 .primary-tile-name { font-weight: 650; font-size: 14.5px; }

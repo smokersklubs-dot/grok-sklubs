@@ -46,7 +46,8 @@ const { screen, initComputer, browserAvailable } = await import("../src/computer
 await initComputer();
 /** Screen tools exist only where bots have a screen (a browser engine here; the screen itself is stubbed below). */
 const noScreen = !browserAvailable() && "no browser engine installed";
-const { vault, policies } = await import("../src/store.js");
+const { vault, policies, bots, users } = await import("../src/store.js");
+const { buildSystemPrompt } = await import("../src/agent/prompt.js");
 const { unseal } = await import("../src/auth.js");
 const { q } = await import("../src/db.js");
 const { encryptPush, vapidHeader, inQuietHours, DEFAULT_PUSH } = await import("../src/push.js");
@@ -435,8 +436,14 @@ test("organise: sections, pin, hide, move, mark unread", async () => {
 
   let b = (await call("PATCH", `/bots/${other.id}`, { pinned: true, sectionId: sales.id })).json.bot;
   assert.deepEqual([b.pinned, b.sectionId], [true, sales.id]);
+  const note = "Présenter la prochaine campagne dans un tableau chronologique.";
+  assert.equal((await call("PATCH", `/sections/${sales.id}`, { instructions: note })).json.section.instructions, note);
+  assert.equal((await call("PATCH", `/sections/${sales.id}`, { instructions: "x".repeat(4001) })).status, 400);
+  const promptFor = (id: string) => buildSystemPrompt(bots.byId(id)!, users.byId(userId)!, { browser: false, shell: false, connectorNames: [] });
+  assert.ok(promptFor(other.id).includes(note));
   b = (await call("PATCH", `/bots/${other.id}`, { sectionId: "sec_not_mine" })).json.bot;
   assert.equal(b.sectionId, null, "only the user's own sections");
+  assert.ok(!promptFor(other.id).includes(note), "leaving the project removes its instructions");
   await call("PATCH", `/bots/${other.id}`, { sectionId: sales.id, listHidden: true });
   b = (await call("GET", "/bots")).json.bots.find((x: Bot) => x.id === other.id);
   assert.equal(b.listHidden, true, "a hidden bot is still listed (under Hidden) and still works");

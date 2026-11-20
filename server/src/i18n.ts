@@ -87,6 +87,7 @@ const FR: Record<string, string> = {
   // Irreversible actions (agent/irreversible.ts): the reason under "Action irréversible :" on an approval card.
   "a message or an email cannot be taken back once it is sent.": "un message ou un e-mail envoyé ne peut pas être repris.",
   "a payment cannot be undone from here.": "un paiement ne peut pas être annulé d'ici.",
+  "Use up to 4000 characters for the project instructions.": "Les consignes du projet peuvent contenir jusqu’à 4 000 caractères.",
   "placing this phone call contacts the recipient and may incur a charge.": "cet appel contacte son destinataire et peut être facturé.",
   "this tool can run actions in your connected accounts.": "cet outil peut exécuter des actions sur tes comptes connectés.",
   "what is deleted cannot be recovered.": "ce qui est supprimé ne peut pas être récupéré.",
