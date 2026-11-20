@@ -30,6 +30,7 @@ const g = {
 };
 const m = { nextUser: "", codes: new Map<string, { challenge: string; user: string }>(), tokens: new Map<string, string>(), tokenBodies: [] as Record<string, string>[], mail: [] as (Mail & { seq: number })[], seq: 0, sent: [] as any[], events: [] as Ev[], deltaCalls: [] as string[] };
 const sl = {
+  identityError: "",
   codes: new Set<string>(), authorizeParams: [] as URLSearchParams[], basic: [] as string[], token: "xoxb-bot-SECRETVALUE", posted: [] as any[], reactions: [] as any[], revoked: 0,
   history: { C0GENERAL1: [] as any[], D0DIRECT01: [] as any[] } as Record<string, any[]>, opens: 0,
 };
@@ -164,6 +165,7 @@ const local = createServer(async (req: IncomingMessage, res: ServerResponse) => 
     }
     if (method === "apps.connections.open") { sl.opens += 1; return bearer === SECRET.xapp ? json({ ok: true, url: `ws://127.0.0.1:${wsPort}/link?ticket=1` }) : json({ ok: false, error: "invalid_auth" }); }
     if (bearer !== sl.token) return json({ ok: false, error: "invalid_auth" });
+    if (method === "auth.test") return sl.identityError ? json({ ok: false, error: sl.identityError }) : json({ ok: true, team: "Acme live", user: "helper", url: "https://example.slack.com/" });
     if (method === "auth.revoke") { sl.revoked += 1; return json({ ok: true, revoked: true }); }
     if (method === "conversations.list") return json({ ok: true, channels: String(params.types).includes("public_channel") ? [{ id: "C0GENERAL1", name: "general", is_member: true }, { id: "D0DIRECT01", is_im: true, user: "UALICE" }] : [{ id: "D0DIRECT01", is_im: true, user: "UALICE" }], response_metadata: { next_cursor: "" } });
     if (method === "conversations.history") {
@@ -565,6 +567,17 @@ test("Slack: OAuth with the client secret (no PKCE), tools, and the new-message 
   assert.equal((await signIn(start.json.authorizeUrl)).status, 200);
   assert.equal(sl.basic.at(-1), `Basic ${Buffer.from(`s-client:${SECRET.slack}`).toString("base64")}`);
   assert.equal((await accountsList()).find((a) => a.id === slackAcc).identity, "Acme");
+  const verify = () => call("POST", `/native/accounts/${slackAcc}/slack-check`, {});
+  const checked = await verify();
+  assert.equal(checked.status, 200, checked.text);
+  assert.deepEqual(checked.json, { workspace: "Acme live", bot: "helper", checkedAt: checked.json.checkedAt });
+  assert.ok(Number.isSafeInteger(checked.json.checkedAt));
+  assert.equal(sl.posted.length, 0);
+  assert.equal((await call("POST", `/native/accounts/${perso}/slack-check`, {})).status, 404);
+  sl.identityError = "service_unavailable";
+  assert.equal((await verify()).status, 502);
+  assert.equal((await accountsList()).find((a) => a.id === slackAcc).status, "ready");
+  sl.identityError = "";
 
   // Tools: reading is free, posting asks.
   const ts0 = (Date.now() / 1000 - 600).toFixed(6);
@@ -636,6 +649,11 @@ test("disconnect revokes at the vendor, forgets the tokens, pauses bound routine
   const names = requests[before].tools.map((t) => t.name);
   assert.equal(names.some((n) => n.startsWith("gmail_perso__")), false);
   assert.ok(names.some((n) => n.startsWith("gmail_pro__")), "the other account stays");
+  sl.identityError = "token_revoked";
+  const expired = await call("POST", `/native/accounts/${slackAcc}/slack-check`, {});
+  assert.equal(expired.status, 409, expired.text);
+  assert.equal((await accountsList()).find((a) => a.id === slackAcc).status, "needs_auth");
+  sl.identityError = "";
   assert.equal((await call("DELETE", `/native/accounts/${slackAcc}`)).status, 200);
   assert.equal(sl.revoked, 1);
 });

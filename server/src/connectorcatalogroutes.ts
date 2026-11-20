@@ -3,12 +3,33 @@ import type { Hono } from "hono";
 import { catalogFor } from "./catalog.js";
 import { connectors, oauthRedirectUri } from "./connectors.js";
 import { registerGithubApp } from "./githubapp.js";
+import { accounts, NativeAuthError } from "./native/accounts.js";
+import { slack } from "./native/tools.js";
 import { searchPublicRepositories } from "./githubsearch.js";
 import { isGithubConnector, repositoryName } from "./clientshared/chatmentions.js";
 
 export function registerConnectorCatalog(api: Hono<any>) {
   registerReader(api);
   registerGithubApp(api, connectors, oauthRedirectUri());
+  api.post("/native/accounts/:id/slack-check", async c => {
+    const owner = c.get("user");
+    const account = accounts.owned(owner.id, c.req.param("id"));
+    if (!account || account.app !== "slack") return c.notFound();
+    const fr = owner.locale === "fr";
+    const reconnect = fr ? "Reconnecte ce compte Slack pour vérifier son accès." : "Reconnect this Slack account to check its access.";
+    c.header("Cache-Control", "no-store");
+    if (account.status !== "ready") return c.json({ error: reconnect }, 409);
+    try {
+      const identity = await slack(account, "auth.test", {}, true);
+      const workspace = identity.team || identity.team_id;
+      const bot = identity.user || identity.user_id;
+      if (typeof workspace !== "string" || typeof bot !== "string") throw new Error("Incomplete Slack identity");
+      return c.json({ workspace, bot, checkedAt: Date.now() });
+    } catch (err) {
+      if (err instanceof NativeAuthError) return c.json({ error: reconnect }, 409);
+      return c.json({ error: fr ? "Impossible de vérifier la connexion auprès de Slack. Réessaie dans un instant." : "Slack could not verify the connection. Try again shortly." }, 502);
+    }
+  });
   api.post("/connectors/github/account-search", async c => {
     c.header("Cache-Control", "private, no-store");
     const body = await c.req.json().catch(() => null);

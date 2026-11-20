@@ -217,6 +217,20 @@ export function NativeAccountRow({ acc }: { acc: NativeAccount }) {
   const loadNative = useStore((s) => s.loadNative);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [check, setCheck] = useState<{ workspace: string; bot: string; checkedAt: number } | null>(null);
+  const verifySlack = async () => {
+    setBusy(true);
+    setCheck(null);
+    setError(null);
+    try {
+      setCheck(await api<{ workspace: string; bot: string; checkedAt: number }>("POST", `/native/accounts/${acc.id}/slack-check`, {}));
+    } catch (err) {
+      setError(errText(err));
+      await loadNative();
+    } finally {
+      setBusy(false);
+    }
+  };
   const signIn = async () => {
     const win = openSignInWindow();
     setBusy(true);
@@ -258,6 +272,12 @@ export function NativeAccountRow({ acc }: { acc: NativeAccount }) {
         )}
         <ConfirmButton className="btn btn-small btn-ghost-danger" label={t("native.disconnect")} confirmLabel={t("native.confirmDisconnect")} busyLabel={t("connector.removing")} onConfirm={remove} />
       </div>
+      {acc.app === "slack" && !needs && (
+        <div className="connector-note slack-check">
+          <button type="button" className="btn btn-small" disabled={busy} onClick={() => void verifySlack()}>{busy ? t("native.slackChecking") : t("native.slackCheck")}</button>
+          <span className="field-hint" role="status">{check && t("native.slackVerified", { workspace: check.workspace, bot: check.bot, time: new Date(check.checkedAt).toLocaleTimeString() })}</span>
+        </div>
+      )}
       {needs && <p className="field-hint connector-note">{acc.identity ? t("native.needsAuthHint") : t("native.pendingHint")}</p>}
       <ErrorNote>{error}</ErrorNote>
     </li>

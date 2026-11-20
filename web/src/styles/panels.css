@@ -17,6 +17,7 @@
 .tool-list li { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; font-size: 12.5px; }
 .tool-desc { flex-basis: 100%; color: var(--text-2); overflow-wrap: anywhere; }
 .connector-note { display: flex; align-items: center; gap: 6px; margin-left: 44px; }
+.slack-check { flex-wrap: wrap; overflow-wrap: anywhere; }
 .oauth-client { display: flex; flex-direction: column; gap: 10px; }
 .connector > .oauth-client { margin-left: 44px; padding: 10px 12px; border-radius: var(--r-md); background: var(--surface-2); }
 .oauth-client .form-cols { grid-template-columns: 1fr 1fr; }

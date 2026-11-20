@@ -17,17 +17,22 @@ Chaque carte montre le nom de la compétence, à quoi elle sert, d'où elle vien
 | Méthode de travail | écrite pour Sklubot | MIT (celle du projet) | français + anglais |
 | Pages soignées (comme des artefacts) | écrite pour Sklubot | MIT | français + anglais |
 | Design de marque | écrite pour Sklubot | MIT | français + anglais |
+| Réponses courtes en conversation | adaptée de Hermes Bot Kit | MIT | français + anglais |
+| Suivi du travail dans le chat | adaptée de Hermes Bot Kit | MIT | français + anglais |
+| E-mails à relire avant envoi | adaptée de Hermes Bot Kit | MIT | français + anglais |
 | Design soigné (pages web) | adaptée de `anthropics/skills` (frontend-design) | Apache-2.0 | anglais |
 | Affiches et visuels (PNG, PDF) | adaptée de `anthropics/skills` (canvas-design) | Apache-2.0 | anglais |
 | Thèmes de couleurs | adaptée de `anthropics/skills` (theme-factory) | Apache-2.0 | anglais |
 
-Les trois compétences adaptées viennent du dépôt public github.com/anthropics/skills, dont le dossier de chaque compétence contient la licence Apache 2.0. Elles sont rangées dans `server/skills-library/<nom>/` avec leur `LICENSE.txt` d'origine (inchangé), un fichier `NOTICE` (« © Anthropic, PBC — Apache License 2.0, from github.com/anthropics/skills ») et la liste des modifications faites pour Sklubot, comme la licence l'exige. Aucun script, police, image ou PDF de ces dossiers n'est inclus : seulement le texte.
+Les trois compétences de design en anglais viennent du dépôt public github.com/anthropics/skills, dont le dossier de chaque compétence contient la licence Apache 2.0. Elles sont rangées dans `server/skills-library/<nom>/` avec leur `LICENSE.txt` d'origine (inchangé), un fichier `NOTICE` (« © Anthropic, PBC — Apache License 2.0, from github.com/anthropics/skills ») et la liste des modifications faites pour Sklubot, comme la licence l'exige. Aucun script, police, image ou PDF de ces dossiers n'est inclus : seulement le texte.
 
 Pas incluses, et pourquoi :
 - *brand-guidelines* : c'est la charte graphique d'Anthropic elle-même ; l'appliquer aux pages de tes clients serait utiliser la marque d'un autre. Remplacée par « Design de marque », qui applique **ta** marque.
 - *web-artifacts-builder* : repose sur des scripts propres à claude.ai ; « Pages soignées » couvre le même besoin avec les outils de Sklubot.
 - *algorithmic-art* : dépend d'un gabarit de 20 ko (avec la marque Anthropic) que la compétence ne peut pas emporter.
 - Les compétences de documents du même dépôt (*docx, pdf, pptx, xlsx*) ne faisaient pas partie de la sélection.
+
+Les trois adaptations de [Hermes Bot Kit](https://github.com/thomasbek3/hermes-bot-kit/tree/efba9156f49bf69ae763f67135218cf890275083) réutilisent les instructions du kit avec les outils de Sklubot. Chaque fiche inclut la licence MIT et le crédit de Thomas Bekkers. Les brouillons sont préparés dans le compte Gmail ou Outlook choisi. La connexion Slack se vérifie dans **Réglages → Applis**, sur la ligne du compte Slack connecté.
 
 ## 2. Importer des compétences depuis GitHub
 

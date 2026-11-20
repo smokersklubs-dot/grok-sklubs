@@ -2,7 +2,7 @@
  * « Bibliothèque de compétences » (skillslibrary.ts, skillsgithub.ts, docs/COMPETENCES.md): wire types shared with the
  * web app (type-only on the web side).
  */
-export type LibraryOrigin = "sklubot" | "anthropic";
+export type LibraryOrigin = "sklubot" | "anthropic" | "hermes";
 /** One skill of the bundled library, as the gallery shows it. */
 export interface LibrarySkill {
   id: string; origin: LibraryOrigin; licence: string; source: string; title: string; summary: string;

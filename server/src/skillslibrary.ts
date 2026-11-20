@@ -8,10 +8,8 @@ import { audit, bots, skills, type BotRecord } from "./store.js";
  * « Bibliothèque de compétences » (docs/COMPETENCES.md): skills bundled with Sklubot, in server/skills-library/.
  *
  * Each skill is a folder with SKILL.md (English), optionally SKILL.fr.md (French), LICENSE.txt and NOTICE, listed in
- * catalog.json. Two origins: Sklubot's own skills (MIT, the project's licence), and skills adapted from the public
- * repository github.com/anthropics/skills, Apache-2.0 only (their LICENSE.txt is kept unchanged and their NOTICE and
- * the first line of their text say what was changed, as Apache-2.0 §4 asks). A folder without its licence or notice is
- * not offered. The texts are read once at startup.
+ * catalog.json. Bundled third-party adaptations keep the upstream licence, source and attribution. A folder without
+ * its licence or notice is not offered. The texts are read once at startup.
  *
  * Adding one to a bot creates an ordinary skill (active: the owner read the card and chose it), named after the skill's
  * title in the account's language. Adding it again changes nothing (a bot that already has a skill of that name, in
@@ -41,13 +39,17 @@ function load(): Entry[] {
   const out: Entry[] = [];
   for (const raw of Array.isArray(catalog.skills) ? catalog.skills : []) {
     const e = raw as Record<string, any>;
-    if (typeof e?.id !== "string" || !ID.test(e.id) || (e.origin !== "sklubot" && e.origin !== "anthropic")) continue;
+    if (typeof e?.id !== "string" || !ID.test(e.id) || !["sklubot", "anthropic", "hermes"].includes(e.origin)) continue;
     const dir = new URL(`${e.id}/`, DIR);
     const file = (n: string) => new URL(n, dir);
     // The licence and its notice travel with the text, or the skill is not offered.
     if (!existsSync(file("SKILL.md")) || !existsSync(file("LICENSE.txt")) || !existsSync(file("NOTICE"))) { console.warn(`[skills-library] ${e.id}: SKILL.md, LICENSE.txt and NOTICE are required`); continue; }
     if (e.origin === "anthropic" && (e.licence !== "Apache-2.0" || !/Apache License\s+Version 2\.0/.test(readFileSync(file("LICENSE.txt"), "utf8")))) { console.warn(`[skills-library] ${e.id}: only Apache-2.0 skills are bundled`); continue; }
     const text: Entry["text"] = {};
+    if (e.origin === "hermes" && (e.licence !== "MIT" || !readFileSync(file("LICENSE.txt"), "utf8").includes("Copyright (c) 2026 Thomas Bekkers"))) {
+      console.warn(`[skills-library] ${e.id}: expected the Hermes Bot Kit MIT licence`);
+      continue;
+    }
     for (const [loc, name] of [["en", "SKILL.md"], ["fr", "SKILL.fr.md"]] as const) {
       if (!existsSync(file(name))) continue;
       const s = splitSkill(readFileSync(file(name), "utf8"));

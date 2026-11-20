@@ -46,7 +46,7 @@ function LibraryCard({ skill, onAdded }: { skill: LibrarySkill; onAdded: () => v
         <div className="skl-card-title">
           <h3>{skill.title}</h3>
           <p className="skl-meta">
-            <span className={`skl-badge is-${skill.origin}`}>{t(skill.origin === "sklubot" ? "skl.origin.sklubot" : "skl.origin.anthropic")}</span>
+            <span className={`skl-badge is-${skill.origin}`}>{t(`skl.origin.${skill.origin}`)}</span>
             <span>{t("skl.licence", { licence: skill.licence })}</span>
             {skill.language !== "fr" && <span>{t("skl.inEnglish")}</span>}
           </p>

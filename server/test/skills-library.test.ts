@@ -93,7 +93,7 @@ gh.setGithubFetch(async (url) => {
 
 test("the bundled pack loads each skill with its licence and notice and marks adapted skills", () => {
   const entries = lib.libraryEntries();
-  assert.deepEqual(entries.map((e) => e.id).sort(), ["canvas-design", "design-de-marque", "frontend-design", "methode-de-travail", "pages-soignees", "studio-animation", "theme-factory", "video-github"]);
+  assert.deepEqual(entries.map((e) => e.id).sort(), ["brouillon-email", "canvas-design", "cartes-de-suivi", "conversation-courte", "design-de-marque", "frontend-design", "methode-de-travail", "pages-soignees", "studio-animation", "theme-factory", "video-github"]);
   const dir = new URL("../skills-library/", import.meta.url);
   for (const e of entries) {
     const lic = readFileSync(new URL(`${e.id}/LICENSE.txt`, dir), "utf8");
@@ -105,6 +105,12 @@ test("the bundled pack loads each skill with its licence and notice and marks ad
       assert.match(e.text.en!.body, /^> .*© Anthropic, PBC — Apache License 2\.0.*Modified for Sklubot/);
       assert.equal(e.licence, "Apache-2.0");
       assert.match(e.source, /^https:\/\/github\.com\/anthropics\/skills\/tree\/[0-9a-f]{40}\/skills\//);
+    } else if (e.origin === "hermes") {
+      assert.equal(e.licence, "MIT");
+      assert.match(lic, /Copyright \(c\) 2026 Thomas Bekkers/);
+      assert.match(notice, /Modified for Sklubot/);
+      assert.match(e.source, /^https:\/\/github\.com\/thomasbek3\/hermes-bot-kit\/tree\/[0-9a-f]{40}\//);
+      assert.ok(e.text.fr && e.text.en);
     } else {
       assert.match(lic, /^MIT License/);
       assert.match(notice, /original Sklubot skill/);
@@ -132,6 +138,17 @@ test("adding from the library: in the account's language, idempotent, on its own
   assert.equal(list.status, 200, list.text);
   assert.equal(list.json.skills.length, lib.libraryEntries().length);
   const animation = list.json.skills.find((s: any) => s.id === "studio-animation");
+  for (const id of ["brouillon-email", "cartes-de-suivi", "conversation-courte"]) {
+    const card = list.json.skills.find((s: any) => s.id === id);
+    assert.equal(card.origin, "hermes");
+    assert.equal(card.language, "fr");
+    const added = await A("POST", `/skills-library/${id}/add`, { target: ids.a2 });
+    assert.equal(added.status, 200, added.text);
+    assert.equal(added.json.report.added.length, 1);
+    assert.equal(skills.list(ids.a2).find(s => s.name === card.title && !s.draft)?.body, card.body);
+    assert.equal((await A("POST", `/skills-library/${id}/add`, { target: ids.a2 })).json.report.already.length, 1);
+    assert.equal((await B("POST", `/skills-library/${id}/add`, { target: ids.a2 })).status, 404);
+  }
   assert.equal(animation.title, "Animation vidéo");
   assert.equal(animation.language, "fr");
   for (const technique of studioTechniques) assert.ok(animation.body.includes(technique));
