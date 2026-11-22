@@ -1,0 +1,23 @@
+/* « Règles de sécurité » of a linked computer (RelayGuardPanel.tsx). */
+.relay-guard-details { margin-top: 10px; border-top: 1px solid var(--border); padding-top: 8px; }
+.relay-guard-details > summary { cursor: pointer; display: inline-flex; align-items: center; gap: 6px; font-weight: 600; font-size: 14px; min-height: 32px; }
+.relay-guard { display: flex; flex-direction: column; gap: 12px; margin-top: 8px; min-width: 0; }
+.relay-guard-terminal { padding: 10px 12px; border-radius: var(--r-md); background: var(--surface-2); }
+.relay-guard-terminal.is-on { outline: 1px solid var(--border); }
+.relay-guard-row { display: flex; align-items: center; gap: 8px; }
+.relay-guard-label { flex: 1; min-width: 0; font-weight: 600; font-size: 14px; }
+.relay-guard-warn { display: flex; gap: 6px; align-items: flex-start; margin: 6px 0 0; color: var(--text-2); }
+.relay-guard-terminal.is-on .relay-guard-warn { color: var(--text-2); }
+.relay-guard-warn svg { flex: none; margin-top: 2px; }
+.relay-guard-keep { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.relay-guard-keep textarea { width: 100%; box-sizing: border-box; resize: vertical; }
+.relay-guard-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
+.relay-guard-saved { display: inline-flex; gap: 4px; align-items: center; color: var(--ok); }
+.relay-guard-list > summary { cursor: pointer; font-size: 14px; min-height: 32px; display: flex; align-items: center; }
+.relay-guard-group { margin-top: 8px; }
+.relay-guard-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.relay-guard-keys { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.relay-guard-keys li { display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; min-width: 0; }
+.relay-guard-keys code { font-family: var(--mono); font-size: 12px; padding: 1px 6px; border-radius: var(--r-sm, 6px); background: var(--surface-2); }
+.relay-guard-timeout { max-width: 140px; }
+.relay-guard-floor { margin: 6px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 2px; }

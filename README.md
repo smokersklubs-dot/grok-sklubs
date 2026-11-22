@@ -100,7 +100,11 @@ ne dit encore rien au bout de `FIRST_REPLY_RESCUE_SEC` (20 s) reçoit une ligne 
 Changer d'IA pour ce message, Vérifier la connexion) ; sans aucun progrès pendant `STALL_NOTICE_MIN` (5 min), une ligne
 « … semble bloqué » (Continuer d'attendre, Arrêter et reprendre). Une approbation, une question, une pause ou un outil
 en cours ne comptent jamais comme un silence ; un outil Claude Code / Codex dont le processus a disparu de l'ordinateur
-arrête le tour aussitôt, avec « Continuer ». La liste des modèles Codex proposés est lue
+arrête le tour aussitôt, avec « Continuer ». Un appel à un modèle par API qui ne répond pas (rien en
+`MODEL_CONNECT_TIMEOUT_SEC`, 180 s) ou qui se tait en cours de réponse (`MODEL_IDLE_TIMEOUT_SEC`, 180 s) est coupé et
+relancé tout seul, puis passe au modèle de secours ; s'il échoue encore, une carte dit quoi faire. Une demande d'accord
+n'expire plus : la carte attend ta réponse, même après un redémarrage, et un message tapé entre-temps est gardé pour
+après. La liste des modèles Codex proposés est lue
 dans Codex lui-même (`codex debug models`, gardée 10 min) ; `CODEX_MODELS` sert de secours.
 
 Sur la page du navigateur, un bot peut agir par **références d'éléments** plutôt que par pixels : `element_snapshot` liste

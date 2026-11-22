@@ -233,12 +233,12 @@ ou bien reprendre ses idées dans les outils natifs.
 
 ## À faire (classé)
 
-1. Corriger `open-browser.sh` / `dress.py --profile` : ne jamais effacer le verrou d'un navigateur vivant, ouvrir l'onglet par CDP — bug vérifié qui fausse lecture, références et relecture des clics engageants (S).
-2. Gérer les dialogues JavaScript dans `page-text.py` et `ELEMENTS_PY` + outil pour y répondre, sous approbation si engageant (S).
-3. Test réel « deux browser_open de suite », « alert() ouverte », « lien target=_blank », « iframe » dans `elements.test.ts` / `linux.test.ts` (S).
-4. Outil `browser_tabs` (lister, activer, fermer) et lecture de l'onglet vraiment actif (S).
-5. Attente intelligente après action (chargement + DOM stable) à la place des pauses fixes (M).
-6. Iframes dans `element_snapshot` (M).
+1. Corriger `open-browser.sh` / `dress.py --profile` : ne jamais effacer le verrou d'un navigateur vivant, ouvrir l'onglet par CDP — bug vérifié qui fausse lecture, références et relecture des clics engageants (S). — **FAIT (2026-11-22)** : onglet ouvert par CDP (`Page.navigate` ou `PUT /json/new`), verrou jamais effacé sous un navigateur vivant
+2. Gérer les dialogues JavaScript dans `page-text.py` et `ELEMENTS_PY` + outil pour y répondre, sous approbation si engageant (S). — **FAIT (2026-11-22)** : veilleur attaché aux onglets (`Page.javascriptDialogOpening`), message clair au lieu de la trace, `browser_dialog` (OK sous approbation, lié au dialogue)
+3. Test réel « deux browser_open de suite », « alert() ouverte », « lien target=_blank », « iframe » dans `elements.test.ts` / `linux.test.ts` (S). — **FAIT (2026-11-22)** : `server/test/browser-tabs.test.ts` (deux `browser_open`, alert/confirm, `target=_blank`, iframes, bouton couvert, coffre)
+4. Outil `browser_tabs` (lister, activer, fermer) et lecture de l'onglet vraiment actif (S). — **FAIT (2026-11-22)** : onglet actif = celui affiché (`document.visibilityState`), partout
+5. Attente intelligente après action (chargement + DOM stable) à la place des pauses fixes (M). — **FAIT (2026-11-22)** : PARTIEL : chargement + réseau calme (plafonné) après actions par référence, `browser_open`, dialogues et clics liés ; clics/frappes à l'écran ordinaires gardent leur pause
+6. Iframes dans `element_snapshot` (M). — **FAIT (2026-11-22)** : PARTIEL : même site listés, autre site signalés
 7. `element_fill` multi-champs et cases à cocher par valeur voulue (M).
 8. Résultat texte (sans capture) pour les actions par référence, captures réduites (M).
 9. `element_hover`, double-clic et Tab/Escape en fin de saisie par référence (S).

@@ -91,7 +91,7 @@ test("a French account gets French texts from the server and French-speaking bot
   assert.equal(routine.describe, "En semaine à 9 h 00");
   assert.ok((await rowsOf(bot.id)).some((r) => r.body.kind === "event" && r.body.text === "Routine créée : Point du matin — En semaine à 9 h 00"));
   assert.ok((await rowsOf(bot.id)).some((r) => r.body.kind === "step" && r.body.label === "Prépare une routine"));
-  assert.match(requests[requests.length - 1].system, /Write to the user in French/);
+  assert.match(requests[requests.length - 1].system, /in the conversation's language: the language of the user's latest clear message \((now: French|none yet: use French)\)/); // nod item 12
   assert.equal((await call("PUT", "/prefs", { locale: "en" })).json.user.locale, "en");
   assert.equal((await call("GET", `/bots/${bot.id}/routines`)).json.routines[0].describe, "Weekdays at 9:00 AM");
   await call("PUT", "/prefs", { locale: "fr" });

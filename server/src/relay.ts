@@ -279,7 +279,21 @@ function goOnline(conn: Conn, row: DeviceRow, rotate: boolean) {
   conn.send({ type: "welcome", v: 1, deviceId: row.id, serverName: serverName(row.user_id) });
   if (rotate) rotateToken(conn);
   announce(row.user_id);
+  for (const fn of onlineHooks()) { try { fn(row.user_id, row.id, conn.info.capabilities); } catch (err) { console.error("[relay] online hook", err); } }
 }
+
+/**
+ * Called each time a device comes online (relayguard.ts sends the owner's safety rules then). A hoisted function
+ * keeping its own list: relayguard.ts may register while this module is still loading (import cycle through
+ * publicsignup/routes), so nothing here may sit in a `const` that is not initialised yet.
+ */
+type OnlineHook = (userId: string, deviceId: string, capabilities: string[]) => void;
+export function whenOnline(fn: OnlineHook) { onlineHooks().push(fn); }
+type OutputHook = (userId: string, deviceId: string, ref: string, stream: "stdout" | "stderr", text: string) => void;
+/** Called for each `shell.output` event (same hoisted pattern as whenOnline). */
+export function whenShellOutput(fn: OutputHook) { outputHooks().push(fn); }
+function outputHooks(): OutputHook[] { const f = whenShellOutput as unknown as { hooks?: OutputHook[] }; return (f.hooks ??= []); }
+function onlineHooks(): OnlineHook[] { const f = whenOnline as unknown as { hooks?: OnlineHook[] }; return (f.hooks ??= []); }
 
 function serverName(userId: string): string {
   const u = users.byId(userId);
@@ -419,7 +433,8 @@ export function relayRequest(deviceId: string, bot: RelayBot, op: string, args: 
   if (!conn || conn.phase !== "online") return Promise.resolve({ ok: false, code: "offline", message: "the computer is not connected" });
   if (!BOT_ID.test(bot.id)) return Promise.resolve({ ok: false, code: "invalid_args", message: "invalid bot id" });
   const id = `r${++reqSeq}`;
-  conn.lastBotId = bot.id;
+  // Sklubot's own requests (the owner's safety rules) are not a bot's.
+  if (bot.id !== "sklubot") conn.lastBotId = bot.id;
   return new Promise((resolve) => {
     const finish = (r: RelayResult) => { clearTimeout(timer); opts.signal?.removeEventListener("abort", onAbort); conn.pending.delete(id); resolve(r); };
     const onAbort = () => { if (op === "shell.run") conn.send({ type: "cancel", id }); finish({ ok: false, code: "stopped", message: "stopped" }); };
@@ -511,6 +526,9 @@ function onEvent(conn: Conn, msg: Json) {
       conn.locked = false;
       audit(user.id, "computer", tr(loc, "Control allowed again on {device}.", { device: label }));
       return announce(conn.userId);
+    case "shell.output": // a command's output as it comes (1.4): mycomputer.ts shows it in the bot's chat
+      for (const fn of outputHooks()) { try { fn(conn.userId, conn.deviceId, str(msg.ref, 64), msg.stream === "stderr" ? "stderr" : "stdout", typeof msg.text === "string" ? msg.text.slice(0, 64 * 1024) : ""); } catch (err) { console.error("[relay] output hook", err); } }
+      return;
     case "view.stopped": {
       if (conn.view && (conn.view.id === null || conn.view.id === msg.viewId)) {
         conn.view = null;

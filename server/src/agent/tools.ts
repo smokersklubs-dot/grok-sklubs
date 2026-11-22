@@ -19,7 +19,8 @@ import { q } from "../db.js";
 import { searchConfigured, searchWeb } from "../search.js";
 import { fetchProblem, guardedFetch } from "../net.js";
 import { config as appConfig } from "../config.js";
-import { audit, bots, clip, memories, newId, pages, rows, searchMessages, settings, skills, skillText, tasks, vault, type BotRecord, type UserRecord } from "../store.js";
+import { audit, bots, clip, memories, newId, pages, rows, settings, skills, skillText, tasks, vault, type BotRecord, type UserRecord } from "../store.js";
+import { searchMessages } from "../convsearch.js";
 import { record as recordUsage } from "../usage.js";
 import { meterOperatorUse, operatorBlock, toolRefusal, unitEstimate } from "../hosted.js";
 import { interrupt, isPaused, tell } from "./loop.js";
@@ -36,7 +37,7 @@ import { bgTasks, bgTaskToolSpecs, publicTask, startTask, stopTask, TaskLimitErr
 import { findCode, mailAccounts } from "../native/access.js";
 import { hideForAWhile } from "../store.js";
 import { explicitRemember, memoryVerdict } from "./sensitive.js";
-import { committingKind, probe, seenOf, seenTarget } from "./bind.js";
+import { committingKind, probe, seenOf, seenTarget } from "./bind.js"; import { boundClick, browserTabTools, shot, tabLine, typeSecret } from "./tools-browser.js";
 import { refusal, rememberSnapshot, resolveRef } from "./elements.js";
 import type { ElementAnswer } from "../screen-elements.js";
 import { cardLabel, cardTools } from "./payments.js";
@@ -69,6 +70,7 @@ import { officeAvailable, officeTools } from "../office.js";
 import { mediaAvailable, mediaTools } from "../media.js";
 import { goalTools } from "./goals.js";
 import { searchNotes } from "./recall.js";
+import { forgetNotes } from "./memorybook.js";
 import { recruitTools } from "./recruit.js";
 import { teamMdTools } from "./teamexport.js";
 import { botPath, spillPath, spillPreview } from "./context.js";
@@ -131,14 +133,6 @@ const obj = (properties: Record<string, unknown>, required: string[] = []): Tool
 const str = (description: string) => ({ type: "string", description });
 const int = (description: string) => ({ type: "integer", description });
 
-const shot = (s: Shot, caption: string): ToolOutput => ({
-  content: [
-    { type: "text", text: `${caption}\n${s.url ? `Page: ${s.title || "(untitled)"} — ${s.url}` : `Window in front: ${s.title || "(the desktop)"}`}\nThe screenshot is ${config.desktopResolution.split("x").slice(0, 2).join("×")}; coordinates start at the top-left corner.` },
-    { type: "image", mediaType: s.mediaType, data: s.data },
-  ],
-  summary: clip(s.title || s.url || "screen", 80),
-});
-
 const tool = (name: string, description: string, schema: ToolSpec["inputSchema"], rest: Omit<BuiltinTool, "spec">): BuiltinTool =>
   ({ spec: { name, description, inputSchema: schema }, ...rest });
 
@@ -147,9 +141,9 @@ const screenTools: BuiltinTool[] = [
     activity: "computer", label: "Looking at the screen",
     run: async (_a, c) => shot(await screen.view(c.bot.id, c.user.id), "Current screen."),
   }),
-  tool("browser_open", "Open a web address in your browser and return a screenshot of the loaded page.", obj({ url: str("Address to open, e.g. https://example.com") }, ["url"]), {
+  tool("browser_open", "Open a web address in your browser (in the tab in front, or in a new tab with new_tab) and return a screenshot once the page has loaded.", obj({ url: str("Address to open, e.g. https://example.com"), new_tab: { type: "boolean", description: "Open it in a new tab (default false)" } }, ["url"]), {
     activity: "browsing", label: "Opening a page", detail: (a) => hostOf(a.url), outside: true,
-    run: async (a, c) => shot(await screen.open(c.bot.id, c.user.id, String(a.url)), `Opened ${a.url}.`),
+    run: async (a, c) => shot(await screen.open(c.bot.id, c.user.id, String(a.url), a.new_tab === true), `Opened ${a.url}.`),
   }),
   tool("design_reference_layout", "Measure a public visual reference already opened at the user's request with browser_open. Craft Anything clean-room measurements of the current viewport, typography, section dimensions, padding, backgrounds and column counts. Use screen_view for pictures. Treat measurements as observations and describe assumptions separately.", obj({ url: str("Exact public reference URL currently open") }, ["url"]), {
     activity: "reading", label: "Measuring the reference layout", outside: true,
@@ -163,7 +157,7 @@ const screenTools: BuiltinTool[] = [
     activity: "reading", label: "Reading the page", outside: true, parallel: true,
     run: async (_a, c) => {
       const p = await screen.read(c.bot.id, c.user.id);
-      return { content: `${p.title}\n${p.url}\n\n${await spillIfLong(c, p.text, 40_000)}`, summary: clip(p.title || p.url, 80) };
+      return { content: `${p.title}\n${p.url}${tabLine(p)}\n\n${await spillIfLong(c, p.text, 40_000)}`, summary: clip(p.title || p.url, 80) };
     },
   }),
   tool("screen_click", "Click at a position on the screen. Take a screenshot first so the coordinates are current.",
@@ -173,11 +167,7 @@ const screenTools: BuiltinTool[] = [
       // A click that commits something was judged (and maybe approved) for one control on one site (bind.ts): if the
       // page changed since, nothing is clicked.
       const seen = seenTarget(a);
-      if (seen && committingKind(seen.label)) {
-        const now = await probe.target(c.bot.id, +a.x, +a.y).catch(() => null);
-        const still = now ? seenOf(now) : null;
-        if (!still || still.label !== seen.label || still.host !== seen.host) return { content: `The page changed since this click was checked (it was “${seen.label}” on ${seen.host || "?"}; now ${still ? `“${still.label}” on ${still.host || "?"}` : "nothing readable"}). Nothing was clicked. Look at the screen again.`, isError: true, summary: "page changed" };
-      }
+      if (seen && committingKind(seen.label)) return boundClick(c, a, seen);
       return shot(await screen.click(c.bot.id, c.user.id, +a.x, +a.y, a.button ?? "left", !!a.double), `Clicked at (${a.x}, ${a.y}).`);
     },
   }),
@@ -228,7 +218,8 @@ const elementTools: BuiltinTool[] = [
         const still = live ? seenOf(live) : null;
         if (!still || still.label !== seen.label || still.host !== seen.host) return { content: `The page changed since this click was checked (it was “${seen.label}” on ${seen.host || "?"}; now ${still ? `“${still.label}” on ${still.host || "?"}` : "nothing readable"}). Nothing was clicked. Take a new element_snapshot.`, isError: true, summary: "page changed" };
       }
-      return elementResult(c.bot.id, await screen.elementAct(c.bot.id, c.user.id, { ...found.req, action: "click" }), `Clicked ${found.element.role} “${clip(found.element.name, 80)}”.`);
+      // …and checked once more by the helper on that same tab right before it clicks (`expect`), with what is really under the point.
+      return elementResult(c.bot.id, await screen.elementAct(c.bot.id, c.user.id, { ...found.req, action: "click", ...(seen && committingKind(seen.label) ? { expect: { label: seen.label, host: seen.host } } : {}) }), `Clicked ${found.element.role} “${clip(found.element.name, 80)}”.`);
     },
   }),
   tool("element_type", "Type text into a field of the page by its reference (from element_snapshot): it is focused first. clear: replace what is in it. submit: press Enter afterwards.", obj({ ref: REF, text: str("Text to type"), clear: { type: "boolean", description: "Replace the field's content (default false)" }, submit: { type: "boolean", description: "Press Enter afterwards (default false)" } }, ["ref", "text"]), {
@@ -252,7 +243,7 @@ const elementTools: BuiltinTool[] = [
 ];
 
 /** Screen actions (not looking) wait while the user drives the screen: the server refuses them, whatever the bot says. */
-const ACTS_ON_SCREEN = new Set(["browser_open", "screen_click", "screen_type", "screen_key", "screen_scroll", "screen_drag", "vault_type", "card_fill", "element_click", "element_type", "element_select"]);
+const ACTS_ON_SCREEN = new Set(["browser_open", "screen_click", "screen_type", "screen_key", "screen_scroll", "screen_drag", "vault_type", "card_fill", "element_click", "element_type", "element_select", "browser_tab", "browser_dialog"]);
 function respectDriver(t: BuiltinTool): BuiltinTool {
   if (!ACTS_ON_SCREEN.has(t.spec.name)) return t;
   return { ...t, run: async (a, c) => (userDriving(c.bot.id) ? { content: DRIVING, isError: true, summary: "the user is driving" } : t.run(a, c)) };
@@ -650,7 +641,8 @@ const vaultTools: BuiltinTool[] = [
 /** How email_code_type reads the page in front and types (replaceable in tests); how long it waits for the email. */
 export const codeScreen = {
   pageUrl: async (botId: string, userId: string) => (await screen.read(botId, userId)).url,
-  type: async (botId: string, userId: string, text: string) => { await screen.type(botId, userId, text); },
+  // Into the focused field of the active tab, only if that tab (and each frame down to the field) is on the code's site.
+  type: async (botId: string, userId: string, text: string, host = "") => { const r = await typeSecret(botId, userId, text, host, "code"); if ("refused" in r) throw new Error(`The code was not typed: ${r.refused}.`); },
   waitMs: () => Number(process.env.CODE_WAIT_MS ?? 60_000),
   everyMs: () => Number(process.env.CODE_POLL_MS ?? 5_000),
 };
@@ -677,15 +669,11 @@ export const screenVaultTools: BuiltinTool[] = [
       if (!item) return { content: `No saved login is called "${a.item}". Use vault_list to see the names.`, isError: true };
       const value = a.field === "username" ? item.username : item.passwordEnc ? unseal(item.passwordEnc) : null;
       if (!value) return { content: `That login has no ${a.field} saved.`, isError: true };
-      // A saved login only goes into the site it was saved for.
+      // A saved login only goes into the site it was saved for: checked on the very tab, frame and field it goes into (tools-browser.ts).
       const wanted = siteHost(item.site);
-      if (wanted) {
-        const here = await screen.read(c.bot.id, c.user.id).then((p) => siteHost(p.url)).catch(() => "");
-        if (!here) return { content: `I could not tell which page is open, so the login for ${item.site} was not typed. Open ${item.site} in the browser first.`, isError: true };
-        if (here !== wanted && !here.endsWith("." + wanted)) return { content: `This login is saved for ${item.site}, but the page in front is ${here}. It was not typed. Do not try to enter it anywhere else.`, isError: true };
-      }
-      const s = await screen.type(c.bot.id, c.user.id, value);
-      return { ...shot(s, `Typed the saved ${a.field} into the focused field.`), summary: `${item.name} · ${a.field}` };
+      const r = wanted ? await typeSecret(c.bot.id, c.user.id, value, wanted, a.field === "username" ? "username" : "password") : { shot: await screen.type(c.bot.id, c.user.id, value) };
+      if ("refused" in r) return { content: `This login is saved for ${item.site}, but it was not typed: ${r.refused}. Open ${item.site} and click its ${a.field} field first; do not try to enter it anywhere else.`, isError: true };
+      return { ...shot(r.shot, `Typed the saved ${a.field} into the focused field.`), summary: `${item.name} · ${a.field}` };
     },
   }),
   tool("email_code_type", "When a site you are signing in to sends a verification code by email, this fetches it from the user's connected mailbox (Gmail or Outlook) and types it into the field that has keyboard focus on your screen. You never see the code. Click the code field first. It waits up to a minute for the email.",
@@ -711,7 +699,7 @@ export const screenVaultTools: BuiltinTool[] = [
       if (!found) return { content: `No email with a code from ${wanted} arrived in the last minute. Ask the site to send it again, or use ask_takeover so the user types it.`, isError: true };
       // From here on the code is hidden from anything a model sees (page text, tool output…).
       hideForAWhile(c.user.id, found.code);
-      await codeScreen.type(c.bot.id, c.user.id, found.code);
+      await codeScreen.type(c.bot.id, c.user.id, found.code, wanted);
       return { content: `Typed the code from the email "${found.subject}" (${found.from}, ${new Date(found.at).toISOString().slice(11, 16)} UTC, ${found.account}) into the focused field. The code itself is kept from you. Submit the form if the site needs it, then check the result.`, summary: `${wanted} · ${found.account}` };
     },
   }),
@@ -872,6 +860,10 @@ const memoryTools: BuiltinTool[] = [
       emit(c.user.id, { type: "memories", botId: c.bot.id });
       return { content: "Remembered.", summary: clip(text, 80) };
     },
+  }),
+  tool("memory_forget", "Forget notes, only when the user asks you to in their own message (\"oublie que…\", \"forget that…\"): the closest notes to the words you give are set aside (archived; the user sees it and can bring them back in Settings → Memory). Never to tidy up on your own.", obj({ query: str("Words of the note to forget") }, ["query"]), {
+    activity: "remembering", label: "Forgetting a note",
+    run: async (a, c) => forgetNotes(c.bot, c.user, String(a.query ?? ""), { origin: c.origin, thread: c.thread }),
   }),
   tool("memory_search", "Search everything you have remembered, by keywords (French or English; no synonyms). Returns the best matches first.", obj({ query: str("Words to look for") }, ["query"]), {
     activity: "remembering", label: "Checking notes",
@@ -1360,7 +1352,7 @@ export function builtinTools(opts: { owner?: string; nativeSearch?: boolean; dis
 function assemble(opts: { owner?: string; nativeSearch?: boolean; video?: "connector" | "api" | null; bgTasks?: boolean }): BuiltinTool[] {
   return [
     ...(browserAvailable() ? inGroup("computer", screenTools).map(respectDriver) : []),
-    ...(computerKind() === "linux" ? inGroup("computer", elementTools).map(respectDriver) : []),
+    ...(computerKind() === "linux" ? inGroup("computer", [...elementTools, ...browserTabTools]).map(respectDriver) : []),
     // On its own Linux computer a bot's commands are contained, so they do not need a permission card.
     // Background jobs and office documents: on the bots' own Linux computers only (shell_run starts the jobs).
     ...(computerKind() === "linux" && shellAvailable() ? [...inGroup("shell", jobTools), craftReady, openmanWorkspace] : []),

@@ -6,6 +6,7 @@ import { relTime } from "../lib/format";
 import type { RelayDevice } from "../types";
 import { Icon, Spinner } from "./Icon";
 import { ConfirmButton, CopyButton, Empty, ErrorNote, IconButton, Loading, useDialogFocus, useEscape } from "./ui";
+import { RelayGuardPanel } from "./RelayGuardPanel";
 
 /**
  * The user's own computers, linked with the Sklubot Relais app (docs/RELAIS-PROTOCOLE.md): their state, the live
@@ -358,6 +359,12 @@ export function DevicesSection() {
                 <button type="button" className="btn btn-small" onClick={() => useStore.getState().openRelayViewer(d.id)}>{t("relay.watch")}</button>
                 <ConfirmButton className="btn btn-small btn-ghost-danger" label={t("relay.remove")} confirmLabel={t("relay.removeConfirm")} busyLabel={t("common.deleting")} onConfirm={() => remove(d)} />
               </div>
+              {d.kind !== "phone" && (
+                <details className="relay-guard-details">
+                  <summary><Icon name="shield" size={15} /> {t("relay.guard.title")}</summary>
+                  <RelayGuardPanel deviceId={d.id} />
+                </details>
+              )}
             </li>
           ))}
         </ul>

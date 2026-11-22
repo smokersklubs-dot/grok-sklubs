@@ -18,10 +18,10 @@ export const ROUTINE_FAIL_PAUSE = 5;
 /** A run still "running" after this long was cut off (a restart): it no longer blocks the next one. */
 const STALE_RUN_MS = 2 * 3600_000;
 
-// A subscription can be limited longer than the timeout for abandoned runs.
+// A subscription can be limited longer than the timeout for abandoned runs; so can a run that waits behind an approval (deferred).
 const queuedRun = `EXISTS (SELECT 1 FROM bot_queue b
   WHERE b.bot_id = (SELECT bot_id FROM routines WHERE id = routine_runs.routine_id)
-    AND b.status IN ('pending', 'running', 'limited', 'held')
+    AND b.status IN ('pending', 'running', 'limited', 'held', 'deferred')
     AND CASE WHEN json_valid(b.trigger) THEN json_extract(b.trigger, '$.runId') END = routine_runs.id)`;
 function hasActiveRun(id: string): boolean {
   return !!q.get(`SELECT 1 FROM routine_runs WHERE routine_id = ? AND status = 'running' AND (at > ? OR ${queuedRun})`, id, now() - STALE_RUN_MS);
@@ -171,7 +171,9 @@ export const routines = {
     if (f.enabled === true && !cur.enabled) q.run("UPDATE routines SET failures = 0, paused_reason = NULL WHERE id = ?", id);
     q.run("UPDATE routines SET name = ?, prompt = ?, schedule = ?, timezone = ?, run_at = ?, enabled = ? WHERE id = ?",
       f.name ?? cur.name, f.prompt ?? cur.prompt, f.schedule ?? cur.schedule, f.timezone ?? cur.timezone, f.runAt === undefined ? cur.runAt : f.runAt, (f.enabled ?? cur.enabled) ? 1 : 0, id);
-    return routines.byId(id)!;
+    const next = routines.byId(id)!;
+    for (const fn of updateListeners) { try { fn(next); } catch (err) { console.error("[routine update]", err); } }
+    return next;
   },
   markRun: (id: string, at: number) => q.run("UPDATE routines SET last_run_at = ? WHERE id = ?", at, id),
   /** Atomically claims a due slot: false when that slot already fired (two timers, a catch-up and a tick…). */
@@ -214,6 +216,10 @@ export const runs = {
   list: (routineId: string): RoutineRun[] =>
     q.all<any>("SELECT * FROM routine_runs WHERE routine_id = ? ORDER BY at DESC, rowid DESC LIMIT 30", routineId).map((r) => ({ id: r.id, routineId: r.routine_id, at: r.at, status: r.status, note: r.note, costUsd: r.cost_usd ?? 0 })),
 };
+
+/** Who wants to hear that a routine changed (routineplus.ts: an approved instruction lapses when it changes). */
+const updateListeners: ((r: RoutineRecord) => void)[] = [];
+export const onRoutineUpdated = (fn: (r: RoutineRecord) => void) => { updateListeners.push(fn); };
 
 /** Who wants to hear how a run ended (the scheduler: failures in a row, push, auto-pause). */
 const runListeners: ((r: RoutineRecord, status: RoutineRun["status"], note: string) => void)[] = [];

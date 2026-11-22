@@ -79,7 +79,7 @@ let quitting = false;
 /** @type {Record<string,string>} */ let dict = i18n.fr;
 let lang = /** @type {'fr'|'en'} */ ('fr');
 /** @type {{ code: string, expiresAt: string|null } | null} */ let pairing = null;
-/** @type {Map<string, { kind: 'session'|'command', bot: { id: string, name: string }, data: any, resolve: (v: any) => void, win: Electron.BrowserWindow, shownAt: number, deadline: number }>} */
+/** @type {Map<string, { kind: 'session'|'command'|'terminal'|'shortcut', bot: { id: string, name: string }, data: any, resolve: (v: any) => void, win: Electron.BrowserWindow, shownAt: number, deadline: number }>} */
 const prompts = new Map();
 /** @type {string | null} */ let setupError = null;
 /** @type {string | null} */ let folderError = null;
@@ -242,9 +242,14 @@ const consentUI = {
   askSession(p) {
     return openPrompt('session', p.promptId, p.bot, { reason: p.reason }, p.timeoutMs);
   },
-  /** @param {{ promptId: string, bot: { id: string, name: string }, command: string, cwd: string|null, timeoutMs: number }} p */
+  /** @param {{ promptId: string, bot: { id: string, name: string }, command: string, cwd: string|null, timeoutMs: number, scripts?: any[], floor?: string }} p */
   askCommand(p) {
-    return openPrompt('command', p.promptId, p.bot, { command: p.command, cwd: p.cwd }, p.timeoutMs);
+    return openPrompt('command', p.promptId, p.bot, { command: p.command, cwd: p.cwd, scripts: p.scripts || [], floor: p.floor || null }, p.timeoutMs);
+  },
+  /** A terminal for this session, or a protected shortcut (guard.js): asked here, on this computer. */
+  /** @param {{ promptId: string, bot: { id: string, name: string }, kind: 'terminal'|'shortcut', detail: string, timeoutMs: number }} p */
+  askGuard(p) {
+    return openPrompt(p.kind, p.promptId, p.bot, { detail: p.detail }, p.timeoutMs);
   },
   /** @param {string} promptId */
   cancelPrompt(promptId) {
@@ -271,14 +276,14 @@ const consentUI = {
 };
 
 /**
- * @param {'session'|'command'} kind @param {string} promptId @param {{ id: string, name: string }} bot
+ * @param {'session'|'command'|'terminal'|'shortcut'} kind @param {string} promptId @param {{ id: string, name: string }} bot
  * @param {any} data @param {number} timeoutMs
  */
 function openPrompt(kind, promptId, bot, data, timeoutMs) {
   return new Promise((resolve) => {
     const area = screen.getPrimaryDisplay().workArea;
     const width = 600;
-    const height = kind === 'command' ? 440 : 340;
+    const height = kind === 'command' ? ((data.scripts || []).length ? 640 : 440) : 340;
     const win = new BrowserWindow({
       width, height,
       x: Math.round(area.x + (area.width - width) / 2),
@@ -313,11 +318,12 @@ function answerPrompt(/** @type {Electron.IpcMainInvokeEvent} */ ev, /** @type {
   if (!pr || pr.win.isDestroyed() || ev.sender.id !== pr.win.webContents.id) return false;
   // Ignore clicks in the first 700 ms (avoids answering by accident while typing/clicking elsewhere).
   if (Date.now() - pr.shownAt < 700) return false;
-  const allowed = pr.kind === 'session' ? ['once', 'always', 'refuse'] : ['run', 'refuse'];
+  const allowed = pr.kind === 'session' ? ['once', 'always', 'refuse'] : pr.kind === 'command' ? ['run', 'refuse'] : ['allow', 'refuse'];
   if (!allowed.includes(decision)) return false;
   prompts.delete(promptId);
-  if (pr.kind === 'session') pr.resolve(decision);
-  else pr.resolve({ decision, alwaysForBot: decision === 'run' && !!(extra && extra.alwaysForBot === true) });
+  if (pr.kind !== 'command') pr.resolve(decision);
+  // A command that runs a script is asked every time: the "always" box is not offered, and not taken.
+  else pr.resolve({ decision, alwaysForBot: decision === 'run' && !(pr.data.scripts || []).length && !!(extra && extra.alwaysForBot === true) });
   pr.win.destroy();
   pushState();
   return true;

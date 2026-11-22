@@ -59,6 +59,7 @@ Menu **Sklubot › Relais…** (ou l'icône de la barre › **Relais…**) ouvre
 - Un bandeau rouge reste affiché tant qu'un bot a la main. **Stop** (ou **Ctrl + Alt + Maj + S**, **⌘ ⌥ ⇧ S** sur Mac) arrête tout tout de suite et bloque le Relais jusqu'à ce que tu le réautorises.
 - Tout ce que font les bots est noté dans un journal sur ton ordinateur (bouton « Ouvrir le journal »).
 - « Mettre en pause » coupe la connexion : rien n'est envoyé pendant la pause.
+- **Règles de sécurité** (vérifiées par le serveur, puis encore ici) : fenêtres de terminal, réglages du système, gestionnaires de mots de passe et Sklubot lui-même sont refusés aux clics et à la frappe ; jamais de saisie dans un champ mot de passe, sauf un identifiant de ton coffre rempli par Sklubot sur le bon site ; la fenêtre au premier plan est relue juste avant chaque clic ou touche ; raccourcis dangereux refusés ; touches toujours relâchées à la fin. **Commandes** : activées par défaut (désactivables dans Sklubot, Réglages → Ordinateurs → Règles de sécurité) ; chacune est montrée sur une carte dans Sklubot, et ici la première de chaque session ; les commandes sensibles (supprimer, sudo, installer, `curl | sh`…) et celles qui lancent un script (40 premières lignes + empreinte) sont demandées ici à chaque fois. Détails : `docs/ORDINATEUR.md`.
 
 ### Relier le Relais à ton serveur Sklubot
 

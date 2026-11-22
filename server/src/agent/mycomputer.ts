@@ -3,7 +3,12 @@ import { tr } from "../i18n.js";
 import type { ImageBlock, TextBlock, ToolSpec } from "../llm/types.js";
 import { pushLater } from "../push.js";
 import { deviceKindOf, devices, heldBack, labelOf, liveDevice, listDevices, relayRequest, type DeviceKind, type RelayResult } from "../relay.js";
-import { audit, bots, clip, policies, rows } from "../store.js";
+import { unseal } from "../auth.js";
+import { maskSecrets } from "../shared.js";
+import { audit, bots, clip, hideForAWhile, policies, randomToken, redactSecrets, rows, vault } from "../store.js";
+import { parseTotp, totpNow } from "../totp.js";
+import { whenShellOutput } from "../relay.js";
+import { cachedPeek, commandFloor, commandPrefix, findScripts, fingerprint, FLOOR_LABEL, guardCapable, guardRefusal, GUARD_REFUSALS, guards, inputGuard, keepOutHit, keepOutInText, lastSeen, nameGuard, noteOpened, noteSeen, peekOnComputer, placeOf, protectedShortcut, sameWindow, scriptCardText, vaultVerdict, type Active, type InputKind, type VaultField } from "../relayguard.js";
 import type { BuiltinTool, ToolContext, ToolOutput } from "./tools.js";
 
 /**
@@ -20,6 +25,11 @@ import type { BuiltinTool, ToolContext, ToolOutput } from "./tools.js";
  * operations: my_click → touch.tap, my_drag/my_scroll → touch.swipe, my_key → global.action (back, home, recents,
  * notifications, quick_settings, enter), my_windows → screen.read (the app in front and its on-screen text). There is
  * no command on a phone (my_command is not offered and refused), nor shared files or window switching.
+ *
+ * Safety rules on a computer (relayguard.ts, backlog L19 / L32), checked here before anything is sent and again on the
+ * computer: refused apps, the owner's keep-out list, password fields, the window in front re-read before each click or
+ * key, dangerous shortcuts (my_key force → card), terminals and my_command only when the owner allowed them, and a
+ * script launched by my_command shown on its card (first 40 lines + fingerprint), refused if it changes.
  */
 
 const obj = (properties: Record<string, unknown>, required: string[] = []): ToolSpec["inputSchema"] => ({ type: "object", properties, required });
@@ -32,7 +42,7 @@ export const controlKey = (botName: string) => `mycomputer: control: ${botName}`
 export const commandKey = (botName: string) => `mycomputer: command: ${botName}`;
 const urlKey = (botName: string) => `mycomputer: url: ${botName}`;
 
-interface Target { id: string; name: string; label: string; kind: DeviceKind }
+interface Target { id: string; name: string; label: string; kind: DeviceKind; platform: string }
 
 /** The device a call is about: the one named, else the only one connected. */
 function pick(userId: string, wanted: unknown): { target?: Target; error?: string } {
@@ -47,7 +57,7 @@ function pick(userId: string, wanted: unknown): { target?: Target; error?: strin
     row = up[0] ?? (all.length === 1 ? all[0] : undefined);
     if (!row) return { error: `None of the user's devices is connected right now (${all.map((d) => d.name).join(", ")}). The Sklubot Relais app must be running on the computer, or the relay turned on in the Sklubot Android app on the phone.` };
   }
-  return { target: { id: row.id, name: row.name, label: labelOf(row), kind: deviceKindOf(row) } };
+  return { target: { id: row.id, name: row.name, label: labelOf(row), kind: deviceKindOf(row), platform: row.platform } };
 }
 
 const hasSession = (userId: string, deviceId: string, botId: string) => liveDevice(userId, deviceId)?.session?.botId === botId;
@@ -84,19 +94,72 @@ const openGate: Gate = (a, ctx) => {
   return { key: urlKey(bot.name), strict: true, once: true, vars: { device: target.label, url: clip(a.url, 200) }, source: SOURCE, title: "{bot} has read outside content. Allow it to open {url} on {device}?", reason: "open an address on {device}" };
 };
 
-/** Every command, the first time; always again (and never "Always") after outside content. The computer asks too. */
+/** The folder a command runs in: the one the bot gives, else the owner's first project folder ("" = the home folder). */
+const commandCwd = (a: Record<string, any>, projects: string[]) => (typeof a.cwd === "string" && a.cwd.trim() ? clip(a.cwd.trim(), 1000) : projects[0] ?? "");
+
+/**
+ * Every command shows a card with the exact command, the folder and the computer (owner decision: terminal access
+ * under control). "Always" / "for this conversation" cover only that command's prefix in that folder
+ * (`npm test` in ~/projets/site), never wider. A command on the floor (relayguard.ts commandFloor: deletions, git
+ * rewrites, admin rights, installs, disks, downloaded scripts, listeners, startup files, outside the project) and a
+ * command after outside content are asked every time, without "Always". A script it launches has its own card (L32).
+ */
 const commandGate: Gate = (a, ctx) => {
   const bot = bots.byId(ctx.botId);
   if (!bot) return null;
   const { target } = pick(bot.userId, a.device);
   // Without a session the tool answers "take control first", and a phone has no commands: no card for a command that cannot run.
   if (!target || target.kind === "phone" || !hasSession(bot.userId, target.id, bot.id)) return null;
+  // Commands off for this computer, or a keep-out folder in it: the tool refuses, no card.
+  const owner = guards.get(bot.userId, target.id);
+  if (!owner.allowTerminal || keepOutInText(`${a.command ?? ""} ${a.cwd ?? ""}`, owner.keepFolders)) return null;
+  const command = String(a.command ?? "");
+  const cwd = commandCwd(a, owner.projectFolders);
+  const prefix = commandPrefix(command);
+  const vars = { device: target.label, cwd: cwd || "~", prefix: clip(prefix, 120) };
+  const scripts = scriptsForCard(bot.userId, target, a, cwd);
+  if (scripts === null) return null;
+  if (scripts.length) {
+    for (const p of scripts) p.card = Date.now();
+    const card: ReturnType<Gate> = {
+      key: commandKey(bot.name), strict: true, once: true, vars: { ...vars, scripts: scripts.map(scriptCardText).join("\n\n") }, source: SOURCE,
+      title: ctx.tainted ? "{bot} has read outside content. Allow it to run this command and its script on {device}?" : "Allow {bot} to run a command and its script on {device}?",
+      reason: "run a command on {device}",
+      note: "Folder: {cwd}. The command runs this script (its first lines and fingerprint below). If the script changes before your click, nothing runs. The computer will also ask.\n\n{scripts}",
+    };
+    return card;
+  }
+  const key = `${commandKey(bot.name)} | ${prefix} @ ${cwd || "~"}`;
+  const floor = commandFloor(command, cwd, owner.projectFolders);
+  if (floor) return { key, strict: true, once: true, vars: { ...vars, why: FLOOR_LABEL[floor.kind] }, source: SOURCE, title: "Allow {bot} to run this sensitive command on {device}?", reason: "run a command on {device}", note: "Always asked, whatever you allowed before: {why}. Folder: {cwd}. The computer will ask too." };
   return {
-    key: commandKey(bot.name), strict: ctx.tainted, once: ctx.tainted, vars: { device: target.label }, source: SOURCE,
-    title: ctx.tainted ? "{bot} has read outside content. Allow it to run this command on {device}?" : "Allow {bot} to run a command on {device}?",
+    key, strict: ctx.tainted, once: ctx.tainted, vars, source: SOURCE,
+    title: ctx.tainted ? "{bot} has read outside content. Allow it to run this command on {device}?" : "Allow {bot} to run this command on {device}?",
     reason: "run a command on {device}",
-    note: ctx.tainted ? "After outside content, every command on your computer is asked here, and on the computer itself." : "The computer will also show the exact command and ask before it runs.",
+    note: ctx.tainted ? "Folder: {cwd}. After outside content, every command on your computer is asked here, and on the computer itself." : "Folder: {cwd}. “Always” or “for this conversation” would cover only “{prefix}” in this folder.",
   };
+};
+
+/**
+ * The scripts a command runs, as already shown by the computer (L32): [] for none, null when one has not been shown
+ * yet with the fingerprint the bot gives (the tool then reads it on the computer and asks the bot to call again).
+ */
+function scriptsForCard(userId: string, t: Target, a: Record<string, any>, cwd: string) {
+  const found = findScripts(String(a.command ?? ""), t.platform);
+  if (found.problem) return null;
+  const fps = String(a.script_fingerprint ?? "").split(/[\s,]+/).filter(Boolean).slice(0, 3);
+  const shown = [];
+  for (const p of found.scripts) {
+    const hit = fps.map((fp) => cachedPeek(t.id, cwd, p, fp)).find(Boolean);
+    if (hit) shown.push(hit);
+    else if (!found.optional.includes(p)) return null;
+  }
+  return shown;
+}
+
+/** Defaults for a refusal the computer itself decided (it says the code, not the details). */
+const COMPUTER_GUARD_VARS: Record<string, { what?: string; why?: string }> = {
+  blocked_app: { what: "this app" }, keep_out: { what: "this app or folder" }, blocked_shortcut: { what: "this shortcut", why: "it can close an app, lock the session or open a launcher" }, script_unreadable: { what: "it is outside the folder, a secret, or too large" },
 };
 
 // ── Refusals and errors: told to the bot (never retried) and to the user ─────
@@ -131,6 +194,7 @@ const seconds = (ms?: number) => (ms && ms > 0 ? `${Math.ceil(ms / 1000)} s` : "
 const PHONE_PERMISSION = { model: "The Sklubot accessibility service is off on the phone: without it the phone cannot be seen or used. Ask the user to turn it on (Sklubot app → Phone control → Open accessibility settings), then to tell you.", user: "{device} needs the Sklubot accessibility service (Android settings → Accessibility).", summary: "accessibility service off" };
 
 function refusal(c: ToolContext, t: Target, r: Extract<RelayResult, { ok: false }>): ToolOutput {
+  if (t.kind === "computer" && GUARD_REFUSALS[r.code]) return guardRefusal(c, t.label, r.code, COMPUTER_GUARD_VARS[r.code]);
   const known = t.kind === "phone" && r.code === "permission_missing" ? PHONE_PERMISSION : REFUSALS[r.code];
   const loc = c.user.locale;
   if (!known) return { content: `The ${t.kind === "phone" ? "phone" : "computer"} answered with an error (${r.code}): ${r.message}`, isError: true, summary: clip(r.code, 40) };
@@ -205,6 +269,8 @@ async function capture(c: ToolContext, t: Target): Promise<{ text: string; image
   if (!r.ok) return r;
   const res = r.result as { format?: string; width?: number; height?: number; screenWidth?: number; screenHeight?: number; data?: string };
   if (typeof res.data !== "string" || !res.data) return { ok: false, code: "internal", message: "empty capture" };
+  // The window in front at this screenshot: the next click or key must still find it there (relayguard.ts).
+  if (t.kind === "computer") await noteSeen(c, c.user.id, t.id);
   const text = t.kind === "phone"
     ? `Screenshot of the phone ${t.label}: ${res.width}×${res.height} pixels (the screen itself is ${res.screenWidth}×${res.screenHeight}). Give coordinates to my_click (a tap), my_drag and my_scroll in pixels of this picture, from its top-left corner. my_windows lists the text on screen with positions.`
     : `Screenshot of ${t.label}: ${res.width}×${res.height} pixels. Use this picture’s pixels from the top left. Use my_point to show a visible control without clicking. Use my_click or my_drag only for the requested action, check the result on the next screenshot, then my_release. The named pointer is feedback from the desktop app.`;
@@ -232,6 +298,15 @@ async function done(c: ToolContext, t: Target, said: string, summary: string): P
 }
 
 const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : Number(v));
+
+/** On a computer, the safety rules right before an input: the `expect` to send along, or the refusal. */
+async function guarded(c: ToolContext, t: Target, kind: InputKind, extra: { keys?: string; force?: boolean } = {}): Promise<{ expect: Record<string, unknown>; forced?: boolean } | ToolOutput> {
+  if (t.kind === "phone") return { expect: {} };
+  // Read through act(): a session lost under the bot is reopened the same way as for the action itself.
+  return inputGuard(c, t, kind, extra, (op, args) => act(c, t, op, args, 15_000));
+}
+const refused = (g: { expect: Record<string, unknown> } | ToolOutput): g is ToolOutput => "content" in g;
+const withExpect = (g: { expect: Record<string, unknown> }) => (Object.keys(g.expect).length ? { expect: g.expect } : {});
 
 // ── Phones (protocol 1.2, §13) ───────────────────────────────────────────────
 /** my_key on a phone: Android's global actions, and enter in the focused field. */
@@ -310,6 +385,8 @@ function filesTarget(c: ToolContext, a: Record<string, any>): { target: Target }
   if (live.locked) return { out: refusal(c, p.target, { ok: false, code: "locked", message: "" }) };
   if (p.target.kind === "phone") return { out: { content: `${p.target.label} is a phone: shared folders exist only on computers (Sklubot Relais).`, isError: true, summary: tr(c.user.locale, "not on a phone") } };
   if (!FILE_OPS.every((op) => live.capabilities.includes(op))) return { out: { content: `The Sklubot Relais app on ${p.target.label} is too old for files (it needs protocol 1.1). Ask the user to update it.`, isError: true, summary: tr(c.user.locale, "relay too old") } };
+  const keep = a.folder ? keepOutInText(`${a.folder}/${a.path ?? ""}`, guards.get(c.user.id, p.target.id).keepFolders) : null;
+  if (keep) return { out: guardRefusal(c, p.target.label, "keep_out", { what: keep }) };
   return { target: p.target };
 }
 
@@ -373,6 +450,135 @@ const fileTools: BuiltinTool[] = [
   }),
 ];
 
+// ── Command output in the chat (collapsed), streamed as it comes ─────────────
+const masked = (userId: string, text: string) => maskSecrets(redactSecrets(userId, text), "[secret]").text;
+const CHAT_OUTPUT_MAX = 8 * 1024;
+/** Live outputs by stream reference (the relay sends `shell.output` events with it). */
+const streams = new Map<string, { userId: string; deviceId: string; add: (text: string) => void }>();
+whenShellOutput((userId, deviceId, ref, _stream, text) => { const s = streams.get(ref); if (s && s.userId === userId && s.deviceId === deviceId) s.add(text); });
+
+/**
+ * A line in the bot's chat for a command: "$ command — folder · computer", then its output below (the chat shows it
+ * folded), updated while it runs and capped to the last 8 KiB, secrets masked.
+ */
+function chatOutput(c: ToolContext, t: Target, command: string, cwd: string) {
+  const ref = randomToken(12);
+  const head = `$ ${clip(command, 300)} — ${cwd || "~"} · ${t.label}`;
+  const row = rows.append(c.bot, { kind: "event", event: "relay", text: head, tone: "info" });
+  let out = "", timer: NodeJS.Timeout | null = null, finished = false;
+  const show = (status: string) => { if (row) rows.rewrite(c.bot, row.generation, row.seq, { kind: "event", event: "relay", text: `${head}${status ? ` · ${status}` : ""}${out ? `\n${out.slice(-CHAT_OUTPUT_MAX)}` : ""}`, tone: "info" }); };
+  streams.set(ref, { userId: c.user.id, deviceId: t.id, add: (text) => {
+    if (finished) return;
+    out = masked(c.user.id, (out + text).slice(-CHAT_OUTPUT_MAX * 2));
+    if (!timer) timer = setTimeout(() => { timer = null; if (!finished) show(tr(c.user.locale, "running")); }, 1000);
+  } });
+  return {
+    ref,
+    stop: () => { streams.delete(ref); if (timer) clearTimeout(timer); timer = null; },
+    done: (status: string, full: string) => { finished = true; streams.delete(ref); if (timer) clearTimeout(timer); if (full) out = full; show(status); },
+  };
+}
+
+// ── Vault fill on the user's computer ─────────────────────────────────────────
+/** The first use of an item on a site (or app) asks the owner; "Always" covers that item on that place, for this bot. */
+const vaultFillGate: Gate = (a, ctx) => {
+  const control = controlGate(a, ctx);
+  if (control) return control;
+  const bot = bots.byId(ctx.botId);
+  const { target } = bot ? pick(bot.userId, a.device) : {};
+  if (!bot || !target || target.kind === "phone") return null;
+  const item = vault.byName(bot.userId, String(a.item ?? ""));
+  if (!item) return null; // the tool says it does not exist
+  const seen = lastSeen(bot.userId, target.id);
+  const place = seen ? placeOf(seen) : "";
+  if (!place) return null; // the tool asks for a screenshot first
+  return {
+    key: `myvault: ${bot.name}: ${item.name} @ ${place}`, strict: ctx.tainted, once: ctx.tainted, source: "Vault",
+    vars: { item: item.name, field: a.field === "username" ? "username" : a.field === "code" ? "code" : "password", site: item.site || "—", app: clip(String(seen?.app ?? ""), 80), place, device: target.label },
+    title: "Allow {bot} to fill the saved {field} of {item} on {device}?", reason: "fill a saved login on {device}",
+    note: "Saved for: {site}. In front on your computer: {app} — {place}. The secret goes only to your computer, never to the bot. “Always” covers this item on {place} only.",
+  };
+};
+
+async function vaultFill(c: ToolContext, t: Target, a: Record<string, any>): Promise<ToolOutput> {
+  if (t.kind === "phone") return NOT_ON_PHONE("Filling a saved login");
+  const live = liveDevice(c.user.id, t.id);
+  if (!live || !guardCapable(live.capabilities) || !live.capabilities.includes("vault.type")) return guardRefusal(c, t.label, "relay_old");
+  const item = vault.byName(c.user.id, String(a.item ?? ""));
+  if (!item) return { content: `No vault item is called "${clip(String(a.item), 80)}". Use vault_list to see the names.`, isError: true };
+  const field: VaultField = a.field === "code" ? "code" : a.field === "username" ? "username" : "password";
+  if ((field === "code") !== (item.kind === "totp")) return { content: field === "code" ? "That item is not a two-factor code generator." : "A two-factor generator only gives a code: use field \"code\".", isError: true };
+  const before = lastSeen(c.user.id, t.id);
+  if (!before) return guardRefusal(c, t.label, "no_look");
+  const r = await act(c, t, "window.active", {}, 15_000);
+  if (!r.ok) return failed(c, t, r);
+  const now = r.result.active as Active | null;
+  if (!now || !now.app) return guardRefusal(c, t.label, "foreground_unknown");
+  // The same window AND the same page as on the screenshot the card was about.
+  if (!sameWindow(before, now) || placeOf(before) !== placeOf(now)) return guardRefusal(c, t.label, "window_changed");
+  const owner = guards.get(c.user.id, t.id);
+  const keep = keepOutHit(now, owner);
+  if (keep) return guardRefusal(c, t.label, "keep_out", { what: keep });
+  const no = vaultVerdict(now, { site: item.site, field });
+  if (no) return guardRefusal(c, t.label, no, no === "blocked_app" ? { what: "this app" } : {});
+  let secret: string | null = null;
+  if (field === "username") secret = item.username || null;
+  else if (field === "password") secret = item.passwordEnc ? unseal(item.passwordEnc) : null;
+  else {
+    const seed = item.passwordEnc ? unseal(item.passwordEnc) : null;
+    try { secret = seed ? totpNow({ ...parseTotp(seed), digits: item.digits === 8 ? 8 : 6, period: item.period }).code : null; } catch { secret = null; }
+    if (secret) hideForAWhile(c.user.id, secret);
+  }
+  if (!secret) return { content: `That item has no ${field} saved.`, isError: true };
+  const expect = { app: String(now.app), ...(now.pid ? { pid: now.pid } : {}), ...(now.windowId ? { windowId: now.windowId } : {}) };
+  // The secret goes ONLY to the computer, in this one request: never in the result, the chat, the audit or a log.
+  const sent = await act(c, t, "vault.type", { text: secret, field, site: item.site, expect }, 30_000);
+  secret = null;
+  if (!sent.ok) return failed(c, t, sent);
+  audit(c.user.id, "computer", `${c.bot.name} → ${t.label} : ${tr(c.user.locale, "saved login filled")} ${clip(item.name, 80)} (${field}) · ${placeOf(now)}`, c.bot.id);
+  return done(c, t, `Filled the saved ${field} of "${item.name}" into the focused field (you never see it).`, `${item.name} · ${field}`);
+}
+
+/** my_key: taking control as usual; a forced protected shortcut gets its own card every time (never "Always"). */
+const keyGate: Gate = (a, ctx) => {
+  const control = controlGate(a, ctx);
+  if (control || a.force !== true) return control;
+  const bot = bots.byId(ctx.botId);
+  const { target } = bot ? pick(bot.userId, a.device) : {};
+  const v = target && target.kind === "computer" ? protectedShortcut(String(a.keys ?? ""), target.platform) : null;
+  if (!bot || !target || !v) return null;
+  return { key: `mycomputer: shortcut: ${bot.name}`, strict: true, once: true, vars: { device: target.label, keys: v.combo, why: v.why }, source: SOURCE, title: "Allow {bot} to press {keys} on {device}?", reason: "press a protected shortcut on {device}", note: "This shortcut is protected because {why}. The computer will ask you too." };
+};
+
+/**
+ * Before a command runs (L32): terminals and commands allowed by the owner for that computer, no keep-out folder in
+ * it, and each script it launches already shown on the card by fingerprint. Otherwise the scripts are read on the
+ * computer now (never run) and the bot is told to call again with their fingerprints: nothing runs.
+ */
+async function commandScripts(c: ToolContext, t: Target, command: string, cwd: string, a: Record<string, any>): Promise<{ scripts: { path: string; sha256: string }[] } | ToolOutput> {
+  const owner = guards.get(c.user.id, t.id);
+  if (!owner.allowTerminal) return guardRefusal(c, t.label, "terminal_off");
+  const keep = keepOutInText(`${command} ${cwd}`, owner.keepFolders);
+  if (keep) return guardRefusal(c, t.label, "keep_out", { what: keep });
+  const found = findScripts(command, t.platform);
+  if (found.problem) return guardRefusal(c, t.label, "script_unreadable", { what: found.problem.kind === "dynamic" ? `a path only the shell can resolve: ${clip(found.problem.word, 80)}` : "more than 3 scripts in one command" });
+  if (!found.scripts.length) return { scripts: [] };
+  if (!guardCapable(liveDevice(c.user.id, t.id)?.capabilities ?? [])) return guardRefusal(c, t.label, "relay_old");
+  const shown = scriptsForCard(c.user.id, t, a, cwd);
+  // Shown on the card that was just approved (the gate marked it): the computer checks each fingerprint again.
+  if (shown && shown.length && shown.every((p) => p.card >= p.at)) return { scripts: shown.map((p) => ({ path: p.path, sha256: p.sha256 })) };
+  const fps: string[] = [];
+  for (const p of found.scripts) {
+    const r = await peekOnComputer(c, t.id, cwd, p);
+    if ("sha256" in r) { fps.push(`${p} (fingerprint ${fingerprint(r.sha256)})`); continue; }
+    if (found.optional.includes(p) && !r.ok && r.code === "not_found") continue;
+    return r.ok ? { content: "", isError: true } : failed(c, t, r);
+  }
+  if (!fps.length) return { scripts: [] };
+  const list = fps.map((x) => /\(fingerprint (\w+)\)/.exec(x)![1]).join(" ");
+  return { content: `This command runs: ${fps.join(", ")}. Nothing was run yet. To ask the user, call my_command again with the same command${cwd ? " and cwd" : ""} and script_fingerprint "${list}": the card shows them the first 40 lines of each script. You never see the scripts' content.`, summary: tr(c.user.locale, "script to show") };
+}
+
 export const myComputerTools: BuiltinTool[] = [
   ...fileTools,
   tool("my_computers", "List the user's own computers and phones linked through Sklubot Relais or the Sklubot Android app (not your own computer): whether each is connected, locked by the user, or controlled by a bot right now.", obj({}), {
@@ -418,7 +624,9 @@ export const myComputerTools: BuiltinTool[] = [
         return done(c, t, `${long ? "Long-pressed" : a.double ? "Double-tapped" : "Tapped"} at (${a.x}, ${a.y}).`, `${p.x}, ${p.y}`);
       }
       const button = a.button === "right" || a.button === "middle" ? a.button : "left";
-      const r = await act(c, t, "mouse.click", { ...p, button, double: a.double === true });
+      const g = await guarded(c, t, "click");
+      if (refused(g)) return g;
+      const r = await act(c, t, "mouse.click", { ...p, button, double: a.double === true, ...withExpect(g) });
       if (!r.ok) return failed(c, t, r);
       return done(c, t, `${a.double ? "Double-clicked" : button === "right" ? "Right-clicked" : "Clicked"} at (${a.x}, ${a.y}).`, `${p.x}, ${p.y}`);
     }),
@@ -428,10 +636,12 @@ export const myComputerTools: BuiltinTool[] = [
     activity: "computer", label: "Dragging on your computer", outside: true, audited: true, gate: controlGate,
     run: async (a, c) => inSession(c, a, "control", "", async (t) => {
       const from = toScreen(c, t, num(a.from_x), num(a.from_y)), to = toScreen(c, t, num(a.to_x), num(a.to_y));
+      const g = await guarded(c, t, "drag");
+      if (refused(g)) return g;
       // On a phone: press and hold, then move without lifting.
       const r = t.kind === "phone"
         ? await act(c, t, "touch.swipe", { fromX: from.x, fromY: from.y, toX: to.x, toY: to.y, durationMs: 600, hold: true })
-        : await act(c, t, "mouse.drag", { fromX: from.x, fromY: from.y, toX: to.x, toY: to.y });
+        : await act(c, t, "mouse.drag", { fromX: from.x, fromY: from.y, toX: to.x, toY: to.y, ...withExpect(g) });
       if (!r.ok) return failed(c, t, r);
       return done(c, t, "Dragged.", "");
     }),
@@ -443,9 +653,11 @@ export const myComputerTools: BuiltinTool[] = [
       const n = Math.max(1, Math.min(100, Math.round(num(a.amount ?? 3)) || 3));
       const at = a.x !== undefined && a.y !== undefined ? toScreen(c, t, num(a.x), num(a.y)) : {};
       const d = String(a.direction);
+      const g = await guarded(c, t, "scroll");
+      if (refused(g)) return g;
       const r = t.kind === "phone"
         ? await act(c, t, "touch.swipe", phoneSwipe(c, t, d, n, at))
-        : await act(c, t, "mouse.scroll", { ...at, dx: d === "left" ? -n : d === "right" ? n : 0, dy: d === "up" ? -n : d === "down" ? n : 0 });
+        : await act(c, t, "mouse.scroll", { ...at, dx: d === "left" ? -n : d === "right" ? n : 0, dy: d === "up" ? -n : d === "down" ? n : 0, ...withExpect(g) });
       if (!r.ok) return failed(c, t, r);
       return done(c, t, `Scrolled ${d}.`, d);
     }),
@@ -456,15 +668,17 @@ export const myComputerTools: BuiltinTool[] = [
       const text = String(a.text ?? "");
       if (!text) return { content: "Nothing to type.", isError: true };
       if (text.length > 10_000) return { content: "That is too long to type (10 000 characters at most). Save it to a file instead.", isError: true };
+      const g = await guarded(c, t, "type");
+      if (refused(g)) return g;
       for (let i = 0; i < text.length; i += 2000) {
-        const r = await act(c, t, "keyboard.type", { text: text.slice(i, i + 2000) });
+        const r = await act(c, t, "keyboard.type", { text: text.slice(i, i + 2000), ...withExpect(g) });
         if (!r.ok) return failed(c, t, r);
       }
       return done(c, t, `Typed ${text.length} characters.`, `${text.length}`);
     }),
   }),
-  tool("my_key", `Press a key or a combination on the user's computer, e.g. enter, escape, tab, pagedown, ctrl+c, cmd+space, ctrl+shift+t. On a phone: ${PHONE_KEY_LIST}.`, obj({ keys: str("Key name, or modifiers and a key joined with +"), device: DEVICE }, ["keys"]), {
-    activity: "computer", label: "Pressing keys on your computer", outside: true, audited: true, gate: controlGate,
+  tool("my_key", `Press a key or a combination on the user's computer, e.g. enter, escape, tab, pagedown, ctrl+c, ctrl+shift+t. Shortcuts that close apps, lock the session or open a launcher (alt+f4, cmd+q, win+r, cmd+space, ctrl+alt+del…) are refused unless force is true, which asks the user on a card and on the computer. On a phone: ${PHONE_KEY_LIST}.`, obj({ keys: str("Key name, or modifiers and a key joined with +"), force: { type: "boolean", description: "Only when the user asked for exactly this protected shortcut" }, device: DEVICE }, ["keys"]), {
+    activity: "computer", label: "Pressing keys on your computer", outside: true, audited: true, gate: keyGate,
     run: async (a, c) => inSession(c, a, "control", "", async (t) => {
       if (t.kind === "phone") {
         const action = PHONE_KEYS[String(a.keys ?? "").trim().toLowerCase().replace(/[\s-]+/g, "_")];
@@ -473,7 +687,10 @@ export const myComputerTools: BuiltinTool[] = [
         if (!r.ok) return failed(c, t, r);
         return done(c, t, `Pressed ${action} on the phone.`, action);
       }
-      const r = await act(c, t, "keyboard.press", { key: clip(String(a.keys ?? "").trim(), 64) });
+      const keys = clip(String(a.keys ?? "").trim(), 64);
+      const g = await guarded(c, t, "key", { keys, force: a.force === true });
+      if (refused(g)) return g;
+      const r = await act(c, t, "keyboard.press", { key: keys, ...withExpect(g), ...(g.forced ? { force: true } : {}) });
       if (!r.ok) return failed(c, t, r);
       return done(c, t, `Pressed ${a.keys}.`, clip(String(a.keys), 30));
     }),
@@ -485,8 +702,10 @@ export const myComputerTools: BuiltinTool[] = [
       const url = typeof a.url === "string" ? a.url.trim() : "";
       const app = typeof a.app === "string" ? a.app.trim() : "";
       if (!url === !app) return { content: "Give either url or app.", isError: true };
+      if (app && t.kind === "computer") { const no = nameGuard(c, t, app); if (no) return no; }
       const r = url ? await act(c, t, "url.open", { url }) : await act(c, t, "app.open", { name: app });
       if (!r.ok) return failed(c, t, r);
+      if (app) noteOpened(c.user.id, t.id, app);
       await pause(900);
       return done(c, t, url ? `Opened ${url}.` : `Started ${app}.`, clip(url || app, 60));
     }),
@@ -501,7 +720,9 @@ export const myComputerTools: BuiltinTool[] = [
       }
       const r = await act(c, t, "window.list", {});
       if (!r.ok) return failed(c, t, r);
-      const list = Array.isArray(r.result.windows) ? (r.result.windows as { title?: unknown }[]).map((w) => clip(String(w?.title ?? ""), 200)).filter(Boolean).slice(0, 80) : [];
+      const owner = guards.get(c.user.id, t.id);
+      // Windows on the owner's keep-out list are not named to the bot.
+      const list = Array.isArray(r.result.windows) ? (r.result.windows as { title?: unknown }[]).map((w) => clip(String(w?.title ?? ""), 200)).filter(Boolean).map((x) => (keepOutHit({ title: x }, owner) ? "(a window on the user's keep-out list)" : x)).slice(0, 80) : [];
       return { content: list.length ? `Open windows on ${t.label}:\n${list.map((x) => `- ${x}`).join("\n")}` : "No window titles were reported.", summary: `${list.length}` };
     }),
   }),
@@ -509,13 +730,15 @@ export const myComputerTools: BuiltinTool[] = [
     activity: "computer", label: "Switching windows on your computer", outside: true, audited: true, gate: controlGate,
     run: async (a, c) => inSession(c, a, "control", "", async (t) => {
       if (t.kind === "phone") return { content: "A phone has no windows to bring forward: open the app with my_open (or my_key recents).", isError: true, summary: tr(c.user.locale, "not on a phone") };
+      const no = nameGuard(c, t, String(a.title ?? ""));
+      if (no) return no;
       const r = await act(c, t, "window.focus", { title: clip(String(a.title ?? ""), 200) });
       if (!r.ok) return failed(c, t, r);
       return done(c, t, r.result.focused === false ? `No window matched "${a.title}".${r.result.note ? ` ${r.result.note}` : ""}` : `Brought "${a.title}" to the front.`, clip(String(a.title), 40));
     }),
   }),
-  tool("my_command", "Run a shell command on the user's own computer (their default shell, in their home folder unless cwd is given) and return its output. The user is asked here and on the computer, with the exact command. You need a control session (my_screen) first.",
-    obj({ command: str("The command line"), timeout_seconds: numb("Give up after this many seconds (default 30, max 600)"), cwd: str("Folder to run it in"), device: DEVICE }, ["command"]), {
+  tool("my_command", "Run a shell command on the user's own computer (their default shell, in the owner's project folder unless cwd is given) and return its output; use this rather than typing into a terminal window (terminal windows are refused). Each command is shown to the user on a card with the folder; sensitive ones (deleting, admin rights, installs, git rewrites…) are always asked. A script the command runs is shown on the card (call once without script_fingerprint: you get the fingerprint to call again with). background: true starts a long-running command (a dev server) and returns a job id for my_command_output / my_command_stop. You need a control session (my_screen) first.",
+    obj({ command: str("The command line"), timeout_seconds: numb("Give up after this many seconds (default: the owner's setting)"), cwd: str("Folder to run it in (default: the owner's first project folder)"), background: { type: "boolean", description: "Start it in the background (dev server, watcher) and return at once" }, script_fingerprint: str("The fingerprint(s) my_command gave for the script(s) this command runs, space-separated"), device: DEVICE }, ["command"]), {
     activity: "shell", label: "Running a command on your computer", outside: true, audited: true, gate: commandGate, detail: (a) => clip(String(a.command ?? ""), 60),
     run: async (a, c) => {
       // A phone never runs commands (its relay does not offer shell.run): refused here, nothing is sent.
@@ -525,21 +748,62 @@ export const myComputerTools: BuiltinTool[] = [
       const command = String(a.command ?? "");
       if (!command.trim()) return { content: "Give a command.", isError: true };
       if (Buffer.byteLength(command) > 8192) return { content: "That command is too long (8 KiB at most).", isError: true };
-      const timeoutMs = Math.round(Math.max(1, Math.min(600, num(a.timeout_seconds ?? 30) || 30)) * 1000);
+      const owner = guards.get(c.user.id, t.id);
+      const timeoutMs = Math.round(Math.max(1, Math.min(owner.commandTimeout, num(a.timeout_seconds ?? owner.commandTimeout) || owner.commandTimeout)) * 1000);
       const loc = c.user.locale;
+      const cwd = commandCwd(a, owner.projectFolders);
+      const ready = await commandScripts(c, t, command, cwd, a);
+      if ("content" in ready) return ready;
       audit(c.user.id, "computer", `${c.bot.name} → ${t.label} : ${tr(loc, "command")} ${clip(command, 300)}`, c.bot.id);
       // The computer shows its own question (up to 60 s) before the command's own time starts.
-      const r = await act(c, t, "shell.run", { command, timeoutMs, maxOutputBytes: 64 * 1024, ...(typeof a.cwd === "string" && a.cwd.trim() ? { cwd: clip(a.cwd, 1000) } : {}) }, timeoutMs + 75_000);
-      if (!r.ok) return failed(c, t, r);
-      const o = r.result as { exitCode?: number | null; signal?: string | null; stdout?: string; stderr?: string; truncated?: boolean; timedOut?: boolean; cancelled?: boolean; durationMs?: number };
+      const base = { command, timeoutMs, maxOutputBytes: 64 * 1024, ...(cwd ? { cwd } : {}), ...(ready.scripts.length ? { scripts: ready.scripts } : {}) };
+      if (a.background === true) {
+        const r = await act(c, t, "shell.start", base, 75_000);
+        if (!r.ok) return failed(c, t, r);
+        chatOutput(c, t, command, cwd).done(tr(loc, "started in the background (job {job})", { job: String(r.result.jobId ?? "?") }), "");
+        return { content: `Started in the background as job ${r.result.jobId} (folder ${cwd || "home"}). Read its output with my_command_output, stop it with my_command_stop.`, summary: tr(loc, "background job {job}", { job: String(r.result.jobId ?? "?") }) };
+      }
+      const live = chatOutput(c, t, command, cwd);
+      const r = await act(c, t, "shell.run", { ...base, streamRef: live.ref }, timeoutMs + 75_000).finally(() => live.stop());
+      if (!r.ok) { live.done(tr(loc, "not run"), ""); return failed(c, t, r); }
+      const raw = r.result as { exitCode?: number | null; signal?: string | null; stdout?: string; stderr?: string; truncated?: boolean; timedOut?: boolean; cancelled?: boolean; durationMs?: number };
+      // Secrets masked in what the bot and the chat get (shared.ts maskSecrets, and the vault's own values).
+      const o = { ...raw, stdout: masked(c.user.id, String(raw.stdout ?? "")), stderr: masked(c.user.id, String(raw.stderr ?? "")) };
       const head = o.timedOut ? `Timed out after ${timeoutMs / 1000}s.` : o.cancelled ? "Cancelled." : `Exit code ${o.exitCode ?? "?"}${o.signal ? ` (signal ${o.signal})` : ""}.`;
       const body = [o.stdout ? `stdout:\n${clip(String(o.stdout), 30_000)}` : "", o.stderr ? `stderr:\n${clip(String(o.stderr), 10_000)}` : ""].filter(Boolean).join("\n\n") || "(no output)";
       const summary = o.timedOut ? tr(loc, "timed out") : o.cancelled ? tr(loc, "cancelled") : `exit ${o.exitCode ?? "?"}`;
+      live.done(summary, [o.stdout, o.stderr].filter(Boolean).join("\n"));
       pushLater(c.user.id, { kind: "computer", title: t.label, body: tr(loc, "{bot} ran a command: {command}", { bot: c.bot.name, command: clip(command, 120) }), botId: c.bot.id, tag: `relay-cmd-${t.id}` });
       audit(c.user.id, "computer", `${c.bot.name} → ${t.label} : ${summary}`, c.bot.id);
       return { content: `${head}${o.truncated ? " (output truncated)" : ""}\n${body}`, summary, isError: !!o.timedOut || (typeof o.exitCode === "number" && o.exitCode !== 0) };
       });
     },
+  }),
+  tool("my_command_output", "Read what a background command (my_command with background: true) has printed so far, and whether it is still running.", obj({ job: str("The job id my_command gave"), device: DEVICE }, ["job"]), {
+    activity: "shell", label: "Reading a command's output", outside: true,
+    run: async (a, c) => inSession(c, a, "session-only", "", async (t) => {
+      if (t.kind === "phone") return NOT_ON_PHONE("Commands");
+      const r = await act(c, t, "shell.read", { jobId: clip(String(a.job ?? ""), 64) });
+      if (!r.ok) return r.code === "not_found" ? { content: "No such background command (it belongs to an earlier control session, or another bot).", isError: true } : failed(c, t, r);
+      const o = r.result as { running?: boolean; exitCode?: number | null; stdout?: string; stderr?: string; truncated?: boolean; durationMs?: number };
+      const out = [o.stdout ? `stdout:\n${clip(masked(c.user.id, String(o.stdout)).slice(-30_000), 30_000)}` : "", o.stderr ? `stderr:\n${clip(masked(c.user.id, String(o.stderr)).slice(-10_000), 10_000)}` : ""].filter(Boolean).join("\n\n") || "(no output yet)";
+      return { content: `${o.running ? "Still running" : `Finished, exit code ${o.exitCode ?? "?"}`} after ${Math.round((Number(o.durationMs) || 0) / 1000)} s${o.truncated ? " (only the last part is kept)" : ""}.\n${out}`, summary: o.running ? tr(c.user.locale, "running") : `exit ${o.exitCode ?? "?"}` };
+    }),
+  }),
+  tool("my_command_stop", "Stop a background command (my_command with background: true) and everything it started.", obj({ job: str("The job id my_command gave"), device: DEVICE }, ["job"]), {
+    activity: "shell", label: "Stopping a command",
+    run: async (a, c) => inSession(c, a, "session-only", "", async (t) => {
+      if (t.kind === "phone") return NOT_ON_PHONE("Commands");
+      const r = await act(c, t, "shell.stop", { jobId: clip(String(a.job ?? ""), 64) });
+      if (!r.ok) return r.code === "not_found" ? { content: "No such background command.", isError: true } : failed(c, t, r);
+      audit(c.user.id, "computer", `${c.bot.name} → ${t.label} : ${tr(c.user.locale, "background command stopped")} ${clip(String(a.job), 20)}`, c.bot.id);
+      return { content: `Stopped job ${a.job}.`, summary: clip(String(a.job), 20) };
+    }),
+  }),
+  tool("my_vault_fill", "Sign in on the user's own computer: type a login saved in the vault (username or password), or the current code of a saved two-factor generator, into the field that has the focus. Click the field and take a screenshot first. The secret goes only to the user's computer: you never see it. Only on the item's own site (in a browser) or its own app; the user is asked the first time on each site.",
+    obj({ item: str("Name of the vault item"), field: { type: "string", enum: ["username", "password", "code"], description: "username or password for a login; code for a two-factor generator" }, device: DEVICE }, ["item", "field"]), {
+    activity: "computer", label: "Filling a saved login on your computer", audited: true, gate: vaultFillGate, detail: (a) => clip(String(a.item ?? ""), 40),
+    run: async (a, c) => inSession(c, a, "session-only", "", async (t) => vaultFill(c, t, a)),
   }),
   tool("my_release", "Give control of the user's computer or phone back to them (end your control session) when you are done with it.", obj({ device: DEVICE }), {
     activity: "computer", label: "Handing your computer back",

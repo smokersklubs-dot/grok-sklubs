@@ -1,0 +1,11 @@
+seo-contenu — adapted from claude-seo, FLOW SEO (© 2026 agricidaniel, MIT; © 2026 Daniel Agrici, CC-BY-4.0)
+Sources (each pinned to one commit):
+- claude-seo — © 2026 agricidaniel — MIT — https://github.com/AgriciDaniel/claude-seo/tree/468ed5b0d9e3249394783710e54abb02837e326b/skills/seo-content
+- claude-seo — © 2026 agricidaniel — MIT — https://github.com/AgriciDaniel/claude-seo/tree/468ed5b0d9e3249394783710e54abb02837e326b/skills/seo-content-brief
+- claude-seo — © 2026 agricidaniel — MIT — https://github.com/AgriciDaniel/claude-seo/tree/468ed5b0d9e3249394783710e54abb02837e326b/skills/seo-cluster
+- claude-seo — © 2026 agricidaniel — MIT — https://github.com/AgriciDaniel/claude-seo/tree/468ed5b0d9e3249394783710e54abb02837e326b/skills/seo-plan
+- FLOW SEO — © 2026 Daniel Agrici — CC-BY-4.0 — https://github.com/AgriciDaniel/flow/tree/f76d0c7c22b43e5763ca89183332d03882f0ec00/obsidian-vault/docs/09-prompts
+Licence: MIT and CC-BY-4.0 — the upstream licence texts are in LICENSE.txt, unchanged.
+
+Modified for Sklubot (2026-11-22): content quality, briefs, clusters and plans condensed with the FLOW stages and the common structure of its prompts (rewritten as steps, prompts named after another AI product renamed); paid keyword tools removed; searches with search_web and the bot's browser; translated into French.
+Only text is included; no script, picture or other file of the original folders is bundled. Names of other products are not used as titles.

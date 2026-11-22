@@ -138,7 +138,7 @@ async function withDesktop<T>(botId: string, userId: string, fn: (d: Desktop) =>
 
 const settle = (page: any, ms = 600) => page.waitForLoadState("domcontentloaded", { timeout: 8000 }).catch(() => {}).then(() => page.waitForTimeout(ms));
 
-export interface Shot { data: string; mediaType: "image/jpeg"; url: string; title: string }
+export interface Shot { data: string; mediaType: "image/jpeg"; url: string; title: string; /** A line for the bot (a dialog the action opened, a new tab…). */ notice?: string }
 
 /** What a click would hit on the page in front: the control's own words (label, text, value), what it is, and its form. */
 export interface ClickTarget { label: string; tag: string; role: string; type: string; formAction: string; formMethod: string; url: string }
@@ -259,7 +259,7 @@ export const screen = {
       });
   },
   view: (botId: string, userId: string) => (kind === "linux" ? linuxScreen.view(botId, userId, workspaceOf(botId)) : browserScreen.view(botId, userId)),
-  open: (botId: string, userId: string, url: string) => (kind === "linux" ? linuxScreen.open(botId, userId, workspaceOf(botId), url) : browserScreen.open(botId, userId, url)).then((r) => { reportedUrl.set(botId, r.url || url); return r; }),
+  open: (botId: string, userId: string, url: string, newTab = false) => (kind === "linux" ? linuxScreen.open(botId, userId, workspaceOf(botId), url, newTab) : browserScreen.open(botId, userId, url)).then((r): Shot => { reportedUrl.set(botId, r.url || url); return r; }),
   click: (botId: string, userId: string, x: number, y: number, button: "left" | "right" | "middle" = "left", double = false) =>
     kind === "linux" ? linuxScreen.click(botId, userId, workspaceOf(botId), x, y, button, double) : browserScreen.click(botId, userId, x, y, button, double),
   type: (botId: string, userId: string, text: string) => (kind === "linux" ? linuxScreen.type(botId, userId, workspaceOf(botId), text) : browserScreen.type(botId, userId, text)),
@@ -268,7 +268,7 @@ export const screen = {
     kind === "linux" ? linuxScreen.scroll(botId, userId, workspaceOf(botId), x, y, dy) : browserScreen.scroll(botId, userId, x, y, dy),
   drag: (botId: string, userId: string, x1: number, y1: number, x2: number, y2: number) =>
     kind === "linux" ? linuxScreen.drag(botId, userId, workspaceOf(botId), x1, y1, x2, y2) : browserScreen.drag(botId, userId, x1, y1, x2, y2),
-  read: (botId: string, userId: string) => (kind === "linux" ? linuxScreen.read(botId, userId, workspaceOf(botId)) : browserScreen.read(botId, userId)).then((r) => noteUrl(botId, r)),
+  read: (botId: string, userId: string) => (kind === "linux" ? linuxScreen.read(botId, userId, workspaceOf(botId)) : browserScreen.read(botId, userId)).then((r): { url: string; title: string; text: string; notice?: string } => noteUrl(botId, r)),
   /**
    * What a click at (x, y) would hit, read in the page itself through the existing page-text helper (Linux) or the
    * browser (browser mode). null when it cannot be told (computer off, no page, not a browser window in front). Never

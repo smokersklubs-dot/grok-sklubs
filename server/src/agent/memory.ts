@@ -8,6 +8,8 @@ import type { Memory, MemoryBookkeeping, SensitiveCategory } from "../shared.js"
 import { bots, clip, history, memories, now, paused, rows, settings, type BotRecord } from "../store.js";
 import { findQuote, typedByUser } from "./grounding.js";
 import { looksSecret, memoryVerdict, sensitiveCategory } from "./sensitive.js";
+import { fold, stem, tokenize } from "./recall.js";
+import { noteHistory } from "./memorybook.js";
 import { record } from "../usage.js";
 import { hostedHoldsBot, isBusy, isPaused } from "./loop.js";
 import { capHolds } from "../usagecaps.js";
@@ -112,99 +114,168 @@ export function memoryStatus(bot: BotRecord): MemoryBookkeeping {
 }
 
 // ── Learning from conversations ──────────────────────────────────────────────
-const STOP = new Set("the a an and or but of to in on at for with from by is are was were be been it its this that these those as he she they them his her their you your i me my we our not no do does did has have had will would can could should likes like prefers prefer wants want uses use".split(" "));
-const wordSet = (s: string) => new Set((s.toLowerCase().match(/[\p{L}\p{N}]{2,}/gu) ?? []).filter((w) => !STOP.has(w)));
+/** Verbs every note of a preference uses: they say nothing about which fact it is. */
+const STOP = new Set(["like", "likes", "prefer", "prefers", "want", "wants", "use", "uses", "aime", "prefere", "veut", "utilise", "adore"].map(stem));
+/** Days and months (French and English, accents folded): one word that tells two facts apart. */
+const CALENDAR = new Set(("lundi mardi mercredi jeudi vendredi samedi dimanche janvier fevrier mars avril mai juin juillet aout septembre octobre novembre decembre " +
+  "monday tuesday wednesday thursday friday saturday sunday january february march april may june july august september october november december").split(" ").map(stem));
+const wordSet = (s: string) => new Set(tokenize(s).filter((w) => !STOP.has(w)));
+/**
+ * The words that name WHICH fact a note is about: numbers, days and months, and proper names (a capitalised word that is
+ * not a common word: "Dupont", "Lisbonne", "Acme"). Stemmed like the rest, so accents and plurals do not count.
+ */
+function keyWords(s: string): Set<string> {
+  const out = new Set<string>();
+  for (const raw of s.match(/[\p{L}\p{N}]+/gu) ?? []) {
+    const [w] = tokenize(raw);
+    if (!w) continue;
+    if (/\d/.test(w) || CALENDAR.has(w) || /^\p{Lu}/u.test(raw)) out.add(w);
+  }
+  return out;
+}
 
-/** Two notes say the same thing when most of their meaningful words coincide. */
+/**
+ * Two notes say the same thing when most of their meaningful words coincide (accents, elisions and plurals folded, as in
+ * recall.ts) — unless each of them holds a name, a number, a day or a month the other lacks: "le client Dupont paie à
+ * 30 jours" and "le client Durand paie à 30 jours" are two facts, so are "rapport le lundi" and "rapport le vendredi"
+ * (audit mem0, « Écarts » n° 8).
+ */
 export function similar(a: string, b: string): boolean {
   const x = wordSet(a), y = wordSet(b);
-  if (!x.size || !y.size) return a.trim().toLowerCase() === b.trim().toLowerCase();
+  if (!x.size || !y.size) return fold(a.trim()) === fold(b.trim());
   let shared = 0;
   for (const w of x) if (y.has(w)) shared++;
   const small = Math.min(x.size, y.size);
-  return shared / (x.size + y.size - shared) >= 0.7 || (small >= 3 && shared / small >= 0.9);
+  if (!(shared / (x.size + y.size - shared) >= 0.7 || (small >= 3 && shared / small >= 0.9))) return false;
+  const ka = keyWords(a), kb = keyWords(b);
+  const onlyA = [...ka].some((w) => !kb.has(w) && !y.has(w)), onlyB = [...kb].some((w) => !ka.has(w) && !x.has(w));
+  return !(onlyA && onlyB);
 }
 
 const consolidating = new Set<string>();
 const setMark = (botId: string, mark: number) => q.run("INSERT INTO consolidation (bot_id, mark) VALUES (?, ?) ON CONFLICT(bot_id) DO UPDATE SET mark = excluded.mark", botId, mark);
+/** Messages read per batch, and batches per pass: a long conversation is read in order, from the oldest message on. */
+export const LEARN_BATCH = 60;
+export const LEARN_BATCHES_PER_PASS = 5;
+/** An unreadable answer keeps the messages for the next pass; after this many in a row the batch is let go (cost). */
+export const LEARN_UNREADABLE_LIMIT = 3;
+const unreadable = new Map<string, number>();
+const isoDay = (at: number) => new Date(at).toISOString().slice(0, 10);
 
 /**
- * Reads the recent chat and keeps the few facts worth remembering for weeks — learned only from the user's own messages
- * (spec 07 A8): never from the bot's replies, other bots, routines, webhooks, pages, mails or tool results. Each fact
- * must come with an excerpt, word for word, of the user message it is based on, and the server checks that the excerpt
- * is really there. Sensitive topics and anything that looks like a secret are left out (sensitive.ts).
+ * Reads the chat written since the last pass and keeps the few facts worth remembering for weeks — learned only from the
+ * user's own messages (spec 07 A8): never from the bot's replies, other bots, routines, webhooks, pages, mails or tool
+ * results. Each fact must come with an excerpt, word for word, of the user message it is based on, and the server checks
+ * that the excerpt is really there. Sensitive topics and anything that looks like a secret are left out (sensitive.ts).
+ *
+ * Nothing is skipped in a long conversation: messages are read oldest first, LEARN_BATCH at a time, and the mark only
+ * moves past a batch the model really answered (an unreadable answer is tried again on the next pass). Each message goes
+ * to the model with its date, and relative dates ("la semaine prochaine") are written as real dates.
  */
 export async function consolidate(bot: BotRecord): Promise<{ added: string[]; considered: number }> {
   if (consolidating.has(bot.id)) return { added: [], considered: 0 };
   consolidating.add(bot.id);
+  const added: string[] = [];
+  let considered = 0, confirmed = 0;
   try {
-    const mark = q.get<{ mark: number }>("SELECT mark FROM consolidation WHERE bot_id = ?", bot.id)?.mark ?? 0;
-    const recent = rows.messagesAfter(bot.id, bot.generation, mark, 60).filter((r) => r.body.kind === "message" && r.body.text.trim() && !r.body.streaming);
-    if (!recent.length) return { added: [], considered: 0 };
-    const newest = recent[recent.length - 1].createdAt;
-    // Only what the user typed (or said on a call) can teach anything; long pastes are skipped.
-    const own = recent.filter((r) => typedByUser(r) && r.body.kind === "message" && r.body.text.length <= 4000);
-    if (!own.length || !settings.memory(bot.userId).autoCapture) { setMark(bot.id, newest); return { added: [], considered: recent.length }; }
-
-    // Confidence that grows by itself (wave 5b): a note the user states again, word for word, in a later message of their
-    // own becomes "confirmed". Only the user's messages count; never the bot's text or outside content.
-    const before = memories.list(bot.id, 200);
-    let confirmed = 0;
-    for (const m of before) {
-      if (m.confidence === "confirmed" || m.status === "archived" || !m.quote.trim()) continue;
-      const later = own.filter((r) => r.createdAt > m.createdAt).map((r) => ({ seq: r.seq, text: r.body.kind === "message" ? r.body.text : "", at: r.createdAt }));
-      if (later.length && findQuote(m.quote, later)) { memories.confirm(m.id); confirmed++; }
+    for (let pass = 0; pass < LEARN_BATCHES_PER_PASS; pass++) {
+      const r = await learnBatch(bot);
+      if (!r) break;
+      added.push(...r.added);
+      considered += r.considered;
+      confirmed += r.confirmed;
+      if (!r.more) break;
     }
-
-    const transcript = own.map((r) => `- ${r.body.kind === "message" ? clip(r.body.text, 2000) : ""}`).join("\n").slice(-24_000);
-    const existing = memories.list(bot.id, 200);
-    const answer = await ask(bot,
-      "You maintain the long-term memory of an AI teammate. You read only the user's own messages and pick out what will still matter in weeks.",
-      `Keep: facts about the user (role, company, team, timezone, key people, accounts and tools), their preferences and standing instructions, lasting facts about ongoing projects.\n` +
-      `Skip: one-off requests, small talk, passing states, secrets of any kind, health, religion, politics, sexuality, origin, precise addresses, account or card numbers, and anything the existing memories already cover even in other words.\n` +
-      `Write each fact as one short stand-alone sentence in the third person, under 200 characters, and give with it an excerpt copied word for word from the user message it comes from. At most 8. If nothing qualifies, return an empty list.\n` +
-      `When the user restates a fact an existing memory already holds, list it again with its new excerpt (it confirms it). When the user says something that contradicts an existing memory, add the new fact with "contradicts" set to that memory, word for word.\n` +
-      `Answer with JSON only, in the form {"facts": [{"text": "…", "quote": "…", "contradicts": "…(optional)"}]}.\n\nExisting memories:\n${existing.map((m) => `- ${m.text}`).join("\n") || "(none)"}\n\nThe user's messages:\n${transcript}`);
-    let facts: { text: string; quote: string; contradicts?: string }[] = [];
-    try {
-      const parsed = JSON.parse(answer.slice(answer.indexOf("{"), answer.lastIndexOf("}") + 1));
-      if (Array.isArray(parsed.facts)) facts = parsed.facts.map((f: unknown) => (typeof f === "string" ? { text: f, quote: "" } : f && typeof f === "object" ? { text: String((f as any).text ?? ""), quote: String((f as any).quote ?? ""), contradicts: typeof (f as any).contradicts === "string" ? (f as any).contradicts : undefined } : { text: "", quote: "" }));
-    } catch { /* unusable answer: learn nothing this time */ }
-    const words = own.map((r) => ({ seq: r.seq, text: r.body.kind === "message" ? r.body.text : "", at: r.createdAt }));
-    const added: string[] = [];
-    for (const fact of facts.slice(0, 8)) {
-      const t = clip(fact.text.trim(), 300);
-      if (!t) continue;
-      // A contradiction of an existing note, in the user's own later words: the note is contested and the user is asked.
-      const old = fact.contradicts ? existing.find((m) => m.status !== "archived" && (m.text === fact.contradicts || similar(m.text, fact.contradicts!))) : undefined;
-      if (old) {
-        const src = findQuote(fact.quote, words);
-        if (src && src.at > old.createdAt && memoryVerdict(bot.userId, `${t}\n${fact.quote}`, false).ok) askWhichIsRight(bot, old, t, fact.quote);
-        continue;
-      }
-      // The same fact again, in a later message of the user's: confirmed.
-      const same = existing.find((m) => similar(m.text, t));
-      if (same) {
-        const src = findQuote(fact.quote, words);
-        if (src && src.at > same.createdAt && same.confidence !== "confirmed") { memories.confirm(same.id); confirmed++; }
-        continue;
-      }
-      if (added.some((a) => similar(a, t))) continue;
-      // The excerpt must really be in one of the user's messages: otherwise the fact may come from somewhere else.
-      const source = findQuote(fact.quote, words);
-      if (!source) continue;
-      // Sensitive topics are learned only when the user allowed them; secrets never (an explicit "remember" goes through memory_save).
-      const v = memoryVerdict(bot.userId, `${t}\n${fact.quote}`, false);
-      if (!v.ok) continue;
-      memories.add(bot.id, t, "learned", { quote: clip(fact.quote, 300), category: v.category });
-      added.push(t);
-    }
-    setMark(bot.id, newest);
     if (added.length || confirmed) emit(bot.userId, { type: "memories", botId: bot.id });
-    return { added, considered: recent.length };
+    return { added, considered };
   } finally {
     consolidating.delete(bot.id);
   }
+}
+
+/** One batch: the oldest LEARN_BATCH messages after the mark. Null when there is nothing (left) to read or the answer was unreadable. */
+async function learnBatch(bot: BotRecord): Promise<{ added: string[]; considered: number; confirmed: number; more: boolean } | null> {
+  const mark = q.get<{ mark: number }>("SELECT mark FROM consolidation WHERE bot_id = ?", bot.id)?.mark ?? 0;
+  let batch = rows.messagesAfter(bot.id, bot.generation, mark, LEARN_BATCH);
+  if (!batch.length) return null;
+  const more = batch.length === LEARN_BATCH;
+  // The mark is a time: messages of the same millisecond as the last one of a full batch wait for the next batch together.
+  if (more) { const last = batch[batch.length - 1].createdAt; const cut = batch.filter((r) => r.createdAt < last); if (cut.length) batch = cut; }
+  const newest = batch[batch.length - 1].createdAt;
+  const recent = batch.filter((r) => r.body.kind === "message" && r.body.text.trim() && !r.body.streaming);
+  // Only what the user typed (or said on a call) can teach anything; long pastes are skipped.
+  const own = recent.filter((r) => typedByUser(r) && r.body.kind === "message" && r.body.text.length <= 4000);
+  if (!own.length || !settings.memory(bot.userId).autoCapture) { setMark(bot.id, newest); return { added: [], considered: recent.length, confirmed: 0, more }; }
+
+  // Confidence that grows by itself (wave 5b): a note the user states again, word for word, in a later message of their
+  // own becomes "confirmed". Only the user's messages count; never the bot's text or outside content.
+  const before = memories.list(bot.id, 200);
+  let confirmed = 0;
+  for (const m of before) {
+    if (m.confidence === "confirmed" || m.status === "archived" || !m.quote.trim()) continue;
+    const later = own.filter((r) => r.createdAt > m.createdAt).map((r) => ({ seq: r.seq, text: r.body.kind === "message" ? r.body.text : "", at: r.createdAt }));
+    if (later.length && findQuote(m.quote, later)) { memories.confirm(m.id); confirmed++; }
+  }
+
+  const transcript = own.map((r) => `- [${isoDay(r.createdAt)}] ${r.body.kind === "message" ? clip(r.body.text, 2000) : ""}`).join("\n").slice(-24_000);
+  const existing = memories.list(bot.id, 200);
+  const answer = await ask(bot,
+    "You maintain the long-term memory of an AI teammate. You read only the user's own messages and pick out what will still matter in weeks.",
+    `Keep: facts about the user (role, company, team, timezone, key people, accounts and tools), their preferences and standing instructions, lasting facts about ongoing projects.\n` +
+    `Skip: one-off requests, small talk, passing states, secrets of any kind, health, religion, politics, sexuality, origin, precise addresses, account or card numbers, and anything the existing memories already cover even in other words.\n` +
+    `Write each fact as one short stand-alone sentence in the third person, under 200 characters, and give with it an excerpt copied word for word from the user message it comes from. At most 8. If nothing qualifies, return an empty list.\n` +
+    `Each message starts with the day it was written, in brackets. Today is ${isoDay(now())}. Never keep a relative date or time in a fact ("tomorrow", "next week", "lundi prochain", "dans 3 jours", "cet été"): turn it into a real date counted from the day of the message it comes from (for example "on 2026-11-24", "the week of 2026-11-30", "in summer 2027"). The excerpt stays word for word, without the day in brackets.\n` +
+    `When the user restates a fact an existing memory already holds, list it again with its new excerpt (it confirms it). When the user says something that contradicts an existing memory, add the new fact with "contradicts" set to that memory, word for word.\n` +
+    `Answer with JSON only, in the form {"facts": [{"text": "…", "quote": "…", "contradicts": "…(optional)"}]}.\n\nExisting memories:\n${existing.map((m) => `- ${m.text}`).join("\n") || "(none)"}\n\nThe user's messages:\n${transcript}`);
+  const facts = parseFacts(answer);
+  if (!facts) {
+    // An unreadable answer: these messages are read again on the next pass, so nothing they said is lost — unless the
+    // model keeps failing on them, then they are let go (each pass costs a model call).
+    const n = (unreadable.get(bot.id) ?? 0) + 1;
+    if (n < LEARN_UNREADABLE_LIMIT) { unreadable.set(bot.id, n); return null; }
+    console.error(`[consolidation] ${bot.id}: ${n} unreadable answers in a row; these messages are skipped`);
+  }
+  unreadable.delete(bot.id);
+  const words = own.map((r) => ({ seq: r.seq, text: r.body.kind === "message" ? r.body.text : "", at: r.createdAt }));
+  const added: string[] = [];
+  for (const fact of (facts ?? []).slice(0, 8)) {
+    const t = clip(fact.text.trim(), 300);
+    if (!t) continue;
+    // A contradiction of an existing note, in the user's own later words: the note is contested and the user is asked.
+    const old = fact.contradicts ? existing.find((m) => m.status !== "archived" && (m.text === fact.contradicts || similar(m.text, fact.contradicts!))) : undefined;
+    if (old) {
+      const src = findQuote(fact.quote, words);
+      if (src && src.at > old.createdAt && memoryVerdict(bot.userId, `${t}\n${fact.quote}`, false).ok) askWhichIsRight(bot, old, t, fact.quote);
+      continue;
+    }
+    // The same fact again, in a later message of the user's: confirmed.
+    const same = existing.find((m) => similar(m.text, t));
+    if (same) {
+      const src = findQuote(fact.quote, words);
+      if (src && src.at > same.createdAt && same.confidence !== "confirmed") { memories.confirm(same.id); confirmed++; }
+      continue;
+    }
+    if (added.some((a) => similar(a, t))) continue;
+    // The excerpt must really be in one of the user's messages: otherwise the fact may come from somewhere else.
+    const source = findQuote(fact.quote, words);
+    if (!source) continue;
+    // Sensitive topics are learned only when the user allowed them; secrets never (an explicit "remember" goes through memory_save).
+    const v = memoryVerdict(bot.userId, `${t}\n${fact.quote}`, false);
+    if (!v.ok) continue;
+    memories.add(bot.id, t, "learned", { quote: clip(fact.quote, 300), category: v.category });
+    added.push(t);
+  }
+  setMark(bot.id, newest);
+  return { added, considered: recent.length, confirmed, more };
+}
+
+/** The model's facts, or null when its answer is not the JSON asked for (an empty list is a real answer). */
+export function parseFacts(answer: string): { text: string; quote: string; contradicts?: string }[] | null {
+  try {
+    const parsed = JSON.parse(answer.slice(answer.indexOf("{"), answer.lastIndexOf("}") + 1));
+    if (!parsed || typeof parsed !== "object" || !Array.isArray(parsed.facts)) return null;
+    return parsed.facts.map((f: unknown) => (typeof f === "string" ? { text: f, quote: "" } : f && typeof f === "object" ? { text: String((f as any).text ?? ""), quote: String((f as any).quote ?? ""), contradicts: typeof (f as any).contradicts === "string" ? (f as any).contradicts : undefined } : { text: "", quote: "" }));
+  } catch { return null; }
 }
 
 /** The user contradicted a note: it becomes "contested" and a small card asks which is right (once per note). */
@@ -212,6 +283,7 @@ export function askWhichIsRight(bot: BotRecord, old: Memory, newText: string, qu
   const open = rows.list(bot.id, bot.generation, 200).some((r) => r.body.kind === "card" && r.body.card.type === "memory" && r.body.card.memoryId === old.id && r.body.card.status === "pending");
   if (open) return;
   memories.setStatus(old.id, "contested");
+  noteHistory(old.id, bot.id, "status", old.status, "contested", "bot");
   rows.append(bot, { kind: "card", card: { type: "memory", memoryId: old.id, oldText: old.text, newText: clip(newText, 300), quote: clip(quote, 300), status: "pending" } }, 0);
   bots.bumpUnread(bot.id);
 }

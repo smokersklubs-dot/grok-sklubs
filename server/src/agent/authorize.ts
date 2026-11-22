@@ -40,7 +40,7 @@ import { CARRIES_FURTHER, describeArgs, judge, type Turn, type Verdict } from ".
 /** Built-in tools whose effect lasts or reaches others, beyond those judge already treats as sensitive. */
 const EXTRA_GROUNDABLE = new Set(["rule_propose", "routine_delete", "self_update", "bot_create", "profile_update", "checkins_set", "page_publish", "page_edit", "video_generate", "email_code_type", "screen_click", "element_click", "card_fill", "api_send", "my_file_write", "my_file_trash"]);
 /** Built-in tools that act outside Sklubot (or type something private): each run gets a reservation (executions.ts). */
-const EXTERNAL_BUILTINS = new Set(["bot_email_send", "page_publish", "page_edit", "vault_type", "email_code_type", "video_generate", "secret_use", "card_fill", "api_send", "my_command", "my_click", "my_type", "my_key", "my_open", "my_drag", "my_scroll", "my_file_write", "my_file_trash"]);
+const EXTERNAL_BUILTINS = new Set(["my_vault_fill", "bot_email_send", "page_publish", "page_edit", "vault_type", "email_code_type", "video_generate", "secret_use", "card_fill", "api_send", "my_command", "my_click", "my_type", "my_key", "my_open", "my_drag", "my_scroll", "my_file_write", "my_file_trash"]);
 
 /** Tools that change something: they get the `user_quote` argument. */
 export function groundable(turn: Pick<Turn, "builtin" | "remote">, name: string): boolean {
@@ -48,7 +48,7 @@ export function groundable(turn: Pick<Turn, "builtin" | "remote">, name: string)
   if (r) return r.native ? r.native.risk !== "read" : !r.readOnly;
   const b = turn.builtin.get(name);
   if (!b) return false;
-  return !!b.sensitive || !!b.gate || name in CARRIES_FURTHER || EXTRA_GROUNDABLE.has(name) || (b.group === "mycomputer" && !["my_screen", "my_windows", "my_computers", "my_release", "my_window_focus", "my_files", "my_file_read"].includes(name));
+  return !!b.sensitive || !!b.gate || name in CARRIES_FURTHER || EXTRA_GROUNDABLE.has(name) || (b.group === "mycomputer" && !["my_screen", "my_windows", "my_computers", "my_release", "my_window_focus", "my_files", "my_file_read", "my_command_output", "my_command_stop"].includes(name));
 }
 /** Tools whose run is reserved before it starts and can end up "uncertain". A click is, when it commits something. */
 export function external(turn: Pick<Turn, "builtin" | "remote">, name: string, input?: Record<string, unknown>): boolean {

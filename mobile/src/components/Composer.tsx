@@ -18,6 +18,7 @@ import { Icon } from "./Icon";
 import { tap } from "./ui";
 import { ChatSources } from "./ChatSources";
 import { mentionAt, replaceMention } from "../../../server/src/clientshared/chatmentions";
+import { sendKeysFor } from "../../shared/sendKey";
 
 export const MAX_UPLOAD_BYTES = 1_000_000_000;
 export const MAX_ATTACHMENTS = 10;
@@ -91,7 +92,10 @@ export function Composer({ bot, live }: { bot: Bot; live: Live | undefined }) {
     const body = text.trim();
     setSending(true);
     try {
-      await useStore.getState().send(bot.id, body, ready);
+      // One key per message, the same again if this send is retried after a lost reply: never two messages.
+      const keys = sendKeysFor(bot.id);
+      await useStore.getState().send(bot.id, body, ready, keys.keyFor(JSON.stringify([body, ready.map((a) => a.path)])));
+      keys.done();
       setText("");
       setUploads([]);
     } catch (e) {

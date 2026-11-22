@@ -52,7 +52,8 @@ interface State {
   loadTasks(): Promise<void>;
   setOpenBot(botId: string | null): void;
   markRead(botId: string): Promise<void>;
-  send(botId: string, text: string, attachments: Attachment[]): Promise<void>;
+  /** `clientKey`: the send key of this message (shared/sendKey.ts): the same again when the send is retried. */
+  send(botId: string, text: string, attachments: Attachment[], clientKey?: string): Promise<void>;
   stop(botId: string): Promise<void>;
   decide(approvalId: string, decision: "allow" | "always" | "conversation" | "deny"): Promise<void>;
   answer(botId: string, seq: number, answer: string): Promise<void>;
@@ -314,8 +315,8 @@ export const useStore = create<State>((set, get) => ({
     try { await needClient().post(`/bots/${encodeURIComponent(botId)}/read`); } catch { /* the next bot event restores the count */ }
   },
 
-  async send(botId, text, attachments) {
-    const r = await needClient().post<{ row: Row }>(`/bots/${encodeURIComponent(botId)}/messages`, { text, attachments: attachments.map((a) => a.path) });
+  async send(botId, text, attachments, clientKey) {
+    const r = await needClient().post<{ row: Row }>(`/bots/${encodeURIComponent(botId)}/messages`, { text, attachments: attachments.map((a) => a.path), ...(clientKey ? { clientKey } : {}) });
     const th = get().threads[botId];
     if (th && r.row && r.row.generation === th.generation) set((s) => ({ threads: { ...s.threads, [botId]: applyRowsPage(s.threads[botId], { generation: th.generation, rows: [r.row] }) } }));
   },

@@ -10,8 +10,12 @@ const PROTOCOL_VERSION = 1;
 /**
  * Minor revision, sent as hello.protocol (informational). 1.1 adds the fs.* operations (files in folders the user
  * shared on this computer); a 1.0 server ignores the new capabilities, a 1.1 server only uses them when listed.
+ * 1.3 adds the safety rules (§14): window.active, script.peek, guard.set, `expect` on input, `force` on
+ * keyboard.press, `scripts` on shell.run, and the refusal codes blocked_app, keep_out, password_field… (guard.js).
+ * 1.4: commands on by default (owner switch), project folders, shell.start/read/stop (background), output streamed as
+ * `shell.output` events, vault.type (a saved login typed by the relay after its own checks).
  */
-const PROTOCOL_REVISION = '1.1';
+const PROTOCOL_REVISION = '1.4';
 const CONNECT_PATH = '/api/relay/connect';
 
 /** Size limits (bytes). Server → client messages above MAX_INBOUND are rejected by `ws` (close 1009). */
@@ -23,7 +27,7 @@ const LIMITS = Object.freeze({
   DEFAULT_OUTPUT_BYTES: 64 * 1024,
   MAX_OUTPUT_BYTES: 1024 * 1024,
   DEFAULT_TIMEOUT_MS: 30_000,
-  MAX_TIMEOUT_MS: 10 * 60_000,
+  MAX_TIMEOUT_MS: 60 * 60_000,
   MAX_BOT_NAME: 60,
   MAX_ID: 64,
   MAX_CAPTURE_WIDTH: 2560,
@@ -74,6 +78,15 @@ const OPS = Object.freeze({
   'fs.read': { session: false, input: false },
   'fs.write': { session: false, input: true },
   'fs.trash': { session: false, input: true },
+  // Safety rules (1.3): the window in front, a script shown on the command card, the owner's rules from Sklubot.
+  'window.active': { session: true, input: false },
+  'script.peek': { session: true, input: false },
+  'guard.set': { session: false, input: false },
+  // Commands in the background (dev servers…), and a saved login typed by the relay itself (vault fill, guard.js).
+  'shell.start': { session: true, input: true },
+  'shell.read': { session: true, input: false },
+  'shell.stop': { session: true, input: false },
+  'vault.type': { session: true, input: true },
 });
 
 const ERR = Object.freeze({
@@ -99,6 +112,20 @@ const ERR = Object.freeze({
   NOT_FOUND: 'not_found',
   EXISTS: 'exists',
   BINARY: 'binary',
+  // Safety rules (1.3).
+  BLOCKED_APP: 'blocked_app',
+  KEEP_OUT: 'keep_out',
+  PASSWORD_FIELD: 'password_field',
+  WINDOW_CHANGED: 'window_changed',
+  FOREGROUND_UNKNOWN: 'foreground_unknown',
+  BLOCKED_SHORTCUT: 'blocked_shortcut',
+  SCRIPT_CHANGED: 'script_changed',
+  SCRIPT_UNREADABLE: 'script_unreadable',
+  TERMINAL_OFF: 'terminal_off',
+  HOST_MISMATCH: 'host_mismatch',
+  HOST_UNKNOWN: 'host_unknown',
+  APP_MISMATCH: 'app_mismatch',
+  NOT_PASSWORD_FIELD: 'not_password_field',
 });
 
 /** Keys accepted by keyboard.press (names follow @jitsi/robotjs' key table, src/robotjs.cc). */
@@ -200,6 +227,29 @@ function parseKey(key, modifiers) {
 const BUTTONS = new Set(['left', 'right', 'middle']);
 
 /**
+ * `expect` on an input operation (1.3): the window the server saw in front; the relay refuses if another one is in
+ * front right before it acts. Absent: the relay still applies its own rules.
+ * @param {unknown} v
+ */
+function parseExpect(v) {
+  if (v === undefined || v === null) return null;
+  if (!isObj(v)) throw new ProtocolError(ERR.INVALID_ARGS, 'expect must be an object');
+  const e = /** @type {Record<string, unknown>} */ (v);
+  return {
+    app: str(e.app, 'expect.app', 200),
+    pid: e.pid === undefined || e.pid === null ? null : num(e.pid, 'expect.pid', { min: 0, max: 2 ** 31 }),
+    windowId: e.windowId === undefined || e.windowId === null ? null : str(e.windowId, 'expect.windowId', 64),
+  };
+}
+
+/** @param {unknown} v @param {string} name */
+function parseStrList(v, name) {
+  if (v === undefined) return [];
+  if (!Array.isArray(v) || v.length > 50) throw new ProtocolError(ERR.INVALID_ARGS, `${name} must be a list of 50 at most`);
+  return v.map((x) => str(x, name, 200));
+}
+
+/**
  * Validate and normalise the arguments of an operation. Throws ProtocolError.
  * @param {string} op @param {unknown} rawArgs
  * @returns {Record<string, any>}
@@ -239,7 +289,7 @@ function validateArgs(op, rawArgs) {
     case 'view.stop':
       return { viewId: args.viewId === undefined ? null : str(args.viewId, 'viewId', LIMITS.MAX_ID) };
     case 'mouse.move':
-      return { x: coord(args.x, 'x'), y: coord(args.y, 'y') };
+      return { x: coord(args.x, 'x'), y: coord(args.y, 'y'), expect: parseExpect(args.expect) };
     case 'mouse.click': {
       const hasXY = args.x !== undefined || args.y !== undefined;
       return {
@@ -247,6 +297,7 @@ function validateArgs(op, rawArgs) {
         y: hasXY ? coord(args.y, 'y') : null,
         button: btn(args.button),
         double: args.double === true,
+        expect: parseExpect(args.expect),
       };
     }
     case 'mouse.drag':
@@ -254,6 +305,7 @@ function validateArgs(op, rawArgs) {
         fromX: coord(args.fromX, 'fromX'), fromY: coord(args.fromY, 'fromY'),
         toX: coord(args.toX, 'toX'), toY: coord(args.toY, 'toY'),
         button: btn(args.button),
+        expect: parseExpect(args.expect),
       };
     case 'mouse.scroll': {
       const hasXY = args.x !== undefined || args.y !== undefined;
@@ -262,12 +314,13 @@ function validateArgs(op, rawArgs) {
         y: hasXY ? coord(args.y, 'y') : null,
         dx: optNum(args.dx, 0, -100, 100),
         dy: optNum(args.dy, 0, -100, 100),
+        expect: parseExpect(args.expect),
       };
     }
     case 'keyboard.type':
-      return { text: str(args.text, 'text', LIMITS.MAX_TYPE_TEXT * 4).slice(0, LIMITS.MAX_TYPE_TEXT) };
+      return { text: str(args.text, 'text', LIMITS.MAX_TYPE_TEXT * 4).slice(0, LIMITS.MAX_TYPE_TEXT), expect: parseExpect(args.expect) };
     case 'keyboard.press':
-      return parseKey(args.key, args.modifiers);
+      return { ...parseKey(args.key, args.modifiers), force: args.force === true, expect: parseExpect(args.expect) };
     case 'url.open': {
       const s = str(args.url, 'url', 4096);
       let u;
@@ -286,7 +339,8 @@ function validateArgs(op, rawArgs) {
       if (!title.trim()) throw new ProtocolError(ERR.INVALID_ARGS, 'title required');
       return { title };
     }
-    case 'shell.run': {
+    case 'shell.run':
+    case 'shell.start': {
       const command = str(args.command, 'command', LIMITS.MAX_COMMAND_BYTES);
       if (!command.trim()) throw new ProtocolError(ERR.INVALID_ARGS, 'command required');
       return {
@@ -294,8 +348,28 @@ function validateArgs(op, rawArgs) {
         timeoutMs: optNum(args.timeoutMs, LIMITS.DEFAULT_TIMEOUT_MS, 100, LIMITS.MAX_TIMEOUT_MS),
         maxOutputBytes: optNum(args.maxOutputBytes, LIMITS.DEFAULT_OUTPUT_BYTES, 256, LIMITS.MAX_OUTPUT_BYTES),
         cwd: args.cwd === undefined ? null : str(args.cwd, 'cwd', 1024),
+        scripts: parseScripts(args.scripts),
+        streamRef: args.streamRef === undefined || args.streamRef === null ? null : str(args.streamRef, 'streamRef', LIMITS.MAX_ID),
       };
     }
+    case 'shell.read':
+    case 'shell.stop':
+      return { jobId: str(args.jobId, 'jobId', LIMITS.MAX_ID) };
+    case 'vault.type': {
+      const field = str(args.field, 'field', 10);
+      if (!['username', 'password', 'code'].includes(field)) throw new ProtocolError(ERR.INVALID_ARGS, 'field must be username, password or code');
+      const expect = parseExpect(args.expect);
+      if (!expect) throw new ProtocolError(ERR.INVALID_ARGS, 'expect required');
+      const text = str(args.text, 'text', 2000);
+      if (!text) throw new ProtocolError(ERR.INVALID_ARGS, 'text required');
+      return { text, field, site: str(args.site, 'site', 300), expect };
+    }
+    case 'window.active':
+      return {};
+    case 'script.peek':
+      return { path: str(args.path, 'path', LIMITS.MAX_PATH), cwd: args.cwd === undefined || args.cwd === null ? null : str(args.cwd, 'cwd', 1024) };
+    case 'guard.set':
+      return { keepApps: parseStrList(args.keepApps, 'keepApps'), keepFolders: parseStrList(args.keepFolders, 'keepFolders'), projectFolders: parseStrList(args.projectFolders, 'projectFolders'), terminal: args.terminal !== false };
     case 'fs.roots':
       return {};
     case 'fs.list':
@@ -312,6 +386,19 @@ function validateArgs(op, rawArgs) {
     default:
       throw new ProtocolError(ERR.UNKNOWN_OP, `unknown op ${op}`);
   }
+}
+
+/** `scripts` on shell.run (1.3): the scripts the owner saw on Sklubot's card, by SHA-256. @param {unknown} v */
+function parseScripts(v) {
+  if (v === undefined || v === null) return [];
+  if (!Array.isArray(v) || v.length > 3) throw new ProtocolError(ERR.INVALID_ARGS, 'scripts must be a list of 3 at most');
+  return v.map((x) => {
+    if (!isObj(x)) throw new ProtocolError(ERR.INVALID_ARGS, 'script must be an object');
+    const o = /** @type {Record<string, unknown>} */ (x);
+    const sha256 = str(o.sha256, 'sha256', 64);
+    if (!/^[0-9a-f]{64}$/.test(sha256)) throw new ProtocolError(ERR.INVALID_ARGS, 'sha256 must be 64 hex characters');
+    return { path: str(o.path, 'path', LIMITS.MAX_PATH), sha256 };
+  });
 }
 
 /**

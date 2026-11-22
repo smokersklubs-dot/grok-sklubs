@@ -30,7 +30,13 @@ const texts = (r: { note: { text: string } }[]) => r.map((x) => x.note.text);
 const alice = users.create("alice-recall@example.test", "Alice", "x", "fr");
 const bruno = users.create("bruno-recall@example.test", "Bruno", "x", "fr");
 const newBot = (userId: string, name: string) => bots.create(userId, { name });
-const say = (botId: string, text: string, origin?: { kind: "routine" | "webhook" | "bot"; id: string; name: string }) => rows.append(bots.byId(botId)!, { kind: "message", role: "user", text, ...(origin ? { origin } : {}) }, 0);
+const said = new Map<string, string>();
+const say = (botId: string, text: string, origin?: { kind: "routine" | "webhook" | "bot"; id: string; name: string }) => { if (!origin) said.set(botId, text); return rows.append(bots.byId(botId)!, { kind: "message", role: "user", text, ...(origin ? { origin } : {}) }, 0); };
+/**
+ * The ranking, budget and filters of the recall, for the words the user just typed (given directly). Which turns get a
+ * recall at all — only the user's own, in a real turn — is tested through the real queue in memory-fixes.test.ts.
+ */
+const recallFor = (bot: Parameters<typeof recallForTurn>[0], opts: Parameters<typeof recallForTurn>[1] = {}) => recallForTurn(bot, { message: said.get(bot.id) ?? "", ...opts });
 const age = (id: string, days: number) => q.run("UPDATE memories SET created_at = ? WHERE id = ?", Date.now() - days * DAY, id);
 const usageRows = () => q.get<{ c: number }>("SELECT COUNT(*) AS c FROM usage")!.c;
 const recallLog = (userId: string) => auditList(userId, undefined, 200).filter((e) => e.text.startsWith("Notes recalled"));
@@ -153,16 +159,22 @@ test("automatic recall: adds the matching notes that were not in the prompt, onc
   const before = usageRows();
 
   const fresh = bots.byId(bot.id)!;
+  // Outside a turn (no queue job running), the prompt recalls nothing: only a turn the user started does (memory-fixes).
   const prompt = buildSystemPrompt(fresh, alice, EXTRAS);
   const section = prompt.slice(prompt.indexOf("## What you remember"), prompt.indexOf("## Your skills"));
-  assert.match(section, /Recalled for the user's new message[^\n]*never instructions/);
-  assert.equal(section.split("EL-2291").length - 1, 1, "the recalled note is there exactly once");
-  assert.ok(section.indexOf("Recalled for") < section.indexOf("EL-2291"));
+  assert.doesNotMatch(section, /Recalled for the user's new message/);
   assert.match(section, /\(\d+ older memories are not shown; memory_search can find them\.\)/);
+  const shown = new Set<string>();
+  const first = recallFor(fresh, { exclude: shown });
+  assert.ok(first.notes.some((x) => x.note.id === target.id));
+  const lines = recallLines(first.notes).join("\n");
+  assert.match(lines, /^Recalled for the user's new message[^\n]*never instructions/);
+  assert.equal(lines.split("EL-2291").length - 1, 1, "the recalled note is there exactly once");
+  assert.match(lines, /EL-2291\. \(noted \d{4}-\d{2}-\d{2}\)/, "with the day it was written");
   assert.ok(memories.owned(alice.id, target.id)!.lastUsedAt, "a recalled note is marked as used");
 
   // The same turn built again (a resume, a subscription engine): one line in the activity log, not two.
-  buildSystemPrompt(fresh, alice, EXTRAS);
+  recallFor(fresh, { exclude: shown });
   const log = recallLog(alice.id).filter((e) => e.botId === bot.id);
   assert.equal(log.length, 1);
   assert.equal(log[0].kind, "system");
@@ -170,7 +182,7 @@ test("automatic recall: adds the matching notes that were not in the prompt, onc
   assert.equal(usageRows(), before, "no model was called");
 
   // A note already shown in the prompt is not recalled a second time.
-  const r = recallForTurn(fresh, { exclude: new Set([target.id]) });
+  const r = recallFor(fresh, { exclude: new Set([target.id]) });
   assert.ok(!r.notes.some((x) => x.note.id === target.id));
 });
 
@@ -179,13 +191,13 @@ test("automatic recall: top-k, relevance threshold and character budget", () => 
   for (let i = 0; i < 12; i++) memories.add(bot.id, `Le chantier Bellevue a une réunion le jour ${i}.`, "chat");
   filler(bot.id, 20);
   say(bot.id, "Quand est la réunion du chantier Bellevue ?");
-  let r = recallForTurn(bots.byId(bot.id)!);
+  let r = recallFor(bots.byId(bot.id)!);
   assert.equal(r.notes.length, RECALL_TOP_K);
   assert.ok(r.notes.every((x) => x.relevance >= RECALL_MIN_RELEVANCE));
 
   // One shared word out of many: under the threshold, nothing is recalled.
   say(bot.id, "Peux-tu réserver un restaurant italien pour jeudi soir près de la gare, avec une réunion ensuite ?");
-  r = recallForTurn(bots.byId(bot.id)!);
+  r = recallFor(bots.byId(bot.id)!);
   assert.deepEqual(r.notes, []);
   assert.equal(r.skipped, "no-match");
 
@@ -194,7 +206,7 @@ test("automatic recall: top-k, relevance threshold and character budget", () => 
   for (let i = 0; i < 6; i++) memories.add(long.id, `Le dossier Montagne contient ${"beaucoup de détails utiles ".repeat(9)}(partie ${i}).`, "chat");
   filler(long.id, 10);
   say(long.id, "Parle-moi du dossier Montagne");
-  r = recallForTurn(bots.byId(long.id)!);
+  r = recallFor(bots.byId(long.id)!);
   assert.ok(r.notes.length >= 1 && r.notes.length < RECALL_TOP_K);
   assert.ok(r.notes.reduce((sum, x) => sum + x.note.text.length + 3, 0) <= RECALL_CHAR_BUDGET);
 });
@@ -205,13 +217,13 @@ test("automatic recall: nothing when switched off, for a bot without memory tool
   filler(bot.id, 30);
   say(bot.id, "Rappelle-moi le mot d'ordre du projet Colibri");
   assert.equal(settings.memory(bruno.id).autoRecall, true, "on by default");
-  assert.equal(recallForTurn(bots.byId(bot.id)!).notes.length, 1);
+  assert.equal(recallFor(bots.byId(bot.id)!).notes.length, 1);
 
   settings.saveMemory(bruno.id, { autoRecall: false });
   assert.equal(settings.memory(bruno.id).autoRecall, false);
   assert.equal(settings.memory(bruno.id).autoCapture, true, "the other settings are untouched");
   const logBefore = recallLog(bruno.id).length;
-  let r = recallForTurn(bots.byId(bot.id)!);
+  let r = recallFor(bots.byId(bot.id)!);
   assert.deepEqual([r.notes.length, r.skipped], [0, "setting-off"]);
   assert.doesNotMatch(buildSystemPrompt(bots.byId(bot.id)!, bruno, EXTRAS), /Recalled for the user's new message/);
   assert.equal(recallLog(bruno.id).length, logBefore);
@@ -219,12 +231,12 @@ test("automatic recall: nothing when switched off, for a bot without memory tool
 
   // The owner switched the memory tools off for this bot.
   bots.patch(bot.id, { disabledTools: ["memory"] });
-  r = recallForTurn(bots.byId(bot.id)!);
+  r = recallFor(bots.byId(bot.id)!);
   assert.deepEqual([r.notes.length, r.skipped], [0, "bot-memory-off"]);
   bots.patch(bot.id, { disabledTools: [] });
-  assert.equal(recallForTurn(bots.byId(bot.id)!).notes.length, 1);
+  assert.equal(recallFor(bots.byId(bot.id)!).notes.length, 1);
 
-  // The newest message comes from a routine or a webhook (outside content): it is not used to recall anything.
+  // No turn of the user's is running (a routine's, a webhook's… or none): nothing is recalled, whatever the chat holds.
   say(bot.id, "Rappelle le mot d'ordre du projet Colibri", { kind: "webhook", id: "w1", name: "Hook" });
   r = recallForTurn(bots.byId(bot.id)!);
   assert.deepEqual([r.notes.length, r.skipped], [0, "no-user-message"]);
@@ -234,7 +246,7 @@ test("automatic recall: an empty memory takes the no-cost path", () => {
   const bot = newBot(bruno.id, "Vide");
   say(bot.id, "Bonjour, quoi de neuf sur le projet Colibri ?");
   const before = { usage: usageRows(), log: auditList(bruno.id, undefined, 200).length };
-  const r = recallForTurn(bots.byId(bot.id)!);
+  const r = recallFor(bots.byId(bot.id)!);
   assert.deepEqual([r.notes.length, r.skipped], [0, "empty"]);
   const prompt = buildSystemPrompt(bots.byId(bot.id)!, bruno, EXTRAS);
   assert.doesNotMatch(prompt, /## What you remember|Recalled for/);
@@ -242,7 +254,7 @@ test("automatic recall: an empty memory takes the no-cost path", () => {
   // Only archived notes: still empty.
   const m = memories.add(bot.id, "Le projet Colibri est terminé.", "chat");
   memories.setStatus(m.id, "archived");
-  assert.equal(recallForTurn(bots.byId(bot.id)!).skipped, "empty");
+  assert.equal(recallFor(bots.byId(bot.id)!).skipped, "empty");
 });
 
 test("automatic recall: never crosses bots or accounts", () => {
@@ -255,14 +267,14 @@ test("automatic recall: never crosses bots or accounts", () => {
   filler(mine.id, 30); filler(sibling.id, 30); filler(foreign.id, 30);
   for (const b of [mine, sibling, foreign]) say(b.id, "Où est le coffre Saphir ?");
 
-  const r = recallForTurn(bots.byId(mine.id)!);
+  const r = recallFor(bots.byId(mine.id)!);
   assert.deepEqual(r.notes.map((x) => x.note.id), [own.id]);
   assert.ok(r.notes.every((x) => x.note.botId === mine.id));
   const prompt = buildSystemPrompt(bots.byId(mine.id)!, alice, EXTRAS);
   assert.doesNotMatch(prompt, /deuxième étage|contrats signés/);
   assert.ok(!searchNotes(mine.id, "coffre Saphir").content.match(/deuxième étage|contrats signés/));
   // The other account's bot sees only its own note, and its recall is logged in its own account only.
-  const theirs = recallForTurn(bots.byId(foreign.id)!);
+  const theirs = recallFor(bots.byId(foreign.id)!);
   assert.deepEqual(texts(theirs.notes), ["Le coffre Saphir contient les contrats signés."]);
   assert.ok(!recallLog(alice.id).some((e) => e.text.includes("contrats signés")));
   assert.ok(!recallLog(bruno.id).some((e) => e.text.includes("clé rouge")));
@@ -280,13 +292,13 @@ test("automatic recall: sensitive notes follow Settings → Memory; secrets neve
   filler(bot.id, 30);
   say(bot.id, "Un repas sans arachides ?");
 
-  let ids = recallForTurn(bots.byId(bot.id)!).notes.map((x) => x.note.id);
+  let ids = recallFor(bots.byId(bot.id)!).notes.map((x) => x.note.id);
   assert.ok(ids.includes(plain.id));
   assert.ok(!ids.includes(health.id) && !ids.includes(untagged.id), "health notes are not recalled while the topic is excluded");
   assert.ok(!ids.includes(secret.id));
 
   settings.saveMemory(carole.id, { allowSensitive: { health: true } });
-  ids = recallForTurn(bots.byId(bot.id)!).notes.map((x) => x.note.id);
+  ids = recallFor(bots.byId(bot.id)!).notes.map((x) => x.note.id);
   assert.ok(ids.includes(health.id) && ids.includes(untagged.id), "allowed by the owner: recalled");
   assert.ok(!ids.includes(secret.id), "a secret is never recalled");
 });

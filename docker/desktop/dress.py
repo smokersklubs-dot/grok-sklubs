@@ -289,8 +289,24 @@ def browser_policy(p):
         }, f)
 
 
+def browser_running():
+    """Whether a Chromium on the bot's profile is running: its lock (SingletonLock, a link to "<host>-<pid>") names a
+    live process, or a process uses the profile."""
+    try:
+        pid = int(os.readlink(f"{PROFILE}/SingletonLock").rsplit("-", 1)[1])
+        os.kill(pid, 0)
+        return True
+    except (OSError, ValueError, IndexError):
+        pass
+    return alive(f"user-data-dir={PROFILE}")
+
+
 def tidy_profile():
-    """No 'restore pages?' bubble, no welcome page, no sign-in nudges."""
+    """No 'restore pages?' bubble, no welcome page, no sign-in nudges. Never while the browser runs: removing the lock of
+    a live browser let a second Chromium start on the same profile (two browsers, the page read was not the page shown,
+    a damaged profile), and the running one rewrites its preferences anyway."""
+    if browser_running():
+        return
     path = f"{PROFILE}/Default/Preferences"
     for name in ("SingletonLock", "SingletonSocket", "SingletonCookie"):
         try:

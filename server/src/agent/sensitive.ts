@@ -65,6 +65,16 @@ export function explicitRemember(bot: BotRecord, thread = 0): boolean {
   return /\b(retiens|retenir|souviens|souviens-toi|rappelle-toi|memorise|memoriser|note bien|garde en memoire|n'oublie pas|remember|memorize|keep in mind|note that|don't forget)\b/.test(normalize(last.body.text));
 }
 
+/**
+ * The user's last message asks, in so many words, to forget something ("oublie que…", "efface ce que je t'ai dit sur…",
+ * "forget that…"): the only thing that lets memory_forget act (memorybook.ts).
+ */
+export function explicitForget(bot: BotRecord, thread = 0): boolean {
+  const last = rows.recentMessages(bot.id, bot.generation, 12, thread).filter(typedByUser).pop();
+  if (!last || last.body.kind !== "message") return false;
+  return /\b(oublie|oublies|oublier|oubliez|efface|effacer|effacez|supprime|supprimer|supprimez|retire|retirer|forget|delete|erase|remove)\b/.test(normalize(last.body.text));
+}
+
 export type MemoryVerdict = { ok: true; category: SensitiveCategory | null } | { ok: false; reason: string };
 
 /** Whether a note may be kept (`explicit`: the user asked to remember it, in their own words). Reasons for the model, in English. */

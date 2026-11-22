@@ -11,6 +11,7 @@ import { consolidationSweep } from "./agent/memory.js";
 import { nudgeSweep } from "./agent/nudges.js";
 import { createHash } from "node:crypto";
 import { readLibraryFile, resolveInWorkspace } from "./computer.js";
+import { lateLine, trackRun } from "./routineplus.js";
 import { isNativeTrigger, onRunEnded, ROUTINE_FAIL_PAUSE, ROUTINE_FAIL_PUSH, routines, runs, type RoutineRecord } from "./routines.js";
 import { accounts as nativeAccounts } from "./native/accounts.js";
 import { inboxFingerprint } from "./native/access.js";
@@ -45,7 +46,7 @@ export const unschedule = (routineId: string) => { due.delete(routineId); };
  * Runs a routine now: notes it in the chat and queues the work behind whatever the bot is doing.
  * `outside`: the payload came from outside (a webhook call); the turn treats it as outside content.
  */
-export function fireRoutine(r: RoutineRecord, payload?: unknown, opts: { outside?: boolean; label?: string; note?: string; byHand?: boolean } = {}): "fired" | "busy" | "paused" | "capped" {
+export function fireRoutine(r: RoutineRecord, payload?: unknown, opts: { outside?: boolean; label?: string; note?: string; byHand?: boolean; dueAt?: number; missed?: number } = {}): "fired" | "busy" | "paused" | "capped" {
   const bot = bots.byId(r.botId);
   if (!bot) return "busy";
   // Hosted mode: a suspended account's routines are paused, and one whose models only the operator's keys pay for waits
@@ -87,9 +88,13 @@ export function fireRoutine(r: RoutineRecord, payload?: unknown, opts: { outside
     return "busy";
   }
   routines.markRun(r.id, now());
-  rows.append(bot, { kind: "event", event: "routine", text: tr(users.localeOf(bot.userId), "Running routine: {name}", { name: r.name }) });
+  // nod item 8: a late run says so at the top of its first line (due / started / skipped while off), in the user's words.
+  const late = opts.dueAt ? lateLine(opts.dueAt, now(), opts.missed ?? 0, r.timezone, users.localeOf(bot.userId)) : "";
+  rows.append(bot, { kind: "event", event: "routine", text: `${late ? `${late} — ` : ""}${tr(users.localeOf(bot.userId), "Running routine: {name}", { name: r.name })}` });
   const extra = payload === undefined ? "" : `\n\n${opts.label ?? "[Data received with this call]"}\n${clip(JSON.stringify(payload, null, 2), 8000)}`;
-  enqueue(bot.id, { kind: "routine", name: r.name, text: r.prompt + extra + (opts.note ? `\n\n${opts.note}` : ""), runId: runs.start(r.id), tainted: !!opts.outside && payload !== undefined, byHand: opts.byHand || undefined });
+  const runId = runs.start(r.id);
+  trackRun(runId, r.id, opts.dueAt ?? null, opts.missed ?? 0, !!opts.byHand);
+  enqueue(bot.id, { kind: "routine", name: r.name, text: r.prompt + extra + (opts.note ? `\n\n${opts.note}` : ""), runId, tainted: !!opts.outside && payload !== undefined, byHand: opts.byHand || undefined });
   emit(bot.userId, { type: "routines", botId: bot.id });
   return "fired";
 }
@@ -123,9 +128,10 @@ export async function inputsFingerprint(r: RoutineRecord): Promise<string | null
 export async function dueRoutine(r: RoutineRecord, slot: number): Promise<"fired" | "skipped" | "busy" | "claimed" | "paused" | "capped"> {
   if (!routines.claimSlot(r.id, String(slot))) return "claimed";
   let note = "";
+  let missed = 0;
   const late = now() - slot;
   if (late > 10 * 60_000) {
-    const missed = Math.max(0, (() => { let n = 0, t = slot; while (n < 500) { const nx = nextRun(r.schedule, r.timezone, t); if (!nx || nx > now()) break; n++; t = nx; } return n; })());
+    missed = Math.max(0, (() => { let n = 0, t = slot; while (n < 500) { const nx = nextRun(r.schedule, r.timezone, t); if (!nx || nx > now()) break; n++; t = nx; } return n; })());
     note = `[This run was due at ${new Date(slot).toISOString().slice(0, 16).replace("T", " ")} UTC and starts at ${new Date().toISOString().slice(0, 16).replace("T", " ")} UTC${missed ? `; ${missed} later due times were skipped` : ""}.]`;
   }
   if (r.skipUnchanged && r.rawInputs.length) {
@@ -140,7 +146,7 @@ export async function dueRoutine(r: RoutineRecord, slot: number): Promise<"fired
     }
     if (fp) routines.setInputsHash(r.id, fp);
   }
-  return fireRoutine(routines.byId(r.id) ?? r, undefined, { note });
+  return fireRoutine(routines.byId(r.id) ?? r, undefined, { note, dueAt: slot, missed });
 }
 
 function tickRoutines() {

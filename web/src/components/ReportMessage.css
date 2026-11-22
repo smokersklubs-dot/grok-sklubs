@@ -1,0 +1,8 @@
+/* L31 — « Signaler cette réponse » (ReportMessage.tsx) and « Réponses signalées » (ReportsSection.tsx). */
+.report-reasons { border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.report-reason { display: flex; align-items: center; gap: 9px; min-height: 36px; padding: 4px 8px; border-radius: var(--r-sm); cursor: pointer; font-size: 14px; }
+.report-reason:hover { background: var(--surface-2); }
+.report-reason input { width: 18px; height: 18px; accent-color: var(--accent, var(--focus)); flex: none; }
+.report-dialog textarea { resize: vertical; min-height: 72px; }
+.report-quote { margin: 4px 0 0; padding: 8px 11px; border-left: 3px solid var(--border); background: var(--surface-2); border-radius: var(--r-sm); font-size: 13.5px; color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 220px; overflow-y: auto; }
+.report-context { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 5px; font-size: 13px; color: var(--text-2); overflow-wrap: anywhere; }

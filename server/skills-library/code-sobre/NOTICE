@@ -1,0 +1,7 @@
+code-sobre — adapted from DietrichGebert/ponytail (© 2026 DietrichGebert, MIT)
+Sources (each pinned to one commit):
+- DietrichGebert/ponytail — © 2026 DietrichGebert — MIT — https://github.com/DietrichGebert/ponytail/tree/ebd8654c2c627f721eb8f9c0d1bd4090a29f9e10/skills/ponytail
+Licence: MIT — the upstream licence texts are in LICENSE.txt, unchanged.
+
+Modified for Sklubot (2026-11-22): persona, session levels and slash commands removed; written as a working rule for Sklubot bots that code; the original product name not used as a title; translated into French.
+Only text is included; no script, picture or other file of the original folders is bundled. Names of other products are not used as titles.

@@ -126,6 +126,7 @@ export class OpenAiCompatProvider implements LlmProvider {
       // The request never got an answer (DNS, refused, reset, timeout): worth another try.
       throw new ProviderError(`${this.label} could not be reached: ${(err as Error)?.message ?? err}`, { transient: true });
     }
+    req.onActivity?.(); // the answer has started (its headers are in)
     if (!res.ok || !res.body) {
       const detail = (await res.text().catch(() => "")).slice(0, 400);
       const own = this.opts.httpError?.(res.status, detail, retryAfterOf(res.headers));
@@ -142,6 +143,7 @@ export class OpenAiCompatProvider implements LlmProvider {
     const decoder = new TextDecoder();
     let buffer = "";
     for await (const chunk of res.body as unknown as AsyncIterable<Uint8Array>) {
+      req.onActivity?.();
       buffer += decoder.decode(chunk, { stream: true });
       let nl: number;
       while ((nl = buffer.indexOf("\n")) >= 0) {

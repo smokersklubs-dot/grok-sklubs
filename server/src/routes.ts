@@ -10,8 +10,8 @@ import { streamSSE } from "hono/streaming";
 import { registerNoticeRoutes } from "./agent/noticeroutes.js"; import { registerRoomRoutingRoutes, roomReaction } from "./agent/roomroutes.js";
 import { registerFailureRoutes } from "./agent/failureroutes.js"; import { decideForConversation, registerConversationGrantRoutes } from "./agent/conversationgrantroutes.js";
 import { registerRecruitRoutes } from "./agent/recruit.js"; import { registerTeamMdRoutes } from "./teammdroutes.js";
-import { registerCommandRoutes } from "./command.js";
-import { continueAfterStepLimit, decideApproval, enqueue, inQueue, interrupt, noteHandBack, submitUserMessage, type ForcedSkill } from "./agent/loop.js";
+import { registerCommandRoutes } from "./command.js"; import { registerRelayGuardRoutes } from "./relayguardroutes.js";
+import { continueAfterStepLimit, decideApproval, enqueue, inQueue, interrupt, noteHandBack, submitUserMessage, type ForcedSkill } from "./agent/loop.js"; import { sendOnce } from "./sendkeys.js";
 import { cleanProfile, fetchSkillMarkdown, saveImportedSkill, undoRevision } from "./agent/tools-team.js";
 import { xSearchProvider } from "./xsearch.js";
 import { registerResearch } from "./researchroutes.js";
@@ -38,14 +38,15 @@ import { connectors, NeedsClientIdError, oauthRedirectUri } from "./connectors.j
 import { isValidTimezone } from "./cron.js";
 import { pickLocale, tr } from "./i18n.js";
 import { defaultModelRef, listProviders, modelAvailable } from "./llm/index.js";
-import { publicRoutine, routines, runs } from "./routines.js";
+import { publicRoutine, routines, runs } from "./routines.js"; import { registerRoutinePlusRoutes, runNowGuard } from "./routineplusroutes.js"; import { privateOption, registerConnectorPlusRoutes } from "./connectorplusroutes.js";
 import { fireCheckin, fireRoutine, schedule, unschedule } from "./scheduler.js";
 import { REACTIONS, type CheckinSettings, type ReactionEmoji, type ServerEvent, type VideoStatus } from "./shared.js";
 import { videoService } from "./video.js";
 import { higgsfieldFor } from "./agent/tools.js";
 import { dropRecording, noteInput, recording, retryRecording, saveRecording, startRecording, stopRecording } from "./teach.js";
-import { approvals } from "./store.js";
-import { account, audit, auditList, bots, clip, feedback, history, memories, pages, policies, publicBot, publicVault, rows, searchMessages, sections, settings, sha256, skills, skillText, tasks, users, vault, type BotRecord, type UserRecord, type VaultFields } from "./store.js";
+import { searchMessages } from "./convsearch.js";
+import { registerMemoryNoteRoutes } from "./memoryroutes.js";
+import { approvals, account, audit, auditList, bots, clip, feedback, history, memories, pages, policies, publicBot, publicVault, rows, sections, settings, sha256, skills, skillText, tasks, users, vault, type BotRecord, type UserRecord, type VaultFields } from "./store.js";
 import { finishTakeover, holdControl, releaseControl } from "./takeover.js";
 import { deskRun, deskShot, startDeskTest } from "./desktest.js";
 import { notePresence, push, pushSettings, savePushSettings, sendPush } from "./push.js";
@@ -101,7 +102,6 @@ import { registerPeerReview } from "./peerreviewroutes.js";
 import { listedPathOk, undoFiles } from "./snapshots.js";
 import { forgetHeld, holdAndOffer, screen as screenSecrets, takeHeld } from "./pastedsecrets.js";
 import { assertPublicUrl, BlockedAddressError, clientAddress } from "./net.js";
-import { hookLimits } from "./hardening.js";
 import { apiProviders, cleanBaseUrl, cleanModels, fetchModels, PRESETS, testProvider } from "./apimodels.js";
 import { botEmail, mailFor, MailError, receiving as mailReceiving, relays, releaseMail } from "./botmail.js";
 import { onTurnEvent, submitMemberMessage } from "./agent/loop.js";
@@ -121,7 +121,7 @@ import { accountCreated, HostedError, hostedMode, hostedSettings, isOperator, is
 import { registerHostedPages, registerHostedPrivate, registerHostedPublic, suspendedText } from "./hostedroutes.js";
 import { TodayError, todayReport, todaySettings } from "./today.js";
 import { registerBotClients, registerBotClientSettings } from "./botaccessroutes.js";
-import { registerSentinelRoutes } from "./sentinel/routes.js";
+import { registerSentinelRoutes } from "./sentinel/routes.js"; import { registerHookRoutes, registerHookSettingsRoutes } from "./hookroutes.js"; import { registerReportRoutes } from "./reports.js";
 import { registerAnnouncementRoutes } from "./announceroutes.js";
 import { registerSkillsLibraryRoutes } from "./skillsroutes.js";
 import { registerOpenRouterRoutes } from "./openrouterroutes.js";
@@ -396,26 +396,7 @@ api.post("/auth/logout", (c) => {
   return c.json({ ok: true });
 });
 
-/** Outside systems call this address to set a webhook routine in motion. The token is the credential. */
-api.post("/hooks/:token", async (c) => {
-  // L7: a client trying addresses, or a sender flooding one hook (each call starts a turn of the bot), is slowed down.
-  if (hookLimits.perAddress.over(clientIp(c))) fail(429, "Too many requests. Wait a minute and try again.");
-  const r = routines.byHook(c.req.param("token"));
-  if (!r || !r.enabled) fail(404, "Unknown or paused hook.");
-  if (hookLimits.perHook.over(r!.id)) fail(429, "Too many requests. Wait a minute and try again.");
-  const raw = await c.req.text();
-  if (raw.length > 200_000) fail(413, "Payload too large.");
-  let payload: unknown = raw || undefined;
-  try { payload = raw ? JSON.parse(raw) : undefined; } catch { /* keep the raw text */ }
-  // Whoever holds the hook's address can send anything: the payload is outside content for the turn it starts.
-  // "Pause": a paused bot's webhook is recorded as skipped (like any routine run), and the sender is told so — with a
-  // 2xx, so senders that retry on errors do not pile calls up while it is paused.
-  const fired = fireRoutine(r!, payload, { outside: true });
-  if (fired === "paused") return c.json({ ok: true, skipped: "paused" });
-  // A usage cap stops the bot's unattended work: recorded as skipped (usagecaps.ts), told with a 2xx for the same reason.
-  if (fired === "capped") return c.json({ ok: true, skipped: "usage_cap" });
-  return c.json({ ok: true });
-});
+registerHookRoutes(api, clientIp); // Webhooks: POST /hooks/:token — signature, repeats, bursts, refusals (hookroutes.ts, L20)
 
 /**
  * "Accès API" (botapi.ts, docs/API-BOT.md): the Bot API and its MCP control server, under /api/v1, authenticated by a
@@ -818,7 +799,7 @@ api.post("/bots/:id/rows/:seq/reactions", async (c) => {
   return c.json({ reactions: list });
 });
 
-api.post("/bots/:id/messages", async (c) => {
+api.post("/bots/:id/messages", (c) => sendOnce(c, accessBot(c, "talk").bot.id, async () => { // one message per send key (sendkeys.ts)
   const access = accessBot(c, "talk");
   const b = await body(c);
   if (!access.owner) return memberMessage(c, access, b);
@@ -857,7 +838,7 @@ api.post("/bots/:id/messages", async (c) => {
   if (bot.kind === "room") dispatchToRoom(bot, c.get("user"), text, null, 0, false, thread);
   else { relayUserSpoke(bot.id); submitUserMessage(bot, agentText, voice, attachments, undefined, thread, skillCommand(bot, text), goalId); }
   return c.json({ row });
-});
+}));
 
 /**
  * "/skill <name> …" at the start of a message: the bot is told to follow that skill (its own, or one a teammate shared).
@@ -1157,7 +1138,7 @@ api.post("/bots/:id/memories", async (c) => {
   emit(bot.userId, { type: "memories", botId: bot.id });
   return c.json({ memory });
 });
-api.delete("/memories/:id", (c) => { memories.removeOwned(c.get("user").id, c.req.param("id")); return c.json({ ok: true }); });
+registerMemoryNoteRoutes(api); // edit (with history), « Oublier » into the bin, « Annuler », history: memoryroutes.ts
 
 api.post("/bots/:id/consolidate", async (c) => {
   const bot = ownAgent(c);
@@ -1208,9 +1189,9 @@ api.patch("/routines/:id", async (c) => {
 });
 api.get("/routines/:id/runs", (c) => c.json({ runs: runs.list(ownRoutine(c).id) }));
 // "Run now" does not move the next due time and does not turn a paused routine back on; a run under way is not doubled.
-api.post("/routines/:id/run", (c) => {
-  // "Run now" is the user's own: only a usage cap set to stop everything refuses it.
-  const r = fireRoutine(ownRoutine(c), undefined, { byHand: true });
+api.post("/routines/:id/run", async (c) => {
+  // "Run now" is the user's own: only a usage cap set to stop everything refuses it. nod item 8: not on an unreviewed change after a failure.
+  const routine = ownRoutine(c); await runNowGuard(c, routine); const r = fireRoutine(routine, undefined, { byHand: true });
   if (r === "paused") fail(409, tr(c.get("user").locale, "This routine's bot is paused. Resume it to run the routine."));
   if (r === "capped") fail(409, cm(c.get("user").locale, "This usage cap still stops this work. Raise it (Settings → Usage) or wait until it resets."));
   return r === "busy" ? fail(409, "This routine is already running.") : c.json({ ok: true });
@@ -1307,9 +1288,9 @@ registerSentinelRoutes(api);
 registerAnnouncementRoutes(api);
 registerNoticeRoutes(api); registerRoomRoutingRoutes(api); // « Qui répond » in group chats (agent/roomrouting.ts)
 registerFailureRoutes(api); registerConversationGrantRoutes(api); // « Coordinateur d'échecs » (agent/failures.ts) ; « Autoriser pour cette conversation »
-registerRecruitRoutes(api); // « Bot recruteur »: « Créer » / « Non merci » on a proposed teammate
-registerTeamMdRoutes(api); // « Équipe Sklubot (.md) » (teammdroutes.ts): import with review, share
-registerCommandRoutes(api); // « Centre de commandement » (command.ts): GET /command, read-only
+registerRecruitRoutes(api); registerHookSettingsRoutes(api); registerReportRoutes(api); // « Bot recruteur » ; webhook settings (L20) ; « Signaler cette réponse » (L31)
+registerTeamMdRoutes(api); registerRoutinePlusRoutes(api); registerConnectorPlusRoutes(api); // « Équipe Sklubot (.md) » (teammdroutes.ts): import with review, share ; routines nod 2/8/13 (routineplusroutes.ts)
+registerCommandRoutes(api); registerRelayGuardRoutes(api); // « Centre de commandement » (command.ts); « Règles de sécurité » of a linked computer (relayguardroutes.ts)
 registerSkillsLibraryRoutes(api); // « Bibliothèque de compétences » (skillsroutes.ts)
 registerOpenRouterRoutes(api); registerSubscriptionConnectRoutes(api); // OpenRouter, « Connecter mon compte ChatGPT / Claude »
 api.put("/account/password", async (c) => {
@@ -2146,7 +2127,7 @@ api.post("/connectors", async (c) => {
   const opts = b.auth === "oauth"
     ? { auth: "oauth" as const, clientId: b.clientId ? String(b.clientId) : undefined, clientSecret: b.clientSecret ? String(b.clientSecret) : undefined }
     : { token: b.token ? String(b.token) : undefined };
-  try { connector = await connectors.add(user.id, String(b.name ?? ""), String(b.url ?? ""), { ...opts, catalogId: b.catalogId }); }
+  try { connector = await connectors.add(user.id, String(b.name ?? ""), String(b.url ?? ""), { ...opts, catalogId: b.catalogId, ...privateOption(b) }); } // nod 17: private address typed by the user
   catch (err) { return fail(400, (err as Error).message); }
   emit(user.id, { type: "connectors" });
   audit(user.id, "apps", connector.status === "needs_auth" ? `App added, waiting for sign-in: ${connector.name}` : `App ${connector.status === "ready" ? "connected" : "connection failed"}: ${connector.name}`);
@@ -2640,20 +2621,7 @@ api.post("/bots/:id/nudges/:nudgeId", async (c) => {
   return c.json({ nudge: actOnNudge(bot, n, action as "do" | "later" | "never") });
 });
 
-// Memory: statuses, import / export, settings (sensitive topics, writing style).
-api.patch("/memories/:id", async (c) => {
-  const user = c.get("user");
-  const m = memories.owned(user.id, c.req.param("id")) ?? fail(404, "That memory does not exist.");
-  const b = await body(c);
-  // The user confirms a note themselves (or takes the confirmation back).
-  if (b.confidence === "confirmed" || b.confidence === "once") memories.setConfidence(m.id, b.confidence);
-  if (b.status !== undefined) {
-    if (!["active", "archived", "contested"].includes(b.status)) fail(400, "Unknown status.");
-    memories.setStatus(m.id, b.status);
-  } else if (b.confidence === undefined) fail(400, "Unknown status.");
-  emit(user.id, { type: "memories", botId: m.botId });
-  return c.json({ memory: memories.owned(user.id, m.id) });
-});
+// Memory: import / export, settings (sensitive topics, writing style). One note (statuses, text, bin): memoryroutes.ts.
 api.get("/bots/:id/memories/export", (c) => {
   const bot = ownAgent(c);
   const format = c.req.query("format") === "json" ? "json" : "md";

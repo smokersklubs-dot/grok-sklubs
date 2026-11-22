@@ -273,6 +273,12 @@ function ConnectorRow({ c }: { c: Connector }) {
   const [clientSecret, setClientSecret] = useState("");
   const oauth = c.auth === "oauth";
   const needsAuth = c.status === "needs_auth";
+  const [renaming, setRenaming] = useState<string | null>(null); // nod item 10: rename an app added by hand
+  const rename = async () => {
+    if (!renaming?.trim()) return;
+    setError(null);
+    try { await api("PATCH", `/connectors/${c.id}`, { name: renaming.trim() }); setRenaming(null); await loadConnectors(); } catch (e) { setError(errText(e)); }
+  };
 
   useEffect(() => {
     if (c.status === "ready") setWaiting(false);
@@ -349,8 +355,15 @@ function ConnectorRow({ c }: { c: Connector }) {
           <IconButton icon="refresh" size={16} label={t("connector.reconnect", { name: c.name })} className={busy ? "is-spinning" : ""} disabled={busy} onClick={() => void refresh()} />
         )}
         {oauth && c.oauth?.signedIn && <button type="button" className="btn btn-small btn-ghost" onClick={() => void signOut()}>{t("connector.signOut")}</button>}
+        <IconButton icon="edit" size={15} label={t("connector.rename", { name: c.name })} onClick={() => setRenaming(renaming === null ? c.name : null)} />
         <ConfirmButton className="btn btn-small btn-ghost-danger" label={t("connector.remove")} confirmLabel={t("connector.confirmRemove")} busyLabel={t("connector.removing")} onConfirm={remove} />
       </div>
+      {renaming !== null && (
+        <form className="field-inline connector-rename" onSubmit={(e) => { e.preventDefault(); void rename(); }}>
+          <input className="input input-small" value={renaming} maxLength={60} autoFocus aria-label={t("connector.rename", { name: c.name })} onChange={(e) => setRenaming(e.target.value)} onKeyDown={(e) => { if (e.key === "Escape") setRenaming(null); }} />
+          <button type="submit" className="btn btn-small" disabled={!renaming.trim()}>{t("connector.renameSave")}</button>
+        </form>
+      )}
       {needsAuth && !waiting && clientForm === null && <p className="field-hint connector-note">{t("connector.needsAuthHint")}</p>}
       {waiting && needsAuth && <p className="field-hint connector-note"><Spinner size={12} /> {t("connector.waitingSignIn")}</p>}
       {clientForm !== null && <OAuthClientFields redirectUri={clientForm} clientId={clientId} setClientId={setClientId} clientSecret={clientSecret} setClientSecret={setClientSecret} />}
@@ -578,6 +591,8 @@ export function ConnectorsModal({ onClose, prefill, catalogId }: { catalogId?: s
   const [name, setName] = useState(prefill?.name ?? "");
   const [url, setUrl] = useState("");
   const [token, setToken] = useState("");
+  const [privateNet, setPrivateNet] = useState(false); // nod item 17: typed by the user, self-hosted only
+  const selfHosted = useStore((s) => s.hosted === null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [formOpen, setFormOpen] = useState(!!prefill);
@@ -601,6 +616,7 @@ export function ConnectorsModal({ onClose, prefill, catalogId }: { catalogId?: s
         name: name.trim(),
         url: url.trim(),
         ...(token.trim() ? { token: token.trim() } : {}),
+        ...(privateNet && selfHosted ? { privateNetwork: true } : {}),
         ...(prefill ? { botId: prefill.botId, seq: prefill.seq } : {}),
       });
       await loadConnectors();
@@ -669,6 +685,12 @@ export function ConnectorsModal({ onClose, prefill, catalogId }: { catalogId?: s
                 <input id={ids.token} className="input" type="password" value={token} onChange={(e) => setToken(e.target.value)} autoComplete="off" placeholder={t("manual.tokenPlaceholder")} />
                 <p className="field-hint">{t("catalog.tokenStored")}</p>
               </div>
+              {selfHosted && (
+                <label className="check-row">
+                  <input type="checkbox" checked={privateNet} onChange={(e) => setPrivateNet(e.target.checked)} />
+                  <span>{t("manual.private")}<span className="field-hint" style={{ display: "block" }}>{t("manual.privateHint")}</span></span>
+                </label>
+              )}
               <ErrorNote>{error}</ErrorNote>
               <div className="modal-foot">
                 <span className="spacer" />

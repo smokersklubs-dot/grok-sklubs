@@ -1,4 +1,5 @@
 import { createContext, memo, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { RelayEventRow } from "./RelayEventRow";
 import { api, enc, errText } from "../api";
 import { t, tn, useT, type Key } from "../i18n";
 import { useStore, type AppSection, type Thread } from "../store";
@@ -19,6 +20,8 @@ import { PlanNoticeActions } from "./Hosted";
 import { SubLimitNoticeActions } from "./SubLimit";
 import { RouteNoticeActions } from "./RoomRouting";
 import { ENGINE_BRAND } from "../lib/engines";
+import { ReportAction } from "./ReportMessage";
+import { ReplyAction, useMessageEnhance } from "./ReplyAction";
 
 type MessageBody = Extract<RowBody, { kind: "message" }>;
 type StepBody = Extract<RowBody, { kind: "step" }>;
@@ -153,8 +156,8 @@ export function buildItems(all: Row[], running: boolean, thread = 0, viewer?: st
 /* ---------- Messages ---------- */
 
 const Markdown = memo(function Markdown({ text }: { text: string }) {
-  const html = useMemo(() => renderMarkdown(text), [text]);
-  return <div className="md" dangerouslySetInnerHTML={{ __html: html }} />;
+  const html = useMemo(() => renderMarkdown(text), [text]); const ref = useMessageEnhance(html); // nod item 6: Copier, quotes
+  return <div className="md" ref={ref} dangerouslySetInnerHTML={{ __html: html }} />;
 });
 
 function SenderLabel({ origin, role }: { origin: Origin; role: "user" | "assistant" }) {
@@ -339,6 +342,7 @@ function MessageActions({ row, canThread, canListen }: { row: Row; canThread: bo
           <Icon name="thread" size={15} />
         </button>
       )}
+      <ReplyAction row={row} /><ReportAction row={row} />
       {open && (
         <div className="emoji-pick" role="menu" aria-label={t("react.add")} onKeyDown={(e) => { if (e.key === "Escape") setOpen(false); }}>
           {REACTIONS.map((e) => (
@@ -675,14 +679,8 @@ function EventRow({ body, botName, botId, seq }: { body: EventBody; botName: str
       </div>
     );
   }
-  if (body.event === "relay") {
-    // Something happened on the user's own computer (Sklubot Relais): control taken or ended, Stop, a refusal there.
-    return (
-      <div className={`event is-relay ${body.tone === "warn" ? "is-warn" : ""}`} data-seq={seq}>
-        <span className="event-line"><Icon name={body.tone === "warn" ? "alert" : "monitor"} size={13} /> <span>{body.text}</span></span>
-      </div>
-    );
-  }
+  // Something happened on the user's own computer (Sklubot Relais): control, Stop, a refusal, a command and its output.
+  if (body.event === "relay") return <RelayEventRow text={body.text} warn={body.tone === "warn"} seq={seq} />;
   if (body.event !== "call") {
     return (
       <div className="event" data-seq={seq}>

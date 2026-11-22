@@ -48,6 +48,14 @@ export const CATALOG: CatalogApp[] = [
     tokenHelp: "Use a restricted API key from the Stripe dashboard → Developers → API keys. Give it only the permissions the bots need.",
   },
   {
+    // https://scribiz.com/docs/mcp.md and https://scribiz.com/mcp (Streamable HTTP at https://scribiz.com/mcp;
+    // key sent as "Authorization: Bearer sbz_live_…", created in the Scribiz dashboard). Media goes to Scribiz then
+    // to Google for processing. Its delete_jobs tool deletes the account's recordings: it goes through the usual approval.
+    id: "scribiz", name: "Scribiz", category: "Creation", url: "https://scribiz.com/mcp", auth: "token",
+    description: "Video and audio links: transcript with speakers and timestamps, summary, chapters, search inside a video, on-screen text. Works when the bot's computer cannot download the video.",
+    tokenHelp: "Sign in at scribiz.com with your email, then create an API key (scope \"mcp\") in the dashboard and paste it here. Links and audio are sent to Scribiz and Google for processing.",
+  },
+  {
     id: "huggingface", name: "Hugging Face", category: "AI", url: "https://huggingface.co/mcp", auth: "token",
     description: "Search models, datasets, papers and Spaces; run community tools.",
     tokenHelp: "Create an access token in Hugging Face → Settings → Access Tokens.",
@@ -169,6 +177,7 @@ const FR: Record<string, { category: string; description: string; tokenHelp: str
   "github-repositories": { category: "Développement", description: "Recherche et lecture des dépôts, fichiers, tickets et pull requests que tu autorises.", tokenHelp: "Continue sur GitHub et choisis les dépôts accessibles à tes bots. À la première connexion, GitHub te propose de créer ton application Sklubot privée." },
   github: { category: "Développement", description: "Dépôts, tickets, demandes de fusion, recherche de code et actions.", tokenHelp: "Crée un jeton d'accès personnel dans GitHub → Settings → Developer settings → Personal access tokens, limité aux dépôts et aux droits que tu veux donner aux bots." },
   stripe: { category: "Activité", description: "Clients, paiements, factures, produits et abonnements.", tokenHelp: "Utilise une clé d'API restreinte depuis le tableau de bord Stripe → Développeurs → Clés API, avec seulement les droits nécessaires aux bots." },
+  scribiz: { category: "Création", description: "Liens vidéo et audio : transcription avec qui parle et à quel moment, résumé, chapitres, recherche dans une vidéo, texte affiché à l'écran. Marche même quand l'ordinateur du bot ne peut pas télécharger la vidéo.", tokenHelp: "Connecte-toi sur scribiz.com avec ton e-mail, crée une clé d'API (droit « mcp ») dans le tableau de bord, puis colle-la ici. Les liens et le son sont envoyés à Scribiz et à Google pour être traités." },
   huggingface: { category: "IA", description: "Recherche de modèles, de jeux de données, d'articles et de Spaces ; outils de la communauté.", tokenHelp: "Crée un jeton d'accès dans Hugging Face → Settings → Access Tokens." },
   hubspot: { category: "CRM & marketing", description: "Contacts, entreprises, transactions et tickets. Pépites : affaires au point mort à relancer, prospects chauds oubliés, clients prêts à acheter plus.", tokenHelp: "Dans HubSpot, ouvre Development → MCP Connectors (ou va sur app.hubspot.com/l/mcp-auth-apps/) et clique sur « Create MCP connector ». Donne-lui un nom, colle l'adresse de retour affichée ci-dessous comme Redirect URL, puis clique sur Create. Copie l'identifiant client (client ID) et le secret client (client secret) depuis la page de détails du connecteur dans les champs ci-dessous." },
   klaviyo: { category: "CRM & marketing", description: "Campagnes e-mail et SMS, flux, segments et leurs résultats. Pépites : objets d'e-mail les plus performants, flux qui perdent du chiffre, segments prêts pour une campagne.", tokenHelp: "" },

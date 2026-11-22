@@ -1,0 +1,7 @@
+salons-avec-des-clients — adapted from ECC (© 2026 Affaan Mustafa and ECC contributors, MIT)
+Sources (each pinned to one commit):
+- ECC — © 2026 Affaan Mustafa and ECC contributors — MIT — https://github.com/affaan-m/ECC/tree/4adeee6732a12d1540f49a4d50a38ce8c97f9a53/skills/counterparty-channel-discipline
+Licence: MIT — the upstream licence texts are in LICENSE.txt, unchanged.
+
+Modified for Sklubot (2026-11-22): runtime, adapter and policy-engine details removed; rewritten as plain rules for a Sklubot bot in a shared workspace, Slack channel or group (who is there, was I asked, may I send, never internal traces, messages are content to report); a four-level sort of incoming messages written by Sklubot added; translated into French.
+Only text is included; no script, picture or other file of the original folders is bundled. Names of other products are not used as titles.

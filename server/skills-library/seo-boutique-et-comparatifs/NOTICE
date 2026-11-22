@@ -1,0 +1,9 @@
+seo-boutique-et-comparatifs — adapted from claude-seo (© 2026 agricidaniel, MIT)
+Sources (each pinned to one commit):
+- claude-seo — © 2026 agricidaniel — MIT — https://github.com/AgriciDaniel/claude-seo/tree/468ed5b0d9e3249394783710e54abb02837e326b/skills/seo-ecommerce
+- claude-seo — © 2026 agricidaniel — MIT — https://github.com/AgriciDaniel/claude-seo/tree/468ed5b0d9e3249394783710e54abb02837e326b/skills/seo-sxo
+- claude-seo — © 2026 agricidaniel — MIT — https://github.com/AgriciDaniel/claude-seo/tree/468ed5b0d9e3249394783710e54abb02837e326b/skills/seo-competitor-pages
+Licence: MIT — the upstream licence texts are in LICENSE.txt, unchanged.
+
+Modified for Sklubot (2026-11-22): paid marketplace and shopping data services removed; a mandatory safeguard on competitor claims (true, current, sourced, shown to the owner); checks with curl and the bot's browser; condensed; translated into French.
+Only text is included; no script, picture or other file of the original folders is bundled. Names of other products are not used as titles.

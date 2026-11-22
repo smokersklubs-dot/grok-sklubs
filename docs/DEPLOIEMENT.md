@@ -105,6 +105,19 @@ hexadécimaux). `DATA_KEY=<clé>` seule marche aussi (identifiant tiré de l'emp
 est réservé à la clé dérivée de `SESSION_SECRET`. Une valeur scellée commence par `v2:<id>:` ; une valeur sans ce
 préfixe date d'avant et s'ouvre avec la clé `s0`. La sauvegarde chiffrée emporte `DATA_KEYS` (docs/SAUVEGARDE.md).
 
+### Un seul serveur par dossier de données
+
+Au démarrage, Sklubot pose un verrou dans son dossier de données (`DATA_DIR/server.lock`). Si un deuxième serveur
+est lancé par erreur sur le même dossier (deux conteneurs sur le même volume, un `npm run dev` oublié…), il refuse de
+démarrer avec un message clair : « Un autre serveur Sklubot utilise déjà ce dossier de données… », le numéro du
+processus et la machine. Arrête l'autre serveur, ou choisis un autre dossier avec `DATA_DIR`.
+
+Après un arrêt brutal (coupure, `kill -9`, conteneur relancé), le verrou laissé derrière est repris tout seul : le
+processus n'existe plus (vérifié avec son heure de démarrage sous Linux), ou, sur un disque partagé entre machines,
+il ne donne plus signe de vie depuis 1 minute (le serveur réécrit le verrou toutes les 10 s). Rien à faire à la main.
+Si un serveur découvre que son verrou a été repris par un autre, il s'arrête : deux serveurs ne tournent jamais
+ensemble sur les mêmes données (`server/src/datalock.ts`).
+
 ### Comptes : double authentification et sessions
 
 - **Double authentification** (Réglages → Compte) : chacun peut l'activer avec une appli comme Google Authenticator,

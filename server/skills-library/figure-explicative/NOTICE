@@ -1,0 +1,7 @@
+figure-explicative — adapted from anatomy (© 2026 Ryan (wheresryan22), MIT)
+Sources (each pinned to one commit):
+- anatomy — © 2026 Ryan (wheresryan22) — MIT — https://github.com/wheresryan22/anatomy/tree/1482e8469b0a9e0d8cc18ea2740a01423d29ae80/SKILL.md
+Licence: MIT — the upstream licence texts are in LICENSE.txt, unchanged.
+
+Modified for Sklubot (2026-11-22): the kit is fetched on demand on the bot's computer at one pinned commit instead of being bundled; output published with page_publish; React, 3D and long tiers left to the owner's agreement; mentions of other coding assistants removed; condensed; translated into French.
+Only text is included; no script, picture or other file of the original folders is bundled. Names of other products are not used as titles.

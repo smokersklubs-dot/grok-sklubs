@@ -7,6 +7,7 @@ import type { SentinelHealth, SentinelIncidentView, SentinelLink, SentinelOvervi
 import { Icon, type IconName } from "./Icon";
 import { ErrorNote, IconButton, Loading, Toggle, useTick } from "./ui";
 import { SubLimitList } from "./SubLimit";
+import { ReportsSection } from "./ReportsSection";
 import "../styles/surveillance.css";
 
 /**
@@ -103,6 +104,8 @@ export function SurveillanceView() {
                 <ul className="surv-list">{open.map((i) => <IncidentCard key={i.id} incident={i} now={now} onAck={() => void ack(i.id)} busy={busy} />)}</ul>
               )}
             </Block>
+
+            <ReportsSection />
 
             <Block icon="history" title={t("surv.history.title")} count={data.history.length} id="surveillance-history">
               {data.history.length === 0 ? (

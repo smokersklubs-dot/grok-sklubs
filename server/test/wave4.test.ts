@@ -80,7 +80,7 @@ const { OpenAiCompatProvider } = await import("../src/llm/openai-compat.js");
 const { api } = await import("../src/routes.js");
 const { backoffDelay, LoopGuard, modelChain } = await import("../src/agent/reliability.js");
 const { remindStuck } = await import("../src/agent/stuck.js");
-const { newTurn, submitUserMessage, waitForApproval } = await import("../src/agent/loop.js");
+const { expireAllApprovals, newTurn, submitUserMessage, waitForApproval } = await import("../src/agent/loop.js");
 const { parseSkillMarkdown } = await import("../src/agent/tools-team.js");
 const { setLive, clearLive } = await import("../src/bus.js");
 const { bots, users, history, approvals, policies } = await import("../src/store.js");
@@ -402,23 +402,32 @@ test("stuck work: an approval left waiting 4 h and a turn running 4 h get one re
   clearLive(userId, b.id);
 });
 
-test("subscription turns: an unanswered approval lapses after APPROVAL_EXPIRE_MIN, and at once on a new user message", async () => {
+// Since the core-reliability work (agent/approval-wait.ts): an unanswered approval no longer lapses, and a new message
+// from the user no longer cancels it. The call stops waiting after APPROVAL_EXPIRE_MIN and the request stays open on its
+// card ("parked"); it lapses only when the bot is deleted or its task cancelled. See test/core-engine.test.ts.
+test("subscription turns: an unanswered approval is parked after APPROVAL_EXPIRE_MIN, and a new user message does not cancel it", async () => {
   const b = bots.byId((await fresh("Engi")).id)!;
   const user = users.byId(userId)!;
   const ctl = new AbortController();
   const turn = await newTurn(b, user, 0, ctl.signal);
   const verdict = { kind: "ask" as const, policyKey: "test_tool", title: "Allow it?", reason: "test", source: "Test" };
   const t0 = Date.now();
-  assert.equal(await waitForApproval(turn, { type: "tool_use", id: "c1", name: "x", input: {} }, verdict), "expired");
-  assert.ok(Date.now() - t0 >= 500, "waited for the expiry (0.6 s here, 30 min by default)");
+  assert.equal(await waitForApproval(turn, { type: "tool_use", id: "c1", name: "x", input: {} }, verdict), "parked");
+  assert.ok(Date.now() - t0 >= 500, "waited for the limit (0.6 s here, 25 min by default)");
   const waiting = waitForApproval(turn, { type: "tool_use", id: "c2", name: "x", input: {} }, verdict);
   await new Promise((r) => setTimeout(r, 50));
+  const t1 = Date.now();
   submitUserMessage(b, "never mind");
-  assert.equal(await waiting, "expired");
-  const cards = (await rowsOf(b.id)).filter((r) => r.body.kind === "card" && r.body.card.type === "approval").map((r) => (r.body as any).card.status);
-  assert.deepEqual(cards, ["expired", "expired"]);
-  assert.equal(approvals.pendingForUser(userId).filter((a) => a.botId === b.id).length, 0);
+  assert.equal(await waiting, "parked");
+  assert.ok(Date.now() - t1 >= 400, "the message did not cut the wait short");
+  const cardsNow = async () => (await rowsOf(b.id)).filter((r) => r.body.kind === "card" && r.body.card.type === "approval").map((r) => (r.body as any).card);
+  assert.deepEqual((await cardsNow()).map((c) => [c.status, c.parked]), [["pending", true], ["pending", true]]);
+  assert.equal(approvals.pendingForUser(userId).filter((a) => a.botId === b.id).length, 2);
   await idle(bots.byId(b.id) as unknown as Bot);
+  // The bot is deleted (or its task cancelled): what was parked lapses, and the cards say so.
+  expireAllApprovals(b.id);
+  assert.deepEqual((await cardsNow()).map((c) => c.status), ["expired", "expired"]);
+  assert.equal(approvals.pendingForUser(userId).filter((a) => a.botId === b.id).length, 0);
 });
 
 // ── 2. Team ──────────────────────────────────────────────────────────────────

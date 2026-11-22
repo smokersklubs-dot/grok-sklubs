@@ -42,7 +42,7 @@ const COMMIT_WORDS = ["confirmer", "valider", "soumettre", "signer", "confirm", 
  * Shell commands that delete or overwrite for good. Matched as whole commands (at the start, or after ; & | ( or `),
  * so "firmware" or "--format" do not count. A heuristic: it adds a warning, it never lets a command through.
  */
-const DESTRUCTIVE_COMMAND = [
+export const DESTRUCTIVE_COMMAND = [ // also the base of the Relais command floor (relayguard.ts, companion guard.js)
   /(^|[;&|(`]|\$\()\s*(sudo\s+)?(rm|rmdir|shred|unlink|wipefs|mkfs(\.\w+)?|dd|truncate|del|erase|rd|format|remove-item|srm)\b/i,
   /\bgit\s+(push\b[^;&|]*\s(--force\b|-f\b|--delete\b)|reset\s+--hard\b|clean\s+-\w*f)/i,
   /\b(drop\s+(table|database|schema)|delete\s+from|truncate\s+table)\b/i,
@@ -71,6 +71,12 @@ export function irreversibility(turn: Pick<Turn, "builtin" | "remote">, name: st
     if (kind === "calendar") return of("book");
     if (kind === "submit") { const n = ` ${normalize(seen.label)} `; return COMMIT_WORDS.some((w) => n.includes(` ${w} `)) ? of("submit") : null; }
     return null;
+  }
+  if (name === "browser_dialog") {
+    // OK on a page's question (tools-browser.ts): its words, read by the server (bind.ts, `seen_dialog`), as for a click.
+    const d = input.seen_dialog as { type?: string; message?: string } | null | undefined;
+    const kind = input.action === "accept" && d && d.type !== "alert" ? committingKind(String(d.message ?? "")) : null;
+    return kind === "pay" || kind === "delete" || kind === "publish" || kind === "send" ? of(kind) : kind === "calendar" ? of("book") : kind === "submit" ? of("submit") : null;
   }
   const remote = turn.remote.get(name);
   if (remote) {

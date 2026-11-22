@@ -1,0 +1,9 @@
+accessibilite-mesuree — adapted from chrome-devtools-mcp, agent-skills (© 2025-2026 Google LLC, Apache-2.0; © 2025 Addy Osmani, MIT)
+Sources (each pinned to one commit):
+- chrome-devtools-mcp — © 2025-2026 Google LLC — Apache-2.0 — https://github.com/ChromeDevTools/chrome-devtools-mcp/tree/ab911a6dd71ed4960c1c679f831c7b5607bc5505/skills/a11y-debugging
+- agent-skills — © 2025 Addy Osmani — MIT — https://github.com/addyosmani/agent-skills/tree/8c99fa36d90068c82d547f7c12a9d67a3e95f4ee/skills/accessibility-engineering
+- agent-skills — © 2025 Addy Osmani — MIT — https://github.com/addyosmani/agent-skills/tree/8c99fa36d90068c82d547f7c12a9d67a3e95f4ee/references/accessibility-checklist.md
+Licence: Apache-2.0 and MIT — the upstream licence texts are in LICENSE.txt, unchanged.
+
+Modified for Sklubot (2026-11-22): DevTools server tools replaced by Sklubot's browser tools and an optional command-line audit (Lighthouse or axe only if already installed; installing is the owner's choice); the installer script removed; checks for structure, names, keyboard, contrast, zoom and motion; a short report table; translated into French.
+Only text is included; no script, picture or other file of the original folders is bundled. Names of other products are not used as titles.

@@ -16,12 +16,15 @@ import { q } from "./db.js";
  * archive from GitHub (https://docs.github.com/en/repositories/working-with-files/using-files/downloading-source-code-archives
  * — /archive/refs/heads/<branch>.zip, /archive/refs/tags/<tag>.zip, /archive/<commit>.zip; HEAD.zip for the default
  * branch), through the network guard (guardedFetch: public addresses only), following redirects only to github.com and
- * codeload.github.com, 15 MB at most. Nothing in it is run: only SKILL.md files and licence/README texts are read out of
+ * codeload.github.com, 15 MB at most. Nothing in it is run: only SKILL.md files, small texts (annexes) and licence/README texts are read out of
  * the zip (the zip reader of projectimport.ts: no links, no "..", no absolute paths); every other file is counted and
  * left out.
  *
  * The preview lists each SKILL.md with its licence (its folder's LICENSE, else its front matter, else the repository's
- * LICENSE, else its README), and flags: a key-like string, too long (over 20 000 characters), files left out. Nothing is
+ * LICENSE, else its README), and flags: a key-like string, too long (over 20 000 characters, with the count), files left
+ * out. Files the text cites (citedFiles: links and paths of its own folder) are joined at the end as "Annex: …" sections
+ * when they are small texts and the whole stays under the limit; anything else it cites is named in the preview and in
+ * the imported text, so neither the owner nor the bot believes a missing file is there (backlog L26). Nothing is
  * saved until the owner picks skills; they arrive as DRAFTS (the bot does not get them until the owner activates each one
  * in the bot's Skills tab), marked as coming from outside, with their source and licence at the end of their text.
  *
@@ -152,6 +155,32 @@ const sweep = () => { for (const [k, v] of pending) if (v.until < now()) pending
 const LICENCE_FILE = /^(LICEN[CS]E|COPYING)(\.(md|txt|rst))?$/i;
 const README_FILE = /^README(\.(md|txt|rst))?$/i;
 export const MAX_SKILL_CHARS = 20_000;
+/** Texts that can be joined to a skill as annexes (L26/L130): Markdown or plain text of its own folder, 60 KB at most. */
+const ANNEX_FILE = /\.(md|markdown|txt)$/i;
+const MAX_ANNEX = 60_000;
+
+/**
+ * The files of its own folder a skill's text cites: Markdown links ("[format](./FORMAT.md)") and file paths written in
+ * the text ("references/eeat.md", "`scripts/check.py`"), relative to the skill's folder, in order, once each. Web
+ * addresses, absolute paths, "..", and the skill's own SKILL.md are left out (an import never reads outside the folder).
+ */
+export function citedFiles(body: string): string[] {
+  const out: string[] = [];
+  const add = (raw: string) => {
+    let p = raw.trim().replace(/^<|>$/g, "").split("#")[0].split("?")[0];
+    if (!p || /^[a-z][a-z0-9+.-]*:/i.test(p) || p.startsWith("/") || p.startsWith("~") || p.includes("\\")) return;
+    p = p.replace(/^(\.\/)+/, "");
+    const parts = p.split("/");
+    if (parts.some((x) => !x || x === "." || x === "..") || !/\.[A-Za-z0-9]{1,8}$/.test(p) || /^skill\.md$/i.test(p)) return;
+    if (!out.includes(p)) out.push(p);
+  };
+  for (const m of body.matchAll(/\]\(\s*([^)\s]+)(?:\s+"[^"]*")?\s*\)/g)) add(m[1]);
+  const FILE = /(?<![\w./:@-])((?:\.\/)?(?:[\w-][\w.-]*\/)*[\w-][\w.-]*\.(?:md|markdown|txt|py|sh|bash|js|mjs|cjs|ts|json|ya?ml|html?|css|csv|toml|xml|svg|png|jpe?g|pdf))(?![\w/-])/g;
+  for (const m of body.replace(/\]\([^)]*\)/g, "]").replace(/https?:\/\/\S+/g, " ").matchAll(FILE)) {
+    add(m[1]);
+  }
+  return out;
+}
 
 /** Who may import from GitHub: anyone on a self-hosted server; in hosted mode, operators and accounts on a paid plan. */
 export function githubImportAllowed(userId: string): boolean {
@@ -181,6 +210,8 @@ export async function previewGithub(userId: string, address: string, signal: Abo
         // The repository's own licence and README are read even outside the chosen folder.
         if (!rel.includes("/") && (LICENCE_FILE.test(base) || README_FILE.test(base))) return size <= 300_000;
         if (!inScope) return false;
+        // Small texts of the folder are read too: a skill's annexes (see citedFiles).
+        if (ANNEX_FILE.test(base) && size <= MAX_ANNEX) return true;
         return (/^skill\.md$/i.test(base) || LICENCE_FILE.test(base)) && size <= 300_000;
       },
     }).map((f) => ({ path: strip(f.path), data: f.data }));
@@ -208,10 +239,20 @@ export async function previewGithub(userId: string, address: string, signal: Abo
     else if (rootLicence !== "none") { licence = rootLicence; licenceFrom = "repository"; }
     else if (readmeKind !== "unknown") { licence = readmeKind; licenceFrom = "readme"; }
     const ignoredFiles = all.filter((x) => (dir ? x.path.startsWith(`${dir}/`) : true) && x.path !== f.path && !LICENCE_FILE.test(x.path.split("/").pop()!) && !README_FILE.test(x.path.split("/").pop()!) && !/(^|\/)NOTICE(\.txt)?$/i.test(x.path)).length;
-    const body = parsed.body;
+    // Files its text cites: small texts of its own folder are joined as annexes while the whole stays under the limit;
+    // anything else it cites (scripts, pictures, missing or too large files) is named so the owner knows it is not there.
+    const annexes: string[] = [], referencedFiles: string[] = [];
+    let body = parsed.body;
+    for (const ref of citedFiles(parsed.body)) {
+      const full = dir ? `${dir}/${ref}` : ref;
+      const data = ANNEX_FILE.test(ref) ? text(full) : null;
+      const annex = data === null ? "" : `\n\n## Annex: ${ref}\n\n${data.replace(/\r\n/g, "\n").trim()}`;
+      if (data !== null && body.length + annex.length <= MAX_SKILL_CHARS) { body += annex; annexes.push(ref); }
+      else referencedFiles.push(ref);
+    }
     found.push({
       path: f.path, name, description: clip(parsed.description, 300), size: f.size, licence, licenceFrom, permissive: isPermissive(licence),
-      mentionsKey: mentionsKey(raw ?? ""), tooLarge: raw === null || body.length > MAX_SKILL_CHARS, ignoredFiles: dir ? ignoredFiles : 0,
+      mentionsKey: mentionsKey(raw ?? ""), tooLarge: raw === null || body.length > MAX_SKILL_CHARS, chars: raw === null ? f.size : body.length, annexes, referencedFiles, ignoredFiles: dir ? Math.max(0, ignoredFiles - annexes.length) : 0,
       exists: existing.has(name.toLowerCase()), body: raw === null ? "" : body,
       scan: scanSkill({ name, description: clip(parsed.description, 300), body: body.slice(0, MAX_SKILL_CHARS) }),
     });
@@ -240,7 +281,8 @@ export function commitGithub(userId: string, previewId: string, paths: string[],
     if (s.tooLarge || !s.body) { report.skipped.push(s.name); continue; }
     const dir = s.path.includes("/") ? s.path.slice(0, s.path.lastIndexOf("/")) : "";
     const source = `https://github.com/${p.repo}/tree/${tree}${dir ? `/${dir}` : ""}`;
-    const footer = `\n\n---\nSource: ${source} — licence: ${s.licence === "none" ? "none found" : s.licence} (${s.licenceFrom}). Imported from GitHub: check it before activating it.`;
+    const missing = s.referencedFiles.length ? `\nFiles this skill refers to were not imported (you cannot open them): ${s.referencedFiles.join(", ")}.` : "";
+    const footer = `\n\n---\nSource: ${source} — licence: ${s.licence === "none" ? "none found" : s.licence} (${s.licenceFrom}). Imported from GitHub: check it before activating it.${missing}`;
     let any = false;
     for (const b of targets) {
       if (skills.list(b.id).some((k) => k.name.toLowerCase() === s.name.toLowerCase())) continue;

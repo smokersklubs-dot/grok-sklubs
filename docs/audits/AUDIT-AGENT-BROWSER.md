@@ -249,15 +249,15 @@ Si on l'installe quand même, n'exposer que la lecture (`read`, `snapshot`, `con
 
 ## À faire (classé)
 
-1. Test du point de clic (élément couvert) avant `element_click`, et pour un clic engageant refuser si le receveur diffère (S).
-2. Corriger le 2ᵉ navigateur (`open-browser.sh`/`dress.py`) et gérer les dialogues (voir AUDIT-CHROME-DEVTOOLS-MCP) (S).
-3. `vault_type` : taper par CDP dans l'onglet vérifié, après contrôle du champ focalisé (le contrôle d'hôte actuel peut être trompé par le bug du 2ᵉ navigateur) (S).
+1. Test du point de clic (élément couvert) avant `element_click`, et pour un clic engageant refuser si le receveur diffère (S). — **FAIT (2026-11-22)** : test du point de clic (`document.elementFromPoint` — `DOM.getNodeForLocation` prend des coordonnées de document une fois la page défilée) avant chaque `element_click`, refus en nommant ce qui couvre ; clic engageant revérifié (libellé + site) sur le même onglet juste avant (`screen-elements.ts`, test `browser-tabs.test.ts`)
+2. Corriger le 2ᵉ navigateur (`open-browser.sh`/`dress.py`) et gérer les dialogues (voir AUDIT-CHROME-DEVTOOLS-MCP) (S). — **FAIT (2026-11-22)** : `open-browser.sh` ouvre un onglet par CDP si le navigateur répond, `dress.py` ne touche plus le verrou d'un navigateur vivant ; dialogues : veilleur + `browser_dialog` (`browser-cdp.ts`)
+3. `vault_type` : taper par CDP dans l'onglet vérifié, après contrôle du champ focalisé (le contrôle d'hôte actuel peut être trompé par le bug du 2ᵉ navigateur) (S). — **FAIT (2026-11-22)** : `Input.insertText` dans l'onglet actif après contrôle du site de la page et de chaque cadre jusqu'au champ, mot de passe seulement dans un champ mot de passe (`tools-browser.ts` `typeSecret`)
 4. Indices pour boutons sans nom ou en double dans `element_snapshot` (M).
 5. Refs stables + récupération rôle+nom unique (S).
-6. Iframes dans le snapshot, refs utilisables directement (M).
+6. Iframes dans le snapshot, refs utilisables directement (M). — **FAIT (2026-11-22)** : PARTIEL : cadres du même site listés et utilisables (« in frame ») ; cadres d'un autre site signalés, non listés
 7. Actions par référence sans capture ; `screen_view` qui saute une image identique (M).
 8. Outil d'attente (`wait` texte / URL / disparition / chargement) (S).
-9. Outil onglets (lister, ouvrir, activer, fermer) (S).
+9. Outil onglets (lister, ouvrir, activer, fermer) (S). — **FAIT (2026-11-22)** : `browser_tabs`, `browser_tab` (activer, fermer), `browser_open` `new_tab` ; nouvel onglet suivi seul
 10. Nouvel hôte atteint par un clic dans un tour teinté : signaler/demander (M).
 11. `check`/`uncheck`, `hover`, `upload`, fin de téléchargement (S à M).
 12. Capture annotée (numéros = refs) pour icônes et canvas (M).

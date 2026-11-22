@@ -40,6 +40,8 @@ export const KNOWN_SEALED: Record<string, string> = {
   "google_login.secret_enc": "\"Continuer avec Google\" client secret",
   "two_factor.secret_enc": "two-factor sign-in seed",
   "two_factor.pending_enc": "two-factor seed being set up (30 min)",
+  "routine_hooks.secret_enc": "webhook signing secret (L20)",
+  "routine_hooks.prev_secret_enc": "previous webhook signing secret, valid 24 h after a change",
 };
 /** Sealed values inside JSON columns: table, column, keys of the object that hold sealed strings. */
 export const JSON_FIELDS: { table: string; column: string; keys: string[]; label: string }[] = [

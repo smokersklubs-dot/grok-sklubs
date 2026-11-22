@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { emit } from "./bus.js";
 import type { Locale } from "./shared.js";
 import { scanSkill } from "./skillscan.js";
-import type { LibraryAddReport, LibraryOrigin, LibrarySkill } from "./skillstypes.js";
+import { LIBRARY_CATEGORIES, type LibraryAddReport, type LibraryCategory, type LibraryOrigin, type LibrarySkill } from "./skillstypes.js";
 import { audit, bots, skills, type BotRecord } from "./store.js";
 
 /**
@@ -12,8 +12,10 @@ import { audit, bots, skills, type BotRecord } from "./store.js";
  * catalog.json. Origins: Sklubot's own skills (MIT, the project's licence), skills adapted from the public repositories
  * github.com/anthropics/skills ("anthropic") and github.com/nexu-io/open-design ("opendesign"), Apache-2.0 only (their
  * LICENSE.txt is kept unchanged and their NOTICE and the first line of their text say what was changed, as Apache-2.0 §4
- * asks), and the Hermes Bot Kit ("hermes", MIT). A folder without its licence or notice is not offered. The texts are
- * read once at startup.
+ * asks), the Hermes Bot Kit ("hermes", MIT), and skills adapted from other open-source repositories ("community"): MIT,
+ * Apache-2.0 or CC BY 4.0 texts only, each with the upstream licence text in LICENSE.txt, a NOTICE naming the copyright
+ * holder, the source pinned to one commit and the changes made (licenceOk below). A folder without its licence or notice
+ * is not offered. Each skill has a theme ("category") the gallery groups by. The texts are read once at startup.
  *
  * Adding one to a bot creates an ordinary skill (active: the owner read the card and chose it), named after the skill's
  * title in the account's language. Adding it again changes nothing (a bot that already has a skill of that name, in
@@ -21,14 +23,31 @@ import { audit, bots, skills, type BotRecord } from "./store.js";
  */
 
 interface Entry {
-  id: string; origin: LibraryOrigin; licence: string; source: string;
+  id: string; origin: LibraryOrigin; category: LibraryCategory; licence: string; source: string;
   title: Record<Locale, string>; summary: Record<Locale, string>;
   text: Partial<Record<Locale, { description: string; body: string }>>; notice: string;
 }
 
 const DIR = new URL("../skills-library/", import.meta.url);
 const ID = /^[a-z0-9][a-z0-9-]{1,60}$/;
-const ORIGINS = new Set<unknown>(["sklubot", "anthropic", "opendesign", "hermes"] satisfies LibraryOrigin[]);
+const ORIGINS = new Set<unknown>(["sklubot", "anthropic", "opendesign", "hermes", "community"] satisfies LibraryOrigin[]);
+
+/** What each licence of a "community" skill must show in its LICENSE.txt (the upstream text, unchanged). */
+const LICENCE_TEXT: Record<string, RegExp> = {
+  "MIT": /Permission is hereby granted, free of charge/,
+  "Apache-2.0": /Apache License\s+Version 2\.0/,
+  "CC-BY-4.0": /Creative Commons Attribution 4\.0|CC BY 4\.0/,
+};
+/**
+ * A "community" skill: its licence is one of MIT, Apache-2.0, CC-BY-4.0, or several joined by " AND " (a skill made from
+ * several sources), each found in LICENSE.txt; its NOTICE states the changes ("Modified for Sklubot") and its source is
+ * pinned to a 40-character commit.
+ */
+export function licenceOk(licence: string, licenceText: string, notice: string, source: string): boolean {
+  const parts = licence.split(" AND ").map((x) => x.trim());
+  return parts.length > 0 && parts.every((x) => LICENCE_TEXT[x]?.test(licenceText)) && /Modified for Sklubot \(\d{4}-\d{2}-\d{2}\)/.test(notice)
+    && /^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/tree\/[0-9a-f]{40}(\/|$)/.test(source) && /[0-9a-f]{40}/.test(notice);
+}
 
 /** Front matter `name:` / `description:` and the text after it. */
 export function splitSkill(md: string): { name: string; description: string; body: string } {
@@ -55,6 +74,10 @@ function load(): Entry[] {
       console.warn(`[skills-library] ${e.id}: expected the Hermes Bot Kit MIT licence`);
       continue;
     }
+    if (e.origin === "community" && !licenceOk(String(e.licence ?? ""), readFileSync(file("LICENSE.txt"), "utf8"), readFileSync(file("NOTICE"), "utf8"), String(e.source ?? ""))) {
+      console.warn(`[skills-library] ${e.id}: a community skill needs an MIT, Apache-2.0 or CC-BY-4.0 licence text, its changes and a pinned source`);
+      continue;
+    }
     for (const [loc, name] of [["en", "SKILL.md"], ["fr", "SKILL.fr.md"]] as const) {
       if (!existsSync(file(name))) continue;
       const s = splitSkill(readFileSync(file(name), "utf8"));
@@ -63,7 +86,7 @@ function load(): Entry[] {
     if (!text.en) continue;
     const str = (v: unknown, n: number) => (typeof v === "string" ? v.trim().slice(0, n) : "");
     out.push({
-      id: e.id, origin: e.origin, licence: str(e.licence, 40), source: str(e.source, 300),
+      id: e.id, origin: e.origin, category: (LIBRARY_CATEGORIES as readonly unknown[]).includes(e.category) ? e.category : "method", licence: str(e.licence, 60), source: str(e.source, 300),
       title: { fr: str(e.title?.fr, 80) || e.id, en: str(e.title?.en, 80) || e.id },
       summary: { fr: str(e.summary?.fr, 300), en: str(e.summary?.en, 300) },
       text, notice: readFileSync(file("NOTICE"), "utf8").split("\n")[0].trim(),
@@ -88,7 +111,7 @@ export function libraryFor(userId: string, locale: Locale): LibrarySkill[] {
   return libraryEntries().map((e) => {
     const t = textFor(e, locale);
     return {
-      id: e.id, origin: e.origin, licence: e.licence, source: e.source, title: e.title[locale], summary: e.summary[locale],
+      id: e.id, origin: e.origin, category: e.category, licence: e.licence, source: e.source, title: e.title[locale], summary: e.summary[locale],
       body: t.body, language: t.language, notice: e.notice, scan: scanSkill({ name: e.title[locale], description: t.description || e.summary[locale], body: t.body }), addedTo: agents.filter((b) => hasIt(b.id, e)).length, botCount: agents.length,
     };
   });

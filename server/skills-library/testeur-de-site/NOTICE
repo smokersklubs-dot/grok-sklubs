@@ -1,0 +1,7 @@
+testeur-de-site — adapted from vercel-labs/agent-browser (© 2025 Vercel Inc., Apache-2.0)
+Sources (each pinned to one commit):
+- vercel-labs/agent-browser — © 2025 Vercel Inc. — Apache-2.0 — https://github.com/vercel-labs/agent-browser/tree/d2dfc782ccdd79d25a9b4f0acced9321789cecb8/skill-data/dogfood
+Licence: Apache-2.0 — the upstream licence texts are in LICENSE.txt, unchanged.
+
+Modified for Sklubot (2026-11-22): the command-line browser and its video recording replaced by Sklubot's browser tools and screenshots; sign-in through the vault and the owner's takeover; no real payments, orders or messages without approval; report saved as a Sklubot file; translated into French.
+Only text is included; no script, picture or other file of the original folders is bundled. Names of other products are not used as titles.

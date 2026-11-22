@@ -526,6 +526,10 @@ a.btn { text-decoration: none; }
 .memory-text.is-contested { color: var(--warn); }
 .memory-status.is-contested { background: var(--warn-soft); color: var(--warn); }
 .memory-status-select { width: auto; align-self: center; }
+.memory-edit { display: flex; flex-direction: column; gap: 6px; width: 100%; }
+.memory-edit textarea { width: 100%; min-height: 64px; resize: vertical; font: inherit; }
+.memory-edit-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.memory-history { margin: 2px 0 0; padding-left: 18px; font-size: 12.5px; color: var(--text-2); display: flex; flex-direction: column; gap: 3px; overflow-wrap: anywhere; }
 .style-box { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
 .style-profile { padding: 10px 12px; border-radius: var(--r-md); background: var(--surface-2); font-family: var(--font); font-size: 13px; white-space: pre-wrap; }
 .import-export { display: flex; flex-direction: column; gap: 8px; }

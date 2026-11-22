@@ -1,0 +1,8 @@
+lecons-de-mon-travail — adapted from Noodle (© 2026 Lauren Tan, MIT)
+Sources (each pinned to one commit):
+- Noodle — © 2026 Lauren Tan — MIT — https://github.com/poteto/noodle/tree/82d2921c52370f23f29086de81ccfb600939c037/.agents/skills/reflect
+- Noodle — © 2026 Lauren Tan — MIT — https://github.com/poteto/noodle/tree/82d2921c52370f23f29086de81ccfb600939c037/.agents/skills/meditate
+Licence: MIT — the upstream licence texts are in LICENSE.txt, unchanged.
+
+Modified for Sklubot (2026-11-22): the notes folder, sub-agents, scripts and automatic commits replaced by Sklubot's memory, skills and rules; every change proposed on a card or in a list the owner validates; translated into French.
+Only text is included; no script, picture or other file of the original folders is bundled. Names of other products are not used as titles.

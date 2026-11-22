@@ -13,6 +13,7 @@ import { radius, useTheme } from "../theme";
 import { Icon } from "./Icon";
 import { listenAvailable, listenKey, listenReply, stopListening, useListen } from "../voice/listen";
 import { Markdown } from "./Markdown";
+import { canReport, ReportButton } from "./ReportSheet";
 import { tap } from "./ui";
 
 export function DayDivider({ at }: { at: number }) {
@@ -88,7 +89,12 @@ export const MessageBubble = memo(function MessageBubble({ bot, row, body, mine,
           {body.attachments.map((a) => <AttachmentView key={a.path} botId={bot.id} file={a} mine={mine} />)}
         </View>
       ) : null}
-      {!mine && !body.streaming && body.role === "assistant" && body.text.trim() && listenAvailable ? <ListenButton bot={bot} row={row} body={body} /> : null}
+      {!mine && (canReport(bot, body) || (!body.streaming && body.role === "assistant" && body.text.trim() && listenAvailable)) ? (
+        <View style={styles.replyActions}>
+          {!body.streaming && body.role === "assistant" && body.text.trim() && listenAvailable ? <ListenButton bot={bot} row={row} body={body} /> : null}
+          {canReport(bot, body) ? <ReportButton row={row} /> : null}
+        </View>
+      ) : null}
       {body.sources?.length ? (
         <Text style={[styles.sources, { color: c.text3 }]} numberOfLines={2}>{body.sources.map((s) => s.title || s.url.replace(/^https?:\/\//, "").split("/")[0]).join(" · ")}</Text>
       ) : null}
@@ -210,6 +216,7 @@ const styles = StyleSheet.create({
   thumb: { width: 220, height: 220, borderRadius: radius.lg },
   file: { flexDirection: "row", alignItems: "center", gap: 10, padding: 10, borderRadius: radius.md, borderWidth: StyleSheet.hairlineWidth, minWidth: 220 },
   sources: { fontSize: 12, marginTop: 4, marginHorizontal: 6 },
+  replyActions: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
   listen: { flexDirection: "row", alignItems: "center", gap: 6, minHeight: 44, minWidth: 44, paddingHorizontal: 12, marginTop: 4, borderRadius: 22, borderWidth: StyleSheet.hairlineWidth },
   lightbox: { flex: 1, backgroundColor: "#000" },
   lightboxBar: { position: "absolute", left: 12, right: 12, flexDirection: "row", justifyContent: "space-between" },

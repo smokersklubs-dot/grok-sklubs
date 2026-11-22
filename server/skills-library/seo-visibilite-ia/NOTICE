@@ -1,0 +1,8 @@
+seo-visibilite-ia — adapted from claude-seo (© 2026 agricidaniel, MIT)
+Sources (each pinned to one commit):
+- claude-seo — © 2026 agricidaniel — MIT — https://github.com/AgriciDaniel/claude-seo/tree/468ed5b0d9e3249394783710e54abb02837e326b/skills/seo-geo
+- claude-seo — © 2026 agricidaniel — MIT — https://github.com/AgriciDaniel/claude-seo/tree/468ed5b0d9e3249394783710e54abb02837e326b/skills/seo-agentic
+Licence: MIT — the upstream licence texts are in LICENSE.txt, unchanged.
+
+Modified for Sklubot (2026-11-22): paid data services, third-party scanners and statistics removed; checks with curl, web_fetch and the bot's browser; claims kept only where the original cites a primary source; condensed; translated into French.
+Only text is included; no script, picture or other file of the original folders is bundled. Names of other products are not used as titles.

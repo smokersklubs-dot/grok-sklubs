@@ -9,6 +9,7 @@ An original Sklubot skill.
 
 ## Finding the brand (in this order)
 
+0. **The brand sheet**: ~/team/charte.md on your computer (written with the owner by the "Brand interview" and "Brand sheet (design)" skills). When it exists, it is the reference; read it first.
 1. **The shared profile** (the "About the user" section of your context): company, preferences.
 2. **Your memories**: memory_search for "brand", "colours", "logo", "style guide", "font", the company's name.
 3. **Files**: the style guide, the logo or an earlier document the user gave you (your library, ~/team on your computer, or a folder they share through Sklubot Relais — only if they asked you to).

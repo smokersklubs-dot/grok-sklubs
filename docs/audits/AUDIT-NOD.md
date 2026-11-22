@@ -168,22 +168,22 @@ Vu mais non compté (NON REPRIS ou sans objet pour Sklubot) : traces de conversa
 ## 4. À faire (classé)
 
 1. Relais : applis refusées d'office (terminaux, réglages, mots de passe), liste « garder à l'écart », garde des champs mot de passe, revérification de la fenêtre avant saisie, et retrait du shell hors accord explicite. M.
-2. Modèle par routine et pour le travail de fond ; modèle par tâche. S.
+2. Modèle par routine et pour le travail de fond ; modèle par tâche. S. — **Partiel (22/11)** : modèle par tâche fait ; routines / travail de fond gardés et résolus (`routineplus.ts`), pas encore appliqués par la boucle.
 3. Ligne d'activité : « en attente du modèle » après 60 s, « nouvel essai n/N », résumé immédiat de la demande. S.
 4. Vérification de santé du modèle au choix et au démarrage ; raison affichée avant l'envoi ; 401 = « à reconnecter ». S.
-5. Telegram : boutons d'accord, envoi de fichiers et vocaux, réception de photos / vocaux, découpage des longues réponses. M.
-6. Répondre à un message / à une sélection ; Copier sur blocs de code et tableaux. S.
+5. Telegram : boutons d'accord, envoi de fichiers et vocaux, réception de photos / vocaux, découpage des longues réponses. M. — **Fait (22/11)** : `telegramplus.ts`, test `nod-telegram.test.ts`.
+6. Répondre à un message / à une sélection ; Copier sur blocs de code et tableaux. S. — **Fait (22/11)** : `ReplyAction.tsx`, `messagecopy.ts`.
 7. Carte « Signaler un problème » avec rapport masqué. S.
-8. Routines : piste des retards / sauts / échecs, activité en direct, refus de « lancer maintenant » après modification, aperçu de la prochaine exécution. S chacun.
+8. Routines : piste des retards / sauts / échecs, activité en direct, refus de « lancer maintenant » après modification, aperçu de la prochaine exécution. S chacun. — **Fait (22/11)** : `routineplus.ts`, `RoutineEditor.tsx`, test `nod-routines.test.ts`.
 9. Accès aux fichiers locaux activable depuis la discussion. S.
-10. Repli HTTP+SSE pour MCP ; renommer un connecteur MCP. S.
-11. Connecteurs : format de contribution et checklist de preuve. M.
-12. Langue qui suit le dernier message de l'utilisateur. S.
-13. Approuver une consigne de routine complète avec sa portée. M.
+10. Repli HTTP+SSE pour MCP ; renommer un connecteur MCP. S. — **Fait (22/11)** : `mcptransport.ts`, test `nod-mcp.test.ts`.
+11. Connecteurs : format de contribution et checklist de preuve. M. — **Fait (22/11, doc)** : `docs/CONNECTEURS-CONTRIBUTION.md`.
+12. Langue qui suit le dernier message de l'utilisateur. S. — **Fait (22/11)** : `agent/nodguidance.ts`.
+13. Approuver une consigne de routine complète avec sa portée. M. — **Fait (22/11)** : `routineplus.ts` (règle liée à la routine, coupée à toute modification).
 14. Mises à jour automatiques de l'appli Relais. S.
-15. Consigne « connecteur d'abord, appli locale ensuite ». S.
+15. Consigne « connecteur d'abord, appli locale ensuite ». S. — **Fait (22/11)** : `agent/nodguidance.ts`.
 16. Garder l'ordinateur éveillé pendant une tâche locale (Relais). S.
-17. Adresse MCP privée tapée par l'utilisateur, en auto-hébergé seulement. M.
+17. Adresse MCP privée tapée par l'utilisateur, en auto-hébergé seulement. M. — **Fait (22/11)** : `mcptransport.ts`.
 
 **À ajouter au cahier 07** (section « mise à jour du 21/11 ») : lignes 1-14, 20, 22, 29, 40-47, 50, 52-53, 57-62, 63-66, 68.
 

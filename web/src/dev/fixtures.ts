@@ -37,6 +37,19 @@ type StatusOf<C> = C extends { status: infer S } ? S : C extends { state: infer 
 export interface CardFixture { type: Card["type"]; status: string; card: Card }
 
 /** Settings → Permissions: what the owner allowed "for this conversation" (ConversationGrants.tsx). */
+/** Réglages → Mémoire: a note's history (MemoryEdit.tsx), as GET /memories/:id/history answers. */
+export function memoryHistoryFixture(o: FixtureOptions) {
+  const L = (fr: string, en: string) => (o.lang === "fr" ? fr : en);
+  const long = o.long ? L(" avec toute l'équipe commerciale, sauf pendant les vacances scolaires de la zone A", " with the whole sales team, except during the school holidays") : "";
+  return [
+    { at: NOW - 9 * 86400_000, action: "status", before: "active", after: "contested", by: "bot" },
+    { at: NOW - 8 * 86400_000, action: "edited", before: L("Préfère les réunions le matn", "Prefers meetings in the mornin"), after: L(`Préfère les réunions le matin${long}`, `Prefers meetings in the morning${long}`), by: "owner" },
+    { at: NOW - 8 * 86400_000, action: "status", before: "contested", after: "active", by: "owner" },
+    { at: NOW - 2 * 86400_000, action: "deleted", before: null, after: null, by: "owner" },
+    { at: NOW - 2 * 86400_000, action: "restored", before: null, after: null, by: "owner" },
+  ];
+}
+
 export function conversationGrantFixtures(o: FixtureOptions): ConversationGrantInfo[] {
   const { L, LONG } = texts(o);
   const H = 3_600_000;

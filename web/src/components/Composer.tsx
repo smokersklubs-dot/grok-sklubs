@@ -13,6 +13,7 @@ import { ErrorNote, Menu, MenuItem, useEscape } from "./ui";
 import { PauseBanner } from "./Pause";
 import { useComposerMentions } from "./ComposerMentions";
 import { MeetingRecorder } from "./MeetingRecorder";
+import { sendKeysFor } from "../../../mobile/shared/sendKey";
 
 const NO_UPLOADS: Upload[] = [];
 
@@ -169,7 +170,10 @@ export function Composer({ bot, live }: { bot: Bot; live: Live }) {
     setError(null);
     try {
       const paths = sent.map((u) => u.attachment?.path).filter((p): p is string => !!p);
-      const r = await api<{ row: Row }>("POST", `/bots/${bot.id}/messages`, { text, ...(paths.length ? { attachments: paths } : {}), ...(goalMode ? { goal: true } : {}) });
+      // One key per message, the same again if this send is retried after a lost reply: never two messages (sendKey.ts).
+      const keys = sendKeysFor(bot.id);
+      const r = await api<{ row: Row }>("POST", `/bots/${bot.id}/messages`, { text, ...(paths.length ? { attachments: paths } : {}), ...(goalMode ? { goal: true } : {}), clientKey: keys.keyFor(JSON.stringify([text, paths, goalMode])) });
+      keys.done();
       setGoalMode(false);
       addRows(bot.id, [r.row]);
       clearUploads(bot.id, sent.map((u) => u.id));

@@ -363,7 +363,7 @@ export type Card =
    * form confirmed…), as the server decided from the tool and its arguments (agent/irreversible.ts); `irreversibleReason`
    * says why, in the user's language. Such a card is always `once`: "Always" is never offered for it.
    */
-  | { type: "approval"; approvalId: string; title: string; detail: string; tool: string; source: string; status: "pending" | "allowed" | "always" | "denied" | "expired"; once?: boolean; why?: string; quote?: string; outcome?: "done" | "failed" | "uncertain"; irreversible?: boolean; irreversibleReason?: string; /** The card offers "for this conversation"; `grantedFor`: it was answered that way (agent/conversationgrants.ts). */ conversation?: boolean; grantedFor?: "conversation" }
+  | { type: "approval"; approvalId: string; title: string; detail: string; tool: string; source: string; status: "pending" | "allowed" | "always" | "denied" | "expired"; once?: boolean; why?: string; quote?: string; outcome?: "done" | "failed" | "uncertain"; irreversible?: boolean; irreversibleReason?: string; /** The card offers "for this conversation"; `grantedFor`: it was answered that way (agent/conversationgrants.ts). */ conversation?: boolean; grantedFor?: "conversation"; /** The bot stopped waiting for the answer; answering still works (agent/approval-wait.ts). */ parked?: boolean }
   /**
    * An action whose outcome is unknown (the server stopped, or the call timed out, while it ran). It is never replayed on
    * its own: the user says it went through, asks the bot to check, or retries it once.

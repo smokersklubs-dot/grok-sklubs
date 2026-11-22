@@ -18,7 +18,7 @@ import { compactIfNeeded } from "./memory.js";
 import { turnEnded, turnStarted } from "../snapshots.js";
 import { EngineTimeout, engineOf, engineTurnOf, isEngineRef, isEngineTimeout, runEngineTurn, type EngineOutcome } from "./engine.js";
 import { buildSystemPrompt } from "./prompt.js";
-import { userLinkHint } from "./links.js";
+import { hostOf, hostsIn, userLinkHint } from "./links.js"; export { hostOf, hostsIn };
 import { deliverBotMessage, settleAsk, type AskRoute } from "./team.js";
 import { noteDiskTrouble } from "../disk.js";
 import { builtinTools, higgsfieldFor, videoRoute, type BuiltinTool, type ToolOutput } from "./tools.js";
@@ -29,8 +29,9 @@ import { accounts as nativeAccounts } from "../native/accounts.js";
 import { appVisible, pushLater } from "../push.js";
 import { onlyPhones, devices as relayDevices } from "../relay.js";
 /** "My computer" tools a phone cannot serve (relay protocol 1.2): hidden when every linked device is a phone. */
-const PHONE_LESS = new Set(["my_command", "my_window_focus", "my_files", "my_file_read", "my_file_write", "my_file_trash"]);
-import { backoffDelay, errorDetail, isTransient, LoopGuard, loopStopText, modelChain, sleep, type LoopStop } from "./reliability.js";
+const PHONE_LESS = new Set(["my_command", "my_command_output", "my_command_stop", "my_vault_fill", "my_window_focus", "my_files", "my_file_read", "my_file_write", "my_file_trash"]);
+import { backoffDelay, errorDetail, isTransient, LoopGuard, loopStopText, modelChain, repeatLimit, sleep, type LoopStop } from "./reliability.js";
+import { forgetCall, isParked, noteMessageBehindApproval, parkApproval, parkedOf, parkedResume, rememberCall } from "./approval-wait.js"; import { crashOf, guardTurn } from "./crashguard.js";
 import { authorize, external, groundable, withoutQuote, type Decision } from "./authorize.js";
 import { actionHash, executions, markUncertain, outcomeUnknown } from "./executions.js";
 import { QUOTE_ARG, QUOTE_SCHEMA } from "./grounding.js";
@@ -68,20 +69,6 @@ export interface ApiAuthor { keyId: string; name: string }
 const actors = new Map<string, string>();
 export const actorOf = (botId: string): string | null => actors.get(botId) ?? null;
 setActorHook(actorOf);
-
-/** "https://www.Example.com/x" or "example.com" → "example.com"; "" when there is no usable host. */
-export function hostOf(url: unknown): string {
-  const s = String(url ?? "").trim();
-  if (!s) return "";
-  try { return new URL(/^[a-z][a-z0-9+.-]*:/i.test(s) ? s : `https://${s}`).hostname.toLowerCase().replace(/^www\./, ""); } catch { return ""; }
-}
-/** Hosts named in a piece of text (addresses and bare domain names). */
-export function hostsIn(text: string): string[] {
-  const out = new Set<string>();
-  for (const m of text.matchAll(/\bhttps?:\/\/[^\s<>"'`)\]]+/gi)) { const h = hostOf(m[0]); if (h) out.add(h); }
-  for (const m of text.matchAll(/(?<![@\w.-])((?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,24})(?![\w-])/gi)) { const h = hostOf(m[1]); if (h) out.add(h); }
-  return [...out];
-}
 
 /** Everything needed to continue a turn that stopped to ask the user for permission. */
 interface PausedTurn {
@@ -205,6 +192,8 @@ const controllers = new Map<string, AbortController>();
 const steering = new Map<string, Array<() => Promise<Block[]>>>();
 /** The thread the running turn of each bot answers in (absent: the main chat). */
 const runningThread = new Map<string, number>();
+/** Bots whose running turn their owner started (origin "user"): only such a turn takes in words the owner types meanwhile. */
+const ownTurns = new Set<string>();
 
 export const isBusy = (botId: string) => (pendingCount.get(botId) ?? 0) > 0;
 /** Work queued for a bot behind the job that is running now (called from inside that job). */
@@ -360,16 +349,17 @@ export function submitApiMessage(bot: BotRecord, text: string, author: ApiAuthor
 const deferredMember = new Map<string, Trigger[]>();
 
 export function submitUserMessage(bot: BotRecord, text: string, voice = false, attachments: Attachment[] = [], channel?: "telegram", thread = 0, skill?: ForcedSkill, goal?: string) {
-  // A subscription turn waiting inside a tool call for an approval: a new message makes that approval lapse.
-  expireEngineApprovals(bot.id);
+  // An approval that waits stays valid (approval-wait.ts): this message is kept for after the decision, and the chat says so.
+  noteMessageBehindApproval(bot, thread, [...[...waiterBot].filter(([, b]) => b === bot.id).map(([id]) => id), ...[paused.get<PausedTurn>(bot.id)?.approvalId ?? ""].filter(Boolean)]);
   // The user spoke to this work: its spend checkpoint counts from here (spec 07 A5). A task's card reply resets the task.
   const task = bot.parentId ? bgTasks.byHelper(bot.id) : null;
   resetScope(bot.id, task ? scopeKey.task(task.id) : scopeKey.chat(thread));
-  // Only a message for the same conversation (main chat or the same thread) joins the turn under way.
+  // Only a message for the same conversation (main chat or the same thread) joins the turn under way — and only a turn
+  // the owner started: typed during a routine's, a teammate's or a system turn, it becomes the owner's own turn, next.
   // A running subscription CLI accepts text steering only. A new turn receives all
   // attachment paths and prepares its previews on the locked desktop.
   const needsDesktopFiles = attachments.length > 0 && isEngineRef(bot.model);
-  if (!needsDesktopFiles && controllers.has(bot.id) && !paused.get(bot.id) && !isPaused(bot) && (runningThread.get(bot.id) ?? 0) === thread) {
+  if (!needsDesktopFiles && controllers.has(bot.id) && ownTurns.has(bot.id) && !paused.get(bot.id) && !isPaused(bot) && (runningThread.get(bot.id) ?? 0) === thread) {
     const list = steering.get(bot.id) ?? [];
     list.push(async () => {
       const blocks = await userBlocks(bot.id, text, attachments);
@@ -534,7 +524,13 @@ async function engineFallback(bot: BotRecord, user: UserRecord, trigger: Exclude
 /** Runs a turn inside its thread's scope, so whatever it writes into its chat lands in that thread. */
 function runTurn(botId: string, trigger: Trigger): Promise<void> {
   const thread = trigger.kind === "resume" ? paused.get<PausedTurn>(botId)?.thread ?? 0 : threadOf(trigger);
-  return rowScope.run({ botId, thread }, () => runScopedTurn(botId, trigger, thread));
+  return rowScope.run({ botId, thread }, () => guardTurn(botId, trigger, thread, () => runScopedTurn(botId, trigger, thread), releaseTurn));
+}
+/** What a turn holds, let go when it crashed outside its own error handling (crashguard.ts): the bot is free for its next work. */
+function releaseTurn(botId: string) {
+  controllers.delete(botId); runningThread.delete(botId); ownTurns.delete(botId); actors.delete(botId); clearTurn(botId); endScope(botId); endWatch({ botId });
+  q.tx(() => { activeTurns.end(botId); const job = runningJob.get(botId); if (job !== undefined) botQueue.finish(job); });
+  const bot = bots.byId(botId); if (bot && !paused.get(botId)) clearLive(bot.userId, botId); bots.announce(bot);
 }
 
 /** What the model is told about the thread it answers in, the first time it speaks there. */
@@ -550,14 +546,6 @@ async function runScopedTurn(botId: string, trigger: Trigger, thread: number): P
   if (!bot || bot.kind !== "agent") return;
   const user = users.byId(bot.userId);
   if (!user) return;
-  // A workspace member's message must not cancel what the owner is asked to approve: it waits (wave 6). So does a message
-  // sent through the Bot API (an outside program must not be able to make the owner's approvals lapse).
-  if (trigger.kind === "user" && (trigger.member || trigger.api) && paused.get(botId)) {
-    deferredMember.set(botId, [...(deferredMember.get(botId) ?? []), trigger]);
-    const job = jobOf.get(trigger);
-    if (job !== undefined) botQueue.defer(job);
-    return;
-  }
   // Goal mode (goals.ts). A round queued for a goal that was paused or stopped meanwhile does not run, nor one that would
   // land on an approval or a spend checkpoint the bot waits on (it would supersede the approval): the goal goes on once
   // that is settled.
@@ -570,6 +558,14 @@ async function runScopedTurn(botId: string, trigger: Trigger, thread: number): P
   }
   // A message about background jobs that ended never lands on an approval or a checkpoint either: it is sent again later.
   if (trigger.kind === "system" && trigger.jobIds?.length && (paused.get(botId) || checkpoints.pendingFor(botId))) { jobs.unnotify(trigger.jobIds); return; }
+  // Nothing cancels what the owner is asked to approve: whatever else comes meanwhile — the owner's own message, a
+  // member's, the Bot API, a routine, a teammate — waits for the decision, in its order, on disk (approval-wait.ts).
+  if (trigger.kind !== "resume" && paused.get(botId)) {
+    deferredMember.set(botId, [...(deferredMember.get(botId) ?? []), trigger]);
+    const job = jobOf.get(trigger);
+    if (job !== undefined) botQueue.defer(job);
+    return;
+  }
   // A routine whose text starts with "/objectif" (or "/goal") gives the bot a goal: this run is its first round.
   let goalCreated = false;
   if (trigger.kind === "routine" && !trigger.continuation) {
@@ -586,6 +582,7 @@ async function runScopedTurn(botId: string, trigger: Trigger, thread: number): P
   const controller = new AbortController();
   controllers.set(botId, controller);
   if (thread) runningThread.set(botId, thread); else runningThread.delete(botId);
+  if ((trigger.kind === "resume" ? paused.get<PausedTurn>(botId)?.origin : originOf(trigger)) === "user") ownTurns.add(botId); else ownTurns.delete(botId);
   setLive(user.id, botId, { running: true, activity: { kind: "thinking", since: Date.now() }, awaiting: null, startedAt: Date.now(), thread, steps: 0, caption: null });
   let turn: Turn | null = null;
   let failed = "";
@@ -630,7 +627,6 @@ async function runScopedTurn(botId: string, trigger: Trigger, thread: number): P
       const outcome = await processCalls(turn, held);
       if (outcome !== "continue") return;
     } else {
-      if (held) supersede(bot, held);
       if (isEngineRef(bot.model)) {
         const depth = trigger.kind === "bot" ? trigger.depth : trigger.kind === "system" ? trigger.depth ?? 0 : 0;
         turn = await newTurn(bot, user, depth, controller.signal, true);
@@ -739,13 +735,14 @@ async function runScopedTurn(botId: string, trigger: Trigger, thread: number): P
     // Replies to messages that came from a phone, and anything the bot says on its own initiative, go back out there.
     if (turn.lastText && !paused.get(botId) && (trigger.kind === "routine" || trigger.kind === "system" || turn.channel === "telegram")) tell({ type: "reply", bot, text: turn.lastText });
     pushOutcome(bot, user, trigger, turn.lastText); turnOk = true;
-  } catch (err) {
+  } catch (caught) {
+    const err = crashOf(controller.signal) ?? caught; // an uncaught error raised from this turn stopped it (crashguard.ts)
     if (err instanceof EngineDone) {
       failed = engineFailed || (turn?.missingReport ? tr(user.locale, missingReportText) : "");
       if (!failed && !waitingForQuota) { finishEngineTurn(bot, user, trigger, turn); turnOk = true; }
       return;
     }
-    const stopped = controller.signal.aborted;
+    const stopped = controller.signal.aborted && !crashOf(controller.signal);
     const timedOut = stopped && isEngineTimeout(controller.signal.reason);
     const watchStop = stopped && isWatchStop(controller.signal.reason) ? controller.signal.reason : null;
     failed = timedOut ? "timed out" : watchStop instanceof EngineGone ? "the subscription tool stopped" : watchStop ? "stalled" : stopped ? "stopped" : clip(String((err as Error)?.message ?? err), 200);
@@ -806,7 +803,7 @@ async function runScopedTurn(botId: string, trigger: Trigger, thread: number): P
     actors.delete(botId);
     clearTurn(botId);
     controllers.delete(botId);
-    runningThread.delete(botId);
+    runningThread.delete(botId); ownTurns.delete(botId);
     // A bot waits for this turn's answer (bot_message with wait): it gets it now, or later as a message (team.ts).
     if (turn?.ask && !waitingForQuota) {
       try { settleAsk(bot, turn.ask, { lastText: turn.lastText, tainted: turn.tainted, depth: turn.depth, failed, paused: !!paused.get(botId) }); }
@@ -825,7 +822,7 @@ async function runScopedTurn(botId: string, trigger: Trigger, thread: number): P
     bots.announce(bots.byId(botId));
     // Anything typed in the last instant of the turn still deserves an answer.
     if (leftover.length && bots.byId(botId) && isEngineRef(bots.byId(botId)!.model)) enqueue(botId, { kind: "user", text: extraText(leftover).trim(), thread: thread || undefined });
-    else if (leftover.length && bots.byId(botId)) void inQueue(botId, async () => { history.append(botId, bots.byId(botId)!.generation, { role: "user", content: leftover }, thread); }).then(() => enqueue(botId, { kind: "system", text: "The user's message above arrived just as your last turn ended. Answer it now.", thread: thread || undefined }));
+    else if (leftover.length && bots.byId(botId)) void inQueue(botId, async () => { history.append(botId, bots.byId(botId)!.generation, { role: "user", content: leftover }, thread); }).then(() => enqueue(botId, { kind: "system", text: "The user's message above arrived just as your last turn ended. Answer it now.", thread: thread || undefined, resumeOf: "steps", origin: "user" }));
     // Goal mode: the next round of an active goal starts here, unless the bot now waits on the user (goals.ts).
     try {
       const now = bots.byId(botId);
@@ -1377,7 +1374,7 @@ function judgeNative(turn: Turn, key: string, policy: string | null, account: st
   return bot.autonomy === "trusted" ? { kind: "allow" } : ask;
 }
 
-const cardDetail = (call: ToolUseBlock, verdict: Extract<Verdict, { kind: "ask" }>) => clip([describeArgs(withoutQuote(call.input)), verdict.note ?? ""].filter(Boolean).join("\n\n"), 1600);
+const cardDetail = (call: ToolUseBlock, verdict: Extract<Verdict, { kind: "ask" }>) => clip([describeArgs(withoutQuote(call.input)), verdict.note ?? ""].filter(Boolean).join("\n\n"), 9000); // 9000: a script card (relayguard.ts) shows 40 lines
 
 export function describeArgs(input: Record<string, unknown>): string {
   const lines = Object.entries(input).filter(([, v]) => v === null || typeof v !== "object").slice(0, 6).map(([k, v]) => `${k}: ${clip(String(v), 160)}`);
@@ -1398,7 +1395,7 @@ export async function execute(turn: Turn, raw: ToolUseBlock): Promise<ToolOutput
   const signature = `${call.name}:${JSON.stringify(call.input)}`;
   const seen = (turn.repeats.get(signature) ?? 0) + 1;
   turn.repeats.set(signature, seen);
-  if (seen > 4) return { content: `You have made this exact call ${seen} times in this turn. Repeating it will not change the result — try something different or tell the user where you are stuck.`, isError: true, summary: "repeated call skipped" };
+  if (seen > repeatLimit(call.name)) return { content: `You have made this exact call ${seen} times in this turn. Repeating it will not change the result — try something different or tell the user where you are stuck.`, isError: true, summary: "repeated call skipped" };
 
   const builtin = turn.builtin.get(call.name);
   if (builtin) {
@@ -1735,7 +1732,7 @@ function hideSecrets(userId: string, s: string): string {
   return redactSecrets(userId, s);
 }
 
-/** A new message arrived while an approval was open: the old request lapses and its calls are closed. */
+/** The bot is deleted or its task cancelled while an approval was open: the request lapses and its calls are closed. */
 function supersede(bot: BotRecord, st: PausedTurn) {
   const approval = approvals.byId(st.approvalId);
   if (approval?.status === "pending") {
@@ -1759,8 +1756,8 @@ const waiterBot = new Map<string, string>();
 const waitingFor = (botId: string) => [...waiterBot.values()].filter((b) => b === botId).length;
 
 /**
- * Lapses the approvals a subscription turn of this bot is waiting on (B-5). Called for a new message from the user (not
- * for a routine, a message from another bot or a system notice), for "restart the engine", and when the bot is deleted.
+ * Lapses the approvals a subscription turn of this bot is waiting on (B-5). Called for "restart the engine" and when the
+ * bot is deleted — no longer for a new message from the user, which now waits for the decision (approval-wait.ts).
  */
 export function expireEngineApprovals(botId: string) {
   for (const [id, owner] of [...waiterBot]) if (owner === botId) waiters.get(id)?.("expired");
@@ -1768,20 +1765,20 @@ export function expireEngineApprovals(botId: string) {
 
 /** Every approval of this bot still waiting lapses: the subscription ones and a paused turn of ours (bot deleted). */
 export function expireAllApprovals(botId: string) {
-  expireEngineApprovals(botId);
+  expireEngineApprovals(botId); for (const id of parkedOf(botId)) { lapse(id); forgetCall(id); }
   const bot = bots.byId(botId);
   const held = paused.get<PausedTurn>(botId);
   if (bot && held) supersede(bot, held);
 }
 
 /**
- * At start-up: approvals asked inside a subscription turn were waiting in memory, which a restart lost. They are marked
- * expired and their cards say so. An approval that holds a paused turn of ours is kept: that turn resumes on the answer.
+ * At start-up: an approval asked inside a subscription turn lost the call that waited for it; it is parked (its card
+ * stays open, approval-wait.ts) or, when it cannot be, marked expired. One that holds a paused turn of ours is kept.
  */
 export function expireOrphanApprovals(): number {
   let n = 0;
   for (const u of users.all()) for (const a of approvals.pendingForUser(u.id)) {
-    if (paused.get<PausedTurn>(a.botId)?.approvalId === a.id) continue;
+    if (paused.get<PausedTurn>(a.botId)?.approvalId === a.id || parkApproval(a.id)) continue;
     lapse(a.id);
     n++;
   }
@@ -1796,17 +1793,17 @@ function lapse(approvalId: string) {
 }
 
 /**
- * Shows an approval card and waits for the answer (at most APPROVAL_EXPIRE_MIN, 25 minutes by default; until the user
- * sends a new message; until the engine is restarted; or until the turn is stopped).
- * Used when the bot runs on a subscription tool: its call simply blocks until the user decides.
+ * Shows an approval card and waits for the answer. Used when the bot runs on a subscription tool: its call blocks until
+ * the user decides, for at most APPROVAL_EXPIRE_MIN (25 minutes by default); after that the request is "parked" — the
+ * card stays open and its answer still counts (approval-wait.ts). The engine restarted or the turn stopped: it lapses.
  */
-export async function waitForApproval(turn: Turn, call: ToolUseBlock, verdict: Extract<Verdict, { kind: "ask" }> & { why?: string; quote?: string; irreversible?: string; conversation?: boolean }, out?: { approvalId?: string }): Promise<"allowed" | "always" | "denied" | "expired"> {
+export async function waitForApproval(turn: Turn, call: ToolUseBlock, verdict: Extract<Verdict, { kind: "ask" }> & { why?: string; quote?: string; irreversible?: string; conversation?: boolean }, out?: { approvalId?: string }): Promise<"allowed" | "always" | "denied" | "expired" | "parked"> {
   const { bot, user } = turn;
   const approvalId = newId("apr");
   if (out) out.approvalId = approvalId;
   const hash = actionHash(call.name, call.input);
   const card = rows.append(bot, { kind: "card", card: { type: "approval", approvalId, title: verdict.title, detail: cardDetail(call, verdict), tool: verdict.policyKey, source: verdict.source, status: "pending", ...(verdict.once ? { once: true } : {}), ...(verdict.why ? { why: verdict.why } : {}), ...(verdict.quote ? { quote: clip(verdict.quote, 400) } : {}), ...(verdict.irreversible ? { irreversible: true, irreversibleReason: verdict.irreversible } : {}), ...(verdict.conversation ? { conversation: true } : {}) } });
-  approvals.create(bot.id, user.id, bot.generation, card.seq, verdict.policyKey, approvalId, hash);
+  approvals.create(bot.id, user.id, bot.generation, card.seq, verdict.policyKey, approvalId, hash); rememberCall(approvalId, turn, call);
   bots.bumpUnread(bot.id);
   setLive(user.id, bot.id, { running: false, activity: { kind: "waiting", since: Date.now() }, awaiting: { reason: verdict.reason, since: Date.now() } });
   emit(user.id, { type: "tasks", botId: bot.id });
@@ -1814,13 +1811,13 @@ export async function waitForApproval(turn: Turn, call: ToolUseBlock, verdict: E
   const status = await new Promise<string>((resolve) => {
     const finish = (s: string) => { clearTimeout(timer); turn.signal.removeEventListener("abort", onAbort); waiters.delete(approvalId); waiterBot.delete(approvalId); resolve(s); };
     const onAbort = () => finish("expired");
-    // Unanswered, it lapses (25 minutes by default) — or as soon as the user sends a new message (expireEngineApprovals).
-    const timer = setTimeout(() => finish("expired"), config.approvalExpireMs);
+    // Unanswered after APPROVAL_EXPIRE_MIN, the call stops waiting but the request stays open on its card ("parked").
+    const timer = setTimeout(() => finish(parkApproval(approvalId) ? "parked" : "expired"), config.approvalExpireMs);
     turn.signal.addEventListener("abort", onAbort, { once: true });
     waiters.set(approvalId, finish);
     waiterBot.set(approvalId, bot.id);
   });
-  if (status === "expired") lapse(approvalId);
+  if (status !== "parked") forgetCall(approvalId); if (status === "expired") lapse(approvalId);
   // Single use, for this exact action (the call is in hand here, so it cannot have changed).
   let final = status;
   if ((status === "allowed" || status === "always") && !approvals.consume(approvalId, hash)) final = "expired";
@@ -1832,7 +1829,7 @@ export async function waitForApproval(turn: Turn, call: ToolUseBlock, verdict: E
       setLive(user.id, bot.id, { running: true, awaiting: null, activity: allowed && remote ? { kind: "connector", detail: remote.connectorName, since: Date.now() } : { kind: "thinking", since: Date.now() } });
     else clearLive(user.id, bot.id);
   }
-  return final as "allowed" | "always" | "denied" | "expired";
+  return final as "allowed" | "always" | "denied" | "expired" | "parked";
 }
 
 /**
@@ -1873,7 +1870,7 @@ export function decideApproval(userId: string, approvalId: string, decision: "al
   const bot = bots.byId(approval.botId);
   if (!bot) return false;
   // Nobody waits for this answer any more (the server restarted while a subscription turn waited): the card lapses.
-  if (!waiters.has(approvalId) && paused.get<PausedTurn>(bot.id)?.approvalId !== approvalId) { lapse(approvalId); return true; }
+  if (!waiters.has(approvalId) && paused.get<PausedTurn>(bot.id)?.approvalId !== approvalId && !isParked(approval, bot)) { lapse(approvalId); return true; }
   // A card that does not offer "Always" (e.g. a command on the user's computer after outside content) counts it as once.
   const card = rows.get(bot.id, approval.generation, approval.seq);
   if (decision === "always" && card?.body.kind === "card" && card.body.card.type === "approval" && card.body.card.once) decision = "allow";
@@ -1885,7 +1882,7 @@ export function decideApproval(userId: string, approvalId: string, decision: "al
   rows.updateCard(bot, approval.generation, approval.seq, (c) => (c.type === "approval" ? { ...c, status } : c));
   const waiting = waiters.get(approvalId);
   if (waiting) waiting(status);
-  else enqueue(bot.id, { kind: "resume" });
+  else enqueue(bot.id, parkedResume(approvalId, status) ?? { kind: "resume" });
   return true;
 }
 

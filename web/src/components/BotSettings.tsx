@@ -27,6 +27,9 @@ import { ConfirmButton, CopyButton, copyText, Empty, ErrorNote, IconButton, Load
 import { BotRulesAndNudges } from "./RulesAndNudges";
 import { runNote } from "./Pause";
 import { BotVoicePicker } from "./VoicePicker";
+import { HookSecurity } from "./HookSecurity";
+import { RoutineMore, WorkModels } from "./RoutineEditor";
+import { MemoryEdit } from "./MemoryEdit";
 
 const EFFORT_IDS: Effort[] = ["low", "medium", "high", "xhigh"];
 const AUTONOMY_IDS: Autonomy[] = ["careful", "balanced", "trusted", "auto"];
@@ -206,6 +209,7 @@ function General({ bot, onClose }: { bot: Bot; onClose: () => void }) {
           </div>
           <BrainPicker bot={bot} value={form.model} onChange={(ref) => set("model", ref)} models={models} />
           <BotFallbacks botId={bot.id} value={bot.fallbackModels ?? null} ownModel={form.model || models?.defaultRef || ""} />
+          {bot.kind === "agent" && <WorkModels bot={bot} />}
           <div className="field">
             <span className="field-label">{t("bot.thinking")}</span>
             <ChoiceList label={t("bot.thinking")} value={form.effort} options={efforts} onChange={(v) => set("effort", v)} />
@@ -580,6 +584,7 @@ function Memories({ bot, bundle }: { bot: Bot; bundle: BotBundle | undefined }) 
   const [note, setNote] = useState<string | null>(null);
   const [busy, setBusy] = useState<"consolidate" | "compact" | null>(null);
   const [filter, setFilter] = useState<"all" | MemoryStatus>("all");
+  const [editing, setEditing] = useState<string | null>(null);
   const memories = bundle?.memories;
   const status = bundle?.memoryStatus;
   const needle = q.trim().toLowerCase();
@@ -599,7 +604,8 @@ function Memories({ bot, bundle }: { bot: Bot; bundle: BotBundle | undefined }) 
       showToast(t("memory.forgotten"), {
         label: t("common.undo"),
         run: async () => {
-          const r = await api<{ memory: Memory }>("POST", `/bots/${bot.id}/memories`, { text: m.text });
+          // The very same note comes back (same id, date, excerpt and confidence), from the bin (memorybook.ts).
+          const r = await api<{ memory: Memory }>("POST", `/memories/${m.id}/restore`);
           if (r?.memory) mutateBundle(bot.id, (b) => (b.memories.some((x) => x.id === r.memory.id) ? b : { ...b, memories: [...b.memories, r.memory].sort((a, c) => c.createdAt - a.createdAt) }));
           else await loadBundle(bot.id);
           showToast(t("memory.restored"));
@@ -672,7 +678,7 @@ function Memories({ bot, bundle }: { bot: Bot; bundle: BotBundle | undefined }) 
         <ul className="list">
           {shown.map((m) => (
             <li key={m.id} className="list-row is-card">
-              <div className="list-row-text">
+              {editing === m.id ? <div className="list-row-text"><MemoryEdit memory={m} onCancel={() => setEditing(null)} onSaved={(x) => { mutateBundle(bot.id, (b) => ({ ...b, memories: b.memories.map((y) => (y.id === x.id ? x : y)) })); setEditing(null); }} /></div> : <div className="list-row-text">
                 <span className={`memory-text ${m.status !== "active" ? `is-${m.status}` : ""}`}>{m.text}</span>
                 {m.quote && <span className="memory-quote">« {m.quote} »</span>}
                 <span className="list-row-sub">
@@ -681,10 +687,11 @@ function Memories({ bot, bundle }: { bot: Bot; bundle: BotBundle | undefined }) 
                   {m.status !== "active" && <span className={`chip memory-status is-${m.status}`}>{t(`memory.filter.${m.status}`)}</span>}
                   {m.category && <span className="chip chip-quiet">{t(`memset.cat.${m.category}`)}</span>} {shortDate(m.createdAt)}
                 </span>
-              </div>
+              </div>}
               <select className="input input-small memory-status-select" value={m.status} onChange={(e) => void setStatus(m, e.target.value as MemoryStatus)} aria-label={t("memory.statusLabel")}>
                 {(["active", "contested", "archived"] as const).map((st) => <option key={st} value={st}>{t(`memory.filter.${st}`)}</option>)}
               </select>
+              {editing !== m.id && <button type="button" className="btn btn-small btn-ghost" onClick={() => setEditing(m.id)} aria-label={t("memory.editLabelFor", { text: m.text.slice(0, 60) })}>{t("memory.edit")}</button>}
               <button type="button" className="btn btn-small btn-ghost" onClick={() => void forget(m)} aria-label={t("memory.forgetLabel", { text: m.text.slice(0, 60) })}>{t("memory.forget")}</button>
             </li>
           ))}
@@ -792,7 +799,7 @@ function RoutineItem({ r, onNote, onError }: { r: Routine; onNote: (t: string) =
         />
       </div>
       <p className="routine-prompt">{r.prompt}</p>
-      <RoutineExtras r={r} />
+      <RoutineExtras r={r} /><RoutineMore r={r} onNote={onNote} onError={onError} />
       {r.trigger === "webhook" && r.hookUrl && (
         <div className="hook">
           <code className="truncate" title={r.hookUrl}>{r.hookUrl}</code>
@@ -810,6 +817,7 @@ function RoutineItem({ r, onNote, onError }: { r: Routine; onNote: (t: string) =
           </button>
         </div>
       )}
+      {r.trigger === "webhook" && r.hookUrl && <HookSecurity routineId={r.id} />}
       {r.trigger === "watch" && r.watch && (
         <div className="watch">
           <Icon name={r.watch.kind === "url" ? "globe" : "file"} size={15} />

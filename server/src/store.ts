@@ -7,7 +7,7 @@ import { tr } from "./i18n.js";
 import type { ChatMessage } from "./llm/types.js";
 import {
   AVATAR_COLORS, AVATAR_SHAPES,
-  ACCESSORIES, CHARACTER_TYPES, DEFAULT_CHARACTER, DEFAULT_NUDGES, SENSITIVE_CATEGORIES, type NudgeSettings, type MemorySettings, type MemoryStatus, type SensitiveCategory, EYE_STYLES, IDLE_MOTIONS, TOOL_GROUPS, type AuditEntry, type Character, type Bot, type Card, type CheckinSettings, type Locale, type Memory, type SearchHit, type SharedPage, type VaultItem, type VaultKind, type BotSection, type Policy, type Reaction, type Row, type RowBody, type Skill, type SkillExtras, SKILL_EXTRA_KEYS, type SkillRef, type Task, type User, type Profile, type ReliabilitySettings, RELIABILITY_LIMITS, DEFAULT_SPEND_CHECKPOINT_USD, type SpendSettings,
+  ACCESSORIES, CHARACTER_TYPES, DEFAULT_CHARACTER, DEFAULT_NUDGES, SENSITIVE_CATEGORIES, type NudgeSettings, type MemorySettings, type MemoryStatus, type SensitiveCategory, EYE_STYLES, IDLE_MOTIONS, TOOL_GROUPS, type AuditEntry, type Character, type Bot, type Card, type CheckinSettings, type Locale, type Memory, type SharedPage, type VaultItem, type VaultKind, type BotSection, type Policy, type Reaction, type Row, type RowBody, type Skill, type SkillExtras, SKILL_EXTRA_KEYS, type SkillRef, type Task, type User, type Profile, type ReliabilitySettings, RELIABILITY_LIMITS, DEFAULT_SPEND_CHECKPOINT_USD, type SpendSettings,
 } from "./shared.js";
 
 export const now = () => Date.now();
@@ -446,8 +446,9 @@ export const rows = {
   recentMessages(botId: string, generation: number, limit: number, thread = 0): Row[] {
     return q.all("SELECT * FROM rows WHERE bot_id = ? AND generation = ? AND thread = ? AND kind = 'message' ORDER BY seq DESC LIMIT ?", botId, generation, thread, limit).reverse().map(toRow);
   },
+  /** The FIRST `limit` messages written after `after` (a time), oldest first: learning reads a long chat in order (memory.ts). */
   messagesAfter(botId: string, generation: number, after: number, limit: number): Row[] {
-    return q.all("SELECT * FROM rows WHERE bot_id = ? AND generation = ? AND kind = 'message' AND created_at > ? ORDER BY seq DESC LIMIT ?", botId, generation, after, limit).reverse().map(toRow);
+    return q.all("SELECT * FROM rows WHERE bot_id = ? AND generation = ? AND kind = 'message' AND created_at > ? ORDER BY created_at, seq LIMIT ?", botId, generation, after, limit).map(toRow);
   },
   updateCard(bot: { id: string; userId: string }, generation: number, seq: number, change: (card: Card) => Card): Row | null {
     const row = rows.get(bot.id, generation, seq);
@@ -888,26 +889,7 @@ export function auditList(userId: string, before?: number, limit = 50): AuditEnt
   return found.map((r: any) => ({ id: r.id, at: r.at, botId: r.bot_id, kind: r.kind, text: r.text }));
 }
 
-// ── Search across every conversation, current and earlier ────────────────────
-export function searchMessages(userId: string, query: string, opts: { botId?: string; limit?: number } = {}): SearchHit[] {
-  const words = query.toLowerCase().split(/\s+/).filter((w) => w.length > 1).slice(0, 6);
-  if (!words.length) return [];
-  const like = words.map(() => "LOWER(json_extract(r.body, '$.text')) LIKE ? ESCAPE '\\'").join(" AND ");
-  const params = words.map((w) => `%${w.replace(/[\\%_]/g, (c) => "\\" + c)}%`);
-  const found = q.all<any>(
-    `SELECT r.bot_id, r.generation, r.seq, r.thread, r.created_at, r.body, b.name, b.generation AS cur FROM rows r JOIN bots b ON b.id = r.bot_id
-     WHERE b.user_id = ? AND b.hidden = 0 ${opts.botId ? "AND b.id = ?" : ""} AND r.kind = 'message' AND ${like} ORDER BY r.created_at DESC LIMIT ?`,
-    userId, ...(opts.botId ? [opts.botId] : []), ...params, Math.min(opts.limit ?? 40, 40));
-  return found.map((r) => {
-    const body = JSON.parse(r.body);
-    const text: string = body.text ?? "";
-    const at = Math.max(0, text.toLowerCase().indexOf(words[0]));
-    return {
-      botId: r.bot_id, botName: r.name, generation: r.generation, current: r.generation === r.cur, seq: r.seq, at: r.created_at, role: body.role, ...(r.thread ? { thread: r.thread } : {}),
-      snippet: (at > 80 ? "…" : "") + text.slice(Math.max(0, at - 80), at + 220).replace(/\s+/g, " ") + (text.length > at + 220 ? "…" : ""),
-    };
-  });
-}
+// ── Search across every conversation: convsearch.ts (accents folded, ranked) ──
 
 // ── Pages published at a public address ──────────────────────────────────────
 export interface PageRecord extends SharedPage { userId: string; path: string }

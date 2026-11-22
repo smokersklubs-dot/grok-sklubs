@@ -32,6 +32,13 @@ const PAGES = [
   "section=notices&long=1",
   "section=cards&long=1",
   "section=today",
+  "section=memoire&long=1",
+  "section=memoire&long=1&theme=dark&lang=en",
+  "section=relais",
+  "section=routines",
+  "section=routines&long=1&theme=dark&lang=en",
+  "section=routines&empty=1",
+  "section=relais&theme=dark&lang=en&empty=1",
   "section=command",
   "section=command&long=1&theme=dark&lang=en",
   "section=command&empty=1",
@@ -51,6 +58,9 @@ const PAGES = [
   "section=grants&long=1",
   "section=grants&theme=dark&lang=en",
   "section=grants&empty=1",
+  "section=confiance&long=1",
+  "section=confiance&theme=dark&lang=en",
+  "section=confiance&view=report",
 ];
 const SCROLLERS = "pre, .md-table, .card-detail, .segmented, .tabs, .gallery-bar, .cmd-states";
 

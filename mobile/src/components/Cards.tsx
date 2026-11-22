@@ -80,6 +80,7 @@ function Approval({ card, bot }: { card: ApprovalCard; bot: Bot }) {
       {card.quote ? <Text style={{ color: c.text2, fontSize: 13 }}>{t("approval.quote", { quote: card.quote })}</Text> : null}
       {card.why ? <Text style={{ color: c.text2, fontSize: 13 }}>{t("approval.why", { why: card.why })}</Text> : null}
       {!done && card.once ? <Text style={{ color: c.text3, fontSize: 13 }}>{t("approval.onceOnly")}</Text> : null}
+      {!done && card.parked ? <Text style={{ color: c.text3, fontSize: 13 }}>{t("approval.parked")}</Text> : null}
       {!done && !canDecide ? <Text style={{ color: c.text3, fontSize: 13 }}>{t("approval.ownerOnly", { name: bot.access?.ownerName ?? "" })}</Text> : null}
       {!done && canDecide ? (
         <View style={styles.actions}>

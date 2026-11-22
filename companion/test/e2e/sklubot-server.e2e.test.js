@@ -115,9 +115,10 @@ test('real relay ↔ real Sklubot server: pairing, approvals, screenshot, comman
   });
 
   await t.test('a command: approved in the app, run by the relay, output back to the bot', async () => {
+    // Commands are on by default on the owner's own computer (server relayguard.ts); each one is shown on a card.
     await call('POST', `/bots/${bot.id}/messages`, { text: 'Lance "echo relais-ok-$((6*7))" sur mon ordinateur' });
     const card = await pending(bot.id);
-    assert.equal(card.card.tool, `mycomputer: command: ${bot.name}`);
+    assert.ok(card.card.tool.startsWith(`mycomputer: command: ${bot.name} | echo`), card.card.tool);
     await call('POST', `/approvals/${card.card.approvalId}`, { decision: 'allow' });
     await said(bot.id, /relais-ok-42/);
   });

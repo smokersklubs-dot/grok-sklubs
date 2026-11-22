@@ -22,14 +22,22 @@ test('shell command is refused without local confirmation even inside a session'
   assert.equal(h.prompts.filter((p) => p.kind === 'command').length, 1);
 });
 
-test('confirmed command runs; "always" checkbox stores the per-bot permission locally', async () => {
-  const h = makeCore({ answers: { session: 'once', command: { decision: 'run', alwaysForBot: true } } });
+test('confirmed command runs; the yes covers the session\'s other ordinary commands, not a sensitive one, not the next session', async () => {
+  const h = makeCore({ answers: { session: 'once', command: { decision: 'run' } } });
   await h.req('session.start');
   assert.equal((await h.req('shell.run', { command: 'echo hi' })).ok, true);
-  assert.equal(h.bots.bot_a.commands, true);
-  // Next command: no prompt.
+  // Next ordinary command: no prompt.
   await h.req('shell.run', { command: 'echo again' });
   assert.equal(h.prompts.filter((p) => p.kind === 'command').length, 1);
+  // On the floor: asked every time, saying why.
+  await h.req('shell.run', { command: 'rm -rf build' });
+  const floor = h.prompts.filter((p) => p.kind === 'command');
+  assert.equal(floor.length, 2);
+  assert.equal(floor[1].floor, 'delete');
+  await h.req('session.end');
+  await h.req('session.start');
+  await h.req('shell.run', { command: 'echo hi' });
+  assert.equal(h.prompts.filter((p) => p.kind === 'command').length, 3, 'asked again in a new session');
 });
 
 test('"always allow this bot" skips the prompt next time; other bot is busy', async () => {

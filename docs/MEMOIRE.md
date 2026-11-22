@@ -1,17 +1,22 @@
-# Mémoire des bots : recherche et rappel automatique
+# Mémoire des bots : apprentissage, recherche, rappel automatique et gestion des notes
 
 Chaque bot garde ses propres notes (« souvenirs »). Elles viennent uniquement de ce que tu as écrit toi-même, ou de ce
 que tu lui as demandé de retenir. Cette page explique comment un bot **retrouve** ses notes. Code :
 `server/src/agent/recall.ts` (classement et rappel), `server/src/agent/memory.ts` (apprentissage),
-`server/src/agent/sensitive.ts` (sujets sensibles), `server/src/agent/prompt.ts` (ce qui est donné au bot).
-Tests : `server/test/memory-recall.test.ts`.
+`server/src/agent/sensitive.ts` (sujets sensibles), `server/src/agent/prompt.ts` (ce qui est donné au bot),
+`server/src/agent/memorybook.ts` (historique, corbeille, « oublie ça »), `server/src/convsearch.ts` (recherche dans
+les conversations). Tests : `server/test/memory-recall.test.ts`, `server/test/memory-fixes.test.ts`.
 
 ## En bref
 
 - **Recherche classée** : quand le bot cherche dans ses notes (outil `memory_search`), les notes les plus proches de la
   question arrivent en premier, avec les mots qui ont servi à les trouver.
-- **Rappel automatique** : avant chaque réponse, le bot relit ses notes et ajoute celles qui partagent des mots avec
-  ton nouveau message. Tu n'as rien à faire.
+- **Rappel automatique** : avant de répondre à un message **que tu viens d'écrire**, le bot relit ses notes et ajoute
+  celles qui partagent des mots avec ce message. Tu n'as rien à faire.
+- **Dates** : chaque note montrée au bot porte le jour où elle a été écrite (« noted 2026-11-22 »), et une date relative
+  (« la semaine prochaine ») est écrite comme une vraie date quand le bot apprend.
+- **Tu gardes la main** : tu peux corriger le texte d'une note (avec son historique), « Oublier » puis « Annuler »
+  rend la même note, et le bot peut mettre une note de côté quand tu lui dis « oublie ça ».
 - **Gratuit** : aucun modèle d'IA n'est appelé pour cela. C'est un calcul fait par le serveur, en quelques
   millisecondes (entre 30 et 90 ms pour 5 000 notes sur la machine de test).
 
@@ -48,8 +53,12 @@ Les formes des verbes ne sont pas rapprochées (« payer » et « payé » reste
 - Une note déjà présente dans les consignes n'est pas ajoutée une seconde fois.
 - Les notes rappelées sont rangées dans la partie « mémoire » des consignes, avec la mention que ce sont des
   informations, **jamais des ordres**.
-- Seul un message **que tu as écrit** (ou dit en appel vocal) déclenche un rappel. Un message venu d'une routine, d'un
-  webhook, d'un e-mail ou d'un autre bot n'en déclenche pas.
+- Seul un message **que tu viens d'écrire dans cette conversation** (ou de dire en appel vocal) déclenche un rappel,
+  et pour ce message-là. Le serveur le vérifie sur la tâche en cours de la file du bot (`bot_queue`) : un tour lancé
+  par une **routine**, un **webhook**, un message dans un **salon** (groupe), un **autre bot**, un **membre** d'un
+  espace partagé, un **programme** (API du bot), une **reprise** (après une pause, un redémarrage ou une limite
+  d'abonnement) ou un avis du système ne rappelle rien — même si ton dernier message, plus ancien, est encore le plus
+  récent de la discussion. (Avant le 22/11/2026, ces tours rappelaient des notes pour ce vieux message.)
 
 | Réglage dans le code (`recall.ts`) | Valeur | Rôle |
 |---|---|---|
@@ -71,6 +80,59 @@ Les formes des verbes ne sont pas rapprochées (« payer » et « payé » reste
   toujours les chercher lui-même.
 - Tout ce qui ressemble à un **secret** (mot de passe, clé, numéro de carte).
 - Les notes d'**un autre bot** ou d'**un autre compte** : chaque bot ne lit que ses propres notes.
+
+## Les notes données au bot à chaque tour
+
+En plus du rappel, le bot reçoit une sélection de ses notes (dans `PROMPT_MEMORY_CHARS` caractères) : d'abord les
+notes confirmées et celles qui correspondent à tes derniers messages, avec **le même découpage des mots** que la
+recherche (accents, pluriels, formes collées). Chaque ligne finit par la date de la note, par exemple
+`- (confirmed) Travaille le samedi. (noted 2026-11-02)`. La phrase « N older memories are not shown » compte
+**toutes** les notes utilisables, même au-delà des 500 chargées pour ce choix.
+
+## Comment le bot apprend (sans rien perdre)
+
+- Après 10 minutes de calme (ou avec « Relire la discussion récente »), le bot lit ce qui a été écrit depuis son
+  dernier passage, **du plus ancien au plus récent**, par paquets de 60 messages (5 paquets au plus par passage ; la
+  suite au passage d'après). Avant, il ne lisait que les 60 derniers et sautait le reste.
+- Seuls tes propres messages servent, chacun avec **son jour** entre crochets. Le modèle reçoit la date du jour et la
+  consigne d'écrire toute date relative (« demain », « la semaine prochaine », « lundi prochain ») comme une vraie date,
+  comptée depuis le jour du message.
+- Si la réponse du modèle est illisible (pas le JSON demandé), le passage ne compte pas : les mêmes messages sont relus
+  au passage suivant. Après 3 réponses illisibles de suite, ce paquet est abandonné (pour ne pas payer sans fin).
+- Anti-doublon : deux notes sont « la même » quand presque tous leurs mots sont communs, **sauf** si chacune contient
+  un nom propre, un nombre, un jour ou un mois que l'autre n'a pas. « Le client Dupont paie à 30 jours » et « Le client
+  Durand paie à 30 jours » restent deux notes ; « rapport le lundi » et « rapport le vendredi » aussi. Une note sur
+  Dupont n'est plus « confirmée » par une phrase sur Durand. Limite : deux synonymes (« courtes » / « brèves ») ne sont
+  pas reconnus comme pareils.
+
+## Gérer les notes (Réglages du bot → Mémoire)
+
+- **Modifier** : corrige le texte d'une note sur place. Elle garde sa date, son extrait, sa confiance. Un secret est
+  refusé (il va dans le coffre). **Historique** montre chaque changement : texte avant/après, statut, confiance,
+  suppression, rétablissement, et qui l'a fait (toi ou le bot).
+- **Oublier** : la note quitte la mémoire du bot tout de suite et attend **30 jours** dans une corbeille. **Annuler**
+  rend **la même note** (même identifiant, mêmes dates, extrait, confiance, source et catégorie). Avant, « Annuler »
+  recréait une note neuve et perdait tout cela.
+- API (session du propriétaire seulement) : `PATCH /api/memories/:id` (`text`, `status`, `confidence`),
+  `DELETE /api/memories/:id`, `POST /api/memories/:id/restore`, `GET /api/memories/:id/history`.
+
+## « Oublie ça » : l'outil `memory_forget`
+
+- Le bot ne peut oublier que **quand tu le lui demandes**, avec tes mots, dans ton dernier message de cette
+  conversation (« oublie que… », « efface ce que je t'ai dit sur… », « forget that… »), dans un tour que tu as lancé.
+  Une routine, un webhook, un autre bot, un membre ou un programme ne peuvent pas le faire.
+- Les notes les plus proches des mots donnés (3 au plus) sont **archivées**, jamais supprimées : tu les retrouves
+  dans « Archivées » et tu peux les remettre. Une ligne apparaît dans la discussion (« 2 notes mises de côté à ta
+  demande… ») et dans **Activité**, avec le début de chaque note.
+- Ce n'est pas un moyen de contourner les sujets sensibles : une note sensible que tu n'as pas autorisée n'est pas
+  montrée au bot dans le résultat (il lit « (a note on a sensitive topic) »).
+
+## Chercher dans les conversations (`conversation_search`)
+
+La recherche dans les messages (outil `conversation_search` et la recherche de l'application) utilise les mêmes mots
+que la mémoire : « reunion budget » trouve « Réunion du budget », « facture » trouve « factures ». Un message qui
+contient un des mots est retenu ; ceux qui contiennent le plus de mots rares passent devant, puis les plus récents.
+Un mot trouvé seulement à l'intérieur d'un mot plus long (« factur » dans « facturation ») vient après.
 
 ## Voir ce qui a été rappelé
 

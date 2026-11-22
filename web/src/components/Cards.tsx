@@ -13,6 +13,7 @@ import { FilesCardView, PastedSecretCardView } from "./SecretsFilesProviders";
 import { GoalCardView } from "./GoalsAndJobs";
 import { FailureCardView } from "./Incidents";
 import { RecruitCardView } from "./RecruitCard";
+import { sendKeysFor } from "../../../mobile/shared/sendKey";
 
 type ApprovalCard = Extract<Card, { type: "approval" }>;
 type QuestionCard = Extract<Card, { type: "question" }>;
@@ -37,6 +38,19 @@ function Approval({ card, botId }: { card: ApprovalCard; botId: string }) {
     setError(null);
     try {
       await api("POST", `/approvals/${encodeURIComponent(card.approvalId)}`, { decision });
+    } catch (e) {
+      setError(errText(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+  /** "Relancer" under a request that expired: an ordinary message of the user's, asking for that request again. */
+  const retry = async () => {
+    setBusy("retry");
+    setError(null);
+    try {
+      const keys = sendKeysFor(`${botId}/retry/${card.approvalId}`);
+      await api("POST", `/bots/${botId}/messages`, { text: t("approval.retryMessage", { title: card.title }), clientKey: keys.keyFor(card.approvalId) });
     } catch (e) {
       setError(errText(e));
     } finally {
@@ -83,6 +97,7 @@ function Approval({ card, botId }: { card: ApprovalCard; botId: string }) {
         </p>
       )}
       {card.once && card.status === "pending" && <p className="card-note">{t(card.irreversible ? "approval.irreversibleOnce" : "approval.onceOnly")}</p>}
+      {card.parked && card.status === "pending" && <p className="card-note"><Icon name="clock" size={13} /> {t("approval.parked")}</p>}
       {card.status === "pending" && !canDecide ? (
         <p className="card-note"><Icon name="users" size={13} /> {t("ws.approvalOwner", { name: access?.ownerName ?? "" })}</p>
       ) : card.status === "pending" ? (
@@ -115,11 +130,21 @@ function Approval({ card, botId }: { card: ApprovalCard; botId: string }) {
           {error && <p className="card-error" role="alert">{error}</p>}
         </>
       ) : (
-        <p className={`card-outcome is-${card.status}`}>
-          <Icon name={card.status === "allowed" || card.status === "always" ? "check" : card.status === "denied" ? "close" : "clock"} size={14} />
-          {t(card.status === "allowed" && card.grantedFor === "conversation" ? "approval.grantedConversation" : `approval.${card.status}`)}
-          {card.outcome && (card.status === "allowed" || card.status === "always") && <span className={`approval-outcome is-${card.outcome}`}> · {t(`approval.outcome.${card.outcome}`)}</span>}
-        </p>
+        <>
+          <p className={`card-outcome is-${card.status}`}>
+            <Icon name={card.status === "allowed" || card.status === "always" ? "check" : card.status === "denied" ? "close" : "clock"} size={14} />
+            {t(card.status === "allowed" && card.grantedFor === "conversation" ? "approval.grantedConversation" : `approval.${card.status}`)}
+            {card.outcome && (card.status === "allowed" || card.status === "always") && <span className={`approval-outcome is-${card.outcome}`}> · {t(`approval.outcome.${card.outcome}`)}</span>}
+          </p>
+          {card.status === "expired" && canDecide && (
+            // Nothing was done and nothing waits any more: one press asks the bot to make the same request again.
+            <div className="card-actions">
+              <span className="spacer" />
+              <button type="button" className="btn" disabled={busy !== null} onClick={() => void retry()}>{t(busy === "retry" ? "approval.retrying" : "approval.retry")}</button>
+            </div>
+          )}
+          {error && <p className="card-error" role="alert">{error}</p>}
+        </>
       )}
     </div>
   );

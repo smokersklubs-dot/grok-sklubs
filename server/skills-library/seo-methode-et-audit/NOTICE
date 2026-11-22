@@ -1,0 +1,10 @@
+seo-methode-et-audit — adapted from claude-seo (© 2026 agricidaniel, MIT)
+Sources (each pinned to one commit):
+- claude-seo — © 2026 agricidaniel — MIT — https://github.com/AgriciDaniel/claude-seo/tree/468ed5b0d9e3249394783710e54abb02837e326b/skills/seo
+- claude-seo — © 2026 agricidaniel — MIT — https://github.com/AgriciDaniel/claude-seo/tree/468ed5b0d9e3249394783710e54abb02837e326b/skills/seo-audit
+- claude-seo — © 2026 agricidaniel — MIT — https://github.com/AgriciDaniel/claude-seo/tree/468ed5b0d9e3249394783710e54abb02837e326b/skills/seo-page
+- claude-seo — © 2026 agricidaniel — MIT — https://github.com/AgriciDaniel/claude-seo/tree/468ed5b0d9e3249394783710e54abb02837e326b/skills/seo-technical
+Licence: MIT — the upstream licence texts are in LICENSE.txt, unchanged.
+
+Modified for Sklubot (2026-11-22): the plugin's scripts, paid data services and reports removed; checks with web_fetch, the bot's browser and curl on the bot's computer; third-party statistics left out; 'no score without data'; condensed; translated into French.
+Only text is included; no script, picture or other file of the original folders is bundled. Names of other products are not used as titles.

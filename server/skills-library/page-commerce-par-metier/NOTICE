@@ -1,0 +1,7 @@
+page-commerce-par-metier — adapted from Hallmark (© 2026 Hallmark contributors, MIT)
+Sources (each pinned to one commit):
+- Hallmark — © 2026 Hallmark contributors — MIT — https://github.com/Nutlope/hallmark/tree/04977e15f3dfd6ee4b74c887dac3eb52665d6c92/skills/hallmark
+Licence: MIT — the upstream licence texts are in LICENSE.txt, unchanged.
+
+Modified for Sklubot (2026-11-22): condensed for small-business pages published with page_publish: the floor rules, the anatomy by visitor job, the page structures and the hero-first and cold-review steps; scripts, theme dealer and linter replaced by a short base stylesheet and checks in the bot's browser; sponsor line and product name removed; translated into French.
+Only text is included; no script, picture or other file of the original folders is bundled. Names of other products are not used as titles.

@@ -349,3 +349,69 @@ Règles imposées par le téléphone (en plus de celles du §7, reprises à l'id
 - Stop : bandeau rouge en haut de l'écran (fenêtre d'accessibilité), bouton de la notification permanente, vignette des réglages rapides « Stop Sklubot ».
 
 Nouveaux codes d'erreur : `blocked_app`, `screen_locked`.
+
+
+## 14. Règles de sécurité (révision 1.3)
+
+Backlog L19 / L32. Le serveur refuse d'abord (`server/src/relayguard.ts`) ; le Relais vérifie encore les mêmes règles
+(`companion/src/main/guard.js`, `relay-core.js`). Les deux listes sont identiques (test `server/test/relay-guard.test.ts`).
+Un Relais 1.3 annonce `window.active`, `script.peek` et `guard.set` dans `capabilities`. Pour un ordinateur sans
+`window.active`, le serveur n'envoie plus aucun clic, défilement, saisie ni touche (« mets l'appli à jour »).
+
+| `op` | Session requise | `args` | `result` |
+|---|---|---|---|
+| `window.active` | oui | `{}` | `{ active: { app, bundle?, pid?, windowId?, title, passwordField: true \| false \| null } \| null }` |
+| `script.peek` | oui | `{ path ≤ 1024, cwd? }` — lit, n'exécute jamais | `{ sha256, size, lines: [≤ 40 lignes de ≤ 200 car.], more, binary }` |
+| `guard.set` | non | `{ keepApps: [≤ 50], keepFolders: [≤ 50], terminal: bool }` — envoyé par le serveur à chaque connexion et à chaque changement (bot `sklubot`) ; n'ajoute que des refus | `{ keepApps, keepFolders, terminal }` (nombres) |
+
+Nouveaux arguments : `expect: { app, pid?, windowId? }` sur `mouse.move/click/drag/scroll` et `keyboard.type/press`
+(la fenêtre vue par le serveur ; le Relais refuse si une autre est devant) ; `force: bool` sur `keyboard.press`
+(raccourci protégé accepté sur une carte ; le Relais redemande sur l'ordinateur) ; `scripts: [{ path, sha256 }]` (≤ 3)
+sur `shell.run` (les scripts montrés sur la carte du serveur).
+
+Le Relais, avant chaque `mouse.click/drag/scroll` et `keyboard.type/press`, relit la fenêtre au premier plan (macOS :
+System Events, sous-rôle `AXSecureTextField` ; Windows : `GetForegroundWindow` + UI Automation `IsPassword` ; Linux X11 :
+`xprop`, champ mot de passe inconnu) et refuse :
+
+| Code | Quand |
+|---|---|
+| `foreground_unknown` | la fenêtre au premier plan ne peut pas être lue (refus par défaut) |
+| `window_changed` | ce n'est pas la fenêtre `expect` |
+| `blocked_app` | appli toujours refusée (fenêtres de terminal, outils de scripts, réglages et outils du système, mots de passe et portefeuilles, Sklubot ; un titre contenant « Sklubot ») ; aussi pour `app.open` et `window.focus` par nom. Depuis 1.4, une fenêtre de terminal est toujours refusée : les commandes passent par `shell.run` |
+| `keep_out` | appli ou dossier de la liste « garder à l'écart » (nom de l'appli ou mot du titre ; dossier dans le titre) ; `script.peek` dans un tel dossier |
+| `password_field` | saisie ou touche (hors Tab, Échap, flèches, Origine, Fin, Page) alors qu'un champ mot de passe a le focus, ou focus inconnu dans une fenêtre dont le titre ressemble à une connexion |
+| `blocked_shortcut` | raccourci protégé (liste `DANGEROUS_SHORTCUTS`, par système) sans `force`, ou refusé sur l'ordinateur. Alt+F4 / Cmd+Q / Ctrl+Q (Linux) permis sur une appli ouverte par le bot dans la session |
+| `script_unreadable` | chemin de script que seul le shell résoudrait (`$VAR`, jokers…), plus de 3 scripts, script hors du dossier de la commande et du dossier personnel, fichier à secrets, plus de 1 Mio |
+| `script_changed` | le script n'a pas l'empreinte de `scripts`, ou a changé entre la question et le clic |
+
+Une commande qui lance un script est **toujours** demandée sur l'ordinateur, avec les 40 premières lignes et
+l'empreinte. Fin de session, Stop, déconnexion : toutes
+les touches de modification et tous les boutons de souris sont relâchés (`releaseAll`), et `keyboard.press` relâche ses
+touches de modification même en cas d'erreur.
+
+## 15. Terminal sous contrôle et coffre (révision 1.4)
+
+Décision du propriétaire : les commandes sont **activées par défaut** sur son ordinateur (interrupteur pour les couper).
+
+- `guard.set` ajoute `projectFolders: [≤ 50]` ; `terminal` vaut `true` sauf `false` explicite (un serveur ancien qui
+  n'envoie rien laisse les commandes actives).
+- `shell.run` : refus `terminal_off` si le propriétaire a coupé les commandes ; dossier par défaut = premier dossier de
+  projet ; dossier ou commande qui touche un dossier « garder à l'écart » → `keep_out`. Question sur l'ordinateur : la
+  première commande ordinaire d'une session (le oui vaut pour la session), puis **à chaque fois** pour une commande du
+  plancher (`commandFloor` : liste `DESTRUCTIVE_COMMAND` de `server/src/agent/irreversible.ts` reprise telle quelle +
+  `FLOOR_EXTRA` : git réécrit, administrateur, installations globales, disques, droits récursifs hors projet,
+  `curl | sh`, écoute réseau/tunnels, fichiers de démarrage, écriture hors du dossier ; dossier hors des dossiers de
+  projet) et pour une commande qui lance un script. La question indique `floor` (le motif).
+- `streamRef` (≤ 64) sur `shell.run` / `shell.start` : la sortie est envoyée au fil de l'eau en événements
+  `{ type: "event", name: "shell.output", ref, stream: "stdout" | "stderr", text }`, groupés toutes les 400 ms, 64 Kio par
+  commande au plus. Le serveur l'affiche dans la discussion (repliée, 8 Kio, secrets masqués).
+- `shell.start` (mêmes arguments que `shell.run`) → `{ jobId, cwd }` aussitôt ; `shell.read { jobId }` →
+  `{ running, exitCode, stdout, stderr, truncated, durationMs }` (256 Kio gardés par flux, la fin) ; `shell.stop
+  { jobId }`. 5 commandes de fond au plus ; toutes arrêtées à la fin de la session. Délai maximal : 60 min.
+- `vault.type { text ≤ 2000, field: "username" | "password" | "code", site, expect }` : le Relais relit la fenêtre au
+  premier plan (et, pour un navigateur, l'adresse de la page : `url` dans `window.active`), puis refuse si
+  `window_changed`, `keep_out`, `blocked_app`, `host_unknown` (adresse illisible), `host_mismatch` (pas le site ni un
+  sous-domaine), `app_mismatch` (appli hors navigateur différente de l'élément), `not_password_field` (mot de passe
+  ailleurs que dans un champ mot de passe), `password_field` (identifiant ou code dans un champ mot de passe). Le texte
+  n'est jamais écrit dans le journal local (seulement le champ, le site, la longueur) et la variable est vidée après la
+  frappe. Le serveur vérifie les mêmes règles avant d'envoyer (`vaultVerdict`, identique des deux côtés).

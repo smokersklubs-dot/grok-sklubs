@@ -1,0 +1,8 @@
+ecrire-comme-un-humain — adapted from Noodle, ECC (© 2026 Lauren Tan, MIT; © 2026 Affaan Mustafa and ECC contributors, MIT)
+Sources (each pinned to one commit):
+- Noodle — © 2026 Lauren Tan — MIT — https://github.com/poteto/noodle/tree/82d2921c52370f23f29086de81ccfb600939c037/.agents/skills/unslop
+- ECC — © 2026 Affaan Mustafa and ECC contributors — MIT — https://github.com/affaan-m/ECC/tree/4adeee6732a12d1540f49a4d50a38ce8c97f9a53/skills/article-writing
+Licence: MIT — the upstream licence texts are in LICENSE.txt, unchanged.
+
+Modified for Sklubot (2026-11-22): merged into one writing skill for a business owner's emails, posts, articles and web pages; French machine-writing tics added; voice-profile link to the brand interview; rules by kind of text; translated into French.
+Only text is included; no script, picture or other file of the original folders is bundled. Names of other products are not used as titles.

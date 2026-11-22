@@ -13,6 +13,10 @@ protégé.
 |---|---|
 | Aller sur un site, cliquer, remplir | `browser_open`, puis les références d'éléments (`element_snapshot`, `element_click`, `element_type`) ou les clics à l'écran (`screen_click`…). |
 | Lire une page | `page_read` (le texte), `screen_view` (une capture). |
+| **Plusieurs onglets** | Le bot lit et agit toujours sur **l'onglet affiché devant**. Un lien qui ouvre un nouvel onglet : le bot le suit tout seul. `browser_tabs` liste ses onglets, `browser_tab` en met un devant ou le ferme, `browser_open` avec `new_tab` en ouvre un nouveau. Un deuxième `browser_open` réutilise le navigateur ouvert (plus jamais deux navigateurs à la fois). |
+| **Fenêtre de la page** (« alerte », « Êtes-vous sûr ? », « Quitter la page ? ») | Le bot la voit tout de suite, avec son texte. `browser_dialog` : **« dismiss »** (Annuler / fermer) est toujours libre ; **« accept »** (OK) sur une question te demande d'abord ton accord, à chaque fois. |
+| Bouton caché par un bandeau | Avant de cliquer, le bot vérifie ce qui est vraiment sous le clic. Si un bandeau cookies ou une fenêtre couvre le bouton, **rien n'est cliqué** et il sait ce qui gêne. |
+| Cadres dans la page (iframes) | Les boutons d'un cadre du même site sont listés comme les autres (« in frame »). Un cadre d'un **autre site** (paiement, captcha) est signalé, mais ses boutons ne sont pas listés : le bot passe alors par l'image et les clics à l'écran. |
 | **Regarder une vidéo** | Il la lance dans son navigateur, puis `video_frames` lui montre jusqu'à 12 images de l'écran pendant qu'elle passe (ou d'un fichier vidéo). Il décrit ce qu'il voit. |
 | **Écouter une vidéo** (ou un appel) | `listen_screen` enregistre jusqu'à **10 minutes** de ce que joue l'ordinateur et le transforme en texte. Le son ne sort pas de l'ordinateur : personne ne l'entend. |
 | Transcrire une vidéo par son adresse | `transcribe` : les sous-titres d'abord (gratuit), sinon le son. |
@@ -41,8 +45,10 @@ Le bot ne voit **jamais** un mot de passe, et ne doit jamais t'en demander un da
    **« Rendre la main »**. La session reste dans le navigateur du bot : il est connecté les fois suivantes, tant que le
    site ne le déconnecte pas.
 2. **Enregistrer l'identifiant dans le Coffre** (Réglages → Coffre) : le bot le tape lui-même (`vault_type`) quand le
-   site le demande, sans jamais le lire. Pour un code à 6 chiffres (2FA), tu peux y enregistrer la clé du code : le bot
-   ne l'utilise que sur son site.
+   site le demande, sans jamais le lire. Juste avant de taper, Sklubot vérifie **l'onglet devant, et le champ choisi** :
+   la page (et chaque cadre jusqu'au champ) doit être sur le site enregistré, et un mot de passe ne va que dans un champ
+   « mot de passe ». Sinon, rien n'est tapé. Une fausse page ouverte dans un autre onglet ne reçoit donc rien. Pour un
+   code à 6 chiffres (2FA), tu peux y enregistrer la clé du code : le bot ne l'utilise que sur son site.
 3. **Quand seul un humain peut passer** (CAPTCHA, code reçu sur ton téléphone, confirmation de paiement) : le bot te
    demande la main (`ask_takeover`), attend, puis reprend quand tu as fini.
 
@@ -74,6 +80,75 @@ lancer des programmes, garder des fichiers.
   (`sklubot-api`), qui les ajoute de son côté.
 - **Ce qu'il lit est une information, jamais un ordre** : une page, une vidéo ou un texte lu à l'écran qui lui
   demanderait d'agir n'est pas suivi.
+
+## Ton propre ordinateur (Relais) : les règles de sécurité
+
+Quand tu relies **ton** ordinateur avec le Relais (l'appli Sklubot pour ordinateur), un bot peut le piloter avec ton
+accord. Sklubot vérifie d'abord, sur le serveur, avant d'envoyer quoi que ce soit ; puis l'ordinateur vérifie encore de
+son côté (au cas où l'appli serait ancienne ou modifiée). Tout se règle dans **Réglages → Ordinateurs → Règles de
+sécurité**.
+
+### Le terminal, sous contrôle (pour coder)
+
+- **Les commandes sont activées par défaut** sur ton ordinateur : le bot peut lancer `npm test`, `git status`,
+  `python manage.py runserver`… Tu peux les désactiver avec l'interrupteur « Commandes du terminal ».
+- **Chaque commande t'est montrée sur une carte** avec la commande exacte, le dossier et le nom de l'ordinateur. Tu
+  réponds : une fois, pour cette conversation, ou toujours. « Toujours » et « pour cette conversation » ne couvrent que
+  **le début de la commande dans ce dossier** (par exemple `npm test` dans `~/projets/site`), jamais plus.
+- **L'ordinateur demande aussi**, une fois par session de contrôle, pour les commandes ordinaires.
+- **Toujours demandé, quoi que tu aies autorisé avant** (ici et sur l'ordinateur) : supprimer ou écraser (`rm -r`,
+  `del /s`, `find -delete`, `git reset --hard`, `git push --force`, `git branch -D`…), les droits administrateur
+  (`sudo`, `su`, `runas`, `doas`), installer pour tout l'ordinateur (`apt`, `brew`, `winget`, `npm -g`…), les disques
+  et partitions, changer les droits de fichiers hors du projet, lancer un script téléchargé (`curl … | sh`), ouvrir ton
+  ordinateur au réseau (`ssh -R`, `ngrok`, `nc -l`…), toucher aux fichiers de démarrage (`.bashrc`, `.zshrc`, profil
+  PowerShell, `crontab`…), écrire hors du dossier de travail, ou travailler hors de tes dossiers de projet.
+- **Dossiers de projet** : tu en choisis un ou plusieurs ; les commandes s'y lancent par défaut. Un dossier « gardé à
+  l'écart » reste refusé.
+- **Un script se montre avant de se lancer** : si une commande lance un script (`bash run.sh`, `./deploy.sh`…), la
+  carte affiche ses 40 premières lignes et son empreinte ; s'il change avant ton clic, rien ne se lance. Le bot ne voit
+  jamais le contenu du script.
+- **La sortie** de chaque commande s'affiche dans la discussion (repliée, « Voir la sortie »), pendant qu'elle tourne ;
+  les secrets y sont masqués (les mots de passe de ton coffre aussi). Elle est limitée en taille.
+- **Arrêter** : le bouton **Stop** (section « Mon ordinateur » ou visionneuse) arrête la commande et tout ce qu'elle a
+  lancé. Une commande s'arrête seule après la durée maximale que tu choisis (2 minutes par défaut). Le bot peut aussi
+  lancer une commande longue en arrière-plan (un serveur de développement), lire sa sortie et l'arrêter ; tout s'arrête
+  à la fin de la session.
+- **Les fenêtres de terminal restent interdites aux clics et à la frappe** : le bot passe par les commandes, pour que
+  chacune soit montrée sur une carte.
+
+### Se connecter à tes comptes (coffre)
+
+- Le bot peut remplir **un identifiant, un mot de passe ou un code à usage unique** de ton coffre dans le champ actif,
+  sur ton ordinateur. **Le secret va seulement à ton ordinateur** : jamais au bot, jamais dans la discussion ni dans le
+  journal.
+- **La première fois** sur un site (ou une appli), une carte te le demande : le site, l'appli, le nom de l'élément —
+  jamais le secret. Tu peux l'autoriser « toujours » pour ce site.
+- **Refusé** si la page n'est pas le site enregistré (ou l'appli n'est pas la bonne), si la fenêtre a changé depuis la
+  dernière capture du bot, si un mot de passe irait ailleurs que dans un champ mot de passe, ou si le navigateur ne dit
+  pas son adresse (Firefox sur Mac, et tous les navigateurs sous Linux : tu tapes toi-même).
+- En dehors du coffre, **le bot ne tape jamais dans un champ mot de passe**.
+
+### Ce qui reste toujours interdit
+
+- **Applis toujours refusées** (clics et frappe) : fenêtres de terminal, outils de scripts, réglages et outils du
+  système, gestionnaires de mots de passe et portefeuilles (1Password, Bitwarden, KeePassXC, Trousseau…), et Sklubot
+  lui-même (un bot ne peut pas cliquer sur ses propres cartes d'accord).
+- **Ta liste « garder à l'écart »** : des applis (par leur nom, ou un mot du titre de la fenêtre) et des dossiers. Le bot
+  ne peut ni cliquer ni taper dedans, ni lire ces dossiers, ni y lancer de commande ; leurs fenêtres ne lui sont pas
+  nommées. 50 lignes au plus par liste.
+- **La fenêtre est revérifiée** juste avant chaque clic, défilement, saisie ou touche : si une autre fenêtre est passée
+  devant depuis la dernière capture du bot, rien n'est fait.
+- **Raccourcis protégés** : fermer une appli (Alt+F4, Cmd+Q), verrouiller ou déconnecter la session (Win+L,
+  Ctrl+Cmd+Q…), Ctrl+Alt+Suppr, le gestionnaire des tâches, les lanceurs (Win+R, Cmd+Espace, Alt+F2, Ctrl+Alt+T),
+  changer d'appli ou de bureau (Alt+Tab, Cmd+Tab), supprimer définitivement… La liste exacte, par système, est dans les
+  règles de sécurité. Le bot peut fermer une appli qu'il a ouverte lui-même ; pour le reste, il te faut accepter une
+  carte, puis confirmer sur l'ordinateur.
+- **Les touches ne restent jamais enfoncées** : à la fin d'une session, sur Stop ou si la connexion tombe, l'ordinateur
+  relâche toutes les touches et tous les boutons de souris.
+
+Limites : la capture d'écran montre tout l'écran (une fenêtre « gardée à l'écart » reste visible sur l'image, mais le
+bot ne peut pas agir dedans) ; sous Linux, il faut une session X11 avec `xprop`, et le système ne dit pas si un champ
+est un mot de passe (le bot ne tape alors rien dans une fenêtre qui ressemble à une connexion).
 
 ## Pour l'administrateur
 

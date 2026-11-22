@@ -1,0 +1,9 @@
+passation-et-bilan — adapted from claude-mem (© 2026 Alex Newman, Apache-2.0)
+Sources (each pinned to one commit):
+- claude-mem — © 2026 Alex Newman — Apache-2.0 — https://github.com/thedotmack/claude-mem/tree/79d33254e5570b43175c639c2a2ce58bd1e221b9/plugin/skills/handoff
+- claude-mem — © 2026 Alex Newman — Apache-2.0 — https://github.com/thedotmack/claude-mem/tree/79d33254e5570b43175c639c2a2ce58bd1e221b9/plugin/skills/weekly-digests
+- claude-mem — © 2026 Alex Newman — Apache-2.0 — https://github.com/thedotmack/claude-mem/tree/79d33254e5570b43175c639c2a2ce58bd1e221b9/plugin/skills/owner-goals
+Licence: Apache-2.0 — the upstream licence texts are in LICENSE.txt, unchanged. The claude-mem NOTICE file reads: "Claude-Mem / Copyright 2026 Alex Newman / This product includes software developed for the Claude-Mem project. / Licensed under the Apache License, Version 2.0."
+
+Modified for Sklubot (2026-11-22): rewritten for Sklubot bots: a handover note saved as a file and given with bot_message or room_handoff, a weekly team review built with conversation_search from what really happened, and the owner's goals and rules proposed with dated quotes through rule_propose and goal_propose cards; the memory server, worker ports, transcript scripts and sub-agent pipelines removed; condensed into one skill; translated into French.
+Only text is included; no script, picture or other file of the original folders is bundled. Names of other products are not used as titles.

@@ -46,6 +46,58 @@ Pas incluses d'Anthropic, et pourquoi :
 
 Les trois adaptations de [Hermes Bot Kit](https://github.com/thomasbek3/hermes-bot-kit/tree/efba9156f49bf69ae763f67135218cf890275083) réutilisent les instructions du kit avec les outils de Sklubot. Chaque fiche inclut la licence MIT et le crédit de Thomas Bekkers. Les brouillons sont préparés dans le compte Gmail ou Outlook choisi. La connexion Slack se vérifie dans **Réglages → Applis**, sur la ligne du compte Slack connecté.
 
+### Compétences adaptées de projets libres (22/11/2026)
+
+La galerie range maintenant les compétences **par thème** (méthode et questions, rédaction et marque, design et pages, animation et vidéo, référencement, commerce et études, outils) avec un filtre en haut ; le badge « Adaptée d'un projet libre » marque ces 41 compétences, toutes en français et en anglais.
+
+| Compétence | Thème | Adaptée de | Licence |
+|---|---|---|---|
+| Clarifier avant d'agir | Méthode et questions | agent-skills (interview-me), mattpocock/skills (grilling), Spec Kit (clarify) | MIT |
+| Mon idée tient-elle ? | Méthode et questions | agent-skills (idea-refine), ECC (product-lens), Spec Kit (assess) | MIT |
+| Conseil à trois voix | Méthode et questions | ECC (council) | MIT |
+| Vérifier avant de livrer | Méthode et questions | ECC (santa-method, agent-self-evaluation, email-ops), Spec Kit (checklist), agent-skills (shipping-and-launch) | MIT |
+| Cahier des charges | Méthode et questions | Spec Kit (specify, analyze, converge) | MIT |
+| Professeur particulier | Méthode et questions | mattpocock/skills (teach) | MIT |
+| Questionnaire à envoyer | Méthode et questions | mattpocock/skills (to-questionnaire) | MIT |
+| Note de passation et bilan de la semaine | Méthode et questions | claude-mem (handoff, weekly-digests, owner-goals) | Apache-2.0 |
+| Salons partagés avec des clients | Méthode et questions | ECC (counterparty-channel-discipline) + tri en 4 niveaux écrit pour Sklubot | MIT |
+| Leçons de mon travail | Méthode et questions | Noodle (reflect, meditate) | MIT |
+| Explique simplement | Rédaction et marque | claude-mem (what-the) | Apache-2.0 |
+| Écrire comme un humain | Rédaction et marque | Noodle (unslop), ECC (article-writing) | MIT |
+| Écrire un article avec toi | Rédaction et marque | mattpocock/skills (writing-fragments, -beats, -shape) | MIT |
+| Contenus par réseau | Rédaction et marque | ECC (content-engine, short-video-distribution) | MIT |
+| Entretien de marque | Rédaction et marque | ECC (brand-discovery, brand-voice) | MIT |
+| Fiche de charte (design) | Design et pages | stitch-skills (design-md, extract-design-md) | Apache-2.0 |
+| Préciser une demande de page | Design et pages | stitch-skills (enhance-prompt) | Apache-2.0 |
+| Site en plusieurs passes | Design et pages | stitch-skills (site-md, stitch-loop) | Apache-2.0 |
+| Règles de mise en page contre l'air générique | Design et pages | stitch-skills (taste-design), stick-scene | Apache-2.0 + MIT |
+| Page d'un commerce par métier | Design et pages | Hallmark | MIT |
+| Guides des composants web | Design et pages | modern-web-guidance (guides) | CC-BY-4.0 + Apache-2.0 |
+| Accessibilité mesurée | Design et pages | chrome-devtools-mcp (a11y-debugging), agent-skills (accessibility-engineering) | Apache-2.0 + MIT |
+| Testeur de site | Design et pages | agent-browser (dogfood) | Apache-2.0 |
+| Illustration animée de page | Animation et vidéo | stick-scene | MIT |
+| Figure explicative interactive | Animation et vidéo | anatomy | MIT |
+| Visite guidée vidéo d'un site | Animation et vidéo | stitch-skills (remotion) | Apache-2.0 |
+| Référencement : méthode et audit | Référencement (SEO) | claude-seo (seo, seo-audit, seo-page, seo-technical) | MIT |
+| SEO local | Référencement (SEO) | claude-seo (seo-local) | MIT |
+| Contenu SEO | Référencement (SEO) | claude-seo (seo-content, -content-brief, -cluster, -plan), FLOW SEO | MIT + CC-BY-4.0 |
+| Données structurées et sitemap | Référencement (SEO) | claude-seo (seo-schema, -sitemap, -hreflang, -images) | MIT |
+| Visibilité dans les réponses des IA | Référencement (SEO) | claude-seo (seo-geo, seo-agentic) | MIT |
+| Surveillance SEO | Référencement (SEO) | claude-seo (seo-drift) | MIT |
+| SEO des boutiques et pages comparatives | Référencement (SEO) | claude-seo (seo-ecommerce, seo-sxo, seo-competitor-pages) | MIT |
+| Étude de marché et de concurrence | Commerce et études | ECC (market-research, competitive-*, benchmark-methodology, literature-review) | MIT |
+| Stocks et réassort | Commerce et études | ECC (inventory-demand-planning) | Apache-2.0 |
+| Colis et retours | Commerce et études | ECC (logistics-exception-management, returns-reverse-logistics) | Apache-2.0 |
+| Diagrammes | Outils | CLI-Anything (mermaid, drawio) | Apache-2.0 |
+| Sous-titres | Outils | CLI-Anything (videocaptioner) | Apache-2.0 |
+| Notes Obsidian | Outils | CLI-Anything (obsidian) | Apache-2.0 |
+| Code sobre | Outils | DietrichGebert/ponytail | MIT |
+| Relecture de code | Outils | DietrichGebert/ponytail (review), alibaba/open-code-review (delegate) | MIT + Apache-2.0 |
+
+Règles suivies pour chacune (vérifiées par les tests de `server/test/skills-library.test.ts`) : seulement des textes sous **MIT, Apache-2.0 ou CC BY 4.0** ; `LICENSE.txt` contient le texte de licence d'origine inchangé (et, pour CC BY, l'attribution demandée) ; `NOTICE` nomme le titulaire des droits, la source figée à un commit (40 caractères) et la liste « Modified for Sklubot (2026-11-22) : … » ; la première ligne de chaque texte dit d'où il vient et qu'il a été modifié. Aucun nom de produit d'origine dans les titres, aucun service payant ni télémétrie, aucun chemin d'extension, rien qui lise les cookies d'un navigateur ou un compte personnel. Chaque texte passe le contrôle de sécurité sans « danger ». Deux compétences (« Illustration animée de page », « Figure explicative interactive ») récupèrent leur bibliothèque de dessin **à la demande**, sur l'ordinateur du bot, à un commit vérifié. « Design de marque » lit maintenant d'abord `~/team/charte.md`, la charte écrite avec « Entretien de marque » et « Fiche de charte (design) ».
+
+Non repris de la liste « à adapter » des audits, et pourquoi : la version actuelle d'*app-store-compliance* (licence non libre ; seule une version d'avant le 24/08/2026 serait réutilisable, à vérifier à part) ; *Astryx* (verdict « idée » : modèles en code, pas un texte) ; les règles d'*agent-browser* (core) et d'*agent-desktop* (elles vont dans la description des outils écran, pas dans la bibliothèque) ; *debug-optimize-lcp* et *chrome-devtools-cli* (dépendent d'outils absents de l'ordinateur des bots) ; *investor-materials* et *marketing-campaign* d'ECC (hors du lot 3, à faire plus tard).
+
 ## 2. Importer des compétences depuis GitHub
 
 **Où :** Réglages → Compétences, en bas : **Importer depuis GitHub**.
@@ -53,7 +105,8 @@ Les trois adaptations de [Hermes Bot Kit](https://github.com/thomasbek3/hermes-b
 1. Colle l'adresse d'un dépôt **public** de github.com, ou d'un de ses dossiers (par exemple `https://github.com/proprietaire/depot/tree/main/skills`).
 2. **Chercher** : Sklubot liste les fichiers `SKILL.md` trouvés, avec leur licence (celle du dossier de la compétence, sinon celle du dépôt, sinon celle annoncée dans le README).
 3. Sont cochées d'avance seulement les compétences sous licence libre (Apache-2.0, MIT, BSD, ISC, CC0, Unlicense, CC BY) sans problème signalé. Pour les autres (« aucune licence », « restrictive », GPL…), c'est toi qui décides : sans licence, la réutilisation n'est pas permise par défaut.
-4. Signalements : *texte qui semble contenir une clé*, *trop longue* (plus de 20 000 caractères : impossible), *autres fichiers non importés* (scripts, images), *nom déjà utilisé*.
+4. Signalements : *texte qui semble contenir une clé*, *trop longue* (le nombre de caractères est affiché ; plus de 20 000 : impossible telle quelle), *fichiers cités non importés* (la liste des fichiers que le texte mentionne — scripts, références, images — et que le bot n'aura pas), *annexes jointes* (voir ci-dessous), *autres fichiers non importés*, *nom déjà utilisé*.
+   - **Annexes** : quand le texte d'une compétence renvoie à de petits fichiers texte de son propre dossier (`[format](./MISSION-FORMAT.md)`, `references/eeat.md`), ils sont ajoutés à la fin, chacun sous un titre « Annex: … », tant que le tout reste sous 20 000 caractères ; ils passent le même contrôle de sécurité. Les fichiers cités mais non importés sont aussi rappelés à la fin du texte importé, pour que le bot sache qu'il ne peut pas les ouvrir.
 5. **Importer en brouillon** : les compétences arrivent **en brouillon**, avec leur source et leur licence à la fin. Le bot ne les utilise pas tant que tu n'as pas cliqué **Activer** dans son onglet Compétences, après les avoir lues.
 
 Sécurité : seul le texte des `SKILL.md` est lu ; rien n'est jamais exécuté sur le serveur. Le téléchargement passe par la protection réseau de Sklubot (adresses publiques seulement, GitHub uniquement, 15 Mo au plus), l'archive est lue sans chemins piégés (`..`, liens, chemins absolus), 10 recherches par heure au plus.

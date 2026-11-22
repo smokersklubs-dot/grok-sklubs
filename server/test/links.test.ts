@@ -76,7 +76,9 @@ test("public links are found in the user's words; local and private addresses ar
   assert.equal(isPublicHost("example.org"), true);
   assert.equal(isPublicHost("8.8.8.8"), true);
   assert.equal(isPublicHost("169.254.169.254"), false);
-  assert.equal(linkHint("no link here, just sklubs.fr in words", true), "", "a bare domain name is not a link to open");
+  // Since the core-reliability work: a bare domain a person types is a link too (see test/core-reliability.test.ts, point 9).
+  assert.match(linkHint("no http here, just sklubs.fr in words", true), /contains a link \(https:\/\/sklubs\.fr\/\)/);
+  assert.equal(linkHint("no link here, just a file.txt and e.g. words", true), "", "a file name or an abbreviation is not a link to open");
   assert.equal(linkHint("https://example.org/page", false), "", "no browser: no hint");
   assert.match(linkHint("https://example.org/page", true), HINT);
   assert.match(linkHint("https://www.youtube.com/watch?v=N5IFpCacXxw", true), /transcript.*cannot watch the pictures/);

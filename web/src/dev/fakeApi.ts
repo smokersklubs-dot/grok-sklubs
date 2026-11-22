@@ -4,11 +4,14 @@
  * a sample error when the gallery's "fail" switch is on. Development only.
  */
 import { landingData, sampleDownloads } from "./landingFixtures";
-import { announcementsAdmin, announcementsState, conversationGrantFixtures, sentinelOverview, todayReport, type FixtureOptions } from "./fixtures";
+import { announcementsAdmin, announcementsState, conversationGrantFixtures, memoryHistoryFixture, sentinelOverview, todayReport, type FixtureOptions } from "./fixtures";
 import { githubPreviewFixture, libraryFixture, scanReportFixture, versionsFixture } from "./skillsFixtures";
 import { incidentsFixture } from "./incidentsFixtures";
 import { commandFixture, fakeScreen } from "./commandFixtures";
 import { teamMdExportFixture, teamMdPreviewFixture, teamMdReportFixture } from "./teamMdFixtures";
+import { hookSignedFixture, hookTestFixture, reportsFixture } from "./trustFixtures";
+import { relayGuardFixture } from "./relayGuardFixtures";
+import { routineExtrasFixture, routinePreviewFixture } from "./routineFixtures";
 
 export interface FakeApiState extends FixtureOptions { empty: boolean; fail: boolean }
 
@@ -40,19 +43,34 @@ export function installFakeApi(get: () => FakeApiState): void {
       // « Contrôle de sécurité des compétences »: the result of « Vérifier mes compétences ».
       if (path === "/skills/scan" && !s.fail) { await wait(150); return json(200, { report: s.empty ? { scannedAt: Date.now(), skills: 6, clean: 6, entries: [] } : scanReportFixture(s) }); }
       // « Équipe Sklubot (.md) » (GalleryTeamMd.tsx): the review screen, the creation, the share window.
+      // « Règles de sécurité » of a linked computer: saving answers with what was sent.
+      if (method === "PUT" && /^\/relay\/devices\/[^/]+\/guard$/.test(path) && !s.fail) { await wait(150); return json(200, relayGuardFixture(s.empty, JSON.parse(String(init?.body ?? "{}")))); }
       if (path === "/team-md/preview" && !s.fail) { await wait(150); return json(200, teamMdPreviewFixture(s)); }
       if (path === "/team-md/commit" && !s.fail) { await wait(150); return json(200, { report: teamMdReportFixture() }); }
       if (path === "/team-md/export" && !s.fail) { await wait(100); return json(200, teamMdExportFixture(s)); }
+      // Webhooks (L20) and reported replies (L31), GalleryTrust.tsx: what the real server answers.
+      if (/^\/routines\/[^/]+\/hook\/test$/.test(path) && !s.fail) { await wait(150); return json(200, hookTestFixture()); }
+      if (/^\/routines\/[^/]+\/hook(\/secret)?$/.test(path) && !s.fail) { await wait(150); return json(200, { ...hookSignedFixture(s), ...(method === "DELETE" ? { signed: false, secretSetAt: null } : {}), ...(method === "POST" ? {} : { secret: undefined }) }); }
+      // nod items 2, 8, 13 (GalleryRoutines.tsx): the preview of the next runs, saving, approving.
+      if (/^\/bots\/[^/]+\/routines\/preview$/.test(path) && !s.fail) { await wait(100); return json(200, routinePreviewFixture(s)); }
+      if (/^\/reports\/[^/]+\/done$/.test(path) && !s.fail) { await wait(150); return json(200, reportsFixture(s, s.empty)); }
       await wait(600);
       return s.fail ? json(500, { error: s.lang === "fr" ? "Exemple d'erreur : le serveur n'a pas pu le faire." : "Sample error: the server could not do it." }) : json(200, {});
     }
     if (path === "/today") return json(200, todayReport(s, s.empty));
+    if (/^\/routines\/[^/]+\/extras$/.test(path)) return json(200, routineExtrasFixture(s, s.empty));
+    if (/^\/bots\/[^/]+\/routines\/live$/.test(path)) return json(200, { live: s.empty ? [] : [{ routineId: "rtn_gallery_nod", steps: 4, caption: s.lang === "fr" ? "Lit les nouvelles du secteur" : "Reading the industry news", activity: "browsing", since: Date.now() - 90_000, awaiting: null }] });
+    if (/^\/bots\/[^/]+\/work-models$/.test(path)) return json(200, { routines: "", tasks: s.empty ? "" : "openrouter:google/gemini-2.5-flash", background: "" });
+    // Réglages → Mémoire, « Modifier » then « Historique » (MemoryEdit.tsx): what changed in a note.
+    if (/^\/memories\/[^/]+\/history$/.test(path)) return json(200, { history: s.empty ? [] : memoryHistoryFixture(s) });
     // « Qui répond » in a group chat (GalleryRooms.tsx): the room's settings and its quick model.
     if (/^\/bots\/[^/]+\/routing$/.test(path)) return json(200, { routing: { discreet: false, askFirst: true }, model: s.empty ? null : "OpenRouter google/gemini-2.5-flash-lite" });
     // « Centre de commandement »: the team, and a drawn screen for the computers that are on.
     if (path === "/command") return json(200, commandFixture(s));
+    if (/^\/relay\/devices\/[^/]+\/guard$/.test(path)) return json(200, relayGuardFixture(s.empty));
     if (/^\/bots\/[^/]+\/screen$/.test(path)) return new Response(fakeScreen(path.split("/")[2].replace(/^cmd_/, "")), { headers: { "content-type": "image/svg+xml" } });
     if (path === "/surveillance") return json(200, sentinelOverview(s, s.empty));
+    if (path === "/reports") return json(200, reportsFixture(s, s.empty));
     if (path === "/announcements") return json(200, announcementsState(s, s.empty));
     if (path === "/announcements-admin") return json(200, announcementsAdmin(s, s.empty));
     if (path === "/public/landing") return json(200, landingData(s.empty));

@@ -1,0 +1,8 @@
+relecture-de-code — adapted from DietrichGebert/ponytail, alibaba/open-code-review (© 2026 DietrichGebert, MIT; © 2026 alibaba/open-code-review Contributors, Apache-2.0)
+Sources (each pinned to one commit):
+- DietrichGebert/ponytail — © 2026 DietrichGebert — MIT — https://github.com/DietrichGebert/ponytail/tree/ebd8654c2c627f721eb8f9c0d1bd4090a29f9e10/skills/ponytail-review
+- alibaba/open-code-review — © 2026 alibaba/open-code-review Contributors — Apache-2.0 — https://github.com/alibaba/open-code-review/tree/284ff013f0705ae6cac4c8dfbffa2f2551886d56/skills/open-code-review-delegate
+Licence: MIT and Apache-2.0 — the upstream licence texts are in LICENSE.txt, unchanged.
+
+Modified for Sklubot (2026-11-22): merged; the review CLI and its rules service removed, plain git commands kept; a checklist covering every changed file; findings only with a concrete case; written for Sklubot bots; original product names not used as titles; translated into French.
+Only text is included; no script, picture or other file of the original folders is bundled. Names of other products are not used as titles.

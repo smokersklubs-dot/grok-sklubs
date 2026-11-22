@@ -1,0 +1,7 @@
+professeur-particulier — adapted from mattpocock/skills (© 2026 Matt Pocock, MIT)
+Sources (each pinned to one commit):
+- mattpocock/skills — © 2026 Matt Pocock — MIT — https://github.com/mattpocock/skills/tree/abeeaf95660ba9e8b7c753eb38f441ca707a8823/skills/productivity/teach
+Licence: MIT — the upstream licence texts are in LICENSE.txt, unchanged.
+
+Modified for Sklubot (2026-11-22): the learning workspace moved to the bot's file library (mission, resources, record, glossary, notes), lessons become private Sklubot pages or artifacts, spaced reviews through routines the person accepts, CLI and asset-folder instructions removed, condensed and translated into French.
+Only text is included; no script, picture or other file of the original folders is bundled. Names of other products are not used as titles.

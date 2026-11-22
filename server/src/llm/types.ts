@@ -62,6 +62,8 @@ export interface TurnRequest {
   onReasoning?: (delta: string) => void;
   /** Fired as soon as the model starts emitting a tool call (before arguments are complete). */
   onToolStart?: (id: string, name: string) => void;
+  /** Fired for anything at all received from the provider (headers, any byte or event): the call is alive (llm/timeouts.ts). */
+  onActivity?: () => void;
 }
 
 export interface LlmProvider {
@@ -110,8 +112,8 @@ export function alternate(messages: ChatMessage[]): ChatMessage[] {
  * header, when it sent one. Anything else (bad credentials, unknown model, a rejected request) moves on to the next model.
  */
 export class ProviderError extends Error {
-  /** `code` "context_length": the request is longer than the model's context window (the turn compacts and tries once more). */
-  constructor(message: string, readonly opts: { status?: number; transient: boolean; retryAfterMs?: number | null; code?: "context_length" | "out_of_credit" } = { transient: false }) {
+  /** `code` "context_length": the request is longer than the model's context window (the turn compacts and tries once more); "timeout": cut on our side after too long a silence (llm/timeouts.ts). */
+  constructor(message: string, readonly opts: { status?: number; transient: boolean; retryAfterMs?: number | null; code?: "context_length" | "out_of_credit" | "timeout" } = { transient: false }) {
     super(message);
     this.name = "ProviderError";
   }

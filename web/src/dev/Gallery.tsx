@@ -6,6 +6,7 @@
  *
  * Everything is in the address, so a state can be shared or screenshotted:
  *   section=all|basics|cards|notices|banners|empty|today|command|incidents|recruit|salons|surveillance|announcements|landing|download
+ *   (confiance: webhooks signés ou non, réponses signalées ; view=report ouvre « Signaler cette réponse » — GalleryTrust.tsx)
  *   (equipe: « Équipe Sklubot (.md) », its windows alone, one per page with view=review|update|choose|share — GalleryTeamMd.tsx)
  *   (chat: the real chat view on a long conversation, see GalleryChat.tsx;
  *   landing, download: the public landing page or /telecharger alone, as a signed-out visitor sees it; empty=1 = no
@@ -17,6 +18,9 @@
  * main.tsx loads this file only when `import.meta.env.DEV` is true: production builds never contain it
  * (`npm run check:bundle -w web` checks the built files).
  */
+import { GalleryRoutines } from "./GalleryRoutines";
+import { RelayGuardPanel } from "../components/RelayGuardPanel";
+import { RelayEventRow } from "../components/RelayEventRow";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { setLocale, useT } from "../i18n";
@@ -44,18 +48,20 @@ import { failureCardFixtures } from "./incidentsFixtures";
 import { recruitCardFixtures } from "./recruitFixtures";
 import { GalleryRooms } from "./GalleryRooms";
 import { GalleryTeamMd } from "./GalleryTeamMd";
+import { GalleryTrust } from "./GalleryTrust";
 import { SkillsLibrarySection } from "../components/SkillsLibrary";
 import { ScanFindings, SkillsCheckSection } from "../components/SkillScan";
 import { scanDangerFixture } from "./skillsFixtures";
 import { PagePreview, setPagePreviewSource } from "../components/PagePreview";
 import { PageVersions } from "../components/PageVersions";
+import { MemoryEdit } from "../components/MemoryEdit";
 import samplePage from "./sample-page.html?url";
 
 // Pages published by bots are not served by the dev server: the previews show a sample page instead.
 setPagePreviewSource(() => samplePage);
 import "./gallery.css";
 
-const SECTIONS = ["all", "basics", "cards", "notices", "banners", "empty", "today", "command", "incidents", "recruit", "salons", "surveillance", "announcements", "skills", "skillscan", "pages", "landing", "download", "chat", "equipe", "grants"] as const;
+const SECTIONS = ["all", "basics", "cards", "notices", "banners", "empty", "today", "command", "incidents", "recruit", "salons", "surveillance", "announcements", "skills", "skillscan", "pages", "landing", "download", "chat", "equipe", "grants", "confiance", "memoire", "relais", "routines"] as const;
 type Section = (typeof SECTIONS)[number];
 
 interface GalleryState extends FakeApiState {
@@ -136,7 +142,7 @@ function Gallery() {
   return (
     <div className={`gallery ${s.embed ? "is-embed" : ""}`} data-gallery="sklubot-dev-gallery">
       {!s.embed && <Toolbar s={s} set={set} />}
-      {s.section === "chat" ? <GalleryChat key={`${s.lang}`} o={{ lang: s.lang, long: s.long }} /> : s.section === "equipe" ? <GalleryTeamMd key={`${s.lang}:${s.long}`} o={{ lang: s.lang, long: s.long }} /> : s.section === "landing" ? <Landing key={`${s.lang}:${s.empty}`} onAuth={() => undefined} /> : s.section === "download" ? <DownloadPage key={`${s.lang}:${s.empty}`} /> : <Sections key={`${s.lang}:${s.long}:${s.empty}`} s={s} />}
+      {s.section === "chat" ? <GalleryChat key={`${s.lang}`} o={{ lang: s.lang, long: s.long }} /> : s.section === "equipe" ? <GalleryTeamMd key={`${s.lang}:${s.long}`} o={{ lang: s.lang, long: s.long }} /> : s.section === "routines" ? <GalleryRoutines key={`${s.lang}:${s.long}:${s.empty}`} o={{ lang: s.lang, long: s.long }} empty={s.empty} /> : s.section === "confiance" ? <GalleryTrust key={`${s.lang}:${s.long}:${s.empty}`} o={{ lang: s.lang, long: s.long }} empty={s.empty} /> : s.section === "landing" ? <Landing key={`${s.lang}:${s.empty}`} onAuth={() => undefined} /> : s.section === "download" ? <DownloadPage key={`${s.lang}:${s.empty}`} /> : <Sections key={`${s.lang}:${s.long}:${s.empty}`} s={s} />}
     </div>
   );
 }
@@ -191,6 +197,8 @@ function Sections({ s }: { s: GalleryState }) {
       {show("incidents") && <Section id="incidents" title="Incidents" hint="Coordinateur d'échecs : la section « Incidents » de l'onglet Activité (interrupteur « Vide » : aucun incident), puis les cartes d'échec."><div className="gallery-page is-auto"><IncidentsSection bot={fakeBot(o)} /><div className="gallery-cards">{failureCardFixtures(o).map((c) => <figure key={c.failureId} className="gallery-figure"><figcaption><code>{c.cls} · {c.status}</code></figcaption><CardView card={c} botId={GALLERY_BOT_ID} seq={1} /></figure>)}</div></div></Section>}
       {show("recruit") && <Section id="recruit" title="Bot recruteur" hint="La carte où le bot principal propose un nouveau spécialiste : en attente (« Modifier » édite sur place), limites (offre, quota du jour), créé, refusé."><div className="gallery-cards recruit-gallery">{recruitCardFixtures(o).map((x) => <figure key={x.label} className="gallery-figure"><figcaption><code>recruit · {x.label}</code></figcaption><CardView card={x.card} botId={GALLERY_BOT_ID} seq={1} /></figure>)}</div></Section>}
       {show("salons") && <GalleryRooms o={o} />}
+      {show("relais") && <Section id="relais" title="Relais : règles de sécurité" hint="Réglages → Ordinateurs → « Règles de sécurité » d'un ordinateur : terminaux (désactivés par défaut, avertissement), listes « garder à l'écart », applis toujours refusées, raccourcis protégés (« Vide » : aucune liste)."><div className="gallery-page is-auto"><RelayGuardPanel deviceId="dev_gallery" /><div className="transcript"><RelayEventRow seq={1} warn={false} text={"$ npm test — ~/projets/site · portable-lea (macOS) · exit 0\n> site@1.0.0 test\n> vitest run\n\n ✓ src/panier.test.ts (12 tests) 41ms\n Test Files  1 passed (1)\n      Tests  12 passed (12)\n API_KEY=[secret]"} /></div></div></Section>}
+      {show("memoire") && <Section id="memoire" title="Mémoire : modifier une note" hint="Réglages → Mémoire → « Modifier » : le texte se corrige sur place, l'historique montre chaque changement (« Vide » : aucun)."><div className="gallery-page is-auto"><ul className="list"><li className="list-row is-card"><div className="list-row-text"><MemoryEdit key={`${s.lang}:${s.long}:${s.empty}`} historyOpen memory={{ id: "mem_gallery", botId: GALLERY_BOT_ID, text: o.lang === "fr" ? "Préfère les réunions le matin" : "Prefers meetings in the morning", source: "learned", createdAt: NOW - 10 * 86400_000, status: "active", quote: "", category: null, confidence: "once", confirmedAt: null, lastUsedAt: null }} onSaved={() => undefined} onCancel={() => undefined} /></div></li></ul></div></Section>}
       {show("grants") && <Section id="grants" title="Autoriser pour cette conversation" hint="Réglages → Autorisations : ce qui a été autorisé pour une conversation (« Vide » : aucune ; « Échecs » : « Retirer » échoue). En dessous, la carte qui le propose, puis une fois accordé."><div className="gallery-page is-auto"><ConversationGrantsBlock key={`${s.empty}:${s.lang}:${s.long}`} /></div><div className="gallery-cards">{cardFixtures(o).filter((c) => c.type === "approval" && c.card.type === "approval" && c.card.conversation).map((c) => <figure key={c.status} className="gallery-figure"><figcaption><code>approval · {c.status}</code></figcaption><CardView card={c.card} botId={GALLERY_BOT_ID} seq={1} /></figure>)}</div></Section>}
       {show("today") && <Section id="today" title="Aujourd'hui" hint="La vraie page, avec des données factices (interrupteur « Vide » pour la journée calme)."><div className="gallery-page"><TodayView /></div></Section>}
       {show("command") && <Section id="command" title="Centre de commandement" hint="La vraie page : toute l'équipe en direct, avec ses liens (« Vide » : équipe vide). Les connecteurs apparaissent à partir de 1100 px de large."><div className="gallery-page is-tall"><GalleryCommand o={o} empty={s.empty} /></div></Section>}

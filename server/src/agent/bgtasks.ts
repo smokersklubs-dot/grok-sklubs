@@ -3,6 +3,7 @@ import { q } from "../db.js";
 import { tr } from "../i18n.js";
 import type { ToolSpec } from "../llm/types.js";
 import type { BgTask, BgTaskState, Card } from "../shared.js";
+import { modelForWork } from "../routineplus.js";
 import { approvals, audit, bots, clip, newId, now, paused, rows, users, type BotRecord } from "../store.js";
 
 /**
@@ -58,7 +59,7 @@ export function startTask(parent: BotRecord, title: string, goal: string, depth:
   const short = clip(title.replace(/\s+/g, " ").trim() || clip(goal, 40), 60);
   const helper = bots.create(parent.userId, {
     name: clip(`${parent.name} › ${short}`, 60), label: tr(loc, "Background task"), description: tr(loc, "Background task working for {name}.", { name: parent.name }),
-    shape: parent.shape, color: parent.color, mode: parent.mode, effort: parent.effort, model: parent.model, autonomy: parent.autonomy,
+    shape: parent.shape, color: parent.color, mode: parent.mode, effort: parent.effort, model: modelForWork(parent, "task"), autonomy: parent.autonomy, // nod item 2: the bot's model for tasks
     hidden: true, parentId: parent.id,
   });
   const id = newId("bgt");

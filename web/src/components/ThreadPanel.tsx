@@ -7,6 +7,7 @@ import { accentStyle } from "../lib/colors";
 import { Icon } from "./Icon";
 import { ActivityLine, buildItems, RowItems } from "./Transcript";
 import { IconButton } from "./ui";
+import { sendKeysFor } from "../../../mobile/shared/sendKey";
 
 const EMPTY: Row[] = [];
 
@@ -51,7 +52,9 @@ export function ThreadPanel({ botId, seq }: { botId: string; seq: number }) {
     setSending(true);
     setError(null);
     try {
-      const r = await api<{ row: Row }>("POST", `/bots/${botId}/messages`, { text: words, thread: seq });
+      const keys = sendKeysFor(`${botId}/thread/${seq}`); // the same key if this reply is sent again after a lost answer
+      const r = await api<{ row: Row }>("POST", `/bots/${botId}/messages`, { text: words, thread: seq, clientKey: keys.keyFor(words) });
+      keys.done();
       useStore.getState().addRows(botId, [r.row]);
       setText("");
     } catch (e) {

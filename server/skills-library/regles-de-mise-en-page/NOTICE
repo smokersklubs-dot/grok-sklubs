@@ -1,0 +1,8 @@
+regles-de-mise-en-page — adapted from google-labs-code/stitch-skills, stick-scene (© 2026 Google LLC, Apache-2.0; © 2026 Kamran Ahmed, MIT)
+Sources (each pinned to one commit):
+- google-labs-code/stitch-skills — © 2026 Google LLC — Apache-2.0 — https://github.com/google-labs-code/stitch-skills/tree/62fdcd679747aca0792e5dd6591b10ddfad56825/plugins/stitch-utilities/skills/taste-design
+- stick-scene — © 2026 Kamran Ahmed — MIT — https://github.com/nilbuild/stick-scene/tree/ca84311177a020c2dff7dfd9cb2e7b786288c1ab/SKILL.md
+Licence: Apache-2.0 and MIT — the upstream licence texts are in LICENSE.txt, unchanged.
+
+Modified for Sklubot (2026-11-22): the design-file generator and its tool removed; font and brand bans softened so the owner's brand sheet wins; rules rewritten as a checklist for Sklubot pages and visuals (two or three ideas first, dials, states, clichés, phone first, keyboard, reduced motion, fallbacks); translated into French.
+Only text is included; no script, picture or other file of the original folders is bundled. Names of other products are not used as titles.

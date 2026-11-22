@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { clip } from "../store.js";
 import type { ElementAnswer, ElementRequest, ElementSnapshot, PageElement } from "../screen-elements.js";
+import { dialogWords, tabNote } from "../browser-cdp.js";
 
 /**
  * Element references (wave 8, item 6): the last snapshot of each bot's page, so a reference like "3f9a.12" can be turned
@@ -23,13 +24,19 @@ export function rememberSnapshot(botId: string, s: ElementSnapshot): string {
   snaps.set(botId, { id, target: s.target, loader: s.loader, url: s.url, title: s.title, at: Date.now(), byRef });
   const line = (n: number, e: PageElement) => {
     const states = [e.disabled ? "disabled" : "", e.checked !== undefined ? `checked=${String(e.checked)}` : "", e.expanded !== undefined ? `expanded=${String(e.expanded)}` : "", e.selected ? "selected" : "", e.required ? "required" : "", e.visible ? "" : "off-screen"].filter(Boolean);
-    return `[${id}.${n}] ${e.role} "${clip(e.name, 100)}"${e.value !== undefined ? ` value="${clip(e.value, 60)}"` : ""}${states.length ? ` (${states.join(", ")})` : ""}`;
+    return `[${id}.${n}] ${e.role} "${clip(e.name, 100)}"${e.value !== undefined ? ` value="${clip(e.value, 60)}"` : ""}${states.length ? ` (${states.join(", ")})` : ""}${e.frame ? ` [in frame: ${clip(e.frame, 60)}]` : ""}`;
   };
   const list = [...byRef.entries()].map(([n, e]) => line(n, e));
+  // Frames of the page: their controls are listed with the page's (marked "in frame"); one from another site that the
+  // browser keeps apart cannot be read from here, and the bot is told so rather than finding nothing.
+  const closed = (s.frames ?? []).filter((f) => !f.readable).map((f) => `- A frame from ${clip(f.label, 60)} is on this page, but its controls cannot be listed: use screen_view and the pixel tools for it.`);
+  const note = tabNote(s.ctx);
   return [
     `Page: ${s.title || "(untitled)"} — ${s.url}`,
+    ...(note ? [note] : []),
     `Element snapshot ${id}: ${list.length} interactive element${list.length === 1 ? "" : "s"}${s.more ? ` (and ${s.more} more not listed)` : ""}, on the screen first. Act on one with element_click, element_type or element_select and its reference. References are only valid for this snapshot and this page: after the page changes, take a new snapshot.`,
     ...(list.length ? list : ["(no interactive element found: use screen_view and the pixel tools)"]),
+    ...closed,
   ].join("\n");
 }
 
@@ -48,6 +55,9 @@ export function resolveRef(botId: string, ref: unknown): { req: Omit<ElementRequ
 /** What the model is told when an action was refused; a stale page also forgets the snapshot. */
 export function refusal(botId: string, a: ElementAnswer): string {
   if (a.stale) { forgetSnapshot(botId); return `That reference is stale: ${a.stale}. Nothing was done. Take a new element_snapshot.`; }
+  if (a.dialog) return dialogWords(a.dialog);
+  // The click point was checked (document.elementFromPoint): something else would have received the click.
+  if (a.covered) return `That element is covered by ${clip(a.covered, 160)}: the click would land there instead. Nothing was clicked. Deal with what covers it first (often a cookie banner or a dialog box), then take a new element_snapshot.`;
   return `${a.error ?? "The browser did not do it."}${a.options?.length ? ` Options: ${a.options.map((o) => `"${clip(o, 60)}"`).join(", ")}.` : ""} Nothing was done.`;
 }
 

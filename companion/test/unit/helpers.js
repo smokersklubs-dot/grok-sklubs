@@ -2,7 +2,9 @@
 const { RelayCore } = require('../../src/main/relay-core');
 
 /** Build a RelayCore with in-memory fakes. `answers` drives the fake consent UI. */
-function makeCore({ answers = {}, perms = {}, autoConfirm = false, gateOptions } = {}) {
+function makeCore({ answers = {}, perms = {}, autoConfirm = false, gateOptions, active, platform = 'linux' } = {}) {
+  // The window in front (guard.js): a plain text editor unless a test says otherwise; a function may change it per call.
+  const fg = { current: active === undefined ? { app: 'gedit', bundle: 'gedit', pid: 42, windowId: '0x1', title: 'notes.txt - gedit', passwordField: false } : active };
   const sent = [];
   const prompts = [];
   const logs = [];
@@ -15,12 +17,14 @@ function makeCore({ answers = {}, perms = {}, autoConfirm = false, gateOptions }
       if (name === 'runShell') return { exitCode: 0, stdout: 'ok\n', stderr: '', truncated: false, timedOut: false, cancelled: false, durationMs: 1, signal: null };
       if (name === 'capture') return { format: 'jpeg', width: 10, height: 10, screenWidth: 10, screenHeight: 10, data: Buffer.from('x') };
       if (name === 'captureFrame') return { width: 10, height: 10, data: Buffer.from('f' + Math.random()), hash: String(Math.random()) };
+      if (name === 'activeWindow') return typeof fg.current === 'function' ? fg.current() : fg.current;
       return {};
     },
   });
   const ui = {
     askSession: (p) => { prompts.push({ kind: 'session', ...p }); const a = answers.session; return typeof a === 'function' ? a(p) : Promise.resolve(a || 'refuse'); },
     askCommand: (p) => { prompts.push({ kind: 'command', ...p }); const a = answers.command; return typeof a === 'function' ? a(p) : Promise.resolve(a || { decision: 'refuse' }); },
+    askGuard: (p) => { prompts.push({ ...p, kind: `guard:${p.kind}` }); const a = answers.guard; return typeof a === 'function' ? a(p) : Promise.resolve(a || 'refuse'); },
     cancelPrompt: () => {},
     onSession: () => {},
     onLocked: () => {},
@@ -31,14 +35,14 @@ function makeCore({ answers = {}, perms = {}, autoConfirm = false, gateOptions }
     isLocked: () => locked,
     setLocked: (v) => { locked = v; },
   };
-  const core = new RelayCore({ send: (m) => { sent.push(m); return true; }, caps, ui, store, log: (e) => logs.push(e), autoConfirm, gateOptions });
+  const core = new RelayCore({ send: (m) => { sent.push(m); return true; }, caps, ui, store, log: (e) => logs.push(e), autoConfirm, gateOptions, platform });
   let n = 0;
   const req = async (op, args = {}, bot = { id: 'bot_a', name: 'Alice' }) => {
     const id = `t${++n}`;
     await core.handleRequest({ type: 'req', id, bot, op, args });
     return sent.filter((m) => m.type === 'res' && m.id === id).pop();
   };
-  return { core, sent, prompts, logs, bots, calls, req, isLocked: () => locked };
+  return { core, sent, prompts, logs, bots, calls, req, fg, isLocked: () => locked };
 }
 
 module.exports = { makeCore };

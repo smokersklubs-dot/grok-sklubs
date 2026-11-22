@@ -263,3 +263,19 @@ Chaque fiche décrit le comportement attendu, pas une implémentation.
 | Cartes : OpenStreetMap | Libre (pas de souci), chargement seulement sur clic | Même approche possible |
 | Validation de numéros de téléphone (bibliothèque publique de Google) | Libre (Apache) | Utilisable pour le nettoyage des exports si besoin |
 | Paiement en ligne | Aucun prestataire : saisie de la carte par le serveur sur la page du marchand | Même approche gratuite (A12) plutôt qu'un fournisseur de cartes virtuelles |
+
+## Mise à jour du 21/11/2026 (commit `1b42e68`, relu au commit `0f9de28`)
+
+Ajouts décrits dans `docs/audits/AUDIT-NOD.md` § 2, lignes 1-14, 20, 22, 29, 40-47, 50, 52-53, 57-62, 63-66, 68 :
+pilotage des applis natives par l'arbre d'accessibilité avec applis toujours refusées et garde des champs mot de passe
+(1-14) ; ligne d'activité toujours visible (20) ; répondre à un message ou à une sélection (22) ; carte « Signaler un
+problème » (29) ; routines lisibles — piste des retards / sauts / échecs, activité en direct, arrêt d'une seule
+exécution, « a besoin de toi », « lancer maintenant » refusé sur une modification non relue, corrections partielles,
+aperçu sans enregistrer, approbation d'une consigne complète (40-47) ; un modèle par type de travail, par tâche et par
+routine (50) ; vérification de santé du modèle et arrêt du travail automatique sur un modèle en échec (52-53) ;
+corrections du vérificateur d'actions (57-62) ; format ouvert de connecteurs avec preuves, adresse MCP privée tapée par
+l'utilisateur, renommage, repli HTTP+SSE (63-66) ; Telegram complet (68).
+
+Depuis la décision du propriétaire du 22/11/2026, le code de nod (Apache-2.0) peut être réutilisé avec attribution
+(`docs/CLEANROOM.md`, `THIRD_PARTY_NOTICES.md`). L'état de chaque point est tenu dans `docs/COUVERTURE.md` § « nod —
+mise à jour du 21/11 ».

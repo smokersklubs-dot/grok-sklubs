@@ -1,3 +1,5 @@
+// L50: first of all, the « un seul serveur » lock on the data folder (datalock.ts), before the database opens.
+import "./datalockboot.js";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { serve } from "@hono/node-server";
@@ -29,7 +31,9 @@ import { installErrorCounter, noteSignal } from "./sentinel/signals.js";
 import { attachLiveScreens } from "./vnc.js";
 import { relayUpgrade } from "./relay.js";
 import { closeLeftOpenWatchNotices } from "./agent/watch.js";
-import { expireOrphanApprovals, recoverInterruptedTurns, startJobWatch } from "./agent/loop.js";
+import { expireOrphanApprovals, interrupt, recoverInterruptedTurns, startJobWatch } from "./agent/loop.js";
+import { crashedTurn, TurnCrashed } from "./agent/crashguard.js";
+import { rowScope } from "./store.js";
 import { startLimitWatch } from "./agent/sublimit.js";
 import { startResearchWorker } from "./researchreports.js";
 import { sweepUncertain } from "./agent/executions.js";
@@ -97,7 +101,7 @@ if (computerKind() === "linux") await startFreeComputers().catch((err) => consol
 
 // Approvals a subscription turn was waiting on lived in memory: after a restart nobody waits for them any more.
 const lapsed = expireOrphanApprovals();
-if (lapsed) console.log(`${lapsed} approval(s) left from before the restart are marked expired.`);
+if (lapsed) console.log(`${lapsed} approval(s) left from before the restart could not be kept open: marked expired.`);
 // Actions that were running when the server stopped: their outcome is unknown. They are never replayed; the user gets a card.
 // Notices of the turn watch that still asked something belong to turns the restart ended: they are history now.
 closeLeftOpenWatchNotices();
@@ -126,8 +130,14 @@ const server = serve({ fetch: app.fetch, port: config.port }, () => {
   console.log(computerNote);
   // From here on the server is up: one bad request or a stray failure in the background is logged, never
   // allowed to stop the whole server. Start-up failures above still stop it, as they should.
-  process.on("uncaughtException", (err) => { noteSignal("uncaught", "exception"); console.error("[uncaught]", err); });
-  process.on("unhandledRejection", (err) => console.error("[unhandled rejection]", err));
+  // An error raised from inside a bot's turn (a timer or an event callback of one of its tools) stops that turn only: it
+  // ends with a failure card and its queue goes on (agent/crashguard.ts). A rejected promise nobody awaited is logged with
+  // the turn it came from; it stops nothing (the turn's own awaits are caught by the turn).
+  process.on("uncaughtException", (err) => {
+    noteSignal("uncaught", "exception"); console.error("[uncaught]", err);
+    try { const botId = crashedTurn(err); if (botId) interrupt(botId, new TurnCrashed(err)); } catch (e) { console.error("[uncaught] turn", e); }
+  });
+  process.on("unhandledRejection", (err) => console.error("[unhandled rejection]", rowScope.getStore()?.botId ? `(turn of ${rowScope.getStore()!.botId})` : "", err));
 });
 
 attachLiveScreens(server as unknown as import("node:http").Server, [relayUpgrade, voiceUpgrade]);

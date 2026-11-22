@@ -12,6 +12,7 @@ import type { Attachment, Engine, EngineRuntime, EngineStatus } from "../shared.
 import { bots, clip, rows, type BotRecord } from "../store.js";
 import { noteSubscription, record } from "../usage.js";
 import { activity, Caption, expireEngineApprovals, interrupt, StreamingRow, type Turn } from "./loop.js";
+import { sessionLost } from "./session-rebuild.js";
 import { getLive, setLive } from "../bus.js";
 import { buildSystemPrompt } from "./prompt.js";
 import { imageService } from "../images.js";
@@ -844,7 +845,8 @@ async function claudeTurn(turn: Turn, t: Transcript, prompt: string, token: stri
     }
   });
   if (turn.signal.aborted || t.switched) return;
-  if (missingSession && !retried) { dropSession(bot.id, turn.generation, scope); return claudeTurn(turn, t, prompt, token, true); }
+  // The saved session is gone: a new one starts from a compact copy of the stored conversation, and the chat says so (session-rebuild.ts).
+  if (missingSession && !retried) { dropSession(bot.id, turn.generation, scope); return claudeTurn(turn, t, sessionLost(turn, "claude-code", prompt) + prompt, token, true); }
   if (!sawResult && !failure) failure = NOT_SIGNED_IN.test(res.stderr) ? signInHint(turn, "claude-code") : clip(res.stderr.trim() || `Claude Code stopped (code ${res.code}).`, 300);
   if (failure && limit) t.limit(limit, failure);
   else if (failure) { t.notice(failure); t.fatal = true; }
@@ -934,10 +936,7 @@ async function codexTurn(turn: Turn, t: Transcript, prompt: string, system: stri
   if (t.switched) return;
   if (resume && !retried && !turn.signal.aborted && !produced && !turn.spoke && (missingSession || CODEX_LOST_SESSION.test(res.stderr))) {
     dropSession(bot.id, turn.generation, scope);
-    const recent = turn.engineCaller ? [] : rows.recentMessages(bot.id, turn.generation, 10, turn.thread).flatMap(({ body }) =>
-      body.kind === "message" && body.text && !body.streaming ? [{ role: body.role, text: clip(body.text, 800) }] : []);
-    const context = recent.length ? `Recent messages for context only. Answer the current request below.\n${JSON.stringify(recent)}\n\n` : "";
-    return codexTurn(turn, t, context + prompt, system, token, true);
+    return codexTurn(turn, t, sessionLost(turn, "codex", prompt) + prompt, system, token, true);
   }
   if (turn.signal.aborted) return;
   if (!sawEnd && !failure) { limit ??= codexLimitFrom(res.stderr); failure = NOT_SIGNED_IN.test(res.stderr) ? signInHint(turn, "codex") : clip(res.stderr.trim() || `Codex stopped (code ${res.code}).`, 300); }

@@ -4,10 +4,13 @@ import type { SkillScan } from "./skillscantypes.js";
  * « Bibliothèque de compétences » (skillslibrary.ts, skillsgithub.ts, docs/COMPETENCES.md): wire types shared with the
  * web app (type-only on the web side).
  */
-export type LibraryOrigin = "sklubot" | "anthropic" | "opendesign" | "hermes";
+export type LibraryOrigin = "sklubot" | "anthropic" | "opendesign" | "hermes" | "community";
+/** The gallery's themes (catalog.json "category"). */
+export type LibraryCategory = "method" | "writing" | "design" | "animation" | "seo" | "business" | "tools";
+export const LIBRARY_CATEGORIES: readonly LibraryCategory[] = ["method", "writing", "design", "animation", "seo", "business", "tools"];
 /** One skill of the bundled library, as the gallery shows it. */
 export interface LibrarySkill {
-  id: string; origin: LibraryOrigin; licence: string; source: string; title: string; summary: string;
+  id: string; origin: LibraryOrigin; category: LibraryCategory; licence: string; source: string; title: string; summary: string;
   /** The text the bot will read (in the account's language when the skill has one). */
   body: string; language: "fr" | "en";
   /** The attribution line (NOTICE's first line). */
@@ -29,6 +32,12 @@ export interface GithubSkillFound {
   mentionsKey: boolean;
   /** Longer than 20 000 characters: cannot be imported as is. */
   tooLarge: boolean;
+  /** Characters of its text (with its annexes), to say by how much it is too long. */
+  chars: number;
+  /** Small texts of its folder that its text cites, joined at the end as "Annex: …" sections. */
+  annexes: string[];
+  /** Files its text cites that are NOT imported (scripts, pictures, missing or too large): the bot cannot open them. */
+  referencedFiles: string[];
   /** Other files of its folder (scripts, pictures, references) that are NOT imported. */
   ignoredFiles: number;
   /** A skill of the same name already exists on one of the account's bots. */

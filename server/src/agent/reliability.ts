@@ -78,30 +78,58 @@ const hashOf = (out: ToolOutput) => {
  * Notices a bot going round in circles inside one turn: the same tool failing again and again (whatever it changes in
  * its arguments), or a tool giving back exactly the same result again and again (a click that changes nothing, a
  * status that never moves). Returns why it should stop, or null. Identical calls are already refused after four
- * repeats in execute(); this catches the loops that vary their arguments.
+ * repeats in execute() (repeatLimit); this catches the loops that vary their arguments.
+ *
+ * Before it stops anything, the model is told: from the second failure or identical result in a row, a note is added
+ * to the tool's result (`out` is changed in place) saying what is happening and at what count the turn will be stopped.
+ *
+ * Tools made to be looked at again while nothing has changed yet (isPollingTool: the screen, a background job's output,
+ * a page being loaded, a status) are legitimate polling: their limit is higher (POLL_SAME_LIMIT) but still bounded, and
+ * their warning comes in the last looks before it.
  */
 export interface LoopStop { kind: "fail" | "same"; tool: string; count: number }
 /** The reason in English (for the model and the activity log); the chat shows a translated line (see loop.ts). */
 export const loopStopText = (w: LoopStop) => (w.kind === "fail" ? `the tool ${w.tool} failed ${w.count} times in a row` : `the tool ${w.tool} returned exactly the same result ${w.count} times in a row`);
 
+const POLLING = new Set(["screen_view", "my_screen", "job_output", "job_list", "page_read", "element_snapshot", "task_list", "reach_status"]);
+/** A tool whose job is to look again: ours by name, an app's by the usual words in its name (…_status, wait_…, poll_…). */
+export const isPollingTool = (name: string) => POLLING.has(name) || /(^|_)(status|poll|wait)(_|$)/.test(name);
+/** Identical results in a row a polling tool may give before the turn is stopped (LOOP_POLL_SAME_RESULT, 12; at most 30). */
+export const POLL_SAME_LIMIT = config.loopPollSameResult;
+/** How many times the very same call (same tool, same arguments) may be made in one turn (execute(), loop.ts). */
+export const repeatLimit = (name: string) => (isPollingTool(name) ? POLL_SAME_LIMIT : 4);
+
+/** Adds a line for the model to a tool's result, in place. */
+function addNote(out: ToolOutput, note: string) {
+  if (typeof out.content === "string") out.content = `${out.content}\n\n${note}`;
+  else out.content = [...out.content, { type: "text", text: note }];
+}
+
 export class LoopGuard {
   private failTool = "";
   private failStreak = 0;
   private same = new Map<string, { hash: string; count: number }>();
-  constructor(private failLimit = config.loopFailStreak, private sameLimit = config.loopSameResult) {}
+  constructor(private failLimit = config.loopFailStreak, private sameLimit = config.loopSameResult, private pollLimit = Math.max(sameLimit, POLL_SAME_LIMIT)) {}
   check(call: ToolUseBlock, out: ToolOutput): LoopStop | null {
+    // The result as the tool gave it: a note added below never counts as a change.
+    const hash = hashOf(out);
+    let warned = false;
     if (out.isError) {
       this.failStreak = this.failTool === call.name ? this.failStreak + 1 : 1;
       this.failTool = call.name;
       if (this.failStreak >= this.failLimit) return { kind: "fail", tool: call.name, count: this.failStreak };
+      if (this.failStreak >= 2) { warned = true; addNote(out, `[Loop guard: ${call.name} has failed ${this.failStreak} times in a row. At ${this.failLimit} failures in a row this turn is stopped. Do not just try it again: do it another way, or tell the user what blocks you.]`); }
     } else if (this.failTool === call.name) { this.failTool = ""; this.failStreak = 0; }
     // Tools that are meant to repeat with the same answer (an acknowledgement, a progress line) do not count.
     if (call.name === "progress_update" || call.name === "message_react" || call.name === "stay_quiet") return null;
-    const hash = hashOf(out);
     const prev = this.same.get(call.name);
     const count = prev && prev.hash === hash ? prev.count + 1 : 1;
     this.same.set(call.name, { hash, count });
-    if (count >= this.sameLimit) return { kind: "same", tool: call.name, count };
+    const polling = isPollingTool(call.name);
+    const limit = polling ? this.pollLimit : this.sameLimit;
+    if (count >= limit) return { kind: "same", tool: call.name, count };
+    if (!warned && count >= (polling ? Math.max(2, limit - 3) : 2))
+      addNote(out, `[Loop guard: same result as last time from ${call.name} (${count} times in a row). Calling it again will not change anything by itself: change approach${polling ? ", wait longer between two looks" : ""}, or tell the user where you are stuck. At ${limit} identical results in a row this turn is stopped.]`);
     return null;
   }
 }

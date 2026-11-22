@@ -152,14 +152,21 @@ test("denying an approval tells the model no, and the shell never sees server se
   await until(async () => { const r = lastAssistant(await rowsOf(primary.id)); return r?.body.kind === "message" && r.body.text.includes("secret=[]"); }, "scrubbed env");
 });
 
-test("a new message while an approval is open expires it", async () => {
+// Since the core-reliability work (agent/approval-wait.ts): a new message no longer makes the open approval lapse. The
+// card stays valid, the message waits, and it is answered once the owner has decided with the card's buttons.
+test("a new message while an approval is open does not cancel it: it is answered after the decision", async () => {
   await call("PATCH", `/bots/${primary.id}`, { autonomy: "careful" });
   await call("POST", `/bots/${primary.id}/messages`, { text: 'call shell_run {"command":"echo never"}' });
   const card = await until(async () => (await rowsOf(primary.id)).find((r) => r.body.kind === "card" && r.body.card.type === "approval" && r.body.card.status === "pending"), "approval card");
   await call("POST", `/bots/${primary.id}/messages`, { text: "never mind" });
+  await new Promise((r) => setTimeout(r, 200));
+  const still = (await rowsOf(primary.id)).find((r) => r.seq === card.seq)!;
+  assert.equal(still.body.kind === "card" && still.body.card.status, "pending", "typed words neither answer nor cancel the card");
+  assert.notEqual(lastAssistant(await rowsOf(primary.id))?.body.kind === "message" && lastAssistant(await rowsOf(primary.id))!.body.text, "Echo: never mind");
+  await approveNext("deny");
   await until(async () => { const r = lastAssistant(await rowsOf(primary.id)); return r?.body.kind === "message" && r.body.text === "Echo: never mind"; }, "follow-up");
   const now = (await rowsOf(primary.id)).find((r) => r.seq === card.seq)!;
-  assert.equal(now.body.kind === "card" && now.body.card.status, "expired");
+  assert.equal(now.body.kind === "card" && now.body.card.status, "denied");
 });
 
 test("files saved by a bot appear in its library and cannot escape it", async () => {

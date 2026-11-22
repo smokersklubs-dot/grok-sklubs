@@ -128,6 +128,7 @@ export class AnthropicProvider implements LlmProvider {
     const stream = this.sdk().beta.messages.stream(params, { signal: req.signal });
     {
       for await (const event of stream) {
+        req.onActivity?.(); // any event, pings included: the stream is alive
         if (event.type === "content_block_start" && event.content_block.type === "tool_use") {
           req.onToolStart?.(event.content_block.id, event.content_block.name);
         } else if (event.type === "content_block_delta") {

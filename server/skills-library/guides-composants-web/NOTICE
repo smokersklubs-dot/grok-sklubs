@@ -1,0 +1,7 @@
+guides-composants-web — adapted from modern-web-guidance (© 2026 Google LLC, CC-BY-4.0 (guides), Apache-2.0 (code))
+Sources (each pinned to one commit):
+- modern-web-guidance — © 2026 Google LLC — CC-BY-4.0 (guides), Apache-2.0 (code) — https://github.com/GoogleChrome/modern-web-guidance-src/tree/634d0f83bb41092832797411d148350196b8258d/guides
+Licence: CC-BY-4.0 and Apache-2.0 — the upstream licence texts are in LICENSE.txt, unchanged.
+
+Modified for Sklubot (2026-11-22): about twenty guides (dialog, popover menus, tooltip, toast, drawer, accordion, tabs, carousel, tables, copy button, forms, validation, switch, combobox, dark mode and its toggle, image priority, fonts) condensed into short rules for Sklubot pages; a browser-support check and fallbacks added; examples shortened; translated into French.
+Only text is included; no script, picture or other file of the original folders is bundled. Names of other products are not used as titles.

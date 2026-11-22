@@ -2,6 +2,7 @@ import { AnthropicProvider } from "./anthropic.js";
 import { DemoProvider } from "./demo.js";
 import { OpenAiCompatProvider } from "./openai-compat.js";
 import type { LlmProvider } from "./types.js";
+import { withTimeouts } from "./timeouts.js";
 
 export * from "./types.js";
 
@@ -19,11 +20,11 @@ const providers: LlmProvider[] = [
     models: list(process.env.OPENAI_MODELS, ["gpt-5"]), sendsEffort: false,
   }),
   new DemoProvider(),
-];
+].map((p) => withTimeouts(p)); // every model call is cut when the provider goes silent (timeouts.ts)
 
 /** Adds a provider at the front of the list (used by tests and by embedders with their own model). */
 export function registerProvider(p: LlmProvider) {
-  providers.unshift(p);
+  providers.unshift(withTimeouts(p));
 }
 
 export function listProviders(): LlmProvider[] {
@@ -55,7 +56,11 @@ export interface ProviderGate { allowed(userId: string, p: LlmProvider): boolean
 let gate: ProviderGate | null = null;
 export const setProviderGate = (g: ProviderGate | null) => { gate = g; };
 const permitted = (userId: string | null | undefined, p: LlmProvider) => !gate || !userId || gate.allowed(userId, p);
-const handOut = (userId: string | null | undefined, r: { provider: LlmProvider; model: string }) => (gate && userId ? { provider: gate.wrap(userId, r.provider), model: r.model } : r);
+/** Every provider handed out has its calls guarded against silence (timeouts.ts: the same object, guarded in place). */
+const handOut = (userId: string | null | undefined, r: { provider: LlmProvider; model: string }) => {
+  withTimeouts(r.provider);
+  return gate && userId ? { provider: gate.wrap(userId, r.provider), model: r.model } : r;
+};
 
 /** Model references are "provider:model". A bare model name resolves to whichever provider lists it. */
 export function resolveModel(ref: string | null | undefined, userId?: string | null): { provider: LlmProvider; model: string } {

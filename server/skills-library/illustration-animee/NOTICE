@@ -1,0 +1,7 @@
+illustration-animee — adapted from stick-scene (© 2026 Kamran Ahmed, MIT)
+Sources (each pinned to one commit):
+- stick-scene — © 2026 Kamran Ahmed — MIT — https://github.com/nilbuild/stick-scene/tree/ca84311177a020c2dff7dfd9cb2e7b786288c1ab/SKILL.md
+Licence: MIT — the upstream licence texts are in LICENSE.txt, unchanged.
+
+Modified for Sklubot (2026-11-22): the runtime is fetched on demand on the bot's computer at one pinned commit instead of being bundled; scenes published with page_publish; the frame-by-frame check done in the bot's browser; Playwright scripts and the author's personal style name removed; translated into French.
+Only text is included; no script, picture or other file of the original folders is bundled. Names of other products are not used as titles.

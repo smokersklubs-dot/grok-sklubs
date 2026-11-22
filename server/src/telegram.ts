@@ -7,6 +7,8 @@ import { q } from "./db.js";
 import { tr } from "./i18n.js";
 import type { ReactionEmoji, TelegramStatus } from "./shared.js";
 import { REACTIONS } from "./shared.js";
+import { approvalKeyboard, downloadFile, incomingFile, parseApprovalCallback, sendFile, sendMethodFor, splitTelegram, tgText, TooLargeError, type TgMessageFiles } from "./telegramplus.js";
+import { readLibraryFile, storeBytes } from "./computer.js";
 import { approvals, audit, bots, clip, feedback, memories, now, randomToken, rows, tasks, users, type BotRecord } from "./store.js";
 
 /**
@@ -21,8 +23,13 @@ import { approvals, audit, bots, clip, feedback, memories, now, randomToken, row
  * WhatsApp is not implemented: its official Cloud API needs a Meta business account and a paid, template-bound setup,
  * and unofficial QR clients break WhatsApp's terms (the number can be banned) — see docs/COUVERTURE.md.
  *
- * Bot API methods used (https://core.telegram.org/bots/api): getMe, getUpdates (allowed_updates "message" and
- * "message_reaction"), sendMessage, setMessageReaction. Telegram documents message_reaction updates as sent to bots
+ * nod item 5 (telegramplus.ts, partly adapted from n8n-io/nod, Apache-2.0): ✅/❌ buttons under an approval question,
+ * photos / voice notes / files received into the bot's library, files the bot attaches sent back, long replies split at
+ * paragraphs, "typing…" while it works.
+ *
+ * Bot API methods used (https://core.telegram.org/bots/api): getMe, getUpdates (allowed_updates "message",
+ * "message_reaction" and "callback_query"), sendMessage, setMessageReaction, answerCallbackQuery, editMessageReplyMarkup,
+ * getFile, sendPhoto, sendVoice, sendAudio, sendDocument, sendChatAction. Telegram documents message_reaction updates as sent to bots
  * that are administrators of a chat; in a private chat with the bot they are delivered to the bot as well.
  */
 async function call<T>(token: string, method: string, body?: Record<string, unknown>, signal?: AbortSignal): Promise<T> {
@@ -53,9 +60,12 @@ export async function send(bot: BotRecord, text: string, meaning?: Meaning): Pro
   const token = tokenOf(bot);
   if (!token || !bot.telegramChatId) return [];
   const ids: number[] = [];
-  // Telegram refuses messages over 4096 characters.
-  for (let i = 0; i < text.length; i += 4000) {
-    const m = await call<{ message_id: number }>(token, "sendMessage", { chat_id: bot.telegramChatId, text: text.slice(i, i + 4000) }).catch((err) => { console.error("[telegram send]", err.message); return null; });
+  // Telegram refuses messages over 4096 characters: split at paragraphs / lines, code blocks kept readable (telegramplus.ts).
+  const parts = splitTelegram(text);
+  for (const [i, part] of parts.entries()) {
+    // nod item 5: an approval question carries ✅ / ❌ buttons (on its last part), in the user's language.
+    const markup = meaning?.kind === "approval" && i === parts.length - 1 ? { reply_markup: approvalKeyboard(meaning.approvalId, users.localeOf(bot.userId)) } : {};
+    const m = await call<{ message_id: number }>(token, "sendMessage", { chat_id: bot.telegramChatId, text: part, ...markup }).catch((err) => { console.error("[telegram send]", err.message); return null; });
     if (m?.message_id) { ids.push(m.message_id); if (meaning) remember(bot.id, m.message_id, meaning); }
   }
   return ids;
@@ -68,7 +78,8 @@ const polls = new Map<string, AbortController>();
 
 interface Update {
   update_id: number;
-  message?: { message_id: number; text?: string; chat: { id: number; type: string }; reply_to_message?: { message_id: number } };
+  message?: { message_id: number; text?: string; chat: { id: number; type: string }; reply_to_message?: { message_id: number } } & TgMessageFiles;
+  callback_query?: { id: string; data?: string; from: { id: number }; message?: { message_id: number; chat: { id: number; type: string } } };
   message_reaction?: { chat: { id: number; type: string }; message_id: number; new_reaction?: { type: string; emoji?: string }[]; old_reaction?: { type: string; emoji?: string }[] };
 }
 
@@ -82,10 +93,12 @@ function startPolling(botId: string) {
       const token = bot ? tokenOf(bot) : null;
       if (!bot || !token) break;
       try {
-        const updates = await call<Update[]>(token, "getUpdates", { offset: bot.telegramOffset, timeout: 25, allowed_updates: ["message", "message_reaction"] }, stop.signal);
+        const updates = await call<Update[]>(token, "getUpdates", { offset: bot.telegramOffset, timeout: 25, allowed_updates: ["message", "message_reaction", "callback_query"] }, stop.signal);
         for (const u of updates) {
           bots.setTelegramOffset(botId, u.update_id + 1);
           if (u.message?.text && u.message.chat.type === "private") await receive(botId, String(u.message.chat.id), u.message.text.trim(), token, u.message.message_id);
+          else if (u.message && u.message.chat.type === "private" && incomingFile(u.message)) await receiveFile(botId, String(u.message.chat.id), u.message, token);
+          else if (u.callback_query) await pressed(botId, u.callback_query, token);
           else if (u.message_reaction && u.message_reaction.chat.type === "private") await reacted(botId, String(u.message_reaction.chat.id), u.message_reaction, token);
         }
       } catch {
@@ -132,6 +145,86 @@ async function receive(botId: string, chatId: string, text: string, token: strin
   // "Pause": the message is kept and waits in the bot's queue; the sender hears it now, not when it is resumed.
   if (isPaused(bot)) await reply(tr(users.localeOf(bot.userId), "⏸ {bot} is paused: your message is kept and will be handled when it is resumed.", { bot: bot.name }));
   submitUserMessage(bot, screened.text, false, [], "telegram");
+  keepTyping(bot.id, token, chatId);
+}
+
+/**
+ * nod item 5: a photo, a voice note or a file sent on Telegram reaches the bot like a file attached in the app (stored in
+ * its library, caption as the message). Over 20 MB Telegram does not let bots download it: said, nothing stored.
+ */
+async function receiveFile(botId: string, chatId: string, m: NonNullable<Update["message"]>, token: string) {
+  const bot = bots.byId(botId);
+  if (!bot) return;
+  const loc = users.localeOf(bot.userId);
+  const reply = (t: string) => call(token, "sendMessage", { chat_id: chatId, text: t }).catch(() => {});
+  if (!bot.telegramChatId || chatId !== bot.telegramChatId) { await reply("🔒"); return; }
+  const f = incomingFile(m)!;
+  let bytes: Buffer;
+  try { bytes = await downloadFile(token, f); } catch (err) {
+    await reply(tgText(loc, err instanceof TooLargeError ? "This file is over 20 MB: Telegram does not let bots download it. Send it from the app instead." : "I could not get this file from Telegram. Try again, or send it from the app."));
+    return;
+  }
+  const file = storeBytes(bot.id, "uploads", f.name, bytes);
+  const attachment = { ...file, mime: f.mime };
+  const caption = screenSecrets(String(m.caption ?? "").trim(), loc);
+  const text = caption.text || tgText(loc, f.voice ? "(voice message: {name})" : "(file: {name})", { name: file.name });
+  rows.append(bot, { kind: "message", role: "user", text, attachments: [attachment] });
+  if (caption.secrets.length) holdAndOffer(bot, bot.userId, caption.secrets);
+  audit(bot.userId, "channel", `${bot.name}: Telegram ${f.voice ? "voice message" : "file"} received (${file.name})`, bot.id);
+  submitUserMessage(bot, text, false, [attachment], "telegram");
+  keepTyping(bot.id, token, chatId);
+}
+
+/** "typing…" in the Telegram chat while the bot works on a message from it (shown 5 s per call), at most 10 minutes. */
+function keepTyping(botId: string, token: string, chatId: string) {
+  const started = Date.now();
+  const tick = () => {
+    // Stops once the bot is idle again (after a short grace for the turn to start), or after 10 minutes.
+    if (Date.now() - started > 10 * 60_000 || (Date.now() - started > 8000 && !getLive(botId).running)) return;
+    void call(token, "sendChatAction", { chat_id: chatId, action: "typing" }).catch(() => {});
+    setTimeout(tick, 4500).unref();
+  };
+  tick();
+}
+
+/** nod item 5: ✅ / ❌ pressed under an approval question. Same rules as a reaction: never a payment or a local file. */
+async function pressed(botId: string, cb: NonNullable<Update["callback_query"]>, token: string) {
+  const bot = bots.byId(botId);
+  const chatId = cb.message ? String(cb.message.chat.id) : "";
+  const answer = (text?: string) => call(token, "answerCallbackQuery", { callback_query_id: cb.id, ...(text ? { text } : {}) }).catch(() => {});
+  if (!bot || !bot.telegramChatId || chatId !== bot.telegramChatId || String(cb.from.id) !== bot.telegramChatId) { await answer("🔒"); return; }
+  const loc = users.localeOf(bot.userId);
+  const parsed = parseApprovalCallback(cb.data);
+  const meaning = cb.message ? meaningOf(bot.id, cb.message.message_id) : null;
+  if (!parsed || meaning?.kind !== "approval" || meaning.approvalId !== parsed.approvalId) { await answer(); return; }
+  const a = approvals.byId(parsed.approvalId);
+  const clear = () => call(token, "editMessageReplyMarkup", { chat_id: chatId, message_id: cb.message!.message_id, reply_markup: { inline_keyboard: [] } }).catch(() => {});
+  if (!a || a.status !== "pending" || a.botId !== bot.id) { await answer(tgText(loc, "This request was already answered.")); await clear(); return; }
+  if (privateApproval(a.tool)) { await answer(tgText(loc, "🔒 This one must be answered in the app.")); return; }
+  decideApproval(bot.userId, a.id, parsed.allow ? "allow" : "deny");
+  audit(bot.userId, "channel", `${bot.name}: approval answered from Telegram (${parsed.allow ? "button yes" : "button no"})`, bot.id);
+  await answer(tgText(loc, parsed.allow ? "✅ Allowed" : "❌ Refused"));
+  await clear();
+}
+
+/** nod item 5: files the bot attached to its reply go to Telegram too (a photo, a voice note, a document; 50 MB at most). */
+const sentFiles = new Set<string>();
+async function forwardFiles(bot: BotRecord, target: BotRecord) {
+  const token = tokenOf(target);
+  if (!token || !target.telegramChatId) return;
+  const recent = rows.list(bot.id, bot.generation, 20);
+  const lastUser = recent.map((r) => r.body.kind === "message" && r.body.role === "user").lastIndexOf(true);
+  for (const r of recent.slice(lastUser + 1)) {
+    if (r.body.kind !== "message" || r.body.role !== "assistant" || !r.body.attachments?.length) continue;
+    for (const a of r.body.attachments) {
+      const key = `${bot.id}:${r.generation}:${r.seq}:${a.path}`;
+      if (sentFiles.has(key)) continue;
+      sentFiles.add(key);
+      if (sentFiles.size > 2000) sentFiles.delete(sentFiles.values().next().value!);
+      if (!sendMethodFor(a)) { void send(target, tgText(users.localeOf(bot.userId), "“{name}” is over 50 MB: Telegram refuses it. It is in the app.", { name: a.name })); continue; }
+      try { await sendFile(token, target.telegramChatId, a, readLibraryFile(bot.id, a.path)); } catch (err) { console.error("[telegram file]", (err as Error).message); }
+    }
+  }
 }
 
 /** A channel command, answered by the server from its own records (no model call). */
@@ -244,7 +337,7 @@ export const telegram = {
         return;
       }
       const at = own?.telegramChatId ? lastReplyRow(own) : null;
-      void send(target, `${prefix}${e.text}`, at ? { kind: "reply", ...at } : undefined);
+      void send(target, `${prefix}${e.text}`, at ? { kind: "reply", ...at } : undefined).then(() => (own ? forwardFiles(own, target) : undefined));
     });
   },
   stopAll() { for (const id of [...polls.keys()]) stopPolling(id); },

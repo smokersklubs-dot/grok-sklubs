@@ -1,5 +1,6 @@
 import type { ToolUseBlock } from "../llm/index.js";
-import { browserAvailable, lastKnownUrl, screen, type ClickTarget } from "../computer.js";
+import { browserAvailable, computerKind, lastKnownUrl, screen, type ClickTarget } from "../computer.js";
+import { linuxScreen } from "../linux.js";
 import { findQuote, normalize, QUOTE_ARG, userWordsFor, type ActionKind } from "./grounding.js";
 import type { Turn } from "./loop.js";
 import { resolveRef } from "./elements.js";
@@ -15,11 +16,13 @@ import { resolveRef } from "./elements.js";
  *  - element_click (wave 8): the same, for the element a reference of the bot's latest snapshot names.
  *  - card_fill (spec 07 A12): the host of the page in front, so a payment's approval is bound to amount, merchant,
  *    card AND that page; a different page at run time fills nothing.
+ *  - browser_dialog: the JavaScript dialog the active tab shows (its kind, its words, the site), so an "OK" is judged and
+ *    approved for that very dialog (tools-browser.ts); another dialog at run time is not answered.
  *
  * The bound values live in the call's arguments (`seen_target`, `seen_host`), so they are part of the action's hash
  * (executions.ts) and of its single-use approval. Whatever the model put in those fields is replaced.
  */
-export const BOUND_KEYS = ["seen_target", "seen_host", "seen_quote"] as const;
+export const BOUND_KEYS = ["seen_target", "seen_host", "seen_quote", "seen_dialog"] as const;
 
 /** Replaceable in tests: how the control under a point, and the page in front, are read. */
 export const probe = {
@@ -30,6 +33,12 @@ export const probe = {
     if ("error" in found) return null;
     const a = await screen.elementInfo(botId, { ...found.req, action: "info" });
     return a?.info ? { ...a.info, url: a.info.url || a.url || "" } : null;
+  },
+  /** The dialog the active tab shows (Linux computers; null: none, or the computer is off). Never wakes it. */
+  dialog: async (botId: string): Promise<{ type: string; message: string; host: string } | null> => {
+    if (computerKind() !== "linux") return null;
+    const a = await linuxScreen.dialogInfo(botId);
+    return a?.dialog ? { type: String(a.dialog.type ?? ""), message: String(a.dialog.message ?? "").slice(0, 500), host: hostOf(a.dialog.url || a.url || "") } : null;
   },
   pageUrl: async (botId: string, userId: string): Promise<string> => {
     if (!browserAvailable()) return "";
@@ -52,9 +61,10 @@ export async function bindCall(turn: Turn, call: ToolUseBlock): Promise<void> {
     input.seen_quote = quote && findQuote(quote, userWordsFor(turn.bot, turn.thread)) ? quote : "";
     return;
   }
-  if (call.name !== "screen_click" && call.name !== "element_click" && call.name !== "card_fill") return;
+  if (call.name !== "screen_click" && call.name !== "element_click" && call.name !== "card_fill" && call.name !== "browser_dialog") return;
   for (const k of BOUND_KEYS) delete input[k];
   try {
+    if (call.name === "browser_dialog") { input.seen_dialog = await probe.dialog(turn.bot.id); return; }
     if (call.name === "screen_click") {
       const t = await probe.target(turn.bot.id, Number(input.x), Number(input.y));
       input.seen_target = t ? seenOf(t) : null;

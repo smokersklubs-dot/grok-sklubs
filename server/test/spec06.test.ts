@@ -218,7 +218,9 @@ const pendingCard = async (botId: string) => until(async () => {
   return r?.body.kind === "card" && r.body.card.type === "approval" ? { seq: r.seq, approvalId: r.body.card.approvalId } : null;
 }, "a pending approval card");
 
-test("B-5 / U-002: only a new user message expires an engine approval — not a routine, a bot's message or a system notice", async () => {
+// Since the core-reliability work (agent/approval-wait.ts): a new message from the user no longer makes an engine
+// approval lapse either. Whatever comes meanwhile waits; the card is answered with its buttons.
+test("B-5 / U-002: nothing that arrives meanwhile expires an engine approval — not a routine, a bot's message, a system notice, nor the user's own message", async () => {
   pendingResult = null;
   await call("POST", `/bots/${engineBot.id}/messages`, { text: "go approve" });
   const card = await pendingCard(engineBot.id);
@@ -231,17 +233,24 @@ test("B-5 / U-002: only a new user message expires an engine approval — not a 
   enqueue(engineBot.id, { kind: "system", text: "a notice" });
   await sleep(400);
   assert.equal(approvals.byId(card.approvalId)!.status, "pending");
-  // The user writes: the approval lapses at once, the call returns, the row says "skipped".
+  // The user writes: the approval still waits (typed words are not an answer), and the message is kept.
   await call("POST", `/bots/${engineBot.id}/messages`, { text: "actually, never mind" });
+  await sleep(300);
+  assert.equal(approvals.byId(card.approvalId)!.status, "pending");
+  let returned = false;
+  void (pendingResult as Promise<unknown> | null)?.then(() => { returned = true; });
+  await sleep(60);
+  assert.equal(returned, false, "the tool's call is still waiting for the card");
+  // The user refuses with the card: the call returns, the row says so.
+  assert.equal((await call("POST", `/approvals/${card.approvalId}`, { decision: "deny" })).status, 200);
   const r = await until(() => pendingResult, "the tool call");
   const out = await r;
   assert.equal(out.isError, true);
-  assert.match(out.text, /not approved: the user sent a new message, or did not answer in time/);
-  assert.equal(approvals.byId(card.approvalId)!.status, "expired");
+  assert.match(out.text, /The user did not allow this/);
+  assert.equal(approvals.byId(card.approvalId)!.status, "denied");
   list = await until(async () => { const l = await rowsOf(engineBot.id); return stepRow(l, "a1")?.status === "denied" && l; }, "row denied");
-  assert.equal(stepRow(list, "a1")!.summary, "skipped");
   const c = list.find((x) => x.seq === card.seq)!;
-  assert.equal(c.body.kind === "card" && c.body.card.type === "approval" && c.body.card.status, "expired");
+  assert.equal(c.body.kind === "card" && c.body.card.type === "approval" && c.body.card.status, "denied");
   // Let the queued turns (routine, teammate, notice, the user's message) run out.
   await until(async () => !(await call("GET", "/bots")).json.live[engineBot.id]?.running, "queue drained", 1600);
 });
