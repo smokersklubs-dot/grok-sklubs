@@ -1,0 +1,5 @@
+opendesign-outil — about github.com/nexu-io/open-design (© 2026 Open Design contributors, Apache License 2.0, commit 0725880)
+Source: https://github.com/nexu-io/open-design/tree/07258801b9e4ae80553816bb1606af7aa9a63dff — facts taken from README.md, QUICKSTART.md, PRIVACY.md, package.json and the LICENSE files of its folders
+Licence: Apache License, Version 2.0 (the full text is in LICENSE.txt in this folder, copied unchanged from the root of the source repository, which has no NOTICE file).
+
+Modified for Sklubot (2026-11-18): an original guide written for Sklubot (in English and French) that describes OpenDesign and how a bot may fetch it on demand; it quotes only command names and file paths from the repository and bundles no OpenDesign code, design system, image or font.

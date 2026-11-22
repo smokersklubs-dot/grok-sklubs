@@ -8,6 +8,7 @@ import { announcementsAdmin, announcementsState, sentinelOverview, todayReport, 
 import { githubPreviewFixture, libraryFixture, versionsFixture } from "./skillsFixtures";
 import { incidentsFixture } from "./incidentsFixtures";
 import { commandFixture, fakeScreen } from "./commandFixtures";
+import { teamMdExportFixture, teamMdPreviewFixture, teamMdReportFixture } from "./teamMdFixtures";
 
 export interface FakeApiState extends FixtureOptions { empty: boolean; fail: boolean }
 
@@ -36,6 +37,10 @@ export function installFakeApi(get: () => FakeApiState): void {
       // « Bibliothèque de compétences »: the GitHub lookup answers with a sample repository.
       if (path === "/skills-library/github/preview" && !s.fail) { await wait(150); return json(200, { preview: githubPreviewFixture() }); }
       if (/^\/skills-library\/[^/]+\/add$/.test(path) && !s.fail) { await wait(150); return json(200, { report: { added: [{ botId: "b", botName: "jiren" }], already: [] } }); }
+      // « Équipe Sklubot (.md) » (GalleryTeamMd.tsx): the review screen, the creation, the share window.
+      if (path === "/team-md/preview" && !s.fail) { await wait(150); return json(200, teamMdPreviewFixture(s)); }
+      if (path === "/team-md/commit" && !s.fail) { await wait(150); return json(200, { report: teamMdReportFixture() }); }
+      if (path === "/team-md/export" && !s.fail) { await wait(100); return json(200, teamMdExportFixture(s)); }
       await wait(600);
       return s.fail ? json(500, { error: s.lang === "fr" ? "Exemple d'erreur : le serveur n'a pas pu le faire." : "Sample error: the server could not do it." }) : json(200, {});
     }

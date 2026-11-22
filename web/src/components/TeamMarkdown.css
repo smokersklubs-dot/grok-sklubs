@@ -1,0 +1,35 @@
+/* « Équipe Sklubot (.md) » (TeamMarkdown.tsx): the review screen and the share window; the rest is GrokImport.css. */
+.tmd-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.tmd-h { margin: 6px 0 0; font-size: 14px; font-weight: 650; }
+.tmd-mode { padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface-2); }
+.tmd-mode .check-row { align-items: flex-start; }
+.tmd-mode .check-row > span { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.tmd-conflict { margin: 0; display: flex; gap: 6px; align-items: flex-start; color: var(--text-2); }
+.tmd-conflict .icon { flex: none; margin-top: 2px; }
+.tmd-model { align-items: flex-start; }
+.tmd-model.is-off { color: var(--text-2); }
+.tmd-model > span { min-width: 0; overflow-wrap: anywhere; }
+.tmd-item { cursor: pointer; }
+.tmd-item-name { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 13.5px; font-weight: 600; overflow-wrap: anywhere; }
+.tmd-item .warn-text { display: flex; gap: 5px; align-items: flex-start; }
+.tmd-item .warn-text .icon { flex: none; margin-top: 2px; }
+.tmd-block { border: 1px solid var(--border); border-radius: var(--r-lg); padding: 12px 14px; background: var(--surface); }
+.tmd-block legend { float: left; width: 100%; }
+.tmd-block legend + * { clear: both; }
+.tmd-members { display: flex; flex-wrap: wrap; gap: 4px; }
+.tmd-connectors { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.tmd-connectors li { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.tmd-connector-text { display: flex; flex-direction: column; min-width: 0; font-size: 13.5px; overflow-wrap: anywhere; }
+.tmd-playbook pre { margin-top: 8px; }
+.tmd-file { max-height: 360px; }
+.tmd-apps-toggle { gap: 10px; }
+
+@media (max-width: 520px) {
+  .tmd-block { padding: 10px; }
+}
+.tmd-playbook summary .icon, .tmd-block legend .icon { display: inline-block; vertical-align: -2px; }
+.tmd-warn-line { margin: 0; display: flex; gap: 5px; align-items: flex-start; }
+.tmd-warn-line .icon { flex: none; margin-top: 2px; }
+.tmd-chips { min-width: 0; max-width: 100%; }
+.tmd-chips .chip { max-width: 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; }
+.tmd-chips .chip .icon { display: inline-block; vertical-align: -2px; }

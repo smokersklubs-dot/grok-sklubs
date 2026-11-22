@@ -393,6 +393,7 @@ const FR: Record<string, string> = {
   "Handing over in a group": "Passe la main dans un groupe", "@{to}, I'm handing this over to you: {note}": "@{to}, je te passe la main : {note}",
   "Posting to a group": "Écrit dans un groupe", "Asking you": "Te pose une question", "Asking to connect an app": "Demande à connecter une application",
   "Nothing to report": "Rien à signaler", "Using {app}": "Utilise {app}", "an app": "une application",
+  "Writing the team file": "Écrit le fichier d'équipe",
   "Sending a file": "Envoie un fichier", "Creating an image": "Crée une image", "Checking saved logins": "Consulte le coffre", "Typing a saved login": "Saisit un identifiant enregistré",
   "not allowed": "non autorisé", "skipped": "ignoré", "stopped": "arrêté",
   // Built-in apps
@@ -552,6 +553,8 @@ const FR: Record<string, string> = {
   "That server could not be reached.": "Ce serveur ne répond pas.",
   "That template does not exist.": "Ce modèle n'existe pas.",
   "This preview has expired. Open the template or the file again.": "Cet aperçu a expiré. Rouvre le modèle ou le fichier.",
+  // « Équipe Sklubot (.md) » (teammdimport.ts).
+  "Pasted text": "Texte collé", "Created from the team file “{name}”.": "Créé à partir du fichier d'équipe « {name} ».", "Updated from the team file “{name}”.": "Mis à jour à partir du fichier d'équipe « {name} ».",
   "Created from the template “{name}”.": "Créé à partir du modèle « {name} ».", "Created from a team file ({name}).": "Créé à partir d'un fichier d'équipe ({name}).",
   "It starts careful: it asks before acting.": "Il démarre en mode prudent : il demande avant d'agir.",
   // « Bot recruteur » (agent/recruit.ts)

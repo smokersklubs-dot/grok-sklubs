@@ -311,7 +311,7 @@ export function parseTeamFile(raw: string, opts: { locale?: Locale; timezone?: s
 }
 
 /** "shape=pebble color=teal type=mascot eyes=round": known keys and values only; anything else is reported. */
-function parseLook(raw: string, unknown: (k: string) => void): TeamFileLook {
+export function parseLook(raw: string, unknown: (k: string) => void): TeamFileLook {
   const c: Record<string, unknown> = {};
   let shape: AvatarShape | null = null, color: AvatarColor | null = null;
   for (const tok of raw.split(/[\s,;]+/).filter(Boolean)) {

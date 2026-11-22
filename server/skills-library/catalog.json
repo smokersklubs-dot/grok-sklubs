@@ -34,6 +34,21 @@
       "summary": { "fr": "Créer une affiche ou un visuel artistique en PNG ou PDF sur l'ordinateur du bot, à partir d'une « philosophie » de design. Texte en anglais.", "en": "Create a poster or an art piece as PNG or PDF on the bot's computer, from a design philosophy." } },
     { "id": "theme-factory", "origin": "anthropic", "licence": "Apache-2.0", "source": "https://github.com/anthropics/skills/tree/e4bb5d960d87126ff3b3a8af1a104b7db67560ba/skills/theme-factory",
       "title": { "fr": "Thèmes de couleurs", "en": "Theme factory" },
-      "summary": { "fr": "Dix thèmes prêts (couleurs et polices) à appliquer à une page, un document ou des diapos, ou un thème sur mesure. Texte en anglais.", "en": "Ten ready themes (colours and fonts) to apply to a page, a document or slides, or a custom one." } }
+      "summary": { "fr": "Dix thèmes prêts (couleurs et polices) à appliquer à une page, un document ou des diapos, ou un thème sur mesure. Texte en anglais.", "en": "Ten ready themes (colours and fonts) to apply to a page, a document or slides, or a custom one." } },
+    { "id": "presentations", "origin": "opendesign", "licence": "Apache-2.0", "source": "https://github.com/nexu-io/open-design/tree/07258801b9e4ae80553816bb1606af7aa9a63dff/design-templates/simple-deck",
+      "title": { "fr": "Présentations (diapositives)", "en": "Slide decks" },
+      "summary": { "fr": "Une présentation en page : diapositives numérotées, flèches, clavier, lien « #6 » vers la diapo 6, une diapo par page en PDF, à partir d'un cadre prêt.", "en": "A deck as a page: numbered slides, arrows, keyboard, a \"#6\" link to slide 6, one slide per page in PDF, from a ready frame." } },
+    { "id": "metier-du-design", "origin": "opendesign", "licence": "Apache-2.0", "source": "https://github.com/nexu-io/open-design/tree/07258801b9e4ae80553816bb1606af7aa9a63dff/craft",
+      "title": { "fr": "Règles de métier du design", "en": "Design craft rules" },
+      "summary": { "fr": "Typographie, couleurs, signes du design « fait par une IA », états des blocs interactifs, accessibilité, mouvement et lois de l'UX, avec une liste de contrôle.", "en": "Typography, colour, the signs of \"AI-made\" design, states of interactive blocks, accessibility, motion and laws of UX, with a checklist." } },
+    { "id": "styles-de-base", "origin": "opendesign", "licence": "Apache-2.0", "source": "https://github.com/nexu-io/open-design/tree/07258801b9e4ae80553816bb1606af7aa9a63dff/design-systems/default",
+      "title": { "fr": "Styles de base", "en": "Starter design systems" },
+      "summary": { "fr": "Deux styles prêts et sans marque (Neutre moderne, Éditorial chaleureux), en clair et en sombre, et la fiche de style d'un projet.", "en": "Two ready, brand-free styles (Neutral Modern, Warm Editorial), light and dark, and a project's design system card." } },
+    { "id": "modeles-de-pages", "origin": "opendesign", "licence": "Apache-2.0", "source": "https://github.com/nexu-io/open-design/tree/07258801b9e4ae80553816bb1606af7aa9a63dff/design-templates",
+      "title": { "fr": "Modèles de pages", "en": "Page recipes" },
+      "summary": { "fr": "Tableau de bord, rapport, cahier des charges, compte rendu, OKR, documentation, tarifs, page d'accueil, facture, page tenue à jour : la structure de chacun.", "en": "Dashboard, report, product spec, minutes, OKRs, docs, pricing, landing page, invoice, keep-updated page: the structure of each." } },
+    { "id": "opendesign-outil", "origin": "opendesign", "licence": "Apache-2.0", "source": "https://github.com/nexu-io/open-design/tree/07258801b9e4ae80553816bb1606af7aa9a63dff",
+      "title": { "fr": "OpenDesign (outil complet)", "en": "OpenDesign (full tool)" },
+      "summary": { "fr": "Récupérer à la demande l'outil libre OpenDesign sur l'ordinateur du bot (copie figée de ses textes, ou l'application), avec ses licences et sa confidentialité.", "en": "Fetch the open-source OpenDesign tool on demand on the bot's computer (a pinned copy of its texts, or the app), with its licences and privacy." } }
   ]
 }

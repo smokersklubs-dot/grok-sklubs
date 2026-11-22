@@ -23,10 +23,22 @@ Chaque carte montre le nom de la compétence, à quoi elle sert, d'où elle vien
 | Design soigné (pages web) | adaptée de `anthropics/skills` (frontend-design) | Apache-2.0 | anglais |
 | Affiches et visuels (PNG, PDF) | adaptée de `anthropics/skills` (canvas-design) | Apache-2.0 | anglais |
 | Thèmes de couleurs | adaptée de `anthropics/skills` (theme-factory) | Apache-2.0 | anglais |
+| Présentations (diapositives) | adaptée d'OpenDesign (cadre de présentation, simple-deck) | Apache-2.0 | français + anglais |
+| Règles de métier du design | adaptée d'OpenDesign (`craft/`) | Apache-2.0 (+ avis MIT de refero_skill) | français + anglais |
+| Styles de base | adaptée d'OpenDesign (styles « Neutral Modern » et « Warm Editorial ») | Apache-2.0 | français + anglais |
+| Modèles de pages | adaptée d'OpenDesign (13 modèles de `design-templates/`) | Apache-2.0 | français + anglais |
+| OpenDesign (outil complet) | guide écrit pour Sklubot sur OpenDesign | Apache-2.0 | français + anglais |
 
-Les trois compétences de design en anglais viennent du dépôt public github.com/anthropics/skills, dont le dossier de chaque compétence contient la licence Apache 2.0. Elles sont rangées dans `server/skills-library/<nom>/` avec leur `LICENSE.txt` d'origine (inchangé), un fichier `NOTICE` (« © Anthropic, PBC — Apache License 2.0, from github.com/anthropics/skills ») et la liste des modifications faites pour Sklubot, comme la licence l'exige. Aucun script, police, image ou PDF de ces dossiers n'est inclus : seulement le texte.
+Les trois compétences adaptées d'Anthropic viennent du dépôt public github.com/anthropics/skills, dont le dossier de chaque compétence contient la licence Apache 2.0. Elles sont rangées dans `server/skills-library/<nom>/` avec leur `LICENSE.txt` d'origine (inchangé), un fichier `NOTICE` (« © Anthropic, PBC — Apache License 2.0, from github.com/anthropics/skills ») et la liste des modifications faites pour Sklubot, comme la licence l'exige. Aucun script, police, image ou PDF de ces dossiers n'est inclus : seulement le texte.
 
-Pas incluses, et pourquoi :
+Les cinq compétences marquées « OpenDesign » viennent du dépôt public github.com/nexu-io/open-design (licence Apache 2.0, « Open Design contributors »), figé au commit `0725880`. Même règle : `LICENSE.txt` du dépôt inchangé, un `NOTICE` qui dit quels fichiers ont servi et ce qui a été modifié, et la première ligne du texte qui le rappelle. « Règles de métier du design » reprend des parties qu'OpenDesign a lui-même adaptées de refero_skill (MIT) : l'avis MIT est ajouté à la fin de son `LICENSE.txt`. « Présentations » contient un cadre HTML prêt : diapositives numérotées, compteur, clavier, glissement au doigt, adresse `#6` pour ouvrir la diapositive 6, une diapositive par page à l'impression en PDF.
+
+Pas inclus d'OpenDesign, et pourquoi :
+- Les quelque 140 « systèmes de design » qui imitent la marque d'une vraie entreprise (Apple, Stripe, Linear, Notion, Airbnb…) : utiliser l'identité d'une autre marque dans les pages de tes clients est risqué. Seuls deux styles génériques sont repris.
+- Les styles générés « Design System Inspired by … » (provenance non documentée), les compétences qui ne sont que des renvois vers d'autres projets (dont certains ne sont pas sous licence libre), les dossiers sous licence MIT d'autres auteurs, et tous les fichiers non textuels (images, polices, vidéos, exemples).
+- L'application elle-même : elle demande Node 24, pnpm et un serveur qui tourne en continu, et ses versions officielles envoient des statistiques d'usage par défaut. Elle n'est donc pas installée sur l'ordinateur des bots ; la compétence « OpenDesign (outil complet) » explique comment un bot peut en récupérer à la demande une copie figée des textes (commit vérifié), ou l'application depuis les sources si tu le demandes.
+
+Pas incluses d'Anthropic, et pourquoi :
 - *brand-guidelines* : c'est la charte graphique d'Anthropic elle-même ; l'appliquer aux pages de tes clients serait utiliser la marque d'un autre. Remplacée par « Design de marque », qui applique **ta** marque.
 - *web-artifacts-builder* : repose sur des scripts propres à claude.ai ; « Pages soignées » couvre le même besoin avec les outils de Sklubot.
 - *algorithmic-art* : dépend d'un gabarit de 20 ko (avec la marque Anthropic) que la compétence ne peut pas emporter.

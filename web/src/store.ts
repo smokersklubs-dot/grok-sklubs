@@ -20,6 +20,7 @@ export type ModalState =
   | { kind: "duplicate"; botId: string }
   | { kind: "templates"; tab?: "gallery" | "file" | "url" }
   | { kind: "exportTemplate"; sectionId?: string; botIds?: string[] }
+  | { kind: "teamMdImport" } | { kind: "teamMdShare"; sectionId?: string; botIds?: string[] }
   | { kind: "connectors"; catalogId?: string; prefill?: { name: string; botId: string; seq: number } };
 export type BotSettingsTab = "general" | "skills" | "memories" | "routines" | "localTools" | "reach" | "telegram" | "email" | "sharing" | "api";
 export type AppSection = "shortcuts" | "general" | "today" | "surveillance" | "profile" | "models" | "notifications" | "computer" | "devices" | "permissions" | "rules" | "memory" | "skills" | "connectors" | "vault" | "keys" | "pages" | "usage" | "checkins" | "activity" | "team" | "workspaces" | "voice" | "email" | "account" | "subscription" | "admin";

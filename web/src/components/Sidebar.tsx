@@ -70,6 +70,7 @@ function BotMenu({ bot, open, onClose }: { bot: Bot; open: boolean; onClose: () 
           <MenuItem icon="folder" onClick={() => setMoving(true)}>{t("sidebar.moveTo")}…</MenuItem>
           {bot.kind === "agent" && <MenuItem icon="copy" onClick={() => { close(); openModal({ kind: "duplicate", botId: bot.id }); }}>{t("sidebar.duplicate")}…</MenuItem>}
           {bot.kind === "agent" && !bot.access && <MenuItem icon="download" onClick={() => { close(); openModal({ kind: "exportTemplate", botIds: [bot.id] }); }}>{t("tpl.export")}…</MenuItem>}
+          {bot.kind === "agent" && !bot.access && <MenuItem icon="file" onClick={() => { close(); openModal({ kind: "teamMdShare", botIds: [bot.id] }); }}>{t("tmd.menuShare")}…</MenuItem>}
           {bot.unread === 0 && <MenuItem icon="ring" onClick={() => { close(); void markUnread(bot.id); }}>{t("sidebar.markUnread")}</MenuItem>}
           {bot.kind === "agent" && (
             bot.pause?.self
@@ -204,6 +205,7 @@ function SectionActions({ section }: { section: BotSection }) {
           : <MenuItem icon="pause" onClick={() => { setOpen(false); void setPaused({ kind: "section", section }, true); }}>{t("pause.pauseSection")}</MenuItem>}
         <MenuItem icon="download" onClick={() => { setOpen(false); useStore.getState().openModal({ kind: "exportTemplate", sectionId: section.id }); }}>{t("tpl.export")}…</MenuItem>
         <MenuItem icon="edit" onClick={() => { setOpen(false); setInstructions(section.instructions ?? ""); setError(""); }}>{t("sections.instructions")}</MenuItem>
+        <MenuItem icon="file" onClick={() => { setOpen(false); useStore.getState().openModal({ kind: "teamMdShare", sectionId: section.id }); }}>{t("tmd.menuShare")}…</MenuItem>
         <MenuItem icon="edit" onClick={() => void rename()}>{t("sections.rename")}</MenuItem>
         <MenuItem icon="trash" danger onClick={() => void remove()}>{t("sections.delete")}</MenuItem>
       </Menu>
@@ -303,6 +305,7 @@ export function Sidebar() {
                     <MenuItem icon="folder" onClick={() => { setAddOpen(false); void addSection(); }}>{t("sections.newProject")}</MenuItem>
                     <MenuItem icon="star" onClick={() => { setAddOpen(false); openModal({ kind: "templates" }); }}>{t("tpl.open")}…</MenuItem>
                     <MenuItem icon="upload" onClick={() => { setAddOpen(false); openModal({ kind: "templates", tab: "file" }); }}>{t("tpl.importFile")}…</MenuItem>
+                    <MenuItem icon="users" onClick={() => { setAddOpen(false); openModal({ kind: "teamMdImport" }); }}>{t("tmd.menuImport")}…</MenuItem>
                   </Menu>
                 </span>
               </>

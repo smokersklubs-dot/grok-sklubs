@@ -42,6 +42,10 @@ const PAGES = [
   "section=pages",
   "section=skills&theme=dark&lang=en",
   "section=recruit&long=1",
+  "section=equipe&long=1",
+  "section=equipe&view=update&theme=dark&lang=en",
+  "section=equipe&view=share",
+  "section=equipe&view=choose",
 ];
 const SCROLLERS = "pre, .md-table, .card-detail, .segmented, .tabs, .gallery-bar, .cmd-states";
 

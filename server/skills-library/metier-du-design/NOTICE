@@ -1,0 +1,6 @@
+metier-du-design — © 2026 Open Design contributors — Apache License 2.0, from github.com/nexu-io/open-design (commit 0725880)
+Source: https://github.com/nexu-io/open-design/tree/07258801b9e4ae80553816bb1606af7aa9a63dff/craft — files typography.md, color.md, anti-ai-slop.md, state-coverage.md, accessibility-baseline.md, animation-discipline.md and laws-of-ux.md
+Licence: Apache License, Version 2.0 (the full text is in LICENSE.txt in this folder, copied unchanged from the root of the source repository, which has no NOTICE file). The typography, colour and anti-AI-slop parts were adapted by OpenDesign from refero_skill (https://github.com/referodesign/refero_skill), © Refero Design, MIT License; that notice is appended at the end of LICENSE.txt.
+
+Modified for Sklubot (2026-11-18): the seven rulebooks were condensed into one skill (about a fifth of their length), rewritten without OpenDesign's linter, tokens and viewer, adapted to Sklubot pages and decks (light and dark, screenshots before "ready"), given a final checklist, and translated into French (SKILL.fr.md).
+Only text is included; no other file of the original folder is bundled.

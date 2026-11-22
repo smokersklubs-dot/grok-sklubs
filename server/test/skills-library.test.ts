@@ -93,7 +93,7 @@ gh.setGithubFetch(async (url) => {
 
 test("the bundled pack loads each skill with its licence and notice and marks adapted skills", () => {
   const entries = lib.libraryEntries();
-  assert.deepEqual(entries.map((e) => e.id).sort(), ["brouillon-email", "canvas-design", "cartes-de-suivi", "conversation-courte", "design-de-marque", "frontend-design", "methode-de-travail", "pages-soignees", "studio-animation", "theme-factory", "video-github"]);
+  assert.deepEqual(entries.map((e) => e.id).sort(), ["brouillon-email", "canvas-design", "cartes-de-suivi", "conversation-courte", "design-de-marque", "frontend-design", "methode-de-travail", "metier-du-design", "modeles-de-pages", "opendesign-outil", "pages-soignees", "presentations", "studio-animation", "styles-de-base", "theme-factory", "video-github"]);
   const dir = new URL("../skills-library/", import.meta.url);
   for (const e of entries) {
     const lic = readFileSync(new URL(`${e.id}/LICENSE.txt`, dir), "utf8");
@@ -111,6 +111,17 @@ test("the bundled pack loads each skill with its licence and notice and marks ad
       assert.match(notice, /Modified for Sklubot/);
       assert.match(e.source, /^https:\/\/github\.com\/thomasbek3\/hermes-bot-kit\/tree\/[0-9a-f]{40}\//);
       assert.ok(e.text.fr && e.text.en);
+    } else if (e.origin === "opendesign") {
+      assert.match(lic, /Apache License\s+Version 2\.0/);
+      assert.match(lic, /Copyright 2026 Open Design contributors/, "the repository's licence, unchanged");
+      assert.ok(e.notice.startsWith(`${e.id} — `), e.notice);
+      for (const part of ["© 2026 Open Design contributors", "Apache License 2.0", "github.com/nexu-io/open-design", "commit 0725880"]) assert.ok(e.notice.includes(part), `${e.id}: ${part}`);
+      assert.match(notice, /tree\/07258801b9e4ae80553816bb1606af7aa9a63dff/, "pinned to one commit");
+      assert.match(notice, /Modified for Sklubot \(2026-11-18\)/);
+      assert.equal(e.licence, "Apache-2.0");
+      assert.match(e.source, /^https:\/\/github\.com\/nexu-io\/open-design\/tree\/07258801b9e4ae80553816bb1606af7aa9a63dff(\/|$)/);
+      assert.ok(e.text.fr && e.text.en, `${e.id} has French and English`);
+      for (const t of Object.values(e.text)) assert.match(t!.body, /^> .*© 2026 Open Design contributors.*Apache License 2\.0.*commit 0725880.*Modified for Sklubot/);
     } else {
       assert.match(lic, /^MIT License/);
       assert.match(notice, /original Sklubot skill/);
@@ -123,6 +134,24 @@ test("the bundled pack loads each skill with its licence and notice and marks ad
   }
   // No executable, font, picture or PDF is bundled: only texts.
   for (const e of entries) for (const f of ["scripts", "canvas-fonts", "theme-showcase.pdf", "themes"]) assert.equal(existsSync(new URL(`${e.id}/${f}`, dir)), false);
+  // OpenDesign: the MIT notice of the work its craft rules came from travels with them; no brand look-alike is bundled.
+  assert.match(readFileSync(new URL("metier-du-design/LICENSE.txt", dir), "utf8"), /Copyright \(c\) Refero Design[\s\S]*Permission is hereby granted, free of charge/);
+  for (const e of entries.filter((x) => x.origin === "opendesign")) {
+    for (const t of Object.values(e.text)) {
+      // Real companies' design systems shipped by OpenDesign may only be named as what not to use.
+      for (const line of t!.body.split("\n").filter((l) => /\b(stripe|airbnb|spotify|tesla|linear-app|notion)\b/i.test(l))) assert.match(line, /never|jamais|imitate|imitent/i, `${e.id}: ${line}`);
+      assert.doesNotMatch(t!.body, /data-od-id|<artifact|DESIGN\.md injected|lorem ipsum dolor/i);
+    }
+    for (const f of ["tokens.css", "components.html", "example.html", "assets", "preview", "manifest.json"]) assert.equal(existsSync(new URL(`${e.id}/${f}`, dir)), false);
+  }
+  const deck = entries.find((e) => e.id === "presentations")!;
+  for (const t of [deck.text.en!, deck.text.fr!]) {
+    assert.match(t.body, /```html\n<!doctype html>[\s\S]*\.slide-no\{[\s\S]*@media print[\s\S]*location\.hash[\s\S]*<\/html>\n```/, "the deck frame: numbers, print, #N addresses");
+    assert.doesNotMatch(t.body, /localStorage\.(get|set)Item/, "pages cannot use storage");
+    assert.match(t.body, /page_publish/);
+  }
+  assert.match(entries.find((e) => e.id === "opendesign-outil")!.text.en!.body, /git rev-parse HEAD[^\n]*07258801b9e4ae80553816bb1606af7aa9a63dff/);
+
   // The working method (the owner's extra request) is there in both languages.
   const m = entries.find((e) => e.id === "methode-de-travail")!;
   assert.match(m.text.fr!.body, /Vérifier avant de dire « c'est fait »/);

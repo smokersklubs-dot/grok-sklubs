@@ -9,7 +9,7 @@ import { deleteCookie, getCookie } from "hono/cookie";
 import { streamSSE } from "hono/streaming";
 import { registerNoticeRoutes } from "./agent/noticeroutes.js"; import { registerRoomRoutingRoutes, roomReaction } from "./agent/roomroutes.js";
 import { registerFailureRoutes } from "./agent/failureroutes.js";
-import { registerRecruitRoutes } from "./agent/recruit.js";
+import { registerRecruitRoutes } from "./agent/recruit.js"; import { registerTeamMdRoutes } from "./teammdroutes.js";
 import { registerCommandRoutes } from "./command.js";
 import { continueAfterStepLimit, decideApproval, enqueue, inQueue, interrupt, noteHandBack, submitUserMessage, type ForcedSkill } from "./agent/loop.js";
 import { cleanProfile, fetchSkillMarkdown, saveImportedSkill, undoRevision } from "./agent/tools-team.js";
@@ -1308,6 +1308,7 @@ registerAnnouncementRoutes(api);
 registerNoticeRoutes(api); registerRoomRoutingRoutes(api); // « Qui répond » in group chats (agent/roomrouting.ts)
 registerFailureRoutes(api); // « Coordinateur d'échecs » (agent/failures.ts)
 registerRecruitRoutes(api); // « Bot recruteur »: « Créer » / « Non merci » on a proposed teammate
+registerTeamMdRoutes(api); // « Équipe Sklubot (.md) » (teammdroutes.ts): import with review, share
 registerCommandRoutes(api); // « Centre de commandement » (command.ts): GET /command, read-only
 registerSkillsLibraryRoutes(api); // « Bibliothèque de compétences » (skillsroutes.ts)
 registerOpenRouterRoutes(api); registerSubscriptionConnectRoutes(api); // OpenRouter, « Connecter mon compte ChatGPT / Claude »

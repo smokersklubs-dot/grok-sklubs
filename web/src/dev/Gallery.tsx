@@ -6,6 +6,7 @@
  *
  * Everything is in the address, so a state can be shared or screenshotted:
  *   section=all|basics|cards|notices|banners|empty|today|command|incidents|recruit|salons|surveillance|announcements|landing|download
+ *   (equipe: « Équipe Sklubot (.md) », its windows alone, one per page with view=review|update|choose|share — GalleryTeamMd.tsx)
  *   (chat: the real chat view on a long conversation, see GalleryChat.tsx;
  *   landing, download: the public landing page or /telecharger alone, as a signed-out visitor sees it; empty=1 = no
  *   templates, plans or files)
@@ -41,6 +42,7 @@ import { IncidentsSection } from "../components/Incidents";
 import { failureCardFixtures } from "./incidentsFixtures";
 import { recruitCardFixtures } from "./recruitFixtures";
 import { GalleryRooms } from "./GalleryRooms";
+import { GalleryTeamMd } from "./GalleryTeamMd";
 import { SkillsLibrarySection } from "../components/SkillsLibrary";
 import { PagePreview, setPagePreviewSource } from "../components/PagePreview";
 import { PageVersions } from "../components/PageVersions";
@@ -50,7 +52,7 @@ import samplePage from "./sample-page.html?url";
 setPagePreviewSource(() => samplePage);
 import "./gallery.css";
 
-const SECTIONS = ["all", "basics", "cards", "notices", "banners", "empty", "today", "command", "incidents", "recruit", "salons", "surveillance", "announcements", "skills", "pages", "landing", "download", "chat"] as const;
+const SECTIONS = ["all", "basics", "cards", "notices", "banners", "empty", "today", "command", "incidents", "recruit", "salons", "surveillance", "announcements", "skills", "pages", "landing", "download", "chat", "equipe"] as const;
 type Section = (typeof SECTIONS)[number];
 
 interface GalleryState extends FakeApiState {
@@ -131,7 +133,7 @@ function Gallery() {
   return (
     <div className={`gallery ${s.embed ? "is-embed" : ""}`} data-gallery="sklubot-dev-gallery">
       {!s.embed && <Toolbar s={s} set={set} />}
-      {s.section === "chat" ? <GalleryChat key={`${s.lang}`} o={{ lang: s.lang, long: s.long }} /> : s.section === "landing" ? <Landing key={`${s.lang}:${s.empty}`} onAuth={() => undefined} /> : s.section === "download" ? <DownloadPage key={`${s.lang}:${s.empty}`} /> : <Sections key={`${s.lang}:${s.long}:${s.empty}`} s={s} />}
+      {s.section === "chat" ? <GalleryChat key={`${s.lang}`} o={{ lang: s.lang, long: s.long }} /> : s.section === "equipe" ? <GalleryTeamMd key={`${s.lang}:${s.long}`} o={{ lang: s.lang, long: s.long }} /> : s.section === "landing" ? <Landing key={`${s.lang}:${s.empty}`} onAuth={() => undefined} /> : s.section === "download" ? <DownloadPage key={`${s.lang}:${s.empty}`} /> : <Sections key={`${s.lang}:${s.long}:${s.empty}`} s={s} />}
     </div>
   );
 }
