@@ -7,6 +7,7 @@
  *   &panel=thread                          with the thread panel open
  *   &nav=1                                 with the phone drawer open
  *   &running=1                             the bot still at work (thinking block, Stop button)
+ *   &running=tasks                         three tasks at once (lanes): the header's « 3 tâches en cours » chip
  *   &listen=playing|paused|loading|browser|error   « Écouter »: the last reply in the player, in that state
  *                                          (with « Lire les réponses à voix haute » on: the header's mute button)
  */
@@ -30,9 +31,13 @@ export function chatBot(o: FixtureOptions): Bot {
 export function GalleryChat({ o }: { o: FixtureOptions }) {
   const p = new URLSearchParams(location.search);
   const panel = p.get("panel");
-  const running = p.get("running") === "1";
+  const running = p.get("running") === "1" || p.get("running") === "asked" || p.get("running") === "tasks";
+  // running=asked: a request just sent, nothing done yet: the activity line shows its one-line summary (nod item 3).
+  const asked = p.get("running") === "asked";
   const listenAs = p.get("listen");
-  const rows = chatRows(o);
+  const base = chatRows(o);
+  const last = base[base.length - 1];
+  const rows = asked && last ? [...base, { ...last, seq: last.seq + 1, thread: undefined, body: { kind: "message", role: "user", text: o.long ? "Peux-tu comparer les trois devis de plomberie reçus cette semaine et me dire lequel est le plus intéressant pour la salle de bains ?\nMerci" : "Résume mes mails de la semaine" } } as typeof last] : base;
   const parent = rows.find((r) => r.body.kind === "message" && r.body.replies);
   useEffect(() => {
     const bot = listenAs ? { ...chatBot(o), voice: { name: "", rate: 1, lang: "auto", readAloud: true } } : chatBot(o);
@@ -42,7 +47,12 @@ export function GalleryChat({ o }: { o: FixtureOptions }) {
       const status = listenAs === "browser" ? "playing" : ((["playing", "paused", "loading", "error"].includes(listenAs) ? listenAs : "playing") as ListenStatus);
       if (last) useListen.setState({ key: listenKey(bot.id, last.seq), status, progress: status === "loading" ? 0 : 0.42, engine: listenAs === "browser" ? "browser" : "server", voice: listenAs === "browser" ? "" : "Camille", error: status === "error" ? (o.lang === "fr" ? "Le service de voix n'a pas répondu. Réessaie dans un instant." : "The voice service did not answer. Try again in a moment.") : null });
     }
-    const live: Live = running ? { running: true, activity: { kind: "thinking", since: NOW - 40_000 }, awaiting: null, startedAt: NOW - 40_000, queued: 0, steps: 2 } : { running: false, activity: null, awaiting: null, startedAt: null, queued: 0 };
+    const live: Live = running ? { running: true, activity: { kind: "thinking", since: NOW - 40_000 }, awaiting: null, startedAt: NOW - 40_000, queued: 0, steps: asked ? 0 : 2 } : { running: false, activity: null, awaiting: null, startedAt: null, queued: 0 };
+    if (p.get("running") === "tasks") live.tasks = [
+      { thread: 0, running: true, activity: live.activity, awaiting: null, startedAt: NOW - 40_000 },
+      ...(parent ? [{ thread: parent.seq, running: true, activity: { kind: "browsing" as const, since: NOW - 90_000 }, awaiting: null, startedAt: NOW - 90_000 }] : []),
+      { thread: 9999, running: true, activity: { kind: "waiting" as const, detail: o.lang === "fr" ? "Attend l'autre tâche" : "Waits for the other task", since: NOW - 5_000 }, awaiting: null, startedAt: NOW - 120_000 },
+    ];
     useStore.setState({
       bots: { [bot.id]: bot }, selectedId: bot.id, view: "chat", detailsOpen: false, boot: "ready",
       mobileNav: p.get("nav") === "1",

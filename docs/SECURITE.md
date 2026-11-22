@@ -70,6 +70,24 @@ ligne de la liste `docs/audits/A-FAIRE.md` et au fichier qui le fait.
 ## Navigateur des bots (L48)
 - L'administrateur voit dans Réglages → Autorisations → Sécurité si Chromium a **N versions de retard** (donc des
   correctifs de sécurité manquants) et comment le mettre à jour (`npm run computer:build`).
-- Vérifié : Chromium tourne avec `--no-sandbox` en root, protégé par le conteneur (capacités retirées,
-  no-new-privileges). Remettre son bac à sable propre demande de changer l'image (utilisateur dédié, profil seccomp) :
-  décision à prendre, non faite ici.
+- ✅ Fait (2026-11-22, décision du propriétaire) : **le bac à sable propre de Chromium est remis**. Le navigateur ne
+  tourne plus en root : il passe à l'utilisateur `browser` (créé dans l'image, `setpriv`, environnement vidé) ; le
+  terminal du bot reste root. Son profil et ses téléchargements restent dans le dossier du bot
+  (`/root/.config/sklubot-browser`, `/root/Downloads`) et lui sont remis avant chaque démarrage ; `/root` passe en 711
+  (on traverse, on ne liste pas).
+- Le bac à sable utilisé est celui des **espaces de noms utilisateur** (Chromium de Debian n'a pas d'aide setuid, et
+  `no-new-privileges` est gardé). Le profil seccomp par défaut de Docker les refuse (essayé : « No usable sandbox! ») :
+  l'ordinateur est donc créé avec `docker/desktop/seccomp-chromium.json` = le profil par défaut de Docker
+  (moby/profiles, Apache-2.0) **plus trois règles étroites** : `clone` avec espaces de noms utilisateur, PID et réseau
+  seulement (montage, cgroup, UTS, IPC toujours refusés), `unshare` d'un espace utilisateur seulement, `chroot` (le
+  noyau exige toujours la capacité dans l'espace de noms de l'appelant). **Aucune capacité ajoutée**, pas de
+  `--privileged`, pas de `SYS_ADMIN`. Le proxy Docker de Sklubot n'accepte que ce profil exact.
+- Vérifié dans un vrai conteneur : `chrome://sandbox` dit « You are adequately sandboxed » (couche 1 : Namespace,
+  seccomp-BPF : oui), aucun processus avec `--no-sandbox`, moteurs de rendu dans leur propre espace de noms
+  (`server/test/browser-sandbox.test.ts`).
+- Si le bac à sable ne peut pas démarrer (ordinateur fait sans le profil, hôte qui interdit les espaces de noms
+  utilisateur — par exemple certaines règles AppArmor), le navigateur s'ouvre quand même **sans bac à sable mais pas
+  en root**, et l'administrateur le voit dans Réglages → Autorisations → Sécurité (« ordinateurs où le navigateur a dû
+  démarrer sans lui »). Même chose pour une image pas encore reconstruite ou des ordinateurs encore sur l'ancienne image.
+- Reste à savoir : le navigateur propre d'Agent Reach (port 9333) et les scripts que le bot lance lui-même ne sont pas
+  concernés ; sous gVisor (`runsc`), le profil seccomp n'est pas celui de Docker (vérifier avec le test d'ordinateur).

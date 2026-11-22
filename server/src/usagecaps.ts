@@ -2,6 +2,7 @@ import { emit } from "./bus.js";
 import { isValidTimezone, localParts } from "./cron.js";
 import { q } from "./db.js";
 import type { CapMode, CapPeriod, CapSetBy, CapStateView, CapUnit, Card, Locale, UsageAmount, UsageCapsView, UsageCapView } from "./shared.js";
+import { LaneMap } from "./agent/lanemap.js";
 import { audit, bots, newId, now, rows, settings, users, type BotRecord } from "./store.js";
 
 /**
@@ -240,7 +241,7 @@ export function moneyLeft(bot: Pick<BotRecord, "id" | "userId" | "parentId">, at
 }
 
 // ── Who started the running turn (loop.ts tells; paid tools ask) ─────────────────────────────────────────────────
-const attendedTurns = new Map<string, boolean>();
+const attendedTurns = new LaneMap<boolean>(); // lanes (agent/lanes.ts): per running turn
 export const markTurn = (botId: string, attended: boolean) => { attendedTurns.set(botId, attended); };
 export const clearTurn = (botId: string) => { attendedTurns.delete(botId); };
 /** Whether the bot's running turn was started by a person (true when no turn is known: an action of the user's own). */

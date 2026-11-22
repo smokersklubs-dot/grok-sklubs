@@ -20,7 +20,7 @@
  */
 import { GalleryRoutines } from "./GalleryRoutines";
 import { CreateBotModal } from "../components/Modals";
-import { RelayGuardPanel } from "../components/RelayGuardPanel";
+import { RelayGuardPanel } from "../components/RelayGuardPanel"; import { TelegramVoiceText } from "../components/TelegramVoiceText";
 import { RelayEventRow } from "../components/RelayEventRow";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
@@ -31,6 +31,7 @@ import { CardView } from "../components/Cards";
 import { ConversationGrantsBlock } from "../components/ConversationGrants";
 import { buildItems, RowItems } from "../components/Transcript";
 import { PauseAllNotice, PauseBanner } from "../components/Pause";
+import { ModelHealthBannerView, ModelHealthLineView, type ModelHealth } from "../components/ModelHealth";
 import { TodayView } from "../components/TodayView";
 import { SurveillanceView } from "../components/SurveillanceView";
 import { AnnouncementsView } from "../components/AnnouncementsView";
@@ -198,7 +199,7 @@ function Sections({ s }: { s: GalleryState }) {
       {show("incidents") && <Section id="incidents" title="Incidents" hint="Coordinateur d'échecs : la section « Incidents » de l'onglet Activité (interrupteur « Vide » : aucun incident), puis les cartes d'échec."><div className="gallery-page is-auto"><IncidentsSection bot={fakeBot(o)} /><div className="gallery-cards">{failureCardFixtures(o).map((c) => <figure key={c.failureId} className="gallery-figure"><figcaption><code>{c.cls} · {c.status}</code></figcaption><CardView card={c} botId={GALLERY_BOT_ID} seq={1} /></figure>)}</div></div></Section>}
       {show("recruit") && <Section id="recruit" title="Bot recruteur" hint="La carte où le bot principal propose un nouveau spécialiste : en attente (« Modifier » édite sur place), limites (offre, quota du jour), créé, refusé."><div className="gallery-cards recruit-gallery">{recruitCardFixtures(o).map((x) => <figure key={x.label} className="gallery-figure"><figcaption><code>recruit · {x.label}</code></figcaption><CardView card={x.card} botId={GALLERY_BOT_ID} seq={1} /></figure>)}</div></Section>}
       {show("salons") && <GalleryRooms o={o} />}
-      {show("relais") && <Section id="relais" title="Relais : règles de sécurité" hint="Réglages → Ordinateurs → « Règles de sécurité » d'un ordinateur : terminaux (désactivés par défaut, avertissement), listes « garder à l'écart », applis toujours refusées, raccourcis protégés (« Vide » : aucune liste)."><div className="gallery-page is-auto"><RelayGuardPanel deviceId="dev_gallery" /><div className="transcript"><RelayEventRow seq={1} warn={false} text={"$ npm test — ~/projets/site · portable-lea (macOS) · exit 0\n> site@1.0.0 test\n> vitest run\n\n ✓ src/panier.test.ts (12 tests) 41ms\n Test Files  1 passed (1)\n      Tests  12 passed (12)\n API_KEY=[secret]"} /></div></div></Section>}
+      {show("relais") && <Section id="relais" title="Relais : règles de sécurité" hint="Réglages → Ordinateurs → « Règles de sécurité » d'un ordinateur : terminaux (désactivés par défaut, avertissement), listes « garder à l'écart », applis toujours refusées, raccourcis protégés (« Vide » : aucune liste)."><div className="gallery-page is-auto"><RelayGuardPanel deviceId="dev_gallery" /><div className="transcript"><RelayEventRow seq={1} warn={false} text={"$ npm test — ~/projets/site · portable-lea (macOS) · exit 0\n> site@1.0.0 test\n> vitest run\n\n ✓ src/panier.test.ts (12 tests) 41ms\n Test Files  1 passed (1)\n      Tests  12 passed (12)\n API_KEY=[secret]"} /><RelayEventRow seq={2} warn={false} botId="dev_gallery" cmd={{ ref: "gallery", running: true }} text={"$ npm run build -- --watch=false --reporter=verbose-with-a-long-name — ~/projets/site · portable-lea (macOS) · en cours\n> vite build"} /></div><div className="gallery-page is-auto"><TelegramVoiceText botId="dev_gallery" initial={{ enabled: false, provider: "whisper-cpp", cost: "local", maxSeconds: 120 }} /><TelegramVoiceText botId="dev_gallery2" initial={{ enabled: true, provider: "openai", cost: "paid", maxSeconds: 120 }} /></div></div></Section>}
       {show("memoire") && <Section id="memoire" title="Mémoire : modifier une note" hint="Réglages → Mémoire → « Modifier » : le texte se corrige sur place, l'historique montre chaque changement (« Vide » : aucun)."><div className="gallery-page is-auto"><ul className="list"><li className="list-row is-card"><div className="list-row-text"><MemoryEdit key={`${s.lang}:${s.long}:${s.empty}`} historyOpen memory={{ id: "mem_gallery", botId: GALLERY_BOT_ID, text: o.lang === "fr" ? "Préfère les réunions le matin" : "Prefers meetings in the morning", source: "learned", createdAt: NOW - 10 * 86400_000, status: "active", quote: "", category: null, confidence: "once", confirmedAt: null, lastUsedAt: null }} onSaved={() => undefined} onCancel={() => undefined} /></div></li></ul></div></Section>}
       {show("grants") && <Section id="grants" title="Autoriser pour cette conversation" hint="Réglages → Autorisations : ce qui a été autorisé pour une conversation (« Vide » : aucune ; « Échecs » : « Retirer » échoue). En dessous, la carte qui le propose, puis une fois accordé."><div className="gallery-page is-auto"><ConversationGrantsBlock key={`${s.empty}:${s.lang}:${s.long}`} /></div><div className="gallery-cards">{cardFixtures(o).filter((c) => c.type === "approval" && c.card.type === "approval" && c.card.conversation).map((c) => <figure key={c.status} className="gallery-figure"><figcaption><code>approval · {c.status}</code></figcaption><CardView card={c.card} botId={GALLERY_BOT_ID} seq={1} /></figure>)}</div></Section>}
       {show("today") && <Section id="today" title="Aujourd'hui" hint="La vraie page, avec des données factices (interrupteur « Vide » pour la journée calme)."><div className="gallery-page"><TodayView /></div></Section>}
@@ -329,6 +330,17 @@ function Notices({ o }: { o: FixtureOptions }) {
   );
 }
 
+/** Model health (ModelHealth.tsx): a refused key, no credit, a model that does not answer (long: long names and reasons). */
+const modelHealthFixtures = (o: FixtureOptions): ModelHealth[] => {
+  const fr = o.lang === "fr";
+  const label = o.long ? "Mon fournisseur DeepSeek très long deepseek-reasoner-ultra-2026-preview" : "anthropic:claude-opus-5-5";
+  return [
+    { ref: "a", label, status: "reconnect", reason: fr ? "La clé ou le compte de ce modèle a été refusé : il faut le reconnecter." : "The key or account for this model was refused: it needs reconnecting.", ms: null, checkedAt: NOW, fix: "models" },
+    { ref: "b", label, status: "no_credit", reason: fr ? "Le compte de ce modèle n'a plus de crédit." : "This model's account has no credit left.", ms: null, checkedAt: NOW, fix: "subscription" },
+    { ref: "c", label, status: "down", reason: (fr ? "Le modèle ne répond pas : " : "The model is not answering: ") + (o.long ? "Anthropic API error 529: Overloaded — the service is temporarily overloaded, please try again in a few moments" : "Overloaded"), ms: null, checkedAt: NOW, fix: null },
+  ];
+};
+
 function Banners({ o }: { o: FixtureOptions }) {
   const t = useT();
   useEffect(() => {
@@ -346,6 +358,10 @@ function Banners({ o }: { o: FixtureOptions }) {
         <PauseBanner bot={all} />
         <PauseBanner bot={shared} />
         <div className="gallery-sidebar-sample" aria-label={t("pause.sidebarAll")}><PauseAllNotice collapsed={false} /></div>
+        {modelHealthFixtures(o).map((h) => <ModelHealthBannerView key={h.status} health={h} botId={GALLERY_BOT_ID} checking={false} onRetry={() => undefined} />)}
+        <ModelHealthLineView health={null} checking botId={GALLERY_BOT_ID} intro={t("modelHealth.onbTitle")} onRetry={() => undefined} />
+        <ModelHealthLineView health={{ ref: "anthropic:claude-opus-5-5", label: "anthropic:claude-opus-5-5", status: "ok", reason: null, ms: 1240, checkedAt: NOW, fix: null }} checking={false} botId={GALLERY_BOT_ID} intro={t("modelHealth.onbTitle")} onRetry={() => undefined} />
+        {modelHealthFixtures(o).slice(0, 1).map((h) => <ModelHealthLineView key="bad" health={h} checking={false} botId={GALLERY_BOT_ID} intro={t("modelHealth.onbTitle")} onRetry={() => undefined} />)}
       </div>
     </Section>
   );

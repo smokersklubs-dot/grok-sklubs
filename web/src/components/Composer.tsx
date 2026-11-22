@@ -14,6 +14,7 @@ import { PauseBanner } from "./Pause";
 import { useComposerMentions } from "./ComposerMentions";
 import { MeetingRecorder } from "./MeetingRecorder";
 import { sendKeysFor } from "../../../mobile/shared/sendKey";
+import "./Comfort.css";
 
 const NO_UPLOADS: Upload[] = [];
 
@@ -163,9 +164,12 @@ export function Composer({ bot, live }: { bot: Bot; live: Live }) {
     area.current?.focus();
   };
 
+  // Lot 4 / L58 (UI part): sent while the bot works → a short « Noté » under the box, so you know it was taken.
+  const [noted, setNoted] = useState(false);
   const send = async () => {
     if (!canSend) return;
     const sent = ready;
+    const busy = live.running;
     setSending(true);
     setError(null);
     try {
@@ -178,6 +182,7 @@ export function Composer({ bot, live }: { bot: Bot; live: Live }) {
       addRows(bot.id, [r.row]);
       clearUploads(bot.id, sent.map((u) => u.id));
       if ((useStore.getState().drafts[bot.id] ?? "").trim() === text) setDraft(bot.id, "");
+      if (busy) { setNoted(true); setTimeout(() => setNoted(false), 5000); }
     } catch (e) {
       setError(errText(e));
     } finally {
@@ -189,7 +194,7 @@ export function Composer({ bot, live }: { bot: Bot; live: Live }) {
   const stop = async () => {
     setStopping(true);
     try {
-      await api("POST", `/bots/${bot.id}/stop`);
+      await api("POST", `/bots/${bot.id}/stop`, live.tasks?.length ? { thread: live.thread ?? 0 } : undefined); // lanes: the task shown here; the others go on
     } catch (e) {
       setError(errText(e));
     } finally {
@@ -283,6 +288,7 @@ export function Composer({ bot, live }: { bot: Bot; live: Live }) {
         </div>
       )}
       {bot.pause && !live.running && <PauseBanner bot={bot} />}
+      {noted && live.running && <div className="composer-noted" role="status"><Icon name="check" size={14} /> {t("composer.noted", { name: bot.name })}</div>}
       {looksSecret && (
         <div className="secret-warn" role="status">
           <Icon name="lock" size={15} />

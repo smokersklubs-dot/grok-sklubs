@@ -1,0 +1,27 @@
+/* Model health (ModelHealth.tsx): the banner above the composer and the result line of a check. */
+.model-health-banner {
+  display: flex; align-items: flex-start; gap: 10px; flex-wrap: wrap;
+  width: calc(100% - 40px); max-width: 760px; margin: 0 auto 10px; padding: 10px 12px;
+  border-radius: var(--r-lg); background: var(--warn-soft); color: var(--text); border: 1px solid var(--border);
+  font-size: 14px; line-height: 1.4;
+}
+.model-health-banner.is-reconnect, .model-health-banner.is-none { background: var(--danger-soft); }
+.model-health-banner > svg { flex: none; margin-top: 2px; color: var(--warn); }
+.model-health-banner.is-reconnect > svg, .model-health-banner.is-none > svg { color: var(--danger); }
+.model-health-text { display: flex; flex-direction: column; gap: 2px; flex: 1 1 220px; min-width: 0; overflow-wrap: anywhere; }
+.model-health-reason { color: var(--text-2); }
+.model-health-actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.model-health-actions .btn { display: inline-flex; align-items: center; gap: 5px; }
+.model-health-line {
+  display: flex; align-items: flex-start; gap: 8px; flex-wrap: wrap; margin: 8px 0; padding: 9px 11px;
+  border-radius: var(--r-md, 10px); background: var(--surface-2); color: var(--text); font-size: 14px; line-height: 1.4;
+}
+.model-health-line > svg { flex: none; margin-top: 2px; color: var(--text-3); }
+.model-health-line.is-ok { background: var(--ok-soft); }
+.model-health-line.is-ok > svg { color: var(--ok); }
+.model-health-line.is-bad { background: var(--danger-soft); }
+.model-health-line.is-bad > svg { color: var(--danger); }
+@media (max-width: 520px) {
+  .model-health-banner { width: calc(100% - 20px); }
+}
+.model-health-line .model-health-actions { flex-basis: 100%; padding-left: 23px; }

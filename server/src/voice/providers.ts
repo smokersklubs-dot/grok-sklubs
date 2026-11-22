@@ -326,3 +326,19 @@ export function ttsFor(userId: string, opts: TtsFor = {}): Tts | null {
     return Buffer.from(await res.arrayBuffer());
   };
 }
+
+/**
+ * Which speech-to-text runs for the account, and whether it costs anything (shown next to the Telegram voice-note
+ * transcription switch, telegramvoice.ts): "local" = the whisper.cpp bundled with this server (free); "own-server" = a
+ * free server whose address the account typed (whisper.cpp or an OpenAI-compatible one without a key); "paid" = OpenAI
+ * with a key, or Fish Audio (billed per minute by them); "none" = nothing set up.
+ */
+export function sttCost(userId: string): { provider: SttProvider | null; cost: "local" | "own-server" | "paid" | "none" } {
+  const s = voiceSettings(userId);
+  const e = endpoint(userId, "stt");
+  if (!e) return { provider: null, cost: "none" };
+  const p = s.stt.provider;
+  if (p === "fish") return { provider: p, cost: "paid" };
+  if (p === "openai") return { provider: p, cost: e.key ? "paid" : "own-server" };
+  return { provider: p, cost: e.trusted ? "local" : "own-server" };
+}

@@ -46,7 +46,7 @@ Taille : **S** ≤ 1 jour, **M** 2 à 4 jours, **L** 1 à 2 semaines. Chemins Sk
 | Discussion | Ligne « ce que je fais et pourquoi » avant un travail long (règle de prompt pour tous les bots) | PARTIEL | `agent/prompt.ts:164` (progress_update pendant le travail) | Pas de règle « une ligne avant de commencer, avec la durée attendue » | S |
 | Discussion | Règles d'écriture communes : répondre d'abord, s'arrêter quand c'est fini, ne jamais nommer les outils, une seule question à la fois | PARTIEL | `agent/prompt.ts:177-184` (5 lignes) | « Regarde avant de demander », « une seule chose demandée », « dis ce que tu n'as pas fait et l'autre moyen » | S |
 | Discussion | Plusieurs fils indépendants par bot (« Nouveau fil », « Tous les fils », dossiers de fils) | PARTIEL | `agent/loop.ts:541` (fil = réponse sous un message), `web/src/components/ThreadPanel.tsx` ; test `waveA.test.ts` | Fils libres, liste des fils, dossiers, titre automatique | L |
-| Discussion | Jusqu'à 3 fils qui travaillent en même temps pour un bot | MANQUANT | `agent/loop.ts:216` : une seule file par bot | Plusieurs tours en parallèle par bot | L |
+| Discussion | Jusqu'à 3 fils qui travaillent en même temps pour un bot | ✅ FAIT (2026-11-22, L99 : `agent/lanes.ts`) — était MANQUANT | `agent/loop.ts:216` : une seule file par bot | Plusieurs tours en parallèle par bot | L |
 | Discussion | Modèle propre à un fil | MANQUANT | — | — | S |
 | Discussion | Modifier un message envoyé : nouvelle branche, retour en arrière (fork, rewind) | MANQUANT | aucune route d'édition dans `routes.ts:657-1260` | Édition, branches, navigation entre versions | M |
 | Discussion | Bouton « Réessayer » sur un message en échec | PARTIEL | `agent/loop.ts:1179` (Continuer), `agent/failures.ts:342` (carte avec remèdes) ; test `failures.test.ts` (lancé, 16/16) | Pas de « Réessayer » sur un message ordinaire | S |
@@ -489,9 +489,9 @@ Taille : **S** ≤ 1 jour, **M** 2 à 4 jours, **L** 1 à 2 semaines. Chemins Sk
 3. **Routines dans un fil à part**, seul le résultat dans le chat, avec « Voir l'exécution ». M
 4. **Navigateur en texte** : `browser_open` et les clics renvoient la structure de la page et ce qui a changé ; capture à la demande. M
 5. **Défaut « balanced »** pour les nouveaux bots, avec un choix clair à l'accueil. S
-6. **Cache du modèle** : sortir du prompt système les souvenirs, routines et équipe ; marquer le dernier message. M
+6. ✅ Fait (2026-11-22, `llm/cachelayout.ts`). **Cache du modèle** : sortir du prompt système les souvenirs, routines et équipe ; marquer le dernier message. M
 7. ✅ **Fait en partie (2026-11-22).** **Cartes sans expiration** dans le chat du propriétaire : fait (modèles API : la carte attend sans horloge ; abonnement : la demande est « mise de côté » après 25 min et sa réponse compte toujours). Reste : 👍 / 👎 pour y répondre dans l'appli web. S
-8. **Plusieurs tours en parallèle par bot** (fils indépendants), pour qu'une routine ou un collègue ne bloque plus la discussion. L
+8. ✅ (2026-11-22, L99) **Plusieurs tours en parallèle par bot** (fils indépendants), pour qu'une routine ou un collègue ne bloque plus la discussion. L
 9. **Reprise automatique bornée par le progrès** après la limite d'étapes ou de temps. M
 10. **Outils de navigateur manquants** : onglets, retour, attendre un texte, alertes, envoi de fichier. M
 11. **Règles de conversation** à la fin du prompt, et instructions du bot remontées en tête. S

@@ -33,6 +33,7 @@ const FR: Record<string, string> = {
   "I could not get this file from Telegram. Try again, or send it from the app.": "Je n'ai pas pu récupérer ce fichier depuis Telegram. Réessaie, ou envoie-le depuis l'appli.",
   "(voice message: {name})": "(message vocal : {name})",
   "(file: {name})": "(fichier : {name})",
+  "🎤 Voice message (written out): {text}": "🎤 Message vocal (transcrit) : {text}",
   "“{name}” is over 50 MB: Telegram refuses it. It is in the app.": "« {name} » dépasse 50 Mo : Telegram le refuse. Il est dans l'appli.",
 };
 export const tgText = (locale: Locale | undefined, en: string, vars: Record<string, string | number> = {}) =>

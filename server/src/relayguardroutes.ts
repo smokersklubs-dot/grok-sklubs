@@ -4,12 +4,13 @@ import { deviceKindOf, devices, labelOf } from "./relay.js";
 import { DANGEROUS_SHORTCUTS, DENIED_APPS, FLOOR_LABEL, GUARD_LIMIT, guards, pushGuard, TIMEOUT_MAX, TIMEOUT_MIN } from "./relayguard.js";
 import { body, fail } from "./routeinput.js";
 import { audit, type UserRecord } from "./store.js";
+import { fileAccess } from "./fileaccess.js";
 
 /**
  * « Règles de sécurité » of one linked computer (Settings → Computers), registered after the session check:
  *   GET /relay/devices/:id/guard   the owner's rules (keep-out apps and folders, terminals allowed or not) and the
  *                                  built-in lists (apps always refused, protected shortcuts), read-only
- *   PUT /relay/devices/:id/guard   { keepApps?, keepFolders?, projectFolders?, allowTerminal?, commandTimeout? } — saved, then sent to the computer
+ *   PUT /relay/devices/:id/guard   { keepApps?, keepFolders?, projectFolders?, allowTerminal?, commandTimeout?, filesOn? } — saved, then sent to the computer
  * Only the account the computer is linked to; a phone has its own rules on the phone (404 here).
  */
 export function registerRelayGuardRoutes(api: Hono<any>) {
@@ -21,6 +22,8 @@ export function registerRelayGuardRoutes(api: Hono<any>) {
   };
   const view = (userId: string, deviceId: string) => ({
     guard: guards.get(userId, deviceId),
+    /** nod 9: « Accès à mes fichiers » (fileaccess.ts), also switchable from the chat. */
+    filesOn: fileAccess.on(userId, deviceId),
     limit: GUARD_LIMIT,
     timeout: { min: TIMEOUT_MIN, max: TIMEOUT_MAX },
     builtin: {
@@ -38,6 +41,11 @@ export function registerRelayGuardRoutes(api: Hono<any>) {
     }
     if (b.allowTerminal !== undefined && typeof b.allowTerminal !== "boolean") fail(400, "allowTerminal must be true or false.");
     if (b.commandTimeout !== undefined && (typeof b.commandTimeout !== "number" || !Number.isFinite(b.commandTimeout))) fail(400, "commandTimeout must be a number of seconds.");
+    if (b.filesOn !== undefined && typeof b.filesOn !== "boolean") fail(400, "filesOn must be true or false.");
+    if (typeof b.filesOn === "boolean" && b.filesOn !== fileAccess.on(user.id, row.id)) {
+      fileAccess.set(user.id, row.id, b.filesOn);
+      audit(user.id, "computer", tr(user.locale, b.filesOn ? "Access to your files on {device} turned on" : "Access to your files on {device} turned off", { device: labelOf(row) }));
+    }
     const before = guards.get(user.id, row.id);
     const after = guards.set(user.id, row.id, { keepApps: b.keepApps, keepFolders: b.keepFolders, projectFolders: b.projectFolders, allowTerminal: b.allowTerminal, commandTimeout: b.commandTimeout });
     const label = labelOf(row);

@@ -1,3 +1,4 @@
+import { mutedPush } from "./chatmute.js";
 import { createCipheriv, createECDH, createHmac, createPrivateKey, generateKeyPairSync, randomBytes, sign, type KeyObject } from "node:crypto";
 import { seal, unseal } from "./auth.js";
 import { config } from "./config.js";
@@ -184,6 +185,7 @@ const recent = new Map<string, number>();
 export async function sendPush(userId: string, msg: PushMessage): Promise<number> {
   const settings = pushSettings(userId);
   if (msg.kind === "digest" ? inQuietHours(settings) : msg.kind !== "test" && msg.kind !== "sentinel" && (!settings.kinds[msg.kind] || inQuietHours(settings))) return 0;
+  if (mutedPush(userId, msg.botId, msg.kind)) return 0; // « Sourdine » on that chat (chatmute.ts)
   const subs = q.all<SubRow>("SELECT * FROM push_subscriptions WHERE user_id = ? AND enabled = 1", userId);
   if (!subs.length) return 0;
   const tag = msg.tag ?? (msg.botId ? `${msg.kind}-${msg.botId}` : msg.kind);

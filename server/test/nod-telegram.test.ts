@@ -188,3 +188,36 @@ test("a file the bot attaches to its reply is sent to Telegram (sendDocument / s
   assert.match(doc.body.multipart, /%PDF-1.4 fake/);
   assert.equal(users.localeOf(userId), "fr");
 });
+
+// Telegram voice notes written out (telegramvoice.ts): off by default, owner setting with the speech-to-text and its cost
+// shown, the words reach the bot with the recording still attached, any failure leaves "(message vocal)" as before.
+test("voice notes: off by default; when on, the words reach the bot (recording kept); a failure changes nothing", async () => {
+  const { telegramVoiceText, voiceTextDeps } = await import("../src/telegramvoice.js");
+  const view = await call("GET", `/bots/${botId}/telegram/voice-text`);
+  assert.equal(view.status, 200);
+  assert.equal(view.json.enabled, false, "off by default");
+  assert.ok(["local", "own-server", "paid", "none"].includes(view.json.cost));
+  assert.equal(view.json.maxSeconds, 120);
+  assert.equal((await call("PUT", `/bots/${botId}/telegram/voice-text`, { enabled: "yes" })).status, 400);
+  const decoded: string[] = [];
+  voiceTextDeps.decode = async (_b, rel) => { decoded.push(rel); return Buffer.from("RIFF-fake-wav"); };
+  voiceTextDeps.stt = () => async () => "Rappelle-moi d'appeler Camille demain.";
+  // Off: the old text, nothing decoded.
+  push({ message: { message_id: 60, chat: { id: 42, type: "private" }, voice: { file_id: "voice_1", file_size: 15, mime_type: "audio/ogg" } } });
+  await until(() => rows.list(botId, bots.byId(botId)!.generation, 80).filter((r) => r.body.kind === "message" && r.body.role === "user" && /message vocal/.test(r.body.text)).length >= 2, "plain voice row");
+  assert.equal(decoded.length, 0);
+  const on = await call("PUT", `/bots/${botId}/telegram/voice-text`, { enabled: true });
+  assert.equal(on.json.enabled, true);
+  assert.ok(q.get("SELECT 1 FROM audit WHERE text LIKE '%messages vocaux Telegram seront transcrits%'"));
+  push({ message: { message_id: 61, chat: { id: 42, type: "private" }, voice: { file_id: "voice_1", file_size: 15, mime_type: "audio/ogg" } } });
+  const row = await until(() => rows.list(botId, bots.byId(botId)!.generation, 80).find((r) => r.body.kind === "message" && r.body.role === "user" && /transcrit/.test(r.body.text)), "written-out row");
+  assert.equal(row.body.kind === "message" && row.body.text, "🎤 Message vocal (transcrit) : Rappelle-moi d'appeler Camille demain.");
+  assert.equal(row.body.kind === "message" && row.body.attachments?.[0].mime, "audio/ogg", "recording still attached");
+  assert.match(decoded[0], /^uploads\/voice.*\.ogg$/);
+  // The speech-to-text fails: the message is exactly as before.
+  voiceTextDeps.stt = () => async () => { throw new Error("down"); };
+  const n = rows.list(botId, bots.byId(botId)!.generation, 80).filter((r) => r.body.kind === "message" && /message vocal :/.test(r.body.text)).length;
+  push({ message: { message_id: 62, chat: { id: 42, type: "private" }, voice: { file_id: "voice_1", file_size: 15, mime_type: "audio/ogg" } } });
+  await until(() => rows.list(botId, bots.byId(botId)!.generation, 80).filter((r) => r.body.kind === "message" && /message vocal :/.test(r.body.text)).length > n, "fallback row");
+  telegramVoiceText.set(botId, false);
+});

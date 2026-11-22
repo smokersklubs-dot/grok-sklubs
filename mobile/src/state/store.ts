@@ -54,7 +54,8 @@ interface State {
   markRead(botId: string): Promise<void>;
   /** `clientKey`: the send key of this message (shared/sendKey.ts): the same again when the send is retried. */
   send(botId: string, text: string, attachments: Attachment[], clientKey?: string): Promise<void>;
-  stop(botId: string): Promise<void>;
+  /** Lanes (server agent/lanes.ts): `thread` stops that task only; without it every task of the bot stops. */
+  stop(botId: string, thread?: number): Promise<void>;
   decide(approvalId: string, decision: "allow" | "always" | "conversation" | "deny"): Promise<void>;
   answer(botId: string, seq: number, answer: string): Promise<void>;
   dismissCard(botId: string, seq: number): Promise<void>;
@@ -321,8 +322,8 @@ export const useStore = create<State>((set, get) => ({
     if (th && r.row && r.row.generation === th.generation) set((s) => ({ threads: { ...s.threads, [botId]: applyRowsPage(s.threads[botId], { generation: th.generation, rows: [r.row] }) } }));
   },
 
-  async stop(botId) {
-    await needClient().post(`/bots/${encodeURIComponent(botId)}/stop`);
+  async stop(botId, thread) {
+    await needClient().post(`/bots/${encodeURIComponent(botId)}/stop`, thread === undefined ? {} : { thread });
   },
 
   async decide(approvalId, decision) {

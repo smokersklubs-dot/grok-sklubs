@@ -306,7 +306,7 @@ function handTo(bot: BotRecord, mate: BotRecord, cls: FailureClass, task: string
   // Only the task travels: the owner's words (vault values and pasted secrets masked), never the bot's memory or vault.
   const clean = maskSecrets(redactSecrets(bot.userId, clip(task, 2000)), "[secret]").text;
   const text = tr(locale, "{from} could not finish this work ({why}) and hands it to you. Do it yourself and answer {owner} in your own chat — do not send it back to {from}, whose brain is not working right now.\n\nThe request:\n{task}", { from: bot.name, why: tr(locale, CLASS_TITLES[cls]), owner: users.byId(bot.userId)?.name ?? "", task: clean });
-  deliverBotMessage(bot, mate, text, 0, true);
+  deliverBotMessage(bot, mate, text, 0, true, true); // a request: its own thread (lanes.ts)
   audit(bot.userId, "system", `${bot.name}: work handed to ${mate.name} after a failure (${cls})`, bot.id);
 }
 

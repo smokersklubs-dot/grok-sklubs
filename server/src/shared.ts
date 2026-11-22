@@ -268,6 +268,7 @@ export interface Live {
    * do not count). Reset to 0 at the start of each turn; updated on each new call, even while the bot waits for the user.
    */
   steps?: number;
+  /** Lanes (server agent/lanes.ts): every task of the bot while two or more run at once (the main chat is thread 0). */ tasks?: { thread: number; running: boolean; activity: Live["activity"]; awaiting: Live["awaiting"]; startedAt: number | null }[];
 }
 
 /** `nudge`: the user pressed "Do it" on a nudge (the words come from a preparation pass, so they never authorise anything). */
@@ -315,7 +316,7 @@ export type RowBody =
    * `progress`: a short interim update the bot posted during long work (progress_update); a light line, not its reply.
    * `selfupdate`: the bot changed its own settings (self_update); `undo` offers to put them back.
    */
-  | { kind: "event"; event: "routine" | "task" | "bot" | "reset" | "computer" | "call" | "members" | "cheer" | "relay" | "progress" | "selfupdate"; text: string; call?: CallRecord; gem?: Gem; tone?: "info" | "warn"; undo?: { revisionId: string; status: "available" | "undone" } }
+  | { kind: "event"; event: "routine" | "task" | "bot" | "reset" | "computer" | "call" | "members" | "cheer" | "relay" | "progress" | "selfupdate"; text: string; call?: CallRecord; gem?: Gem; tone?: "info" | "warn"; undo?: { revisionId: string; status: "available" | "undone" }; /** A command on the owner's computer: its Stop button while it runs (commandstop.ts). */ cmd?: { ref: string; running: boolean } }
   /**
    * `action`: a button under the notice. "continue": the bot stopped at its step limit — or, `reason: "timeout"`, a turn on
    * a subscription tool reached its time limit; `reason: "busy"`, its computer could not start, every one being busy — and can

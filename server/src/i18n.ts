@@ -1,4 +1,4 @@
-import type { Locale } from "./shared.js"; import { SECURITY_FR } from "./securityi18n.js";
+import type { Locale } from "./shared.js"; import { SECURITY_FR } from "./securityi18n.js"; import { COMFORT_FR } from "./comforti18n.js";
 
 /**
  * Texts the server itself writes into a chat (notices, event lines, step labels, approval titles).
@@ -318,6 +318,7 @@ const FR: Record<string, string> = {
   "type the sign-in code for {site}": "saisir le code de connexion de {site}",
   "start a background task": "lancer une tâche de fond",
   "Stopped.": "Arrêté.",
+  "Waits for the other task": "Attend l'autre tâche",
   "waiting for your answer": "en attente de ta réponse",
   "Your message is kept: I will read it as soon as you have answered the request above with its buttons. Typed words never count as a yes or a no.": "Ton message est gardé : je le lis dès que tu as répondu à la demande ci-dessus avec ses boutons. Un mot tapé ne compte jamais comme un oui ou un non.",
   "My session with {tool} was lost, so I started a new one. I picked the thread back up from our last messages here; older details may be missing — tell me if I forgot something.": "Ma session avec {tool} a été perdue : j'en ai ouvert une nouvelle. J'ai repris le fil à partir de nos derniers messages ici ; des détails plus anciens peuvent manquer, dis-le-moi si j'ai oublié quelque chose.",
@@ -494,6 +495,14 @@ const FR: Record<string, string> = {
   // Wave 4: reliability
   "The reply was interrupted. Trying again…": "La réponse a été interrompue. Je réessaie…",
   "The model is busy ({detail}). New try in {s} s…": "Le modèle est occupé ({detail}). Nouvel essai dans {s} s…",
+  "{model} failed ({detail}). New try {n}/{max} in {s} s…": "{model} a échoué ({detail}). Nouvel essai {n}/{max} dans {s} s…",
+  // Model health and the activity line (modelhealth.ts, nod items 3 and 4, L59, L60).
+  "Waiting for the model ({model})…": "En attente du modèle ({model})…",
+  "The key or account for this model was refused: it needs reconnecting.": "La clé ou le compte de ce modèle a été refusé : il faut le reconnecter.",
+  "This model's account has no credit left.": "Le compte de ce modèle n'a plus de crédit.",
+  "No model is set up yet.": "Aucun modèle n'est encore configuré.",
+  "The model did not answer in time.": "Le modèle n'a pas répondu à temps.",
+  "The model is not answering: {detail}": "Le modèle ne répond pas : {detail}",
   "My model {model} is not answering ({detail}). I am carrying on with the backup model {next}.": "Mon modèle {model} ne répond pas ({detail}). Je continue avec le modèle de secours {next}.",
   "The model stopped after a step without giving a final report. Completion is unconfirmed. Ask me to check the result and report what remains.": "Le modèle s’est arrêté après une étape sans rendre son bilan. La fin du travail reste à vérifier. Demande-moi de vérifier le résultat et de te dire ce qui reste à faire.",
   "Interrupted while resuming. Check the last action and tell me what to continue.": "La reprise a été interrompue. Vérifie la dernière action et indique-moi où reprendre.",
@@ -632,7 +641,7 @@ const FR: Record<string, string> = {
   "Keep-out list changed on {device}": "Liste « garder à l'écart » modifiée sur {device}", "At most {n} entries.": "{n} éléments au plus.",
 };
 
-Object.assign(FR, SECURITY_FR); // Lot 1 security texts (securityi18n.ts)
+Object.assign(FR, SECURITY_FR, COMFORT_FR); // Lot 1 security texts (securityi18n.ts); comfort batch (comforti18n.ts)
 export function tr(locale: Locale | undefined, english: string, vars: Record<string, string | number> = {}): string {
   const template = locale === "fr" ? FR[english] ?? english : english;
   return template.replace(/\{(\w+)\}/g, (_m, k) => String(vars[k] ?? ""));

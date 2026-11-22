@@ -18,6 +18,7 @@ import { enablePush, pushActiveHere, pushSupport } from "../lib/push";
 import { AiAccountCards } from "./AiAccounts";
 import { Character } from "./Character";
 import { Icon, type IconName } from "./Icon";
+import { ModelHealthLine } from "./ModelHealth";
 import { ErrorNote, Modal } from "./ui";
 import "../styles/firstrun.css";
 
@@ -207,6 +208,8 @@ export function Onboarding() {
                 <button type="button" className="btn btn-primary" onClick={doWay}><Icon name={way === "subscription" ? "brain" : way === "key" ? "key" : "bolt"} size={15} /> {wayLabel}</button>
               </div>
             )}
+            {/* L59: a real test call to the new bot's model, its result in plain words, before the guide ends. */}
+            <ModelHealthLine botId={done.botId} model={primary?.model ?? ""} intro={t("modelHealth.onbTitle")} />
             <h3 className="onb-title">{t("onb.s3Title")}</h3>
             <p className="muted">{t("onb.s3Hint")}</p>
             <div className="onb-ideas">

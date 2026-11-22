@@ -2,12 +2,12 @@ import { config } from "../config.js";
 import { q } from "../db.js";
 import { tr } from "../i18n.js";
 import type { Card, GoalStatus, GoalWaiting } from "../shared.js";
-import { audit, bots, clip, newId, now, paused, rows, users, type BotRecord } from "../store.js";
+import { audit, bots, clip, laneKey, newId, now, paused, rows, users, type BotRecord } from "../store.js";
 import { overBudget } from "../usage.js";
 import { capHolds, cm, noteSkip } from "../usagecaps.js";
 import { checkpoints } from "./spend.js";
 import type { BuiltinTool } from "./tools.js";
-import { enqueue, hostedHoldsBot, interrupt, isPaused, queuedBehind, runningThreadOf, tell } from "./loop.js";
+import { enqueue, hostedHoldsBot, interrupt, isPaused, queuedBehind, runningThreads, tell } from "./loop.js";
 
 /**
  * Goal mode ("Objectif" in the composer, "/objectif …", a routine whose text starts with "/objectif", or a goal the bot
@@ -259,7 +259,7 @@ export function goalAction(bot: BotRecord, goalId: string, action: "pause" | "re
       if (!["proposed", "active", "paused", "limit", "blocked"].includes(g.status)) throw new GoalError(409, "This goal is already over.");
       next = goals.set(g, { status: "stopped", reason: tr(loc, "stopped by you"), queued: false, waiting: "" });
       // A round of this goal under way stops too.
-      if (g.status === "active" && runningThreadOf(bot.id) === g.thread) interrupt(bot.id);
+      if (g.status === "active" && runningThreads(bot.id).includes(g.thread)) interrupt(laneKey(bot.id, g.thread)); // only its own lane (lanes.ts)
       audit(bot.userId, "system", `${bot.name}: goal stopped — ${clip(g.objective, 160)}`, bot.id);
       break;
     case "decline":

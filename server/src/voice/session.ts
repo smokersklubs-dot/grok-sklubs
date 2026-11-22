@@ -6,7 +6,7 @@ import { getLive, subscribe } from "../bus.js";
 import { callEnded, callStarted } from "../calls.js";
 import { interrupt, submitMemberMessage, submitUserMessage } from "../agent/loop.js";
 import { holdAndOffer, screen as screenSecrets } from "../pastedsecrets.js";
-import { bots, rows, type BotRecord, type UserRecord } from "../store.js";
+import { bots, laneKey, rows, type BotRecord, type UserRecord } from "../store.js";
 import { botAccess } from "../workspaces.js";
 import { Vad, wavDurationMs, wavOf } from "./vad.js";
 import { sttFor, ttsFor, voiceSettings, voiceStatus, type Stt, type Tts } from "./providers.js";
@@ -337,7 +337,7 @@ function runCall(ws: WebSocket, bot: BotRecord, user: UserRecord, member: { role
             submitUserMessage(b, text, true);
           }
         },
-        interrupt: () => interrupt(bot.id),
+        interrupt: () => interrupt(laneKey(bot.id, 0)), // a voice call is the main chat: only its turn stops (lanes.ts)
         botBusy: () => getLive(bot.id).running,
       });
       callId = callStarted(current, user.locale);

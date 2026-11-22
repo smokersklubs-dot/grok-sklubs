@@ -194,6 +194,8 @@ function resolve(routePath: string, param: string, bot: "bot1" | "bot2"): string
     "conversation-grants:grantId": "a_convgrant",
     // « Signaler cette réponse » (reports.ts): a report id (only the server's watchers may read or close one).
     "reports:reportId": "a_report",
+    // A command's own Stop (commandstop.ts): a command reference (only the bot's owner may stop it; 404 for anyone else).
+    "commands:ref": "a_cmdref",
   };
   if (param === "action" && prev2 === "reach") return "login";
   if (param === "rid" && prev2 === "resources") return "a_conn";

@@ -4,6 +4,7 @@ import { useT, type Key } from "../i18n";
 import { Icon } from "./Icon";
 import { ErrorNote, Toggle } from "./ui";
 import "./RelayGuardPanel.css";
+import "./Comfort.css";
 
 /**
  * « Règles de sécurité » of one linked computer (Settings → Computers), server relayguardroutes.ts: the apps always
@@ -13,6 +14,8 @@ import "./RelayGuardPanel.css";
  */
 interface GuardView {
   guard: { keepApps: string[]; keepFolders: string[]; projectFolders: string[]; allowTerminal: boolean; commandTimeout: number; updatedAt: number | null };
+  /** nod 9: « Accès à mes fichiers » — also switchable from the chat. */
+  filesOn?: boolean;
   limit: number;
   timeout: { min: number; max: number };
   builtin: { apps: { group: string; names: string[] }[]; floor: string[]; shortcuts: { combo: string; why: string; platforms: string[] | null; ownApp: boolean }[] };
@@ -40,7 +43,7 @@ export function RelayGuardPanel({ deviceId }: { deviceId: string }) {
     api<GuardView>("GET", `/relay/devices/${enc(deviceId)}/guard`).then((v) => { if (!dead) show(v); }).catch((e) => { if (!dead) setError(errText(e)); });
     return () => { dead = true; };
   }, [deviceId]);
-  const save = async (patch: Partial<GuardView["guard"]>) => {
+  const save = async (patch: Partial<GuardView["guard"]> & { filesOn?: boolean }) => {
     setBusy(true);
     setError(null);
     setSaved(false);
@@ -72,6 +75,17 @@ export function RelayGuardPanel({ deviceId }: { deviceId: string }) {
           <Icon name="alert" size={13} /> <span>{t(g.allowTerminal ? "relay.guard.terminalOn" : "relay.guard.terminalOff")}</span>
         </p>
       </div>
+
+      {view.filesOn !== undefined && (
+        <div className="relay-guard-files">
+          <div className="relay-guard-row">
+            <Icon name="folder" size={16} />
+            <span className="relay-guard-label">{t("relay.guard.files")}</span>
+            <Toggle checked={view.filesOn} disabled={busy} label={t("relay.guard.files")} onChange={(on) => void save({ filesOn: on })} />
+          </div>
+          <p className="small muted">{t(view.filesOn ? "relay.guard.filesOn" : "relay.guard.filesOff")}</p>
+        </div>
+      )}
 
       <div className="relay-guard-keep">
         <label className="field-label" htmlFor={`projects-${deviceId}`}>{t("relay.guard.projects")}</label>

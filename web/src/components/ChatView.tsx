@@ -1,3 +1,4 @@
+import { MuteMenuItems } from "./ChatMute";
 import { useState } from "react";
 import { useT } from "../i18n";
 import { IDLE_LIVE, useStore } from "../store";
@@ -7,9 +8,11 @@ import { BotAvatar } from "./Avatar";
 import { CallBar } from "./CallBar";
 import { CallHeadButton } from "./CallHeadButton";
 import { Composer } from "./Composer";
+import { ModelHealthBanner } from "./ModelHealth";
 import { WorkContext } from "./WorkContext";
 import { Icon } from "./Icon";
 import { Transcript } from "./Transcript";
+import { TaskLanes } from "./TaskLanes";
 import { FindBar } from "./FindBar";
 import { FilePreviewPanel } from "./SpendSkillsFiles";
 import { PausedBadge, resumeWidest, setPaused } from "./Pause";
@@ -104,6 +107,7 @@ export function ChatView() {
               {t(confirmNew ? "chat.confirmNew" : "chat.newConversation")}
             </MenuItem>}
             <ReadAloudMenuItem bot={bot} onDone={close} />
+            <MuteMenuItems bot={bot} onDone={close} />
             <MenuItem
               icon="search"
               onClick={() => {
@@ -131,6 +135,7 @@ export function ChatView() {
         </div>
         <span className="chat-head-right">
           <SharedBadge bot={bot} />
+          {bot.kind === "agent" && !bot.access && <TaskLanes bot={bot} live={live} />}
           <ReadAloudChip bot={bot} />
           <CallHeadButton bot={bot} />
           {recording && recording.status !== "error" && (
@@ -152,7 +157,7 @@ export function ChatView() {
       <CallBar botId={bot.id} />
       {bot.access && !bot.access.canTalk ? (
         <div className="composer-readonly" role="note"><Icon name="eye" size={15} /> {t("ws.readOnly", { owner: bot.access.ownerName })}</div>
-      ) : <Composer bot={bot} live={live} />}
+      ) : <>{bot.kind === "agent" && !bot.access && <ModelHealthBanner key={bot.id + ":" + bot.model} bot={bot} />}<Composer bot={bot} live={live} /></>}
     </section>
   );
 }

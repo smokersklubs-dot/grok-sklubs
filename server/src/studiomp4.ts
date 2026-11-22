@@ -3,6 +3,7 @@ import { mkdir, open, readdir, stat, statfs, unlink } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { publishStagedFile } from "./stagedfile.js";
+import { COMPOSITE_SOURCE_TYPE, labelAiVideoFile } from "./aivideo.js";
 import { MAX_UPLOAD_BYTES } from "./uploadlimits.js";
 import { studioCanvasSource } from "./studiocanvassource.js";
 import {
@@ -155,9 +156,11 @@ async function encode(
         ),
       );
     }
+    // L30: a montage marked « Généré par IA » also carries the IPTC marker in its metadata (aivideo.ts).
+    const labelled = story.aiLabel ? await labelAiVideoFile(file, size, COMPOSITE_SOURCE_TYPE) : size;
     await file.sync();
     if (!stillOwned()) throw Error("Render interrupted.");
-    return publishStagedFile(bot.id, "exports", staged, story.title + ".mp4", size);
+    return publishStagedFile(bot.id, "exports", staged, story.title + ".mp4", labelled);
   } finally {
     try { await file.close(); } finally { await unlink(staged); }
   }

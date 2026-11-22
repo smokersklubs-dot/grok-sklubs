@@ -337,7 +337,7 @@ export const bots = {
   remove(id: string) { q.run("DELETE FROM bots WHERE id = ? OR parent_id = ?", id, id); pauses.forget("bot", id); },
   resetConversation(id: string): number {
     q.run("UPDATE bots SET generation = generation + 1, next_seq = 1, unread = 0, updated_at = ? WHERE id = ?", now(), id);
-    q.run("DELETE FROM paused WHERE bot_id = ?", id);
+    q.run("DELETE FROM paused WHERE bot_id = ?", id); paused.clearLanes(id);
     return bots.byId(id)!.generation;
   },
   announce(b: BotRecord | null) { if (b && !b.hidden) emit(b.userId, { type: "bot", bot: publicBot(bots.byId(b.id)!) }); },
@@ -379,6 +379,11 @@ const toRow = (r: any): Row => ({ botId: r.bot_id, generation: r.generation, seq
  */
 export const rowScope = new AsyncLocalStorage<{ botId: string; thread: number }>();
 const scopedThread = (botId: string) => { const s = rowScope.getStore(); return s && s.botId === botId ? s.thread : 0; };
+/** Lanes (agent/lanes.ts): a bot runs up to 3 turns at once, one per thread. `bot~thread` names one; inside a turn, a bare bot id means the turn's own lane. */
+export const laneKey = (botId: string, thread: number) => `${botId}~${thread || 0}`;
+export const turnKey = (botId: string) => (botId.includes("~") ? botId : laneKey(botId, scopedThread(botId)));
+/** The key a lane has on disk (paused, active_turns): the main chat keeps the bare bot id, so rows written before lanes read the same. */
+export const laneDbKey = (botId: string) => turnKey(botId).replace(/~0$/, "");
 
 /** What a rewrite keeps from the stored row unless it sets it itself: reactions and the thread summary live alongside the text. */
 function keepMeta(cur: RowBody, next: RowBody): RowBody {
@@ -659,14 +664,26 @@ export const policies = {
 };
 
 // ── Paused turns ─────────────────────────────────────────────────────────────
+// Lanes (agent/lanes.ts): a turn in a thread other than the main chat keeps its paused state and its "under way" mark in
+// these tables (keyed "bot~thread"); the main chat keeps the original tables, so rows written before lanes read the same.
+q.run("CREATE TABLE IF NOT EXISTS lane_paused (lane TEXT PRIMARY KEY, bot_id TEXT NOT NULL REFERENCES bots(id) ON DELETE CASCADE, state TEXT NOT NULL)");
+q.run("CREATE TABLE IF NOT EXISTS lane_active_turns (lane TEXT PRIMARY KEY, bot_id TEXT NOT NULL REFERENCES bots(id) ON DELETE CASCADE, started_at INTEGER NOT NULL, acted INTEGER NOT NULL DEFAULT 0)");
+const laneBot = (key: string) => key.split("~")[0];
 export const paused = {
   get<T>(botId: string): T | null {
-    const r = q.get<{ state: string }>("SELECT state FROM paused WHERE bot_id = ?", botId);
+    const k = laneDbKey(botId);
+    const r = k.includes("~") ? q.get<{ state: string }>("SELECT state FROM lane_paused WHERE lane = ?", k) : q.get<{ state: string }>("SELECT state FROM paused WHERE bot_id = ?", k);
     return r ? (JSON.parse(r.state) as T) : null;
   },
-  set: (botId: string, state: unknown) =>
-    q.run("INSERT INTO paused (bot_id, state) VALUES (?, ?) ON CONFLICT(bot_id) DO UPDATE SET state = excluded.state", botId, JSON.stringify(state)),
-  clear: (botId: string) => q.run("DELETE FROM paused WHERE bot_id = ?", botId),
+  set: (botId: string, state: unknown) => {
+    const k = laneDbKey(botId);
+    if (k.includes("~")) q.run("INSERT INTO lane_paused (lane, bot_id, state) VALUES (?, ?, ?) ON CONFLICT(lane) DO UPDATE SET state = excluded.state", k, laneBot(k), JSON.stringify(state));
+    else q.run("INSERT INTO paused (bot_id, state) VALUES (?, ?) ON CONFLICT(bot_id) DO UPDATE SET state = excluded.state", k, JSON.stringify(state));
+  },
+  clear: (botId: string) => { const k = laneDbKey(botId); q.run(k.includes("~") ? "DELETE FROM lane_paused WHERE lane = ?" : "DELETE FROM paused WHERE bot_id = ?", k); },
+  /** Every lane of this bot that waits on an approval: its key ("bot" for the main chat, else "bot~thread") and its state. */
+  lanes: <T>(botId: string) => [...q.all<{ k: string; state: string }>("SELECT bot_id AS k, state FROM paused WHERE bot_id = ?", botId), ...q.all<{ k: string; state: string }>("SELECT lane AS k, state FROM lane_paused WHERE bot_id = ?", botId)].map((r) => ({ key: r.k, state: JSON.parse(r.state) as T })),
+  clearLanes: (botId: string) => q.run("DELETE FROM lane_paused WHERE bot_id = ?", botId),
 };
 
 // ── Per-user settings ────────────────────────────────────────────────────────
@@ -946,10 +963,15 @@ export const botQueue = {
 };
 
 export const activeTurns = {
-  begin: (botId: string) => q.run("INSERT INTO active_turns (bot_id, started_at) VALUES (?, ?) ON CONFLICT(bot_id) DO UPDATE SET started_at = excluded.started_at, acted = 0", botId, now()),
-  acted: (botId: string) => q.run("UPDATE active_turns SET acted = 1 WHERE bot_id = ?", botId),
-  end: (botId: string) => q.run("DELETE FROM active_turns WHERE bot_id = ?", botId),
-  leftover: () => q.all<{ bot_id: string; acted: number }>("SELECT bot_id, acted FROM active_turns"),
+  begin: (botId: string) => {
+    const k = laneDbKey(botId);
+    if (k.includes("~")) q.run("INSERT INTO lane_active_turns (lane, bot_id, started_at) VALUES (?, ?, ?) ON CONFLICT(lane) DO UPDATE SET started_at = excluded.started_at, acted = 0", k, laneBot(k), now());
+    else q.run("INSERT INTO active_turns (bot_id, started_at) VALUES (?, ?) ON CONFLICT(bot_id) DO UPDATE SET started_at = excluded.started_at, acted = 0", k, now());
+  },
+  acted: (botId: string) => { const k = laneDbKey(botId); q.run(k.includes("~") ? "UPDATE lane_active_turns SET acted = 1 WHERE lane = ?" : "UPDATE active_turns SET acted = 1 WHERE bot_id = ?", k); },
+  end: (botId: string) => { const k = laneDbKey(botId); q.run(k.includes("~") ? "DELETE FROM lane_active_turns WHERE lane = ?" : "DELETE FROM active_turns WHERE bot_id = ?", k); },
+  /** Turns under way (after a restart: the ones it cut off). `bot_id` is the lane key: "bot" for the main chat, else "bot~thread". */
+  leftover: () => [...q.all<{ bot_id: string; acted: number }>("SELECT bot_id, acted FROM active_turns"), ...q.all<{ bot_id: string; acted: number }>("SELECT lane AS bot_id, acted FROM lane_active_turns")],
 };
 
 // ── A bot's changes to its own settings (self_update), for undo ─────────────

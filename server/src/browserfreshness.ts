@@ -1,6 +1,7 @@
 import { config } from "./config.js";
 import { computerKind } from "./computer.js";
 import { docker } from "./linux.js";
+import { parseSandboxState, refreshImageSandbox, seccompProfile, SANDBOX_LABEL, SANDBOX_STATE_FILE } from "./browsersandbox.js";
 import { guardedFetch } from "./net.js";
 
 /**
@@ -16,13 +17,23 @@ import { guardedFetch } from "./net.js";
  * shown to the server's owner (Settings → Security) as "N rounds of security fixes missing"; 2 or more is a warning,
  * with what to do: rebuild the image (`npm run computer:build`), which installs the distribution's current Chromium.
  *
- * Sandbox, verified for this item: the desktop browser runs as root with `--no-sandbox` (docker/desktop/open-browser.sh)
- * inside a container with every capability dropped and no-new-privileges (linux.ts), which is the isolation it relies
- * on. Chromium's own sandbox cannot run as root, and its setuid helper cannot work under no-new-privileges; running it
- * as a separate user with a seccomp profile that allows user namespaces is a change of the image, not made here
- * (docs/SECURITE.md, « Navigateur des bots »).
+ * Sandbox (L48, browsersandbox.ts): the browser runs as the user "browser" with Chromium's own sandbox, in computers
+ * created with Sklubot's seccomp profile. The owner also sees when that is not the case yet: an image built before
+ * (rebuild it), a server without the profile file, computers still made from the older image (made again by themselves
+ * when idle), or running browsers that had to start without their sandbox (open-browser.sh's state file).
  */
-export interface Freshness { installed: string | null; latest: string | null; behind: number | null; state: "ok" | "warn" | "unknown"; checkedAt: number }
+export interface SandboxStatus {
+  /** The desktop image runs its browser sandboxed (its label); null: no Linux computers or Docker did not answer. */
+  image: boolean | null;
+  /** The seccomp profile file is there (docker/desktop/seccomp-chromium.json). */
+  profile: boolean;
+  /** Computers made from an image without the sandbox (they keep their root browser until made again). */
+  oldComputers: number;
+  /** Running browsers that started without their sandbox (the host refused user namespaces…). */
+  unsandboxed: number;
+  state: "ok" | "warn" | "unknown";
+}
+export interface Freshness { installed: string | null; latest: string | null; behind: number | null; state: "ok" | "warn" | "unknown"; checkedAt: number; sandbox?: SandboxStatus }
 
 const DAY = 24 * 3600_000;
 export const WARN_BEHIND = 2;
@@ -52,10 +63,47 @@ export const freshnessSources = {
   },
 };
 
-export async function browserFreshness(force = false): Promise<Freshness> {
-  if (cache && !force && Date.now() - cache.checkedAt < DAY) return cache;
-  const [installed, latest] = await Promise.all([freshnessSources.installed().catch(() => null), freshnessSources.latest().catch(() => null)]);
-  cache = judgeFreshness(installed, latest);
-  return cache;
+export function judgeSandbox(s: Omit<SandboxStatus, "state">): SandboxStatus {
+  if (s.image === null) return { ...s, state: "unknown" };
+  const ok = s.image && s.profile && s.oldComputers === 0 && s.unsandboxed === 0;
+  return { ...s, state: ok ? "ok" : "warn" };
 }
-export const resetFreshness = () => { cache = null; };
+
+/** The sandbox's state on this server (Docker calls only; at most 20 running computers are asked). */
+export const sandboxSource = {
+  async status(): Promise<SandboxStatus> {
+    const profile = seccompProfile() !== null;
+    if (computerKind() !== "linux") return judgeSandbox({ image: null, profile, oldComputers: 0, unsandboxed: 0 });
+    const ping = await docker(["image", "inspect", config.desktopImage, "--format", "{{.Id}}"], { timeoutMs: 8000 }).catch(() => null);
+    if (!ping || ping.code !== 0) return judgeSandbox({ image: null, profile, oldComputers: 0, unsandboxed: 0 });
+    const image = await refreshImageSandbox(docker, config.desktopImage, 0);
+    const ps = await docker(["ps", "-a", "--filter", "label=sklubot=desktop", "--format", `{{.Names}}\t{{.Label "${SANDBOX_LABEL}"}}\t{{.State}}`], { timeoutMs: 10_000 });
+    let oldComputers = 0, unsandboxed = 0;
+    const running: string[] = [];
+    for (const line of ps.stdout.toString("utf8").split("\n")) {
+      const [name, label, st] = line.split("\t");
+      if (!name) continue;
+      if ((label ?? "").trim() !== "1") oldComputers++;
+      else if ((st ?? "").trim() === "running") running.push(name);
+    }
+    for (const name of running.slice(0, 20)) {
+      const r = await docker(["exec", name, "cat", SANDBOX_STATE_FILE], { timeoutMs: 5000 }).catch(() => null);
+      if (r && r.code === 0 && parseSandboxState(r.stdout.toString("utf8")).on === false) unsandboxed++;
+    }
+    return judgeSandbox({ image, profile, oldComputers, unsandboxed });
+  },
+};
+
+export async function browserFreshness(force = false): Promise<Freshness> {
+  if (cache && !force && Date.now() - cache.checkedAt < DAY) {
+    // The sandbox changes with a rebuild or a new computer: asked again every 10 minutes.
+    if (!sandboxCache || Date.now() - sandboxCache.at > 600_000) sandboxCache = { at: Date.now(), s: await sandboxSource.status().catch(() => null) };
+    return { ...cache, ...(sandboxCache.s ? { sandbox: sandboxCache.s } : {}) };
+  }
+  const [installed, latest, sandbox] = await Promise.all([freshnessSources.installed().catch(() => null), freshnessSources.latest().catch(() => null), sandboxSource.status().catch(() => null)]);
+  cache = judgeFreshness(installed, latest);
+  sandboxCache = { at: Date.now(), s: sandbox };
+  return { ...cache, ...(sandbox ? { sandbox } : {}) };
+}
+let sandboxCache: { at: number; s: SandboxStatus | null } | null = null;
+export const resetFreshness = () => { cache = null; sandboxCache = null; };

@@ -564,3 +564,19 @@ button.captions:hover { box-shadow: 0 0 0 1px var(--border-strong); }
   .thread-panel { top: calc(8px + env(safe-area-inset-top)); bottom: calc(8px + env(safe-area-inset-bottom)); }
   .md pre { padding: 10px 11px; }
 }
+/* Lanes (TaskLanes.tsx): several tasks of the bot at once, listed from the chat header */
+.lanes-wrap { position: relative; margin-right: 6px; }
+.lanes-chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 999px; border: 1px solid var(--border-strong); background: var(--info-soft); color: var(--text); font-size: 12.5px; font-weight: 600; white-space: nowrap; cursor: pointer; }
+.lanes-chip:hover { background: var(--hover); }
+.lanes-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--info); animation: lanes-pulse 1.6s ease-in-out infinite; }
+@keyframes lanes-pulse { 50% { opacity: 0.35; } }
+@media (prefers-reduced-motion: reduce) { .lanes-dot { animation: none; } }
+.lanes-panel { width: min(360px, calc(100vw - 32px)); padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+.lanes-head { font-size: 12.5px; font-weight: 650; color: var(--text); padding: 2px 4px; }
+.lanes-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.lanes-item { display: flex; align-items: center; gap: 6px; padding: 6px; border-radius: var(--r-md); background: var(--hover); min-width: 0; }
+.lanes-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.lanes-name { font-size: 13px; font-weight: 600; color: var(--text); }
+.lanes-phrase { font-size: 12px; }
+.lanes-stopall { align-self: flex-end; }
+@media (max-width: 720px) { .lanes-chip { padding: 0 8px; font-size: 12px; } .lanes-panel { position: fixed; left: 16px; right: 16px; top: 56px; width: auto; } }

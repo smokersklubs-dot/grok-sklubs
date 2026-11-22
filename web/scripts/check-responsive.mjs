@@ -26,6 +26,7 @@ const WIDTHS = [[360, 740], [390, 844], [768, 1024]];
 const PAGES = [
   "section=chat",
   "section=chat&long=1&running=1",
+  "section=chat&long=1&running=tasks",
   "section=chat&panel=thread",
   "section=chat&theme=dark&lang=en",
   "section=chat&listen=playing&long=1",

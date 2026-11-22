@@ -1,3 +1,5 @@
+import { cacheLayout } from "./cachelayout.js";
+import { toolsForCall } from "./toolsearch.js";
 import { isContextTooLong, isTransientStatus, ProviderError, retryAfterOf, type Block, type ChatMessage, type LlmProvider, type StopReason, type TurnRequest, type TurnResult } from "./types.js";
 
 interface WireMessage {
@@ -103,14 +105,19 @@ export class OpenAiCompatProvider implements LlmProvider {
   }
 
   async runTurn(req: TurnRequest): Promise<TurnResult> {
+    // L57: fixed system prompt first, the turn's changing context with the turn's message — OpenAI caches the longest
+    // unchanged prefix by itself (platform.openai.com/docs/guides/prompt-caching; no parameter is sent). Tool search:
+    // the core tools plus those loaded this turn (llm/toolsearch.ts; no documented deferred loading on this API).
+    const laid = cacheLayout(req.system, req.messages);
+    const tools = toolsForCall(req.tools, req.messages);
     const body: Record<string, unknown> = {
       model: req.model,
       stream: true,
       stream_options: { include_usage: true },
-      messages: toWire(req.system, req.messages, { providerId: this.id, echoReasoning: !!this.opts.echoReasoning, images: this.opts.imagesFor?.(req.model) ?? this.opts.images !== false }),
+      messages: toWire(laid.system, laid.messages, { providerId: this.id, echoReasoning: !!this.opts.echoReasoning, images: this.opts.imagesFor?.(req.model) ?? this.opts.images !== false }),
     };
-    if (req.tools.length)
-      body.tools = req.tools.map((t) => ({ type: "function", function: { name: t.name, description: t.description, parameters: t.inputSchema } }));
+    if (tools.length)
+      body.tools = tools.map((t) => ({ type: "function", function: { name: t.name, description: t.description, parameters: t.inputSchema } }));
     if (this.opts.sendsEffort) body.reasoning_effort = req.effort === "low" ? "low" : req.effort === "medium" ? "medium" : "high";
 
     let res: Response;

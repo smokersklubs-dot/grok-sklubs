@@ -106,6 +106,15 @@ export const fr = {
   "composer.waitUploads": "Attends la fin de l’envoi des fichiers",
   "composer.queued_one": "{n} message en attente",
   "composer.queued_other": "{n} messages en attente",
+  "lanes.count_one": "{n} tâche en cours",
+  "lanes.count_other": "{n} tâches en cours",
+  "lanes.title": "Tâches en cours",
+  "lanes.main": "Discussion principale",
+  "lanes.routine": "Routine « {name} »",
+  "lanes.from": "Demande de {name}",
+  "lanes.threadN": "Fil n° {n}",
+  "lanes.stop": "Arrêter",
+  "lanes.stopAll": "Tout arrêter",
 
   "step.mark.error": "échec",
   "step.mark.denied": "refusé",
@@ -437,6 +446,15 @@ export const fr = {
   "report.sent": "Merci, c’est signalé.",
   "listen.stop": "Arrêter",
   "listen.failed": "Lecture impossible, réessayer",
+  // Model health and activity line (ModelHealthBanner.tsx, Chat.tsx: nod items 3 and 4).
+  "modelHealth.toReconnect": "{model} est à reconnecter.",
+  "modelHealth.noCredit": "{model} n'a plus de crédit.",
+  "modelHealth.notAnswering": "{model} ne répond pas.",
+  "modelHealth.reconnect": "Reconnecter",
+  "modelHealth.addCredit": "Ajouter du crédit",
+  "modelHealth.openModels": "Ouvrir les réglages des modèles",
+  "modelHealth.retry": "Vérifier à nouveau",
+  "activity.request": "« {text} »",
 } as const;
 
 export type Key = keyof typeof fr;

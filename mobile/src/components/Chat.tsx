@@ -8,6 +8,7 @@ import { errText, useT, type Key } from "../i18n";
 import { clockTime, dayLabel, fileSize, isImage } from "../lib/format";
 import { shareLibraryFile } from "../lib/files";
 import { stepSummary } from "../state/items";
+import { requestSummary } from "../lib/requestSummary";
 import { useStore } from "../state/store";
 import { radius, useTheme } from "../theme";
 import { Icon } from "./Icon";
@@ -191,11 +192,13 @@ const ACTIVITY: Record<string, Key> = {
 };
 
 /** "Thinking it through…" under the conversation while the bot works. */
-export function ActivityLine({ live }: { live: Live | undefined }) {
+export function ActivityLine({ live, rows }: { live: Live | undefined; rows?: Row[] }) {
   const { c } = useTheme();
   const t = useT();
   if (!live?.running && !live?.awaiting) return null;
-  const phrase = live.awaiting ? t("activity.waiting") : live.caption || (live.activity ? t(ACTIVITY[live.activity.kind] ?? "activity.working") : t("activity.working"));
+  // nod item 3: at once, a one-line summary of the request, until the bot's first step or thought.
+  const asked = !live.steps && (!live.activity || live.activity.kind === "thinking") && rows ? requestSummary(rows) : "";
+  const phrase = live.awaiting ? t("activity.waiting") : live.caption || (asked ? t("activity.request", { text: asked }) : null) || (live.activity ? t(ACTIVITY[live.activity.kind] ?? "activity.working") : t("activity.working"));
   return (
     <View style={styles.activity} accessibilityLiveRegion="polite">
       {live.awaiting ? <Icon name="dot" size={14} color={c.warn} /> : <ActivityIndicator size="small" color={c.text3} />}

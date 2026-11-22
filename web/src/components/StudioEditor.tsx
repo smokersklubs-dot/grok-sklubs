@@ -14,6 +14,7 @@ import { StudioLibraryAudio } from "./StudioLibraryAudio";
 import { StudioSubtitles } from "./StudioSubtitles";
 import { ErrorNote, Loading } from "./ui";
 import "./VideoStudio.css";
+import "./Comfort.css";
 
 export function StudioEditor({
   bot,
@@ -279,6 +280,17 @@ export function StudioEditor({
             </label>
           </div>
           <StudioLibraryAudio key={bot} bot={bot} value={model.audio} fr={fr} onPick={audio => update({ ...model, audio })} />
+          <label className="studio-ai-label">
+            <input
+              type="checkbox"
+              checked={!!model.aiLabel}
+              onChange={(e) => {
+                const { aiLabel: _drop, ...rest } = model;
+                update(e.target.checked ? { ...rest, aiLabel: fr ? "fr" : "en" } : rest);
+              }}
+            />
+            {fr ? "Afficher « Généré par IA » sur la vidéo (et le noter dans le fichier MP4)" : "Show “AI-generated” on the video (and note it in the MP4 file)"}
+          </label>
           {model.audio && (
             <div className="studio-pair">
               <label>

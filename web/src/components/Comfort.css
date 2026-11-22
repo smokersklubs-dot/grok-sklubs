@@ -1,0 +1,9 @@
+/* 22/11 comfort batch: « Noté » under the composer, Telegram voice-note cost line, Studio « Généré par IA » option,
+   the « Accès à mes fichiers » switch of a linked computer. */
+.composer-noted { display: flex; align-items: center; gap: 6px; padding: 6px 10px; font-size: 13px; color: var(--text-2); }
+.composer-noted svg { color: var(--ok, var(--accent)); flex: none; }
+.telegram-voice-paid { color: var(--warn-text, var(--text)); font-weight: 600; }
+.studio-ai-label { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; line-height: 1.4; margin: 8px 0; }
+.studio-ai-label input { margin-top: 2px; flex: none; }
+.relay-guard-files { margin: 0 0 12px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--r-md); }
+.relay-guard-files p { margin: 6px 0 0; }

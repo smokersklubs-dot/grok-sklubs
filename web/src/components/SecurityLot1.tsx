@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, errText } from "../api";
-import { useT } from "../i18n";
+import { useT, type Key } from "../i18n";
 import { useStore } from "../store";
 import type { Bot, Card, VaultItem } from "../types";
 import { relTime } from "../lib/format";
@@ -13,7 +13,17 @@ import "./SecurityLot1.css";
  * two-factor code on a floor approval card (L44). Server: server/src/securityroutes.ts. */
 
 interface SecuritySettings { floorSecondFactor: boolean; netAlerts: boolean }
-interface Freshness { installed: string | null; latest: string | null; behind: number | null; state: "ok" | "warn" | "unknown" }
+interface SandboxStatus { image: boolean | null; profile: boolean; oldComputers: number; unsandboxed: number; state: "ok" | "warn" | "unknown" }
+interface Freshness { installed: string | null; latest: string | null; behind: number | null; state: "ok" | "warn" | "unknown"; sandbox?: SandboxStatus }
+/** L48: which sentence tells the owner about the browser's own sandbox (server: browserfreshness.ts). */
+export function sandboxKey(s: SandboxStatus): Key | null {
+  if (s.state === "unknown" || s.image === null) return null;
+  if (!s.image) return "security.sandboxNoImage";
+  if (!s.profile) return "security.sandboxNoProfile";
+  if (s.unsandboxed > 0) return "security.sandboxFallback";
+  if (s.oldComputers > 0) return "security.sandboxOld";
+  return "security.sandboxOk";
+}
 
 let settingsOnce: Promise<SecuritySettings | null> | null = null;
 const loadSettings = () => (settingsOnce ??= api<{ settings: SecuritySettings }>("GET", "/security/settings").then((r) => r.settings, () => null));
@@ -82,6 +92,12 @@ export function SecuritySettingsBlock() {
         <p className={`muted small security-browser is-${browser.state}`} role={browser.state === "warn" ? "alert" : undefined}>
           <Icon name={browser.state === "warn" ? "alert" : "monitor"} size={13} />{" "}
           {browser.state === "unknown" ? t("security.browserUnknown") : t(browser.state === "warn" ? "security.browserBehind" : "security.browserOk", { n: String(browser.behind ?? 0), installed: browser.installed ?? "?", latest: browser.latest ?? "?" })}
+        </p>
+      )}
+      {browser?.sandbox && sandboxKey(browser.sandbox) && (
+        <p className={`muted small security-browser is-${browser.sandbox.state}`} role={browser.sandbox.state === "warn" ? "alert" : undefined}>
+          <Icon name={browser.sandbox.state === "warn" ? "alert" : "lock"} size={13} />{" "}
+          {t(sandboxKey(browser.sandbox)!, { n: String(browser.sandbox.unsandboxed > 0 ? browser.sandbox.unsandboxed : browser.sandbox.oldComputers) })}
         </p>
       )}
       <ErrorNote onDismiss={() => setError(null)}>{error}</ErrorNote>

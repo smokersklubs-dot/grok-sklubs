@@ -235,7 +235,9 @@ test("a tool at work is not silence: a bot asking another bot and waiting gets n
   await until(async () => (await replies(api1.id)).some((t) => t.startsWith("Done: Hugo answered")), "the answer", 1000);
   await idle(api1.id);
   assert.equal((await watchNotices(api1.id)).length, mine, "no notice for the bot that waited (longer than the stall delay)");
-  const hugo = await watchNotices(helper.id);
+  // Lanes (agent/lanes.ts): a teammate's request runs in the thread under its message in Hugo's chat; its notices are there.
+  const ask = (await rowsOf(helper.id)).filter((r) => r.body.kind === "message" && r.body.role === "user" && r.body.origin?.kind === "bot").at(-1)!;
+  const hugo = ((await call("GET", `/bots/${helper.id}/rows?limit=500&thread=${ask.seq}`)).json.rows as Row[]).filter((r) => r.body.kind === "notice" && (r.body as any).action?.kind === "watch").map((r) => ({ seq: r.seq, text: (r.body as any).text, action: (r.body as any).action })) as (Notice & { action: WatchNoticeAction })[];
   // Silent past both delays: the first notice gave way to the stall notice, which settled when the answer came.
   assert.deepEqual(hugo.map((n) => [n.action.watch, n.action.status]), [["silent", "over"], ["stalled", "settled"]]);
   assert.equal(hugo[1].text, "Hugo semblait bloqué depuis 1 min, puis a repris.");

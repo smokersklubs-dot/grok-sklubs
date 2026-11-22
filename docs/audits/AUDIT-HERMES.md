@@ -531,7 +531,7 @@ Sklubot a déjà repris trois compétences (`brouillon-email`, `cartes-de-suivi`
 | 1 | ✅ **Fait (2026-11-22).** Délai d'inactivité sur chaque appel au modèle (180 s sans rien → erreur passagère → relance puis secours), plafond de connexion (180 s) et plafond par appel (30 min) ; le tour finit toujours (relances, secours, puis carte d'échec et nouveaux essais du coordinateur), sans clic. `server/src/llm/timeouts.ts`, réglages `MODEL_IDLE_TIMEOUT_SEC`, `MODEL_CONNECT_TIMEOUT_SEC`, `MODEL_CALL_TIMEOUT_MIN`. (§ 3.7, ligne 150) | S |
 | 2 | ✅ **Fait (2026-11-22).** Numéro d'envoi sur chaque message (web et mobile), gardé 24 h par compte et par bot : le même envoi répété rend le premier message, sans second tour. `server/src/sendkeys.ts`. (ligne 24) | S |
 | 3 | Modifier un message envoyé et régénérer une réponse. (ligne 44) | M |
-| 4 | Recherche d'outils : ne plus envoyer la centaine d'outils et tous les outils d'applis à chaque appel. (ligne 151) | L |
+| 4 | ✅ Fait (2026-11-22, `llm/toolsearch.ts`, `agent/tools-steps.ts`). Recherche d'outils : ne plus envoyer la centaine d'outils et tous les outils d'applis à chaque appel. (ligne 151) | L |
 | 5 | ✅ **Fait en partie (2026-11-22).** Liens sans `http` reconnus (« youtube.com/watch?v=… », « www.site.fr », « sklubs.fr »), sans prendre « file.txt » ou « e.g. » pour un lien : fait (`agent/links.ts`). Reste : ouvrir l'écran du bot tout seul quand il s'en sert. (§ 3.2, ligne 72) | S |
 | 6 | Réparer la grande vue de l'écran qui ne se reconnecte pas, avec délais croissants et bouton Reconnecter. (ligne 73) | S |
 | 7 | Bouton Copier sur les blocs de code, repli des longs blocs. (ligne 35) | S |

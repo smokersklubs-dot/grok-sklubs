@@ -2,7 +2,7 @@ import { q } from "../db.js";
 import type { ToolUseBlock } from "../llm/index.js";
 import { pushLater } from "../push.js";
 import { runs } from "../routines.js";
-import { activeTurns, audit, clip, now, rows, users, type BotRecord, type QueuedWork } from "../store.js";
+import { activeTurns, audit, clip, laneDbKey, now, rows, turnKey, users, type BotRecord, type QueuedWork } from "../store.js";
 import { external } from "./authorize.js";
 import { gt } from "./guardtext.js";
 import type { Turn } from "./loop.js";
@@ -47,10 +47,15 @@ export function endUnprotected(botId: string, callId: string) {
 }
 
 /** A new turn of this bot starts: the markers of its previous turn are history. */
-export function clearUnprotected(botId: string) { q.run("DELETE FROM turn_unprotected WHERE bot_id = ?", botId); }
+// Lanes (lanes.ts): a bot may run a turn per thread at once, so a turn clears only its own thread's markers.
+export function clearUnprotected(botId: string) { const [id, t] = turnKey(botId).split("~"); q.run("DELETE FROM turn_unprotected WHERE bot_id = ? AND thread = ?", id, Number(t) || 0); }
 
-/** The unprotected actions of a bot's current turn, oldest first (`done`: it had finished). */
-export const unprotectedOf = (botId: string) => q.all<{ tool: string; label: string; thread: number; done: number }>("SELECT tool, label, thread, done FROM turn_unprotected WHERE bot_id = ? ORDER BY started_at, rowid", botId);
+/** The unprotected actions of a lane's current turn ("bot~thread"; a bare bot id: the whole bot), oldest first (`done`: it had finished). */
+export const unprotectedOf = (botId: string) => {
+  const [id, t] = botId.split("~");
+  return t === undefined ? q.all<{ tool: string; label: string; thread: number; done: number }>("SELECT tool, label, thread, done FROM turn_unprotected WHERE bot_id = ? ORDER BY started_at, rowid", id)
+    : q.all<{ tool: string; label: string; thread: number; done: number }>("SELECT tool, label, thread, done FROM turn_unprotected WHERE bot_id = ? AND thread = ? ORDER BY started_at, rowid", id, Number(t) || 0);
+};
 
 /** What "Continue" tells the bot after such a restart (loop.ts continueAfterStepLimit, reason "restart"). */
 export const RESTART_CHECK_TEXT = "Your last turn was cut off by a server restart in the middle of an action (a click, typing, a command or a message), and the user pressed Continue. That action may or may not have gone through. Before redoing anything, check the current state — the screen, the page, the app, what was sent — and never repeat what already went through. Then finish the work, or say plainly where things stand.";
@@ -62,7 +67,8 @@ export const RESTART_CHECK_TEXT = "Your last turn was cut off by a server restar
  */
 export function holdAfterRestart(bot: BotRecord | null | undefined, botId: string, row: QueuedWork | undefined): boolean {
   const marks = unprotectedOf(botId);
-  q.run("DELETE FROM turn_unprotected WHERE bot_id = ?", botId);
+  const [id, t] = botId.split("~");
+  if (t === undefined) q.run("DELETE FROM turn_unprotected WHERE bot_id = ?", id); else q.run("DELETE FROM turn_unprotected WHERE bot_id = ? AND thread = ?", id, Number(t) || 0);
   if (!marks.length || !bot || bot.kind !== "agent") return false;
   // The action cut off in the middle if there is one, else the last one this turn had done.
   const m = marks.find((x) => !x.done) ?? marks[marks.length - 1];
@@ -91,7 +97,7 @@ export const gracefulStopping = () => stopping;
 /** A turn at a step boundary: during a graceful stop it waits here for good (the restart picks it up cleanly). */
 export function safePoint(botId: string): Promise<void> | void {
   if (!stopping) return;
-  parked.add(botId);
+  parked.add(laneDbKey(botId));
   return new Promise<void>(() => { /* never resolves: the process is about to exit */ });
 }
 

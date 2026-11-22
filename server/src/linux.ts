@@ -7,6 +7,7 @@ import { noteSignal } from "./sentinel/signals.js";
 import type { ClickTarget } from "./computer.js";
 import type { ElementAnswer, ElementRequest, ElementSnapshot } from "./screen-elements.js";
 import { BROWSER_PY, browserTrouble, dialogWords, tabNote, type BrowserAnswer, type GuardedClick } from "./browser-cdp.js";
+import { refreshImageSandbox, sandboxRunArgs, sandboxSpec } from "./browsersandbox.js";
 
 /**
  * A real Linux computer per bot: one container each, with a graphical desktop, a browser, a terminal
@@ -197,7 +198,8 @@ export const SPEC_LABEL = "sklubot.spec";
 const specOf = (key: string) => {
   const link = config.botLink === "socket" ? `socket:${config.botsNetwork}` : `net:${config.desktopNetwork || "host"}`;
   const libs = allocator.isShared(key) ? `;libs:${[...allocator.members(key)].sort().join(",")}` : "";
-  return `${link};rt:${config.desktopRuntime || "default"}${libs}`;
+  // L48: `;sb:<profile hash>` once the image runs its browser sandboxed (browsersandbox.ts).
+  return `${link};rt:${config.desktopRuntime || "default"}${libs}${sandboxSpec()}`;
 };
 /** Each computer's team label, by container name, in one call (for the library view). */
 export async function teamLabels(): Promise<Map<string, string>> {
@@ -404,6 +406,8 @@ export function computerRunArgs(key: string, o: { libraries: { dir: string; dst:
     // Chromium, x11vnc, apt-get, sudo, su all work with these). No device nodes, raw sockets, chroot or
     // file capabilities, and no way to gain privileges through setuid programs.
     "--cap-drop", "ALL", ...COMPUTER_CAPS.flatMap((cap) => ["--cap-add", cap]), "--security-opt", "no-new-privileges",
+    // L48: the seccomp profile that lets Chromium's own sandbox start, for an image that uses it (browsersandbox.ts).
+    ...sandboxRunArgs(),
     ...(config.desktopRuntime ? ["--runtime", config.desktopRuntime] : []),
     ...o.quota,
     "-e", `SCREEN_RES=${config.desktopResolution}`,
@@ -421,6 +425,7 @@ export function computerRunArgs(key: string, o: { libraries: { dir: string; dst:
 /** Makes sure the computer is on. Only a few may run at once; the least recently used idle one goes to sleep. */
 async function wake(key: string, userId: string, workspace?: string): Promise<Machine> {
   const known = machines.get(key);
+  await refreshImageSandbox(docker, config.desktopImage);
   const spec = specOf(key);
   // A computer believed on is checked with Docker at most every 120 s: one removed or stopped behind our back is started
   // again. One not checked in this server run yet, or made with other settings since, goes through the full path below.

@@ -147,6 +147,28 @@ gardés ; ce qui avait été installé hors de `/root` est à réinstaller, comm
 Le réseau `sklubot_bots` est créé tout seul. Si quelque chose ne va pas, `SKLUBOT_BOT_LINK=network` (et
 `SKLUBOT_PROXY_NETWORKS=sklubot_bots,sklubot_net`) remet l'ancienne façon le temps de regarder.
 
+### Mise à jour : bac à sable du navigateur des bots (L48, 2026-11-22)
+
+Le navigateur des ordinateurs des bots tourne désormais avec un utilisateur à part et son propre bac à sable
+(docs/SECURITE.md, « Navigateur des bots »). Il faut **reconstruire les deux images** : celle de l'ordinateur
+(`sklubot-desktop`, qui crée l'utilisateur `browser`) et celle de l'application (qui contient le profil seccomp
+`docker/desktop/seccomp-chromium.json`, lu par le serveur et par son proxy Docker).
+
+- **VPS** : `bash deploy/update.sh` (il fait `docker compose -f docker-compose.vps.yml up -d --build`, qui reconstruit
+  aussi `desktop-image`). À la main : `docker compose -f docker-compose.vps.yml build desktop-image sklubot docker-proxy`
+  puis `docker compose -f docker-compose.vps.yml up -d`.
+- **Coolify** : redéploie (le service `desktop-image` est reconstruit avec le reste).
+- **Sans Docker Compose** : `npm run computer:build`, puis redémarre le serveur.
+
+Ensuite rien à faire : chaque ordinateur fait avec l'ancienne image est **refait tout seul** la prochaine fois qu'il ne
+sert pas (dossier personnel, connexions et bibliothèque gardés ; paquets Debian remis par `sklubot-install`). Tant
+qu'il ne l'est pas, il marche comme avant. Réglages → Autorisations → Sécurité dit où on en est : « Bac à sable du
+navigateur : actif », ou combien d'ordinateurs sont encore sur l'ancienne image, ou s'il a fallu démarrer un navigateur
+sans bac à sable (hôte qui interdit les espaces de noms utilisateur : sur Ubuntu 23.10 ou plus récent, vérifie que
+`sysctl kernel.apparmor_restrict_unprivileged_userns` ne bloque pas les conteneurs ; le navigateur reste alors utilisable,
+sans bac à sable mais pas en root). Pour vérifier un ordinateur : `docker exec sklubot-<bot> cat /tmp/sklubot-browser-sandbox`
+doit répondre `on`.
+
 ### Isoler encore plus les ordinateurs des bots (facultatif, sur l'hôte)
 
 Coolify ne laisse pas une application toucher au pare-feu de la machine. Sans règle de pare-feu, un ordinateur de

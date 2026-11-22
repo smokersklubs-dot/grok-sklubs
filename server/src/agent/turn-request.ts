@@ -15,7 +15,7 @@ type WorkTrigger =
   | { kind: "user"; text: string; voice?: boolean; attachments?: Attachment[]; channel?: "telegram"; thread?: number; skill?: ForcedSkill; /** Wave 6: written by someone of a workspace the bot is shared with, not its owner. */ member?: MemberAuthor; /** Bot API: written by an outside program through an API key, not typed by the owner. */ api?: ApiAuthor; /** Goal mode: this message is the objective of that goal (its first round). */ goal?: string }
   | { kind: "routine"; name: string; text: string; runId?: string; tainted?: boolean; /** "Run now", pressed by the user (usage caps: a person's own work). */ byHand?: boolean; /** The run's own thread (routinethread.ts), set when it starts. */ thread?: number }
   /** `ask`: the sender waits for the answer in its own turn (bot_message with wait): this turn's last words go back to it. */
-  | { kind: "bot"; fromName: string; text: string; depth: number; tainted?: boolean; ask?: AskRoute }
+  | { kind: "bot"; fromName: string; text: string; depth: number; tainted?: boolean; ask?: AskRoute; /** Lanes (lanes.ts): the thread under the request's message in the main chat, where the work runs (team.ts). */ thread?: number }
   /**
    * `resumeOf`: "steps" when it picks up work stopped at the step limit (a routine does that once, by itself); "spend"
    * when the user chose to continue at a spend checkpoint. `spendScope`: the piece of work it goes on billing to.
@@ -25,10 +25,10 @@ type WorkTrigger =
       /** The background jobs this message reports the end of (jobs.ts); sent again later if the bot waits on the user. */ jobIds?: string[];
       /** Usage caps (usagecaps.ts): no person started this (a check-in, mail to the bot, a bot's post or report). */ unattended?: boolean;
       /** Usage caps: a person asked for this just now (they pressed "Continue" on a cap's card). */ byPerson?: boolean }
-  | { kind: "resume" };
+  | { kind: "resume"; /** Lanes (lanes.ts): the thread whose approval was answered (absent: the main chat). */ thread?: number };
 
 /** The thread a trigger belongs to (0: the main chat). */
-export const threadOf = (t: Trigger) => (t.kind === "user" || t.kind === "system" || t.kind === "routine" ? t.thread ?? 0 : 0);
+export const threadOf = (t: Trigger) => (t.kind === "user" || t.kind === "system" || t.kind === "routine" || t.kind === "bot" ? t.thread ?? 0 : 0);
 
 // A workspace member's message is not the owner's word: the turn it starts is careful from its first step (wave 6). Nor is
 // a message an outside program sent through the Bot API (botapi.ts): it is outside content too.

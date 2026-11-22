@@ -1,4 +1,4 @@
-import { rowScope, bots, clip, rows, users } from "../store.js";
+import { rowScope, bots, clip, rows, turnKey, users } from "../store.js";
 import { tr } from "../i18n.js";
 import { handleFailure } from "./failures.js";
 import type { Trigger } from "./turn-request.js";
@@ -34,9 +34,10 @@ const runningScopes = new Map<string, object>();
  */
 export function crashedTurn(err: unknown): string | null {
   const scope = rowScope.getStore();
-  if (!scope || runningScopes.get(scope.botId) !== scope) return null;
+  // Lanes (lanes.ts): a bot may run several turns; the one the error came from is named "bot~thread", and only it stops.
+  if (!scope || runningScopes.get(turnKey(scope.botId)) !== scope) return null;
   console.error(`[turn crash ${scope.botId}]`, err);
-  return scope.botId;
+  return turnKey(scope.botId);
 }
 
 /**
@@ -45,7 +46,8 @@ export function crashedTurn(err: unknown): string | null {
  */
 export async function guardTurn(botId: string, trigger: Trigger, thread: number, run: () => Promise<void>, release: (botId: string) => void): Promise<void> {
   const scope = rowScope.getStore();
-  if (scope) runningScopes.set(botId, scope);
+  const key = turnKey(botId);
+  if (scope) runningScopes.set(key, scope);
   const since = Date.now();
   try {
     await run();
@@ -54,7 +56,7 @@ export async function guardTurn(botId: string, trigger: Trigger, thread: number,
     try { release(botId); } catch (e) { console.error(`[turn crash ${botId}] release`, e); }
     try { report(botId, trigger, thread, since, err); } catch (e) { console.error(`[turn crash ${botId}] report`, e); }
   } finally {
-    if (runningScopes.get(botId) === scope) runningScopes.delete(botId);
+    if (runningScopes.get(key) === scope) runningScopes.delete(key);
   }
 }
 

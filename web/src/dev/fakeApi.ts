@@ -46,6 +46,11 @@ export function installFakeApi(get: () => FakeApiState): void {
       // « Équipe Sklubot (.md) » (GalleryTeamMd.tsx): the review screen, the creation, the share window.
       // « Règles de sécurité » of a linked computer: saving answers with what was sent.
       if (method === "PUT" && /^\/relay\/devices\/[^/]+\/guard$/.test(path) && !s.fail) { await wait(150); return json(200, relayGuardFixture(s.empty, JSON.parse(String(init?.body ?? "{}")))); }
+      // 22/11 comfort batch: Telegram voice notes written out, chat mute, a command's own Stop.
+      if (/^\/bots\/[^/]+\/telegram\/voice-text$/.test(path) && !s.fail) { await wait(150); return json(200, { enabled: JSON.parse(String(init?.body ?? "{}")).enabled === true, provider: "whisper-cpp", cost: "local", maxSeconds: 120 }); }
+      if (/^\/bots\/[^/]+\/mute$/.test(path) && !s.fail) { await wait(100); const m = JSON.parse(String(init?.body ?? "{}")).mute; return json(200, { muted: m !== "off", until: m === "8h" ? Date.now() + 8 * 3_600_000 : null }); }
+      if (/^\/bots\/[^/]+\/messages$/.test(path) && method === "POST" && !s.fail) { await wait(100); const b = JSON.parse(String(init?.body ?? "{}")); return json(200, { row: { seq: 90_000 + Math.floor(Math.random() * 1000), botId: path.split("/")[2], generation: 1, thread: 0, createdAt: Date.now(), body: { kind: "message", role: "user", text: String(b.text ?? "") } } }); }
+      if (/^\/bots\/[^/]+\/commands\/[^/]+\/stop$/.test(path) && !s.fail) { await wait(150); return json(200, { stopped: true }); }
       if (path === "/team-md/preview" && !s.fail) { await wait(150); return json(200, teamMdPreviewFixture(s)); }
       if (path === "/team-md/commit" && !s.fail) { await wait(150); return json(200, { report: teamMdReportFixture() }); }
       if (path === "/team-md/export" && !s.fail) { await wait(100); return json(200, teamMdExportFixture(s)); }
@@ -69,6 +74,8 @@ export function installFakeApi(get: () => FakeApiState): void {
     // « Centre de commandement »: the team, and a drawn screen for the computers that are on.
     if (path === "/command") return json(200, commandFixture(s));
     if (/^\/relay\/devices\/[^/]+\/guard$/.test(path)) return json(200, relayGuardFixture(s.empty));
+    if (/^\/bots\/[^/]+\/telegram\/voice-text$/.test(path)) return json(200, { enabled: !s.empty, provider: "whisper-cpp", cost: "local", maxSeconds: 120 });
+    if (/^\/bots\/[^/]+\/mute$/.test(path)) return json(200, { muted: false, until: null });
     if (/^\/bots\/[^/]+\/screen$/.test(path)) return new Response(fakeScreen(path.split("/")[2].replace(/^cmd_/, "")), { headers: { "content-type": "image/svg+xml" } });
     if (path === "/surveillance") return json(200, sentinelOverview(s, s.empty));
     if (path === "/reports") return json(200, reportsFixture(s, s.empty));

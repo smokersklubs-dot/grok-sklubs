@@ -28,6 +28,9 @@ COPY --from=build /app/server/dist server/dist
 # The built-in team templates (server/src/teamfile.ts) are read from server/templates, next to dist.
 COPY --from=build /app/server/templates server/templates
 COPY docker/desktop/install-craft.sh docker/desktop/install-craft.sh
+# L48: the seccomp profile the bots' computers are created with (Chromium's own sandbox), read by the server and by
+# its Docker proxy, which lets only this exact profile through (server/src/browsersandbox.ts, dockerproxy.ts).
+COPY docker/desktop/seccomp-chromium.json docker/desktop/seccomp-chromium.json
 # The bundled skills library (server/src/skillslibrary.ts), with each skill's LICENSE.txt and NOTICE.
 COPY --from=build /app/server/skills-library server/skills-library
 COPY --from=build /app/web/src/lib/studioStory.ts /app/web/src/lib/studioTechniques.ts web/src/lib/

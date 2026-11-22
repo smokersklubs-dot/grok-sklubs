@@ -33,8 +33,47 @@ function timeoutError(label: string, t: ModelTimeout): ProviderError {
   return new ProviderError(text, { transient: true, code: "timeout" });
 }
 
+/**
+ * Hooks for the chat (nod item 3, L60): `slow` fires once a turn's call (one that streams words: `onText` set) has said
+ * nothing for `slowMs` (MODEL_WAIT_NOTICE_SEC, 60 s by default) and returns what to do when it speaks again; `failed`
+ * hears every failed call (agent/modelhealth.ts: a refused key means "à reconnecter"). Set once by agent/modelhealth.ts.
+ */
+export const callHooks: {
+  slowMs: number;
+  slow?: (p: { providerId: string; label: string; model: string }) => (() => void) | void;
+  failed?: (p: { providerId: string; model: string }, err: unknown) => void;
+} = { slowMs: Math.max(0, Number(process.env.MODEL_WAIT_NOTICE_SEC ?? 60)) * 1000 };
+
 /** One guarded call. `limits` is read from the configuration unless given (tests). */
 export async function runTurnGuarded(provider: LlmProvider, req: TurnRequest, limits: ModelTimeouts = fromConfig()): Promise<TurnResult> {
+  // "En attente du modèle": a timer restarted on every sign of life; what it showed is taken back when the model speaks.
+  let slowTimer: NodeJS.Timeout | null = null;
+  let undoSlow: (() => void) | void;
+  const watchSlow = req.onText && callHooks.slow && callHooks.slowMs > 0;
+  const armSlow = () => {
+    if (!watchSlow) return;
+    if (undoSlow) { const u = undoSlow; undoSlow = undefined; u(); }
+    if (slowTimer) clearTimeout(slowTimer);
+    slowTimer = setTimeout(() => { undoSlow = callHooks.slow?.({ providerId: provider.id, label: provider.label, model: req.model }); }, callHooks.slowMs);
+  };
+  const endSlow = () => { if (slowTimer) clearTimeout(slowTimer); if (undoSlow) { const u = undoSlow; undoSlow = undefined; u(); } };
+  armSlow();
+  const lively: TurnRequest = !watchSlow ? req : {
+    ...req,
+    onActivity: () => { armSlow(); req.onActivity?.(); },
+    onText: (d) => { armSlow(); req.onText?.(d); },
+    onReasoning: (d) => { armSlow(); req.onReasoning?.(d); },
+    onToolStart: (id, name) => { armSlow(); req.onToolStart?.(id, name); },
+  };
+  try {
+    return await guarded(provider, lively, limits);
+  } catch (err) {
+    try { callHooks.failed?.({ providerId: provider.id, model: req.model }, err); } catch { /* a hook never breaks the call's own error */ }
+    throw err;
+  } finally { endSlow(); }
+}
+
+async function guarded(provider: LlmProvider, req: TurnRequest, limits: ModelTimeouts): Promise<TurnResult> {
   if (limits.connectMs <= 0 && limits.idleMs <= 0 && limits.totalMs <= 0) return provider.runTurn(req);
   const cut = new AbortController();
   let started = false;

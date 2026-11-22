@@ -10,7 +10,8 @@ import { defaultModelRef, modelLabel, ProviderError, resolveModel, validateToolI
 import { tr } from "../i18n.js";
 import { imageService } from "../images.js";
 import type { ActivityKind, Attachment, Row } from "../shared.js";
-import { activeTurns, approvals, audit, botQueue, bots, clip, type QueuedWork, feedback, history, newId, paused, policies, rows, redactSecrets, rowScope, settings, users, type BotRecord, type UserRecord } from "../store.js";
+import { activeTurns, approvals, audit, botQueue, bots, clip, type QueuedWork, feedback, history, laneKey, newId, paused, policies, rows, redactSecrets, rowScope, settings, users, type BotRecord, type UserRecord } from "../store.js";
+import { aliasLane, laneBusy, laneOf, laneWaiting, MAIN_LANE, rowThread, schedule, threadLane } from "./lanes.js"; import { LaneMap, LaneSet } from "./lanemap.js"; import { acquire, releaseLane } from "./turnlocks.js";
 import { runs } from "../routines.js";
 import { overBudget, record, setActorHook } from "../usage.js";
 import { botEmail } from "../botmail.js";
@@ -66,7 +67,7 @@ export interface MemberAuthor { id: string; name: string; role: string; workspac
 export interface ApiAuthor { keyId: string; name: string }
 
 /** Who started the turn a bot is running now (a workspace member, or null for the owner): usage lines carry it. */
-const actors = new Map<string, string>();
+const actors = new LaneMap<string>(); // lanes.ts: per running turn
 export const actorOf = (botId: string): string | null => actors.get(botId) ?? null;
 setActorHook(actorOf);
 
@@ -184,35 +185,23 @@ function pushOutcome(bot: BotRecord, user: UserRecord, trigger: Trigger, said: s
   else if (trigger.kind === "user" && trigger.channel !== "telegram" && !appVisible(user.id)) pushLater(user.id, { kind: "reply", title: bot.name, body: said, botId: bot.id });
 }
 
-// ── Per-bot serial queue ─────────────────────────────────────────────────────
-const queues = new Map<string, Promise<void>>();
-const pendingCount = new Map<string, number>();
-const controllers = new Map<string, AbortController>();
+// ── Per-bot lanes (lanes.ts): up to 3 turns at once, one per thread; each lane's state below is keyed by its lane ──
+const controllers = new LaneMap<AbortController>();
 /** Messages typed while the bot is mid-turn; folded into that turn at the next step. */
-const steering = new Map<string, Array<() => Promise<Block[]>>>();
-/** The thread the running turn of each bot answers in (absent: the main chat). */
-const runningThread = new Map<string, number>();
-/** Bots whose running turn their owner started (origin "user"): only such a turn takes in words the owner types meanwhile. */
-const ownTurns = new Set<string>();
+const steering = new LaneMap<Array<() => Promise<Block[]>>>();
+/** Lanes whose running turn their owner started (origin "user"): only such a turn takes in words the owner types meanwhile. */
+const ownTurns = new LaneSet();
 
-export const isBusy = (botId: string) => (pendingCount.get(botId) ?? 0) > 0;
-/** Work queued for a bot behind the job that is running now (called from inside that job). */
-export const queuedBehind = (botId: string) => Math.max(0, (pendingCount.get(botId) ?? 0) - 1);
-/** The conversation the bot's running turn answers in (0: the main chat), or null when no turn runs. */
-export const runningThreadOf = (botId: string): number | null => (controllers.has(botId) ? runningThread.get(botId) ?? 0 : null);
+export const isBusy = (botId: string) => laneBusy(botId);
+/** Work queued for a bot that has not started yet (called from inside a running job). */
+export const queuedBehind = (botId: string) => laneWaiting(botId);
+/** The conversation a running turn of the bot answers in (the main chat first, 0), or null when no turn runs. */
+export const runningThreadOf = (botId: string): number | null => { const l = controllers.lanesOf(botId); return l.length ? (l.find(([, t]) => t === 0) ?? l[0])[1] : null; };
+/** The threads of every turn of this bot running now. */
+export const runningThreads = (botId: string): number[] => controllers.lanesOf(botId).map(([, t]) => t);
 
-/** Runs a job after everything already queued for this bot. Jobs for different bots run side by side. */
-export function inQueue<T>(botId: string, job: () => Promise<T>): Promise<T> {
-  pendingCount.set(botId, (pendingCount.get(botId) ?? 0) + 1);
-  const run = (queues.get(botId) ?? Promise.resolve()).then(job);
-  const tail = run.then(() => {}, (err) => console.error(`[bot ${botId}]`, err)).finally(() => {
-    const left = (pendingCount.get(botId) ?? 1) - 1;
-    if (left <= 0) { pendingCount.delete(botId); if (queues.get(botId) === tail) queues.delete(botId); }
-    else pendingCount.set(botId, left);
-  });
-  queues.set(botId, tail);
-  return run;
-}
+/** Runs a job after everything already queued in its lane (default: the main chat). Lanes and bots run side by side. */
+export function inQueue<T>(botId: string, job: () => Promise<T>, lane = MAIN_LANE): Promise<T> { return schedule(botId, lane, job); }
 
 /**
  * Queues a turn. The trigger is written to disk first (bot_queue), so work waiting behind a long turn survives a restart:
@@ -222,7 +211,7 @@ export function inQueue<T>(botId: string, job: () => Promise<T>): Promise<T> {
 export function enqueue(botId: string, trigger: Trigger) {
   const id = botQueue.add(botId, trigger);
   if (id !== null) { liveJobs.add(id); jobOf.set(trigger, id); }
-  void inQueue(botId, () => runQueued(id, botId, trigger)).catch(() => {});
+  void inQueue(botId, () => runQueued(id, botId, trigger), laneOf(botId, trigger)).catch(() => {});
 }
 
 /** Queue rows this server process holds in memory (queued, running or deferred): a replay never runs them a second time. */
@@ -230,8 +219,8 @@ const liveJobs = new Set<number>();
 /** The queue row of each trigger in memory. */
 const jobOf = new WeakMap<Trigger, number>();
 
-/** The queue row of the turn each bot is running (marked done in the same instant its turn stops being "under way"). */
-const runningJob = new Map<string, number>();
+/** The queue row of the turn each lane is running (marked done in the same instant its turn stops being "under way"). */
+const runningJob = new LaneMap<number>();
 
 async function runQueued(id: number | null, botId: string, trigger: Trigger) {
   // "Pause": a paused bot starts nothing. Its work waits in the queue, in order, until it is resumed (or is let go, for
@@ -239,10 +228,9 @@ async function runQueued(id: number | null, botId: string, trigger: Trigger) {
   if (holdIfPaused(id, botId, trigger)) return;
   // The bot's subscription is at its usage limit and it has no backup model: the work waits for it (sublimit.ts).
   if (holdForLimit(id, bots.byId(botId), trigger)) { liveJobs.delete(id!); return; }
-  if (id !== null) { botQueue.start(id); runningJob.set(botId, id); }
+  if (id !== null) botQueue.start(id);
   try { await runTurn(botId, trigger); } finally {
     if (id !== null) {
-      if (runningJob.get(botId) === id) runningJob.delete(botId);
       botQueue.finish(id);
       // A deferred job stays in memory (deferredMember) until the owner's approval is settled.
       if (botQueue.status(id) !== "deferred") liveJobs.delete(id);
@@ -313,14 +301,14 @@ export function runAgain(botId: string, list: QueuedWork[]): number {
     liveJobs.add(row.id);
     jobOf.set(trigger, row.id);
     const t = trigger;
-    void inQueue(botId, () => runQueued(row.id, botId, t)).catch(() => {});
+    void inQueue(botId, () => runQueued(row.id, botId, t), laneOf(botId, t)).catch(() => {});
     n++;
   }
   return n;
 }
 
 /** Whether a turn of this bot is running now. */
-export const isRunning = (botId: string) => controllers.has(botId);
+export const isRunning = (botId: string) => controllers.lanesOf(botId).length > 0;
 
 /** What the model is told when the user forces a skill with "/skill <name>". */
 function forcedSkillNote(skill: ForcedSkill): string {
@@ -346,11 +334,11 @@ export function submitApiMessage(bot: BotRecord, text: string, author: ApiAuthor
   enqueue(bot.id, { kind: "user", text, thread: thread || undefined, api: author, ...(goal ? { goal } : {}) });
 }
 /** Member messages that arrived while the bot waited on its owner's approval: they run once that work is settled. */
-const deferredMember = new Map<string, Trigger[]>();
+const deferredMember = new LaneMap<Trigger[]>();
 
 export function submitUserMessage(bot: BotRecord, text: string, voice = false, attachments: Attachment[] = [], channel?: "telegram", thread = 0, skill?: ForcedSkill, goal?: string) {
   // An approval that waits stays valid (approval-wait.ts): this message is kept for after the decision, and the chat says so.
-  noteMessageBehindApproval(bot, thread, [...[...waiterBot].filter(([, b]) => b === bot.id).map(([id]) => id), ...[paused.get<PausedTurn>(bot.id)?.approvalId ?? ""].filter(Boolean)]);
+  noteMessageBehindApproval(bot, thread, [...[...waiterBot].filter(([, b]) => b === bot.id).map(([id]) => id), ...[paused.get<PausedTurn>(laneKey(bot.id, thread))?.approvalId ?? ""].filter(Boolean)]);
   // The user spoke to this work: its spend checkpoint counts from here (spec 07 A5). A task's card reply resets the task.
   const task = bot.parentId ? bgTasks.byHelper(bot.id) : null;
   resetScope(bot.id, task ? scopeKey.task(task.id) : scopeKey.chat(thread));
@@ -359,14 +347,15 @@ export function submitUserMessage(bot: BotRecord, text: string, voice = false, a
   // A running subscription CLI accepts text steering only. A new turn receives all
   // attachment paths and prepares its previews on the locked desktop.
   const needsDesktopFiles = attachments.length > 0 && isEngineRef(bot.model);
-  if (!needsDesktopFiles && controllers.has(bot.id) && ownTurns.has(bot.id) && !paused.get(bot.id) && !isPaused(bot) && (runningThread.get(bot.id) ?? 0) === thread) {
-    const list = steering.get(bot.id) ?? [];
+  const lane = laneKey(bot.id, thread); // lanes.ts: the turn of this conversation, if one runs
+  if (!needsDesktopFiles && controllers.has(lane) && ownTurns.has(lane) && !paused.get(lane) && !isPaused(bot)) {
+    const list = steering.get(lane) ?? [];
     list.push(async () => {
       const blocks = await userBlocks(bot.id, text, attachments);
       if (skill) blocks.push({ type: "text", text: forcedSkillNote(skill) });
       return blocks;
     });
-    steering.set(bot.id, list);
+    steering.set(lane, list);
     setLive(bot.userId, bot.id, { queued: list.length });
     return;
   }
@@ -377,12 +366,11 @@ export function submitUserMessage(bot: BotRecord, text: string, voice = false, a
 const handedBack = new Set<string>();
 export const noteHandBack = (botId: string) => { handedBack.add(botId); };
 
-/** Stops the bot's running turn ("Stop"). `reason`: BotPaused when "Pause" stops it (the turn goes on once resumed). */
+/** "Stop": every running turn of the bot ("stop all"), or one lane given as "bot~thread". `reason`: BotPaused for "Pause". */
 export function interrupt(botId: string, reason?: Error) {
-  const c = controllers.get(botId);
-  if (!c) return false;
-  if (reason) c.abort(reason); else c.abort();
-  return true;
+  const list = botId.includes("~") ? [controllers.get(botId)].filter((c): c is AbortController => !!c) : controllers.lanesOf(botId).map(([, , c]) => c);
+  for (const c of list) { if (reason) c.abort(reason); else c.abort(); }
+  return list.length > 0;
 }
 
 async function drainSteering(bot: BotRecord): Promise<Block[]> {
@@ -523,12 +511,16 @@ async function engineFallback(bot: BotRecord, user: UserRecord, trigger: Exclude
 
 /** Runs a turn inside its thread's scope, so whatever it writes into its chat lands in that thread. */
 function runTurn(botId: string, trigger: Trigger): Promise<void> {
-  const thread = trigger.kind === "resume" ? paused.get<PausedTurn>(botId)?.thread ?? 0 : threadOf(openRoutineThread(botId, trigger, jobOf.get(trigger))); // a routine runs in its own thread (routinethread.ts)
-  return rowScope.run({ botId, thread }, () => guardTurn(botId, trigger, thread, () => runScopedTurn(botId, trigger, thread), releaseTurn));
+  const thread = trigger.kind === "resume" ? trigger.thread ?? paused.lanes<PausedTurn>(botId)[0]?.state.thread ?? 0 : threadOf(openRoutineThread(botId, trigger, jobOf.get(trigger))); // a routine runs in its own thread (routinethread.ts)
+  aliasLane(botId, thread, trigger); // lanes.ts: later work for a routine's new thread waits behind the run
+  return rowScope.run({ botId, thread }, async () => {
+    const job = jobOf.get(trigger); if (job !== undefined) runningJob.set(botId, job);
+    try { await guardTurn(botId, trigger, thread, () => runScopedTurn(botId, trigger, thread), releaseTurn); } finally { if (runningJob.get(botId) === job) runningJob.delete(botId); releaseLane(botId, thread); }
+  });
 }
 /** What a turn holds, let go when it crashed outside its own error handling (crashguard.ts): the bot is free for its next work. */
 function releaseTurn(botId: string) {
-  controllers.delete(botId); runningThread.delete(botId); ownTurns.delete(botId); actors.delete(botId); clearTurn(botId); endScope(botId); endWatch({ botId });
+  controllers.delete(botId); ownTurns.delete(botId); actors.delete(botId); clearTurn(botId); endScope(botId); endWatch({ botId });
   q.tx(() => { activeTurns.end(botId); const job = runningJob.get(botId); if (job !== undefined) botQueue.finish(job); });
   const bot = bots.byId(botId); if (bot && !paused.get(botId)) clearLive(bot.userId, botId); bots.announce(bot);
 }
@@ -581,7 +573,6 @@ async function runScopedTurn(botId: string, trigger: Trigger, thread: number): P
   const turnSince = Date.now(); let turnOk = false; // failures.ts: the turn's start; whether it went through (settles incidents)
   const controller = new AbortController();
   controllers.set(botId, controller);
-  if (thread) runningThread.set(botId, thread); else runningThread.delete(botId);
   if ((trigger.kind === "resume" ? paused.get<PausedTurn>(botId)?.origin : originOf(trigger)) === "user") ownTurns.add(botId); else ownTurns.delete(botId);
   setLive(user.id, botId, { running: true, activity: { kind: "thinking", since: Date.now() }, awaiting: null, startedAt: Date.now(), thread, steps: 0, caption: null });
   let turn: Turn | null = null;
@@ -803,7 +794,7 @@ async function runScopedTurn(botId: string, trigger: Trigger, thread: number): P
     actors.delete(botId);
     clearTurn(botId);
     controllers.delete(botId);
-    runningThread.delete(botId); ownTurns.delete(botId);
+    ownTurns.delete(botId);
     // A bot waits for this turn's answer (bot_message with wait): it gets it now, or later as a message (team.ts).
     if (turn?.ask && !waitingForQuota) {
       try { settleAsk(bot, turn.ask, { lastText: turn.lastText, tainted: turn.tainted, depth: turn.depth, failed, paused: !!paused.get(botId) }); }
@@ -822,7 +813,7 @@ async function runScopedTurn(botId: string, trigger: Trigger, thread: number): P
     bots.announce(bots.byId(botId));
     // Anything typed in the last instant of the turn still deserves an answer.
     if (leftover.length && bots.byId(botId) && isEngineRef(bots.byId(botId)!.model)) enqueue(botId, { kind: "user", text: extraText(leftover).trim(), thread: thread || undefined });
-    else if (leftover.length && bots.byId(botId)) void inQueue(botId, async () => { history.append(botId, bots.byId(botId)!.generation, { role: "user", content: leftover }, thread); }).then(() => enqueue(botId, { kind: "system", text: "The user's message above arrived just as your last turn ended. Answer it now.", thread: thread || undefined, resumeOf: "steps", origin: "user" }));
+    else if (leftover.length && bots.byId(botId)) void inQueue(botId, async () => { history.append(botId, bots.byId(botId)!.generation, { role: "user", content: leftover }, thread); }, threadLane(botId, thread)).then(() => enqueue(botId, { kind: "system", text: "The user's message above arrived just as your last turn ended. Answer it now.", thread: thread || undefined, resumeOf: "steps", origin: "user" }));
     // Goal mode: the next round of an active goal starts here, unless the bot now waits on the user (goals.ts).
     try {
       const now = bots.byId(botId);
@@ -1007,7 +998,7 @@ async function modelLoop(turn: Turn) {
         const wait = isTransient(err) && attempt < rel.maxRetries ? backoffDelay(attempt, err instanceof ProviderError ? err.retryAfterMs : null) : null;
         if (wait !== null) {
           attempt++;
-          setLive(turn.user.id, bot.id, { caption: tr(loc, "The model is busy ({detail}). New try in {s} s…", { detail: errorDetail(err), s: Math.max(1, Math.round(wait / 1000)) }) });
+          setLive(turn.user.id, bot.id, { caption: tr(loc, "{model} failed ({detail}). New try {n}/{max} in {s} s…", { model: modelLabel(turn.modelRef, turn.user.id), detail: errorDetail(err), n: attempt, max: rel.maxRetries, s: Math.max(1, Math.round(wait / 1000)) }) }); // nod item 3
           await sleep(wait, turn.signal);
           continue;
         }
@@ -1402,8 +1393,9 @@ export async function execute(turn: Turn, raw: ToolUseBlock): Promise<ToolOutput
   if (builtin) {
     const problem = validateToolInput(builtin.spec, call.input);
     if (problem) return { content: `Invalid arguments: ${problem}.`, isError: true, summary: "invalid arguments" };
+    const busy = await acquire(turn.bot.id, turn.thread, call.name, call.input, { signal: turn.signal, onWait: () => activity(turn, "waiting", tr(turn.user.locale, "Waits for the other task")) }); if (busy) return { content: busy, isError: true, summary: tr(turn.user.locale, "Waits for the other task") }; // lanes: turnlocks.ts
     activity(turn, builtin.activity, builtin.detail?.(call.input));
-    return builtin.run(call.input, { bot: turn.bot, user: turn.user, depth: turn.depth, signal: turn.signal, tainted: turn.tainted, thread: turn.thread, appUrls: turn.appUrls, origin: turn.origin, toolsRun: turn.toolsRun ?? 0 });
+    return builtin.run(call.input, { bot: turn.bot, user: turn.user, depth: turn.depth, signal: turn.signal, tainted: turn.tainted, thread: turn.thread, appUrls: turn.appUrls, origin: turn.origin, toolsRun: turn.toolsRun ?? 0, turn });
   }
   const remote = turn.remote.get(call.name);
   if (remote?.native) {
@@ -1677,24 +1669,29 @@ function feedbackNote(bot: BotRecord, thread: number): string {
 export function recoverInterruptedTurns() {
   // Queue rows this process does not hold: what was queued or running when the server stopped.
   const left = botQueue.unfinished().filter((r) => !liveJobs.has(r.id));
-  const cutOff = new Set<string>();
-  for (const { bot_id, acted } of activeTurns.leftover()) {
-    if (runningJob.has(bot_id)) continue;
-    cutOff.add(bot_id);
+  const cutOff = new Set<string>(); migratePausedLanes();
+  // Lanes (lanes.ts): each turn under way is "bot" (the main chat) or "bot~thread"; each is recovered on its own.
+  const marks = activeTurns.leftover();
+  for (const { bot_id: lane, acted } of marks) {
+    const [bot_id, th] = lane.split("~"); const thread = Number(th) || 0; const lk = laneKey(bot_id, thread);
+    if (runningJob.has(lk)) continue;
+    cutOff.add(lk);
     const bot = bots.byId(bot_id);
-    const row = left.find((r) => r.bot_id === bot_id && r.status === "running");
-    const held = bot?.kind === "agent" && !paused.get(bot_id) && holdAfterRestart(bot, bot_id, row); const recovery = held ? null : interruptedTrigger(row?.trigger, !!acted); // L18
-    if (!bot || bot.kind !== "agent" || paused.get(bot_id) || !recovery) {
-      activeTurns.end(bot_id);
-      if (bot?.kind === "agent" && !paused.get(bot_id) && !recovery && !held)
-        rows.append(bot, { kind: "notice", tone: "warn", text: tr(users.localeOf(bot.userId), "Interrupted while resuming. Check the last action and tell me what to continue.") });
+    // A mark written before lanes is the bare bot id whatever the thread: it owns the bot's running row no lane claims.
+    const row = left.find((r) => r.bot_id === bot_id && r.status === "running" && rowThread(r) === thread) ?? (thread ? undefined : left.find((r) => r.bot_id === bot_id && r.status === "running" && !marks.some((m) => m.bot_id === `${bot_id}~${rowThread(r)}`)));
+    if (row) cutOff.add(laneKey(bot_id, rowThread(row)));
+    const held = bot?.kind === "agent" && !paused.get(lk) && holdAfterRestart(bot, row ? laneKey(bot_id, rowThread(row)) : lk, row); const recovery = held ? null : interruptedTrigger(row?.trigger, !!acted); // L18
+    if (!bot || bot.kind !== "agent" || paused.get(lk) || !recovery) {
+      activeTurns.end(lk);
+      if (bot?.kind === "agent" && !paused.get(lk) && !recovery && !held)
+        rows.append(bot, { kind: "notice", tone: "warn", text: tr(users.localeOf(bot.userId), "Interrupted while resuming. Check the last action and tell me what to continue.") }, thread || undefined);
       continue;
     }
     // Keep the original caller, thread, attachments and run id in the same queue position.
     q.tx(() => {
       if (row) botQueue.replace(row.id, recovery);
       else enqueue(bot_id, recovery);
-      activeTurns.end(bot_id);
+      activeTurns.end(lk);
     });
     if (row) { row.status = "pending"; row.trigger = JSON.stringify(recovery); }
     rows.append(bot, { kind: "notice", tone: "info", text: tr(users.localeOf(bot.userId), "The server restarted while I was working. I am picking this back up.") }, threadOf(recovery));
@@ -1702,6 +1699,8 @@ export function recoverInterruptedTurns() {
   }
   replayQueue(left, cutOff); clearUnprotectedMarkers();
 }
+/** Before lanes, a paused turn in a thread was kept under the bare bot id: it moves to its lane's key (once, at start). */
+function migratePausedLanes() { for (const r of q.all<{ bot_id: string; state: string }>("SELECT bot_id, state FROM paused")) { const t = (JSON.parse(r.state) as PausedTurn).thread ?? 0; if (t) q.tx(() => { paused.set(laneKey(r.bot_id, t), JSON.parse(r.state)); q.run("DELETE FROM paused WHERE bot_id = ?", r.bot_id); }); } }
 
 /**
  * After a restart: the work that was waiting in the bots' queues runs again, in its order. A row still 'running' was the
@@ -1713,7 +1712,7 @@ function replayQueue(left: QueuedWork[], cutOff: Set<string>) {
   botQueue.prune();
   let n = 0;
   for (const row of left) {
-    if (row.status === "running" && cutOff.has(row.bot_id)) { botQueue.done(row.id); continue; }
+    if (row.status === "running" && cutOff.has(laneKey(row.bot_id, rowThread(row)))) { botQueue.done(row.id); continue; }
     const bot = bots.byId(row.bot_id);
     let trigger: Trigger | null = null;
     try { trigger = JSON.parse(row.trigger) as Trigger; } catch { /* unreadable: dropped below */ }
@@ -1723,7 +1722,7 @@ function replayQueue(left: QueuedWork[], cutOff: Set<string>) {
     liveJobs.add(row.id);
     jobOf.set(trigger, row.id);
     const t = trigger;
-    void inQueue(row.bot_id, () => runQueued(row.id, row.bot_id, t)).catch(() => {});
+    void inQueue(row.bot_id, () => runQueued(row.id, row.bot_id, t), laneOf(row.bot_id, t)).catch(() => {});
     n++;
   }
   if (n) console.log(`${n} queued job(s) from before the restart are running again, in order.`);
@@ -1748,7 +1747,7 @@ function supersede(bot: BotRecord, st: PausedTurn) {
     if (row?.body.kind === "step") rows.rewrite(bot, st.generation, seq, { ...row.body, status: "denied", summary: tr(users.localeOf(bot.userId), "skipped") });
   }
   if (st.generation === bot.generation) history.append(bot.id, st.generation, { role: "user", content: st.results }, st.thread ?? 0);
-  paused.clear(bot.id);
+  paused.clear(laneKey(bot.id, st.thread ?? 0));
 }
 
 /** Tool calls from a subscription bot that are waiting, inside the call, for the user's decision. */
@@ -1769,8 +1768,7 @@ export function expireEngineApprovals(botId: string) {
 export function expireAllApprovals(botId: string) {
   expireEngineApprovals(botId); for (const id of parkedOf(botId)) { lapse(id); forgetCall(id); }
   const bot = bots.byId(botId);
-  const held = paused.get<PausedTurn>(botId);
-  if (bot && held) supersede(bot, held);
+  if (bot) for (const l of paused.lanes<PausedTurn>(botId)) supersede(bot, l.state); // every lane (lanes.ts)
 }
 
 /**
@@ -1780,7 +1778,7 @@ export function expireAllApprovals(botId: string) {
 export function expireOrphanApprovals(): number {
   let n = 0;
   for (const u of users.all()) for (const a of approvals.pendingForUser(u.id)) {
-    if (paused.get<PausedTurn>(a.botId)?.approvalId === a.id || parkApproval(a.id)) continue;
+    if (paused.lanes<PausedTurn>(a.botId).some((l) => l.state.approvalId === a.id) || parkApproval(a.id)) continue;
     lapse(a.id);
     n++;
   }
@@ -1872,7 +1870,8 @@ export function decideApproval(userId: string, approvalId: string, decision: "al
   const bot = bots.byId(approval.botId);
   if (!bot) return false;
   // Nobody waits for this answer any more (the server restarted while a subscription turn waited): the card lapses.
-  if (!waiters.has(approvalId) && paused.get<PausedTurn>(bot.id)?.approvalId !== approvalId && !isParked(approval, bot)) { lapse(approvalId); return true; }
+  const held = paused.lanes<PausedTurn>(bot.id).find((l) => l.state.approvalId === approvalId)?.state; // the lane that waits for it (lanes.ts)
+  if (!waiters.has(approvalId) && !held && !isParked(approval, bot)) { lapse(approvalId); return true; }
   // A card that does not offer "Always" (e.g. a command on the user's computer after outside content) counts it as once.
   const card = rows.get(bot.id, approval.generation, approval.seq);
   if (decision === "always" && card?.body.kind === "card" && card.body.card.type === "approval" && card.body.card.once) decision = "allow";
@@ -1884,7 +1883,7 @@ export function decideApproval(userId: string, approvalId: string, decision: "al
   rows.updateCard(bot, approval.generation, approval.seq, (c) => (c.type === "approval" ? { ...c, status } : c));
   const waiting = waiters.get(approvalId);
   if (waiting) waiting(status);
-  else enqueue(bot.id, parkedResume(approvalId, status) ?? { kind: "resume" });
+  else enqueue(bot.id, parkedResume(approvalId, status) ?? { kind: "resume", ...(held?.thread ? { thread: held.thread } : {}) });
   return true;
 }
 

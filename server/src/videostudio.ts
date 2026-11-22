@@ -26,6 +26,8 @@ export interface StudioStory {
   audio: string;
   offset: number;
   muted: boolean;
+  /** L30: the owner ticked « Généré par IA » — a visible mention on every frame (in this language), and the IPTC marker in the MP4 (aivideo.ts). */
+  aiLabel?: "fr" | "en";
 }
 const styles = new Set(["editorial", "type", "diagram", "draw", "capture"]);
 const visual = /\.(png|jpe?g|webp|gif|mp4|webm|mov)$/i;
@@ -33,6 +35,9 @@ const sound = /\.(mp3|wav|m4a|aac|ogg|flac|opus)$/i;
 const clean = (v: unknown, max: number) => (typeof v === "string" ? v.trim().slice(0, max) : "");
 const escape = (s: string) =>
   s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
+
+/** The tool's yes/no for the « Généré par IA » mention, in the owner's language. */
+const aiLabelFor = (v: unknown, locale: string | undefined) => (v === true ? (String(locale ?? "").startsWith("en") ? "en" : "fr") : undefined);
 
 export function storyFor(botId: string, input: any): StudioStory | null {
   if (!input || !Array.isArray(input.scenes) || !input.scenes.length || input.scenes.length > MAX_SHOTS ||
@@ -89,6 +94,7 @@ export function storyFor(botId: string, input: any): StudioStory | null {
     audio: input.audio,
     offset: input.offset,
     muted: input.muted === true,
+    ...(input.aiLabel === "en" ? { aiLabel: "en" as const } : input.aiLabel === "fr" || input.aiLabel === true ? { aiLabel: "fr" as const } : {}),
   };
 }
 
@@ -189,6 +195,7 @@ export const videoStudioTool: BuiltinTool = {
         title: { type: "string" },
         aspect: { type: "string", enum: ["wide", "vertical", "square"] },
         audio: { type: "string", description: "Soundtrack from this bot's uploads/ or audio/ library, including a WAV returned by VoiceStudio generate_speech." },
+        aiLabel: { type: "boolean", description: "Show a small « Généré par IA » / « AI-generated » mention on the video and mark the exported MP4 as AI-made in its metadata. Set it when the montage contains generated images or clips, or when the user asks." },
         clips: {type:"array", maxItems: MAX_CLIPS, description:"Independent overlapping tracks in back-to-front order. Visual clips use images or silent video. Use audio clips for music or overlapping recorded voices.", items:{
           type:"object", properties:{id:{type:"string"},kind:{enum:["visual","audio"]},name:{type:"string"},path:{type:"string"},
           start:{type:"number",description:"Timeline placement in seconds."},inPoint:{type:"number",description:"Source trim start in seconds."},outPoint:{type:"number",description:"Source trim end in seconds."},
@@ -228,6 +235,7 @@ export const videoStudioTool: BuiltinTool = {
       audio: a.audio ?? "",
       offset: 0,
       muted: false,
+      aiLabel: aiLabelFor(a.aiLabel, c.user.locale),
     });
     if (!story)
       return {
@@ -283,6 +291,7 @@ export const updateVideoStudio: BuiltinTool = {
     const story = storyFor(c.bot.id, {
       ...original,
       ...a,
+      aiLabel: a.aiLabel === undefined ? original.aiLabel : aiLabelFor(a.aiLabel, c.user.locale),
       scenes: Array.isArray(a.scenes) ? a.scenes.map((s) => ({ ...s, media: s?.media ?? "" })) : original.scenes,
     });
     if (!story) return { content: "Invalid scenes or media.", isError: true };

@@ -10,12 +10,12 @@ import { streamSSE } from "hono/streaming";
 import { registerNoticeRoutes } from "./agent/noticeroutes.js"; import { registerRoomRoutingRoutes, roomReaction } from "./agent/roomroutes.js";
 import { registerFailureRoutes } from "./agent/failureroutes.js"; import { decideForConversation, registerConversationGrantRoutes } from "./agent/conversationgrantroutes.js";
 import { registerRecruitRoutes } from "./agent/recruit.js"; import { registerTeamMdRoutes } from "./teammdroutes.js";
-import { registerCommandRoutes } from "./command.js"; import { registerRelayGuardRoutes } from "./relayguardroutes.js";
+import { registerCommandRoutes } from "./command.js"; import { registerRelayGuardRoutes } from "./relayguardroutes.js"; import { registerComfortRoutes } from "./comfortroutes.js";
 import { continueAfterStepLimit, decideApproval, enqueue, inQueue, interrupt, noteHandBack, submitUserMessage, type ForcedSkill } from "./agent/loop.js"; import { sendOnce } from "./sendkeys.js";
 import { cleanProfile, fetchSkillMarkdown, saveImportedSkill, undoRevision } from "./agent/tools-team.js";
 import { xSearchProvider } from "./xsearch.js";
 import { registerResearch } from "./researchroutes.js";
-import { cleanModelList, TeamFullError } from "./store.js"; import { newBotAutonomy } from "./botdefaults.js";
+import { cleanModelList, laneKey, TeamFullError } from "./store.js"; import { newBotAutonomy } from "./botdefaults.js";
 import { localTools } from "./localtools.js";
 import { RELIABILITY_LIMITS, SKILL_EXTRA_KEYS, type RowBody, type SkillExtras } from "./shared.js";
 import { ask, compactIfNeeded, consolidate, memoryStatus } from "./agent/memory.js";
@@ -122,7 +122,7 @@ import { registerHostedPages, registerHostedPrivate, registerHostedPublic, suspe
 import { TodayError, todayReport, todaySettings } from "./today.js";
 import { registerBotClients, registerBotClientSettings } from "./botaccessroutes.js";
 import { registerSentinelRoutes } from "./sentinel/routes.js"; import { registerHookRoutes, registerHookSettingsRoutes } from "./hookroutes.js"; import { registerReportRoutes } from "./reports.js";
-import { registerAnnouncementRoutes } from "./announceroutes.js";
+import { registerAnnouncementRoutes } from "./announceroutes.js"; import { registerModelHealthRoutes } from "./modelhealth.js";
 import { registerSkillsLibraryRoutes } from "./skillsroutes.js";
 import { registerOpenRouterRoutes } from "./openrouterroutes.js";
 import { registerSubscriptionConnectRoutes } from "./subscriptionconnect.js";
@@ -925,7 +925,7 @@ registerResearch(api);
 
 registerUploadRoutes(api, ownAgent);
 
-api.post("/bots/:id/stop", (c) => { interrupt(ownBot(c).id); return c.json({ ok: true }); });
+api.post("/bots/:id/stop", async (c) => { const b = ownBot(c); const t = Number((await c.req.json().catch(() => ({})))?.thread); interrupt(Number.isInteger(t) && t >= 0 ? laneKey(b.id, t) : b.id); return c.json({ ok: true }); }); // lanes.ts: { thread } stops one task; none: all
 
 api.post("/bots/:id/reset", (c) => {
   const bot = ownBot(c);
@@ -1285,12 +1285,12 @@ registerAutoBackupRoutes(api, googleDeps);
 // "Surveillance" (sentinel/): the Sentinelle's incidents and alert settings, for the owner and hosted operators only.
 registerSentinelRoutes(api);
 // « Annonces » (announcements.ts): readers' feed, and the owner/operators' page to write them.
-registerAnnouncementRoutes(api);
+registerAnnouncementRoutes(api); registerModelHealthRoutes(api); // model health: nod 3/4, L59, L60 (modelhealth.ts)
 registerNoticeRoutes(api); registerRoomRoutingRoutes(api); // « Qui répond » in group chats (agent/roomrouting.ts)
 registerFailureRoutes(api); registerConversationGrantRoutes(api); // « Coordinateur d'échecs » (agent/failures.ts) ; « Autoriser pour cette conversation »
 registerRecruitRoutes(api); registerHookSettingsRoutes(api); registerReportRoutes(api); // « Bot recruteur » ; webhook settings (L20) ; « Signaler cette réponse » (L31)
 registerTeamMdRoutes(api); registerRoutinePlusRoutes(api); registerConnectorPlusRoutes(api); // « Équipe Sklubot (.md) » (teammdroutes.ts): import with review, share ; routines nod 2/8/13 (routineplusroutes.ts)
-registerCommandRoutes(api); registerRelayGuardRoutes(api); // « Centre de commandement » (command.ts); « Règles de sécurité » of a linked computer (relayguardroutes.ts)
+registerCommandRoutes(api); registerRelayGuardRoutes(api); registerComfortRoutes(api); // « Centre de commandement » (command.ts); « Règles de sécurité » of a linked computer (relayguardroutes.ts)
 registerSkillsLibraryRoutes(api); registerSecurityRoutes(api); // « Bibliothèque de compétences » (skillsroutes.ts) ; Lot 1 security (securityroutes.ts)
 registerOpenRouterRoutes(api); registerSubscriptionConnectRoutes(api); // OpenRouter, « Connecter mon compte ChatGPT / Claude »
 api.put("/account/password", async (c) => {

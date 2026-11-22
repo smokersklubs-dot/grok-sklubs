@@ -356,6 +356,26 @@ test("a command: the app's approval card (command, folder, computer), then the c
   assert.equal(policy.mode, "always_allow", "the earlier 'Always' stays as it was, nothing more");
 });
 
+test("Relais report limit: each running command's line has its own Stop; it cancels that command only (relay gets cancel), the turn goes on", async () => {
+  const keep = relay.handlers["shell.run"];
+  relay.handlers["shell.run"] = () => null as unknown as Answer; // never answers: a long command
+  const from = relay.reqs.length;
+  await say(bot, 'call my_command {"command":"ls -R /"}'); // "Always" for ls @ ~ (test above): no card
+  const run = await relay.waitReq("shell.run", from);
+  const line = await until(async () => (await rowsOf(bot.id)).find((r) => r.body.kind === "event" && r.body.event === "relay" && r.body.text.startsWith("$ ls -R /") && r.body.cmd?.running), "command line with its Stop");
+  const ref = line.body.kind === "event" ? line.body.cmd!.ref : "";
+  assert.equal((await call("POST", `/bots/${bot.id}/commands/nope/stop`)).json.stopped, false);
+  assert.equal((await call("POST", `/bots/${bot.id}/commands/${ref}/stop`)).json.stopped, true);
+  await relay.waitFor((m) => m.type === "cancel" && m.id === run.id, "cancel sent for that request");
+  await replied(bot, "stopped this command from the chat");
+  await idle(bot);
+  const after = (await rowsOf(bot.id)).find((r) => r.seq === line.seq)!;
+  assert.equal(after.body.kind === "event" && after.body.cmd?.running, false, "no Stop once it ended");
+  assert.match(after.body.kind === "event" ? after.body.text : "", /arrêté par toi/);
+  assert.equal((await call("POST", `/bots/${bot.id}/commands/${ref}/stop`)).json.stopped, false, "already ended");
+  relay.handlers["shell.run"] = keep;
+});
+
 test("a refusal on the computer is surfaced to the bot and the user, and never retried automatically", async () => {
   // End the current session first, from the relay side (as if idle).
   relay.event("session.ended", { bot: { id: bot.id, name: bot.name }, reason: "idle", sessionId: "s1" });

@@ -1,5 +1,5 @@
 /** « Règles de sécurité » of a linked computer (server relayguardroutes.ts), for the dev gallery. Development only. */
-export function relayGuardFixture(empty: boolean, patch: { keepApps?: string[]; keepFolders?: string[]; projectFolders?: string[]; allowTerminal?: boolean; commandTimeout?: number } = {}) {
+export function relayGuardFixture(empty: boolean, patch: { keepApps?: string[]; keepFolders?: string[]; projectFolders?: string[]; allowTerminal?: boolean; commandTimeout?: number; filesOn?: boolean } = {}) {
   return {
     guard: {
       keepApps: patch.keepApps ?? (empty ? [] : ["Banque Populaire", "Signal"]),
@@ -9,6 +9,7 @@ export function relayGuardFixture(empty: boolean, patch: { keepApps?: string[]; 
       commandTimeout: patch.commandTimeout ?? 120,
       updatedAt: empty ? null : Date.now() - 3_600_000,
     },
+    filesOn: patch.filesOn ?? !empty,
     limit: 50,
     timeout: { min: 5, max: 3600 },
     builtin: {

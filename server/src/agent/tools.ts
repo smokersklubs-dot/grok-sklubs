@@ -73,7 +73,7 @@ import { goalTools } from "./goals.js";
 import { searchNotes } from "./recall.js";
 import { forgetNotes } from "./memorybook.js";
 import { recruitTools } from "./recruit.js";
-import { teamMdTools } from "./teamexport.js";
+import { teamMdTools } from "./teamexport.js"; import { stepTools } from "./tools-steps.js";
 import { botPath, spillPath, spillPreview } from "./context.js";
 
 export interface ToolContext {
@@ -88,6 +88,8 @@ export interface ToolContext {
   origin?: string;
   /** Tool calls already run in this turn (a learned skill needs real multi-step work behind it). */
   toolsRun?: number;
+  /** The turn itself, for the tools that work on its tool list (tool_search, run_steps: tools-steps.ts). */
+  turn?: unknown;
 }
 export interface ToolOutput {
   content: string | Array<TextBlock | ImageBlock>;
@@ -1093,7 +1095,7 @@ const teamTools: BuiltinTool[] = [
       const verdict = postBudget.attempt(c.user.id, { channel, botId: c.bot.id, text: String(a.message), now: Date.now() });
       if (!verdict.allow) return loopRefusal(verdict, c.bot, c);
       if (a.wait !== true) {
-        deliverBotMessage(c.bot, target, String(a.message), c.depth, c.tainted);
+        deliverBotMessage(c.bot, target, String(a.message), c.depth, c.tainted, true); // a request: its own thread (lanes.ts)
         return { content: `Delivered to ${target.name}. Their reply will reach you as a new message.`, summary: `to ${target.name}` };
       }
       // Waiting on a bot that waits (directly or through others) for you would never end: refused, nothing is sent.
@@ -1369,7 +1371,7 @@ function assemble(opts: { owner?: string; nativeSearch?: boolean; video?: "conne
     ...(computerKind() === "linux" || reachAvailable() ? transcribeTools : []),
     githubSearch, githubRead, videoWorkflowTool, videoStudioTool, updateVideoStudio, ...(computerKind() === "linux" ? [studioMp4Tool] : []), ...publicLinkTools,
     ...knowledgeTools, ...guideTools, ...ruleTools, ...pageTools, ...progressTools, ...profileTools, ...skillImportTools, ...botTools, ...recruitTools, ...inGroup("team", teamMdTools),
-    researchTool, ...(xSearchAvailable(opts.owner) ? xTools : []),
+    researchTool, ...(xSearchAvailable(opts.owner) ? xTools : []), ...stepTools,
     ...shareTools.filter((t) => t.spec.name !== "image_generate" || imageService()).map((t): BuiltinTool => ({ ...t, group: t.spec.name === "image_generate" ? "images" : "files" })),
     ...inGroup("vault", vaultTools),
     ...(browserAvailable() ? inGroup("vault", screenVaultTools).map(respectDriver) : []),

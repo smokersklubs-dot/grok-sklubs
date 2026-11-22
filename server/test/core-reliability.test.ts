@@ -232,9 +232,13 @@ test("point 3: a routine or a teammate's message that comes meanwhile does not c
   await sleep(250);
   await idle(bot.id);
   assert.equal(approvals.byId(card.approvalId)?.status, "pending");
-  assert.equal(askedOf("routine pendant la carte"), 0, "the routine waits for the decision");
+  // Owner decision (22/11/2026, lanes.ts): a routine works in its own thread, so it no longer waits for a card of the main
+  // chat — and it does not cancel it. Work for the main chat itself (here the teammate's message, queued straight to it)
+  // still waits for the decision.
+  assert.equal(askedOf("routine pendant la carte"), 1, "the routine ran in its own thread, the card still open");
+  assert.equal(askedOf("message d'un collègue"), 0, "main-chat work waits for the decision");
   await call("POST", `/approvals/${card.approvalId}`, { decision: "allow" });
-  await until(() => askedOf("routine pendant la carte") === 1 && askedOf("message d'un collègue") === 1, "the waiting work runs after the decision");
+  await until(() => askedOf("message d'un collègue") === 1, "the waiting work runs after the decision");
   await idle(bot.id);
 });
 

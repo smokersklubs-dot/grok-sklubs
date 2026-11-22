@@ -1,7 +1,7 @@
 import { emit } from "../bus.js";
 import { tr } from "../i18n.js";
 import { bots, clip, newId, rows, users, type BotRecord, type UserRecord } from "../store.js";
-import { enqueue, isPaused } from "./loop.js";
+import { enqueue, isPaused } from "./loop.js"; import { laneCap } from "./lanes.js";
 import { BREAKER_LINE, dmChannel, postBudget, roomChannel } from "./roombudget.js";
 import "./budgetstore.js"; // L53: the anti-loop state survives a restart
 import { gt } from "./guardtext.js"; import { scrubHandoff } from "./handoffscrub.js"; // L46
@@ -14,9 +14,12 @@ export const MAX_HELPERS = 4;
  * Puts a message from one bot into another bot's chat and wakes the recipient. `tainted`: the sender had
  * read outside content, so the recipient's turn is careful from the start (the message may carry it).
  */
-export function deliverBotMessage(from: BotRecord, to: BotRecord, raw: string, depth: number, tainted = false) {
-  const text = scrubHandoff(from.userId, raw); rows.append(to, { kind: "message", role: "user", text, origin: { kind: "bot", id: from.id, name: from.name } });
-  enqueue(to.id, { kind: "bot", fromName: from.name, text, depth: depth + 1, tainted });
+export function deliverBotMessage(from: BotRecord, to: BotRecord, raw: string, depth: number, tainted = false, request = false) {
+  const text = scrubHandoff(from.userId, raw); const row = rows.append(to, { kind: "message", role: "user", text, origin: { kind: "bot", id: from.id, name: from.name } });
+  // Lanes (lanes.ts): where the bot runs several tasks at once, a teammate's REQUEST is worked on in the thread under its
+  // message, so it never holds the owner's main chat. A report coming back (a helper's, an answer) stays in the main chat:
+  // the bot passes it on to the owner there.
+  enqueue(to.id, { kind: "bot", fromName: from.name, text, depth: depth + 1, tainted, ...(request && laneCap(to.id) > 1 && !to.parentId ? { thread: row.seq } : {}) });
 }
 
 /**
@@ -111,8 +114,8 @@ export async function askAndWait(from: BotRecord, to: BotRecord, text: string, d
       onAbort = () => resolve({ kind: "stopped" });
       if (signal.aborted) onAbort(); else signal.addEventListener("abort", onAbort, { once: true });
     });
-    rows.append(to, { kind: "message", role: "user", text, origin: { kind: "bot", id: from.id, name: from.name } });
-    enqueue(to.id, { kind: "bot", fromName: from.name, text, depth: depth + 1, tainted, ask: route });
+    const row = rows.append(to, { kind: "message", role: "user", text, origin: { kind: "bot", id: from.id, name: from.name } });
+    enqueue(to.id, { kind: "bot", fromName: from.name, text, depth: depth + 1, tainted, ask: route, ...(laneCap(to.id) > 1 && !to.parentId ? { thread: row.seq } : {}) });
     return await answer;
   } finally {
     askWaiters.delete(route.id);

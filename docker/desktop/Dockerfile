@@ -84,5 +84,17 @@ RUN chmod +x /opt/sklubot/*.sh /opt/sklubot/page-text.py /usr/local/bin/sklubot-
 COPY install-craft.sh /opt/sklubot/install-craft.sh
 RUN sh /opt/sklubot/install-craft.sh
 
+# L48 — Chromium with its own sandbox. The bot keeps its root shell; only the browser drops to the user "browser"
+# (open-browser.sh, with setpriv), since Chromium's sandbox refuses to run as root. Debian's chromium has no setuid
+# helper (and no-new-privileges would neutralise one), so the sandbox is the user-namespace one: Sklubot creates the
+# computer with docker/desktop/seccomp-chromium.json (Docker's default profile plus user namespaces, see linux.ts). The
+# browser's home is in the image (caches); its profile and downloads stay in the bot's home volume
+# (/root/.config/sklubot-browser, /root/Downloads), given to the browser user before each start. The label tells
+# Sklubot this image is ready for it: an older image keeps its root browser and the owner sees a notice.
+RUN useradd --uid 1001 --user-group --create-home --shell /usr/sbin/nologin browser \
+    && ln -s /root/Downloads /home/browser/Downloads \
+    && command -v setpriv >/dev/null
+LABEL sklubot.browser-sandbox="1"
+
 WORKDIR /root
 CMD ["/opt/sklubot/start-desktop.sh"]

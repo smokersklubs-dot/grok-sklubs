@@ -1,3 +1,4 @@
+import { ModelHealthLine } from "./ModelHealth";
 import { BotReachTab } from "./KeysHealthLinks";
 import { BotCapsField } from "./UsageCaps";
 import { LocalToolsTab } from "./LocalTools";
@@ -30,6 +31,7 @@ import { BotVoicePicker } from "./VoicePicker";
 import { HookSecurity } from "./HookSecurity";
 import { RoutineMore, WorkModels } from "./RoutineEditor";
 import { MemoryEdit } from "./MemoryEdit";
+import { TelegramVoiceText } from "./TelegramVoiceText";
 
 const EFFORT_IDS: Effort[] = ["low", "medium", "high", "xhigh"];
 const AUTONOMY_IDS: Autonomy[] = ["careful", "balanced", "trusted", "auto"];
@@ -208,6 +210,7 @@ function General({ bot, onClose }: { bot: Bot; onClose: () => void }) {
             <p className="field-hint">{t("bot.instructionsHint")}</p>
           </div>
           <BrainPicker bot={bot} value={form.model} onChange={(ref) => set("model", ref)} models={models} />
+          <ModelHealthLine key={bot.model} botId={bot.id} model={bot.model} fresh={false} />
           <BotFallbacks botId={bot.id} value={bot.fallbackModels ?? null} ownModel={form.model || models?.defaultRef || ""} />
           {bot.kind === "agent" && <WorkModels bot={bot} />}
           <div className="field">
@@ -1202,6 +1205,7 @@ function Telegram({ bot }: { bot: Bot }) {
               <Icon name="send" size={15} /> {link} <Icon name="external" size={13} />
             </a>
           )}
+          <TelegramVoiceText botId={bot.id} />
           <ErrorNote>{error}</ErrorNote>
           <div className="action-row">
             <div>

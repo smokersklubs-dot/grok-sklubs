@@ -161,7 +161,10 @@ test("automatic recall: adds the matching notes that were not in the prompt, onc
   const fresh = bots.byId(bot.id)!;
   // Outside a turn (no queue job running), the prompt recalls nothing: only a turn the user started does (memory-fixes).
   const prompt = buildSystemPrompt(fresh, alice, EXTRAS);
-  const section = prompt.slice(prompt.indexOf("## What you remember"), prompt.indexOf("## Your skills"));
+  // L57: the notes now sit in the per-turn part at the end of the prompt (llm/cachelayout.ts): the section runs to the next heading.
+  const at = prompt.indexOf("## What you remember");
+  const next = prompt.indexOf("\n## ", at + 1);
+  const section = prompt.slice(at, next < 0 ? undefined : next);
   assert.doesNotMatch(section, /Recalled for the user's new message/);
   assert.match(section, /\(\d+ older memories are not shown; memory_search can find them\.\)/);
   const shown = new Set<string>();

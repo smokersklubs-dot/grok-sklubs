@@ -39,7 +39,8 @@ Tant que l'application n'est pas signée et notarisée par Apple, macOS refuse d
    - sinon, fermer la fenêtre quitte l'application sur Windows et Linux ; sur macOS, l'application reste dans le Dock comme les autres applications Mac (⌘ Q pour quitter).
 9. **Lancer au démarrage** est désactivé par défaut.
 10. **Mises à jour** : l'application regarde (au démarrage, puis via le menu) s'il existe une version plus récente sur la page des versions GitHub et te propose de **la télécharger** ; elle ne s'installe jamais toute seule. (Une mise à jour automatique n'est sûre qu'avec des fichiers signés : sans certificat de signature, ce n'est pas activé.)
-11. Une seule fenêtre Sklubot à la fois : relancer l'application ramène la fenêtre déjà ouverte.
+11. **Ordinateur gardé éveillé** : pendant qu'un bot pilote ton ordinateur, l'écran ne s'éteint pas ; pendant qu'une commande tourne, l'ordinateur ne se met pas en veille. C'est relâché dès que c'est fini.
+12. Une seule fenêtre Sklubot à la fois : relancer l'application ramène la fenêtre déjà ouverte.
 
 L'application **dans le navigateur** n'est pas touchée : tout reste utilisable aussi depuis Chrome, Firefox, Safari…
 

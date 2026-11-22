@@ -3,7 +3,7 @@ import { GALLERY_BOT_ID, NOW, type FixtureOptions } from "./fixtures";
 
 const H = 3600_000;
 export const securitySettingsFixture = (empty: boolean) => ({ settings: { floorSecondFactor: !empty, netAlerts: !empty }, twoFactor: !empty });
-export const browserFixture = (empty: boolean) => ({ browser: empty ? { installed: null, latest: null, behind: null, state: "unknown" } : { installed: "129.0.6668.58", latest: "131.0.6778.85", behind: 2, state: "warn" } });
+export const browserFixture = (empty: boolean) => ({ browser: empty ? { installed: null, latest: null, behind: null, state: "unknown" } : { installed: "129.0.6668.58", latest: "131.0.6778.85", behind: 2, state: "warn", sandbox: { image: true, profile: true, oldComputers: 2, unsandboxed: 0, state: "warn" } } });
 export function botSecurityFixture(o: FixtureOptions, empty: boolean) {
   if (empty) return { hosts: [], testHosts: [] };
   const long = o.long ? "un-tres-long-sous-domaine-de-test-pour-voir-le-retour-a-la-ligne.boutique-exemple-de-demonstration.fr" : "boutique.example";

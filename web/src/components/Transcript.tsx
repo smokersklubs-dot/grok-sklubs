@@ -21,7 +21,7 @@ import { SubLimitNoticeActions } from "./SubLimit";
 import { RouteNoticeActions } from "./RoomRouting";
 import { ENGINE_BRAND } from "../lib/engines";
 import { ReportAction } from "./ReportMessage";
-import { ReplyAction, useMessageEnhance } from "./ReplyAction";
+import { ReplyAction, useMessageEnhance } from "./ReplyAction"; import { MessageMore } from "./MessageMore"; import { requestSummary } from "../lib/requestSummary";
 
 type MessageBody = Extract<RowBody, { kind: "message" }>;
 type StepBody = Extract<RowBody, { kind: "step" }>;
@@ -324,7 +324,7 @@ function ReactionBar({ row, reactions }: { row: Row; reactions: Reaction[] }) {
   );
 }
 
-function MessageActions({ row, canThread, canListen }: { row: Row; canThread: boolean; canListen?: boolean }) {
+function MessageActions({ row, canThread, canListen, mine = false }: { row: Row; canThread: boolean; canListen?: boolean; mine?: boolean }) {
   const [open, setOpen] = useState(false);
   const t = useT();
   const pick = (emoji: ReactionEmoji) => {
@@ -342,7 +342,7 @@ function MessageActions({ row, canThread, canListen }: { row: Row; canThread: bo
           <Icon name="thread" size={15} />
         </button>
       )}
-      <ReplyAction row={row} /><ReportAction row={row} />
+      <ReplyAction row={row} /><MessageMore row={row} mine={mine} /><ReportAction row={row} />
       {open && (
         <div className="emoji-pick" role="menu" aria-label={t("react.add")} onKeyDown={(e) => { if (e.key === "Escape") setOpen(false); }}>
           {REACTIONS.map((e) => (
@@ -407,7 +407,7 @@ function MessageGroup({ item }: { item: Extract<Item, { t: "msgs" }> }) {
             {!item.mine && !b.streaming && b.text.includes("~/files/") && <MentionedFiles botId={row.botId} text={b.text} />}
             {!item.mine && !b.streaming && (b.page || b.text.includes("/p/")) && <PagePreview text={b.text} page={b.page} botId={row.botId} thread={row.thread} readOnly={mode === "readonly"} />}
             <time className="msg-time" dateTime={new Date(row.createdAt).toISOString()}>{clockTime(row.createdAt)}</time>
-            {mode !== "readonly" && !b.streaming && <MessageActions row={row} canThread={mode === "main"} canListen={!item.mine && b.role === "assistant" && !!b.text.trim()} />}
+            {mode !== "readonly" && !b.streaming && <MessageActions row={row} canThread={mode === "main"} canListen={!item.mine && b.role === "assistant" && !!b.text.trim()} mine={item.mine} />}
             {!item.mine && b.role === "assistant" && <ListenPlayer row={row} />}
             {b.reactions && b.reactions.length > 0 && <ReactionBar row={row} reactions={b.reactions} />}
             {b.replies && b.replies.count > 0 && <RepliesLink row={row} count={b.replies.count} lastAt={b.replies.lastAt} />}
@@ -680,7 +680,7 @@ function EventRow({ body, botName, botId, seq }: { body: EventBody; botName: str
     );
   }
   // Something happened on the user's own computer (Sklubot Relais): control, Stop, a refusal, a command and its output.
-  if (body.event === "relay") return <RelayEventRow text={body.text} warn={body.tone === "warn"} seq={seq} />;
+  if (body.event === "relay") return <RelayEventRow text={body.text} warn={body.tone === "warn"} seq={seq} botId={botId} cmd={body.cmd} />;
   if (body.event !== "call") {
     return (
       <div className="event" data-seq={seq}>
@@ -841,7 +841,8 @@ export function ActivityLine({ bot, live, rows, stepsShownAbove = false }: { bot
   const t = useT();
   const waiting = !!live.awaiting;
   const since = waiting ? live.awaiting!.since : live.startedAt ?? live.activity?.since ?? now;
-  const caption = (live.awaiting?.reason || live.caption || activityPhrase(live, rows, now)).replace(/\s+/g, " ").trim();
+  const asked = !live.steps && (!live.activity || live.activity.kind === "thinking") ? requestSummary(rows) : ""; // nod item 3
+  const caption = (live.awaiting?.reason || live.caption || (asked && t("activity.request", { text: asked })) || activityPhrase(live, rows, now)).replace(/\s+/g, " ").trim();
   const kind: ActivityKind = waiting ? "waiting" : live.activity?.kind ?? "thinking";
   const status = kind === "connector" && live.activity?.detail && !/_|^[a-z0-9-]+$/.test(live.activity.detail) ? t("thinking.status.connectorIn", { name: live.activity.detail }) : t(STATUS[kind]);
   const steps = live.steps ?? 0;

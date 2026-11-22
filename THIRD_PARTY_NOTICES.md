@@ -97,3 +97,22 @@ WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEM
 COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
 OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
+
+## milind-soni/OpenMausBot — Apache License 2.0 (ideas only, no code copied)
+
+- Source: https://github.com/milind-soni/OpenMausBot, commit `35d044295697ef2b79b889461af6902c85a1b456` (cloned 22/11/2026), Copyright 2026 Milind Soni and
+  OpenMausBot contributors, Apache License 2.0.
+- Used for: the per-bot limit of parallel threads with a smaller limit on the entry plan (`server/bot-thread-limits.ts`)
+  and "one call per browser at a time" (`server/browser-lane.ts`). Sklubot's `server/src/agent/lanes.ts` and
+  `server/src/agent/turnlocks.ts` are written from scratch (a lane per conversation thread with the main chat always
+  free; a lease per turn on the screen and on files); they say so in their first lines.
+
+## moby/profiles (Docker's default seccomp profile) — Apache License 2.0
+
+- Source: https://github.com/moby/profiles, file `seccomp/default.json`, commit `a0fa70805f742f7da15b367770d802ea2a86c68b`
+  (fetched 22/11/2026). Copyright Docker, Inc. and the Moby project authors.
+- Licence: Apache License, Version 2.0 — https://www.apache.org/licenses/LICENSE-2.0 (full text in the upstream
+  repository as `LICENSE`; the repository has no NOTICE file).
+- Used in: `docker/desktop/seccomp-chromium.json`. Modified for Sklubot (L48): three rules added at the end, each with a
+  `comment` saying so — `clone` with user, PID and network namespaces, `unshare` of a user namespace, `chroot` — so
+  Chromium's own sandbox can start in the bots' computers. The 62 upstream rules are unchanged.

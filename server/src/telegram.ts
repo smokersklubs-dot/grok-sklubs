@@ -1,3 +1,4 @@
+import { voiceNoteText } from "./telegramvoice.js";
 import { seal, unseal } from "./auth.js";
 import { getLive } from "./bus.js";
 import { decideApproval, interrupt, isPaused, onTurnEvent, submitUserMessage } from "./agent/loop.js";
@@ -167,7 +168,11 @@ async function receiveFile(botId: string, chatId: string, m: NonNullable<Update[
   const file = storeBytes(bot.id, "uploads", f.name, bytes);
   const attachment = { ...file, mime: f.mime };
   const caption = screenSecrets(String(m.caption ?? "").trim(), loc);
-  const text = caption.text || tgText(loc, f.voice ? "(voice message: {name})" : "(file: {name})", { name: file.name });
+  // Optional (owner setting, off by default): the words of a voice note, written out by the account's speech-to-text.
+  const spoken = f.voice ? await voiceNoteText(bot, file.path) : null;
+  const heard = spoken ? screenSecrets(tgText(loc, "🎤 Voice message (written out): {text}", { text: spoken }), loc) : null;
+  if (heard?.secrets.length) holdAndOffer(bot, bot.userId, heard.secrets);
+  const text = [caption.text, heard?.text].filter(Boolean).join("\n\n") || tgText(loc, f.voice ? "(voice message: {name})" : "(file: {name})", { name: file.name });
   rows.append(bot, { kind: "message", role: "user", text, attachments: [attachment] });
   if (caption.secrets.length) holdAndOffer(bot, bot.userId, caption.secrets);
   audit(bot.userId, "channel", `${bot.name}: Telegram ${f.voice ? "voice message" : "file"} received (${file.name})`, bot.id);

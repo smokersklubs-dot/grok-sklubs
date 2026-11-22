@@ -243,7 +243,7 @@ validations, salon multi-bots (sauf le bogue n° 2), appel vocal, livraison de f
 5. Outil `memory_forget` (archive sur demande explicite) — S.
 6. Édition du texte d'une note + historique des changements + corbeille au lieu de suppression immédiate — S.
 7. `pickMemories` classé par `rankNotes` (un seul tokeniseur, plus de compte faux au-delà de 500) — S.
-8. Notes rappelées déplacées de l'invite système vers le message du tour (cache conservé) — S.
+8. ✅ Fait (2026-11-22, `llm/cachelayout.ts`). Notes rappelées déplacées de l'invite système vers le message du tour (cache conservé) — S.
 9. Anti-doublon : montrer au modèle les 20 notes les plus proches plutôt que les 200 plus récentes — S.
 10. Envoyer les réponses du bot comme contexte (sans en apprendre) pour comprendre « oui, celle-là » — S.
 11. « Fiche sur moi » commune à tous les bots du compte — M.

@@ -108,7 +108,7 @@ export function Composer({ bot, live }: { bot: Bot; live: Live | undefined }) {
   const stop = async () => {
     tap();
     setStopping(true);
-    try { await useStore.getState().stop(bot.id); } catch (e) { Alert.alert("", errText(e)); } finally { setStopping(false); }
+    try { await useStore.getState().stop(bot.id, live?.tasks?.length ? live.thread ?? 0 : undefined); } catch (e) { Alert.alert("", errText(e)); } finally { setStopping(false); }
   };
 
   if (!canTalk) return <Text style={[styles.readOnly, { color: c.text3, borderColor: c.border }]}>{t("chat.readOnly")}</Text>;

@@ -10,6 +10,8 @@ import { parseTotp, totpNow } from "../totp.js";
 import { whenShellOutput } from "../relay.js";
 import { cachedPeek, commandFloor, commandPrefix, findScripts, fingerprint, FLOOR_LABEL, guardCapable, guardRefusal, GUARD_REFUSALS, guards, inputGuard, keepOutHit, keepOutInText, lastSeen, nameGuard, noteOpened, noteSeen, peekOnComputer, placeOf, protectedShortcut, sameWindow, scriptCardText, vaultVerdict, type Active, type InputKind, type VaultField } from "../relayguard.js";
 import type { BuiltinTool, ToolContext, ToolOutput } from "./tools.js";
+import { commandStops } from "../commandstop.js";
+import { FILE_ACCESS_ALSO, FILE_ACCESS_CARD, fileAccess, fileAccessKey } from "../fileaccess.js";
 
 /**
  * "mycomputer": the bot uses one of the user's own computers through Sklubot Relais (relay.ts, protocol in
@@ -363,12 +365,21 @@ const filesWriteGate: Gate = (a, ctx) => {
   const { target } = pick(bot.userId, a.device);
   if (!target) return null;
   const trash = a.mode === undefined && a.text === undefined;
+  const off = !fileAccess.on(bot.userId, target.id) ? FILE_ACCESS_ALSO : "";
   return {
     key: filesKey(bot.name), strict: true, once: true, source: SOURCE, vars: { device: target.label, path: clip(String(a.path ?? ""), 200), folder: clip(String(a.folder ?? ""), 80) },
     title: trash ? "Allow {bot} to move {path} (in {folder}) to the trash on {device}?" : "Allow {bot} to write {path} in {folder} on {device}?",
     reason: trash ? "move a file to the trash on {device}" : "write a file on {device}",
-    note: trash ? "It goes to the computer's trash, never deleted for good." : "If the file exists, its previous version goes to the computer's trash first.",
+    note: (trash ? "It goes to the computer's trash, never deleted for good." : "If the file exists, its previous version goes to the computer's trash first.") + off,
   };
+};
+
+/** nod 9: listing or reading while the owner's file access is off → one card that turns it back on (fileaccess.ts). */
+const filesReadGate: Gate = (a, ctx) => {
+  const bot = bots.byId(ctx.botId);
+  const { target } = bot ? pick(bot.userId, a.device) : {};
+  if (!bot || !target || target.kind === "phone" || fileAccess.on(bot.userId, target.id)) return null;
+  return { key: fileAccessKey(bot.name), strict: true, once: true, source: SOURCE, vars: { device: target.label }, ...FILE_ACCESS_CARD };
 };
 
 /**
@@ -387,13 +398,18 @@ function filesTarget(c: ToolContext, a: Record<string, any>): { target: Target }
   if (!FILE_OPS.every((op) => live.capabilities.includes(op))) return { out: { content: `The Sklubot Relais app on ${p.target.label} is too old for files (it needs protocol 1.1). Ask the user to update it.`, isError: true, summary: tr(c.user.locale, "relay too old") } };
   const keep = a.folder ? keepOutInText(`${a.folder}/${a.path ?? ""}`, guards.get(c.user.id, p.target.id).keepFolders) : null;
   if (keep) return { out: guardRefusal(c, p.target.label, "keep_out", { what: keep }) };
+  // nod 9: the switch was off, so this call ran only after the owner allowed the card that turns it back on.
+  if (!fileAccess.on(c.user.id, p.target.id)) {
+    fileAccess.set(c.user.id, p.target.id, true);
+    audit(c.user.id, "computer", tr(c.user.locale, "Access to your files turned back on for {device} from the chat", { device: p.target.label }), c.bot.id);
+  }
   return { target: p.target };
 }
 
 const fileTools: BuiltinTool[] = [
   tool("my_files", "List the folders the user shared with Sklubot on their own computer (in the Sklubot Relais app), or the content of one of them. Hidden, system and secret files are never shown.",
     obj({ folder: str("Optional: a shared folder to list (by name); without it, the shared folders themselves"), path: str("Optional: a subfolder inside it"), device: DEVICE }), {
-    activity: "reading", label: "Listing your files", outside: true, audited: true, detail: (a) => clip(String(a.folder ?? ""), 40),
+    activity: "reading", label: "Listing your files", outside: true, audited: true, gate: filesReadGate, detail: (a) => clip(String(a.folder ?? ""), 40),
     run: async (a, c) => {
       const f = filesTarget(c, a);
       if ("out" in f) return f.out;
@@ -413,7 +429,7 @@ const fileTools: BuiltinTool[] = [
   }),
   tool("my_file_read", "Read a text file from a folder the user shared on their own computer (256 KiB at most). Only when the user asked for it.",
     obj({ folder: FOLDER, path: FILE_PATH, device: DEVICE }, ["folder", "path"]), {
-    activity: "reading", label: "Reading one of your files", outside: true, audited: true, detail: (a) => clip(String(a.path ?? ""), 60),
+    activity: "reading", label: "Reading one of your files", outside: true, audited: true, gate: filesReadGate, detail: (a) => clip(String(a.path ?? ""), 60),
     run: async (a, c) => {
       const f = filesTarget(c, a);
       if ("out" in f) return f.out;
@@ -448,6 +464,23 @@ const fileTools: BuiltinTool[] = [
       return { content: `Moved ${a.folder}/${a.path} to the trash on ${f.target.label}.`, summary: clip(String(a.path), 60) };
     },
   }),
+  tool("my_file_access", "Turn access to the user's own files on one of their computers off or back on, when the user asks in the chat (\"coupe l'accès à mes fichiers\", \"rallume mes fichiers\"). Off: no file tool works there until it is turned on again. On: the user confirms on a card. The shared folders themselves are chosen only in the Sklubot Relais app.",
+    obj({ on: { type: "boolean", description: "true to turn it back on, false to turn it off" }, device: DEVICE }, ["on"]), {
+    activity: "computer", label: "Switching access to your files", audited: true,
+    gate: (a, ctx) => (a.on === true ? filesReadGate(a, ctx) : null),
+    run: async (a, c) => {
+      const p = pick(c.user.id, a.device);
+      if (!p.target) return { content: p.error!, isError: true, summary: tr(c.user.locale, "no computer") };
+      if (p.target.kind === "phone") return { content: `${p.target.label} is a phone: shared folders exist only on computers (Sklubot Relais).`, isError: true, summary: tr(c.user.locale, "not on a phone") };
+      const on = a.on === true;
+      // Turning it ON only in work the owner started in this chat (a routine or another bot cannot open the owner's files).
+      if (on && (c.origin !== "user" || c.bot.parentId)) return { content: "Only the user can turn their file access back on, in a message of theirs in this chat.", isError: true, summary: tr(c.user.locale, "not from background work") };
+      const was = fileAccess.on(c.user.id, p.target.id);
+      fileAccess.set(c.user.id, p.target.id, on);
+      if (was !== on) audit(c.user.id, "computer", tr(c.user.locale, on ? "Access to your files turned back on for {device} from the chat" : "Access to your files turned off for {device} from the chat", { device: p.target.label }), c.bot.id);
+      return { content: on ? `Access to the user's files on ${p.target.label} is on (the folders shared in Sklubot Relais).` : `Access to the user's files on ${p.target.label} is now off. No file tool works there until the user turns it back on.`, summary: tr(c.user.locale, on ? "files on" : "files off") };
+    },
+  }),
 ];
 
 // ── Command output in the chat (collapsed), streamed as it comes ─────────────
@@ -461,12 +494,14 @@ whenShellOutput((userId, deviceId, ref, _stream, text) => { const s = streams.ge
  * A line in the bot's chat for a command: "$ command — folder · computer", then its output below (the chat shows it
  * folded), updated while it runs and capped to the last 8 KiB, secrets masked.
  */
-function chatOutput(c: ToolContext, t: Target, command: string, cwd: string) {
+function chatOutput(c: ToolContext, t: Target, command: string, cwd: string, stoppable = false) {
   const ref = randomToken(12);
   const head = `$ ${clip(command, 300)} — ${cwd || "~"} · ${t.label}`;
-  const row = rows.append(c.bot, { kind: "event", event: "relay", text: head, tone: "info" });
+  // A command that runs now carries its own Stop button while it runs (commandstop.ts); a background one does not.
+  const cmd = (running: boolean) => (stoppable ? { cmd: { ref, running } } : {});
+  const row = rows.append(c.bot, { kind: "event", event: "relay", text: head, tone: "info", ...cmd(true) });
   let out = "", timer: NodeJS.Timeout | null = null, finished = false;
-  const show = (status: string) => { if (row) rows.rewrite(c.bot, row.generation, row.seq, { kind: "event", event: "relay", text: `${head}${status ? ` · ${status}` : ""}${out ? `\n${out.slice(-CHAT_OUTPUT_MAX)}` : ""}`, tone: "info" }); };
+  const show = (status: string) => { if (row) rows.rewrite(c.bot, row.generation, row.seq, { kind: "event", event: "relay", text: `${head}${status ? ` · ${status}` : ""}${out ? `\n${out.slice(-CHAT_OUTPUT_MAX)}` : ""}`, tone: "info", ...cmd(!finished) }); };
   streams.set(ref, { userId: c.user.id, deviceId: t.id, add: (text) => {
     if (finished) return;
     out = masked(c.user.id, (out + text).slice(-CHAT_OUTPUT_MAX * 2));
@@ -763,8 +798,15 @@ export const myComputerTools: BuiltinTool[] = guardVault([ // L41 (vaultaccess.t
         chatOutput(c, t, command, cwd).done(tr(loc, "started in the background (job {job})", { job: String(r.result.jobId ?? "?") }), "");
         return { content: `Started in the background as job ${r.result.jobId} (folder ${cwd || "home"}). Read its output with my_command_output, stop it with my_command_stop.`, summary: tr(loc, "background job {job}", { job: String(r.result.jobId ?? "?") }) };
       }
-      const live = chatOutput(c, t, command, cwd);
-      const r = await act(c, t, "shell.run", { ...base, streamRef: live.ref }, timeoutMs + 75_000).finally(() => live.stop());
+      const live = chatOutput(c, t, command, cwd, true);
+      const stop = commandStops.start(live.ref, c.user.id, c.bot.id);
+      const r = await act({ ...c, signal: AbortSignal.any([c.signal, stop.signal]) }, t, "shell.run", { ...base, streamRef: live.ref }, timeoutMs + 75_000).finally(() => { live.stop(); stop.end(); });
+      // The owner pressed Stop on this command's line: only this command ends (the relay cancels it), the turn goes on.
+      if (stop.signal.aborted && !c.signal.aborted) {
+        live.done(tr(loc, "stopped by you"), "");
+        audit(c.user.id, "computer", `${c.bot.name} → ${t.label} : ${tr(loc, "command stopped from the chat")} ${clip(command, 300)}`, c.bot.id);
+        return { content: "The user stopped this command from the chat (its Stop button). Do not run it again unless they ask.", summary: tr(loc, "stopped by you"), isError: true };
+      }
       if (!r.ok) { live.done(tr(loc, "not run"), ""); return failed(c, t, r); }
       const raw = r.result as { exitCode?: number | null; signal?: string | null; stdout?: string; stderr?: string; truncated?: boolean; timedOut?: boolean; cancelled?: boolean; durationMs?: number };
       // Secrets masked in what the bot and the chat get (shared.ts maskSecrets, and the vault's own values).

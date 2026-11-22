@@ -15,7 +15,10 @@ const EMPTY: Row[] = [];
 export function ThreadPanel({ botId, seq }: { botId: string; seq: number }) {
   const bot = useStore((s) => s.bots[botId]);
   const rows = useStore((s) => s.threads[botId]?.rows ?? EMPTY);
-  const live = useStore((s) => s.live[botId]) ?? IDLE_LIVE;
+  const botLive = useStore((s) => s.live[botId]) ?? IDLE_LIVE;
+  // Lanes (server agent/lanes.ts): while several tasks run, this thread's own task state is in `tasks`.
+  const lane = botLive.tasks?.find((x) => x.thread === seq);
+  const live = lane && botLive.thread !== seq ? { ...botLive, running: lane.running, activity: lane.activity, awaiting: lane.awaiting, startedAt: lane.startedAt, thread: seq, caption: null } : botLive;
   const closeThread = useStore((s) => s.closeThread);
   const t = useT();
   const [text, setText] = useState("");

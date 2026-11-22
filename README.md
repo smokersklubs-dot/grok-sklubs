@@ -149,6 +149,17 @@ un résumé puis un nouvel essai avant de passer au modèle de secours. Les anci
 raccourcis à l'envoi, seules les 8 dernières captures d'écran d'un tour sont renvoyées (`KEEP_SCREENSHOTS`), et les
 lectures sans effet (pages, recherches, mémoire…) d'une même étape partent en parallèle (`PARALLEL_TOOLS`, 4).
 
+**Jusqu'à 3 tâches en même temps par bot** (`server/src/agent/lanes.ts`). Chaque tâche travaille dans sa conversation :
+le chat principal, le fil d'une routine, le fil sous la demande d'un coéquipier, un fil que tu as ouvert. Ton chat
+principal ne fait jamais la queue derrière une autre tâche ; les autres se partagent les places qui restent (une
+4ᵉ tâche attend qu'une se termine). Chaque tâche a son bouton Arrêter, ses cartes d'accord et son état ; l'en-tête du
+chat affiche « 3 tâches en cours » et permet d'ouvrir ou d'arrêter chacune (« Tout arrêter » aussi, web et téléphone).
+Deux tâches ne changent jamais la même chose en même temps : l'écran et le navigateur du bot, l'écran de ton ordinateur,
+un fichier de la bibliothèque, une page publiée ont un seul utilisateur à la fois (`agent/turnlocks.ts`) ; l'autre tâche
+attend au plus `LOCK_WAIT_SEC` (60 s, état « Attend l'autre tâche »), puis fait autre chose. Une seule tâche à la fois
+(comme avant, dans l'ordre) pour un bot sur abonnement Claude Code / Codex (une session par bot), l'offre hébergée
+« Gratuit », ou `BOT_PARALLEL_TASKS=1` (3 par défaut, 3 au plus). Budgets, plafonds et usage comptent toutes les tâches.
+
 Sans Docker, Sklubot se rabat sur un simple navigateur par bot (`npm i playwright && npx playwright install chromium`),
 et sinon sur la lecture de pages, la ligne de commande et les connecteurs.
 

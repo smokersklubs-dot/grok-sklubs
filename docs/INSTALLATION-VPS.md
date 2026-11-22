@@ -296,11 +296,10 @@ données ». La clé fait partie des secrets sauvegardés (chiffrés) : garde au
 
 ### Renforcements facultatifs (rien n'est imposé)
 
-- **Navigateur des bots** : Chromium tourne en root avec `--no-sandbox` dans l'ordinateur du bot. Son bac à sable
-  a besoin soit d'un programme setuid (neutralisé par `no-new-privileges`, que l'on garde), soit d'espaces de noms
-  utilisateur, que le profil seccomp par défaut de Docker interdit (essai : « No usable sandbox! » en utilisateur
-  normal). L'activer demanderait d'assouplir seccomp pour tous les ordinateurs : on ne le fait pas. La frontière reste
-  le conteneur (aucune capacité dangereuse, réseau à part, pas de privilège possible).
+- **Navigateur des bots** (fait, L48) : Chromium tourne avec l'utilisateur `browser` et son propre bac à sable, grâce
+  au profil seccomp `docker/desktop/seccomp-chromium.json` (le profil par défaut de Docker plus les espaces de noms
+  utilisateur, sans capacité ajoutée). Après la mise à jour, reconstruis les images (`bash deploy/update.sh`) : les
+  ordinateurs se refont tout seuls quand ils ne servent pas. Détails : docs/DEPLOIEMENT.md et docs/SECURITE.md.
 - **gVisor** (noyau isolé par conteneur) : installe `runsc` sur l'hôte (gvisor.dev/docs/user_guide/install/, il
   s'enregistre comme runtime Docker), puis dans `.env` : `SKLUBOT_DESKTOP_RUNTIME=runsc`. Les ordinateurs sont refaits
   à leur prochain usage. Vérifie ensuite le bureau et le navigateur avec le test d'ordinateur.

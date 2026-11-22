@@ -11,7 +11,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 const os = require('node:os');
 const electron = require('electron');
-const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, globalShortcut, dialog, shell, screen, Notification, safeStorage, systemPreferences, desktopCapturer } = electron;
+const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, globalShortcut, dialog, shell, screen, Notification, safeStorage, systemPreferences, desktopCapturer, powerSaveBlocker } = electron;
 
 const { Store } = require('./store');
 const { ActionLog } = require('./action-log');
@@ -26,6 +26,7 @@ const i18n = require('./i18n');
 const { AppSettings } = require('./app-settings');
 const { createAppShell } = require('./app-window');
 const { migrateRelaisDir } = require('./desktop-core');
+const { createKeepAwake } = require('./keep-awake');
 
 // ───────────────────────── process-level setup (before "ready") ─────────────────────────
 
@@ -72,6 +73,7 @@ if (!app.requestSingleInstanceLock()) {
 /** @type {ReturnType<typeof createBotPointer>} */ let pointer;
 /** @type {Electron.Tray | null} */ let tray = null;
 /** @type {AppSettings} */ let appSettings;
+/** Computer kept awake while a bot works on it (nod 16, keep-awake.js). @type {ReturnType<typeof createKeepAwake>} */ let awake;
 /** @type {ReturnType<typeof createAppShell> | null} */ let appShell = null;
 let unread = 0;
 let hotkeyOk = false;
@@ -115,11 +117,12 @@ async function boot() {
   appSettings = new AppSettings(userData).load();
 
   pointer = createBotPointer(electron);
+  awake = createKeepAwake(powerSaveBlocker, log);
   const desktop = createDesktopCaps(electron, (action) => pointer.mark(action), () => core?.state().prompt ? null : core?.session);
   core = new RelayCore({
     send: (msg) => (conn ? conn.send(msg) : false),
     // Files: only in the folders the user shares below; the previous version of a file goes to the OS trash.
-    caps: { ...desktop, runShell, ...createFileCaps({ getFolders: () => store.folders(), trash: (p) => shell.trashItem(p) }) },
+    caps: { ...desktop, runShell: awake.during(runShell), ...createFileCaps({ getFolders: () => store.folders(), trash: (p) => shell.trashItem(p) }) },
     ui: consentUI,
     store,
     log,
@@ -176,6 +179,7 @@ app.on('will-quit', () => globalShortcut.unregisterAll());
 
 function quit() {
   quitting = true;
+  if (awake) awake.releaseAll();
   if (conn) conn.stop();
   app.quit();
 }
@@ -264,6 +268,7 @@ const consentUI = {
   onSession(session) {
     if (session) { showBanner(session.botName); pointer.start(session.botName); }
     else { pointer.close(); hideBanner(); }
+    awake.session(!!session);
     updateTray();
     pushState();
   },

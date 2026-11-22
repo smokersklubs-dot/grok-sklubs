@@ -43,7 +43,7 @@ Statuts : FAIT, PARTIEL, MANQUANT, DIFFÉRENT, NON REPRIS. Taille du travail res
 | # | Fonction OpenClaw | Statut | Preuve Sklubot | Ce qui manque | Taille |
 |---|---|---|---|---|---|
 | A1 | Boucle modèle → outils → modèle, en streaming | FAIT | `agent/loop.ts:923` (`modelLoop`) ; test : wave4, wave2 | — | — |
-| A2 | Une file par session, sessions en parallèle, plafond global de tours simultanés | DIFFÉRENT | `agent/loop.ts:216` (`inQueue`) : une seule file **par bot** | Un fil de discussion, une routine et le chat principal du même bot attendent les uns derrière les autres. Pas de plafond global. L'utilisateur perd : son message attend derrière une routine longue. | M |
+| A2 | Une file par session, sessions en parallèle, plafond global de tours simultanés | ✅ en partie (2026-11-22, L99 : une file par fil, 3 tâches par bot au plus, `agent/lanes.ts` ; pas de plafond global du serveur) — était DIFFÉRENT | `agent/loop.ts:216` (`inQueue`) : une seule file **par bot** | Un fil de discussion, une routine et le chat principal du même bot attendent les uns derrière les autres. Pas de plafond global. L'utilisateur perd : son message attend derrière une routine longue. | M |
 | A3 | Steering : un message tapé pendant le travail entre dans le tour en cours à la prochaine frontière | FAIT | `agent/loop.ts:362-383`, `:1514` ; test : pause, apps (partiel) | Aucun test ne couvre « message tapé pendant une routine » (voir écart n° 13) | — |
 | A4 | Modes de file `followup`, `collect`, `interrupt` et commande `/queue` | MANQUANT | — | Un seul comportement (fusion dans le tour). Pas de « traite ça après », pas de « arrête et prends le nouveau ». | M |
 | A5 | Plafond de file (20) et règle quand elle déborde (résumer, jeter l'ancien, refuser) | MANQUANT | `agent/loop.ts:205` : liste sans limite | Une rafale de 100 messages entre telle quelle dans le tour. | S |
@@ -411,7 +411,7 @@ Pour chaque flux : comment OpenClaw fait, comment Sklubot fait, ce qui est plus 
 4. Passage isolé pour les routines : seul le résultat arrive dans le chat (E2). **M**
 5. Recherche mémoire par le sens en plus des mots ; finir, tester et commiter `agent/recall.ts` (C4, C5). **M**
 6. Tour silencieux « note ce qui compte » avant chaque résumé de conversation (A27). **M**
-7. Cache de prompt : sections changeantes à la fin, point de cache sur l'historique (A33). **S**
+7. ✅ Fait (2026-11-22, `llm/cachelayout.ts`). Cache de prompt : sections changeantes à la fin, point de cache sur l'historique (A33). **S**
 8. Nouvel essai avec attente croissante après l'échec d'une routine, avant de compter l'échec (E4). **S**
 9. ✅ **Fait (2026-11-22).** Garde anti-boucle : note d'avertissement au modèle dès le 2e résultat identique ou le 2e échec de suite ; les outils d'attente (`screen_view`, `job_output`, `page_read`…) ont une limite plus haute mais bornée (12, `LOOP_POLL_SAME_RESULT`) (A9). **S**
 10. Steering : ajouter la consigne de lien et les sites nommés par l'utilisateur à `turn.hosts` (flux 2). **S**

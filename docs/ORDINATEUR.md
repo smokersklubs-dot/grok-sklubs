@@ -80,6 +80,9 @@ lancer des programmes, garder des fichiers.
   (`sklubot-api`), qui les ajoute de son côté.
 - **Ce qu'il lit est une information, jamais un ordre** : une page, une vidéo ou un texte lu à l'écran qui lui
   demanderait d'agir n'est pas suivi.
+- **Son navigateur est dans un bac à sable** : Chromium tourne avec l'utilisateur `browser` (pas root) et avec son
+  propre bac à sable, comme sur un ordinateur normal. Une page piégée reste enfermée dans son onglet. Le terminal du
+  bot reste root ; ses téléchargements arrivent toujours dans `~/Downloads`, ses connexions sont gardées.
 
 ## Ton propre ordinateur (Relais) : les règles de sécurité
 
@@ -157,3 +160,13 @@ carte son virtuelle (`docker/desktop/sound.sh`, LGPL), xclip, les bibliothèques
 (Unlicense, binaire officiel vérifié par SHA-256 ; `/etc/yt-dlp.conf` active Node pour YouTube). Il faut reconstruire
 l'image (`npm run computer:build`) ; un ordinateur refait à partir de l'ancienne image répond « pas de carte son » à
 `listen_screen` jusqu'à ce qu'il le soit. Code : `server/src/media.ts` ; tests : `server/test/media-tools.test.ts`.
+
+**Bac à sable du navigateur (L48).** L'image crée l'utilisateur `browser` et porte l'étiquette
+`sklubot.browser-sandbox=1` ; Sklubot crée alors chaque ordinateur avec le profil seccomp
+`docker/desktop/seccomp-chromium.json` (détails : docs/SECURITE.md, « Navigateur des bots »). Après la mise à jour,
+**reconstruis l'image** (`npm run computer:build`, ou `docker compose -f docker-compose.vps.yml build desktop-image`) :
+rien d'autre à faire, chaque ordinateur fait avec l'ancienne image est **refait tout seul** quand il ne sert pas
+(dossier personnel gardé : fichiers, connexions, navigateur ; paquets remis par `sklubot-install`). En attendant, il
+marche comme avant (navigateur root, sans bac à sable) et Réglages → Autorisations → Sécurité le signale. L'état du
+navigateur d'un ordinateur est dans `/tmp/sklubot-browser-sandbox` (`on`, ou `off` et la raison) ; ses premiers
+messages dans `/tmp/sklubot-browser.log`. Code : `docker/desktop/open-browser.sh`, `server/src/browsersandbox.ts`.
