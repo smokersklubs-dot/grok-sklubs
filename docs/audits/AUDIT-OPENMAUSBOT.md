@@ -485,7 +485,7 @@ Taille : **S** ≤ 1 jour, **M** 2 à 4 jours, **L** 1 à 2 semaines. Chemins Sk
 > **Mise à jour du 2026-11-22 (chantier « cœur : fiabilité »).** Les lignes marquées ✅ sont faites et testées (`server/test/core-reliability.test.ts`, `core-engine.test.ts`, `core-timeouts.test.ts`) ; « en partie » dit ce qui reste. Détail dans `docs/COUVERTURE.md`, section « Cœur : fiabilité ».
 
 1. ✅ **Fait (2026-11-22).** **Ne plus annuler un accord quand l'utilisateur écrit** : la carte reste ouverte, le message est gardé et traité après la réponse ; un « oui » tapé ne vaut jamais accord (`agent/approval-wait.ts`, `agent/loop.ts`). S
-2. ✅ **Fait (2026-11-22).** **Session du moteur perdue** : la nouvelle session reçoit les derniers messages gardés (30 au plus, 12 000 caractères au plus) et une ligne le dit dans le chat, pour Claude Code et Codex (`agent/session-rebuild.ts`). M
+2. ✅ **Fait (2026-11-22).** **Session du moteur perdue** : la nouvelle session reçoit les derniers messages gardés (30 au plus, 12 000 caractères au plus) et une ligne le dit dans le chat, pour Claude Code et Codex (`agent/session-rebuild.ts`). M Suite (2026-11-22) : Claude Code 2.1.330 écrit « session introuvable » dans `errors` et non plus dans `result` ; la session perdue est maintenant reconnue par sa forme (`error_during_execution`, aucun tour, pas d'`init`), sinon elle n'était jamais rouverte (`agent/engine-failure.ts`).
 3. **Routines dans un fil à part**, seul le résultat dans le chat, avec « Voir l'exécution ». M
 4. **Navigateur en texte** : `browser_open` et les clics renvoient la structure de la page et ce qui a changé ; capture à la demande. M
 5. **Défaut « balanced »** pour les nouveaux bots, avec un choix clair à l'accueil. S
@@ -513,7 +513,7 @@ Taille : **S** ≤ 1 jour, **M** 2 à 4 jours, **L** 1 à 2 semaines. Chemins Sk
 27. **Deuxième avis sur un autre modèle**. M
 28. **« Burst »** en lots parallèles. M
 29. **`check_back` / `wait_until`** dans la même discussion. M
-30. **Classe « faute du serveur »** qui interdit la relance. S
+30. ✅ **Fait (2026-11-22).** **Classe « faute du serveur »** (`server_fault`) qui interdit la relance : outils Sklubot non joints au moteur, mémoire / fichiers / base pleins (codes d'erreur, pas de phrases) ; une carte, jamais de nouvel essai ni de passage à un collègue (`agent/failures.ts`). S
 31. **Réglage qui répare dans la ligne d'erreur.** S
 32. **Étalement des rattrapages** de routines. S
 33. **Test de l'IA avant de la proposer par défaut.** M

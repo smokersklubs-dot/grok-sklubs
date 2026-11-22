@@ -272,7 +272,8 @@ test("consecutive read-only calls run side by side; results keep the model's ord
   };
   maxInFlight = 0;
   const t0 = Date.now();
-  await call("POST", `/bots/${bot.id}/messages`, { text: `Lis ${url("")} et ses pages` });
+  // The user names the notes: reading memory after outside content is then what was asked (L36, agent/privatejudge.ts).
+  await call("POST", `/bots/${bot.id}/messages`, { text: `Lis ${url("")} et ses pages, puis cherche dans tes notes` });
   await settle(bot.id);
   const took = Date.now() - t0;
   assert.equal(maxInFlight, 3, "the three reads ran at the same time");

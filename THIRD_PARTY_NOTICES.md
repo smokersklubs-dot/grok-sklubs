@@ -42,3 +42,58 @@ Schemas in src/server/agent-plugins/ are distributed under Apache-2.0.
     skipped run track, preview, "run now" guard, approval of a whole saved instruction), rewritten.
   - `web/src/lib/messagecopy.ts` — from `src/web/lib/clipboard.ts` (`selectedText`, `copyContent`, table as
     tab-separated text).
+
+## storytold/craft-anything — MIT OR Apache-2.0 (used under MIT)
+
+- Source: https://github.com/storytold/craft-anything, commit `8cec25d02007db604b57ce6735ad4eb44a1a9948` (cloned 22/11/2026,
+  read only, never run); the CLI behaviour read at tag `v0.6.1` (`48a9c5a60ff83ff620f98661339be6281a7debc6`).
+- Adapted in `server/src/agent/engine-failure.ts`: the typed failure table of `crates/ai/src/failure.rs`
+  (`TurnFailure::claude`, `from_api`) and the MCP init check of `crates/ai/src/cli_agents/adapters.rs`. Modified for
+  Sklubot: rewritten in TypeScript, mapped onto Sklubot's failure classes, its own MCP server name and engine code.
+- The "ArtCraft" name, wordmark and logos are not covered by the licence and are not used.
+- Copyright notice and permission notice (MIT), as required:
+
+```text
+MIT License
+
+Copyright (c) 2026 ArtCraft Team and the Craft Anything contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
+rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit
+persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the
+Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE
+WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+```
+
+## affaan-m/ECC — MIT License
+
+- Source: https://github.com/affaan-m/ECC, commit `4adeee6732a12d1540f49a4d50a38ce8c97f9a53` (sparse clone, 22/11/2026).
+- Reused: the "CRITICAL" secret patterns of `agents/opensource-sanitizer.md`, rewritten as JavaScript RegExps in
+  `server/src/secretformats.ts` (modified: value-only capture groups, word boundaries, Sklubot's secret kinds).
+- Licence text (MIT):
+
+```text
+MIT License
+
+Copyright (c) 2026 Affaan Mustafa
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
+rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit
+persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the
+Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE
+WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+```

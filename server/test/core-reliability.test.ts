@@ -273,7 +273,8 @@ test("point 6: words typed during a routine's turn become the user's own turn, w
   // The routine's own turn never saw the user's words.
   const routineCalls = requests.filter((r) => r.all.includes("travail de routine") && !r.all.includes("mes vacances"));
   assert.ok(routineCalls.length >= 1);
-  assert.ok((await replies(bot.id)).includes("Echo: travail de routine"), "the routine still finished its own work");
+  // Owner decision (22/11/2026): the routine works in its own thread; the main chat gets its result (agent/routinethread.ts).
+  assert.ok((await replies(bot.id)).some((t) => t.includes("Echo: travail de routine")), "the routine still finished its own work");
 });
 
 test("point 6: words typed during a teammate's or a system turn are not merged into it either; non-user work never gains the user's origin", async () => {

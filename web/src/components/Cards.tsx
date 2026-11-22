@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { CapCardView } from "./UsageCaps";
-import { useTick } from "./ui";
+import { useTick } from "./ui"; import { FloorCodeField, useFloorCode } from "./SecurityLot1";
 import { api, errText } from "../api";
 import { useT } from "../i18n";
 import { useStore } from "../store";
@@ -33,11 +33,12 @@ function Approval({ card, botId }: { card: ApprovalCard; botId: string }) {
   const canDecide = !access || access.canApprove;
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const floorCode = useFloorCode(card); const [code, setCode] = useState(""); // L44 (option): the approver's two-factor code on a floor card
   const decide = async (decision: "allow" | "always" | "conversation" | "deny") => {
     setBusy(decision);
     setError(null);
     try {
-      await api("POST", `/approvals/${encodeURIComponent(card.approvalId)}`, { decision });
+      await api("POST", `/approvals/${encodeURIComponent(card.approvalId)}`, { decision, ...(floorCode && decision !== "deny" ? { code } : {}) });
     } catch (e) {
       setError(errText(e));
     } finally {
@@ -101,7 +102,7 @@ function Approval({ card, botId }: { card: ApprovalCard; botId: string }) {
       {card.status === "pending" && !canDecide ? (
         <p className="card-note"><Icon name="users" size={13} /> {t("ws.approvalOwner", { name: access?.ownerName ?? "" })}</p>
       ) : card.status === "pending" ? (
-        <>
+        <>{floorCode && <FloorCodeField value={code} onChange={setCode} />}
           <div className="card-actions">
             <button type="button" className="btn btn-ghost" disabled={busy !== null} onClick={() => void decide("deny")}>
               {t(busy === "deny" ? "approval.denying" : "approval.deny")}

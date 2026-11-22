@@ -13,7 +13,7 @@ export type Trigger = WorkTrigger & { continuation?: "restart" | "restart_after_
 type WorkTrigger =
   /** `skill`: the user typed "/skill <name>": the bot is told to follow that skill, whose steps ride along. */
   | { kind: "user"; text: string; voice?: boolean; attachments?: Attachment[]; channel?: "telegram"; thread?: number; skill?: ForcedSkill; /** Wave 6: written by someone of a workspace the bot is shared with, not its owner. */ member?: MemberAuthor; /** Bot API: written by an outside program through an API key, not typed by the owner. */ api?: ApiAuthor; /** Goal mode: this message is the objective of that goal (its first round). */ goal?: string }
-  | { kind: "routine"; name: string; text: string; runId?: string; tainted?: boolean; /** "Run now", pressed by the user (usage caps: a person's own work). */ byHand?: boolean }
+  | { kind: "routine"; name: string; text: string; runId?: string; tainted?: boolean; /** "Run now", pressed by the user (usage caps: a person's own work). */ byHand?: boolean; /** The run's own thread (routinethread.ts), set when it starts. */ thread?: number }
   /** `ask`: the sender waits for the answer in its own turn (bot_message with wait): this turn's last words go back to it. */
   | { kind: "bot"; fromName: string; text: string; depth: number; tainted?: boolean; ask?: AskRoute }
   /**
@@ -28,7 +28,7 @@ type WorkTrigger =
   | { kind: "resume" };
 
 /** The thread a trigger belongs to (0: the main chat). */
-export const threadOf = (t: Trigger) => (t.kind === "user" || t.kind === "system" ? t.thread ?? 0 : 0);
+export const threadOf = (t: Trigger) => (t.kind === "user" || t.kind === "system" || t.kind === "routine" ? t.thread ?? 0 : 0);
 
 // A workspace member's message is not the owner's word: the turn it starts is careful from its first step (wave 6). Nor is
 // a message an outside program sent through the Bot API (botapi.ts): it is outside content too.

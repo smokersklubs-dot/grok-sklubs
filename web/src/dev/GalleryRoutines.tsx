@@ -1,7 +1,7 @@
 /**
  * « Routines » in the dev gallery (section=routines): nod items 2, 8, 13 — a routine running now (live line), its late
  * run track, the editor open with the preview of the next runs, the « Approuver toute la consigne » form; then the
- * model for background tasks. `empty=1`: a routine that never ran and has no approval.
+ * models for routines, background tasks and other background work. `empty=1`: a routine that never ran and has no approval.
  */
 import { RoutineMore, WorkModels } from "../components/RoutineEditor";
 import type { Routine } from "../types";

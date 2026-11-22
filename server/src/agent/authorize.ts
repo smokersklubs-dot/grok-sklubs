@@ -7,7 +7,7 @@ import type { Grant } from "../shared.js";
 import { clip, policies, settings } from "../store.js";
 import { committingKind, seenTarget } from "./bind.js";
 import { capProblem } from "./payments.js";
-import { conversationGate } from "./conversationgrants.js";
+import { conversationGate } from "./conversationgrants.js"; import { cloneConsent } from "./consent.js"; import { scopeVerdict } from "./scopedkeys.js"; import { privateReadGate } from "./privatejudge.js";
 import { irreversibility } from "./irreversible.js";
 import { record } from "../usage.js";
 import { isEngineRef } from "./engine.js";
@@ -90,6 +90,7 @@ export interface ReviewAnswer { decision: "allow" | "ask" | "deny"; reason: stri
  */
 export async function authorize(turn: Turn, call: ToolUseBlock): Promise<Decision> {
   const d = await decide(turn, call);
+  const consent = cloneConsent(turn, call, d); if (consent) return consent; const privateRead = privateReadGate(turn, call, d); if (privateRead) return privateRead; // L30 consent.ts (voice or face copy), L36 privatejudge.ts (private read after outside content)
   const irr = irreversibility(turn, call.name, call.input);
   // Bot API (botapi.ts): work an outside program started with an API key. Its words are never the owner's (grounding.ts
   // typedByUser leaves origin "api" out), and an action that cannot be undone always waits for the owner's own yes — even
@@ -107,7 +108,7 @@ export async function authorize(turn: Turn, call: ToolUseBlock): Promise<Decisio
 }
 
 async function decide(turn: Turn, call: ToolUseBlock): Promise<Decision> {
-  let verdict = judge(turn, call);
+  let verdict = scopeVerdict(turn, call, judge(turn, call)); // L43: "Always" covers the exact command or file only (scopedkeys.ts)
   const loc = turn.user.locale;
   let name = actionName(turn, call.name, call.input);
   const isGroundable = groundable(turn, call.name);

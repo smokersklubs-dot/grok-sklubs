@@ -14,6 +14,8 @@
  * - duplicate — the same or nearly the same text (normalized: case, accents, punctuation and @mentions ignored; or ≥85 %
  *               of the same words; or one contains the other, whole words) already sent by this bot in this room / to this bot within
  *               `BOT_LOOP_DUPLICATE_SEC` (600 s).
+ * - bounce    — bot-to-bot only (L53): a bot hands back to another bot the request (the same text, or ≥85 % of the same words) that bot sent it
+ *               within `BOT_LOOP_DUPLICATE_SEC`: a request never goes back to a bot that already had it.
  * - ring      — the same content (same similarity test) already sent by two different bots or more, anywhere in the
  *               account (rooms and bot_message), within `BOT_LOOP_RING_SEC` (900 s): it is going around. Only for texts
  *               of 16 characters or more once normalized ("ok", "merci" are not a ring).
@@ -22,13 +24,14 @@
  * Any limit set to 0 is off. A human message resets the breaker and the escalate counters of that room (team.ts
  * dispatchToRoom, with no bot sender); a turn the user started by writing to a bot resets the channels that bot posts in.
  *
- * Persistence: none. Everything lives in memory with short windows (an hour at most) and is lost on restart, which only
- * means the counters start over — a loop after a restart is caught again within a few posts. Nothing is written to disk.
+ * Persistence (L53): the shared `postBudget` writes its state through a BudgetStore (budgetstore.ts: two small SQLite
+ * tables), so an open breaker, the counters and the recent posts survive a restart — two bots no longer wake each other
+ * in a loop again just because the server restarted. A PostBudget made without a store (tests) lives in memory only.
  *
  * `decide` is pure (state in, verdict out); `PostBudget` keeps the state and is what the tools use (`postBudget`).
  */
 
-export type BudgetRule = "duplicate" | "ring" | "rate" | "breaker" | "escalate";
+export type BudgetRule = "duplicate" | "bounce" | "ring" | "rate" | "breaker" | "escalate";
 
 export interface BudgetLimits {
   duplicateMs: number;
@@ -72,11 +75,11 @@ const RING_MIN_CHARS = 16;
 const CONTAIN_MIN_CHARS = 24;
 
 /** Same or nearly the same, on normalized texts. */
-export function similar(a: string, b: string): boolean {
+export function similar(a: string, b: string, contain = true): boolean {
   if (!a || !b) return a === b;
   if (a === b) return true;
   const [short, long] = a.length <= b.length ? [a, b] : [b, a];
-  if (short.length >= CONTAIN_MIN_CHARS && ` ${long} `.includes(` ${short} `)) return true;
+  if (contain && short.length >= CONTAIN_MIN_CHARS && ` ${long} `.includes(` ${short} `)) return true;
   const wa = new Set(a.split(" ")), wb = new Set(b.split(" "));
   if (wa.size < 4 || wb.size < 4) return false;
   let both = 0;
@@ -137,6 +140,8 @@ export function decide(state: BudgetState, p: PostAttempt, limits: BudgetLimits)
   const recent = (ms: number) => state.log.filter((e) => p.now - e.at < ms);
   if (limits.duplicateMs > 0 && recent(limits.duplicateMs).some((e) => e.channel === p.channel && e.botId === p.botId && similar(e.norm, norm)))
     return { allow: false, rule: "duplicate", reason: `You already sent this (or nearly the same) ${where} a moment ago. Do not send it again. ${WAIT}` };
+  if (!room && limits.duplicateMs > 0 && norm.length >= RING_MIN_CHARS && recent(limits.duplicateMs).some((e) => e.channel === p.channel && e.botId !== p.botId && similar(e.norm, norm, false)))
+    return { allow: false, rule: "bounce", reason: `This is the request that bot sent you: do not hand it back. Do it yourself, or tell the user what blocks you. ${WAIT}` };
   if (limits.ringMs > 0 && norm.length >= RING_MIN_CHARS) {
     const senders = new Set(recent(limits.ringMs).filter((e) => similar(e.norm, norm)).map((e) => e.botId));
     if (senders.size >= 2)
@@ -153,14 +158,30 @@ export function decide(state: BudgetState, p: PostAttempt, limits: BudgetLimits)
 const KEEP_MS = 3_600_000;
 const MAX_LOG = 1000;
 
-/** The live state for every account (keyed by user id), used by room_post and bot_message. */
+/** Where a PostBudget keeps its state across restarts (budgetstore.ts). Every call is write-through. */
+export interface BudgetStore {
+  load(userId: string, since: number): BudgetState;
+  addPost(userId: string, e: PostEntry): void;
+  saveChannel(userId: string, key: string, c: ChannelState): void;
+  dropChannel(userId: string, key: string): void;
+  prune(userId: string, before: number): void;
+  clear(): void;
+}
+
+/** The live state for every account (keyed by user id), used by room_post, bot_message and bot-to-bot deliveries. */
 export class PostBudget {
   private states = new Map<string, BudgetState>();
-  constructor(public limits: BudgetLimits = limitsFromEnv()) {}
+  private store: BudgetStore | null = null;
+  constructor(public limits: BudgetLimits = limitsFromEnv(), store?: BudgetStore) { this.store = store ?? null; }
+
+  /** Keeps the state in this store from now on (what was in memory is dropped and read back from it). */
+  useStore(store: BudgetStore) { this.store = store; this.states.clear(); }
+
+  private keepMs() { return Math.max(KEEP_MS, this.limits.duplicateMs, this.limits.ringMs); }
 
   private state(userId: string): BudgetState {
     let s = this.states.get(userId);
-    if (!s) { s = { log: [], channels: new Map() }; this.states.set(userId, s); }
+    if (!s) { s = this.store ? this.store.load(userId, Date.now() - this.keepMs()) : { log: [], channels: new Map() }; this.states.set(userId, s); }
     return s;
   }
 
@@ -176,33 +197,43 @@ export class PostBudget {
    */
   attempt(userId: string, p: PostAttempt): Verdict {
     const s = this.state(userId);
-    const keep = Math.max(KEEP_MS, this.limits.duplicateMs, this.limits.ringMs);
-    while (s.log.length && (p.now - s.log[0].at >= keep || s.log.length > MAX_LOG)) s.log.shift();
+    const keep = this.keepMs();
+    let pruned = false;
+    while (s.log.length && (p.now - s.log[0].at >= keep || s.log.length > MAX_LOG)) { s.log.shift(); pruned = true; }
+    if (pruned && s.log.length) this.store?.prune(userId, s.log[0].at);
     const v = decide(s, p, this.limits);
     if (!v.allow) {
-      if (v.opened) this.channel(s, p.channel).open = true;
+      if (v.opened) { const c = this.channel(s, p.channel); c.open = true; this.store?.saveChannel(userId, p.channel, c); }
       return v;
     }
-    s.log.push({ channel: p.channel, botId: p.botId, norm: normalize(p.text), at: p.now, toUser: !!p.toUser });
+    const entry: PostEntry = { channel: p.channel, botId: p.botId, norm: normalize(p.text), at: p.now, toUser: !!p.toUser };
+    s.log.push(entry);
     const c = this.channel(s, p.channel);
     c.sinceHuman++;
     if (p.toUser) c.toUser.set(p.botId, (c.toUser.get(p.botId) ?? 0) + 1);
+    this.store?.addPost(userId, entry);
+    this.store?.saveChannel(userId, p.channel, c);
     return v;
   }
 
   /** A human wrote in this channel: the breaker closes and the counters start over. */
   human(userId: string, channel: string) {
-    this.states.get(userId)?.channels.delete(channel);
+    this.state(userId).channels.delete(channel);
+    this.store?.dropChannel(userId, channel);
   }
 
   /** True while the breaker of this channel is open. */
   isOpen(userId: string, channel: string): boolean {
-    return !!this.states.get(userId)?.channels.get(channel)?.open;
+    return !!this.state(userId).channels.get(channel)?.open;
   }
 
-  /** Forgets everything (tests). */
+  /** Forgets what is in memory, so the next use reads the store again (what a restart does; tests). */
+  forgetMemory() { this.states.clear(); }
+
+  /** Forgets everything, in the store too (tests). */
   reset(limits?: BudgetLimits) {
     this.states.clear();
+    this.store?.clear();
     if (limits) this.limits = limits;
   }
 }

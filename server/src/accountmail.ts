@@ -34,7 +34,7 @@ import { hashPassword, originAllowed, seal, unseal, verifyPassword } from "./aut
 import { relayAddress } from "./botmail.js";
 import { config } from "./config.js";
 import { q } from "./db.js";
-import { hasPassword, ownerId } from "./googlelogin.js";
+import { hasPassword, ownerId } from "./googlelogin.js"; import { checkSecondFactor, twoFactorOn } from "./twofactor.js";
 import { markVerified } from "./publicsignup.js";
 import type { Locale } from "./shared.js";
 import { audit, clip, now, randomToken, sha256, users, type UserRecord } from "./store.js";
@@ -331,6 +331,8 @@ export function registerAccountMailPrivate(api: Hono<any>, deps: AccountMailDeps
     deps.throttle(`pw:${user.id}`);
     if (!hasPassword(user)) throw new AccountMailError(409, "Choose a password first (above): changing your address needs it.");
     if (!verifyPassword(String(b.password ?? ""), user.passHash)) throw new AccountMailError(401, "The password is wrong.");
+    // L37: with two-factor sign-in on, a new address also needs a current code (a stolen session plus the password is not enough).
+    if (twoFactorOn(user.id) && !checkSecondFactor(user.id, String(b.code ?? ""))) throw new AccountMailError(401, "Type the current code of your two-factor app to change your address.");
     const email = cleanEmail(b.email);
     if (!validEmail(email)) throw new AccountMailError(400, "Enter a valid email address.");
     if (email === user.email.toLowerCase()) throw new AccountMailError(400, "This is already your address.");

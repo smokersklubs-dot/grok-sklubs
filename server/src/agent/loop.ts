@@ -19,7 +19,7 @@ import { turnEnded, turnStarted } from "../snapshots.js";
 import { EngineTimeout, engineOf, engineTurnOf, isEngineRef, isEngineTimeout, runEngineTurn, type EngineOutcome } from "./engine.js";
 import { buildSystemPrompt } from "./prompt.js";
 import { hostOf, hostsIn, userLinkHint } from "./links.js"; export { hostOf, hostsIn };
-import { deliverBotMessage, settleAsk, type AskRoute } from "./team.js";
+import { deliverCounted as deliverBotMessage, settleAsk, type AskRoute } from "./team.js"; // L53: a helper's report counts against the bot-to-bot breaker
 import { noteDiskTrouble } from "../disk.js";
 import { builtinTools, higgsfieldFor, videoRoute, type BuiltinTool, type ToolOutput } from "./tools.js";
 import { videoService } from "../video.js";
@@ -33,7 +33,7 @@ const PHONE_LESS = new Set(["my_command", "my_command_output", "my_command_stop"
 import { backoffDelay, errorDetail, isTransient, LoopGuard, loopStopText, modelChain, repeatLimit, sleep, type LoopStop } from "./reliability.js";
 import { forgetCall, isParked, noteMessageBehindApproval, parkApproval, parkedOf, parkedResume, rememberCall } from "./approval-wait.js"; import { crashOf, guardTurn } from "./crashguard.js";
 import { authorize, external, groundable, withoutQuote, type Decision } from "./authorize.js";
-import { actionHash, executions, markUncertain, outcomeUnknown } from "./executions.js";
+import { actionHash, executions, markUncertain, outcomeUnknown } from "./executions.js"; import { rememberAction, repeatedAction } from "./sameaction.js"; import { promiseNudge } from "./promises.js"; import { gt } from "./guardtext.js"; import { withWorkModel } from "./workmodel.js"; import { closeRoutineThread, openRoutineThread } from "./routinethread.js"; import { beginUnprotected, clearUnprotected, clearUnprotectedMarkers, endUnprotected, holdAfterRestart, RESTART_CHECK_TEXT, safePoint } from "./restartguard.js";
 import { QUOTE_ARG, QUOTE_SCHEMA } from "./grounding.js";
 import { bgTaskHooks, bgTasks } from "./bgtasks.js";
 import type { Grant } from "../shared.js";
@@ -523,7 +523,7 @@ async function engineFallback(bot: BotRecord, user: UserRecord, trigger: Exclude
 
 /** Runs a turn inside its thread's scope, so whatever it writes into its chat lands in that thread. */
 function runTurn(botId: string, trigger: Trigger): Promise<void> {
-  const thread = trigger.kind === "resume" ? paused.get<PausedTurn>(botId)?.thread ?? 0 : threadOf(trigger);
+  const thread = trigger.kind === "resume" ? paused.get<PausedTurn>(botId)?.thread ?? 0 : threadOf(openRoutineThread(botId, trigger, jobOf.get(trigger))); // a routine runs in its own thread (routinethread.ts)
   return rowScope.run({ botId, thread }, () => guardTurn(botId, trigger, thread, () => runScopedTurn(botId, trigger, thread), releaseTurn));
 }
 /** What a turn holds, let go when it crashed outside its own error handling (crashguard.ts): the bot is free for its next work. */
@@ -542,7 +542,7 @@ function threadOpening(bot: BotRecord, thread: number): string {
 }
 
 async function runScopedTurn(botId: string, trigger: Trigger, thread: number): Promise<void> {
-  const bot = bots.byId(botId);
+  const bot = withWorkModel(bots.byId(botId), trigger); // nod item 2: a routine / background work runs on its own model (workmodel.ts)
   if (!bot || bot.kind !== "agent") return;
   const user = users.byId(bot.userId);
   if (!user) return;
@@ -593,7 +593,7 @@ async function runScopedTurn(botId: string, trigger: Trigger, thread: number): P
   const startWatch = (kind: "engine" | "api") => {
     watch ??= watchTurn({ bot, locale: user.locale, controller, kind, engine: kind === "engine" ? engineOf(bot.model) : null, thread, waitsUser: () => !!turn?.waitsUser });
   };
-  activeTurns.begin(botId);
+  activeTurns.begin(botId); clearUnprotected(botId);
   bgTaskHooks.started(bot);
   if (trigger.kind === "user" && trigger.member) actors.set(botId, trigger.member.id); else actors.delete(botId);
   // "Fichiers modifiés": what the turn changes in the bot's home folder is measured from here (never fails the turn).
@@ -678,7 +678,7 @@ async function runScopedTurn(botId: string, trigger: Trigger, thread: number): P
           // At its limit with no backup: this work waits for the subscription, in its place in the queue (sublimit.ts).
           if (outcome?.limited) waitingForQuota = waitForSubscription(bot, runningJob.get(botId), trigger, thread);
           // No backup: the failure coordinator classifies it and decides (new try, teammate, or one card with remedies).
-          if (failure) handleFailure({ bot, trigger, thread, since: turnSince, text: failure, provider: engineOf(bot.model), didSomething: (outcome?.steps.length ?? 0) > 0 || turn.spoke, origin: originOf(trigger), tainted: true });
+          if (failure) handleFailure({ bot, trigger, thread, since: turnSince, text: failure, cls: outcome?.failureClass, provider: engineOf(bot.model), didSomething: (outcome?.steps.length ?? 0) > 0 || turn.spoke, origin: originOf(trigger), tainted: true });
           throw new EngineDone();
         }
         turn = await engineFallback(bot, user, trigger, thread, turn, { failure: switched ? "no answer" : failure, steps: outcome?.steps ?? [], prompt, backup, extra, switched: !!switched, limited: outcome?.limited });
@@ -788,7 +788,7 @@ async function runScopedTurn(botId: string, trigger: Trigger, thread: number): P
     if (!stopped && !isHostedStop(err) && !isPlanLimit(err)) console.error(`[turn ${bot.name}]`, err);
   } finally {
     endWatch(watch); if (turnOk && turn) noteTurnOk(bot, turn.modelRef, thread);
-    turnEnded(bot, snapBase, thread);
+    turnEnded(bot, snapBase, thread); closeRoutineThread(bot, thread, { said: turn?.lastText ?? "", failed: failed || (turn ? "" : "not started"), waiting: !!paused.get(botId) });
     endScope(botId);
     const finishWork = () => {
       activeTurns.end(botId);
@@ -934,7 +934,7 @@ async function modelLoop(turn: Turn) {
   let nudged = false;
   let requestingReport = false;
   for (let step = 0; step < config.maxSteps; step++) {
-    if (turn.signal.aborted) throw new Error("aborted");
+    if (turn.signal.aborted) throw new Error("aborted"); await safePoint(bot.id); // L18: a graceful stop parks the turn here, between two steps
     // A usage cap (usagecaps.ts), at the same safe point: the turn stops before its next step; what it did is kept and a
     // continuation waits on the cap's card. A person's own turn goes on under an "unattended" cap.
     const capped = step > 0 && !carry && usageCaps.any(turn.user.id) ? blockingCap(bot, turnAttended(bot.id)) : null;
@@ -1070,6 +1070,7 @@ async function modelLoop(turn: Turn) {
     if (!calls.length) {
       const extra = await drainSteering(bot);
       if (extra.length) { history.append(bot.id, turn.generation, { role: "user", content: extra }, turn.thread); continue; }
+      const promised = promiseNudge(turn, said); if (promised) { history.append(bot.id, turn.generation, { role: "user", content: [text(promised)] }, turn.thread); continue; } // L21 (promises.ts)
       if (!said && turn.toolsRun && needsWorkReport(turn)) {
         if (step + 1 < config.maxSteps) {
           requestingReport = true;
@@ -1179,7 +1180,7 @@ export function continueAfterStepLimit(bot: BotRecord, seq: number): boolean {
   const reason = row.body.action.reason;
   rows.rewrite(bot, bot.generation, seq, { ...row.body, action: { kind: "continue", status: "done", ...(reason ? { reason } : {}) } });
   // The user pressed "Continue" themselves: the work goes on as theirs.
-  enqueue(bot.id, { kind: "system", text: reason === "timeout" ? TIMEOUT_CONTINUE_TEXT : reason === "busy" ? BUSY_CONTINUE_TEXT : reason === "gone" ? GONE_CONTINUE_TEXT : CONTINUE_TEXT, resumeOf: "steps", thread: row.thread || undefined, origin: "user" });
+  enqueue(bot.id, { kind: "system", text: reason === "restart" ? RESTART_CHECK_TEXT : reason === "timeout" ? TIMEOUT_CONTINUE_TEXT : reason === "busy" ? BUSY_CONTINUE_TEXT : reason === "gone" ? GONE_CONTINUE_TEXT : CONTINUE_TEXT, resumeOf: "steps", thread: row.thread || undefined, origin: "user" });
   return true;
 }
 
@@ -1461,6 +1462,7 @@ async function processCalls(turn: Turn, st: PausedTurn): Promise<"continue" | "e
     // the model's own values for those fields are replaced. On a resumed approval, the bound values are kept.
     if (decided === null && !bound.has(call.id)) await bindCall(turn, call);
     const hash = actionHash(call.name, call.input);
+    const again = decided === null ? repeatedAction(turn, call, hash) : null; if (again) { setStep(turn, st, call, "done", gt(user.locale, "already done")); pushResult(turn, st, call, again); st.pending.shift(); continue; } // L22 (sameaction.ts)
     let approvalUsed = "";
     let verdict: Decision;
     if (decided === "allow") {
@@ -1583,7 +1585,7 @@ export async function runReserved(turn: Turn, call: ToolUseBlock, grant: Grant |
   const reserved = external(turn, call.name, call.input);
   const label = labelOf(turn, call.name);
   const decision = journalDecision(turn, call.name, grant);
-  const exec = reserved ? executions.begin(bot, { tool: call.name, label, detail: describeArgs(withoutQuote(call.input)), hash, approvalId: approvalId || null, grant, thread: turn.thread }) : "";
+  const exec = reserved ? executions.begin(bot, { tool: call.name, label, detail: describeArgs(withoutQuote(call.input)), hash, approvalId: approvalId || null, grant, thread: turn.thread }) : ""; beginUnprotected(turn, call, !!reserved, label); // L18 (restartguard.ts)
   let out: ToolOutput;
   // A tool at work (a command, a background job, an office conversion, a screen action) is not silence (watch.ts).
   watchTool(bot.id, call.id, true);
@@ -1594,7 +1596,7 @@ export async function runReserved(turn: Turn, call: ToolUseBlock, grant: Grant |
     if (grant && (grant.quote || grant.reason)) audit(user.id, "approval", `${bot.name} : ${label} — ${grant.by === "words" ? tr(loc, "because you said “{quote}”", { quote: clip(grant.quote ?? "", 200) }) : grant.by === "reviewer" ? tr(loc, "reviewer allowed: {reason}", { reason: clip(grant.reason ?? "", 200) }) : grant.by === "conversation" ? clip(grant.reason ?? "", 200) : grant.by}`, bot.id);
     out = afterTool(turn, call, out);
     onStatus(out.isError ? "error" : "done", out.summary);
-    if (approvalId) noteOutcome(bot, approvalId, out.isError ? "failed" : "done");
+    if (approvalId) noteOutcome(bot, approvalId, out.isError ? "failed" : "done"); rememberAction(turn, call, hash, out);
     addJournal({ userId: user.id, botId: bot.id, tool: call.name, label: out.summary ? `${label} — ${out.summary}` : label, decision, quote: grant?.quote, reason: grant?.reason, status: out.isError ? "failed" : "done", origin: turn.origin ?? "" });
   } catch (err) {
     const message = String((err as Error)?.message ?? err);
@@ -1606,7 +1608,7 @@ export async function runReserved(turn: Turn, call: ToolUseBlock, grant: Grant |
       : { content: `Tool error: ${message}`, isError: true };
     onStatus("error", clip(unknown ? tr(loc, "outcome unknown") : message, 200));
     addJournal({ userId: user.id, botId: bot.id, tool: call.name, label, decision, quote: grant?.quote, reason: clip(grant?.grantId ? `${grant.grantId} — ${message}` : message, 200), status: unknown ? "uncertain" : "failed", origin: turn.origin ?? "" });
-  } finally { watchTool(bot.id, call.id, false); }
+  } finally { watchTool(bot.id, call.id, false); endUnprotected(bot.id, call.id); }
   turn.toolsRun = (turn.toolsRun ?? 0) + 1;
   return out;
 }
@@ -1645,8 +1647,8 @@ export function afterTool(turn: Turn, call: ToolUseBlock, out: ToolOutput): Tool
     const what = builtin ? tr(loc, builtin.label) : `${remote!.connectorName}: ${remote!.remoteName}`;
     audit(turn.user.id, "tool", `${turn.bot.name} : ${what}${out.summary ? ` — ${out.summary}` : ""}${out.isError ? ` (${tr(loc, "failed")})` : ""}`, turn.bot.id);
   }
-  if (WAITS_FOR_USER.has(call.name) && !out.isError) turn.waitsUser = true;
-  if (call.name === "ask_user" && !out.isError) tell({ type: "waiting", bot: turn.bot, text: [String(call.input.question ?? ""), ...(Array.isArray(call.input.options) ? call.input.options.map((o, i) => `${i + 1}. ${o}`) : [])].join("\n") });
+  if (WAITS_FOR_USER.has(call.name) && !out.isError && (call.name !== "ask_user" || out.endTurn)) turn.waitsUser = true; // L25: a question another bot answered does not wait for the user
+  if (call.name === "ask_user" && !out.isError && out.endTurn) tell({ type: "waiting", bot: turn.bot, text: [String(call.input.question ?? ""), ...(Array.isArray(call.input.options) ? call.input.options.map((o, i) => `${i + 1}. ${o}`) : [])].join("\n") });
   // Hosts read in this turn: going back to them later in the turn needs no new permission.
   if ((call.name === "web_fetch" || call.name === "browser_open") && !out.isError) { const h = hostOf(call.input.url); if (h) turn.hosts.add(h); }
   if (call.name === "search_web" && !out.isError && typeof out.content === "string") for (const m of out.content.matchAll(/https?:\/\/\S+/g)) { const h = hostOf(m[0]); if (h) turn.hosts.add(h); }
@@ -1681,10 +1683,10 @@ export function recoverInterruptedTurns() {
     cutOff.add(bot_id);
     const bot = bots.byId(bot_id);
     const row = left.find((r) => r.bot_id === bot_id && r.status === "running");
-    const recovery = interruptedTrigger(row?.trigger, !!acted);
+    const held = bot?.kind === "agent" && !paused.get(bot_id) && holdAfterRestart(bot, bot_id, row); const recovery = held ? null : interruptedTrigger(row?.trigger, !!acted); // L18
     if (!bot || bot.kind !== "agent" || paused.get(bot_id) || !recovery) {
       activeTurns.end(bot_id);
-      if (bot?.kind === "agent" && !paused.get(bot_id) && !recovery)
+      if (bot?.kind === "agent" && !paused.get(bot_id) && !recovery && !held)
         rows.append(bot, { kind: "notice", tone: "warn", text: tr(users.localeOf(bot.userId), "Interrupted while resuming. Check the last action and tell me what to continue.") });
       continue;
     }
@@ -1698,7 +1700,7 @@ export function recoverInterruptedTurns() {
     rows.append(bot, { kind: "notice", tone: "info", text: tr(users.localeOf(bot.userId), "The server restarted while I was working. I am picking this back up.") }, threadOf(recovery));
     audit(bot.userId, "system", `${bot.name}: resumed after a server restart`, bot.id);
   }
-  replayQueue(left, cutOff);
+  replayQueue(left, cutOff); clearUnprotectedMarkers();
 }
 
 /**

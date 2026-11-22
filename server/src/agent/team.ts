@@ -2,7 +2,9 @@ import { emit } from "../bus.js";
 import { tr } from "../i18n.js";
 import { bots, clip, newId, rows, users, type BotRecord, type UserRecord } from "../store.js";
 import { enqueue, isPaused } from "./loop.js";
-import { postBudget, roomChannel } from "./roombudget.js";
+import { BREAKER_LINE, dmChannel, postBudget, roomChannel } from "./roombudget.js";
+import "./budgetstore.js"; // L53: the anti-loop state survives a restart
+import { gt } from "./guardtext.js"; import { scrubHandoff } from "./handoffscrub.js"; // L46
 import { answerOffer, noteBotPost, roomRouting, routeAuto } from "./roomrouting.js";
 
 export const MAX_HOPS = 3;
@@ -12,9 +14,23 @@ export const MAX_HELPERS = 4;
  * Puts a message from one bot into another bot's chat and wakes the recipient. `tainted`: the sender had
  * read outside content, so the recipient's turn is careful from the start (the message may carry it).
  */
-export function deliverBotMessage(from: BotRecord, to: BotRecord, text: string, depth: number, tainted = false) {
-  rows.append(to, { kind: "message", role: "user", text, origin: { kind: "bot", id: from.id, name: from.name } });
+export function deliverBotMessage(from: BotRecord, to: BotRecord, raw: string, depth: number, tainted = false) {
+  const text = scrubHandoff(from.userId, raw); rows.append(to, { kind: "message", role: "user", text, origin: { kind: "bot", id: from.id, name: from.name } });
   enqueue(to.id, { kind: "bot", fromName: from.name, text, depth: depth + 1, tainted });
+}
+
+/**
+ * L53 — a bot-to-bot delivery that no tool counted (a helper's last words going back to its parent, an answer that
+ * arrives after its wait ended) goes through the same anti-loop limits as bot_message (roombudget.ts, channel
+ * "dm:<a>:<b>"), so the breaker applies outside group chats too. Refused: nothing is delivered and the recipient's chat
+ * says why, once. Returns whether it was delivered.
+ */
+export function deliverCounted(from: BotRecord, to: BotRecord, text: string, depth: number, tainted = false): boolean {
+  const v = postBudget.attempt(to.userId, { channel: dmChannel(from.id, to.id), botId: from.id, text, now: Date.now() });
+  if (v.allow) { deliverBotMessage(from, to, text, depth, tainted); return true; }
+  const loc = users.localeOf(to.userId);
+  if (v.opened || v.rule === "bounce") rows.append(to, { kind: "notice", tone: "warn", text: v.rule === "bounce" ? gt(loc, "{from} handed back a request {to} had already passed on: stopped, so they do not pass it around in circles.", { from: from.name, to: to.name }) : `${tr(loc, BREAKER_LINE)} ${gt(loc, "Loop between bots stopped: {from} kept sending work back and forth with {to}. Write to {to} to get it going again.", { from: from.name, to: to.name })}` });
+  return false;
 }
 
 // ── Ask another bot and wait for its answer (bot_message with wait: true) ───
@@ -73,7 +89,7 @@ export function settleAsk(to: BotRecord, route: AskRoute, o: { lastText: string;
   if (waiter) { askWaiters.delete(route.id); waiter(outcome); return; }
   const from = bots.byId(route.fromId);
   // Only ever back to a bot of the same account.
-  if (from && from.kind === "agent" && from.userId === to.userId && text) deliverBotMessage(to, from, text, o.depth, o.tainted);
+  if (from && from.kind === "agent" && from.userId === to.userId && text) deliverCounted(to, from, text, o.depth, o.tainted);
 }
 
 export type WaitResult = AskOutcome | { kind: "timeout" } | { kind: "stopped" };

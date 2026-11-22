@@ -1,4 +1,4 @@
-import { unseal } from "./auth.js";
+import { unseal } from "./auth.js"; import { noteHost } from "./netjournal.js";
 import { emit } from "./bus.js";
 import { q } from "./db.js";
 import type { ToolSpec } from "./llm/types.js";
@@ -118,6 +118,7 @@ async function callApi(c: ToolContext, a: Record<string, any>, method: string): 
   if (body && body.length > 1_000_000) return { content: "That body is too large (1 MB at most).", isError: true };
   if (body) headers.set("content-type", /^\s*[[{]/.test(body) ? "application/json" : "text/plain");
   let res: Response;
+  noteHost(c.bot, conn.host, "api", { tainted: c.tainted }); // L39
   try { res = await guardedFetch(url.toString(), { method, headers, body, redirect: "manual", signal: AbortSignal.any([c.signal, AbortSignal.timeout(30_000)]) }); }
   catch (err) { const why = fetchProblem(err); if (why) return { content: `Could not reach ${conn.host}: ${why}`, isError: true, summary: "not reached" }; throw err; }
   const type = res.headers.get("content-type") ?? "";

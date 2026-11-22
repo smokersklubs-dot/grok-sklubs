@@ -49,7 +49,9 @@ export const DESTRUCTIVE_COMMAND = [ // also the base of the Relais command floo
   /\bcurl\b[^;&|]*\s-X\s*DELETE\b/i,
   /\bfind\b[^;&|]*\s-delete\b/i,
 ];
-export const destructiveCommand = (command: string) => DESTRUCTIVE_COMMAND.some((re) => re.test(command));
+/** L47 (mattpocock audit): a forced branch deletion loses its unmerged commits. Kept apart from DESTRUCTIVE_COMMAND, whose list the Relais mirrors (its own "git" floor already has it). */
+export const BRANCH_DELETE = /\bgit\s+branch\b[^;&|]*\s(?:-D\b|--delete\s+(?:[^;&|]*\s)?--force\b|--force\s+(?:[^;&|]*\s)?--delete\b|-d\s+(?:[^;&|]*\s)?(?:-f|--force)\b|-[a-zA-Z]*D[a-zA-Z]*\b)/;
+export const destructiveCommand = (command: string) => DESTRUCTIVE_COMMAND.some((re) => re.test(command)) || BRANCH_DELETE.test(command);
 
 /** The irreversibility of a name-described action (a built-in app action, a connector tool, an API path). */
 function byName(name: string): Irreversible | null {

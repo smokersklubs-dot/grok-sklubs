@@ -3,7 +3,7 @@ import { q } from "./db.js";
 import { mentionsKey } from "./projectimport.js";
 import { maskSecrets, type Skill, type SkillExtras } from "./shared.js";
 import type { ScanCode, ScanFinding, ScanSeverity, SkillScan, SkillScanEntry, SkillScanReport } from "./skillscantypes.js";
-import { audit, bots, now, setSkillGuard, skills } from "./store.js";
+import { audit, bots, now, setSkillGuard, skills } from "./store.js"; import { OFFENSIVE_SKILL_WORDS } from "./offensive.js";
 
 /**
  * « Contrôle de sécurité des compétences » (docs/COMPETENCES.md).
@@ -99,6 +99,8 @@ const RULES: Rule[] = [
   rule("self-modify", "danger", "(?:(?:edit|modify|chang(?:e|ing)|rewrit(?:e|ing)|updat(?:e|ing)|alter|extend|rais(?:e|ing)|increas(?:e|ing)|remov(?:e|ing)|delet(?:e|ing)|disabl(?:e|ing)|turn off|relax|loosen|widen)(?![\\p{L}]).{0,30}?(?<![\\p{L}])your (?:own )?(?:rules?|permissions?|autonomy|approval settings?|safety (?:rules|settings)|guardrails|system prompt)|(?:grant|give) yourself (?:more |full |admin |all )?(?:permissions?|access|rights|autonomy|privileges)|set (?:your )?autonomy to|(?:activate|enable|approve) (?:this|the|your|that) skill (?:yourself|automatically|on your own|without)|mark (?:this|the) skill as (?:active|trusted|approved|safe|verified))"),
   rule("self-modify", "danger", "(?:(?:modifi(?:e|es|er|ez)|chang(?:e|es|er|ez)|r[ée][ée]cri(?:s|t|re|vez)|met(?:s|tre|tez)? [àa] jour|supprim(?:e|es|er|ez)|d[ée]sactiv(?:e|es|er|ez)|augment(?:e|es|er|ez)|[ée]largi(?:s|r|ssez)|assoupli(?:s|r|ssez))(?![\\p{L}]).{0,30}?(?<![\\p{L}])(?:(?:tes|vos) (?:propres )?(?:r[èe]gles|permissions|droits|autorisations|garde-fous)|(?:ton|votre) (?:propre )?(?:autonomie|niveau d'autonomie|prompt syst[èe]me))|(?:accorde|donne)(?:-toi|z-vous) (?:plus de |tous les |toutes les )?(?:droits|permissions|acc[èe]s|autorisations)|(?:activ(?:e|es|er|ez)|approuv(?:e|es|er|ez)) (?:cette|la|ta) comp[ée]tence (?:toi-m[êe]me|tout seul|toute seule|automatiquement|sans))"),
   rule("self-modify", "warning", "(?:(?:edit|modify|chang(?:e|ing)|rewrit(?:e|ing)|updat(?:e|ing)|alter|delet(?:e|ing)|replac(?:e|ing))(?![\\p{L}]).{0,30}?(?<![\\p{L}])your (?:own )?(?:instructions|skills?|settings)|(?:modifi(?:e|es|er|ez)|chang(?:e|es|er|ez)|r[ée][ée]cri(?:s|t|re|vez)|supprim(?:e|es|er|ez)|remplac(?:e|es|er|ez))(?![\\p{L}]).{0,30}?(?<![\\p{L}])(?:tes|vos) (?:propres )?(?:instructions|comp[ée]tences|r[ée]glages))"),
+  // L38: a scanner, a password guesser or an exploit tool (offensive.ts): bots never test a system that is not their owner's.
+  cmd("offensive-tool", "warning", new RegExp(`(?<![\\w-])(?:${OFFENSIVE_SKILL_WORDS.map((t) => t.replace(/-/g, "\\-")).join("|")})(?![\\w-])|\\b(?:port scan(?:ning)?|brute[- ]force (?:the )?(?:login|password|ssh|site)|scan (?:the |a )?(?:target|network|ports?)|exploit (?:the )?(?:target|vulnerabilit(?:y|ies))|ddos|denial of service|attaque (?:par )?force brute|scanner les ports)\\b`, "i")),
   // Links whose real destination is not readable.
   cmd("short-link", "warning", /(?:https?:\/\/|\bwww\.)(?:bit\.ly|tinyurl\.com|t\.co|goo\.gl|is\.gd|v\.gd|ow\.ly|buff\.ly|cutt\.ly|rebrand\.ly|shorturl\.at|rb\.gy|tiny\.cc|lnkd\.in|s\.id|t\.ly|bl\.ink|shorte\.st|adf\.ly|urlz\.fr|bitly\.com|tiny\.one|qrco\.de)\/\S+/i),
   cmd("ip-link", "warning", /(?:https?|ftp):\/\/(?:[^\s/@]+@)?(?!(?:127\.|10\.|192\.168\.|172\.(?:1[6-9]|2\d|3[01])\.|0\.0\.0\.0|169\.254\.))(?:(?:\d{1,3}\.){3}\d{1,3}|\[[0-9a-fA-F:]+\]|0x[0-9a-fA-F]{8}|\d{8,10})(?=[:/\s"'`)\]>]|$)/i),

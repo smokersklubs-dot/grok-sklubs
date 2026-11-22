@@ -20,7 +20,7 @@ type FailureCard = Extract<Card, { type: "failure" }>;
 
 const CLASS_ICON: Record<FailureClass, IconName> = {
   provider_down: "globe", rate_limited: "clock", subscription_limit: "clock", auth_expired: "key", out_of_budget: "chart",
-  tool_error: "wrench", computer_down: "monitor", timeout: "clock", loop_detected: "refresh", bad_input: "info", unknown: "alert",
+  tool_error: "wrench", computer_down: "monitor", timeout: "clock", loop_detected: "refresh", bad_input: "info", server_fault: "alert", unknown: "alert",
 };
 const REMEDY_ICON: Record<FailureRemedy, IconName> = {
   retry: "refresh", continue_without: "play", reconnect: "key", connect_account: "plug", restart_computer: "monitor", switch_model: "brain", handoff: "users",

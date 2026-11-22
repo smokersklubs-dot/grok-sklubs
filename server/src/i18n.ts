@@ -1,4 +1,4 @@
-import type { Locale } from "./shared.js";
+import type { Locale } from "./shared.js"; import { SECURITY_FR } from "./securityi18n.js";
 
 /**
  * Texts the server itself writes into a chat (notices, event lines, step labels, approval titles).
@@ -332,6 +332,15 @@ const FR: Record<string, string> = {
   "Your {brand} subscription is available again. I am picking up what was waiting.": "Ton abonnement {brand} est de nouveau disponible. Je reprends ce qui attendait.",
   "Choose an available model.": "Choisis un modèle disponible.",
   "I am not signed in to ChatGPT on this desktop. Open Settings → Models and check my connection.": "Je ne suis pas encore connecté à ChatGPT sur ce bureau. Ouvre Réglages → Modèles puis clique sur « Vérifier la connexion » à côté de mon nom.",
+  // L24 / L27 (agent/engine.ts, engine-failure.ts, failures.ts).
+  "My Sklubot tools (memory, vault, approvals) did not join {engine} (status: {status}), so I stopped before doing anything without them. Try again in a moment; if it happens again, restart my computer from the engine panel.": "Mes outils Sklubot (mémoire, coffre, accords) ne se sont pas joints à {engine} (état : {status}), alors je me suis arrêté avant de faire quoi que ce soit sans eux. Réessaie dans un instant ; si ça recommence, redémarre mon ordinateur depuis le panneau du moteur.",
+  "Sklubot itself had a problem": "Sklubot lui-même a eu un souci",
+  // L23 (agent/craft-run.ts, creative-tools.ts).
+  "Craft Anything answered these questions on its own (first choice):": "Craft Anything a répondu seul à ces questions (premier choix) :",
+  "It refused these requests on its own (nothing outside the project was done):": "Il a refusé seul ces demandes (rien n'a été fait hors du projet) :",
+  "Resemblance with your site after check {n}: {pct} %.": "Ressemblance avec ton site après le contrôle {n} : {pct} %.",
+  "Tell me if you want another choice: I will redo that part.": "Dis-moi si tu veux un autre choix : je referai cette partie.",
+  "{n} choices made automatically": "{n} choix faits automatiquement",
   "I am not signed in to Claude on this desktop. Open Settings → Models and check my connection.": "Je ne suis pas encore connecté à Claude sur ce bureau. Ouvre Réglages → Modèles puis clique sur « Vérifier la connexion » à côté de mon nom.",
   "Reading a file": "Lit un fichier", "Planning": "Planifie", "Working": "Travaille",
   "failed": "échec", "allowed once": "autorisé une fois", "always allowed": "toujours autorisé", "refused": "refusé",
@@ -623,6 +632,7 @@ const FR: Record<string, string> = {
   "Keep-out list changed on {device}": "Liste « garder à l'écart » modifiée sur {device}", "At most {n} entries.": "{n} éléments au plus.",
 };
 
+Object.assign(FR, SECURITY_FR); // Lot 1 security texts (securityi18n.ts)
 export function tr(locale: Locale | undefined, english: string, vars: Record<string, string | number> = {}): string {
   const template = locale === "fr" ? FR[english] ?? english : english;
   return template.replace(/\{(\w+)\}/g, (_m, k) => String(vars[k] ?? ""));

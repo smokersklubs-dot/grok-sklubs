@@ -32,6 +32,7 @@ import { attachLiveScreens } from "./vnc.js";
 import { relayUpgrade } from "./relay.js";
 import { closeLeftOpenWatchNotices } from "./agent/watch.js";
 import { expireOrphanApprovals, interrupt, recoverInterruptedTurns, startJobWatch } from "./agent/loop.js";
+import { gracefulStop } from "./agent/restartguard.js";
 import { crashedTurn, TurnCrashed } from "./agent/crashguard.js";
 import { rowScope } from "./store.js";
 import { startLimitWatch } from "./agent/sublimit.js";
@@ -144,7 +145,13 @@ attachLiveScreens(server as unknown as import("node:http").Server, [relayUpgrade
 // The bots' own email addresses (wave 6): the embedded receiver, only when the operator set MAIL_DOMAIN and MAIL_SMTP_PORT.
 if (receiving()) startMailReceiver().then((port) => console.log(`Receiving mail for @${config.mailDomain} on port ${port}.`), (err) => console.error(`[mail] receiver not started: ${(err as Error).message}`));
 
+let closing = false;
 async function shutdown() {
+  if (closing) return; closing = true;
+  // L18: running turns finish the step they are in and wait at the next step boundary (at most GRACEFUL_STOP_SEC, 20 s),
+  // so the restart picks them up cleanly instead of cutting an action in half (agent/restartguard.ts).
+  const left = await gracefulStop().catch(() => -1);
+  if (left > 0) console.log(`${left} turn(s) were still in the middle of a step when the server stopped.`);
   server.close();
   telegram.stopAll();
   closeSlackSockets();

@@ -4,7 +4,7 @@ import { audit, bots, clip, rows, type BotRecord } from "../store.js";
 import { isPaused } from "./loop.js";
 import { addressesNoBot, postBudget, roomChannel } from "./roombudget.js";
 import { MAX_HOPS, wakeInRoom } from "./team.js";
-import type { BuiltinTool } from "./tools.js";
+import type { BuiltinTool } from "./tools.js"; import { scrubHandoff } from "./handoffscrub.js";
 
 /**
  * Hand-off between members of a group chat (spec 09 V1-013 / V1-014), kept apart from tools.ts: a member hands the
@@ -35,7 +35,7 @@ export const roomTools: BuiltinTool[] = [
       if (to.id === c.bot.id) return { content: "You cannot hand over to yourself.", isError: true };
       if (isPaused(to)) return { content: `${to.name} is paused and cannot take it now.`, isError: true };
       if (c.depth >= MAX_HOPS) return { content: "Too many hand-offs in a row: answer the group yourself.", isError: true };
-      const note = clip(String(a.message ?? "").replace(/\s+/g, " ").trim(), 600);
+      const note = clip(scrubHandoff(c.user.id, String(a.message ?? "")).replace(/\s+/g, " ").trim(), 600); // L46: no secret in a hand-off
       if (!note) return { content: "Say what you hand over.", isError: true };
       let thread = 0;
       if (a.thread !== undefined && a.thread !== null && Number(a.thread) > 0) {

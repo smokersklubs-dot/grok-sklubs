@@ -6,7 +6,7 @@ import { bots, clip, users } from "../store.js";
 import { maskIfAccess } from "./access.js";
 import { fetchProblem } from "../net.js";
 import { accounts, apiProblem, callApi, labelKey, type AccountRecord, type ApiAnswer } from "./accounts.js";
-import { vendorUrl } from "./vendors.js";
+import { vendorUrl } from "./vendors.js"; import { mailFingerprint, proveGmailSent, proveOutlookSent, readRaw, reportProof } from "./mailproof.js";
 
 /**
  * What bots can do with a built-in app account. Each account gets its own set of tools, named
@@ -266,12 +266,16 @@ const MAIL: NativeToolDef[] = [
     action: "mail_send", risk: "write", label: "Sending an email",
     description: "Send an email from this mailbox. To reply, give reply_to_id (the reply stays in that conversation). Needs the user's approval.",
     schema: obj({ to: str("Recipients, comma-separated"), cc: str("Cc, comma-separated"), subject: str("Subject"), body: str("Plain-text body"), reply_to_id: str("Message id this replies to") }, ["body"]),
-    async run(acc, a) {
+    async run(acc, a, ctx) {
       if (isGoogle(acc)) {
         const m = await gmailCompose(acc, a);
+        // L29 (mailproof.ts): the message as built for the wire is read back and must be the approved text, else nothing is sent.
+        const approved = { to: m.to, subject: m.subject, body: String(a.body ?? "") }, wire = readRaw(m.raw);
+        if (!wire || mailFingerprint({ ...approved, body: wire.body }) !== mailFingerprint(approved) || wire.subject !== m.subject) throw new Error("the message built for sending differs from the approved text: nothing was sent");
         // users.messages.send
         const s = check(await callApi(acc, "POST", gmail("/messages/send"), { json: { raw: m.raw, ...(m.threadId ? { threadId: m.threadId } : {}) } })).json;
-        return out(`Sent (id ${s.id}) to ${m.to.join(", ")}: ${m.subject}`, "sent");
+        const proof = await proveGmailSent((u, h) => callApi(acc, "GET", u, { headers: h }), gmail, String(s.id ?? ""), approved);
+        return out(`Sent (id ${s.id}) to ${m.to.join(", ")}: ${m.subject}.${reportProof(ctx.botId, acc.name, proof)}`, proof.state === "verified" ? "sent · checked" : "sent");
       }
       if (a.reply_to_id) {
         // https://learn.microsoft.com/en-us/graph/api/message-reply
@@ -281,7 +285,8 @@ const MAIL: NativeToolDef[] = [
       const to = addresses(a.to, "to", true); const cc = addresses(a.cc, "cc", false);
       // https://learn.microsoft.com/en-us/graph/api/user-sendmail
       check(await callApi(acc, "POST", graph("/sendMail"), { json: { message: { subject: noLines(a.subject, "subject"), body: { contentType: "Text", content: String(a.body ?? "") }, toRecipients: recipients(to), ccRecipients: recipients(cc) }, saveToSentItems: true } }));
-      return out(`Sent to ${to.join(", ")}.`, "sent");
+      const proof = await proveOutlookSent((u, h) => callApi(acc, "GET", u, { headers: h }), graph, { to, subject: noLines(a.subject, "subject"), body: String(a.body ?? "") }); // L29
+      return out(`Sent to ${to.join(", ")}.${reportProof(ctx.botId, acc.name, proof)}`, proof.state === "verified" ? "sent · checked" : "sent");
     },
   },
   {

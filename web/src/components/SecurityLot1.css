@@ -1,0 +1,17 @@
+/* Lot 1 security (SecurityLot1.tsx): the security switches, a bot's network journal, a vault item's rules, the code on a floor approval. */
+.security-block { margin-top: 24px; }
+.security-block .pane-heading { display: flex; align-items: center; gap: 6px; }
+.security-browser { display: flex; gap: 6px; align-items: flex-start; margin-top: 8px; }
+.security-browser.is-warn { color: var(--warn); }
+.chip.state-warn { background: var(--warn-soft); color: var(--warn); }
+.net-journal .list-row-title { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
+.net-journal .list-row-title .mono { max-width: 100%; overflow-wrap: anywhere; }
+.vault-access { margin-top: 12px; padding: 12px; border: 1px solid var(--border); border-radius: 12px; display: grid; gap: 8px; }
+.vault-access .chip-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.vault-access .check-chip { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 12px; border: 1px solid var(--border); border-radius: 999px; cursor: pointer; }
+.vault-access .check-chip input { width: 18px; height: 18px; }
+.vault-history { display: grid; gap: 4px; padding: 0; list-style: none; }
+.vault-history li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; overflow-wrap: anywhere; }
+.floor-code { display: grid; gap: 4px; margin: 8px 0; max-width: 220px; }
+.floor-code .field-label { display: flex; align-items: center; gap: 4px; }
+.floor-code .input { min-height: 44px; letter-spacing: 0.1em; }

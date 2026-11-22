@@ -6,7 +6,7 @@ import { tr } from "./i18n.js";
 import { audit, clip, newId, now } from "./store.js";
 import { computerKind, workspaceOf } from "./computer.js";
 import { ComputersBusyError, computerReady, containerName, docker, holdMachine, onComputerStopping } from "./linux.js";
-import { destructiveHint, looksReadOnly, slug } from "./connectors.js";
+import { destructiveHint, looksReadOnly, slug } from "./connectors.js"; import { classifyTool, hardenCommand } from "./thirdpartymcp.js";
 import type { ToolSpec } from "./llm/types.js";
 import type { Locale, LocalToolServer, LocalToolsState } from "./shared.js";
 
@@ -187,7 +187,7 @@ async function start(rec: Rec, e: Entry) {
     const listed = await c.listTools(undefined, { timeout: timeouts.start });
     const tools: CachedTool[] = listed.tools.slice(0, 100).map((t) => ({
       name: t.name, description: (t.description ?? "").slice(0, 1000),
-      readOnly: looksReadOnly(t.name, t.annotations?.readOnlyHint), destructive: destructiveHint(t.annotations),
+      ...classifyTool(rec.command, rec.args, { name: t.name, readOnly: looksReadOnly(t.name, t.annotations?.readOnlyHint), destructive: destructiveHint(t.annotations) }), // L49
       schema: { type: "object", properties: (t.inputSchema?.properties ?? {}) as Record<string, unknown>, required: t.inputSchema?.required },
     }));
     q.run("UPDATE local_tool_servers SET tools = ? WHERE id = ?", JSON.stringify(tools), rec.id);
@@ -244,7 +244,7 @@ export const localTools = {
     const why = launcher.unavailable();
     if (why) throw new Error(why);
     const problem = checkCommand(f.command, f.args);
-    if (problem) throw new Error(problem);
+    if (problem) throw new Error(problem); f = { ...f, ...hardenCommand(f.command, f.args) }; // L49: known third-party servers: telemetry off, version pinned (thirdpartymcp.ts)
     if (recsOf(bot.id).length >= MAX_PER_BOT) throw new Error("A bot can have 10 local tool servers at most."); // MAX_PER_BOT
     const name = clip(String(f.name ?? "").trim(), 40) || f.command;
     const id = newId("lts");

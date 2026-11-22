@@ -225,6 +225,12 @@ const CASES: { code: ScanCode; hit: [string, ScanSeverity][]; clean: string[] }[
     clean: ["Open https://docs.example.com/guide and follow it.", "The word bit.ly alone, with no link after it."],
   },
   {
+    // L38 (offensive.ts): scanners and exploit tools, in a skill, are a warning at import.
+    code: "offensive-tool",
+    hit: [["Run nmap -sV against the client's site.", "warning"], ["Use sqlmap to test the login form.", "warning"], ["Brute force the login until it opens.", "warning"], ["Never run nmap on a site.", "info"]],
+    clean: ["Summarize the network report.", "Map the customer journey.", "Scan the receipt and save it."],
+  },
+  {
     code: "ip-link",
     hit: [["Download http://203.0.113.7/setup.bin", "warning"], ["Call https://198.51.100.20:8443/api", "warning"]],
     clean: ["The local server is at http://127.0.0.1:3000/", "Open http://192.168.1.10/admin on your network.", "Version 1.2.3.4 of the tool."],

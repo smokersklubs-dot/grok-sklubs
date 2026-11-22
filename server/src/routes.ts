@@ -15,7 +15,7 @@ import { continueAfterStepLimit, decideApproval, enqueue, inQueue, interrupt, no
 import { cleanProfile, fetchSkillMarkdown, saveImportedSkill, undoRevision } from "./agent/tools-team.js";
 import { xSearchProvider } from "./xsearch.js";
 import { registerResearch } from "./researchroutes.js";
-import { cleanModelList, TeamFullError } from "./store.js";
+import { cleanModelList, TeamFullError } from "./store.js"; import { newBotAutonomy } from "./botdefaults.js";
 import { localTools } from "./localtools.js";
 import { RELIABILITY_LIMITS, SKILL_EXTRA_KEYS, type RowBody, type SkillExtras } from "./shared.js";
 import { ask, compactIfNeeded, consolidate, memoryStatus } from "./agent/memory.js";
@@ -135,7 +135,7 @@ import { answerCapCard, amountText, CapError, capName, caps as usageCaps, capsVi
 
 import { MAX_ATTACHMENTS } from "./uploadlimits.js";
 import { registerUploadRoutes } from "./uploads.js";
-import { personalResponses } from "./personalresponses.js";
+import { personalResponses } from "./personalresponses.js"; import { checkFloorApproval } from "./floorapproval.js"; import { registerSecurityRoutes } from "./securityroutes.js"; // Lot 1 security
 type Env = { Variables: { user: UserRecord } };
 export const api = new Hono<Env>();
 
@@ -630,7 +630,7 @@ api.post("/bots", async (c) => {
   if (!String(b.name ?? "").trim()) fail(400, "Give the bot a name.");
   const userId = c.get("user").id;
   if (b.model !== undefined && (typeof b.model !== "string" || (b.model && !(await availableModels(userId)).some((m) => m.ref === b.model)))) fail(400, tr(c.get("user").locale, "Choose an available model."));
-  const bot = bots.create(userId, { model: b.model, name: b.name, label: b.label, description: b.description, instructions: b.instructions, shape: b.shape, color: b.color, mode: b.mode, primary: !!b.primary, character: b.character });
+  const bot = bots.create(userId, { model: b.model, name: b.name, label: b.label, description: b.description, instructions: b.instructions, shape: b.shape, color: b.color, mode: b.mode, primary: !!b.primary, character: b.character, autonomy: newBotAutonomy(b.autonomy) });
   emit(bot.userId, { type: "roster" });
   return c.json({ bot: publicBot(bot) });
 });
@@ -937,10 +937,10 @@ api.post("/bots/:id/reset", (c) => {
 });
 
 api.post("/approvals/:approvalId", async (c) => {
-  const decision = (await body(c)).decision;
+  const b = await body(c); const decision = b.decision;
   if (!["allow", "always", "conversation", "deny"].includes(decision)) fail(400, "Unknown decision."); // "conversation": agent/conversationgrants.ts
   const user = c.get("user");
-  const approval = approvals.byId(c.req.param("approvalId"));
+  const approval = approvals.byId(c.req.param("approvalId")); if (approval && (approval.userId === user.id || botAccess(user.id, approval.botId)?.canApprove)) checkFloorApproval(approval.userId, user.id, approval, decision, b.code); // L44 (option)
   // Wave 6: an admin of the workspace answers for the owner of a shared bot, when the bot's rule allows it.
   if (approval && approval.userId !== user.id) {
     const a = botAccess(user.id, approval.botId);
@@ -1291,7 +1291,7 @@ registerFailureRoutes(api); registerConversationGrantRoutes(api); // « Coordina
 registerRecruitRoutes(api); registerHookSettingsRoutes(api); registerReportRoutes(api); // « Bot recruteur » ; webhook settings (L20) ; « Signaler cette réponse » (L31)
 registerTeamMdRoutes(api); registerRoutinePlusRoutes(api); registerConnectorPlusRoutes(api); // « Équipe Sklubot (.md) » (teammdroutes.ts): import with review, share ; routines nod 2/8/13 (routineplusroutes.ts)
 registerCommandRoutes(api); registerRelayGuardRoutes(api); // « Centre de commandement » (command.ts); « Règles de sécurité » of a linked computer (relayguardroutes.ts)
-registerSkillsLibraryRoutes(api); // « Bibliothèque de compétences » (skillsroutes.ts)
+registerSkillsLibraryRoutes(api); registerSecurityRoutes(api); // « Bibliothèque de compétences » (skillsroutes.ts) ; Lot 1 security (securityroutes.ts)
 registerOpenRouterRoutes(api); registerSubscriptionConnectRoutes(api); // OpenRouter, « Connecter mon compte ChatGPT / Claude »
 api.put("/account/password", async (c) => {
   const user = c.get("user");

@@ -150,13 +150,13 @@ Taille = effort côté Sklubot. Licence de chaque ligne : MIT OR Apache-2.0 (sau
 
 ## À faire, par ordre de valeur
 
-1. Vérifier si `usage` d'un tour Claude Code `--resume` est cumulé ; si oui, corriger le comptage (différence avec le tour précédent) — S.
-2. Bloquer `--deep` / `deep_mode` pour `craft-anything-cli` dans `shell_run` et verrouiller le réglage dans l'image — S.
-3. Ne plus utiliser `--unattended` en silence : relayer les questions en `ask_user`, ou au moins montrer après coup les choix faits automatiquement — M.
-4. Passer de `--rounds 0` à 1–2 rondes de contrôle quand il y a une référence, et afficher « X % ressemblant » avec les captures — S.
-5. Contrôler dans l'événement `init` que le serveur MCP Sklubot est connecté ; sinon arrêter le tour avec un message clair — S.
-6. Classer les erreurs moteur par champs structurés avant les regex de texte — M.
-7. Tests pour `install-craft.sh` (somme de contrôle, version), `layoutExpression` (refus d'adresse avec identifiants, adresse différente) et `craft_workspace` — S.
+1. ✅ **Vérifié (2026-11-22).** `usage` d'un tour `--resume` n'est **pas** cumulé (Claude Code 2.1.330, trois tours) ; seuls `total_cost_usd` et `modelUsage` le sont, et Sklubot ne les lit pas. Rien à corriger ; testé (`engine-failure.ts` `claudeTurnTokens`, `engine-structured.test.ts`) — S.
+2. ✅ **Fait (2026-11-22).** Garde devant le CLI dans l'image (`--clean-room` forcé, `--deep` / `deep_mode` refusés) + refus dans `shell_run` (`install-craft.sh`, `agent/craft-run.ts`) — S.
+3. ✅ **Fait en partie (2026-11-22).** Montré après coup : `craft_workspace` `report: true` affiche dans le chat les questions tranchées seules et les refus. Reste : relais en direct en `ask_user` — M.
+4. ✅ **Fait en partie (2026-11-22).** 2 rondes seulement pour le site du propriétaire (ses propres mots), « X % ressemblant » dans le rapport. Reste : les captures — S.
+5. ✅ **Fait (2026-11-22).** Claude Code : `init` lu, outil arrêté, message + carte ; Codex : serveur `required` (`agent/engine.ts`, `engine-failure.ts`) — S.
+6. ✅ **Fait (2026-11-22).** Claude Code : `assistant.error`, `api_error_status`, forme de la session perdue ; classe `server_fault` jamais relancée (Codex : pas de champ structuré) — M.
+7. ✅ **Fait en partie (2026-11-22).** `install-craft.sh` et la politique de `craft_workspace` testés (`craft-install.test.ts`). Reste : `layoutExpression` — S.
 8. Détection « aucun progrès » (rien n'a changé dans les fichiers après 2 tours) pour les tâches de création — M.
 9. Budget par création (images/vidéos générées) en plus des plafonds globaux — S.
 10. Étapes nommées (étudier / construire / vérifier / prêt) sur la carte d'une création — M.

@@ -11,7 +11,7 @@ import { audit, newId, now, randomToken, sha256 } from "./store.js";
 import type { ToolSpec } from "./llm/types.js";
 import type { Connector, ConnectorAuth } from "./shared.js";
 import { fetchProblem, guardedFetch } from "./net.js";
-import { connectWithFallback, fetchForConnector, privateConnectors } from "./mcptransport.js";
+import { connectWithFallback, fetchForConnector, privateConnectors } from "./mcptransport.js"; import { downLine, noteCallFailure } from "./connectorhealth.js";
 
 /**
  * A connector is a remote tool server speaking the open Model Context Protocol over HTTP.
@@ -24,7 +24,7 @@ import { connectWithFallback, fetchForConnector, privateConnectors } from "./mcp
  */
 
 interface LiveConnector { client: Client; provider: ConnectorOAuth | null; tools: { name: string; description: string; readOnly: boolean; destructive: boolean; schema: ToolSpec["inputSchema"] }[] }
-interface Entry { record: ConnectorRecord; live: LiveConnector | null; error: string | null; connecting: Promise<void> | null; needsAuth: boolean; failedAt?: number; errorStatus?: number }
+interface Entry { record: ConnectorRecord; live: LiveConnector | null; error: string | null; connecting: Promise<void> | null; needsAuth: boolean; failedAt?: number; errorStatus?: number; /** L51: when its tool calls last failed for want of an answer (connectorhealth.ts). */ callFailures?: number[] }
 interface ConnectorRecord { id: string; userId: string; name: string; url: string; tokenEnc: string | null; auth: ConnectorAuth }
 
 const entries = new Map<string, Entry>();
@@ -297,6 +297,8 @@ export const connectors = {
     setManualClient(id, clientId, secret, true);
   },
   list: (userId: string): Connector[] => recordsFor(userId).map((r) => view(ensure(r))),
+  /** L51: the user's apps that are down right now (they failed to connect or stopped answering), for the bot's prompt. Never starts a connection. */
+  down: (userId: string) => recordsFor(userId).map((r) => entries.get(r.id)).filter((e): e is Entry => !!e && !e.live && !e.connecting && !e.needsAuth && !!e.error).map((e) => ({ name: e.record.name, error: e.error!, since: e.failedAt ?? 0 })),
   async add(userId: string, name: string, url: string, opts: AddOptions | string = {}): Promise<Connector> {
     const o: AddOptions = typeof opts === "string" ? { token: opts } : opts;
     let parsed: URL;
@@ -447,7 +449,7 @@ export const connectors = {
   },
   async call(connectorId: string, tool: string, args: Record<string, unknown>, botId?: string, signal?: AbortSignal): Promise<{ text: string; isError: boolean }> {
     const entry = entries.get(connectorId);
-    if (!entry?.live) throw new Error("this connector is not connected right now");
+    if (!entry?.live) throw new Error(entry ? downLine(entry.record.name, entry.error, entry.failedAt) : "this connector is not connected right now"); // L51: say it is down, and that retrying will not help
     const signInAgain = () => {
       markNeedsAuth(entry, "the sign-in expired");
       emit(entry.record.userId, { type: "connectors" });
@@ -462,8 +464,13 @@ export const connectors = {
     const voiceStudio = entry.record.name.toLowerCase() === "voicestudio";
     const longAudio = voiceStudio && (tool === "generate_speech" || tool === "transcribe");
     let res;
-    try { res = await live.client.callTool({ name: tool, arguments: args }, undefined, { signal, ...(longAudio ? { timeout: 300_000 } : {}) }); }
-    catch (err) { if (err instanceof UnauthorizedError || live.provider?.needsSignIn) throw signInAgain(); throw err; }
+    try { res = await live.client.callTool({ name: tool, arguments: args }, undefined, { signal, ...(longAudio ? { timeout: 300_000 } : {}) }); entry.callFailures = []; }
+    catch (err) {
+      if (err instanceof UnauthorizedError || live.provider?.needsSignIn) throw signInAgain();
+      // L51: two calls in a row that get no answer (network, 5xx, timeout) within 5 minutes: the app is marked down, its tools leave the turn, the bot is told not to retry.
+      if (!signal?.aborted && noteCallFailure(entry, err)) { entry.error = connectionProblem(err); entry.errorStatus = connectionStatus(err); entry.failedAt = Date.now(); entry.live = null; void live.client.close().catch(() => {}); emit(entry.record.userId, { type: "connectors" }); throw new Error(downLine(entry.record.name, entry.error, entry.failedAt)); }
+      throw err;
+    }
     const parts = Array.isArray(res.content) ? res.content : [];
     const text = parts.map((p: any) => (p.type === "text" ? p.text : `[${p.type} content]`)).join("\n") || JSON.stringify(res.structuredContent ?? {});
     if (botId && !res.isError && tool === "generate_speech" && voiceStudio) {

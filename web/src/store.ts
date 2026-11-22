@@ -22,7 +22,7 @@ export type ModalState =
   | { kind: "exportTemplate"; sectionId?: string; botIds?: string[] }
   | { kind: "teamMdImport" } | { kind: "teamMdShare"; sectionId?: string; botIds?: string[] }
   | { kind: "connectors"; catalogId?: string; prefill?: { name: string; botId: string; seq: number } };
-export type BotSettingsTab = "general" | "skills" | "memories" | "routines" | "localTools" | "reach" | "telegram" | "email" | "sharing" | "api";
+export type BotSettingsTab = "general" | "skills" | "memories" | "routines" | "localTools" | "reach" | "telegram" | "email" | "sharing" | "api" | "security";
 export type AppSection = "shortcuts" | "general" | "today" | "surveillance" | "profile" | "models" | "notifications" | "computer" | "devices" | "permissions" | "rules" | "memory" | "skills" | "connectors" | "vault" | "keys" | "pages" | "usage" | "checkins" | "activity" | "team" | "workspaces" | "voice" | "email" | "account" | "subscription" | "admin";
 /** Hosted mode (server/src/hosted.ts): only present when the server runs with HOSTED_MODE=1. */
 export interface HostedInfo { operator: boolean; /** The owner sells Sklubot credits (off by default: "Mes comptes IA"). */ creditsForSale?: boolean; links: { pricing: string; terms: string; legal: string; privacy: string } }

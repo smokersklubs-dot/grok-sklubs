@@ -9,7 +9,7 @@
  */
 // ── « Coordinateur d'échecs » (agent/failures.ts) ───────────────────────────────────────────────────────────────
 /** The failure taxonomy: one stable code per kind of failure, for the API and the subscription (engine) paths alike. */
-export const FAILURE_CLASSES = ["provider_down", "rate_limited", "subscription_limit", "auth_expired", "out_of_budget", "tool_error", "computer_down", "timeout", "loop_detected", "bad_input", "unknown"] as const;
+export const FAILURE_CLASSES = ["provider_down", "rate_limited", "subscription_limit", "auth_expired", "out_of_budget", "tool_error", "computer_down", "timeout", "loop_detected", "bad_input", "server_fault", "unknown"] as const;
 export type FailureClass = (typeof FAILURE_CLASSES)[number];
 /** A button under a failure card: each one either unblocks the work or opens the place where it is unblocked. */
 export const FAILURE_REMEDIES = ["retry", "continue_without", "reconnect", "connect_account", "restart_computer", "switch_model", "handoff"] as const;

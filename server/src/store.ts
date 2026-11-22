@@ -1,4 +1,4 @@
-import { AsyncLocalStorage } from "node:async_hooks";
+import { AsyncLocalStorage } from "node:async_hooks"; import { oneLine } from "./displayname.js";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { q } from "./db.js"; import { isAssumed } from "./policyassume.js";
 import { pauses } from "./pauses.js";
@@ -30,12 +30,12 @@ export const users = {
   localeOf: (id: string): Locale => (q.get<{ locale: string }>("SELECT locale FROM users WHERE id = ?", id)?.locale === "fr" ? "fr" : "en"),
   setPrefs(id: string, f: { locale?: Locale; name?: string }) {
     if (f.locale) q.run("UPDATE users SET locale = ? WHERE id = ?", f.locale, id);
-    if (f.name?.trim()) q.run("UPDATE users SET name = ? WHERE id = ?", f.name.trim().slice(0, 80), id);
+    if (f.name?.trim()) q.run("UPDATE users SET name = ? WHERE id = ?", oneLine(f.name).slice(0, 80) || f.name.trim().slice(0, 80), id);
   },
   create(email: string, name: string, passHash: string, locale: Locale = "en"): UserRecord {
     const id = newId("usr");
     const clean = email.trim().toLowerCase();
-    q.run("INSERT INTO users (id, email, name, pass_hash, locale, created_at) VALUES (?, ?, ?, ?, ?, ?)", id, clean, name.trim() || clean.split("@")[0], passHash, locale, now());
+    q.run("INSERT INTO users (id, email, name, pass_hash, locale, created_at) VALUES (?, ?, ?, ?, ?, ?)", id, clean, oneLine(name).slice(0, 80) || clean.split("@")[0], passHash, locale, now());
     q.run("INSERT INTO settings (user_id) VALUES (?)", id);
     return users.byId(id)!;
   },
@@ -199,7 +199,7 @@ export const bots = {
   create(userId: string, input: Partial<Bot> & { hidden?: boolean; parentId?: string | null }): BotRecord {
     if ((input.kind ?? "agent") === "agent" && !input.hidden) { bots.assertRoom(); botGuard(userId); }
     const id = newId("bot");
-    const name = (input.name ?? "").trim().slice(0, 60) || "New bot";
+    const name = oneLine(input.name ?? "").slice(0, 60) || "New bot"; // L37: one line (displayname.ts)
     const shape = AVATAR_SHAPES.includes(input.shape as any) ? input.shape! : stablePick(id + "s", AVATAR_SHAPES);
     const color = AVATAR_COLORS.includes(input.color as any) ? input.color! : stablePick(id + "c", AVATAR_COLORS.filter((c) => c !== "ink"));
     const t = now();
@@ -213,7 +213,7 @@ export const bots = {
     q.run(
       `INSERT INTO bots (id, user_id, kind, name, label, description, instructions, shape, color, mode, effort, model, autonomy, hidden, parent_id, members, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      id, userId, input.kind ?? "agent", name, (input.label ?? "").slice(0, 60), (input.description ?? "").slice(0, 500),
+      id, userId, input.kind ?? "agent", name, oneLine(input.label ?? "").slice(0, 60), (input.description ?? "").slice(0, 500),
       (input.instructions ?? "").slice(0, 8000), shape, color, input.mode === "teammate" ? "teammate" : "personal",
       ENUMS.effort.includes(input.effort ?? "") ? input.effort! : "medium", model ?? "",
       ENUMS.autonomy.includes(input.autonomy ?? "") ? input.autonomy! : "careful",
@@ -232,7 +232,7 @@ export const bots = {
       const v = patch[key];
       if (typeof v !== "string") continue;
       if (ENUMS[key] && !ENUMS[key].includes(v)) continue;
-      const value = LIMITS[key] ? v.slice(0, LIMITS[key]) : v;
+      const value = key === "name" || key === "label" ? oneLine(v).slice(0, LIMITS[key] ?? 60) : LIMITS[key] ? v.slice(0, LIMITS[key]) : v;
       if (key === "name" && !value.trim()) continue;
       sets.push(`${col} = ?`);
       vals.push(key === "name" ? value.trim() : value);

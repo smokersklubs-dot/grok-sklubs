@@ -1,4 +1,4 @@
-import { setLive } from "../bus.js";
+import { setLive } from "../bus.js"; import { guardVault } from "../vaultaccess.js";
 import { tr } from "../i18n.js";
 import type { ImageBlock, TextBlock, ToolSpec } from "../llm/types.js";
 import { pushLater } from "../push.js";
@@ -579,7 +579,7 @@ async function commandScripts(c: ToolContext, t: Target, command: string, cwd: s
   return { content: `This command runs: ${fps.join(", ")}. Nothing was run yet. To ask the user, call my_command again with the same command${cwd ? " and cwd" : ""} and script_fingerprint "${list}": the card shows them the first 40 lines of each script. You never see the scripts' content.`, summary: tr(c.user.locale, "script to show") };
 }
 
-export const myComputerTools: BuiltinTool[] = [
+export const myComputerTools: BuiltinTool[] = guardVault([ // L41 (vaultaccess.ts)
   ...fileTools,
   tool("my_computers", "List the user's own computers and phones linked through Sklubot Relais or the Sklubot Android app (not your own computer): whether each is connected, locked by the user, or controlled by a bot right now.", obj({}), {
     activity: "computer", label: "Checking your computers",
@@ -815,4 +815,4 @@ export const myComputerTools: BuiltinTool[] = [
       return r.ok ? { content: "Control handed back to the user.", summary: p.target.name } : failed(c, p.target, r);
     },
   }),
-];
+]);

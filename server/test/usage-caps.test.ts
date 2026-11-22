@@ -81,7 +81,9 @@ async function until<T>(probe: () => Promise<T | undefined | false | null> | T |
   for (let i = 0; i < tries; i++) { const v = await probe(); if (v) return v; await sleep(25); }
   throw new Error(`timed out waiting for ${label}`);
 }
-const rowsOf = async (id: string, who: "a" | "b" | "c" = "a"): Promise<Row[]> => (await call("GET", `/bots/${id}/rows?limit=500`, undefined, who)).json.rows;
+const mainRowsOf = async (id: string, who: "a" | "b" | "c" = "a"): Promise<Row[]> => (await call("GET", `/bots/${id}/rows?limit=500`, undefined, who)).json.rows;
+// Owner decision (22/11/2026): a routine runs in its own thread (agent/routinethread.ts): its rows are read there too.
+const rowsOf = async (id: string, who: "a" | "b" | "c" = "a"): Promise<Row[]> => { const main = await mainRowsOf(id, who); const out = [...main]; for (const p of main) if (p.body.kind === "message" && p.body.origin?.kind === "routine") out.push(...(await call("GET", `/bots/${id}/rows?limit=500&thread=${p.seq}`, undefined, who)).json.rows); return out; };
 const running = async (id: string, who: "a" | "b" | "c" = "a") => !!(await call("GET", "/bots", undefined, who)).json.live[id]?.running;
 const idle = (id: string, who: "a" | "b" | "c" = "a") => until(async () => !(await running(id, who)), "idle");
 const notices = async (id: string, who: "a" | "b" | "c" = "a") => (await rowsOf(id, who)).filter((r) => r.body.kind === "notice").map((r) => (r.body as { text: string }).text);

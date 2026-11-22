@@ -12,6 +12,7 @@ import { teamMdExportFixture, teamMdPreviewFixture, teamMdReportFixture } from "
 import { hookSignedFixture, hookTestFixture, reportsFixture } from "./trustFixtures";
 import { relayGuardFixture } from "./relayGuardFixtures";
 import { routineExtrasFixture, routinePreviewFixture } from "./routineFixtures";
+import { botSecurityFixture, browserFixture, recipientsFixture, securitySettingsFixture, vaultAccessFixture } from "./securityFixtures";
 
 export interface FakeApiState extends FixtureOptions { empty: boolean; fail: boolean }
 
@@ -78,6 +79,12 @@ export function installFakeApi(get: () => FakeApiState): void {
     if (path === "/models") return json(200, { models: [] });
     // « Autoriser pour cette conversation »: the owner's active grants (Settings → Permissions).
     if (path === "/conversation-grants") return json(200, { grants: s.empty ? [] : conversationGrantFixtures(s) });
+    // Lot 1 security (GallerySecurity.tsx).
+    if (path === "/security/settings") return json(200, securitySettingsFixture(s.empty));
+    if (path === "/security/browser") return json(200, browserFixture(s.empty));
+    if (/^\/bots\/[^/]+\/security$/.test(path)) return json(200, botSecurityFixture(s, s.empty));
+    if (/^\/bots\/[^/]+\/email\/recipients$/.test(path)) return json(200, recipientsFixture(s.empty));
+    if (/^\/vault\/[^/]+\/access$/.test(path)) return json(200, vaultAccessFixture(s.empty));
     if (path === "/skills-library") return json(200, libraryFixture(s));
     if (/^\/pages\/[^/]+\/versions$/.test(path)) return json(200, versionsFixture());
     // « Incidents » (Activité tab): the bot's failure log.

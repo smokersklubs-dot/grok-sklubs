@@ -19,6 +19,7 @@
  * (`npm run check:bundle -w web` checks the built files).
  */
 import { GalleryRoutines } from "./GalleryRoutines";
+import { CreateBotModal } from "../components/Modals";
 import { RelayGuardPanel } from "../components/RelayGuardPanel";
 import { RelayEventRow } from "../components/RelayEventRow";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
@@ -48,7 +49,7 @@ import { failureCardFixtures } from "./incidentsFixtures";
 import { recruitCardFixtures } from "./recruitFixtures";
 import { GalleryRooms } from "./GalleryRooms";
 import { GalleryTeamMd } from "./GalleryTeamMd";
-import { GalleryTrust } from "./GalleryTrust";
+import { GalleryTrust } from "./GalleryTrust"; import { GallerySecurity } from "./GallerySecurity";
 import { SkillsLibrarySection } from "../components/SkillsLibrary";
 import { ScanFindings, SkillsCheckSection } from "../components/SkillScan";
 import { scanDangerFixture } from "./skillsFixtures";
@@ -61,7 +62,7 @@ import samplePage from "./sample-page.html?url";
 setPagePreviewSource(() => samplePage);
 import "./gallery.css";
 
-const SECTIONS = ["all", "basics", "cards", "notices", "banners", "empty", "today", "command", "incidents", "recruit", "salons", "surveillance", "announcements", "skills", "skillscan", "pages", "landing", "download", "chat", "equipe", "grants", "confiance", "memoire", "relais", "routines"] as const;
+const SECTIONS = ["all", "basics", "cards", "notices", "banners", "empty", "today", "command", "incidents", "recruit", "salons", "surveillance", "announcements", "skills", "skillscan", "pages", "landing", "download", "chat", "equipe", "grants", "confiance", "securite", "memoire", "relais", "routines", "createbot"] as const;
 type Section = (typeof SECTIONS)[number];
 
 interface GalleryState extends FakeApiState {
@@ -142,7 +143,7 @@ function Gallery() {
   return (
     <div className={`gallery ${s.embed ? "is-embed" : ""}`} data-gallery="sklubot-dev-gallery">
       {!s.embed && <Toolbar s={s} set={set} />}
-      {s.section === "chat" ? <GalleryChat key={`${s.lang}`} o={{ lang: s.lang, long: s.long }} /> : s.section === "equipe" ? <GalleryTeamMd key={`${s.lang}:${s.long}`} o={{ lang: s.lang, long: s.long }} /> : s.section === "routines" ? <GalleryRoutines key={`${s.lang}:${s.long}:${s.empty}`} o={{ lang: s.lang, long: s.long }} empty={s.empty} /> : s.section === "confiance" ? <GalleryTrust key={`${s.lang}:${s.long}:${s.empty}`} o={{ lang: s.lang, long: s.long }} empty={s.empty} /> : s.section === "landing" ? <Landing key={`${s.lang}:${s.empty}`} onAuth={() => undefined} /> : s.section === "download" ? <DownloadPage key={`${s.lang}:${s.empty}`} /> : <Sections key={`${s.lang}:${s.long}:${s.empty}`} s={s} />}
+      {s.section === "chat" ? <GalleryChat key={`${s.lang}`} o={{ lang: s.lang, long: s.long }} /> : s.section === "equipe" ? <GalleryTeamMd key={`${s.lang}:${s.long}`} o={{ lang: s.lang, long: s.long }} /> : s.section === "routines" ? <GalleryRoutines key={`${s.lang}:${s.long}:${s.empty}`} o={{ lang: s.lang, long: s.long }} empty={s.empty} /> : s.section === "confiance" ? <GalleryTrust key={`${s.lang}:${s.long}:${s.empty}`} o={{ lang: s.lang, long: s.long }} empty={s.empty} /> : s.section === "securite" ? <GallerySecurity key={`${s.lang}:${s.long}:${s.empty}`} o={{ lang: s.lang, long: s.long }} empty={s.empty} /> : s.section === "createbot" ? <CreateBotModal key={s.lang} onClose={() => undefined} /> : s.section === "landing" ? <Landing key={`${s.lang}:${s.empty}`} onAuth={() => undefined} /> : s.section === "download" ? <DownloadPage key={`${s.lang}:${s.empty}`} /> : <Sections key={`${s.lang}:${s.long}:${s.empty}`} s={s} />}
     </div>
   );
 }

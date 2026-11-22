@@ -8,7 +8,7 @@ export type ScanSeverity = "danger" | "warning" | "info";
 export const SCAN_CODES = [
   "override-rules", "skip-approval", "hide-from-owner", "cover-tracks", "exfiltration", "send-data", "embedded-secret",
   "pipe-to-shell", "decode-and-run", "encoded-blob", "destructive-command", "disable-security", "payment-unasked",
-  "payment-details", "bidi-text", "invisible-text", "html-comment", "short-link", "ip-link", "self-modify",
+  "payment-details", "bidi-text", "invisible-text", "html-comment", "short-link", "ip-link", "self-modify", "offensive-tool",
 ] as const;
 export type ScanCode = (typeof SCAN_CODES)[number];
 

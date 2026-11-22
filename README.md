@@ -37,7 +37,7 @@ Sklubot a été reconstruit **en salle blanche** : voir [docs/CLEANROOM.md](docs
 | **Mise en ligne** | **Installation sur un VPS en une commande** (Docker, HTTPS automatique, mises à jour, sauvegarde) — voir [docs/INSTALLATION-VPS.md](docs/INSTALLATION-VPS.md) ; ou Coolify — voir [docs/DEPLOIEMENT.md](docs/DEPLOIEMENT.md) |
 | **Mémoire** | Souvenirs enregistrés par le bot, **apprentissage automatique** après les conversations (avec dédoublonnage), sélection des souvenirs pertinents à chaque tour, **recherche classée et rappel automatique par mots-clés** (sans modèle, [docs/MEMOIRE.md](docs/MEMOIRE.md)), **résumé automatique** des longues conversations |
 | **Compétences** | Procédures rédigées par toi, injectées dans le bot |
-| **Automatisation** | Routines créées en discutant : planifiées (cron + fuseau), ponctuelles, ou **déclenchées par webhook** ; points réguliers proactifs du bot principal |
+| **Automatisation** | Routines créées en discutant : planifiées (cron + fuseau), ponctuelles, ou **déclenchées par webhook** ; chaque exécution travaille **dans son propre fil** (le chat principal ne reçoit que le résultat) ; **un modèle au choix par routine** (ou pour toutes les routines, pour le travail de fond) ; points réguliers proactifs du bot principal |
 | **Équipe** | Messages entre bots, assistants temporaires en parallèle (4 max, compte rendu automatique), discussions de groupe avec @mentions |
 | **Tâches** | Suivi du travail en cours, en attente de toi, terminé |
 | **Voix** | Appel vocal et dictée sur tous les navigateurs (iPhone compris) : reconnaissance et synthèse vocales du serveur (whisper.cpp + Piper, auto-hébergés et actifs par défaut), sinon celles du navigateur ; **chaque bot a sa propre voix, automatiquement et gratuitement** (Kokoro + Piper, [docs/VOIX.md](docs/VOIX.md)), ou une voix Fish Audio en un clic ; vitesse / langue par bot |
@@ -208,7 +208,8 @@ Elle s'active dès qu'une clé `OPENAI_API_KEY` ou `XAI_API_KEY` est présente, 
   169.254.169.254…), redirections comprises. Pour tester avec des serveurs locaux : `ALLOW_PRIVATE_FETCH=1`.
 - Trois niveaux d'autonomie par bot : **prudent** (demande avant les commandes et les écritures dans les
   applications), **équilibré** (demande seulement avant les écritures dans les applications), **confiance**
-  (ne demande jamais).
+  (ne demande jamais). Un nouveau bot est **équilibré** par défaut (le choix est proposé à la création) ; les bots
+  existants gardent leur réglage, et payer, supprimer ou envoyer quelque chose d'irréversible demande toujours.
 - **Répondre à une demande d'un bot** : « Autoriser » (cette fois), « Toujours autoriser » (une règle, visible dans
   Réglages → Autorisations) ou **« Autoriser pour cette conversation »**. Cette troisième réponse vaut pour ce bot,
   cette action au même endroit (la même application, le même site…) et cette conversation seulement. Elle

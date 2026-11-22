@@ -131,14 +131,15 @@ test("without a Linux computer, every command on the server itself asks first â€
   assert.ok(live.awaiting);
   await approveNext("always");
   await until(async () => { const r = lastAssistant(await rowsOf(primary.id)); return r?.body.kind === "message" && r.body.text.includes("sklubot-ok"); }, "command output");
-  assert.deepEqual((await call("GET", "/policies")).json.policies, [{ tool: "shell_run", mode: "always_allow" }]);
+  // "Always" on shell_run covers the exact command only (L43, docs/SECURITE.md).
+  assert.deepEqual((await call("GET", "/policies")).json.policies, [{ tool: "shell_run: echo sklubot-ok", mode: "always_allow" }]);
   // Second time: asked again all the same, because the command would run on the server.
   const before = (await rowsOf(primary.id)).filter((r) => r.body.kind === "card").length;
   await call("POST", `/bots/${primary.id}/messages`, { text: 'call shell_run {"command":"echo again-ok"}' });
   await approveNext("allow");
   await until(async () => { const r = lastAssistant(await rowsOf(primary.id)); return r?.body.kind === "message" && r.body.text.includes("again-ok"); }, "second command");
   assert.equal((await rowsOf(primary.id)).filter((r) => r.body.kind === "card").length, before + 1);
-  await call("DELETE", `/policies/${encodeURIComponent("shell_run")}`);
+  await call("DELETE", `/policies/${encodeURIComponent("shell_run: echo sklubot-ok")}`);
 });
 
 test("denying an approval tells the model no, and the shell never sees server secrets", async () => {

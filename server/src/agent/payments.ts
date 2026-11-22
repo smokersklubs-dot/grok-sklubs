@@ -1,4 +1,4 @@
-import { seal, unseal } from "../auth.js";
+import { seal, unseal } from "../auth.js"; import { guardVault } from "../vaultaccess.js";
 import { boundCard } from "./tools-browser.js";
 import { q } from "../db.js";
 import type { ToolSpec } from "../llm/types.js";
@@ -107,7 +107,7 @@ const valueOf = (c: CardSecret, f: Field) => (f === "number" ? c.number : f === 
 const obj = (properties: Record<string, unknown>, required: string[] = []): ToolSpec["inputSchema"] => ({ type: "object", properties, required });
 const str = (description: string) => ({ type: "string", description });
 
-export const cardTools: BuiltinTool[] = [{
+export const cardTools: BuiltinTool[] = guardVault([{ // L41 (vaultaccess.ts)
   spec: {
     name: "card_fill",
     description: "Pay with one of the user's saved cards: types the card's fields into the payment form on the page in front of you (positions from your last screenshot), and can press the pay button. You never see the card (only its name, network and last 4 digits, from vault_list). Every payment is asked to the user, bound to this amount, merchant, card and page: fill the cart first, open the payment page, then call this once. A filled card is not a payment: read the page afterwards and tell the user what it says.",
@@ -163,4 +163,4 @@ export const cardTools: BuiltinTool[] = [{
       throw err;
     }
   },
-}];
+}]);

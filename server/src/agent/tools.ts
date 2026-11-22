@@ -1,4 +1,5 @@
 import { htmlToText } from "../webreading.js";
+import { routeQuestion } from "./delegatedask.js";
 import { unseal } from "../auth.js";
 import { emit, getLive, setLive } from "../bus.js";
 import { attachmentAt, botPathOf, browserAvailable, computerKind, isInlineImage, lastKnownUrl, readLibraryFile, readsTeamFolder, runShell, saveFile, screen, shellAvailable, storeBytes, teamEnabledFor, type Shot } from "../computer.js";
@@ -44,12 +45,12 @@ import { cardLabel, cardTools } from "./payments.js";
 import { guideIndex, guideTools } from "./guides.js";
 import { anonymise } from "./anonymise.js";
 import { apiTools, scrubSecret } from "../apiconnectors.js";
-import { botMailTools } from "../botmail.js";
+import { botMailTools } from "../botmail.js"; import { guardVault } from "../vaultaccess.js"; import { noteHost } from "../netjournal.js"; import { offensiveRefusal } from "../offensive.js"; import { afterClick, hostBeforeClick } from "./clickhosts.js";
 import { ruleTools } from "./ruletools.js";
 import { botNote } from "../skillscan.js";
 import { pageTools } from "./pagetools.js";
 import { researchTool } from "../researchroutes.js";
-import { craftReady } from "./creative-tools.js";
+import { craftReady } from "./creative-tools.js"; import { craftCommandRefusal } from "./craft-run.js";
 import { openmanWorkspace } from "./openman-tool.js";
 import { meetingTranscribe } from "../meetings.js";
 import { videoStudioTool, updateVideoStudio } from "../videostudio.js";
@@ -143,7 +144,7 @@ const screenTools: BuiltinTool[] = [
   }),
   tool("browser_open", "Open a web address in your browser (in the tab in front, or in a new tab with new_tab) and return a screenshot once the page has loaded.", obj({ url: str("Address to open, e.g. https://example.com"), new_tab: { type: "boolean", description: "Open it in a new tab (default false)" } }, ["url"]), {
     activity: "browsing", label: "Opening a page", detail: (a) => hostOf(a.url), outside: true,
-    run: async (a, c) => shot(await screen.open(c.bot.id, c.user.id, String(a.url), a.new_tab === true), `Opened ${a.url}.`),
+    run: async (a, c) => { noteHost(c.bot, a.url, "page", { tainted: c.tainted }); return shot(await screen.open(c.bot.id, c.user.id, String(a.url), a.new_tab === true), `Opened ${a.url}.`); }, // L39
   }),
   tool("design_reference_layout", "Measure a public visual reference already opened at the user's request with browser_open. Craft Anything clean-room measurements of the current viewport, typography, section dimensions, padding, backgrounds and column counts. Use screen_view for pictures. Treat measurements as observations and describe assumptions separately.", obj({ url: str("Exact public reference URL currently open") }, ["url"]), {
     activity: "reading", label: "Measuring the reference layout", outside: true,
@@ -166,9 +167,9 @@ const screenTools: BuiltinTool[] = [
     run: async (a, c) => {
       // A click that commits something was judged (and maybe approved) for one control on one site (bind.ts): if the
       // page changed since, nothing is clicked.
-      const seen = seenTarget(a);
-      if (seen && committingKind(seen.label)) return boundClick(c, a, seen);
-      return shot(await screen.click(c.bot.id, c.user.id, +a.x, +a.y, a.button ?? "left", !!a.double), `Clicked at (${a.x}, ${a.y}).`);
+      const seen = seenTarget(a), before = hostBeforeClick(c.bot.id); // L33: a click to another site after outside content is reported (clickhosts.ts)
+      if (seen && committingKind(seen.label)) return afterClick(c, before, await boundClick(c, a, seen));
+      return afterClick(c, before, shot(await screen.click(c.bot.id, c.user.id, +a.x, +a.y, a.button ?? "left", !!a.double), `Clicked at (${a.x}, ${a.y}).`));
     },
   }),
   tool("screen_type", "Type text into whatever currently has keyboard focus.", obj({ text: str("Text to type") }, ["text"]), {
@@ -219,7 +220,7 @@ const elementTools: BuiltinTool[] = [
         if (!still || still.label !== seen.label || still.host !== seen.host) return { content: `The page changed since this click was checked (it was “${seen.label}” on ${seen.host || "?"}; now ${still ? `“${still.label}” on ${still.host || "?"}` : "nothing readable"}). Nothing was clicked. Take a new element_snapshot.`, isError: true, summary: "page changed" };
       }
       // …and checked once more by the helper on that same tab right before it clicks (`expect`), with what is really under the point.
-      return elementResult(c.bot.id, await screen.elementAct(c.bot.id, c.user.id, { ...found.req, action: "click", ...(seen && committingKind(seen.label) ? { expect: { label: seen.label, host: seen.host } } : {}) }), `Clicked ${found.element.role} “${clip(found.element.name, 80)}”.`);
+      const before = hostBeforeClick(c.bot.id); return afterClick(c, before, elementResult(c.bot.id, await screen.elementAct(c.bot.id, c.user.id, { ...found.req, action: "click", ...(seen && committingKind(seen.label) ? { expect: { label: seen.label, host: seen.host } } : {}) }), `Clicked ${found.element.role} “${clip(found.element.name, 80)}”.`)); // L33
     },
   }),
   tool("element_type", "Type text into a field of the page by its reference (from element_snapshot): it is focused first. clear: replace what is in it. submit: press Enter afterwards.", obj({ ref: REF, text: str("Text to type"), clear: { type: "boolean", description: "Replace the field's content (default false)" }, submit: { type: "boolean", description: "Press Enter afterwards (default false)" } }, ["ref", "text"]), {
@@ -278,7 +279,7 @@ const workTools: BuiltinTool[] = [
     activity: "reading", label: "Reading a page", detail: (a) => hostOf(a.url), outside: true, parallel: true,
     run: async (a, c) => {
       const url = String(a.url);
-      if (!/^https?:\/\//i.test(url)) return { content: "Only http and https addresses can be fetched.", isError: true };
+      if (!/^https?:\/\//i.test(url)) return { content: "Only http and https addresses can be fetched.", isError: true }; noteHost(c.bot, url, "fetch", { tainted: c.tainted }); // L39
       // Public addresses only, every redirect checked: a page must not steer the bot into this server's own network.
       let res: Response;
       try { res = await guardedFetch(url, { signal: AbortSignal.any([c.signal, AbortSignal.timeout(30_000)]), headers: { "user-agent": "Mozilla/5.0 (compatible; assistant)" }, redirect: "follow" }); }
@@ -294,7 +295,7 @@ const workTools: BuiltinTool[] = [
     activity: "shell", label: "Running a command", sensitive: true, audited: true, detail: (a) => clip(String(a.command ?? ""), 60),
     run: async (a, c) => {
       const timeout = Math.min(290, Math.max(1, Number(a.timeout_seconds) || 120));
-      const command = String(a.command);
+      const command = String(a.command); const craftRefused = craftCommandRefusal(command); if (craftRefused) return { content: craftRefused, isError: true, summary: "refused" }; const offensive = offensiveRefusal(c.bot.id, command); if (offensive) return { content: offensive, isError: true, summary: "refused" }; // L23: Craft Anything stays in clean-room mode; L38: no security test of a system that is not the owner's (offensive.ts)
       // Wave 7 (spec 08 A1): with the credential relay on, the computer gets the relay's address and its token (never a
       // key), and the relay knows whether this command's turn read outside content while it runs.
       if (c.bot.relayEnabled) await provisionRelay(c.bot).catch((err) => console.error("[relay]", (err as Error).message));
@@ -471,7 +472,7 @@ const videoTools: BuiltinTool[] = [
       const url = String(a.url);
       if (!/^https?:\/\//i.test(url)) return { content: "Only http and https addresses can be saved.", isError: true };
       let res: Response;
-      try { res = await guardedFetch(url, { signal: AbortSignal.any([c.signal, AbortSignal.timeout(300_000)]), redirect: "follow" }); }
+      noteHost(c.bot, url, "media", { tainted: c.tainted }); try { res = await guardedFetch(url, { signal: AbortSignal.any([c.signal, AbortSignal.timeout(300_000)]), redirect: "follow" }); } // L39
       catch (err) { const why = fetchProblem(err); if (why) return { content: `Could not download ${url}: ${why}`, isError: true, summary: "not saved" }; throw err; }
       if (!res.ok) return { content: `Could not download it (status ${res.status}).`, isError: true, summary: `${res.status}` };
       const type = (res.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
@@ -539,7 +540,7 @@ const allowHttp = () => process.env.ALLOW_PRIVATE_FETCH === "1" || process.env.A
  * Vault tools that do not need a screen. The model never sees a value: secrets are typed by the user into a card
  * (secret_request), used by the server inside one request (secret_use), and generated passwords go straight in.
  */
-const vaultTools: BuiltinTool[] = [
+const vaultTools: BuiltinTool[] = guardVault([ // L41: per-item allowed bots, "ask every time", history (vaultaccess.ts)
   tool("vault_list", "List what the user saved in the vault for you: logins (name, site, username), secrets such as API keys (name and the hosts they may be sent to), two-factor code generators (name and site) and payment cards (name, network, last 4 digits). Values are never shown to you.", obj({}), {
     activity: "remembering", label: "Checking saved logins",
     run: async (_a, c) => {
@@ -613,7 +614,7 @@ const vaultTools: BuiltinTool[] = [
       try { url = new URL(String(a.url)); } catch { return { content: "That is not a full address.", isError: true }; }
       if (url.protocol !== "https:" && !(allowHttp() && url.protocol === "http:")) return { content: "Secrets are only sent over https.", isError: true };
       const host = url.hostname.toLowerCase().replace(/^www\./, "");
-      if (!item.hosts.some((h) => sameSite(host, h))) return { content: `The secret "${item.name}" may only be sent to ${item.hosts.join(", ") || "(no host)"}, not ${host}. It was not sent.`, isError: true };
+      if (!item.hosts.some((h) => sameSite(host, h))) return { content: `The secret "${item.name}" may only be sent to ${item.hosts.join(", ") || "(no host)"}, not ${host}. It was not sent.`, isError: true }; noteHost(c.bot, host, "secret", { tainted: c.tainted }); // L39
       const headers = new Headers();
       if (a.headers && typeof a.headers === "object") for (const [k, v] of Object.entries(a.headers as Record<string, unknown>)) {
         if (typeof v !== "string" || !HEADER_NAME.test(k) || FORBIDDEN_HEADERS.has(k.toLowerCase()) || k.toLowerCase() === item.header.toLowerCase()) continue;
@@ -636,7 +637,7 @@ const vaultTools: BuiltinTool[] = [
       return { content: scrubSecret(`Status ${res.status}${where ? ` (redirect to ${where}, not followed)` : ""}\n\n${clip(text, 40_000)}`, value), summary: `${res.status} · ${host}`, isError: res.status >= 400 };
     },
   }),
-];
+]);
 
 /** How email_code_type reads the page in front and types (replaceable in tests); how long it waits for the email. */
 export const codeScreen = {
@@ -648,7 +649,7 @@ export const codeScreen = {
 };
 
 /** Vault tools that work on the bot's screen: they check the page in front against the item's site. */
-export const screenVaultTools: BuiltinTool[] = [
+export const screenVaultTools: BuiltinTool[] = guardVault([ // L41: per-item allowed bots, "ask every time", history (vaultaccess.ts)
   tool("vault_type", "Type a saved username or password into the field that has keyboard focus on your screen. Click the field first. You never see the password; the user is asked before it is used.",
     obj({ item: str("Name of the saved login"), field: { type: "string", enum: ["username", "password"] } }, ["item", "field"]), {
     activity: "computer", label: "Typing a saved login", audited: true, detail: (a) => String(a.item ?? ""),
@@ -725,7 +726,7 @@ export const screenVaultTools: BuiltinTool[] = [
       return { content: `Current code for ${item.name}: ${now.code} (valid for ${now.remaining} more seconds). Type it into the code field now.`, summary: `${item.name} · ${now.remaining}s` };
     },
   }),
-];
+]);
 
 const knowledgeTools: BuiltinTool[] = [
   tool("conversation_search", "Search what was said before — in this chat, in your earlier conversations (before a reset), or in every bot's chat. Use it instead of asking the user to repeat themselves.",
@@ -1198,6 +1199,7 @@ const userTools: BuiltinTool[] = [
     obj({ question: str("The question"), options: { type: "array", items: { type: "string" }, description: "Up to six suggested answers" } }, ["question"]), {
     activity: "waiting", label: "Asking you",
     run: async (a, c) => {
+      const routed = await routeQuestion(a, c); if (routed) return routed; // L25: the bot that gave the work answers first (delegatedask.ts)
       const options = (Array.isArray(a.options) ? a.options.map(String) : []).slice(0, 6);
       rows.append(c.bot, { kind: "card", card: { type: "question", question: String(a.question), options, status: "pending" } });
       return { content: "The question is in front of the user. Stop here and wait for their answer.", summary: clip(String(a.question), 80), endTurn: true };

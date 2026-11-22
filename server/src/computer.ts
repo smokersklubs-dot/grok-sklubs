@@ -230,6 +230,8 @@ const browserScreen = {
     if (!d) return null;
     try { return await d.page.screenshot({ type: "jpeg", quality: 55 }); } catch { return null; }
   },
+  /** A read-only expression in the page in front (L40 teachmask.ts); null when no browser is open or it fails. */
+  async evalExpr(botId: string, expression: string): Promise<unknown> { const d = desktops.get(botId); if (!d) return null; try { return await d.page.evaluate(expression); } catch { return null; } },
   async where(botId: string): Promise<{ title: string; url: string }> {
     const d = desktops.get(botId);
     if (!d) return { title: "", url: "" };
@@ -287,6 +289,8 @@ export const screen = {
   isOpen: (botId: string) => (kind === "linux" ? linuxScreen.isOpen(botId) : browserScreen.isOpen(botId)),
   /** A picture for a demonstration recording, only if the computer is already on (never wakes it). */
   frame: (botId: string) => (kind === "linux" ? linuxScreen.frame(botId) : kind === "browser" ? browserScreen.frame(botId) : Promise.resolve(null)),
+  /** L40: the boxes of secrets on the page in front, in the frame's coordinates (screen on Linux, page in browser mode); [] when unknown. Never wakes the computer. */
+  secretBoxes: async (botId: string, script: (fromScreen: boolean) => string): Promise<unknown> => (kind === "linux" ? (await linuxScreen.targetAt(botId, script(true)).catch(() => null))?.target ?? null : kind === "browser" ? browserScreen.evalExpr(botId, script(false)) : null),
   /** Window title and page address in front, only if the computer is already on. */
   where: (botId: string) => (kind === "linux" ? linuxScreen.where(botId) : kind === "browser" ? browserScreen.where(botId) : Promise.resolve({ title: "", url: "" })),
   /** Switches the computer on without doing anything on it (Linux computers only; a browser opens on first use). */

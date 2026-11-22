@@ -19,7 +19,7 @@ import { enqueue } from "./agent/loop.js";
 import { pushLater } from "./push.js";
 import type { BuiltinTool } from "./agent/tools.js";
 import type { ToolSpec } from "./llm/types.js";
-import type { BotEmail, InboundMail, MailAuth, MailRelay } from "./shared.js";
+import type { BotEmail, InboundMail, MailAuth, MailRelay } from "./shared.js"; import { mailFingerprint } from "./native/mailproof.js"; import { recipientProblem } from "./botmailrecipients.js";
 
 /**
  * A bot's own email address (wave 6), self-hosted.
@@ -333,6 +333,7 @@ export async function sendBotMail(bot: BotRecord, input: SendInput): Promise<{ m
   if (sent >= SENDS_PER_DAY) throw new MailError(`This bot already sent ${SENDS_PER_DAY} emails today.`);
   const replied = input.replyToId ? mailById(input.replyToId) : null;
   if (input.replyToId && (!replied || replied.botId !== bot.id)) throw new MailError("That email does not exist.");
+  const outside = recipientProblem(bot, to, replied && replied.status !== "held" ? replied.from : undefined); if (outside) throw new MailError(outside); // L42: the owner, the list, or the sender of the mail it answers
   const ref = replied ? q.get<{ message_id: string | null; refs: string }>("SELECT message_id, refs FROM inbound_mail WHERE id = ?", replied.id) : null;
   const pass = r.pass_enc ? unseal(r.pass_enc) : null;
   const dkimKey = r.dkim_key_enc ? unseal(r.dkim_key_enc) : null;
@@ -343,12 +344,15 @@ export async function sendBotMail(bot: BotRecord, input: SendInput): Promise<{ m
     tls: { servername: net.isIP(r.host) ? undefined : r.host }, connectionTimeout: 15_000, greetingTimeout: 15_000, socketTimeout: 30_000,
     ...(dkimKey && r.dkim_selector ? { dkim: { domainName: r.from_domain || config.mailDomain, keySelector: r.dkim_selector, privateKey: dkimKey } } : {}),
   });
+  // L29 (native/mailproof.ts): what goes to the relay must be the approved text — never a silently shortened copy.
+  const wire = { to, subject: clip(input.subject, 300), body: clip(input.body, 100_000) };
+  if (mailFingerprint(wire) !== mailFingerprint({ to, subject: input.subject, body: input.body })) { transport.close(); throw new MailError("The email is longer than this server can send (subject 300 characters, text 100 000): it would not leave exactly as approved. Nothing was sent; shorten it."); }
   try {
     const info = await transport.sendMail({
-      from: { name: bot.name, address: addr.address }, to, subject: clip(input.subject, 300), text: clip(input.body, 100_000),
+      from: { name: bot.name, address: addr.address }, to, subject: wire.subject, text: wire.body,
       ...(ref?.message_id ? { inReplyTo: ref.message_id, references: [ref.refs, ref.message_id].filter(Boolean).join(" ") } : {}),
     });
-    audit(bot.userId, "apps", `${bot.name}: email sent to ${to.join(", ")}`, bot.id);
+    audit(bot.userId, "apps", `${bot.name}: email sent to ${to.join(", ")} (fingerprint ${mailFingerprint(wire)})`, bot.id);
     if (replied) {
       q.run("UPDATE inbound_mail SET status = 'replied' WHERE id = ?", replied.id);
       const row = q.get<{ card_seq: number | null; generation: number | null }>("SELECT card_seq, generation FROM inbound_mail WHERE id = ?", replied.id)!;

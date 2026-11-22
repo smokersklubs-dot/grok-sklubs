@@ -81,9 +81,9 @@ function RoutineLive({ r }: { r: Routine }) {
 
 function RoutineEdit({ r, extras, startOpen, onSaved, onNote, onError }: { r: Routine; extras: Extras; startOpen?: boolean; onSaved: (x: Extras) => void; onNote: (t: string) => void; onError: (t: string | null) => void }) {
   const t = useT();
-  // The routine's own model is kept by the server (PUT model) but not offered here until the turn loop runs routines
-  // on it (routineplus.ts modelForRun); the form never pretends a choice that would not apply.
-  const ids = { name: useId(), prompt: useId(), schedule: useId(), tz: useId() };
+  // nod item 2: the routine's own model — the turn loop runs the routine on it (server agent/workmodel.ts).
+  const ids = { name: useId(), prompt: useId(), schedule: useId(), tz: useId(), model: useId() };
+  const models = useModels(r.botId);
   const [open, setOpen] = useState(!!startOpen);
   const initial = useMemo(() => ({ name: r.name, prompt: r.prompt, schedule: r.schedule, timezone: r.timezone, model: extras.model }), [r.name, r.prompt, r.schedule, r.timezone, extras.model]);
   const [form, setForm] = useState(initial);
@@ -132,6 +132,11 @@ function RoutineEdit({ r, extras, startOpen, onSaved, onNote, onError }: { r: Ro
           <div className="field">
             <label className="field-label" htmlFor={ids.prompt}>{t("routineEdit.instruction")}</label>
             <textarea id={ids.prompt} className="input" rows={3} value={form.prompt} maxLength={8000} onChange={(e) => set("prompt")(e.target.value)} />
+          </div>
+          <div className="field">
+            <label className="field-label" htmlFor={ids.model}>{t("routineEdit.model")}</label>
+            <ModelSelect id={ids.model} value={form.model} onChange={set("model")} models={models} label={t("routineEdit.model")} />
+            <p className="field-hint">{t("routineEdit.modelHint")}</p>
           </div>
           {scheduled && (
             <div className="form-cols">
@@ -229,11 +234,11 @@ function ApproveInstruction({ r, approval, startOpen, onChange }: { r: Routine; 
   );
 }
 
-/** nod item 2 — the model of the bot's background tasks ("" = its own model). Routines and other background work follow once the turn loop applies them. */
+/** nod item 2 — the models of the bot's routines, background tasks and other background work ("" = its own model); the turn loop applies them (server agent/workmodel.ts). */
 export function WorkModels({ bot }: { bot: Bot }) {
   const t = useT();
   const models = useModels(bot.id);
-  const ids = { tasks: useId() };
+  const ids = { routines: useId(), tasks: useId(), background: useId() };
   const [value, setValue] = useState<{ routines: string; tasks: string; background: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -248,7 +253,7 @@ export function WorkModels({ bot }: { bot: Bot }) {
     <div className="work-models">
       <p className="small muted">{t("workModels.intro", { name: bot.name })}</p>
       <div className="form-cols work-models-cols">
-        {(["tasks"] as const).map((k) => (
+        {(["routines", "tasks", "background"] as const).map((k) => (
           <div className="field" key={k}>
             <label className="field-label" htmlFor={ids[k]}>{t(`workModels.${k}`)}</label>
             <ModelSelect id={ids[k]} value={value[k]} onChange={change(k)} models={models} label={t(`workModels.${k}`)} />

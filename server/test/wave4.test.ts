@@ -179,7 +179,9 @@ async function call(method: string, url: string, body?: unknown) {
   let json: any = null; try { json = JSON.parse(text); } catch { /* not JSON */ }
   return { status: res.status, json, text };
 }
-const rowsOf = async (botId: string): Promise<Row[]> => (await call("GET", `/bots/${botId}/rows?limit=500`)).json.rows;
+const mainRowsOf = async (botId: string): Promise<Row[]> => (await call("GET", `/bots/${botId}/rows?limit=500`)).json.rows;
+// Owner decision (22/11/2026): a routine runs in its own thread (agent/routinethread.ts): its rows are read there too.
+const rowsOf = async (botId: string): Promise<Row[]> => { const main = await mainRowsOf(botId); const out = [...main]; for (const p of main) if (p.body.kind === "message" && p.body.origin?.kind === "routine") out.push(...(await call("GET", `/bots/${botId}/rows?limit=500&thread=${p.seq}`)).json.rows); return out; };
 async function until<T>(probe: () => Promise<T | undefined | false | null> | T | undefined | false | null, label: string): Promise<T> {
   for (let i = 0; i < 1600; i++) { const v = await probe(); if (v) return v; await new Promise((r) => setTimeout(r, 25)); }
   throw new Error(`timed out waiting for ${label}`);

@@ -3,7 +3,7 @@ export * from "./failuretypes.js"; export type * from "./recruittypes.js"; expor
  * Wire contract between the Sklubot server and web app.
  * Type-only: the web app imports this file with `import type`.
  */
-import type { TodayKind } from "./todayminutes.js"; import type { RecruitCard } from "./recruittypes.js"; import type { RouteNoticeAction } from "./roomroutingtypes.js";
+import type { TodayKind } from "./todayminutes.js"; import type { RecruitCard } from "./recruittypes.js"; import type { RouteNoticeAction } from "./roomroutingtypes.js"; import { EXTRA_SECRET_FORMATS } from "./secretformats.js";
 
 export const AVATAR_SHAPES = ["pebble", "egg", "mochi", "bean", "cloud", "cat", "bear", "ghost", "circle", "squircle", "hexagon", "diamond", "shield", "drop", "arch", "star", "clover", "pill", "triangle", "octagon"] as const;
 export const AVATAR_COLORS = ["ink", "clay", "ember", "amber", "moss", "teal", "sky", "indigo", "plum", "rose", "slate"] as const;
@@ -322,7 +322,7 @@ export type RowBody =
    * pick the work back up; `reason: "gone"`, the subscription tool's process ended without finishing the turn.
    * "watch": the turn watch (agent/watch.ts), see WatchNoticeAction.
    */
-  | { kind: "notice"; tone: "info" | "warn" | "error"; text: string; action?: { kind: "continue"; status: "pending" | "done"; reason?: "timeout" | "busy" | "gone" } | { kind: "settings"; section: string } | HostedNoticeAction | WatchNoticeAction | SubLimitNoticeAction | RouteNoticeAction };
+  | { kind: "notice"; tone: "info" | "warn" | "error"; text: string; action?: { kind: "continue"; status: "pending" | "done"; reason?: "timeout" | "busy" | "gone" | "restart" } | { kind: "settings"; section: string } | HostedNoticeAction | WatchNoticeAction | SubLimitNoticeAction | RouteNoticeAction };
 
 /**
  * The turn watch's notice (agent/watch.ts), at most one of each per turn. `watch`: "silent" — the AI has sent nothing yet
@@ -1180,7 +1180,7 @@ const SECRET_FORMATS: { kind: "key" | "token" | "password" | "private-key"; re: 
   {
     kind: "password", group: 2,
     re: /(?<![\p{L}\p{N}_])(password|passwd|pwd|passcode|mot de passe|mdp|api[_ -]?key|cl[eé] (?:d'|de l'|d')?api|access[_ -]?token|auth[_ -]?token|bearer token|secret|token)\s*(?:[:=]|=>)\s*["'«]?\s*([^\s"'»]{4,300})/giu,
-  },
+  }, ...EXTRA_SECRET_FORMATS, // L46: patterns adapted from ECC (secretformats.ts)
 ];
 /** Values that are clearly not a secret even after "password:" (a placeholder, stars, an earlier mask). */
 const NOT_A_SECRET = /^(?:\*+|x+|\.+|•+|<[^>]*>?|\[.*|\{\{.*|null|none|undefined|aucun|vide|empty|changeme|example|exemple)$/i;

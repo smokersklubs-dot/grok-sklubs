@@ -3,7 +3,7 @@ import { api, enc, errText } from "../api";
 import { tn, useT } from "../i18n";
 import { sortedBots, useStore } from "../store";
 import { DEFAULT_CHARACTER } from "../types";
-import type { AvatarColor, AvatarShape, Bot, BotMode, ModelOption, CatalogApp, Character as CharacterLook, Connector, SearchHit } from "../types";
+import type { Autonomy, AvatarColor, AvatarShape, Bot, BotMode, ModelOption, CatalogApp, Character as CharacterLook, Connector, SearchHit } from "../types";
 import { botTitle, relTime } from "../lib/format";
 import { connectorError } from "../lib/connectorError";
 import { openSignInWindow, onSignInDone, startSignIn } from "../lib/oauth";
@@ -17,6 +17,8 @@ import { ConfirmButton, Empty, ErrorNote, IconButton, Loading, Modal, useTick } 
 
 /** Titles and descriptions are `mode.<id>.title` / `mode.<id>.text` in the dictionaries. */
 export const MODE_IDS: BotMode[] = ["personal", "teammate"];
+/** Owner decision (22/11/2026): a new bot is "balanced" unless its creator picks otherwise (server botdefaults.ts). */
+const NEW_AUTONOMY_IDS: Autonomy[] = ["careful", "balanced", "trusted"];
 
 /* ---------- Create bot ---------- */
 
@@ -28,6 +30,7 @@ export function CreateBotModal({ onClose }: { onClose: () => void }) {
   const [color, setColor] = useState<AvatarColor>("ember");
   const [character, setCharacter] = useState<CharacterLook>(DEFAULT_CHARACTER);
   const [mode, setMode] = useState<BotMode>("personal");
+  const [autonomy, setAutonomy] = useState<Autonomy>("balanced");
   const [model, setModel] = useState("");
   const [models, setModels] = useState<ModelOption[]>([]);
   const main = useStore((s) => Object.values(s.bots).find((b) => b.primary && !b.access));
@@ -47,7 +50,7 @@ export function CreateBotModal({ onClose }: { onClose: () => void }) {
     setBusy(true);
     setError(null);
     try {
-      const r = await api<{ bot: Bot }>("POST", "/bots", { name: n, shape, color, mode, character, model: model || undefined });
+      const r = await api<{ bot: Bot }>("POST", "/bots", { name: n, shape, color, mode, character, autonomy, model: model || undefined });
       upsertBot(r.bot);
       selectBot(r.bot.id);
       onClose();
@@ -105,6 +108,18 @@ export function CreateBotModal({ onClose }: { onClose: () => void }) {
               </button>
             ))}
           </div>
+        </div>
+        <div className="field">
+          <span className="field-label">{t("createBot.autonomy")}</span>
+          <div className="choice-list" role="radiogroup" aria-label={t("createBot.autonomy")}>
+            {NEW_AUTONOMY_IDS.map((a) => (
+              <button key={a} type="button" role="radio" aria-checked={autonomy === a} className={`choice ${autonomy === a ? "is-selected" : ""}`} onClick={() => setAutonomy(a)}>
+                <span className="choice-title">{t(`autonomy.${a}.title`)}{a === "balanced" ? ` · ${t("createBot.recommended")}` : ""}</span>
+                <span className="choice-text">{t(`autonomy.${a}.text`)}</span>
+              </button>
+            ))}
+          </div>
+          <p className="field-hint">{t("createBot.autonomyHint")}</p>
         </div>
         <ErrorNote>{error}</ErrorNote>
         <div className="modal-foot">

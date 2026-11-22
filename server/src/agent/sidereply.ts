@@ -1,10 +1,18 @@
 import type { Engine } from "../shared.js";
 import { claudeLimitFrom, claudeLimitFromText, codexLimitFrom, engineBrand } from "./sublimit.js";
+import { claudeErrorClass, statusClass } from "./engine-failure.js";
+
+/** Claude Code's structured failure fields (engine-failure.ts) as this side call's kinds; undefined: only words are known. */
+function structuredKind(assistantError: unknown, status: unknown): string | undefined {
+  if (assistantError === "model_not_found") return "model";
+  const cls = claudeErrorClass(assistantError) ?? statusClass(status);
+  return cls === "auth_expired" ? "auth" : cls === "out_of_budget" ? "quota" : cls === "rate_limited" ? "rate" : undefined;
+}
 
 // A side call must not return an earlier assistant message when the CLI subsequently failed.
 // Only return classifications to callers. CLI error details and stderr can contain private request data.
 export function collectSideReply(engine: Engine) {
-  let answer = "", terminal: "success" | "failed" | undefined, kind: string | undefined, warning: string | undefined;
+  let answer = "", terminal: "success" | "failed" | undefined, kind: string | undefined, warning: string | undefined, assistantError: unknown;
   function classify(detail: unknown) {
     const msg = typeof detail === "string" ? detail : "";
     if ((engine === "codex" ? codexLimitFrom(msg) : claudeLimitFromText(msg)) || /insufficient_quota|usage_limit_reached/i.test(msg)) return "quota";
@@ -28,11 +36,13 @@ export function collectSideReply(engine: Engine) {
         if (event.type === "turn.completed" && terminal !== "failed") terminal = "success";
       } else {
         if (event.type === "rate_limit_event" && claudeLimitFrom(event.rate_limit_info)) warning = "quota";
+        if (event.type === "assistant" && typeof event.error === "string") assistantError = event.error;
         if (event.type === "result") {
           if (event.is_error || (event.subtype && event.subtype !== "success")) {
             terminal = "failed";
             const errors = Array.isArray(event.errors) ? event.errors.filter((e: unknown) => typeof e === "string").join(" ") : "";
-            kind = classify(event.result) ?? classify(errors) ?? warning;
+            // Structured fields first (L27); the words only when the tool gave none.
+            kind = (warning === "quota" ? warning : undefined) ?? structuredKind(assistantError, event.api_error_status) ?? classify(event.result) ?? classify(errors) ?? warning;
           } else {
             terminal = "success";
             answer = String(event.result ?? "");

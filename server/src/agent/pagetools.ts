@@ -1,4 +1,4 @@
-import { closeSync, readSync } from "node:fs";
+import { closeSync, readSync } from "node:fs"; import { cdnWarning } from "../cdnintegrity.js"; // L45
 import { emit } from "../bus.js";
 import { openLibraryFile, readLibraryFile, saveFile } from "../computer.js";
 import { config as appConfig } from "../config.js";
@@ -26,7 +26,7 @@ const EXTS = Object.keys(FILE_EXT).map((e) => `.${e}`).join(", ");
 
 const fileSchema = { type: "array", description: `Optional text files next to the HTML: [{"path": "css/site.css", "content": "…"}] (${EXTS}; 20 files, 1 MB each, 5 MB in all at most; less on a free plan)`, items: { type: "object", properties: { path: { type: "string" }, content: { type: "string" } }, required: ["path", "content"] } };
 
-const publish = tool("page_publish", `Publish a web page (a report, a dashboard, a tool, slides, a mini-game) at an address: by default anyone with the link can open it; "private" means only the user, signed in to Sklubot. Its scripts run in a sandbox (no cookies, no storage, no forms, no dialogs); scripts and styles may be inline, in its own files, or from ${PAGE_CDNS.join(", ")} (pin exact versions); fonts also from Google Fonts; pictures from any https address or data:; fetch() reaches only the page's own files. Optional files next to the HTML (${EXTS}) are referred to by relative paths. Publishing again under the same name updates the page at the same address (replacing its files) and keeps the previous version; for small changes use page_edit.`,
+const publish = tool("page_publish", `Publish a web page (a report, a dashboard, a tool, slides, a mini-game) at an address: by default anyone with the link can open it; "private" means only the user, signed in to Sklubot. Its scripts run in a sandbox (no cookies, no storage, no forms, no dialogs); scripts and styles may be inline, in its own files, or from ${PAGE_CDNS.join(", ")} (pin exact versions and add integrity="sha384-…" crossorigin="anonymous" to each CDN script and style sheet); fonts also from Google Fonts; pictures from any https address or data:; fetch() reaches only the page's own files. Optional files next to the HTML (${EXTS}) are referred to by relative paths. Publishing again under the same name updates the page at the same address (replacing its files) and keeps the previous version; for small changes use page_edit.`,
   obj({
     name: str("Short file name without extension, e.g. weekly-report"), title: str("Page title"), html: str("The full HTML document"),
     visibility: { type: "string", enum: ["link", "private"], description: "link (default): anyone with the address; private: only the user, signed in" },
@@ -54,7 +54,7 @@ export function publishPage(a: Record<string, unknown>, c: Pick<ToolContext, "bo
   }
   emit(c.user.id, { type: "pages", token: page.token });
   const vis = visibility ?? existing?.visibility ?? "link";
-  return { content: `${existing ? "Updated" : "Published"} at ${page.url}${existing ? "" : " — the link is in the chat"}${files.length ? `, with ${files.length} file${files.length > 1 ? "s" : ""}` : ""}. ${vis === "private" ? "Private: only the user, signed in, can open it." : "Anyone with the link can open it."} The previous version is kept in its history.`, summary: String(a.title) };
+  return { content: `${existing ? "Updated" : "Published"} at ${page.url}${existing ? "" : " — the link is in the chat"}${files.length ? `, with ${files.length} file${files.length > 1 ? "s" : ""}` : ""}. ${vis === "private" ? "Private: only the user, signed in, can open it." : "Anyone with the link can open it."} The previous version is kept in its history.${cdnWarning(html)}`, summary: String(a.title) };
 }
 
 export const pageTools: BuiltinTool[] = [
@@ -157,7 +157,7 @@ export const pageTools: BuiltinTool[] = [
       if (file) pageFiles.put(c.bot.id, rel, file, text); else { saveFile(c.bot.id, rel, text); html = text; }
       pageVersions.record(c.user.id, c.bot.id, rel, html, file ? `edited ${file}` : "edited");
       emit(c.user.id, { type: "pages", token: page.token });
-      return { content: `Applied ${edits.length} edit${edits.length > 1 ? "s" : ""} to ${file ? `${file} of ` : ""}${page.url}. The previous version is kept (${pageLimits(c.user.id).versions} versions at most).`, summary: `${page.title} · ${edits.length}` };
+      return { content: `Applied ${edits.length} edit${edits.length > 1 ? "s" : ""} to ${file ? `${file} of ` : ""}${page.url}. The previous version is kept (${pageLimits(c.user.id).versions} versions at most).${file ? "" : cdnWarning(html)}`, summary: `${page.title} · ${edits.length}` };
     },
   }),
 ];
