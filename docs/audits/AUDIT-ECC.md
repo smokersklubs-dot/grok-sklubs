@@ -307,7 +307,7 @@ Ce sont des programmes qui tournent autour de chaque action de Claude Code. Sklu
 1. Mode « Conseil » : 3 avis à rôles fixes (sceptique, pragmatique, critique) puis une décision, adapté de `council` (MIT) — M.
 2. Double relecture indépendante avant tout envoi public ou de masse, adaptée de `santa-method` — S.
 3. Empreinte du texte approuvé comparée au texte envoyé + vérification « bien dans Envoyés » (idées `operator-approval-loop`, `email-ops`) — S.
-4. Compétences métiers Apache-2.0 condensées : stocks, logistique, retours (pour « Boutique en ligne »), puis douane — M.
+4. Compétences métiers Apache-2.0 condensées : stocks, logistique, retours (pour « Boutique en ligne »), puis douane — M — **douane faite le 22/11/2026** (`douane`).
 5. Compétence « Entretien de marque » (adaptée de `brand-discovery`) + « Profil de voix » (`brand-voice`) — M.
 6. Santé des compétences : échecs par compétence, jamais utilisées, doublons (idées `post:skill:track`, `skill-stocktake`, `continuous-learning-v2`) — M.
 7. État « en panne » par connecteur MCP, sans réessais aveugles (idée `mcp-health-check`) — S.
@@ -320,7 +320,7 @@ Ce sont des programmes qui tournent autour de chaque action de Claude Code. Sklu
 14. Règles pour un bot présent dans un salon client (adaptées de `counterparty-channel-discipline`) — S.
 15. Liste de contrôle par plateforme pour publier une vidéo courte (`short-video-distribution`) — S.
 16. Source « articles scientifiques » (OpenAlex, PubMed) et « marques déposées » (USPTO) pour la recherche approfondie — M.
-17. Les 4 niveaux de tri du `chief-of-staff` dans le modèle Secrétariat — S.
+17. Les 4 niveaux de tri du `chief-of-staff` dans le modèle Secrétariat — S — **fait le 22/11/2026** (`server/templates/secretariat.md`).
 18. Ajouter le texte de `visa-doc-translate` comme cas de test de `server/test/skill-scan.test.ts` (déjà signalé par `skillscan.ts:73`) — S.
 19. Question « à côté » (`/aside`) qui n'interrompt pas un travail en cours — S.
 20. Enrichir `pastedsecrets.ts` avec la liste de motifs de l'agent `opensource-sanitizer` (après lecture de la licence MIT, texte de motifs) — S.

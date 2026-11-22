@@ -25,6 +25,7 @@ try {
 const WIDTHS = [[360, 740], [390, 844], [768, 1024]];
 const PAGES = [
   "section=chat",
+  "section=confort6&long=1", "section=confort6&nav=1&long=1", "section=confort6&view=doctor&theme=dark&lang=en", "section=confort6&view=commands&long=1", "section=confort6&slash=1&long=1", // wave 6 comfort (GalleryComfort6.tsx)
   "section=canaux&long=1",
   "section=canaux&theme=dark&lang=en",
   "section=canaux&empty=1",
@@ -79,6 +80,9 @@ const PAGES = [
   "section=confiance&long=1",
   "section=confiance&theme=dark&lang=en",
   "section=confiance&view=report",
+  "section=relecture&long=1",
+  "section=relecture&theme=dark&lang=en",
+  "section=relecture&empty=1",
 ];
 const SCROLLERS = "pre, .md-table, .card-detail, .segmented, .tabs, .gallery-bar, .cmd-states";
 

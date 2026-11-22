@@ -42,9 +42,9 @@ import { committingKind, probe, seenOf, seenTarget } from "./bind.js"; import { 
 import { elementTools, openInWords } from "./tools-elements.js"; // L65/L74/L75/L81: element tools, in words
 import { cardLabel, cardTools } from "./payments.js";
 import { guideIndex, guideTools } from "./guides.js";
-import { anonymise } from "./anonymise.js";
+import { anonymise } from "./anonymise.js"; import { evidenceFields, evidenceNote, proposalEvidence } from "../skillevidence.js";
 import { apiTools, scrubSecret } from "../apiconnectors.js";
-import { botMailTools } from "../botmail.js"; import { guardVault } from "../vaultaccess.js"; import { noteHost } from "../netjournal.js"; import { offensiveRefusal } from "../offensive.js"; import { afterClick, hostBeforeClick } from "./clickhosts.js";
+import { botMailTools } from "../botmail.js"; import { guardVault } from "../vaultaccess.js"; import { noteHost } from "../netjournal.js"; import { applyBrowserPolicy, netGate } from "../netpolicy.js"; import { offensiveRefusal } from "../offensive.js"; import { afterClick, hostBeforeClick } from "./clickhosts.js";
 import { ruleTools } from "./ruletools.js";
 import { botNote } from "../skillscan.js"; import { extractSeoTags, seoTagsReport } from "../seotags.js"; import { guideSearchTools } from "./guidesearch.js"; import { contactSheetTools } from "../contactsheet.js"; import { afterSave, saveRefusal, skillFeedbackTools, skillReadOutput, skillSectionParam } from "./skilltools.js";
 import { pageTools } from "./pagetools.js";
@@ -73,7 +73,7 @@ import { memoryPrefs } from "./memoryprefs.js"; import { searchNotesSmart } from
 import { forgetNotes } from "./memorybook.js";
 import { recruitTools } from "./recruit.js";
 import { teamMdTools } from "./teamexport.js"; import { stepTools } from "./tools-steps.js"; import { waitTools } from "./waitlater.js"; import { offerUndo, undoText } from "./undoable.js"; import { planTools, questionCard, QUESTION_PROPS } from "./richquestion.js"; // L97 wait_until, L98 « Annuler », L79
-import { botPath, spillPath, spillPreview } from "./context.js";
+import { botPath, spillPath, spillPreview } from "./context.js"; import { routineFrameTools } from "./routineframe.js"; import { routineOptionTools } from "../routineoptions.js"; import { askRefusal, requestHelper, startQueuedHelpers } from "./askrules.js"; import { lt } from "./looptext.js";
 
 export interface ToolContext {
   bot: BotRecord; user: UserRecord; depth: number; signal: AbortSignal;
@@ -145,7 +145,7 @@ const screenTools: BuiltinTool[] = [
   }),
   tool("browser_open", "Open a web address in your browser (in the tab in front, or in a new tab with new_tab). Once it has loaded, answers with the page's headings and its controls by reference, in words; screenshot: true adds a picture (one also comes when words are not enough).", obj({ url: str("Address to open, e.g. https://example.com"), new_tab: { type: "boolean", description: "Open it in a new tab (default false)" }, screenshot: { type: "boolean", description: "Also return a screenshot (default false)" } }, ["url"]), {
     activity: "browsing", label: "Opening a page", detail: (a) => hostOf(a.url), outside: true,
-    run: async (a, c) => { noteHost(c.bot, a.url, "page", { tainted: c.tainted }); return openInWords(c, a); }, // L39; L65: in words on a Linux computer
+    run: async (a, c) => { const net = netGate(c.bot, a.url, "browser_open"); if (net) return { content: net, isError: true, summary: "blocked" }; void applyBrowserPolicy(c.bot); noteHost(c.bot, a.url, "page", { tainted: c.tainted }); return openInWords(c, a); }, // L169 network policy (netpolicy.ts); L39; L65: in words on a Linux computer
   }),
   tool("design_reference_layout", "Measure a public visual reference already opened at the user's request with browser_open. Craft Anything clean-room measurements of the current viewport, typography, section dimensions, padding, backgrounds and column counts. Use screen_view for pictures. Treat measurements as observations and describe assumptions separately.", obj({ url: str("Exact public reference URL currently open") }, ["url"]), {
     activity: "reading", label: "Measuring the reference layout", outside: true,
@@ -227,7 +227,7 @@ const workTools: BuiltinTool[] = [
     activity: "reading", label: "Reading a page", detail: (a) => hostOf(a.url), outside: true, parallel: true,
     run: async (a, c) => {
       const url = String(a.url);
-      if (!/^https?:\/\//i.test(url)) return { content: "Only http and https addresses can be fetched.", isError: true }; noteHost(c.bot, url, "fetch", { tainted: c.tainted }); // L39
+      if (!/^https?:\/\//i.test(url)) return { content: "Only http and https addresses can be fetched.", isError: true }; const net = netGate(c.bot, url, "web_fetch"); if (net) return { content: net, isError: true, summary: "blocked" }; noteHost(c.bot, url, "fetch", { tainted: c.tainted }); // L169, L39
       // Public addresses only, every redirect checked: a page must not steer the bot into this server's own network.
       let res: Response;
       try { res = await guardedFetch(url, { signal: AbortSignal.any([c.signal, AbortSignal.timeout(30_000)]), headers: { "user-agent": "Mozilla/5.0 (compatible; assistant)" }, redirect: "follow" }); }
@@ -421,7 +421,7 @@ const videoTools: BuiltinTool[] = [
       const url = String(a.url);
       if (!/^https?:\/\//i.test(url)) return { content: "Only http and https addresses can be saved.", isError: true };
       let res: Response;
-      noteHost(c.bot, url, "media", { tainted: c.tainted }); try { res = await guardedFetch(url, { signal: AbortSignal.any([c.signal, AbortSignal.timeout(300_000)]), redirect: "follow" }); } // L39
+      const net = netGate(c.bot, url, "media_save"); if (net) return { content: net, isError: true, summary: "blocked" }; noteHost(c.bot, url, "media", { tainted: c.tainted }); try { res = await guardedFetch(url, { signal: AbortSignal.any([c.signal, AbortSignal.timeout(300_000)]), redirect: "follow" }); } // L39
       catch (err) { const why = fetchProblem(err); if (why) return { content: `Could not download ${url}: ${why}`, isError: true, summary: "not saved" }; throw err; }
       if (!res.ok) return { content: `Could not download it (status ${res.status}).`, isError: true, summary: `${res.status}` };
       const type = (res.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
@@ -563,7 +563,7 @@ const vaultTools: BuiltinTool[] = guardVault([ // L41: per-item allowed bots, "a
       try { url = new URL(String(a.url)); } catch { return { content: "That is not a full address.", isError: true }; }
       if (url.protocol !== "https:" && !(allowHttp() && url.protocol === "http:")) return { content: "Secrets are only sent over https.", isError: true };
       const host = url.hostname.toLowerCase().replace(/^www\./, "");
-      if (!item.hosts.some((h) => sameSite(host, h))) return { content: `The secret "${item.name}" may only be sent to ${item.hosts.join(", ") || "(no host)"}, not ${host}. It was not sent.`, isError: true }; noteHost(c.bot, host, "secret", { tainted: c.tainted }); // L39
+      if (!item.hosts.some((h) => sameSite(host, h))) return { content: `The secret "${item.name}" may only be sent to ${item.hosts.join(", ") || "(no host)"}, not ${host}. It was not sent.`, isError: true }; const net = netGate(c.bot, host, "secret_use"); if (net) return { content: net, isError: true, summary: "blocked" }; noteHost(c.bot, host, "secret", { tainted: c.tainted }); // L169, L39
       const headers = new Headers();
       if (a.headers && typeof a.headers === "object") for (const [k, v] of Object.entries(a.headers as Record<string, unknown>)) {
         if (typeof v !== "string" || !HEADER_NAME.test(k) || FORBIDDEN_HEADERS.has(k.toLowerCase()) || k.toLowerCase() === item.header.toLowerCase()) continue;
@@ -689,7 +689,7 @@ const knowledgeTools: BuiltinTool[] = [
       const s = skills.find(c.bot.id, String(a.name));
       if (!s) return { content: `You have no skill called "${a.name}", and no teammate shared one by that name.`, isError: true };
       // Counted, long ones by index then section, outside content kept as such (skilltools.ts, L131-L132).
-      return skillReadOutput(s, a.section);
+      return skillReadOutput(s, a.section, a.file);
     },
   }),
   tool("skill_save", "Save a way of doing something as a skill, so you do it the same way next time. Use it when the user says to remember how to do a task, or after working out a procedure worth keeping. Fill in, whenever you know them: what the task needs first (accounts, access, files), which steps need the user's approval (sending, paying, deleting, publishing, confirming a form…), how to check that it worked, and what to hand back at the end. Saving under an existing name replaces that skill (a part you leave out keeps its current text).",
@@ -728,9 +728,10 @@ const knowledgeTools: BuiltinTool[] = [
       const steps = anonymise(String(a.steps ?? "").trim(), known).slice(0, 8000);
       const when = clip(anonymise(String(a.when ?? "").trim(), known), 300);
       if (!name || !steps) return { content: "A skill needs a name and steps.", isError: true };
-      rows.append(c.bot, { kind: "card", card: { type: "skill", name, when, steps, outside: !!c.tainted, status: "pending" } });
+      const evidence = proposalEvidence(c.user.id, name, when, known); // L131: the same task asked in other conversations (skillevidence.ts)
+      rows.append(c.bot, { kind: "card", card: { type: "skill", name, when, steps, outside: !!c.tainted, status: "pending", ...evidenceFields(evidence) } });
       bots.bumpUnread(c.bot.id);
-      return { content: "The user has the proposed skill in front of them (anonymised) and decides whether to keep it. Do not save it yourself.", summary: name };
+      return { content: `The user has the proposed skill in front of them (anonymised) and decides whether to keep it. Do not save it yourself.${evidenceNote(evidence)}`, summary: name };
     },
   }),
 ];
@@ -1031,6 +1032,7 @@ const teamTools: BuiltinTool[] = [
       if (!target) return { content: `No bot is called "${a.bot}". The team: ${names.join(", ") || "nobody else yet"}.`, isError: true };
       if (target.id === c.bot.id) return { content: "That is you.", isError: true };
       if (target.kind === "room") return { content: "That is a group chat; use room_post.", isError: true };
+      const notMine = askRefusal(c.bot, target); if (notMine) return { content: notMine, isError: true, summary: tr(c.user.locale, "not allowed") }; // L96 who may ask whom (askrules.ts)
       // "Pause": nothing is sent to a paused bot; the sender is told, and not to route around it.
       if (isPaused(target)) return { content: pausedLine(target), isError: true, summary: tr(c.user.locale, "{bot} is paused", { bot: target.name }) };
       if (c.depth >= MAX_HOPS) return { content: "This exchange has bounced between bots too many times. Wrap up and report to the user instead.", isError: true };
@@ -1064,8 +1066,11 @@ const teamTools: BuiltinTool[] = [
     activity: "messaging", label: "Starting a helper",
     run: async (a, c) => {
       if (c.bot.parentId || c.depth >= 2) return { content: "Helpers cannot start further helpers.", isError: true };
-      if (bots.children(c.bot.id).length >= MAX_HELPERS) return { content: `You already have ${MAX_HELPERS} helpers. Stop one first.`, isError: true };
-      const h = startHelper(c.bot, String(a.goal), a.label ? String(a.label) : undefined, c.depth, c.tainted);
+      // L96 (askrules.ts): beyond MAX_HELPERS at work the request waits in a queue instead of being refused.
+      const got = requestHelper(c.bot, String(a.goal), a.label ? String(a.label) : undefined, c.depth, !!c.tainted);
+      if ("refused" in got) return { content: got.refused, isError: true };
+      if ("queued" in got) return { content: `Queued (number ${got.queued}): ${MAX_HELPERS} helpers are already at work. It starts on its own when one of them finishes, and reports back to you like the others.`, summary: lt(c.user.locale, "Helper queued: {label} (starts when one of the {max} running helpers finishes)", { label: String(a.label ?? a.goal).slice(0, 40), max: MAX_HELPERS }) };
+      const h = got.started;
       return { content: JSON.stringify({ id: h.id, name: h.name, note: "It will report back when finished." }), summary: h.name };
     },
   }),
@@ -1094,7 +1099,7 @@ const teamTools: BuiltinTool[] = [
     run: async (a, c) => {
       const h = bots.byId(String(a.id));
       if (!h || h.parentId !== c.bot.id) return { content: "No helper of yours has that id.", isError: true };
-      await retireBot(h);
+      await retireBot(h); startQueuedHelpers(c.bot.id); // L96: a queued helper takes the free place
       return { content: "Stopped and removed.", summary: h.name };
     },
   }),
@@ -1329,6 +1334,6 @@ function assemble(opts: { owner?: string; nativeSearch?: boolean; video?: "conne
     ...(opts.video ? inGroup("video", videoTools) : []),
     // The user's own computers (Sklubot Relais): offered by newTurn only to users who linked one.
     ...myComputerTools,
-    ...inGroup("memory", [...memoryTools, ...skillFeedbackTools]), ...inGroup("routines", routineTools), ...inGroup("tasks", taskTools), ...(opts.bgTasks === false ? [] : inGroup("tasks", bgTaskTools)), ...goalTools, ...waitTools, ...planTools, ...inGroup("team", [...teamTools, ...roomTools]), ...userTools.filter((t) => t.spec.name !== "ask_takeover" || browserAvailable()), ...reactTools,
+    ...inGroup("memory", [...memoryTools, ...skillFeedbackTools]), ...inGroup("routines", [...routineTools, ...routineFrameTools, ...routineOptionTools]), ...inGroup("tasks", taskTools), ...(opts.bgTasks === false ? [] : inGroup("tasks", bgTaskTools)), ...goalTools, ...waitTools, ...planTools, ...inGroup("team", [...teamTools, ...roomTools]), ...userTools.filter((t) => t.spec.name !== "ask_takeover" || browserAvailable()), ...reactTools,
   ];
 }

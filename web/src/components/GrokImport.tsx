@@ -7,6 +7,7 @@ import type { GrokImportChoice, GrokImportPreview, GrokImportReport, GrokImportW
 import { Icon } from "./Icon";
 import { ScanFindings } from "./SkillScan";
 import { CopyButton, ErrorNote, Modal } from "./ui";
+import { LocalExcludedNote, LocalImportPicker, type LocalPreview } from "./OpenAccess";
 import "./GrokImport.css";
 
 /* "Importer depuis Grok Bot" (server/src/grokimport.ts, docs/IMPORT-GROK.md): 1. copy our prompt into the other
@@ -172,12 +173,14 @@ export function GrokImportModal({ onClose }: { onClose: () => void }) {
               onChange={(e) => setText(e.target.value)}
             />
             <p className="muted small grok-size">{t("grok.size", { kb: Math.ceil(new Blob([text]).size / 1000) })}</p>
+            <LocalImportPicker onPreview={(p) => { setPreview(p); setPicks(initialPicks(p)); setStep(3); }} />{/* L181 (OpenAccess.tsx) */}
           </section>
         )}
 
         {step === 3 && preview && (
           <section className="grok-section">
             <p className="callout is-info"><Icon name="shield" size={16} /> <span>{t("grok.safeNote")}</span></p>
+            {"excluded" in preview && <LocalExcludedNote preview={preview as LocalPreview} />}
             {preview.stripped.length > 0 && (
               <div className="callout is-warn grok-stripped" role="status">
                 <Icon name="lock" size={16} />

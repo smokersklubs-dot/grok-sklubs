@@ -6,6 +6,7 @@ import type { Bot, ModelOption, Routine } from "../types";
 import { dateTime } from "../lib/format";
 import { Icon, Spinner } from "./Icon";
 import { ErrorNote } from "./ui";
+import { RoutineOptions } from "./RoutineOptions";
 import "./RoutineEditor.css";
 
 /**
@@ -56,6 +57,7 @@ export function RoutineMore({ r, onNote, onError, open }: { r: Routine; onNote: 
       {late && <p className="small routine-track"><Icon name="clock" size={12} /><span>{late.line}</span></p>}
       {extras && <RoutineEdit r={r} extras={extras} startOpen={open} onSaved={(x) => setExtras(x)} onNote={onNote} onError={onError} />}
       {extras && <ApproveInstruction r={r} approval={extras.approval} startOpen={open} onChange={() => void load()} />}
+      <RoutineOptions r={r} startOpen={open} />
     </div>
   );
 }

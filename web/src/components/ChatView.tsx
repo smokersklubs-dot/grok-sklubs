@@ -1,5 +1,5 @@
 import { MuteMenuItems } from "./ChatMute";
-import { useState } from "react";
+import { useEffect, useState } from "react"; import { trackUnread } from "../lib/chatreading";
 import { useT } from "../i18n";
 import { IDLE_LIVE, useStore } from "../store";
 import { accentStyle } from "../lib/colors";
@@ -11,7 +11,7 @@ import { Composer } from "./Composer";
 import { ModelHealthBanner } from "./ModelHealth";
 import { WorkContext } from "./WorkContext";
 import { Icon } from "./Icon";
-import { Transcript } from "./Transcript";
+import { Transcript } from "./Transcript"; import { PassageBar } from "./PassageComment"; import { ExportMenuItems } from "./ChatExport";
 import { TaskLanes } from "./TaskLanes";
 import { FindBar } from "./FindBar";
 import { FilePreviewPanel } from "./SpendSkillsFiles";
@@ -31,7 +31,7 @@ export function ChatView() {
   const [menu, setMenu] = useState(false);
   const [confirmNew, setConfirmNew] = useState(false);
   const t = useT();
-  useReadAloud(bot, thread);
+  useReadAloud(bot, thread); useEffect(() => trackUnread(useStore.subscribe), []); // L147 « NOUVEAU »
 
   if (!bot) {
     return (
@@ -116,7 +116,7 @@ export function ChatView() {
               }}
             >
               {t("find.inChat")}
-            </MenuItem>
+            </MenuItem><ExportMenuItems bot={bot} onDone={close} />
             {!bot.access && bot.kind === "agent" && (
               bot.pause
                 ? <MenuItem icon="play" onClick={() => { close(); void resumeWidest(bot); }}>{t(bot.pause.by === "all" ? "pause.resumeAll" : bot.pause.by === "section" ? "pause.resumeSection" : "pause.resumeBot")}</MenuItem>
@@ -151,7 +151,7 @@ export function ChatView() {
       {bot.kind === "agent" && !bot.access && <WorkContext key={bot.id + ":" + bot.model} bot={bot} />}
       {finding && <FindBar key={bot.id} botId={bot.id} />}
       <div className="chat-body-row">
-        <Transcript bot={bot} thread={thread} live={live} />
+        <Transcript bot={bot} thread={thread} live={live} /><PassageBar bot={bot} />
         <FilePreviewPanel />
       </div>
       <CallBar botId={bot.id} />

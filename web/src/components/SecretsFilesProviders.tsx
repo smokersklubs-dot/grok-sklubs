@@ -8,6 +8,7 @@ import type { ApiProvider, ApiProviderModel, Card, FileChange } from "../types";
 import { OpenRouterCard } from "./AiAccounts";
 import { Icon } from "./Icon";
 import { ErrorNote, IconButton, Loading } from "./ui";
+import { ProviderKeysBlock } from "./OpenAccess";
 
 /* ---------- A secret pasted in a message: masked, then saved to the vault or forgotten ---------- */
 
@@ -254,6 +255,7 @@ function ProviderForm({ start, onDone, onCancel }: { start: Draft; onDone: () =>
         <button type="button" className="btn btn-small btn-ghost provider-add-model" onClick={() => set({ models: [...d.models, blankModel()] })}><Icon name="plus" size={14} /> {t("providers.addModel")}</button>
         {d.preset === "deepseek" && <span className="field-hint">{t("providers.deepseekPrices")}</span>}
       </div>
+      {d.id && <ProviderKeysBlock providerId={d.id} />}{/* L82 (OpenAccess.tsx) */}
       <label className="check-row">
         <input type="checkbox" checked={d.images} onChange={(e) => set({ images: e.target.checked })} />
         <span>{t("providers.images")}</span>

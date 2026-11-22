@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { api, errText } from "../api";
 import "./research.css";
+import { FindingMeta, ResearchOptions, SourceStates } from "./ResearchExtras";
+import type { ResearchExtra, ResearchWindow, SourceState } from "../types";
 
 interface Report {
   id: string;
@@ -9,8 +11,9 @@ interface Report {
   sections: {
     question: string;
     read: number;
-    findings: { url: string; title: string; claim: string; quote: string }[];
+    findings: { url: string; title: string; claim: string; quote: string; published?: string; engagement?: string }[];
     notes: string[];
+    sources?: SourceState[];
     at: number;
   }[];
 }
@@ -29,6 +32,8 @@ export function ResearchPanel({ bot, fr, active }: { bot: string; fr: boolean; a
   const [discover, setDiscover] = useState(true),
     [model, setModel] = useState(true),
     [includeX, setIncludeX] = useState(false);
+  const [period, setPeriod] = useState<ResearchWindow | "auto">("auto"),
+    [extras, setExtras] = useState<ResearchExtra[]>(["hn"]);
   const [account, setAccount] = useState<XAccount>({ provider: null, personal: false }),
     [token, setToken] = useState("");
   const [busy, setBusy] = useState(false),
@@ -143,6 +148,8 @@ export function ResearchPanel({ bot, fr, active }: { bot: string; fr: boolean; a
                 model,
                 discover,
                 includeX,
+                ...(period === "auto" ? {} : { window: period }),
+                extras,
                 requestId: requestId.current,
               });
               setReports((prev) => [report, ...prev.filter((r) => r.id !== report.id)]);
@@ -189,6 +196,7 @@ export function ResearchPanel({ bot, fr, active }: { bot: string; fr: boolean; a
             <input type="checkbox" checked={discover} onChange={(e) => setDiscover(e.target.checked)} />
             {loc("Chercher aussi sur le web", "Also search the web")}
           </label>
+          <ResearchOptions fr={fr} window={period} setWindow={setPeriod} extras={extras} setExtras={setExtras} />
           <label className="research-check">
             <input type="checkbox" checked={model} onChange={(e) => setModel(e.target.checked)} />
             {loc("Synthétiser avec le modèle du bot", "Summarize with the bot’s model")}
@@ -251,8 +259,10 @@ export function ResearchPanel({ bot, fr, active }: { bot: string; fr: boolean; a
                           <a href={f.url} target="_blank" rel="noopener noreferrer">
                             {f.title || f.url}
                           </a>
+                          <FindingMeta published={f.published} engagement={f.engagement} fr={fr} />
                         </div>
                       ))}
+                      <SourceStates states={step.sources} fr={fr} />
                       {step.notes.map((n) => (
                         <p className="muted" key={n}>
                           {n}

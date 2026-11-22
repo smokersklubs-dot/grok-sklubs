@@ -77,6 +77,11 @@ OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 - Source: https://github.com/affaan-m/ECC, commit `4adeee6732a12d1540f49a4d50a38ce8c97f9a53` (sparse clone, 22/11/2026).
 - Reused: the "CRITICAL" secret patterns of `agents/opensource-sanitizer.md`, rewritten as JavaScript RegExps in
   `server/src/secretformats.ts` (modified: value-only capture groups, word boundaries, Sklubot's secret kinds).
+- Also adapted (texts, L119/L127, 22/11/2026): `skills/customs-trade-compliance` (Apache-2.0 in its own front matter) →
+  library skill `server/skills-library/douane/`; `skills/tdd-workflow` → `server/skills-library/tdd-et-debogage/`
+  (condensed and translated; each folder keeps the licence text and a NOTICE); the four sorting levels of
+  `agents/chief-of-staff.md` (skip, info only, meeting, action required) rewritten in our words in
+  `server/templates/secretariat.md` (L122).
 - Licence text (MIT):
 
 ```text
@@ -159,6 +164,12 @@ OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
   without 0/O/1/I, 1 hour, 3 waiting) and the "a 4th request gets no code" rule of `src/pairing/pairing-store.worker.ts`,
   in `server/src/channelaccess.ts`. Modified for Sklubot: a SQLite table per bot and channel, approval from the owner's
   screen instead of the CLI, a "blocked" state, a thread of the bot's chat per approved person.
+- Reused (L153 « Docteur », `server/src/doctor.ts`): the finding shape and severity scale of `src/security/audit.types.ts`
+  and the filesystem permission rules of `collectFilesystemFindings` in `src/security/audit.ts` (state folder
+  world-writable → critical, group-writable or readable by others → warning; config file writable by others or
+  world-readable → critical, group-readable → warning; symlinks flagged). Modified for Sklubot: applied to the data folder,
+  `sklubot.db` and `.env`, mode bits read with `lstat`, texts in Sklubot's dictionaries, gateway/channel/plugin checks left
+  out, plus Sklubot's own checks (session secret, https, setup code, backups, disk, 2FA, models).
 - Licence text (MIT):
 
 ```text
@@ -204,6 +215,9 @@ OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
   `prefers-reduced-motion`) of `sloplint.mjs`. Modified for Sklubot: one in-page function returning plain findings, a
   390 px phone, layout width instead of `innerWidth`, no gradient analysis, at most 5 contrast findings, static rules as
   regular expressions on the page's own HTML and CSS, plain-word messages.
+- Also reused (L110, 22/11/2026): ten theme files of `skills/hallmark/references/themes/` (atelier, bloom, cobalt,
+  coral, dose, dusk, furrow, kiln, newsprint, terrazzo) as `server/skills-library/themes-sans-marque/files/`; modified:
+  a header naming the source, the "pictured" line removed, references to the original scripts replaced.
 - Licence text (MIT):
 
 ```text
@@ -229,3 +243,73 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+## alibaba/open-code-review — Apache License 2.0
+
+- Source: https://github.com/alibaba/open-code-review, commit `e74f2c6bd4422bd1e12d257d1725bcce1d6b9ddd` (cloned
+  22/11/2026, read only, never run). Copyright 2026 alibaba/open-code-review Contributors.
+- Licence: Apache License, Version 2.0 — https://www.apache.org/licenses/LICENSE-2.0 (full text in the upstream
+  `LICENSE`). The repository ships no top-level NOTICE file (only one for its viewer icons, not reused).
+- Files of Sklubot with portions adapted from it (each starts with a header naming the upstream files and what was
+  modified):
+  - `server/src/reviewselect.ts` — from `internal/agent/selection.go` and `internal/config/allowlist/` (secret paths,
+    default exclusions; test files kept for review; lots by folder instead of LLM grouping).
+  - `server/src/reviewanchor.ts` — from `internal/diff/hunk.go` and `internal/diff/resolver.go` (line anchoring of
+    quoted code, cross-file relocation; whitespace runs folded; no model re-location).
+  - `server/src/reviewprompt.ts` — from `internal/config/template/prompts/main_task_system.md`,
+    `review_filter_task_system.md`, `review_filter_task_user.md` and `skills/open-code-review-delegate/SKILL.md`
+    (condensed, JSON look-ups instead of native tools, Sklubot's grid).
+
+## mvanhorn/last30days-skill — MIT License
+
+- Source: https://github.com/mvanhorn/last30days-skill, commit `64b1f006f800640022ce07f51de5ce56aad34b76` (cloned
+  22/11/2026, read only, never run).
+- Not reused: everything that reads browser cookies or sessions (`reddit_session`, X `AUTH_TOKEN`/`CT0`,
+  `scripts/lib/vendor/bird-search/`), paid scrapers, images.
+- Files of Sklubot with portions adapted from it: `server/src/researchsignals.ts` (from `scripts/lib/relevance.py`,
+  `dates.py`, the rank blend of `hackernews.py`) and `server/src/researchsources.ts` (from `scripts/lib/hackernews.py`
+  and `polymarket.py`).
+
+```text
+MIT License
+
+Copyright (c) 2026 Matt Van Horn
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+## meta/astryx — MIT License
+
+- Source: https://github.com/meta/astryx, commit `fa22c93d4370d9081f0ff426f034ceaf1447c8c6` (sparse clone, 22/11/2026,
+  never run).
+- Adapted (L111): the layouts of the page templates `dashboard-scorecard`, `table-filter`, `form-wizard` and
+  `kanban-board` (`packages/cli/assets/templates/pages/`) and the rule "start every page from a template, reread,
+  replace hardcoded values" of `plugins/astryx/skills/astryx/SKILL.md`, rewritten as four standalone HTML files without
+  any library in `server/skills-library/modeles-statiques/files/` and the skill text beside them.
+- Licence text: in `server/skills-library/modeles-statiques/LICENSE.txt` (MIT, Copyright (c) 2026 Meta Platforms, Inc.).
+
+## mjmirza/app-store-compliance — MIT (code) and CC BY 4.0 (content), version before 24/08/2026
+
+- Source: https://github.com/mjmirza/app-store-compliance, commit `943e8556c567950db3e9fd1f9a52ddb1b2e0ba3a`
+  (12/08/2026), the last version before the repository moved to a non-free licence (commit `ee18281`, 24/08/2026).
+  Only that earlier version was read.
+- Adapted (L120): the audit method and the verdict rule of `agent-os/skill/SKILL.md` (CC BY 4.0 content), condensed and
+  translated into `server/skills-library/publier-une-appli/`; no script, data file or template was taken.
+- Credit, as the licence asks: github.com/mjmirza/app-store-compliance, © 2026 Mirza Iqbal. The licence file of that
+  commit is kept unchanged in `server/skills-library/publier-une-appli/LICENSE.txt`.

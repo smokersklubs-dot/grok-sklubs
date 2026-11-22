@@ -142,11 +142,11 @@ Preuves Sklubot : `server/src/researchroutes.ts` (outil `deep_research_start` l.
 
 ## 5. À faire (classé)
 
-1. Fenêtre de temps et date de publication par source dans la recherche approfondie (dire « page de 2021 » quand c'est le cas) — **M**.
-2. Sources gratuites Hacker News (Algolia) et Polymarket (Gamma) dans `browseSection`, avec classement par points/cotes — **S**.
-3. Reddit et YouTube (transcriptions) dans la recherche approfondie via Agent Reach déjà installé sur le bureau — **M**.
-4. Seuil de pertinence avant de garder une source + état vide honnête « rien de solide sur la période » — **S**.
-5. État par source (panne / limite / vide) et règle « ne jamais conclure au silence si la source a échoué » dans la synthèse — **S**.
+1. Fenêtre de temps et date de publication par source dans la recherche approfondie (dire « page de 2021 » quand c'est le cas) — **M**. — **FAIT 22/11 (L87)**
+2. Sources gratuites Hacker News (Algolia) et Polymarket (Gamma) dans `browseSection`, avec classement par points/cotes — **S**. — **FAIT 22/11 (L87)**
+3. Reddit et YouTube (transcriptions) dans la recherche approfondie via Agent Reach déjà installé sur le bureau — **M**. — **FAIT 22/11 (L87)**
+4. Seuil de pertinence avant de garder une source + état vide honnête « rien de solide sur la période » — **S**. — **FAIT 22/11 (L87)**
+5. État par source (panne / limite / vide) et règle « ne jamais conclure au silence si la source a échoué » dans la synthèse — **S**. — **FAIT 22/11 (L87)**
 6. Plus de 4 résultats par question, regroupement en histoires et diversité de sources — **M**.
 7. Veille : sujet suivi + routine + « ce qui a changé depuis le dernier rapport » — **M**.
 8. Recherche dans les rapports passés, utilisés comme contexte daté — **M**.

@@ -1,0 +1,18 @@
+/* L153 « Docteur »: OK / À corriger lines. Tokens only (light / dark). */
+.doctor-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+.doctor-verdict { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: var(--r-md); font-weight: 600; }
+.doctor-verdict.is-good { background: var(--ok-soft); color: var(--ok); }
+.doctor-verdict.is-bad { background: var(--warn-soft); color: var(--warn); }
+.doctor-list { list-style: none; margin: 12px 0; padding: 0; display: grid; gap: 6px; }
+.doctor-row { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: start; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); }
+.doctor-state { padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 650; white-space: nowrap; }
+.doctor-state.is-ok { background: var(--ok-soft); color: var(--ok); }
+.doctor-state.is-info { background: var(--surface-2); color: var(--text-2); }
+.doctor-state.is-warn { background: var(--warn-soft); color: var(--warn); }
+.doctor-state.is-critical { background: var(--danger-soft); color: var(--danger); }
+.doctor-text { display: grid; gap: 3px; min-width: 0; }
+.doctor-title { font-weight: 600; overflow-wrap: anywhere; }
+.doctor-detail { color: var(--text-2); font-size: 13.5px; }
+.doctor-fix { justify-self: start; padding: 2px 6px; border-radius: var(--r-sm); background: var(--surface-2); font-size: 12.5px; overflow-wrap: anywhere; }
+.doctor-scope { font-size: 12px; white-space: nowrap; }
+@media (max-width: 560px) { .doctor-row { grid-template-columns: auto 1fr; } .doctor-scope { grid-column: 2; } }

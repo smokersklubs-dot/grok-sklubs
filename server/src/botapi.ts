@@ -92,7 +92,7 @@ export const apiKeys = {
     if (!name) throw new BotApiError(400, "name", say(loc, "Give the key a name (the program that will use it).", "Donne un nom à la clé (le programme qui va s'en servir)."));
     if (name.length > 60) throw new BotApiError(400, "name", say(loc, "That name is too long (60 characters at most).", "Ce nom est trop long (60 caractères au plus)."));
     const scopes = cleanScopes(rawScopes);
-    if (!scopes.length) throw new BotApiError(400, "scopes", say(loc, "Choose at least one permission: read, write or tasks.", "Choisis au moins une permission : lire, écrire ou tâches."));
+    if (!scopes.length) throw new BotApiError(400, "scopes", say(loc, "Choose at least one permission: read, write, tasks or memory.", "Choisis au moins une permission : lire, écrire, tâches ou mémoire."));
     const secret = KEY_PREFIX + randomBytes(32).toString("base64url");
     const id = newId("bak");
     const t = now();
@@ -156,7 +156,7 @@ export function authenticate(header: string | undefined | null, address: string,
 
 export function requireScope(c: Caller, scope: BotApiScope) {
   if (!c.key.scopes.includes(scope)) {
-    const names = { read: say(c.user.locale, "read", "lire"), write: say(c.user.locale, "write", "écrire"), tasks: say(c.user.locale, "tasks", "tâches") };
+    const names = { read: say(c.user.locale, "read", "lire"), write: say(c.user.locale, "write", "écrire"), tasks: say(c.user.locale, "tasks", "tâches"), memory: say(c.user.locale, "memory", "mémoire") };
     throw new BotApiError(403, "scope", say(c.user.locale, `This key does not have the "${names[scope]}" permission.`, `Cette clé n'a pas la permission « ${names[scope]} ».`), { scope });
   }
 }

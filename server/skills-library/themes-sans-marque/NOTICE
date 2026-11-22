@@ -1,0 +1,7 @@
+themes-sans-marque — adapted from Nutlope/hallmark (© 2026 Hallmark contributors, MIT)
+Sources (each pinned to one commit):
+- Nutlope/hallmark — © 2026 Hallmark contributors — MIT — https://github.com/Nutlope/hallmark/tree/04977e15f3dfd6ee4b74c887dac3eb52665d6c92/skills/hallmark/references/themes (atelier, bloom, cobalt, coral, dose, dusk, furrow, kiln, newsprint, terrazzo)
+Licence: MIT — the upstream licence text is in LICENSE.txt, unchanged.
+
+Modified for Sklubot (2026-11-22): ten theme files kept as files/ of this skill with a header naming their source; their "pictured" lines and the references to the original scripts and companion files replaced by neutral words; the choice (two or three proposed with a reason) and the checks rewritten for a Sklubot bot; translated into French.
+Only text is included; no picture or script of the original folders is bundled. Names of other products are not used as titles.

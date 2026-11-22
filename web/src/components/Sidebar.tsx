@@ -11,7 +11,7 @@ import { Icon } from "./Icon";
 import { IconButton, Menu, MenuItem, Modal, modKey } from "./ui";
 import { PauseAllNotice, PausedBadge, setPaused } from "./Pause";
 import { AnnouncementBell } from "./AnnouncementCard";
-import { useAnnouncements } from "../lib/announcements";
+import { useAnnouncements } from "../lib/announcements"; import { StopCauseChip, WorkingBar, useStopCauseSync } from "./SidebarStatus";
 
 function statusOf(bot: Bot, live: Live): "attention" | "working" | "unread" | null {
   if (live.awaiting) return "attention";
@@ -121,7 +121,7 @@ function BotRow({ bot, live, active, collapsed }: { bot: Bot; live: Live; active
               {bot.access && <Icon name="users" size={12} className="bot-row-kind" aria-label={bot.access.workspaceName} />}
               <PausedBadge bot={bot} />
             </span>
-            <span className={`bot-row-preview truncate ${status === "attention" ? "is-attention" : ""}`}>{previewOf(bot, live)}</span>
+            <span className={`bot-row-preview truncate ${status === "attention" ? "is-attention" : ""}`}><StopCauseChip bot={bot} />{previewOf(bot, live)}</span>
           </span>
         )}
         {!collapsed && bot.unread > 0 && <span className="count-badge" aria-label={tn("sidebar.unread", bot.unread)}>{bot.unread > 99 ? "99+" : bot.unread}</span>}
@@ -248,7 +248,7 @@ export function Sidebar() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [primaryProjects, setPrimaryProjects] = useState(false);
-  const t = useT();
+  const t = useT(); useStopCauseSync(); // L142
 
   const collapsed = collapsedPref && !mobileNav;
   const primary = useMemo(() => primaryBot(bots), [bots]);
@@ -401,7 +401,7 @@ export function Sidebar() {
           {!collapsed && waiting > 0 && <span className="count-badge is-attention" aria-label={tn("sidebar.tasksWaiting", waiting)}>{waiting}</span>}
         </button>
 
-        <div className="sidebar-scroll">
+        <div className="sidebar-scroll"><WorkingBar collapsed={collapsed} />
           {primary && (
             <div className="primary-project-wrap">
             <button

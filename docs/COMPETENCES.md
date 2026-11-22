@@ -93,10 +93,19 @@ La galerie range maintenant les compétences **par thème** (méthode et questio
 | Notes Obsidian | Outils | CLI-Anything (obsidian) | Apache-2.0 |
 | Code sobre | Outils | DietrichGebert/ponytail | MIT |
 | Relecture de code | Outils | DietrichGebert/ponytail (review), alibaba/open-code-review (delegate) | MIT + Apache-2.0 |
+| Modèles statiques de pages (4 fichiers HTML gardés avec elle) | Design et pages | Astryx (modèles de pages, règle « partir d'un modèle ») | MIT |
+| Thèmes sans marque (10 fichiers de thème) | Design et pages | Hallmark (thèmes) | MIT |
+| Douane et envois à l'étranger | Commerce et études | ECC (customs-trade-compliance) | Apache-2.0 |
+| Préparer la publication d'une appli | Outils | app-store-compliance, version du 12/08/2026 (avant le changement de licence) | MIT + CC-BY-4.0 |
+| Tests d'abord et débogage | Outils | ECC (tdd-workflow) | MIT |
+
+**Compétences originales ajoutées le 22/11/2026** (écrites pour Sklubot, MIT) : « Comparer A et B », « Avant un rendez-vous », « Signaux d'embauche » (commerce et études) ; « Jumeau numérique (voix ou avatar) » (animation : accord d'abord — la carte d'accord existante s'arrête sur toute copie de voix ou de visage —, enregistrement, brief, essais, bac des ratés, comparaison côte à côte, contrôle qualité du son avec ffmpeg, marqué « généré par IA ») ; « Écrire un petit outil en ligne de commande », « Trouver et installer un outil en ligne de commande » (source officielle, version figée, empreinte vérifiée, accord du patron), « Carte d'un dépôt de code » ; fiches d'outils « Retoucher des images (Pillow, ImageMagick) », « Traiter du son (ffmpeg) », « Nettoyer un tableau de données (pandas) », « Livres numériques (Calibre) ». « theme-factory » renvoie maintenant vers « Thèmes sans marque ».
+
+**Fichiers d'accompagnement (L130).** Une compétence de la bibliothèque peut avoir un dossier `files/` (modèles HTML, feuilles de style, autres pages) : ces fichiers sont copiés avec elle quand tu l'ajoutes à un bot, gardés **en texte**, jamais lancés sur le serveur. Le bot les voit listés quand il lit la compétence et en ouvre un avec `skill_read` (paramètre `file`), puis le recopie et l'adapte dans son travail. Chaque fichier passe le contrôle de sécurité.
 
 Règles suivies pour chacune (vérifiées par les tests de `server/test/skills-library.test.ts`) : seulement des textes sous **MIT, Apache-2.0 ou CC BY 4.0** ; `LICENSE.txt` contient le texte de licence d'origine inchangé (et, pour CC BY, l'attribution demandée) ; `NOTICE` nomme le titulaire des droits, la source figée à un commit (40 caractères) et la liste « Modified for Sklubot (2026-11-22) : … » ; la première ligne de chaque texte dit d'où il vient et qu'il a été modifié. Aucun nom de produit d'origine dans les titres, aucun service payant ni télémétrie, aucun chemin d'extension, rien qui lise les cookies d'un navigateur ou un compte personnel. Chaque texte passe le contrôle de sécurité sans « danger ». Deux compétences (« Illustration animée de page », « Figure explicative interactive ») récupèrent leur bibliothèque de dessin **à la demande**, sur l'ordinateur du bot, à un commit vérifié. « Design de marque » lit maintenant d'abord `~/team/charte.md`, la charte écrite avec « Entretien de marque » et « Fiche de charte (design) ».
 
-Non repris de la liste « à adapter » des audits, et pourquoi : la version actuelle d'*app-store-compliance* (licence non libre ; seule une version d'avant le 24/08/2026 serait réutilisable, à vérifier à part) ; *Astryx* (verdict « idée » : modèles en code, pas un texte) ; les règles d'*agent-browser* (core) et d'*agent-desktop* (elles vont dans la description des outils écran, pas dans la bibliothèque) ; *debug-optimize-lcp* et *chrome-devtools-cli* (dépendent d'outils absents de l'ordinateur des bots) ; *investor-materials* et *marketing-campaign* d'ECC (hors du lot 3, à faire plus tard).
+Non repris de la liste « à adapter » des audits, et pourquoi : la version actuelle d'*app-store-compliance* (licence non libre ; c'est la version du 12/08/2026, encore sous MIT + CC BY 4.0, qui a servi) ; les règles d'*agent-browser* (core) et d'*agent-desktop* (elles vont dans la description des outils écran, pas dans la bibliothèque) ; *debug-optimize-lcp* et *chrome-devtools-cli* (dépendent d'outils absents de l'ordinateur des bots) ; *investor-materials* et *marketing-campaign* d'ECC (hors du lot 3, à faire plus tard).
 
 ## 2. Importer des compétences depuis GitHub
 
@@ -106,6 +115,8 @@ Non repris de la liste « à adapter » des audits, et pourquoi : la version act
 2. **Chercher** : Sklubot liste les fichiers `SKILL.md` trouvés, avec leur licence (celle du dossier de la compétence, sinon celle du dépôt, sinon celle annoncée dans le README).
 3. Sont cochées d'avance seulement les compétences sous licence libre (Apache-2.0, MIT, BSD, ISC, CC0, Unlicense, CC BY) sans problème signalé. Pour les autres (« aucune licence », « restrictive », GPL…), c'est toi qui décides : sans licence, la réutilisation n'est pas permise par défaut.
 4. Signalements : *texte qui semble contenir une clé*, *trop longue* (le nombre de caractères est affiché ; plus de 20 000 : impossible telle quelle), *fichiers cités non importés* (la liste des fichiers que le texte mentionne — scripts, références, images — et que le bot n'aura pas), *annexes jointes* (voir ci-dessous), *autres fichiers non importés*, *nom déjà utilisé*.
+   - **Fichiers gardés à côté (L130)** : les autres fichiers texte du dossier de la compétence (pages `.md` voisines, `.css`, `.js`, `.html`, `.json`, `.svg`…, 100 Ko chacun, 30 fichiers et 400 Ko au plus) sont gardés **à côté** d'elle, en texte, jamais lancés ; le bot les lit avec `skill_read` et `file`. Scripts (`.sh`, `.py`), images et archives restent dehors.
+   - **Longues compétences (L130)** : au-delà de 20 000 caractères, elle n'est plus refusée : elle est importée en **parties numérotées** (« nom (1/3) »…), coupées à ses titres, chaque partie disant laquelle elle est et nommant les autres.
    - **Annexes** : quand le texte d'une compétence renvoie à de petits fichiers texte de son propre dossier (`[format](./MISSION-FORMAT.md)`, `references/eeat.md`), ils sont ajoutés à la fin, chacun sous un titre « Annex: … », tant que le tout reste sous 20 000 caractères ; ils passent le même contrôle de sécurité. Les fichiers cités mais non importés sont aussi rappelés à la fin du texte importé, pour que le bot sache qu'il ne peut pas les ouvrir.
 5. **Importer en brouillon** : les compétences arrivent **en brouillon**, avec leur source et leur licence à la fin. Le bot ne les utilise pas tant que tu n'as pas cliqué **Activer** dans son onglet Compétences, après les avoir lues.
 
@@ -207,7 +218,9 @@ Code : `server/src/skillhealth.ts`, `skillcatalog.ts`, `skillhealthroutes.ts`, `
   sombre…) et dit si elle repose sur une fonction récente du navigateur (vérifier la prise en charge, garder la solution
   de repli).
 - `page_contact_sheet` : une seule image avec le premier écran d'une page à 390, 768 et 1280 px, côte à côte, plus la
-  mesure d'un éventuel défilement de côté. Pris dans un onglet temporaire du navigateur du bot.
+  mesure d'un éventuel défilement de côté. Pris dans un onglet temporaire du navigateur du bot. Avec `moments`
+  (par exemple `[0, 400, 1200, 3000]`), c'est **une page à plusieurs instants** après le début du chargement, à une
+  largeur : pour vérifier une animation image par image (L114).
 - `web_fetch` avec `tags: true` : les balises d'une page (titre, description, robots, canonique, hreflang, réseaux
   sociaux, titres, JSON-LD, images sans texte de remplacement) avant son texte, sans note inventée.
 - Le modèle d'équipe **« Contrôle qualité des pages »** (Suzanne) utilise ces trois outils et la compétence « Testeur de

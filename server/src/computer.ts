@@ -131,6 +131,17 @@ async function desktop(botId: string, userId: string): Promise<Desktop> {
   try { return await attempt; } finally { opening.delete(botId); }
 }
 
+/** L114 (contactsheet.ts): one page at N moments after it starts loading, at one width, in a temporary tab (Playwright). */
+async function sheetAtMoments(d: Desktop, url: string, width: number, moments: number[]): Promise<{ width: number; data: string; at: number }[]> {
+  const own = d.page, p = await d.context.newPage(), shots: { width: number; data: string; at: number }[] = [];
+  try {
+    await p.setViewportSize({ width, height: 900 });
+    const start = Date.now();
+    await p.goto(url, { waitUntil: "commit", timeout: 40000 });
+    for (const at of moments) { const wait = start + at - Date.now(); if (wait > 0) await p.waitForTimeout(wait); shots.push({ width, at, data: (await p.screenshot({ type: "jpeg", quality: 60 })).toString("base64") }); }
+  } finally { await p.close().catch(() => {}); d.page = own; }
+  return shots;
+}
 async function withDesktop<T>(botId: string, userId: string, fn: (d: Desktop) => Promise<T>): Promise<T> {
   const d = await desktop(botId, userId);
   d.busy++;
@@ -267,9 +278,10 @@ export const screen = {
   pageCheck: (botId: string, userId: string, req: PageCheckRequest): Promise<PageCheckAnswer> => kind === "linux" ? linuxScreen.browserOp<PageCheckAnswer>(botId, userId, workspaceOf(botId), { op: "pagecheck", ...req }, 110_000)
     : (async () => { const was = desktops.has(botId); try { return await withDesktop(botId, userId, async (d) => { const own = d.page; try { return await browserPageCheck(d.context, req); } finally { d.page = own; } }); } finally { if (!was) await closeDesktop(botId).catch(() => {}); } })(), // a browser opened only for the check is closed again
   /** L114 (contactsheet.ts): the first screen of `url` at each width, in a temporary tab; the bot's own tab is left as it was. */
-  sheet: async (botId: string, userId: string, url: string, widths: number[]): Promise<{ width: number; data: string; scrollWidth?: number }[]> => {
+  sheet: async (botId: string, userId: string, url: string, widths: number[], moments: number[] = []): Promise<{ width: number; data: string; scrollWidth?: number; at?: number }[]> => {
     await assertPublicUrl(url);
-    if (kind === "linux") return linuxScreen.sheet(botId, userId, workspaceOf(botId), url, widths);
+    if (kind === "linux") return linuxScreen.sheet(botId, userId, workspaceOf(botId), url, widths, moments);
+    if (moments.length) return withDesktop(botId, userId, (d) => sheetAtMoments(d, url, widths[0], moments)); // L114: one page at N moments (contactsheet.ts)
     return withDesktop(botId, userId, async (d) => {
       const own = d.page, p = await d.context.newPage(), shots: { width: number; data: string; scrollWidth?: number }[] = [];
       try {

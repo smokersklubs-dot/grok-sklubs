@@ -20,7 +20,7 @@ const groups: { title: Key; entries: Entry[] }[] = [
     ["permissions", "shield"], ["rules", "book"], ["keys", "shield"], ["email", "mail"],
   ] },
   { title: "settings.group.owner", entries: [
-    ["account", "user"], ["usage", "chart", "facturation billing"], ["subscription", "star"], ["surveillance", "shield"], ["admin", "shield"],
+    ["account", "user"], ["doctor", "wrench", "docteur diagnostic dépannage securite security health santé"], ["usage", "chart", "facturation billing"], ["subscription", "star"], ["surveillance", "shield"], ["admin", "shield"],
   ] },
 ];
 const fold = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();

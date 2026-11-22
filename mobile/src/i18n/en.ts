@@ -106,6 +106,8 @@ export const en: Record<Key, string> = {
   "composer.tooBig": "“{name}” is over 1 GB and can’t be attached.",
   "composer.tooMany": "You can attach up to 10 files per message.",
   "composer.waitUploads": "Wait for the uploads to finish",
+  "notes.hint": "The bot reads them at its next step and answers them on top of its work.",
+  "notes.remove": "Remove",
   "composer.queued_one": "{n} message waiting",
   "composer.queued_other": "{n} messages waiting",
   "lanes.count_one": "{n} task running",

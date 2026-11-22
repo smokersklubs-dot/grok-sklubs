@@ -82,6 +82,12 @@ export function SkillCardView({ card, botId, seq }: { card: Extract<Card, { type
           <label className="field-label" htmlFor={`sk-n-${seq}`}>{t("skillCard.name")}</label>
           <input id={`sk-n-${seq}`} className="input" value={name} onChange={(e) => setName(e.target.value)} maxLength={80} />
           {card.when && <p className="card-sub">{t("skillCard.when", { when: card.when })}</p>}
+          {card.evidence && card.evidence.length > 0 && (
+            <div className="card-sub skill-evidence">
+              <p className="note-line"><Icon name="history" size={13} /> <span>{t("skillCard.evidence", { n: card.evidence.length })}</span></p>
+              <ul>{card.evidence.map((e) => <li key={e.at}><span className="muted">{shortDate(e.at)} · {e.where}</span> — « {e.quote} »</li>)}</ul>
+            </div>
+          )}
           <label className="field-label" htmlFor={`sk-s-${seq}`}>{t("skillCard.steps")}</label>
           <textarea id={`sk-s-${seq}`} className="input skill-steps" rows={6} value={steps} onChange={(e) => setSteps(e.target.value)} />
           <TextScan name={name} when={card.when} steps={steps} />
@@ -122,6 +128,7 @@ export function ApiConnectorCardView({ card, botId, seq }: { card: Extract<Card,
         ))}
       </ul>
       <p className="card-sub note-line"><Icon name="key" size={13} /> <span>{t("apiCard.secret", { secret: card.secret, host: card.host })}</span></p>
+      {card.preset && ["x", "instagram", "trello"].includes(card.preset) ? <p className="card-sub note-line"><Icon name="info" size={13} /> <span>{t(`apiCard.preset.${card.preset as "x" | "instagram" | "trello"}`)}</span></p> : null}
       {card.status === "pending" ? (
         <form className="secret-form" autoComplete="off" onSubmit={(e) => { e.preventDefault(); void run("ok", () => api("POST", `/bots/${botId}/cards/${seq}/apiconnector`, { action: "approve", token: token || undefined })); }}>
           {!card.secretSaved && (

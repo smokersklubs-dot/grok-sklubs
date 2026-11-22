@@ -47,7 +47,7 @@ export function GalleryChat({ o }: { o: FixtureOptions }) {
       const status = listenAs === "browser" ? "playing" : ((["playing", "paused", "loading", "error"].includes(listenAs) ? listenAs : "playing") as ListenStatus);
       if (last) useListen.setState({ key: listenKey(bot.id, last.seq), status, progress: status === "loading" ? 0 : 0.42, engine: listenAs === "browser" ? "browser" : "server", voice: listenAs === "browser" ? "" : "Camille", error: status === "error" ? (o.lang === "fr" ? "Le service de voix n'a pas répondu. Réessaie dans un instant." : "The voice service did not answer. Try again in a moment.") : null });
     }
-    const live: Live = running ? { running: true, activity: { kind: "thinking", since: NOW - 40_000 }, awaiting: null, startedAt: NOW - 40_000, queued: 0, steps: asked ? 0 : 2 } : { running: false, activity: null, awaiting: null, startedAt: null, queued: 0 };
+    const live: Live = running ? { running: true, activity: { kind: "thinking", since: NOW - 40_000 }, awaiting: null, startedAt: NOW - 40_000, queued: asked ? 0 : 2, steps: asked ? 0 : 2 } : { running: false, activity: null, awaiting: null, startedAt: null, queued: 0 };
     if (p.get("running") === "tasks") live.tasks = [
       { thread: 0, running: true, activity: live.activity, awaiting: null, startedAt: NOW - 40_000 },
       ...(parent ? [{ thread: parent.seq, running: true, activity: { kind: "browsing" as const, since: NOW - 90_000 }, awaiting: null, startedAt: NOW - 90_000 }] : []),

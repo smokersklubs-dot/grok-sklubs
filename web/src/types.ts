@@ -24,3 +24,5 @@ export { TODAY_KINDS, DEFAULT_MINUTES, FILES_PER_TURN, RESEARCH_MIN_READS, RESEA
 /** « Centre de commandement » (server command.ts): the wire types and the state rule. */
 export type * from "../../server/src/commandtypes";
 export { COMMAND_STATES, commandStateOf } from "../../server/src/commandtypes";
+export type * from "../../server/src/peerreviewtypes";
+export type { ResearchWindow, ResearchExtra, SourceState } from "../../server/src/researchsignals";

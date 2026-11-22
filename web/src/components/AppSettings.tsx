@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
+import { PersonalCommandsSection } from "./ComposerSlash"; import { DoctorSection } from "./DoctorSection"; // L152, L153
 import { UsageCapsBlock } from "./UsageCaps";
 import { api, ApiError, enc, errText } from "../api";
 import { LOCALES, tn, useT, type Key } from "../i18n";
@@ -1229,7 +1230,7 @@ export function AppSettings({ section }: { section: AppSection }) {
         <IconButton icon="close" label={t("settings.close")} className="app-settings-close" onClick={closeAppSettings} />
         <div className={`app-settings-content settings-pane ${section === "admin" ? "is-wide" : ""}`}>
           {section === "general" && <GeneralSection />}
-          {section === "shortcuts" && <KeyboardShortcuts />}
+          {section === "shortcuts" && <><KeyboardShortcuts /><PersonalCommandsSection /></>}{section === "doctor" && <DoctorSection />}
           {section === "today" && <TodaySettingsSection />}
           {section === "surveillance" && sentinel && <SurveillanceSettingsSection />}
           {section === "profile" && <ProfileSection />}

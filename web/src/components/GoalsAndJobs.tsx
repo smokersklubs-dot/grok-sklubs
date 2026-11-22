@@ -35,7 +35,7 @@ export function GoalCardView({ card, botId }: { card: GoalCard; botId: string })
         <div className="card-head-text">
           <p className="card-title">{t(card.status === "proposed" ? "goal.proposedTitle" : "goal.title")}</p>
           <p className="card-sub">
-            <span className={`chip goal-state is-${card.status}`}>{t(working ? "goal.working" : (`goal.status.${card.status}` as Key))}</span>
+            <span className={`chip goal-state is-${card.status}`}>{t(working ? "goal.working" : card.review ? "goal.status.review" : (`goal.status.${card.status}` as Key))}</span>
             {card.status !== "proposed" && card.status !== "declined" && <> <span className="goal-rounds">{t("goal.rounds", { n: card.rounds, max: card.maxRounds })}</span></>}
           </p>
         </div>
@@ -55,7 +55,20 @@ export function GoalCardView({ card, botId }: { card: GoalCard; botId: string })
           {card.evidence && <p className="goal-evidence"><span className="muted">{t("goal.evidence")}</span> {card.evidence}</p>}
         </div>
       )}
-      {card.reason && card.status !== "complete" && card.status !== "active" && <p className="goal-line is-reason"><Icon name="info" size={13} /> {card.reason}</p>}
+      {card.reason && !card.review && card.status !== "complete" && card.status !== "active" && <p className="goal-line is-reason"><Icon name="info" size={13} /> {card.reason}</p>}
+      {card.criteria && card.criteria.length > 0 && (
+        <div className="goal-criteria">
+          <p className="muted">{t("goal.criteria")}</p>
+          <ol>
+            {card.criteria.map((c, i) => (
+              <li key={i} className={c.evidence ? "is-met" : undefined}>
+                <span>{c.evidence ? "✓ " : ""}{c.text}</span>
+                {c.evidence && <span className="goal-criterion-evidence"> — {c.evidence}</span>}
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
       {own && (
         <div className="card-actions">
           {card.status === "proposed" && (
@@ -70,7 +83,8 @@ export function GoalCardView({ card, botId }: { card: GoalCard; botId: string })
               <button type="button" className="btn btn-small btn-ghost-danger" disabled={busy !== null} onClick={() => void act("stop")}><Icon name="stop" size={12} /> {t("goal.stop")}</button>
               <span className="spacer" />
               {active && <button type="button" className="btn btn-small" disabled={busy !== null} onClick={() => void act("pause")}><Icon name="pause" size={13} /> {t("goal.pause")}</button>}
-              {resumable && <button type="button" className="btn btn-small btn-accent" disabled={busy !== null} onClick={() => void act("resume")}><Icon name="play" size={12} /> {t(card.status === "limit" ? "goal.resumeMore" : "goal.resume")}</button>}
+              {resumable && <button type="button" className={`btn btn-small ${card.review ? "" : "btn-accent"}`} disabled={busy !== null} onClick={() => void act("resume")}><Icon name="play" size={12} /> {t(card.status === "limit" ? "goal.resumeMore" : "goal.resume")}</button>}
+              {card.review && <button type="button" className="btn btn-small btn-accent" disabled={busy !== null} onClick={() => void act("accept")}><Icon name="check" size={12} /> {t(busy === "accept" ? "common.working" : "goal.approve")}</button>}
             </>
           )}
         </div>

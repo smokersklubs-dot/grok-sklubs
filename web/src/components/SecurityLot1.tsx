@@ -6,6 +6,7 @@ import type { Bot, Card, VaultItem } from "../types";
 import { relTime } from "../lib/format";
 import { Icon } from "./Icon";
 import { ErrorNote, Loading, Toggle } from "./ui";
+import { BotNetworkBlock, BotProviderKeysBlock } from "./OpenAccess";
 import "./SecurityLot1.css";
 
 /* Lot 1 security (docs/SECURITE.md): the account's switches (L44, L39), a bot's network journal and the hosts it may
@@ -124,6 +125,7 @@ export function BotSecurityTab({ bot }: { bot: Bot }) {
   if (!data) return error ? <ErrorNote>{error}</ErrorNote> : <Loading />;
   return (
     <div className="settings-pane">
+      <BotNetworkBlock bot={bot} /><BotProviderKeysBlock bot={bot} />{/* L169, L82 (OpenAccess.tsx) */}
       <h3 className="pane-heading">{t("security.netJournal")}</h3>
       <p className="muted small">{t("security.netJournalHint", { name: bot.name })}</p>
       {data.hosts.length === 0 ? <p className="muted small">{t("security.netEmpty")}</p> : (

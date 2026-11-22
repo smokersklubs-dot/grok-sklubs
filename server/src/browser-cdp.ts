@@ -792,7 +792,21 @@ def op_sheet(req):
     shots = []
     try:
         t = open_tab(made)
-        for w in list(req.get("widths") or [390, 768, 1280])[:4]:
+        moments = sorted(set(max(0, min(10000, int(m))) for m in list(req.get("moments") or [])[:6]))
+        if moments:  # L114: one page at N moments (milliseconds after it starts loading), at the first width
+            w = max(320, min(1920, int((list(req.get("widths") or [1280]))[0])))
+            t.call("Emulation.setDeviceMetricsOverride", _wait=5, width=w, height=int(req.get("height", 900)), deviceScaleFactor=1, mobile=w < 600)
+            start = time.time()
+            r = t.call("Page.navigate", _wait=20, url=url)
+            if r.get("errorText"):
+                out({"error": "The page could not be opened: %s" % r["errorText"]})
+            for m in moments:
+                wait = start + m / 1000.0 - time.time()
+                if wait > 0:
+                    time.sleep(wait)
+                shot = t.call("Page.captureScreenshot", _wait=15, format="jpeg", quality=60)
+                shots.append({"width": w, "at": m, "data": shot.get("data", "")})
+        for w in ([] if moments else list(req.get("widths") or [390, 768, 1280])[:4]):
             w = max(320, min(1920, int(w)))
             t.call("Emulation.setDeviceMetricsOverride", _wait=5, width=w, height=int(req.get("height", 900)), deviceScaleFactor=1, mobile=w < 600)
             r = t.call("Page.navigate", _wait=20, url=url)

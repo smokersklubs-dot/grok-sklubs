@@ -184,6 +184,8 @@ function resolve(routePath: string, param: string, bot: "bot1" | "bot2"): string
     "plan-invites:token": "not-a-real-invite", "webhook:provider": "stripe",
     // Usage caps: the card of a reached cap.
     "stops:stopId": "a_capstop",
+    // Wave 6 (accountnetroutes.ts): an extra key of a provider, an outgoing webhook (none of A's: 404 for everyone else).
+    "keys:keyId": "pk_alpha", "webhooks:hookId": "owh_alpha",
     // "Accès API" (botapi.ts): A's key of the bot, a message of A's conversation, a goal of A's bot.
     "api-keys:keyId": ids[`apikey_${b}`] ?? "bak_none", "messages:seq": "1", "tasks:taskId": ids[`goal_${b}`],
     // "Surveillance" (sentinel/): A's incident.
@@ -349,7 +351,7 @@ test("without a session, every non-public route says 401 (and nothing else)", as
     const res = await call(api, null, methodOf(r.method), fill(r.path, "bot1"), {});
     if (leakIn(res.text)) problems.push(`${r.key} LEAKS`);
     // A handful of public routes have no parameter (health, me, downloads, sign-in, forgot-password status…): they must not leak either.
-    if (res.status !== 401 && !/^(GET \/(health|me|downloads|plans|public\/landing|auth\/link|connectors\/oauth\/callback|auth\/google.*|auth\/password\/status)|POST \/auth\/.*|POST \/billing\/paddle\/webhook)$/.test(r.key)) problems.push(`${r.key} → ${res.status}`);
+    if (res.status !== 401 && !/^(GET \/(health|me|downloads|plans|public\/landing|v1\/openapi\.json|auth\/link|connectors\/oauth\/callback|auth\/google.*|auth\/password\/status)|POST \/auth\/.*|POST \/billing\/paddle\/webhook)$/.test(r.key)) problems.push(`${r.key} → ${res.status}`);
   }
   assert.deepEqual(problems, []);
 });
@@ -504,8 +506,9 @@ test("Pause (agent/pause.ts): owner only — B and V get 404 on A's bots and sec
 });
 
 test("Bot API keys (botapi.ts): A's key of bot1 reaches bot1 only; B's key reaches nothing of A; every /v1 route is covered", async () => {
-  const v1 = discover().filter((r) => r.app === api && r.path.startsWith("/v1/"));
-  assert.deepEqual(v1.map((r) => r.key).sort(), ["DELETE /v1/mcp", "DELETE /v1/team/mcp", "GET /v1/bot", "GET /v1/bot/messages", "GET /v1/bot/messages/:seq/wait", "GET /v1/bot/tasks/:taskId", "GET /v1/mcp", "GET /v1/team/mcp", "POST /v1/bot/messages", "POST /v1/bot/tasks", "POST /v1/mcp", "POST /v1/team/mcp"], "a new /v1 route must be added to this test");
+  // "ALL /v1/*": the Deprecation / Sunset header middleware (botopenai.ts, L170), not a route.
+  const v1 = discover().filter((r) => r.app === api && r.path.startsWith("/v1/") && r.method !== "ALL");
+  assert.deepEqual(v1.map((r) => r.key).sort(), ["DELETE /v1/mcp", "DELETE /v1/team/mcp", "GET /v1/bot", "GET /v1/bot/memories", "GET /v1/bot/messages", "GET /v1/bot/messages/:seq/wait", "GET /v1/bot/tasks/:taskId", "GET /v1/mcp", "GET /v1/models", "GET /v1/openapi.json", "GET /v1/team/mcp", "POST /v1/bot/messages", "POST /v1/bot/tasks", "POST /v1/chat/completions", "POST /v1/mcp", "POST /v1/team/mcp"], "a new /v1 route must be added to this test");
   const withKey = (secret: string, method: string, url: string, body?: unknown) =>
     api.request(url, { method, headers: { "content-type": "application/json", authorization: `Bearer ${secret}`, accept: "application/json, text/event-stream" }, body: body === undefined || method === "GET" ? undefined : JSON.stringify(body) }).then(async (r) => ({ status: r.status, text: await r.text() }));
   // B makes a key of B's own bot.

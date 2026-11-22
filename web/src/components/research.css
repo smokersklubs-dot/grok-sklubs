@@ -48,3 +48,49 @@
   padding-inline-start: 0.7rem;
   border-inline-start: 2px solid currentColor;
 }
+/* L87: free sources, period, and what each source did. */
+.research-extras {
+  display: grid;
+  gap: 0.3rem;
+  margin: 0;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+}
+.research-states {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin: 0.3rem 0;
+  padding: 0;
+  list-style: none;
+}
+.research-states li {
+  padding: 0.1rem 0.45rem;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  font-size: 0.85em;
+}
+.research-states li[data-state="failed"],
+.research-states li[data-state="rate_limited"],
+.research-states li[data-state="timeout"],
+.research-states li[data-state="login"],
+.research-states li[data-state="unavailable"] {
+  border-color: var(--warn);
+  background: var(--warn-soft);
+}
+.research-meta {
+  display: block;
+  color: var(--text);
+  opacity: 0.85;
+}
+.research-panel .research-extras .research-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  margin: 0.2rem 0;
+}
+.research-panel .research-extras .research-check input {
+  margin-top: 0.2rem;
+  flex: none;
+}

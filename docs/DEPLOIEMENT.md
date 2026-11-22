@@ -187,6 +187,25 @@ Coolify passe par Traefik, pas par Caddy : pour limiter aussi la taille des requ
 service `sklubot` un middleware Traefik « buffering » (`maxRequestBodyBytes`, ex. 31457280) dans ses étiquettes ;
 l'application applique de toute façon ses propres limites.
 
+### Mémoire : limites par conteneur, échange et arrêt préventif (L95)
+
+- Chaque service qui tourne en continu a un plafond de mémoire dans `docker-compose.vps.yml` et `docker-compose.coolify.yml` : Sklubot `SKLUBOT_MEM_LIMIT` (3 Go par défaut), le proxy Docker `SKLUBOT_PROXY_MEM_LIMIT` (192 Mo), Caddy `CADDY_MEM_LIMIT` (256 Mo), les voix comme avant (`WHISPER_MEM_LIMIT`, `PIPER_MEM_LIMIT`, `KOKORO_MEM_LIMIT`). Les ordinateurs des bots ont le leur (`DESKTOP_MEMORY`, 2 Go, sans swap en plus). Le plafond ne gêne pas un usage normal : il empêche seulement un service d'emporter toute la machine. À changer dans `.env` (ou les variables de Coolify).
+- Sur un VPS installé avec `deploy/install.sh`, le fichier d'échange et **earlyoom** sont posés tout seuls (`deploy/memory-guard.sh`, voir INSTALLATION-VPS.md). **Sous Coolify** ou sur un serveur installé autrement, fais-le une fois : `sudo bash deploy/memory-guard.sh` (fichier d'échange de 2 à 4 Go s'il n'y en a pas, `vm.swappiness=10`, earlyoom qui arrête d'abord les navigateurs des bots, jamais en priorité Sklubot, Caddy, SSH ni Docker). Vérifie avec `free -h` et `journalctl -u earlyoom`.
+- Chrome en root : le navigateur des bots ne tourne jamais en root (`open-browser.sh` le lance sous un compte à part, avec son propre bac à sable) ; s'il refuse de démarrer, `docker/desktop/open-browser.sh` le relance sans bac à sable et Réglages → Sécurité le dit (L48).
+- Pas fait ici : un plafond « heures d'ordinateur » séparé, l'arrêt automatique des conteneurs sans bot (voir A-FAIRE L95).
+
+### Mises à jour automatiques (option, éteinte par défaut — L168)
+
+Pour un Sklubot installé chez toi (VPS) seulement. `deploy/auto-update.sh` ne fait **rien** tant que tu ne l'as pas allumé, et n'installe que des versions **signées** :
+
+1. Mets dans `.env` : `SKLUBOT_AUTO_UPDATE=1` et, si tu veux, `SKLUBOT_UPDATE_WINDOW=03:00-05:00` (le créneau calme, heure du serveur).
+2. Dis qui a le droit de signer une version : le fichier `deploy/allowed_signers` (format « allowed signers » de `ssh-keygen`), ou bien `SKLUBOT_UPDATE_GNUPGHOME=<dossier>`, un trousseau GnuPG qui ne contient que les clés publiques autorisées. Sans signataire : rien n'est installé.
+3. Installe le minuteur : `sudo bash deploy/auto-update.sh install` (essai toutes les heures, rien hors du créneau). `bash deploy/auto-update.sh status` dit ce qui s'est passé ; `sudo bash deploy/auto-update.sh remove` l'enlève.
+
+À chaque essai : la plus récente étiquette `v*` **signée par un signataire autorisé** (`git verify-tag`) et plus récente que la version qui tourne (jamais de retour en arrière par ce chemin) → **sauvegarde complète d'abord** (`deploy/backup.sh` ; si elle échoue, rien ne change) → passage à cette version, reconstruction → vérification de santé (`/api/health`, 6 essais sur 3 minutes) → si la santé ne répond pas : **retour automatique** à la version d'avant ; si elle ne répond toujours pas, la sauvegarde faite juste avant est remise (`deploy/restore.sh`). Journal : `/var/log/sklubot-auto-update.log`, état : `auto-update-status.json`.
+
+**Mode hébergé** (`SKLUBOT_HOSTED_MODE=1`) : jamais de mise à jour sans l'opérateur. Le script dit seulement « version disponible » ; l'opérateur l'applique lui-même avec `deploy/update.sh`. Sous Coolify, les mises à jour restent celles de Coolify (ce script ne s'en occupe pas).
+
 ### Ordinateurs partagés entre les bots
 
 Dans les réglages d'un bot (section Ordinateur), « Ordinateur : le sien / partagé ». Les bots réglés sur

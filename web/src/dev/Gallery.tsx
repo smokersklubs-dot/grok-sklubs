@@ -19,7 +19,7 @@
  * main.tsx loads this file only when `import.meta.env.DEV` is true: production builds never contain it
  * (`npm run check:bundle -w web` checks the built files).
  */
-import { GalleryRoutines } from "./GalleryRoutines"; import { GalleryChantier } from "./GalleryChantier";
+import { GalleryRoutines } from "./GalleryRoutines"; import { GalleryReview } from "./GalleryReview"; import { GalleryChantier } from "./GalleryChantier";
 import { InboxView } from "../components/InboxView";
 import { CreateBotModal } from "../components/Modals";
 import { RelayGuardPanel } from "../components/RelayGuardPanel"; import { TelegramVoiceText } from "../components/TelegramVoiceText";
@@ -45,7 +45,7 @@ import Landing from "../components/Landing";
 import DownloadPage from "../components/DownloadPage";
 import { announcementsState, cardFixtures, fakeBot, GALLERY_BOT_ID, noticeRows, NOW, type FixtureOptions } from "./fixtures";
 import { installFakeApi, type FakeApiState } from "./fakeApi";
-import { GalleryChat } from "./GalleryChat";
+import { GalleryChat } from "./GalleryChat"; import { GalleryComfort6 } from "./GalleryComfort6";
 import { GalleryCommand } from "./GalleryCommand";
 import { IncidentsSection } from "../components/Incidents";
 import { failureCardFixtures } from "./incidentsFixtures";
@@ -66,7 +66,7 @@ import samplePage from "./sample-page.html?url";
 setPagePreviewSource(() => samplePage);
 import "./gallery.css";
 
-const SECTIONS = ["all", "basics", "cards", "notices", "inbox", "banners", "empty", "today", "command", "incidents", "recruit", "salons", "surveillance", "announcements", "skills", "skillhealth", "skillscan", "pages", "landing", "download", "chat", "equipe", "grants", "confiance", "securite", "canaux", "memoire", "relais", "routines", "createbot", "chantier"] as const;
+const SECTIONS = ["all", "basics", "cards", "notices", "inbox", "banners", "empty", "today", "command", "incidents", "recruit", "salons", "surveillance", "announcements", "skills", "skillhealth", "skillscan", "pages", "landing", "download", "chat", "equipe", "grants", "confiance", "securite", "canaux", "memoire", "relais", "routines", "createbot", "chantier", "confort6", "relecture"] as const;
 type Section = (typeof SECTIONS)[number];
 
 interface GalleryState extends FakeApiState {
@@ -147,7 +147,7 @@ function Gallery() {
   return (
     <div className={`gallery ${s.embed ? "is-embed" : ""}`} data-gallery="sklubot-dev-gallery">
       {!s.embed && <Toolbar s={s} set={set} />}
-      {s.section === "chat" ? <GalleryChat key={`${s.lang}`} o={{ lang: s.lang, long: s.long }} /> : s.section === "equipe" ? <GalleryTeamMd key={`${s.lang}:${s.long}`} o={{ lang: s.lang, long: s.long }} /> : s.section === "routines" ? <GalleryRoutines key={`${s.lang}:${s.long}:${s.empty}`} o={{ lang: s.lang, long: s.long }} empty={s.empty} /> : s.section === "confiance" ? <GalleryTrust key={`${s.lang}:${s.long}:${s.empty}`} o={{ lang: s.lang, long: s.long }} empty={s.empty} /> : s.section === "securite" ? <GallerySecurity key={`${s.lang}:${s.long}:${s.empty}`} o={{ lang: s.lang, long: s.long }} empty={s.empty} /> : s.section === "canaux" ? <GalleryChannels key={`${s.lang}:${s.long}:${s.empty}`} o={{ lang: s.lang, long: s.long }} /> : s.section === "chantier" ? <GalleryChantier key={`${s.lang}:${s.long}:${s.empty}`} o={{ lang: s.lang, long: s.long }} empty={s.empty} /> : s.section === "createbot" ? <CreateBotModal key={s.lang} onClose={() => undefined} /> : s.section === "landing" ? <Landing key={`${s.lang}:${s.empty}`} onAuth={() => undefined} /> : s.section === "download" ? <DownloadPage key={`${s.lang}:${s.empty}`} /> : <Sections key={`${s.lang}:${s.long}:${s.empty}`} s={s} />}
+      {s.section === "chat" ? <GalleryChat key={`${s.lang}`} o={{ lang: s.lang, long: s.long }} /> : s.section === "confort6" ? <GalleryComfort6 key={`${s.lang}:${s.long}`} o={{ lang: s.lang, long: s.long }} /> : s.section === "equipe" ? <GalleryTeamMd key={`${s.lang}:${s.long}`} o={{ lang: s.lang, long: s.long }} /> : s.section === "routines" ? <GalleryRoutines key={`${s.lang}:${s.long}:${s.empty}`} o={{ lang: s.lang, long: s.long }} empty={s.empty} /> : s.section === "confiance" ? <GalleryTrust key={`${s.lang}:${s.long}:${s.empty}`} o={{ lang: s.lang, long: s.long }} empty={s.empty} /> : s.section === "securite" ? <GallerySecurity key={`${s.lang}:${s.long}:${s.empty}`} o={{ lang: s.lang, long: s.long }} empty={s.empty} /> : s.section === "canaux" ? <GalleryChannels key={`${s.lang}:${s.long}:${s.empty}`} o={{ lang: s.lang, long: s.long }} /> : s.section === "relecture" ? <GalleryReview key={`${s.lang}:${s.long}:${s.empty}`} o={{ lang: s.lang, long: s.long }} empty={s.empty} />: s.section === "chantier" ? <GalleryChantier key={`${s.lang}:${s.long}:${s.empty}`} o={{ lang: s.lang, long: s.long }} empty={s.empty} /> : s.section === "createbot" ? <CreateBotModal key={s.lang} onClose={() => undefined} /> : s.section === "landing" ? <Landing key={`${s.lang}:${s.empty}`} onAuth={() => undefined} /> : s.section === "download" ? <DownloadPage key={`${s.lang}:${s.empty}`} /> : <Sections key={`${s.lang}:${s.long}:${s.empty}`} s={s} />}
     </div>
   );
 }

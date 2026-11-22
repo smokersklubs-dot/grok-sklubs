@@ -62,11 +62,17 @@ async function request<T>(path: string, init: RequestInit): Promise<T> {
   return data as T;
 }
 
+/** The browser's IANA time zone ("" when the browser does not say). */
+export function browserZone(): string {
+  try { return Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch { return ""; }
+}
+
 export function api<T = unknown>(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
   return request<T>(path, {
     method,
     signal,
-    headers: body !== undefined ? { "Content-Type": "application/json" } : undefined,
+    // L92: the browser's time zone rides along, so "tomorrow" means tomorrow where the user is (agent/turnstamp.ts).
+    headers: body !== undefined ? { "Content-Type": "application/json", "X-Time-Zone": browserZone() } : undefined,
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
 }

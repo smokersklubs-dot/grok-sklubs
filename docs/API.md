@@ -70,6 +70,11 @@ Authentication is an HTTP-only session cookie; every route except the auth route
 | PATCH | `/routines/:id` | `{ enabled }` | `{ routine }` |
 | POST | `/routines/:id/run` | – | `{ ok }` |
 | DELETE | `/routines/:id` | – | `{ ok }` |
+| GET / PUT | `/routines/:id/options` | `{ announce?: "thread" \| "chat", condition?, heavy? }` | `{ announce, condition, heavy }` — vague 6 : où voir son travail (L54), condition vérifiée par un petit modèle (L86), travail lourd placé à la remise à zéro du quota (L183) |
+| GET | `/bots/:id/notes` | – | `{ notes: [{ id, text, thread }] }` — messages tapés pendant le travail, pas encore lus (L58) |
+| DELETE | `/bots/:id/notes/:noteId` | – | `{ ok, notes }` — « Retirer » ; 404 si le bot l'a déjà lu |
+| GET / PUT | `/team/ask-policy` | `{ mode: "open" \| "hierarchy" }` | `{ mode }` — « qui peut demander à qui » (L96) |
+| PUT | `/sections/:id/lead` | `{ botId }` | `{ lead }` — le chef d'une section (L96) |
 | GET | `/tasks` | – | `{ tasks: Task[] }` (all bots) |
 | GET | `/bots/:id/tasks` | – | `{ tasks: Task[] }` |
 | POST | `/hooks/:token` | any JSON | `{ ok }` — fires a webhook routine (no session needed). L20 (`hookroutes.ts`, `hooktrust.ts`): a repeated delivery id (`webhook-id`, `X-GitHub-Delivery`, `X-Gitlab-Event-UUID`, `Idempotency-Key`, `X-Delivery-Id`, Stripe's event id) answers `{ ok, duplicate: true }` without running (7 days); with a signing secret, a call must carry a valid HMAC-SHA256 signature (GitHub `X-Hub-Signature-256`, Stripe `Stripe-Signature`, Standard Webhooks `webhook-signature`; timestamps ±5 min) or gets 401 (logged, not counted in the hook's rate); with grouping on, `{ ok, grouped: true }` and one run per window. A webhook without a secret works as before ("non signé") |
@@ -773,3 +778,35 @@ All routes are under `/api` and need the session cookie.
 ### Temporary public links (`server/src/publiclinks.ts`)
 - Tool `file_public_link { path, minutes? }` (group `files`; asks first, `once`, after outside content): images, audio, video ≤ 50 MB, 60 min by default, 1 440 at most. Public `GET|HEAD /l/<id>.<hmac>` (HMAC-SHA256 of id and expiry with `SESSION_SECRET`; only a hash of the token stored; read through the library guard; `no-store`, `noindex`; 410 once expired or removed).
 - `GET /public-links` (active), `POST /bots/:id/public-links { path, minutes? }` → `{ link }` (with `url`, shown once), `DELETE /public-links/:id`. Creation, downloads and removal are audited. Server event `{ type: "publicLinks" }`.
+
+## Wave 6 — open API, accounts, network, import (A-FAIRE L82, L169, L170, L181)
+
+### OpenAI-compatible chat (`server/src/botopenai.ts`)
+One bot per key. Use the bot's API key (`sk_bot_…`, permissions `read` + `write`) as the "API key" and `https://<your Sklubot>/api/v1` as the "base URL" of any OpenAI client. Shapes follow the official reference (https://platform.openai.com/docs/api-reference/chat/create, …/chat/streaming, …/models/list).
+- `POST /api/v1/chat/completions` `{ model?, messages, stream? }` → `{ id, object: "chat.completion", created, model, choices: [{ index: 0, message: { role: "assistant", content }, finish_reason: "stop" }], usage }`. With `stream: true`: `chat.completion.chunk` server-sent events, then `data: [DONE]`.
+- `GET /api/v1/models` → `{ object: "list", data: [{ id: "sklubot-<bot name>", object: "model", owned_by: "sklubot" }] }`.
+- Differences, on purpose: the bot keeps its own conversation, so only the LAST `user` message is sent (earlier messages and `system` are ignored: a program cannot rewrite the bot's instructions); `model` is echoed, never used to pick a model; the stream sends the whole reply in one chunk once it is complete; token counts are 0 (the owner's usage page has the real cost). A reply that takes more than 5 minutes, or that waits for the owner's approval, answers `409` with `code: "still_working"` / `"needs_approval"` and the message's `seq` (read it later with `GET /api/v1/bot/messages/{seq}/wait`). Errors use OpenAI's `{ error: { message, type, code } }`. The message is outside content, like every API message (approvals, caps, Pause and the plan apply).
+
+### Memory (`GET /api/v1/bot/memories`)
+Permission `memory` (new). The bot's active and contested notes, newest first (`limit`, 200 by default, 500 at most): `{ memories: [{ id, text, status, confidence, createdAt }] }`. Never archived, binned or sensitive notes (health, religion… stay in the app); every text goes through the secret mask. Read only.
+
+### OpenAPI file and deprecations (`server/src/openapi.ts`)
+`GET /api/v1/openapi.json` (no key): OpenAPI 3.1 of every `/api/v1` route, generated from the route table `PUBLIC_ROUTES`; `server/test/wave6-open.test.ts` fails if a registered route is missing from it (or the other way round). A route that will go away keeps working and carries `deprecated: true` in the file and the headers `Deprecation: @<unix time>` (RFC 9745), `Sunset: <date>` (RFC 8594) and `Link: <successor>; rel="successor-version"`. Rule: at least 6 months between the two dates. No route is deprecated today.
+
+### Headless command (`scripts/sklubot.mjs`)
+Node 22+, nothing to install: `SKLUBOT_URL=https://… SKLUBOT_KEY=sk_bot_… node scripts/sklubot.mjs ask "Résume ma journée"`. Commands: `ask` (send and print the reply), `send`, `messages`, `task`, `task-status`, `memories`, `whoami`, `openapi`. Exit codes: 0 done, 1 refused (the server's sentence on stderr), 2 wrong usage, 3 still working or waiting for the owner (the seq on stdout).
+
+### Outgoing webhooks (`server/src/outwebhooks.ts`)
+Bot settings → Accès API → « Webhooks sortants » (owner, session): `GET/POST /bots/:id/webhooks { url, events }` (the signing secret is in the POST answer, once), `PATCH /bots/:id/webhooks/:hookId { active }`, `DELETE …`, `POST …/test`. At most 5 per bot.
+- Events: `message.created` (a finished reply: `{ seq, thread, text }`), `task.finished` (`{ taskId, status, objective, summary }`), `approval.pending` (`{ approvalId, title }` — never the card's detail; the answer is only given in the app).
+- Body: `{ type, id, timestamp, bot: { id, name }, data }`. Headers (Standard Webhooks, like the incoming webhooks): `webhook-id`, `webhook-timestamp`, `webhook-signature: v1,<base64 HMAC-SHA256 of "id.timestamp.body">`, key = the base64 after `whsec_`.
+- Delivery: through the outbound guard (no private address), 10 s timeout, no redirect followed; a 2xx delivers, anything else is tried again after 10 s, 1 min, 5 min, 30 min, 2 h, 6 h, then "failed". One event is never queued twice. The log keeps the last 100 deliveries per webhook (status, tries, HTTP answer). Texts go through the secret mask.
+
+### Several keys per provider (`server/src/providerkeys.ts`)
+`GET/POST /api-providers/:id/keys { name, key }`, `PATCH /api-providers/:id/keys/:keyId { name?, position? }`, `DELETE …` — names only, a key is never sent back; `GET /bots/:id/provider-keys`, `PUT /bots/:id/provider-keys { providerId, keyId | null }`. Only the account's own API providers (`up-…`); never a consumer subscription. Order of a call: the bot's chosen key, then the main key, then the others; 401/403/402/429 or "out of credit" makes the key rest (Retry-After, else 1 min for 429 and 1 h otherwise) and the same call goes on with the next key; the switch is in the account journal by name.
+
+### Network policy (`server/src/netpolicy.ts`)
+`GET/PUT /bots/:id/network { mode: "all" | "list" | "none", hosts }`, `GET/PUT /network/blocked-sites { hosts }` (the owner's sites blocked for all their bots; 200 at most). Coverage: see docs/SECURITE.md « Accès à Internet par bot ».
+
+### Import from a local setup (`server/src/localimport.ts`)
+`POST /import/local/preview { files: [{ path, text }], source? }` (`source`: `claude-code`, `codex`, `openclaw`, `hermes`, else detected) → the Grok preview (`GrokImportPreview`) plus `source`, `excluded: [{ path, why }]`, `read`. Commit with `POST /import/grok/commit` and the same `previewId`. Files never read: `.env*`, `auth.json`, `.credentials.json`, `credentials*`, keys, tokens, SQLite; settings that may hold keys (`config.toml`, `config.yaml`, `openclaw.json`, `settings*.json`, `.claude.json`, `.mcp.json`). 300 files, 200 KB each, 2 MB in all.

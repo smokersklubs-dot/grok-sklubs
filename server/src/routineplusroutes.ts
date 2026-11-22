@@ -23,6 +23,7 @@ import {
 import { schedule } from "./scheduler.js";
 import { audit, bots, type BotRecord, type UserRecord } from "./store.js";
 import { publicRoutine } from "./routines.js";
+import { registerRoutineOptionRoutes } from "./routineoptions.js";
 
 type Env = { Variables: { user: UserRecord } };
 
@@ -51,6 +52,7 @@ export async function runNowGuard(c: Context<Env>, r: RoutineRecord): Promise<vo
 }
 
 export function registerRoutinePlusRoutes(api: Hono<Env>) {
+  registerRoutineOptionRoutes(api); // L54 / L86 / L183 options (routineoptions.ts)
   api.get("/routines/:id/extras", (c) => {
     const r = ownRoutine(c);
     return c.json({ ...routineExtras(r, botOf(r)), track: trackFor(r, c.get("user").locale) });

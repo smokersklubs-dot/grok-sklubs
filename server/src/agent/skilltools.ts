@@ -2,6 +2,7 @@ import type { ToolSpec } from "../llm/types.js";
 import { botEditRefusal, metaOf, nearDuplicates, readSkill, skillMeta } from "../skillhealth.js";
 import type { Skill } from "../shared.js";
 import { skills } from "../store.js";
+import { companionNote, readCompanion } from "../skillfiles.js";
 import type { BuiltinTool, ToolOutput } from "./tools.js";
 
 /**
@@ -12,15 +13,24 @@ import type { BuiltinTool, ToolOutput } from "./tools.js";
  */
 type Found = Skill & { own: boolean; botName: string };
 
-export function skillReadOutput(s: Found, section: unknown): ToolOutput {
+export function skillReadOutput(s: Found, section: unknown, file?: unknown): ToolOutput {
   if (metaOf(s.id).onlyOnRequest)
     return { content: `The skill "${s.name}" is used only when the user asks for it ("/skill ${s.name}"). Do not follow it on your own.`, isError: true, summary: s.name };
+  // L130: a companion file (template, style sheet, neighbour page) kept with the skill, as text: copied by the bot, never run here.
+  if (typeof file === "string" && file.trim()) {
+    const f = readCompanion(s.id, s.name, file);
+    if (f.found) skillMeta.used(s.id);
+    return { content: f.text, isError: !f.found, summary: `${s.name} · ${file.trim().slice(0, 60)}`, outside: s.outside };
+  }
   const r = readSkill(s, typeof section === "string" || typeof section === "number" ? String(section) : undefined);
   skillMeta.used(s.id);
   // A skill learned in a turn that had read outside content is itself outside content: a page may have shaped it.
-  return { content: `# ${s.name}${s.own ? "" : ` (shared by ${s.botName})`}${s.learned ? " (learned from an earlier task)" : ""}\n${r.text}`, summary: r.part === "all" ? s.name : `${s.name} · ${r.part === "index" ? "index" : `§${r.part}`}`, outside: s.outside };
+  return { content: `# ${s.name}${s.own ? "" : ` (shared by ${s.botName})`}${s.learned ? " (learned from an earlier task)" : ""}\n${r.text}${r.part === "all" || r.part === "index" ? companionNote(s.id) : ""}`, summary: r.part === "all" ? s.name : `${s.name} · ${r.part === "index" ? "index" : `§${r.part}`}`, outside: s.outside };
 }
-export const skillSectionParam = { section: { type: "string", description: "For a long skill: the number or title of the section to read (skill_read without it gives the index)" } };
+export const skillSectionParam = {
+  section: { type: "string", description: "For a long skill: the number or title of the section to read (skill_read without it gives the index)" },
+  file: { type: "string", description: "Optional: one of the files kept with the skill (a template, a style sheet, another page), by the path skill_read lists" },
+};
 
 /** Why skill_save may not replace this skill (the user locked it, or too much of it would go), or null. */
 export const saveRefusal = (existing: Skill | undefined, body: string): string | null => (existing ? botEditRefusal(existing, body) : null);

@@ -3,4 +3,5 @@ Source: https://github.com/anthropics/skills/tree/e4bb5d960d87126ff3b3a8af1a104b
 Licence: Apache License, Version 2.0 (the full text is in LICENSE.txt in this folder, copied unchanged from the source folder).
 
 Modified for Sklubot (2026-11-18): the PDF showcase (not included) is replaced by a list or a private preview page; the ten theme files of themes/ are included inline under "Theme files"; a section "Using this skill in Sklubot" was added at the end.
+Modified for Sklubot (2026-11-22): a pointer to the skill « Thèmes sans marque » was added in "Using this skill in Sklubot".
 Only SKILL.md and the licence are included; no script, font, image or PDF of the original folder is bundled.

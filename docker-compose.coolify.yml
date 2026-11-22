@@ -6,6 +6,8 @@ services:
       context: .
       dockerfile: Dockerfile.production
     restart: unless-stopped
+    # L95 : plafond de mémoire du serveur (les ordinateurs des bots ont le leur : DESKTOP_MEMORY). Voir docs/DEPLOIEMENT.md.
+    mem_limit: "${SKLUBOT_MEM_LIMIT:-3g}"
     depends_on:
       desktop-image:
         condition: service_completed_successfully
@@ -150,6 +152,7 @@ services:
       dockerfile: Dockerfile.production
     command: ["node", "server/dist/dockerproxy.js"]
     restart: unless-stopped
+    mem_limit: "${SKLUBOT_PROXY_MEM_LIMIT:-192m}" # L95
     environment:
       DESKTOP_IMAGE: "sklubot-desktop"
       # Réseaux où un ordinateur peut être créé. Avec SKLUBOT_BOT_LINK=network (l'ancienne façon), mets

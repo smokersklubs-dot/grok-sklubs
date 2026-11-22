@@ -43,7 +43,8 @@ export async function drainSteering(bot: BotRecord, turn?: Pick<Turn, "hosts" | 
   if (!list.length) return [];
   steering.delete(bot.id);
   setLive(bot.userId, bot.id, { queued: 0 });
-  const blocks: Block[] = [];
+  // L58: the note adds to the work under way; a question in it is answered first, and the reply covers both.
+  const blocks: Block[] = [{ type: "text", text: ADDS_TO_WORK } satisfies TextBlock];
   for (const note of list) {
     blocks.push(...await note.prepare());
     if (turn) {
@@ -55,6 +56,31 @@ export async function drainSteering(bot: BotRecord, turn?: Pick<Turn, "hosts" | 
   }
   forget(list);
   return blocks;
+}
+
+/** L58: the line put before the notes typed during a turn. */
+export const ADDS_TO_WORK = "[The user wrote the message below while you were working. It adds to the current work — it does not replace it unless they say so. If it asks a question, answer that first, then carry on with the work; your final reply covers both.]";
+
+/** L58 « file visible »: the notes still waiting for the turns of this bot, oldest first. */
+export function waitingNotes(botId: string): { id: number; text: string; thread: number }[] {
+  const out: { id: number; text: string; thread: number }[] = [];
+  for (const [, thread, list] of steering.lanesOf(botId)) for (const n of list) if (n.id !== null) out.push({ id: n.id, text: clip(n.text, 500), thread });
+  return out.sort((a, b) => a.id - b.id);
+}
+
+/** L58 « Retirer »: a waiting note is taken back before the turn reads it (memory and disk). False when already read. */
+export function removeNote(botId: string, noteId: number): boolean {
+  for (const [lane, , list] of steering.lanesOf(botId)) {
+    const i = list.findIndex((n) => n.id === noteId);
+    if (i < 0) continue;
+    const [gone] = list.splice(i, 1);
+    forget([gone]);
+    if (!list.length) steering.delete(lane);
+    const bot = bots.byId(botId);
+    if (bot) setLive(bot.userId, bot.id, { queued: waitingNotes(botId).length });
+    return true;
+  }
+  return false;
 }
 
 /** "Tout arrêter" (stopcommand.ts): the notes waiting in every lane of this bot are dropped. Returns how many. */

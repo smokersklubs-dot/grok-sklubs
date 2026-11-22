@@ -60,6 +60,13 @@ export const NATIVE_APPS: NativeApp[] = [
     scopes: [`${G}drive.readonly`, `${G}drive.file`, "openid", "email"], capabilities: ["drive"], triggers: [],
   },
   {
+    // L166 (native/searchconsole.ts): webmasters.readonly covers sites, search analytics, sitemaps and URL inspection
+    // (https://developers.google.com/webmaster-tools/v1/how-tos/authorizing). PageSpeed needs no scope; IndexNow is not Google.
+    id: "searchconsole", vendor: "google", name: "Search Console", category: "Analytics & SEO",
+    description: "Your real Google Search data: clicks, impressions, positions by query and page, sitemaps, why a page is not indexed. Also PageSpeed for any page, and IndexNow to tell search engines a page changed (with your approval).",
+    scopes: [`${G}webmasters.readonly`, "openid", "email"], capabilities: ["seo"], triggers: [],
+  },
+  {
     // Microsoft Graph delegated permissions (work, school and personal accounts): https://learn.microsoft.com/en-us/graph/permissions-reference
     // offline_access gives the refresh token: https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-auth-code-flow
     id: "outlook", vendor: "microsoft", name: "Outlook", category: "Mail & calendar",
@@ -87,6 +94,7 @@ const FR_APPS: Record<NativeAppId, { category: string; description: string }> = 
   gdrive: { category: "Fichiers", description: "Chercher dans ton Drive, lire les documents en texte (Docs, Sheets et Slides exportés), envoyer des fichiers depuis la bibliothèque d'un bot (avec ton accord)." },
   outlook: { category: "Mail & agenda", description: "Mail et agenda Microsoft 365 ou Outlook.com : recherche, lecture, brouillons, envoi, archivage ; agenda, disponibilités et événements. Déclencheurs : nouvel e-mail, événement qui commence bientôt." },
   slack: { category: "Communication", description: "Lire les canaux et messages directs, publier (avec ton accord) et réagir, avec ta propre app Slack. Déclencheurs : nouveau message dans un canal ou en privé, ou une mention." },
+  searchconsole: { category: "Analytique & SEO", description: "Tes vraies données de recherche Google : clics, impressions, positions par requête et par page, plans de site, pourquoi une page n'est pas indexée. Aussi PageSpeed pour n'importe quelle page, et IndexNow pour signaler aux moteurs qu'une page a changé (avec ton accord)." },
 };
 export const appsFor = (locale: Locale): NativeApp[] => (locale === "fr" ? NATIVE_APPS.map((a) => ({ ...a, ...FR_APPS[a.id] })) : NATIVE_APPS);
 
@@ -98,7 +106,7 @@ const STEPS: Record<NativeVendor, Record<Locale, string[]>> = {
   google: {
     en: [
       "Open the Google Cloud console (console.cloud.google.com) and create a project, or pick an existing one.",
-      "Menu → APIs & Services → Library: enable the Gmail API, the Google Calendar API and/or the Google Drive API — only those you will connect.",
+      "Menu → APIs & Services → Library: enable the Gmail API, the Google Calendar API, the Google Drive API and/or the Google Search Console API — only those you will connect.",
       "Menu → Google Auth platform → Branding: enter an app name (e.g. Sklubot) and your support email. Then Audience: choose External (or Internal on Google Workspace) and, under Test users, click Add users and add every Google address you will connect.",
       "Google Auth platform → Data Access → Add or Remove Scopes: add the scopes listed below, then Save.",
       "Google Auth platform → Clients → Create Client → Application type: Web application. Under Authorized redirect URIs, add exactly the address below, then click Create.",
@@ -106,7 +114,7 @@ const STEPS: Record<NativeVendor, Record<Locale, string[]>> = {
     ],
     fr: [
       "Ouvre la console Google Cloud (console.cloud.google.com) et crée un projet, ou choisis-en un existant.",
-      "Menu → APIs & Services → Library : active Gmail API, Google Calendar API et/ou Google Drive API — seulement celles que tu vas connecter.",
+      "Menu → APIs & Services → Library : active Gmail API, Google Calendar API, Google Drive API et/ou Google Search Console API — seulement celles que tu vas connecter.",
       "Menu → Google Auth platform → Branding : indique un nom d'app (par ex. Sklubot) et ton e-mail d'assistance. Puis Audience : choisis External (ou Internal sur Google Workspace) et, sous Test users, clique sur Add users et ajoute chaque adresse Google que tu vas connecter.",
       "Google Auth platform → Data Access → Add or Remove Scopes : ajoute les autorisations (scopes) listées ci-dessous, puis Save.",
       "Google Auth platform → Clients → Create Client → Application type : Web application. Sous Authorized redirect URIs, ajoute exactement l'adresse ci-dessous, puis clique sur Create.",

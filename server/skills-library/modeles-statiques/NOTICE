@@ -1,0 +1,7 @@
+modeles-statiques — adapted from meta/astryx (© Meta Platforms, Inc., MIT)
+Sources (each pinned to one commit):
+- meta/astryx — © 2026 Meta Platforms, Inc. — MIT — https://github.com/meta/astryx/tree/fa22c93d4370d9081f0ff426f034ceaf1447c8c6/packages/cli/assets/templates/pages (dashboard-scorecard, table-filter, form-wizard, kanban-board) and https://github.com/meta/astryx/tree/fa22c93d4370d9081f0ff426f034ceaf1447c8c6/plugins/astryx/skills/astryx
+Licence: MIT — the upstream licence text is in LICENSE.txt, unchanged.
+
+Modified for Sklubot (2026-11-22): the four React/StyleX page templates rewritten as four standalone HTML files (files/) without any library, keeping their layout ideas (scorecard with deltas and a commentary column, filter bar with counter and empty state, stepped form with a review step, lanes where the column is the state); the "start from a template, reread, replace hardcoded values, build before delivering" rule rewritten for a Sklubot bot; translated into French.
+Only text is included; no picture or other file of the original folders is bundled. Names of other products are not used as titles.

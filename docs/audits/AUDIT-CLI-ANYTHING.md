@@ -170,13 +170,13 @@ et la méthode `/cli-anything` comme compétence de bot. NON 49.)
 
 1. Compétence « diagrammes » + `mermaid-cli` local dans l'image (S).
 2. Compétence « sous-titres » adaptée de videocaptioner avec les outils existants (S).
-3. Compétence « trouver/installer un outil CLI » (méta-skill), avec la règle « depuis la source officielle, version figée, empreinte vérifiée » (S).
+3. Compétence « trouver/installer un outil CLI » (méta-skill), avec la règle « depuis la source officielle, version figée, empreinte vérifiée » (S) — **fait le 22/11/2026** (`installer-un-outil-cli`).
 4. Compétence « notes Obsidian » sur un coffre partagé par le Relais (fichiers .md) (M).
-5. Compétence « écrire un harnais CLI » adaptée de HARNESS.md (phases 1-6) (M).
+5. Compétence « écrire un harnais CLI » adaptée de HARNESS.md (phases 1-6) (M). En partie le 22/11/2026 : `petit-outil-cli` (écrite pour Sklubot, pas le harnais complet).
 6. Règle « vérifier le fichier produit » (frames vidéo, niveaux audio, rendu de document) dans la méthode de travail (S).
 7. Carte « trajectoire » d'aperçus pour le travail créatif (M).
 8. Verrou d'écriture sur les fichiers du dossier d'équipe partagé (M).
-9. Fiches IDÉE au cas par cas : retouche Pillow/ImageMagick, audio ffmpeg, nettoyage pandas, Calibre (S chacune).
+9. Fiches IDÉE au cas par cas : retouche Pillow/ImageMagick, audio ffmpeg, nettoyage pandas, Calibre (S chacune) — **fait le 22/11/2026** (`retouche-d-images`, `audio-ffmpeg`, `nettoyer-des-donnees`, `livres-numeriques`).
 
 ## Non vérifié
 

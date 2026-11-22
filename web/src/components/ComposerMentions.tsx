@@ -6,7 +6,7 @@ import type { Bot } from "../types";
 import { Icon, type IconName } from "./Icon";
 import { GithubIssues } from "./GithubIssues";
 import { Modal } from "./ui";
-import { RepositoryPicker } from "./RepositoryPicker";
+import { RepositoryPicker } from "./RepositoryPicker"; import { fileMention, useBotFiles } from "./ComposerSlash";
 
 interface Choice { id: string; label: string; detail: string; icon: IconName; pick: () => void }
 type Range = { start: number; end: number };
@@ -26,6 +26,7 @@ export function useComposerMentions(bot: Bot, draft: string, area: RefObject<HTM
   const current = useRef<HTMLButtonElement>(null);
   const own = bot.kind === "agent" && !bot.access;
   const range = own && !disabled && !dismissed && !repository ? mentionAt(draft, caret) : null;
+  const files = useBotFiles(bot.id, !!range);
   const sync = (el: HTMLTextAreaElement, changed = false) => {
     const next = el.selectionStart === el.selectionEnd ? el.selectionStart : -1;
     if (changed || next !== caret) { dismiss(false); setActive(0); }
@@ -69,6 +70,7 @@ export function useComposerMentions(bot: Bot, draft: string, area: RefObject<HTM
       } });
     }
   }
+  if (range) choices.unshift(...files.filter(f => f.name.toLowerCase().includes(range.query)).slice(0, range.query ? 6 : 3).map((f): Choice => ({ id: "file-" + f.name, label: f.name, detail: t("mention.file"), icon: "file", pick: () => replace(range, fileMention(f.name)) }))); // L152 @fichier
   const matches = choices.filter(c => c.label.toLowerCase().includes(range!.query)).slice(0, 12);
   const active = Math.min(activeIndex, matches.length - 1);
   const open = matches.length > 0;

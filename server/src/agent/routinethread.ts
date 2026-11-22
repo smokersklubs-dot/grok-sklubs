@@ -2,6 +2,8 @@ import { q } from "../db.js";
 import { bots, clip, rows, users, type BotRecord } from "../store.js";
 import { gt } from "./guardtext.js";
 import type { Trigger } from "./turn-request.js";
+import { saysNothingNew } from "./routineframe.js";
+import { announceOfRun } from "../routineoptions.js";
 
 /**
  * Owner decision (22/11/2026): a routine runs in its OWN thread. When a routine run starts, one message is put in the
@@ -23,6 +25,8 @@ export function openRoutineThread(botId: string, trigger: Trigger, queueId?: num
   if (trigger.kind !== "routine" || trigger.thread || trigger.continuation) return trigger;
   const bot = bots.byId(botId);
   if (!bot || bot.kind !== "agent") return trigger;
+  // L54: the owner chose « dans la discussion » for this routine: the run works in the main chat, as before (routineoptions.ts).
+  if (trigger.runId && announceOfRun(trigger.runId) === "chat") return trigger;
   const loc = users.localeOf(bot.userId);
   const parent = rows.append(bot, { kind: "message", role: "assistant", text: gt(loc, "Routine “{name}”: running…", { name: trigger.name }), origin: { kind: "routine", id: trigger.runId ?? "", name: trigger.name } }, 0);
   trigger.thread = parent.seq;
@@ -34,7 +38,24 @@ export function openRoutineThread(botId: string, trigger: Trigger, queueId?: num
 function routineParent(bot: BotRecord, thread: number) {
   if (!thread) return null;
   const p = rows.get(bot.id, bot.generation, thread);
-  return p && p.body.kind === "message" && p.body.role === "assistant" && p.body.origin?.kind === "routine" ? p : null;
+  if (!p) return null;
+  if (p.body.kind === "message" && p.body.role === "assistant" && p.body.origin?.kind === "routine") return p;
+  return null;
+}
+
+/**
+ * Whether the routine's thread holds something the owner must see — a notice (a cap, a limit, an error, an automatic
+ * continuation on its way) or a card. Then the run is never "nothing new", whatever its last words.
+ */
+function threadNeedsOwner(bot: BotRecord, generation: number, thread: number): boolean {
+  const list = q.all<{ kind: string; body: string }>(
+    "SELECT kind, body FROM rows WHERE bot_id = ? AND generation = ? AND thread = ? AND kind IN ('notice', 'card') ORDER BY seq DESC LIMIT 50",
+    bot.id, generation, thread);
+  return list.some((r) => {
+    if (r.kind === "card") return true;
+    // Any notice counts: a cap, a limit, an error, or "the work moves on, I carry on by myself" (L72) — a quiet run has none.
+    return true;
+  });
 }
 
 /**
@@ -47,6 +68,13 @@ export function closeRoutineThread(bot: BotRecord | null | undefined, thread: nu
   if (!p || p.body.kind !== "message" || p.body.origin?.kind !== "routine") return;
   const loc = users.localeOf(bot.userId);
   const name = p.body.origin.name;
+  // L54: nothing new (stay_quiet, no words, or only "nothing new"): nothing is posted — the placeholder becomes a quiet
+  // event line (no unread count, no push), and the thread with the run's steps stays reachable from the run log.
+  if (!o.waiting && !o.failed && (!o.said || saysNothingNew(o.said)) && !threadNeedsOwner(bot, p.generation, thread)) {
+    q.run("UPDATE rows SET kind = 'event' WHERE bot_id = ? AND generation = ? AND seq = ?", bot.id, p.generation, p.seq);
+    rows.rewrite(bot, p.generation, p.seq, { kind: "event", event: "routine", text: gt(loc, "Routine “{name}”: nothing new.", { name }) });
+    return;
+  }
   // Waiting for the owner (an approval card in the thread): the main chat says so, so the card is never missed.
   const text = o.waiting ? gt(loc, "Routine “{name}”: waiting for your approval — open the thread.", { name })
     : o.failed ? gt(loc, "Routine “{name}”: stopped ({why}). Open the thread to see the steps.", { name, why: clip(o.failed, 160) })

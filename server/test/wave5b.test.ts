@@ -316,18 +316,19 @@ test("routines: skipped without a model call when nothing is new, one at a time,
   assert.ok(p > 0.02 && p < 0.05, `≈ 30 × 0.0011 $ (${p})`);
 });
 
-test("routines: failures are said, pushed after 3 in a row, and the routine pauses after 5; a routine cannot create routines", async () => {
+test("routines: failures are tried again first, said once, pushed after 3 counted, spaced out (never paused) after 5; a routine cannot create routines", async () => {
   const b = await fresh("Fragile");
   const r = routines.create(b.id, { name: "Rapport", prompt: "Fais le rapport", trigger: "cron", schedule: "0 8 * * *", timezone: "UTC" });
-  for (let i = 0; i < ROUTINE_FAIL_PAUSE; i++) runs.finish(runs.start(r.id), "error", `le site ne répond pas (${i})`);
+  // L62 (routinepacing.ts): each counted failure comes after 3 new tries (5, 15, 30 min); 5 counted = 20 failed runs.
+  for (let i = 0; i < 4 * ROUTINE_FAIL_PAUSE; i++) runs.finish(runs.start(r.id), "error", `le site ne répond pas (${i})`);
   const now = routines.byId(r.id)!;
   assert.equal(now.failures, ROUTINE_FAIL_PAUSE);
-  assert.equal(now.enabled, false);
-  assert.match(now.pausedReason!, /5 échecs/);
+  assert.equal(now.enabled, true, "spaced out, not paused");
   const notices = (await rowsOf(b.id)).filter((x) => x.body.kind === "notice").map((x) => (x.body as { text: string }).text);
-  assert.ok(notices.some((t) => /La routine « Rapport » a échoué : le site ne répond pas/.test(t)));
-  assert.ok(notices.some((t) => /J'ai mis en pause la routine « Rapport »/.test(t)));
-  // Turned back on by the user: the count starts over.
+  assert.equal(notices.filter((t) => /La routine « Rapport » a échoué : le site ne répond pas \(0\)\. Je réessaie dans 5 min/.test(t)).length, 1, "one notice, at the first failure after a success");
+  assert.ok(notices.some((t) => /La routine « Rapport » échoue encore \(5 fois de suite\) : je la lance moins souvent/.test(t)));
+  // The user pauses it, then turns it back on: the count starts over.
+  assert.equal((await call("PATCH", `/routines/${r.id}`, { enabled: false })).status, 200);
   assert.equal((await call("PATCH", `/routines/${r.id}`, { enabled: true })).status, 200);
   assert.equal(routines.byId(r.id)!.failures, 0);
   // A routine's own turn cannot create routines.

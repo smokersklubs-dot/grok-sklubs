@@ -8,6 +8,8 @@ import { capHolds, cm, noteSkip } from "../usagecaps.js";
 import { checkpoints } from "./spend.js";
 import type { BuiltinTool } from "./tools.js";
 import { enqueue, hostedHoldsBot, interrupt, isPaused, queuedBehind, runningThreads, tell } from "./loop.js";
+import { cleanCriteria, criteriaCard, criteriaOf, criteriaTool, endReview, recordEvidence, reviewOf, setCriteria, startReview } from "./goalcriteria.js";
+import { lt } from "./looptext.js";
 
 /**
  * Goal mode ("Objectif" in the composer, "/objectif …", a routine whose text starts with "/objectif", or a goal the bot
@@ -43,7 +45,7 @@ export function goalCard(g: GoalRecord): Extract<Card, { type: "goal" }> {
   return {
     type: "goal", goalId: g.id, objective: g.objective, status: g.status, rounds: g.rounds, maxRounds: g.maxRounds,
     ...(g.summary ? { summary: g.summary } : {}), ...(g.evidence ? { evidence: g.evidence } : {}), ...(g.reason ? { reason: g.reason } : {}),
-    ...(g.status === "active" && g.waiting ? { waiting: g.waiting } : {}),
+    ...(g.status === "active" && g.waiting ? { waiting: g.waiting } : {}), ...criteriaCard(g.id), // L89 (goalcriteria.ts)
   };
 }
 
@@ -134,7 +136,7 @@ export function goalRoundPrompt(g: Pick<GoalRecord, "objective" | "maxRounds">, 
 /** A short line for a turn in a conversation whose goal is active (the first round, or the user's message meanwhile). */
 export function goalNote(g: GoalRecord, round: number, first: boolean): string {
   return first
-    ? `[Goal mode is on: the user set this message as an objective (round ${round}/${g.maxRounds}). Work on it across rounds without waiting for them: when this turn ends, the next round starts on its own. When the WHOLE objective is achieved and verified, call goal_update with status "complete", a summary and the evidence; if something only the user can resolve blocks you, call goal_update with status "blocked" and the reason; otherwise call goal_update with status "active" and a one-line progress summary before your turn ends.]`
+    ? `[Goal mode is on: the user set this message as an objective (round ${round}/${g.maxRounds}). First set 3 to 7 success criteria with goal_criteria (checks someone could see from outside). Work on it across rounds without waiting for them: when this turn ends, the next round starts on its own. When the WHOLE objective is achieved and verified, call goal_update with status "complete", a summary and the evidence; if something only the user can resolve blocks you, call goal_update with status "blocked" and the reason; otherwise call goal_update with status "active" and a one-line progress summary before your turn ends.]`
     : `[Goal mode is on — objective: ${JSON.stringify(clip(g.objective, 600))} (round ${round}/${g.maxRounds}). Answer the message below, then keep working toward the objective. Use goal_update to report progress, completion (with evidence) or a blocker.]`;
 }
 
@@ -249,6 +251,12 @@ export function goalAction(bot: BotRecord, goalId: string, action: "pause" | "re
       break;
     case "resume":
     case "accept": {
+      // L89: a goal that waits for the owner's approval of its result: « Valider » closes it, « Reprendre » sends it back.
+      const review = g.status === "blocked" ? reviewOf(g.id) : null;
+      if (review) {
+        endReview(g.id);
+        if (action === "accept") { next = goals.set(g, { status: "complete", summary: review.summary, evidence: review.evidence, reason: "", waiting: "", queued: false }); audit(bot.userId, "system", `${bot.name}: goal approved — ${clip(g.objective, 160)}`, bot.id); break; }
+      }
       const can = action === "accept" ? g.status === "proposed" : ["paused", "limit", "blocked"].includes(g.status);
       if (!can) throw new GoalError(409, action === "accept" ? "This goal was already answered." : "This goal cannot be resumed.");
       // Resuming at the cap gives it another full set of rounds (still within GOAL_ROUNDS_LIMIT in all).
@@ -283,11 +291,12 @@ export class GoalError extends Error {
 const str = (description: string) => ({ type: "string", description });
 
 export const goalTools: BuiltinTool[] = [
+  criteriaTool((botId, thread) => goals.openFor(botId, thread), (id) => { const g = goals.byId(id); if (g) syncCard(g); }), // L89
   {
     spec: {
       name: "goal_update",
       description: "Goal mode: report on the goal of this conversation. status \"active\": still working (summary = one line of progress; the next round starts on its own). \"complete\": the WHOLE objective is achieved and verified — give the evidence (what you checked and what it showed). \"blocked\": you cannot go on without the user or something outside your control — the summary says why. Only for a conversation with an active goal.",
-      inputSchema: { type: "object", properties: { status: { type: "string", enum: ["active", "complete", "blocked"], description: "Where the goal stands" }, summary: str("One or two lines: progress, result, or why it is blocked"), evidence: str("For complete: the evidence that the objective is achieved (checks run, files, links, numbers)") }, required: ["status", "summary"] },
+      inputSchema: { type: "object", properties: { status: { type: "string", enum: ["active", "complete", "blocked"], description: "Where the goal stands" }, summary: str("One or two lines: progress, result, or why it is blocked"), evidence: str("For complete: the evidence that the objective is achieved (checks run, files, links, numbers)"), criteria_evidence: { type: "array", items: { type: "string" }, description: "For complete, when the goal has success criteria: one piece of evidence per criterion, in order" } }, required: ["status", "summary"] },
     },
     activity: "planning", label: "Updating the goal", group: "tasks",
     run: async (a, c) => {
@@ -297,7 +306,17 @@ export const goalTools: BuiltinTool[] = [
       const status = String(a.status);
       if (status === "complete") {
         const evidence = clip(String(a.evidence ?? "").trim(), 2000);
-        if (!evidence) return { content: "To mark the goal complete, give the evidence: what you checked and what it showed. If you have not verified it yet, verify it first.", isError: true };
+        if (!evidence && !criteriaOf(g.id).length) return { content: "To mark the goal complete, give the evidence: what you checked and what it showed. If you have not verified it yet, verify it first.", isError: true };
+        // L89: with success criteria, evidence for each one, then « attend ton accord » instead of closing on its own.
+        const missing = recordEvidence(g.id, a.criteria_evidence);
+        if (missing) return { content: missing, isError: true };
+        if (criteriaOf(g.id).length) {
+          const all = criteriaOf(g.id).map((x, i) => `${i + 1}. ${x.text} — ${x.evidence}`).join("\n");
+          startReview(g.id, summary, clip(evidence || all, 2000));
+          goals.set(g, { status: "blocked", reason: lt(c.user.locale, "waiting for your approval"), summary, evidence: clip(evidence || all, 2000), waiting: "", queued: false });
+          tell({ type: "waiting", bot: c.bot, text: lt(c.user.locale, "Goal done, waiting for your approval: {objective}", { objective: clip(g.objective, 120) }) });
+          return { content: "Every criterion has its evidence. The goal now waits for the user's approval on its card; no more rounds start. Tell the user the result and the evidence in your final message.", summary: lt(c.user.locale, "waiting for your approval") };
+        }
         goals.set(g, { status: "complete", summary, evidence, waiting: "", queued: false });
         audit(c.bot.userId, "system", `${c.bot.name}: goal complete — ${clip(g.objective, 160)}`, c.bot.id);
         return { content: "The goal is marked complete; no more rounds will start. Tell the user the result in your final message.", summary: tr(c.user.locale, "complete") };
@@ -317,7 +336,7 @@ export const goalTools: BuiltinTool[] = [
     spec: {
       name: "goal_propose",
       description: "Propose a goal for goal mode: a long objective you would keep working on across rounds, on your own, until it is done. The user sees a card and accepts or declines; nothing starts before they accept. Use it when the user asks for long, multi-step work that would need them to press Continue several times. Not for quick tasks.",
-      inputSchema: { type: "object", properties: { objective: str("The objective, complete and self-contained: what done looks like"), max_rounds: { type: "integer", description: `Rounds it may take at most (default ${config.goalMaxRounds}, at most ${config.goalRoundsLimit})` } }, required: ["objective"] },
+      inputSchema: { type: "object", properties: { objective: str("The objective, complete and self-contained: what done looks like"), criteria: { type: "array", items: { type: "string" }, description: "3 to 7 success criteria, each a check someone could see from outside" }, max_rounds: { type: "integer", description: `Rounds it may take at most (default ${config.goalMaxRounds}, at most ${config.goalRoundsLimit})` } }, required: ["objective"] },
     },
     activity: "planning", label: "Proposing a goal", group: "tasks",
     run: async (a, c) => {
@@ -326,7 +345,10 @@ export const goalTools: BuiltinTool[] = [
       if (open && open.generation === c.bot.generation) return { content: `This conversation already has a goal (${open.status}): "${clip(open.objective, 200)}".`, isError: true };
       const objective = String(a.objective ?? "").trim();
       if (!objective) return { content: "Describe the objective.", isError: true };
-      createGoal(c.bot, { objective, thread, origin: c.origin === "routine" ? "routine" : "user", status: "proposed", maxRounds: Number(a.max_rounds) || undefined, tainted: c.tainted });
+      const crit = a.criteria === undefined ? null : cleanCriteria(a.criteria);
+      if (typeof crit === "string") return { content: crit, isError: true };
+      const made = createGoal(c.bot, { objective, thread, origin: c.origin === "routine" ? "routine" : "user", status: "proposed", maxRounds: Number(a.max_rounds) || undefined, tainted: c.tainted });
+      if (crit) { setCriteria(made.id, crit); syncCard(made); }
       return { content: "Proposed: the user sees a card to accept or decline it. Do not start it as a goal before they accept; answer them normally now.", summary: clip(objective, 80) };
     },
   },

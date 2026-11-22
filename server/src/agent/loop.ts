@@ -18,7 +18,7 @@ import { botEmail } from "../botmail.js";
 import { compactIfNeeded } from "./memory.js";
 import { turnEnded, turnStarted } from "../snapshots.js";
 import { EngineTimeout, engineOf, engineTurnOf, isEngineRef, isEngineTimeout, runEngineTurn, type EngineOutcome } from "./engine.js";
-import { buildSystemPrompt } from "./prompt.js";
+import { buildSystemPrompt } from "./prompt.js"; import { stampLine } from "./turnstamp.js"; import { takeRoutineFailure } from "./routineframe.js"; import { noteToolForReceipt, postReceipt } from "./receipt.js"; import { capParts, overTimeBudget, shrinkImages } from "./turnbudget.js"; import { appEnvelope, coerceForApp } from "./appenvelope.js"; import { helperFinished } from "./askrules.js";
 import { hostOf, hostsIn, userLinkHint } from "./links.js"; export { hostOf, hostsIn }; import { drainSteering, recoverNotes, steer } from "./steering.js"; import { isCancelledJob, reportedStop } from "./stopcommand.js"; import { endAuto, ensureUnattended, markAtLimit, takeAuto, wasAtLimit } from "./autocontinue.js"; import { maybeEndCheck } from "./endcheck.js"; import { draftField } from "./draftedit.js"; import { branchContext } from "./editmessage.js"; import { linkNudge, noteOpened } from "./linknudge.js";
 import { deliverCounted as deliverBotMessage, settleAsk, type AskRoute } from "./team.js"; // L53: a helper's report counts against the bot-to-bot breaker
 import { noteDiskTrouble } from "../disk.js";
@@ -613,7 +613,7 @@ async function runScopedTurn(botId: string, trigger: Trigger, thread: number): P
         turn.tainted = true;
         if (trigger.kind === "user") for (const h of hostsIn(trigger.text)) turn.hosts.add(h);
         const extra = await drainSteering(bot, turn);
-        const words = `[${new Date().toISOString().slice(0, 16).replace("T", " ")} UTC]\n${triggerMessage(trigger)}`;
+        const words = `${stampLine(user.id)}\n${triggerMessage(trigger)}`; // L92 (turnstamp.ts)
         const note = handedBack.delete(botId) ? "[The user took control of your computer since your last turn and has handed it back. Look at the screen before relying on what you saw earlier.]\n" : "";
         const heard = feedbackNote(bot, thread);
         // A subscription tool keeps one session of its own: a thread reply carries the message it hangs on every time.
@@ -681,7 +681,7 @@ async function runScopedTurn(botId: string, trigger: Trigger, thread: number): P
       const extra = await drainSteering(bot, turn);
       // The time travels with each message instead of sitting in the system prompt, so that prompt stays identical and cached.
       const ruleNote = scoped.length ? `[Rules ${user.name} set for this routine (their own words — follow them; a rule that says to ask first wins):\n${scoped.map((r) => `- ${r.text}`).join("\n")}]\n` : "";
-      const stamped = `[${new Date().toISOString().slice(0, 16).replace("T", " ")} UTC]\n${ruleNote}${goalLine}${triggerMessage(trigger)}`;
+      const stamped = `${stampLine(user.id)}\n${ruleNote}${goalLine}${triggerMessage(trigger)}`;
       const first = trigger.kind === "user" ? await userBlocks(botId, stamped, trigger.attachments) : [text(stamped)];
       const linkNote = userLinkHint(turn, trigger);
       if (linkNote) first.push(text(linkNote));
@@ -696,21 +696,21 @@ async function runScopedTurn(botId: string, trigger: Trigger, thread: number): P
     if (goalRound) turn.goalId = goalRound.id;
     startWatch("api");
     await modelLoop(turn);
-    if (turn.missingReport) { failed = tr(user.locale, missingReportText); return; }
+    const routineFailed = takeRoutineFailure(botId); if (turn.missingReport || routineFailed) { failed = routineFailed || tr(user.locale, missingReportText); return; } // L68 routine_fail (routineframe.ts)
     // A helper's last words go back to whoever started it.
     if (bot.parentId && turn.lastText && !paused.get(botId) && !bgTaskHooks.isTaskHelper(botId)) {
       const parent = bots.byId(bot.parentId);
       // The hop count travels with the report, so a bot and its helper cannot ping-pong forever.
-      if (parent) deliverBotMessage(bot, parent, turn.lastText, turn.depth, turn.tainted);
+      if (parent) { deliverBotMessage(bot, parent, turn.lastText, turn.depth, turn.tainted); helperFinished(parent.id); } // L96: queued helpers move (askrules.ts)
     }
     if (trigger.kind === "system" && bot.primary) noteCheckinOutcome(user.id, turn.spoke);
     // Replies to messages that came from a phone, and anything the bot says on its own initiative, go back out there.
     if (turn.lastText && !paused.get(botId) && (trigger.kind === "routine" || trigger.kind === "system" || turn.channel === "telegram")) tell({ type: "reply", bot, text: turn.lastText });
-    pushOutcome(bot, user, trigger, turn.lastText); turnOk = true; maybeEndCheck(bot, trigger, turn, { taskHelper: bgTaskHooks.isTaskHelper(botId), asked: !!paused.get(botId) }, enqueue); // L84 (endcheck.ts)
+    pushOutcome(bot, user, trigger, turn.lastText); postReceipt(turn); turnOk = true; maybeEndCheck(bot, trigger, turn, { taskHelper: bgTaskHooks.isTaskHelper(botId), asked: !!paused.get(botId) }, enqueue); // L84 (endcheck.ts)
   } catch (caught) {
     const err = crashOf(controller.signal) ?? caught; // an uncaught error raised from this turn stopped it (crashguard.ts)
     if (err instanceof EngineDone) {
-      failed = engineFailed || (turn?.missingReport ? tr(user.locale, missingReportText) : "");
+      failed = engineFailed || (turn?.missingReport ? tr(user.locale, missingReportText) : "") || takeRoutineFailure(botId);
       if (!failed && !waitingForQuota) { finishEngineTurn(bot, user, trigger, turn); turnOk = true; }
       return;
     }
@@ -906,7 +906,7 @@ async function modelLoop(turn: Turn) {
   let nudged = false;
   let requestingReport = false;
   for (let step = 0; step < config.maxSteps; step++) {
-    if (turn.signal.aborted) throw new Error("aborted"); await safePoint(bot.id); // L18: a graceful stop parks the turn here, between two steps
+    if (turn.signal.aborted) throw new Error("aborted"); await safePoint(bot.id); if (step > 0 && !carry && overTimeBudget(turn)) return; // L18: a graceful stop parks the turn here, between two steps; L90 time budget (turnbudget.ts)
     // A usage cap (usagecaps.ts), at the same safe point: the turn stops before its next step; what it did is kept and a
     // continuation waits on the cap's card. A person's own turn goes on under an "unattended" cap.
     const capped = step > 0 && !carry && usageCaps.any(turn.user.id) ? blockingCap(bot, turnAttended(bot.id)) : null;
@@ -1379,7 +1379,7 @@ export async function execute(turn: Turn, raw: ToolUseBlock): Promise<ToolOutput
     activity(turn, builtin.activity, builtin.detail?.(call.input));
     return builtin.run(call.input, { bot: turn.bot, user: turn.user, depth: turn.depth, signal: turn.signal, tainted: turn.tainted, thread: turn.thread, appUrls: turn.appUrls, origin: turn.origin, toolsRun: turn.toolsRun ?? 0, turn });
   }
-  const remote = turn.remote.get(call.name);
+  const remote = turn.remote.get(call.name); if (remote) call.input = coerceForApp(turn.tools, call); // L93 types from the app's schema (appenvelope.ts)
   if (remote?.native) {
     activity(turn, "connector", remote.connectorName);
     const r = await runNativeTool(remote.native.accountId, remote.remoteName, call.input, { botId: turn.bot.id });
@@ -1491,7 +1491,7 @@ async function processCalls(turn: Turn, st: PausedTurn): Promise<"continue" | "e
 }
 
 function pushResult(turn: Turn, st: PausedTurn, call: ToolUseBlock, out: ToolOutput) {
-  const parts = typeof out.content === "string" ? [text(out.content)] : out.content;
+  const parts = capParts(turn, typeof out.content === "string" ? [text(out.content)] : out.content); // L90 size cap tied to the model window
   st.results.push({ type: "tool_result", toolUseId: call.id, isError: out.isError || undefined, content: parts.map((p) => (p.type === "text" ? text(hideSecrets(turn.user.id, p.text)) : p)) });
   st.endTurn ||= !!out.endTurn;
 }
@@ -1568,7 +1568,7 @@ export async function runReserved(turn: Turn, call: ToolUseBlock, grant: Grant |
     activeTurns.acted(bot.id);
     if (exec) executions.finish(exec, out.isError ? "failed" : "done");
     if (grant && (grant.quote || grant.reason)) audit(user.id, "approval", `${bot.name} : ${label} — ${grant.by === "words" ? tr(loc, "because you said “{quote}”", { quote: clip(grant.quote ?? "", 200) }) : grant.by === "reviewer" ? tr(loc, "reviewer allowed: {reason}", { reason: clip(grant.reason ?? "", 200) }) : grant.by === "conversation" ? clip(grant.reason ?? "", 200) : grant.by}`, bot.id);
-    out = afterTool(turn, call, out);
+    out = await shrinkImages(afterTool(turn, call, out)); // L90 big pictures reduced (turnbudget.ts)
     onStatus(out.isError ? "error" : "done", out.summary);
     if (approvalId) noteOutcome(bot, approvalId, out.isError ? "failed" : "done"); rememberAction(turn, call, hash, out);
     addJournal({ userId: user.id, botId: bot.id, tool: call.name, label: out.summary ? `${label} — ${out.summary}` : label, decision, quote: grant?.quote, reason: grant?.reason, status: out.isError ? "failed" : "done", origin: turn.origin ?? "" });
@@ -1615,7 +1615,7 @@ const OUTSIDE_NOTE = "[What follows came from outside (a web page, a search, an 
 /** Bookkeeping once a tool has run: mark outside content, note it in the activity log, pass questions on. */
 export function afterTool(turn: Turn, call: ToolUseBlock, out: ToolOutput): ToolOutput {
   const builtin = turn.builtin.get(call.name);
-  const remote = turn.remote.get(call.name);
+  const remote = turn.remote.get(call.name); if (remote) out = appEnvelope(out); // L93 standard first line (appenvelope.ts)
   if (builtin?.audited || remote) {
     const loc = turn.user.locale;
     const what = builtin ? tr(loc, builtin.label) : `${remote!.connectorName}: ${remote!.remoteName}`;
@@ -1627,7 +1627,7 @@ export function afterTool(turn: Turn, call: ToolUseBlock, out: ToolOutput): Tool
   if (!out.isError && typeof call.input?.url === "string") { const h = hostOf(call.input.url); if (h) { if (call.name === "web_fetch" || call.name === "browser_open") turn.hosts.add(h); noteOpened(turn, h); } } // any tool that read the link counts as opening it (L64); only these two widen the turn's sites
   if (call.name === "search_web" && !out.isError && typeof out.content === "string") for (const m of out.content.matchAll(/https?:\/\/\S+/g)) { const h = hostOf(m[0]); if (h) turn.hosts.add(h); }
   if (remote && !out.isError && typeof out.content === "string") for (const u of urlsIn(out.content)) turn.appUrls.add(u);
-  if (out.isError) noteDiskTrouble(turn.bot, typeof out.content === "string" ? out.content : out.content.map((b) => (b.type === "text" ? b.text : "")).join(" "));
+  noteToolForReceipt(turn, call, out); if (out.isError) noteDiskTrouble(turn.bot, typeof out.content === "string" ? out.content : out.content.map((b) => (b.type === "text" ? b.text : "")).join(" "));
   // A result marked outside by the tool itself (e.g. a command that may have read the team folder) stays outside even when
   // it failed: a failing command still printed what it read.
   if (!(builtin?.outside || remote || out.outside) || (out.isError && !out.outside)) return out;

@@ -1,0 +1,92 @@
+<!doctype html>
+<!-- Sklubot static template "tableau-filtrable" (skill « Modèles statiques »). Layout adapted from the Astryx page template
+     "table-filter" (github.com/meta/astryx, commit fa22c93d4370d9081f0ff426f034ceaf1447c8c6, © Meta Platforms, Inc., MIT);
+     rewritten as one HTML file without libraries for Sklubot. Every value marked REPLACE is an example: put the real one. -->
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tableau filtrable</title>
+<style>
+:root {
+  color-scheme: light dark;
+  --paper: #f7f7f5; --surface: #ffffff; --surface-2: #f0f0ec; --ink: #1d1d1b; --ink-2: #4a4a46; --muted: #6b6b66;
+  --rule: #deded8; --accent: #2a5bd7; --accent-ink: #ffffff; --good: #1d7a46; --bad: #b3261e; --warn: #8a5a00;
+  --radius: 10px; --gap: 16px; --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --dur: 160ms; --ease: cubic-bezier(.2,.7,.3,1);
+}
+@media (prefers-color-scheme: dark) {
+  :root { --paper: #141413; --surface: #1c1c1a; --surface-2: #262623; --ink: #f1f1ec; --ink-2: #c9c9c2; --muted: #a3a39b;
+    --rule: #34342f; --accent: #8fb0ff; --accent-ink: #10131a; --good: #6fd19a; --bad: #ff8a80; --warn: #f2c66d; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100dvh; background: var(--paper); color: var(--ink); font: 16px/1.5 var(--font); }
+a { color: var(--accent); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button, input, select { font: inherit; color: inherit; }
+.btn { min-height: 44px; padding: 0 16px; border-radius: var(--radius); border: 1px solid var(--rule); background: var(--surface); cursor: pointer; transition: background var(--dur) var(--ease); }
+.btn:hover { background: var(--surface-2); }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+.wrap { max-width: 1200px; margin: 0 auto; padding: 24px 16px 48px; }
+.empty { padding: 32px 16px; text-align: center; color: var(--muted); border: 1px dashed var(--rule); border-radius: var(--radius); }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+h1 { margin: 0 0 16px; font-size: clamp(1.4rem, 1.1rem + 1.2vw, 2rem); }
+.tools { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.tools input, .tools select { min-height: 44px; padding: 0 12px; border: 1px solid var(--rule); border-radius: var(--radius); background: var(--surface); }
+.tools input { flex: 1 1 220px; }
+.count { color: var(--muted); margin: 0 0 8px; }
+.scroller { overflow-x: auto; border: 1px solid var(--rule); border-radius: var(--radius); background: var(--surface); }
+table { width: 100%; border-collapse: collapse; min-width: 560px; }
+th, td { text-align: left; padding: 12px; border-bottom: 1px solid var(--rule); }
+th { font-weight: 500; color: var(--muted); font-size: .9rem; position: sticky; top: 0; background: var(--surface); }
+th button { all: unset; cursor: pointer; } th button:focus-visible { outline: 2px solid var(--accent); }
+td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.tag { display: inline-block; padding: 2px 8px; border-radius: 99px; background: var(--surface-2); font-size: .85rem; }
+</style>
+</head>
+<body>
+<main class="wrap">
+  <h1>Clients<!-- REPLACE --></h1>
+  <div class="tools" role="search">
+    <label class="sr" for="q">Chercher</label>
+    <input id="q" type="search" placeholder="Chercher un nom, une ville…" autocomplete="off">
+    <label class="sr" for="state">État</label>
+    <select id="state"><option value="">Tous les états</option><option>Actif</option><option>À relancer</option><option>Inactif</option></select>
+  </div>
+  <p class="count" id="count" aria-live="polite"></p>
+  <div class="scroller">
+    <table>
+      <thead><tr><th><button type="button" data-sort="name">Nom</button></th><th><button type="button" data-sort="city">Ville</button></th><th>État</th><th class="num"><button type="button" data-sort="total">Total</button></th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+  <p class="empty" id="empty" hidden>Aucune ligne ne correspond. Efface la recherche ou change l'état.</p>
+</main>
+<script>
+// REPLACE: the real rows (from the owner's file), never invented ones. Keep the same keys or change the columns above.
+const ROWS = [
+  { name: "Alice Martin", city: "Lyon", state: "Actif", total: 420 },
+  { name: "Bruno Petit", city: "Nantes", state: "À relancer", total: 95 },
+  { name: "Chloé Bernard", city: "Lille", state: "Inactif", total: 0 },
+];
+const fmt = new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
+let sort = { key: "name", dir: 1 };
+const $ = (id) => document.getElementById(id);
+function esc(s) { return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+function render() {
+  const q = $("q").value.trim().toLowerCase(), st = $("state").value;
+  const list = ROWS.filter((r) => (!st || r.state === st) && (!q || (r.name + " " + r.city).toLowerCase().includes(q)))
+    .sort((a, b) => (a[sort.key] > b[sort.key] ? 1 : a[sort.key] < b[sort.key] ? -1 : 0) * sort.dir);
+  $("rows").innerHTML = list.map((r) => `<tr><td>${esc(r.name)}</td><td>${esc(r.city)}</td><td><span class="tag">${esc(r.state)}</span></td><td class="num">${fmt.format(r.total)}</td></tr>`).join("");
+  $("count").textContent = `${list.length} sur ${ROWS.length}`;
+  $("empty").hidden = list.length > 0;
+}
+document.querySelectorAll("[data-sort]").forEach((b) => b.addEventListener("click", () => {
+  sort = { key: b.dataset.sort, dir: sort.key === b.dataset.sort ? -sort.dir : 1 }; render();
+}));
+$("q").addEventListener("input", render); $("state").addEventListener("change", render);
+render();
+</script>
+</body>
+</html>

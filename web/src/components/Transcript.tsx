@@ -1,4 +1,5 @@
 import { createContext, memo, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { QueuedNotes } from "./QueuedNotes";
 import { RelayEventRow } from "./RelayEventRow";
 import { api, enc, errText } from "../api";
 import { t, tn, useT, type Key } from "../i18n";
@@ -21,7 +22,7 @@ import { SubLimitNoticeActions } from "./SubLimit";
 import { RouteNoticeActions } from "./RoomRouting";
 import { ENGINE_BRAND } from "../lib/engines";
 import { ReportAction } from "./ReportMessage";
-import { ReplyAction, useMessageEnhance } from "./ReplyAction"; import { MessageMore } from "./MessageMore"; import { TurnNoticeActions } from "./TurnCards"; import { requestSummary } from "../lib/requestSummary";
+import { ReplyAction, useMessageEnhance } from "./ReplyAction"; import { SimplerAction } from "./PassageComment"; import { TurnDebugAction } from "./ChatExport"; import { stableMarkdown, useNewLineSeq, withNewLine } from "../lib/chatreading"; import { MessageMore } from "./MessageMore"; import { TurnNoticeActions } from "./TurnCards"; import { requestSummary } from "../lib/requestSummary";
 
 type MessageBody = Extract<RowBody, { kind: "message" }>;
 type StepBody = Extract<RowBody, { kind: "step" }>;
@@ -342,7 +343,7 @@ function MessageActions({ row, canThread, canListen, mine = false }: { row: Row;
           <Icon name="thread" size={15} />
         </button>
       )}
-      <ReplyAction row={row} /><MessageMore row={row} mine={mine} /><ReportAction row={row} />
+      <ReplyAction row={row} /><SimplerAction row={row} /><MessageMore row={row} mine={mine} /><TurnDebugAction row={row} /><ReportAction row={row} />
       {open && (
         <div className="emoji-pick" role="menu" aria-label={t("react.add")} onKeyDown={(e) => { if (e.key === "Escape") setOpen(false); }}>
           {REACTIONS.map((e) => (
@@ -400,7 +401,7 @@ function MessageGroup({ item }: { item: Extract<Item, { t: "msgs" }> }) {
             {b.attachments && b.attachments.length > 0 && <Attachments botId={row.botId} files={b.attachments} />}
             {(b.text.trim() || b.streaming) && (
               <div className={`bubble ${b.streaming ? "is-streaming" : ""}`}>
-                {item.mine ? <p className="plain">{b.text}</p> : <Markdown text={b.text} />}
+                {item.mine ? <p className="plain">{b.text}</p> : <Markdown text={b.streaming ? stableMarkdown(b.text) : b.text} />}
                 {b.streaming && <span className="stream-dots" aria-label={t("msg.stillWriting")}><i /><i /><i /></span>}
               </div>
             )}
@@ -729,7 +730,7 @@ export function RowItems({ items, bot, readOnly, mode, all, openSteps }: { items
       {items.map((item) => {
         switch (item.t) {
           case "divider":
-            return <div key={item.key} className="divider"><span>{item.label}</span></div>;
+            return <div key={item.key} className={`divider ${item.key === "new" ? "is-new" : ""}`}><span>{item.label}</span></div>;
           case "msgs":
             return <MessageGroup key={item.key} item={item} />;
           case "steps":
@@ -906,7 +907,7 @@ export function Transcript({ bot, thread, live }: { bot: Bot; thread: Thread | u
   // `t` changes with the language, so the date dividers are rebuilt when it does.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const viewer = useStore((s) => (bot.access ? s.user?.id : undefined));
-  const items = useMemo(() => buildItems(rows, live.running && !live.thread, 0, viewer, bot.access?.ownerName), [rows, live.running, live.thread, t, viewer, bot.access?.ownerName]);
+  const built = useMemo(() => buildItems(rows, live.running && !live.thread, 0, viewer, bot.access?.ownerName), [rows, live.running, live.thread, t, viewer, bot.access?.ownerName]); const newSeq = useNewLineSeq(bot.id, rows); const items = useMemo(() => withNewLine(built, newSeq, t("chat.newLine")), [built, newSeq, t]); // L147 « NOUVEAU »
   const mainRows = useMemo(() => rows.filter((r) => !r.thread), [rows]);
   const lastBody = mainRows.length ? mainRows[mainRows.length - 1].body : null;
   const streaming = lastBody?.kind === "message" && !!lastBody.streaming;
@@ -1022,6 +1023,7 @@ export function Transcript({ bot, thread, live }: { bot: Bot; thread: Thread | u
             </button>
           )}
           {loaded && showActivity && <ActivityLine bot={bot} live={live} rows={rows} stepsShownAbove={!!openSteps} />}
+          {loaded && live.queued > 0 && <QueuedNotes botId={bot.id} queued={live.queued} />}
           {loaded && !showActivity && live.queued > 0 && (
             <div className="activity"><span className="chip">{tn("count.queued", live.queued)}</span></div>
           )}

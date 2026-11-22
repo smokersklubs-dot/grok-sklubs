@@ -27,7 +27,7 @@ function hasActiveRun(id: string): boolean {
   return !!q.get(`SELECT 1 FROM routine_runs WHERE routine_id = ? AND status = 'running' AND (at > ? OR ${queuedRun})`, id, now() - STALE_RUN_MS);
 }
 export const isNativeTrigger = (t: string): t is NativeTrigger => (NATIVE_TRIGGERS as readonly string[]).includes(t);
-const APP_NAMES: Record<string, string> = { gmail: "Gmail", gcalendar: "Google Calendar", gdrive: "Google Drive", outlook: "Outlook", slack: "Slack" };
+const APP_NAMES: Record<string, string> = { gmail: "Gmail", gcalendar: "Google Calendar", gdrive: "Google Drive", outlook: "Outlook", slack: "Slack", searchconsole: "Search Console" };
 
 export function describeRoutine(r: { trigger: string; schedule: string; runAt: number | null; timezone: string; native?: Routine["native"] }, locale?: Locale): string {
   if (r.trigger === "webhook") return tr(locale, "When its web address is called");

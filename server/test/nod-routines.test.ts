@@ -86,7 +86,9 @@ test("preview: the next three runs and a monthly cost, nothing saved", async () 
 });
 
 test("a late run says when it was due and how many runs were skipped; the track is kept per run", async () => {
-  const slot = Date.now() - 3 * 3600_000 - 60_000; // three hourly slots missed after it
+  // A slot on the hour, three hours before the current hour: exactly three hourly slots follow it (H-2, H-1, H), whatever
+  // the minute the test runs at (a slot "now - 3 h - 1 min" gave four in the first minute of an hour).
+  const slot = Math.floor(Date.now() / 3600_000) * 3600_000 - 3 * 3600_000;
   q.run("UPDATE routines SET schedule = '0 * * * *', timezone = 'UTC' WHERE id = 'r1'");
   assert.equal(await dueRoutine(routines.byId("r1")!, slot), "fired");
   const rows = (await call("GET", `/bots/${bot.id}/rows`)).json?.rows ?? q.all<any>("SELECT body FROM rows WHERE bot_id = ?", bot.id).map((r) => ({ body: JSON.parse(r.body) }));

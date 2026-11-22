@@ -1,0 +1,9 @@
+publier-une-appli — adapted from mjmirza/app-store-compliance (© 2026 Mirza Iqbal, MIT for code and CC BY 4.0 for content)
+Sources (each pinned to one commit):
+- mjmirza/app-store-compliance — © 2026 Mirza Iqbal — MIT (code) and CC BY 4.0 (content) — https://github.com/mjmirza/app-store-compliance/tree/943e8556c567950db3e9fd1f9a52ddb1b2e0ba3a/agent-os/skill
+  Commit 943e8556c567950db3e9fd1f9a52ddb1b2e0ba3a is dated 12/08/2026, before the repository moved to a non-free licence (commit ee18281, 24/08/2026); only that earlier version was read.
+Licence: MIT AND CC-BY-4.0 — the upstream licence file of that commit is in LICENSE.txt, unchanged (it holds both).
+How to give credit (from the upstream licence): link back to the repository github.com/mjmirza/app-store-compliance and keep this notice.
+
+Modified for Sklubot (2026-11-22): the five-step audit condensed into one method for a Sklubot bot reading the client's project; the references to the repository's scripts, data files, monitors and templates removed (none is bundled); the rule "never report clear while a critical finding stands" kept as the verdict rule; sending the app kept as the owner's act; translated into French.
+Only text is included; no script, data file, picture or other file of the original folders is bundled. Names of other products are not used as titles.

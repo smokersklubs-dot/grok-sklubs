@@ -104,6 +104,8 @@ export const fr = {
   "composer.tooBig": "« {name} » dépasse 1 Go et ne peut pas être joint.",
   "composer.tooMany": "Tu peux joindre jusqu’à 10 fichiers par message.",
   "composer.waitUploads": "Attends la fin de l’envoi des fichiers",
+  "notes.hint": "Le bot les lira à sa prochaine étape et y répondra en plus de son travail.",
+  "notes.remove": "Retirer",
   "composer.queued_one": "{n} message en attente",
   "composer.queued_other": "{n} messages en attente",
   "lanes.count_one": "{n} tâche en cours",

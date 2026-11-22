@@ -17,6 +17,7 @@ export const GUARD_FR: Record<string, string> = {
   "Routine “{name}”: {result}": "Routine « {name} » : {result}",
   "Routine “{name}”: waiting for your approval — open the thread.": "Routine « {name} » : attend ton accord — ouvre le fil.",
   "Routine “{name}”: done, nothing to report.": "Routine « {name} » : faite, rien à signaler.",
+  "Routine “{name}”: nothing new.": "Routine « {name} » : rien de neuf.",
   "Routine “{name}”: stopped ({why}). Open the thread to see the steps.": "Routine « {name} » : arrêtée ({why}). Ouvre le fil pour voir les étapes.",
   "Loop between bots stopped: {from} kept sending work back and forth with {to}. Write to {to} to get it going again.": "Boucle entre bots arrêtée : {from} renvoyait sans fin du travail avec {to}. Écris à {to} pour relancer.",
   "{from} handed back a request {to} had already passed on: stopped, so they do not pass it around in circles.": "{from} a rendu une demande que {to} avait déjà transmise : arrêté, pour qu'elle ne tourne pas en rond.",

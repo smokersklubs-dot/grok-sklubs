@@ -2,11 +2,12 @@ import type { Context, Hono } from "hono";
 import { emit } from "./bus.js";
 import { enqueue, interrupt, runningThreads, submitUserMessage } from "./agent/loop.js";
 import { answerSide, sideCommand } from "./agent/sidequestion.js";
-import { takeNote } from "./agent/steering.js";
+import { removeNote, takeNote, waitingNotes } from "./agent/steering.js";
+import { askMode, setAskMode, setSectionLead } from "./agent/askrules.js";
 import { hasWork, isStopEmoji, stopCommand, stopText, stopWork, type StopReport } from "./agent/stopcommand.js";
 import { tr } from "./i18n.js";
 import { fail } from "./routeinput.js";
-import { rows, users, type BotRecord, type UserRecord } from "./store.js";
+import { bots, rows, users, type BotRecord, type UserRecord } from "./store.js";
 
 /**
  * Turn control from the chat (backlog A-FAIRE L63, L78, L94): typed "stop" / "tout arrêter", "/btw", "/apres", the
@@ -50,6 +51,28 @@ export function registerTurnControl<E extends { Variables: { user: UserRecord } 
   });
   /** "Tout arrêter": everything, queue and notes included; the answer and the chat say what was stopped and dropped. */
   api.post("/bots/:id/stop-all", async (c) => c.json({ ok: true, report: await stopAndReport(ownAgent(c), { dropQueue: true }) }));
+  /** L96 « qui peut demander à qui »: "open" (default) or "hierarchy"; a section's lead (askrules.ts). */
+  api.get("/team/ask-policy", (c) => c.json({ mode: askMode(c.get("user").id) }));
+  api.put("/team/ask-policy", async (c) => {
+    const mode = (await c.req.json().catch(() => ({})))?.mode;
+    if (mode !== "open" && mode !== "hierarchy") return c.json({ error: c.get("user").locale === "fr" ? "Choix inconnu." : "Unknown choice." }, 400);
+    return c.json({ mode: setAskMode(c.get("user").id, mode) });
+  });
+  api.put("/sections/:id/lead", async (c) => {
+    const user = c.get("user");
+    const botId = String((await c.req.json().catch(() => ({})))?.botId ?? "");
+    const lead = bots.owned(user.id, botId);
+    if (!lead || lead.kind !== "agent" || lead.sectionId !== c.req.param("id")) return c.json({ error: user.locale === "fr" ? "Ce bot n'est pas dans cette section." : "That bot is not in this section." }, 404);
+    setSectionLead(user.id, lead.sectionId, lead.id);
+    return c.json({ lead: lead.id });
+  });
+  /** L58 « file visible »: the notes typed during the work that no turn has read yet; « Retirer » takes one back. */
+  api.get("/bots/:id/notes", (c) => c.json({ notes: waitingNotes(ownAgent(c).id) }));
+  api.delete("/bots/:id/notes/:noteId", (c) => {
+    const bot = ownAgent(c);
+    if (!removeNote(bot.id, Number(c.req.param("noteId")))) return c.json({ error: c.get("user").locale === "fr" ? "Ce message a déjà été lu par le bot." : "The bot has already read this message." }, 404);
+    return c.json({ ok: true, notes: waitingNotes(bot.id) });
+  });
   /** « Reprendre ma note » (L94): the note a restart kept is sent again as a new message. */
   api.post("/bots/:id/notes/:noteId/send-again", async (c) => {
     const bot = ownAgent(c);

@@ -1,5 +1,5 @@
 import { body, fail, HttpError } from "./routeinput.js";
-import { registerSectionRoutes } from "./sectionroutes.js";
+import { registerSectionRoutes } from "./sectionroutes.js"; import { registerStopCauseRoutes } from "./stopcauseroutes.js"; import { registerPersonalCommandRoutes } from "./personalcommandroutes.js"; import { registerDoctorRoutes } from "./doctorroutes.js";
 import { createHash } from "node:crypto";
 import { closeSync, createReadStream } from "node:fs";
 import path from "node:path";
@@ -134,7 +134,7 @@ import { accountFlags, accountOpened, assertEmailSignupPossible, PublicSignupErr
 import { answerCapCard, amountText, CapError, capName, caps as usageCaps, capsView, cleanCapInput, cm } from "./usagecaps.js";
 
 import { MAX_ATTACHMENTS } from "./uploadlimits.js";
-import { registerUploadRoutes } from "./uploads.js"; import { registerTurnControl, typedControl } from "./turncontrolroutes.js"; import { registerMessageActions } from "./messageactionroutes.js"; import { registerInbox } from "./inboxroutes.js"; import { grantAuto } from "./agent/autocontinue.js"; import { applyDraftEdit } from "./agent/draftedit.js";
+import { registerUploadRoutes } from "./uploads.js"; import { noteBrowserTimezone } from "./agent/turnstamp.js"; import { registerTurnControl, typedControl } from "./turncontrolroutes.js"; import { registerMessageActions } from "./messageactionroutes.js"; import { registerInbox } from "./inboxroutes.js"; import { grantAuto } from "./agent/autocontinue.js"; import { applyDraftEdit } from "./agent/draftedit.js";
 import { personalResponses } from "./personalresponses.js"; import { checkFloorApproval } from "./floorapproval.js"; import { registerSecurityRoutes } from "./securityroutes.js"; // Lot 1 security
 type Env = { Variables: { user: UserRecord } };
 export const api = new Hono<Env>();
@@ -708,7 +708,7 @@ api.post("/bots/:id/duplicate", async (c) => {
 });
 
 // ── Sidebar sections ─────────────────────────────────────────────────────────
-registerSectionRoutes(api);
+registerSectionRoutes(api); registerStopCauseRoutes(api); registerPersonalCommandRoutes(api); registerDoctorRoutes(api); // L142 stop-cause chips (stopcauseroutes.ts) ; L152 personal / commands ; L153 « Docteur » (doctorroutes.ts)
 
 // ── Pause (agent/pause.ts) ───────────────────────────────────────────────────
 // Owner only: pausing decides about the owner's bots, spend and subscriptions. Someone of a workspace a bot is shared
@@ -801,7 +801,7 @@ api.post("/bots/:id/rows/:seq/reactions", async (c) => {
 
 api.post("/bots/:id/messages", (c) => sendOnce(c, accessBot(c, "talk").bot.id, async () => { // one message per send key (sendkeys.ts)
   const access = accessBot(c, "talk");
-  const b = await body(c);
+  const b = await body(c); noteBrowserTimezone(c.get("user").id, c.req.header("x-time-zone")); // L92 (agent/turnstamp.ts)
   if (!access.owner) return memberMessage(c, access, b);
   const bot = access.bot;
   // A pasted secret (a key, a token, a password) is masked before anything is stored or sent to a model; the owner

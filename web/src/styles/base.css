@@ -319,7 +319,7 @@ select.input { padding-right: 8px; }
    (the ::after below, centred on them). web/scripts/touch-targets.test.mjs checks the stylesheets against these lists:
    a new small button class goes in one of them. */
 @media (pointer: coarse) {
-  .btn, .btn-small, .input, .input-small, .search-field.is-inline, .google-btn, .account-btn, .list-row-btn, .menu-item, .check-row, .option, .files-row-head, .today-group-head { min-height: 44px; }
+  .btn, .btn-small, .input, .input-small, .search-field.is-inline, .google-btn, .account-btn, .list-row-btn, .menu-item, .check-row, .option, .files-row-head, .today-group-head, .passage-btn { min-height: 44px; }
   .btn { min-width: 44px; }
   :where(.icon-btn, .round-btn, .tab, .segmented button, .toggle, .toast-action, .error-note-x, .upload-x, .goal-chip-x, .screen-pill-btn, .screen-pill-icon, .screen-pill-seg button, .seg-tab, .ws-tab, .voice-tab, .chip-link, .chip-button, .link, .swatch:not(.swatch-custom), .composer-action, .msg-action, .reaction, .replies, .steps-toggle, .emoji-pick-item, .jump, .notice-action) { position: relative; }
   :where(.icon-btn, .round-btn, .tab, .segmented button, .toggle, .toast-action, .error-note-x, .upload-x, .goal-chip-x, .screen-pill-btn, .screen-pill-icon, .screen-pill-seg button, .seg-tab, .ws-tab, .voice-tab, .chip-link, .chip-button, .link, .swatch:not(.swatch-custom), .composer-action, .msg-action, .reaction, .replies, .steps-toggle, .emoji-pick-item, .jump, .notice-action)::after {

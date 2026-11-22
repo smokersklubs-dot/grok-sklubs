@@ -11,7 +11,7 @@ import { libraryLines } from "./recruit.js";
 import { notedOn, rankNotes, recallForTurn, recallLines, UNCERTAIN_MARK, usableCount } from "./recall.js";
 import { typedByUser } from "./grounding.js";
 import { CADENCE, CONNECTOR_FIRST, languageLine } from "./nodguidance.js";
-import { TURN_CONTEXT_HEADING } from "../llm/cachelayout.js";
+import { TURN_CONTEXT_HEADING } from "../llm/cachelayout.js"; import { CLOSING_RULES, METHOD_BLOCK, modelLine } from "./conversationrules.js";
 
 /** Notes loaded for the prompt's own selection (the most recent ones); the count of the others is exact (usableCount). */
 export const PROMPT_POOL = 500;
@@ -102,6 +102,7 @@ export function buildSystemPrompt(bot: BotRecord, user: UserRecord, extras: Prom
   out.push(bot.mode === "teammate"
     ? "You act as a shared teammate: several people may rely on your work, so keep things clear, neutral and easy to hand over."
     : `You act as ${user.name}'s personal assistant: adapt to their preferences and keep their matters private.`);
+  if (bot.instructions.trim()) out.push(`## Standing instructions from ${user.name} (they come first)\n${bot.instructions.trim()}`); // L61: the bot's own instructions at the top
 
   const method = [
     "## How you work",
@@ -227,7 +228,7 @@ export function buildSystemPrompt(bot: BotRecord, user: UserRecord, extras: Prom
   const sectionId = bot.sectionId ?? parent?.sectionId;
   const project = sectionId ? sections.owned(bot.userId, sectionId) : null;
   if (project?.instructions) out.push(`## Project instructions — ${project.name}\n${project.instructions}`);
-  if (bot.instructions.trim()) out.push(`## Standing instructions from ${user.name}\n${bot.instructions.trim()}`);
+  out.push(METHOD_BLOCK, CLOSING_RULES); // L55 « Méthode », L61 the closing rules (conversationrules.ts)
 
   // L57 (prompt caching): what changes from turn to turn — the team, connectors that are down, routines, the notes picked
   // for this message — comes last, after one fixed heading. The API providers send it with the turn's message instead of
@@ -235,7 +236,7 @@ export function buildSystemPrompt(bot: BotRecord, user: UserRecord, extras: Prom
   const turn: string[] = [];
   const context = [
     "## Right now",
-    "- The current time is shown at the start of each message you receive.",
+    "- The current time is shown at the start of each message you receive.", modelLine(bot.model, user.id), // L92
     `- User: ${user.name} <${user.email}>`,
     team.length
       ? `- Team: ${team.map((b) => `${b.name}${b.label ? ` (${b.label})` : ""}${b.primary ? " — main contact" : ""}`).join("; ")}`

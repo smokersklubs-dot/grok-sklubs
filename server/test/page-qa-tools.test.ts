@@ -109,6 +109,45 @@ test("L114: page_contact_sheet photographs a real page at 3 widths (browser mode
   }
 });
 
+test("L114: moments are cleaned (0-10 000 ms, at most 6, in order) and labelled in milliseconds on the sheet", async () => {
+  assert.deepEqual(cs.sheetMoments(undefined), []);
+  assert.deepEqual(cs.sheetMoments([3000, -5, 400, 400, 99_999, 1200, 10, 20, 30]), [0, 10, 20, 30, 400, 1200]);
+  const shot = async () => (await sharp({ create: { width: 800, height: 900, channels: 3, background: "#cc3366" } }).jpeg().toBuffer()).toString("base64");
+  const img = await cs.composeSheet([{ width: 800, at: 0, data: await shot() }, { width: 800, at: 1200, data: await shot() }]);
+  assert.equal((await sharp(img).metadata()).height, cs.SHEET_HEIGHT + 60);
+});
+
+test("L114: page_contact_sheet with moments photographs one page at N moments (browser mode)", async (t) => {
+  await initComputer();
+  if (!browserAvailable()) { t.skip("no browser engine installed"); return; }
+  const ANIM = "<!doctype html><html><body style='margin:0;background:#ffffff'><script>setTimeout(()=>{document.body.style.background='#000000'},700)</script><p>Hello</p></body></html>";
+  const server = createServer((_q, res) => { res.writeHead(200, { "content-type": "text/html; charset=utf-8" }); res.end(ANIM); });
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/`;
+  try {
+    const tool = builtinTools().find((x) => x.spec.name === "page_contact_sheet")!;
+    const user = users.create("pqa-moments@example.com", "PQA", "x", "fr");
+    const bot = bots.create(user.id, { name: "Lucie" });
+    const ctx = { bot, user, tainted: false, depth: 0, signal: new AbortController().signal } as any;
+    const out = await tool.run({ url, moments: [2500, 100], widths: [600] }, ctx);
+    assert.ok(!out.isError, JSON.stringify(out).slice(0, 300));
+    const blocks = out.content as any[];
+    assert.match(blocks[0].text, /at 600 px, photographed 100 ms, 2500 ms after it started loading/);
+    assert.equal(out.summary, "100 · 2500 ms");
+    const sheet = sharp(Buffer.from(blocks[1].data, "base64"));
+    const m = await sheet.metadata();
+    const tileW = Math.round(600 * cs.SHEET_HEIGHT / 900);
+    // The first moment is before the page turns black, the second after: their centres differ.
+    const px = async (x: number) => (await sharp(Buffer.from(blocks[1].data, "base64")).extract({ left: x, top: 16 + 28 + 300, width: 4, height: 4 }).raw().toBuffer())[0];
+    assert.ok((await px(16 + Math.round(tileW / 2))) > 200, "white at 100 ms");
+    assert.ok((await px(16 + tileW + 16 + Math.round(tileW / 2))) < 60, "black at 2500 ms");
+    assert.ok((m.width ?? 0) >= tileW * 2, `${m.width}`);
+  } finally {
+    server.close();
+    await closeAllDesktops();
+  }
+});
+
 test("L116: the « Contrôle qualité des pages » template uses the page tools and asks before anything that commits", () => {
   const tpl = builtinTemplates().find((x) => x.id === "controle-qualite-pages");
   assert.ok(tpl, "the template parses");
@@ -118,4 +157,13 @@ test("L116: the « Contrôle qualité des pages » template uses the page tools 
   for (const w of ["page_contact_sheet", "tags", "guide_search", "Testeur de site", "sans mon accord"]) assert.ok(b.instructions.includes(w), w);
   assert.equal(b.skills[0].name, "Contrôler une page");
   assert.equal(b.routines[0].timezone, "Europe/Paris");
+});
+
+test("L122: the « Secrétariat » template sorts mail in four levels and sends, accepts or deletes nothing without approval", () => {
+  const tpl = builtinTemplates().find((x) => x.id === "secretariat")!;
+  assert.ok(tpl, "the template parses");
+  assert.deepEqual([tpl.parsed.removed, tpl.parsed.masked, tpl.parsed.warnings], [[], [], []]);
+  const text = JSON.stringify(tpl.parsed);
+  for (const level of ["Ignorer", "Pour info", "Rendez-vous", "À traiter"]) assert.ok(text.includes(level), level);
+  assert.match(text, /Rien n'est envoyé, accepté ni supprimé sans mon accord/);
 });

@@ -24,6 +24,11 @@ import { tr } from "./i18n.js";
 import { blockingCap, caps, capHolds, noteSkip, skipText } from "./usagecaps.js";
 import { guardedFetch } from "./net.js";
 import { approvals, bots, clip, now, rows, settings, tasks, users } from "./store.js";
+import { CATCHUP_STAGGER_MS, clearPacing, deferForQuota, planAfterFailure, RETRY_DELAYS_MS, spacedUntil, spacingGap, takeDue } from "./routinepacing.js";
+import { routineOptions } from "./routineoptions.js";
+import { subLimitFor } from "./agent/sublimit.js";
+import { lt } from "./agent/looptext.js";
+import { conditionGate } from "./agent/routinecondition.js";
 
 /** Next due time per routine. One timer walks this map; nothing is scheduled twice. */
 const due = new Map<string, number>();
@@ -79,6 +84,14 @@ export function fireRoutine(r: RoutineRecord, payload?: unknown, opts: { outside
     emit(bot.userId, { type: "routines", botId: bot.id });
     return "capped";
   }
+  // L183: heavy work waits for the subscription's quota window instead of running while it is at its limit (routinepacing.ts).
+  const quota = !opts.byHand && routineOptions(r.id).heavy ? subLimitFor(bot) : null;
+  if (quota) {
+    const at = deferForQuota(r.id, bot.userId, quota.until);
+    runs.skipped(r.id, `Heavy routine: waits for the subscription's quota window (starts at ${new Date(at).toISOString().slice(0, 16).replace("T", " ")} UTC).`);
+    emit(bot.userId, { type: "routines", botId: bot.id });
+    return "capped";
+  }
   // One run at a time (spec 07 A7): a due time that comes while a run is still under way is skipped (a one-off
   // routine is tried again a minute later).
   if (runs.active(r.id)) {
@@ -127,6 +140,14 @@ export async function inputsFingerprint(r: RoutineRecord): Promise<string | null
  */
 export async function dueRoutine(r: RoutineRecord, slot: number): Promise<"fired" | "skipped" | "busy" | "claimed" | "paused" | "capped"> {
   if (!routines.claimSlot(r.id, String(slot))) return "claimed";
+  // L62: a routine that keeps failing is spaced out instead of paused: a due time too soon after its last failure is skipped.
+  const spaced = spacedUntil(r.id, r.failures, ROUTINE_FAIL_PAUSE);
+  if (spaced) {
+    runs.skipped(r.id, `Spaced out after ${r.failures} failures in a row: next try after ${new Date(spaced).toISOString().slice(0, 16).replace("T", " ")} UTC.`);
+    const b = bots.byId(r.botId);
+    if (b) emit(b.userId, { type: "routines", botId: b.id });
+    return "skipped";
+  }
   let note = "";
   let missed = 0;
   const late = now() - slot;
@@ -151,6 +172,17 @@ export async function dueRoutine(r: RoutineRecord, slot: number): Promise<"fired
 
 function tickRoutines() {
   const t = now();
+  // L62 new tries of failed runs, L183 heavy runs whose quota window opened (routinepacing.ts).
+  for (const d of takeDue(t)) {
+    const r = routines.byId(d.routineId);
+    if (!r || !r.enabled) continue;
+    const bot = bots.byId(r.botId);
+    const note = d.kind === "retry"
+      ? `[New try ${d.attempt}/${RETRY_DELAYS_MS.length} after the last run failed${d.note ? ` (${clip(d.note, 200)})` : ""}. Check what the failed run already did before redoing anything.]`
+      : "[This heavy routine waited for the subscription's quota window, which has just reset.]";
+    if (bot && d.kind === "retry") rows.append(bot, { kind: "event", event: "routine", text: lt(users.localeOf(bot.userId), "New try {n}/{max} of the routine “{name}” after a failure.", { n: d.attempt, max: RETRY_DELAYS_MS.length, name: r.name }) });
+    fireRoutine(r, undefined, { note });
+  }
   for (const [id, at] of due) {
     if (at > t) continue;
     const r = routines.byId(id);
@@ -182,19 +214,21 @@ export async function checkWatch(r: RoutineRecord): Promise<boolean> {
   const hash = createHash("sha256").update(content).digest("hex");
   const changed = r.watchHash !== null && r.watchHash !== hash;
   routines.setWatchState(r.id, hash, now());
-  if (changed) fireRoutine(routines.byId(r.id)!, { changed: r.watch.target });
+  // L86: a plain-language condition is checked on the new content by a small model before the bot is woken.
+  if (changed && await conditionGate(routines.byId(r.id)!, r.watch.kind === "url" ? content.slice(0, 20_000) : `The file ${r.watch.target} changed.`)) fireRoutine(routines.byId(r.id)!, { changed: r.watch.target });
   return changed;
 }
 
 /** Runs that fell due while the server was off are made up once at start, not once per missed slot. */
 function catchUp() {
+  let made = 0; // L62: runs made up after a restart start CATCHUP_STAGGER_MS apart, not all at once
   for (const r of routines.allEnabled()) {
     // One-off routines that fell due are picked up by the normal timer; only repeating ones need this.
     if (r.trigger === "cron") {
       const since = r.lastRunAt ?? r.createdAt;
       const missed = nextRun(r.schedule, r.timezone, since);
       // Only make up runs missed in the last day; older ones are stale.
-      if (missed && missed <= now() && missed >= now() - 24 * 3600_000) void dueRoutine(r, missed).catch((e) => console.error("[routine]", e?.message ?? e));
+      if (missed && missed <= now() && missed >= now() - 24 * 3600_000) setTimeout(() => void dueRoutine(r, missed).catch((e) => console.error("[routine]", e?.message ?? e)), CATCHUP_STAGGER_MS * made++).unref();
     }
   }
 }
@@ -250,28 +284,35 @@ function tickCheckins() {
   }
 }
 
-setFire((r, payload, opts) => { fireRoutine(r, payload, opts); });
+setFire((r, payload, opts) => { void conditionGate(r, payload === undefined ? "" : clip(JSON.stringify(payload), 20_000)).then((ok) => { if (ok) fireRoutine(r, payload, opts); }); }); // L86
 
 /**
- * How a run ended (spec 07 A7): a failure is said in the bot's chat, naming the routine and the cause; after
- * ROUTINE_FAIL_PUSH failures in a row the user is pushed; after ROUTINE_FAIL_PAUSE the server pauses the routine. A
- * run that works again resets the count.
+ * How a run ended (spec 07 A7, L62). A failed cron or one-off run is first tried again after 5, 15 then 30 minutes; only
+ * then does the failure count. Only the first failure after a success is said in the chat; the user is pushed after
+ * ROUTINE_FAIL_PUSH counted failures in a row; from ROUTINE_FAIL_PAUSE on, the routine is spaced out (never paused by
+ * the server), with one notice. A run that works again resets the count and the spacing.
  */
 onRunEnded((r, status, note) => {
   const bot = bots.byId(r.botId);
   if (!bot) return;
   const loc = users.localeOf(bot.userId);
-  if (status === "done" || status === "quiet") { if (r.failures) routines.succeeded(r.id); return; }
+  if (status === "done" || status === "quiet") { if (r.failures) routines.succeeded(r.id); clearPacing(r.id); return; }
   if (status !== "error") return;
-  const n = routines.failed(r.id);
-  rows.append(bot, { kind: "notice", tone: "warn", text: tr(loc, "The routine “{name}” failed: {detail}", { name: r.name, detail: clip(note || "?", 200) }) });
-  if (n >= ROUTINE_FAIL_PAUSE) {
-    routines.pauseFor(r.id, tr(loc, "Paused after {n} failed runs in a row", { n }));
-    unschedule(r.id);
-    rows.append(bot, { kind: "notice", tone: "error", text: tr(loc, "I paused the routine “{name}” after {n} failed runs in a row. Fix it, then turn it back on.", { name: r.name, n }) });
-    audit(bot.userId, "routine", `${bot.name}: routine paused after ${n} failures — ${r.name}`, bot.id);
+  // A webhook's or an app's run carries its own payload: it is not replayed without it, so its failure counts at once.
+  const replayable = r.trigger === "cron" || r.trigger === "once";
+  const plan = planAfterFailure(r.id, !replayable || r.failures >= ROUTINE_FAIL_PAUSE, note || "?");
+  if (plan.kind === "retry") {
+    if (plan.attempt === 1 && r.failures === 0) rows.append(bot, { kind: "notice", tone: "warn", text: lt(loc, "The routine “{name}” failed: {detail}. I will try again in {min} min.", { name: r.name, detail: clip(note || "?", 200), min: Math.round(plan.inMs / 60_000) }) });
+    emit(bot.userId, { type: "routines", botId: bot.id });
+    return;
   }
-  if (n === ROUTINE_FAIL_PUSH || n >= ROUTINE_FAIL_PAUSE) pushLater(bot.userId, { kind: "routine", title: `${bot.name} · ${r.name}`, body: tr(loc, "Failed {n} times in a row: {detail}", { n, detail: clip(note || "?", 120) }), botId: bot.id });
+  const n = routines.failed(r.id);
+  if (n === 1 && !replayable) rows.append(bot, { kind: "notice", tone: "warn", text: tr(loc, "The routine “{name}” failed: {detail}", { name: r.name, detail: clip(note || "?", 200) }) });
+  if (n === ROUTINE_FAIL_PAUSE) {
+    rows.append(bot, { kind: "notice", tone: "warn", text: lt(loc, "The routine “{name}” keeps failing ({n} times in a row): I will run it less often — at most once every {hours} h, then longer — until a run works again. Fix it, or pause it yourself.", { name: r.name, n, hours: Math.round(spacingGap(n, ROUTINE_FAIL_PAUSE) / 3600_000) }) });
+    audit(bot.userId, "routine", `${bot.name}: routine spaced out after ${n} failures — ${r.name}`, bot.id);
+  }
+  if (n === ROUTINE_FAIL_PUSH || n === ROUTINE_FAIL_PAUSE) pushLater(bot.userId, { kind: "routine", title: `${bot.name} · ${r.name}`, body: lt(loc, "Still failing {n} times in a row: {detail}", { n, detail: clip(note || "?", 120) }), botId: bot.id });
   emit(bot.userId, { type: "routines", botId: bot.id });
 });
 

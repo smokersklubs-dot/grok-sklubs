@@ -3,7 +3,7 @@ export * from "./failuretypes.js"; export type * from "./recruittypes.js"; expor
  * Wire contract between the Sklubot server and web app.
  * Type-only: the web app imports this file with `import type`.
  */
-import type { TodayKind } from "./todayminutes.js"; import type { RecruitCard } from "./recruittypes.js"; import type { RouteNoticeAction } from "./roomroutingtypes.js"; import { EXTRA_SECRET_FORMATS } from "./secretformats.js";
+import type { TodayKind } from "./todayminutes.js"; import type { RecruitCard } from "./recruittypes.js"; import type { RouteNoticeAction } from "./roomroutingtypes.js"; import { EXTRA_SECRET_FORMATS } from "./secretformats.js"; import type { PeerReviewResult } from "./peerreviewtypes.js";
 
 export const AVATAR_SHAPES = ["pebble", "egg", "mochi", "bean", "cloud", "cat", "bear", "ghost", "circle", "squircle", "hexagon", "diamond", "shield", "drop", "arch", "star", "clover", "pill", "triangle", "octagon"] as const;
 export const AVATAR_COLORS = ["ink", "clay", "ember", "amber", "moss", "teal", "sky", "indigo", "plum", "rose", "slate"] as const;
@@ -285,7 +285,7 @@ export interface Origin { kind: "bot" | "routine" | "voice" | "webhook" | "nudge
  * replies only). `write`: send it a message. `tasks`: give it a goal (goal mode). No scope reaches approvals, deletion,
  * settings, the vault, connectors or another bot.
  */
-export const BOT_API_SCOPES = ["read", "write", "tasks"] as const;
+export const BOT_API_SCOPES = ["read", "write", "tasks", "memory"] as const; // L170: "memory" reads the bot's notes (botopenai.ts)
 export type BotApiScope = (typeof BOT_API_SCOPES)[number];
 /** A key as its owner sees it in the bot's settings: never the key itself (shown once, at creation), only its start. */
 export interface BotApiKeyView { id: string; name: string; prefix: string; scopes: BotApiScope[]; createdAt: number; lastUsedAt: number | null; revokedAt: number | null }
@@ -302,7 +302,7 @@ export interface Replies { count: number; lastAt: number }
 
 export interface PeerReviewState {
   state: "none" | "working" | "ready" | "failed";
-  review?: {reviewer:string;verdict:"approved"|"changes"|"inconclusive";reason:string;partial:boolean;at:number};
+  review?: PeerReviewResult;
   error?: string;
 }
 
@@ -396,13 +396,13 @@ export type Card =
    * A procedure the bot learned from a task it just did (skill_propose), anonymised, for the user to review before it
    * is saved. `outside`: the task read outside content, so the skill is kept as outside content (it never authorises).
    */
-  | { type: "skill"; name: string; when: string; steps: string; outside: boolean; status: "pending" | "saved" | "dismissed" }
+  | { type: "skill"; name: string; when: string; steps: string; outside: boolean; status: "pending" | "saved" | "dismissed"; /** L131: earlier requests seen in other conversations */ evidence?: { at: number; where: string; quote: string }[] }
   /** An API connector the bot proposed (api_connector_propose): the user reviews it, gives the token if needed, and approves. */
   /** The user said something that contradicts a note (wave 5b): which is right? "old" keeps the note, "new" replaces it. */
   | { type: "memory"; memoryId: string; oldText: string; newText: string; quote: string; status: "pending" | "kept" | "replaced" }
   /** Wave 6: a mail received at the bot's own address. `held`: kept out of the bot's reach (sender not allowed, failed DMARC, spam). */
   | { type: "mail"; mailId: string; from: string; subject: string; snippet: string; auth: MailAuth; spam: number; status: "delivered" | "held" | "released" | "replied" }
-  | { type: "apiconnector"; connectorId: string; name: string; baseUrl: string; host: string; secret: string; secretSaved: boolean; endpoints: ApiEndpoint[]; status: "pending" | "approved" | "dismissed" }
+  | { type: "apiconnector"; connectorId: string; name: string; baseUrl: string; host: string; secret: string; secretSaved: boolean; endpoints: ApiEndpoint[]; status: "pending" | "approved" | "dismissed"; preset?: string }
   /**
    * Wave 8: the disk of the bot's computer is nearly full (`usedPct` of the disk its home folder is on). `items`: the
    * biggest files and folders of its own home (/root) and library (/root/files), largest first. The user ticks some and
@@ -430,7 +430,7 @@ export type Card =
    * right now ("approval", "user": a question or a card, "checkpoint": a spend checkpoint). `summary`: the latest status
    * line the bot gave (goal_update); `evidence`: what proves it is done; `reason`: why it paused or is blocked.
    */
-  | { type: "goal"; goalId: string; objective: string; status: GoalStatus; rounds: number; maxRounds: number; summary?: string; evidence?: string; reason?: string; waiting?: GoalWaiting } | RecruitCard
+  | { type: "goal"; goalId: string; objective: string; status: GoalStatus; rounds: number; maxRounds: number; summary?: string; evidence?: string; reason?: string; waiting?: GoalWaiting; /** L89: success criteria (with evidence) and « attend ton accord » */ criteria?: { text: string; evidence?: string }[]; review?: boolean } | RecruitCard
   | { type: "disk"; checkId: string; usedPct: number; totalBytes: number; freeBytes: number; items: { path: string; bytes: number }[]; status: "pending" | "cleaned" | "dismissed"; deleted?: string[]; freedBytes?: number }
   /**
    * A usage cap is reached (usagecaps.ts): one card per cap, period and limit. `cap`: which one (scope, period, unit,
@@ -590,7 +590,7 @@ export interface LocalToolsState { available: boolean; reason: string | null; se
 // ── Built-in apps ("native" integrations through the vendors' own REST APIs) ──────────────────────────
 /** Who issues the OAuth client the user creates in their own console. */
 export type NativeVendor = "google" | "microsoft" | "slack";
-export type NativeAppId = "gmail" | "gcalendar" | "gdrive" | "outlook" | "slack";
+export type NativeAppId = "gmail" | "gcalendar" | "gdrive" | "outlook" | "slack" | "searchconsole";
 /** What a built-in app offers, and how to create the OAuth client it needs (steps verified against the vendor's docs). */
 export interface NativeApp {
   id: NativeAppId; vendor: NativeVendor; name: string; category: string; description: string;

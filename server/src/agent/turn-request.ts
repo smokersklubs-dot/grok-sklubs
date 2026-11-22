@@ -3,6 +3,7 @@ import type { AskRoute } from "./team.js";
 import type { Attachment } from "../shared.js";
 import { rows } from "../store.js";
 import { tr } from "../i18n.js";
+import { routineOpening } from "./routineframe.js";
 
 /**
  * What starts a turn. `tainted`: the turn starts out carrying outside content — a webhook's payload, a
@@ -68,7 +69,7 @@ function originalRequest(trigger: Exclude<Trigger, { kind: "resume" }>): string 
       const voiceNote = trigger.voice ? "[Said aloud on a voice call. Your reply will be read out: lead with the answer, keep it short, plain sentences, no markdown, links or ids unless asked. When you use a tool, say in one short sentence what you are doing or what you found — never read out raw data, lists of ids or long results.]\n" : "";
       return `${who}${voiceNote}${trigger.text}`;
     }
-    case "routine": return `[Your routine "${trigger.name}" is running now. Carry it out:]\n${trigger.text}`;
+    case "routine": return `${routineOpening(trigger.name)}\n${trigger.text}`; // L68 (routineframe.ts)
     case "bot": return trigger.ask
       ? `[Message from ${trigger.fromName}, another bot on the team. ${trigger.fromName} is waiting for your answer right now: your final message in this turn goes straight back to them. Answer in that final message, short and complete; do not use bot_message to reply.]\n${trigger.text}`
       : `[Message from ${trigger.fromName}, another bot on the team. To answer them, use bot_message.]\n${trigger.text}`;

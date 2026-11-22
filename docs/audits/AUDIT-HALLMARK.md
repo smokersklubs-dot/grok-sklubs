@@ -152,7 +152,7 @@ Preuves Sklubot : `server/skills-library/` — `metier-du-design/SKILL.fr.md` (l
 6. **Bloc « Choix »** montré avant de construire toute la page + héros d'abord — **S**.
 7. **Relecture à froid** par une aide (`helper_start`) avec un verdict en un mot (recapturer / reconstruire / corriger / livrer) — **M**.
 8. Journal de design par compte pour varier structure et thème d'une page à l'autre — **M**.
-9. Étendre `theme-factory` avec une sélection de thèmes Hallmark sans marque (polices Google Fonts seulement) — **M**.
+9. Étendre `theme-factory` avec une sélection de thèmes Hallmark sans marque (polices Google Fonts seulement) — **M** — **fait le 22/11/2026** : `themes-sans-marque` (10 thèmes en fichiers), renvoi depuis `theme-factory`.
 10. Photothèque libre Wikimedia Commons avec crédit automatique en bas de page — **M**.
 11. Contrôle « rien de perdu » à la refonte d'une page (liens, champs, titres avant/après) — **M**.
 12. Ajouter à `metier-du-design` les règles absentes (P3, P4, P5, P12-P14, « visible sans JavaScript », « pas de fenêtre de navigateur dessinée ») — **S**.

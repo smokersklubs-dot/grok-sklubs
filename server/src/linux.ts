@@ -692,8 +692,8 @@ export const linuxScreen = {
   layout: (botId: string, userId: string, ws: string, expression: string) =>
     onMachine(botId, userId, ws, (name) => runBrowser<{ error?: string }>(name, { op: "layout", expression })),
   /** L114: one screenshot per width of `url`, in a temporary tab (browser-cdp.ts op_sheet). */
-  sheet: (botId: string, userId: string, ws: string, url: string, widths: number[]) =>
-    onMachine(botId, userId, ws, async (name) => { const r = await runBrowser<{ error?: string; shots?: { width: number; data: string; scrollWidth?: number }[] }>(name, { op: "sheet", url, widths }, 120_000); if (r.error) throw new Error(r.error); return r.shots ?? []; }),
+  sheet: (botId: string, userId: string, ws: string, url: string, widths: number[], moments: number[] = []) =>
+    onMachine(botId, userId, ws, async (name) => { const r = await runBrowser<{ error?: string; shots?: { width: number; data: string; scrollWidth?: number; at?: number }[] }>(name, { op: "sheet", url, widths, moments }, 120_000); if (r.error) throw new Error(r.error); return r.shots ?? []; }),
   view: (botId: string, userId: string, ws: string) => onMachine(botId, userId, ws, async (n) => { await pause(300); return capture(n); }),
   open: (botId: string, userId: string, ws: string, url: string, newTab = false) => onMachine(botId, userId, ws, async (n) => {
     const target = /^[a-z][a-z0-9+.-]*:/i.test(url) ? url : `https://${url}`;

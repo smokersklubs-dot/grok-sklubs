@@ -1,9 +1,11 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { join, relative, sep } from "node:path";
+import { fileURLToPath } from "node:url";
 import { emit } from "./bus.js";
 import type { Locale } from "./shared.js";
 import { scanSkill } from "./skillscan.js";
 import { LIBRARY_CATEGORIES, type LibraryAddReport, type LibraryCategory, type LibraryOrigin, type LibrarySkill } from "./skillstypes.js";
-import { skillMeta } from "./skillhealth.js";
+import { skillMeta } from "./skillhealth.js"; import { keepCompanions, skillFiles, type CompanionFile } from "./skillfiles.js";
 import { audit, bots, sha256, skills, type BotRecord } from "./store.js";
 
 /**
@@ -27,6 +29,18 @@ interface Entry {
   id: string; origin: LibraryOrigin; category: LibraryCategory; licence: string; source: string;
   title: Record<Locale, string>; summary: Record<Locale, string>;
   text: Partial<Record<Locale, { description: string; body: string }>>; notice: string;
+  /** L130: text files of its `files/` folder (templates, styles), copied with the skill, never run. */
+  files: CompanionFile[];
+}
+
+/** The text files under a library skill's `files/` folder (L130), within the companion limits. */
+function libraryFiles(dir: URL): CompanionFile[] {
+  const root = new URL("files/", dir);
+  if (!existsSync(root)) return [];
+  const base = fileURLToPath(root);
+  const names = readdirSync(base, { recursive: true, withFileTypes: true }).filter((d) => d.isFile())
+    .map((d) => relative(base, join(d.parentPath, d.name)).split(sep).join("/")).sort();
+  return keepCompanions(names.map((n) => ({ path: n, content: readFileSync(new URL(n, root), "utf8") }))).kept;
 }
 
 const DIR = new URL("../skills-library/", import.meta.url);
@@ -90,7 +104,7 @@ function load(): Entry[] {
       id: e.id, origin: e.origin, category: (LIBRARY_CATEGORIES as readonly unknown[]).includes(e.category) ? e.category : "method", licence: str(e.licence, 60), source: str(e.source, 300),
       title: { fr: str(e.title?.fr, 80) || e.id, en: str(e.title?.en, 80) || e.id },
       summary: { fr: str(e.summary?.fr, 300), en: str(e.summary?.en, 300) },
-      text, notice: readFileSync(file("NOTICE"), "utf8").split("\n")[0].trim(),
+      text, notice: readFileSync(file("NOTICE"), "utf8").split("\n")[0].trim(), files: libraryFiles(dir),
     });
   }
   return out;
@@ -101,7 +115,7 @@ export const libraryEntries = (): Entry[] => (cache ??= load());
 /** A library skill's version: a short hash of all its texts (any language), so a change of language is not an update (skillcatalog.ts). */
 export const libraryVersion = (id: string): string | null => {
   const e = libraryEntries().find((x) => x.id === id);
-  return e ? sha256(JSON.stringify(e.text)).slice(0, 16) : null;
+  return e ? sha256(JSON.stringify(e.files.length ? { text: e.text, files: e.files } : e.text)).slice(0, 16) : null;
 };
 
 const textFor = (e: Entry, loc: Locale) => (e.text[loc] ? { ...e.text[loc]!, language: loc } : { ...e.text.en!, language: "en" as const });
@@ -144,6 +158,7 @@ export function addFromLibrary(userId: string, id: string, target: string, local
     // A text the safety check flags as "danger" comes back as a draft (store.ts → skillscan.ts): said in the report.
     const made = skills.create(b.id, e.title[locale], t.description || e.summary[locale], t.body, false);
     if (made.draft) (report.flagged ??= []).push(b.name);
+    if (e.files.length) skillFiles.save(made.id, e.files); // L130: its templates travel with it
     skillMeta.setMadeBy(made.id, "library"); skillMeta.setOrigin(made.id, "library", e.id, libraryVersion(e.id)!); // versioned copy (skillcatalog.ts)
     report.added.push({ botId: b.id, botName: b.name });
     emit(userId, { type: "memories", botId: b.id });

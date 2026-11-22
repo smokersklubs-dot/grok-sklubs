@@ -55,7 +55,7 @@ export function githubPreviewFixture(): GithubPreview {
       s("frontend-design", { description: "Distinctive web pages.", ignoredFiles: 0 }),
       s("slides", { description: "Slide decks.", licence: "restrictive", permissive: false, ignoredFiles: 14 }),
       s("teach", { description: "Teaches a subject over several sessions.", licence: "MIT", annexes: ["MISSION-FORMAT.md", "GLOSSARY-FORMAT.md"], referencedFiles: ["scripts/serve.py"], ignoredFiles: 1 }),
-      s("seo-audit", { description: "Full site audit.", licence: "MIT", tooLarge: true, chars: 23_418, referencedFiles: ["references/quality-gates.md", "references/eeat-framework.md", "references/cwv-thresholds.md", "references/schema-types.md", "references/local-seo-signals.md"] }),
+      s("seo-audit", { description: "Full site audit.", licence: "MIT", parts: 2, chars: 23_418, companionFiles: ["references/quality-gates.md", "references/eeat-framework.md"], referencedFiles: ["references/cwv-thresholds.md", "references/schema-types.md", "references/local-seo-signals.md"] }),
       s("notes", { licence: "none", licenceFrom: "none", permissive: false, mentionsKey: true }),
       s("quick-install", { description: "Installs the tool.", scan: scanDangerFixture() }),
     ],

@@ -1,3 +1,6 @@
+import { windowFromText, RESEARCH_EXTRAS, type Engagement, type ResearchWindow, type ResearchExtra, type SourceName, type SourceState } from "./researchsignals.js";
+/** Findings kept per question (was 4; more sources now answer). */
+export const MAX_FINDINGS = 6;
 export interface ResearchBrief {
   subject: string;
   plan: string[];
@@ -6,17 +9,29 @@ export interface ResearchBrief {
   model: boolean;
   includeX: boolean;
   locale: "fr" | "en";
+  /** L87: only sources published in this window count (absent on older reports: "any"). */
+  window?: ResearchWindow;
+  /** L87: free sources besides the web (Hacker News, Polymarket, Reddit and YouTube through Agent Reach). */
+  extras?: ResearchExtra[];
 }
 export interface ResearchSource {
   url: string;
   title: string;
   text: string;
+  /** L87: publication date (YYYY-MM-DD) when the page or the source says it. */
+  published?: string;
+  engagement?: Engagement;
+  origin?: SourceName;
+  /** Rank boost (relevance, freshness, engagement) used to order excerpts. */
+  boost?: number;
 }
 export interface ResearchFinding {
   claim: string;
   quote: string;
   url: string;
   title: string;
+  published?: string;
+  engagement?: string;
 }
 export interface ResearchSection {
   question: string;
@@ -26,6 +41,11 @@ export interface ResearchSection {
   notes: string[];
   synthesis: boolean;
   at: number;
+  /** L87: what each source did for this question (absent on older reports). */
+  sources?: SourceState[];
+  offTopic?: number;
+  outOfWindow?: number;
+  undated?: number;
 }
 export function publicAddress(value: unknown) {
   try {
@@ -52,8 +72,12 @@ export function briefFrom(value: Partial<ResearchBrief>) {
   if (!Array.isArray(seeds) || seeds.length > 6 || seeds.some((v) => !publicAddress(v)))
     throw Error("Indique jusqu’à six adresses web valides.");
   const discover = value.discover !== false;
-  if (!seeds.length && !discover && !value.includeX)
+  const extras = Array.isArray(value.extras) ? [...new Set(value.extras.filter((x) => RESEARCH_EXTRAS.includes(x)))] : [];
+  if (!seeds.length && !discover && !value.includeX && !extras.length)
     throw Error("Ajoute une source ou active la recherche web.");
+  const window: ResearchWindow = (["any", "week", "month", "year"] as const).includes(value.window as ResearchWindow)
+    ? (value.window as ResearchWindow)
+    : windowFromText([subject, ...plan].join(" "));
   return {
     subject,
     plan,
@@ -62,6 +86,8 @@ export function briefFrom(value: Partial<ResearchBrief>) {
     includeX: value.includeX === true,
     model: value.model === true,
     locale: value.locale === "en" ? "en" : "fr",
+    window,
+    extras,
   } satisfies ResearchBrief;
 }
 const compact = (value: string) => value.replace(/\s+/g, " ").trim();
@@ -102,7 +128,7 @@ export function extractEvidence(question: string, sources: ResearchSource[]): Re
       }
       if (best < required) continue;
       candidates.push({
-        score: best / (1 + Math.log(1 + words.size) / 8),
+        score: (best / (1 + Math.log(1 + words.size) / 8)) * (1 + (source.boost ?? 0)),
         item: { claim: "", quote, url, title: source.title },
       });
     }
@@ -115,7 +141,7 @@ export function extractEvidence(question: string, sources: ResearchSource[]): Re
       used.add(item.url);
       return true;
     })
-    .slice(0, 4)
+    .slice(0, MAX_FINDINGS)
     .map((x) => x.item);
 }
 /** Reject invented source identifiers, unattested quotations and free-standing model text. */
@@ -146,7 +172,7 @@ export function checkedFindings(raw: string, sources: ResearchSource[]): Researc
       continue;
     if (!items.some((i) => i.quote === quote && i.url === source.url))
       items.push({ claim, quote, url: source.url, title: source.title });
-    if (items.length === 4) break;
+    if (items.length === MAX_FINDINGS) break;
   }
   return items;
 }

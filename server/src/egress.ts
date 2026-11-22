@@ -5,7 +5,7 @@ import { computerKind, workspaceOf } from "./computer.js";
 import { config } from "./config.js";
 import { q } from "./db.js";
 import { tr } from "./i18n.js";
-import { addJournal } from "./journal.js"; import { reservedLine, vaultAccess } from "./vaultaccess.js"; import { noteHost } from "./netjournal.js";
+import { addJournal } from "./journal.js"; import { reservedLine, vaultAccess } from "./vaultaccess.js"; import { noteHost } from "./netjournal.js"; import { netRefusal } from "./netpolicy.js";
 import { botBaseUrl, writeComputerFile } from "./linux.js";
 import { fetchProblem, guardedFetch } from "./net.js";
 import { scrubSecret } from "./apiconnectors.js";
@@ -150,6 +150,7 @@ export async function handleEgress(c: Context): Promise<Response> {
   const host = hostname.replace(/^www\./, "");
   if (!vaultAccess.allowed(item.id, bot.id)) { journal("denied", "denied", "reserved for other bots"); vaultAccess.note(item.id, bot.userId, bot, "api_relay", host, false); return json(403, reservedLine(item.name)); } // L41
   if (!item.hosts.some((h) => sameSite(host, h))) { journal("denied", "denied", "host not bound"); return json(403, `The secret "${item.name}" may only be sent to ${item.hosts.join(", ") || "(no host)"}, not ${host}. Nothing was sent.`); }
+  const net = netRefusal(bot, host); if (net) { journal("denied", "denied", "network policy"); return json(403, net); } // L169 (netpolicy.ts)
   if (overRate(`${bot.id}|${item.id}`)) { journal("denied", "denied", "rate limit"); return json(429, `More than ${RATE} requests a minute with this secret: slow down.`); } noteHost(bot, host, "relay"); // L39
 
   // Permission: before the first use of each secret; after outside content, every change asks (never "Always").

@@ -133,11 +133,21 @@ export function cardFixtures(o: FixtureOptions): CardFixture[] {
     type: "skill", status, outside: false, name: L("Préparer un devis", "Prepare a quote"),
     when: L("Quand on me demande un devis client", "When asked for a client quote"),
     steps: L("1. Retrouver le client\n2. Reprendre le dernier devis\n3. Mettre à jour les prix", "1. Find the client\n2. Reuse the last quote\n3. Update the prices"),
+    // L131: earlier requests found in other conversations
+    evidence: [
+      { at: NOW - 3 * 24 * HOUR, where: "Juno", quote: L("Tu peux refaire le devis pour [client] avec les nouveaux prix ?", "Can you redo the quote for [client] with the new prices?") },
+      { at: NOW - 17 * 24 * HOUR, where: "Léon", quote: L("Prépare un devis comme la dernière fois, même format, livraison comprise, et envoie-le moi avant de le partager", "Prepare a quote like last time, same format, delivery included, and show it to me before sharing it") },
+    ],
   }));
   add("apiconnector", ["pending", "approved", "dismissed"], (status) => ({
     type: "apiconnector", connectorId: `ac_${status}`, status, name: "OpenWeather", baseUrl: "https://api.openweathermap.org/data/2.5",
     host: "api.openweathermap.org", secret: "OPENWEATHER_KEY", secretSaved: status !== "pending",
     endpoints: [{ method: "GET", path: "/weather", description: L("Météo actuelle d'une ville", "Current weather for a city") }],
+  }));
+  add("apiconnector", ["pending"], () => ({
+    type: "apiconnector", connectorId: "ac_preset", status: "pending", name: "Instagram", baseUrl: "https://graph.instagram.com/v27.0", preset: "instagram",
+    host: "graph.instagram.com", secret: "Instagram access token", secretSaved: false,
+    endpoints: [{ method: "GET", path: "/{id}/media", description: "The account's posts" }, { method: "POST", path: "/{id}/media_publish", description: "Publish a prepared post (creation_id): asks the owner" }],
   }));
   add("memory", ["pending", "kept", "replaced"], (status) => ({
     type: "memory", memoryId: `me_${status}`, status, oldText: L("Préfère les réunions le matin", "Prefers morning meetings"),
@@ -173,6 +183,17 @@ export function cardFixtures(o: FixtureOptions): CardFixture[] {
     evidence: status === "complete" ? L("Tableau « prospects-lyon.csv », 20 lignes.", "Sheet “prospects-lyon.csv”, 20 rows.") : undefined,
     reason: status === "blocked" || status === "paused" ? L("Le site de l'annuaire demande une connexion.", "The directory site asks for a login.") : undefined,
   }));
+  // L89: a goal with success criteria, each with its evidence, waiting for the owner's « Valider ».
+  list.push({ type: "goal", status: "review", card: {
+    type: "goal", goalId: "gl_review", status: "blocked", rounds: 4, maxRounds: 10, review: true,
+    objective: LONG(L("Mettre en ligne la page de réservation", "Put the booking page online")),
+    summary: L("La page est en ligne et testée.", "The page is online and tested."), reason: L("attend ton accord", "waiting for your approval"),
+    criteria: [
+      { text: L("La page s'ouvre sur téléphone", "The page opens on a phone"), evidence: L("Capture à 390 px, aucun défilement de côté", "Screenshot at 390 px, no side scroll") },
+      { text: L("Le formulaire envoie une demande", "The form sends a request"), evidence: L("Demande test reçue à 14 h 05", "Test request received at 2:05 PM") },
+      { text: L("Les tests passent", "The tests pass"), evidence: "12/12" },
+    ],
+  } });
   list.push(...turnCardFixtures(o)); // L79, L83, L139 (turnFixtures.ts)
   return list;
 }

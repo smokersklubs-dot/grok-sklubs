@@ -114,10 +114,10 @@ renvoie le texte d'une compétence et laisse le bot écrire tout le HTML.
 1. Contrôle de page avant `page_publish` (couleurs en dur, `alt`, boutons sans nom, contraste) (S).
 2. Règle « partir d'un modèle, relire, remplacer les valeurs en dur » dans `pages-soignees` (S).
 3. Outil « il me manque une capacité » pour les bots, visible par l'admin (S).
-4. Modèles statiques supplémentaires (tableau de bord, tableau filtrable, assistant, kanban) dans `modeles-de-pages` (M).
+4. Modèles statiques supplémentaires (tableau de bord, tableau filtrable, assistant, kanban) dans `modeles-de-pages` (M) — **fait le 22/11/2026** : compétence `modeles-statiques` (fichiers HTML, L111).
 5. Lecture progressive des longues compétences (index puis section, texte dense) (S).
 6. Banc d'évaluation des compétences de design (mêmes demandes, avec/sans compétence) (M).
-7. Compétence « appli React avec Astryx + export HTML » si les utilisateurs demandent des outils internes (M).
+7. Compétence « appli React avec Astryx + export HTML » si les utilisateurs demandent des outils internes (M). En partie le 22/11/2026 : option « petite appli React » dans `modeles-statiques` (sans la CLI Astryx).
 
 ## Non vérifié
 

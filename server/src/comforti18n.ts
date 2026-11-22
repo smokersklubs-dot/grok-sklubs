@@ -14,4 +14,10 @@ export const COMFORT_FR: Record<string, string> = {
   "files on": "fichiers allumés",
   "files off": "fichiers coupés",
   "command stopped from the chat": "commande arrêtée depuis la discussion",
+  // L152 personal commands (personalcommands.ts)
+  "commands must be a list.": "commands doit être une liste.", "At most 30 commands.": "30 commandes au plus.",
+  "A command name is 1 to 24 letters, digits or dashes.": "Le nom d'une commande fait 1 à 24 lettres, chiffres ou tirets.",
+  "That command name is taken by the app.": "Ce nom de commande est déjà pris par l'appli.", "Two commands have the same name.": "Deux commandes ont le même nom.",
+  "A command's words are 1 to 2000 characters.": "Le texte d'une commande fait 1 à 2000 caractères.",
+  "A command's words may not contain a password or key.": "Le texte d'une commande ne doit pas contenir de mot de passe ni de clé.",
 };

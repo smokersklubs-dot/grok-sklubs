@@ -6,7 +6,7 @@ import { bots, clip, users } from "../store.js";
 import { maskIfAccess } from "./access.js";
 import { fetchProblem } from "../net.js";
 import { accounts, apiProblem, callApi, labelKey, type AccountRecord, type ApiAnswer } from "./accounts.js";
-import { vendorUrl } from "./vendors.js"; import { mailFingerprint, proveGmailSent, proveOutlookSent, readRaw, reportProof } from "./mailproof.js";
+import { vendorUrl } from "./vendors.js"; import { SEARCH_CONSOLE } from "./searchconsole.js"; import { mailFingerprint, proveGmailSent, proveOutlookSent, readRaw, reportProof } from "./mailproof.js";
 
 /**
  * What bots can do with a built-in app account. Each account gets its own set of tools, named
@@ -541,7 +541,7 @@ const SLACK: NativeToolDef[] = [
   },
 ];
 
-const BY_APP: Record<NativeAppId, NativeToolDef[]> = { gmail: MAIL, outlook: [...MAIL, ...CALENDAR], gcalendar: CALENDAR, gdrive: DRIVE, slack: SLACK };
+const BY_APP: Record<NativeAppId, NativeToolDef[]> = { gmail: MAIL, outlook: [...MAIL, ...CALENDAR], gcalendar: CALENDAR, gdrive: DRIVE, slack: SLACK, searchconsole: SEARCH_CONSOLE };
 export const toolsOfApp = (app: NativeAppId) => BY_APP[app] ?? [];
 
 export interface NativeToolEntry { spec: ToolSpec; accountId: string; accountName: string; action: string; risk: Risk; label: string }

@@ -66,13 +66,15 @@ export const researchTool: BuiltinTool = {
   spec: {
     name: "deep_research_start",
     description:
-      "Start a durable evidence report only when the user asks for an in-depth investigation. Plan precise distinct questions; use direct primary source URLs when known. Progress and final evidence are saved in this conversation and Research panel.",
+      "Start a durable evidence report only when the user asks for an in-depth investigation. Plan precise distinct questions; use direct primary source URLs when known. Set window when the user asks about a period (\"ce mois-ci\" = month): older sources are set aside. Add free sources when they fit: hn (tech, startups), polymarket (forecasts, elections, events: shown as bettors' odds, never facts), reddit and youtube (what people say; read-only through Agent Reach). Progress and final evidence are saved in this conversation and Research panel.",
     inputSchema: {
       type: "object",
       properties: {
         subject: { type: "string" },
         plan: { type: "array", items: { type: "string" } },
         seeds: { type: "array", items: { type: "string" } },
+        window: { type: "string", enum: ["any", "week", "month", "year"], description: "Only sources published in this period" },
+        sources: { type: "array", items: { type: "string", enum: ["hn", "polymarket", "reddit", "youtube"] } },
       },
       required: ["subject", "plan"],
     },
@@ -91,7 +93,7 @@ export const researchTool: BuiltinTool = {
       );
       if (!message) throw Error("Demande de recherche introuvable dans la discussion.");
       const key = createHash("sha256")
-        .update(JSON.stringify([c.thread ?? 0, message.seq, a.subject, a.plan, a.seeds ?? []]))
+        .update(JSON.stringify([c.thread ?? 0, message.seq, a.subject, a.plan, a.seeds ?? [], ...(a.window || a.sources ? [a.window ?? null, a.sources ?? []] : [])]))
         .digest("hex");
       const job = createReport(
         c.bot,
@@ -99,6 +101,8 @@ export const researchTool: BuiltinTool = {
           subject: a.subject,
           plan: a.plan,
           seeds: a.seeds,
+          window: a.window,
+          extras: a.sources,
           discover: true,
           model: true,
           locale: c.user.locale,

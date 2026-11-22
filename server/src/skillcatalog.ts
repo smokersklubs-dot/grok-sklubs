@@ -1,6 +1,6 @@
 import { emit } from "./bus.js";
 import { q } from "./db.js";
-import { libraryEntries, libraryVersion } from "./skillslibrary.js";
+import { libraryEntries, libraryVersion } from "./skillslibrary.js"; import { skillFiles } from "./skillfiles.js";
 import { setUpdateCheck, skillMeta } from "./skillhealth.js";
 import type { CatalogSkill } from "./skillhealthtypes.js";
 import type { Locale, Skill } from "./shared.js";
@@ -125,6 +125,7 @@ export function updateFromSource(userId: string, skillId: string, locale: Locale
   if (!n) throw new CatalogError(400, "This skill is already up to date.");
   const updated = skills.update(s.id, { name: n.name, description: n.description, body: n.body, ...n.extras });
   skillMeta.setOrigin(s.id, n.kind, skillMeta.get(s.id).originId!, n.version);
+  if (n.kind === "library") { const lib = libraryEntries().find((e) => e.id === skillMeta.get(s.id).originId); if (lib?.files.length) skillFiles.save(s.id, lib.files); } // L130
   audit(userId, "account", `Skill updated from its source: ${s.name}`, s.botId);
   emit(userId, { type: "memories", botId: s.botId });
   return updated;

@@ -41,6 +41,13 @@ ligne de la liste `docs/audits/A-FAIRE.md` et au fichier qui le fait.
 - **Réglages du bot → Sécurité** : la liste des sites contactés (le site seulement, jamais la page), avec « nouveau » et
   « après contenu extérieur ». Option **« Alerte au premier site nouveau »** dans Réglages → Autorisations → Sécurité.
 
+## Accès à Internet par bot (L169)
+
+Réglages du bot → Sécurité → « Accès à Internet » : **Partout** (par défaut), **Seulement une liste** (les sites que tu écris, sous-domaines compris) ou **Nulle part**. Et « Sites interdits à tous tes bots » : une liste qui vaut pour tous tes bots, quel que soit leur réglage. La règle est vérifiée **avant tout envoi** ; le bot reçoit une phrase claire et le refus est écrit dans son journal.
+
+- Couvert : ouvrir une page (`browser_open`), lire une page (`web_fetch`), télécharger (`media_save`), photographier une page à plusieurs largeurs, envoyer une clé (`secret_use`), appeler une API connectée (`api_get` / `api_send`), le relais de clés des programmes de son ordinateur. Sur un ordinateur Linux, la même règle est écrite en règles gérées de Chromium (`URLBlocklist` / `URLAllowlist`) : le navigateur refuse aussi les clics, les redirections et les fichiers qu'une page charge, dès son prochain démarrage.
+- Pas couvert : les programmes de son ordinateur qui vont sur Internet tout seuls (curl, pip, git…) — l'ordinateur est la machine du bot et il y est administrateur ; pour un vrai mur, le pare-feu de l'hôte (`deploy/bots-firewall.sh`). Ni les applications que tu as connectées (MCP), ni les fournisseurs de modèles, ni ce que le serveur charge pour lui-même (pages de connexion, images de la discussion).
+
 ## « Montre-moi » (L40)
 - Les mots de passe, codes, numéros de carte et clés visibles sur une page sont **noircis** dans les captures ; les jetons
   sont retirés des adresses gardées. Limite : les fenêtres d'applis (hors navigateur) ne peuvent pas être lues.

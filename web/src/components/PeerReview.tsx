@@ -3,6 +3,7 @@ import { api, errText } from "../api";
 import { useStore } from "../store";
 import type { PeerReviewState } from "../types";
 import { ErrorNote } from "./ui";
+import { PeerReviewFindings } from "./PeerReviewFindings";
 export function PeerReview({ bot, seq, saved }: { bot: string; seq: number; saved: boolean }) {
   const bots = useStore((s) => s.bots),
     fr = useStore((s) => s.locale === "fr");
@@ -76,6 +77,7 @@ export function PeerReview({ bot, seq, saved }: { bot: string; seq: number; save
           {review.partial && <small> · {fr ? "Diff partiel" : "Partial diff"}</small>}
         </p>
       )}
+      {review && <PeerReviewFindings review={review} fr={fr} />}
       {id && (
         <div className="studio-actions">
           <label>

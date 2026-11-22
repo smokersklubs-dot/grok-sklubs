@@ -123,6 +123,23 @@ export const CATALOG: CatalogApp[] = [
     description: "Pages and databases of your workspace. Gems: ideas and plans left unfinished, notes that connect with today's numbers; bots can write their findings there.",
     tokenHelp: "",
   },
+  {
+    // L175. https://linear.app/docs/mcp — "https://mcp.linear.app/mcp", Streamable HTTP, "OAuth 2.1 with dynamic client
+    // registration" (a Linear API key as bearer also works). Live metadata (22 Nov 2026): https://mcp.linear.app/.well-known/oauth-authorization-server
+    // lists registration_endpoint /register and PKCE. Creating or changing issues goes through the usual connector approval.
+    id: "linear", name: "Linear", category: "Productivity", url: "https://mcp.linear.app/mcp", auth: "oauth", oauthClient: "dynamic",
+    description: "Your backlog in Linear: read and search issues, projects and cycles; create or update an issue and comment (with your approval).",
+    tokenHelp: "Sign in to Linear and choose the workspace. For reading only, add the app by its address with https://mcp.linear.app/mcp/readonly instead.",
+  },
+  {
+    // L175. https://docs.netlify.com/build/build-with-ai/netlify-mcp-server/ — remote server "https://mcp.netlify.com/mcp"
+    // (read 22 Nov 2026). Live metadata (22 Nov 2026): https://mcp.netlify.com/.well-known/oauth-protected-resource names the
+    // authorization server https://mcp.netlify.com/, whose /.well-known/oauth-authorization-server lists registration_endpoint
+    // /oauth-server/reg and PKCE S256. A deploy is a write: it asks the owner like any connector write.
+    id: "netlify", name: "Netlify", category: "Development", url: "https://mcp.netlify.com/mcp", auth: "oauth", oauthClient: "dynamic",
+    description: "Your Netlify sites: list sites and deploys, read build logs, and deploy a site or change its settings (each deploy with your approval).",
+    tokenHelp: "Sign in to Netlify and choose the team. Deploys use your Netlify plan's build minutes.",
+  },
   // ── Creation ──
   {
     // https://higgsfield.ai/creator-hub/help-center/integrations/how-do-i-connect-higgsfield-to-ai-agent (remote MCP
@@ -188,6 +205,8 @@ const FR: Record<string, { category: string; description: string; tokenHelp: str
   ahrefs: { category: "Analytique & SEO", description: "Liens entrants, mots-clés organiques, meilleures pages et audits de site. Pépites : liens perdus à récupérer, pages qui reculent, occasions de liens.", tokenHelp: "Nécessite un abonnement Ahrefs payant (Lite ou plus)." },
   supermetrics: { category: "Analytique & SEO", description: "Une seule connexion pour tes données marketing : Google Ads, Meta, LinkedIn, GA4, Search Console et plus. Pépites : campagnes qui gaspillent du budget, meilleur ROAS, chutes soudaines.", tokenHelp: "Nécessite un abonnement Supermetrics avec accès API (un essai de 14 jours est créé à la première connexion)." },
   windsor: { category: "Analytique & SEO", description: "GA4, Search Console, Google/Meta/TikTok Ads, Shopify, HubSpot et plus de 300 sources via une seule app. Pépites : requêtes proches de la première page, canaux dont le ROI monte.", tokenHelp: "Connecte d'abord tes sources (Google Analytics, Search Console, publicités…) dans Windsor.ai : les bots voient ce que tu y as connecté." },
+  linear: { category: "Productivité", description: "Ton backlog dans Linear : lire et chercher les tickets, projets et cycles ; créer ou modifier un ticket et commenter (avec ton accord).", tokenHelp: "Connecte-toi à Linear et choisis l'espace de travail. Pour la lecture seule, ajoute plutôt l'app par son adresse avec https://mcp.linear.app/mcp/readonly." },
+  netlify: { category: "Développement", description: "Tes sites Netlify : lister les sites et les déploiements, lire les journaux de construction, et déployer un site ou changer ses réglages (chaque déploiement avec ton accord).", tokenHelp: "Connecte-toi à Netlify et choisis l'équipe. Les déploiements utilisent les minutes de construction de ton forfait Netlify." },
   notion: { category: "Productivité", description: "Pages et bases de données de ton espace. Pépites : idées et projets laissés en plan, notes qui éclairent les chiffres du jour ; les bots peuvent y écrire leurs trouvailles.", tokenHelp: "" },
   higgsfield: { category: "Création", description: "Vidéos, images et sons avec ton compte Higgsfield. Une fois connecté, les bots font leurs vidéos ici. Chaque génération utilise tes crédits Higgsfield.", tokenHelp: "Nécessite un abonnement Higgsfield payant. Chaque vidéo ou image créée par un bot utilise tes crédits Higgsfield, sans plafond côté Higgsfield : demande à tes bots de te consulter avant d'en faire plusieurs." },
   treg: { category: "Outils", description: "Un seul compte pour des milliers d'API d'outils payants : SEO et liens entrants, données des réseaux sociaux, recherche d'entreprises et de personnes, extraction de pages, publicité, génération d'images, de vidéos et de voix. Les bots trouvent le bon outil et l'appellent via Treg.", tokenHelp: "Nécessite un compte Treg (treg.to). Les appels sont payés sur ton solde Treg, à l'appel : demande à tes bots de t'annoncer le prix avant les appels chers ou répétés, et règle un plafond de dépense dans Sklubot." },

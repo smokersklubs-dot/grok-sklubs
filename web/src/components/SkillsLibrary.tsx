@@ -77,6 +77,7 @@ function LibraryCard({ skill, onAdded }: { skill: LibrarySkill; onAdded: () => v
 
 type Flag = [Key, Record<string, string | number>];
 const listed = (files: string[] | undefined) => (files ?? []).slice(0, 4).join(", ") + ((files?.length ?? 0) > 4 ? "…" : "");
+const INFO_FLAGS = new Set(["skl.gh.flag.annexes", "skl.gh.flag.companions", "skl.gh.flag.parts"]);
 const flags = (s: GithubPreview["skills"][number]): Flag[] => {
   const out: Flag[] = [];
   if (s.mentionsKey) out.push(["skl.gh.flag.key", {}]);
@@ -84,6 +85,9 @@ const flags = (s: GithubPreview["skills"][number]): Flag[] => {
   // L26: files its text cites that the bot will not have, and small texts of its folder joined as annexes.
   if (s.referencedFiles?.length) out.push(["skl.gh.flag.refs", { n: s.referencedFiles.length, files: listed(s.referencedFiles) }]);
   if (s.annexes?.length) out.push(["skl.gh.flag.annexes", { n: s.annexes.length, files: listed(s.annexes) }]);
+  // L130: kept beside it as text (never run), and a long text split into numbered parts.
+  if (s.companionFiles?.length) out.push(["skl.gh.flag.companions", { n: s.companionFiles.length, files: listed(s.companionFiles) }]);
+  if ((s.parts ?? 1) > 1) out.push(["skl.gh.flag.parts", { n: s.parts!, chars: (s.chars ?? 0).toLocaleString() }]);
   if (s.ignoredFiles) out.push(["skl.gh.flag.files", { n: s.ignoredFiles }]);
   if (s.exists) out.push(["skl.gh.flag.exists", {}]);
   return out;
@@ -149,7 +153,7 @@ function GithubImport() {
                       <Icon name={s.permissive ? "check" : "alert"} size={13} />
                       {s.licence === "none" ? t("skl.gh.noLicence") : s.permissive ? t("skl.gh.permissive", { licence: s.licence }) : t("skl.gh.notPermissive", { licence: s.licence === "restrictive" ? t("skl.gh.restrictive") : s.licence === "unknown" ? t("skl.gh.unknown") : s.licence })}
                     </span>
-                    {flags(s).map(([k, vars]) => <span key={k} className={`skl-flag ${k === "skl.gh.flag.annexes" ? "is-info" : ""}`}><Icon name={k === "skl.gh.flag.annexes" ? "check" : "alert"} size={12} /> {t(k, vars)}</span>)}
+                    {flags(s).map(([k, vars]) => <span key={k} className={`skl-flag ${INFO_FLAGS.has(k) ? "is-info" : ""}`}><Icon name={INFO_FLAGS.has(k) ? "check" : "alert"} size={12} /> {t(k, vars)}</span>)}
                   </span>
                 </label>
                 <ScanFindings scan={s.scan} compact />

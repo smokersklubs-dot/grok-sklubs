@@ -42,5 +42,13 @@ Réglages du bot → Apparence → **Essayer : Euphorique** (clique d'abord une 
 `crontab -e` sur le VPS, puis ajoute la ligne de [SAUVEGARDE.md](SAUVEGARDE.md). Garde une copie de `.env` ailleurs.
 - [ ] Une première sauvegarde existe.
 
+## 9. Petits raccourcis de la discussion
+
+- **Un passage pas clair ?** Sélectionne les mots dans la réponse du bot : une barre propose « Explique ce passage », « Plus simple », « Trop long », « Un exemple » ou « Remarque… ». Un clic suffit, pas besoin de recopier la phrase. Le bouton 💡 sous une réponse demande « Explique plus simplement ».
+- **Tes commandes `/`** : Réglages → Raccourcis → « Mes commandes / ». Ensuite, tape `/` dans une discussion : le texte arrive dans la saisie, tu le relis et tu envoies. Tape `@` pour citer un fichier de la bibliothèque du bot.
+- **Garder une discussion** : menu du bot (en haut) → « Exporter la discussion (Markdown) » ou « Exporter en PDF ». Les mots de passe et clés trouvés sont masqués.
+- **Dans la liste des bots**, une petite pastille dit pourquoi un bot s'est arrêté (limite d'étapes, erreur, arrêté…), et la barre « Au travail » montre qui travaille en ce moment.
+- **Un souci ?** Réglages → Docteur : un contrôle en lecture seule, ligne par ligne « OK » ou « À corriger ». « Copier le résumé » donne un texte sans chemin, adresse, e-mail ni secret, à coller dans une demande d'aide.
+
 ## Ce que je fais de tes retours
 Pour chaque point qui coince : copie le message exact affiché (ou une capture) et envoie-le-moi. Je corrige, je teste, et tu relances `bash deploy/update.sh`.

@@ -156,6 +156,10 @@ export async function reachWebSearch(bot: BotRecord, query: string, signal?: Abo
   return (env.items ?? []).filter((i) => i?.url).map((i) => ({ title: String(i.title ?? i.url), url: String(i.url), snippet: clip(String(i.text ?? ""), 400) }));
 }
 
+/** L87: one channel's read-only search for the deep research (researchsources.ts), as Agent Reach's envelope. */
+export const reachChannelSearch = (bot: BotRecord, channel: string, query: string, limit: number, signal?: AbortSignal) =>
+  run(bot, [channel, "search", query.replace(/^-+/, "").slice(0, 400), "--limit", String(limit)], 90, signal);
+
 /** YouTube subtitles through Agent Reach, for the transcription chain. */
 export async function reachSubtitles(bot: BotRecord, target: string, lang: string | undefined, signal?: AbortSignal): Promise<{ text: string; blocked?: boolean }> {
   const env = await run(bot, ["youtube", "subtitle", target, ...(lang ? ["--lang", lang] : [])], 120, signal);

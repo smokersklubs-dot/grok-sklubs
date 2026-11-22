@@ -14,7 +14,7 @@ import { hookSignedFixture, hookTestFixture, reportsFixture } from "./trustFixtu
 import { relayGuardFixture } from "./relayGuardFixtures";
 import { routineExtrasFixture, routinePreviewFixture } from "./routineFixtures";
 import { botSecurityFixture, browserFixture, recipientsFixture, securitySettingsFixture, vaultAccessFixture } from "./securityFixtures";
-import { channelsFixture } from "./GalleryChannels"; import { inboxFixture } from "./turnFixtures";
+import { channelsFixture } from "./GalleryChannels"; import { comfort6Get } from "./GalleryComfort6"; import { inboxFixture } from "./turnFixtures";
 
 export interface FakeApiState extends FixtureOptions { empty: boolean; fail: boolean }
 
@@ -71,9 +71,13 @@ export function installFakeApi(get: () => FakeApiState): void {
       await wait(600);
       return s.fail ? json(500, { error: s.lang === "fr" ? "Exemple d'erreur : le serveur n'a pas pu le faire." : "Sample error: the server could not do it." }) : json(200, {});
     }
+    { const w6 = comfort6Get(path, s); if (w6 !== undefined) return json(200, w6); } // wave 6 comfort (GalleryComfort6.tsx)
     if (path === "/today") return json(200, todayReport(s, s.empty));
     if (path === "/inbox") return json(200, inboxFixture(s)); // L139 « À toi »
     if (/^\/routines\/[^/]+\/extras$/.test(path)) return json(200, routineExtrasFixture(s, s.empty));
+    // Wave 6 (L54 / L86 / L183, RoutineOptions.tsx; L58, QueuedNotes.tsx).
+    if (/^\/routines\/[^/]+\/options$/.test(path)) return json(200, s.empty ? { announce: "thread", condition: "", heavy: false } : { announce: "thread", condition: s.lang === "fr" ? "Seulement si un concurrent baisse ses prix" : "Only if a competitor cuts its prices", heavy: true });
+    if (/^\/bots\/[^/]+\/notes$/.test(path)) return json(200, { notes: s.empty ? [] : [{ id: 1, thread: 0, text: s.lang === "fr" ? (s.long ? "Ajoute aussi les prix de livraison pour la Belgique, la Suisse et le Luxembourg, et vérifie les délais annoncés sur chaque site de chaque transporteur international." : "Ajoute aussi la Belgique") : "Add Belgium too" }, { id: 2, thread: 0, text: s.lang === "fr" ? "Et c'est quoi le délai moyen ?" : "And what is the average delay?" }] });
     if (/^\/bots\/[^/]+\/routines\/live$/.test(path)) return json(200, { live: s.empty ? [] : [{ routineId: "rtn_gallery_nod", steps: 4, caption: s.lang === "fr" ? "Lit les nouvelles du secteur" : "Reading the industry news", activity: "browsing", since: Date.now() - 90_000, awaiting: null }] });
     if (/^\/bots\/[^/]+\/work-models$/.test(path)) return json(200, { routines: "", tasks: s.empty ? "" : "openrouter:google/gemini-2.5-flash", background: "" });
     // Réglages → Mémoire, « Modifier » then « Historique » (MemoryEdit.tsx): what changed in a note.
@@ -105,6 +109,11 @@ export function installFakeApi(get: () => FakeApiState): void {
     if (path === "/security/browser") return json(200, browserFixture(s.empty));
     if (/^\/bots\/[^/]+\/security$/.test(path)) return json(200, botSecurityFixture(s, s.empty));
     if (/^\/bots\/[^/]+\/email\/recipients$/.test(path)) return json(200, recipientsFixture(s.empty));
+    // Wave 6 (OpenAccess.tsx): network access, provider keys, outgoing webhooks.
+    if (/^\/bots\/[^/]+\/network$/.test(path)) return json(200, { policy: s.empty ? { mode: "all", hosts: [] } : { mode: "list", hosts: ["wikipedia.org", "api.github.com"] }, blocked: s.empty ? [] : ["exemple-interdit.com"], max: 200 });
+    if (/^\/bots\/[^/]+\/provider-keys$/.test(path)) return json(200, { choices: {}, providers: s.empty ? [] : [{ id: "up-demo", name: "DeepSeek", keys: [{ id: "main", name: "Clé principale", resting: false }, { id: "pk_1", name: "Travail", resting: true }] }] });
+    if (/^\/api-providers\/[^/]+\/keys$/.test(path)) return json(200, { keys: [{ id: "main", name: "Clé principale", resting: false }, { id: "pk_1", name: "Travail", resting: true, lastError: "limit reached (429)" }] });
+    if (/^\/bots\/[^/]+\/webhooks$/.test(path)) return json(200, { events: ["message.created", "task.finished", "approval.pending"], webhooks: s.empty ? [] : [{ id: "owh_1", url: "https://exemple.com/webhook", events: ["message.created", "task.finished"], active: true, createdAt: Date.now() - 86400_000, deliveries: [{ id: "d1", event: "message.created", status: "done", attempts: 1, lastStatus: 204, lastError: "", createdAt: Date.now() - 600_000, deliveredAt: Date.now() - 600_000 }, { id: "d2", event: "task.finished", status: "failed", attempts: 7, lastStatus: 500, lastError: "HTTP 500", createdAt: Date.now() - 7200_000, deliveredAt: null }] }] });
     if (/^\/vault\/[^/]+\/access$/.test(path)) return json(200, vaultAccessFixture(s.empty));
     if (path === "/skills-library") return json(200, libraryFixture(s));
     if (path === "/skills/health") return json(200, { report: skillHealthFixture(s, s.empty) });

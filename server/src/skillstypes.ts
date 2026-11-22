@@ -30,8 +30,12 @@ export interface GithubSkillFound {
   licence: LicenceKind; licenceFrom: "skill" | "repository" | "front matter" | "readme" | "none"; permissive: boolean;
   /** Something in its text looks like a key. */
   mentionsKey: boolean;
-  /** Longer than 20 000 characters: cannot be imported as is. */
+  /** Its text could not be read (missing from the archive or over 300 KB): cannot be imported. */
   tooLarge: boolean;
+  /** L130: longer than 20 000 characters: imported as this many numbered parts (1 = in one piece). */
+  parts?: number;
+  /** L130: text files of its folder kept beside it (templates, styles, other pages), never run on the server. */
+  companionFiles?: string[];
   /** Characters of its text (with its annexes), to say by how much it is too long. */
   chars: number;
   /** Small texts of its folder that its text cites, joined at the end as "Annex: …" sections. */

@@ -17,6 +17,7 @@ import { radius, useTheme } from "../theme";
 import { Icon } from "./Icon";
 import { tap } from "./ui";
 import { ChatSources } from "./ChatSources";
+import { QueuedNotes } from "./QueuedNotes";
 import { mentionAt, replaceMention } from "../../../server/src/clientshared/chatmentions";
 import { sendKeysFor } from "../../shared/sendKey";
 
@@ -147,6 +148,7 @@ export function Composer({ bot, live }: { bot: Bot; live: Live | undefined }) {
         </ScrollView>
       ) : null}
       {live?.queued ? <Text style={{ color: c.text3, fontSize: 12, marginLeft: 16, marginBottom: 4 }}>{t.n("composer.queued", live.queued)}</Text> : null}
+      {live?.queued ? <QueuedNotes botId={bot.id} queued={live.queued} /> : null}
       {mention && <ChatSources botId={bot.id} query={mention.query} insert={value => {
         const next = replaceMention(text, mention, value);
         setText(next.text); setCaret(next.caret);

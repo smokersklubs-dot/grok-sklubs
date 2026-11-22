@@ -267,6 +267,7 @@ a.btn { text-decoration: none; }
 .logo-tile.native-gdrive { background: color-mix(in srgb, #1f9d61 16%, var(--surface-3)); color: #1a7f4f; }
 .logo-tile.native-outlook { background: color-mix(in srgb, #1b6fc2 16%, var(--surface-3)); color: #1760a8; }
 .logo-tile.native-slack { background: color-mix(in srgb, #7a3f86 16%, var(--surface-3)); color: #6b3576; }
+.logo-tile.native-searchconsole { background: color-mix(in srgb, #c26a12 16%, var(--surface-3)); color: #9a520b; }
 @media (max-width: 640px) { .oauth-client .form-cols, .native-setup .form-cols, .native-trigger-form .form-cols { grid-template-columns: 1fr; } }
 
 /* ---------- Wave 3: organising bots ---------- */
@@ -762,6 +763,11 @@ a.btn { text-decoration: none; }
 .goal-line.is-waiting { color: var(--warn); }
 .goal-done { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border-radius: var(--r-md); background: var(--ok-soft); font-size: 13.5px; overflow-wrap: anywhere; white-space: pre-wrap; }
 .goal-evidence { font-size: 13px; }
+/* L89: success criteria of a goal, with their evidence */
+.goal-criteria { font-size: 13px; color: var(--text-2); overflow-wrap: anywhere; }
+.goal-criteria ol { margin: 4px 0 0; padding-left: 20px; display: flex; flex-direction: column; gap: 3px; }
+.goal-criteria li.is-met { color: var(--text); }
+.goal-criterion-evidence { color: var(--text-2); }
 .goal-card .card-actions .btn svg { margin-right: 2px; }
 .goal-chip { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: 10px; border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); background: color-mix(in srgb, var(--accent) 8%, var(--surface)); font-size: 13px; line-height: 1.35; }
 .goal-chip > span { flex: 1; min-width: 0; }
