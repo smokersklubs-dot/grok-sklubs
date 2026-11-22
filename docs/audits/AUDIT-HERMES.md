@@ -524,13 +524,15 @@ Sklubot a déjà repris trois compétences (`brouillon-email`, `cartes-de-suivi`
 
 ## 6. À faire, classé par valeur
 
+> **Mise à jour du 2026-11-22 (chantier « cœur : fiabilité »).** Les lignes marquées ✅ sont faites et testées (`server/test/core-timeouts.test.ts`, `core-reliability.test.ts`, `core-engine.test.ts`) ; « en partie » dit ce qui reste. Détail dans `docs/COUVERTURE.md`, section « Cœur : fiabilité ».
+
 | Rang | Quoi | Taille |
 |---|---|---|
-| 1 | Mettre un délai d'inactivité sur chaque appel au modèle (180 s sans rien → erreur passagère → relance puis secours), et pour les tours sans personne, arrêter et reprendre seul au lieu d'attendre un clic. (§ 3.7, ligne 150) | S |
-| 2 | Numéro d'envoi sur chaque message pour ne jamais créer deux messages ni deux tours. (ligne 24) | S |
+| 1 | ✅ **Fait (2026-11-22).** Délai d'inactivité sur chaque appel au modèle (180 s sans rien → erreur passagère → relance puis secours), plafond de connexion (180 s) et plafond par appel (30 min) ; le tour finit toujours (relances, secours, puis carte d'échec et nouveaux essais du coordinateur), sans clic. `server/src/llm/timeouts.ts`, réglages `MODEL_IDLE_TIMEOUT_SEC`, `MODEL_CONNECT_TIMEOUT_SEC`, `MODEL_CALL_TIMEOUT_MIN`. (§ 3.7, ligne 150) | S |
+| 2 | ✅ **Fait (2026-11-22).** Numéro d'envoi sur chaque message (web et mobile), gardé 24 h par compte et par bot : le même envoi répété rend le premier message, sans second tour. `server/src/sendkeys.ts`. (ligne 24) | S |
 | 3 | Modifier un message envoyé et régénérer une réponse. (ligne 44) | M |
 | 4 | Recherche d'outils : ne plus envoyer la centaine d'outils et tous les outils d'applis à chaque appel. (ligne 151) | L |
-| 5 | Ouvrir l'écran du bot tout seul quand il s'en sert, et reconnaître les liens sans `http`. (§ 3.2, ligne 72) | S |
+| 5 | ✅ **Fait en partie (2026-11-22).** Liens sans `http` reconnus (« youtube.com/watch?v=… », « www.site.fr », « sklubs.fr »), sans prendre « file.txt » ou « e.g. » pour un lien : fait (`agent/links.ts`). Reste : ouvrir l'écran du bot tout seul quand il s'en sert. (§ 3.2, ligne 72) | S |
 | 6 | Réparer la grande vue de l'écran qui ne se reconnecte pas, avec délais croissants et bouton Reconnecter. (ligne 73) | S |
 | 7 | Bouton Copier sur les blocs de code, repli des longs blocs. (ligne 35) | S |
 | 8 | Telegram : recevoir photos, vocaux et fichiers ; envoyer les fichiers du bot ; mise en forme propre. (lignes 88-90) | M |
@@ -545,7 +547,7 @@ Sklubot a déjà repris trois compétences (`brouillon-email`, `cartes-de-suivi`
 | 17 | Pastilles de sources + consigne « finis la ligne par un lien court et exact ». (ligne 56) | M |
 | 18 | Question à plusieurs volets, choix multiple, réponse rendue dans le même tour. (ligne 30) | M |
 | 19 | Modèle moins cher par routine et pour les aides de fond. (lignes 128, 162) | S |
-| 20 | Signature HMAC sur les webhooks entrants. (ligne 97) | S |
+| 20 | ✅ **Fait (2026-11-22, L20).** Signature HMAC-SHA256 facultative sur les webhooks entrants (GitHub, Stripe, Standard Webhooks), clé scellée et montrée une fois, dédoublonnage, regroupement, essai à blanc, journal des refus. `server/src/hooktrust.ts`, `hookroutes.ts`. (ligne 97) | S |
 | 21 | Longue tâche demandée dans le chat : continuer seule après 60 pas, N fois au choix. (§ 3.3, ligne 188) | S |
 | 22 | Slack comme canal (mode Socket officiel). (ligne 92) | L |
 | 23 | Coller le presse-papiers, Ctrl+Alt+Suppr et capture dans la vue de l'écran. (ligne 77) | S |

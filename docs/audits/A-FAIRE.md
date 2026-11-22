@@ -1,0 +1,350 @@
+# Sklubot : la liste unique de ce qu'il reste à faire
+
+Synthèse de toutes les études du dossier `audit/` (22/11/2026). Rien n'a été modifié dans Sklubot pour l'écrire.
+Chaque ligne réunit les besoins identiques venus de plusieurs dépôts : **plus il y a de sources, plus le besoin est sûr**.
+
+---
+
+## 1. Les chiffres
+
+- **Fichiers lus : 38** (37 fichiers `AUDIT-*.md` + le cahier `10-timon.md`).
+- **Lignes de tableaux comptées : 3 208** (fonctions comparées à Sklubot, toutes études confondues), plus **147 lignes « compétence »** jugées ADAPTER / IDÉE / NON (dépôts qui ne sont que des paquets de compétences).
+
+| Statut | Nombre |
+|---|---|
+| FAIT (Sklubot l'a déjà) | **848** |
+| PARTIEL (existe, mais incomplet ou mal fait) | **838** |
+| MANQUANT | **690** |
+| DIFFÉRENT (fait autrement, souvent exprès) | 252 |
+| NON REPRIS (exclu exprès) | 528 (dont 201 compétences de développeur d'ECC regroupées) |
+| Sans objet / non vérifié | 52 |
+| **Total** | **3 208** |
+| Compétences : ADAPTER / IDÉE / NON | 32 / 42 / 73 (147) |
+
+Sources des chiffres : la section « Comptes » de chaque étude ; pour `10-timon.md`, les 90 exigences T1 à T90 comptées une à une (9 FAIT, 48 PARTIEL, 22 MANQUANT, 8 DIFFÉRENT, 3 à ne pas reprendre).
+
+---
+
+## 2. Comment lire la liste
+
+- **Type** : **BUG** = défaut confirmé ou reproduit dans ce qui existe ; **DÉFAUT** = la fonction existe mais se comporte mal ; **MANQUE** = la fonction n'existe pas ; **COMPÉTENCE** = texte de compétence à adapter dans la bibliothèque. Un 🔒 signale un point de sécurité.
+- **Taille** : **S** = un jour ou moins ; **M** = 2 à 4 jours ; **L** = 1 à 2 semaines.
+- **Licence** :
+  - **REUSE** = copie permise avec attribution (MIT, Apache-2.0 : garder la licence et le NOTICE, dire ce qui a changé ; CC BY : citer l'auteur).
+  - **IDÉE** = on refait avec notre code et nos mots (licence non commerciale PolyForm, dépôt sans licence, ou choix « idées seulement » déjà pris pour OpenMausBot, nod, Rakazo).
+  - **SALLE BLANCHE** = seulement via le cahier `10-timon.md` (Timon est sous AGPL : aucun code, aucun texte, aucun libellé).
+- **Ordre dans un lot** : valeur × nombre de sources ÷ taille.
+- Noms courts des sources : OMB = OpenMausBot, CopilotKit = CopilotKit/OpenBot, Nightly = nightly-labs/OpenBot, MWG = modern-web-guidance, OCR = open-code-review, 10-timon = cahier des charges Timon.
+
+---
+
+## 3. La liste, par lots
+
+### Lot 0 — En cours (deux séries de corrections sont en train d'être faites dans Sklubot)
+
+Ne pas les refaire ; il faudra seulement vérifier, une fois livrées, que chaque point listé ici est bien couvert.
+
+| ID | Titre | Ce que tu gagnes | Type | Sources | Taille | Licence | État |
+|---|---|---|---|---|---|---|---|
+| L1 | Délai d'inactivité sur chaque appel au modèle + relances (3 relances espacées des tours sans témoin, arrêt-reprise automatique, ligne « nouvel essai n/N ») | Un fournisseur muet ne bloque plus ton bot toute la nuit. | BUG | Hermes, OpenClaw, CopilotKit, Timon, 10-timon (T35, T36, T37), Agent Zero, OMB | S | IDÉE | **en cours** (vérifier aussi le budget de temps total d'un tour API, voir L90) |
+| L2 | Numéro d'envoi sur chaque message (jamais deux messages ni deux tours) | Un réseau mobile qui coupe ne fait plus envoyer deux fois la même demande. | BUG | Hermes, OMB, OpenClaw | S | IDÉE | **en cours** |
+| L3 | Un message tapé n'annule plus la carte d'accord ; un « oui » / « non » court tapé = réponse à la carte | Répondre « oui vas-y » en texte ne fait plus perdre l'action. | BUG | OMB, OpenClaw, CopilotKit | S | IDÉE | **en cours** |
+| L4 | Accords gardés au redémarrage, plus d'expiration à 25 min dans une discussion surveillée | Tu peux revenir une heure plus tard et valider. | DÉFAUT | OMB, Hermes, Rakazo, 10-timon (T60) | S | IDÉE | **en cours** |
+| L5 | Session Claude Code / Codex perdue : discussion reconstruite depuis le chat, avec une ligne qui le dit | Le bot n'oublie plus tout en silence. | BUG | OMB | M | IDÉE | **en cours** |
+| L6 | Ton message tapé pendant une routine ou un tour d'un autre bot garde tes droits (plus d'héritage d'origine) | « Crée-moi une routine » ou « mes fichiers » ne sont plus refusés à tort. | BUG | OpenClaw, CopilotKit, Agent Zero, Nightly, Noah | S | IDÉE | **en cours** |
+| L7 | Garde anti-boucle : note d'avertissement avant l'arrêt, outils d'attente exemptés, 2ᵉ échec identique signalé au bot | Le bot change d'approche au lieu d'être coupé sans prévenir. | DÉFAUT | OpenClaw, CopilotKit, OCR | S | IDÉE | **en cours** |
+| L8 | Erreur non attrapée : la file du bot est libérée et une carte s'affiche | Un plantage ne fige plus le bot. | BUG | OMB | M | IDÉE | **en cours** |
+| L9 | Liens sans `http` reconnus (« regarde sklubs.fr ») | Le bot ouvre aussi les adresses tapées à la main. | DÉFAUT | Hermes | S | IDÉE | **en cours** |
+| L10 | 🔒 Plus de 2ᵉ Chromium sur `browser_open` ; `vault_type` vérifie l'onglet réellement affiché et tape par CDP | Le bot lit, clique et tape un mot de passe sur la bonne page. | BUG (reproduit) | Chrome DevTools MCP, agent-browser | S | REUSE Apache (idée) | **en cours** |
+| L11 | Dialogues JavaScript (alerte, confirmation) détectés et réponse possible, sous accord si engageant | Une alerte n'immobilise plus le navigateur. | BUG | Chrome DevTools MCP, agent-browser, OMB | S | IDÉE | **en cours** |
+| L12 | 🔒 Test du point de clic : refus si l'élément est couvert (bandeau cookies, fenêtre) | L'accord donné à un clic correspond à ce qui est vraiment cliqué. | DÉFAUT | agent-browser | S | IDÉE | **en cours** |
+| L13 | Onglets : lister, activer, fermer, lire l'onglet actif | Un lien qui s'ouvre dans un nouvel onglet est lu correctement. | MANQUE | Chrome DevTools MCP, agent-browser, OMB | S | IDÉE | **en cours** |
+| L14 | Iframes lues dans le relevé d'éléments | Bandeaux cookies et paiements en iframe deviennent cliquables par référence. | MANQUE | Chrome DevTools MCP, agent-browser | M | IDÉE | **en cours** |
+
+### Lot 1 — Bugs et sécurité
+
+| ID | Titre | Ce que tu gagnes | Type | Sources | Taille | Licence |
+|---|---|---|---|---|---|---|
+| L15 | Mémoire : l'anti-doublon `similar()` confond « Dupont » / « Durand » et « lundi » / « vendredi » (veto sur mot rare, nombre, jour, nom propre) | Un fait n'en écrase plus un autre ; une note n'est plus « confirmée » par un extrait qui parle d'autre chose. | BUG (reproduit) | claude-mem, mem0 | S | IDÉE |
+| L16 | Rappel automatique lancé sur les tours de routine, de salon ou de reprise avec un vieux message ; test du vrai chemin | Plus de souvenirs hors sujet injectés dans les tours automatiques. | BUG | mem0 | S | IDÉE |
+| L17 | Coût Claude Code peut-être compté deux fois sur une session reprise (`--resume`) : vérifier, compter la différence | Plafonds et journal de dépense justes pour les bots sur abonnement. | BUG (à confirmer) | Craft Anything | S | IDÉE |
+| L18 | 🔒 Redémarrage : ne plus rejouer un tour qui avait commencé une action non protégée (achat, publication par le navigateur) ; consigne « vérifie avant de refaire » ; arrêt en douceur (finir l'étape en cours) | Pas d'achat ni de publication en double après un redémarrage. | BUG | Timon, 10-timon (T22), Superbot, Rakazo | S + M | SALLE BLANCHE / IDÉE |
+| L19 | 🔒 Relais (ordinateur de l'utilisateur) : applis refusées d'office (terminaux, réglages, gestionnaires de mots de passe), liste « garder à l'écart », jamais dans un champ mot de passe, revérifier la fenêtre avant de taper, shell seulement sur accord explicite, raccourcis dangereux refusés (Alt+F4, Cmd+Q, Ctrl+Alt+Suppr, verrouillage) | Le bot ne peut plus taper au mauvais endroit ni fermer ou verrouiller ton ordinateur. | DÉFAUT sécurité | nod, agent-desktop | M | IDÉE |
+| L20 | 🔒 Webhooks entrants : dédoublonnage par identifiant de livraison, signature HMAC, regroupement des rafales, « envoyer un exemple », journal des refus | Un service qui renvoie deux fois (GitHub, Stripe) ne lance plus deux tours ; personne ne peut déclencher ta routine sans la clé. | DÉFAUT | Nightly, Hermes, Timon, 10-timon (T78), OpenClaw | S → M | IDÉE |
+| L21 | Tour qui finit sur une promesse (« je m'en occupe », « je continue ? ») compté comme réussi : renvoyer le bot faire le travail, 2 fois au plus ; idem pour une routine qui ne rend qu'une phrase d'attente | « Je vais le faire » n'est plus pris pour « c'est fait ». | DÉFAUT (confirmé dans le code) | CopilotKit, OpenClaw, Nightly | S | IDÉE |
+| L22 | Un même changement réussi peut être refait jusqu'à 4 fois dans un tour : renvoyer le résultat de la 1ʳᵉ exécution | Pas d'envoi ni de création en double dans un même tour. | BUG | CopilotKit | S | IDÉE |
+| L23 | 🔒 Craft Anything : refuser `--deep` / `deep_mode` dans `shell_run` et le verrouiller dans l'image ; ne plus lancer `--unattended` en silence (questions relayées en `ask_user`, ou liste des choix faits automatiquement) ; `--rounds 1-2` avec « X % ressemblant » ; tests de `install-craft.sh` | Une page piégée ne peut pas faire passer le bot en mode « copie profonde » ; tu sais ce qui a été décidé à ta place. | DÉFAUT sécurité | Craft Anything | M | REUSE MIT/Apache (outil déjà intégré) |
+| L24 | Serveur MCP de Sklubot non vérifié au démarrage du moteur Claude Code : arrêter le tour avec un message clair | Le bot ne travaille plus sans mémoire, coffre ni accords en faisant comme si de rien n'était. | BUG | Craft Anything | S | IDÉE |
+| L25 | Questions d'un assistant ou d'un coéquipier envoyées d'abord au bot qui a confié le travail (sauf plancher), réponse « décidée pour toi » corrigeable en règle ; ton message ou ton « stop » transmis à l'assistant en cours | Tu n'es plus dérangé pour ce que ton bot principal savait déjà. | DÉFAUT | Noah, Agent Zero | M | IDÉE |
+| L26 | Import GitHub : prévenir quand une compétence cite des fichiers non importés (références, scripts, annexes) ou dépasse 20 000 caractères ; test de `skillsgithub.ts` | Tu ne crois plus qu'un import a marché alors que la compétence renvoie à des fichiers absents. | DÉFAUT (silencieux) | claude-seo, mattpocock, Anatomy, stick-scene, agent-skills | S | IDÉE |
+| L27 | Erreurs du moteur classées par les champs structurés du flux, pas par des phrases anglaises ; classe « faute du serveur » jamais relancée | Le bon remède s'affiche même quand le texte d'erreur change. | DÉFAUT | Craft Anything, OMB | M | IDÉE |
+| L28 | Mémoire : l'apprentissage ne lit que les 60 derniers messages et avance quand même sur un JSON illisible ; `pickMemories` compte faux au-delà de 500 notes et utilise un autre découpage de mots que le rappel | Rien n'est perdu dans une longue conversation ; le compte « N notes plus anciennes » est juste. | BUG | mem0 | S | IDÉE |
+| L29 | 🔒 Empreinte du texte approuvé comparée au texte réellement envoyé ; vérifier après coup que le mail est dans « Envoyés » | Ce qui part chez un client est exactement ce que tu as validé. | MANQUE | ECC | S | IDÉE |
+| L30 | 🔒 Consentement avant de cloner une voix ou un visage (« c'est toi, ou la personne a donné son accord écrit ? », sinon refus) ; étiquette « généré par IA » (IPTC) sur les médias de synthèse | Pas de clonage sans accord ; tes médias restent honnêtes. | MANQUE | guide jumeau numérique (GDoc), claude-seo | S | IDÉE |
+| L31 | Bouton « Signaler cette réponse » / « Signaler un problème » (mobile + web), rapport masqué remonté au propriétaire | Exigé par les boutiques pour une appli d'IA ; les mauvaises réponses remontent. | MANQUE | App Store compliance, nod, claude-mem | M | IDÉE |
+| L32 | 🔒 Carte de commande du Relais qui montre le script (40 premières lignes + empreinte) et refuse s'il change avant le clic | Tu sais ce que tu autorises sur ton propre ordinateur. | MANQUE | Timon, 10-timon (T58) | M | SALLE BLANCHE |
+| L33 | 🔒 Nouvel hôte atteint par un clic dans un tour qui a lu du contenu extérieur : le signaler ou demander | Une page piégée ne peut pas emmener le bot ailleurs sans que tu le saches. | MANQUE | agent-browser | M | IDÉE |
+| L34 | 🔒 Test : un fichier `.html` ou `.svg` de la bibliothèque n'est jamais affiché sur l'adresse de l'appli (pièce jointe ou origine séparée) | Un fichier piégé ne peut pas lancer de script dans ton compte. | à vérifier | CopilotKit | S | IDÉE |
+| L35 | 🔒 Banc de tests d'injection de consignes (pages, e-mails, documents piégés) : aucune action sans accord, y compris un clic vers un autre site | On prouve, test à l'appui, que les bots résistent aux pièges. | MANQUE | Claude-BugHunter | M | IDÉE |
+| L36 | 🔒 Juge anti-injection léger sur les lectures privées (fichiers, notes) après lecture de contenu extérieur | Une page piégée ne peut pas faire fouiller tes fichiers. | MANQUE | Agent Zero | M | IDÉE |
+| L37 | 🔒 Contrôles de sécurité du service : sessions coupées au changement de mot de passe, limite par IP, double facteur au changement d'e-mail, pas de fichiers `.map` publiés, CI relue, test « l'utilisateur B ne voit rien de A », SPF/DKIM/DMARC, ReDoS des expressions de `skillscan.ts`, injection par noms d'affichage | Le service tient face aux attaques courantes. | à vérifier | Claude-BugHunter, claude-seo, Rakazo | M | IDÉE |
+| L38 | 🔒 Règle : pas de test de sécurité sur un système tiers (hôtes autorisés par bot) ; alerte à l'import d'une compétence offensive ; grille de tri des rapports de faille pour l'admin | Un bot ne lance pas de scan contre un site qui n'est pas à toi. | MANQUE | Claude-BugHunter | S | IDÉE |
+| L39 | 🔒 Journal réseau par bot avec alerte au premier hôte nouveau | Tu vois où tes bots se connectent. | MANQUE | Timon, 10-timon (T63) | M | SALLE BLANCHE |
+| L40 | 🔒 Masquage des secrets dans les captures de « Montre-moi » (apprentissage par démonstration) | Un mot de passe montré au bot n'est jamais enregistré en image. | MANQUE | CopilotKit, 10-timon (T74) | M | IDÉE |
+| L41 | 🔒 Coffre : bots autorisés par élément, « demander à chaque fois », historique d'usage, import CSV | Un identifiant sensible reste réservé au bon bot. | MANQUE | Rakazo, Noah | M | IDÉE |
+| L42 | 🔒 E-mail du bot : seul le propriétaire en destinataire par défaut, liste d'adresses autorisées visible | Un bot ne peut pas écrire à n'importe qui. | MANQUE | Rakazo, Hermes | S | IDÉE |
+| L43 | 🔒 « Pour cette conversation » / « toujours » limités à la même commande exacte, au même fichier ou au même domaine ; droits par action d'outil (lire / écrire) | Un accord large ne couvre pas plus que ce que tu as voulu. | PARTIEL | 10-timon (T59), Timon, Agent Zero | S | SALLE BLANCHE / IDÉE |
+| L44 | 🔒 Second facteur (code par e-mail ou TOTP) avant une action du plancher (paiement, suppression définitive, nouveau destinataire) ; alerte « nouvel appareil » ; clés d'accès (passkeys) | Un vol de session ne suffit plus pour tout approuver. | MANQUE | Noah, Rakazo | M | IDÉE |
+| L45 | 🔒 Scripts CDN des pages publiées : exiger l'empreinte `integrity` (consigne + avertissement) | Un CDN compromis ne peut pas modifier tes pages. | MANQUE | MWG | S | REUSE CC BY (guide) |
+| L46 | 🔒 Détection de secrets collés enrichie (motifs) et appliquée aussi aux résumés de passation entre bots | Une clé ne fuit pas dans une note de passation. | PARTIEL | ECC, mattpocock | S | REUSE MIT (liste de motifs) |
+| L47 | 🔒 `git branch -D` ajouté aux commandes irréversibles | Un bot qui code ne supprime pas une branche sans accord. | MANQUE | mattpocock | S | IDÉE |
+| L48 | 🔒 Chromium du bureau : bac à sable gardé, avertissement admin « en retard de N failles » | Le navigateur du bot reste à jour et isolé. | à vérifier | Superbot, agent-browser | S | IDÉE |
+| L49 | 🔒 Outils tiers ajoutés en serveur local (chrome-devtools-mcp, modern-web-guidance) : outils d'entrée marqués engageants, télémétrie coupée, version épinglée | Un outil ajouté ne contourne pas les accords et n'envoie rien dehors. | MANQUE | Chrome DevTools MCP, MWG | S | REUSE Apache |
+| L50 | Verrou « un seul serveur » sur le dossier de données | Deux serveurs lancés par erreur n'abîment pas les données. | BUG potentiel | OMB | S | IDÉE |
+| L51 | Connecteurs : seconde vérification sur l'adresse réelle ; état « en panne » par connecteur MCP visible et donné au bot, sans réessais aveugles | Un connecteur cassé est signalé au lieu d'être réessayé sans fin. | PARTIEL | 10-timon (T64), ECC | S | IDÉE |
+| L52 | Tests manquants : passe « rapport final », résumé entre tours, import de mémoire, message pendant une routine, `drainSteering`, deux `browser_open` de suite, lien `target=_blank`, vrai chemin des routines pour la mémoire, cas `visa-doc-translate` dans `skill-scan.test.ts` | Les défauts ci-dessus ne reviennent pas en douce. | MANQUE | OpenClaw, OMB, Chrome DevTools MCP, mem0, ECC | S | IDÉE |
+| L53 | Disjoncteur entre bots et garde-boucle des salons gardés en base (perdus au redémarrage aujourd'hui), appliqués aussi hors salons ; ne jamais rendre une demande à un bot qui l'a déjà eue | Deux bots ne se réveillent plus en boucle, même après un redémarrage. | DÉFAUT | Timon, 10-timon (T38), Hermes, AI-Teammates | S | SALLE BLANCHE / IDÉE |
+
+### Lot 2 — Le comportement de base
+
+| ID | Titre | Ce que tu gagnes | Type | Sources | Taille | Licence |
+|---|---|---|---|---|---|---|
+| L54 | Routines dans leur propre fil : seul le résultat arrive dans le chat (« Voir l'exécution »), « rien de neuf » ne poste rien, option « à côté / dans » la discussion | Le chat reste lisible et le contexte ne gonfle plus. | DÉFAUT | Agent Zero, OpenClaw, OMB, Nightly, Noah, Timon, 10-timon (T23), Rakazo, Hermes, CopilotKit | M | IDÉE |
+| L55 | Bloc « Méthode » court dans le prompt : succès observable et plan court, ordre des sources, rien d'inventé, recherche vide ≠ rien, « fait » seulement avec un résultat, délai dépassé ≠ succès, ne pas baisser la barre ni changer le critère, estimer et proposer plus petit, finir par « ce que je n'ai pas vérifié / les risques », travail promis = rappel posé, une ligne avant un long travail, vérifier le fichier produit | Moins de faux « c'est fait », des fins de tâche honnêtes. | DÉFAUT | CopilotKit, Agent Zero, OpenClaw, Ponytail, ECC, agent-skills, Anatomy, Superbot, Nightly, CLI-Anything, Hallmark | S | IDÉE |
+| L56 | Contrôle automatique au `page_publish` : captures téléphone 390 px et ordinateur 1280 px renvoyées au bot, erreurs de console, règles (alt, contraste, couleurs en dur, débordement, focus, mouvement réduit, viewport, JSON-LD, `integrity`, caractères invisibles), rapport court que le bot doit reprendre ; « rien trouvé » ≠ « propre » | Une page qui plante en silence n'est plus annoncée « finie ». | MANQUE | Anatomy, Hallmark, Astryx, MWG, stitch-skills, stick-scene, claude-seo, agent-skills, App Store compliance | M | IDÉE (règles REUSE MIT/CC BY) |
+| L57 | Cache du modèle : souvenirs, routines et équipe sortis du prompt système (rappel placé devant le message du tour), point de cache sur l'historique | Des tours longs beaucoup moins chers et plus rapides. | DÉFAUT | OMB, OpenClaw, Hermes, mem0 | S / M | IDÉE |
+| L58 | Message tapé pendant le travail : consigne « ça s'ajoute, réponds d'abord à la question », flux coupé à l'arrivée du message, retour « pris dans le tour / en file », Entrée / Ctrl+Entrée, file visible « Envoyer maintenant / Retirer », accusé « Noté » | Tu sais ce que devient ton message, et le bot te répond d'abord. | DÉFAUT | Agent Zero, Nightly, OMB, CopilotKit, Timon, 10-timon (T17), Noah, OpenClaw | M | IDÉE |
+| L59 | Accueil : appel d'essai au modèle avant de finir, diagnostic et bouton qui répare sur place, premier message gardé puis rejoué une fois le cerveau connecté | Ton premier message ne tombe plus sur une erreur. | MANQUE | OpenClaw, CopilotKit, Nightly, Agent Zero, Hermes, OMB | S | IDÉE |
+| L60 | Fiabilité visible : « en attente du modèle » après 60 s et « nouvel essai n/N » à côté de l'indicateur (au lieu d'un avis par échec), budget plus long pour les limites de débit, quota revérifié avant de refuser (essai toutes les 2 min), santé du modèle au choix et au démarrage, 401 = « à reconnecter », modèle de secours vérifié (outils, images) | Tu vois ce qui se passe, et un quota rouvert est repris tout de suite. | DÉFAUT | nod, OpenClaw, Timon, 10-timon (T43, T44), OMB, CopilotKit | S | IDÉE |
+| L61 | Règles de conversation : instructions du bot remontées en tête, 6-8 règles courtes à la fin, « quand demander » (3 cas, nom ambigu, jamais avant la carte), regarder avant de demander, délégation autonome et responsabilité, pas de Google dans le navigateur quand `web_search` existe, chercher avant « je ne sais pas », la conversation passe avant la mémoire, connecteur d'abord, chiffres sourcés, long texte = fichier `.md`, liens courts et exacts | Un bot plus direct, moins de questions inutiles. | DÉFAUT | OMB, CopilotKit, Nightly, AI-Teammates, Hermes, nod, GDoc | S | IDÉE |
+| L62 | Échecs de routine : nouvel essai à attente croissante avant de compter l'échec, routine qui n'a pas démarré réessayée (5, 15, 30 min), espacement au lieu de pause automatique, rattrapages étalés, un seul avis au premier échec après un succès | Une panne passagère ne fait plus sauter ni couper une routine. | DÉFAUT | OpenClaw, Nightly, OMB, CopilotKit, 10-timon (T37) | S | IDÉE |
+| L63 | « Stop » tapé = bouton Stop, en cascade sur assistants et coéquipiers ; Stop qui vide la file (ou le dit) ; « Tout arrêter » qui rend compte ; résumé de progression réutilisé si tu réécris après Stop | Arrêter marche vraiment, et reprendre ne repart pas de zéro. | DÉFAUT | Nightly, Superbot, Timon, 10-timon (T24), OMB, Noodle | S | IDÉE |
+| L64 | Liens tapés pendant le travail : consigne de lien et sites ajoutés aux sites autorisés du tour ; filet « lien donné mais jamais ouvert → relancer une fois » ; bots sur abonnement : retirer `WebFetch` quand le navigateur est prêt ; écran du bot ouvert tout seul quand il s'en sert | Le bot ouvre vraiment le lien sous tes yeux, sans carte inutile. | DÉFAUT | OpenClaw, CopilotKit, OMB, Hermes, AI-Teammates | S | IDÉE |
+| L65 | Navigateur en texte : ouvrir et cliquer renvoient la structure de la page et « ce qui a changé » ; capture seulement à la demande ou si l'écran a changé ; captures réduites | Moins d'allers-retours, moins cher, moins d'erreurs de clic. | DÉFAUT | OMB, agent-browser, Chrome DevTools MCP, Nightly | M | IDÉE |
+| L66 | Mémoire que tu contrôles : « oublie ça » (archive), corriger le texte d'une note avec historique, corbeille 30 jours, « ne pas retenir ce message », faits retirés jamais réappris, note supprimée ⇒ conversation neuve proposée ou consigne « plus valable » | Ce que tu fais oublier est vraiment oublié. | MANQUE | mem0, claude-mem, OMB, Timon, 10-timon (T67) | S | IDÉE |
+| L67 | Apprentissage plus réactif et plus juste : sur un mot de correction (« non, je t'ai dit… »), tous les 20 tours, dates absolues, réponses du bot comme contexte, 20 notes proches pour dédoublonner, `memory_save` qui signale un doublon, noyau fixe de notes confirmées, « 212 notes, 37 montrées », nettoyage des caractères invisibles, consignes « retiens surtout… », date de fin, racinisation française | Une correction est retenue tout de suite, pas 10 minutes plus tard. | DÉFAUT | Noah, Nightly, mem0, Hermes, claude-mem | S | IDÉE |
+| L68 | Cadre des tours de routine (« personne ne regarde », ne pas poser de question mais la noter, finir le reste, rapport avec « ce que je n'ai pas pu confirmer ») + routine en liste = liste Fait / Bloqué / Sauté + outil « échec de routine : raison » | Une routine en 3 étapes qui en fait 2 n'est plus « réussie ». | DÉFAUT | CopilotKit, agent-skills, Nightly, OMB | S + M | IDÉE |
+| L69 | Modèle moins cher par routine, pour les aides de fond et par tâche ; modes nommés (Rapide / Équilibré / Le plus fort / Gratuit) ; mode Auto qui choisit selon la difficulté ; petit modèle pour les étapes simples | Les tâches simples coûtent moins. | MANQUE | Hermes, nod, OMB, Noah, Noodle, 10-timon (T10, T11) | S / M | IDÉE |
+| L70 | Mémoire du travail : « leçons apprises » (réussites, échecs, décisions) gardées à part et proposées en carte, résumé de fin de tâche avec prochaines étapes, rangement périodique (doublons, contradictions), journal réversible des fusions, bilan de la semaine qui propose des règles | Le bot ne refait pas les mêmes erreurs d'un jour à l'autre. | MANQUE | claude-mem, Noodle, mem0, Timon, 10-timon (T66), mattpocock, ECC | M | IDÉE |
+| L71 | Mémoire par le sens (petit modèle d'embeddings local ou du fournisseur, fusionné avec la recherche par mots) | « Ma voiture » retrouve « la Clio ». | MANQUE | OpenClaw, CopilotKit, mem0, Hermes, OMB, Agent Zero | L | IDÉE |
+| L72 | Reprise automatique bornée par le progrès après la limite d'étapes ou de temps (aussi pour une longue tâche du chat), « continuer seul jusqu'à N fois » | Une tâche de 3 heures ne s'arrête plus la nuit en attendant un clic. | DÉFAUT | OMB, Hermes | M | IDÉE |
+| L73 | Recherche dans les conversations : index plein texte, accents pliés, classement, filtre de date, « messages autour » | « reunion budget » trouve « Réunion budget », et vite. | DÉFAUT | claude-mem | S | IDÉE |
+| L74 | Navigateur plus sûr : indices pour boutons sans nom, références stables, valeur relue après saisie (« vérifiée »), « peut-on réessayer », « envoyé mais non confirmé », adresses des liens dans le relevé | Le bot sait si sa saisie a marché. | PARTIEL | agent-browser, agent-desktop, OMB | S | IDÉE |
+| L75 | Outils de navigateur manquants : attendre (texte, adresse, chargement), attente intelligente après action, remplir plusieurs champs d'un coup, survol, double-clic, cases, envoi de fichier, téléchargements, retour arrière, capture annotée, réparation des arguments mal formés, plusieurs actions en un appel, `web_fetch` en Markdown / `llms.txt` | Un formulaire de 10 champs en un appel au lieu de 10. | MANQUE | agent-browser, Chrome DevTools MCP, OMB, Nightly | M | IDÉE |
+| L76 | Telegram : recevoir photos, vocaux, fichiers ; envoyer les fichiers du bot ; boutons d'accord ; lien vers la carte ; longues réponses découpées ; « écrit… » ; envoi vérifié et réessayé, avis si échec | Tout ce que fait le web marche aussi sur Telegram. | MANQUE | Hermes, OpenClaw, nod, Rakazo, 10-timon (T90) | M | IDÉE |
+| L77 | Relecture entre bots : grille (bogue, risque, charge, test manquant), couverture par fichier et lots au lieu de couper à 12 fichiers, outils de lecture, objectif de l'utilisateur joint, fichiers générés exclus, commentaires ancrés aux lignes, passe anti-faux-positifs, JSON réparé, « faire corriger par l'auteur », relecteur d'un autre fournisseur, relecture à plusieurs avant publication, règles par projet | Une relecture qui voit tout et dit où est le problème. | PARTIEL | OCR, Ponytail, Noodle, ECC, agent-skills, mattpocock, OMB, Plannotator | M | REUSE Apache (consigne OCR) |
+| L78 | Question à côté (`/btw`) qui répond sans toucher le travail ; mode « traite ça après » | Tu peux poser une question rapide sans casser la tâche. | MANQUE | Nightly, OpenClaw, Craft Anything, ECC, Noah | M | IDÉE |
+| L79 | Cartes de question riches et plan à approuver : pourquoi, recommandé, irréversible, choix multiples, images, 2 à 4 questions par carte ; `plan_propose` (approuver, approuver avec note, modifier, version 2 avec différences) ; mode « Plan » ; « relire mon plan contre la demande » | Moins d'allers-retours avant une tâche moyenne. | MANQUE | Plannotator, mattpocock, Hermes, 10-timon (T9), Spec Kit, Timon | M | IDÉE |
+| L80 | Résumés de conversation : tour silencieux « note ce qui compte » avant, un seul prompt à sections, ligne visible, contrôle du résultat, fils résumés aussi, entrée non coupée à 200 000 caractères, `/compact` avec consigne, compactage inutile détecté, résumé à chaud pendant le repos | Rien d'important ne se perd quand la conversation est résumée. | DÉFAUT | OpenClaw, Nightly, OMB | M | IDÉE |
+| L81 | Console et requêtes réseau de l'onglet lisibles par le bot (erreurs JavaScript, en-têtes masqués) | Le bot voit les erreurs de la page qu'il a construite. | MANQUE | Chrome DevTools MCP, Timon, 10-timon (T76), agent-skills | M | IDÉE |
+| L82 | Plusieurs comptes ou clés par fournisseur, nommés, choix par bot, bascule vers le prochain disponible | Une limite atteinte sur un compte ne bloque plus tout. | MANQUE | Agent Zero, Hermes, OpenClaw, Nightly, Timon, 10-timon (T41) | M | IDÉE (voir décisions) |
+| L83 | Brouillon modifiable dans la carte d'accord (e-mail, message), empreinte recalculée ; outil de mise à jour du brouillon (la compétence actuelle demande une chose impossible), pièces jointes, Cci, signature | Corriger une faute sans refuser puis redemander. | DÉFAUT | Rakazo, Hermes | M | IDÉE |
+| L84 | Contrôle de fin indépendant (fini / continuer / besoin de toi / bloqué, 3 relances max, jamais pour une action risquée), d'abord pour les tâches de fond et les routines ; évaluateur qui teste un livrable vivant | « Voilà les 3 premiers sur 10 » n'est plus un succès. | MANQUE | Nightly, Noodle, ECC | M | IDÉE |
+| L85 | Reçu sans modèle sous la réponse : « dit et pas fait » / « fait et pas dit » | Tu vois tout de suite un écart entre ce que le bot dit et ce qu'il a fait. | MANQUE | Noah | M | IDÉE |
+| L86 | Routine « condition » : un petit modèle lit la nouveauté et répond oui / non avant de réveiller le bot ; condition en langage courant vérifiée en lecture seule | Une page qui change un compteur ne coûte plus un tour entier. | MANQUE | Noah, Noodle | M | IDÉE |
+| L87 | Recherche approfondie fiable : date de publication et fenêtre de temps, seuil de pertinence, état par source (jamais « personne n'en parle » si une source a échoué), plus de 4 résultats, Hacker News et Polymarket, Reddit et YouTube via Agent Reach, veille « ce qui a changé », recherche dans les rapports passés, flux Atom | Plus de vieux contenu présenté comme actuel. | DÉFAUT | last30days, ECC | M | IDÉE |
+| L88 | « Fiche sur moi » commune à tous tes bots ; mémoire liée à un site ; base de documents par bot ou projet ; mémoire par projet ; « pas d'historique de tâche en mémoire » | Tes bots ne réapprennent plus tout chacun de leur côté. | MANQUE | mem0, CopilotKit, Nightly, Agent Zero, 10-timon (T68) | M | IDÉE |
+| L89 | Objectifs : 3 à 7 critères de réussite à l'acceptation, clôture avec preuve par critère, étape « attend ton accord », cahier des charges validé en carte | Tu sais quand c'est vraiment fini. | PARTIEL | Spec Kit, agent-skills | M | REUSE MIT (idée) |
+| L90 | Plafond de taille des résultats d'outils lié à la fenêtre du modèle ; grandes images réduites avant envoi ; budget de temps total d'un tour API | Moins de tours qui débordent ou coûtent trop. | DÉFAUT | OpenClaw, Timon, 10-timon (T25) | S | IDÉE |
+| L91 | Carte « viens sur mon écran » (connexion, double facteur, captcha) demandable par le bot ; carte « fais-le toi-même » pour un changement de mot de passe ; case masquée pour un code SMS | Le bot te passe la main proprement aux moments sensibles. | PARTIEL | Superbot, CopilotKit | S / M | IDÉE |
+| L92 | Fuseau du navigateur envoyé avec chaque message quand le profil est vide ; ligne « tu tournes sur le modèle X » ; langue qui suit ton dernier message | « Demain » veut dire demain chez toi. | DÉFAUT | CopilotKit, nod | S | IDÉE |
+| L93 | Enveloppe standard sur chaque résultat d'appli (a tourné / partiellement / échec + quoi essayer) et conversion de types selon le schéma | Moins d'erreurs d'appels aux applis. | MANQUE | CopilotKit | S | IDÉE |
+| L94 | Notes envoyées pendant un tour gardées sur disque + « reprendre ma note » | Une note n'est plus perdue si le serveur redémarre. | DÉFAUT | Craft Anything | S | IDÉE |
+| L95 | Hôte : échange de 4 Go et arrêt préventif dans le guide VPS, limites mémoire par conteneur, conteneurs sans bot arrêtés, ordinateurs inactifs arrêtés en hébergé, plafond « heures d'ordinateur » séparé, pannes connues de Chrome en root | Chrome ne fait plus tomber le serveur ; tu maîtrises le coût des ordinateurs. | MANQUE | Superbot, AI-Teammates, Hermes | S | IDÉE |
+| L96 | « Qui peut demander à qui » entre bots (hiérarchie, chef par département), assistants mis en file au-delà de 4 au lieu d'un refus, résultat d'aide au format imposé, assistants qui héritent des règles du bot parent | Une équipe de bots mieux organisée. | MANQUE | CopilotKit, Timon, 10-timon (T48), Hermes, Ponytail, OMB | M | IDÉE |
+| L97 | Outil `wait_until` / « repasse plus tard » borné dans le même tour, qui libère la file pendant l'attente | Le bot attend sans perdre le fil ni bloquer. | MANQUE | Agent Zero, OMB | M | IDÉE |
+| L98 | Changements réversibles (profil, compétence, routine en pause) appliqués tout de suite avec « Annuler » au lieu d'une carte | Moins de cartes pour des choses sans risque. | DIFFÉRENT | OMB | M | IDÉE (voir décisions) |
+| L99 | Plusieurs tours en parallèle par bot (fils indépendants, lots parallèles) | Une routine ou un collègue ne bloque plus ta discussion. | MANQUE | OMB, OpenClaw, Timon, 10-timon (T23) | L | IDÉE |
+| L100 | Recherche d'outils : ne plus envoyer la centaine d'outils et tous les outils d'applis à chaque appel (catalogue compact, `find_tool` / `use_tool`, filtre par appli) | Des appels moins chers et un bot qui choisit mieux. | MANQUE | Hermes, OpenClaw, OMB | L | IDÉE |
+
+### Lot 3 — Bibliothèque de compétences (à adapter, par thème)
+
+Règle commune : joindre la licence d'origine (`LICENSE.txt` + `NOTICE` pour Apache), écrire « adapté de … », ne reprendre aucun nom de produit ni logo, vérifier la taille (< 20 000 caractères).
+
+| ID | Titre | Ce que tu gagnes | Type | Sources | Taille | Licence |
+|---|---|---|---|---|---|---|
+| **Cadrer et décider** | | | | | | |
+| L101 | « Clarifier avant d'agir » : hypothèse + confiance, une question à la fois avec réponse conseillée, réponses gardées dans une note, jamais en routine ; version page (« Préciser une demande de page ») | Le bot comprend ce que tu veux avant de lancer un travail payant. | COMPÉTENCE | agent-skills (interview-me), mattpocock (grilling), Spec Kit (clarify), Noodle (refine), stitch-skills (enhance-prompt) | S | REUSE MIT ; Apache pour la partie page |
+| L102 | « Mon idée tient-elle ? » : affiner, éprouver, verdict go / à préciser / stop | Un avis structuré avant d'investir. | COMPÉTENCE | agent-skills (idea-refine), ECC (product-lens), Spec Kit (assess) | S | REUSE MIT |
+| L103 | « Vérifier avant de livrer » : liste de vérification d'un livrable, double relecture indépendante avant un envoi public, auto-évaluation sur 5 axes, « avant de lancer », « réparer un livrable qui ne marche pas » | Moins d'erreurs dans ce qui part. | COMPÉTENCE | ECC (santa-method, agent-self-evaluation), Spec Kit (checklist), agent-skills (shipping-and-launch) | S | REUSE MIT |
+| L104 | Mode « Conseil » : 3 avis à rôles fixes (sceptique, pragmatique, critique) sans voir les autres, puis une décision avec risques | Une vraie aide à la décision pour un patron qui hésite. | COMPÉTENCE + MANQUE | ECC (council), agent-skills (idée /ship) | M | REUSE MIT |
+| **Écrire et expliquer** | | | | | | |
+| L105 | « Écrire comme un humain » et « Écrire un article avec toi » (fragments → temps → mise en forme), règles anti-style IA, contenus par réseau | Des textes qui ne sentent pas la machine. | COMPÉTENCE | Noodle (unslop), ECC (article-writing, content-engine), mattpocock (writing-*) | S | REUSE MIT |
+| L106 | « Explique simplement » + bouton « Explique plus simplement » | Des réponses claires pour un non-spécialiste. | COMPÉTENCE | claude-mem (what-the), mattpocock (idée wait-what) | S | REUSE Apache |
+| **Marque et pages** | | | | | | |
+| L107 | « Entretien de marque », « Profil de voix », « Fiche de charte » écrite dans `charte.md` (fichiers d'équipe) et lue en premier par « Design de marque » | Tous tes bots respectent la même charte. | COMPÉTENCE | ECC (brand-discovery, brand-voice), stitch-skills (design-md, extract-design-md) | M | REUSE MIT + Apache |
+| L108 | « Page d'un commerce par métier » (10 métiers, 21 structures), Plancher en règles, `base.css`, bloc « Choix » et héros d'abord, question groupée sur le matériel (photos, chiffres, citations), relecture à froid | Des pages de commerce qui ressemblent aux bons sites du secteur. | COMPÉTENCE | Hallmark | M | REUSE MIT |
+| L109 | ~30 guides de composants web traduits (dialogue, menu, onglets, formulaire, mode sombre…) + outil `guide_search` + statut de support navigateur | Des pages plus légères, accessibles et compatibles Safari. | COMPÉTENCE + MANQUE | MWG | M | REUSE CC BY (guides), Apache (code) |
+| L110 | Règles ajoutées à `metier-du-design` (hors écran, clavier, mouvement réduit, sans WebGL, `100dvh`, états vides, interdits de mise en page, proposer 2-3 idées avant un visuel) ; thèmes sans marque dans `theme-factory` | Moins de défauts de design récurrents. | COMPÉTENCE | Anatomy, Hallmark, stitch-skills (taste-design), stick-scene | S | REUSE MIT + Apache |
+| L111 | Modèles statiques (tableau de bord, tableau filtrable, assistant multi-étapes, kanban) + règle « partir d'un modèle, relire, remplacer les valeurs en dur » ; option appli React | Des mises en page stables d'une fois à l'autre. | COMPÉTENCE | Astryx | M | REUSE MIT |
+| L112 | « Site en plusieurs passes » avec plan du site coché et navigation commune | « Un site de 4 pages » donne un vrai site, pas 4 pages isolées. | COMPÉTENCE | stitch-skills (stitch-loop, site-md) | M | REUSE Apache |
+| L113 | « Figure explicative interactive » + kit récupéré sur l'ordinateur du bot | Des schémas animés qui expliquent un produit. | COMPÉTENCE | Anatomy | M | REUSE MIT |
+| L114 | « Illustration animée de page » (`stick.js`) + outil « planche-contact » (une page à N instants) | Des illustrations animées vérifiées image par image. | COMPÉTENCE + MANQUE | stick-scene, Anatomy | M | REUSE MIT |
+| L115 | Accessibilité (audit ARIA, focus, contraste) avec Lighthouse / axe dans l'image du bot | Des pages accessibles, mesurées. | COMPÉTENCE + MANQUE | Chrome DevTools MCP (a11y-debugging), agent-skills, claude-seo | M | REUSE Apache + MIT |
+| L116 | « Testeur de site » + modèle de bot « Contrôleur qualité des pages » | Le bot teste les pages qu'il publie comme un client. | COMPÉTENCE | agent-browser (dogfood), agent-skills | M | REUSE Apache |
+| **SEO et recherche** | | | | | | |
+| L117 | Paquet SEO : « Référencement : méthode et audit », « SEO local », « Surveillance SEO » (photo de référence + routine), « Contenu SEO » (+ 41 prompts), « Données structurées et sitemap », « Visibilité dans les IA », e-commerce, pages comparatives prudentes, règle « pas de score sans données », option « balises » de `web_fetch` ; remplace le modèle `seo-contenu` | Un vrai savoir-faire SEO pour les petits commerces. | COMPÉTENCE | claude-seo, ECC (seo) | M | REUSE MIT + CC BY 4.0 (prompts) |
+| L118 | « Étude de marché et concurrence » (TAM/SAM/SOM, fiches notées), « Revue de littérature », « Comparer A et B », « Avant un rendez-vous », « Signaux d'embauche », sources OpenAlex / PubMed / marques | Des études sourcées et comparables. | COMPÉTENCE | ECC, last30days | M | REUSE MIT |
+| **Métiers** | | | | | | |
+| L119 | Compétences métier condensées : stocks, logistique, retours, puis douane | Un vrai savoir-faire pour le modèle « Boutique en ligne ». | COMPÉTENCE | ECC | M | REUSE Apache-2.0 (garder NOTICE) |
+| L120 | « Préparer la publication d'une appli » (pour les clients), règle « jamais prêt tant qu'un point critique reste » | Moins de refus sur les boutiques. | COMPÉTENCE | App Store compliance | M | IDÉE (licence actuelle non libre) ou version MIT/CC BY d'avant le 24/08/2026 |
+| L121 | « Professeur particulier » + « Questionnaire à envoyer » | Apprendre un sujet ; récupérer une info auprès de quelqu'un d'autre. | COMPÉTENCE | mattpocock (teach, to-questionnaire) | M | REUSE MIT |
+| L122 | Organisation : note de passation, bilan hebdomadaire de l'équipe, objectifs et règles proposés avec citation, 4 niveaux de tri du secrétariat, règles d'un bot dans un salon client | Une équipe de bots qui se passe le travail proprement. | COMPÉTENCE | claude-mem (handoff, weekly-digests, owner-goals), ECC (chief-of-staff, counterparty-channel-discipline) | S | REUSE Apache + MIT |
+| **Médias** | | | | | | |
+| L123 | « Diagrammes » + `mermaid-cli` local (sans service extérieur) | Des schémas modifiables. | COMPÉTENCE | CLI-Anything | S | REUSE Apache |
+| L124 | « Sous-titres » (transcrire, corriger, incruster, vérifier une image) | Une demande fréquente des réseaux sociaux. | COMPÉTENCE | CLI-Anything | S | REUSE Apache |
+| L125 | « Visite guidée vidéo d'un site » + liste de contrôle par plateforme pour une vidéo courte | Des vidéos prêtes à publier, sans surprise. | COMPÉTENCE | stitch-skills (remotion), ECC (short-video-distribution) | S | REUSE Apache + MIT |
+| L126 | « Jumeau numérique » (enregistrement, brief → essais → bac des ratés), bac des ratés et comparaison côte à côte, contrôle qualité d'un fichier son, connecteurs facultatifs voix / avatar avec ta clé | Une voix ou un avatar de qualité, avec accord. | COMPÉTENCE + MANQUE | guide jumeau numérique (GDoc) | M | IDÉE (nos mots) |
+| **Outils et développeurs** | | | | | | |
+| L127 | Famille « Développeur » (option) : « Code sobre », consigne de relecture de code, « écrire un petit outil CLI », « trouver et installer un outil CLI » (source officielle, version figée, empreinte), TDD / débogage, carte du dépôt | Les comptes qui codent ont de bonnes méthodes. | COMPÉTENCE | Ponytail, OCR, CLI-Anything, agent-skills | M | REUSE MIT + Apache |
+| L128 | « Notes Obsidian » sur un coffre partagé par le Relais | Le bot lit et écrit tes notes. | COMPÉTENCE | CLI-Anything | M | REUSE Apache |
+| L129 | Fiches d'outils : retouche Pillow / ImageMagick, audio ffmpeg, nettoyage pandas, Calibre | Des recettes sûres pour les tâches courantes. | COMPÉTENCE | CLI-Anything | S chacune | IDÉE |
+| **La bibliothèque elle-même** | | | | | | |
+| L130 | Import de compétences avec fichiers d'accompagnement non exécutés côté serveur (fichiers `.md` voisins, JS/CSS, modèles) et découpage des compétences trop longues | Les bonnes compétences s'importent en entier. | MANQUE | stick-scene, mattpocock, agent-skills, Anatomy | M | IDÉE |
+| L131 | Santé des compétences : compteur de lectures, échecs, jamais utilisées, alerte « presque identique » à l'ajout, épingler, verrouiller, version d'avant, garde-fou de révision (pas plus d'un quart perdu), compétences proposées depuis plusieurs conversations avec preuves | Tu sais quelles compétences servent et lesquelles gênent. | MANQUE | Hermes, ECC, Timon, 10-timon (T73), agent-skills, Nightly, CopilotKit, OpenClaw | M | IDÉE |
+| L132 | Longues compétences lues par index puis section ; mode « toujours en entier » ; « Réponses courtes » devient un réglage du bot (règles chiffrées, choix par canal) et non une compétence à lire | Une règle de ton n'est plus oubliée quand le bot a beaucoup de compétences. | DÉFAUT | Astryx, Timon, 10-timon (T71), Hermes | S | IDÉE |
+| L133 | Portées des compétences (tous / section / bot, exclure) et drapeau « seulement quand je le demande » | Chaque bot n'a que ce qui lui sert. | MANQUE | Timon, 10-timon (T72), mattpocock | M | SALLE BLANCHE / IDÉE |
+| L134 | Banc d'essai « avec / sans compétence » avant d'ajouter une compétence à la bibliothèque | On garde seulement ce qui améliore vraiment. | MANQUE | Astryx, Ponytail | M / L | IDÉE |
+| L135 | Catalogue privé de compétences pour une organisation | Une entreprise partage ses propres méthodes. | MANQUE | Spec Kit | M | IDÉE |
+
+### Lot 4 — Confort et interface
+
+| ID | Titre | Ce que tu gagnes | Type | Sources | Taille | Licence |
+|---|---|---|---|---|---|---|
+| L136 | Copier sur les blocs de code et tableaux, repli des longs blocs ; copier / épingler / supprimer / réessayer un message ; répondre à un message ou à une sélection ; ↑ pour rappeler ses messages | Le chat se manie comme les messageries que tu connais. | MANQUE | Hermes, nod, OMB, Timon, 10-timon (T18, T19, T20), Rakazo, Nightly | S | IDÉE |
+| L137 | Écran « Ce que reçoit ce bot » (prompt dans l'ordre, chaque morceau ouvrable) + « Ce que ton bot voit de sa mémoire » avec coût + « ce que le bot savait quand il a décidé » + « demande au journal / pourquoi ? » | Quand un bot dérive ou oublie, tu vois pourquoi. | MANQUE | Timon, 10-timon (T49), claude-mem, OpenClaw, Noodle, CopilotKit | M | SALLE BLANCHE / IDÉE |
+| L138 | Jauge « contexte rempli à X % » + bouton Compacter + « voir le résumé » | Tu gardes la main sur les longues conversations. | PARTIEL | Timon, 10-timon (T31), Hermes, Agent Zero | S | IDÉE |
+| L139 | Boîte « À toi » : toutes les cartes en attente de tous les bots ; 👍 / 👎 sur une carte dans l'appli web ; compte à rebours sur les cartes sans témoin ; boîte de réception à onglets | Rien n'attend ta réponse sans que tu le saches. | MANQUE | Noah, Plannotator, OMB, Timon, 10-timon (T60) | M | IDÉE |
+| L140 | Commenter un passage d'une réponse ou d'une page (sélection → remarque), « Explique ce passage », étiquettes rapides (« trop long », « plus simple »), annoter une image, mode « Montrer » sur l'écran du bot, remarque par fichier modifié | Corriger sans recopier la phrase dans un nouveau message. | MANQUE | Plannotator, Agent Zero, Timon, 10-timon (T75), ECC | M | IDÉE |
+| L141 | Modifier un message envoyé, régénérer une réponse, bifurquer une conversation | Reprendre une demande mal formulée sans tout recommencer. | MANQUE | Hermes, OMB, Agent Zero, OpenClaw | M | IDÉE |
+| L142 | Pastille de cause d'arrêt sur chaque bot dans la liste ; barre « qui travaille » ; résumé immédiat de la demande ; coût et durée sur la carte d'une tâche ou routine ; graphique 30 jours ; détail complet d'une étape | D'un coup d'œil, tu sais qui fait quoi et combien ça coûte. | PARTIEL | Timon, 10-timon (T21, T30), nod, Ponytail, Hermes | S | IDÉE |
+| L143 | Routines lisibles : piste des retards, sauts et échecs, activité en direct, refus de « lancer maintenant » après une modification, prochaine exécution, formulaire de paramètres, flux iCalendar, livraison vers un webhook, plancher 15 min et plafond 20 routines, consigne complète approuvée avec sa portée | Tu comprends ce que font tes routines. | MANQUE | nod, Nightly, OpenClaw, CopilotKit, Spec Kit | S chacun | IDÉE |
+| L144 | Corbeille des bots avec Restaurer ; aperçu de ce qui sera supprimé ; suppression sûre d'une tâche ; renommer, exporter, importer un bot | Une erreur de suppression se rattrape. | MANQUE | Timon, 10-timon (T8, T50, T51), Plannotator | S | SALLE BLANCHE / IDÉE |
+| L145 | Nouveau bot : tour d'accueil (une question, 3 choix), demandes propres à son rôle, tour de chauffe des moteurs après redémarrage, premier bot qui liste et fait ce qui reste à installer, mode Simple | Tu sais tout de suite quoi demander. | MANQUE | Nightly, Noah, OMB | S / M | IDÉE |
+| L146 | Conversations : filtre « automatiques », plusieurs conversations par bot avec titres automatiques, renommer, épingler, dossiers, discussions côte à côte, filtre d'activité dans la liste des bots | Tu retrouves facilement une discussion. | MANQUE | Timon, 10-timon (T29), CopilotKit, Hermes, Agent Zero, Nightly | M | IDÉE |
+| L147 | Rendu du chat : mise en forme stable pendant la frappe, ligne « NOUVEAU », pastilles de sources, retrouver sa place en chargeant l'historique, LaTeX | Un chat plus agréable à lire. | MANQUE | Hermes, CopilotKit | M | IDÉE (petites idées REUSE MIT du kit) |
+| L148 | Visionneuses : tableur xlsx et CSV entier, aperçu Word / Excel / PowerPoint ; cartes-formulaires et boutons préremplis qui renvoient la réponse au bot (un seul clic compte) | Tu vois et réponds sans quitter l'appli. | MANQUE | Hermes, Timon, 10-timon (T27, T28), OMB | M | IDÉE |
+| L149 | Vue de l'écran : reconnexion avec délais et bouton, coller le presse-papiers, Ctrl+Alt+Suppr, capture, bail numéroté de prise en main, « où le bot a cliqué » | L'écran du bot reste utilisable sur mobile. | DÉFAUT | Hermes, agent-desktop | S | IDÉE |
+| L150 | Modèles : sélecteur dans la zone de saisie et par conversation, réflexion par conversation, favoris, modèle retiré grisé, changement expliqué en cours de route, page fournisseurs claire, jauge de quota où « inconnu » ≠ 0 %, clé sans crédit refusée à la connexion, alerte de crédit OpenRouter, préréglages par projet | Choisir et surveiller ses modèles sans surprise. | PARTIEL | Rakazo, CopilotKit, Agent Zero, Timon, 10-timon (T32, T33, T34, T42, T46), Noah | S | IDÉE |
+| L151 | Notifications : au téléphone seulement après 30 s d'inactivité sur l'ordinateur, seulement si le travail a pris du temps, sons, cloche avec archive | Moins de notifications inutiles. | MANQUE | Nightly, Noah, Timon, 10-timon (T82, T83) | S | IDÉE |
+| L152 | Commandes `/` dans le chat web avec liste, commandes personnelles, `@fichier` | Des raccourcis pour les demandes fréquentes. | MANQUE | Hermes, Agent Zero, Rakazo | S | IDÉE |
+| L153 | « Docteur » en lecture seule (OK / À corriger), résumé à coller sans chemin ni secret, auto-contrôle de sécurité de l'installation, bouton « vérifier ce bot » (page, fichier, journal), guide pour installer Sklubot avec un agent de code, guides « ce que seul l'humain peut faire », carte « pas à pas » | Se dépanner sans développeur. | MANQUE | Hermes, OpenClaw, Noah, Rakazo, 10-timon (T88), mattpocock | S / M | IDÉE |
+| L154 | Voix : accord par un « oui » ou « non » net, « je travaille encore » toutes les 30 s, accusé oral immédiat, phrases d'attente, réponse longue résumée à l'oral et complète dans le chat, boîte d'envoi locale de la transcription, compte rendu gardé au redémarrage, rappel sortant, mot de réveil, note vocale envoyée par le bot, choix du micro et reconnexion | Un appel qui ne laisse jamais dans le silence. | MANQUE | OMB, Rakazo, Noah, Nightly, CopilotKit, Hermes | M | IDÉE |
+| L155 | Salons : « stop @Bot » gardé après redémarrage, responsable de la tâche avec Réassigner / Archiver, limite de temps par membre | Un groupe de bots plus facile à mener. | MANQUE | OMB, Nightly | S / M | IDÉE |
+| L156 | Exporter une conversation ou un rapport (Markdown / PDF), export de débogage d'un tour | Garder ou partager un travail. | MANQUE | Agent Zero, Craft Anything, OpenClaw | S | IDÉE |
+| L157 | Pages : différences entre deux versions, fiche A4 en PDF, copie HTML autonome, capture d'un élément ou pleine page, émulation mobile et sombre, contrôle « rien de perdu » à la refonte, journal de design par compte, photothèque Wikimedia avec crédit automatique, WebGL vérifié | Des pages plus faciles à faire évoluer. | MANQUE | Plannotator, Anatomy, stitch-skills, Chrome DevTools MCP, Hallmark | M | IDÉE |
+| L158 | Créations : carte « trajectoire » des rendus successifs, étapes nommées (étudier / construire / vérifier / prêt), détection « aucun progrès », budget par création, questions ouvertes visibles, alerte nouvelle version de Craft Anything | Tu suis un long travail créatif. | MANQUE | CLI-Anything, Craft Anything | M | IDÉE |
+| L159 | Relais et connecteurs : guide des autorisations macOS, identité de fenêtre sûre, capture d'un écran secondaire, attente d'une fenêtre, ordinateur gardé éveillé, mises à jour du Relais, accès aux fichiers locaux depuis la discussion, MCP en HTTP+SSE, renommer un connecteur, connecteurs « pour tous mes bots », fiche « coordonnées » au coffre, registre vérifié des sites connectés, adresse MCP privée tapée par toi en auto-hébergé, format de contribution | Le Relais et les connecteurs plus simples à vivre. | MANQUE | agent-desktop, nod, Noah, Nightly | S / M | IDÉE |
+| L160 | Appli mobile : `PrivacyInfo.xcprivacy`, questions d'âge Apple, script de contrôle avant envoi, compléments `STORE.md`, surveillance du serveur de démonstration, veille des règles des boutiques, contrôleur de liens des docs, passage de `web/` au crible PWA / passkeys / accessibilité, justification des permissions du compagnon | Moins de rejets à la publication. | MANQUE | App Store compliance, MWG | S / M | IDÉE |
+| L161 | Petits réglages : glossaire en infobulles, mise de côté après 14 jours, rétention de l'historique, sauvegardes et rétention, style par bot (plus simple / normal / conteste), liste « raccourcis à revoir », outil « il me manque une capacité », carte « ce que ce bot peut lire et écrire », identité en plusieurs documents, consignes globales, rôles partagés, avatar photo, personnalités prêtes, thèmes créés par le bot, notes lisibles hors appli, récapitulatif global, outil `docs_read`, démarrage sur disque en panne, réponse tardive livrée seulement si utile, file annoncée pour un ordinateur partagé, verrou d'écriture sur le dossier d'équipe | Des finitions qui évitent des frustrations. | MANQUE | Craft Anything, Rakazo, Ponytail, Astryx, last30days, Hermes, OMB, Timon, 10-timon (T39, T40, T47, T53, T54, T55, T56, T69, T70, T85), CLI-Anything | S chacun | IDÉE |
+
+### Lot 5 — Gros chantiers
+
+| ID | Titre | Ce que tu gagnes | Type | Sources | Taille | Licence |
+|---|---|---|---|---|---|---|
+| L162 | Nouveaux canaux : Slack (mode Socket officiel), Discord, plusieurs interlocuteurs Telegram, relève IMAP d'une boîte existante | Parler à tes bots là où ton équipe travaille. | MANQUE | Hermes, OpenClaw, Nightly, CopilotKit, Agent Zero | L | IDÉE |
+| L163 | Tableau de travail : tâches durables (dépendances qui attendent le vrai résultat, pièces jointes, priorité), carnet d'idées promu en tâche, retours groupés au chef, plan à valider, qui exécute, modèle par tâche, « bloqué par », décisions ouvertes | Un travail long à plusieurs bots qui se tient. | MANQUE | 10-timon (T1 à T12), Timon, mattpocock, agent-skills, Hermes | L | SALLE BLANCHE |
+| L164 | Relais avec l'arbre d'accessibilité (actions par référence sur Mac / Windows, mode arrière-plan, boîtes ouvertes signalées) ; lecteur d'applis par accessibilité dans l'image du bot | Le bot remplit un formulaire d'appli sans cliquer au pixel près. | MANQUE | agent-desktop, nod, Superbot | L | REUSE Apache (agent-desktop) |
+| L165 | Parcours enregistrés puis rejoués (routines, surveillance de site, panier), preuves d'étapes, comparaison de page | Une tâche répétée chaque jour sans repasser par le modèle. | MANQUE | agent-browser, Craft Anything, OMB | L | IDÉE |
+| L166 | Connecteur Google Search Console (lecture) + PageSpeed + IndexNow sous accord | Les vraies données SEO, gratuites. | MANQUE | claude-seo | L | IDÉE |
+| L167 | Modèle vocal temps réel en option, qui délègue au bot ce qui demande des outils | Des appels qui répondent plus vite. | MANQUE | CopilotKit, OMB, Nightly | L | IDÉE (voir décisions) |
+| L168 | Mises à jour automatiques signées, dans un créneau calme, avec retour arrière | Un serveur à jour sans intervention. | MANQUE | Noah | L | IDÉE |
+| L169 | Politique réseau sortante par bot (tout / liste / rien), sites interdits réglables, sortie par la maison (Tailscale / Relais), Web Bot Auth et proxy | Tu décides où chaque bot peut aller. | MANQUE | CopilotKit, Chrome DevTools MCP, Noah | L | IDÉE |
+| L170 | API ouverte : compatible OpenAI, webhooks sortants, fichier OpenAPI et dépréciations, commande sans écran pour scripts, mémoire dans l'API | Brancher Sklubot à d'autres outils. | MANQUE | Hermes, OpenClaw, CopilotKit, OMB, mem0 | M / L | IDÉE |
+| L171 | Mémoire d'équipe partagée par espace (isolée par défaut), invités extérieurs, liens entre notes et entités | Une équipe humaine partage ce que savent les bots. | MANQUE | claude-mem, Rakazo, OMB, mem0, 10-timon (T68) | L | IDÉE |
+| L172 | Autres agents par ACP, agent à agent distant (A2A) | Faire travailler d'autres agents CLI avec Sklubot. | MANQUE | Craft Anything, OMB, Agent Zero | L | IDÉE |
+| L173 | Enchaînements : routines sans IA (script planifié), routines enchaînées, déclencheurs sur événements internes, workflows en graphe | Automatiser sans payer un tour de modèle. | MANQUE | Nightly, Hermes, 10-timon (T79) | L | IDÉE |
+| L174 | Code qui appelle les outils ; greffons | Des tâches complexes en un seul passage. | MANQUE | Hermes | L | IDÉE |
+| L175 | Publications externes : Netlify, X / Instagram par API (lire / confirmer / agir), backlog Trello / Linear / Notion, demande d'intégration GitHub | Publier et suivre ailleurs, sous accord. | MANQUE | OMB, Noah, Noodle, 10-timon (T16) | M chacun | IDÉE |
+| L176 | Tests de l'interface du chat (défilement, flux, envoi, cartes) | Moins de régressions dans l'appli. | MANQUE | Hermes | L | IDÉE |
+| L177 | Téléphone et ailleurs : appareil photo et position, Live Activity iPhone, appli iOS, Android par USB, bot qui rejoint une réunion, autres langues | Sklubot partout. | MANQUE | OpenClaw, Nightly, OMB, Rakazo, 10-timon (T86) | L | IDÉE |
+| L178 | Édition partagée en direct d'un document Markdown | Écrire à deux avec ton bot. | MANQUE | Agent Zero | M | IDÉE |
+| L179 | Coffres 1Password / Bitwarden en direct | Pas de double saisie de tes identifiants. | MANQUE | OMB | M | IDÉE |
+| L180 | Bancs de qualité : rappel de mémoire en français, relectures sur PR annotées | Mesurer au lieu de supposer. | MANQUE | mem0, OCR | M | IDÉE |
+| L181 | Import depuis Claude Code / Hermes / OpenClaw / Codex avec aperçu, secrets exclus | Venir d'un autre outil sans tout refaire. | MANQUE | Agent Zero | M | IDÉE |
+| L182 | Diffuseur d'écran plus léger que noVNC | Une vue de l'écran plus fluide sur mobile et petit serveur. | MANQUE | Superbot | M | à vérifier (licence) |
+| L183 | Travail de nuit au rythme des quotas | Profiter des abonnements quand ils se remettent à zéro. | MANQUE | 10-timon (T45) | M | SALLE BLANCHE |
+| L184 | Le reste, à la demande : musique, sondages, tableaux de bord épinglés, métriques, événements MCP, aperçu de lien, citation, rêve de mémoire | Selon les demandes des clients. | MANQUE | OpenClaw, OMB | M à L | IDÉE |
+
+**Nombre d'éléments par lot :** Lot 0 = 14 · Lot 1 = 39 · Lot 2 = 47 · Lot 3 = 35 · Lot 4 = 26 · Lot 5 = 23 · **Total = 184**.
+
+---
+
+## 4. Non repris (exclu exprès)
+
+| Ce qui est exclu | Pourquoi |
+|---|---|
+| Tout code, texte, libellé, nom ou mascotte de Timon | AGPL et marques : seulement le cahier `10-timon.md`, en nos mots. |
+| Code et textes de nightly-labs/OpenBot et de Noah | Licence PolyForm non commerciale : Sklubot est commercial, idées seulement. |
+| Code d'ai-teammates | Aucun fichier de licence = tous droits réservés. |
+| Version actuelle d'app-store-compliance (2.x) | Licence OpenRoots non libre ; seule la version MIT/CC BY d'avant le 24/08/2026 serait réutilisable. |
+| Dossier `enterprise/` d'OpenMausBot, cloud et « TeamBrain » de claude-mem, plateforme payante de mem0, CopilotKit Intelligence | Licences propriétaires. |
+| Noms, logos, marques (OpenMausBot, Ponytail, ArtCraft, Stitch, Google…) | Marques : jamais dans un nom de compétence ni dans l'interface. |
+| « Accès complet sans accord » de nightly/OpenBot et Superbot, consigne « sans demander confirmation » (`visa-doc-translate`) | Affaiblirait le plancher d'accords de Sklubot. (L'Annuler d'OMB reste une décision, voir § 5.) |
+| Compétences offensives de Claude-BugHunter (recon, hunt-*, OSINT offensif, rapports de bug bounty) | Usage défensif seulement. |
+| Familles « rétro-ingénierie » de Craft Anything (programmes natifs, Apple, .NET, formats, déballage de jeux, moteurs de jeu) | Risque juridique et de sécurité pour un produit grand public. |
+| 201 compétences de développeur d'ECC, compétences « engineering » de mattpocock, la plupart d'agent-skills, mem0 / claude-mem pour développeurs, `memory-leak-debugging`, `inspect-in-devtools` | Public développeur ; seule une famille « Développeur » optionnelle est gardée (L127). |
+| Harnais CLI-Anything de niche ou lourds (Blender, FreeCAD, QGIS, Krita, MuseScore, OBS, Rekordbox, Live2D, iTerm2, Safari…) | Niche, lourd ou sur l'ordinateur de l'utilisateur. |
+| Services payants ou tiers : mermaid.ink, passerelle IA Vercel (`chat`), `jev-desktop` (Typesafe), Composio, Novita, MiniMax, AnyGen, DataForSEO et autres API SEO payantes, appels téléphoniques | Payant, ou envoie le contenu à un tiers. |
+| Client X par cookies de session (`bird-search` de last30days) | API non officielle avec cookies personnels. |
+| Statistiques d'usage activées par défaut, e-mails commerciaux « agence » | Sklubot n'envoie rien ; à garder. |
+| Modules tiers chargés à chaud dans le serveur hébergé | Risque entre comptes. |
+| Terminal texte offert à l'utilisateur, widget de conteneurs, graphe git, fusion et copies de travail git (Timon T15) | Public développeur ; Sklubot montre l'écran du bot. |
+| Pilotage de plusieurs machines, licence payante contrôlée en ligne | Sklubot est central ; modèle commercial propre à la source. |
+| Copie des cookies d'un navigateur personnel pour passer une connexion | Seulement si un jour le Chromium du bot est refusé, et à l'initiative de l'utilisateur. |
+| Scripts VNC de Hermes (`connect-mac.sh`…), flux H.264, Mac distant par SSH, nettoyage Orgo | VNC exposé sur le réseau ; le Relais est plus sûr ; propre à un service. |
+| Cartes écrites par le bot (format `card.v1`), formes d'avatar, palette Rakazo, vérification interne de Hermes | Sklubot a ses cartes natives (plus sûres) et ses personnages. |
+| Slack « en un clic » par relais tiers (`slack-connect`, `slack-relay`, `slack-http`) | L'API officielle est préférable (L162). |
+| Pilote de navigateur CLI de Superbot | Doublon des éléments de page de Sklubot ; seulement si `desk-cli` ne couvre pas les moteurs CLI. |
+| Modèles Ollama réglés par le bot (`cli-anything-ollama`) | Les modèles se règlent dans Sklubot, pas par le bot. |
+| Palette de commandes Ctrl/⌘K, atelier avancé et barre de titre de Craft Anything | Public non développeur. |
+| Résumé « pr » de mattpocock | Recopié d'un autre dépôt dont la licence n'est pas vérifiée. |
+| Catalogues communautaires de Spec Kit | Non audités par leur propre auteur. |
+| Chiffres de banc d'essai annoncés (Ponytail, mem0) | Non vérifiés : ne pas les citer. |
+| Lignes « DIFFÉRENT » où Sklubot est plus prudent (un ordinateur par bot au lieu de copies git, conteneur isolé, citation obligatoire des mots de l'utilisateur, actions « incertaines » jamais rejouées) | Choix voulus, à garder. |
+
+---
+
+## 5. Décisions pour le propriétaire
+
+Ces choix changent la façon dont Sklubot se comporte ou ce qu'il coûte : seul toi peux trancher.
+
+1. **Nouveau bot : « Accès complet + Annuler » ou « prudent » par défaut ?** OMB fait agir puis offre Annuler ; Sklubot demande toujours (« careful »). Entre les deux : « balanced » par défaut, avec un choix clair à l'accueil, et Annuler pour les changements sans risque (L98).
+2. **Accords sans réponse** : jamais d'expiration dans une discussion surveillée (L4) ; pour les tours sans témoin (routines), compte à rebours puis le bot continue sans l'action, ou refus net ?
+3. **Routines** : dans leur propre fil par défaut (L54), ou dans la discussion comme aujourd'hui ?
+4. **Plusieurs tours en parallèle par bot** (L99) : plus agréable, mais plus de dépense et de risque de conflits.
+5. **Plusieurs comptes d'abonnement avec bascule** (L82) : à vérifier contre les conditions de Claude et ChatGPT avant de le proposer.
+6. **Mémoire par le sens** (L71) : petit modèle local (privé, sans coût, plus lourd) ou service du fournisseur (léger, mais les notes sortent) ?
+7. **Copier du code sous MIT / Apache** (avec attribution) ou rester sur « idées seulement, code à nous » comme aujourd'hui ?
+8. **Bots Claude Code sur abonnement** : retirer `WebFetch` et `WebSearch` quand le navigateur du bot est prêt (L64) ? Et que faire du `bypassPermissions` du moteur pendant que les outils Sklubot du même tour demandent tout ?
+9. **Second facteur** avant les actions du plancher (L44) : sécurité en plus contre un geste de plus.
+10. **Outils dans l'image du bot** (Lighthouse, axe, `sloplint`, `mermaid-cli`, chrome-devtools-mcp, lecteur d'accessibilité) : image plus lourde, télémétrie à couper.
+11. **Voix temps réel payante** (L167) : réponse plus rapide, mais clé et coût d'un fournisseur.
+12. **Adresses MCP locales** en auto-hébergé seulement, tapées par l'utilisateur (L159) : oui ou non ?
+13. **Ordre des canaux** : Slack, Discord ou Telegram complet d'abord (L76, L162) ?
+14. **Mises à jour automatiques** du serveur (L168) : oui pour les installations auto-hébergées ?
+15. **Craft Anything** : relayer ses questions en direct (plus long) ou seulement montrer après coup ce qu'il a choisi (L23) ?
+
+---
+
+
+### Décisions prises par le propriétaire (22/11/2026)
+
+1. Nouveau bot : **« Équilibré » par défaut** (agit seul sur ce qui est sans risque, avec Annuler ; demande pour le reste ; choix clair à la création). Paiements et suppressions demandent toujours.
+2. Routines : **dans leur propre fil**, seul le résultat arrive dans le chat principal.
+3. **Jusqu'à 3 tâches en parallèle par bot**, avec garde-fous contre les conflits.
+4. Licences MIT / Apache 2.0 : **reprise du code et des textes autorisée avec attribution** (licence et auteur gardés). Licences non commerciales, AGPL, sans licence : idées seulement. Sources de salle blanche (rakazo, nod) : toujours par fiche, jamais copiées.
+
+---
+
+## 6. Contrôle de couverture
+
+- **Éléments sources placés : 977**
+  - 613 entrées des listes « À faire » (et « Ce qui serait utile ») des 37 études ;
+  - 252 écarts de comportement (sections « Écarts », souvent les mêmes besoins que les « À faire ») ;
+  - 70 exigences PARTIEL ou MANQUANT du cahier `10-timon.md` ;
+  - 38 lignes du tableau « autres éléments du kit » de Hermes et 4 lignes du tableau d'outils de Superbot.
+- Chacun est soit dans un élément L1 à L184 (souvent fusionné avec d'autres), soit dans « Non repris ».
+- **Non placés : 0.** Deux réserves honnêtes :
+  1. Les **1 528 lignes PARTIEL / MANQUANT des tableaux** n'ont pas été relues une par une : elles sont couvertes à travers les listes « À faire » que chaque auditeur a tirées de son tableau. Le reste « dans l'ordre du tableau » d'OpenMausBot (son point 50) est réparti dans L161, L177 et L184.
+  2. Trois points dépendent d'une vérification avant d'être traités comme des bugs : coût Claude Code repris (L17), fichiers `.html` servis sur l'origine de l'appli (L34), contrôles de sécurité du service (L37).

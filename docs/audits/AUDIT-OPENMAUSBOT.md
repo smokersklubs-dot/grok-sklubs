@@ -178,7 +178,7 @@ Taille : **S** ≤ 1 jour, **M** 2 à 4 jours, **L** 1 à 2 semaines. Chemins Sk
 | Routines | Limite d'abonnement atteinte : l'exécution repart une minute après la remise à zéro | PARTIEL | `agent/sublimit.ts:219` ; test `sublimit.test.ts` | Règle « la prochaine exécution fait déjà le travail » | S |
 | Routines | Exécution dont le tour a disparu : jamais « en cours » pour toujours | PARTIEL | `agent/loop.ts:801-805` | Pas de surveillance périodique des exécutions orphelines | S |
 | Routines | Webhook avec secret, jeton Bearer conseillé, secret masqué et remplaçable | FAIT | `routes.ts` (`/hooks/:token`) † ; test `app.test.ts` | Bearer et rotation non vérifiés | — |
-| Routines | Même événement livré deux fois = une seule exécution (7 jours) | PARTIEL | `routines.ts:162` (`native_seen`, applis intégrées) | Pas pour les webhooks | S |
+| Routines | Même événement livré deux fois = une seule exécution (7 jours) | PARTIEL | `routines.ts:162` (`native_seen`, applis intégrées) | ✅ Webhooks aussi depuis le 2026-11-22 (L20, `hooktrust.ts`) | S |
 | Routines | Événements d'applis connectées (nouveau mail, message Slack…) | FAIT | `native/triggers.ts` ; test `apps.test.ts` | — | — |
 | Routines | « Vérifie plus tard » / « attends que… » (`check_back`, `wait_until`) | PARTIEL | surveillance `scheduler.ts:154` (watch), routine unique | Outil simple pour reprendre la même discussion plus tard | M |
 | Routines | Sauter sans appeler le modèle quand rien n'a changé | FAIT | `scheduler.ts:98-139` ; test `security.test.ts` † | — | — |
@@ -482,30 +482,32 @@ Taille : **S** ≤ 1 jour, **M** 2 à 4 jours, **L** 1 à 2 semaines. Chemins Sk
 
 ## 4. À faire, du plus utile au moins utile
 
-1. **Ne plus annuler un accord quand l'utilisateur écrit** : garder la carte ouverte, mettre le message en attente (`agent/loop.ts:1739`). S
-2. **Session du moteur perdue** : reconstruire depuis le chat et le dire, comme le fait déjà le secours API (`agent/engine.ts:847`, `:936`). M
+> **Mise à jour du 2026-11-22 (chantier « cœur : fiabilité »).** Les lignes marquées ✅ sont faites et testées (`server/test/core-reliability.test.ts`, `core-engine.test.ts`, `core-timeouts.test.ts`) ; « en partie » dit ce qui reste. Détail dans `docs/COUVERTURE.md`, section « Cœur : fiabilité ».
+
+1. ✅ **Fait (2026-11-22).** **Ne plus annuler un accord quand l'utilisateur écrit** : la carte reste ouverte, le message est gardé et traité après la réponse ; un « oui » tapé ne vaut jamais accord (`agent/approval-wait.ts`, `agent/loop.ts`). S
+2. ✅ **Fait (2026-11-22).** **Session du moteur perdue** : la nouvelle session reçoit les derniers messages gardés (30 au plus, 12 000 caractères au plus) et une ligne le dit dans le chat, pour Claude Code et Codex (`agent/session-rebuild.ts`). M
 3. **Routines dans un fil à part**, seul le résultat dans le chat, avec « Voir l'exécution ». M
 4. **Navigateur en texte** : `browser_open` et les clics renvoient la structure de la page et ce qui a changé ; capture à la demande. M
 5. **Défaut « balanced »** pour les nouveaux bots, avec un choix clair à l'accueil. S
 6. **Cache du modèle** : sortir du prompt système les souvenirs, routines et équipe ; marquer le dernier message. M
-7. **Cartes sans expiration** dans le chat du propriétaire, et 👍 / 👎 pour y répondre dans l'appli web. S
+7. ✅ **Fait en partie (2026-11-22).** **Cartes sans expiration** dans le chat du propriétaire : fait (modèles API : la carte attend sans horloge ; abonnement : la demande est « mise de côté » après 25 min et sa réponse compte toujours). Reste : 👍 / 👎 pour y répondre dans l'appli web. S
 8. **Plusieurs tours en parallèle par bot** (fils indépendants), pour qu'une routine ou un collègue ne bloque plus la discussion. L
 9. **Reprise automatique bornée par le progrès** après la limite d'étapes ou de temps. M
 10. **Outils de navigateur manquants** : onglets, retour, attendre un texte, alertes, envoi de fichier. M
 11. **Règles de conversation** à la fin du prompt, et instructions du bot remontées en tête. S
 12. **Bots sur abonnement et liens** : retirer `WebFetch` quand le navigateur est prêt, et un test avec le vrai bureau. S
-13. **Erreur non attrapée** : arrêter le tour concerné, ou sortir proprement et relancer. M
+13. ✅ **Fait (2026-11-22).** **Erreur non attrapée** : le tour concerné est arrêté, sa file est libérée, l'échec passe par le coordinateur d'échecs et une carte s'affiche ; le serveur et les autres bots continuent (`agent/crashguard.ts`, `index.ts`). M
 14. **Échecs de routine** : espacer au lieu de mettre en pause. S
-15. **File d'attente visible** des messages envoyés pendant le travail ; test de `drainSteering`. M
+15. **File d'attente visible** des messages envoyés pendant le travail ; test de `drainSteering` (✅ le test existe depuis le 2026-11-22 : `core-reliability.test.ts`, point 6 ; la file visible reste à faire). M
 16. **Accords à la voix** pendant un appel, et « je travaille encore » toutes les 30 s. M
-17. **Accords des bots sur abonnement gardés au redémarrage.** M
+17. ✅ **Fait (2026-11-22).** **Accords des bots sur abonnement gardés au redémarrage** : la demande est gardée en base (table `parked_approvals`), la carte reste ouverte, et un « oui » relance l'action exacte, une seule fois. Ce qui ne peut pas reprendre (relais d'identifiants, API de bot, membre d'équipe) expire avec un bouton « Relancer ». M
 18. **Vérifier que le modèle de secours accepte outils et images** avant de basculer. S
 19. **Changements réversibles appliqués avec « Annuler »** (profil, compétence, routine en pause) au lieu d'une carte. M
 20. **Modifier un message / branches.** M
 21. **Copier, épingler, exporter, réessayer** sur un message. S
 22. **« stop @Bot »** dans un groupe, gardé après redémarrage. S
 23. **Rappel de mémoire devant le message**, et liste des faits oubliés. S
-24. **Identifiant d'envoi** contre les doublons ; **Stop qui vise un tour**. S
+24. ✅ **Fait en partie (2026-11-22).** **Identifiant d'envoi** contre les doublons : fait, web et mobile (`server/src/sendkeys.ts`, `mobile/shared/sendKey.ts`). Reste : **Stop qui vise un tour**. S
 25. **Résumé à chaud** pendant le repos de la discussion. M
 26. **Résultat d'un clic « envoyé mais non confirmé »**. S
 27. **Deuxième avis sur un autre modèle**. M
@@ -528,7 +530,7 @@ Taille : **S** ≤ 1 jour, **M** 2 à 4 jours, **L** 1 à 2 semaines. Chemins Sk
 44. **Boîte de réception à trois onglets.** M
 45. **Style « conversationnel »**, modèle par fil, modèle par routine. S
 46. **Note vocale envoyée par le bot.** S
-47. **Verrou « un seul serveur »** sur le dossier de données. S
+47. ✅ **Fait (2026-11-22, L50).** **Verrou « un seul serveur »** sur le dossier de données : `DATA_DIR/server.lock`, 2e serveur refusé avec un message en français, verrou abandonné repris tout seul (`server/src/datalock.ts`, test `data-lock.test.ts`). S
 48. **Sélection d'outils un par un** et pont `find_tool` / `use_tool`. M
 49. **Autres langues.** M
 50. Le reste des lignes PARTIEL / MANQUANT du tableau (aperçu de lien, citation, avatar image, apprentissage automatique de compétences, rêve, mémoire d'équipe, Android par USB, étapes rejouées, rejoindre une réunion, appli iOS, liste des personnes…), dans l'ordre du tableau.

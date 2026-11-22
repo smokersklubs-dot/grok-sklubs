@@ -403,24 +403,26 @@ Pour chaque flux : comment OpenClaw fait, comment Sklubot fait, ce qui est plus 
 
 ## À faire, du plus utile au moins utile
 
-1. Couper tout appel modèle muet depuis 120 s et le traiter comme une panne passagère (A10). **S**
-2. Ne plus fondre un message de l'utilisateur dans un tour de routine, de bot ou système : le mettre en file comme son propre tour (flux 13). **S**
-3. Arrêt et reprise automatiques d'un tour bloqué quand personne ne l'a lancé, et budget de temps total pour un tour API (A11, A12, E7). **S**
+> **Mise à jour du 2026-11-22 (chantier « cœur : fiabilité »).** Les lignes marquées ✅ sont faites et testées (`server/test/core-timeouts.test.ts`, `core-reliability.test.ts`, `core-engine.test.ts`) ; « en partie » dit ce qui reste. Détail dans `docs/COUVERTURE.md`, section « Cœur : fiabilité ».
+
+1. ✅ **Fait (2026-11-22).** Tout appel modèle muet est coupé (180 s par défaut, `MODEL_IDLE_TIMEOUT_SEC`) et traité comme une panne passagère : relances, secours, puis carte d'échec (A10). **S**
+2. ✅ **Fait (2026-11-22).** Un message de l'utilisateur n'est plus fondu dans un tour de routine, de bot ou système : il devient son propre tour, à lui, juste après (flux 13). **S**
+3. ✅ **Fait en partie (2026-11-22).** Un appel modèle figé ne bloque plus un tour que personne ne regarde (il est coupé, relancé, puis l'échec est traité tout seul), et chaque appel a un plafond de 30 min (`MODEL_CALL_TIMEOUT_MIN`). Reste : un budget de temps pour le tour API entier, et l'arrêt automatique d'un outil figé (A11, A12, E7). **S**
 4. Passage isolé pour les routines : seul le résultat arrive dans le chat (E2). **M**
 5. Recherche mémoire par le sens en plus des mots ; finir, tester et commiter `agent/recall.ts` (C4, C5). **M**
 6. Tour silencieux « note ce qui compte » avant chaque résumé de conversation (A27). **M**
 7. Cache de prompt : sections changeantes à la fin, point de cache sur l'historique (A33). **S**
 8. Nouvel essai avec attente croissante après l'échec d'une routine, avant de compter l'échec (E4). **S**
-9. Garde anti-boucle : note d'avertissement avant l'arrêt, exemption des outils d'attente (A9). **S**
+9. ✅ **Fait (2026-11-22).** Garde anti-boucle : note d'avertissement au modèle dès le 2e résultat identique ou le 2e échec de suite ; les outils d'attente (`screen_view`, `job_output`, `page_read`…) ont une limite plus haute mais bornée (12, `LOOP_POLL_SAME_RESULT`) (A9). **S**
 10. Steering : ajouter la consigne de lien et les sites nommés par l'utilisateur à `turn.hosts` (flux 2). **S**
 11. Accueil : appel d'essai au modèle avant le premier message (L1). **S**
 12. Telegram : photos, notes vocales, « écrit… », essais sur l'envoi, avis si l'envoi échoue (I1, H3, A41, flux 9). **M**
-13. Un accord tapé en texte répond à la carte d'approbation en attente au lieu de la faire expirer (flux 4). **S**
+13. ✅ **Traité autrement (2026-11-22), par sécurité.** Un texte tapé ne fait plus expirer la carte, mais il ne vaut jamais accord ni refus : la carte reste ouverte et se répond avec ses boutons ; le message est gardé et traité après la réponse (flux 4). **S**
 14. Un seul prompt de résumé à sections, ligne visible dans le chat, contrôle simple du résumé (A26, flux 14). **M**
 15. Budget d'essais plus long pour les limites de débit, et état d'essai affiché à côté de l'indicateur au lieu d'un avis par échec (A14). **S**
 16. Plafond de taille des résultats d'outils lié à la fenêtre du modèle (A31). **S**
-17. Tests manquants : passe « rapport final », résumé entre tours, import de mémoire, message pendant une routine (A20, A25, C9). **S**
-18. File d'attente : plafond, regroupement des rafales, dédoublonnage API et webhooks (A5, A6, A8). **S**
+17. Tests manquants : passe « rapport final », résumé entre tours, import de mémoire, message pendant une routine (✅ ce dernier est fait depuis le 2026-11-22 : `core-reliability.test.ts`, point 6) (A20, A25, C9). **S**
+18. File d'attente : plafond, regroupement des rafales, dédoublonnage API et webhooks (✅ le dédoublonnage des envois du chat web et mobile est fait depuis le 2026-11-22 ; ✅ webhooks : dédoublonnage par identifiant de livraison et regroupement des rafales faits le 2026-11-22, L20 ; l'API de bot reste à faire) (A5, A6, A8). **S**
 19. Discord comme canal (I2). **M**
 20. Question à côté pendant le travail, et mode « traite ça après » (B9, A4). **M**
 21. Auto-contrôle de sécurité de l'installation et paquet de diagnostic (K9, L3). **M**
