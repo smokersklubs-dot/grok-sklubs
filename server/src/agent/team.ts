@@ -5,7 +5,7 @@ import { enqueue, isPaused } from "./loop.js"; import { laneCap } from "./lanes.
 import { BREAKER_LINE, dmChannel, postBudget, roomChannel } from "./roombudget.js";
 import "./budgetstore.js"; // L53: the anti-loop state survives a restart
 import { gt } from "./guardtext.js"; import { scrubHandoff } from "./handoffscrub.js"; // L46
-import { answerOffer, noteBotPost, roomRouting, routeAuto } from "./roomrouting.js";
+import { answerOffer, noteBotPost, roomRouting, routeAuto } from "./roomrouting.js"; import { roomNotesText } from "./roommemory.js";
 
 export const MAX_HOPS = 3;
 export const MAX_HELPERS = 4;
@@ -210,7 +210,7 @@ export function wakeInRoom(room: BotRecord, user: UserRecord, text: string, from
     enqueue(target.id, {
       kind: "system", depth: depth + 1, tainted: !!fromBot && tainted, unattended: !!fromBot || undefined,
       text: `New message in the group chat "${room.name}" (members: ${roster}).\n${about}${fromBot ? fromBot.name : user.name} wrote: ${text}\n\n` +
-        `If you have something useful to add, answer in the group with room_post (room "${room.name}"${thread ? `, thread ${thread}` : ""}). Mention a teammate with @Name to bring them in. If there is nothing worth saying, call stay_quiet.${quiet}${note ? `\n${note}` : ""}`,
+        `If you have something useful to add, answer in the group with room_post (room "${room.name}"${thread ? `, thread ${thread}` : ""}). Mention a teammate with @Name to bring them in. If there is nothing worth saying, call stay_quiet.${quiet}${note ? `\n${note}` : ""}${roomNotesText(room)}`, // audit DS-Bot #58: the group's own notes (roommemory.ts)
     });
   }
 }

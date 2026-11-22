@@ -150,6 +150,8 @@ export const access = {
     const r = q.get<Row>("SELECT * FROM channel_contacts WHERE bot_id = ? AND thread_gen = ? AND thread_seq = ? AND status = 'allowed'", botId, generation, threadSeq);
     return r ? toContact(r) : null;
   },
+  /** DS-Bot item 4: this person is on the allow-list of this service (channelgroups.ts "approved people only"). */
+  isAllowed: (botId: string, channel: ContactChannel, externalId: string) => find(botId, channel, externalId)?.status === "allowed",
   markSent: (id: string, seq: number) => q.run("UPDATE channel_contacts SET last_sent_seq = MAX(last_sent_seq, ?) WHERE id = ?", seq, id),
   /**
    * The thread of the bot's chat where this person's conversation lives: made on their first message (a short line in the

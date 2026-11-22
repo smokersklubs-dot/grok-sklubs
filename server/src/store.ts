@@ -66,7 +66,7 @@ function previewOf(body: RowBody, locale: Locale): string {
     if (c.type === "pastedsecret") return tr(locale, "A secret was masked in your message");
     if (c.type === "files") return tr(locale, "Files changed: {n}", { n: c.files.length + c.more });
     if (c.type === "goal") return tr(locale, "Goal: {objective}", { objective: c.objective });
-    if (c.type === "failure") return tr(locale, "A problem needs you");
+    if (c.type === "failure") return tr(locale, "A problem needs you"); if (c.type === "view") return c.title; // DS-Bot item 8
     return tr(locale, "Connect {name}", { name: c.name });
   }
   return "";
@@ -511,16 +511,20 @@ export const history = {
 };
 
 // ── Memories, skills, tasks ──────────────────────────────────────────────────
+// Audit DS-Bot #81 / #82: a note can be pinned (the automatic passes never touch it) and have a last day (`until`, YYYY-MM-DD,
+// after which it leaves the prompt and the tidy archives it: agent/memorymarks.ts). Columns added here, at load.
+for (const col of ["pinned INTEGER NOT NULL DEFAULT 0", "until_day TEXT"]) { try { q.run(`ALTER TABLE memories ADD COLUMN ${col}`); } catch { /* already there */ } }
 const toMemory = (r: any): Memory => ({
   id: r.id, botId: r.bot_id, text: r.text, source: r.source === "learned" || r.source === "import" ? r.source : "chat", createdAt: r.created_at,
   status: r.status === "archived" || r.status === "contested" ? r.status : "active", quote: r.quote ?? "",
   category: (SENSITIVE_CATEGORIES as readonly string[]).includes(r.category) ? r.category : null,
   confidence: r.confidence === "confirmed" ? "confirmed" : "once", confirmedAt: r.confirmed_at ?? null, lastUsedAt: r.last_used_at ?? null,
+  pinned: !!r.pinned, until: typeof r.until_day === "string" ? r.until_day : null,
 });
 export const memories = {
   list: (botId: string, limit = 500) => q.all("SELECT * FROM memories WHERE bot_id = ? ORDER BY created_at DESC, rowid DESC LIMIT ?", botId, limit).map(toMemory),
   /** Notes a bot may use: active ones, then contested ones (used with caution); archived ones never. */
-  usable: (botId: string, limit = 500) => q.all("SELECT * FROM memories WHERE bot_id = ? AND status != 'archived' ORDER BY created_at DESC, rowid DESC LIMIT ?", botId, limit).map(toMemory),
+  usable: (botId: string, limit = 500) => q.all("SELECT * FROM memories WHERE bot_id = ? AND status != 'archived' AND (until_day IS NULL OR until_day >= ?) ORDER BY created_at DESC, rowid DESC LIMIT ?", botId, new Date().toISOString().slice(0, 10), limit).map(toMemory),
   add(botId: string, text: string, source: Memory["source"] = "chat", extra: { quote?: string; category?: SensitiveCategory | null; status?: MemoryStatus } = {}): Memory {
     const id = newId("mem");
     q.run("INSERT INTO memories (id, bot_id, text, source, created_at, status, quote, category) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", id, botId, text.trim(), source, now(), extra.status ?? "active", clip(extra.quote ?? "", 500), extra.category ?? null);

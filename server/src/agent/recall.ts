@@ -278,7 +278,7 @@ export function recallLines(notes: RankedNote[]): string[] {
 }
 
 /** How many notes a bot may use (active and contested), however many there are: "N older memories" stays true past any loading limit. */
-export const usableCount = (botId: string) => q.get<{ n: number }>("SELECT COUNT(*) AS n FROM memories WHERE bot_id = ? AND status != 'archived'", botId)?.n ?? 0;
+export const usableCount = (botId: string) => q.get<{ n: number }>("SELECT COUNT(*) AS n FROM memories WHERE bot_id = ? AND status != 'archived' AND (until_day IS NULL OR until_day >= ?)", botId, new Date().toISOString().slice(0, 10))?.n ?? 0;
 
 // ── Fusion with the meaning-based ranking (L71, optional) ──────────────────────
 /** Reciprocal rank fusion constant (the usual value, Cormack et al. 2009): rank r adds 1 / (RRF_K + r). */

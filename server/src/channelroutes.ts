@@ -5,6 +5,7 @@
  */
 import type { Context, Hono } from "hono";
 import { access, publicContact } from "./channelaccess.js";
+import { groups, publicGroup } from "./channelgroups.js";
 import { CONTACT_CHANNELS, type BotChannels, type ContactChannel } from "./channeltypes.js";
 import { discord, DiscordError } from "./discord.js";
 import { checkMailbox, imap, ImapSetupError } from "./imapwatch.js";
@@ -36,6 +37,7 @@ const FR: [RegExp, string][] = [
   [/^Choose Telegram, Slack or Discord\.$/, "Choisis Telegram, Slack ou Discord."],
   [/^That id does not look right for this service\.$/, "Cet identifiant ne correspond pas à ce service."],
   [/^That person is not on the list\.$/, "Cette personne n'est pas dans la liste."],
+  [/^That group is not on the list\.$/, "Ce groupe n'est pas dans la liste."],
 ];
 const say = (loc: string | undefined, msg: string) => {
   if (loc !== "fr") return msg;
@@ -48,7 +50,7 @@ export function registerChannelRoutes(api: Hono<any>, ownAgent: (c: Context) => 
     if (!(err instanceof SlackError || err instanceof DiscordError || err instanceof ImapSetupError || err instanceof ChannelInputError)) throw err;
     return c.json({ error: say((c.get("user") as UserRecord | undefined)?.locale, err.message) }, err instanceof ChannelInputError ? err.status : status);
   };
-  const all = (bot: BotRecord): BotChannels => ({ slack: slack.status(bot), discord: discord.status(bot), imap: imap.status(bot), contacts: access.list(bot.id).map(publicContact) });
+  const all = (bot: BotRecord): BotChannels => ({ slack: slack.status(bot), discord: discord.status(bot), imap: imap.status(bot), contacts: access.list(bot.id).map(publicContact), groups: groups.list(bot.id).map(publicGroup) });
 
   api.get("/bots/:id/channels", (c) => c.json(all(ownAgent(c))));
   api.put("/bots/:id/channels/slack", async (c) => { const bot = ownAgent(c); try { await slack.connect(bot, await body(c)); return c.json(all(bot)); } catch (err) { return refuse(c, err); } });
@@ -81,6 +83,9 @@ export function registerChannelRoutes(api: Hono<any>, ownAgent: (c: Context) => 
     } catch (err) { return refuse(c, err); }
   });
   api.post("/bots/:id/contacts/:cid/block", (c) => { const bot = ownAgent(c); try { if (!access.block(bot, c.req.param("cid") ?? "")) throw new ChannelInputError("That person is not on the list.", 404); return c.json(all(bot)); } catch (err) { return refuse(c, err); } });
+  // DS-Bot item 4: the group chats the bot was called in — turn one on or off, when it answers, and for whom.
+  api.patch("/bots/:id/channel-groups/:gid", async (c) => { const bot = ownAgent(c); try { if (!groups.update(bot, c.req.param("gid") ?? "", await body(c))) throw new ChannelInputError("That group is not on the list.", 404); return c.json(all(bot)); } catch (err) { return refuse(c, err); } });
+  api.delete("/bots/:id/channel-groups/:gid", (c) => { const bot = ownAgent(c); try { if (!groups.remove(bot, c.req.param("gid") ?? "")) throw new ChannelInputError("That group is not on the list.", 404); return c.json(all(bot)); } catch (err) { return refuse(c, err); } });
   api.delete("/bots/:id/contacts/:cid", (c) => { const bot = ownAgent(c); try { if (!access.remove(bot, c.req.param("cid") ?? "")) throw new ChannelInputError("That person is not on the list.", 404); return c.json(all(bot)); } catch (err) { return refuse(c, err); } });
 }
 

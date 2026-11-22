@@ -16,6 +16,13 @@ export const LOOP_FR: Record<string, string> = {
   "said but not done: {list}": "dit mais pas fait : {list}",
   "done but not said: {list}": "fait mais pas dit : {list}",
   "sent": "envoyé", "saved": "enregistré", "scheduled": "programmé", "created": "créé", "deleted": "supprimé", "paid": "payé", "published": "publié",
+  // Audit DS-Bot #63 claims (claims.ts, receipt.ts).
+  "links a file that is not there: {list}": "lien vers un fichier absent : {list}",
+  "says work is under way, but nothing is running": "annonce un travail en cours, mais rien ne tourne",
+  // Audit DS-Bot #81–#84 memory (memorymarks.ts, memorytidy.ts, roommemory.ts).
+  "Memory updated: “{old}” is now “{text}”.": "Mémoire mise à jour : « {old} » devient « {text} ».",
+  "I tidied my memory: {merged} merged, {retired} set aside.": "J'ai rangé ma mémoire : {merged} fusionnée(s), {retired} mise(s) de côté.",
+  "{n} change(s) touch a sensitive note: I ask you first.": "{n} changement(s) touchent une note sensible : je te demande d'abord.",
   // L90 turn time budget (turnbudget.ts).
   "I stopped this turn after {min} minutes: that is the time budget for one turn. What I did so far is kept. Press Continue, or just tell me to continue, to pick it back up.": "J'ai arrêté ce tour après {min} minutes : c'est le temps prévu pour un tour. Ce que j'ai fait est gardé. Appuie sur Continuer, ou dis-moi simplement de continuer, pour reprendre.",
   // L96 helpers queued (askrules.ts).

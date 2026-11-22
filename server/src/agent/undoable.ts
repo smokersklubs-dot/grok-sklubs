@@ -5,6 +5,10 @@ import { routines } from "../routines.js";
 import { schedule } from "../scheduler.js";
 import type { Profile } from "../shared.js";
 import { audit, newId, rows, settings, skills, users, type BotRecord } from "../store.js";
+import type { MemoryUndo } from "./memorymarks.js";
+/** Set by memorymarks.ts (it imports this file): puts a memory change back, all of it or nothing. */
+let memoryUndo: (bot: BotRecord, u: MemoryUndo) => boolean = () => false;
+export const setMemoryUndo = (f: typeof memoryUndo) => { memoryUndo = f; };
 
 /**
  * L98 — reversible changes applied at once, with « Annuler » (backlog A-FAIRE L98; owner decision 1 of A-FAIRE: "balanced"
@@ -20,12 +24,12 @@ import { audit, newId, rows, settings, skills, users, type BotRecord } from "../
 q.run("CREATE TABLE IF NOT EXISTS undo_actions (id TEXT PRIMARY KEY, bot_id TEXT NOT NULL, kind TEXT NOT NULL, ref TEXT NOT NULL, before TEXT, status TEXT NOT NULL DEFAULT 'pending', created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL)");
 
 export const UNDO_WINDOW_MS = 24 * 3_600_000;
-export type UndoKind = "profile" | "skill" | "routine";
+export type UndoKind = "profile" | "skill" | "routine" | /** memorymarks.ts: a note updated, or a tidy batch */ "memory";
 type SkillBefore = { name: string; description: string; body: string } | null;
 type RoutineBefore = Partial<{ name: string; prompt: string; schedule: string; timezone: string; enabled: boolean }>;
 
 /** Writes the change's line with « Annuler » in the chat (the turn's conversation). `before`: null for a skill just created. */
-export function offerUndo(bot: BotRecord, o: { kind: UndoKind; ref: string; before: Profile | SkillBefore | RoutineBefore; text: string; thread?: number }, at = Date.now()): string {
+export function offerUndo(bot: BotRecord, o: { kind: UndoKind; ref: string; before: Profile | SkillBefore | RoutineBefore | MemoryUndo; text: string; thread?: number }, at = Date.now()): string {
   const id = newId("und");
   q.run("INSERT INTO undo_actions (id, bot_id, kind, ref, before, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?)", id, bot.id, o.kind, o.ref, JSON.stringify(o.before), at, at + UNDO_WINDOW_MS);
   rows.append(bot, { kind: "notice", tone: "info", text: o.text, action: { kind: "undo", undoId: id, status: "pending", expiresAt: at + UNDO_WINDOW_MS } }, o.thread || undefined);
@@ -47,6 +51,8 @@ export function undoChange(bot: BotRecord, undoId: string, at = Date.now()): "do
     if (!skills.list(bot.id).some((k) => k.id === r.ref)) return "gone";
     if (s) skills.update(r.ref, s); else skills.remove(r.ref);
     emit(bot.userId, { type: "memories", botId: bot.id });
+  } else if (r.kind === "memory") {
+    if (!memoryUndo(bot, before as MemoryUndo)) return "gone";
   } else {
     const cur = routines.byId(r.ref);
     if (!cur || cur.botId !== bot.id) return "gone";

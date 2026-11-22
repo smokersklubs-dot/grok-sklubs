@@ -11,6 +11,7 @@ import { libraryLines } from "./recruit.js";
 import { notedOn, rankNotes, recallForTurn, recallLines, UNCERTAIN_MARK, usableCount } from "./recall.js";
 import { typedByUser } from "./grounding.js";
 import { CADENCE, CONNECTOR_FIRST, languageLine } from "./nodguidance.js";
+import "./imageocr.js"; import { DSBOT_RULES } from "./teamrules.js"; // pictures read for text-only models (llm/imagetext.ts): its cache, usage line and OCR
 import { TURN_CONTEXT_HEADING } from "../llm/cachelayout.js"; import { CLOSING_RULES, METHOD_BLOCK, modelLine } from "./conversationrules.js";
 
 /** Notes loaded for the prompt's own selection (the most recent ones); the count of the others is exact (usableCount). */
@@ -37,7 +38,8 @@ export function pickMemories(bot: BotRecord): { lines: string[]; omitted: number
     const rel = relevance.get(m.id) ?? 0;
     // Confirmed notes come first in the budget; a note mentioned once and neither confirmed nor used for 90 days drops.
     const stale = m.confidence !== "confirmed" && nowMs - Math.max(m.createdAt, m.lastUsedAt ?? 0) > STALE_MS;
-    return { m, rel, score: rel * 4 + (1 - i / all.length) + (m.confidence === "confirmed" ? 3 : 0) - (stale ? 3 : 0) };
+    // Audit DS-Bot #81: a pinned note always comes first (and never goes stale). Past its last day, a note is not here at all (store.ts usable).
+    return { m, rel, score: (m.pinned ? 100 : 0) + rel * 4 + (1 - i / all.length) + (m.confidence === "confirmed" ? 3 : 0) - (stale && !m.pinned ? 3 : 0) };
   }).sort((a, b) => b.score - a.score);
   let budget = config.promptMemoryChars;
   const chosen: typeof all = [];
@@ -49,7 +51,7 @@ export function pickMemories(bot: BotRecord): { lines: string[]; omitted: number
   }
   memories.touch(scored.filter((x) => x.rel > 0 && chosen.includes(x.m)).map((x) => x.m.id));
   chosen.sort((a, b) => a.createdAt - b.createdAt);
-  return { lines: chosen.map((m) => `- ${m.status === "contested" ? UNCERTAIN_MARK : m.confidence === "confirmed" ? "(confirmed) " : ""}${m.text} ${notedOn(m)}`), omitted: total - chosen.length, shown: new Set(chosen.map((m) => m.id)), full: total > all.length };
+  return { lines: chosen.map((m) => `- ${m.pinned ? "(pinned) " : ""}${m.status === "contested" ? UNCERTAIN_MARK : m.confidence === "confirmed" ? "(confirmed) " : ""}${m.text} ${notedOn(m)}${m.until ? ` (holds until ${m.until})` : ""}`), omitted: total - chosen.length, shown: new Set(chosen.map((m) => m.id)), full: total > all.length };
 }
 
 export interface PromptExtras { connectorNames: string[]; /** Signed-in built-in app accounts ("Gmail — perso (lea@…)") and those waiting for a new sign-in. */ nativeAccounts?: string[]; nativeNeedsSignIn?: string[]; browser: boolean; shell: boolean; linux?: boolean; images?: boolean; engine?: "claude-code" | "codex"; video?: "connector" | "api" | null; /** Name of the user's Higgsfield app, when videos go through it. */ higgsfield?: string }
@@ -182,7 +184,7 @@ export function buildSystemPrompt(bot: BotRecord, user: UserRecord, extras: Prom
   ];
   if (extras.engine)
     method.splice(1, 0, "- You are running inside your own Linux computer: your built-in shell, file and web tools act on it directly, and your working folder is ~/files, the user's library for you. The tools whose names start with mcp__sklubot__ (or that come from the server called sklubot) are your team tools: memory, routines, tasks, teammates, the user's apps, saved logins, the screen and the browser you share with the user. When a team tool says the user did not allow something, do not try to do it another way.");
-  out.push(method.filter(Boolean).join("\n"));
+  out.push([...method, DSBOT_RULES].filter(Boolean).join("\n")); // audit DS-Bot n° 36 (teamrules.ts)
 
   out.push([
     "## How you write",

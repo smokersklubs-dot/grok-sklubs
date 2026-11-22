@@ -104,6 +104,22 @@ export class OpenAiCompatProvider implements LlmProvider {
     return this.opts.apiKey ? this.opts.apiKey() : process.env[this.opts.apiKeyEnv] ?? null;
   }
 
+  /**
+   * A POST with this provider's own key, to a path on its own origin only (nativesearch.ts: the provider's documented
+   * search features). The key never leaves this class and never goes to another host.
+   */
+  async postOwn(path: string, body: unknown, signal?: AbortSignal): Promise<Response> {
+    const key = this.key();
+    if (!key) throw new Error(`${this.label}: no key`);
+    const base = new URL(`${this.opts.baseUrl.replace(/\/+$/, "")}/`);
+    const url = new URL(path, path.startsWith("/") ? base.origin : base);
+    if (url.origin !== base.origin) throw new Error(`${this.label}: refused, not its own address`);
+    return (this.opts.fetch ?? fetch)(url.toString(), { method: "POST", headers: { ...this.opts.headers, "content-type": "application/json", authorization: `Bearer ${key}` }, body: JSON.stringify(body), signal });
+  }
+
+  /** Whether this model reads images (imagetext.ts reads pictures for one that does not). */
+  readsImages(model: string): boolean { return this.opts.imagesFor?.(model) ?? this.opts.images !== false; }
+
   /** The endpoint's address (L71: which embeddings model it offers is decided from its host, agent/semantic.ts). */
   get baseUrl(): string { return this.opts.baseUrl; }
 

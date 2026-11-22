@@ -1,6 +1,7 @@
 import { clip } from "./store.js";
 import { ELEMENT_OPS_PY, type PageDialog, type TabContext } from "./screen-elements.js";
 import { DEVTOOLS_PY } from "./browser-devtools.js";
+import { DOWNLOADS_OPS_PY, DOWNLOADS_WATCH_PY } from "./browser-downloads.js";
 
 /**
  * The browser helper of a bot's Linux computer: one Python program, passed with `python3 -c` (so computers made from an
@@ -39,7 +40,7 @@ BASE = "http://127.0.0.1:9222"
 HOME = "/root/.sklubot"
 STATE = HOME + "/browser-tab.json"
 WATCH_SOCK = HOME + "/browser-watch.sock"
-WATCH_VERSION = 2
+WATCH_VERSION = 3
 
 class Fail(Exception):
     pass
@@ -346,7 +347,7 @@ from websocket import create_connection
 #     pages (as chrome-devtools-mcp keeps 3 navigations), at most 300 messages and 400 requests a tab.
 BASE = "http://127.0.0.1:9222"
 SOCK = "/root/.sklubot/browser-watch.sock"
-VERSION = 2
+VERSION = 3
 KEEP_NAVS = 3
 
 def already():
@@ -449,6 +450,8 @@ def reader():
             d = {k: prm.get(k) for k in ("type", "message", "url", "defaultPrompt")}
             d["at"] = time.time()
             dialogs[sessions[sid]] = d
+        elif m in ("Browser.downloadWillBegin", "Browser.downloadProgress"):
+            dl_event(m, prm)
         elif m == "Page.javascriptDialogClosed" and sid in sessions:
             dialogs.pop(sessions[sid], None)
         elif sid in sessions:
@@ -488,6 +491,7 @@ def take(tid, m, prm):
                     r.update({"done": True, "failed": prm.get("errorText", "failed"), "blocked": prm.get("blockedReason", "")})
                 break
 
+${DOWNLOADS_WATCH_PY}
 def serve(conn):
     try:
         conn.settimeout(10)
@@ -530,6 +534,8 @@ def serve(conn):
                 else:
                     dialogs.pop(tid, None)
                     ans = {"ok": True}
+        elif op in ("downloads", "release", "discard"):
+            ans = dl_op(req)
         else:
             ans = {"error": "unknown request"}
         conn.sendall((json.dumps(ans) + "\n").encode())
@@ -543,6 +549,9 @@ def serve(conn):
 
 threading.Thread(target=reader, daemon=True).start()
 send("Target.setDiscoverTargets", {"discover": True})
+# DS-Bot item 10 (browser-downloads.ts): every download lands in the held folder, under its guid, until approved.
+dl_prepare()
+send("Browser.setDownloadBehavior", {"behavior": "allowAndName", "downloadPath": HELD, "eventsEnabled": True})
 try:
     os.unlink(SOCK)
 except OSError:
@@ -829,7 +838,8 @@ const DISPATCH_PY = String.raw`
 OPS = {"read": op_read, "where": op_read, "target": op_target, "open": op_open, "tabs": op_tabs, "tab_switch": op_tab_switch,
        "tab_close": op_tab_close, "dialog_info": op_dialog_info, "dialog_answer": op_dialog_answer, "secret_type": op_secret_type,
        "click": op_click, "keys": op_keys, "snapshot": op_snapshot, "layout": op_layout, "sheet": op_sheet,
-       "fill": op_fill, "wait": op_wait, "console": op_console, "network": op_network, "body": op_body, "pagecheck": op_pagecheck}
+       "fill": op_fill, "wait": op_wait, "console": op_console, "network": op_network, "body": op_body, "pagecheck": op_pagecheck,
+       "downloads": op_downloads, "download": op_download}
 req = json.loads(sys.stdin.read() or "{}")
 try:
     OPS.get(req.get("op"), act)(req)
@@ -843,7 +853,7 @@ except Exception as e:
     out({"error": "the browser could not be reached: %s" % (str(e)[:200] or type(e).__name__)})
 `;
 
-export const BROWSER_PY = `${CORE_PY}\nWATCH = r"""${WATCH_PY}"""\n${ELEMENT_OPS_PY}${OPS_PY}${SHEET_PY}${DEVTOOLS_PY}${DISPATCH_PY}`;
+export const BROWSER_PY = `${CORE_PY}\nWATCH = r"""${WATCH_PY}"""\n${ELEMENT_OPS_PY}${OPS_PY}${SHEET_PY}${DEVTOOLS_PY}${DOWNLOADS_OPS_PY}${DISPATCH_PY}`;
 
 /** One line of browser_tabs: a short stable id (the start of Chrome's target id), what it shows, and its state. */
 export interface TabLine { tab: string; title: string; url: string; active: boolean; dialog: string | null }

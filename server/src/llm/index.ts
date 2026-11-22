@@ -3,6 +3,7 @@ import { DemoProvider } from "./demo.js";
 import { OpenAiCompatProvider } from "./openai-compat.js";
 import type { LlmProvider } from "./types.js";
 import { withTimeouts } from "./timeouts.js";
+import { readsImages, setReaderSource, withImageReading } from "./imagetext.js";
 
 export * from "./types.js";
 
@@ -59,8 +60,22 @@ const permitted = (userId: string | null | undefined, p: LlmProvider) => !gate |
 /** Every provider handed out has its calls guarded against silence (timeouts.ts: the same object, guarded in place). */
 const handOut = (userId: string | null | undefined, r: { provider: LlmProvider; model: string }) => {
   withTimeouts(r.provider);
-  return gate && userId ? { provider: gate.wrap(userId, r.provider), model: r.model } : r;
+  const p = gate && userId ? gate.wrap(userId, r.provider) : r.provider;
+  // A model that does not read images gets each picture read for it by a model of this account (imagetext.ts).
+  return { provider: withImageReading(p, r.model, userId, r.provider), model: r.model };
 };
+
+/** The models of this account that read images, best first (imagetext.ts): a chosen reader, the same provider, its own, the server's. */
+setReaderSource({
+  candidates(userId, current) {
+    const refs = (process.env.IMAGE_READER_MODEL ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+    const own = userProvidersOf(userId).filter((p) => p.available());
+    for (const p of [current, ...own, ...providers.filter((x) => x.available())])
+      if (p.id !== "demo") for (const m of p.models) if (readsImages(p, m)) refs.push(`${p.id}:${m}`);
+    return [...new Set(refs)].filter((ref) => modelAvailable(ref, userId));
+  },
+  resolve: (ref, userId) => (modelAvailable(ref, userId) ? resolveModel(ref, userId) : null),
+});
 
 /** Model references are "provider:model". A bare model name resolves to whichever provider lists it. */
 export function resolveModel(ref: string | null | undefined, userId?: string | null): { provider: LlmProvider; model: string } {

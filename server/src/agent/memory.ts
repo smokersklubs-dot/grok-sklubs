@@ -15,6 +15,9 @@ import { record } from "../usage.js";
 import { hostedHoldsBot, isBusy, isPaused } from "./loop.js";
 import { capHolds } from "../usagecaps.js";
 import { isHostedStop } from "../hosted.js";
+import { betweenTurnsChars, userWordsBlock } from "./compactlines.js";
+import { cleanDay, saysChangeOfMind, setMarks, updateInPlace } from "./memorymarks.js";
+import { tidySweep } from "./memorytidy.js";
 
 /** A short side request to the model (summaries, fact extraction): no tools, low effort. */
 export async function ask(bot: BotRecord, system: string, prompt: string, selectedBot = false): Promise<string> {
@@ -108,14 +111,16 @@ export async function compactIfNeeded(bot: BotRecord, force = false): Promise<{ 
   const all = history.load(bot.id, bot.generation);
   const same = { before: all.length, after: all.length, changed: false };
   if (paused.get(bot.id)) return same;
-  if (!force && (historyChars(all) < config.compactChars || (cooldown.get(bot.id) ?? 0) > now())) return same;
+  // Audit DS-Bot #72: the line follows the bot's model (capped), never above COMPACT_CHARS (compactlines.ts).
+  const line = betweenTurnsChars(bot.userId, bot.model || defaultModelRef());
+  if (!force && (historyChars(all) < line || (cooldown.get(bot.id) ?? 0) > now())) return same;
 
   // Cut only at the start of a user turn, so no tool call is separated from its result.
   const turnStarts = all.map((m, i) => (m.role === "user" && !m.content.some((b) => b.type === "tool_result") ? i : -1)).filter((i) => i > 0);
   let keep = Math.min(config.compactKeepTurns, turnStarts.length);
   let cut = keep > 0 ? turnStarts[turnStarts.length - keep] : all.length;
   // If the recent turns alone are still too big, keep fewer of them.
-  while (keep > 0 && historyChars(all.slice(cut)) > config.compactChars * 0.35) {
+  while (keep > 0 && historyChars(all.slice(cut)) > line * 0.35) {
     keep--;
     cut = keep > 0 ? turnStarts[turnStarts.length - keep] : all.length;
   }
@@ -145,7 +150,8 @@ export async function compactIfNeeded(bot: BotRecord, force = false): Promise<{ 
   }
   // Only commit if nothing was appended while the summary was being written.
   if (history.count(bot.id, bot.generation) !== all.length) return same;
-  const next: ChatMessage[] = [{ role: "user", content: [{ type: "text", text: `${SUMMARY_MARK}\n${summary}` }] }, ...all.slice(cut)];
+  // Audit DS-Bot #74: the user's own messages of the condensed part travel word for word next to the summary.
+  const next: ChatMessage[] = [{ role: "user", content: [{ type: "text", text: `${SUMMARY_MARK}\n${summary}${userWordsBlock(bot, all.slice(cut))}` }] }, ...all.slice(cut)];
   history.replace(bot.id, bot.generation, next);
   q.run("INSERT INTO compactions (bot_id, generation, at, before_items, after_items) VALUES (?, ?, ?, ?, ?)", bot.id, bot.generation, now(), all.length, next.length);
   summaries.add(bot.id, bot.generation, all.length, next.length, summary, flushed);
@@ -156,7 +162,7 @@ export async function compactIfNeeded(bot: BotRecord, force = false): Promise<{ 
 export function memoryStatus(bot: BotRecord): MemoryBookkeeping {
   const mark = q.get<{ mark: number }>("SELECT mark FROM consolidation WHERE bot_id = ?", bot.id)?.mark ?? 0;
   const last = q.get<{ at: number }>("SELECT at FROM compactions WHERE bot_id = ? ORDER BY id DESC LIMIT 1", bot.id);
-  return { lastConsolidatedAt: mark || null, historyChars: historyChars(history.load(bot.id, bot.generation)), compactAt: config.compactChars, lastCompactedAt: last?.at ?? null };
+  return { lastConsolidatedAt: mark || null, historyChars: historyChars(history.load(bot.id, bot.generation)), compactAt: betweenTurnsChars(bot.userId, bot.model || defaultModelRef()), lastCompactedAt: last?.at ?? null };
 }
 
 // ── Learning from conversations ──────────────────────────────────────────────
@@ -273,7 +279,8 @@ async function learnBatch(bot: BotRecord): Promise<{ added: string[]; considered
     `Write each fact as one short stand-alone sentence in the third person, under 200 characters, and give with it an excerpt copied word for word from the user message it comes from. At most 8. If nothing qualifies, return an empty list.\n` +
     `Each message starts with the day it was written, in brackets. Today is ${isoDay(now())}. Never keep a relative date or time in a fact ("tomorrow", "next week", "lundi prochain", "dans 3 jours", "cet été"): turn it into a real date counted from the day of the message it comes from (for example "on 2026-11-24", "the week of 2026-11-30", "in summer 2027"). The excerpt stays word for word, without the day in brackets.\n` +
     `When the user restates a fact an existing memory already holds, list it again with its new excerpt (it confirms it). When the user says something that contradicts an existing memory, add the new fact with "contradicts" set to that memory, word for word.\n` +
-    `Answer with JSON only, in the form {"facts": [{"text": "…", "quote": "…", "contradicts": "…(optional)"}]}.\n\nExisting memories:\n${existing.map((m) => `- ${m.text}`).join("\n") || "(none)"}\n\nThe user's messages:\n${transcript}`);
+    `When the user says a fact holds only until a date ("jusqu'à fin mars", "until Friday"), give that last day as "until" (YYYY-MM-DD, counted from the day of the message).\n` +
+    `Answer with JSON only, in the form {"facts": [{"text": "…", "quote": "…", "contradicts": "…(optional)", "until": "YYYY-MM-DD (optional)"}]}.\n\nExisting memories:\n${existing.map((m) => `- ${m.text}`).join("\n") || "(none)"}\n\nThe user's messages:\n${transcript}`);
   const facts = parseFacts(answer);
   if (!facts) {
     // An unreadable answer: these messages are read again on the next pass, so nothing they said is lost — unless the
@@ -292,7 +299,9 @@ async function learnBatch(bot: BotRecord): Promise<{ added: string[]; considered
     const old = fact.contradicts ? existing.find((m) => m.status !== "archived" && (m.text === fact.contradicts || similar(m.text, fact.contradicts!))) : undefined;
     if (old) {
       const src = findQuote(fact.quote, words);
-      if (src && src.at > old.createdAt && memoryVerdict(bot.userId, `${t}\n${fact.quote}`, false).ok) askWhichIsRight(bot, old, t, fact.quote);
+      // Audit DS-Bot F5: the user clearly changed their mind ("finalement…", "from now on…"): the note is updated in place
+      // (memorymarks.ts, with « Annuler »), never duplicated; a pinned or sensitive note still gets the card.
+      if (src && src.at > old.createdAt && memoryVerdict(bot.userId, `${t}\n${fact.quote}`, false).ok && !(saysChangeOfMind(fact.quote) && updateInPlace(bot, old, t, fact.quote))) askWhichIsRight(bot, old, t, fact.quote);
       continue;
     }
     // The same fact again, in a later message of the user's: confirmed.
@@ -309,7 +318,9 @@ async function learnBatch(bot: BotRecord): Promise<{ added: string[]; considered
     // Sensitive topics are learned only when the user allowed them; secrets never (an explicit "remember" goes through memory_save).
     const v = memoryVerdict(bot.userId, `${t}\n${fact.quote}`, false);
     if (!v.ok) continue;
-    memories.add(bot.id, t, "learned", { quote: clip(fact.quote, 300), category: v.category });
+    const note = memories.add(bot.id, t, "learned", { quote: clip(fact.quote, 300), category: v.category });
+    const until = cleanDay(fact.until);
+    if (until) setMarks(bot.userId, note, { until }, "bot"); // audit DS-Bot #82: a dated note leaves the prompt after its day
     added.push(t);
   }
   setMark(bot.id, newest);
@@ -317,11 +328,11 @@ async function learnBatch(bot: BotRecord): Promise<{ added: string[]; considered
 }
 
 /** The model's facts, or null when its answer is not the JSON asked for (an empty list is a real answer). */
-export function parseFacts(answer: string): { text: string; quote: string; contradicts?: string }[] | null {
+export function parseFacts(answer: string): { text: string; quote: string; contradicts?: string; until?: string }[] | null {
   try {
     const parsed = JSON.parse(answer.slice(answer.indexOf("{"), answer.lastIndexOf("}") + 1));
     if (!parsed || typeof parsed !== "object" || !Array.isArray(parsed.facts)) return null;
-    return parsed.facts.map((f: unknown) => (typeof f === "string" ? { text: f, quote: "" } : f && typeof f === "object" ? { text: String((f as any).text ?? ""), quote: String((f as any).quote ?? ""), contradicts: typeof (f as any).contradicts === "string" ? (f as any).contradicts : undefined } : { text: "", quote: "" }));
+    return parsed.facts.map((f: unknown) => (typeof f === "string" ? { text: f, quote: "" } : f && typeof f === "object" ? { text: String((f as any).text ?? ""), quote: String((f as any).quote ?? ""), contradicts: typeof (f as any).contradicts === "string" ? (f as any).contradicts : undefined, ...(typeof (f as any).until === "string" ? { until: (f as any).until } : {}) } : { text: "", quote: "" }));
   } catch { return null; }
 }
 
@@ -464,4 +475,6 @@ export async function consolidationSweep() {
     if (!bot || isBusy(id) || getLive(id).running || paused.get(id) || hostedHoldsBot(bot) || isPaused(bot) || capHolds(bot)) continue;
     await consolidate(bot).catch((err) => console.error("[consolidation]", err?.message ?? err));
   }
+  // Audit DS-Bot #84: then at most one daily tidy (memorytidy.ts), never for a bot that is working or held.
+  await tidySweep((b) => !!(isBusy(b.id) || getLive(b.id).running || hostedHoldsBot(b) || isPaused(b) || capHolds(b)));
 }

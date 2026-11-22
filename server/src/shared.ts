@@ -3,7 +3,7 @@ export * from "./failuretypes.js"; export type * from "./recruittypes.js"; expor
  * Wire contract between the Sklubot server and web app.
  * Type-only: the web app imports this file with `import type`.
  */
-import type { TodayKind } from "./todayminutes.js"; import type { RecruitCard } from "./recruittypes.js"; import type { RouteNoticeAction } from "./roomroutingtypes.js"; import { EXTRA_SECRET_FORMATS } from "./secretformats.js"; import type { PeerReviewResult } from "./peerreviewtypes.js";
+import type { TodayKind } from "./todayminutes.js"; import type { RecruitCard } from "./recruittypes.js"; import type { RouteNoticeAction } from "./roomroutingtypes.js"; import { EXTRA_SECRET_FORMATS } from "./secretformats.js"; import type { PeerReviewResult } from "./peerreviewtypes.js"; import type { ViewCard } from "./viewtypes.js";
 
 export const AVATAR_SHAPES = ["pebble", "egg", "mochi", "bean", "cloud", "cat", "bear", "ghost", "circle", "squircle", "hexagon", "diamond", "shield", "drop", "arch", "star", "clover", "pill", "triangle", "octagon"] as const;
 export const AVATAR_COLORS = ["ink", "clay", "ember", "amber", "moss", "teal", "sky", "indigo", "plum", "rose", "slate"] as const;
@@ -378,7 +378,7 @@ export type Card =
   /** A nudge from a quiet preparation pass: "Do it", "Later" (snoozed) or "Never for this" (the matter never comes back). */
   | { type: "nudge"; nudgeId: string; title: string; body: string; status: "pending" | "doing" | "later" | "never" }
   | { type: "question"; question: string; options: string[]; status: "pending" | "answered" | "dismissed"; answer?: string; /** L79 rich card (agent/richquestion.ts) */ why?: string; recommended?: string; irreversible?: boolean; multiple?: boolean; images?: string[]; questions?: { question: string; options: string[]; recommended?: string; multiple?: boolean; why?: string }[]; plan?: { steps: string[]; version: number; added?: string[]; removed?: string[] } }
-  | { type: "connect"; name: string; hint: string; reason: string; status: "pending" | "connected" | "skipped" }
+  | { type: "connect"; name: string; hint: string; reason: string; status: "pending" | "connected" | "skipped" } | /** DS-Bot item 8: data drawn in the chat (agent/viewcard.ts) */ ViewCard
   /** The bot needs the user on its screen (CAPTCHA, 2FA code, login, payment…) and waits until they hand it back, or `expiresAt`. */
   | { type: "takeover"; takeoverId: string; reason: TakeoverReason; detail: string; status: "pending" | "done" | "timeout" | "cancelled"; expiresAt: number }
   /**
@@ -474,7 +474,7 @@ export type MemoryStatus = "active" | "archived" | "contested";
  * quote of their own words) or confirmed it. Confirmed notes come first in the prompt; a "once" note neither confirmed
  * nor used for 90 days drops in priority (never deleted). `lastUsedAt`: last time it was found relevant.
  */
-export interface Memory { id: string; botId: string; text: string; source: "chat" | "learned" | "import"; createdAt: number; status: MemoryStatus; quote: string; category: SensitiveCategory | null; confidence: "once" | "confirmed"; confirmedAt: number | null; lastUsedAt: number | null }
+export interface Memory { id: string; botId: string; text: string; source: "chat" | "learned" | "import"; createdAt: number; status: MemoryStatus; quote: string; category: SensitiveCategory | null; confidence: "once" | "confirmed"; confirmedAt: number | null; lastUsedAt: number | null; /** Audit DS-Bot #81/#82: never touched by the automatic passes; last day it holds (YYYY-MM-DD). */ pinned?: boolean; until?: string | null }
 /** `shared`: every bot of the user can read and follow it (it shows in their skill index). */
 /**
  * `learned`: proposed by the bot after a task and approved by the user (spec 07 A9). `outside`: it came from a turn that

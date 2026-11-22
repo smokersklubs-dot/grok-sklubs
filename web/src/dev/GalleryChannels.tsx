@@ -1,6 +1,7 @@
 /**
  * « Canaux » (L162) in the dev gallery (section=canaux): a bot's settings tab with Slack linked, Discord waiting for the
- * link code, a mailbox read over IMAP with one held sender, two access requests, two allowed people and one blocked.
+ * link code, a mailbox read over IMAP with one held sender, two access requests, two allowed people and one blocked,
+ * and four group chats (one waiting, two on, one refused).
  * « Vide »: nothing connected yet. « Long »: long names. Buttons answer with the same view (fakeApi.ts).
  */
 import { BotChannelsTab } from "../components/BotChannels";
@@ -17,6 +18,7 @@ export function channelsFixture(o: FixtureOptions, empty: boolean): BotChannels 
       discord: { connected: false, botUser: null, linked: false, linkCode: null, online: false, error: null, inviteUrl: null },
       imap: { connected: false, host: null, port: null, username: null, mailbox: null, allowedSenders: [], autoReply: false, everyMinutes: 5, lastCheckAt: null, error: null, held: [] },
       contacts: [],
+      groups: [],
     };
   }
   const long = (s: string) => (o.long ? `${s} — ${fr ? "responsable des achats et de la logistique, site de Villeurbanne" : "head of purchasing and logistics, Villeurbanne site"}` : s);
@@ -33,6 +35,12 @@ export function channelsFixture(o: FixtureOptions, empty: boolean): BotChannels 
       { id: "ctc_3", channel: "discord", externalId: "200000000000000002", name: long("Léa Morel"), status: "allowed", code: null, expiresAt: null, createdAt: NOW - 3 * 86_400_000, lastSeenAt: NOW - 2 * 3_600_000 },
       { id: "ctc_4", channel: "slack", externalId: "U03GHIJKL", name: "Sam Petit", status: "allowed", code: null, expiresAt: null, createdAt: NOW - 86_400_000, lastSeenAt: null },
       { id: "ctc_5", channel: "telegram", externalId: "559999999", name: fr ? "Inconnu (publicité)" : "Unknown (advert)", status: "blocked", code: null, expiresAt: null, createdAt: NOW - 5 * 86_400_000, lastSeenAt: NOW - 5 * 86_400_000 },
+    ],
+    groups: [
+      { id: "grp_1", channel: "discord", chatId: "600000000000000001", name: long("#atelier-commandes"), status: "pending", trigger: "mention", who: "approved", createdAt: NOW - 12 * MIN, lastSeenAt: NOW - 12 * MIN },
+      { id: "grp_2", channel: "slack", chatId: "C0GENERAL1", name: "#general", status: "allowed", trigger: "mention", who: "approved", createdAt: NOW - 2 * 86_400_000, lastSeenAt: NOW - 30 * MIN },
+      { id: "grp_3", channel: "telegram", chatId: "-1001234567", name: fr ? "Famille Martin" : "Martin family", status: "allowed", trigger: "all", who: "everyone", createdAt: NOW - 6 * 86_400_000, lastSeenAt: NOW - 3 * MIN },
+      { id: "grp_4", channel: "discord", chatId: "600000000000000099", name: "#pub-et-spam", status: "blocked", trigger: "mention", who: "approved", createdAt: NOW - 9 * 86_400_000, lastSeenAt: null },
     ],
   };
 }

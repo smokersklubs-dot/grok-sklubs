@@ -7,6 +7,8 @@ import { historyChars } from "./memory.js";
 import { memoryPrefs } from "./memoryprefs.js";
 import { buildSystemPrompt, pickMemories, type PromptExtras } from "./prompt.js";
 import { usableCount } from "./recall.js";
+import { betweenTurnsChars } from "./compactlines.js";
+import { defaultModelRef } from "../llm/index.js";
 
 /**
  * L137 « Ce que reçoit ce bot »: the instructions the bot gets with its next message, cut into their parts in order
@@ -43,12 +45,13 @@ export function promptView(bot: BotRecord, user: UserRecord): PromptView {
   const total = usableCount(bot.id);
   const chars = historyChars(history.load(bot.id, bot.generation));
   const p = settings.profile(user.id);
+  const compactAt = betweenTurnsChars(user.id, bot.model || defaultModelRef()); // the same line as memory.ts (compactlines.ts)
   return {
     parts,
     totalChars: parts.reduce((n, x) => n + x.chars, 0),
     totalTokens: parts.reduce((n, x) => n + x.tokens, 0),
     memory: { total, shown: mem.shown.size, hidden: Math.max(0, total - mem.shown.size), chars: memChars, tokens: tokens(memChars), lines: mem.lines },
-    context: { chars, tokens: tokens(chars), compactAt: config.compactChars, percent: config.compactChars > 0 ? Math.min(100, Math.round((chars / config.compactChars) * 100)) : 0 },
+    context: { chars, tokens: tokens(chars), compactAt, percent: compactAt > 0 ? Math.min(100, Math.round((chars / compactAt) * 100)) : 0 },
     profileShared: !!(p.name || p.timezone || p.company || p.preferences),
     noLearn: memoryPrefs.noLearn(bot.id),
   };

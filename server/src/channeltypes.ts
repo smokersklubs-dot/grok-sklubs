@@ -2,6 +2,7 @@
  * L162 (+ OpenClaw I2, I3, I8, E11): wire types of a bot's extra channels — Slack, Discord, an existing mailbox read over
  * IMAP — and of the people other than the owner who may talk to it there (access requests and allow-list).
  */
+import type { ChannelGroup } from "./channelgrouptypes.js";
 
 /** The chat channels where someone other than the owner can ask for access with a short code. */
 export const CONTACT_CHANNELS = ["telegram", "slack", "discord"] as const;
@@ -71,4 +72,6 @@ export interface BotChannels {
   discord: DiscordChannelStatus;
   imap: ImapChannelStatus;
   contacts: ChannelContact[];
+  /** DS-Bot item 4: the group chats (Slack channels, Discord server channels, Telegram groups) where the bot was called. */
+  groups: ChannelGroup[];
 }

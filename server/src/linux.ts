@@ -6,6 +6,7 @@ import { now } from "./store.js";
 import { noteSignal } from "./sentinel/signals.js";
 import type { ClickTarget } from "./computer.js";
 import type { ElementAnswer, ElementRequest, ElementSnapshot } from "./screen-elements.js";
+import type { HeldDownload } from "./browser-downloads.js";
 import { BROWSER_PY, browserTrouble, dialogWords, tabNote, type BrowserAnswer, type GuardedClick } from "./browser-cdp.js";
 import { refreshImageSandbox, sandboxRunArgs, sandboxSpec } from "./browsersandbox.js";
 
@@ -784,6 +785,15 @@ export const linuxScreen = {
     await pause(250);
     return { answer: a, shot: await capture(n) };
   }),
+  /** DS-Bot item 10 (browser-downloads.ts): the downloads held until approved (null: the computer is off). Never wakes it. */
+  async heldDownloads(botId: string): Promise<HeldDownload[] | null> {
+    const key = allocator.current(botId);
+    if (machines.get(key)?.power !== "running") return null;
+    try { const a = await runBrowser<{ downloads?: HeldDownload[]; error?: string }>(nameOf(key), { op: "downloads" }, 20_000); return a.downloads ?? null; } catch { return null; }
+  },
+  /** Saves an approved held download into files/downloads, or deletes it. */
+  downloadAct: (botId: string, userId: string, ws: string, action: "release" | "discard", id: string) =>
+    onMachine(botId, userId, ws, (n) => runBrowser<{ ok?: boolean; error?: string; path?: string; size?: number; name?: string }>(n, { op: "download", action, id }, 30_000)),
   /** The dialog the active tab shows, if the computer is on (null: none, or it cannot be told). Never wakes it. */
   async dialogInfo(botId: string): Promise<BrowserAnswer | null> {
     const key = allocator.current(botId);

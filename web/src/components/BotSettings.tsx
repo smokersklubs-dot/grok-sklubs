@@ -11,7 +11,7 @@ import { useStore, type BotSettingsTab } from "../store";
 import { BotEmailTab, BotSharingTab } from "./WorkspacesMailVoice"; import { BotSecurityTab } from "./SecurityLot1";
 import { DEFAULT_CHARACTER, TOOL_GROUPS } from "../types";
 import { BotSpendField, ConfidenceBadge, RoutineExtras } from "./SpendSkillsFiles";
-import { RoomWhoAnswers } from "./RoomRouting";
+import { RoomWhoAnswers } from "./RoomRouting"; import { RoomNotes } from "./RoomNotes";
 import type { Autonomy, AvatarColor, AvatarShape, Bot, BotBundle, Character as CharacterLook, BotMode, Effort, Memory, MemoryStatus, ModelOption, NativeTrigger, RoomRule, Routine, RoutineRun, Skill, SkillExtras, SkillRef, TelegramStatus, ToolGroup } from "../types";
 import { useNative } from "./NativeApps";
 import { dateTime, nextRunLabel, relTime, shortDate } from "../lib/format";
@@ -261,7 +261,7 @@ function General({ bot, onClose }: { bot: Bot; onClose: () => void }) {
         </>
       )}
 
-      {isRoom && <RoomWhoAnswers room={bot} value={form.roomRule} onChange={(v) => set("roomRule", v)} />}
+      {isRoom && <RoomWhoAnswers room={bot} value={form.roomRule} onChange={(v) => set("roomRule", v)} />}{isRoom && <RoomNotes room={bot} />}
 
       <div className={`save-bar ${dirty || note ? "is-visible" : ""}`}>
         <span className={`save-note ${note?.tone === "error" ? "is-error" : ""}`} role="status">{note ? note.text : dirty ? t("bot.unsaved") : ""}</span>
@@ -689,7 +689,7 @@ function Memories({ bot, bundle }: { bot: Bot; bundle: BotBundle | undefined }) 
                 {m.quote && <span className="memory-quote">« {m.quote} »</span>}
                 <span className="list-row-sub">
                   <span className="chip">{t(m.source === "learned" ? "memory.source.learned" : m.source === "import" ? "memory.source.import" : "memory.source.chat")}</span>
-                  <ConfidenceBadge confidence={m.confidence ?? "once"} />
+                  <ConfidenceBadge confidence={m.confidence ?? "once"} />{m.pinned && <span className="chip">{t("memory.pinnedChip")}</span>}{m.until && <span className="chip chip-quiet">{t("memory.untilChip", { day: m.until })}</span>}
                   {m.status !== "active" && <span className={`chip memory-status is-${m.status}`}>{t(`memory.filter.${m.status}`)}</span>}
                   {m.category && <span className="chip chip-quiet">{t(`memset.cat.${m.category}`)}</span>} {shortDate(m.createdAt)}
                 </span>

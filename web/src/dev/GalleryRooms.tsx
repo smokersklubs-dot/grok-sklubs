@@ -8,6 +8,7 @@ import { useStore } from "../store";
 import type { Bot, RoomRule, Row } from "../types";
 import { buildItems, RowItems } from "../components/Transcript";
 import { RoomWhoAnswers } from "../components/RoomRouting";
+import { RoomNotes } from "../components/RoomNotes";
 import { NOW, type FixtureOptions } from "./fixtures";
 
 const ROOM = "room_gallery";
@@ -55,7 +56,10 @@ export function GalleryRooms({ o }: { o: FixtureOptions }) {
       <h2 id="g-salons-h" className="gallery-h">{L("Salons : qui répond", "Group chats: who answers")}</h2>
       <div className="gallery-rooms">
         <div className="gallery-chat rooms-chat"><RowItems items={items} bot={room} /></div>
-        <div className="gallery-chat rooms-settings"><RoomWhoAnswers room={room} value={rule} onChange={setRule} /></div>
+        <div className="gallery-chat rooms-settings"><RoomWhoAnswers room={room} value={rule} onChange={setRule} /><RoomNotes room={room} initial={[
+          { id: "mem_room_1", botId: ROOM, text: L("Les livrables partent le vendredi avant 17 h.", "Deliverables go out on Fridays before 5 pm."), source: "chat", createdAt: NOW - 3 * 86400_000, status: "active", quote: "", category: null, confidence: "once", confirmedAt: null, lastUsedAt: null, pinned: true, until: null },
+          { id: "mem_room_2", botId: ROOM, text: L("Marc relit chaque newsletter avant l'envoi.", "Marc proofreads every newsletter before it goes out."), source: "chat", createdAt: NOW - 86400_000, status: "active", quote: "", category: null, confidence: "once", confirmedAt: null, lastUsedAt: null, until: "2027-03-31" },
+        ]} /></div>
       </div>
     </section>
   );

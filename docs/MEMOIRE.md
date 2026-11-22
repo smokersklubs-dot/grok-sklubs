@@ -179,6 +179,42 @@ change pas). Depuis L80 :
 Réglages du bot → Mémoire : la jauge **« Contexte rempli à X % »**, le bouton **Compacter**, et **« Voir le
 résumé »** (le dernier résumé, sa date, combien de messages il remplace).
 
+### Seuil et mots gardés tels quels (audit DS-Bot, 22/11/2026)
+
+- **Seuil plafonné** : dans un tour, le résumé se fait à 80 % de la fenêtre du modèle **mais jamais au-delà de
+  380 000 jetons** (`COMPACT_CAP_TOKENS`) : au-delà, le cache du fournisseur n'aide plus et chaque étape coûte cher.
+  Entre les tours, le seuil suit la fenêtre que tu as donnée pour ton modèle (Réglages → Modèles), sinon
+  `COMPACT_CHARS` comme avant.
+- **Tes mots, mot pour mot** : après le résumé, la section « The user's messages, word for word » reprend tes propres
+  messages de la partie résumée (les plus récents d'abord, 8 000 caractères au plus). Une consigne ancienne n'est donc
+  jamais reformulée. Seuls tes messages comptent : jamais ceux d'un autre bot, d'une routine ou d'une page.
+
+## Épingle, date de fin et changement d'avis
+
+- **Épingler** (Réglages du bot → Mémoire → Modifier → « Épingler ») : la note n'est jamais modifiée ni rangée par
+  l'automatique, et passe toujours en tête de ce que le bot voit.
+- **Jusqu'au** : après ce jour, la note n'est plus utilisée (ni dans le prompt, ni par `memory_search`) ; elle n'est pas
+  effacée. Quand tu dis « jusqu'à fin mars », le bot ou l'apprentissage mettent la date tout seuls.
+- **Tu changes d'avis** (« finalement je préfère le café ») : la note est **mise à jour** au lieu d'en créer une
+  deuxième. Une ligne « Mémoire mise à jour : … » s'affiche avec « Annuler ». Une note épinglée ou sensible n'est jamais
+  changée ainsi : la carte « Laquelle est juste ? » te demande, comme avant.
+
+## Le rangement quotidien
+
+Une fois par jour au plus, pour un bot dont les notes ont changé, un modèle relit **les notes faites par le bot** (pas
+celles importées, épinglées ou que tu as réécrites) : il fusionne les doublons, règle une contradiction claire et met
+de côté ce qui est fini ; une note passée sa date de fin est mise de côté sans modèle. Au plus un cinquième des notes
+change, rien n'est effacé, et **tout le passage s'annule d'un seul clic** (« Annuler » dans la discussion ; refusé si
+une note a bougé depuis). Une fusion qui touche une note sensible n'est pas faite : une carte te demande.
+`MEMORY_TIDY=0` l'éteint.
+
+## Les notes d'un groupe
+
+Dans un salon, les membres gardent des notes **pour ce groupe seulement** (`group_note_save`, `group_notes`). Elles
+sont montrées avec chaque message du groupe, jamais dans la mémoire d'un membre ni dans un autre groupe, et un bot qui
+n'est pas membre ne peut pas les lire. Tu les vois dans les réglages du groupe → « Notes du groupe » (épingler,
+oublier).
+
 ## Ce que reçoit ce bot
 
 Réglages du bot → Mémoire → **« Ce que reçoit ce bot »** : les consignes que le bot lit avec ton prochain message, dans

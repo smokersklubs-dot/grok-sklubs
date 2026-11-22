@@ -1,6 +1,7 @@
 import { rows } from "../store.js";
 import { gt } from "./guardtext.js";
 import type { Turn } from "./loop.js";
+import { announcesWork } from "./claims.js";
 
 /**
  * L21 — "I'll do it" is not "it is done". A turn that ends on a promise or on "shall I go on?" without calling any tool
@@ -30,13 +31,17 @@ const PATTERNS: RegExp[] = [
 ];
 
 /** Whether the end of this reply is a promise to act (or a "shall I go on?") rather than a result. */
-export function endsOnPromise(said: string): boolean {
+export function endsOnPromise(said: string, o: { workedThisTurn?: boolean } = {}): boolean {
   // Quoted words are not the bot's own promise: a reply that quotes a question or a tool's instructions (« Comment on
   // continue ? », "I'll check") is a citation. Quoted spans are taken out before looking.
   // Taken out on the whole reply first, so a quotation that starts before the tail is not cut in half.
   const tail = said.replace(/"[^"\n]{0,400}"|«[^»\n]{0,400}»|“[^”\n]{0,400}”/g, " ").trim().slice(-260);
   if (!tail) return false;
-  return PATTERNS.some((p) => p.test(tail));
+  // The claims check (claims.ts, audit DS-Bot #63) is the same question asked of the reply's last words: "je suis en
+  // train d'exporter…" with no tool called is a promise too. One detector for both, no third mechanism.
+  // A turn that ran tools may truly say "it is still running" (a background job it just started): the "work in progress"
+  // words only count as a promise when no tool ran at all in the turn.
+  return PATTERNS.some((p) => p.test(tail)) || (!o.workedThisTurn && announcesWork(tail));
 }
 
 const nudges = new WeakMap<object, number>();
@@ -54,7 +59,7 @@ const NUDGE = "[System: your last reply announced work (or asked whether to go o
  * or null. After MAX_PROMISE_NUDGES nudges, a notice says plainly that the work was not done, and null is returned.
  */
 export function promiseNudge(turn: Turn, said: string): string | null {
-  if (!said || !isWork(turn) || !endsOnPromise(said)) return null;
+  if (!said || !isWork(turn) || !endsOnPromise(said, { workedThisTurn: (turn.toolsRun ?? 0) > 0 })) return null;
   const n = nudges.get(turn) ?? 0;
   if (n < MAX_PROMISE_NUDGES) { nudges.set(turn, n + 1); return NUDGE; }
   if (n === MAX_PROMISE_NUDGES) {

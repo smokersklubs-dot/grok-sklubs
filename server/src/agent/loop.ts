@@ -18,7 +18,7 @@ import { botEmail } from "../botmail.js";
 import { compactIfNeeded } from "./memory.js";
 import { turnEnded, turnStarted } from "../snapshots.js";
 import { EngineTimeout, engineOf, engineTurnOf, isEngineRef, isEngineTimeout, runEngineTurn, type EngineOutcome } from "./engine.js";
-import { buildSystemPrompt } from "./prompt.js"; import { stampLine } from "./turnstamp.js"; import { takeRoutineFailure } from "./routineframe.js"; import { noteToolForReceipt, postReceipt } from "./receipt.js"; import { capParts, overTimeBudget, shrinkImages } from "./turnbudget.js"; import { appEnvelope, coerceForApp } from "./appenvelope.js"; import { helperFinished } from "./askrules.js";
+import { buildSystemPrompt } from "./prompt.js"; import { stampLine } from "./turnstamp.js"; import { takeRoutineFailure } from "./routineframe.js"; import { noteToolForReceipt, postReceipt } from "./receipt.js"; import { nativeRoute } from "../nativesearch.js"; import { compactAtTokens } from "./compactlines.js"; import { capParts, overTimeBudget, shrinkImages } from "./turnbudget.js"; import { appEnvelope, coerceForApp } from "./appenvelope.js"; import { helperFinished } from "./askrules.js";
 import { hostOf, hostsIn, userLinkHint } from "./links.js"; export { hostOf, hostsIn }; import { drainSteering, recoverNotes, steer } from "./steering.js"; import { isCancelledJob, reportedStop } from "./stopcommand.js"; import { endAuto, ensureUnattended, markAtLimit, takeAuto, wasAtLimit } from "./autocontinue.js"; import { maybeEndCheck } from "./endcheck.js"; import { draftField } from "./draftedit.js"; import { branchContext } from "./editmessage.js"; import { linkNudge, noteOpened } from "./linknudge.js";
 import { deliverCounted as deliverBotMessage, settleAsk, type AskRoute } from "./team.js"; // L53: a helper's report counts against the bot-to-bot breaker
 import { noteDiskTrouble } from "../disk.js";
@@ -409,7 +409,7 @@ export async function newTurn(bot: BotRecord, user: UserRecord, depth: number, s
   // A subscription tool has its own shell, file and web tools; ours would only duplicate them.
   // Videos go through the user's Higgsfield app when it is connected (and apps are on for this bot), else a video API.
   const video = bot.disabledTools.includes("video") ? null : bot.disabledTools.includes("apps") ? (videoService() ? "api" : null) : videoRoute(user.id);
-  const builtins = builtinTools({ owner: bot.userId, nativeSearch: nativeSearch || forEngine, disabled: bot.disabledTools, video }).filter((t) => !forEngine || !["shell_run", "web_fetch", "search_web", "job_output", "job_stop", "job_list"].includes(t.spec.name))
+  const builtins = builtinTools({ owner: bot.userId, nativeSearch: nativeSearch || forEngine, modelSearch: !!nativeRoute({ model: modelRef, userId: user.id }), disabled: bot.disabledTools, video }).filter((t) => !forEngine || !["shell_run", "web_fetch", "search_web", "job_output", "job_stop", "job_list"].includes(t.spec.name))
     // The user's own computers: only for users who linked one with Sklubot Relais.
     .filter((t) => t.group !== "mycomputer" || relayDevices.count(user.id) > 0)
     // Phones only (protocol 1.2): no commands, shared files or windows to offer.
@@ -1096,7 +1096,7 @@ async function compactIfLong(turn: Turn, provider: import("../llm/index.js").Llm
   if (turn.compactFailed) return;
   const window = contextWindowOf(turn.user.id, turn.modelRef);
   const messages = prepareMessages(history.load(turn.bot.id, turn.generation, turn.thread));
-  if (estimateTokens(turn.system, turn.tools, messages) < window * config.compactRatio) return;
+  if (estimateTokens(turn.system, turn.tools, messages) < compactAtTokens(window)) return; // audit DS-Bot #72: capped (compactlines.ts)
   // Retain about 16 % of the window, in characters (~4 per token).
   const retain = Math.round(window * 0.16 * 4);
   if (balancedCut(history.load(turn.bot.id, turn.generation, turn.thread), retain) === null) return;

@@ -5,14 +5,21 @@
  * owner's computer); files the owner sends reach the bot's library and files the bot attaches go back; long replies are
  * split; 👀 on a message that arrives while the bot works (Slack offers bots no "typing…" outside its AI-assistant
  * surface). Anyone else in the workspace who writes to the bot gets an access code (channelaccess.ts) and, once the
- * owner approved them, talks to it as a member, never with the owner's rights (channelrelay.ts).
+ * owner approved them, talks to it as a member, never with the owner's rights (channelrelay.ts). DS-Bot item 4
+ * (channelgroups.ts): in a channel, the bot answers only once the owner turned that channel on in Sklubot, when
+ * @mentioned (app_mention) or replied to in the thread of one of its messages (or every message, if set), in the thread
+ * of the message that called it; approvals never go there, only to the owner's DM.
  *
  * Official Slack APIs only (https://docs.slack.dev):
  *  - Socket Mode: apps.connections.open with the app-level token xapp-… (connections:write) returns a WebSocket URL;
  *    every envelope is acknowledged with its envelope_id; "hello", "disconnect", "events_api", "interactive"
  *    (https://docs.slack.dev/apis/events-api/using-socket-mode/, https://docs.slack.dev/reference/methods/apps.connections.open/).
  *  - Events API "message" events of channel_type "im" (scope im:history) and "app_mention"
- *    (https://docs.slack.dev/reference/events/message.im/, https://docs.slack.dev/reference/events/app_mention/).
+ *    (https://docs.slack.dev/reference/events/message.im/, https://docs.slack.dev/reference/events/app_mention/);
+ *    for a channel set to "every message" or for replies in a thread, "message" events of channel_type "channel" / "group"
+ *    (message.channels with channels:history, message.groups with groups:history:
+ *    https://docs.slack.dev/reference/events/message.channels/, https://docs.slack.dev/reference/events/message.groups/);
+ *    conversations.info (channels:read) for a channel's name; chat.postMessage thread_ts to answer in a thread.
  *  - Web API with the bot token xoxb-…, JSON bodies (https://docs.slack.dev/apis/web-api/#posting-json): auth.test,
  *    chat.postMessage (chat:write; text recommended under 4,000 characters), chat.update, chat.postEphemeral, users.info
  *    (users:read), conversations.open (im:write), reactions.add (reactions:write), files.getUploadURLExternal +
@@ -26,7 +33,8 @@ import { onTurnEvent } from "./agent/loop.js";
 import { assertPublicUrl, guardedFetch } from "./net.js";
 import { vendorUrl } from "./native/vendors.js";
 import { newLinkCode, onApproved, type ContactRecord } from "./channelaccess.js";
-import { answerApproval, ownerMessage, ownerWindowOf, registerContactSink, splitMessage, strangerMessage, type Sink } from "./channelrelay.js";
+import { answerApproval, groupSaid, ownerMessage, ownerWindowOf, registerContactSink, splitMessage, strangerMessage, type Sink } from "./channelrelay.js";
+import { registerGroupSink } from "./channelgroups.js";
 import { channelStore } from "./channelstore.js";
 import { chText } from "./channeltext.js";
 import type { SlackChannelStatus } from "./channeltypes.js";
@@ -68,12 +76,12 @@ const load = (botId: string) => channelStore.get<Secret, Info>(botId, "slack");
 const patch = (botId: string, change: (i: Info) => Info) => channelStore.patch<Info>(botId, "slack", change);
 
 // ── Sending ──────────────────────────────────────────────────────────────────────────────────────────────────────
-async function post(token: string, channel: string, text: string, blocks?: unknown[]): Promise<string | null> {
+async function post(token: string, channel: string, text: string, blocks?: unknown[], threadTs?: string): Promise<string | null> {
   let last: string | null = null;
   const parts = splitMessage(text, MAX_TEXT);
   for (const [i, part] of parts.entries()) {
     const extra = blocks && i === parts.length - 1 ? { blocks: [{ type: "section", text: { type: "mrkdwn", text: part.slice(0, 3000) } }, ...blocks] } : {};
-    const r = await call<{ ts?: string }>(token, "chat.postMessage", { channel, text: part, ...extra }).catch((err) => { console.error("[slack send]", (err as Error).message); return null; });
+    const r = await call<{ ts?: string }>(token, "chat.postMessage", { channel, text: part, ...extra, ...(threadTs ? { thread_ts: threadTs } : {}) }).catch((err) => { console.error("[slack send]", (err as Error).message); return null; });
     last = r?.ts ?? last;
   }
   return last;
@@ -246,15 +254,49 @@ function connect(botId: string, sock: Socket) {
   });
 }
 
+// ── Channels (DS-Bot item 4) ─────────────────────────────────────────────────────────────────────────────────────
+/** Threads the bot posted in or answered (a reply there calls it), and the thread a channel's next reply goes in. */
+const ownThreads = new Set<string>();
+const lastThread = new Map<string, string>();
+const channelNames = new Map<string, string>();
+async function channelName(token: string, id: string): Promise<string> {
+  const hit = channelNames.get(id);
+  if (hit !== undefined) return hit;
+  const r = await call<{ channel?: { name?: string } }>(token, "conversations.info", { channel: id }, true).catch(() => null);
+  const name = r?.channel?.name ? `#${r.channel.name}` : "";
+  channelNames.set(id, name);
+  if (channelNames.size > 2000) channelNames.delete(channelNames.keys().next().value!);
+  return name;
+}
+const remember = (set: Set<string>, key: string) => { set.add(key); if (set.size > 5000) set.delete(set.values().next().value!); };
+
+async function handleChannel(botId: string, ev: MessageEvent, mention: boolean) {
+  const bot = bots.byId(botId);
+  const s = load(botId);
+  if (!bot || !s || !ev.user || ev.bot_id || ev.user === s.info.botUserId) return;
+  if (ev.subtype && ev.subtype !== "file_share") return;
+  const self = s.info.botUserId;
+  // A message that mentions the bot also comes as app_mention: handled once, from there.
+  if (!mention && self && (ev.text ?? "").includes(`<@${self}>`)) return;
+  const token = s.secret.botToken;
+  const thread = ev.thread_ts ?? ev.ts;
+  const addressed = mention || (!!ev.thread_ts && ownThreads.has(`${ev.channel}:${ev.thread_ts}`));
+  const said = await groupSaid(bot, "slack", {
+    chatId: ev.channel, chatName: await channelName(token, ev.channel), sender: { id: ev.user, name: await nameOf(token, ev.user) },
+    isOwner: !!s.info.ownerId && ev.user === s.info.ownerId, text: (ev.text ?? "").replaceAll(`<@${self}>`, "").trim(), addressed, hasFile: !!ev.files?.length,
+  }, (t) => post(token, ev.channel, t, undefined, thread));
+  if (said === "taken") {
+    lastThread.set(`${botId}:${ev.channel}`, thread);
+    remember(ownThreads, `${ev.channel}:${thread}`);
+    if (getLive(bot.id).running) void call(token, "reactions.add", { channel: ev.channel, timestamp: ev.ts, name: "eyes" }).catch(() => {});
+  }
+}
+
 async function onEvent(botId: string, ev: MessageEvent | undefined) {
   if (!ev) return;
   if (ev.type === "message" && ev.channel_type === "im") return handleDm(botId, ev);
-  if (ev.type === "app_mention" && !ev.bot_id) {
-    // In a shared channel the bot only points to its direct messages (where access is checked per person).
-    const s = load(botId);
-    const bot = bots.byId(botId);
-    if (s && bot) await call(s.secret.botToken, "chat.postMessage", { channel: ev.channel, thread_ts: ev.thread_ts ?? ev.ts, text: chText(users.localeOf(bot.userId), "Write to me in a direct message.") }).catch(() => {});
-  }
+  if (ev.type === "message" && (ev.channel_type === "channel" || ev.channel_type === "group")) return handleChannel(botId, ev, false);
+  if (ev.type === "app_mention" && !ev.bot_id) return handleChannel(botId, ev, true);
 }
 
 function startSocket(botId: string) {
@@ -324,6 +366,12 @@ export const slack = {
   stopAll() { for (const id of [...sockets.keys()]) stopSocket(id); },
 };
 
+// A channel's replies go in the thread of the message that called the bot (and a reply there calls it again).
+registerGroupSink("slack", (bot, g) => {
+  const s = load(bot.id);
+  if (!s) return null;
+  return { text: async (t) => { const th = lastThread.get(`${bot.id}:${g.chatId}`); const ts = await post(s.secret.botToken, g.chatId, t, undefined, th); remember(ownThreads, `${g.chatId}:${th ?? ts}`); } };
+});
 // An approved person's replies go to their direct message with the bot; they hear when the owner approves them.
 registerContactSink("slack", (bot, c: ContactRecord) => (c.replyTo ? sinkTo(bot.id, c.replyTo) : null));
 onApproved("slack", (bot, c) => { if (c.replyTo) void sinkTo(bot.id, c.replyTo)?.text(chText(users.localeOf(bot.userId), "✅ The owner approved you: you can now write to {bot}.", { bot: bot.name })); });

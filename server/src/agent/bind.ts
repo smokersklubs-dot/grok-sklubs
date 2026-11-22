@@ -4,6 +4,7 @@ import { linuxScreen } from "../linux.js";
 import { findQuote, normalize, QUOTE_ARG, userWordsFor, type ActionKind } from "./grounding.js";
 import type { Turn } from "./loop.js";
 import { resolveRef } from "./elements.js";
+import { stageDelete } from "./deletecheck.js";
 
 /**
  * What the server itself sees, bound into an action before it is judged (wave 5b).
@@ -22,7 +23,7 @@ import { resolveRef } from "./elements.js";
  * The bound values live in the call's arguments (`seen_target`, `seen_host`), so they are part of the action's hash
  * (executions.ts) and of its single-use approval. Whatever the model put in those fields is replaced.
  */
-export const BOUND_KEYS = ["seen_target", "seen_host", "seen_quote", "seen_dialog"] as const;
+export const BOUND_KEYS = ["seen_target", "seen_host", "seen_quote", "seen_dialog", "seen_delete", "seen_check", "seen_download"] as const; // seen_delete / seen_check: DS-Bot item 10 (deletecheck.ts)
 
 /** Replaceable in tests: how the control under a point, and the page in front, are read. */
 export const probe = {
@@ -39,6 +40,12 @@ export const probe = {
     if (computerKind() !== "linux") return null;
     const a = await linuxScreen.dialogInfo(botId);
     return a?.dialog ? { type: String(a.dialog.type ?? ""), message: String(a.dialog.message ?? "").slice(0, 500), host: hostOf(a.dialog.url || a.url || "") } : null;
+  },
+  /** DS-Bot item 10: one held download by its id (browser-downloads.ts), or null. */
+  download: async (botId: string, id: string): Promise<{ id: string; name: string; host: string; url: string; size: number; state: string } | null> => {
+    if (computerKind() !== "linux" || !id) return null;
+    const d = (await linuxScreen.heldDownloads(botId))?.find((x) => x.id === id);
+    return d ? { id: d.id, name: d.name.slice(0, 200), host: hostOf(d.url), url: d.url.slice(0, 500), size: d.size, state: d.state } : null;
   },
   pageUrl: async (botId: string, userId: string): Promise<string> => {
     if (!browserAvailable()) return "";
@@ -61,9 +68,11 @@ export async function bindCall(turn: Turn, call: ToolUseBlock): Promise<void> {
     input.seen_quote = quote && findQuote(quote, userWordsFor(turn.bot, turn.thread)) ? quote : "";
     return;
   }
-  if (call.name !== "screen_click" && call.name !== "element_click" && call.name !== "card_fill" && call.name !== "browser_dialog") return;
+  if (call.name !== "screen_click" && call.name !== "element_click" && call.name !== "card_fill" && call.name !== "browser_dialog" && call.name !== "browser_download") return;
   for (const k of BOUND_KEYS) delete input[k];
   try {
+    // DS-Bot item 10: the held download the call names (its file name, site and size), so its approval is for that file.
+    if (call.name === "browser_download") { input.seen_download = await probe.download(turn.bot.id, String(input.id ?? "")); return; }
     if (call.name === "browser_dialog") { input.seen_dialog = await probe.dialog(turn.bot.id); return; }
     if (call.name === "screen_click") {
       const t = await probe.target(turn.bot.id, Number(input.x), Number(input.y));
@@ -72,7 +81,9 @@ export async function bindCall(turn: Turn, call: ToolUseBlock): Promise<void> {
       // Wave 8: the element named by its reference, read live (its words, the site, its form), exactly as for a pixel click.
       const t = await probe.element(turn.bot.id, String(input.ref ?? ""));
       input.seen_target = t ? seenOf(t) : null;
-    } else {
+    }
+    if (call.name === "screen_click" || call.name === "element_click") { const seen = seenTarget(input); stageDelete(turn.bot.id, call.name, input, seen, !!seen && committingKind(seen.label) === "delete"); return; }
+    {
       input.seen_host = hostOf(await probe.pageUrl(turn.bot.id, turn.user.id));
     }
   } catch {

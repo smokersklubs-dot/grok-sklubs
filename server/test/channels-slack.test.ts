@@ -119,7 +119,7 @@ test("connect: formats checked, both tokens verified with Slack, sealed (never i
   await until(async () => (await call("GET", `/bots/${botId}/channels`)).json.slack.online, "online");
 });
 
-test("envelopes are acknowledged; the owner links with the code; an app mention in a channel points to direct messages", async () => {
+test("envelopes are acknowledged; the owner links with the code; an app mention in a channel not turned on yet says so (channelgroups.ts)", async () => {
   const code = (await call("GET", `/bots/${botId}/channels`)).json.slack.linkCode;
   const before = dm("UOTHER01", "DOTHER01", "bonjour");
   await until(() => acks.includes(before), "ack");
@@ -128,7 +128,7 @@ test("envelopes are acknowledged; the owner links with the code; an app mention 
   await posted("DOWNER01", /est relié à toi ici/);
   assert.equal((await call("GET", `/bots/${botId}/channels`)).json.slack.linked, true);
   event({ type: "app_mention", channel: "CGENERAL", user: "UOWNER01", text: "<@UBOT0001> salut", ts: "1.1" });
-  const m = await posted("CGENERAL", /message privé/);
+  const m = await posted("CGENERAL", /ne répond pas encore dans ce groupe/);
   assert.equal(m.body.thread_ts, "1.1");
 });
 

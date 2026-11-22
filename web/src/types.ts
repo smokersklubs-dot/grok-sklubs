@@ -12,6 +12,8 @@ export type * from "../../server/src/skillscantypes";
 export type * from "../../server/src/skillhealthtypes";
 /** L162 « Canaux »: Slack, Discord, IMAP and who besides the owner may talk to a bot (channelroutes.ts). */
 export type * from "../../server/src/channeltypes";
+export type * from "../../server/src/channelgrouptypes";
+export type * from "../../server/src/viewtypes";
 /** Mémoire : « Ce que reçoit ce bot », « Voir le résumé », « Mémoire par le sens », « Messages autour » (L71–L138). */
 export type * from "../../server/src/memorytypes";
 export { AVATAR_SHAPES, AVATAR_COLORS, TOOL_GROUPS, EYE_STYLES, ACCESSORIES, IDLE_MOTIONS, CHARACTER_TYPES, DEFAULT_CHARACTER, REACTIONS, GROK_EXPORT_PROMPT_FR, GROK_EXPORT_PROMPT_EN, TEMPLATE_ICONS, TEMPLATE_CATEGORIES, BOT_API_SCOPES } from "../../server/src/shared";

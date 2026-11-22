@@ -30,3 +30,10 @@
   .channels-item > .btn, .channels-item-actions { align-self: flex-start; }
   .channels-port { max-width: none; }
 }
+
+/* Groups (ChannelGroups.tsx): the two settings of an active group wrap under its name on a phone. */
+.channels-group { flex-wrap: wrap; }
+.channels-group-settings { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 10px; align-items: center; flex: 1 1 auto; width: 100%; min-width: 0; }
+.channels-group-settings .field-hint { grid-column: 1 / -1; margin: 0; }
+.channels-group-settings select { min-width: 0; max-width: 100%; }
+@media (max-width: 480px) { .channels-group-settings { grid-template-columns: minmax(0, 1fr); gap: 4px; } .channels-group-settings select + .field-label { margin-top: 6px; } }

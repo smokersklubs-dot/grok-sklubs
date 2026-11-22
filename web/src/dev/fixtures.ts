@@ -2,6 +2,7 @@
  * Fake data for the dev gallery (web/src/dev/Gallery.tsx). Never shipped: the gallery is only loaded in development.
  * Every text comes in French and English (`L`), and `long` swaps in very long texts to check wrapping on a phone.
  */
+import { viewCardFixtures } from "./viewFixtures";
 import type { AnnouncementAdminItem, AnnouncementsAdmin, AnnouncementsState, AnnouncementView, Bot, Card, ConversationGrantInfo, Row, SentinelIncidentView, SentinelOverview, TodayReport } from "../types";
 import { DEFAULT_MINUTES } from "../types";
 import { failureCardFixtures, failureSummaryFixture } from "./incidentsFixtures"; import { turnCardFixtures, turnNoticeRows } from "./turnFixtures";
@@ -194,7 +195,7 @@ export function cardFixtures(o: FixtureOptions): CardFixture[] {
       { text: L("Les tests passent", "The tests pass"), evidence: "12/12" },
     ],
   } });
-  list.push(...turnCardFixtures(o)); // L79, L83, L139 (turnFixtures.ts)
+  list.push(...turnCardFixtures(o)); list.push(...viewCardFixtures(o)); // L79, L83, L139 (turnFixtures.ts); DS-Bot item 8 (viewFixtures.ts)
   return list;
 }
 

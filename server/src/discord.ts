@@ -5,11 +5,17 @@
  * (owner only, never a payment, a vault value or the owner's computer); files the owner sends reach the bot's library and
  * files the bot attaches go back; long replies are split under 2,000 characters; "typing…" while the bot works. Anyone
  * else who writes to the bot gets an access code (channelaccess.ts) and, once approved by the owner, talks to it as a
- * member, never with the owner's rights (channelrelay.ts). Direct messages only: in a server the bot does not listen.
+ * member, never with the owner's rights (channelrelay.ts). DS-Bot item 4 (channelgroups.ts): in a server channel the bot
+ * answers only once the owner turned that channel on in Sklubot, when @mentioned or replied to (or every message, if set),
+ * and only for the people the group's setting allows; approvals never go there, only to the owner's DM.
  *
  * Official Discord APIs only (https://discord.com/developers/docs):
  *  - Gateway: GET /gateway/bot, then wss …?v=10&encoding=json; Hello (op 10) → Identify (op 2) with the
- *    DIRECT_MESSAGES intent (1 << 12), Heartbeat (op 1) every heartbeat_interval and Heartbeat ACK (op 11), Reconnect
+ *    DIRECT_MESSAGES (1 << 12) and GUILD_MESSAGES (1 << 9) intents, plus MESSAGE_CONTENT (1 << 15, privileged) only while
+ *    a server channel is set to "every message": without it Discord still gives the content of DMs and of messages that
+ *    mention the bot (https://docs.discord.com/developers/events/gateway#message-content-intent); MESSAGE_CREATE carries
+ *    `mentions` and, for a reply, `referenced_message` (https://docs.discord.com/developers/resources/message);
+ *    GET /channels/{id} gives a server channel's name; a reply in a server channel carries message_reference; Heartbeat (op 1) every heartbeat_interval and Heartbeat ACK (op 11), Reconnect
  *    (op 7), Invalid Session (op 9), Dispatch (op 0) READY, MESSAGE_CREATE, INTERACTION_CREATE; close code 4004 =
  *    authentication failed (https://discord.com/developers/docs/events/gateway,
  *    https://discord.com/developers/docs/topics/opcodes-and-status-codes). Message content of direct messages is sent
@@ -28,7 +34,8 @@ import { getLive } from "./bus.js";
 import { onTurnEvent } from "./agent/loop.js";
 import { assertPublicUrl, guardedFetch } from "./net.js";
 import { newLinkCode, onApproved, type ContactRecord } from "./channelaccess.js";
-import { answerApproval, ownerMessage, ownerWindowOf, registerContactSink, splitMessage, strangerMessage, type Sink } from "./channelrelay.js";
+import { answerApproval, groupSaid, ownerMessage, ownerWindowOf, registerContactSink, splitMessage, strangerMessage, type Sink } from "./channelrelay.js";
+import { groups, onGroupsChanged, registerGroupSink } from "./channelgroups.js";
 import { channelStore } from "./channelstore.js";
 import { chText } from "./channeltext.js";
 import type { DiscordChannelStatus } from "./channeltypes.js";
@@ -43,7 +50,8 @@ interface Info { botUserId: string; botUser: string; appId: string; ownerId: str
 const MAX_TEXT = 1950;
 const MAX_DOWNLOAD = 20 * 1024 * 1024;
 const MAX_UPLOAD = 10 * 1024 * 1024;
-const INTENTS = 1 << 12; // DIRECT_MESSAGES
+const DM_INTENTS = (1 << 12) | (1 << 9); // DIRECT_MESSAGES | GUILD_MESSAGES
+const MESSAGE_CONTENT = 1 << 15;
 
 export class DiscordError extends Error {}
 
@@ -75,11 +83,11 @@ const load = (botId: string) => channelStore.get<Secret, Info>(botId, "discord")
 const patch = (botId: string, change: (i: Info) => Info) => channelStore.patch<Info>(botId, "discord", change);
 
 // ── Sending ──────────────────────────────────────────────────────────────────────────────────────────────────────
-async function post(token: string, channel: string, text: string, components?: unknown[]): Promise<string | null> {
+async function post(token: string, channel: string, text: string, components?: unknown[], replyTo?: string): Promise<string | null> {
   let last: string | null = null;
   const parts = splitMessage(text, MAX_TEXT);
   for (const [i, part] of parts.entries()) {
-    const extra = components && i === parts.length - 1 ? { components } : {};
+    const extra = { ...(components && i === parts.length - 1 ? { components } : {}), ...(replyTo && i === 0 ? { message_reference: { message_id: replyTo, fail_if_not_exists: false } } : {}) };
     const m = await rest<{ id?: string }>(token, "POST", `/channels/${encodeURIComponent(channel)}/messages`, { content: part, allowed_mentions: { parse: [] }, ...extra }).catch((err) => { console.error("[discord send]", (err as Error).message); return null; });
     last = m?.id ?? last;
   }
@@ -123,7 +131,34 @@ function keepTyping(botId: string, token: string, channel: string) {
 
 // ── Receiving ────────────────────────────────────────────────────────────────────────────────────────────────────
 interface DiscordAttachment { filename?: string; size?: number; url?: string; content_type?: string }
-interface MessageCreate { id: string; channel_id: string; guild_id?: string; content?: string; author?: { id: string; username?: string; global_name?: string | null; bot?: boolean }; attachments?: DiscordAttachment[] }
+interface MessageCreate { id: string; channel_id: string; guild_id?: string; content?: string; author?: { id: string; username?: string; global_name?: string | null; bot?: boolean }; attachments?: DiscordAttachment[]; mentions?: { id: string }[]; referenced_message?: { author?: { id: string } } | null }
+
+/** The message a group reply answers (the last one that called the bot there), and channel names, in memory. */
+const lastCall = new Map<string, string>();
+const channelNames = new Map<string, string>();
+async function channelName(token: string, id: string): Promise<string> {
+  const hit = channelNames.get(id);
+  if (hit !== undefined) return hit;
+  const ch = await rest<{ name?: string }>(token, "GET", `/channels/${encodeURIComponent(id)}`).catch(() => null);
+  const name = ch?.name ? `#${ch.name}` : "";
+  channelNames.set(id, name);
+  if (channelNames.size > 2000) channelNames.delete(channelNames.keys().next().value!);
+  return name;
+}
+
+/** DS-Bot item 4: a message in a server channel (channelgroups.ts decides whether it reaches the bot). */
+async function handleGuildMessage(bot: BotRecord, s: { secret: Secret; info: Info }, m: MessageCreate) {
+  const self = s.info.botUserId;
+  const mentioned = (m.mentions ?? []).some((u) => u.id === self) || m.referenced_message?.author?.id === self;
+  const text = (m.content ?? "").replaceAll(`<@${self}>`, "").replaceAll(`<@!${self}>`, "").trim();
+  const token = s.secret.token;
+  const name = await channelName(token, m.channel_id);
+  const said = await groupSaid(bot, "discord", {
+    chatId: m.channel_id, chatName: name, sender: { id: m.author!.id, name: m.author!.global_name || m.author!.username || m.author!.id },
+    isOwner: !!s.info.ownerId && m.author!.id === s.info.ownerId, text, addressed: mentioned, hasFile: !!m.attachments?.length,
+  }, (t) => post(token, m.channel_id, t, undefined, m.id));
+  if (said === "taken") { lastCall.set(`${bot.id}:${m.channel_id}`, m.id); keepTyping(bot.id, token, m.channel_id); }
+}
 
 const COMMANDS: Record<string, "tasks" | "status" | "stop" | "usage" | "memory" | "help"> = {
   taches: "tasks", "tâches": "tasks", tasks: "tasks", etat: "status", "état": "status", status: "status", stop: "stop", usage: "usage",
@@ -143,7 +178,8 @@ async function download(f: DiscordAttachment): Promise<Buffer> {
 export async function handleMessage(botId: string, m: MessageCreate) {
   const bot = bots.byId(botId);
   const s = load(botId);
-  if (!bot || !s || !m.author || m.author.bot || m.author.id === s.info.botUserId || m.guild_id) return;
+  if (!bot || !s || !m.author || m.author.bot || m.author.id === s.info.botUserId) return;
+  if (m.guild_id) { await handleGuildMessage(bot, s, m); return; }
   const token = s.secret.token;
   const loc = users.localeOf(bot.userId);
   const reply = (t: string) => post(token, m.channel_id, t);
@@ -201,7 +237,7 @@ export async function handleInteraction(botId: string, it: Interaction) {
 }
 
 // ── The Gateway connection ───────────────────────────────────────────────────────────────────────────────────────
-interface Socket { ws: WebSocket | null; stopped: boolean; timer?: NodeJS.Timeout; beat?: NodeJS.Timeout; tries: number; seq: number | null; acked: boolean }
+interface Socket { ws: WebSocket | null; stopped: boolean; timer?: NodeJS.Timeout; beat?: NodeJS.Timeout; tries: number; seq: number | null; acked: boolean; content?: boolean; noContent?: boolean }
 const sockets = new Map<string, Socket>();
 
 function connect(botId: string, sock: Socket) {
@@ -235,17 +271,21 @@ function connect(botId: string, sock: Socket) {
         // A heartbeat not acknowledged before the next one: the connection is dead (zombied), reconnect.
         sock.beat = setInterval(() => { if (!sock.acked) { ws.close(4000); return; } sock.acked = false; send(1, sock.seq); }, every);
         sock.beat.unref?.();
-        send(2, { token: s.secret.token, intents: INTENTS, properties: { os: process.platform, browser: "sklubot", device: "sklubot" } });
+        sock.content = !sock.noContent && groups.wantsAll(botId, "discord");
+        send(2, { token: s.secret.token, intents: DM_INTENTS | (sock.content ? MESSAGE_CONTENT : 0), properties: { os: process.platform, browser: "sklubot", device: "sklubot" } });
       } else if (msg.op === 11) sock.acked = true;
       else if (msg.op === 1) send(1, sock.seq);
       else if (msg.op === 7 || msg.op === 9) ws.close(4000);
-      else if (msg.op === 0 && msg.t === "READY") { sock.tries = 0; patch(botId, (i) => ({ ...i, error: null, botUserId: msg.d?.user?.id ?? i.botUserId })); }
+      else if (msg.op === 0 && msg.t === "READY") { sock.tries = 0; patch(botId, (i) => ({ ...i, error: sock.noContent ? "MESSAGE_CONTENT_INTENT" : null, botUserId: msg.d?.user?.id ?? i.botUserId })); }
       else if (msg.op === 0 && msg.t === "MESSAGE_CREATE") void handleMessage(botId, msg.d).catch((err) => console.error("[discord message]", (err as Error).message));
       else if (msg.op === 0 && msg.t === "INTERACTION_CREATE") void handleInteraction(botId, msg.d).catch((err) => console.error("[discord interaction]", (err as Error).message));
     });
     ws.addEventListener("close", (ev) => {
       if (sock.ws === ws) sock.ws = null;
       clearInterval(sock.beat);
+      // 4014 while asking for message content: the owner has not turned on that intent in the Developer Portal; carry
+      // on without it (direct messages and mentions still work) and say so on the settings screen.
+      if (ev.code === 4014 && sock.content) { sock.noContent = true; patch(botId, (i) => ({ ...i, error: "MESSAGE_CONTENT_INTENT" })); retry(); return; }
       // 4004 authentication failed, 4013/4014 invalid or disallowed intents: retrying will not help.
       if (ev.code === 4004 || ev.code === 4013 || ev.code === 4014) { patch(botId, (i) => ({ ...i, error: `Discord closed the connection (${ev.code})` })); sock.stopped = true; sockets.delete(botId); return; }
       retry();
@@ -327,6 +367,10 @@ export const discord = {
   stopAll() { for (const id of [...sockets.keys()]) stopSocket(id); },
 };
 
+// A group's replies go back to its channel, as an answer to the message that called the bot; a change of trigger
+// reconnects (to ask for message content, or stop asking).
+registerGroupSink("discord", (bot, g) => { const s = load(bot.id); return s ? { text: async (t) => { await post(s.secret.token, g.chatId, t, undefined, lastCall.get(`${bot.id}:${g.chatId}`)); } } : null; });
+onGroupsChanged("discord", (botId) => { const sock = sockets.get(botId); if (sock && !!sock.content !== groups.wantsAll(botId, "discord")) startSocket(botId); });
 // An approved person's replies go to their direct message with the bot; they hear when the owner approves them.
 registerContactSink("discord", (bot, c: ContactRecord) => (c.replyTo ? sinkTo(bot.id, c.replyTo) : null));
 onApproved("discord", (bot, c) => { if (c.replyTo) void sinkTo(bot.id, c.replyTo)?.text(chText(users.localeOf(bot.userId), "✅ The owner approved you: you can now write to {bot}.", { bot: bot.name })); });

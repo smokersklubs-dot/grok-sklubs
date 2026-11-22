@@ -324,6 +324,8 @@ export const en: Record<Key, string> = {
   "secret.saved": "Saved in the vault, for {host} only",
   "secret.skipped": "Not given",
   "uncertain.title": "Did it go through?",
+  "view.answerOnWeb": "Fill this form in the web app, or write your answer here.",
+  "view.answered": "Sent: {answer}",
   "uncertain.hint": "The server stopped (or the service did not answer) while this was running. I will not do it again on my own: tell me what to do.",
   "uncertain.retry": "Retry once",
   "uncertain.check": "Check",

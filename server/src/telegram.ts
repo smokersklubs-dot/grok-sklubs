@@ -11,7 +11,9 @@ import { REACTIONS } from "./shared.js";
 import { approvalKeyboard, downloadFile, incomingFile, parseApprovalCallback, sendFile, sendMethodFor, splitTelegram, tgText, TooLargeError, type TgMessageFiles } from "./telegramplus.js";
 import { readLibraryFile, storeBytes } from "./computer.js";
 import { onApproved } from "./channelaccess.js"; import { chText } from "./channeltext.js";
-import { registerContactSink, strangerMessage } from "./channelrelay.js";
+import { groupSaid, registerContactSink, strangerMessage } from "./channelrelay.js";
+import { registerGroupSink } from "./channelgroups.js";
+import { retryDelay } from "./channelretry.js";
 import { approvals, audit, bots, clip, feedback, memories, now, randomToken, rows, tasks, users, type BotRecord } from "./store.js";
 
 /**
@@ -82,7 +84,7 @@ const polls = new Map<string, AbortController>();
 
 interface Update {
   update_id: number;
-  message?: { message_id: number; text?: string; chat: { id: number; type: string }; from?: TgFrom; reply_to_message?: { message_id: number } } & TgMessageFiles;
+  message?: { message_id: number; text?: string; caption?: string; chat: { id: number; type: string; title?: string }; from?: TgFrom; reply_to_message?: { message_id: number; from?: TgFrom & { is_bot?: boolean } }; entities?: { type: string; offset: number; length: number; user?: { id: number } }[] } & TgMessageFiles;
   callback_query?: { id: string; data?: string; from: { id: number }; message?: { message_id: number; chat: { id: number; type: string } } };
   message_reaction?: { chat: { id: number; type: string }; message_id: number; new_reaction?: { type: string; emoji?: string }[]; old_reaction?: { type: string; emoji?: string }[] };
 }
@@ -92,22 +94,25 @@ function startPolling(botId: string) {
   const stop = new AbortController();
   polls.set(botId, stop);
   void (async () => {
+    let failures = 0;
     while (!stop.signal.aborted) {
       const bot = bots.byId(botId);
       const token = bot ? tokenOf(bot) : null;
       if (!bot || !token) break;
       try {
-        const updates = await call<Update[]>(token, "getUpdates", { offset: bot.telegramOffset, timeout: 25, allowed_updates: ["message", "message_reaction", "callback_query"] }, stop.signal);
+        const updates: Update[] = await call<Update[]>(token, "getUpdates", { offset: bot.telegramOffset, timeout: 25, allowed_updates: ["message", "message_reaction", "callback_query"] }, stop.signal);
         for (const u of updates) {
           bots.setTelegramOffset(botId, u.update_id + 1);
-          if (u.message?.text && u.message.chat.type === "private") await receive(botId, String(u.message.chat.id), u.message.text.trim(), token, u.message.message_id, u.message.from);
+          failures = 0;
+          if (u.message && (u.message.chat.type === "group" || u.message.chat.type === "supergroup")) await receiveGroup(botId, u.message, token);
+          else if (u.message?.text && u.message.chat.type === "private") await receive(botId, String(u.message.chat.id), u.message.text.trim(), token, u.message.message_id, u.message.from);
           else if (u.message && u.message.chat.type === "private" && incomingFile(u.message)) await receiveFile(botId, String(u.message.chat.id), u.message, token);
           else if (u.callback_query) await pressed(botId, u.callback_query, token);
           else if (u.message_reaction && u.message_reaction.chat.type === "private") await reacted(botId, String(u.message_reaction.chat.id), u.message_reaction, token);
         }
       } catch {
         if (stop.signal.aborted) break;
-        await new Promise((r) => setTimeout(r, Number(process.env.TELEGRAM_RETRY_MS ?? 5000)));
+        await new Promise((r) => setTimeout(r, retryDelay(failures++)));
       }
     }
   })();
@@ -155,6 +160,33 @@ async function receive(botId: string, chatId: string, text: string, token: strin
   if (isPaused(bot)) await reply(tr(users.localeOf(bot.userId), "⏸ {bot} is paused: your message is kept and will be handled when it is resumed.", { bot: bot.name }));
   submitUserMessage(bot, screened.text, false, [], "telegram");
   keepTyping(bot.id, token, chatId);
+}
+
+/**
+ * DS-Bot item 4 (channelgroups.ts): a message in a Telegram group. It counts as calling the bot when it @mentions it,
+ * replies to one of its messages, or is a /command@bot. With Telegram's privacy mode on (the default), a bot only gets
+ * commands meant for it and replies to its messages; to be called by @mention, or to read every message, the owner turns
+ * privacy off with BotFather's /setprivacy (or makes the bot an admin), then adds it to the group again
+ * (https://core.telegram.org/bots/features#privacy-mode). A reply answers the message that called the bot
+ * (sendMessage reply_parameters, https://core.telegram.org/bots/api#replyparameters).
+ */
+const lastCall = new Map<string, number>();
+async function receiveGroup(botId: string, m: NonNullable<Update["message"]>, token: string) {
+  const bot = bots.byId(botId);
+  if (!bot || !m.from || (m.from as { is_bot?: boolean }).is_bot) return;
+  const me = (bot.telegram ?? "").toLowerCase();
+  const raw = String(m.text ?? m.caption ?? "");
+  const words = (e: { offset: number; length: number }) => raw.slice(e.offset, e.offset + e.length).toLowerCase();
+  const addressed = !!me && (
+    (m.entities ?? []).some((e) => (e.type === "mention" && words(e) === `@${me}`) || (e.type === "bot_command" && words(e).endsWith(`@${me}`)))
+    || (!!m.reply_to_message?.from?.is_bot && (m.reply_to_message.from.username ?? "").toLowerCase() === me));
+  const text = me ? raw.replace(new RegExp(`@${me.replace(/[^\w]/g, "")}\\b`, "gi"), "").trim() : raw.trim();
+  const chatId = String(m.chat.id);
+  const said = await groupSaid(bot, "telegram", {
+    chatId, chatName: m.chat.title ?? "", sender: { id: String(m.from.id), name: nameOf(m.from, String(m.from.id)) },
+    isOwner: !!bot.telegramChatId && String(m.from.id) === bot.telegramChatId, text, addressed, hasFile: !!incomingFile(m),
+  }, (t) => call(token, "sendMessage", { chat_id: chatId, text: t, reply_parameters: { message_id: m.message_id, allow_sending_without_reply: true } }).catch(() => {}));
+  if (said === "taken") { lastCall.set(`${bot.id}:${chatId}`, m.message_id); keepTyping(bot.id, token, chatId); }
 }
 
 /**
@@ -337,6 +369,12 @@ export const telegram = {
   },
   start() {
     for (const bot of bots.withTelegram()) startPolling(bot.id);
+    // DS-Bot item 4: a group's replies go back to that group, as an answer to the message that called the bot.
+    registerGroupSink("telegram", (bot, g) => {
+      const token = tokenOf(bots.byId(bot.id) ?? bot);
+      if (!token) return null;
+      return { text: async (t) => { const at = lastCall.get(`${bot.id}:${g.chatId}`); for (const [i, part] of splitTelegram(t).entries()) await call(token, "sendMessage", { chat_id: g.chatId, text: part, ...(at && i === 0 ? { reply_parameters: { message_id: at, allow_sending_without_reply: true } } : {}) }).catch(() => {}); } };
+    });
     // L162: an approved person's replies go to their own private chat with the Telegram bot.
     registerContactSink("telegram", (bot, c) => {
       const token = tokenOf(bots.byId(bot.id) ?? bot);

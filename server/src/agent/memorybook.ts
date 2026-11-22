@@ -5,6 +5,7 @@ import type { Memory, MemoryStatus } from "../shared.js";
 import { audit, clip, memories, now, rows, settings, type BotRecord, type UserRecord } from "../store.js";
 import { rankNotes, RECALL_POOL } from "./recall.js";
 import { explicitForget, looksSecret, sensitiveCategory } from "./sensitive.js";
+import { cleanDay, setMarks } from "./memorymarks.js";
 
 /**
  * The life of a memory note after it is written (audits mem0 and claude-mem, « Gestion »):
@@ -50,10 +51,15 @@ export function historyOf(userId: string, memoryId: string): HistoryEntry[] | nu
 export class NoteError extends Error { constructor(public status: 400 | 404 | 409, message: string) { super(message); } }
 
 /** The owner changes a note: its text (kept in the history), its status, its confidence. */
-export function changeNote(user: UserRecord, memoryId: string, change: { text?: unknown; status?: unknown; confidence?: unknown }): Memory {
+export function changeNote(user: UserRecord, memoryId: string, change: { text?: unknown; status?: unknown; confidence?: unknown; pinned?: unknown; until?: unknown }): Memory {
   const m = memories.owned(user.id, memoryId);
   if (!m) throw new NoteError(404, "That memory does not exist.");
-  if (change.text === undefined && change.status === undefined && change.confidence === undefined) throw new NoteError(400, "Unknown status.");
+  if (change.text === undefined && change.status === undefined && change.confidence === undefined && change.pinned === undefined && change.until === undefined) throw new NoteError(400, "Unknown status.");
+  // Audit DS-Bot #81 / #82: pin (the automatic passes never touch it) and a last day ("" or null clears it).
+  if (change.pinned !== undefined && typeof change.pinned !== "boolean") throw new NoteError(400, "pinned must be true or false.");
+  const until = change.until === undefined ? undefined : change.until === null || change.until === "" ? null : cleanDay(change.until);
+  if (until === null && change.until !== null && change.until !== "" && change.until !== undefined) throw new NoteError(400, "The end date must be a day, YYYY-MM-DD.");
+  if (change.pinned !== undefined || until !== undefined) setMarks(user.id, m, { pinned: change.pinned as boolean | undefined, until }, "owner");
   if (change.status !== undefined && !["active", "archived", "contested"].includes(String(change.status))) throw new NoteError(400, "Unknown status.");
   if (change.text !== undefined) {
     const text = clip(String(change.text ?? "").replace(/\s+/g, " ").trim(), NOTE_CHARS);

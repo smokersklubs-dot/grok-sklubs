@@ -4,6 +4,7 @@ import { useT, type Key } from "../i18n";
 import { relTime } from "../lib/format";
 import type { Bot, BotChannels, ChannelContact, ContactChannel } from "../types";
 import { Icon } from "./Icon";
+import { ChannelGroups } from "./ChannelGroups";
 import { ConfirmButton, CopyButton, ErrorNote, IconButton, Loading, Toggle } from "./ui";
 import "./BotChannels.css";
 
@@ -13,7 +14,7 @@ import "./BotChannels.css";
  */
 const LABEL: Record<ContactChannel | "imap", string> = { telegram: "Telegram", slack: "Slack", discord: "Discord", imap: "IMAP" };
 
-type Act = (method: "PUT" | "POST" | "DELETE", path: string, body?: unknown) => Promise<boolean>;
+type Act = (method: "PUT" | "POST" | "DELETE" | "PATCH", path: string, body?: unknown) => Promise<boolean>;
 
 export function BotChannelsTab({ bot }: { bot: Bot }) {
   const t = useT();
@@ -25,7 +26,7 @@ export function BotChannelsTab({ bot }: { bot: Bot }) {
   const load = () => api<BotChannels>("GET", `/bots/${enc(bot.id)}/channels`).then((v) => alive.current && (setView(v), setLoadError(null)), (e: unknown) => alive.current && setLoadError(errText(e)));
   useEffect(() => { void load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [bot.id]);
   // While a link code or a request waits: refreshed every 5 s (the owner is often switching to Slack or Discord).
-  const waiting = !!view && ((view.slack.connected && !view.slack.linked) || (view.discord.connected && !view.discord.linked) || view.contacts.some((c) => c.status === "pending"));
+  const waiting = !!view && ((view.slack.connected && !view.slack.linked) || (view.discord.connected && !view.discord.linked) || view.contacts.some((c) => c.status === "pending") || (view.groups ?? []).some((g) => g.status === "pending"));
   useEffect(() => {
     if (!waiting) return;
     const timer = window.setInterval(() => void load(), 5000);
@@ -54,6 +55,7 @@ export function BotChannelsTab({ bot }: { bot: Bot }) {
         <>
           <ErrorNote onDismiss={() => setError(null)}>{error}</ErrorNote>
           <Contacts contacts={view.contacts} act={act} />
+          <ChannelGroups groups={view.groups ?? []} act={act} />
           <SlackCard view={view} act={act} />
           <DiscordCard view={view} act={act} />
           <ImapCard view={view} act={act} />
@@ -293,7 +295,7 @@ function DiscordCard({ view, act }: { view: BotChannels; act: Act }) {
             <a className="telegram-link" href={d.inviteUrl} target="_blank" rel="noopener noreferrer"><Icon name="external" size={13} /> {t("channels.discord.invite")}</a>
           )}
           {d.linkCode && <LinkCode code={d.linkCode} hint={t("channels.discord.linkHint", { bot: d.botUser ?? "" })} />}
-          {d.error && <p className="small channels-error">{t("channels.lastError", { error: d.error })}</p>}
+          {d.error && <p className="small channels-error">{d.error === "MESSAGE_CONTENT_INTENT" ? t("channels.groups.allHintDiscord") : t("channels.lastError", { error: d.error })}</p>}
           <div className="row-end"><ConfirmButton className="btn btn-small btn-ghost-danger" label={t("channels.disconnect")} confirmLabel={t("channels.disconnectConfirm")} busyLabel={t("telegram.disconnecting")} onConfirm={async () => { await act("DELETE", "/channels/discord"); }} /></div>
         </>
       )}

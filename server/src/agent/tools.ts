@@ -17,7 +17,7 @@ import { appOf } from "../native/vendors.js";
 import { schedule, unschedule } from "../scheduler.js";
 import { GEM_KINDS, GEMS_PER_DAY, REACTIONS, TAKEOVER_REASONS, type TakeoverReason, type ActivityKind, type Connector, type Gem, type GemKind, type ReactionEmoji, type Row, type ToolGroup, type SkillExtras, SKILL_EXTRA_KEYS } from "../shared.js";
 import { q } from "../db.js";
-import { searchConfigured, searchWeb } from "../search.js";
+import { searchConfigured, searchWeb } from "../search.js"; import { cleanDay, setMarks } from "./memorymarks.js"; import { roomMemoryTools } from "./roommemory.js";
 import { fetchProblem, guardedFetch } from "../net.js";
 import { config as appConfig } from "../config.js";
 import { audit, bots, clip, memories, newId, pages, rows, settings, skills, skillText, tasks, vault, type BotRecord, type UserRecord } from "../store.js";
@@ -38,7 +38,7 @@ import { bgTasks, bgTaskToolSpecs, publicTask, startTask, stopTask, TaskLimitErr
 import { findCode, mailAccounts } from "../native/access.js";
 import { hideForAWhile } from "../store.js";
 import { explicitRemember, memoryVerdict } from "./sensitive.js";
-import { committingKind, probe, seenOf, seenTarget } from "./bind.js"; import { boundClick, browserTabTools, shot, tabLine, typeSecret } from "./tools-browser.js";
+import { committingKind, probe, seenOf, seenTarget } from "./bind.js"; import { boundClick, browserDownloadTools, browserTabTools, shot, tabLine, typeSecret } from "./tools-browser.js";
 import { elementTools, openInWords } from "./tools-elements.js"; // L65/L74/L75/L81: element tools, in words
 import { cardLabel, cardTools } from "./payments.js";
 import { guideIndex, guideTools } from "./guides.js";
@@ -72,7 +72,7 @@ import { goalTools } from "./goals.js";
 import { memoryPrefs } from "./memoryprefs.js"; import { searchNotesSmart } from "./semantic.js";
 import { forgetNotes } from "./memorybook.js";
 import { recruitTools } from "./recruit.js";
-import { teamMdTools } from "./teamexport.js"; import { stepTools } from "./tools-steps.js"; import { waitTools } from "./waitlater.js"; import { offerUndo, undoText } from "./undoable.js"; import { planTools, questionCard, QUESTION_PROPS } from "./richquestion.js"; // L97 wait_until, L98 « Annuler », L79
+import { teamMdTools } from "./teamexport.js"; import { stepTools } from "./tools-steps.js"; import { waitTools } from "./waitlater.js"; import { offerUndo, undoText } from "./undoable.js"; import { planTools, questionCard, QUESTION_PROPS } from "./richquestion.js"; import { viewTools } from "./viewcard.js"; import { deleteCheckAnswer } from "./deletecheck.js"; // L97 wait_until, L98 « Annuler », L79, DS-Bot item 8 show_view
 import { botPath, spillPath, spillPreview } from "./context.js"; import { routineFrameTools } from "./routineframe.js"; import { routineOptionTools } from "../routineoptions.js"; import { askRefusal, requestHelper, startQueuedHelpers } from "./askrules.js"; import { lt } from "./looptext.js";
 
 export interface ToolContext {
@@ -163,12 +163,12 @@ const screenTools: BuiltinTool[] = [
     },
   }),
   tool("screen_click", "Click at a position on the screen. Take a screenshot first so the coordinates are current.",
-    obj({ x: int("Pixels from the left edge"), y: int("Pixels from the top edge"), button: { type: "string", enum: ["left", "right", "middle"] }, double: { type: "boolean", description: "Double-click" } }, ["x", "y"]), {
+    obj({ x: int("Pixels from the left edge"), y: int("Pixels from the top edge"), button: { type: "string", enum: ["left", "right", "middle"] }, double: { type: "boolean", description: "Double-click" }, confirm: { type: "boolean", description: "Only to confirm a delete click you were asked to check" } }, ["x", "y"]), {
     activity: "computer", label: "Clicking",
     run: async (a, c) => {
       // A click that commits something was judged (and maybe approved) for one control on one site (bind.ts): if the
       // page changed since, nothing is clicked.
-      const seen = seenTarget(a), before = hostBeforeClick(c.bot.id); // L33: a click to another site after outside content is reported (clickhosts.ts)
+      const seen = seenTarget(a), before = hostBeforeClick(c.bot.id); const check = deleteCheckAnswer(a); if (check) return check; // L33; DS-Bot item 10: a delete click is checked first (deletecheck.ts): a click to another site after outside content is reported (clickhosts.ts)
       if (seen && committingKind(seen.label)) return afterClick(c, before, await boundClick(c, a, seen));
       return afterClick(c, before, shot(await screen.click(c.bot.id, c.user.id, +a.x, +a.y, a.button ?? "left", !!a.double), `Clicked at (${a.x}, ${a.y}).`));
     },
@@ -795,7 +795,7 @@ const transcribeTools: BuiltinTool[] = [
 ];
 
 const memoryTools: BuiltinTool[] = [
-  tool("memory_save", "Remember a lasting fact or preference. Write one short, self-contained sentence.", obj({ text: str("The fact to remember") }, ["text"]), {
+  tool("memory_save", "Remember a lasting fact or preference. Write one short, self-contained sentence.", obj({ text: str("The fact to remember"), until: str("Optional: the last day it holds, YYYY-MM-DD, when the user says it is only until a date") }, ["text"]), {
     activity: "remembering", label: "Saving a note",
     run: async (a, c) => {
       const text = clip(String(a.text).trim(), 500);
@@ -805,7 +805,7 @@ const memoryTools: BuiltinTool[] = [
       const asked = explicitRemember(c.bot, c.thread ?? 0), v = memoryVerdict(c.user.id, text, asked);
       if (!v.ok) return { content: v.reason, isError: true, summary: "not kept" };
       if (!asked && memoryPrefs.noLearn(c.bot.id)) return { content: "Not kept: the user switched on « Ne rien retenir » for you. Only what they explicitly ask you to remember is kept.", isError: true, summary: "not kept" }; // L88
-      memories.add(c.bot.id, text, "chat", { category: v.category });
+      const note = memories.add(c.bot.id, text, "chat", { category: v.category }); const until = cleanDay(a.until); if (until) setMarks(c.user.id, note, { until }, "bot"); // audit DS-Bot #82
       emit(c.user.id, { type: "memories", botId: c.bot.id });
       return { content: "Remembered.", summary: clip(text, 80) };
     },
@@ -1299,14 +1299,14 @@ const jobTools: BuiltinTool[] = [
   }),
 ];
 
-export function builtinTools(opts: { owner?: string; nativeSearch?: boolean; disabled?: readonly string[]; video?: "connector" | "api" | null; bgTasks?: boolean } = {}): BuiltinTool[] {
+export function builtinTools(opts: { owner?: string; nativeSearch?: boolean; /** The bot's own model offers a documented web search (nativesearch.ts). */ modelSearch?: boolean; disabled?: readonly string[]; video?: "connector" | "api" | null; bgTasks?: boolean } = {}): BuiltinTool[] {
   return assemble(opts).filter((t) => !t.group || !(opts.disabled ?? []).includes(t.group));
 }
 
-function assemble(opts: { owner?: string; nativeSearch?: boolean; video?: "connector" | "api" | null; bgTasks?: boolean }): BuiltinTool[] {
+function assemble(opts: { owner?: string; nativeSearch?: boolean; modelSearch?: boolean; video?: "connector" | "api" | null; bgTasks?: boolean }): BuiltinTool[] {
   return [
     ...(browserAvailable() ? inGroup("computer", screenTools).map(respectDriver) : []),
-    ...(computerKind() === "linux" ? inGroup("computer", [...elementTools, ...browserTabTools]).map(respectDriver) : []),
+    ...(computerKind() === "linux" ? inGroup("computer", [...elementTools, ...browserTabTools, ...browserDownloadTools]).map(respectDriver) : []),
     // On its own Linux computer a bot's commands are contained, so they do not need a permission card.
     // Background jobs and office documents: on the bots' own Linux computers only (shell_run starts the jobs).
     ...(computerKind() === "linux" && shellAvailable() ? [...inGroup("shell", jobTools), craftReady, openmanWorkspace] : []),
@@ -1315,7 +1315,7 @@ function assemble(opts: { owner?: string; nativeSearch?: boolean; video?: "conne
     ...(mediaAvailable() ? inGroup("computer", [...mediaTools, meetingTranscribe]) : []),
     ...workTools.filter((t) => t.spec.name !== "shell_run" || shellAvailable())
       .map((t): BuiltinTool => ({ ...t, group: t.spec.name === "shell_run" ? "shell" : t.spec.name === "web_fetch" ? "web" : "files", sensitive: t.spec.name === "shell_run" && computerKind() === "linux" ? false : t.sensitive })),
-    ...(searchChainAvailable() && !opts.nativeSearch ? searchTools : []),
+    ...((searchChainAvailable() || opts.modelSearch) && !opts.nativeSearch ? searchTools : []),
     // Wave 7: Agent Reach (read-only) on the bot's Linux computer, transcription, temporary public links.
     ...(reachAvailable() ? inGroup("reach", reachTools) : []),
     ...(computerKind() === "linux" || reachAvailable() ? transcribeTools : []),
@@ -1334,6 +1334,6 @@ function assemble(opts: { owner?: string; nativeSearch?: boolean; video?: "conne
     ...(opts.video ? inGroup("video", videoTools) : []),
     // The user's own computers (Sklubot Relais): offered by newTurn only to users who linked one.
     ...myComputerTools,
-    ...inGroup("memory", [...memoryTools, ...skillFeedbackTools]), ...inGroup("routines", [...routineTools, ...routineFrameTools, ...routineOptionTools]), ...inGroup("tasks", taskTools), ...(opts.bgTasks === false ? [] : inGroup("tasks", bgTaskTools)), ...goalTools, ...waitTools, ...planTools, ...inGroup("team", [...teamTools, ...roomTools]), ...userTools.filter((t) => t.spec.name !== "ask_takeover" || browserAvailable()), ...reactTools,
+    ...inGroup("memory", [...memoryTools, ...roomMemoryTools, ...skillFeedbackTools]), ...inGroup("routines", [...routineTools, ...routineFrameTools, ...routineOptionTools]), ...inGroup("tasks", taskTools), ...(opts.bgTasks === false ? [] : inGroup("tasks", bgTaskTools)), ...goalTools, ...waitTools, ...planTools, ...viewTools, ...inGroup("team", [...teamTools, ...roomTools]), ...userTools.filter((t) => t.spec.name !== "ask_takeover" || browserAvailable()), ...reactTools,
   ];
 }

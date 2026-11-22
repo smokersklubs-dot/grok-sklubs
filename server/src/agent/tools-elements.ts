@@ -1,3 +1,4 @@
+import { deleteCheckAnswer } from "./deletecheck.js";
 import { computerKind, noteReportedUrl, screen, workspaceOf } from "../computer.js";
 import { dialogWords } from "../browser-cdp.js";
 import { consoleLines, maskHeaders, maskUrl, requestLine, type ConsoleMessage, type NetRequest } from "../browser-devtools.js";
@@ -84,9 +85,11 @@ export const elementTools: BuiltinTool[] = [
       return { content: rememberSnapshot(c.bot.id, snap), summary: `${snap.elements.length} · ${clip(snap.title || snap.url, 60)}` };
     },
   }),
-  tool("element_click", "Click an element of the page by its reference. It is scrolled into view first, and refused (nothing done) when something covers it or the reference is stale. Answers with what changed on the page, in words (screenshot: true adds a picture). double: double-click.", obj({ ref: REF, double: { type: "boolean", description: "Double-click (default false)" }, screenshot: SHOT }, ["ref"]), {
+  tool("element_click", "Click an element of the page by its reference. It is scrolled into view first, and refused (nothing done) when something covers it or the reference is stale. Answers with what changed on the page, in words (screenshot: true adds a picture). double: double-click.", obj({ ref: REF, double: { type: "boolean", description: "Double-click (default false)" }, screenshot: SHOT, confirm: { type: "boolean", description: "Only to confirm a delete click you were asked to check (same element)" } }, ["ref"]), {
     activity: "computer", label: "Clicking", outside: true,
     run: async (a, c) => {
+      const check = deleteCheckAnswer(a); // DS-Bot item 10: a delete click is checked first, nothing clicked (deletecheck.ts)
+      if (check) return check;
       const found = resolveRef(c.bot.id, a.ref);
       if ("error" in found) return { content: found.error, isError: true, summary: "no such element" };
       // As screen_click: a click that commits something was judged for this control on this site; if it changed since, nothing is clicked.

@@ -21,11 +21,31 @@ Il te faut une appli Slack à toi, en **Socket Mode** (pas besoin d'adresse publ
 - jeton du bot `xoxb-…` avec `chat:write`, `im:history`, `im:write`, `users:read`, `reactions:write`, `files:read`, `files:write` ;
 - événements `message.im` et `app_mention`, messages autorisés dans App Home.
 
-Colle les deux jetons, puis envoie le code de liaison au bot en message privé. Le bot parle en messages privés ; si on le mentionne dans un salon, il répond « écris-moi en message privé ». Commandes : `!etat`, `!taches`, `!stop`, `!usage`, `!memoire`, `!aide`.
+Colle les deux jetons, puis envoie le code de liaison au bot en message privé. Dans un salon, il ne répond qu'une fois le salon activé (voir « Groupes » plus bas) ; pour qu'il réponde aussi dans un fil sans @, ou à chaque message, ajoute les événements `message.channels` (et `message.groups` pour un salon privé) avec `channels:history` (et `groups:history`), et `channels:read` pour afficher le nom du salon. Commandes : `!etat`, `!taches`, `!stop`, `!usage`, `!memoire`, `!aide`.
 
 ## Discord
 
-Crée une application sur le portail des développeurs Discord, onglet **Bot** → **Reset Token**, colle le jeton. Ajoute le bot à un de tes serveurs avec le lien affiché (pour écrire à un bot en privé, il faut partager un serveur avec lui), puis envoie-lui le code en message privé. Le bot n'écoute que les messages privés.
+Crée une application sur le portail des développeurs Discord, onglet **Bot** → **Reset Token**, colle le jeton. Ajoute le bot à un de tes serveurs avec le lien affiché (pour écrire à un bot en privé, il faut partager un serveur avec lui), puis envoie-lui le code en message privé. Dans un salon de serveur, il ne répond qu'une fois le salon activé (voir « Groupes »). Pour « à chaque message », active **Message Content Intent** dans l'onglet Bot ; sans lui, le bot lit quand même les messages qui le mentionnent, et l'écran Canaux te le signale.
+
+## Groupes (salons Slack, salons de serveur Discord, groupes Telegram)
+
+Ajoute le bot dans un groupe, puis appelle-le avec @. Rien ne lui parvient tant que tu n'as pas décidé :
+- le groupe apparaît dans **Réglages du bot → Canaux → Groupes** (« appelé il y a … ») et le groupe lit une seule fois « le propriétaire doit activer le groupe » ;
+- **Activer** : le bot répond dans ce groupe ; **Refuser** : il s'y tait ; **Oublier** efface un groupe refusé. Au plus 10 groupes attendent par service.
+
+Pour chaque groupe actif, deux réglages :
+- **Quand répondre** : « quand on l'appelle » (@, ou réponse à un de ses messages — par défaut) ou « à chaque message » ;
+- **Pour qui** : « toi et les personnes acceptées » (la liste « Qui peut parler à ce bot » du même service — par défaut) ou « tout le monde dans ce groupe ». Quelqu'un d'autre qui l'appelle est invité, une fois par heure, à demander l'accès en message privé.
+
+Règles qui ne changent pas :
+- dans un groupe, ce que dit chacun, **toi compris**, compte comme le message d'un membre : chaque action te demande ton accord, **toujours en privé** (dans l'appli ou tes messages privés), **jamais dans le groupe** ; un bouton pressé dans un groupe ne répond à aucun accord ;
+- le groupe a son propre fil dans la discussion du bot, et la réponse revient dans le groupe (en réponse au message qui l'a appelé ; dans le fil sur Slack) ;
+- au plus 30 messages par minute par groupe et 8 par personne ; les fichiers ne sont pas pris dans un groupe (envoie-les en privé) ; un secret collé est masqué ;
+- **Telegram** : en mode privé (par défaut), un bot ne reçoit que les commandes qui lui sont adressées et les réponses à ses messages. Pour qu'il réponde à @, ou à chaque message, désactive le mode privé avec `/setprivacy` chez BotFather (ou fais du bot un admin), puis ajoute-le de nouveau au groupe (https://core.telegram.org/bots/features#privacy-mode).
+
+## Graphiques, tableaux et formulaires
+
+Le bot peut montrer dans la discussion des chiffres clés, un tableau, un graphique en barres ou en courbe, une barre de progression ou un petit formulaire (outil `show_view`). L'appli les dessine elle-même à partir de données vérifiées : jamais de code ni de page venant du bot. La réponse à un formulaire arrive au bot comme ton message suivant. Sur le téléphone et sur Slack, Discord et Telegram, la même chose arrive en texte (« Voir en texte » dans l'appli).
 
 ## Une boîte mail existante (IMAP)
 

@@ -313,3 +313,73 @@ SOFTWARE.
   translated into `server/skills-library/publier-une-appli/`; no script, data file or template was taken.
 - Credit, as the licence asks: github.com/mjmirza/app-store-compliance, © 2026 Mirza Iqbal. The licence file of that
   commit is kept unchanged in `server/skills-library/publier-une-appli/LICENSE.txt`.
+
+## Fei2411/DS-Bot — Apache License 2.0 (model, memory, prompt, loop items)
+
+- Source: https://github.com/Fei2411/DS-Bot, commit `d104d9ca18d69a35460f14e15dff4d553181433a` (cloned 22/11/2026,
+  read only, never run; the clone was deleted afterwards).
+- Licence: Apache License, Version 2.0 — https://www.apache.org/licenses/LICENSE-2.0 (the full text ships with the
+  upstream repository as `LICENSE`). The name « DS Bot », its logos, characters and mascots are NOT used (the licence
+  gives no trademark rights).
+- Files with code adapted from it (each says what was changed in its first lines):
+  - `server/src/llm/imagetext.ts` — `ds-bot/src/host/images.js` and the `OCR_*` constants of `constants.js`.
+  - `server/src/nativesearch.ts` — `ds-bot/web-search.js` (readers, the DeepSeek search API entry, skip after refusal);
+    its keyless Bing / DuckDuckGo results-page fallback is NOT reused.
+  - `server/src/agent/claims.ts` — `ds-bot/src/host/claims.js` and `links.js`.
+  - `server/src/agent/memorytidy.ts` — `ds-bot/src/host/memory-tidy.js` and the tidy prompts of `memory-copy.js`.
+  - `server/src/agent/compactlines.ts` — `linesFor`, `shorten` and the checkpoint idea of `ds-bot/src/host/steward.js`.
+  - `server/src/agent/teamrules.ts` — lines of `TEAM_RULES` in `ds-bot/src/host/prompt.js` and of
+    `skills/ds-bot-manual/references/tasks.md`.
+  - Ideas only (our own code): pinned notes and end dates (`memory-entries.js`) in `server/src/agent/memorymarks.ts`,
+    group memory in `server/src/agent/roommemory.ts`.
+- None of these files comes from the parts of DS-Bot that carry another licence (dsh-im, DeepSeek Harness, DSH Remote).
+- Upstream NOTICE file, the part that covers the code reused here, reproduced as required by section 4(d):
+
+```text
+DS Bot
+Copyright 2026 Fei2411 and the DS Bot contributors
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+```
+
+## Fei2411/DS-Bot — Apache License 2.0 (channels, chat views, browser items)
+
+- Source: https://github.com/Fei2411/DS-Bot, commit `d104d9ca18d69a35460f14e15dff4d553181433a` (cloned 22/11/2026 into a
+  separate folder, read only, never run; the clone was deleted afterwards). Licence: Apache License, Version 2.0 —
+  https://www.apache.org/licenses/LICENSE-2.0. The name « DS Bot », its logos, characters and mascots are NOT used.
+- Files with code adapted from it (each says what was changed in its first lines):
+  - `server/src/channelgroups.ts` — the group gating of `ds-bot/src/host/im/index.js` (`onMessage`: a group message only
+    when the bot is mentioned, an unbound group told once to be set up, a paired sender required).
+  - `server/src/channelretry.ts` — `ds-bot/src/host/im/platforms/retry.js` (growing waits between reconnections).
+  - `server/src/agent/deletecheck.ts` — the delete check of `clickWithOptions` / `clearPendingDelete` in
+    `ds-bot/src/host/browser/session.js`.
+  - `server/src/browser-downloads.ts` — `finishDownload` / `reserveDownloadPath` of `ds-bot/src/host/browser/session.js`
+    (rewritten in Python on the Chrome DevTools Protocol).
+  - Ideas only (our own code): `server/src/agent/viewcard.ts`, `server/src/viewtypes.ts` and
+    `web/src/components/ViewCard.tsx` (show_view and its widget cell: DS-Bot's schema and renderer live in the outside npm
+    package `deep-view`, which is not in that repository and was not read or copied).
+- The group gating of `im/index.js` sits next to code that DS-Bot's NOTICE credits to dsh-im
+  (https://github.com/xmanrui/dsh-im, MIT License, Copyright (c) 2026 xmanrui); that notice is kept here too:
+
+```text
+DS Bot
+Copyright 2026 Fei2411 and the DS Bot contributors
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+dsh-im (https://github.com/xmanrui/dsh-im)
+MIT License, Copyright (c) 2026 xmanrui
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
+rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit
+persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the
+Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE
+WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+```

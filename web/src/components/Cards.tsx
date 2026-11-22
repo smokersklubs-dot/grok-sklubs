@@ -12,7 +12,7 @@ import { DiskCardView } from "./DiskAndTeamFolder";
 import { FilesCardView, PastedSecretCardView } from "./SecretsFilesProviders";
 import { GoalCardView } from "./GoalsAndJobs";
 import { FailureCardView } from "./Incidents";
-import { RecruitCardView } from "./RecruitCard";
+import { RecruitCardView } from "./RecruitCard"; import { ViewCardView } from "./ViewCard";
 import { sendKeysFor } from "../../../mobile/shared/sendKey";
 import { CardCountdown, detailWithout, DraftEditor, isRichQuestion, RichQuestion } from "./TurnCards";
 
@@ -418,6 +418,8 @@ export function CardView({ card, botId, seq }: { card: Card; botId: string; seq:
       return <FailureCardView card={card} botId={botId} />;
     case "recruit":
       return <RecruitCardView card={card} botId={botId} seq={seq} />;
+    case "view":
+      return <ViewCardView card={card} botId={botId} seq={seq} />; // DS-Bot item 8
     default:
       return null;
   }

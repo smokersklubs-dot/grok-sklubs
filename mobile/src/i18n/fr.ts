@@ -322,6 +322,8 @@ export const fr = {
   "secret.saved": "Enregistré dans le coffre, pour {host} seulement",
   "secret.skipped": "Non donné",
   "uncertain.title": "C’est passé ?",
+  "view.answerOnWeb": "Ce formulaire se remplit dans l'appli web, ou écris ta réponse ici.",
+  "view.answered": "Envoyé : {answer}",
   "uncertain.hint": "Le serveur s’est arrêté (ou le service n’a pas répondu) pendant cette action. Je ne la referai pas de moi-même : dis-moi quoi faire.",
   "uncertain.retry": "Réessayer une fois",
   "uncertain.check": "Vérifier",

@@ -14,6 +14,7 @@ import { subscribe } from "./bus.js";
 import { decideApproval, isPaused, submitMemberMessage, submitUserMessage } from "./agent/loop.js";
 import { holdAndOffer, screen as screenSecrets } from "./pastedsecrets.js";
 import { access, type ContactRecord } from "./channelaccess.js";
+import { groupMessage, groupSinkFor, groups, type GroupMessage } from "./channelgroups.js";
 import { CHANNEL_LABEL, chText } from "./channeltext.js";
 import type { ContactChannel } from "./channeltypes.js";
 import { readLibraryFile } from "./computer.js";
@@ -80,6 +81,12 @@ export async function strangerMessage(bot: BotRecord, channel: ContactChannel, w
   if (said.paused) await reply(chText(loc, "⏸ {bot} is paused: your message is kept and will be handled when it is resumed.", { bot: bot.name }));
 }
 
+/** DS-Bot item 4: a message in a group chat (channelgroups.ts); the group's replies are routed from here. */
+export function groupSaid(bot: BotRecord, channel: ContactChannel, m: GroupMessage, reply: (t: string) => Promise<unknown>) {
+  watchUser(bot.userId);
+  return groupMessage(bot, channel, m, reply);
+}
+
 /** The owner's own message from a channel: their words, as in the app; the replies come back through `sink`. */
 export function ownerMessage(bot: BotRecord, channel: "slack" | "discord", raw: string, attachments: Attachment[], sink: Sink): { paused: boolean } {
   const loc = users.localeOf(bot.userId);
@@ -138,12 +145,17 @@ export function watchUser(userId: string) {
   });
 }
 
-async function route(botId: string, r: Row) {
+async function route(botId: string, raw: Row) {
+  // DS-Bot item 8: a view card (chart, table, form…) goes out as its plain-text fallback, once (seq checks below).
+  const r: Row = raw.body.kind === "card" && raw.body.card.type === "view" && raw.body.card.status !== "answered" && raw.body.card.status !== "dismissed" ? { ...raw, body: { kind: "message", role: "assistant", text: raw.body.card.fallback } } : raw;
   if (r.body.kind !== "message") return;
   const bot = bots.byId(botId);
   if (!bot || r.generation !== bot.generation) return;
   if (r.thread) {
     if (!finished(r)) return;
+    // DS-Bot item 4: a group chat's thread — the reply goes back into that group (text only), once.
+    const g = groups.byThread(bot.id, r.generation, r.thread);
+    if (g) { if (r.seq <= g.lastSentSeq) return; const gs = groupSinkFor(bot, g); if (!gs) return; groups.markSent(g.id, r.seq); await deliver(bot, { text: gs.text }, r); return; }
     const c = access.byThread(bot.id, r.generation, r.thread);
     if (!c || r.seq <= c.lastSentSeq) return;
     const sink = contactSinks.get(c.channel)?.(bot, c);
@@ -168,7 +180,7 @@ async function deliver(bot: BotRecord, sink: Sink, r: Row) {
   for (const a of r.body.attachments ?? []) {
     let ok = false;
     try { ok = sink.file ? await sink.file(a, readLibraryFile(bot.id, a.path)) : false; } catch (err) { console.error("[channel file]", (err as Error).message); }
-    if (!ok) await sink.text(chText(users.localeOf(bot.userId), "“{name}” is too big for this channel. It is in the app.", { name: clip(a.name, 80) }));
+    if (!ok) await sink.text(chText(users.localeOf(bot.userId), sink.file ? "“{name}” is too big for this channel. It is in the app." : "“{name}” is in the app.", { name: clip(a.name, 80) }));
   }
 }
 

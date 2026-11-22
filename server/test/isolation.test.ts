@@ -210,6 +210,8 @@ function resolve(routePath: string, param: string, bot: "bot1" | "bot2"): string
     "chantiers:id": "a_chantier", "decisions:did": "a_decision", "tasks:key": "a-task", "chantier-lessons:id": "a_lesson",
     // L162 (channelroutes.ts): someone on a bot's access list (approve, block, revoke are the owner's alone).
     "contacts:cid": "a_contact",
+    // DS-Bot item 4 (channelroutes.ts): a group chat the bot was called in (turning it on, off or forgetting it is the owner's alone).
+    "channel-groups:gid": "a_group",
     // Turn control (turncontrolroutes.ts, messageactionroutes.ts): a kept note, a change to undo (the owner's alone).
     "notes:noteId": "1", "undo:undoId": "und_alpha",
   };

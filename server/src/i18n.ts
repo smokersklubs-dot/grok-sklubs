@@ -172,6 +172,10 @@ const FR: Record<string, string> = {
   "Allow {bot} to click “{label}” on {host}?": "Autoriser {bot} à cliquer sur « {label} » sur {host} ?",
   "Allow {bot} to answer OK to the page's question on {host}?": "Autoriser {bot} à répondre OK à la question de la page sur {host} ?",
   "answer OK to the page's question on {host}": "répondre OK à la question de la page sur {host}", "Browser": "Navigateur",
+  "Allow {bot} to save the file “{file}” downloaded from {host}?": "Autoriser {bot} à garder le fichier « {file} » téléchargé depuis {host} ?",
+  "save the file “{file}” downloaded from {host}": "garder le fichier « {file} » téléchargé depuis {host}",
+  "The file ({size}) goes into the bot's files (files/downloads), where it can open it. Refuse if you do not expect it.": "Le fichier ({size}) va dans les fichiers du bot (files/downloads), où il pourra l'ouvrir. Refuse si tu ne l'attends pas.",
+  "Saving a download": "Garde un téléchargement", "Listing downloads": "Liste les téléchargements",
   "Allow {bot} to attach the file {file} on {host}?": "Autoriser {bot} à joindre le fichier {file} sur {host} ?", // L75 element_upload
   "attach the file {file} on {host}": "joindre le fichier {file} sur {host}", "The file will be sent to {host} when the form is sent.": "Le fichier partira vers {host} quand le formulaire sera envoyé.",
   "The page asks: “{message}”. OK confirms it.": "La page demande : « {message} ». OK le confirme.",

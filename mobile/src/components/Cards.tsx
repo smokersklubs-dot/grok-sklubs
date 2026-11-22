@@ -505,6 +505,19 @@ function Mail({ card, bot }: { card: Of<"mail">; bot: Bot }) {
   );
 }
 
+/** DS-Bot item 8: a view card (chart, table, form…) as the plain text the server keeps for the phone; a form is answered in the web app. */
+function ViewText({ card }: { card: Of<"view"> }) {
+  const { c } = useTheme();
+  const t = useT();
+  return (
+    <Shell>
+      <Head icon="chart" title={card.title} />
+      <Text selectable style={[styles.detail, { backgroundColor: c.surface2, color: c.text }]}>{card.fallback}</Text>
+      {card.status === "pending" ? <Reason text={t("view.answerOnWeb")} /> : card.status === "answered" && card.answer ? <Reason text={t("view.answered", { answer: card.answer })} /> : null}
+    </Shell>
+  );
+}
+
 export function CardView({ card, bot, seq }: { card: Card; bot: Bot; seq: number }) {
   switch (card.type) {
     case "approval": return <Approval card={card} bot={bot} />;
@@ -520,6 +533,7 @@ export function CardView({ card, bot, seq }: { card: Card; bot: Bot; seq: number
     case "apiconnector": return <ApiConnector card={card} bot={bot} seq={seq} />;
     case "memory": return <Memory card={card} bot={bot} seq={seq} />;
     case "mail": return <Mail card={card} bot={bot} />;
+    case "view": return <ViewText card={card} />;
     default: return null;
   }
 }

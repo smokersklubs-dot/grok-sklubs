@@ -120,7 +120,7 @@ import { healthReport } from "./monitor.js";
 import { accountCreated, HostedError, hostedMode, hostedSettings, isOperator, isPlanLimit, lentProviderIds, planInviteOpens, signupChoice, subscriptionEnginesFor, suspended, type SignupChoice } from "./hosted.js";
 import { registerHostedPages, registerHostedPrivate, registerHostedPublic, suspendedText } from "./hostedroutes.js";
 import { TodayError, todayReport, todaySettings } from "./today.js";
-import { registerBotClients, registerBotClientSettings } from "./botaccessroutes.js"; import { registerChannelRoutes } from "./channelroutes.js";
+import { registerBotClients, registerBotClientSettings } from "./botaccessroutes.js"; import { registerChannelRoutes } from "./channelroutes.js"; import { registerViewRoutes } from "./viewroutes.js";
 import { registerSentinelRoutes } from "./sentinel/routes.js"; import { registerHookRoutes, registerHookSettingsRoutes } from "./hookroutes.js"; import { registerReportRoutes } from "./reports.js";
 import { registerAnnouncementRoutes } from "./announceroutes.js"; import { registerModelHealthRoutes } from "./modelhealth.js";
 import { registerSkillsLibraryRoutes } from "./skillsroutes.js";
@@ -715,7 +715,7 @@ registerSectionRoutes(api); registerStopCauseRoutes(api); registerPersonalComman
 // with — viewer, member or admin — cannot pause or resume it (ownAgent / sections.owned answer 404, as for any other
 // account's thing); a stranger's call to "everything" pauses only their own bots. Each change is an audit line.
 // "Accès API" (botapi.ts): the owner's API keys of one bot — owner only (a workspace member never manages them).
-registerBotClientSettings(api, (c) => ownAgent(c as Context<Env>)); registerChannelRoutes(api, (c) => ownAgent(c as Context<Env>)); // L162: Slack, Discord, IMAP, access requests
+registerBotClientSettings(api, (c) => ownAgent(c as Context<Env>)); registerChannelRoutes(api, (c) => ownAgent(c as Context<Env>)); registerViewRoutes(api, (c) => ownBot(c as Context<Env>)); // DS-Bot item 8 view forms; L162: Slack, Discord, IMAP, access requests
 
 api.get("/pauses", (c) => c.json(pauses.state(c.get("user").id)));
 api.post("/bots/:id/pause", (c) => { const bot = ownAgent(c); return c.json(setPause(c.get("user"), "bot", bot.id, true, bot.name)); });

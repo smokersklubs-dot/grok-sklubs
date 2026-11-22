@@ -29,6 +29,12 @@ const FR: Record<string, string> = {
   "“{name}” is too big for this channel. It is in the app.": "« {name} » est trop gros pour ce canal. Il est dans l'appli.",
   "👍 = yes · 👎 = no": "👍 = oui · 👎 = non",
   "🔒 Answer in the app.": "🔒 Réponds dans l'appli.",
+  "“{name}” is in the app.": "« {name} » est dans l'appli.",
+  "Group “{name}” on {channel}": "Groupe « {name} » sur {channel}",
+  "{bot} was called in the group “{group}” on {channel}: turn it on in Sklubot if you want it to answer there.": "{bot} a été appelé dans le groupe « {group} » sur {channel} : active ce groupe dans Sklubot si tu veux qu'il y réponde.",
+  "🔒 {bot} does not answer in this group yet: its owner must turn the group on in Sklubot.": "🔒 {bot} ne répond pas encore dans ce groupe : son propriétaire doit activer le groupe dans Sklubot.",
+  "🔒 {name}, {bot} only answers people its owner approved. Write to it in a direct message to ask for access.": "🔒 {name}, {bot} ne répond qu'aux personnes que son propriétaire a acceptées. Écris-lui en message privé pour demander l'accès.",
+  "🔒 Files are not taken in a group: send them to {bot} in a direct message.": "🔒 Les fichiers ne sont pas pris dans un groupe : envoie-les à {bot} en message privé.",
   "Conversation with {name} on {channel}": "Conversation avec {name} sur {channel}",
   "{name} asks to talk to {bot} on {channel} (code {code}).": "{name} demande à parler à {bot} sur {channel} (code {code}).",
 };

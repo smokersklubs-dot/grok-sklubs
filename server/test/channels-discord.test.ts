@@ -112,7 +112,7 @@ test("connect: token checked and sealed; Gateway Identify with the DIRECT_MESSAG
   assert.ok(!JSON.stringify(ok.json).includes(TOKEN));
   assert.ok(!q.get<{ secret_enc: string }>("SELECT secret_enc FROM bot_channels WHERE kind = 'discord'")!.secret_enc.includes("fake-for-tests"), "sealed");
   const identify = await until(() => fromBot.find((m) => m.op === 2), "identify");
-  assert.equal(identify.d.intents, 4096);
+  assert.equal(identify.d.intents, 4096 | 512, "DIRECT_MESSAGES + GUILD_MESSAGES (server channels: channelgroups.ts)");
   assert.equal(identify.d.token, TOKEN);
   await until(() => fromBot.some((m) => m.op === 1), "heartbeat");
   await until(async () => (await call("GET", `/bots/${botId}/channels`)).json.discord.online, "online");
