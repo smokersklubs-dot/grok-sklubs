@@ -368,11 +368,12 @@ test("digest: off by default; once a day at the chosen hour (the user's timezone
   q.run("UPDATE rows SET body = json_set(body, '$.card.status', 'done') WHERE bot_id IN (?, ?, ?) AND kind = 'card'", id.ada, id.bea, id.cid);
   q.run("UPDATE rows SET body = json_set(body, '$.action.status', 'over') WHERE bot_id IN (?, ?, ?) AND kind = 'notice'", id.ada, id.bea, id.cid);
   q.run("DELETE FROM routine_runs WHERE status = 'error'");
-  assert.deepEqual((await report("a", "2026-11-21")).needs, []);
-  assert.deepEqual(await today.runDigests(Date.parse("2026-11-21T17:10:00Z"), sender, BASE), [], "an empty day says nothing");
+  // A day well before every fixture and before the real clock: this check must not depend on the day the suite runs.
+  assert.deepEqual((await report("a", "2026-10-05")).needs, []);
+  assert.deepEqual(await today.runDigests(Date.parse("2026-10-05T16:10:00Z"), sender, BASE), [], "an empty day says nothing");
   // Switched off: nothing.
   await call("a", "PUT", "/today/settings", { digest: { enabled: false } });
-  assert.deepEqual(await today.runDigests(Date.parse("2026-11-22T17:10:00Z"), sender, BASE), []);
+  assert.deepEqual(await today.runDigests(Date.parse("2026-10-06T16:10:00Z"), sender, BASE), []);
   // B never got A's digest.
   assert.ok(!sent.push.some((p) => p.startsWith(userB)));
 });
