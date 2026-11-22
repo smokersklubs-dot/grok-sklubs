@@ -67,7 +67,7 @@ function Approval({ card, bot }: { card: ApprovalCard; bot: Bot }) {
   const t = useT();
   const { busy, error, run } = useBusy();
   const canDecide = !bot.access || bot.access.canApprove;
-  const decide = (d: "allow" | "always" | "deny") => run(d, async () => {
+  const decide = (d: "allow" | "always" | "conversation" | "deny") => run(d, async () => {
     await useStore.getState().decide(card.approvalId, d);
     void Haptics.notificationAsync(d === "deny" ? Haptics.NotificationFeedbackType.Warning : Haptics.NotificationFeedbackType.Success).catch(() => undefined);
   });
@@ -89,9 +89,16 @@ function Approval({ card, bot }: { card: ApprovalCard; bot: Bot }) {
           <Button small variant="primary" label={t("approval.allow")} busy={busy === "allow"} disabled={!!busy} onPress={() => void decide("allow")} />
         </View>
       ) : null}
+      {/* « Autoriser pour cette conversation »: offered by the server on this card, to the bot's owner only (its own line: the label is long). */}
+      {!done && canDecide && card.conversation && !card.once && !bot.access ? (
+        <View style={styles.actions}>
+          <Spacer />
+          <Button small variant="ghost" label={t("approval.conversationBtn")} busy={busy === "conversation"} disabled={!!busy} onPress={() => void decide("conversation")} />
+        </View>
+      ) : null}
       {done ? (
         <Outcome ok={card.status === "denied" ? false : card.status === "expired" ? null : true} icon={card.status === "denied" ? "close" : card.status === "expired" ? "clock" : "check"}
-          label={`${t(`approval.${card.status}` as Key)}${card.outcome && (card.status === "allowed" || card.status === "always") ? ` · ${t(`approval.outcome.${card.outcome}` as Key)}` : ""}`} />
+          label={`${t(card.status === "allowed" && card.grantedFor === "conversation" ? "approval.grantedConversation" : `approval.${card.status}` as Key)}${card.outcome && (card.status === "allowed" || card.status === "always") ? ` · ${t(`approval.outcome.${card.outcome}` as Key)}` : ""}`} />
       ) : null}
       <ErrorNote>{error}</ErrorNote>
     </Shell>

@@ -4,7 +4,7 @@
  * a sample error when the gallery's "fail" switch is on. Development only.
  */
 import { landingData, sampleDownloads } from "./landingFixtures";
-import { announcementsAdmin, announcementsState, sentinelOverview, todayReport, type FixtureOptions } from "./fixtures";
+import { announcementsAdmin, announcementsState, conversationGrantFixtures, sentinelOverview, todayReport, type FixtureOptions } from "./fixtures";
 import { githubPreviewFixture, libraryFixture, scanReportFixture, versionsFixture } from "./skillsFixtures";
 import { incidentsFixture } from "./incidentsFixtures";
 import { commandFixture, fakeScreen } from "./commandFixtures";
@@ -58,6 +58,8 @@ export function installFakeApi(get: () => FakeApiState): void {
     if (path === "/public/landing") return json(200, landingData(s.empty));
     if (path === "/downloads") return json(200, sampleDownloads(s.empty));
     if (path === "/models") return json(200, { models: [] });
+    // « Autoriser pour cette conversation »: the owner's active grants (Settings → Permissions).
+    if (path === "/conversation-grants") return json(200, { grants: s.empty ? [] : conversationGrantFixtures(s) });
     if (path === "/skills-library") return json(200, libraryFixture(s));
     if (/^\/pages\/[^/]+\/versions$/.test(path)) return json(200, versionsFixture());
     // « Incidents » (Activité tab): the bot's failure log.

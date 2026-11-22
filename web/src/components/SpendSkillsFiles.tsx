@@ -179,7 +179,7 @@ export function ConfidenceBadge({ confidence }: { confidence: "once" | "confirme
 
 /* ---------- Settings → Activity: the detailed usage journal ---------- */
 
-const DECISIONS: JournalEntry["decision"][] = ["words", "reviewer", "approval", "retry", "policy", "free", "denied"];
+const DECISIONS: JournalEntry["decision"][] = ["words", "reviewer", "approval", "retry", "conversation", "policy", "free", "denied"];
 
 export function JournalView() {
   const t = useT();

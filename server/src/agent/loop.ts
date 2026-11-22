@@ -1475,7 +1475,7 @@ async function processCalls(turn: Turn, st: PausedTurn): Promise<"continue" | "e
     answered = "";
     if (verdict.kind === "ask") {
       const approvalId = newId("apr");
-      const card = rows.append(bot, { kind: "card", card: { type: "approval", approvalId, title: verdict.title, detail: cardDetail(call, verdict), tool: verdict.policyKey, source: verdict.source, status: "pending", ...(verdict.once ? { once: true } : {}), ...(verdict.why ? { why: verdict.why } : {}), ...(verdict.quote ? { quote: clip(verdict.quote, 400) } : {}), ...(verdict.irreversible ? { irreversible: true, irreversibleReason: verdict.irreversible } : {}) } });
+      const card = rows.append(bot, { kind: "card", card: { type: "approval", approvalId, title: verdict.title, detail: cardDetail(call, verdict), tool: verdict.policyKey, source: verdict.source, status: "pending", ...(verdict.once ? { once: true } : {}), ...(verdict.why ? { why: verdict.why } : {}), ...(verdict.quote ? { quote: clip(verdict.quote, 400) } : {}), ...(verdict.irreversible ? { irreversible: true, irreversibleReason: verdict.irreversible } : {}), ...(verdict.conversation ? { conversation: true } : {}) } });
       approvals.create(bot.id, user.id, st.generation, card.seq, verdict.policyKey, approvalId, hash);
       setStep(turn, st, call, "waiting");
       st.approvalId = approvalId;
@@ -1582,7 +1582,7 @@ export async function runReserved(turn: Turn, call: ToolUseBlock, grant: Grant |
   const { bot, user } = turn;
   const loc = user.locale;
   onStatus("running");
-  if (grant?.quote || grant?.reason) setLive(user.id, bot.id, { caption: grant.quote ? tr(loc, "Because you said: “{quote}”", { quote: clip(grant.quote, 120) }) : tr(loc, "Reviewer: {reason}", { reason: clip(grant.reason ?? "", 120) }) });
+  if (grant?.quote || grant?.reason) setLive(user.id, bot.id, { caption: grant.quote ? tr(loc, "Because you said: “{quote}”", { quote: clip(grant.quote, 120) }) : grant.by === "conversation" ? clip(grant.reason ?? "", 120) : tr(loc, "Reviewer: {reason}", { reason: clip(grant.reason ?? "", 120) }) });
   const reserved = external(turn, call.name, call.input);
   const label = labelOf(turn, call.name);
   const decision = journalDecision(turn, call.name, grant);
@@ -1594,7 +1594,7 @@ export async function runReserved(turn: Turn, call: ToolUseBlock, grant: Grant |
     out = await execute(turn, call);
     activeTurns.acted(bot.id);
     if (exec) executions.finish(exec, out.isError ? "failed" : "done");
-    if (grant && (grant.quote || grant.reason)) audit(user.id, "approval", `${bot.name} : ${label} — ${grant.by === "words" ? tr(loc, "because you said “{quote}”", { quote: clip(grant.quote ?? "", 200) }) : grant.by === "reviewer" ? tr(loc, "reviewer allowed: {reason}", { reason: clip(grant.reason ?? "", 200) }) : grant.by}`, bot.id);
+    if (grant && (grant.quote || grant.reason)) audit(user.id, "approval", `${bot.name} : ${label} — ${grant.by === "words" ? tr(loc, "because you said “{quote}”", { quote: clip(grant.quote ?? "", 200) }) : grant.by === "reviewer" ? tr(loc, "reviewer allowed: {reason}", { reason: clip(grant.reason ?? "", 200) }) : grant.by === "conversation" ? clip(grant.reason ?? "", 200) : grant.by}`, bot.id);
     out = afterTool(turn, call, out);
     onStatus(out.isError ? "error" : "done", out.summary);
     if (approvalId) noteOutcome(bot, approvalId, out.isError ? "failed" : "done");
@@ -1608,7 +1608,7 @@ export async function runReserved(turn: Turn, call: ToolUseBlock, grant: Grant |
       ? { content: `Tool error: ${message}. The outcome is UNKNOWN: it may or may not have gone through. Do not try it again; the user was asked to check.`, isError: true }
       : { content: `Tool error: ${message}`, isError: true };
     onStatus("error", clip(unknown ? tr(loc, "outcome unknown") : message, 200));
-    addJournal({ userId: user.id, botId: bot.id, tool: call.name, label, decision, quote: grant?.quote, reason: clip(message, 200), status: unknown ? "uncertain" : "failed", origin: turn.origin ?? "" });
+    addJournal({ userId: user.id, botId: bot.id, tool: call.name, label, decision, quote: grant?.quote, reason: clip(grant?.grantId ? `${grant.grantId} — ${message}` : message, 200), status: unknown ? "uncertain" : "failed", origin: turn.origin ?? "" });
   } finally { watchTool(bot.id, call.id, false); }
   turn.toolsRun = (turn.toolsRun ?? 0) + 1;
   return out;
@@ -1623,7 +1623,7 @@ function labelOf(turn: Turn, name: string): string {
 }
 
 /** What allowed a call that ran, for the journal: the grant if any, else a policy for something that changes things, else nothing needed. */
-function journalDecision(turn: Turn, name: string, grant: Grant | undefined): "words" | "reviewer" | "approval" | "retry" | "policy" | "free" {
+function journalDecision(turn: Turn, name: string, grant: Grant | undefined): "words" | "reviewer" | "approval" | "retry" | "conversation" | "policy" | "free" {
   if (grant) return grant.by;
   return groundable(turn, name) ? "policy" : "free";
 }
@@ -1800,12 +1800,12 @@ function lapse(approvalId: string) {
  * sends a new message; until the engine is restarted; or until the turn is stopped).
  * Used when the bot runs on a subscription tool: its call simply blocks until the user decides.
  */
-export async function waitForApproval(turn: Turn, call: ToolUseBlock, verdict: Extract<Verdict, { kind: "ask" }> & { why?: string; quote?: string; irreversible?: string }, out?: { approvalId?: string }): Promise<"allowed" | "always" | "denied" | "expired"> {
+export async function waitForApproval(turn: Turn, call: ToolUseBlock, verdict: Extract<Verdict, { kind: "ask" }> & { why?: string; quote?: string; irreversible?: string; conversation?: boolean }, out?: { approvalId?: string }): Promise<"allowed" | "always" | "denied" | "expired"> {
   const { bot, user } = turn;
   const approvalId = newId("apr");
   if (out) out.approvalId = approvalId;
   const hash = actionHash(call.name, call.input);
-  const card = rows.append(bot, { kind: "card", card: { type: "approval", approvalId, title: verdict.title, detail: cardDetail(call, verdict), tool: verdict.policyKey, source: verdict.source, status: "pending", ...(verdict.once ? { once: true } : {}), ...(verdict.why ? { why: verdict.why } : {}), ...(verdict.quote ? { quote: clip(verdict.quote, 400) } : {}), ...(verdict.irreversible ? { irreversible: true, irreversibleReason: verdict.irreversible } : {}) } });
+  const card = rows.append(bot, { kind: "card", card: { type: "approval", approvalId, title: verdict.title, detail: cardDetail(call, verdict), tool: verdict.policyKey, source: verdict.source, status: "pending", ...(verdict.once ? { once: true } : {}), ...(verdict.why ? { why: verdict.why } : {}), ...(verdict.quote ? { quote: clip(verdict.quote, 400) } : {}), ...(verdict.irreversible ? { irreversible: true, irreversibleReason: verdict.irreversible } : {}), ...(verdict.conversation ? { conversation: true } : {}) } });
   approvals.create(bot.id, user.id, bot.generation, card.seq, verdict.policyKey, approvalId, hash);
   bots.bumpUnread(bot.id);
   setLive(user.id, bot.id, { running: false, activity: { kind: "waiting", since: Date.now() }, awaiting: { reason: verdict.reason, since: Date.now() } });

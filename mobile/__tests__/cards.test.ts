@@ -14,6 +14,8 @@ const routes = readFileSync(join(__dirname, "../../server/src/routes.ts"), "utf8
 describe("card requests", () => {
   it("match the web app's calls", () => {
     expect(cardReq.decide("a/1", "always")).toEqual({ path: "/approvals/a%2F1", body: { decision: "always" } });
+    // « Autoriser pour cette conversation »: the third yes (the server decides whether the card may be answered so).
+    expect(cardReq.decide("a/1", "conversation")).toEqual({ path: "/approvals/a%2F1", body: { decision: "conversation" } });
     expect(cardReq.answer("b", 4, "Oui")).toEqual({ path: "/bots/b/cards/4/answer", body: { answer: "Oui" } });
     expect(cardReq.dismiss("b", 4)).toEqual({ path: "/bots/b/cards/4/dismiss" });
     expect(cardReq.secret("b", 7, "sk-x", "api.example.com")).toEqual({ path: "/bots/b/cards/7/secret", body: { value: "sk-x", host: "api.example.com" } });

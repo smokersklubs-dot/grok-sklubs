@@ -54,7 +54,7 @@ interface State {
   markRead(botId: string): Promise<void>;
   send(botId: string, text: string, attachments: Attachment[]): Promise<void>;
   stop(botId: string): Promise<void>;
-  decide(approvalId: string, decision: "allow" | "always" | "deny"): Promise<void>;
+  decide(approvalId: string, decision: "allow" | "always" | "conversation" | "deny"): Promise<void>;
   answer(botId: string, seq: number, answer: string): Promise<void>;
   dismissCard(botId: string, seq: number): Promise<void>;
   continueRow(botId: string, seq: number): Promise<void>;

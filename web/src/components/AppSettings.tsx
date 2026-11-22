@@ -30,7 +30,7 @@ import { BackupSettings } from "./BackupSettings";
 import { SurveillanceSettingsSection } from "./SurveillanceView";
 import { SkillsLibrarySection } from "./SkillsLibrary";
 import { SettingsNavigation, KeyboardShortcuts } from "./SettingsNavigation";
-import { PageVersions } from "./PageVersions";
+import { PageVersions } from "./PageVersions"; import { ConversationGrantsBlock } from "./ConversationGrants";
 
 /* ---------- General ---------- */
 
@@ -409,6 +409,7 @@ function PermissionsSection() {
           })}
         </ul>
       )}
+      <ConversationGrantsBlock />
     </>
   );
 }

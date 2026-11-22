@@ -325,6 +325,10 @@ const FR: Record<string, string> = {
   "I am not signed in to Claude on this desktop. Open Settings → Models and check my connection.": "Je ne suis pas encore connecté à Claude sur ce bureau. Ouvre Réglages → Modèles puis clique sur « Vérifier la connexion » à côté de mon nom.",
   "Reading a file": "Lit un fichier", "Planning": "Planifie", "Working": "Travaille",
   "failed": "échec", "allowed once": "autorisé une fois", "always allowed": "toujours autorisé", "refused": "refusé",
+  // « Autoriser pour cette conversation » (agent/conversationgrants.ts): the audit log and the step's line.
+  "allowed for this conversation": "autorisé pour cette conversation", "you allowed it for this conversation ({place}, {id})": "tu l'as autorisé pour cette conversation ({place}, {id})",
+  "permission for this conversation": "autorisation pour cette conversation", "revoked by you": "retirée par toi", "ended after {hours} h without a message from you": "terminée après {hours} h sans message de ta part",
+  "ended: the conversation was cleared": "terminée : la conversation a été effacée", "ended: the bot is gone": "terminée : le bot n'existe plus",
   "My usual model is not answering ({detail}). I am finishing this on the backup model.": "Mon modèle habituel ne répond pas ({detail}). Je termine avec le modèle de secours.",
   "The server restarted while I was working. I am picking this back up.": "Le serveur a redémarré pendant que je travaillais. Je reprends là où j'en étais.",
   "You have used 80% of this month's budget.": "Tu as utilisé 80 % du budget de ce mois.",

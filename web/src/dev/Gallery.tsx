@@ -23,6 +23,7 @@ import { setLocale, useT } from "../i18n";
 import { applyTheme, useStore } from "../store";
 import type { Bot } from "../types";
 import { CardView } from "../components/Cards";
+import { ConversationGrantsBlock } from "../components/ConversationGrants";
 import { buildItems, RowItems } from "../components/Transcript";
 import { PauseAllNotice, PauseBanner } from "../components/Pause";
 import { TodayView } from "../components/TodayView";
@@ -54,7 +55,7 @@ import samplePage from "./sample-page.html?url";
 setPagePreviewSource(() => samplePage);
 import "./gallery.css";
 
-const SECTIONS = ["all", "basics", "cards", "notices", "banners", "empty", "today", "command", "incidents", "recruit", "salons", "surveillance", "announcements", "skills", "skillscan", "pages", "landing", "download", "chat", "equipe"] as const;
+const SECTIONS = ["all", "basics", "cards", "notices", "banners", "empty", "today", "command", "incidents", "recruit", "salons", "surveillance", "announcements", "skills", "skillscan", "pages", "landing", "download", "chat", "equipe", "grants"] as const;
 type Section = (typeof SECTIONS)[number];
 
 interface GalleryState extends FakeApiState {
@@ -190,6 +191,7 @@ function Sections({ s }: { s: GalleryState }) {
       {show("incidents") && <Section id="incidents" title="Incidents" hint="Coordinateur d'échecs : la section « Incidents » de l'onglet Activité (interrupteur « Vide » : aucun incident), puis les cartes d'échec."><div className="gallery-page is-auto"><IncidentsSection bot={fakeBot(o)} /><div className="gallery-cards">{failureCardFixtures(o).map((c) => <figure key={c.failureId} className="gallery-figure"><figcaption><code>{c.cls} · {c.status}</code></figcaption><CardView card={c} botId={GALLERY_BOT_ID} seq={1} /></figure>)}</div></div></Section>}
       {show("recruit") && <Section id="recruit" title="Bot recruteur" hint="La carte où le bot principal propose un nouveau spécialiste : en attente (« Modifier » édite sur place), limites (offre, quota du jour), créé, refusé."><div className="gallery-cards recruit-gallery">{recruitCardFixtures(o).map((x) => <figure key={x.label} className="gallery-figure"><figcaption><code>recruit · {x.label}</code></figcaption><CardView card={x.card} botId={GALLERY_BOT_ID} seq={1} /></figure>)}</div></Section>}
       {show("salons") && <GalleryRooms o={o} />}
+      {show("grants") && <Section id="grants" title="Autoriser pour cette conversation" hint="Réglages → Autorisations : ce qui a été autorisé pour une conversation (« Vide » : aucune ; « Échecs » : « Retirer » échoue). En dessous, la carte qui le propose, puis une fois accordé."><div className="gallery-page is-auto"><ConversationGrantsBlock key={`${s.empty}:${s.lang}:${s.long}`} /></div><div className="gallery-cards">{cardFixtures(o).filter((c) => c.type === "approval" && c.card.type === "approval" && c.card.conversation).map((c) => <figure key={c.status} className="gallery-figure"><figcaption><code>approval · {c.status}</code></figcaption><CardView card={c.card} botId={GALLERY_BOT_ID} seq={1} /></figure>)}</div></Section>}
       {show("today") && <Section id="today" title="Aujourd'hui" hint="La vraie page, avec des données factices (interrupteur « Vide » pour la journée calme)."><div className="gallery-page"><TodayView /></div></Section>}
       {show("command") && <Section id="command" title="Centre de commandement" hint="La vraie page : toute l'équipe en direct, avec ses liens (« Vide » : équipe vide). Les connecteurs apparaissent à partir de 1100 px de large."><div className="gallery-page is-tall"><GalleryCommand o={o} empty={s.empty} /></div></Section>}
       {show("announcements") && <Announcements o={o} empty={s.empty} />}

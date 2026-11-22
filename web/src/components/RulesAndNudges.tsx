@@ -21,6 +21,7 @@ export function GrantLine({ grant }: { grant: Grant }) {
       {grant.by === "words" && grant.quote ? <span>{t("grant.words", { quote: grant.quote })}</span>
         : grant.by === "reviewer" ? <span>{t("grant.reviewer", { reason: grant.reason ?? "" })}{grant.quote ? ` · ${t("grant.words", { quote: grant.quote })}` : ""}</span>
         : grant.by === "approval" ? <span>{t("grant.approval")}</span>
+        : grant.by === "conversation" ? <span>{t("grant.conversation")}</span>
         : <span>{t("grant.retry")}</span>}
     </span>
   );
@@ -464,6 +465,13 @@ export function MemorySettingsSection() {
               <p className="muted small">{t("memset.autoHint")}</p>
             </div>
             <Toggle checked={s.autoCapture} label={t("memset.auto")} onChange={(on) => void save({ autoCapture: on })} />
+          </div>
+          <div className="action-row">
+            <div>
+              <p className="action-title">{t("memset.recall")}</p>
+              <p className="muted small">{t("memset.recallHint")}</p>
+            </div>
+            <Toggle checked={s.autoRecall} label={t("memset.recall")} onChange={(on) => void save({ autoRecall: on })} />
           </div>
 
           <h3 className="pane-heading">{t("memset.sensitive")}</h3>

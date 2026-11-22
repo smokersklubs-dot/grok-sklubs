@@ -132,6 +132,8 @@ test("setup: A owns one of everything, V is a viewer of A's workspace with bot1 
   ins("INSERT INTO user_providers (id, user_id, name, base_url, key_enc, models, preset, created_at, updated_at) VALUES ('up-alphaor', ?, 'ALPHASECRET OpenRouter', 'https://openrouter.ai/api/v1', ?, '[]', 'openrouter', ?, ?)", userA, seal("ALPHASECRET orkey"), t, t);
   ins("INSERT INTO shared_computers (id, user_id, name, created_at) VALUES ('a_shared', ?, 'ALPHASECRET shared', ?)", userA, t);
   ins("INSERT INTO policies (user_id, tool, mode) VALUES (?, 'web_fetch', 'ask')", userA);
+  // « Autoriser pour cette conversation » (agent/conversationgrants.ts): A's active grant, in bot1's current conversation.
+  ins("INSERT INTO conversation_grants (id, user_id, bot_id, generation, thread, tool, place, label, state, created_at, granted_at) VALUES ('a_convgrant', ?, ?, (SELECT generation FROM bots WHERE id = ?), 0, 'shell_run', 'shell_run', 'ALPHASECRET grant', 'active', ?, ?)", userA, ids.bot1, ids.bot1, t, t);
   // The instance's automatic backup (autobackup.ts), set by A, the owner: bucket keys sealed, owner-only routes.
   ins("INSERT INTO instance_backup (id, endpoint, region, bucket, access_key_enc, secret_key_enc, prefix, recipient, updated_at, updated_by) VALUES (1, 'https://s3.gra.io.cloud.ovh.net', 'gra', 'alphasecret-bucket', ?, ?, 'alphasecret/', 'age1zvkyg2lqzraa2lnjvqej32nkuu0ues2s82hzrye869xeexvn73equnujwj', ?, ?)", seal("ALPHASECRET-AK"), seal("ALPHASECRET-SK"), t, userA);
   // The workspace: V is a viewer, bot1 is shared with everyone of it, bot2 is not shared.
@@ -188,6 +190,8 @@ function resolve(routePath: string, param: string, bot: "bot1" | "bot2"): string
     "skills-library:id": "methode-de-travail",
     // « Coordinateur d'échecs » (agent/failures.ts): an incident of A's bot.
     "failures:failureId": ids[`failure_${b}`],
+    // « Autoriser pour cette conversation »: A's grant (revoking it is the owner's alone).
+    "conversation-grants:grantId": "a_convgrant",
   };
   if (param === "action" && prev2 === "reach") return "login";
   if (param === "rid" && prev2 === "resources") return "a_conn";
@@ -520,6 +524,7 @@ test("A's things are all still there (nothing B or V tried changed them)", async
   assert.equal(n("SELECT COUNT(*) AS n FROM native_clients WHERE user_id = ?", userA), 1);
   assert.equal(n("SELECT COUNT(*) AS n FROM policies WHERE user_id = ?", userA), 1);
   assert.equal(n("SELECT COUNT(*) AS n FROM shared_computers WHERE id = 'a_shared'"), 1);
+  assert.equal(n("SELECT COUNT(*) AS n FROM conversation_grants WHERE id = 'a_convgrant' AND state = 'active'"), 1, "B and V could not revoke A's conversation grant");
   assert.equal(q.get<{ name: string }>("SELECT name FROM workspaces WHERE id = ?", ids.ws)!.name, "ALPHASECRET Studio");
   assert.equal(q.get<{ bucket: string }>("SELECT bucket FROM instance_backup WHERE id = 1")?.bucket, "alphasecret-bucket");
   // Usage caps: A's cap and A's card are untouched.

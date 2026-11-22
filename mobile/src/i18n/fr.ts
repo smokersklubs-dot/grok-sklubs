@@ -136,6 +136,8 @@ export const fr = {
   "approval.expired": "Expiré — pas de réponse à temps",
   "approval.deny": "Refuser",
   "approval.alwaysBtn": "Toujours",
+  "approval.conversationBtn": "Autoriser pour cette conversation",
+  "approval.grantedConversation": "Autorisé pour cette conversation",
   "approval.allow": "Autoriser",
   "approval.quote": "Tes mots : « {quote} »",
   "approval.why": "Pourquoi il demande : {why}",

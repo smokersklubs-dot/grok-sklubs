@@ -35,7 +35,7 @@ Sklubot a été reconstruit **en salle blanche** : voir [docs/CLEANROOM.md](docs
 | **Artefacts web** | Créer un prototype privé dans le chat, le modifier, consulter ses versions et télécharger ses fichiers. [Guide des artefacts](docs/ARTEFACTS.md) |
 | **Méthodes de travail** | Claude Code, Codex et Grok disposent de 60 procédures françaises consultables par titre avec `guide_read` et d’un index de 169 ressources OpenDesign. [Manuel portable](server/templates/methodes/manuel.md) · [Répertoire OpenDesign](server/templates/methodes/opendesign.md) |
 | **Mise en ligne** | **Installation sur un VPS en une commande** (Docker, HTTPS automatique, mises à jour, sauvegarde) — voir [docs/INSTALLATION-VPS.md](docs/INSTALLATION-VPS.md) ; ou Coolify — voir [docs/DEPLOIEMENT.md](docs/DEPLOIEMENT.md) |
-| **Mémoire** | Souvenirs enregistrés par le bot, **apprentissage automatique** après les conversations (avec dédoublonnage), sélection des souvenirs pertinents à chaque tour, **résumé automatique** des longues conversations |
+| **Mémoire** | Souvenirs enregistrés par le bot, **apprentissage automatique** après les conversations (avec dédoublonnage), sélection des souvenirs pertinents à chaque tour, **recherche classée et rappel automatique par mots-clés** (sans modèle, [docs/MEMOIRE.md](docs/MEMOIRE.md)), **résumé automatique** des longues conversations |
 | **Compétences** | Procédures rédigées par toi, injectées dans le bot |
 | **Automatisation** | Routines créées en discutant : planifiées (cron + fuseau), ponctuelles, ou **déclenchées par webhook** ; points réguliers proactifs du bot principal |
 | **Équipe** | Messages entre bots, assistants temporaires en parallèle (4 max, compte rendu automatique), discussions de groupe avec @mentions |
@@ -205,6 +205,15 @@ Elle s'active dès qu'une clé `OPENAI_API_KEY` ou `XAI_API_KEY` est présente, 
 - Trois niveaux d'autonomie par bot : **prudent** (demande avant les commandes et les écritures dans les
   applications), **équilibré** (demande seulement avant les écritures dans les applications), **confiance**
   (ne demande jamais).
+- **Répondre à une demande d'un bot** : « Autoriser » (cette fois), « Toujours autoriser » (une règle, visible dans
+  Réglages → Autorisations) ou **« Autoriser pour cette conversation »**. Cette troisième réponse vaut pour ce bot,
+  cette action au même endroit (la même application, le même site…) et cette conversation seulement. Elle
+  s'arrête toute seule : quand tu effaces la conversation, après 12 h sans message de ta part, ou quand tu la
+  retires (Réglages → Autorisations → « Pour une conversation »). Elle ne sert jamais à une routine, à un autre
+  bot ni à un autre compte, et seul ton clic la crée : un bot ne peut ni la demander ni la prolonger. Un
+  paiement, un achat, une suppression, un envoi ou une publication te sont **toujours** demandés, même avec elle ;
+  après du contenu extérieur, elle ne vaut que pour le destinataire que tu avais sous les yeux. Chaque action
+  faite grâce à elle est notée dans le journal (« pour cette conversation », avec son numéro).
 - Les jetons des connecteurs sont chiffrés dans la base et ne sont jamais renvoyés au navigateur ni au modèle.
 - Les mots de passe sont hachés (scrypt) ; seules les empreintes des sessions sont stockées.
 - Mets `PUBLIC_URL` en `https://…` si tu exposes le serveur, et place-le derrière un proxy TLS.

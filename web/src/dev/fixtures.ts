@@ -2,7 +2,7 @@
  * Fake data for the dev gallery (web/src/dev/Gallery.tsx). Never shipped: the gallery is only loaded in development.
  * Every text comes in French and English (`L`), and `long` swaps in very long texts to check wrapping on a phone.
  */
-import type { AnnouncementAdminItem, AnnouncementsAdmin, AnnouncementsState, AnnouncementView, Bot, Card, Row, SentinelIncidentView, SentinelOverview, TodayReport } from "../types";
+import type { AnnouncementAdminItem, AnnouncementsAdmin, AnnouncementsState, AnnouncementView, Bot, Card, ConversationGrantInfo, Row, SentinelIncidentView, SentinelOverview, TodayReport } from "../types";
 import { DEFAULT_MINUTES } from "../types";
 import { failureCardFixtures, failureSummaryFixture } from "./incidentsFixtures";
 
@@ -36,6 +36,17 @@ type StatusOf<C> = C extends { status: infer S } ? S : C extends { state: infer 
 /** One card in one status: what the gallery lists under "Cartes". */
 export interface CardFixture { type: Card["type"]; status: string; card: Card }
 
+/** Settings → Permissions: what the owner allowed "for this conversation" (ConversationGrants.tsx). */
+export function conversationGrantFixtures(o: FixtureOptions): ConversationGrantInfo[] {
+  const { L, LONG } = texts(o);
+  const H = 3_600_000;
+  return [
+    { id: "cgr_gallery1", botId: GALLERY_BOT_ID, botName: "Juno", thread: 0, label: LONG("CRM: create contact"), place: "CRM: create_contact", grantedAt: Date.now() - 40 * 60_000, uses: 6, lastUsedAt: Date.now() - 5 * 60_000, expiresAt: Date.now() + 11.5 * H },
+    { id: "cgr_gallery2", botId: GALLERY_BOT_ID, botName: "Max", thread: 12, label: L("Cliquer", "Clicking"), place: "click: compta.example.com", grantedAt: Date.now() - 11.4 * H, uses: 1, lastUsedAt: Date.now() - 11 * H, expiresAt: Date.now() + 0.6 * H },
+    { id: "cgr_gallery3", botId: GALLERY_BOT_ID, botName: "Nora", thread: 0, label: L("Lancer une commande", "Running a command"), place: "shell_run", grantedAt: Date.now() - 2 * H, uses: 0, lastUsedAt: null, expiresAt: Date.now() + 10 * H },
+  ];
+}
+
 export function cardFixtures(o: FixtureOptions): CardFixture[] {
   const { L, LONG } = texts(o);
   const list: CardFixture[] = [];
@@ -56,6 +67,13 @@ export function cardFixtures(o: FixtureOptions): CardFixture[] {
   add("approval", ["pending"], (status) => ({
     type: "approval", approvalId: "ap_reversible", status, title: L("Créer le dossier « Clients 2027 »", "Create the “Clients 2027” folder"),
     detail: "", tool: "drive_create_folder", source: "Google Drive",
+  }));
+  // « Autoriser pour cette conversation »: the card that offers it (three answers), and once answered that way.
+  add("approval", ["pending", "allowed"], (status) => ({
+    type: "approval", approvalId: `ap_conversation_${status}`, status, title: LONG(L("Autoriser Juno à utiliser CRM : create contact ?", "Allow Juno to use CRM: create contact?")),
+    detail: L("name: Paul Martin\ncompany: Atelier Martin", "name: Paul Martin\ncompany: Atelier Martin"), tool: "CRM: create_contact", source: "CRM",
+    why: L("Le bot n'a cité aucun de tes mots pour cette action.", "The bot did not cite any words of yours for this action."),
+    conversation: true, ...(status === "allowed" ? { grantedFor: "conversation" as const, outcome: "done" as const } : {}),
   }));
   add("question", ["pending", "answered", "dismissed"], (status) => ({
     type: "question", status, question: LONG(L("Quel format préfères-tu pour le rapport ?", "Which format do you prefer for the report?")),

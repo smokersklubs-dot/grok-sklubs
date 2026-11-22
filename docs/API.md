@@ -52,7 +52,7 @@ Authentication is an HTTP-only session cookie; every route except the auth route
 | POST | `/bots/:id/messages` | `{ text, origin?: "voice", attachments?: string[] }` | `{ row }` — `attachments` are `path` values returned by uploads; `text` may be empty when there is at least one |
 | POST | `/bots/:id/stop` | – | `{ ok }` |
 | POST | `/bots/:id/reset` | – | `{ generation }` |
-| POST | `/approvals/:approvalId` | `{ decision: "allow" \| "always" \| "deny" }` | `{ ok }` |
+| POST | `/approvals/:approvalId` | `{ decision: "allow" \| "always" \| "conversation" \| "deny" }` — `"conversation"`: yes for this action, and a grant for the rest of the conversation when the card offered it (`conversation: true`), else it counts as `"allow"` | `{ ok }` |
 | POST | `/bots/:id/cards/:seq/answer` | `{ answer }` | `{ ok }` |
 | POST | `/bots/:id/cards/:seq/dismiss` | – | `{ ok }` |
 
@@ -108,6 +108,8 @@ Authentication is an HTTP-only session cookie; every route except the auth route
 | DELETE | `/vault/:id` | – | `{ ok }` |
 | GET | `/policies` | – | `{ policies: Policy[] }` |
 | DELETE | `/policies/:tool` | – | `{ ok }` |
+| GET | `/conversation-grants` | – | `{ grants: ConversationGrantInfo[] }` — what the owner allowed "for this conversation" and still holds |
+| DELETE | `/conversation-grants/:grantId` | – | `{ ok }` — ends it now; 404 for another account's grant |
 
 **OAuth sign-in for connectors** follows the MCP authorization spec through the SDK's `auth()`: protected-resource
 metadata (RFC 9728) and authorization-server metadata discovery, PKCE (S256), dynamic client registration (RFC 7591)
@@ -614,8 +616,11 @@ Tool `task_start { title, goal }` (also `task_list`, `task_stop`): a hidden help
 | PATCH | `/memories/:id` | `{ status }` | `{ memory }` |
 | GET | `/bots/:id/memories/export?format=md\|json` | – | a download |
 | POST | `/bots/:id/memories/import` | `{ text }` → preview; `{ text, commit: true, chosen?: string[], allowSensitive? }` | `{ candidates: { text, skip: duplicate\|secret\|sensitive\|null, category }[] }` / `{ imported, skipped }` |
-| GET / PUT | `/memory-settings` | `{ autoCapture?, allowSensitive?: { <category>: bool }, style?: { enabled?, clear? } }` | `{ settings: MemorySettings }` — emits `{ type: "memorySettings" }` |
+| GET / PUT | `/memory-settings` | `{ autoCapture?, autoRecall?, allowSensitive?: { <category>: bool }, style?: { enabled?, clear? } }` | `{ settings: MemorySettings }` — emits `{ type: "memorySettings" }` |
 | POST | `/memory-settings/style/learn` | – | `{ settings, source: "mail" \| "chat", samples }` — writing style from the user's sent mail (Gmail `in:sent`, Outlook `sentitems`; quoted replies and signatures stripped), else from their chat messages; no quotes, names or facts; replaced each time; injected into prompts when enabled |
+
+#### Ranked recall (`server/src/agent/recall.ts`, docs/MEMOIRE.md)
+`memory_search` ranks a bot's own non-archived notes by keywords (BM25, French + English tokeniser, then recency and confidence); each line reads `- [(confirmed) |(uncertain — …) ]text (date; matched: words)`. Before each turn, `recallForTurn` adds to the "What you remember" section of the prompt the notes that match the user's newest typed message and did not fit there (at most `RECALL_TOP_K` = 4, relevance ≥ `RECALL_MIN_RELEVANCE` = 0.3, `RECALL_CHAR_BUDGET` = 600 characters), with no model call. Off when `MemorySettings.autoRecall` is false (default true) or the bot's `memory` tool group is disabled; sensitive notes of a category not allowed and secret-looking notes are never recalled. One `system` activity-log line per message lists the recalled notes. Keyword-based: no synonyms.
 
 ### Private verification codes and masked access emails (`server/src/native/access.ts`)
 - Mail reads (`mail_search`, `mail_read`, `mail_thread`, and the email trigger's snippet) replace the body of an email that grants account access (one-time codes, magic links, password resets, temporary passwords, backup codes, API keys) by `[contenu masqué : accès à un compte]` / `[content hidden: account access]`; the subject stays.

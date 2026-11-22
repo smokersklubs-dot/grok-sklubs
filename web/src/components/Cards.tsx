@@ -32,7 +32,7 @@ function Approval({ card, botId }: { card: ApprovalCard; botId: string }) {
   const canDecide = !access || access.canApprove;
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const decide = async (decision: "allow" | "always" | "deny") => {
+  const decide = async (decision: "allow" | "always" | "conversation" | "deny") => {
     setBusy(decision);
     setError(null);
     try {
@@ -48,6 +48,8 @@ function Approval({ card, botId }: { card: ApprovalCard; botId: string }) {
   const vault = card.source === "Vault";
   // The user's own computer (Sklubot Relais): tool "mycomputer: control|command|url: <bot>".
   const relay = card.tool.startsWith("mycomputer:");
+  // « Autoriser pour cette conversation » (server agent/conversationgrants.ts): offered by the server, to the owner only.
+  const scoped = !!card.conversation && !card.once && !access;
   return (
     <div className="card">
       <div className="card-head">
@@ -90,7 +92,7 @@ function Approval({ card, botId }: { card: ApprovalCard; botId: string }) {
               {t(busy === "deny" ? "approval.denying" : "approval.deny")}
             </button>
             <span className="spacer" />
-            {!card.once && !access && (
+            {!card.once && !access && !scoped && (
               <button type="button" className="btn" disabled={busy !== null} onClick={() => void decide("always")} title={t("approval.alwaysTitle")}>
                 {t(busy === "always" ? "common.saving" : "approval.alwaysBtn")}
               </button>
@@ -99,12 +101,23 @@ function Approval({ card, botId }: { card: ApprovalCard; botId: string }) {
               {t(busy === "allow" ? "approval.allowing" : "approval.allow")}
             </button>
           </div>
+          {scoped && (
+            // Three ways to say yes: the two that spare the next card sit on their own line, under "once".
+            <div className="card-actions is-more">
+              <button type="button" className="btn btn-small" disabled={busy !== null} onClick={() => void decide("conversation")} title={t("approval.conversationTitle")}>
+                {t(busy === "conversation" ? "approval.allowing" : "approval.conversationBtn")}
+              </button>
+              <button type="button" className="btn btn-small" disabled={busy !== null} onClick={() => void decide("always")} title={t("approval.alwaysTitle")}>
+                {t(busy === "always" ? "common.saving" : "approval.alwaysBtn")}
+              </button>
+            </div>
+          )}
           {error && <p className="card-error" role="alert">{error}</p>}
         </>
       ) : (
         <p className={`card-outcome is-${card.status}`}>
           <Icon name={card.status === "allowed" || card.status === "always" ? "check" : card.status === "denied" ? "close" : "clock"} size={14} />
-          {t(`approval.${card.status}`)}
+          {t(card.status === "allowed" && card.grantedFor === "conversation" ? "approval.grantedConversation" : `approval.${card.status}`)}
           {card.outcome && (card.status === "allowed" || card.status === "always") && <span className={`approval-outcome is-${card.outcome}`}> · {t(`approval.outcome.${card.outcome}`)}</span>}
         </p>
       )}

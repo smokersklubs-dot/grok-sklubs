@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { q } from "./db.js";
+import { q } from "./db.js"; import { isAssumed } from "./policyassume.js";
 import { pauses } from "./pauses.js";
 import { emit } from "./bus.js";
 import { tr } from "./i18n.js";
@@ -650,7 +650,8 @@ export const approvals = {
 
 export const policies = {
   list: (userId: string) => q.all<Policy>("SELECT tool, mode FROM policies WHERE user_id = ? ORDER BY tool", userId),
-  get: (userId: string, tool: string) => q.get<{ mode: Policy["mode"] }>("SELECT mode FROM policies WHERE user_id = ? AND tool = ?", userId, tool)?.mode ?? null,
+  /** Inside a conversation grant's probe (policyassume.ts), a key the user has not decided reads as "always allow". */
+  get: (userId: string, tool: string) => q.get<{ mode: Policy["mode"] }>("SELECT mode FROM policies WHERE user_id = ? AND tool = ?", userId, tool)?.mode ?? (isAssumed(userId, tool) ? "always_allow" as const : null),
   set: (userId: string, tool: string, mode: Policy["mode"]) =>
     q.run("INSERT INTO policies (user_id, tool, mode) VALUES (?, ?, ?) ON CONFLICT(user_id, tool) DO UPDATE SET mode = excluded.mode", userId, tool, mode),
   remove: (userId: string, tool: string) => q.run("DELETE FROM policies WHERE user_id = ? AND tool = ?", userId, tool),
@@ -708,6 +709,7 @@ export const settings = {
     const st = (raw.style && typeof raw.style === "object" ? raw.style : {}) as Record<string, unknown>;
     return {
       autoCapture: raw.autoCapture !== false,
+      autoRecall: raw.autoRecall !== false,
       allowSensitive: Object.fromEntries(SENSITIVE_CATEGORIES.map((c) => [c, allow[c] === true])) as Record<SensitiveCategory, boolean>,
       style: {
         enabled: st.enabled === true, profile: typeof st.profile === "string" ? st.profile.slice(0, 3000) : "",
@@ -716,10 +718,11 @@ export const settings = {
       },
     };
   },
-  saveMemory(userId: string, f: { autoCapture?: boolean; allowSensitive?: Partial<Record<SensitiveCategory, boolean>>; style?: Partial<MemorySettings["style"]> }): MemorySettings {
+  saveMemory(userId: string, f: { autoCapture?: boolean; autoRecall?: boolean; allowSensitive?: Partial<Record<SensitiveCategory, boolean>>; style?: Partial<MemorySettings["style"]> }): MemorySettings {
     const cur = settings.memory(userId);
     const next: MemorySettings = {
       autoCapture: typeof f.autoCapture === "boolean" ? f.autoCapture : cur.autoCapture,
+      autoRecall: typeof f.autoRecall === "boolean" ? f.autoRecall : cur.autoRecall,
       allowSensitive: { ...cur.allowSensitive, ...Object.fromEntries(Object.entries(f.allowSensitive ?? {}).filter(([k, v]) => (SENSITIVE_CATEGORIES as readonly string[]).includes(k) && typeof v === "boolean")) },
       style: { ...cur.style, ...(f.style ?? {}) },
     };

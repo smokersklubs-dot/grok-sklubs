@@ -6,7 +6,7 @@ const enc = encodeURIComponent;
 export interface Req { path: string; body?: Record<string, unknown> }
 
 export const cardReq = {
-  decide: (approvalId: string, decision: "allow" | "always" | "deny"): Req => ({ path: `/approvals/${enc(approvalId)}`, body: { decision } }),
+  decide: (approvalId: string, decision: "allow" | "always" | "conversation" | "deny"): Req => ({ path: `/approvals/${enc(approvalId)}`, body: { decision } }),
   answer: (botId: string, seq: number, answer: string): Req => ({ path: `/bots/${enc(botId)}/cards/${seq}/answer`, body: { answer } }),
   /** Skips a question, a "connect" card or a secret request (the server tells the bot it was not given). */
   dismiss: (botId: string, seq: number): Req => ({ path: `/bots/${enc(botId)}/cards/${seq}/dismiss` }),

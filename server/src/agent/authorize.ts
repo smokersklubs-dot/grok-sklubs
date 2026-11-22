@@ -1,11 +1,13 @@
 import { config } from "../config.js";
 import { tr } from "../i18n.js";
 import { defaultModelRef, resolveModel, type ToolUseBlock } from "../llm/index.js";
+import { probing } from "../policyassume.js";
 import { rules } from "../rules.js";
 import type { Grant } from "../shared.js";
 import { clip, policies, settings } from "../store.js";
 import { committingKind, seenTarget } from "./bind.js";
 import { capProblem } from "./payments.js";
+import { conversationGate } from "./conversationgrants.js";
 import { irreversibility } from "./irreversible.js";
 import { record } from "../usage.js";
 import { isEngineRef } from "./engine.js";
@@ -31,6 +33,8 @@ import { CARRIES_FURTHER, describeArgs, judge, type Turn, type Verdict } from ".
  *     content was read, and answers allow / ask / deny with a short reason. Unavailable or unclear: ask. "deny" is a card
  *     too (single use, saying why the reviewer objects): only the user's own "blocked" policy refuses without asking.
  *  7. rule_propose only proposes: its card is the confirmation, so it never needs the user's words to reach it.
+ *  8. A card that would offer "Always" may be covered by a grant the owner gave "for this conversation"
+ *     (conversationgrants.ts): never a floor, strict or irreversible card, and never more than "always" would allow.
  */
 
 /** Built-in tools whose effect lasts or reaches others, beyond those judge already treats as sensitive. */
@@ -73,8 +77,8 @@ export function actionName(turn: Pick<Turn, "remote">, name: string, input: Reco
   return turn.remote.get(name)?.remoteName ?? name;
 }
 
-/** `irreversible`: why the action cannot be undone (translated), when it cannot (irreversible.ts). */
-export type Ask = Extract<Verdict, { kind: "ask" }> & { why?: string; quote?: string; irreversible?: string };
+/** `irreversible`: why the action cannot be undone (translated), when it cannot (irreversible.ts). `conversation`: the card offers "for this conversation". */
+export type Ask = Extract<Verdict, { kind: "ask" }> & { why?: string; quote?: string; irreversible?: string; conversation?: boolean };
 export type Decision = { kind: "allow"; grant?: Grant } | { kind: "block"; reason?: string } | Ask;
 
 export interface ReviewAnswer { decision: "allow" | "ask" | "deny"; reason: string }
@@ -98,7 +102,8 @@ export async function authorize(turn: Turn, call: ToolUseBlock): Promise<Decisio
     return { ...base, once: true, fixed: true, irreversible: tr(loc, irr.reason), why: base.why ? `${why} ${base.why}` : why };
   }
   if (d.kind !== "ask") return d;
-  return irr ? { ...d, once: true, irreversible: tr(turn.user.locale, irr.reason) } : d;
+  if (irr) return { ...d, once: true, irreversible: tr(turn.user.locale, irr.reason) };
+  return conversationGate(turn, call, d, () => decide(turn, call));
 }
 
 async function decide(turn: Turn, call: ToolUseBlock): Promise<Decision> {
@@ -234,6 +239,8 @@ export function reviewerModel(userId: string, botModel: string): string | null {
  * Returns null when no reviewer is available or its answer is unusable (the caller then asks the user).
  */
 export async function review(turn: Turn, call: ToolUseBlock, g: Grounding, words: UserWords[]): Promise<ReviewAnswer | null> {
+  // A conversation grant's probe ("what would an 'always' rule do?") never spends a model call: it then just asks.
+  if (probing()) return null;
   const ref = reviewerModel(turn.user.id, turn.bot.model);
   if (!ref) return null;
   let resolved;

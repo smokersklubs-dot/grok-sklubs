@@ -138,6 +138,8 @@ export const en: Record<Key, string> = {
   "approval.expired": "Expired — no answer in time",
   "approval.deny": "Deny",
   "approval.alwaysBtn": "Always",
+  "approval.conversationBtn": "Allow for this conversation",
+  "approval.grantedConversation": "Allowed for this conversation",
   "approval.allow": "Allow",
   "approval.quote": "Your words: “{quote}”",
   "approval.why": "Why it asks: {why}",

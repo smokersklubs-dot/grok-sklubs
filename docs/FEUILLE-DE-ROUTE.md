@@ -60,7 +60,7 @@ vraiment, pas d'une liste théorique.
 | Centre de commande | **Partiel** | Briques : état live (`bus.ts`), tâches (`TasksView.tsx`), objectifs (`agent/goals.ts`, `routes.ts:735-742`), jobs (`jobs.ts`), consommation (`routes.ts:2045`), journal d'actions (`routes.ts:2149`), ordinateurs (`routes.ts:1266`, `computer.ts:69-81`). | Tout est éparpillé par bot ; pas de tableau unique ni d'actions groupées. |
 | Multi-ordinateurs (4 VPS) | **Manque** | Tout tourne sur un Docker unique (`DOCKER_HOST: tcp://docker-proxy:2375`). Les « ordinateurs de l'utilisateur » via Sklubot Relais (`relay.ts:17-26`) sont autre chose : le PC personnel d'un utilisateur, pas un nœud de calcul. | À construire (phase 2). Prévu après les ordinateurs partagés. |
 | Constructeur visuel de workflows | **Partiel** (moteur) / **Manque** (éditeur) | Déclencheurs : cron, une fois, webhook, surveillance, e-mail, Slack, agenda (`shared.ts:433`, `routes.ts:319`, `native/triggers.ts`). Validation humaine, reprise, essais avec repli (`agent/reliability.ts:8-38`), tâches de fond, objectifs à plusieurs tours, attente de la réponse d'un autre bot (`agent/team.ts:19-60`). | Pas de modèle « graphe d'étapes » ni d'éditeur ; les conditions et boucles sont aujourd'hui laissées au modèle. |
-| Mémoire partagée intelligente | **Partiel** | Mémoire par bot avec source, statut contesté/confirmé, extraction sourcée mot pour mot (`agent/memory.ts:117-196`, `db.ts:55`), import/export (`routes.ts:2316`). Compétences partageables entre les bots d'un compte (`store.ts:513-552`, colonne `shared`). Historique des changements de règles avec annulation (`db.ts:343`), révisions de bot (`db.ts:246`). | Recherche par mots-clés uniquement (`agent/tools.ts:899-907`), pas sémantique. Pas de mémoire « par projet » ni de permissions par espace d'équipe. |
+| Mémoire partagée intelligente | **Partiel** | Mémoire par bot avec source, statut contesté/confirmé, extraction sourcée mot pour mot (`agent/memory.ts:117-196`, `db.ts:55`), import/export (`routes.ts:2316`). Compétences partageables entre les bots d'un compte (`store.ts:513-552`, colonne `shared`). Historique des changements de règles avec annulation (`db.ts:343`), révisions de bot (`db.ts:246`). | Recherche par mots-clés uniquement, pas sémantique : depuis le 22/11, classée (BM25 français + anglais, fraîcheur, confiance) et rappel automatique avant chaque tour (`agent/recall.ts`, `docs/MEMOIRE.md`) ; les synonymes sans mot commun ne sont pas trouvés. Pas de mémoire « par projet » ni de permissions par espace d'équipe. |
 | Labo de test IA | **Manque** | Une seule évaluation manuelle (`docs/EVAL-PEPITES.md`). Liste ordonnée de modèles de secours (`agent/reliability.ts:13-16`). | Pas de banc de comparaison ni de choix automatique. |
 
 ### 1.4 Modules pro
@@ -469,7 +469,8 @@ Prérequis : SK-P0-01, -03, -04, -06, -09, -10, SK-P1-01, SK-P1-05.
 
 #### SK-P1-11 · Mémoire de projet avec permissions et recherche plein texte
 - **Pourquoi** : plusieurs bots et personnes d'une équipe doivent partager des connaissances, sans tout partager.
-- **État** : mémoire par bot (`db.ts:55`) avec source et statut ; recherche par mots (`agent/tools.ts:899-907`).
+- **État** : mémoire par bot (`db.ts:55`) avec source et statut ; recherche par mots-clés classée et rappel automatique
+  avant chaque tour (`agent/recall.ts`, 22/11 — voir `docs/MEMOIRE.md`) ; pas de recherche par le sens.
 - **Modifications** : table `memory_spaces` (portée : bot, compte, espace d'équipe, projet) + droits par rôle
   (lecture / écriture / validation) ; `memories.space_id`, `source_url`, `decided_by`, historique des versions ;
   index **FTS5** SQLite (sans dépendance) ; outils `memory_search` étendus à la portée ; page d'édition dans

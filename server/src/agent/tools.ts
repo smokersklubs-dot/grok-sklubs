@@ -68,6 +68,7 @@ import { JobLimitError, jobLine, jobOutput, jobs, runCommand, stopJob } from "..
 import { officeAvailable, officeTools } from "../office.js";
 import { mediaAvailable, mediaTools } from "../media.js";
 import { goalTools } from "./goals.js";
+import { searchNotes } from "./recall.js";
 import { recruitTools } from "./recruit.js";
 import { teamMdTools } from "./teamexport.js";
 import { botPath, spillPath, spillPreview } from "./context.js";
@@ -872,14 +873,13 @@ const memoryTools: BuiltinTool[] = [
       return { content: "Remembered.", summary: clip(text, 80) };
     },
   }),
-  tool("memory_search", "Search everything you have remembered. Returns the most recent matches.", obj({ query: str("Words to look for") }, ["query"]), {
+  tool("memory_search", "Search everything you have remembered, by keywords (French or English; no synonyms). Returns the best matches first.", obj({ query: str("Words to look for") }, ["query"]), {
     activity: "remembering", label: "Checking notes",
     run: async (a, c) => {
-      const terms = String(a.query).toLowerCase().split(/\s+/).filter((w) => w.length > 2);
-      const all = memories.list(c.bot.id, 2000);
-      const hits = (terms.length ? all.filter((m) => terms.some((t) => m.text.toLowerCase().includes(t))) : all).slice(0, 20);
-      if (terms.length) memories.touch(hits.map((m) => m.id));
-      return { content: hits.length ? hits.map((m) => `- ${m.text} (${new Date(m.createdAt).toISOString().slice(0, 10)})`).join("\n") : "No matching memories.", summary: `${hits.length} found` };
+      // Ranked by keywords, recency and confidence (recall.ts); archived notes are never returned.
+      const found = searchNotes(c.bot.id, String(a.query ?? ""));
+      memories.touch(found.ids);
+      return { content: found.content || "No matching memories.", summary: `${found.count} found` };
     },
   }),
 ];

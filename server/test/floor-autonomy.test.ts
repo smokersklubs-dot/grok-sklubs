@@ -189,6 +189,36 @@ test("API path: every floor class asks, at every autonomy level, with or without
   assert.deepEqual(ran, [], "every floor action must ask, and never offer \"Always\"");
 });
 
+test("API path: a grant « pour cette conversation » never lifts the floor (agent/conversationgrants.ts)", async () => {
+  const { q } = await import("../src/db.js");
+  const ran: string[] = [];
+  for (const autonomy of AUTONOMY) {
+    const turn = await apiTurn(autonomy);
+    turn.origin = "user"; // the owner's own turn: the only kind a conversation grant ever applies to
+    for (const c of FLOOR) {
+      // The card of a floor action never offers it…
+      turn.tainted = !!c.tainted;
+      const offered = await authorize(turn, use(c));
+      if (offered.kind !== "ask" || offered.conversation) ran.push(`${c.label} · ${autonomy}: ${offered.kind === "ask" ? "offers « pour cette conversation »" : offered.kind}`);
+      // …and even an active grant for that very tool, place and exact action (which only a forged row can be) is ignored.
+      const id = `cgr_floor_${autonomy}_${c.name}_${FLOOR.indexOf(c)}`;
+      q.run("INSERT INTO conversation_grants (id, user_id, bot_id, generation, thread, tool, place, label, targets, hashes, state, created_at, granted_at) VALUES (?, ?, ?, ?, 0, ?, ?, 'forged', ?, ?, 'active', ?, ?)",
+        id, userId, turn.bot.id, turn.generation, c.name, c.policy, JSON.stringify(["pirate@ailleurs.example"]), JSON.stringify([actionHash(c.name, c.input)]), Date.now(), Date.now());
+      for (const always of [false, true]) for (const tainted of c.tainted ? [true] : [false, true]) {
+        if (always) policies.set(userId, c.policy, "always_allow"); else policies.remove(userId, c.policy);
+        turn.tainted = tainted;
+        const d = await authorize(turn, use(c));
+        const where = `${c.label} · ${autonomy} · ${always ? "always_allow" : "no policy"} · ${tainted ? "tainted" : "clean"} · conversation grant`;
+        if (d.kind !== "ask") ran.push(`${where}: ${d.kind}`);
+        else if (d.once !== true || d.conversation) ran.push(`${where}: offers more than once`);
+      }
+      policies.remove(userId, c.policy);
+      q.run("DELETE FROM conversation_grants WHERE id = ?", id);
+    }
+  }
+  assert.deepEqual(ran, [], "every floor action must ask, whatever grant exists for the conversation");
+});
+
 test("API path: a user's \"blocked\" still refuses; nothing is added to read-only or ordinary actions", async () => {
   const turn = await apiTurn("trusted");
   policies.set(userId, "Stripe: create_charge", "blocked");

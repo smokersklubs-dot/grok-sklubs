@@ -552,6 +552,14 @@ a.btn { text-decoration: none; }
 .chip.journal-decision.is-reviewer { background: var(--info-soft); color: var(--info); }
 .chip.journal-decision.is-approval, .chip.journal-decision.is-retry { background: var(--warn-soft); color: var(--warn); }
 .chip.journal-decision.is-denied { background: var(--danger-soft); color: var(--danger); }
+.chip.journal-decision.is-conversation, .chip.state-conversation { background: var(--info-soft); color: var(--info); }
+/* Settings → Permissions: what was allowed "for this conversation" (ConversationGrants.tsx). */
+.conv-grants { margin-top: 26px; }
+.conv-grants h3 { margin: 0 0 4px; font-size: 15px; }
+.conv-grants > .list { margin-top: 10px; }
+.conv-grants-none { margin: 8px 0 0; font-size: 13px; color: var(--text-2); }
+.conv-grant-row { flex-wrap: wrap; }
+.conv-grant-row .list-row-text { flex-basis: 220px; }
 @media (max-width: 760px) { .journal-row { grid-template-columns: 1fr 1fr; } .journal-row.is-head { display: none; } }
 .routine-extras { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 2px 0 6px; }
 .routine-rules { width: 100%; }

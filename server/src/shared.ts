@@ -67,7 +67,7 @@ export const AUTONOMIES = ["careful", "balanced", "trusted", "auto"] as const;
  * ("auto" mode); "approval" — the user said yes on a card; "retry" — the user asked to retry an action whose outcome
  * was uncertain. `quote`: the user's exact words; `reason`: the reviewer's or the server's short reason.
  */
-export interface Grant { by: "words" | "reviewer" | "approval" | "retry"; quote?: string; reason?: string }
+export interface Grant { by: "words" | "reviewer" | "approval" | "retry" | "conversation"; quote?: string; reason?: string; /** "conversation": the grant the owner gave for this conversation (agent/conversationgrants.ts). */ grantId?: string }
 
 /**
  * A rule in the user's own words ("ne jamais envoyer d'e-mail à un client sans me demander"). `botId` null: every bot.
@@ -92,6 +92,8 @@ export type SensitiveCategory = (typeof SENSITIVE_CATEGORIES)[number];
  */
 export interface MemorySettings {
   autoCapture: boolean;
+  /** Automatic recall (agent/recall.ts): before each turn, the notes that match the user's new message are added to the prompt. */
+  autoRecall: boolean;
   allowSensitive: Record<SensitiveCategory, boolean>;
   style: { enabled: boolean; profile: string; updatedAt: number | null; source: "mail" | "chat" | null; samples: number };
 }
@@ -131,7 +133,7 @@ export interface ApiConnector { id: string; name: string; baseUrl: string; host:
  */
 export interface JournalEntry {
   id: number; at: number; botId: string; botName: string; tool: string; label: string;
-  decision: "words" | "reviewer" | "approval" | "retry" | "policy" | "free" | "denied";
+  decision: "words" | "reviewer" | "approval" | "retry" | "conversation" | "policy" | "free" | "denied";
   quote: string; reason: string; status: "done" | "failed" | "uncertain" | "denied"; costUsd: number; origin: string;
 }
 
@@ -361,7 +363,7 @@ export type Card =
    * form confirmed…), as the server decided from the tool and its arguments (agent/irreversible.ts); `irreversibleReason`
    * says why, in the user's language. Such a card is always `once`: "Always" is never offered for it.
    */
-  | { type: "approval"; approvalId: string; title: string; detail: string; tool: string; source: string; status: "pending" | "allowed" | "always" | "denied" | "expired"; once?: boolean; why?: string; quote?: string; outcome?: "done" | "failed" | "uncertain"; irreversible?: boolean; irreversibleReason?: string }
+  | { type: "approval"; approvalId: string; title: string; detail: string; tool: string; source: string; status: "pending" | "allowed" | "always" | "denied" | "expired"; once?: boolean; why?: string; quote?: string; outcome?: "done" | "failed" | "uncertain"; irreversible?: boolean; irreversibleReason?: string; /** The card offers "for this conversation"; `grantedFor`: it was answered that way (agent/conversationgrants.ts). */ conversation?: boolean; grantedFor?: "conversation" }
   /**
    * An action whose outcome is unknown (the server stopped, or the call timed out, while it ran). It is never replayed on
    * its own: the user says it went through, asks the bot to check, or retries it once.

@@ -48,6 +48,9 @@ const PAGES = [
   "section=equipe&view=update&theme=dark&lang=en",
   "section=equipe&view=share",
   "section=equipe&view=choose",
+  "section=grants&long=1",
+  "section=grants&theme=dark&lang=en",
+  "section=grants&empty=1",
 ];
 const SCROLLERS = "pre, .md-table, .card-detail, .segmented, .tabs, .gallery-bar, .cmd-states";
 

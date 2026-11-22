@@ -7,6 +7,7 @@ import { rules } from "../rules.js";
 import { guideIndex } from "./guides.js";
 import { apiConnectors } from "../apiconnectors.js";
 import { libraryLines } from "./recruit.js";
+import { recallForTurn, recallLines } from "./recall.js";
 
 const words = (s: string) => new Set(s.toLowerCase().match(/[\p{L}\p{N}]{3,}/gu) ?? []);
 
@@ -14,10 +15,10 @@ const words = (s: string) => new Set(s.toLowerCase().match(/[\p{L}\p{N}]{3,}/gu)
  * Picks the memories worth showing this turn: ones that share words with what the user just said
  * rank first, newer ones break ties, and the whole selection stays inside a fixed character budget.
  */
-export function pickMemories(bot: BotRecord): { lines: string[]; omitted: number } {
+export function pickMemories(bot: BotRecord): { lines: string[]; omitted: number; shown: Set<string>; full: boolean } {
   // Archived notes are never used; contested ones are, with caution (marked as such).
   const all = memories.usable(bot.id, 500);
-  if (!all.length) return { lines: [], omitted: 0 };
+  if (!all.length) return { lines: [], omitted: 0, shown: new Set(), full: false };
   const recentUser = rows.recentMessages(bot.id, bot.generation, 12)
     .filter((r) => r.body.kind === "message" && r.body.role === "user").slice(-3)
     .map((r) => (r.body.kind === "message" ? r.body.text : "")).join(" ");
@@ -41,7 +42,7 @@ export function pickMemories(bot: BotRecord): { lines: string[]; omitted: number
   }
   memories.touch(scored.filter((x) => x.overlap > 0 && chosen.includes(x.m)).map((x) => x.m.id));
   chosen.sort((a, b) => a.createdAt - b.createdAt);
-  return { lines: chosen.map((m) => `- ${m.status === "contested" ? "(uncertain — check before relying on it) " : m.confidence === "confirmed" ? "(confirmed) " : ""}${m.text}`), omitted: all.length - chosen.length };
+  return { lines: chosen.map((m) => `- ${m.status === "contested" ? "(uncertain — check before relying on it) " : m.confidence === "confirmed" ? "(confirmed) " : ""}${m.text}`), omitted: all.length - chosen.length, shown: new Set(chosen.map((m) => m.id)), full: all.length >= 500 };
 }
 
 export interface PromptExtras { connectorNames: string[]; /** Signed-in built-in app accounts ("Gmail — perso (lea@…)") and those waiting for a new sign-in. */ nativeAccounts?: string[]; nativeNeedsSignIn?: string[]; browser: boolean; shell: boolean; linux?: boolean; images?: boolean; engine?: "claude-code" | "codex"; video?: "connector" | "api" | null; /** Name of the user's Higgsfield app, when videos go through it. */ higgsfield?: string }
@@ -215,8 +216,12 @@ export function buildSystemPrompt(bot: BotRecord, user: UserRecord, extras: Prom
     out.push(`## How ${user.name} writes\nWhen you draft a message, an email or a post that ${user.name} will send as their own, write it in their style:\n${style.profile}`);
 
   const mem = pickMemories(bot);
-  if (mem.lines.length)
-    out.push(["## What you remember", ...mem.lines, mem.omitted ? `(${mem.omitted} older memories are not shown; memory_search can find them.)` : ""].filter(Boolean).join("\n"));
+  // Automatic recall (recall.ts): when some notes did not fit above, the few that best match the user's new message are
+  // added, by keyword and without any model call. Nothing to do (and no cost) when every note is already shown.
+  const recalled = mem.omitted || mem.full ? recallForTurn(bot, { exclude: mem.shown }).notes : [];
+  const hidden = Math.max(0, mem.omitted - recalled.length);
+  if (mem.lines.length || recalled.length)
+    out.push(["## What you remember", ...mem.lines, ...recallLines(recalled), hidden ? `(${hidden} older memories are not shown; memory_search can find them.)` : ""].filter(Boolean).join("\n"));
 
   const sk = skills.usable(bot.id);
   // A skill learned from a turn that read outside content is never inlined: it is listed, read on demand, as outside content.

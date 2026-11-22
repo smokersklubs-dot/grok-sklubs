@@ -8,7 +8,7 @@ import { Hono, type Context } from "hono";
 import { deleteCookie, getCookie } from "hono/cookie";
 import { streamSSE } from "hono/streaming";
 import { registerNoticeRoutes } from "./agent/noticeroutes.js"; import { registerRoomRoutingRoutes, roomReaction } from "./agent/roomroutes.js";
-import { registerFailureRoutes } from "./agent/failureroutes.js";
+import { registerFailureRoutes } from "./agent/failureroutes.js"; import { decideForConversation, registerConversationGrantRoutes } from "./agent/conversationgrantroutes.js";
 import { registerRecruitRoutes } from "./agent/recruit.js"; import { registerTeamMdRoutes } from "./teammdroutes.js";
 import { registerCommandRoutes } from "./command.js";
 import { continueAfterStepLimit, decideApproval, enqueue, inQueue, interrupt, noteHandBack, submitUserMessage, type ForcedSkill } from "./agent/loop.js";
@@ -957,18 +957,18 @@ api.post("/bots/:id/reset", (c) => {
 
 api.post("/approvals/:approvalId", async (c) => {
   const decision = (await body(c)).decision;
-  if (!["allow", "always", "deny"].includes(decision)) fail(400, "Unknown decision.");
+  if (!["allow", "always", "conversation", "deny"].includes(decision)) fail(400, "Unknown decision."); // "conversation": agent/conversationgrants.ts
   const user = c.get("user");
   const approval = approvals.byId(c.req.param("approvalId"));
   // Wave 6: an admin of the workspace answers for the owner of a shared bot, when the bot's rule allows it.
   if (approval && approval.userId !== user.id) {
     const a = botAccess(user.id, approval.botId);
     if (!a || !a.canApprove) fail(404, "That request no longer exists.");
-    if (!decideApproval(approval.userId, approval.id, decision, { id: user.id, name: user.name })) fail(404, "That request no longer exists.");
+    if (!decideApproval(approval.userId, approval.id, decision === "conversation" ? "allow" : decision, { id: user.id, name: user.name })) fail(404, "That request no longer exists.");
     wsAudit(a!.share!.workspaceId, user.id, "approval", `${a!.bot.name}: ${approval.tool} — ${decision === "deny" ? "refused" : "allowed once"}`);
     return c.json({ ok: true });
   }
-  if (!decideApproval(user.id, c.req.param("approvalId"), decision)) fail(404, "That request no longer exists.");
+  if (!(decision === "conversation" ? decideForConversation(user.id, c.req.param("approvalId")) : decideApproval(user.id, c.req.param("approvalId"), decision))) fail(404, "That request no longer exists.");
   return c.json({ ok: true });
 });
 
@@ -1306,7 +1306,7 @@ registerSentinelRoutes(api);
 // « Annonces » (announcements.ts): readers' feed, and the owner/operators' page to write them.
 registerAnnouncementRoutes(api);
 registerNoticeRoutes(api); registerRoomRoutingRoutes(api); // « Qui répond » in group chats (agent/roomrouting.ts)
-registerFailureRoutes(api); // « Coordinateur d'échecs » (agent/failures.ts)
+registerFailureRoutes(api); registerConversationGrantRoutes(api); // « Coordinateur d'échecs » (agent/failures.ts) ; « Autoriser pour cette conversation »
 registerRecruitRoutes(api); // « Bot recruteur »: « Créer » / « Non merci » on a proposed teammate
 registerTeamMdRoutes(api); // « Équipe Sklubot (.md) » (teammdroutes.ts): import with review, share
 registerCommandRoutes(api); // « Centre de commandement » (command.ts): GET /command, read-only
@@ -2678,6 +2678,7 @@ api.put("/memory-settings", async (c) => {
   const b = await body(c);
   const next = settings.saveMemory(user.id, {
     autoCapture: typeof b.autoCapture === "boolean" ? b.autoCapture : undefined,
+    autoRecall: typeof b.autoRecall === "boolean" ? b.autoRecall : undefined,
     allowSensitive: b.allowSensitive && typeof b.allowSensitive === "object" ? b.allowSensitive : undefined,
     style: b.style && typeof b.style === "object" ? { ...(typeof b.style.enabled === "boolean" ? { enabled: b.style.enabled } : {}), ...(b.style.clear === true ? { profile: "", updatedAt: null, source: null, samples: 0 } : {}) } : undefined,
   });
