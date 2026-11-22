@@ -9,6 +9,7 @@ import { ACCESSORIES, AVATAR_COLORS, AVATAR_SHAPES, CHARACTER_TYPES, EYE_STYLES,
 import { audit, bots, clip, publicBot, revisions, rows, settings, skills, type BotRecord } from "../store.js";
 import { formatXResult, xSearch, xSearchProvider } from "../xsearch.js";
 import { engineModelsFor, isEngineRef } from "./engine.js";
+import { botNote } from "../skillscan.js";
 import type { BuiltinTool, ToolContext } from "./tools.js";
 
 /**
@@ -136,7 +137,7 @@ export const skillImportTools: BuiltinTool[] = [
       try { parsed = await fetchSkillMarkdown(String(a.url), c.signal); } catch (err) { return { content: (err as Error).message, isError: true, summary: "not imported" }; }
       const { skill, replaced } = saveImportedSkill(c.bot, parsed, String(a.name ?? ""), a.shared === true);
       audit(c.user.id, "tool", `${c.bot.name}: skill imported from ${hostOf(a.url)} — ${skill.name}`, c.bot.id);
-      return { content: `${replaced ? "Replaced" : "Imported"} the skill "${skill.name}" (${skill.body.length} characters)${skill.shared ? ", shared with the team" : ""}. Read it with skill_read before following it.`, summary: skill.name };
+      return { content: `${replaced ? "Replaced" : "Imported"} the skill "${skill.name}" (${skill.body.length} characters)${skill.shared ? ", shared with the team" : ""}.${botNote(c.bot.id, skill.name) || " Read it with skill_read before following it."}`, summary: skill.name };
     },
   }),
 ];

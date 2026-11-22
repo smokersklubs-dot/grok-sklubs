@@ -25,6 +25,8 @@ export interface TeamMdSkill {
   known: boolean;
   /** The text looks like it holds a key (projectimport.ts mentionsKey): read it before keeping it. */
   mentionsKey: boolean;
+  /** "inline" only: the safety check of its text (skillscan.ts), shown before the import. */
+  scan?: import("./skillscantypes.js").SkillScan;
 }
 export interface TeamMdRoutine { name: string; cron: string; timezone: string; task: string; describe: string }
 export interface TeamMdBot {

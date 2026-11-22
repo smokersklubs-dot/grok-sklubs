@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { emit } from "./bus.js";
 import type { Locale } from "./shared.js";
+import { scanSkill } from "./skillscan.js";
 import type { LibraryAddReport, LibraryOrigin, LibrarySkill } from "./skillstypes.js";
 import { audit, bots, skills, type BotRecord } from "./store.js";
 
@@ -88,7 +89,7 @@ export function libraryFor(userId: string, locale: Locale): LibrarySkill[] {
     const t = textFor(e, locale);
     return {
       id: e.id, origin: e.origin, licence: e.licence, source: e.source, title: e.title[locale], summary: e.summary[locale],
-      body: t.body, language: t.language, notice: e.notice, addedTo: agents.filter((b) => hasIt(b.id, e)).length, botCount: agents.length,
+      body: t.body, language: t.language, notice: e.notice, scan: scanSkill({ name: e.title[locale], description: t.description || e.summary[locale], body: t.body }), addedTo: agents.filter((b) => hasIt(b.id, e)).length, botCount: agents.length,
     };
   });
 }
@@ -111,7 +112,8 @@ export function addFromLibrary(userId: string, id: string, target: string, local
   const report: LibraryAddReport = { added: [], already: [] };
   for (const b of targets) {
     if (hasIt(b.id, e)) { report.already.push({ botId: b.id, botName: b.name }); continue; }
-    skills.create(b.id, e.title[locale], t.description || e.summary[locale], t.body, false);
+    // A text the safety check flags as "danger" comes back as a draft (store.ts → skillscan.ts): said in the report.
+    if (skills.create(b.id, e.title[locale], t.description || e.summary[locale], t.body, false).draft) (report.flagged ??= []).push(b.name);
     report.added.push({ botId: b.id, botName: b.name });
     emit(userId, { type: "memories", botId: b.id });
   }

@@ -4,6 +4,8 @@ export type * from "../../server/src/shared";
 export type * from "../../server/src/skillstypes";
 /** « Équipe Sklubot (.md) »: a whole team in one Markdown file (import with review, share). */
 export type * from "../../server/src/teammdtypes";
+/** « Contrôle de sécurité des compétences »: what the check found in a skill's text. */
+export type * from "../../server/src/skillscantypes";
 export { AVATAR_SHAPES, AVATAR_COLORS, TOOL_GROUPS, EYE_STYLES, ACCESSORIES, IDLE_MOTIONS, CHARACTER_TYPES, DEFAULT_CHARACTER, REACTIONS, GROK_EXPORT_PROMPT_FR, GROK_EXPORT_PROMPT_EN, TEMPLATE_ICONS, TEMPLATE_CATEGORIES, BOT_API_SCOPES } from "../../server/src/shared";
 /** "Aujourd'hui": the time-saved table (kinds, default minutes, how research and file edits are counted). */
 export type { TodayKind } from "../../server/src/todayminutes";

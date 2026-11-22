@@ -45,6 +45,7 @@ import { anonymise } from "./anonymise.js";
 import { apiTools, scrubSecret } from "../apiconnectors.js";
 import { botMailTools } from "../botmail.js";
 import { ruleTools } from "./ruletools.js";
+import { botNote } from "../skillscan.js";
 import { pageTools } from "./pagetools.js";
 import { researchTool } from "../researchroutes.js";
 import { craftReady } from "./creative-tools.js";
@@ -776,7 +777,8 @@ const knowledgeTools: BuiltinTool[] = [
       for (const k of SKILL_EXTRA_KEYS) if (typeof a[k] === "string") extras[k] = clip(a[k].trim(), 2000);
       if (existing) skills.update(existing.id, { name, description: when, body, shared, ...extras }); else skills.create(c.bot.id, name, when, body, !!shared, {}, extras);
       emit(c.user.id, { type: "memories", botId: c.bot.id });
-      return { content: existing ? "Skill updated." : "Skill saved.", summary: name };
+      // A text the safety check flags stays a draft the bot cannot use until its owner accepts it (skillscan.ts).
+      return { content: `${existing ? "Skill updated." : "Skill saved."}${botNote(c.bot.id, name)}`, summary: name };
     },
   }),
   tool("skill_propose", "After finishing a task that took several steps (or a workaround), offer to keep the procedure as a learned skill for next time: the steps on the site or app, the pitfalls, the final check. Names, addresses, contact details, order or account numbers, amounts and message contents are replaced by placeholders before the user sees it; the user reviews and edits it before it is saved. Do not use it when the user said not to remember this task.",

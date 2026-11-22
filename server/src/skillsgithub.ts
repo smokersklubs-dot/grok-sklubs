@@ -3,6 +3,7 @@ import { emit } from "./bus.js";
 import { accessOf, hostedMode, suspended } from "./hosted.js";
 import { guardedFetch } from "./net.js";
 import { mentionsKey, readZip } from "./projectimport.js";
+import { scanSkill } from "./skillscan.js";
 import { splitSkill } from "./skillslibrary.js";
 import type { GithubImportReport, GithubPreview, GithubSkillFound, LicenceKind } from "./skillstypes.js";
 import { audit, bots, clip, now, skills, type BotRecord } from "./store.js";
@@ -212,6 +213,7 @@ export async function previewGithub(userId: string, address: string, signal: Abo
       path: f.path, name, description: clip(parsed.description, 300), size: f.size, licence, licenceFrom, permissive: isPermissive(licence),
       mentionsKey: mentionsKey(raw ?? ""), tooLarge: raw === null || body.length > MAX_SKILL_CHARS, ignoredFiles: dir ? ignoredFiles : 0,
       exists: existing.has(name.toLowerCase()), body: raw === null ? "" : body,
+      scan: scanSkill({ name, description: clip(parsed.description, 300), body: body.slice(0, MAX_SKILL_CHARS) }),
     });
   }
   if (!found.length) throw new GithubError(404, "No SKILL.md file was found at this address.");
@@ -231,7 +233,7 @@ export function commitGithub(userId: string, previewId: string, paths: string[],
   if (target === "all") targets = bots.list(userId).filter((b) => b.kind === "agent");
   else { const b = bots.owned(userId, target); if (!b || b.kind !== "agent" || b.hidden) throw new GithubError(404, "That bot does not exist."); targets = [b]; }
   if (!targets.length) throw new GithubError(400, "Create a bot first.");
-  const report: GithubImportReport = { imported: [], skipped: [], bots: targets.length };
+  const report: GithubImportReport = { imported: [], skipped: [], bots: targets.length, flagged: [] };
   const tree = p.ref || "HEAD";
   for (const s of p.skills) {
     if (!paths.includes(s.path)) continue;
@@ -247,6 +249,7 @@ export function commitGithub(userId: string, previewId: string, paths: string[],
       any = true;
     }
     (any ? report.imported : report.skipped).push(s.name);
+    if (any && s.scan.worst === "danger") report.flagged.push(s.name);
   }
   pending.delete(previewId);
   audit(userId, "account", `Skills imported from GitHub (${p.repo}${p.path ? `/${p.path}` : ""}): ${report.imported.length} as drafts, ${report.skipped.length} skipped`);

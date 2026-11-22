@@ -2,6 +2,7 @@ import type { Context, Hono } from "hono";
 import { RateWindow } from "./hardening.js";
 import type { Locale } from "./shared.js";
 import { commitGithub, githubImportAllowed, GithubError, previewGithub } from "./skillsgithub.js";
+import { registerSkillScanRoutes } from "./skillscanroutes.js";
 import { addFromLibrary, LibraryError, libraryFor } from "./skillslibrary.js";
 import type { UserRecord } from "./store.js";
 
@@ -40,6 +41,7 @@ const previews = new RateWindow(10, 3_600_000);
 const writes = new RateWindow(60, 60_000);
 
 export function registerSkillsLibraryRoutes(api: Hono<any>) {
+  registerSkillScanRoutes(api); // « Contrôle de sécurité des compétences » (skillscanroutes.ts)
   const handle = (fn: (c: Context, user: UserRecord, b: Record<string, any>) => Promise<Response> | Response) => async (c: Context) => {
     const user = c.get("user") as UserRecord;
     try {

@@ -44,6 +44,8 @@ import { recruitCardFixtures } from "./recruitFixtures";
 import { GalleryRooms } from "./GalleryRooms";
 import { GalleryTeamMd } from "./GalleryTeamMd";
 import { SkillsLibrarySection } from "../components/SkillsLibrary";
+import { ScanFindings, SkillsCheckSection } from "../components/SkillScan";
+import { scanDangerFixture } from "./skillsFixtures";
 import { PagePreview, setPagePreviewSource } from "../components/PagePreview";
 import { PageVersions } from "../components/PageVersions";
 import samplePage from "./sample-page.html?url";
@@ -52,7 +54,7 @@ import samplePage from "./sample-page.html?url";
 setPagePreviewSource(() => samplePage);
 import "./gallery.css";
 
-const SECTIONS = ["all", "basics", "cards", "notices", "banners", "empty", "today", "command", "incidents", "recruit", "salons", "surveillance", "announcements", "skills", "pages", "landing", "download", "chat", "equipe"] as const;
+const SECTIONS = ["all", "basics", "cards", "notices", "banners", "empty", "today", "command", "incidents", "recruit", "salons", "surveillance", "announcements", "skills", "skillscan", "pages", "landing", "download", "chat", "equipe"] as const;
 type Section = (typeof SECTIONS)[number];
 
 interface GalleryState extends FakeApiState {
@@ -193,6 +195,7 @@ function Sections({ s }: { s: GalleryState }) {
       {show("announcements") && <Announcements o={o} empty={s.empty} />}
       {show("surveillance") && <Section id="surveillance" title="Surveillance" hint="La vraie page : incidents critiques, à surveiller, acquittés, info ; historique ; santé."><div className="gallery-page"><SurveillanceView /></div></Section>}
       {show("skills") && <Section id="skills" title="Bibliothèque de compétences" hint="Réglages → Compétences : les cartes de la bibliothèque, puis l'import depuis GitHub (« Chercher » répond avec un dépôt d'exemple)."><div className="gallery-page is-auto"><SkillsLibrarySection /></div></Section>}
+      {show("skillscan") && <Section id="skillscan" title="Contrôle de sécurité des compétences" hint="Réglages → Compétences → « Vérifier mes compétences » : ce qui a été trouvé, où, et quoi faire (empty=1 : rien à signaler). En dessous, l'encadré montré avant un import."><div className="gallery-page is-auto"><SkillsCheckSection auto /><div className="editor" style={{ marginTop: 18 }}><ScanFindings scan={scanDangerFixture()} /></div></div></Section>}
       {show("pages") && <Section id="pages" title="Pages publiées" hint="L'aperçu d'une page dans la discussion (une page d'exemple dans le bac à sable), puis son historique (Réglages → Pages)."><div className="gallery-page is-auto"><PagePreview text={`[${s.lang === "fr" ? "Ventes de novembre" : "November sales"}](${location.origin}/p/galleryDemoPageToken0001)`} /><PageVersions page={{ token: "galleryDemoPageToken0001", botId: GALLERY_BOT_ID, title: "Ventes de novembre", url: `${location.origin}/p/galleryDemoPageToken0001`, createdAt: NOW, visibility: "link" }} defaultOpen /></div></Section>}
     </main>
   );

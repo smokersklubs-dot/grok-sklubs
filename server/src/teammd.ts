@@ -2,6 +2,7 @@ import { catalogFor } from "./catalog.js";
 import { describeCron, isValidTimezone } from "./cron.js";
 import { CREDENTIAL_KEY, GrokImportError, scrub, validCron, type Cleaner } from "./grokimport.js";
 import { mentionsKey } from "./projectimport.js";
+import { scanSkill } from "./skillscan.js";
 import { DEFAULT_CHARACTER, type Character, type GrokImportStripped, type Locale, type RoomRule } from "./shared.js";
 import { libraryEntries } from "./skillslibrary.js";
 import { clip } from "./store.js";
@@ -240,7 +241,7 @@ export function parseTeamMd(raw: string, opts: { locale?: Locale; timezone?: str
       if (!steps.trim() && !when.trim()) continue;
       const body = clean(steps || when, where, 20_000);
       const label = clean(sName, where, 80, true) || `${L(locale, "Compétence", "Skill")} ${si + 1}`;
-      skills.push({ kind: "inline", libraryId: "", name: label, when: clean(when, where, 300, true), body, known: true, mentionsKey: mentionsKey(steps) });
+      skills.push({ kind: "inline", libraryId: "", name: label, when: clean(when, where, 300, true), body, known: true, mentionsKey: mentionsKey(steps), scan: scanSkill({ name: label, description: when, body }) });
     }
 
     const routines: ParsedBot["routines"] = [];

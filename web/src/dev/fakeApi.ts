@@ -5,7 +5,7 @@
  */
 import { landingData, sampleDownloads } from "./landingFixtures";
 import { announcementsAdmin, announcementsState, sentinelOverview, todayReport, type FixtureOptions } from "./fixtures";
-import { githubPreviewFixture, libraryFixture, versionsFixture } from "./skillsFixtures";
+import { githubPreviewFixture, libraryFixture, scanReportFixture, versionsFixture } from "./skillsFixtures";
 import { incidentsFixture } from "./incidentsFixtures";
 import { commandFixture, fakeScreen } from "./commandFixtures";
 import { teamMdExportFixture, teamMdPreviewFixture, teamMdReportFixture } from "./teamMdFixtures";
@@ -37,6 +37,8 @@ export function installFakeApi(get: () => FakeApiState): void {
       // « Bibliothèque de compétences »: the GitHub lookup answers with a sample repository.
       if (path === "/skills-library/github/preview" && !s.fail) { await wait(150); return json(200, { preview: githubPreviewFixture() }); }
       if (/^\/skills-library\/[^/]+\/add$/.test(path) && !s.fail) { await wait(150); return json(200, { report: { added: [{ botId: "b", botName: "jiren" }], already: [] } }); }
+      // « Contrôle de sécurité des compétences »: the result of « Vérifier mes compétences ».
+      if (path === "/skills/scan" && !s.fail) { await wait(150); return json(200, { report: s.empty ? { scannedAt: Date.now(), skills: 6, clean: 6, entries: [] } : scanReportFixture(s) }); }
       // « Équipe Sklubot (.md) » (GalleryTeamMd.tsx): the review screen, the creation, the share window.
       if (path === "/team-md/preview" && !s.fail) { await wait(150); return json(200, teamMdPreviewFixture(s)); }
       if (path === "/team-md/commit" && !s.fail) { await wait(150); return json(200, { report: teamMdReportFixture() }); }

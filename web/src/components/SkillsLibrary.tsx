@@ -4,6 +4,7 @@ import { useT, type Key } from "../i18n";
 import { sortedBots, useStore } from "../store";
 import type { GithubImportReport, GithubPreview, LibrarySkill } from "../types";
 import { Icon } from "./Icon";
+import { ScanFindings, SkillsCheckSection } from "./SkillScan";
 import { Empty, ErrorNote, Loading } from "./ui";
 import "./SkillsLibrary.css";
 
@@ -58,6 +59,7 @@ function LibraryCard({ skill, onAdded }: { skill: LibrarySkill; onAdded: () => v
         <pre className="skl-body">{skill.body}</pre>
         <p className="skl-notice">{skill.notice}{skill.source && <> — <a href={skill.source} target="_blank" rel="noopener noreferrer">{t("skl.source")}</a></>}</p>
       </details>
+      {(skill.scan?.worst === "danger" || skill.scan?.worst === "warning") && <ScanFindings scan={skill.scan} compact />}
       <p className="skl-count">{skill.botCount === 0 ? t("skl.noBots") : t("skl.count", { n: skill.addedTo, total: skill.botCount })}</p>
       <ErrorNote onDismiss={() => setError(null)}>{error}</ErrorNote>
       <div className="skl-actions">
@@ -95,7 +97,7 @@ function GithubImport() {
       const r = await api<{ preview: GithubPreview }>("POST", "/skills-library/github/preview", { url: url.trim() });
       setPreview(r.preview);
       // Ticked by default only when the licence allows reuse and nothing is wrong with it; the owner decides.
-      setPicked(Object.fromEntries(r.preview.skills.map((s) => [s.path, s.permissive && !s.tooLarge && !s.mentionsKey && !s.exists])));
+      setPicked(Object.fromEntries(r.preview.skills.map((s) => [s.path, s.permissive && !s.tooLarge && !s.mentionsKey && !s.exists && s.scan?.worst !== "danger"])));
     } catch (err) { setError(errText(err)); setPreview(null); } finally { setBusy(false); }
   };
   const commit = async () => {
@@ -120,14 +122,14 @@ function GithubImport() {
       </form>
       <ErrorNote onDismiss={() => setError(null)}>{error}</ErrorNote>
       {report && (
-        <p className="skl-report" role="status"><Icon name="check" size={14} /> {t("skl.gh.done", { n: report.imported.length, skipped: report.skipped.length })}</p>
+        <p className="skl-report" role="status"><Icon name="check" size={14} /> {t("skl.gh.done", { n: report.imported.length, skipped: report.skipped.length })}{report.flagged?.length ? ` ${t("scan.flaggedNote", { n: report.flagged.length })}` : ""}</p>
       )}
       {preview && (
         <div className="skl-preview">
           <p className="muted small">{t("skl.gh.found", { n: preview.skills.length, repo: preview.repo })}{preview.truncated ? ` ${t("skl.gh.truncated")}` : ""}</p>
           <ul className="skl-found">
             {preview.skills.map((s) => (
-              <li key={s.path} className={`skl-found-row ${s.permissive ? "" : "is-warn"}`}>
+              <li key={s.path} className={`skl-found-row ${s.permissive && s.scan?.worst !== "danger" ? "" : "is-warn"}`}>
                 <label className="check-row">
                   <input type="checkbox" disabled={s.tooLarge} checked={!!picked[s.path]} onChange={(e) => setPicked((p) => ({ ...p, [s.path]: e.target.checked }))} />
                   <span className="skl-found-text">
@@ -141,6 +143,7 @@ function GithubImport() {
                     {flagKeys(s).map((k) => <span key={k} className="skl-flag"><Icon name="alert" size={12} /> {t(k, { n: s.ignoredFiles })}</span>)}
                   </span>
                 </label>
+                <ScanFindings scan={s.scan} compact />
               </li>
             ))}
           </ul>
@@ -180,6 +183,7 @@ export function SkillsLibrarySection() {
       {!list && <Loading />}
       {list && list.length === 0 && !error && <Empty icon="book" title={t("skl.emptyTitle")} />}
       {list && list.length > 0 && <ul className="skl-grid">{list.map((s) => <LibraryCard key={s.id} skill={s} onAdded={() => setTick((n) => n + 1)} />)}</ul>}
+      <SkillsCheckSection />
       {github ? <GithubImport /> : list && <p className="muted small skl-gh-off"><Icon name="lock" size={13} /> {t("skl.gh.notInPlan")}</p>}
     </div>
   );

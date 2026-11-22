@@ -6,6 +6,7 @@ import { TEMPLATE_CATEGORIES, TEMPLATE_ICONS } from "../types";
 import type { GrokImportWarning, TeamFileChoice, TeamFileExport, TeamFilePreview, TeamFileReport, TemplateCategory, TemplateSummary } from "../types";
 import { Avatar } from "./Avatar";
 import { Icon, type IconName } from "./Icon";
+import { ScanFindings } from "./SkillScan";
 import { CopyButton, ErrorNote, Modal } from "./ui";
 import "./GrokImport.css";
 import "./TeamTemplates.css";
@@ -291,6 +292,7 @@ export function TemplatesModal({ onClose, tab: initialTab = "gallery" }: { onClo
                               <div className="grok-item-text">
                                 <input className="input input-small" value={p.skills[i].name} maxLength={80} onChange={(e) => setBot(bi, { skills: p.skills.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)) })} aria-label={t("grok.skillName")} />
                                 {s.when && <span className="muted small">{t("grok.when", { when: s.when })}</span>}
+                                <ScanFindings scan={s.scan} compact />
                               </div>
                             </div>
                           ))}

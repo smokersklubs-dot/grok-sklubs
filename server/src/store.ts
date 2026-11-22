@@ -555,6 +555,9 @@ export function skillText(s: Pick<Skill, "description" | "body"> & Partial<Skill
     s.output ? `What to hand back at the end: ${s.output}` : "",
   ].filter(Boolean).join("\n");
 }
+/** Set by skillscan.ts: runs after a skill's text is saved (a flagged text stays a draft until its owner accepts it). */
+let skillGuard: (id: string) => void = () => {};
+export const setSkillGuard = (fn: (id: string) => void) => { skillGuard = fn; };
 export const skills = {
   list: (botId: string) => q.all("SELECT * FROM skills WHERE bot_id = ? ORDER BY created_at", botId).map(toSkill),
   /** The skills a bot is given (its prompt, skill_read): its own, without the drafts the user has not activated yet. */
@@ -571,6 +574,7 @@ export const skills = {
     const t = now();
     q.run("INSERT INTO skills (id, bot_id, name, description, body, shared, learned, outside, draft, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", id, botId, name, description, body, shared ? 1 : 0, origin.learned ? 1 : 0, origin.outside ? 1 : 0, origin.draft ? 1 : 0, t, t);
     saveSkillExtras(id, extras);
+    skillGuard(id);
     return toSkill(q.get("SELECT * FROM skills WHERE id = ?", id));
   },
   /** A structured part left undefined keeps its value; an empty string clears it. */
@@ -579,6 +583,7 @@ export const skills = {
     saveSkillExtras(id, f);
     if (typeof f.shared === "boolean") q.run("UPDATE skills SET shared = ? WHERE id = ?", f.shared ? 1 : 0, id);
     if (typeof f.draft === "boolean") q.run("UPDATE skills SET draft = ? WHERE id = ?", f.draft ? 1 : 0, id);
+    skillGuard(id);
     return toSkill(q.get("SELECT * FROM skills WHERE id = ?", id));
   },
   /** Skills other bots of the same user shared (never this bot's own). */

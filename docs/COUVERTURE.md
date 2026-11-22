@@ -169,6 +169,7 @@ Le code peut s'écrire, mais rien ne marche sans un compte (souvent payant) chez
 | Clé de données avec rotation | `server/src/datakey.ts`, `datakeyrotate.ts`, `rotatekey.ts` |
 | Annonces du propriétaire · page « Aujourd'hui » (résumé quotidien) | `server/src/announcements.ts`, `today.ts`, `web/src/components/TodayView.tsx` |
 | Bibliothèque de compétences + import depuis GitHub · pages interactives versionnées | `server/src/skillslibrary.ts`, `skillsgithub.ts`, `pageroutes.ts`, `web/src/components/PageVersions.tsx` |
+| Contrôle de sécurité des compétences (règles fixes ; un « Risque » reste en brouillon jusqu'à l'accord explicite du propriétaire ; « Vérifier mes compétences ») | `server/src/skillscan.ts`, `skillscanroutes.ts`, `web/src/components/SkillScan.tsx`, `server/test/skill-scan.test.ts` |
 | Voix par bot (Piper, Kokoro, Fish Audio) · écouter les réponses · appels | `server/src/voice/botvoice.ts`, `kokoro.ts`, `fish.ts`, `speak.ts`, `server/src/speechtext.ts`, `calls.ts` |
 | OpenRouter · connecter son abonnement ChatGPT / Claude · bascule à la limite de l'abonnement | `server/src/openrouter.ts`, `subscriptionconnect.ts`, `agent/sublimit.ts` |
 | Sentinelle (surveillance sans IA, incidents, alertes) · `/api/health` utile | `server/src/sentinel/`, `monitor.ts` |

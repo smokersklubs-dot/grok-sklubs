@@ -22,6 +22,7 @@ import { BotFallbacks } from "./Reliability";
 import { routineWhen, TriggerChip } from "./DetailsPanel";
 import { Icon, Spinner } from "./Icon";
 import { MODE_IDS } from "./Modals";
+import { SkillImportForm, SkillRowCheck, useBotScans } from "./SkillScan";
 import { ConfirmButton, CopyButton, copyText, Empty, ErrorNote, IconButton, Loading, Modal, Toggle, useTick } from "./ui";
 import { BotRulesAndNudges } from "./RulesAndNudges";
 import { runNote } from "./Pause";
@@ -382,8 +383,9 @@ function SkillEditor({ botId, skill, onDone }: { botId: string; skill: Skill | n
     setError(null);
     const payload = { name: name.trim(), description: description.trim(), body, ...extras };
     try {
-      if (skill) await api("PATCH", `/skills/${skill.id}`, payload);
-      else await api("POST", `/bots/${botId}/skills`, payload);
+      const r = skill ? await api<{ skill: Skill }>("PATCH", `/skills/${skill.id}`, payload) : await api<{ skill: Skill }>("POST", `/bots/${botId}/skills`, payload);
+      // The safety check keeps a flagged text as a draft: say so (its findings show under the skill).
+      if (r.skill?.draft && !skill?.draft) useStore.getState().showToast(t("scan.keptDraft", { name: r.skill.name }));
       await loadBundle(botId);
       onDone();
     } catch (err) {
@@ -427,46 +429,6 @@ function SkillEditor({ botId, skill, onDone }: { botId: string; skill: Skill | n
   );
 }
 
-/** Import a skill from a public markdown file (the user's own action, so no approval card). */
-function SkillImport({ bot, onDone }: { bot: Bot; onDone: () => void }) {
-  const t = useT();
-  const loadBundle = useStore((s) => s.loadBundle);
-  const showToast = useStore((s) => s.showToast);
-  const [url, setUrl] = useState("");
-  const [shared, setShared] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const submit = async (e: FormEvent) => {
-    e.preventDefault();
-    setBusy(true);
-    setError(null);
-    try {
-      const r = await api<{ skill: Skill; replaced: boolean }>("POST", `/bots/${bot.id}/skills/import`, { url: url.trim(), shared });
-      await loadBundle(bot.id);
-      showToast(t(r.replaced ? "skill.importReplaced" : "skill.imported", { name: r.skill.name }));
-      onDone();
-    } catch (err) {
-      setError(errText(err));
-    } finally {
-      setBusy(false);
-    }
-  };
-  return (
-    <form className="editor skill-import" onSubmit={submit}>
-      <div className="field">
-        <label className="field-label" htmlFor={`imp-${bot.id}`}>{t("skill.importUrl")}</label>
-        <input id={`imp-${bot.id}`} className="input" type="url" required value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://raw.githubusercontent.com/…/skill.md" autoFocus />
-        <p className="field-hint">{t("skill.importHint")}</p>
-      </div>
-      <label className="check-row"><input type="checkbox" checked={shared} onChange={(e) => setShared(e.target.checked)} /> <span>{t("skill.shareWithTeam")}</span></label>
-      <ErrorNote onDismiss={() => setError(null)}>{error}</ErrorNote>
-      <div className="row-end">
-        <button type="button" className="btn btn-small" onClick={onDone}>{t("common.cancel")}</button>
-        <button type="submit" className="btn btn-primary btn-small" disabled={busy || !url.trim()}>{t(busy ? "common.working" : "skill.import")}</button>
-      </div>
-    </form>
-  );
-}
 
 /** Skills other bots shared with the whole team (read-only here). */
 function TeamSkills({ bot, tick }: { bot: Bot; tick: unknown }) {
@@ -504,6 +466,7 @@ function Skills({ bot, bundle }: { bot: Bot; bundle: BotBundle | undefined }) {
   const [editing, setEditing] = useState<Skill | "new" | "import" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const skills = bundle?.skills;
+  const { scans, reload } = useBotScans(bot.id, skills); // « Contrôle de sécurité des compétences » (SkillScan.tsx)
   const share = async (s: Skill, on: boolean) => {
     setError(null);
     try {
@@ -517,9 +480,10 @@ function Skills({ bot, bundle }: { bot: Bot; bundle: BotBundle | undefined }) {
   const activate = async (s: Skill) => {
     setError(null);
     try {
-      await api("PATCH", `/skills/${s.id}`, { draft: false });
+      const r = await api<{ skill: Skill }>("PATCH", `/skills/${s.id}`, { draft: false });
       await loadBundle(bot.id);
-      showToast(t("skill.activated", { name: s.name }));
+      reload();
+      showToast(t(r.skill?.draft ? "scan.keptDraft" : "skill.activated", { name: s.name }));
     } catch (e) {
       setError(errText(e));
     }
@@ -542,7 +506,7 @@ function Skills({ bot, bundle }: { bot: Bot; bundle: BotBundle | undefined }) {
           </div>
         )}
       </div>
-      {editing === "import" && <SkillImport bot={bot} onDone={() => setEditing(null)} />}
+      {editing === "import" && <SkillImportForm bot={bot} onDone={() => setEditing(null)} />}
       {editing === "new" && <SkillEditor botId={bot.id} skill={null} onDone={() => setEditing(null)} />}
       {!skills && <Loading />}
       {skills && skills.length === 0 && editing === null && <Empty icon="book" title={t("skill.emptyTitle")}>{t("skill.emptyText", { name: bot.name })}</Empty>}
@@ -559,9 +523,10 @@ function Skills({ bot, bundle }: { bot: Bot; bundle: BotBundle | undefined }) {
                 <div className="list-row-text">
                   <span className="list-row-title">{s.name}{s.shared && <span className="pill is-shared">{t("skill.shared")}</span>}{s.draft && <span className="chip">{t("skill.draft")}</span>}</span>
                   <span className="list-row-sub">{s.description || s.body.split("\n").find((l) => l.trim()) || ""}</span>
-                  {s.draft && <span className="list-row-sub warn-text">{t("skill.draftHint")}</span>}
+                  {s.draft && !scans[s.id]?.blocked && <span className="list-row-sub warn-text">{t("skill.draftHint")}</span>}
+                  <SkillRowCheck skill={s} state={scans[s.id]} onChanged={reload} />
                 </div>
-                {s.draft && (
+                {s.draft && !scans[s.id]?.blocked && (
                   <button type="button" className="btn btn-small btn-primary" onClick={() => void activate(s)}>
                     <Icon name="check" size={14} /> {t("skill.activate")}
                   </button>

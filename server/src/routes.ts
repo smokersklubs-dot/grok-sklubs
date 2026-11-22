@@ -2521,11 +2521,11 @@ api.post("/bots/:id/cards/:seq/skill", async (c) => {
   const existing = skills.list(bot.id).find((k) => k.name.toLowerCase() === name.toLowerCase());
   if (existing) fail(409, "A skill with this name already exists.");
   // Kept as outside content when the task had read outside content: it then never authorises anything.
-  skills.create(bot.id, name, when, steps, false, { learned: true, outside: card.outside });
+  const saved = skills.create(bot.id, name, when, steps, false, { learned: true, outside: card.outside });
   rows.updateCard(bot, row!.generation, row!.seq, (k) => (k.type === "skill" ? { ...k, name, when, steps, status: "saved" } : k));
   audit(c.get("user").id, "account", `${bot.name}: learned skill saved — ${name}${card.outside ? " (outside content)" : ""}`, bot.id);
   emit(c.get("user").id, { type: "memories", botId: bot.id });
-  return c.json({ ok: true });
+  return c.json({ ok: true, draft: saved.draft }); // draft: the safety check flagged it (skillscan.ts)
 });
 
 // A contradicted note (memory confidence): the user says which is right. "old" keeps the note (confirmed), "new"

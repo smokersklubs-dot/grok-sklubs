@@ -5,6 +5,7 @@ import { useStore } from "../store";
 import type { TeamMdChoice, TeamMdExport, TeamMdMode, TeamMdPreview, TeamMdReport, TeamMdWarning } from "../types";
 import { Avatar } from "./Avatar";
 import { Icon } from "./Icon";
+import { ScanFindings } from "./SkillScan";
 import { CopyButton, ErrorNote, Modal, Toggle } from "./ui";
 import "./GrokImport.css";
 import "./TeamTemplates.css";
@@ -23,7 +24,7 @@ function initialPicks(p: TeamMdPreview): Pick[] {
     include: p.room.bots === null || i < p.room.bots || !!b.existingId,
     name: b.existingId ? b.name : b.suggestedName,
     // A skill that looks like it holds a key, or that this Sklubot does not have, starts unticked.
-    skills: b.skills.map((s) => s.known && !s.mentionsKey),
+    skills: b.skills.map((s) => s.known && !s.mentionsKey && s.scan?.worst !== "danger"),
     routines: b.routines.map(() => true),
     useModel: false,
   }));
@@ -257,6 +258,7 @@ export function TeamMdImport({ onClose, onStep, initialPreview, initialTab = "fi
                                 {s.when && <span className="muted small">{s.when}</span>}
                                 {!s.known && <span className="warn-text small"><Icon name="alert" size={12} /> {t("tmd.skillUnknown", { id: s.libraryId })}</span>}
                                 {s.mentionsKey && <span className="warn-text small"><Icon name="key" size={12} /> {t("tmd.skillKey")}</span>}
+                                <ScanFindings scan={s.scan} compact />
                               </span>
                             </label>
                           ))}

@@ -74,7 +74,40 @@ Règles exactes du bac à sable (pour les curieux) : scripts et styles de la pag
 
 Pas encore fait (prochaine étape) : un petit stockage de données propre à chaque page (sondages, listes à cocher qui se souviennent), et une adresse séparée pour les pages (`PAGES_ORIGIN`). Aujourd'hui, une page ne garde rien entre deux visites.
 
-## 4. Pour aller plus loin
+## 4. Le contrôle de sécurité des compétences
+
+Une compétence est un texte que le bot suit. Un texte venu d'ailleurs peut donc essayer de retourner un bot contre toi. Sklubot relit chaque compétence avec des **règles fixes** (pas d'intelligence artificielle : même texte, même résultat) et te montre ce qu'il trouve : **quoi**, **à quelle ligne**, avec un court extrait (les clés sont masquées) et **quoi faire**.
+
+Ce qu'il cherche :
+
+- les ordres d'ignorer tes règles ou d'agir sans ton accord, de te cacher quelque chose, d'effacer des traces ;
+- l'envoi de tes données (fichiers, mémoire, coffre, clés, cookies) vers une adresse ;
+- une clé ou un mot de passe écrit dans le texte ;
+- un programme téléchargé et lancé sans être lu (`curl … | sh`), un bloc codé puis exécuté ;
+- les commandes qui détruisent (effacer un disque, `rm -rf` sur un grand dossier), l'arrêt d'une protection (antivirus, pare-feu) ;
+- un paiement ou un achat « sans demander » ;
+- les caractères invisibles, le texte caché dans un commentaire, les liens raccourcis ou vers une adresse en chiffres ;
+- une demande au bot de changer ses propres règles, compétences ou droits.
+
+Trois niveaux : **Risque** (rouge), **À lire** (orange), **Info** (bleu : la ligne dit justement de *ne pas* le faire, par exemple « ne lance jamais curl | sh »).
+
+Ce qui se passe :
+
+- **Avant d'ajouter** : chaque chemin d'import montre le résultat avant que tu valides — bibliothèque, GitHub, fichier d'équipe, modèle d'équipe, zip de projet, fichier à une adresse (bouton « Vérifier le fichier »), compétence proposée par un bot.
+- **Un « Risque » = brouillon** : la compétence est enregistrée en brouillon, jamais active en silence. Le bouton « Activer » habituel ne suffit pas : il faut cliquer « J'ai lu : accepter et activer », puis confirmer. C'est noté dans le journal.
+- **Un bot ne peut pas l'activer lui-même.** S'il enregistre ou réécrit une compétence avec un risque, elle (re)devient un brouillon qu'il ne peut pas lire. Si le texte change après ton accord, il faut l'accepter à nouveau.
+- **Tes compétences déjà là** : Réglages → Compétences → **Vérifier mes compétences**. La liste montre, bot par bot, ce qui a été trouvé. Une ancienne compétence active n'est pas coupée d'office : à toi de la mettre en brouillon, de la corriger ou de l'accepter.
+
+Ses limites, pour ne pas lui faire dire plus qu'il ne sait :
+
+- Il reconnaît des tournures en français et en anglais, pas des intentions. Un ordre reformulé, réparti sur plusieurs lignes ou écrit dans une autre langue peut passer.
+- Il ne voit une négation que sur la même ligne (« ne … jamais », « never ») ou sous un titre qui ne dit que cela (« Jamais », « À ne pas faire »). Un exemple cité (« un pirate écrirait… ») est signalé comme un vrai ordre. Sous un tel titre, ce qui serait un danger reste affiché comme un avertissement : un titre est facile à ajouter pour tromper le contrôle.
+- Il ne sait pas si un site est honnête : un installateur sérieux et un piège s'écrivent pareil, les deux sont « Risque ».
+- « Rien à signaler » ne veut donc pas dire « sûr » : lis toujours ce qui vient d'ailleurs.
+
+Pour les curieux : `server/src/skillscan.ts` (les règles), `skillscanroutes.ts` (les routes), `server/test/skill-scan.test.ts` (les tests).
+
+## 5. Pour aller plus loin
 
 - La compétence **Pages soignées** apprend aux bots tout ce qui précède (quand faire une page, la construire, la vérifier sur téléphone et ordinateur, la partager).
 - La compétence **Méthode de travail** leur apprend à comprendre le but, vérifier avant de dire « c'est fait », demander ton accord avant l'irréversible, et te rendre compte simplement.

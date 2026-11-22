@@ -69,7 +69,7 @@ vraiment, pas d'une liste théorique.
 |---|---|---|
 | Créateur d'agents sans code | **Existe** | Création/réglage de bots dans l'interface (`routes.ts:525`), un bot peut créer des bots (`agent/tools-team.ts`), duplication (`web/src/components/DuplicateBotModal.tsx`). |
 | Marketplace d'agents | **Manque** | — |
-| Bibliothèque de compétences versionnée et partageable | **Partiel** | Compétences par bot, partage entre bots du compte, compétences apprises proposées puis relues (`agent/tools.ts:738-761`), import (`skillImportTools`). Pas de versions ni de partage entre comptes. |
+| Bibliothèque de compétences versionnée et partageable | **Partiel** | Compétences par bot, partage entre bots du compte, compétences apprises proposées puis relues (`agent/tools.ts:738-761`), import (`skillImportTools`), contrôle de sécurité du texte avant ajout et sur demande (`skillscan.ts`, docs/COMPETENCES.md §4). Pas de versions ni de partage entre comptes. |
 | Gestionnaire de fichiers indexé | **Partiel** | Bibliothèque par bot (`routes.ts:1391`, `1501`), dossier d'équipe (`routes.ts:1399-1416`), « fichiers modifiés » avec retour arrière (`snapshots.ts:8-22`). Pas d'index ni de recherche plein texte. |
 | Historique des actions | **Existe** | Journal par appel d'outil, non modifiable (`db.ts:432-438`, `journal.ts:5-9`), journal d'activité (`db.ts:149-154`, `routes.ts:1108`), export CSV. |
 | Validation humaine | **Existe** | Cartes d'accord liées à l'action exacte, usage unique, résultat « incertain » jamais rejoué (`agent/executions.ts:8-17`) ; actions irréversibles toujours demandées une par une (`agent/irreversible.ts:5-17`). |

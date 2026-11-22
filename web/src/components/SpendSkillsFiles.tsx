@@ -7,6 +7,7 @@ import { relTime, shortDate } from "../lib/format";
 import { renderMarkdown } from "../lib/markdown";
 import type { Attachment, Bot, Card, JournalEntry, Payment, Routine, Rule, RulesState, SharedPage, TaskIdea, VaultItem } from "../types";
 import { Icon } from "./Icon";
+import { TextScan } from "./SkillScan";
 import { ErrorNote, IconButton, Loading, Toggle } from "./ui";
 
 /* Wave 5b: spend checkpoints, learned skills, API connectors, memory questions, the usage journal, first-task ideas,
@@ -83,6 +84,7 @@ export function SkillCardView({ card, botId, seq }: { card: Extract<Card, { type
           {card.when && <p className="card-sub">{t("skillCard.when", { when: card.when })}</p>}
           <label className="field-label" htmlFor={`sk-s-${seq}`}>{t("skillCard.steps")}</label>
           <textarea id={`sk-s-${seq}`} className="input skill-steps" rows={6} value={steps} onChange={(e) => setSteps(e.target.value)} />
+          <TextScan name={name} when={card.when} steps={steps} />
           <p className="card-sub note-line"><Icon name="shield" size={13} /> <span>{t("skillCard.anonymised")}</span></p>
           <div className="card-actions">
             <button type="button" className="btn btn-ghost" disabled={busy !== null} onClick={() => void run("no", () => api("POST", `/bots/${botId}/cards/${seq}/skill`, { action: "dismiss" }))}>{t("skillCard.dismiss")}</button>

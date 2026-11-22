@@ -41,6 +41,8 @@ const PAGES = [
   "section=skills&long=1",
   "section=pages",
   "section=skills&theme=dark&lang=en",
+  "section=skillscan&long=1",
+  "section=skillscan&theme=dark&lang=en",
   "section=recruit&long=1",
   "section=equipe&long=1",
   "section=equipe&view=update&theme=dark&lang=en",

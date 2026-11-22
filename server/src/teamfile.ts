@@ -15,6 +15,7 @@ import {
   type TeamFileLook, type TeamFileMeta, type TeamFilePreview, type TeamFileRemoved, type TeamFileReport, type TeamFileSource,
   type TemplateCategory, type TemplateIcon, type TemplateSummary,
 } from "./shared.js";
+import { withScan } from "./skillscan.js";
 import { audit, bots, cleanCharacter, clip, now, rows, sections, settings, skills, type BotRecord, type UserRecord } from "./store.js";
 import { q } from "./db.js";
 
@@ -559,7 +560,7 @@ export async function previewTeamFile(user: UserRecord, input: { template?: unkn
   const apps: string[] = [];
   for (const b of parsed.bots) for (const a of b.apps) if (!apps.some((x) => x.toLowerCase() === a.toLowerCase())) apps.push(a);
   return {
-    previewId, source, meta: parsed.meta, bots: parsed.bots.map((b) => ({ ...b, nameTaken: !!bots.byName(user.id, b.name) })), apps,
+    previewId, source, meta: parsed.meta, bots: parsed.bots.map((b) => ({ ...b, skills: b.skills.map(withScan), nameTaken: !!bots.byName(user.id, b.name) })), apps,
     masked: parsed.masked, removed: parsed.removed, warnings, room: { bots: room.bots, activeRoutines: room.activeRoutines },
   };
 }

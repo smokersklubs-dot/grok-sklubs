@@ -6,6 +6,7 @@ import { useStore } from "../store";
 import { relTime } from "../lib/format";
 import type { Bot, CredentialHealth, HealthState, ImportPreview, ImportReport, PublicLink, ReachState, ThirdPartySpend } from "../types";
 import { Icon } from "./Icon";
+import { ScanFindings } from "./SkillScan";
 import { ConfirmButton, Empty, ErrorNote, Loading, Toggle } from "./ui";
 
 /* Wave 7 (spec 08 and Agent Reach): reading logins, the credential relay, paid third-party tools, health of keys and
@@ -207,6 +208,7 @@ function ProjectImport() {
                       <span className="list-row-title">{s.name}{s.exists && <span className="chip">{t("import.exists")}</span>}</span>
                       <span className="list-row-sub">{s.description || s.path}</span>
                       {s.mentionsKey && <span className="list-row-sub warn-text"><Icon name="alert" size={12} /> {t("import.skillKey")}</span>}
+                      <ScanFindings scan={s.scan} compact />
                     </div>
                   </li>
                 ))}

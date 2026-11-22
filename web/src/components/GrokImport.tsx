@@ -5,6 +5,7 @@ import { useStore } from "../store";
 import { GROK_EXPORT_PROMPT_EN, GROK_EXPORT_PROMPT_FR } from "../types";
 import type { GrokImportChoice, GrokImportPreview, GrokImportReport, GrokImportWarning } from "../types";
 import { Icon } from "./Icon";
+import { ScanFindings } from "./SkillScan";
 import { CopyButton, ErrorNote, Modal } from "./ui";
 import "./GrokImport.css";
 
@@ -228,6 +229,7 @@ export function GrokImportModal({ onClose }: { onClose: () => void }) {
                               <div className="grok-item-text">
                                 <input className="input input-small" value={p.skills[i].name} maxLength={80} onChange={(e) => setBot(bi, { skills: p.skills.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)) })} aria-label={t("grok.skillName")} />
                                 {s.when && <span className="muted small">{t("grok.when", { when: s.when })}</span>}
+                                <ScanFindings scan={s.scan} compact />
                               </div>
                             </div>
                           ))}

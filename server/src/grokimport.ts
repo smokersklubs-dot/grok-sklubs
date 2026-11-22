@@ -9,6 +9,7 @@ import {
   type GrokImportBot, type GrokImportChoice, type GrokImportPreview, type GrokImportReport, type GrokImportRoutine,
   type GrokImportSkill, type GrokImportStripped, type GrokImportWarning, type Locale,
 } from "./shared.js";
+import { withScan } from "./skillscan.js";
 import { audit, bots, clip, memories, now, rows, settings, skills, TeamFullError, type UserRecord } from "./store.js";
 import { q } from "./db.js";
 
@@ -367,7 +368,7 @@ export function previewGrokImport(user: UserRecord, text: string): GrokImportPre
   const apps: string[] = [];
   for (const b of parsed.bots) for (const a of b.apps) if (!apps.some((x) => x.toLowerCase() === a.toLowerCase())) apps.push(a);
   return {
-    previewId, bots: parsed.bots.map((b) => ({ ...b, nameTaken: !!bots.byName(user.id, b.name) })), apps,
+    previewId, bots: parsed.bots.map((b) => ({ ...b, skills: b.skills.map(withScan), nameTaken: !!bots.byName(user.id, b.name) })), apps,
     stripped: parsed.stripped, warnings, room: { bots: room.bots, activeRoutines: room.activeRoutines },
   };
 }

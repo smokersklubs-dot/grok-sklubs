@@ -1000,7 +1000,7 @@ export interface PublicLink { id: string; botId: string; botName: string; path: 
 
 /** Preview of a project import (spec 08 A6): names and guessed hosts only, never a value. */
 export interface ImportVariable { name: string; isSecret: boolean; provider: string | null; hosts: string[]; header: string; prefix: string; exists: boolean; reason: string }
-export interface ImportSkill { name: string; description: string; path: string; mentionsKey: boolean; exists: boolean }
+export interface ImportSkill { name: string; description: string; path: string; mentionsKey: boolean; exists: boolean; scan?: import("./skillscantypes.js").SkillScan }
 export interface ImportPreview { previewId: string; variables: ImportVariable[]; skills: ImportSkill[]; ignored: string[] }
 export interface ImportReport { created: string[]; updated: string[]; skipped: string[]; toComplete: string[]; skills: string[]; health: { name: string; state: HealthState; detail: string }[] }
 
@@ -1061,7 +1061,7 @@ ${EXPORT_SHAPE}
 4. An empty section stays empty: [] or "". Do not make anything up.
 5. NEVER put in the export: passwords, API keys, tokens, cookies, verification codes, sign-in details, card or bank account numbers, or any private data about other people (their contact details, their messages). If a text contains any, replace that part with [REMOVED].`;
 
-export interface GrokImportSkill { name: string; when: string; steps: string }
+export interface GrokImportSkill { name: string; when: string; steps: string; scan?: import("./skillscantypes.js").SkillScan }
 /** `cron`: a valid 5-field expression, or "" (the routine then needs one before it can be created); `describe`: when it runs, in words. */
 export interface GrokImportRoutine { name: string; schedule: string; cron: string; timezone: string; task: string; describe: string }
 /** `flagged`: something that looked like a secret was taken out of it. */
