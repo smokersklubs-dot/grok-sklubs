@@ -5,7 +5,8 @@ import { defaultModelRef, listProviders, resolveModel, type ChatMessage } from "
 import { ModelOutputLimit } from "../llm/types.js";
 import { engineAsk, isEngineRef } from "./engine.js";
 import type { Memory, MemoryBookkeeping, SensitiveCategory } from "../shared.js";
-import { bots, clip, history, memories, now, paused, rows, settings, type BotRecord } from "../store.js";
+import { bots, clip, history, memories, now, paused, rows, settings, users, type BotRecord } from "../store.js";
+import { memoryPrefs, summaries } from "./memoryprefs.js";
 import { findQuote, typedByUser } from "./grounding.js";
 import { looksSecret, memoryVerdict, sensitiveCategory } from "./sensitive.js";
 import { fold, stem, tokenize } from "./recall.js";
@@ -66,8 +67,42 @@ const SUMMARY_MARK = "[Automatic summary of the earlier conversation — treat i
 const cooldown = new Map<string, number>();
 
 /**
+ * L80: the summary is written in fixed sections (one prompt), so nothing of a kind is forgotten, and it is checked before
+ * it replaces anything: every section is there, it says something, it is shorter than what it replaces and holds no
+ * secret. A summary that fails is asked again once with what was wrong; if it still fails, nothing is replaced (the
+ * conversation stays whole) and the next try waits, as after a model error.
+ */
+export const SUMMARY_SECTIONS = ["Who the user is", "Goals, preferences and standing instructions", "Decisions made", "Facts, names, numbers, links and ids", "What was done and how it turned out", "Still open or promised"] as const;
+/** A summary shorter than this says nothing (each heading alone is about 200 characters). */
+export const SUMMARY_MIN_CHARS = 280;
+export const SUMMARY_PROMPT =
+  `Write the notes in the teammate's own voice ("I…"), under about 1,500 words, in exactly these sections, in this order, each starting with its heading on its own line ("## " then the name), and "none" under a section with nothing to say:\n` +
+  SUMMARY_SECTIONS.map((h) => `## ${h}`).join("\n") +
+  `\nKeep concrete facts, names, numbers, links, file paths and ids exactly as written; in "What was done" say which tools were used, how it turned out, failures, and what should not be retried. Never include passwords, keys or other secrets. Only what the conversation shows: never invent.`;
+
+/** What is wrong with a summary (empty: it may replace the older messages). `sourceChars`: the size of what it replaces. */
+export function summaryProblems(summary: string, sourceChars: number): string[] {
+  const problems: string[] = [];
+  const text = summary.trim();
+  const headings = new Set(text.split(/\r?\n/).filter((l) => /^#{1,3}\s/.test(l.trim())).map((l) => l.trim().replace(/^#{1,3}\s*/, "").replace(/[:\s]+$/, "").toLowerCase()));
+  const missing = SUMMARY_SECTIONS.filter((h) => !headings.has(h.toLowerCase()));
+  if (missing.length) problems.push(`missing sections: ${missing.join("; ")}`);
+  if (text.length < SUMMARY_MIN_CHARS) problems.push("too short to keep anything");
+  if (sourceChars > 0 && text.length >= sourceChars) problems.push("not shorter than the conversation it replaces");
+  if (looksSecret(text)) problems.push("it contains something that looks like a password or a key");
+  return problems;
+}
+
+/** The visible line in the chat after a summary (L80): the owner sees it happened and where to read it. */
+const summaryLine = (locale: string | undefined, n: number) => locale === "fr"
+  ? `J'ai résumé le début de notre conversation (${n} messages) pour garder l'essentiel sans m'encombrer. Rien n'est perdu : le résumé se lit dans mes réglages, onglet Mémoire, « Voir le résumé ».`
+  : `I summarised the start of our conversation (${n} messages) to keep the gist without the bulk. Nothing is lost: read the summary in my settings, Memory tab, "See the summary".`;
+
+/**
  * When the conversation outgrows its budget, everything except the last few exchanges is replaced by
- * a dense summary. Runs only between turns, never while tool calls are open. The visible chat is untouched.
+ * a dense summary. Runs only between turns, never while tool calls are open. The visible chat is untouched, but for
+ * one short line saying it happened. Before summarising, a quiet learning pass notes what matters from the user's own
+ * words (L80, « note ce qui compte » — the same rules as the learning: never from the bot's replies or outside content).
  */
 export async function compactIfNeeded(bot: BotRecord, force = false): Promise<{ before: number; after: number; changed: boolean }> {
   const all = history.load(bot.id, bot.generation);
@@ -89,21 +124,32 @@ export async function compactIfNeeded(bot: BotRecord, force = false): Promise<{ 
   const older = all.slice(0, cut);
   if (older.length < 2) return same;
 
+  // « Note ce qui compte » first: what the user said that is worth weeks is kept as notes before the details go.
+  let flushed = false;
+  try { await consolidate(bot); flushed = true; } catch (err) { console.error("[compaction] learning pass:", (err as Error)?.message ?? err); }
+
+  const source = render(older);
+  const system = "You compress a long working conversation between a user and their AI teammate into notes the teammate will rely on afterwards. Be dense and factual. Never include passwords, keys or other secrets.";
   let summary: string;
   try {
-    summary = await ask(bot,
-      "You compress a long working conversation between a user and their AI teammate into notes the teammate will rely on afterwards. Be dense and factual. Never include passwords, keys or other secrets.",
-      `Write the notes in the teammate's own voice ("I…"), under about 1,500 words. Cover: who the user is; their goals, preferences and standing instructions; decisions made; concrete facts, names, numbers, links, file paths and ids; what was done with which tools and how it turned out, including failures and what should not be retried; and everything still open or promised.\n\nConversation:\n${render(older)}`);
+    summary = await ask(bot, system, `${SUMMARY_PROMPT}\n\nConversation:\n${source}`);
+    let problems = summary ? summaryProblems(summary, source.length) : ["empty"];
+    if (problems.length) {
+      summary = await ask(bot, system, `${SUMMARY_PROMPT}\n\nYour previous notes were refused (${problems.join("; ")}). Write them again.\n\nConversation:\n${source}`);
+      problems = summary ? summaryProblems(summary, source.length) : ["empty"];
+      if (problems.length) throw new Error(`The summary failed its check (${problems.join("; ")}); the conversation was kept whole.`);
+    }
   } catch (err) {
     cooldown.set(bot.id, now() + 10 * 60_000);
     throw err;
   }
-  if (!summary) return same;
   // Only commit if nothing was appended while the summary was being written.
   if (history.count(bot.id, bot.generation) !== all.length) return same;
   const next: ChatMessage[] = [{ role: "user", content: [{ type: "text", text: `${SUMMARY_MARK}\n${summary}` }] }, ...all.slice(cut)];
   history.replace(bot.id, bot.generation, next);
   q.run("INSERT INTO compactions (bot_id, generation, at, before_items, after_items) VALUES (?, ?, ?, ?, ?)", bot.id, bot.generation, now(), all.length, next.length);
+  summaries.add(bot.id, bot.generation, all.length, next.length, summary, flushed);
+  rows.append(bot, { kind: "notice", tone: "info", text: summaryLine(users.localeOf(bot.userId), older.length) }, 0);
   return { before: all.length, after: next.length, changed: true };
 }
 
@@ -205,7 +251,8 @@ async function learnBatch(bot: BotRecord): Promise<{ added: string[]; considered
   const recent = batch.filter((r) => r.body.kind === "message" && r.body.text.trim() && !r.body.streaming);
   // Only what the user typed (or said on a call) can teach anything; long pastes are skipped.
   const own = recent.filter((r) => typedByUser(r) && r.body.kind === "message" && r.body.text.length <= 4000);
-  if (!own.length || !settings.memory(bot.userId).autoCapture) { setMark(bot.id, newest); return { added: [], considered: recent.length, confirmed: 0, more }; }
+  // L88 « Ne rien retenir »: nothing is learned from this bot's conversation while it is on (the mark still moves on).
+  if (!own.length || !settings.memory(bot.userId).autoCapture || memoryPrefs.noLearn(bot.id)) { setMark(bot.id, newest); return { added: [], considered: recent.length, confirmed: 0, more }; }
 
   // Confidence that grows by itself (wave 5b): a note the user states again, word for word, in a later message of their
   // own becomes "confirmed". Only the user's messages count; never the bot's text or outside content.
@@ -378,14 +425,41 @@ export async function learnStyle(userId: string, bot: BotRecord, sentMail: strin
   return { profile: clean, source, samples: samples.length };
 }
 
-/** Periodic pass: bots that have been quiet for a while get their recent chat distilled into memories. */
+// ── When to learn (L67) ──────────────────────────────────────────────────────
+/**
+ * Words with which the user corrects the bot or gives it a standing instruction (accents folded): "non, je t'ai dit…",
+ * "je te l'ai déjà dit", "c'est faux", "à partir de maintenant", "no, I told you", "from now on"… Such a message is learned
+ * from at the next pass (within a minute), not only after CONSOLIDATE_IDLE_MIN of quiet. Only the user's own messages
+ * count (typedByUser): never the bot's replies, a routine's, a webhook's or another bot's words.
+ */
+export const CORRECTION_WORDS = /\b(?:non,?\s+(?:je\s+t'?ai|je\s+vous\s+ai)\s+(?:deja\s+)?dit|je\s+(?:te|vous)\s+l'?ai\s+(?:deja\s+)?dit|je\s+t'?ai\s+deja\s+dit|c'?est\s+faux|ce\s+n'?est\s+pas\s+(?:ca|ce\s+que\s+j'?ai\s+dit)|tu\s+te\s+trompes|retiens\s+(?:bien|que|ca)|souviens[- ]toi|n'?oublie\s+(?:pas|jamais)|a\s+partir\s+de\s+maintenant|dorenavant|desormais|plus\s+jamais|no,?\s+i\s+(?:already\s+)?told\s+you|i\s+(?:already\s+)?told\s+you|that'?s\s+(?:wrong|not\s+what\s+i\s+said)|you'?re\s+wrong|remember\s+that|don'?t\s+forget|from\s+now\s+on|never\s+again)\b/;
+export const isCorrection = (text: string) => CORRECTION_WORDS.test(fold(text).replace(/[’ʼ]/g, "'"));
+/** The user's own messages since the last pass that make a pass due without waiting for quiet. */
+export const LEARN_EVERY_TURNS = 20;
+export type LearnReason = "quiet" | "correction" | "turns";
+
+/**
+ * Which bots should learn now, and why: quiet for CONSOLIDATE_IDLE_MIN since their last message (as before), or — even
+ * mid-conversation — a correction among the user's messages since the last pass, or LEARN_EVERY_TURNS of them.
+ */
+export function learningDue(quietBefore = now() - config.consolidateIdleMin * 60_000): { id: string; reason: LearnReason }[] {
+  const pending = q.all<{ id: string; generation: number; last: number; mark: number }>(
+    `SELECT b.id, b.generation, MAX(r.created_at) AS last, COALESCE(c.mark, 0) AS mark FROM bots b
+       JOIN rows r ON r.bot_id = b.id AND r.generation = b.generation AND r.kind = 'message' LEFT JOIN consolidation c ON c.bot_id = b.id
+     WHERE b.kind = 'agent' AND b.hidden = 0 GROUP BY b.id HAVING MAX(r.created_at) > COALESCE(c.mark, 0)`);
+  const out: { id: string; reason: LearnReason }[] = [];
+  for (const p of pending) {
+    if (p.last <= quietBefore) { out.push({ id: p.id, reason: "quiet" }); continue; }
+    const own = rows.messagesAfter(p.id, p.generation, p.mark, LEARN_BATCH).filter((r) => typedByUser(r) && r.body.kind === "message");
+    if (own.length >= LEARN_EVERY_TURNS) out.push({ id: p.id, reason: "turns" });
+    else if (own.some((r) => r.body.kind === "message" && isCorrection(r.body.text))) out.push({ id: p.id, reason: "correction" });
+  }
+  return out;
+}
+
+/** Periodic pass (every minute): bots due to learn (learningDue) get their recent chat distilled into memories. */
 export async function consolidationSweep() {
-  const quietBefore = now() - config.consolidateIdleMin * 60_000;
-  const due = q.all<{ id: string }>(
-    `SELECT b.id FROM bots b WHERE b.kind = 'agent' AND b.hidden = 0 AND EXISTS (
-       SELECT 1 FROM rows r WHERE r.bot_id = b.id AND r.generation = b.generation AND r.kind = 'message'
-       GROUP BY r.bot_id HAVING MAX(r.created_at) <= ? AND MAX(r.created_at) > COALESCE((SELECT mark FROM consolidation c WHERE c.bot_id = b.id), 0))`, quietBefore);
-  for (const { id } of due) {
+  for (const { id } of learningDue()) {
     const bot = bots.byId(id);
     if (!bot || isBusy(id) || getLive(id).running || paused.get(id) || hostedHoldsBot(bot) || isPaused(bot) || capHolds(bot)) continue;
     await consolidate(bot).catch((err) => console.error("[consolidation]", err?.message ?? err));

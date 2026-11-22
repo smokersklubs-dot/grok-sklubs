@@ -26,12 +26,13 @@ import { MODE_IDS } from "./Modals";
 import { SkillImportForm, SkillRowCheck, useBotScans } from "./SkillScan"; import { CuratorCard, DuplicateHint, SkillHealthLine, SkillHealthPanel, useSkillHealth } from "./SkillHealth";
 import { ConfirmButton, CopyButton, copyText, Empty, ErrorNote, IconButton, Loading, Modal, Toggle, useTick } from "./ui";
 import { BotRulesAndNudges } from "./RulesAndNudges";
+import { NoLearnRow, PromptInspector, SummaryView, ToProfileButton } from "./MemoryInsight"; // L80, L88, L137, L138
 import { runNote } from "./Pause";
 import { BotVoicePicker } from "./VoicePicker";
 import { HookSecurity } from "./HookSecurity";
 import { RoutineMore, WorkModels } from "./RoutineEditor";
 import { MemoryEdit } from "./MemoryEdit";
-import { TelegramVoiceText } from "./TelegramVoiceText";
+import { TelegramVoiceText } from "./TelegramVoiceText"; import { BotChannelsTab } from "./BotChannels";
 
 const EFFORT_IDS: Effort[] = ["low", "medium", "high", "xhigh"];
 const AUTONOMY_IDS: Autonomy[] = ["careful", "balanced", "trusted", "auto"];
@@ -589,6 +590,7 @@ function Memories({ bot, bundle }: { bot: Bot; bundle: BotBundle | undefined }) 
   const [busy, setBusy] = useState<"consolidate" | "compact" | null>(null);
   const [filter, setFilter] = useState<"all" | MemoryStatus>("all");
   const [editing, setEditing] = useState<string | null>(null);
+  const [noLearn, setNoLearn] = useState<boolean | null>(null);
   const memories = bundle?.memories;
   const status = bundle?.memoryStatus;
   const needle = q.trim().toLowerCase();
@@ -696,6 +698,7 @@ function Memories({ bot, bundle }: { bot: Bot; bundle: BotBundle | undefined }) 
                 {(["active", "contested", "archived"] as const).map((st) => <option key={st} value={st}>{t(`memory.filter.${st}`)}</option>)}
               </select>
               {editing !== m.id && <button type="button" className="btn btn-small btn-ghost" onClick={() => setEditing(m.id)} aria-label={t("memory.editLabelFor", { text: m.text.slice(0, 60) })}>{t("memory.edit")}</button>}
+              {editing !== m.id && m.status !== "archived" && <ToProfileButton memory={m} onDone={setNote} />}
               <button type="button" className="btn btn-small btn-ghost" onClick={() => void forget(m)} aria-label={t("memory.forgetLabel", { text: m.text.slice(0, 60) })}>{t("memory.forget")}</button>
             </li>
           ))}
@@ -717,10 +720,13 @@ function Memories({ bot, bundle }: { bot: Bot; bundle: BotBundle | undefined }) 
             {status.lastCompactedAt ? t("memory.lastSummarised", { date: shortDate(status.lastCompactedAt) }) : t("memory.notSummarised")}
             {status.lastConsolidatedAt ? ` ${t("memory.lastReviewed", { date: shortDate(status.lastConsolidatedAt) })}` : ""}
           </p>
+          <SummaryView bot={bot} tick={status.lastCompactedAt} />
         </div>
       ) : (
         <Loading />
       )}
+      <NoLearnRow bot={bot} initial={noLearn} />
+      <PromptInspector bot={bot} tick={(memories?.length ?? 0) + (status?.lastCompactedAt ?? 0)} onView={(v) => setNoLearn(v.noLearn)} />
     </div>
   );
 }
@@ -1293,7 +1299,7 @@ export function BotSettings({ botId, tab }: { botId: string; tab: BotSettingsTab
   if (!bot) return null;
 
   const isRoom = bot.kind === "room";
-  const tabs: { id: BotSettingsTab; label: string; icon: "settings" | "book" | "brain" | "clock" | "send" | "mail" | "users" | "globe" | "wrench" | "key" | "shield"; count?: number }[] = isRoom
+  const tabs: { id: BotSettingsTab; label: string; icon: "settings" | "book" | "brain" | "clock" | "send" | "mail" | "users" | "globe" | "wrench" | "key" | "shield" | "chat"; count?: number }[] = isRoom
     ? [{ id: "general", label: t("botSettings.tab.general"), icon: "settings" }]
     : [
         { id: "general", label: t("botSettings.tab.general"), icon: "settings" },
@@ -1303,7 +1309,7 @@ export function BotSettings({ botId, tab }: { botId: string; tab: BotSettingsTab
         // Local tool servers run on the bot's computer: its owner manages them (a shared bot's members do not see the tab).
         ...(bot.access ? [] : [{ id: "localTools" as const, label: t("botSettings.tab.localTools"), icon: "wrench" as const }]),
         { id: "reach", label: t("botSettings.tab.reach"), icon: "globe" },
-        { id: "telegram", label: t("botSettings.tab.telegram"), icon: "send" },
+        { id: "telegram", label: t("botSettings.tab.telegram"), icon: "send" }, ...(bot.access ? [] : [{ id: "channels" as const, label: t("botSettings.tab.channels"), icon: "chat" as const }]), // L162: Slack, Discord, IMAP, access
         { id: "email", label: t("botSettings.tab.email"), icon: "mail" },
         { id: "sharing", label: t("botSettings.tab.sharing"), icon: "users" },
         // "Accès API" (BotApi.tsx): the owner's keys of this bot (a shared bot's members do not see the tab).
@@ -1347,7 +1353,7 @@ export function BotSettings({ botId, tab }: { botId: string; tab: BotSettingsTab
           {active === "routines" && <Routines bot={bot} bundle={bundle} />}
           {active === "localTools" && <LocalToolsTab key={bot.id} bot={bot} />}
           {active === "reach" && <BotReachTab key={bot.id} bot={bot} />}
-          {active === "telegram" && <Telegram key={bot.id} bot={bot} />}
+          {active === "telegram" && <Telegram key={bot.id} bot={bot} />}{active === "channels" && <BotChannelsTab key={bot.id} bot={bot} />}
           {active === "email" && <BotEmailTab key={bot.id} bot={bot} />}
           {active === "sharing" && <BotSharingTab key={bot.id} bot={bot} />}
           {active === "api" && <BotApiTab key={bot.id} bot={bot} />}{active === "security" && <BotSecurityTab key={bot.id} bot={bot} />}

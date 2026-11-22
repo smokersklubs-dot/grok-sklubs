@@ -1,4 +1,4 @@
-import type { Locale } from "./shared.js"; import { SECURITY_FR } from "./securityi18n.js"; import { COMFORT_FR } from "./comforti18n.js";
+import type { Locale } from "./shared.js"; import { SECURITY_FR } from "./securityi18n.js"; import { COMFORT_FR } from "./comforti18n.js"; import { TURN_FR } from "./turni18n.js";
 
 /**
  * Texts the server itself writes into a chat (notices, event lines, step labels, approval titles).
@@ -172,6 +172,8 @@ const FR: Record<string, string> = {
   "Allow {bot} to click “{label}” on {host}?": "Autoriser {bot} à cliquer sur « {label} » sur {host} ?",
   "Allow {bot} to answer OK to the page's question on {host}?": "Autoriser {bot} à répondre OK à la question de la page sur {host} ?",
   "answer OK to the page's question on {host}": "répondre OK à la question de la page sur {host}", "Browser": "Navigateur",
+  "Allow {bot} to attach the file {file} on {host}?": "Autoriser {bot} à joindre le fichier {file} sur {host} ?", // L75 element_upload
+  "attach the file {file} on {host}": "joindre le fichier {file} sur {host}", "The file will be sent to {host} when the form is sent.": "Le fichier partira vers {host} quand le formulaire sera envoyé.",
   "The page asks: “{message}”. OK confirms it.": "La page demande : « {message} ». OK le confirme.",
   "The page asks: “{message}”. OK may confirm something or leave the page; Cancel is always safe.": "La page demande : « {message} ». OK peut confirmer quelque chose ou quitter la page ; Annuler est toujours sans risque.",
   "click “{label}”": "cliquer sur « {label} »",
@@ -422,7 +424,7 @@ const FR: Record<string, string> = {
   "not allowed": "non autorisé", "skipped": "ignoré", "stopped": "arrêté",
   // Built-in apps
   "{bot} has read outside content. Allow it to use {app}: {action}?": "{bot} a lu du contenu extérieur. L'autoriser à utiliser {app} : {action} ?",
-  "Searching mail": "Cherche dans les e-mails", "Reading an email": "Lit un e-mail", "Reading a conversation": "Lit une conversation", "Writing a draft": "Écrit un brouillon",
+  "Searching mail": "Cherche dans les e-mails", "Reading an email": "Lit un e-mail", "Reading a conversation": "Lit une conversation", "Writing a draft": "Écrit un brouillon", "Updating a draft": "Met à jour un brouillon",
   "Sending an email": "Envoie un e-mail", "Organizing an email": "Range un e-mail", "Checking the calendar": "Consulte l'agenda", "Checking availability": "Vérifie les disponibilités",
   "Creating an event": "Crée un événement", "Changing an event": "Modifie un événement", "Cancelling an event": "Annule un événement",
   "Searching Drive": "Cherche dans Drive", "Reading a Drive file": "Lit un fichier Drive", "Uploading to Drive": "Envoie vers Drive",
@@ -641,7 +643,7 @@ const FR: Record<string, string> = {
   "Keep-out list changed on {device}": "Liste « garder à l'écart » modifiée sur {device}", "At most {n} entries.": "{n} éléments au plus.",
 };
 
-Object.assign(FR, SECURITY_FR, COMFORT_FR); // Lot 1 security texts (securityi18n.ts); comfort batch (comforti18n.ts)
+Object.assign(FR, SECURITY_FR, COMFORT_FR, TURN_FR); // Lot 1 security texts (securityi18n.ts); comfort batch (comforti18n.ts); turn control (turni18n.ts)
 export function tr(locale: Locale | undefined, english: string, vars: Record<string, string | number> = {}): string {
   const template = locale === "fr" ? FR[english] ?? english : english;
   return template.replace(/\{(\w+)\}/g, (_m, k) => String(vars[k] ?? ""));

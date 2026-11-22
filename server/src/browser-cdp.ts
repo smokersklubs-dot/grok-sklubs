@@ -1,11 +1,13 @@
 import { clip } from "./store.js";
 import { ELEMENT_OPS_PY, type PageDialog, type TabContext } from "./screen-elements.js";
+import { DEVTOOLS_PY } from "./browser-devtools.js";
 
 /**
  * The browser helper of a bot's Linux computer: one Python program, passed with `python3 -c` (so computers made from an
  * older image have it too), that reads and acts on the bot's ACTIVE tab through the Chrome DevTools Protocol of its
  * Chromium (port 9222). Its request (and any text to type, which may be a password) travels on standard input, never in
- * a process list. Ideas from the audits of chrome-devtools-mcp and agent-browser (docs/audits), no code taken from them.
+ * a process list. Ideas from the audits of chrome-devtools-mcp and agent-browser (docs/audits); the snapshot's hints
+ * and link addresses reuse agent-browser code (screen-elements.ts, Apache-2.0, see THIRD_PARTY_NOTICES.md).
  *
  *  - The active tab: the one shown in front of the browser window (document.visibilityState), so a link that opens a
  *    new tab, or a tab the user or the bot switched to, is followed; every read and action uses that same tab, never
@@ -37,6 +39,7 @@ BASE = "http://127.0.0.1:9222"
 HOME = "/root/.sklubot"
 STATE = HOME + "/browser-tab.json"
 WATCH_SOCK = HOME + "/browser-watch.sock"
+WATCH_VERSION = 2
 
 class Fail(Exception):
     pass
@@ -101,7 +104,22 @@ def watch_ask(req, timeout=5):
 
 def ensure_watch():
     try:
-        if watch_ask({"op": "ping"}, 1).get("ok"):
+        ping = watch_ask({"op": "ping"}, 1)
+        if ping.get("ok") and ping.get("v") == WATCH_VERSION:
+            return True
+        # An older watcher (from before the console and requests were kept, L81): replaced, unless a dialog is open,
+        # which only that watcher can answer.
+        if ping.get("ok") and not (watch_ask({"op": "state"}, 2).get("dialogs") or {}):
+            try:
+                os.kill(int(ping.get("pid")), 15)
+            except Exception:
+                pass
+            time.sleep(0.3)
+            try:
+                os.unlink(WATCH_SOCK)
+            except OSError:
+                pass
+        elif ping.get("ok"):
             return True
     except Exception:
         pass
@@ -320,9 +338,16 @@ from websocket import create_connection
 # Methods used, documented at https://chromedevtools.github.io/devtools-protocol/tot/ :
 #   Target.setDiscoverTargets, Target.attachToTarget (flatten), events Target.targetCreated / targetDestroyed /
 #   attachedToTarget / detachedFromTarget (Target domain);
-#   Page.enable, Page.handleJavaScriptDialog, events Page.javascriptDialogOpening / javascriptDialogClosed (Page domain).
+#   Page.enable, Page.handleJavaScriptDialog, events Page.javascriptDialogOpening / javascriptDialogClosed,
+#     Page.frameNavigated (Page domain);
+#   L81 — Runtime.enable, events Runtime.consoleAPICalled / Runtime.exceptionThrown (Runtime domain); Log.enable, event
+#     Log.entryAdded (Log domain); Network.enable, events Network.requestWillBeSent / responseReceived / loadingFinished /
+#     loadingFailed, Network.getResponseBody (Network domain): each tab's console and requests, kept for its last 3
+#     pages (as chrome-devtools-mcp keeps 3 navigations), at most 300 messages and 400 requests a tab.
 BASE = "http://127.0.0.1:9222"
 SOCK = "/root/.sklubot/browser-watch.sock"
+VERSION = 2
+KEEP_NAVS = 3
 
 def already():
     try:
@@ -345,6 +370,23 @@ sessions = {}
 targets = {}
 dialogs = {}
 created = []
+logs = {}
+nets = {}
+navs = {}
+
+def remember(store, tid, item, cap):
+    items = store.setdefault(tid, [])
+    item["nav"] = navs.get(tid, 0)
+    items.append(item)
+    floor = navs.get(tid, 0) - (KEEP_NAVS - 1)
+    if len(items) > cap or (items and items[0].get("nav", 0) < floor):
+        store[tid] = [x for x in items if x.get("nav", 0) >= floor][-cap:]
+
+def arg_text(a):
+    if "value" in a:
+        v = a["value"]
+        return v if isinstance(v, str) else json.dumps(v)[:300]
+    return a.get("description") or a.get("unserializableValue") or a.get("type", "")
 
 def send(method, params=None, session=None):
     with lock:
@@ -388,10 +430,15 @@ def reader():
             sessions[prm["sessionId"]] = prm["targetInfo"]["targetId"]
             targets[prm["targetInfo"]["targetId"]] = prm["sessionId"]
             send("Page.enable", None, prm["sessionId"])
+            for domain in ("Runtime.enable", "Log.enable", "Network.enable"):
+                send(domain, None, prm["sessionId"])
         elif m == "Target.targetDestroyed":
             tid = prm.get("targetId")
             dialogs.pop(tid, None)
             targets.pop(tid, None)
+            logs.pop(tid, None)
+            nets.pop(tid, None)
+            navs.pop(tid, None)
             if tid in created:
                 created.remove(tid)
         elif m == "Target.detachedFromTarget":
@@ -404,6 +451,42 @@ def reader():
             dialogs[sessions[sid]] = d
         elif m == "Page.javascriptDialogClosed" and sid in sessions:
             dialogs.pop(sessions[sid], None)
+        elif sid in sessions:
+            take(sessions[sid], m, prm)
+
+def take(tid, m, prm):
+    # L81: what a tab writes to its console, its errors, and its requests.
+    now = time.time()
+    if m == "Page.frameNavigated" and not (prm.get("frame") or {}).get("parentId"):
+        navs[tid] = navs.get(tid, 0) + 1
+    elif m == "Runtime.consoleAPICalled":
+        frame = ((prm.get("stackTrace") or {}).get("callFrames") or [{}])[0]
+        remember(logs, tid, {"level": {"warning": "warning", "error": "error", "assert": "error"}.get(prm.get("type"), "log" if prm.get("type") in ("log", "info", "debug") else prm.get("type", "log")),
+                             "text": " ".join(arg_text(a) for a in prm.get("args") or [])[:1000], "url": frame.get("url", ""), "line": frame.get("lineNumber", -1) + 1, "at": now}, 300)
+    elif m == "Runtime.exceptionThrown":
+        d = prm.get("exceptionDetails") or {}
+        frame = ((d.get("stackTrace") or {}).get("callFrames") or [{}])[0]
+        text = ((d.get("exception") or {}).get("description") or d.get("text") or "error").split("\n")[0]
+        remember(logs, tid, {"level": "error", "text": ("Uncaught " if not text.startswith("Uncaught") else "") + text[:1000], "url": d.get("url") or frame.get("url", ""), "line": (d.get("lineNumber") if d.get("lineNumber") is not None else frame.get("lineNumber", -1)) + 1, "at": now}, 300)
+    elif m == "Log.entryAdded":
+        e = prm.get("entry") or {}
+        if e.get("level") in ("error", "warning"):
+            remember(logs, tid, {"level": e.get("level"), "text": str(e.get("text", ""))[:1000], "url": e.get("url", ""), "line": e.get("lineNumber", -1) + 1, "source": e.get("source", ""), "at": now}, 300)
+    elif m == "Network.requestWillBeSent":
+        q = prm.get("request") or {}
+        remember(nets, tid, {"id": prm.get("requestId"), "method": q.get("method", ""), "url": q.get("url", "")[:2000], "type": prm.get("type", ""),
+                             "reqHeaders": q.get("headers") or {}, "at": now}, 400)
+    elif m in ("Network.responseReceived", "Network.loadingFinished", "Network.loadingFailed"):
+        for r in reversed(nets.get(tid, [])):
+            if r.get("id") == prm.get("requestId"):
+                if m == "Network.responseReceived":
+                    rs = prm.get("response") or {}
+                    r.update({"status": rs.get("status"), "mime": rs.get("mimeType", ""), "resHeaders": rs.get("headers") or {}, "type": prm.get("type", r.get("type"))})
+                elif m == "Network.loadingFinished":
+                    r.update({"done": True, "size": prm.get("encodedDataLength", 0)})
+                else:
+                    r.update({"done": True, "failed": prm.get("errorText", "failed"), "blocked": prm.get("blockedReason", "")})
+                break
 
 def serve(conn):
     try:
@@ -417,9 +500,22 @@ def serve(conn):
         req = json.loads(data or b"{}")
         op = req.get("op")
         if op == "ping":
-            ans = {"ok": True, "pid": os.getpid()}
+            ans = {"ok": True, "pid": os.getpid(), "v": VERSION}
         elif op == "state":
             ans = {"dialogs": dialogs, "created": created}
+        elif op == "console":
+            tid = req.get("target")
+            ans = {"messages": list(logs.get(tid, [])), "nav": navs.get(tid, 0), "watched": tid in targets}
+        elif op == "network":
+            tid = req.get("target")
+            ans = {"requests": list(nets.get(tid, [])), "nav": navs.get(tid, 0), "watched": tid in targets}
+        elif op == "body":
+            tid = req.get("target")
+            if tid not in targets:
+                ans = {"error": "that tab is not watched"}
+            else:
+                r = call("Network.getResponseBody", {"requestId": req.get("id")}, targets[tid])
+                ans = {"error": r["error"].get("message", "no body")} if "error" in r else r.get("result", {})
         elif op == "answer":
             tid = req.get("target")
             if tid not in dialogs or tid not in targets:
@@ -506,9 +602,9 @@ def op_open(req):
         t, info, ctx = front()
         need(t, ctx)
         t.call("Network.enable", _wait=4)
-        waited = settle(t, cap=10.0)
+        waited = smart(t, cap=10.0)
         u, title = here(t)
-        out({"ok": True, "url": u, "title": title, "started": True, "waited": waited, "ctx": ctx})
+        finish({"ok": True, "url": u, "title": title, "started": True, "waited": waited, "ctx": ctx}, req)
     if req.get("newTab"):
         made = http("/json/new?" + urllib.parse.quote(url, safe=""), method="PUT")
         bring_front(made["id"])
@@ -516,9 +612,9 @@ def op_open(req):
         save_state({"active": made["id"], "known": (st.get("known") or []) + [made["id"]]})
         t = open_tab(made)
         t.call("Network.enable", _wait=4)
-        waited = settle(t, cap=10.0)
+        waited = smart(t, cap=10.0)
         u, title = here(t)
-        out({"ok": True, "url": u, "title": title, "waited": waited, "newTab": True})
+        finish({"ok": True, "url": u, "title": title, "waited": waited, "newTab": True}, req)
     t, info, ctx = front()
     need(t, ctx)
     bring_front(info["id"])
@@ -526,9 +622,9 @@ def op_open(req):
     r = t.call("Page.navigate", _wait=20, url=url)
     if r.get("errorText"):
         out({"error": "The page could not be opened: %s" % r["errorText"]})
-    waited = settle(t, cap=10.0)
+    waited = smart(t, cap=10.0)
     u, title = here(t)
-    out({"ok": True, "url": u, "title": title, "waited": waited, "ctx": ctx})
+    finish({"ok": True, "url": u, "title": title, "waited": waited, "ctx": ctx}, req)
 
 def op_tabs(req):
     pgs = all_pages()
@@ -718,7 +814,8 @@ def op_sheet(req):
 const DISPATCH_PY = String.raw`
 OPS = {"read": op_read, "where": op_read, "target": op_target, "open": op_open, "tabs": op_tabs, "tab_switch": op_tab_switch,
        "tab_close": op_tab_close, "dialog_info": op_dialog_info, "dialog_answer": op_dialog_answer, "secret_type": op_secret_type,
-       "click": op_click, "keys": op_keys, "snapshot": op_snapshot, "layout": op_layout, "sheet": op_sheet}
+       "click": op_click, "keys": op_keys, "snapshot": op_snapshot, "layout": op_layout, "sheet": op_sheet,
+       "fill": op_fill, "wait": op_wait, "console": op_console, "network": op_network, "body": op_body, "pagecheck": op_pagecheck}
 req = json.loads(sys.stdin.read() or "{}")
 try:
     OPS.get(req.get("op"), act)(req)
@@ -732,7 +829,7 @@ except Exception as e:
     out({"error": "the browser could not be reached: %s" % (str(e)[:200] or type(e).__name__)})
 `;
 
-export const BROWSER_PY = `${CORE_PY}\nWATCH = r"""${WATCH_PY}"""\n${ELEMENT_OPS_PY}${OPS_PY}${SHEET_PY}${DISPATCH_PY}`;
+export const BROWSER_PY = `${CORE_PY}\nWATCH = r"""${WATCH_PY}"""\n${ELEMENT_OPS_PY}${OPS_PY}${SHEET_PY}${DEVTOOLS_PY}${DISPATCH_PY}`;
 
 /** One line of browser_tabs: a short stable id (the start of Chrome's target id), what it shows, and its state. */
 export interface TabLine { tab: string; title: string; url: string; active: boolean; dialog: string | null }

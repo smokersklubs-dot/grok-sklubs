@@ -10,6 +10,10 @@ export type * from "../../server/src/conversationgranttypes";
 export type * from "../../server/src/skillscantypes";
 /** « Santé des compétences », « Catalogue de l'équipe », banc d'essai (skillhealth.ts, skillcatalog.ts). */
 export type * from "../../server/src/skillhealthtypes";
+/** L162 « Canaux »: Slack, Discord, IMAP and who besides the owner may talk to a bot (channelroutes.ts). */
+export type * from "../../server/src/channeltypes";
+/** Mémoire : « Ce que reçoit ce bot », « Voir le résumé », « Mémoire par le sens », « Messages autour » (L71–L138). */
+export type * from "../../server/src/memorytypes";
 export { AVATAR_SHAPES, AVATAR_COLORS, TOOL_GROUPS, EYE_STYLES, ACCESSORIES, IDLE_MOTIONS, CHARACTER_TYPES, DEFAULT_CHARACTER, REACTIONS, GROK_EXPORT_PROMPT_FR, GROK_EXPORT_PROMPT_EN, TEMPLATE_ICONS, TEMPLATE_CATEGORIES, BOT_API_SCOPES } from "../../server/src/shared";
 /** "Aujourd'hui": the time-saved table (kinds, default minutes, how research and file edits are counted). */
 export type { TodayKind } from "../../server/src/todayminutes";

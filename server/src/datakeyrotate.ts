@@ -21,6 +21,7 @@ import type { UserRecord } from "./store.js";
 /** The sealed columns known when this was written (documentation and report; the scan below finds every *_enc). */
 export const KNOWN_SEALED: Record<string, string> = {
   "bots.telegram_token_enc": "Telegram bot token",
+  "bot_channels.secret_enc": "bot channel secrets: Slack bot and app tokens, Discord bot token, IMAP mailbox password (L162)",
   "connectors.token_enc": "connector (MCP) access token",
   "connectors.oauth_enc": "connector OAuth tokens and client",
   "oauth_pending.verifier_enc": "PKCE verifier of a connector sign-in in progress (10 min)",

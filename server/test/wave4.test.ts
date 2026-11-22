@@ -338,15 +338,16 @@ test("step limit: a Continue button resumes the work once; a routine carries on 
   assert.equal(((await rowsOf(b.id)).find((r) => r.seq === notice.seq)!.body as any).action.status, "done");
   assert.equal((await call("POST", `/bots/${b.id}/rows/${notice.seq}/continue`)).status, 409, "only once");
 
-  // A routine: at the limit it goes on once by itself, and only once.
+  // A routine: at the limit it goes on by itself while the work moves forward (L72, agent/autocontinue.ts: up to 3 times;
+  // here the continuation finishes, so once).
   const routine = routines.create(b.id, { name: "Gros travail", prompt: `chain ${chain}`, trigger: "webhook" });
   const before = (await rowsOf(b.id)).length;
   assert.equal((await call("POST", `/routines/${routine.id}/run`)).status, 200);
-  await until(async () => (await rowsOf(b.id)).slice(before).some((x) => x.body.kind === "notice" && /encore une fois de moi-même/.test((x.body as any).text)), "auto-continue notice");
+  await until(async () => (await rowsOf(b.id)).slice(before).some((x) => x.body.kind === "notice" && /le travail avance : je continue tout seul/.test((x.body as any).text)), "auto-continue notice");
   await until(async () => { const l = (await rowsOf(b.id)).slice(before); return l.some((x) => x.body.kind === "message" && /Echo: You stopped/.test((x.body as any).text)); }, "routine resumed");
   queue.length = 0;
   await idle(b);
-  assert.equal((await rowsOf(b.id)).slice(before).filter((x) => x.body.kind === "notice" && /encore une fois/.test((x.body as any).text)).length, 1);
+  assert.equal((await rowsOf(b.id)).slice(before).filter((x) => x.body.kind === "notice" && /je continue tout seul/.test((x.body as any).text)).length, 1);
 });
 
 test("progress_update: a light line, rate-limited, not a step and not the reply", async () => {

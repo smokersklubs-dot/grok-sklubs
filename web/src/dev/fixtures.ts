@@ -4,7 +4,7 @@
  */
 import type { AnnouncementAdminItem, AnnouncementsAdmin, AnnouncementsState, AnnouncementView, Bot, Card, ConversationGrantInfo, Row, SentinelIncidentView, SentinelOverview, TodayReport } from "../types";
 import { DEFAULT_MINUTES } from "../types";
-import { failureCardFixtures, failureSummaryFixture } from "./incidentsFixtures";
+import { failureCardFixtures, failureSummaryFixture } from "./incidentsFixtures"; import { turnCardFixtures, turnNoticeRows } from "./turnFixtures";
 
 export interface FixtureOptions { lang: "fr" | "en"; long: boolean }
 
@@ -173,6 +173,7 @@ export function cardFixtures(o: FixtureOptions): CardFixture[] {
     evidence: status === "complete" ? L("Tableau « prospects-lyon.csv », 20 lignes.", "Sheet “prospects-lyon.csv”, 20 rows.") : undefined,
     reason: status === "blocked" || status === "paused" ? L("Le site de l'annuaire demande une connexion.", "The directory site asks for a login.") : undefined,
   }));
+  list.push(...turnCardFixtures(o)); // L79, L83, L139 (turnFixtures.ts)
   return list;
 }
 
@@ -200,6 +201,7 @@ export function noticeRows(o: FixtureOptions): Row[] {
     row({ kind: "notice", tone: "warn", text: L("Ton abonnement ChatGPT est à sa limite jusqu'à 21:05. Je n'ai pas de modèle de secours : ton travail attend ici et je le reprends dès que l'abonnement revient.", "Your ChatGPT subscription is at its limit until 21:05. I have no backup model, so your work waits here and I will pick it up as soon as the subscription is back."), action: { kind: "sublimit", engine: "codex", until: NOW + 4 * HOUR, notify: false, status: "waiting" } }, at + 12),
     row({ kind: "notice", tone: "warn", text: L("Ton abonnement Claude est à sa limite jusqu'à 14:10. Je n'ai pas de modèle de secours : ton travail attend ici et je le reprends dès que l'abonnement revient.", "Your Claude subscription is at its limit until 14:10. I have no backup model, so your work waits here and I will pick it up as soon as the subscription is back."), action: { kind: "sublimit", engine: "claude-code", until: NOW - HOUR, notify: true, status: "back" } }, at + 13),
     row({ kind: "notice", tone: "info", text: L("Ton abonnement Claude est de nouveau disponible. Je reprends ce qui attendait.", "Your Claude subscription is available again. I am picking up what was waiting.") }, at + 14),
+    ...turnNoticeRows(o, row, at + 15), // L63, L72, L94, L97, L98 (turnFixtures.ts)
   ];
 }
 

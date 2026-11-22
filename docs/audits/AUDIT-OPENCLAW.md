@@ -149,7 +149,7 @@ Statuts : FAIT, PARTIEL, MANQUANT, DIFFÉRENT, NON REPRIS. Taille du travail res
 | E8 | Relance si la réponse n'est qu'un « je m'en occupe » | MANQUANT | — | Une routine peut livrer une phrase d'attente comme résultat. | S |
 | E9 | Webhooks entrants | FAIT | `routes.ts:400` ; test : wave4, security | — | — |
 | E10 | Déclencheur à l'arrivée d'un e-mail | FAIT | `native/triggers.ts:167` ; test : apps, wave6-mail | — | — |
-| E11 | Boîte IMAP surveillée par un agent lecteur restreint | PARTIEL | `botmail.ts:57` (boîte du bot) | Pas d'IMAP quelconque. | M |
+| E11 | Boîte IMAP surveillée par un agent lecteur restreint | FAIT (2026-11-22) | `imapwatch.ts` ; test : channels-imap | Lecture seule, TLS 993. | M |
 | E12 | Événements MCP qui lancent une automatisation | MANQUANT | — | — | M |
 | E13 | Tour de veille (heartbeat) qui peut rester silencieux | FAIT | `scheduler.ts:197`, `stay_quiet` ; test : wave4, wave5 | — | — |
 | E14 | Heures actives et heures calmes | FAIT | `push.ts:162` | — | — |
@@ -216,13 +216,13 @@ Statuts : FAIT, PARTIEL, MANQUANT, DIFFÉRENT, NON REPRIS. Taille du travail res
 | # | Fonction OpenClaw | Statut | Preuve Sklubot | Ce qui manque | Taille |
 |---|---|---|---|---|---|
 | I1 | Telegram complet (groupes, sujets, photos, vocal, aperçu en direct, boutons) | PARTIEL | `telegram.ts:108` ; test : wave2, wave5b | Texte seul, un seul chat privé. | M |
-| I2 | Discord | MANQUANT | — | — | M |
-| I3 | Slack comme canal de discussion | MANQUANT | Slack n'existe que comme app-outil | — | M |
+| I2 | Discord | FAIT (2026-11-22) | `discord.ts` ; test : channels-discord | Messages privés seulement. | M |
+| I3 | Slack comme canal de discussion | FAIT (2026-11-22) | `slack.ts` ; test : channels-slack | Messages privés seulement. | M |
 | I4 | WhatsApp, iMessage, Zalo personnel (comptes personnels, API non officielles) | NON REPRIS | — | API non officielles. | — |
 | I5 | Autres canaux (Signal, Matrix, IRC, Mattermost, Teams, Google Chat, LINE, Feishu, Nextcloud, Nostr, Twitch, SMS…) | MANQUANT | — | À la demande seulement. | L |
 | I6 | Chat web | FAIT | `web/src/components/ChatView.tsx` | — | — |
 | I7 | E-mail comme canal | FAIT | `botmail.ts:57` ; test : wave6-mail | — | — |
-| I8 | Appairage des inconnus (code 8 caractères, 1 h, 3 en attente) et listes d'accès | PARTIEL | `store.ts:305` (code de liaison) | Un seul interlocuteur possible. | S |
+| I8 | Appairage des inconnus (code 8 caractères, 1 h, 3 en attente) et listes d'accès | FAIT (2026-11-22) | `channelaccess.ts` ; test : channels-telegram | — | S |
 | I9 | Groupes : réponse sur mention, liste autorisée | FAIT | `agent/team.ts`, `agent/roomrouting.ts:76` ; test : room-routing | Salons internes seulement. | — |
 | I10 | Frein aux boucles entre bots (20 échanges par minute) | FAIT | `agent/team.ts:8` (3 rebonds), `agent/roombudget.ts` ; test : roombudget | — | — |
 | I11 | Messages d'ambiance gardés comme contexte sans réponse | PARTIEL | Non vérifié en détail | — | S |

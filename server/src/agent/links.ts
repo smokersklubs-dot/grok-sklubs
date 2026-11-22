@@ -1,6 +1,7 @@
 import net from "node:net";
 import { isPrivateAddress } from "../net.js";
 import type { Trigger, Turn } from "./loop.js";
+import { noteLinksGiven } from "./linknudge.js";
 
 /**
  * Links the user typed (never links found in outside content: emails, pages, tool results). The bot has its own
@@ -97,6 +98,7 @@ export function linkHint(userText: string, hasBrowser: boolean, canWatch = false
  */
 export function userLinkHint(turn: Pick<Turn, "builtin">, trigger: Exclude<Trigger, { kind: "resume" }>): string {
   if (trigger.kind !== "user" || trigger.api) return "";
+  noteLinksGiven(turn, trigger.text); // L64: the safety net "link given but never opened" (linknudge.ts)
   return linkHint(trigger.text, turn.builtin.has("browser_open"), turn.builtin.has("video_frames"));
 }
 

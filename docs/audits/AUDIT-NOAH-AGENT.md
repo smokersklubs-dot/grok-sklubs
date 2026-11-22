@@ -270,7 +270,7 @@ Taille : S (moins d'un jour), M (quelques jours), L (une semaine ou plus). Chemi
 2. **Accusé « Noté » et tri des messages tapés pendant le travail** (question courte à côté, correction fondue, nouvelle demande à la suite) (M).
 3. **Questions d'un assistant ou coéquipier routées d'abord vers le bot demandeur**, sauf plancher ; « décidé pour toi » corrigeable en règle (M).
 4. **Petit modèle de décision avant de réveiller le bot** sur une surveillance avec condition (S).
-5. **Apprentissage immédiat sur un mot de correction** (repéré sans modèle, plafond par heure) (S).
+5. ✅ FAIT (L67, `isCorrection` / `learningDue` : dans la minute, sans modèle pour le repérer ; un passage au plus par lot de messages) — **Apprentissage immédiat sur un mot de correction** (repéré sans modèle, plafond par heure) (S).
 6. **Mode Auto** : classer la demande une fois (simple / moyen / complexe) et choisir le modèle pour toute la tâche (M).
 7. **Second facteur (e-mail ou TOTP) avant une action du plancher**, en option (M).
 8. **Alerte nouvel appareil** (« C'est moi / Ce n'est pas moi ») (S).

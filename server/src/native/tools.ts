@@ -263,6 +263,26 @@ const MAIL: NativeToolDef[] = [
     },
   },
   {
+    // L83: the brouillon-email skill asks to revise an existing draft instead of making another copy; this is that tool.
+    action: "mail_draft_update", risk: "safe", label: "Updating a draft",
+    description: "Replace the content of a draft you saved earlier in this mailbox (nothing is sent): give its draft id (the id mail_draft returned) and the full new recipients, subject and body. Use it for revisions instead of saving another draft.",
+    schema: obj({ id: str("Draft id (as returned by mail_draft)"), to: str("Recipients, comma-separated"), cc: str("Cc, comma-separated"), subject: str("Subject"), body: str("Plain-text body"), reply_to_id: str("Message id this replies to, if the draft is a reply") }, ["id", "body"]),
+    async run(acc, a) {
+      const id = encodeURIComponent(String(a.id ?? "").trim());
+      if (!id) throw new Error("give the draft id");
+      if (isGoogle(acc)) {
+        const m = await gmailCompose(acc, a);
+        // users.drafts.update replaces the draft's message (https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.drafts/update).
+        const d = check(await callApi(acc, "PUT", gmail(`/drafts/${id}`), { json: { id: String(a.id), message: { raw: m.raw, ...(m.threadId ? { threadId: m.threadId } : {}) } } })).json;
+        return out(`Draft updated (id ${d.id ?? a.id}) to ${m.to.join(", ")}: ${m.subject}`, "draft updated");
+      }
+      // A draft is a message in Outlook: PATCH changes its fields (https://learn.microsoft.com/en-us/graph/api/message-update).
+      const to = addresses(a.to, "to", !a.reply_to_id); const cc = addresses(a.cc, "cc", false);
+      check(await callApi(acc, "PATCH", graph(`/messages/${id}`), { json: { ...(a.subject !== undefined ? { subject: noLines(a.subject, "subject") } : {}), body: { contentType: "Text", content: String(a.body ?? "") }, ...(to.length ? { toRecipients: recipients(to) } : {}), ...(a.cc !== undefined ? { ccRecipients: recipients(cc) } : {}) } }));
+      return out(`Draft updated (id ${a.id}).`, "draft updated");
+    },
+  },
+  {
     action: "mail_send", risk: "write", label: "Sending an email",
     description: "Send an email from this mailbox. To reply, give reply_to_id (the reply stays in that conversation). Needs the user's approval.",
     schema: obj({ to: str("Recipients, comma-separated"), cc: str("Cc, comma-separated"), subject: str("Subject"), body: str("Plain-text body"), reply_to_id: str("Message id this replies to") }, ["body"]),

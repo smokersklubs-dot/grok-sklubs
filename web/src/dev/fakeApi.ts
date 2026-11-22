@@ -5,6 +5,7 @@
  */
 import { landingData, sampleDownloads } from "./landingFixtures";
 import { announcementsAdmin, announcementsState, conversationGrantFixtures, memoryHistoryFixture, sentinelOverview, todayReport, type FixtureOptions } from "./fixtures";
+import { promptViewFixture, semanticFixture, summaryFixture } from "./GalleryMemory";
 import { githubPreviewFixture, libraryFixture, scanReportFixture, versionsFixture } from "./skillsFixtures"; import { benchFixture, catalogFixture, skillHealthFixture, versionsListFixture } from "./skillHealthFixtures";
 import { incidentsFixture } from "./incidentsFixtures";
 import { commandFixture, fakeScreen } from "./commandFixtures";
@@ -13,6 +14,7 @@ import { hookSignedFixture, hookTestFixture, reportsFixture } from "./trustFixtu
 import { relayGuardFixture } from "./relayGuardFixtures";
 import { routineExtrasFixture, routinePreviewFixture } from "./routineFixtures";
 import { botSecurityFixture, browserFixture, recipientsFixture, securitySettingsFixture, vaultAccessFixture } from "./securityFixtures";
+import { channelsFixture } from "./GalleryChannels"; import { inboxFixture } from "./turnFixtures";
 
 export interface FakeApiState extends FixtureOptions { empty: boolean; fail: boolean }
 
@@ -54,6 +56,8 @@ export function installFakeApi(get: () => FakeApiState): void {
       if (/^\/bots\/[^/]+\/telegram\/voice-text$/.test(path) && !s.fail) { await wait(150); return json(200, { enabled: JSON.parse(String(init?.body ?? "{}")).enabled === true, provider: "whisper-cpp", cost: "local", maxSeconds: 120 }); }
       if (/^\/bots\/[^/]+\/mute$/.test(path) && !s.fail) { await wait(100); const m = JSON.parse(String(init?.body ?? "{}")).mute; return json(200, { muted: m !== "off", until: m === "8h" ? Date.now() + 8 * 3_600_000 : null }); }
       if (/^\/bots\/[^/]+\/messages$/.test(path) && method === "POST" && !s.fail) { await wait(100); const b = JSON.parse(String(init?.body ?? "{}")); return json(200, { row: { seq: 90_000 + Math.floor(Math.random() * 1000), botId: path.split("/")[2], generation: 1, thread: 0, createdAt: Date.now(), body: { kind: "message", role: "user", text: String(b.text ?? "") } } }); }
+      // L162 « Canaux » (GalleryChannels.tsx): every change answers with the same view.
+      if (/^\/bots\/[^/]+\/(channels|contacts)(\/|$)/.test(path) && !s.fail) { await wait(150); return json(200, channelsFixture(s, s.empty)); }
       if (/^\/bots\/[^/]+\/commands\/[^/]+\/stop$/.test(path) && !s.fail) { await wait(150); return json(200, { stopped: true }); }
       if (path === "/team-md/preview" && !s.fail) { await wait(150); return json(200, teamMdPreviewFixture(s)); }
       if (path === "/team-md/commit" && !s.fail) { await wait(150); return json(200, { report: teamMdReportFixture() }); }
@@ -68,11 +72,16 @@ export function installFakeApi(get: () => FakeApiState): void {
       return s.fail ? json(500, { error: s.lang === "fr" ? "Exemple d'erreur : le serveur n'a pas pu le faire." : "Sample error: the server could not do it." }) : json(200, {});
     }
     if (path === "/today") return json(200, todayReport(s, s.empty));
+    if (path === "/inbox") return json(200, inboxFixture(s)); // L139 « À toi »
     if (/^\/routines\/[^/]+\/extras$/.test(path)) return json(200, routineExtrasFixture(s, s.empty));
     if (/^\/bots\/[^/]+\/routines\/live$/.test(path)) return json(200, { live: s.empty ? [] : [{ routineId: "rtn_gallery_nod", steps: 4, caption: s.lang === "fr" ? "Lit les nouvelles du secteur" : "Reading the industry news", activity: "browsing", since: Date.now() - 90_000, awaiting: null }] });
     if (/^\/bots\/[^/]+\/work-models$/.test(path)) return json(200, { routines: "", tasks: s.empty ? "" : "openrouter:google/gemini-2.5-flash", background: "" });
     // Réglages → Mémoire, « Modifier » then « Historique » (MemoryEdit.tsx): what changed in a note.
     if (/^\/memories\/[^/]+\/history$/.test(path)) return json(200, { history: s.empty ? [] : memoryHistoryFixture(s) });
+    // Mémoire L71–L138 (GalleryMemory.tsx): « Voir le résumé », « Ce que reçoit ce bot », « Mémoire par le sens ».
+    if (/^\/bots\/[^/]+\/summary$/.test(path)) return json(200, summaryFixture(s, s.empty));
+    if (/^\/bots\/[^/]+\/prompt-view$/.test(path)) return json(200, promptViewFixture(s, s.empty));
+    if (path === "/memory/semantic") return json(200, semanticFixture(s.empty));
     // « Qui répond » in a group chat (GalleryRooms.tsx): the room's settings and its quick model.
     if (/^\/bots\/[^/]+\/routing$/.test(path)) return json(200, { routing: { discreet: false, askFirst: true }, model: s.empty ? null : "OpenRouter google/gemini-2.5-flash-lite" });
     // « Centre de commandement »: the team, and a drawn screen for the computers that are on.
@@ -80,6 +89,7 @@ export function installFakeApi(get: () => FakeApiState): void {
     if (/^\/relay\/devices\/[^/]+\/guard$/.test(path)) return json(200, relayGuardFixture(s.empty));
     if (/^\/bots\/[^/]+\/telegram\/voice-text$/.test(path)) return json(200, { enabled: !s.empty, provider: "whisper-cpp", cost: "local", maxSeconds: 120 });
     if (/^\/bots\/[^/]+\/mute$/.test(path)) return json(200, { muted: false, until: null });
+    if (/^\/bots\/[^/]+\/channels$/.test(path)) return json(200, channelsFixture(s, s.empty));
     if (/^\/bots\/[^/]+\/screen$/.test(path)) return new Response(fakeScreen(path.split("/")[2].replace(/^cmd_/, "")), { headers: { "content-type": "image/svg+xml" } });
     if (path === "/surveillance") return json(200, sentinelOverview(s, s.empty));
     if (path === "/reports") return json(200, reportsFixture(s, s.empty));

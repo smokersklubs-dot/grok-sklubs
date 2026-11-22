@@ -1,6 +1,7 @@
 import type { Context, Hono } from "hono";
 import { changeNote, historyOf, NoteError, restoreNote, trashNote } from "./agent/memorybook.js";
 import { body } from "./routeinput.js";
+import { registerMemoryViewRoutes } from "./memoryviewroutes.js";
 import type { UserRecord } from "./store.js";
 
 /**
@@ -12,6 +13,7 @@ import type { UserRecord } from "./store.js";
  *   GET    /memories/:id/history   what changed, oldest first
  */
 export function registerMemoryNoteRoutes(api: Hono<any>) {
+  registerMemoryViewRoutes(api); // L71, L73, L80, L88, L137, L138 (memoryviewroutes.ts)
   const handle = (fn: (c: Context, user: UserRecord, id: string) => Promise<Response> | Response) => async (c: Context) => {
     const user = c.get("user") as UserRecord;
     try { return await fn(c, user, c.req.param("id") ?? ""); } catch (err) {

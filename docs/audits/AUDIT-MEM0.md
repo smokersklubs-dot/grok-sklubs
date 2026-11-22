@@ -246,7 +246,7 @@ validations, salon multi-bots (sauf le bogue n° 2), appel vocal, livraison de f
 8. ✅ Fait (2026-11-22, `llm/cachelayout.ts`). Notes rappelées déplacées de l'invite système vers le message du tour (cache conservé) — S.
 9. Anti-doublon : montrer au modèle les 20 notes les plus proches plutôt que les 200 plus récentes — S.
 10. Envoyer les réponses du bot comme contexte (sans en apprendre) pour comprendre « oui, celle-là » — S.
-11. « Fiche sur moi » commune à tous les bots du compte — M.
+11. ✅ FAIT (L88 : profil partagé + « Ajouter à ma fiche », `memoryviewroutes.ts`) — « Fiche sur moi » commune à tous les bots du compte — M.
 12. Racinisation française des verbes (Snowball) — S.
 13. Date de fin par note (« valable jusqu'au ») — S.
 14. Écran : charger toutes les notes (pagination) et utiliser la recherche classée — S.

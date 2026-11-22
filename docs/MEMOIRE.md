@@ -24,7 +24,8 @@ les conversations). Tests : `server/test/memory-recall.test.ts`, `server/test/me
 
 Le classement se fait **par mots-clés**. Le bot retrouve une note si elle partage au moins un mot important avec ton
 message. Il ne comprend pas les **synonymes** : une note « paiement à 30 jours » n'est pas trouvée par « règlement des
-devis », car aucun mot n'est commun. Il n'y a pas de recherche « par le sens » (pas d'embeddings).
+devis », car aucun mot n'est commun. La recherche « par le sens » existe en **option**, désactivée par défaut (voir
+« Mémoire par le sens » plus bas) ; sans elle, rien ne quitte le serveur.
 
 Ce qui est quand même géré, en français et en anglais :
 
@@ -91,7 +92,13 @@ recherche (accents, pluriels, formes collées). Chaque ligne finit par la date d
 
 ## Comment le bot apprend (sans rien perdre)
 
-- Après 10 minutes de calme (ou avec « Relire la discussion récente »), le bot lit ce qui a été écrit depuis son
+- **Quand ?** Après 10 minutes de calme (ou avec « Relire la discussion récente »), et aussi **tout de suite** (dans la
+  minute, dès que le bot a fini de répondre) quand tu le corriges ou lui donnes une consigne durable : « non, je t'ai
+  dit… », « je te l'ai déjà dit », « c'est faux », « à partir de maintenant », « dorénavant », « no, I told you »,
+  « from now on »… Et au plus tard tous les **20 messages** de toi, même sans pause. Seuls tes messages comptent : une
+  phrase de correction écrite par le bot, une routine, un webhook ou un autre bot ne déclenche rien (`learningDue`,
+  `server/src/agent/memory.ts`).
+- Le bot lit ce qui a été écrit depuis son
   dernier passage, **du plus ancien au plus récent**, par paquets de 60 messages (5 paquets au plus par passage ; la
   suite au passage d'après). Avant, il ne lisait que les 60 derniers et sautait le reste.
 - Seuls tes propres messages servent, chacun avec **son jour** entre crochets. Le modèle reçoit la date du jour et la
@@ -104,6 +111,16 @@ recherche (accents, pluriels, formes collées). Chaque ligne finit par la date d
   Durand paie à 30 jours » restent deux notes ; « rapport le lundi » et « rapport le vendredi » aussi. Une note sur
   Dupont n'est plus « confirmée » par une phrase sur Durand. Limite : deux synonymes (« courtes » / « brèves ») ne sont
   pas reconnus comme pareils.
+- **« Ne rien retenir »** (Réglages du bot → Mémoire) : tant que c'est activé, ce bot n'apprend plus rien de sa
+  conversation et `memory_save` refuse — sauf si tu lui demandes toi-même, en toutes lettres, de retenir quelque chose
+  (« retiens que… »). Les notes déjà là restent.
+
+## La fiche sur moi, commune à tous tes bots
+
+Réglages → **Profil** : ton nom, ton fuseau horaire, ton entreprise et tes préférences. Tous tes bots la lisent à
+chaque message (« About the user (shared profile…) »). Une note apprise par un bot peut y aller d'un clic :
+**« Ajouter à ma fiche »** sur la note (Réglages du bot → Mémoire). Tes autres bots la savent alors, sans la
+réapprendre. Une note qui ressemble à un secret est refusée ; la fiche est limitée à 2 000 caractères.
 
 ## Gérer les notes (Réglages du bot → Mémoire)
 
@@ -133,6 +150,55 @@ La recherche dans les messages (outil `conversation_search` et la recherche de l
 que la mémoire : « reunion budget » trouve « Réunion du budget », « facture » trouve « factures ». Un message qui
 contient un des mots est retenu ; ceux qui contiennent le plus de mots rares passent devant, puis les plus récents.
 Un mot trouvé seulement à l'intérieur d'un mot plus long (« factur » dans « facturation ») vient après.
+
+Depuis L73, les messages sont dans un **index plein texte** (SQLite FTS5, intégré à Node) tenu à jour à chaque message
+écrit ou modifié : la recherche ne relit plus tous les messages. L'index plie les accents et cherche chaque mot comme
+un début de mot. S'il ne trouve rien (un bout de référence comme « 452 » dans « A-4521 »), l'ancienne lecture complète
+prend le relais. Les messages déjà écrits sont indexés une fois, au premier démarrage.
+
+- **Filtre de date** : le bot peut donner `since` et `until` (jours AAAA-MM-JJ, le dernier jour compris) ; la recherche
+  de l'appli accepte `?since=` et `?until=`.
+- **Messages autour** : chaque résultat porte son numéro (`#12`). Le bot demande `around_seq: 12` pour lire les
+  messages juste avant et après (3 par défaut, 10 au plus), dans la même conversation et le même fil. API :
+  `GET /api/bots/:id/around?seq=12&count=3`.
+
+## Les résumés de conversation (compactage)
+
+Quand une conversation devient trop longue pour le modèle, le début est remplacé par un résumé (le fil visible ne
+change pas). Depuis L80 :
+
+1. **D'abord, « note ce qui compte »** : un passage d'apprentissage silencieux garde en notes ce que tu as dit d'important
+   (mêmes règles que l'apprentissage : tes messages seulement).
+2. **Un seul prompt à sections fixes** : qui tu es ; objectifs, préférences, consignes ; décisions ; faits, noms,
+   nombres, liens ; ce qui a été fait et le résultat ; ce qui reste ouvert ou promis.
+3. **Contrôle du résultat** : toutes les sections, assez long, plus court que ce qu'il remplace, aucun secret. Sinon le
+   modèle le refait une fois en sachant pourquoi ; un deuxième échec ne remplace **rien** (la conversation reste
+   entière) et le prochain essai attend 10 minutes.
+4. **Une ligne visible** dans la discussion : « J'ai résumé le début de notre conversation… ».
+
+Réglages du bot → Mémoire : la jauge **« Contexte rempli à X % »**, le bouton **Compacter**, et **« Voir le
+résumé »** (le dernier résumé, sa date, combien de messages il remplace).
+
+## Ce que reçoit ce bot
+
+Réglages du bot → Mémoire → **« Ce que reçoit ce bot »** : les consignes que le bot lit avec ton prochain message, dans
+l'ordre, un morceau par titre, chacun s'ouvre pour être lu, avec sa taille (environ 1 jeton pour 4 caractères) et s'il
+est fixe ou change à chaque message. Au-dessus, **« Ce que ton bot voit de sa mémoire »** : combien de notes il a,
+combien sont dans ses consignes, combien restent à retrouver avec la recherche, et ce que cela coûte par message.
+C'est une estimation : les applis connectées du moment et les notes rappelées pour ton message peuvent changer un peu.
+Rien n'est écrit, aucun modèle n'est appelé. API : `GET /api/bots/:id/prompt-view`.
+
+## Mémoire par le sens (option, désactivée par défaut)
+
+Réglages → Mémoire → **« Mémoire par le sens »**. Quand tu l'actives, `memory_search` trouve aussi les notes qui disent
+la même chose avec d'autres mots (« ma voiture » trouve « la Clio »). Pour cela, **le texte de tes notes et des
+recherches est envoyé à ton fournisseur d'IA** pour être transformé en « vecteurs » (embeddings), avec une clé que ton
+compte a **déjà** : un de tes fournisseurs (Réglages → Modèles), puis, hors mode hébergé, la clé OpenAI du serveur.
+Seuls OpenAI (`text-embedding-3-small`) et Mistral (`mistral-embed`) sont reconnus. Jamais de nouveau service payant.
+Le classement par mots et celui par le sens sont fusionnés (fusion des rangs, `fuseRankings` dans `recall.ts`). Les
+vecteurs sont gardés par note et refaits si son texte change. Sans clé, ou en cas d'erreur, la recherche par mots
+répond seule. Limite : le rappel automatique avant chaque message reste par mots (il ne peut pas attendre le
+fournisseur) ; le sens sert à `memory_search`, que le bot utilise avant de te redemander quelque chose.
 
 ## Voir ce qui a été rappelé
 

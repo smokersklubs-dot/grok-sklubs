@@ -13,6 +13,7 @@ import { adoptMachines, containerName, ensureBotsNetwork, holdComputer, isShared
 import { onSharedChanged, sharedOwners, sharedView } from "./sharedcomputers.js";
 import type { Attachment, ComputerState, FileEntry, TeamFolderState } from "./shared.js";
 import type { ElementRequest } from "./screen-elements.js";
+import type { PageCheckAnswer, PageCheckRequest } from "./pagecheck.js"; import { browserPageCheck } from "./pagecheck-browser.js";
 
 /**
  * Each bot gets a private "desktop": a folder of its own on disk plus a real browser with its own
@@ -243,6 +244,8 @@ const browserScreen = {
 const reportedUrl = new Map<string, string>();
 export const lastKnownUrl = (botId: string) => reportedUrl.get(botId) ?? "";
 const noteUrl = <T extends { url: string }>(botId: string, r: T): T => { if (r.url) reportedUrl.set(botId, r.url); return r; };
+/** L65: an address the bot's browser reported outside screen.open/read (a page opened and read back in words). */
+export const noteReportedUrl = (botId: string, url: string) => { if (url) reportedUrl.set(botId, url); };
 
 /** The bot's screen, whichever kind of computer it has. */
 export const screen = {
@@ -260,6 +263,9 @@ export const screen = {
         } finally { await session.detach(); }
       });
   },
+  /** L56 (pagecheck.ts): a page the bot just published, rendered from its own files in a temporary tab at each size; the bot's own tab is left as it was. */
+  pageCheck: (botId: string, userId: string, req: PageCheckRequest): Promise<PageCheckAnswer> => kind === "linux" ? linuxScreen.browserOp<PageCheckAnswer>(botId, userId, workspaceOf(botId), { op: "pagecheck", ...req }, 110_000)
+    : (async () => { const was = desktops.has(botId); try { return await withDesktop(botId, userId, async (d) => { const own = d.page; try { return await browserPageCheck(d.context, req); } finally { d.page = own; } }); } finally { if (!was) await closeDesktop(botId).catch(() => {}); } })(), // a browser opened only for the check is closed again
   /** L114 (contactsheet.ts): the first screen of `url` at each width, in a temporary tab; the bot's own tab is left as it was. */
   sheet: async (botId: string, userId: string, url: string, widths: number[]): Promise<{ width: number; data: string; scrollWidth?: number }[]> => {
     await assertPublicUrl(url);

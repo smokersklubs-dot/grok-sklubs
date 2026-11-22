@@ -259,7 +259,7 @@ lien, inscription) sont sans objet.
 ## À faire (du plus utile au moins utile)
 
 1. Corriger l'anti-doublon `similar()` (veto sur mot rare, nombre, jour, nom) + tests — S.
-2. Index FTS5 avec accents pliés et classement pour `conversation_search`, filtre de date et « messages autour » — S.
+2. ✅ FAIT (L73, `convsearch.ts`, test `memory-context.test.ts`) — Index FTS5 avec accents pliés et classement pour `conversation_search`, filtre de date et « messages autour » — S.
 3. Mémoire du travail : « leçons apprises » (réussites, échecs, décisions) gardées à part des faits sur l'utilisateur — M.
 4. « Ne pas retenir ce message » (bouton ou balise) — S.
 5. Aperçu « Ce que ton bot voit de sa mémoire » avec coût approximatif — S.

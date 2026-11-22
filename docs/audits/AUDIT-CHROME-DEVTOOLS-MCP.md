@@ -237,20 +237,20 @@ ou bien reprendre ses idées dans les outils natifs.
 2. Gérer les dialogues JavaScript dans `page-text.py` et `ELEMENTS_PY` + outil pour y répondre, sous approbation si engageant (S). — **FAIT (2026-11-22)** : veilleur attaché aux onglets (`Page.javascriptDialogOpening`), message clair au lieu de la trace, `browser_dialog` (OK sous approbation, lié au dialogue)
 3. Test réel « deux browser_open de suite », « alert() ouverte », « lien target=_blank », « iframe » dans `elements.test.ts` / `linux.test.ts` (S). — **FAIT (2026-11-22)** : `server/test/browser-tabs.test.ts` (deux `browser_open`, alert/confirm, `target=_blank`, iframes, bouton couvert, coffre)
 4. Outil `browser_tabs` (lister, activer, fermer) et lecture de l'onglet vraiment actif (S). — **FAIT (2026-11-22)** : onglet actif = celui affiché (`document.visibilityState`), partout
-5. Attente intelligente après action (chargement + DOM stable) à la place des pauses fixes (M). — **FAIT (2026-11-22)** : PARTIEL : chargement + réseau calme (plafonné) après actions par référence, `browser_open`, dialogues et clics liés ; clics/frappes à l'écran ordinaires gardent leur pause
+5. Attente intelligente après action (chargement + DOM stable) à la place des pauses fixes (M). — **FAIT (2026-11-22)** : PARTIEL : chargement + réseau calme (plafonné) après actions par référence, `browser_open`, dialogues et clics liés ; clics/frappes à l'écran ordinaires gardent leur pause, puis DOM calme 300 ms (3 s max, L75)
 6. Iframes dans `element_snapshot` (M). — **FAIT (2026-11-22)** : PARTIEL : même site listés, autre site signalés
-7. `element_fill` multi-champs et cases à cocher par valeur voulue (M).
-8. Résultat texte (sans capture) pour les actions par référence, captures réduites (M).
-9. `element_hover`, double-clic et Tab/Escape en fin de saisie par référence (S).
-10. `file_upload` dans un champ fichier depuis `~/files` (`DOM.setFileInputFiles`) (M).
-11. `page_console` lecture seule (erreurs JS, 3 navigations) pour les bots qui construisent des pages (M).
-12. Lecture des requêtes réseau (en-têtes masqués) pour trouver l'API d'un site (M).
+7. `element_fill` multi-champs et cases à cocher par valeur voulue (M). — **FAIT (2026-11-22)** : `element_fill` (texte, liste, cases, relus ; case engageante laissée à `element_click`)
+8. Résultat texte (sans capture) pour les actions par référence, captures réduites (M). — **FAIT (2026-11-22)** : réponses en texte, capture sur demande ou si la page n'a presque pas de texte (L65)
+9. `element_hover`, double-clic et Tab/Escape en fin de saisie par référence (S). — **FAIT EN PARTIE (2026-11-22)** : `element_hover`, `double` sur `element_click` ; pas de Tab/Escape en fin de saisie
+10. `file_upload` dans un champ fichier depuis `~/files` (`DOM.setFileInputFiles`) (M). — **FAIT (2026-11-22)** : `element_upload` (champ ou bouton qui l'ouvre, depuis `/root/files` seulement, accord à chaque fois)
+11. `page_console` lecture seule (erreurs JS, 3 navigations) pour les bots qui construisent des pages (M). — **FAIT (2026-11-22)** : `browser_console` (veilleur, 3 pages) + contrôle automatique au `page_publish` (L56)
+12. Lecture des requêtes réseau (en-têtes masqués) pour trouver l'API d'un site (M). — **FAIT (2026-11-22)** : `browser_network` (en-têtes, adresses et réponses texte masqués)
 13. Capture d'un élément / pleine page à livrer à l'utilisateur (S).
 14. Audit Lighthouse (accessibilité/SEO) + skill a11y adapté (M).
 15. Émulation mobile/sombre pour vérifier une page publiée (M).
 16. Liste de sites interdits dans le navigateur du bot, réglable par l'utilisateur (M).
 17. Si `chrome-devtools-mcp` est proposé via `local_tool_server_add` : marquer ses outils d'entrée comme engageants ou les retirer, couper la télémétrie (S).
-18. `wait_for` texte (S).
+18. `wait_for` texte (S). — **FAIT (2026-11-22)** : `browser_wait`
 
 ## Non vérifié
 

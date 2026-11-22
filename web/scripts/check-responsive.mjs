@@ -25,12 +25,18 @@ try {
 const WIDTHS = [[360, 740], [390, 844], [768, 1024]];
 const PAGES = [
   "section=chat",
+  "section=canaux&long=1",
+  "section=canaux&theme=dark&lang=en",
+  "section=canaux&empty=1",
   "section=chat&long=1&running=1",
   "section=chat&long=1&running=tasks",
   "section=chat&panel=thread",
   "section=chat&theme=dark&lang=en",
   "section=chat&listen=playing&long=1",
   "section=notices&long=1",
+  "section=inbox&long=1",
+  "section=inbox&theme=dark&lang=en",
+  "section=inbox&empty=1",
   "section=cards&long=1",
   "section=today",
   "section=memoire&long=1",

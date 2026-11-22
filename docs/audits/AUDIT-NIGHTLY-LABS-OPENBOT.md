@@ -322,7 +322,7 @@ Taille : S (moins d'un jour), M (quelques jours), L (une semaine ou plus). Chemi
 6. **Nouvel essai d'une routine qui n'a pas pu démarrer** (5, 15, 30 min) (S).
 7. **Messages de délégation autonomes** et « tu restes responsable de ce que tu délègues » dans le prompt (S).
 8. **Remplir plusieurs champs d'un coup** (`element_fill`) et **réparer les formes d'arguments** courantes avant de refuser (S).
-9. **Revue de mémoire tous les 20 tours** en plus du calme de 10 min ; règle « la demande du jour passe avant la mémoire » (S).
+9. ✅ FAIT pour les 20 tours (L67, `learningDue`) ; la règle « la demande du jour passe avant » reste — **Revue de mémoire tous les 20 tours** en plus du calme de 10 min ; règle « la demande du jour passe avant la mémoire » (S).
 10. **Question à côté** qui ne touche pas la tâche (M).
 11. **Tour d'accueil d'un bot neuf** (une question, 3 choix) et **ligne d'intention** avant le premier outil (S).
 12. **Outil « échec de routine : raison »** et option **routine dans un fil** (S / M).

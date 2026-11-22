@@ -148,3 +148,84 @@ OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
   delete) and the usage counter / states / pin of `tools/skill_usage.py`. Modified for Sklubot: ported from Python to
   TypeScript on SQLite tables; only skills the bot made itself are managed; locked and in-prompt skills protected too;
   the owner's restore restarts the clock; no model pass (duplicates become a suggestion card).
+
+## openclaw/openclaw — MIT License
+
+- Source: https://github.com/openclaw/openclaw, commit `3c8c7bf781fbf3e2c614a446eee0ad3a87b400fd` (read-only clone,
+  22/11/2026). The extensions consulted (`extensions/slack`, `extensions/discord`, `extensions/imap`) carry no licence of
+  their own and fall under the repository's MIT licence; their code depends on @slack/bolt, discord.js-style packages and
+  imapflow, so only ideas were taken from them.
+- Reused: the pairing constants and code generator of `src/pairing/pairing-store-model.ts` (8 characters from an alphabet
+  without 0/O/1/I, 1 hour, 3 waiting) and the "a 4th request gets no code" rule of `src/pairing/pairing-store.worker.ts`,
+  in `server/src/channelaccess.ts`. Modified for Sklubot: a SQLite table per bot and channel, approval from the owner's
+  screen instead of the CLI, a "blocked" state, a thread of the bot's chat per approved person.
+- Licence text (MIT):
+
+```text
+MIT License
+
+Copyright (c) 2026 OpenClaw Foundation
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
+rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit
+persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the
+Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE
+WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+```
+
+## vercel-labs/agent-browser — Apache License 2.0
+
+- Source: https://github.com/vercel-labs/agent-browser, commit `d2dfc782ccdd79d25a9b4f0acced9321789cecb8` (read-only
+  clone, 22/11/2026, never run). Copyright 2025 Vercel Inc.
+- Licence: Apache License, Version 2.0 — https://www.apache.org/licenses/LICENSE-2.0 (the full text ships with the
+  upstream repository as `LICENSE`). The repository has no NOTICE file.
+- Reused in `server/src/screen-elements.ts` (Python helper of the bot's browser): `HINT_FUNCTION` of
+  `cli/src/native/snapshot.rs` unchanged (the hint for a control with no name or a shared one: icon, picture, stable
+  attribute, words of its row) and its link-address function (`-u`), with the same rule for which controls get a hint.
+  Modified for Sklubot: called from Python through `DOM.resolveNode` + `Runtime.callFunctionOn` one element at a time
+  (at most 80 hints and 150 links per snapshot), shown as `hint="…"` and `→ address` in our own snapshot lines. The
+  agent-browser binary is not installed in the bots' image; every action stays behind Sklubot's gates.
+
+## Nutlope/hallmark — MIT License
+
+- Source: https://github.com/Nutlope/hallmark, commit `04977e15f3dfd6ee4b74c887dac3eb52665d6c92` (read-only clone,
+  22/11/2026, never run).
+- Reused in `server/src/pagecheck.ts` (L56, the automatic check of a published page): parts of `observe()` in
+  `skills/hallmark/scripts/sloplint-render.mjs` (gate 34: horizontal scroll and an element running past a phone screen;
+  gate 40: computed contrast with the colour parser and WCAG luminance; gate 44b: main title below the 1280×800 fold) and
+  the rules of gates 10a (`transition: all`), 34 (`100vw`), 26a (no `:focus-visible`) and 27 (motion without
+  `prefers-reduced-motion`) of `sloplint.mjs`. Modified for Sklubot: one in-page function returning plain findings, a
+  390 px phone, layout width instead of `innerWidth`, no gradient analysis, at most 5 contrast findings, static rules as
+  regular expressions on the page's own HTML and CSS, plain-word messages.
+- Licence text (MIT):
+
+```text
+MIT License
+
+Copyright (c) 2026 Hallmark contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```

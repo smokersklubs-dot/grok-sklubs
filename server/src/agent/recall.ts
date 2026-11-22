@@ -279,3 +279,23 @@ export function recallLines(notes: RankedNote[]): string[] {
 
 /** How many notes a bot may use (active and contested), however many there are: "N older memories" stays true past any loading limit. */
 export const usableCount = (botId: string) => q.get<{ n: number }>("SELECT COUNT(*) AS n FROM memories WHERE bot_id = ? AND status != 'archived'", botId)?.n ?? 0;
+
+// ── Fusion with the meaning-based ranking (L71, optional) ──────────────────────
+/** Reciprocal rank fusion constant (the usual value, Cormack et al. 2009): rank r adds 1 / (RRF_K + r). */
+export const RRF_K = 60;
+/** A meaning-based match counts only above this cosine similarity (below, two notes are about different things). */
+export const SEMANTIC_MIN_SIMILARITY = 0.35;
+
+/**
+ * L71: fuses the keyword ranking (rankNotes, above) with a meaning-based one (agent/semantic.ts, only when the owner
+ * switched « Mémoire par le sens » on) by reciprocal rank fusion: each list adds 1 / (RRF_K + rank) to a note, so a note
+ * high in both comes first and a note found only by meaning ("ma voiture" → "la Clio") still appears. Ids, best first.
+ */
+export function fuseRankings(keyword: readonly string[], semantic: readonly string[], limit = SEARCH_LIMIT): string[] {
+  const score = new Map<string, number>();
+  keyword.forEach((id, r) => score.set(id, (score.get(id) ?? 0) + 1 / (RRF_K + r + 1)));
+  semantic.forEach((id, r) => score.set(id, (score.get(id) ?? 0) + 1 / (RRF_K + r + 1)));
+  const first = new Map<string, number>();
+  [...keyword, ...semantic].forEach((id, i) => { if (!first.has(id)) first.set(id, i); });
+  return [...score.entries()].sort((a, b) => b[1] - a[1] || first.get(a[0])! - first.get(b[0])!).slice(0, limit).map(([id]) => id);
+}

@@ -6,12 +6,14 @@ import type { ToolSpec } from "../llm/types.js";
 import { checkFiles, cleanFileName, FILE_EXT, PAGE_CDNS, pageFiles, pageLimits, PageFileError, pageVersions } from "../pagefiles.js";
 import { atelierTokens } from "../artifact-design.js";
 import { bots, pages, randomToken, rows } from "../store.js";
+import { withPageCheck } from "../pagecheck.js"; // L56
 import type { BuiltinTool, ToolContext } from "./tools.js";
 
 /**
  * page_publish / page_edit: a bot publishes a web page (HTML, plus text files next to it) and changes it with exact
  * replacements. Every publish and edit keeps a version (pagefiles.ts). Publishing for anyone with the link asks the
- * user's approval (irreversible.ts); a private page does not.
+ * user's approval (irreversible.ts); a private page does not. L56: after page_publish and page_edit the saved page is
+ * checked automatically (pagecheck.ts) and the short report, with a picture at phone and computer width, goes back.
  */
 const obj = (properties: Record<string, unknown>, required: string[] = []): ToolSpec["inputSchema"] => ({ type: "object", properties, required });
 const str = (description: string) => ({ type: "string", description });
@@ -33,8 +35,10 @@ const publish = tool("page_publish", `Publish a web page (a report, a dashboard,
     files: fileSchema,
   }, ["name", "title", "html"]), {
   activity: "saving", label: "Publishing a page", group: "pages", audited: true, detail: (a) => String(a.title ?? ""),
-  run: async (a, c) => publishPage(a, c),
+  // L56: once saved, the page is checked (phone and computer pictures, console, rules) and the report goes back to the bot.
+  run: async (a, c) => { const r = publishPage(a, c); return r.isError ? r : withPageCheck(r, c, String(a.html), filesOf(c.bot.id, pathOf(c.bot.id, a.name))); },
 });
+const filesOf = (botId: string, rel: string) => pageFiles.list(botId, rel).map((f) => ({ path: f.file, content: f.content }));
 
 export function publishPage(a: Record<string, unknown>, c: Pick<ToolContext, "bot" | "user" | "thread">, creatingArtifact = false) {
   const html = String(a.html);
@@ -157,7 +161,7 @@ export const pageTools: BuiltinTool[] = [
       if (file) pageFiles.put(c.bot.id, rel, file, text); else { saveFile(c.bot.id, rel, text); html = text; }
       pageVersions.record(c.user.id, c.bot.id, rel, html, file ? `edited ${file}` : "edited");
       emit(c.user.id, { type: "pages", token: page.token });
-      return { content: `Applied ${edits.length} edit${edits.length > 1 ? "s" : ""} to ${file ? `${file} of ` : ""}${page.url}. The previous version is kept (${pageLimits(c.user.id).versions} versions at most).${file ? "" : cdnWarning(html)}`, summary: `${page.title} · ${edits.length}` };
+      return withPageCheck({ content: `Applied ${edits.length} edit${edits.length > 1 ? "s" : ""} to ${file ? `${file} of ` : ""}${page.url}. The previous version is kept (${pageLimits(c.user.id).versions} versions at most).${file ? "" : cdnWarning(html)}`, summary: `${page.title} · ${edits.length}` }, c, html, filesOf(c.bot.id, rel)); // L56
     },
   }),
 ];

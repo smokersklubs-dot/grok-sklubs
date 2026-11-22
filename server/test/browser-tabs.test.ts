@@ -129,10 +129,11 @@ test("a dialog is reported in words at once (no 15 s wait, no traceback), dismis
 });
 
 test("a new tab opened by a link is followed by every read; switching tabs moves every read and act", async () => {
-  await tool("element_click").run({ ref: refOf(await snapshot(), "New tab link") }, ctx());
+  // L65: the click itself says that a new tab opened and is now in front (and reads it).
+  const clicked = text(await tool("element_click").run({ ref: refOf(await snapshot(), "New tab link") }, ctx()));
+  assert.match(clicked, /A new tab opened \(“Second page”/);
   const page = text(await tool("page_read").run({}, ctx()));
   assert.match(page, /^Second page/);
-  assert.match(page, /A new tab opened \(“Second page”/);
   const tabs = text(await tool("browser_tabs").run({}, ctx()));
   const mainId = /\[([0-9a-f]{6})\] deleted/.exec(tabs)?.[1] ?? "";
   assert.ok(mainId, tabs);

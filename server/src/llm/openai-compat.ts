@@ -104,6 +104,29 @@ export class OpenAiCompatProvider implements LlmProvider {
     return this.opts.apiKey ? this.opts.apiKey() : process.env[this.opts.apiKeyEnv] ?? null;
   }
 
+  /** The endpoint's address (L71: which embeddings model it offers is decided from its host, agent/semantic.ts). */
+  get baseUrl(): string { return this.opts.baseUrl; }
+
+  /**
+   * L71 « Mémoire par le sens »: turns texts into vectors with the endpoint's embeddings API, POST {base}/embeddings with
+   * { model, input: [texts] }, answer { data: [{ index, embedding }], usage: { prompt_tokens } } — OpenAI
+   * (https://platform.openai.com/docs/api-reference/embeddings/create) and Mistral (https://docs.mistral.ai/api/#tag/embeddings)
+   * use this same shape. Only called when the account's owner switched the option on.
+   */
+  async embed(model: string, input: string[], signal?: AbortSignal): Promise<{ vectors: number[][]; inputTokens: number }> {
+    const key = this.key();
+    if (!key) throw new Error(`${this.label}: no key`);
+    const res = await (this.opts.fetch ?? fetch)(`${this.opts.baseUrl.replace(/\/$/, "")}/embeddings`, {
+      method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${key}`, ...(this.opts.headers ?? {}) },
+      body: JSON.stringify({ model, input }), signal: signal ?? AbortSignal.timeout(30_000),
+    });
+    if (!res.ok) throw new Error(`${this.label} embeddings: HTTP ${res.status}`);
+    const json = (await res.json()) as { data?: { index?: number; embedding?: number[] }[]; usage?: { prompt_tokens?: number } };
+    const data = [...(json.data ?? [])].sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
+    if (data.length !== input.length || data.some((d) => !Array.isArray(d.embedding))) throw new Error(`${this.label} embeddings: unexpected answer`);
+    return { vectors: data.map((d) => d.embedding as number[]), inputTokens: json.usage?.prompt_tokens ?? 0 };
+  }
+
   async runTurn(req: TurnRequest): Promise<TurnResult> {
     // L57: fixed system prompt first, the turn's changing context with the turn's message — OpenAI caches the longest
     // unchanged prefix by itself (platform.openai.com/docs/guides/prompt-caching; no parameter is sent). Tool search:

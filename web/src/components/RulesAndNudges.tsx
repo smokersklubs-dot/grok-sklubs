@@ -7,6 +7,7 @@ import type { Bot, Card, Grant, MemorySettings, ModelOption, NudgeSettings, Rule
 import { Icon } from "./Icon";
 import { ConfirmButton, ErrorNote, Loading, Toggle } from "./ui";
 import { RuleChanges, RuleScopeChip } from "./SpendSkillsFiles";
+import { SemanticRow } from "./MemoryInsight"; // L71 « Mémoire par le sens » (off by default)
 
 const RULE_TRIGGER_LIST = ["email", "slack", "calendar", "cron", "watch", "webhook", "once"] as const;
 
@@ -473,6 +474,7 @@ export function MemorySettingsSection() {
             </div>
             <Toggle checked={s.autoRecall} label={t("memset.recall")} onChange={(on) => void save({ autoRecall: on })} />
           </div>
+          <SemanticRow />
 
           <h3 className="pane-heading">{t("memset.sensitive")}</h3>
           <p className="muted small">{t("memset.sensitiveHint")}</p>

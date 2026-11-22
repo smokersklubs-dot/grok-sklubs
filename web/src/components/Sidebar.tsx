@@ -1,4 +1,5 @@
 import { useMemo, useState, type ReactNode } from "react";
+import { InboxNavRow } from "./InboxView";
 import { createPortal } from "react-dom";
 import { api, errText } from "../api";
 import { IDLE_LIVE, primaryBot, sortedBots, useStore } from "../store";
@@ -383,6 +384,7 @@ export function Sidebar() {
         )}
         {collapsed && <AnnouncementBell row />}
 
+        <InboxNavRow collapsed={collapsed} />{/* L139 « À toi » (InboxView.tsx) */}
         <button
           type="button"
           className={`nav-row ${view === "tasks" ? "is-active" : ""}`}

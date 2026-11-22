@@ -29,7 +29,8 @@ export function taskLabel(thread: number, rows: Row[]): string {
 }
 
 export function stopTask(botId: string, thread?: number) {
-  return api("POST", `/bots/${encodeURIComponent(botId)}/stop`, thread === undefined ? {} : { thread });
+  // L63: « Tout arrêter » also cancels what waits in the queue; the chat gets one line saying what was stopped.
+  return thread === undefined ? api("POST", `/bots/${encodeURIComponent(botId)}/stop-all`) : api("POST", `/bots/${encodeURIComponent(botId)}/stop`, { thread });
 }
 
 export function TaskLanes({ bot, live }: { bot: Bot; live: Live }) {

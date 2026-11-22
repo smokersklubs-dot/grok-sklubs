@@ -206,6 +206,10 @@ function resolve(routePath: string, param: string, bot: "bot1" | "bot2"): string
     "commands:ref": "a_cmdref",
     // « Chantier » (chantierroutes.ts): A's chantier, its card, its task, A's lesson.
     "chantiers:id": "a_chantier", "decisions:did": "a_decision", "tasks:key": "a-task", "chantier-lessons:id": "a_lesson",
+    // L162 (channelroutes.ts): someone on a bot's access list (approve, block, revoke are the owner's alone).
+    "contacts:cid": "a_contact",
+    // Turn control (turncontrolroutes.ts, messageactionroutes.ts): a kept note, a change to undo (the owner's alone).
+    "notes:noteId": "1", "undo:undoId": "und_alpha",
   };
   if (param === "action" && prev2 === "reach") return "login";
   if (param === "rid" && prev2 === "resources") return "a_conn";

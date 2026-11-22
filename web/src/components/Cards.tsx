@@ -14,6 +14,7 @@ import { GoalCardView } from "./GoalsAndJobs";
 import { FailureCardView } from "./Incidents";
 import { RecruitCardView } from "./RecruitCard";
 import { sendKeysFor } from "../../../mobile/shared/sendKey";
+import { CardCountdown, detailWithout, DraftEditor, isRichQuestion, RichQuestion } from "./TurnCards";
 
 type ApprovalCard = Extract<Card, { type: "approval" }>;
 type QuestionCard = Extract<Card, { type: "question" }>;
@@ -34,11 +35,12 @@ function Approval({ card, botId }: { card: ApprovalCard; botId: string }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const floorCode = useFloorCode(card); const [code, setCode] = useState(""); // L44 (option): the approver's two-factor code on a floor card
+  const [draft, setDraft] = useState<Record<string, string>>(() => card.draft ?? {}); const edited = !!card.draft && Object.keys(draft).some((k) => draft[k] !== card.draft![k]); // L83 (TurnCards.tsx)
   const decide = async (decision: "allow" | "always" | "conversation" | "deny") => {
     setBusy(decision);
     setError(null);
     try {
-      await api("POST", `/approvals/${encodeURIComponent(card.approvalId)}`, { decision, ...(floorCode && decision !== "deny" ? { code } : {}) });
+      await api("POST", `/approvals/${encodeURIComponent(card.approvalId)}`, { decision, ...(floorCode && decision !== "deny" ? { code } : {}), ...(edited && decision !== "deny" ? { draft } : {}) });
     } catch (e) {
       setError(errText(e));
     } finally {
@@ -84,7 +86,10 @@ function Approval({ card, botId }: { card: ApprovalCard; botId: string }) {
           <p className="card-sub">{vault ? t("settings.section.vault") : source}{card.tool && card.tool !== source ? <> · <code>{card.tool}</code></> : null}</p>
         </div>
       </div>
-      {card.detail && <pre className="card-detail">{card.detail}</pre>}
+      {card.detail && !(card.draft && card.status === "pending" && canDecide && !access) && <pre className="card-detail">{card.detail}</pre>}
+      {card.draft && card.status === "pending" && canDecide && !access && <><pre className="card-detail">{detailWithout(card.detail, Object.keys(card.draft))}</pre><DraftEditor value={draft} onChange={setDraft} disabled={busy !== null} /></>}
+      {card.edited && card.status !== "pending" && <p className="card-note"><Icon name="edit" size={13} /> {t("draft.edited")}</p>}
+      {card.status === "pending" && <CardCountdown until={card.expiresAt ?? (card.parked ? undefined : card.parksAt)} parks={!card.expiresAt} />}
       {(card.why || card.quote) && (
         <div className="approval-why">
           {card.quote && <p className="approval-quote"><Icon name="chat" size={13} /> <span>{t("approval.quote", { quote: card.quote })}</span></p>}
@@ -376,7 +381,7 @@ export function CardView({ card, botId, seq }: { card: Card; botId: string; seq:
     case "approval":
       return <Approval card={card} botId={botId} />;
     case "question":
-      return <Question card={card} botId={botId} seq={seq} />;
+      return isRichQuestion(card) ? <RichQuestion card={card} botId={botId} seq={seq} /> : <Question card={card} botId={botId} seq={seq} />; // L79 (TurnCards.tsx)
     case "connect":
       return <Connect card={card} botId={botId} seq={seq} />;
     case "takeover":

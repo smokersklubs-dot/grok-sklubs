@@ -144,7 +144,7 @@ Preuves Sklubot : `server/skills-library/` — `metier-du-design/SKILL.fr.md` (l
 
 ## 5. À faire (classé)
 
-1. Contrôle automatique au `page_publish` (10-15 règles du Plancher : jetons, `transition: all`, `100vw`/débordement, `:focus-visible`, mouvement réduit, héros sous 1280×800, emoji-icônes, dégradé violet→bleu, carte dans carte) avec rapport renvoyé au bot — **M**.
+1. Contrôle automatique au `page_publish` (10-15 règles du Plancher : jetons, `transition: all`, `100vw`/débordement, `:focus-visible`, mouvement réduit, héros sous 1280×800, emoji-icônes, dégradé violet→bleu, carte dans carte) avec rapport renvoyé au bot — **M**. — **FAIT EN PARTIE (2026-11-22)** : `pagecheck.ts` (code de `sloplint-render.mjs` et règles de `sloplint.mjs` repris, MIT) : couleurs en dur, `transition: all`, `100vw`, débordement mesuré à 390 px, `:focus-visible`, mouvement réduit, titre sous 1280×800, contraste calculé, alt, viewport, JSON-LD ; captures 390/1280 et console ; pas encore : emoji-icônes, dégradé violet→bleu, carte dans carte
 2. Installer `sloplint` (+ `puppeteer-core` épinglé) sur l'ordinateur du bot et l'exiger dans `pages-soignees` avant publication — **M**.
 3. Fournir un `base.css` Sklubot (débordements, focus, mouvement réduit, conteneur, grilles d'images) à joindre à chaque page — **S**.
 4. Compétence **« Page d'un commerce par métier »** : anatomie des 10 métiers + 21 macrostructures, adaptée (MIT, crédit) — **S**.

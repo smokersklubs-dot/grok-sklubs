@@ -297,7 +297,7 @@ Lignes NON REPRIS non détaillées ci-dessus mais vues : passerelle vers un autr
 ## 4. À faire (classé)
 
 1. Délai de garde 180 s sur chaque appel au modèle et **3 relances espacées des tours sans témoin**, avec ligne « nouvel essai n/N » visible. S.
-2. Écran **« Ce que reçoit ce bot »** : prompt dans l'ordre, chaque morceau ouvrable à sa source. M.
+2. ✅ FAIT (L137, `agent/promptview.ts`, `MemoryInsight.tsx` ; morceaux ouvrables, pas encore le lien vers leur source) — Écran **« Ce que reçoit ce bot »** : prompt dans l'ordre, chaque morceau ouvrable à sa source. M.
 3. **Corbeille de bots** avec Restaurer (consignes, mémoire, compétences). S.
 4. Pilotage du tour : choix Entrée / Ctrl+Entrée, retour « pris dans le tour / en file », **↑ pour rappeler ses messages**, **Répondre à un message**. S.
 5. **Jauge de contexte** + bouton Compacter relié à la route existante + « voir le résumé ». S.

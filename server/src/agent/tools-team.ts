@@ -1,4 +1,5 @@
 import { emit } from "../bus.js";
+import { offerUndo, undoText } from "./undoable.js";
 import { config } from "../config.js";
 import { subscriptionEnginesFor } from "../hosted.js";
 import { isValidTimezone } from "../cron.js";
@@ -69,8 +70,10 @@ export const profileTools: BuiltinTool[] = [
       const r = cleanProfile(a);
       if ("error" in r) return { content: r.error, isError: true };
       if (!Object.keys(r.fields).length) return { content: "Pass at least one field to change.", isError: true };
+      const before = settings.profile(c.user.id);
       settings.saveProfile(c.user.id, r.fields);
       emit(c.user.id, { type: "profile" });
+      offerUndo(c.bot, { kind: "profile", ref: c.user.id, before, text: undoText.profile(c.bot, Object.keys(r.fields)), thread: c.thread }); // L98 « Annuler » (undoable.ts)
       return { content: "Profile updated. Every bot on the team will know it from its next turn.", summary: Object.keys(r.fields).join(", ") };
     },
   }),

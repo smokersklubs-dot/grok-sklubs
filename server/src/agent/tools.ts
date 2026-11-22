@@ -21,7 +21,7 @@ import { searchConfigured, searchWeb } from "../search.js";
 import { fetchProblem, guardedFetch } from "../net.js";
 import { config as appConfig } from "../config.js";
 import { audit, bots, clip, memories, newId, pages, rows, settings, skills, skillText, tasks, vault, type BotRecord, type UserRecord } from "../store.js";
-import { searchMessages } from "../convsearch.js";
+import { conversationSearchAnswer } from "../convsearch.js";
 import { record as recordUsage } from "../usage.js";
 import { meterOperatorUse, operatorBlock, toolRefusal, unitEstimate } from "../hosted.js";
 import { interrupt, isPaused, tell } from "./loop.js";
@@ -39,8 +39,7 @@ import { findCode, mailAccounts } from "../native/access.js";
 import { hideForAWhile } from "../store.js";
 import { explicitRemember, memoryVerdict } from "./sensitive.js";
 import { committingKind, probe, seenOf, seenTarget } from "./bind.js"; import { boundClick, browserTabTools, shot, tabLine, typeSecret } from "./tools-browser.js";
-import { refusal, rememberSnapshot, resolveRef } from "./elements.js";
-import type { ElementAnswer } from "../screen-elements.js";
+import { elementTools, openInWords } from "./tools-elements.js"; // L65/L74/L75/L81: element tools, in words
 import { cardLabel, cardTools } from "./payments.js";
 import { guideIndex, guideTools } from "./guides.js";
 import { anonymise } from "./anonymise.js";
@@ -70,10 +69,10 @@ import { JobLimitError, jobLine, jobOutput, jobs, runCommand, stopJob } from "..
 import { officeAvailable, officeTools } from "../office.js";
 import { mediaAvailable, mediaTools } from "../media.js";
 import { goalTools } from "./goals.js";
-import { searchNotes } from "./recall.js";
+import { memoryPrefs } from "./memoryprefs.js"; import { searchNotesSmart } from "./semantic.js";
 import { forgetNotes } from "./memorybook.js";
 import { recruitTools } from "./recruit.js";
-import { teamMdTools } from "./teamexport.js"; import { stepTools } from "./tools-steps.js";
+import { teamMdTools } from "./teamexport.js"; import { stepTools } from "./tools-steps.js"; import { waitTools } from "./waitlater.js"; import { offerUndo, undoText } from "./undoable.js"; import { planTools, questionCard, QUESTION_PROPS } from "./richquestion.js"; // L97 wait_until, L98 « Annuler », L79
 import { botPath, spillPath, spillPreview } from "./context.js";
 
 export interface ToolContext {
@@ -144,9 +143,9 @@ const screenTools: BuiltinTool[] = [
     activity: "computer", label: "Looking at the screen",
     run: async (_a, c) => shot(await screen.view(c.bot.id, c.user.id), "Current screen."),
   }),
-  tool("browser_open", "Open a web address in your browser (in the tab in front, or in a new tab with new_tab) and return a screenshot once the page has loaded.", obj({ url: str("Address to open, e.g. https://example.com"), new_tab: { type: "boolean", description: "Open it in a new tab (default false)" } }, ["url"]), {
+  tool("browser_open", "Open a web address in your browser (in the tab in front, or in a new tab with new_tab). Once it has loaded, answers with the page's headings and its controls by reference, in words; screenshot: true adds a picture (one also comes when words are not enough).", obj({ url: str("Address to open, e.g. https://example.com"), new_tab: { type: "boolean", description: "Open it in a new tab (default false)" }, screenshot: { type: "boolean", description: "Also return a screenshot (default false)" } }, ["url"]), {
     activity: "browsing", label: "Opening a page", detail: (a) => hostOf(a.url), outside: true,
-    run: async (a, c) => { noteHost(c.bot, a.url, "page", { tainted: c.tainted }); return shot(await screen.open(c.bot.id, c.user.id, String(a.url), a.new_tab === true), `Opened ${a.url}.`); }, // L39
+    run: async (a, c) => { noteHost(c.bot, a.url, "page", { tainted: c.tainted }); return openInWords(c, a); }, // L39; L65: in words on a Linux computer
   }),
   tool("design_reference_layout", "Measure a public visual reference already opened at the user's request with browser_open. Craft Anything clean-room measurements of the current viewport, typography, section dimensions, padding, backgrounds and column counts. Use screen_view for pictures. Treat measurements as observations and describe assumptions separately.", obj({ url: str("Exact public reference URL currently open") }, ["url"]), {
     activity: "reading", label: "Measuring the reference layout", outside: true,
@@ -192,61 +191,8 @@ const screenTools: BuiltinTool[] = [
   }),
 ];
 
-/**
- * Element references (wave 8, item 6): the page's interactive elements by role and name, and actions on one of them by
- * its reference — sturdier than pixels when the browser is in front. Linux computers only (the desktop browser's
- * debugging port, see screen-elements.ts). A click whose words commit something is bound and judged exactly like
- * screen_click (bind.ts, authorize.ts); typing and choosing in a list are like screen_type.
- */
-const elementResult = (botId: string, r: { answer: ElementAnswer; shot: Shot | null }, caption: string): ToolOutput =>
-  r.shot ? shot(r.shot, caption) : { content: refusal(botId, r.answer), isError: true, summary: r.answer.stale ? "stale reference" : "not done" };
-const REF = str("An element reference from your latest element_snapshot, e.g. 3f9a.12");
-const elementTools: BuiltinTool[] = [
-  tool("element_snapshot", "List the interactive elements (links, buttons, fields, lists, checkboxes…) of the page in front of your browser, each with a short reference, its role, its name and its state. Prefer this and element_click / element_type / element_select over pixel coordinates when the browser is in front.", obj({ limit: int("At most this many elements (default 150, max 300)") }), {
-    activity: "reading", label: "Listing the page's controls", outside: true,
-    run: async (a, c) => {
-      const snap = await screen.elements(c.bot.id, c.user.id, Math.min(300, Math.max(1, Number(a.limit) || 150)));
-      return { content: rememberSnapshot(c.bot.id, snap), summary: `${snap.elements.length} · ${clip(snap.title || snap.url, 60)}` };
-    },
-  }),
-  tool("element_click", "Click an element of the page by its reference (from element_snapshot). It is scrolled into view first. Fails, doing nothing, when the reference is stale.", obj({ ref: REF }, ["ref"]), {
-    activity: "computer", label: "Clicking",
-    run: async (a, c) => {
-      const found = resolveRef(c.bot.id, a.ref);
-      if ("error" in found) return { content: found.error, isError: true, summary: "no such element" };
-      // As screen_click: a click that commits something was judged for this control on this site; if it changed since, nothing is clicked.
-      const seen = seenTarget(a);
-      if (seen && committingKind(seen.label)) {
-        const live = await probe.element(c.bot.id, String(a.ref)).catch(() => null);
-        const still = live ? seenOf(live) : null;
-        if (!still || still.label !== seen.label || still.host !== seen.host) return { content: `The page changed since this click was checked (it was “${seen.label}” on ${seen.host || "?"}; now ${still ? `“${still.label}” on ${still.host || "?"}` : "nothing readable"}). Nothing was clicked. Take a new element_snapshot.`, isError: true, summary: "page changed" };
-      }
-      // …and checked once more by the helper on that same tab right before it clicks (`expect`), with what is really under the point.
-      const before = hostBeforeClick(c.bot.id); return afterClick(c, before, elementResult(c.bot.id, await screen.elementAct(c.bot.id, c.user.id, { ...found.req, action: "click", ...(seen && committingKind(seen.label) ? { expect: { label: seen.label, host: seen.host } } : {}) }), `Clicked ${found.element.role} “${clip(found.element.name, 80)}”.`)); // L33
-    },
-  }),
-  tool("element_type", "Type text into a field of the page by its reference (from element_snapshot): it is focused first. clear: replace what is in it. submit: press Enter afterwards.", obj({ ref: REF, text: str("Text to type"), clear: { type: "boolean", description: "Replace the field's content (default false)" }, submit: { type: "boolean", description: "Press Enter afterwards (default false)" } }, ["ref", "text"]), {
-    activity: "computer", label: "Typing",
-    run: async (a, c) => {
-      const found = resolveRef(c.bot.id, a.ref);
-      if ("error" in found) return { content: found.error, isError: true, summary: "no such element" };
-      const text = String(a.text ?? "");
-      return elementResult(c.bot.id, await screen.elementAct(c.bot.id, c.user.id, { ...found.req, action: "type", text, clear: a.clear === true, submit: a.submit === true }), `Typed ${text.length} characters into “${clip(found.element.name, 80)}”.`);
-    },
-  }),
-  tool("element_select", "Choose an option in a drop-down list (<select>) of the page by its reference (from element_snapshot), by the option's label or value.", obj({ ref: REF, option: str("The option's label (or value)") }, ["ref", "option"]), {
-    activity: "computer", label: "Choosing in a list",
-    run: async (a, c) => {
-      const found = resolveRef(c.bot.id, a.ref);
-      if ("error" in found) return { content: found.error, isError: true, summary: "no such element" };
-      const r = await screen.elementAct(c.bot.id, c.user.id, { ...found.req, action: "select", value: String(a.option ?? "") });
-      return elementResult(c.bot.id, r, `Chose “${clip(r.answer.chosen ?? String(a.option), 80)}” in “${clip(found.element.name, 80)}”.`);
-    },
-  }),
-];
-
 /** Screen actions (not looking) wait while the user drives the screen: the server refuses them, whatever the bot says. */
-const ACTS_ON_SCREEN = new Set(["browser_open", "screen_click", "screen_type", "screen_key", "screen_scroll", "screen_drag", "vault_type", "card_fill", "element_click", "element_type", "element_select", "browser_tab", "browser_dialog"]);
+const ACTS_ON_SCREEN = new Set(["browser_open", "screen_click", "screen_type", "screen_key", "screen_scroll", "screen_drag", "vault_type", "card_fill", "element_click", "element_type", "element_select", "element_fill", "element_hover", "element_upload", "browser_tab", "browser_dialog"]);
 function respectDriver(t: BuiltinTool): BuiltinTool {
   if (!ACTS_ON_SCREEN.has(t.spec.name)) return t;
   return { ...t, run: async (a, c) => (userDriving(c.bot.id) ? { content: DRIVING, isError: true, summary: "the user is driving" } : t.run(a, c)) };
@@ -733,13 +679,9 @@ export const screenVaultTools: BuiltinTool[] = guardVault([ // L41: per-item all
 
 const knowledgeTools: BuiltinTool[] = [
   tool("conversation_search", "Search what was said before — in this chat, in your earlier conversations (before a reset), or in every bot's chat. Use it instead of asking the user to repeat themselves.",
-    obj({ query: str("Words to look for"), scope: { type: "string", enum: ["mine", "everyone"], description: "mine (default): your own chats, current and earlier. everyone: all the user's bots." } }, ["query"]), {
+    obj({ query: str("Words to look for (any of them; accents do not matter)"), scope: { type: "string", enum: ["mine", "everyone"], description: "mine (default): your own chats, current and earlier. everyone: all the user's bots." }, since: str("Optional first day, YYYY-MM-DD"), until: str("Optional last day, YYYY-MM-DD"), around_seq: int("Optional: instead of searching, show the messages around this message number (#N from a result) in your current chat"), count: int("With around_seq: messages before and after (default 3, at most 10)") }, ["query"]), {
     activity: "remembering", label: "Searching conversations", group: "memory",
-    run: async (a, c) => {
-      const hits = searchMessages(c.user.id, String(a.query), { botId: a.scope === "everyone" ? undefined : c.bot.id, limit: 12 });
-      if (!hits.length) return { content: "Nothing matching was said.", summary: "0" };
-      return { content: hits.map((h) => `[${new Date(h.at).toISOString().slice(0, 16)} · ${h.role === "user" ? "user" : h.botName}${h.current ? "" : " · earlier conversation"}${a.scope === "everyone" ? ` · in ${h.botName}'s chat` : ""}] ${h.snippet}`).join("\n"), summary: `${hits.length}` };
-    },
+    run: async (a, c) => conversationSearchAnswer(c.user.id, c.bot.id, a), // L73: full-text index, date filter, « messages autour » (convsearch.ts)
   }),
   tool("skill_read", "Read the full steps of one of your skills, or of a skill a teammate shared. Your prompt lists skill names; read one before following it. A long skill gives its index first: then read the section you need.", obj({ name: str("Name of the skill"), ...skillSectionParam }, ["name"]), {
     activity: "remembering", label: "Reading a skill", group: "memory",
@@ -769,7 +711,8 @@ const knowledgeTools: BuiltinTool[] = [
       const extras: Partial<SkillExtras> = {};
       for (const k of SKILL_EXTRA_KEYS) if (typeof a[k] === "string") extras[k] = clip(a[k].trim(), 2000);
       const refused = saveRefusal(existing, body); if (refused) return { content: refused, isError: true, summary: name }; // locked, or too much lost (skilltools.ts)
-      if (existing) skills.update(existing.id, { name, description: when, body, shared, ...extras }); else skills.create(c.bot.id, name, when, body, !!shared, {}, extras);
+      const saved = existing ? skills.update(existing.id, { name, description: when, body, shared, ...extras }) : skills.create(c.bot.id, name, when, body, !!shared, {}, extras);
+      offerUndo(c.bot, { kind: "skill", ref: saved.id, before: existing ? { name: existing.name, description: existing.description, body: existing.body } : null, text: undoText.skill(c.bot, name, !existing), thread: c.thread }); // L98 « Annuler » (undoable.ts)
       emit(c.user.id, { type: "memories", botId: c.bot.id }); // A flagged text stays a draft the bot cannot use until its owner accepts it (skillscan.ts).
       return { content: `${existing ? "Skill updated." : "Skill saved."}${botNote(c.bot.id, name)}${afterSave(c.user.id, c.bot.id, name, !!existing)}`, summary: name };
     },
@@ -858,8 +801,9 @@ const memoryTools: BuiltinTool[] = [
       if (!text) return { content: "Nothing to remember.", isError: true };
       // Sensitive topics (health, religion, politics…) and anything that looks like a secret are not kept, unless the user
       // turned that topic on or explicitly asked, in their own last message, to remember (sensitive.ts).
-      const v = memoryVerdict(c.user.id, text, explicitRemember(c.bot, c.thread ?? 0));
+      const asked = explicitRemember(c.bot, c.thread ?? 0), v = memoryVerdict(c.user.id, text, asked);
       if (!v.ok) return { content: v.reason, isError: true, summary: "not kept" };
+      if (!asked && memoryPrefs.noLearn(c.bot.id)) return { content: "Not kept: the user switched on « Ne rien retenir » for you. Only what they explicitly ask you to remember is kept.", isError: true, summary: "not kept" }; // L88
       memories.add(c.bot.id, text, "chat", { category: v.category });
       emit(c.user.id, { type: "memories", botId: c.bot.id });
       return { content: "Remembered.", summary: clip(text, 80) };
@@ -873,7 +817,7 @@ const memoryTools: BuiltinTool[] = [
     activity: "remembering", label: "Checking notes",
     run: async (a, c) => {
       // Ranked by keywords, recency and confidence (recall.ts); archived notes are never returned.
-      const found = searchNotes(c.bot.id, String(a.query ?? ""));
+      const found = await searchNotesSmart(c.bot, String(a.query ?? "")); // L71: fused with meaning when the owner switched it on (semantic.ts)
       memories.touch(found.ids);
       return { content: found.content || "No matching memories.", summary: `${found.count} found` };
     },
@@ -981,7 +925,7 @@ const routineTools: BuiltinTool[] = [
         if (problem) return { content: problem, isError: true };
       }
       const r = routines.update(cur.id, { name: a.name, prompt: a.prompt, schedule: cur.trigger === "cron" ? a.schedule : undefined, timezone: a.timezone, enabled: typeof a.enabled === "boolean" ? a.enabled : undefined })!;
-      schedule(r.id);
+      schedule(r.id); offerUndo(c.bot, { kind: "routine", ref: r.id, before: { name: cur.name, prompt: cur.prompt, schedule: cur.schedule, timezone: cur.timezone, enabled: cur.enabled }, text: undoText.routine(c.bot, r.name, cur.enabled && !r.enabled), thread: c.thread }); // L98
       announceRoutine(c, tr(c.user.locale, "Routine updated: {name} — {when}", { name: r.name, when: r.enabled ? describeRoutine(r, c.user.locale) : tr(c.user.locale, "paused") }));
       return { content: "Updated.", summary: r.name };
     },
@@ -1199,12 +1143,12 @@ const GEM_LABEL: Record<GemKind, string> = { lead: "New lead", seo: "SEO", data:
 
 const userTools: BuiltinTool[] = [
   tool("ask_user", "Ask the user a question that only they can answer. Offer a few ready-made answers. This ends your turn; their answer arrives as their next message.",
-    obj({ question: str("The question"), options: { type: "array", items: { type: "string" }, description: "Up to six suggested answers" } }, ["question"]), {
+    obj({ question: str("The question"), options: { type: "array", items: { type: "string" }, description: "Up to six suggested answers" }, ...QUESTION_PROPS }, ["question"]), {
     activity: "waiting", label: "Asking you",
     run: async (a, c) => {
       const routed = await routeQuestion(a, c); if (routed) return routed; // L25: the bot that gave the work answers first (delegatedask.ts)
-      const options = (Array.isArray(a.options) ? a.options.map(String) : []).slice(0, 6);
-      rows.append(c.bot, { kind: "card", card: { type: "question", question: String(a.question), options, status: "pending" } });
+      const card = questionCard(a); if ("error" in card) return { content: card.error, isError: true }; // L79: why, recommended, irreversible, several answers, pictures, 2-4 questions (richquestion.ts)
+      rows.append(c.bot, { kind: "card", card });
       return { content: "The question is in front of the user. Stop here and wait for their answer.", summary: clip(String(a.question), 80), endTurn: true };
     },
   }),
@@ -1385,6 +1329,6 @@ function assemble(opts: { owner?: string; nativeSearch?: boolean; video?: "conne
     ...(opts.video ? inGroup("video", videoTools) : []),
     // The user's own computers (Sklubot Relais): offered by newTurn only to users who linked one.
     ...myComputerTools,
-    ...inGroup("memory", [...memoryTools, ...skillFeedbackTools]), ...inGroup("routines", routineTools), ...inGroup("tasks", taskTools), ...(opts.bgTasks === false ? [] : inGroup("tasks", bgTaskTools)), ...goalTools, ...inGroup("team", [...teamTools, ...roomTools]), ...userTools.filter((t) => t.spec.name !== "ask_takeover" || browserAvailable()), ...reactTools,
+    ...inGroup("memory", [...memoryTools, ...skillFeedbackTools]), ...inGroup("routines", routineTools), ...inGroup("tasks", taskTools), ...(opts.bgTasks === false ? [] : inGroup("tasks", bgTaskTools)), ...goalTools, ...waitTools, ...planTools, ...inGroup("team", [...teamTools, ...roomTools]), ...userTools.filter((t) => t.spec.name !== "ask_takeover" || browserAvailable()), ...reactTools,
   ];
 }

@@ -307,7 +307,7 @@ export interface PeerReviewState {
 }
 
 export type RowBody =
-  | { kind: "message"; role: "user" | "assistant"; text: string; page?: { token: string; title: string; open?: boolean }; streaming?: boolean; origin?: Origin; sources?: { url: string; title?: string }[]; attachments?: Attachment[]; reactions?: Reaction[]; replies?: Replies }
+  | { kind: "message"; role: "user" | "assistant"; text: string; page?: { token: string; title: string; open?: boolean }; streaming?: boolean; origin?: Origin; sources?: { url: string; title?: string }[]; attachments?: Attachment[]; reactions?: Reaction[]; replies?: Replies; /** L136 (agent/editmessage.ts): this is an edited version of message `editOf`; `editedTo`: a newer version of this one exists */ editOf?: number; editedTo?: number }
   /** `grant`: what allowed this state-changing action (the user's quote, the reviewer's reason, a card). */
   | { kind: "step"; callId: string; tool: string; label: string; status: "running" | "done" | "error" | "waiting" | "denied"; args: Record<string, unknown>; summary?: string; grant?: Grant }
   | { kind: "card"; card: Card }
@@ -323,7 +323,7 @@ export type RowBody =
    * pick the work back up; `reason: "gone"`, the subscription tool's process ended without finishing the turn.
    * "watch": the turn watch (agent/watch.ts), see WatchNoticeAction.
    */
-  | { kind: "notice"; tone: "info" | "warn" | "error"; text: string; action?: { kind: "continue"; status: "pending" | "done"; reason?: "timeout" | "busy" | "gone" | "restart" } | { kind: "settings"; section: string } | HostedNoticeAction | WatchNoticeAction | SubLimitNoticeAction | RouteNoticeAction };
+  | { kind: "notice"; tone: "info" | "warn" | "error"; text: string; action?: { kind: "continue"; status: "pending" | "done"; reason?: "timeout" | "busy" | "gone" | "restart"; /** L72: "continue on my own until done" is offered too */ auto?: boolean } | { kind: "settings"; section: string } | HostedNoticeAction | WatchNoticeAction | SubLimitNoticeAction | RouteNoticeAction | /** L94 */ { kind: "note"; noteId: number; status: "pending" | "done" } | /** L98 */ { kind: "undo"; undoId: string; status: "pending" | "done" | "expired"; expiresAt: number } };
 
 /**
  * The turn watch's notice (agent/watch.ts), at most one of each per turn. `watch`: "silent" — the AI has sent nothing yet
@@ -364,7 +364,7 @@ export type Card =
    * form confirmed…), as the server decided from the tool and its arguments (agent/irreversible.ts); `irreversibleReason`
    * says why, in the user's language. Such a card is always `once`: "Always" is never offered for it.
    */
-  | { type: "approval"; approvalId: string; title: string; detail: string; tool: string; source: string; status: "pending" | "allowed" | "always" | "denied" | "expired"; once?: boolean; why?: string; quote?: string; outcome?: "done" | "failed" | "uncertain"; irreversible?: boolean; irreversibleReason?: string; /** The card offers "for this conversation"; `grantedFor`: it was answered that way (agent/conversationgrants.ts). */ conversation?: boolean; grantedFor?: "conversation"; /** The bot stopped waiting for the answer; answering still works (agent/approval-wait.ts). */ parked?: boolean }
+  | { type: "approval"; approvalId: string; title: string; detail: string; tool: string; source: string; status: "pending" | "allowed" | "always" | "denied" | "expired"; once?: boolean; why?: string; quote?: string; outcome?: "done" | "failed" | "uncertain"; irreversible?: boolean; irreversibleReason?: string; /** The card offers "for this conversation"; `grantedFor`: it was answered that way (agent/conversationgrants.ts). */ conversation?: boolean; grantedFor?: "conversation"; /** The bot stopped waiting for the answer; answering still works (agent/approval-wait.ts). */ parked?: boolean; /** L83: the words the owner may correct on the card (agent/draftedit.ts); `edited`: they did */ draft?: Record<string, string>; edited?: boolean; /** L139 countdown: the card lapses at `expiresAt`; at `parksAt` the bot stops waiting (the answer still counts) */ expiresAt?: number; parksAt?: number }
   /**
    * An action whose outcome is unknown (the server stopped, or the call timed out, while it ran). It is never replayed on
    * its own: the user says it went through, asks the bot to check, or retries it once.
@@ -377,7 +377,7 @@ export type Card =
   | { type: "task"; taskId: string; helperId: string; title: string; state: BgTaskState; steps: number; now?: string; result?: string; question?: string; approval?: { approvalId: string; title: string; detail: string; /** Why the action it waits on cannot be undone (see the approval card). */ irreversible?: string } }
   /** A nudge from a quiet preparation pass: "Do it", "Later" (snoozed) or "Never for this" (the matter never comes back). */
   | { type: "nudge"; nudgeId: string; title: string; body: string; status: "pending" | "doing" | "later" | "never" }
-  | { type: "question"; question: string; options: string[]; status: "pending" | "answered" | "dismissed"; answer?: string }
+  | { type: "question"; question: string; options: string[]; status: "pending" | "answered" | "dismissed"; answer?: string; /** L79 rich card (agent/richquestion.ts) */ why?: string; recommended?: string; irreversible?: boolean; multiple?: boolean; images?: string[]; questions?: { question: string; options: string[]; recommended?: string; multiple?: boolean; why?: string }[]; plan?: { steps: string[]; version: number; added?: string[]; removed?: string[] } }
   | { type: "connect"; name: string; hint: string; reason: string; status: "pending" | "connected" | "skipped" }
   /** The bot needs the user on its screen (CAPTCHA, 2FA code, login, payment…) and waits until they hand it back, or `expiresAt`. */
   | { type: "takeover"; takeoverId: string; reason: TakeoverReason; detail: string; status: "pending" | "done" | "timeout" | "cancelled"; expiresAt: number }

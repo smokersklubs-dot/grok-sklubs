@@ -22,7 +22,7 @@ export type ModalState =
   | { kind: "exportTemplate"; sectionId?: string; botIds?: string[] }
   | { kind: "teamMdImport" } | { kind: "teamMdShare"; sectionId?: string; botIds?: string[] }
   | { kind: "connectors"; catalogId?: string; prefill?: { name: string; botId: string; seq: number } };
-export type BotSettingsTab = "general" | "skills" | "memories" | "routines" | "localTools" | "reach" | "telegram" | "email" | "sharing" | "api" | "security";
+export type BotSettingsTab = "general" | "skills" | "memories" | "routines" | "localTools" | "reach" | "telegram" | "channels" | "email" | "sharing" | "api" | "security";
 export type AppSection = "shortcuts" | "general" | "today" | "surveillance" | "profile" | "models" | "notifications" | "computer" | "devices" | "permissions" | "rules" | "memory" | "skills" | "connectors" | "vault" | "keys" | "pages" | "usage" | "checkins" | "activity" | "team" | "workspaces" | "voice" | "email" | "account" | "subscription" | "admin";
 /** Hosted mode (server/src/hosted.ts): only present when the server runs with HOSTED_MODE=1. */
 export interface HostedInfo { operator: boolean; /** The owner sells Sklubot credits (off by default: "Mes comptes IA"). */ creditsForSale?: boolean; links: { pricing: string; terms: string; legal: string; privacy: string } }
@@ -199,7 +199,7 @@ interface Store {
   history: HistoryTarget | null;
 
   selectedId: string | null;
-  view: "chat" | "tasks" | "today" | "surveillance" | "announcements" | "command";
+  view: "chat" | "tasks" | "today" | "surveillance" | "announcements" | "command" | "inbox"; // "inbox": « À toi » (L139)
   detailsOpen: boolean;
   sidebarCollapsed: boolean;
   mobileNav: boolean;
@@ -260,7 +260,7 @@ interface Store {
   removeUpload(botId: string, id: string): void;
   clearUploads(botId: string, ids: string[]): void;
   setTheme(theme: Theme): void;
-  setView(view: "chat" | "tasks" | "today" | "surveillance" | "announcements" | "command"): void;
+  setView(view: "chat" | "tasks" | "today" | "surveillance" | "announcements" | "command" | "inbox"): void;
   toggleDetails(open?: boolean): void;
   toggleSidebar(): void;
   setMobileNav(open: boolean): void;

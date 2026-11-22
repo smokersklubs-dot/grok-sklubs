@@ -28,7 +28,7 @@ q.run(`CREATE TABLE IF NOT EXISTS turn_unprotected (
   done INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (bot_id, call_id))`);
 
 /** Tools that change something outside the conversation without a reservation (see the module note). */
-export const UNPROTECTED = new Set(["screen_click", "screen_type", "screen_key", "screen_drag", "element_click", "element_type", "element_select", "browser_dialog", "shell_run", "bot_message", "room_post", "helper_message"]);
+export const UNPROTECTED = new Set(["screen_click", "screen_type", "screen_key", "screen_drag", "element_click", "element_type", "element_select", "element_fill", "element_hover", "element_upload", "browser_dialog", "shell_run", "bot_message", "room_post", "helper_message"]);
 
 /** Whether this call, about to run, is one a restart must not replay blindly. Reserved calls are already protected. */
 export function unprotected(turn: Pick<Turn, "builtin" | "remote">, call: Pick<ToolUseBlock, "name" | "input">, reserved: boolean): boolean {

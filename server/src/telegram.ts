@@ -10,11 +10,14 @@ import type { ReactionEmoji, TelegramStatus } from "./shared.js";
 import { REACTIONS } from "./shared.js";
 import { approvalKeyboard, downloadFile, incomingFile, parseApprovalCallback, sendFile, sendMethodFor, splitTelegram, tgText, TooLargeError, type TgMessageFiles } from "./telegramplus.js";
 import { readLibraryFile, storeBytes } from "./computer.js";
+import { onApproved } from "./channelaccess.js"; import { chText } from "./channeltext.js";
+import { registerContactSink, strangerMessage } from "./channelrelay.js";
 import { approvals, audit, bots, clip, feedback, memories, now, randomToken, rows, tasks, users, type BotRecord } from "./store.js";
 
 /**
  * Lets a bot be reached through a Telegram bot of the user's own (created with Telegram's BotFather).
- * Only one Telegram chat — the one that sent the link code — can talk to it. Messages are fetched by
+ * The chat that sent the link code is the owner's; anyone else gets an access code and talks to the bot only once the
+ * owner approved them, as a member (L162, channelaccess.ts / channelrelay.ts). Messages are fetched by
  * asking Telegram for news, so the server needs no public address for this.
  *
  * Wave 5b (spec 07 A17, adapted): channel commands — /taches, /etat, /stop, /usage, /memoire (and /aide) — answered
@@ -79,7 +82,7 @@ const polls = new Map<string, AbortController>();
 
 interface Update {
   update_id: number;
-  message?: { message_id: number; text?: string; chat: { id: number; type: string }; reply_to_message?: { message_id: number } } & TgMessageFiles;
+  message?: { message_id: number; text?: string; chat: { id: number; type: string }; from?: TgFrom; reply_to_message?: { message_id: number } } & TgMessageFiles;
   callback_query?: { id: string; data?: string; from: { id: number }; message?: { message_id: number; chat: { id: number; type: string } } };
   message_reaction?: { chat: { id: number; type: string }; message_id: number; new_reaction?: { type: string; emoji?: string }[]; old_reaction?: { type: string; emoji?: string }[] };
 }
@@ -97,7 +100,7 @@ function startPolling(botId: string) {
         const updates = await call<Update[]>(token, "getUpdates", { offset: bot.telegramOffset, timeout: 25, allowed_updates: ["message", "message_reaction", "callback_query"] }, stop.signal);
         for (const u of updates) {
           bots.setTelegramOffset(botId, u.update_id + 1);
-          if (u.message?.text && u.message.chat.type === "private") await receive(botId, String(u.message.chat.id), u.message.text.trim(), token, u.message.message_id);
+          if (u.message?.text && u.message.chat.type === "private") await receive(botId, String(u.message.chat.id), u.message.text.trim(), token, u.message.message_id, u.message.from);
           else if (u.message && u.message.chat.type === "private" && incomingFile(u.message)) await receiveFile(botId, String(u.message.chat.id), u.message, token);
           else if (u.callback_query) await pressed(botId, u.callback_query, token);
           else if (u.message_reaction && u.message_reaction.chat.type === "private") await reacted(botId, String(u.message_reaction.chat.id), u.message_reaction, token);
@@ -119,7 +122,11 @@ const COMMANDS: Record<string, "tasks" | "status" | "stop" | "usage" | "memory" 
   memoire: "memory", "mémoire": "memory", memory: "memory", aide: "help", help: "help",
 };
 
-async function receive(botId: string, chatId: string, text: string, token: string, messageId?: number) {
+/** L162: who wrote (a private chat's id is the person's id); its name for the owner's list of access requests. */
+interface TgFrom { id: number; first_name?: string; last_name?: string; username?: string }
+const nameOf = (f: TgFrom | undefined, chatId: string) => [f?.first_name, f?.last_name].filter(Boolean).join(" ") || (f?.username ? `@${f.username}` : chatId);
+
+async function receive(botId: string, chatId: string, text: string, token: string, messageId?: number, from?: TgFrom) {
   const bot = bots.byId(botId);
   if (!bot) return;
   const reply = (t: string) => call(token, "sendMessage", { chat_id: chatId, text: t }).catch(() => {});
@@ -133,7 +140,8 @@ async function receive(botId: string, chatId: string, text: string, token: strin
     } else await reply("🔒 /start <code>");
     return;
   }
-  if (chatId !== bot.telegramChatId) { await reply("🔒"); return; }
+  // L162: anyone else gets an access code; once the owner approved them, they talk to the bot as a member (channelrelay.ts).
+  if (chatId !== bot.telegramChatId) { await strangerMessage(bot, "telegram", { id: chatId, name: nameOf(from, chatId), replyTo: chatId }, text.replace(/^\/start\b\s*/, ""), false, reply); return; }
   if (text.startsWith("/start")) return;
   const cmd = /^\/([\p{L}]+)(?:@\w+)?\s*$/u.exec(text)?.[1]?.toLowerCase();
   if (cmd && COMMANDS[cmd]) { await reply(commandAnswer(bot, COMMANDS[cmd])); audit(bot.userId, "channel", `${bot.name}: Telegram /${cmd}`, bot.id); return; }
@@ -158,7 +166,8 @@ async function receiveFile(botId: string, chatId: string, m: NonNullable<Update[
   if (!bot) return;
   const loc = users.localeOf(bot.userId);
   const reply = (t: string) => call(token, "sendMessage", { chat_id: chatId, text: t }).catch(() => {});
-  if (!bot.telegramChatId || chatId !== bot.telegramChatId) { await reply("🔒"); return; }
+  if (!bot.telegramChatId) { await reply("🔒"); return; }
+  if (chatId !== bot.telegramChatId) { await strangerMessage(bot, "telegram", { id: chatId, name: nameOf(m.from, chatId), replyTo: chatId }, String(m.caption ?? ""), true, reply); return; }
   const f = incomingFile(m)!;
   let bytes: Buffer;
   try { bytes = await downloadFile(token, f); } catch (err) {
@@ -328,6 +337,13 @@ export const telegram = {
   },
   start() {
     for (const bot of bots.withTelegram()) startPolling(bot.id);
+    // L162: an approved person's replies go to their own private chat with the Telegram bot.
+    registerContactSink("telegram", (bot, c) => {
+      const token = tokenOf(bots.byId(bot.id) ?? bot);
+      if (!token || !c.replyTo) return null;
+      return { text: async (t) => { for (const part of splitTelegram(t)) await call(token, "sendMessage", { chat_id: c.replyTo, text: part }).catch(() => {}); }, file: async (a, bytes) => (await sendFile(token, c.replyTo!, a, bytes)) !== null };
+    });
+    onApproved("telegram", (bot, c) => { const token = tokenOf(bot); if (token && c.replyTo) void call(token, "sendMessage", { chat_id: c.replyTo, text: chText(users.localeOf(bot.userId), "✅ The owner approved you: you can now write to {bot}.", { bot: bot.name }) }).catch(() => {}); });
     // What a bot says on its own initiative, and what it is waiting for, reaches the user's phone.
     onTurnEvent((e) => {
       const own = bots.byId(e.bot.id);

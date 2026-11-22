@@ -370,7 +370,9 @@ test("totp: RFC 6238 test vectors, otpauth URIs, and totp_code only on the bound
   await say(bot, 'call totp_code {"item": "Acme 2FA"}');
   const r = await replied(bot, "Current code for Acme 2FA");
   const code = /: (\d{6}) /.exec((r.body as any).text)![1];
-  assert.equal(code, totpNow(parseTotp("GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ")).code);
+  // The code changes every 30 s: under load the reply and this check can fall on either side of a change.
+  const seedNow = parseTotp("GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ");
+  assert.ok([totpNow(seedNow).code, totpNow(seedNow, Date.now() - 30_000).code].includes(code), code);
 
   screen.read = async () => ({ title: "Evil", url: "https://evil.example/", text: "" });
   await say(bot, 'call totp_code {"item": "Acme 2FA"}');

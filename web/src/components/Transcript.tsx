@@ -21,7 +21,7 @@ import { SubLimitNoticeActions } from "./SubLimit";
 import { RouteNoticeActions } from "./RoomRouting";
 import { ENGINE_BRAND } from "../lib/engines";
 import { ReportAction } from "./ReportMessage";
-import { ReplyAction, useMessageEnhance } from "./ReplyAction"; import { MessageMore } from "./MessageMore"; import { requestSummary } from "../lib/requestSummary";
+import { ReplyAction, useMessageEnhance } from "./ReplyAction"; import { MessageMore } from "./MessageMore"; import { TurnNoticeActions } from "./TurnCards"; import { requestSummary } from "../lib/requestSummary";
 
 type MessageBody = Extract<RowBody, { kind: "message" }>;
 type StepBody = Extract<RowBody, { kind: "step" }>;
@@ -570,7 +570,7 @@ function NoticeRow({ body, botId, seq, readOnly }: { body: NoticeBody; botId: st
       {action?.kind === "plan" && !readOnly && <PlanNoticeActions action={action} />}
       {action?.kind === "watch" && <WatchNoticeActions action={action} botId={botId} seq={seq} readOnly={readOnly} />}
       {action?.kind === "sublimit" && <SubLimitNoticeActions action={action} botId={botId} seq={seq} readOnly={readOnly} />}
-      {action?.kind === "route" && <RouteNoticeActions action={action} botId={botId} seq={seq} readOnly={readOnly} />}
+      {action?.kind === "route" && <RouteNoticeActions action={action} botId={botId} seq={seq} readOnly={readOnly} />}{action && <TurnNoticeActions action={action} botId={botId} seq={seq} readOnly={readOnly} />}
       {failed && <span className="notice-error" role="alert">{failed}</span>}
     </div>
   );

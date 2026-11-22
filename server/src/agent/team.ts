@@ -55,6 +55,9 @@ export type AskOutcome =
   | { kind: "failed"; reason: string };
 
 const askWaiters = new Map<string, (o: AskOutcome) => void>();
+/** L63: the teammates' threads working right now on a question a bot asked with wait (asking bot → [teammate, thread]). */
+const askLanes = new Map<string, { fromId: string; toId: string; thread: number }>();
+export const teammateLanes = (fromId: string) => [...askLanes.values()].filter((l) => l.fromId === fromId);
 /** Who waits on whom right now (asking bot → bots it waits on, with a count for parallel waits). */
 const waitEdges = new Map<string, Map<string, number>>();
 
@@ -115,10 +118,12 @@ export async function askAndWait(from: BotRecord, to: BotRecord, text: string, d
       if (signal.aborted) onAbort(); else signal.addEventListener("abort", onAbort, { once: true });
     });
     const row = rows.append(to, { kind: "message", role: "user", text, origin: { kind: "bot", id: from.id, name: from.name } });
-    enqueue(to.id, { kind: "bot", fromName: from.name, text, depth: depth + 1, tainted, ask: route, ...(laneCap(to.id) > 1 && !to.parentId ? { thread: row.seq } : {}) });
+    const thread = laneCap(to.id) > 1 && !to.parentId ? row.seq : 0;
+    if (thread) askLanes.set(route.id, { fromId: from.id, toId: to.id, thread });
+    enqueue(to.id, { kind: "bot", fromName: from.name, text, depth: depth + 1, tainted, ask: route, ...(thread ? { thread } : {}) });
     return await answer;
   } finally {
-    askWaiters.delete(route.id);
+    askWaiters.delete(route.id); askLanes.delete(route.id);
     if (timer) clearTimeout(timer);
     if (onAbort) signal.removeEventListener("abort", onAbort);
     addEdge(from.id, to.id, -1);

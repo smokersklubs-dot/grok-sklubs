@@ -745,15 +745,18 @@ export const linuxScreen = {
     readable(r);
     return r;
   }),
-  /** Acts on one element of a snapshot; then a screenshot, like the pixel tools (`shot` null when the helper refused). */
+  /** Acts on one element of a snapshot; then a screenshot, like the pixel tools (`shot` null when the helper refused, or, L65, when it sent the page back in words: `after`). */
   elementAct: (botId: string, userId: string, ws: string, req: ElementRequest) => onMachine(botId, userId, ws, async (n) => {
     // The helper already waited for a page load and a quiet network (capped) after the action.
     const answer = await runBrowser<ElementAnswer>(n, req);
-    if (!answer.ok) return { answer, shot: null };
+    if (!answer.ok || req.after) return { answer, shot: null };
     await pause(150);
     const s = await capture(n);
     return { answer, shot: answer.dialog ? { ...s, notice: dialogWords(answer.dialog) } : s };
   }),
+  /** L65/L75/L81/L56: one request to the browser helper (wakes the computer like page_read); its answer as it is. */
+  browserOp: <T = BrowserAnswer & ElementAnswer>(botId: string, userId: string, ws: string, req: object, timeoutMs = 40_000) =>
+    onMachine(botId, userId, ws, (n) => runBrowser<T>(n, req, timeoutMs)),
   /** What an element of a snapshot is (its words, its form) if the computer is on; null otherwise. Never wakes it. */
   async elementInfo(botId: string, req: ElementRequest): Promise<ElementAnswer | null> {
     const key = allocator.current(botId);

@@ -44,7 +44,7 @@ import { REACTIONS, type CheckinSettings, type ReactionEmoji, type ServerEvent, 
 import { videoService } from "./video.js";
 import { higgsfieldFor } from "./agent/tools.js";
 import { dropRecording, noteInput, recording, retryRecording, saveRecording, startRecording, stopRecording } from "./teach.js";
-import { searchMessages } from "./convsearch.js";
+import { dayBound, searchMessages } from "./convsearch.js";
 import { registerMemoryNoteRoutes } from "./memoryroutes.js";
 import { approvals, account, audit, auditList, bots, clip, feedback, history, memories, pages, policies, publicBot, publicVault, rows, sections, settings, sha256, skills, skillText, tasks, users, vault, type BotRecord, type UserRecord, type VaultFields } from "./store.js";
 import { finishTakeover, holdControl, releaseControl } from "./takeover.js";
@@ -120,7 +120,7 @@ import { healthReport } from "./monitor.js";
 import { accountCreated, HostedError, hostedMode, hostedSettings, isOperator, isPlanLimit, lentProviderIds, planInviteOpens, signupChoice, subscriptionEnginesFor, suspended, type SignupChoice } from "./hosted.js";
 import { registerHostedPages, registerHostedPrivate, registerHostedPublic, suspendedText } from "./hostedroutes.js";
 import { TodayError, todayReport, todaySettings } from "./today.js";
-import { registerBotClients, registerBotClientSettings } from "./botaccessroutes.js";
+import { registerBotClients, registerBotClientSettings } from "./botaccessroutes.js"; import { registerChannelRoutes } from "./channelroutes.js";
 import { registerSentinelRoutes } from "./sentinel/routes.js"; import { registerHookRoutes, registerHookSettingsRoutes } from "./hookroutes.js"; import { registerReportRoutes } from "./reports.js";
 import { registerAnnouncementRoutes } from "./announceroutes.js"; import { registerModelHealthRoutes } from "./modelhealth.js";
 import { registerSkillsLibraryRoutes } from "./skillsroutes.js";
@@ -134,7 +134,7 @@ import { accountFlags, accountOpened, assertEmailSignupPossible, PublicSignupErr
 import { answerCapCard, amountText, CapError, capName, caps as usageCaps, capsView, cleanCapInput, cm } from "./usagecaps.js";
 
 import { MAX_ATTACHMENTS } from "./uploadlimits.js";
-import { registerUploadRoutes } from "./uploads.js";
+import { registerUploadRoutes } from "./uploads.js"; import { registerTurnControl, typedControl } from "./turncontrolroutes.js"; import { registerMessageActions } from "./messageactionroutes.js"; import { registerInbox } from "./inboxroutes.js"; import { grantAuto } from "./agent/autocontinue.js"; import { applyDraftEdit } from "./agent/draftedit.js";
 import { personalResponses } from "./personalresponses.js"; import { checkFloorApproval } from "./floorapproval.js"; import { registerSecurityRoutes } from "./securityroutes.js"; // Lot 1 security
 type Env = { Variables: { user: UserRecord } };
 export const api = new Hono<Env>();
@@ -715,7 +715,7 @@ registerSectionRoutes(api);
 // with — viewer, member or admin — cannot pause or resume it (ownAgent / sections.owned answer 404, as for any other
 // account's thing); a stranger's call to "everything" pauses only their own bots. Each change is an audit line.
 // "Accès API" (botapi.ts): the owner's API keys of one bot — owner only (a workspace member never manages them).
-registerBotClientSettings(api, (c) => ownAgent(c as Context<Env>));
+registerBotClientSettings(api, (c) => ownAgent(c as Context<Env>)); registerChannelRoutes(api, (c) => ownAgent(c as Context<Env>)); // L162: Slack, Discord, IMAP, access requests
 
 api.get("/pauses", (c) => c.json(pauses.state(c.get("user").id)));
 api.post("/bots/:id/pause", (c) => { const bot = ownAgent(c); return c.json(setPause(c.get("user"), "bot", bot.id, true, bot.name)); });
@@ -835,6 +835,7 @@ api.post("/bots/:id/messages", (c) => sendOnce(c, accessBot(c, "talk").bot.id, a
   if (objective !== null && bot.kind === "agent") {
     goalId = createGoal(bot, { objective, thread, origin: "user", maxRounds: Number(b.goalMaxRounds) || undefined }).id;
   }
+  if (bot.kind === "agent" && !attachments.length && objective === null && await typedControl(bot, c.get("user"), text, thread)) return c.json({ row }); // L63 typed stop, L78 /btw and /apres
   if (bot.kind === "room") dispatchToRoom(bot, c.get("user"), text, null, 0, false, thread);
   else { relayUserSpoke(bot.id); submitUserMessage(bot, agentText, voice, attachments, undefined, thread, skillCommand(bot, text), goalId); }
   return c.json({ row });
@@ -877,8 +878,9 @@ api.post("/bots/:id/jobs/:jobId/stop", async (c) => {
 });
 
 /** "Continue" under a notice that says the bot stopped at its step limit. */
-api.post("/bots/:id/rows/:seq/continue", (c) => {
-  const bot = ownAgent(c);
+api.post("/bots/:id/rows/:seq/continue", async (c) => {
+  const bot = ownAgent(c); const row = rows.get(bot.id, bot.generation, Number(c.req.param("seq")));
+  if ((await body(c)).auto === true && row?.body.kind === "notice" && row.body.action?.kind === "continue" && row.body.action.status === "pending") grantAuto(bot.id, row.thread ?? 0); // L72 « Continuer seul jusqu'au bout »
   if (!continueAfterStepLimit(bot, Number(c.req.param("seq")))) fail(409, "There is nothing to continue here.");
   return c.json({ ok: true });
 });
@@ -925,7 +927,8 @@ registerResearch(api);
 
 registerUploadRoutes(api, ownAgent);
 
-api.post("/bots/:id/stop", async (c) => { const b = ownBot(c); const t = Number((await c.req.json().catch(() => ({})))?.thread); interrupt(Number.isInteger(t) && t >= 0 ? laneKey(b.id, t) : b.id); return c.json({ ok: true }); }); // lanes.ts: { thread } stops one task; none: all
+registerTurnControl(api, ownBot); // L63 "Stop" (cascade) and "Tout arrêter", L94 « Reprendre ma note » (turncontrolroutes.ts)
+registerMessageActions(api, ownAgent); registerInbox(api); // L136 edit / write again / branch, L98 « Annuler », L139 « À toi »
 
 api.post("/bots/:id/reset", (c) => {
   const bot = ownBot(c);
@@ -949,6 +952,7 @@ api.post("/approvals/:approvalId", async (c) => {
     wsAudit(a!.share!.workspaceId, user.id, "approval", `${a!.bot.name}: ${approval.tool} — ${decision === "deny" ? "refused" : "allowed once"}`);
     return c.json({ ok: true });
   }
+  if (b.draft !== undefined && decision !== "deny") { const why = applyDraftEdit(user.id, c.req.param("approvalId"), b.draft); if (why) fail(409, why); } // L83: the words corrected on the card (agent/draftedit.ts)
   if (!(decision === "conversation" ? decideForConversation(user.id, c.req.param("approvalId")) : decideApproval(user.id, c.req.param("approvalId"), decision))) fail(404, "That request no longer exists.");
   return c.json({ ok: true });
 });
@@ -1234,7 +1238,7 @@ api.post("/bots/:id/calls/:callId/end", async (c) => {
 
 api.get("/search", (c) => {
   const query = (c.req.query("q") ?? "").trim();
-  return c.json({ hits: query.length >= 2 ? searchMessages(c.get("user").id, query) : [] });
+  return c.json({ hits: query.length >= 2 ? searchMessages(c.get("user").id, query, { since: dayBound(c.req.query("since")), until: dayBound(c.req.query("until"), true) }) : [] }); // L73: date filter
 });
 api.get("/bots/:id/history/:generation", (c) => {
   const bot = ownBot(c);

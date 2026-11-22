@@ -38,7 +38,7 @@ import { rowScope } from "./store.js";
 import { startLimitWatch } from "./agent/sublimit.js";
 import { startResearchWorker } from "./researchreports.js";
 import { sweepUncertain } from "./agent/executions.js";
-import { telegram } from "./telegram.js";
+import { telegram } from "./telegram.js"; import { channels } from "./channelroutes.js";
 import { closeSlackSockets } from "./native/triggers.js";
 import { receiving, startMailReceiver, stopMailReceiver } from "./botmail.js";
 import { voiceUpgrade } from "./voice/session.js";
@@ -122,7 +122,7 @@ startSentinel();
 startAnnouncements();
 // M2: the disk watchdog (DISK_FREE_MIN_MB; Linux computers only).
 startDiskWatchdog();
-if (!config.schedulerOff) { telegram.start(); recoverInterruptedTurns(); startJobWatch(); startLimitWatch(); }
+if (!config.schedulerOff) { telegram.start(); channels.start(); recoverInterruptedTurns(); startJobWatch(); startLimitWatch(); }
 if (!config.schedulerOff) startResearchWorker();
 const server = serve({ fetch: app.fetch, port: config.port }, () => {
   const ready = listProviders().filter((p) => p.available()).map((p) => p.label);
@@ -153,7 +153,7 @@ async function shutdown() {
   const left = await gracefulStop().catch(() => -1);
   if (left > 0) console.log(`${left} turn(s) were still in the middle of a step when the server stopped.`);
   server.close();
-  telegram.stopAll();
+  telegram.stopAll(); channels.stopAll();
   closeSlackSockets();
   await stopMailReceiver().catch(() => {});
   await Promise.all([closeAllDesktops(), connectors.closeAll(), localTools.closeAll()]).catch(() => {});

@@ -20,7 +20,7 @@ import { TeamMdImportModal, TeamMdShareModal } from "./components/TeamMarkdown";
 import { Sidebar } from "./components/Sidebar";
 import { SignIn } from "./components/SignIn";
 import { EmailConfirmPage, ResetPasswordPage, takeLinkAction } from "./components/AccountRecovery";
-import { TasksView } from "./components/TasksView";
+import { TasksView } from "./components/TasksView"; import { InboxView } from "./components/InboxView";
 import { TodayView } from "./components/TodayView";
 import { SurveillanceView } from "./components/SurveillanceView";
 import { CommandView } from "./components/CommandView";
@@ -149,7 +149,7 @@ function Shell() {
     <div className={`shell ${activeArtifact ? "has-artifact" : ""} ${showDetails || showThread ? "has-details" : ""} ${siteBanner ? "has-site-banner" : ""}`}>
       <SiteAnnouncementBanner />
       <Sidebar />
-      {view === "tasks" ? <TasksView /> : view === "today" ? <TodayView /> : view === "command" ? <CommandView /> : view === "surveillance" && sentinel ? <SurveillanceView /> : view === "announcements" && author ? <AnnouncementsView /> : <ChatView />}
+      {view === "tasks" ? <TasksView /> : view === "inbox" ? <InboxView /> : view === "today" ? <TodayView /> : view === "command" ? <CommandView /> : view === "surveillance" && sentinel ? <SurveillanceView /> : view === "announcements" && author ? <AnnouncementsView /> : <ChatView />}
       {activeArtifact && <WorkspaceDock active={activeArtifact}/>}
       {modal?.kind === "videoStudio" && <VideoStudio onClose={close}/>}
       {showDetails && <DetailsPanel />}
