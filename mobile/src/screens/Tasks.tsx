@@ -36,6 +36,10 @@ export function TasksScreen() {
     <View style={{ flex: 1, backgroundColor: c.bg }}>
       <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
         <Text accessibilityRole="header" style={[text.h1, { color: c.text }]}>{t("tasks.title")}</Text>
+        <Pressable accessibilityRole="button" onPress={() => { tap(); nav.navigate("Chantiers"); }} style={({ pressed }) => [styles.task, { backgroundColor: pressed ? c.surface2 : c.surface, borderColor: c.border, alignItems: "center", paddingVertical: 10 }]}>
+          <Icon name="tasks" size={18} color={c.text2} />
+          <Text style={{ color: c.text, fontSize: 15, fontWeight: "600", flex: 1 }}>{t("chantier.open")}</Text>
+        </Pressable>
         <Segmented label={t("tasks.title")} value={filter} onChange={setFilter} options={[{ id: "open", label: openCount ? `${t("tasks.filter.open")} (${openCount})` : t("tasks.filter.open") }, { id: "done", label: t("tasks.filter.done") }, { id: "all", label: t("tasks.filter.all") }]} />
       </View>
       {!shown ? <Loading /> : (

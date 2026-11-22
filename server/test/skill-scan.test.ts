@@ -405,9 +405,9 @@ test("a bot cannot activate a flagged skill by itself: skill_save, skill_read, t
   assert.deepEqual(skills.usable(ids.aBot).map((k) => k.name), []);
   // No tool of the bot accepts or activates a skill.
   const names = builtinTools().map((t) => t.spec.name).filter((n) => /skill/.test(n));
-  assert.deepEqual(names.sort(), ["skill_import", "skill_propose", "skill_read", "skill_save"]);
+  assert.deepEqual(names.sort(), ["skill_feedback", "skill_import", "skill_propose", "skill_read", "skill_save"]); // skill_feedback only reports a problem (skilltools.ts)
   // A clean save still works as before.
-  assert.equal(String((await tool("skill_save").run({ name: "Agenda", steps: FINE }, ctx())).content), "Skill saved.");
+  assert.match(String((await tool("skill_save").run({ name: "Agenda", steps: FINE }, ctx())).content), /^Skill saved\./); // (+ a « presque identique » note: same text as Nettoyage, skillhealth.ts)
   assert.equal(skillOf(ids.aBot, "Agenda").draft, false);
 
   // A skill the bot proposed (a card): the owner sees the findings (scan/text), saves it — still a draft.

@@ -113,6 +113,12 @@ test("setup: A owns one of everything, V is a viewer of A's workspace with bot1 
   // "Surveillance" (sentinel/): an incident about A's bot1 — only the server's owner (A) may see or acknowledge it.
   ins("INSERT INTO sentinel_incidents (id, fingerprint, kind, severity, status, params, user_id, bot_id, count, peak, seen, first_at, last_at) VALUES ('a_incident', ?, 'tool_errors', 'critical', 'open', ?, ?, ?, 25, 25, 1, ?, ?)",
     `tool_errors:${ids.bot1}:alphasecret_tool`, JSON.stringify({ tool: "alphasecret_tool", failed: 25, total: 25 }), userA, ids.bot1, t, t);
+  // « Chantier » (chantierroutes.ts): A's chantier under way, with a task, an open card and a lesson — the owner's alone.
+  ins("INSERT INTO chantiers (id, user_id, title, brief, planner_bot_id, status, plan, created_at, updated_at, approved_at) VALUES ('a_chantier', ?, 'ALPHASECRET chantier', 'ALPHASECRET brief', ?, 'waiting_owner', ?, ?, ?, ?)",
+    userA, ids.bot1, JSON.stringify({ observations: [], assumptions: [], unknowns: [], requirements: [], tasks: [{ key: "a-task", title: "ALPHASECRET task", role: "build", botId: ids.bot1, reviewerBotId: "", deliverable: "", contract: { input: "x", output: "y", checks: [], criteria: [], scope: ["z"] }, resources: [] }], edges: [], maxAttempts: 3 }), t, t, t);
+  ins("INSERT INTO chantier_tasks (chantier_id, task_key, state, bot_id, thread) VALUES ('a_chantier', 'a-task', 'running', ?, 0)", ids.bot1);
+  ins("INSERT INTO chantier_decisions (id, chantier_id, task_key, kind, question, options, created_at) VALUES ('a_decision', 'a_chantier', 'a-task', 'escalation', 'ALPHASECRET question', '[\"retry\",\"stop_branch\"]', ?)", t);
+  ins("INSERT INTO chantier_lessons (id, user_id, rule, evidence, applies_to, created_at, updated_at) VALUES ('a_lesson', ?, 'ALPHASECRET rule', 'ALPHASECRET evidence', 'build', ?, ?)", userA, t, t);
   // « Annonces » (announcements.ts): one written by A (the owner) for A's account only — nobody else may read or close it.
   const ann = await A("POST", "/announcements-admin", { kind: "important", title: "ALPHASECRET notice", body: "ALPHASECRET body", audience: { type: "accounts", emails: ["alice.alphasecret@example.com"] } });
   assert.equal(ann.status, 200, ann.text);
@@ -188,6 +194,8 @@ function resolve(routePath: string, param: string, bot: "bot1" | "bot2"): string
     "versions:id": "1", "v:id": "1", ":id:sig": "1700000000.not-a-real-signature-not-a-real", "s:sig": "1700000000.not-a-real-signature-not-a-real",
     // « Bibliothèque de compétences »: a bundled skill (adding it acts on the caller's own bots only).
     "skills-library:id": "methode-de-travail",
+    // « Santé des compétences » / « Catalogue de l'équipe » (skillhealthroutes.ts): a version of A's skill, an entry of A's catalogue.
+    "versions:vid": "a_skillversion", "skills-catalog:id": "a_catalog",
     // « Coordinateur d'échecs » (agent/failures.ts): an incident of A's bot.
     "failures:failureId": ids[`failure_${b}`],
     // « Autoriser pour cette conversation »: A's grant (revoking it is the owner's alone).
@@ -196,6 +204,8 @@ function resolve(routePath: string, param: string, bot: "bot1" | "bot2"): string
     "reports:reportId": "a_report",
     // A command's own Stop (commandstop.ts): a command reference (only the bot's owner may stop it; 404 for anyone else).
     "commands:ref": "a_cmdref",
+    // « Chantier » (chantierroutes.ts): A's chantier, its card, its task, A's lesson.
+    "chantiers:id": "a_chantier", "decisions:did": "a_decision", "tasks:key": "a-task", "chantier-lessons:id": "a_lesson",
   };
   if (param === "action" && prev2 === "reach") return "login";
   if (param === "rid" && prev2 === "resources") return "a_conn";

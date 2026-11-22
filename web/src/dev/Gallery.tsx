@@ -5,6 +5,7 @@
  *   npm run dev -w web   →   http://localhost:5173/?dev=gallery
  *
  * Everything is in the address, so a state can be shared or screenshotted:
+ *   (chantier: « Chantier », the article → cards example: running page, plan to approve, list — GalleryChantier.tsx)
  *   section=all|basics|cards|notices|banners|empty|today|command|incidents|recruit|salons|surveillance|announcements|landing|download
  *   (confiance: webhooks signés ou non, réponses signalées ; view=report ouvre « Signaler cette réponse » — GalleryTrust.tsx)
  *   (equipe: « Équipe Sklubot (.md) », its windows alone, one per page with view=review|update|choose|share — GalleryTeamMd.tsx)
@@ -18,7 +19,7 @@
  * main.tsx loads this file only when `import.meta.env.DEV` is true: production builds never contain it
  * (`npm run check:bundle -w web` checks the built files).
  */
-import { GalleryRoutines } from "./GalleryRoutines";
+import { GalleryRoutines } from "./GalleryRoutines"; import { GalleryChantier } from "./GalleryChantier";
 import { CreateBotModal } from "../components/Modals";
 import { RelayGuardPanel } from "../components/RelayGuardPanel"; import { TelegramVoiceText } from "../components/TelegramVoiceText";
 import { RelayEventRow } from "../components/RelayEventRow";
@@ -53,6 +54,7 @@ import { GalleryTeamMd } from "./GalleryTeamMd";
 import { GalleryTrust } from "./GalleryTrust"; import { GallerySecurity } from "./GallerySecurity";
 import { SkillsLibrarySection } from "../components/SkillsLibrary";
 import { ScanFindings, SkillsCheckSection } from "../components/SkillScan";
+import { GallerySkillHealth } from "./GallerySkillHealth";
 import { scanDangerFixture } from "./skillsFixtures";
 import { PagePreview, setPagePreviewSource } from "../components/PagePreview";
 import { PageVersions } from "../components/PageVersions";
@@ -63,7 +65,7 @@ import samplePage from "./sample-page.html?url";
 setPagePreviewSource(() => samplePage);
 import "./gallery.css";
 
-const SECTIONS = ["all", "basics", "cards", "notices", "banners", "empty", "today", "command", "incidents", "recruit", "salons", "surveillance", "announcements", "skills", "skillscan", "pages", "landing", "download", "chat", "equipe", "grants", "confiance", "securite", "memoire", "relais", "routines", "createbot"] as const;
+const SECTIONS = ["all", "basics", "cards", "notices", "banners", "empty", "today", "command", "incidents", "recruit", "salons", "surveillance", "announcements", "skills", "skillhealth", "skillscan", "pages", "landing", "download", "chat", "equipe", "grants", "confiance", "securite", "memoire", "relais", "routines", "createbot", "chantier"] as const;
 type Section = (typeof SECTIONS)[number];
 
 interface GalleryState extends FakeApiState {
@@ -144,7 +146,7 @@ function Gallery() {
   return (
     <div className={`gallery ${s.embed ? "is-embed" : ""}`} data-gallery="sklubot-dev-gallery">
       {!s.embed && <Toolbar s={s} set={set} />}
-      {s.section === "chat" ? <GalleryChat key={`${s.lang}`} o={{ lang: s.lang, long: s.long }} /> : s.section === "equipe" ? <GalleryTeamMd key={`${s.lang}:${s.long}`} o={{ lang: s.lang, long: s.long }} /> : s.section === "routines" ? <GalleryRoutines key={`${s.lang}:${s.long}:${s.empty}`} o={{ lang: s.lang, long: s.long }} empty={s.empty} /> : s.section === "confiance" ? <GalleryTrust key={`${s.lang}:${s.long}:${s.empty}`} o={{ lang: s.lang, long: s.long }} empty={s.empty} /> : s.section === "securite" ? <GallerySecurity key={`${s.lang}:${s.long}:${s.empty}`} o={{ lang: s.lang, long: s.long }} empty={s.empty} /> : s.section === "createbot" ? <CreateBotModal key={s.lang} onClose={() => undefined} /> : s.section === "landing" ? <Landing key={`${s.lang}:${s.empty}`} onAuth={() => undefined} /> : s.section === "download" ? <DownloadPage key={`${s.lang}:${s.empty}`} /> : <Sections key={`${s.lang}:${s.long}:${s.empty}`} s={s} />}
+      {s.section === "chat" ? <GalleryChat key={`${s.lang}`} o={{ lang: s.lang, long: s.long }} /> : s.section === "equipe" ? <GalleryTeamMd key={`${s.lang}:${s.long}`} o={{ lang: s.lang, long: s.long }} /> : s.section === "routines" ? <GalleryRoutines key={`${s.lang}:${s.long}:${s.empty}`} o={{ lang: s.lang, long: s.long }} empty={s.empty} /> : s.section === "confiance" ? <GalleryTrust key={`${s.lang}:${s.long}:${s.empty}`} o={{ lang: s.lang, long: s.long }} empty={s.empty} /> : s.section === "securite" ? <GallerySecurity key={`${s.lang}:${s.long}:${s.empty}`} o={{ lang: s.lang, long: s.long }} empty={s.empty} /> : s.section === "chantier" ? <GalleryChantier key={`${s.lang}:${s.long}:${s.empty}`} o={{ lang: s.lang, long: s.long }} empty={s.empty} /> : s.section === "createbot" ? <CreateBotModal key={s.lang} onClose={() => undefined} /> : s.section === "landing" ? <Landing key={`${s.lang}:${s.empty}`} onAuth={() => undefined} /> : s.section === "download" ? <DownloadPage key={`${s.lang}:${s.empty}`} /> : <Sections key={`${s.lang}:${s.long}:${s.empty}`} s={s} />}
     </div>
   );
 }
@@ -207,6 +209,7 @@ function Sections({ s }: { s: GalleryState }) {
       {show("announcements") && <Announcements o={o} empty={s.empty} />}
       {show("surveillance") && <Section id="surveillance" title="Surveillance" hint="La vraie page : incidents critiques, à surveiller, acquittés, info ; historique ; santé."><div className="gallery-page"><SurveillanceView /></div></Section>}
       {show("skills") && <Section id="skills" title="Bibliothèque de compétences" hint="Réglages → Compétences : les cartes de la bibliothèque, puis l'import depuis GitHub (« Chercher » répond avec un dépôt d'exemple)."><div className="gallery-page is-auto"><SkillsLibrarySection /></div></Section>}
+      {show("skillhealth") && <Section id="skillhealth" title="Santé des compétences" hint="Onglet Compétences d'un bot (ligne de santé, « Santé et réglages » ouvert, essai avec / sans), puis Réglages → Compétences : catalogue de l'équipe et vue d'ensemble avec les propositions du curateur (empty=1 : rien encore)."><div className="gallery-page is-auto"><GallerySkillHealth s={s} /></div></Section>}
       {show("skillscan") && <Section id="skillscan" title="Contrôle de sécurité des compétences" hint="Réglages → Compétences → « Vérifier mes compétences » : ce qui a été trouvé, où, et quoi faire (empty=1 : rien à signaler). En dessous, l'encadré montré avant un import."><div className="gallery-page is-auto"><SkillsCheckSection auto /><div className="editor" style={{ marginTop: 18 }}><ScanFindings scan={scanDangerFixture()} /></div></div></Section>}
       {show("pages") && <Section id="pages" title="Pages publiées" hint="L'aperçu d'une page dans la discussion (une page d'exemple dans le bac à sable), puis son historique (Réglages → Pages)."><div className="gallery-page is-auto"><PagePreview text={`[${s.lang === "fr" ? "Ventes de novembre" : "November sales"}](${location.origin}/p/galleryDemoPageToken0001)`} /><PageVersions page={{ token: "galleryDemoPageToken0001", botId: GALLERY_BOT_ID, title: "Ventes de novembre", url: `${location.origin}/p/galleryDemoPageToken0001`, createdAt: NOW, visibility: "link" }} defaultOpen /></div></Section>}
     </main>

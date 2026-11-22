@@ -8,6 +8,8 @@ export type * from "../../server/src/teammdtypes";
 export type * from "../../server/src/conversationgranttypes";
 /** « Contrôle de sécurité des compétences »: what the check found in a skill's text. */
 export type * from "../../server/src/skillscantypes";
+/** « Santé des compétences », « Catalogue de l'équipe », banc d'essai (skillhealth.ts, skillcatalog.ts). */
+export type * from "../../server/src/skillhealthtypes";
 export { AVATAR_SHAPES, AVATAR_COLORS, TOOL_GROUPS, EYE_STYLES, ACCESSORIES, IDLE_MOTIONS, CHARACTER_TYPES, DEFAULT_CHARACTER, REACTIONS, GROK_EXPORT_PROMPT_FR, GROK_EXPORT_PROMPT_EN, TEMPLATE_ICONS, TEMPLATE_CATEGORIES, BOT_API_SCOPES } from "../../server/src/shared";
 /** "Aujourd'hui": the time-saved table (kinds, default minutes, how research and file edits are counted). */
 export type { TodayKind } from "../../server/src/todayminutes";

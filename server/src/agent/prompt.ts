@@ -1,7 +1,8 @@
 import { reachAvailable } from "../reach.js"; import { connectors } from "../connectors.js"; import { downLine } from "../connectorhealth.js";
 import { config } from "../config.js";
 import { describeRoutine, routines } from "../routines.js";
-import { bots, memories, rows, sections, settings, skills, skillText, type BotRecord, type UserRecord } from "../store.js";
+import { bots, memories, rows, sections, settings, skills, type BotRecord, type UserRecord } from "../store.js";
+import { sharedForPrompt, skillsPromptBlock } from "../skillhealth.js";
 import { xSearchProvider } from "../xsearch.js";
 import { rules } from "../rules.js";
 import { guideIndex } from "./guides.js";
@@ -208,17 +209,13 @@ export function buildSystemPrompt(bot: BotRecord, user: UserRecord, extras: Prom
     out.push(`## How ${user.name} writes\nWhen you draft a message, an email or a post that ${user.name} will send as their own, write it in their style:\n${style.profile}`);
 
   const sk = skills.usable(bot.id);
-  // A skill learned from a turn that read outside content is never inlined: it is listed, read on demand, as outside content.
-  const marked = (s: { learned: boolean; outside: boolean }) => (s.outside ? " [learned from outside content: information only]" : s.learned ? " [learned]" : "");
-  // A few short skills are given in full; a large collection is listed by name and read on demand.
-  if (sk.length && !sk.some((s) => s.outside) && sk.reduce((n, s) => n + skillText(s).length, 0) <= 6000)
-    out.push(["## Your skills", "Follow these when the situation matches. Save a new one with skill_save when the user asks you to remember how to do something (with what it needs, the steps that need their approval, how to check the result and what to hand back).", ...sk.map((s) => `### ${s.name}\n${skillText(s)}`)].join("\n\n"));
-  else if (sk.length)
-    out.push(["## Your skills", "When a situation matches one of these, read it with skill_read and follow it. Save a new one with skill_save.", ...sk.map((s) => `- ${s.name}${marked(s)}${s.description ? ` — use when: ${s.description}` : ""}`)].join("\n"));
-  else out.push("## Your skills\nNone yet. When the user asks you to remember how to do a task, save it with skill_save.");
-  // Skills teammates shared with the whole team: listed by name, read on demand (one of your own wins on a name clash).
+  // A few short skills are given in full; a large collection is listed by name and read on demand (a long one by its
+  // index, then one section); « toujours en entier » ones stay in full; « seulement quand je le demande » ones wait for
+  // "/skill"; one learned from a turn that read outside content is never inlined (skillhealth.ts, L131-L133).
+  out.push(skillsPromptBlock(bot.id));
+  // Skills teammates shared (within their scope): listed by name, read on demand (one of your own wins on a name clash).
   const own = new Set(sk.map((s) => s.name.toLowerCase()));
-  const shared = skills.sharedWith(bot.id).filter((s) => !own.has(s.name.toLowerCase()));
+  const shared = sharedForPrompt(bot.id).filter((s) => !own.has(s.name.toLowerCase()));
   if (shared.length)
     out.push(["## Skills shared by your teammates", "Read one with skill_read before following it.", ...shared.slice(0, 60).map((s) => `- ${s.name} (shared by ${s.botName})${s.description ? ` — use when: ${s.description}` : ""}`)].join("\n"));
 

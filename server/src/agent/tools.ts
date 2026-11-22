@@ -47,7 +47,7 @@ import { anonymise } from "./anonymise.js";
 import { apiTools, scrubSecret } from "../apiconnectors.js";
 import { botMailTools } from "../botmail.js"; import { guardVault } from "../vaultaccess.js"; import { noteHost } from "../netjournal.js"; import { offensiveRefusal } from "../offensive.js"; import { afterClick, hostBeforeClick } from "./clickhosts.js";
 import { ruleTools } from "./ruletools.js";
-import { botNote } from "../skillscan.js";
+import { botNote } from "../skillscan.js"; import { extractSeoTags, seoTagsReport } from "../seotags.js"; import { guideSearchTools } from "./guidesearch.js"; import { contactSheetTools } from "../contactsheet.js"; import { afterSave, saveRefusal, skillFeedbackTools, skillReadOutput, skillSectionParam } from "./skilltools.js";
 import { pageTools } from "./pagetools.js";
 import { researchTool } from "../researchroutes.js";
 import { craftReady } from "./creative-tools.js"; import { craftCommandRefusal } from "./craft-run.js";
@@ -277,7 +277,7 @@ async function spillIfLong(c: ToolContext, text: string, fallback: number): Prom
 }
 
 const workTools: BuiltinTool[] = [
-  tool("web_fetch", "Download a web page or text file and return its readable text. No browser needed.", obj({ url: str("http(s) address") }, ["url"]), {
+  tool("web_fetch", "Download a web page or text file and return its readable text. No browser needed. With tags: true, a web page's SEO tags (title, description, robots, canonical, hreflang, social, headings, JSON-LD, images without alt) come first.", obj({ url: str("http(s) address"), tags: { type: "boolean", description: "Also list the page's SEO tags (for a page check or an SEO audit)" } }, ["url"]), {
     activity: "reading", label: "Reading a page", detail: (a) => hostOf(a.url), outside: true, parallel: true,
     run: async (a, c) => {
       const url = String(a.url);
@@ -289,7 +289,8 @@ const workTools: BuiltinTool[] = [
       const type = res.headers.get("content-type") ?? "";
       if (!/text|json|xml|javascript/.test(type)) return { content: `Fetched ${url} (status ${res.status}) but it is ${type || "binary"} content, not text.`, isError: !res.ok };
       const body = await res.text();
-      return { content: `Status ${res.status}\n\n${await spillIfLong(c, /html/.test(type) ? htmlToText(body) : body, 40_000)}`, summary: `${res.status} · ${hostOf(url) ?? ""}`, isError: !res.ok };
+      const tags = a.tags === true && /html/.test(type) ? `${seoTagsReport(extractSeoTags(body, res.url || url))}\n\n` : ""; // L117 (seotags.ts)
+      return { content: `Status ${res.status}\n\n${tags}${await spillIfLong(c, /html/.test(type) ? htmlToText(body) : body, 40_000)}`, summary: `${res.status} · ${hostOf(url) ?? ""}`, isError: !res.ok };
     },
   }),
   tool("shell_run", "Run a shell command on your computer and return its exit code and output. A command still running at its time limit is not killed: it goes on as a background job (you get its id; check it with job_output, stop it with job_stop, and you get a message when it ends). For long work (builds, downloads, servers, long scripts) pass background: true to start it as a job straight away.",
@@ -740,13 +741,13 @@ const knowledgeTools: BuiltinTool[] = [
       return { content: hits.map((h) => `[${new Date(h.at).toISOString().slice(0, 16)} · ${h.role === "user" ? "user" : h.botName}${h.current ? "" : " · earlier conversation"}${a.scope === "everyone" ? ` · in ${h.botName}'s chat` : ""}] ${h.snippet}`).join("\n"), summary: `${hits.length}` };
     },
   }),
-  tool("skill_read", "Read the full steps of one of your skills, or of a skill a teammate shared. Your prompt lists skill names; read one before following it.", obj({ name: str("Name of the skill") }, ["name"]), {
+  tool("skill_read", "Read the full steps of one of your skills, or of a skill a teammate shared. Your prompt lists skill names; read one before following it. A long skill gives its index first: then read the section you need.", obj({ name: str("Name of the skill"), ...skillSectionParam }, ["name"]), {
     activity: "remembering", label: "Reading a skill", group: "memory",
     run: async (a, c) => {
       const s = skills.find(c.bot.id, String(a.name));
       if (!s) return { content: `You have no skill called "${a.name}", and no teammate shared one by that name.`, isError: true };
-      // A skill learned in a turn that had read outside content is itself outside content: a page may have shaped it.
-      return { content: `# ${s.name}${s.own ? "" : ` (shared by ${s.botName})`}${s.learned ? " (learned from an earlier task)" : ""}\n${skillText(s)}`, summary: s.name, outside: s.outside };
+      // Counted, long ones by index then section, outside content kept as such (skilltools.ts, L131-L132).
+      return skillReadOutput(s, a.section);
     },
   }),
   tool("skill_save", "Save a way of doing something as a skill, so you do it the same way next time. Use it when the user says to remember how to do a task, or after working out a procedure worth keeping. Fill in, whenever you know them: what the task needs first (accounts, access, files), which steps need the user's approval (sending, paying, deleting, publishing, confirming a form…), how to check that it worked, and what to hand back at the end. Saving under an existing name replaces that skill (a part you leave out keeps its current text).",
@@ -767,10 +768,10 @@ const knowledgeTools: BuiltinTool[] = [
       // Only the parts the bot gave: one it leaves out keeps what the skill already says (the user may have written it).
       const extras: Partial<SkillExtras> = {};
       for (const k of SKILL_EXTRA_KEYS) if (typeof a[k] === "string") extras[k] = clip(a[k].trim(), 2000);
+      const refused = saveRefusal(existing, body); if (refused) return { content: refused, isError: true, summary: name }; // locked, or too much lost (skilltools.ts)
       if (existing) skills.update(existing.id, { name, description: when, body, shared, ...extras }); else skills.create(c.bot.id, name, when, body, !!shared, {}, extras);
-      emit(c.user.id, { type: "memories", botId: c.bot.id });
-      // A text the safety check flags stays a draft the bot cannot use until its owner accepts it (skillscan.ts).
-      return { content: `${existing ? "Skill updated." : "Skill saved."}${botNote(c.bot.id, name)}`, summary: name };
+      emit(c.user.id, { type: "memories", botId: c.bot.id }); // A flagged text stays a draft the bot cannot use until its owner accepts it (skillscan.ts).
+      return { content: `${existing ? "Skill updated." : "Skill saved."}${botNote(c.bot.id, name)}${afterSave(c.user.id, c.bot.id, name, !!existing)}`, summary: name };
     },
   }),
   tool("skill_propose", "After finishing a task that took several steps (or a workaround), offer to keep the procedure as a learned skill for next time: the steps on the site or app, the pitfalls, the final check. Names, addresses, contact details, order or account numbers, amounts and message contents are replaced by placeholders before the user sees it; the user reviews and edits it before it is saved. Do not use it when the user said not to remember this task.",
@@ -1370,7 +1371,7 @@ function assemble(opts: { owner?: string; nativeSearch?: boolean; video?: "conne
     ...(reachAvailable() ? inGroup("reach", reachTools) : []),
     ...(computerKind() === "linux" || reachAvailable() ? transcribeTools : []),
     githubSearch, githubRead, videoWorkflowTool, videoStudioTool, updateVideoStudio, ...(computerKind() === "linux" ? [studioMp4Tool] : []), ...publicLinkTools,
-    ...knowledgeTools, ...guideTools, ...ruleTools, ...pageTools, ...progressTools, ...profileTools, ...skillImportTools, ...botTools, ...recruitTools, ...inGroup("team", teamMdTools),
+    ...knowledgeTools, ...guideTools, ...guideSearchTools, ...(browserAvailable() ? contactSheetTools : []), ...ruleTools, ...pageTools, ...progressTools, ...profileTools, ...skillImportTools, ...botTools, ...recruitTools, ...inGroup("team", teamMdTools),
     researchTool, ...(xSearchAvailable(opts.owner) ? xTools : []), ...stepTools,
     ...shareTools.filter((t) => t.spec.name !== "image_generate" || imageService()).map((t): BuiltinTool => ({ ...t, group: t.spec.name === "image_generate" ? "images" : "files" })),
     ...inGroup("vault", vaultTools),
@@ -1384,6 +1385,6 @@ function assemble(opts: { owner?: string; nativeSearch?: boolean; video?: "conne
     ...(opts.video ? inGroup("video", videoTools) : []),
     // The user's own computers (Sklubot Relais): offered by newTurn only to users who linked one.
     ...myComputerTools,
-    ...inGroup("memory", memoryTools), ...inGroup("routines", routineTools), ...inGroup("tasks", taskTools), ...(opts.bgTasks === false ? [] : inGroup("tasks", bgTaskTools)), ...goalTools, ...inGroup("team", [...teamTools, ...roomTools]), ...userTools.filter((t) => t.spec.name !== "ask_takeover" || browserAvailable()), ...reactTools,
+    ...inGroup("memory", [...memoryTools, ...skillFeedbackTools]), ...inGroup("routines", routineTools), ...inGroup("tasks", taskTools), ...(opts.bgTasks === false ? [] : inGroup("tasks", bgTaskTools)), ...goalTools, ...inGroup("team", [...teamTools, ...roomTools]), ...userTools.filter((t) => t.spec.name !== "ask_takeover" || browserAvailable()), ...reactTools,
   ];
 }

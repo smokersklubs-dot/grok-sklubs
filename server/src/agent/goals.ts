@@ -72,9 +72,14 @@ export const goals = {
     q.run(`UPDATE bot_goals SET ${sets.join(", ")}, updated_at = ? WHERE id = ?`, ...vals, now(), g.id);
     const next = goals.byId(g.id)!;
     syncCard(next);
+    if (next.status !== g.status) for (const fn of statusHooks) { try { fn(next, g); } catch (err) { console.error("[goal hook]", err); } }
     return next;
   },
 };
+
+/** Told after a goal's status changed (« Chantier », chantierrunner.ts, follows the goals it started). Must not throw. */
+const statusHooks: ((g: GoalRecord, before: GoalRecord) => void)[] = [];
+export const onGoalStatus = (fn: (g: GoalRecord, before: GoalRecord) => void) => { statusHooks.push(fn); };
 
 function syncCard(g: GoalRecord) {
   const bot = bots.byId(g.botId);

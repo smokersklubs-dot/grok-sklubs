@@ -683,10 +683,42 @@ def op_keys(req):
     out({"ok": True, "host": host_of(url)})
 `;
 
+// L114 — page_contact_sheet: the same address in a temporary tab at several widths, one screenshot each, then the tab
+// is closed. Chrome DevTools Protocol methods used as documented (https://chromedevtools.github.io/devtools-protocol/):
+// Emulation.setDeviceMetricsOverride (width, height, deviceScaleFactor, mobile), Page.navigate, Page.captureScreenshot
+// (format, quality); the tab is made and closed with the /json/new and /json/close endpoints already used above.
+const SHEET_PY = String.raw`
+def op_sheet(req):
+    url = str(req.get("url", ""))
+    if not alive():
+        out({"error": "The browser is not open. Open a page first with browser_open."})
+    made = http("/json/new?about:blank", method="PUT")
+    shots = []
+    try:
+        t = open_tab(made)
+        for w in list(req.get("widths") or [390, 768, 1280])[:4]:
+            w = max(320, min(1920, int(w)))
+            t.call("Emulation.setDeviceMetricsOverride", _wait=5, width=w, height=int(req.get("height", 900)), deviceScaleFactor=1, mobile=w < 600)
+            r = t.call("Page.navigate", _wait=20, url=url)
+            if r.get("errorText"):
+                out({"error": "The page could not be opened: %s" % r["errorText"]})
+            settle(t, cap=8.0)
+            shot = t.call("Page.captureScreenshot", _wait=15, format="jpeg", quality=60)
+            sw = t.call("Runtime.evaluate", _wait=5, expression="document.documentElement.scrollWidth", returnByValue=True)
+            shots.append({"width": w, "data": shot.get("data", ""), "scrollWidth": ((sw.get("result") or {}).get("value") or 0)})
+        t.close()
+    finally:
+        try:
+            urllib.request.urlopen(BASE + "/json/close/" + made["id"], timeout=5).read()
+        except Exception:
+            pass
+    out({"ok": True, "shots": shots})
+`;
+
 const DISPATCH_PY = String.raw`
 OPS = {"read": op_read, "where": op_read, "target": op_target, "open": op_open, "tabs": op_tabs, "tab_switch": op_tab_switch,
        "tab_close": op_tab_close, "dialog_info": op_dialog_info, "dialog_answer": op_dialog_answer, "secret_type": op_secret_type,
-       "click": op_click, "keys": op_keys, "snapshot": op_snapshot, "layout": op_layout}
+       "click": op_click, "keys": op_keys, "snapshot": op_snapshot, "layout": op_layout, "sheet": op_sheet}
 req = json.loads(sys.stdin.read() or "{}")
 try:
     OPS.get(req.get("op"), act)(req)
@@ -700,7 +732,7 @@ except Exception as e:
     out({"error": "the browser could not be reached: %s" % (str(e)[:200] or type(e).__name__)})
 `;
 
-export const BROWSER_PY = `${CORE_PY}\nWATCH = r"""${WATCH_PY}"""\n${ELEMENT_OPS_PY}${OPS_PY}${DISPATCH_PY}`;
+export const BROWSER_PY = `${CORE_PY}\nWATCH = r"""${WATCH_PY}"""\n${ELEMENT_OPS_PY}${OPS_PY}${SHEET_PY}${DISPATCH_PY}`;
 
 /** One line of browser_tabs: a short stable id (the start of Chrome's target id), what it shows, and its state. */
 export interface TabLine { tab: string; title: string; url: string; active: boolean; dialog: string | null }

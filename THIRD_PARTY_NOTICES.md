@@ -116,3 +116,35 @@ OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 - Used in: `docker/desktop/seccomp-chromium.json`. Modified for Sklubot (L48): three rules added at the end, each with a
   `comment` saying so — `clone` with user, PID and network namespaces, `unshare` of a user namespace, `chroot` — so
   Chromium's own sandbox can start in the bots' computers. The 62 upstream rules are unchanged.
+
+## NousResearch/hermes-agent — MIT License
+
+- Source: https://github.com/NousResearch/hermes-agent, commit `05348a3094a2356b9a271a2f22cdd6711c9952b8` (read only,
+  22/11/2026). Copyright (c) 2025 Nous Research.
+- Licence: MIT. The notice required by the licence:
+
+```text
+MIT License
+
+Copyright (c) 2025 Nous Research
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
+rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit
+persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the
+Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE
+WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+```
+
+- Used in: `server/src/skillhealth.ts` — the skills curator's lifecycle pass (`agent/curator.py`
+  `apply_automatic_transitions`: active → stale after 14 days → archived after 30 days from the last real use; pinned
+  and scheduled-job skills never touched; a never-used skill younger than the delay never retired; archive, never
+  delete) and the usage counter / states / pin of `tools/skill_usage.py`. Modified for Sklubot: ported from Python to
+  TypeScript on SQLite tables; only skills the bot made itself are managed; locked and in-prompt skills protected too;
+  the owner's restore restarts the clock; no model pass (duplicates become a suggestion card).

@@ -3,7 +3,8 @@ import { emit } from "./bus.js";
 import type { Locale } from "./shared.js";
 import { scanSkill } from "./skillscan.js";
 import { LIBRARY_CATEGORIES, type LibraryAddReport, type LibraryCategory, type LibraryOrigin, type LibrarySkill } from "./skillstypes.js";
-import { audit, bots, skills, type BotRecord } from "./store.js";
+import { skillMeta } from "./skillhealth.js";
+import { audit, bots, sha256, skills, type BotRecord } from "./store.js";
 
 /**
  * « Bibliothèque de compétences » (docs/COMPETENCES.md): skills bundled with Sklubot, in server/skills-library/.
@@ -97,6 +98,11 @@ function load(): Entry[] {
 
 let cache: Entry[] | null = null;
 export const libraryEntries = (): Entry[] => (cache ??= load());
+/** A library skill's version: a short hash of all its texts (any language), so a change of language is not an update (skillcatalog.ts). */
+export const libraryVersion = (id: string): string | null => {
+  const e = libraryEntries().find((x) => x.id === id);
+  return e ? sha256(JSON.stringify(e.text)).slice(0, 16) : null;
+};
 
 const textFor = (e: Entry, loc: Locale) => (e.text[loc] ? { ...e.text[loc]!, language: loc } : { ...e.text.en!, language: "en" as const });
 const agentsOf = (userId: string) => bots.list(userId).filter((b) => b.kind === "agent");
@@ -136,7 +142,9 @@ export function addFromLibrary(userId: string, id: string, target: string, local
   for (const b of targets) {
     if (hasIt(b.id, e)) { report.already.push({ botId: b.id, botName: b.name }); continue; }
     // A text the safety check flags as "danger" comes back as a draft (store.ts → skillscan.ts): said in the report.
-    if (skills.create(b.id, e.title[locale], t.description || e.summary[locale], t.body, false).draft) (report.flagged ??= []).push(b.name);
+    const made = skills.create(b.id, e.title[locale], t.description || e.summary[locale], t.body, false);
+    if (made.draft) (report.flagged ??= []).push(b.name);
+    skillMeta.setMadeBy(made.id, "library"); skillMeta.setOrigin(made.id, "library", e.id, libraryVersion(e.id)!); // versioned copy (skillcatalog.ts)
     report.added.push({ botId: b.id, botName: b.name });
     emit(userId, { type: "memories", botId: b.id });
   }

@@ -4,4 +4,6 @@ export type RootStack = {
   Details: { botId: string };
   /** The bot's screen: watch, or take control (control: true, e.g. from a takeover card). */
   Computer: { botId: string; control?: boolean };
+  /** « Chantier »: read, approve, decide, stop (screens/Chantiers.tsx). */
+  Chantiers: undefined;
 };

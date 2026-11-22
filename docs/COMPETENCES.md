@@ -160,7 +160,60 @@ Ses limites, pour ne pas lui faire dire plus qu'il ne sait :
 
 Pour les curieux : `server/src/skillscan.ts` (les règles), `skillscanroutes.ts` (les routes), `server/test/skill-scan.test.ts` (les tests).
 
-## 5. Pour aller plus loin
+## 5. Santé des compétences, catalogue de l'équipe et banc d'essai (22/11/2026)
+
+**Où :** onglet **Compétences** d'un bot (une ligne de santé sous chaque compétence, puis « Santé et réglages ») et
+**Réglages → Compétences** (« Catalogue de l'équipe » et « Santé des compétences » pour tous tes bots).
+
+- **Ce qui est compté** : chaque lecture d'une compétence par le bot (`skill_read`), et chaque échec que le bot signale
+  avec `skill_feedback` (« l'étape 1 ne marche plus »). Tu vois « Lue 12 fois · dernière il y a 2 j », « Jamais lue »,
+  « 2 échecs signalés » et le dernier problème. Une compétence donnée en entier dans le prompt (peu de compétences
+  courtes) s'affiche « Toujours sous ses yeux » : ses lectures ne peuvent pas être comptées.
+- **Presque identique** : en écrivant une compétence, un bandeau prévient si une autre de tes compétences dit presque la
+  même chose ; le bot reçoit la même alerte après `skill_save`.
+- **Épingler / Verrouiller** : épinglée, elle n'est jamais archivée toute seule ; verrouillée, le bot ne peut plus la
+  modifier (`skill_save` refuse et lui dit de te demander).
+- **Garde-fou de révision** : le bot ne peut pas retirer plus d'un quart du texte d'une compétence en une fois.
+- **Versions d'avant** : avant chaque modification (par toi, par le bot ou par « Mettre à jour »), l'ancien texte est
+  gardé (10 au plus). « Remettre » le replace, et le texte remplacé est gardé à son tour.
+- **Le curateur** (repris du curateur de hermes-agent, MIT — voir `THIRD_PARTY_NOTICES.md`) : une compétence **faite
+  par le bot** passe « peu servie » après 14 jours sans lecture, puis est **archivée** après 30 jours. Jamais une
+  compétence épinglée, verrouillée, utilisée par une routine, donnée en entier dans le prompt, ou faite par toi, par la
+  bibliothèque ou par le catalogue. Archiver ne supprime rien : « Remettre » la rend au bot. La carte « Le curateur te
+  propose » liste ce qu'il a vu (jamais lue, peu servie, échecs, doublons, archivée toute seule) avec une action
+  chacune ; rien ne change tant que tu ne cliques pas.
+- **Qui la reçoit** (compétence partagée) : tous tes bots, ou seulement certaines sections et certains bots, avec des
+  exclusions. Un bot hors de la portée ne la voit ni dans sa liste ni avec `skill_read`.
+- **Seulement quand je le demande** : le bot ne la voit pas dans sa liste et ne la lit pas seul ; elle sert quand tu
+  écris « /skill nom ».
+- **Longues compétences** : au-delà de 6 000 caractères, `skill_read` donne d'abord le sommaire (les parties de la
+  compétence), puis le bot lit la partie utile. Ce qui demande ton accord, les vérifications et ce qu'il faut rendre
+  sont redonnés à chaque lecture. « Toujours en entier » garde une compétence entière dans le prompt.
+- **Mettre à jour** : une compétence ajoutée depuis la bibliothèque ou le catalogue retient sa version ; quand la source
+  a un texte plus récent, la puce « Mettre à jour » apparaît. Ton texte actuel est gardé dans les versions.
+- **Catalogue de l'équipe** : « Mettre au catalogue » (dans « Santé et réglages ») range une compétence vérifiée dans le
+  catalogue privé de ton compte ; chaque nouvel envoi crée une version ; tu l'ajoutes à tous tes bots ou à un seul.
+  Personne d'autre ne voit ton catalogue.
+- **Essayer avec / sans** : la même demande envoyée deux fois au modèle du bot, avec la compétence et sans, côte à côte
+  (2 appels). Aussi sur les cartes de la bibliothèque, avant d'ajouter une compétence.
+
+Code : `server/src/skillhealth.ts`, `skillcatalog.ts`, `skillhealthroutes.ts`, `agent/skilltools.ts`,
+`web/src/components/SkillHealth.tsx`. Tests : `server/test/skill-health.test.ts`. Captures :
+`docs/screenshots/skill-health/`.
+
+### Outils de contrôle des pages (L109, L114, L117) et modèle « Contrôle qualité des pages » (L116)
+
+- `guide_search` : retrouve la bonne règle dans les guides des composants web (fenêtre, menu, onglets, formulaire, mode
+  sombre…) et dit si elle repose sur une fonction récente du navigateur (vérifier la prise en charge, garder la solution
+  de repli).
+- `page_contact_sheet` : une seule image avec le premier écran d'une page à 390, 768 et 1280 px, côte à côte, plus la
+  mesure d'un éventuel défilement de côté. Pris dans un onglet temporaire du navigateur du bot.
+- `web_fetch` avec `tags: true` : les balises d'une page (titre, description, robots, canonique, hreflang, réseaux
+  sociaux, titres, JSON-LD, images sans texte de remplacement) avant son texte, sans note inventée.
+- Le modèle d'équipe **« Contrôle qualité des pages »** (Suzanne) utilise ces trois outils et la compétence « Testeur de
+  site », et n'envoie aucun formulaire réel sans ton accord.
+
+## 6. Pour aller plus loin
 
 - La compétence **Pages soignées** apprend aux bots tout ce qui précède (quand faire une page, la construire, la vérifier sur téléphone et ordinateur, la partager).
 - La compétence **Méthode de travail** leur apprend à comprendre le but, vérifier avant de dire « c'est fait », demander ton accord avant l'irréversible, et te rendre compte simplement.

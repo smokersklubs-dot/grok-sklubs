@@ -5,7 +5,7 @@
  */
 import { landingData, sampleDownloads } from "./landingFixtures";
 import { announcementsAdmin, announcementsState, conversationGrantFixtures, memoryHistoryFixture, sentinelOverview, todayReport, type FixtureOptions } from "./fixtures";
-import { githubPreviewFixture, libraryFixture, scanReportFixture, versionsFixture } from "./skillsFixtures";
+import { githubPreviewFixture, libraryFixture, scanReportFixture, versionsFixture } from "./skillsFixtures"; import { benchFixture, catalogFixture, skillHealthFixture, versionsListFixture } from "./skillHealthFixtures";
 import { incidentsFixture } from "./incidentsFixtures";
 import { commandFixture, fakeScreen } from "./commandFixtures";
 import { teamMdExportFixture, teamMdPreviewFixture, teamMdReportFixture } from "./teamMdFixtures";
@@ -42,6 +42,10 @@ export function installFakeApi(get: () => FakeApiState): void {
       if (path === "/skills-library/github/preview" && !s.fail) { await wait(150); return json(200, { preview: githubPreviewFixture() }); }
       if (/^\/skills-library\/[^/]+\/add$/.test(path) && !s.fail) { await wait(150); return json(200, { report: { added: [{ botId: "b", botName: "jiren" }], already: [] } }); }
       // « Contrôle de sécurité des compétences »: the result of « Vérifier mes compétences ».
+      // « Santé des compétences » (SkillHealth.tsx): the bench answers side by side; the rest answers with the report.
+      if (/\/bench$/.test(path) && !s.fail) { await wait(300); return json(200, { result: benchFixture(s) }); }
+      if (/^\/skills\/[^/]+\/meta$/.test(path) && !s.fail) { await wait(150); return json(200, { report: skillHealthFixture(s, s.empty) }); }
+      if (path === "/skills/duplicates") return json(200, { similar: s.empty ? [] : [{ skillId: "x", name: s.lang === "fr" ? "Factures du mois" : "Monthly invoices", botName: "Compta", score: 0.82 }] });
       if (path === "/skills/scan" && !s.fail) { await wait(150); return json(200, { report: s.empty ? { scannedAt: Date.now(), skills: 6, clean: 6, entries: [] } : scanReportFixture(s) }); }
       // « Équipe Sklubot (.md) » (GalleryTeamMd.tsx): the review screen, the creation, the share window.
       // « Règles de sécurité » of a linked computer: saving answers with what was sent.
@@ -93,6 +97,9 @@ export function installFakeApi(get: () => FakeApiState): void {
     if (/^\/bots\/[^/]+\/email\/recipients$/.test(path)) return json(200, recipientsFixture(s.empty));
     if (/^\/vault\/[^/]+\/access$/.test(path)) return json(200, vaultAccessFixture(s.empty));
     if (path === "/skills-library") return json(200, libraryFixture(s));
+    if (path === "/skills/health") return json(200, { report: skillHealthFixture(s, s.empty) });
+    if (path === "/skills-catalog") return json(200, { catalog: catalogFixture(s, s.empty) });
+    if (/^\/skills\/[^/]+\/versions$/.test(path)) return json(200, { versions: s.empty ? [] : versionsListFixture(s) });
     if (/^\/pages\/[^/]+\/versions$/.test(path)) return json(200, versionsFixture());
     // « Incidents » (Activité tab): the bot's failure log.
     if (/^\/bots\/[^/]+\/failures$/.test(path)) return json(200, { failures: incidentsFixture(s.empty) });

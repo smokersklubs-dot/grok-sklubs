@@ -28,6 +28,7 @@ import { AnnouncementsView } from "./components/AnnouncementsView";
 import { SiteAnnouncementBanner } from "./components/AnnouncementCard";
 import { useAnnouncements } from "./lib/announcements";
 import { ThreadPanel } from "./components/ThreadPanel";
+import { ChantierOverlay } from "./components/Chantier";
 import { isDownloadPath } from "./lib/platform";
 import { useDesktopBadge } from "./lib/desktop";
 import { takeVerifyLink, VerifyEmailGate, VerifyEmailPage } from "./components/VerifyEmail";
@@ -170,6 +171,7 @@ function Shell() {
 
       {history && <HistoryViewer key={`${history.botId}:${history.generation}:${history.seq}`} target={history} />}
 
+      <ChantierOverlay />
       <Onboarding />
       <ToastView toast={toast} />
     </div>

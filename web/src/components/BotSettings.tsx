@@ -23,7 +23,7 @@ import { BotFallbacks } from "./Reliability";
 import { routineWhen, TriggerChip } from "./DetailsPanel";
 import { Icon, Spinner } from "./Icon";
 import { MODE_IDS } from "./Modals";
-import { SkillImportForm, SkillRowCheck, useBotScans } from "./SkillScan";
+import { SkillImportForm, SkillRowCheck, useBotScans } from "./SkillScan"; import { CuratorCard, DuplicateHint, SkillHealthLine, SkillHealthPanel, useSkillHealth } from "./SkillHealth";
 import { ConfirmButton, CopyButton, copyText, Empty, ErrorNote, IconButton, Loading, Modal, Toggle, useTick } from "./ui";
 import { BotRulesAndNudges } from "./RulesAndNudges";
 import { runNote } from "./Pause";
@@ -427,7 +427,7 @@ function SkillEditor({ botId, skill, onDone }: { botId: string; skill: Skill | n
         ))}
         </div>
       </details>
-      <ErrorNote>{error}</ErrorNote>
+      <DuplicateHint name={name} description={description} body={body} exceptId={skill?.id} /><ErrorNote>{error}</ErrorNote>
       <div className="row-end">
         <button type="button" className="btn btn-ghost btn-small" onClick={onDone}>{t("common.cancel")}</button>
         <button type="submit" className="btn btn-primary btn-small" disabled={!name.trim() || !body.trim() || busy}>{t(busy ? "common.saving" : "skill.save")}</button>
@@ -474,6 +474,7 @@ function Skills({ bot, bundle }: { bot: Bot; bundle: BotBundle | undefined }) {
   const [error, setError] = useState<string | null>(null);
   const skills = bundle?.skills;
   const { scans, reload } = useBotScans(bot.id, skills); // « Contrôle de sécurité des compétences » (SkillScan.tsx)
+  const { report: health, reload: reloadHealth } = useSkillHealth(bundle); const healthOf = (id: string) => health?.skills.find((h) => h.skillId === id); const healthChanged = () => { reloadHealth(); void loadBundle(bot.id); }; // « Santé des compétences » (SkillHealth.tsx)
   const share = async (s: Skill, on: boolean) => {
     setError(null);
     try {
@@ -517,7 +518,7 @@ function Skills({ bot, bundle }: { bot: Bot; bundle: BotBundle | undefined }) {
       {editing === "new" && <SkillEditor botId={bot.id} skill={null} onDone={() => setEditing(null)} />}
       {!skills && <Loading />}
       {skills && skills.length === 0 && editing === null && <Empty icon="book" title={t("skill.emptyTitle")}>{t("skill.emptyText", { name: bot.name })}</Empty>}
-      <ErrorNote>{error}</ErrorNote>
+      <ErrorNote>{error}</ErrorNote>{health && <CuratorCard suggestions={health.suggestions.filter((x) => skills?.some((k) => k.id === x.skillId))} onChanged={healthChanged} />}
       {skills && skills.length > 0 && (
         <ul className="list">
           {skills.map((s) =>
@@ -531,7 +532,7 @@ function Skills({ bot, bundle }: { bot: Bot; bundle: BotBundle | undefined }) {
                   <span className="list-row-title">{s.name}{s.shared && <span className="pill is-shared">{t("skill.shared")}</span>}{s.draft && <span className="chip">{t("skill.draft")}</span>}</span>
                   <span className="list-row-sub">{s.description || s.body.split("\n").find((l) => l.trim()) || ""}</span>
                   {s.draft && !scans[s.id]?.blocked && <span className="list-row-sub warn-text">{t("skill.draftHint")}</span>}
-                  <SkillRowCheck skill={s} state={scans[s.id]} onChanged={reload} />
+                  <SkillRowCheck skill={s} state={scans[s.id]} onChanged={reload} /><SkillHealthLine h={healthOf(s.id)} onChanged={healthChanged} />
                 </div>
                 {s.draft && !scans[s.id]?.blocked && (
                   <button type="button" className="btn btn-small btn-primary" onClick={() => void activate(s)}>
@@ -566,7 +567,7 @@ function Skills({ bot, bundle }: { bot: Bot; bundle: BotBundle | undefined }) {
                     }
                   }}
                 />
-                <SkillParts skill={s} />
+                <SkillParts skill={s} /><SkillHealthPanel h={healthOf(s.id)} skill={s} onChanged={healthChanged} />
               </li>
             ),
           )}

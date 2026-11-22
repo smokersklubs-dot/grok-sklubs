@@ -536,7 +536,7 @@ Sklubot a déjà repris trois compétences (`brouillon-email`, `cartes-de-suivi`
 | 6 | Réparer la grande vue de l'écran qui ne se reconnecte pas, avec délais croissants et bouton Reconnecter. (ligne 73) | S |
 | 7 | Bouton Copier sur les blocs de code, repli des longs blocs. (ligne 35) | S |
 | 8 | Telegram : recevoir photos, vocaux et fichiers ; envoyer les fichiers du bot ; mise en forme propre. (lignes 88-90) | M |
-| 9 | Curateur de compétences : compter l'usage, archiver les inutilisées, épingler, verrouiller, garder la version d'avant. (lignes 115-118) | M |
+| 9 | ✅ **Fait (2026-11-22).** Code du curateur de hermes-agent (MIT) repris dans `server/src/skillhealth.ts` : compteur, peu servie / archivée, épingler, verrouiller, 10 versions avec retour ; fusion par un modèle remplacée par une carte « doublon ». Curateur de compétences : compter l'usage, archiver les inutilisées, épingler, verrouiller, garder la version d'avant. (lignes 115-118) | M |
 | 10 | Mémoire : noyau fixe de notes confirmées, notes du tour hors du prompt système (cache), taux de remplissage dit au bot. (§ 3.5, lignes 102-103, 157) | M |
 | 11 | Brouillons d'e-mail : outil de mise à jour (la compétence actuelle demande une chose impossible), pièces jointes, Cci, signature. (lignes 143-144) | M |
 | 12 | Carte de brouillon modifiable dans le chat avec Envoyer / Abandonner. (ligne 142) | M |

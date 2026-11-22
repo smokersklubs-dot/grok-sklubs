@@ -10,7 +10,7 @@ import { activityPhrase } from "./Transcript";
 import { BotAvatar } from "./Avatar";
 import { Icon, type IconName } from "./Icon";
 import { ExchangeModal, LinkLayer, LinkList } from "./CommandLinks";
-import { IncidentsSection } from "./Incidents";
+import { IncidentsSection } from "./Incidents"; import { ChantiersCommandStrip } from "./Chantier";
 import { resumeWidest, setPaused } from "./Pause";
 import { Empty, ErrorNote, IconButton, Loading, Modal, useTick } from "./ui";
 import "../styles/command.css";
@@ -127,6 +127,7 @@ export function CommandView() {
         {view && (
           <>
             <Kpis view={view} />
+            {owned && <ChantiersCommandStrip />}
             {cards.length === 0 ? (
               <div className="cmd-empty">
                 <Empty icon="users" title={t("command.empty.title")}>{t("command.empty.text")}</Empty>

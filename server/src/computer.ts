@@ -260,6 +260,18 @@ export const screen = {
         } finally { await session.detach(); }
       });
   },
+  /** L114 (contactsheet.ts): the first screen of `url` at each width, in a temporary tab; the bot's own tab is left as it was. */
+  sheet: async (botId: string, userId: string, url: string, widths: number[]): Promise<{ width: number; data: string; scrollWidth?: number }[]> => {
+    await assertPublicUrl(url);
+    if (kind === "linux") return linuxScreen.sheet(botId, userId, workspaceOf(botId), url, widths);
+    return withDesktop(botId, userId, async (d) => {
+      const own = d.page, p = await d.context.newPage(), shots: { width: number; data: string; scrollWidth?: number }[] = [];
+      try {
+        for (const width of widths) { await p.setViewportSize({ width, height: 900 }); await p.goto(url, { waitUntil: "domcontentloaded", timeout: 40000 }); await settle(p, 800); shots.push({ width, data: (await p.screenshot({ type: "jpeg", quality: 60 })).toString("base64"), scrollWidth: await p.evaluate("document.documentElement.scrollWidth").catch(() => 0) }); }
+      } finally { await p.close().catch(() => {}); d.page = own; } // the "page" listener moved to the temporary tab: back to the bot's own
+      return shots;
+    });
+  },
   view: (botId: string, userId: string) => (kind === "linux" ? linuxScreen.view(botId, userId, workspaceOf(botId)) : browserScreen.view(botId, userId)),
   open: (botId: string, userId: string, url: string, newTab = false) => (kind === "linux" ? linuxScreen.open(botId, userId, workspaceOf(botId), url, newTab) : browserScreen.open(botId, userId, url)).then((r): Shot => { reportedUrl.set(botId, r.url || url); return r; }),
   click: (botId: string, userId: string, x: number, y: number, button: "left" | "right" | "middle" = "left", double = false) =>

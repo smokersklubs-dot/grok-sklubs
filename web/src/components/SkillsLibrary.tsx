@@ -5,6 +5,7 @@ import { sortedBots, useStore } from "../store";
 import type { GithubImportReport, GithubPreview, LibraryCategory, LibrarySkill } from "../types";
 import { Icon } from "./Icon";
 import { ScanFindings, SkillsCheckSection } from "./SkillScan";
+import { BenchPanel, SkillsHealthSection, TeamCatalogSection } from "./SkillHealth";
 import { Empty, ErrorNote, Loading } from "./ui";
 import "./SkillsLibrary.css";
 
@@ -59,6 +60,7 @@ function LibraryCard({ skill, onAdded }: { skill: LibrarySkill; onAdded: () => v
         <pre className="skl-body">{skill.body}</pre>
         <p className="skl-notice">{skill.notice}{skill.source && <> — <a href={skill.source} target="_blank" rel="noopener noreferrer">{t("skl.source")}</a></>}</p>
       </details>
+      {skill.botCount > 0 && <details className="skl-read"><summary>{t("skh.bench.title")}</summary><BenchPanel path={`/skills-library/${encodeURIComponent(skill.id)}/bench`} needsBot /></details>}
       {(skill.scan?.worst === "danger" || skill.scan?.worst === "warning") && <ScanFindings scan={skill.scan} compact />}
       <p className="skl-count">{skill.botCount === 0 ? t("skl.noBots") : t("skl.count", { n: skill.addedTo, total: skill.botCount })}</p>
       <ErrorNote onDismiss={() => setError(null)}>{error}</ErrorNote>
@@ -215,6 +217,8 @@ export function SkillsLibrarySection() {
           </>
         );
       })()}
+      <TeamCatalogSection />
+      <SkillsHealthSection />
       <SkillsCheckSection />
       {github ? <GithubImport /> : list && <p className="muted small skl-gh-off"><Icon name="lock" size={13} /> {t("skl.gh.notInPlan")}</p>}
     </div>

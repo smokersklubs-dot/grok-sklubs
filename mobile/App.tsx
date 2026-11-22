@@ -19,6 +19,7 @@ import { ComputerScreen } from "./src/screens/Computer";
 import { DetailsScreen } from "./src/screens/Details";
 import { SettingsScreen } from "./src/screens/Settings";
 import { TasksScreen } from "./src/screens/Tasks";
+import { ChantiersScreen } from "./src/screens/Chantiers";
 import type { RootStack } from "./src/screens/types";
 import { ServerScreen, SignInScreen } from "./src/screens/Welcome";
 import { usePrefs } from "./src/state/prefs";
@@ -113,6 +114,7 @@ export default function App() {
                 <Stack.Screen name="Chat" component={ChatScreen} />
                 <Stack.Screen name="Details" component={DetailsScreen} />
                 <Stack.Screen name="Computer" component={ComputerScreen} />
+                <Stack.Screen name="Chantiers" component={ChantiersScreen} />
               </>
             )}
         </Stack.Navigator>

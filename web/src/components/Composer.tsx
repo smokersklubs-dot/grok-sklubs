@@ -12,7 +12,7 @@ import { Icon, Spinner } from "./Icon";
 import { ErrorNote, Menu, MenuItem, useEscape } from "./ui";
 import { PauseBanner } from "./Pause";
 import { useComposerMentions } from "./ComposerMentions";
-import { MeetingRecorder } from "./MeetingRecorder";
+import { MeetingRecorder } from "./MeetingRecorder"; import { openChantiers } from "../lib/chantiers";
 import { sendKeysFor } from "../../../mobile/shared/sendKey";
 import "./Comfort.css";
 
@@ -359,6 +359,7 @@ export function Composer({ bot, live }: { bot: Bot; live: Live }) {
                 {t(goalMode ? "composer.goalOff" : "composer.goal")}
               </MenuItem>
             )}
+            {bot.kind === "agent" && !bot.access && <MenuItem icon="tasks" onClick={() => { setMenu(false); openChantiers({ kind: "new", botId: bot.id, brief: draft }); }}>{t("chantier.new.button")}</MenuItem>}
             <MenuItem icon="edit" danger={confirmNew} onClick={() => void newConversation()}>
               {t(confirmNew ? "chat.confirmNew" : "chat.newConversation")}
             </MenuItem>

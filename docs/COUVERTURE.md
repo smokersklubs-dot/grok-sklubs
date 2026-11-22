@@ -490,3 +490,34 @@ Limites : le cache relit le tour précédent une fois par nouveau message (son m
 | Sourdine d'une discussion | Fait | Menu de la discussion → « Sourdine pendant 8 heures » / « jusqu'à ce que je la retire » / « Réactiver » : plus de notification de ce bot (téléphone et navigateur) ; une question qui attend ton accord prévient quand même (`server/src/chatmute.ts`, `push.ts`, `ChatMute.tsx`, test `server/test/comfort.test.ts`) |
 | Pas faits dans ce lot | — | Aperçus de lien, photo d'avatar, graphiques d'usage sur 30 jours, page d'état, modification en place / régénération / bifurcation (boucle). |
 
+### Santé des compétences et contrôle des pages (Lot 3, 22/11/2026)
+
+| Élément | État | Ce qui marche |
+|---|---|---|
+| L131 — santé des compétences | Fait | Lectures et échecs comptés (`skill_read`, `skill_feedback`), « presque identique » à l'écriture et après `skill_save`, épingler, verrouiller, 10 versions d'avant avec « Remettre », garde-fou « pas plus d'un quart perdu », carte du curateur (`skillhealth.ts`, `SkillHealth.tsx`). Pas fait : compétences proposées depuis plusieurs conversations avec preuves |
+| Curateur Hermes (lignes 115-118) | Fait | Code repris de hermes-agent (MIT) : peu servie à 14 jours, archivée à 30 jours, seulement les compétences faites par le bot ; jamais épinglées, verrouillées, utilisées par une routine ou données en entier. Fusion par un modèle non reprise (carte « doublon » à la place) |
+| L132 — longues compétences | Fait en partie | Sommaire puis partie, accords et vérifications redonnés à chaque lecture, « toujours en entier ». Reste : « Réponses courtes » en réglage du bot |
+| L133 — portées | Fait | Tous / sections / bots / exclus pour une compétence partagée ; « seulement quand je le demande » (/skill) |
+| L134 — banc d'essai | Fait | « Essayer avec / sans » sur une compétence et sur une carte de la bibliothèque (2 appels au modèle du bot) |
+| L135 — catalogue de l'équipe | Fait | Catalogue privé du compte, versionné, ajout à un bot ou à tous ; puce « Mettre à jour » sur les copies (bibliothèque et catalogue) |
+| L109 — `guide_search` | Fait | Recherche dans les guides des composants web, avec l'état de prise en charge (`agent/guidesearch.ts`) |
+| L114 — planche-contact | Fait | `page_contact_sheet` : 390 / 768 / 1280 px côte à côte + défilement de côté mesuré (`contactsheet.ts`). Vérifié en mode navigateur ; sur ordinateur Linux (opération `sheet` de `browser-cdp.ts`) écrit mais non essayé ici |
+| L116 — modèle « Contrôle qualité des pages » | Fait | `server/templates/controle-qualite-pages.md` |
+| L117 — option « balises » de `web_fetch` | Fait | `tags: true` (`seotags.ts`) |
+
+## « Chantier » : un gros travail partagé entre plusieurs bots (L173 « workflows en graphe », 22/11/2026)
+
+Méthode tirée de l'article partagé par le propriétaire (flux de travail à plusieurs modèles). Doc : `docs/CHANTIER.md`.
+
+| Élément | État | Ce qui marche |
+|---|---|---|
+| Plan d'abord | Fait | Un bot écrit le plan (observé / supposé / questions ouvertes, exigences avec leur vérification, schéma des tâches, contrat de chaque tâche) ; rien ne démarre avant « Approuver et lancer », ni tant qu'une question reste sans réponse (`chantierplanner.ts`, `chantierrunner.ts`) |
+| Schéma et parallélisme | Fait | Tâches indépendantes en même temps (couloirs du bot, 3 au plus), tâche dépendante en attente ; chaque lien nomme ce qui passe ; les fichiers des tâches d'avant sont copiés dans la bibliothèque du bot suivant ; deux tâches qui touchent la même ressource ne tournent jamais ensemble |
+| Contrat et vérifications | Fait | Entrée, sortie, vérifications par programme (nombre de fichiers, tailles, champs JSON, ordre, textes, taille des PNG), critères pour un bot relecteur (autre que l'auteur ; « oui » sans raison refusé ; « pas sûr » → toi), périmètre (`chantierchecks.ts`) |
+| Boucle qui rejette | Fait | Rapport d'échec (partie, conditions, échec, attendu, périmètre de réparation, revérification) ; seule la tâche en échec repart ; vérification d'ensemble refaite après la réparation ; 3 essais par défaut puis la branche s'arrête, tout est gardé, carte pour toi |
+| Leçons | Fait | Une vérification ratée puis réussie devient une leçon (règle / preuve / s'applique à), ajoutée aux vérifications des chantiers suivants ; modifiable, retirable |
+| Chiffres | Fait | Durée, coût (estimation par fenêtre d'usage du bot), défauts restants, essais, tes interventions, « continue » et choses redites avec leur raison |
+| Arrêt, reprise, isolement | Fait | « Arrêter le chantier » ; reprise après redémarrage ; chaque compte ne voit que ses chantiers et ses bots |
+| Écrans | Fait | Web : page du chantier (schéma coloré, contrat, essais, rapports, cartes, leçons, chiffres), « Nouveau chantier » dans le menu + de la saisie et dans le Centre de commandement. Téléphone : lire, approuver, décider, arrêter (onglet Tâches → Chantiers) |
+| Pas fait | — | Modifier le contrat d'une tâche en cours de route ; compter un « continue » tapé dans le fil (seuls le bouton « Reprendre » de l'objectif et « Dire continue » sont comptés) ; le relecteur ne voit pas les images (il répond « pas sûr », tu tranches) ; plan non modifiable sur le téléphone |
+

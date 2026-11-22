@@ -564,10 +564,13 @@ export function skillText(s: Pick<Skill, "description" | "body"> & Partial<Skill
 /** Set by skillscan.ts: runs after a skill's text is saved (a flagged text stays a draft until its owner accepts it). */
 let skillGuard: (id: string) => void = () => {};
 export const setSkillGuard = (fn: (id: string) => void) => { skillGuard = fn; };
+/** Set by skillhealth.ts (L131/L133): archived skills and shared skills out of scope are not given; a version is kept before each change. */
+let skillHooks: { visible: (viewerBotId: string, list: any[]) => any[]; beforeSave: (id: string) => void } = { visible: (_b, l) => l, beforeSave: () => {} };
+export const setSkillHooks = (h: typeof skillHooks) => { skillHooks = h; };
 export const skills = {
   list: (botId: string) => q.all("SELECT * FROM skills WHERE bot_id = ? ORDER BY created_at", botId).map(toSkill),
   /** The skills a bot is given (its prompt, skill_read): its own, without the drafts the user has not activated yet. */
-  usable: (botId: string) => q.all("SELECT * FROM skills WHERE bot_id = ? AND draft = 0 ORDER BY created_at", botId).map(toSkill),
+  usable: (botId: string): Skill[] => skillHooks.visible(botId, q.all("SELECT * FROM skills WHERE bot_id = ? AND draft = 0 ORDER BY created_at", botId).map(toSkill)),
   owned(userId: string, id: string) {
     const r = q.get("SELECT s.* FROM skills s JOIN bots b ON b.id = s.bot_id WHERE s.id = ? AND b.user_id = ?", id, userId);
     return r ? toSkill(r) : null;
@@ -585,6 +588,7 @@ export const skills = {
   },
   /** A structured part left undefined keeps its value; an empty string clears it. */
   update(id: string, f: { name: string; description: string; body: string; shared?: boolean; draft?: boolean } & Partial<SkillExtras>) {
+    skillHooks.beforeSave(id);
     q.run("UPDATE skills SET name = ?, description = ?, body = ?, updated_at = ? WHERE id = ?", f.name, f.description, f.body, now(), id);
     saveSkillExtras(id, f);
     if (typeof f.shared === "boolean") q.run("UPDATE skills SET shared = ? WHERE id = ?", f.shared ? 1 : 0, id);
@@ -594,8 +598,8 @@ export const skills = {
   },
   /** Skills other bots of the same user shared (never this bot's own). */
   sharedWith(botId: string): (Skill & { botName: string })[] {
-    return q.all("SELECT s.*, b.name AS bot_name FROM skills s JOIN bots b ON b.id = s.bot_id WHERE s.shared = 1 AND s.draft = 0 AND s.bot_id != ? AND b.user_id = (SELECT user_id FROM bots WHERE id = ?) ORDER BY s.created_at", botId, botId)
-      .map((r: any) => ({ ...toSkill(r), botName: r.bot_name }));
+    return skillHooks.visible(botId, q.all("SELECT s.*, b.name AS bot_name FROM skills s JOIN bots b ON b.id = s.bot_id WHERE s.shared = 1 AND s.draft = 0 AND s.bot_id != ? AND b.user_id = (SELECT user_id FROM bots WHERE id = ?) ORDER BY s.created_at", botId, botId)
+      .map((r: any) => ({ ...toSkill(r), botName: r.bot_name })));
   },
   /** Every skill a bot can follow: its own first, then the ones its teammates shared (an own skill wins on a name clash). */
   available(botId: string): (Skill & { botName: string; own: boolean })[] {
