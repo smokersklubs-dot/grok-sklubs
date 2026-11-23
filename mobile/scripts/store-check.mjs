@@ -4,6 +4,7 @@
  *   cd mobile && npm run store:check            (contrôle ; code 1 s'il y a un ÉCHEC)
  *   cd mobile && npm run store:check -- --write (réécrit store/PrivacyInfo.xcprivacy depuis store/privacy-manifest.json)
  *   cd mobile && npm run store:check -- --bundle chemin/du/bundle.js   (cherche aussi des clés dans un bundle exporté)
+ *   cd mobile && npm run store:check -- --permissions perms.txt        (sortie de « aapt2 dump permissions » de l'APK store)
  *
  * What it checks (each line OK / ATTENTION / ÉCHEC):
  * - versions: VERSION (x.y.z) and VERSION_CODE in app.config.ts; ios.buildNumber follows VERSION_CODE; STORE.md names the
@@ -21,6 +22,11 @@
  *   Expo notes that Apple does not always read the libraries' own files, hence the copy in the app's manifest).
  * - no keys bundled: the app's source (src, App.tsx, index.ts, app.config.ts, plugins, shared, store JSON) holds no API
  *   key, token or private key, and no signing file sits in assets/.
+ * - permission justifications (store/permissions.json): every permission the store build declares (the repo's manifests
+ *   that reach it, or the `aapt2 dump permissions` output passed with --permissions) has a plain-words reason and a
+ *   « when », every iOS usage text exists, nothing from the « never in the store » list is declared, and STORE.md has
+ *   the table for the reviewers (Play: https://support.google.com/googleplay/android-developer/answer/9888170 asks to
+ *   declare why sensitive permissions are needed; Apple 5.1.1(ii) asks for the purpose string).
  * - « Signaler cette réponse »: the button is wired in the chat (components/Chat.tsx → ReportSheet) with its texts in
  *   both languages (Apple 1.2 asks apps that show generated content to let users report it).
  */
@@ -239,11 +245,47 @@ export function runChecks(root = ROOT, opts = {}) {
   else if (!/"report\.[\w.]+":/.test(fr) || !/"report\.[\w.]+":/.test(en)) fail("« Signaler cette réponse » : textes report.* manquants en français ou en anglais");
   else ok("« Signaler cette réponse » présent dans la discussion");
 
+  // Permission justifications (L160)
+  permissionChecks(root, read, opts, ok, warn, fail);
+
   // Store sheet up to date with what the app does
   const sheet = read("STORE.md");
   if (/Localisation, contacts/.test(sheet) && !/position/i.test(sheet.split("Sécurité des données")[1] ?? "")) fail("STORE.md : la sécurité des données ne dit pas que la position peut être partagée (demande d'un bot, L177)");
   if (!/Classification par âge \(App Store\)/.test(sheet)) fail("STORE.md : réponses au questionnaire d'âge Apple manquantes");
   return results;
+}
+
+/** `uses-permission` names of a manifest, minus those it removes (tools:node="remove"). */
+export function manifestPermissions(xml) {
+  return [...xml.matchAll(/<uses-permission\b[^>]*android:name="([^"]+)"[^>]*\/?>/g)].filter((m) => !/tools:node="remove"/.test(m[0])).map((m) => m[1]);
+}
+/** Names in `aapt2 dump permissions` output ("uses-permission: name='X'"). */
+export const aaptPermissions = (text) => [...text.matchAll(/uses-permission(?:-sdk-23)?: name='([^']+)'/g)].map((m) => m[1]);
+
+function permissionChecks(root, read, opts, ok, warn, fail) {
+  const p = join(root, "store/permissions.json");
+  if (!existsSync(p)) { fail("permissions : store/permissions.json manquant (justification de chaque permission)"); return; }
+  let j;
+  try { j = JSON.parse(readFileSync(p, "utf8")); } catch { fail("permissions : store/permissions.json illisible"); return; }
+  const justified = new Map((j.android ?? []).map((e) => [e.permission, e]));
+  for (const [name, e] of justified) if (!e.why || e.why.length < 15 || !e.when) fail(`permissions : ${name} sans raison claire ni moment`);
+  // What the store build declares: the app's own manifest and the modules that reach it (live and relay are cut, withRelayVariant).
+  const sources = ["android/app/src/main/AndroidManifest.xml", "modules/sklubot-voice/android/src/main/AndroidManifest.xml"].filter((f) => existsSync(join(root, f)));
+  const declared = new Set(sources.flatMap((f) => manifestPermissions(read(f))));
+  for (const f of opts.permissionFiles ?? []) for (const n of aaptPermissions(readFileSync(f, "utf8"))) declared.add(n);
+  const never = new Set(j.neverInStore ?? []);
+  const forbidden = [...declared].filter((n) => never.has(n));
+  const missing = [...declared].filter((n) => !justified.has(n) && !never.has(n) && !/^com\.|^me\.|\.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION$/.test(n));
+  if (forbidden.length) fail(`permissions : jamais dans la version store : ${forbidden.join(", ")}`);
+  if (missing.length) fail(`permissions : sans justification dans store/permissions.json : ${missing.join(", ")}`);
+  if (!(opts.permissionFiles ?? []).length) warn("permissions : liste lue dans le dépôt seulement ; passer la sortie de « aapt2 dump permissions » avec --permissions pour contrôler aussi celles des bibliothèques");
+  const config = read("app.config.ts");
+  const ios = { NSCameraUsageDescription: /cameraPermission: "[^"]{20,}"/, NSPhotoLibraryUsageDescription: /photosPermission: "[^"]{20,}"/, NSMicrophoneUsageDescription: /microphonePermission: "[^"]{20,}"/ };
+  for (const e of j.ios ?? []) if (ios[e.key] && !ios[e.key].test(config)) fail(`permissions : texte iOS ${e.key} absent de app.config.ts`);
+  const sheet = read("STORE.md");
+  const absent = [...justified.keys()].filter((n) => !sheet.includes(n.replace("android.permission.", "")));
+  if (!/Justification des permissions/.test(sheet) || absent.length) fail(`permissions : STORE.md doit avoir le tableau « Justification des permissions »${absent.length ? ` (manque ${absent.join(", ")})` : ""}`);
+  if (!forbidden.length && !missing.length && !absent.length) ok(`permissions : ${justified.size} justifiées (${declared.size} déclarées dans les manifestes lus), ${(j.ios ?? []).length} textes iOS`);
 }
 
 /** A short fingerprint of the manifest, printed so two runs can be compared at a glance. */
@@ -252,7 +294,8 @@ export const manifestDigest = (root = ROOT) => createHash("sha256").update(readF
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const args = process.argv.slice(2);
   const bundles = args.flatMap((a, i) => (a === "--bundle" && args[i + 1] ? [args[i + 1]] : []));
-  const results = runChecks(ROOT, { write: args.includes("--write"), bundles });
+  const permissionFiles = args.flatMap((a, i) => (a === "--permissions" && args[i + 1] ? [args[i + 1]] : []));
+  const results = runChecks(ROOT, { write: args.includes("--write"), bundles, permissionFiles });
   for (const r of results) console.log(`${r.level === "OK" ? "OK       " : r.level === "ATTENTION" ? "ATTENTION" : "ÉCHEC    "} ${r.what}`);
   const failed = results.filter((r) => r.level === "ÉCHEC").length, warned = results.filter((r) => r.level === "ATTENTION").length;
   console.log(`\n${failed ? `${failed} échec(s)` : "Prêt pour l'envoi"}${warned ? `, ${warned} point(s) à regarder` : ""}. Manifeste ${manifestDigest()}.`);

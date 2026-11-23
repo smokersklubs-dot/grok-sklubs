@@ -5,6 +5,7 @@ import { engineOf, isEngineRef } from "./engine.js";
 import type { Trigger } from "./turn-request.js";
 import { conversationModel } from "../convs.js";
 import { modeModelFor } from "./modelmodes.js";
+import { boardModelForGoal } from "../workboardroles.js";
 
 /**
  * nod item 2, hooked into the turn loop: a routine run (and its own continuations) runs on the model chosen for that
@@ -28,6 +29,8 @@ export function workKindOf(trigger: Trigger): { kind: "routine"; runId?: string 
 
 /** The model this piece of work should run on, or the bot's own model when nothing else applies or can run. */
 export function workModelFor(bot: BotRecord, trigger: Trigger): string {
+  const board = trigger.kind === "system" ? boardModelForGoal(trigger.goalRound) : ""; // L163 T10: a board task's own model, else its role's (workboardroles.ts)
+  if (board && board !== bot.model) return isEngineRef(board) ? (isEngineRef(bot.model) && engineOf(board) === engineOf(bot.model) ? board : bot.model) : modelAvailable(board, bot.userId) ? board : bot.model;
   const work = workKindOf(trigger);
   if (!work) return conversationChoice(bot, trigger);
   const ref = work.kind === "routine" ? modelForRun(bot, work.runId) : modelForWork(bot, "background");

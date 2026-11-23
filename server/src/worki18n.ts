@@ -133,6 +133,15 @@ export const WORK_FR: Record<string, string> = {
   "the file is empty": "le fichier est vide",
   "the file is larger than 15 MB": "le fichier dépasse 15 Mo",
   "its content does not match its type": "son contenu ne correspond pas à son type",
+  // L163 (workboardroles.ts)
+  "That model is not available on your account: {model}.": "Ce modèle n'est pas disponible sur ton compte : {model}.",
+  "Unknown task kind.": "Type de tâche inconnu.",
+  "Unknown role.": "Rôle inconnu.",
+  "Choose the bot of this role before pinning it.": "Choisis le bot de ce rôle avant de l'épingler.",
+  "At most {n} model sets: delete one first.": "{n} jeux de modèles au plus : supprimes-en un d'abord.",
+  "Give the set a name.": "Donne un nom au jeu.",
+  "Give a model for at least one role.": "Donne un modèle pour au moins un rôle.",
+  "That model set does not exist.": "Ce jeu de modèles n'existe pas.",
 };
 
 export function wt(locale: Locale | undefined, en: string, vars: Record<string, string | number> = {}): string {

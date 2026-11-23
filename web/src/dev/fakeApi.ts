@@ -14,7 +14,7 @@ import { hookSignedFixture, hookTestFixture, reportsFixture } from "./trustFixtu
 import { relayGuardFixture } from "./relayGuardFixtures";
 import { routineExtrasFixture, routinePreviewFixture, researchFixture, routineRunsFixture, usageDailyFixture } from "./routineFixtures";
 import { botSecurityFixture, browserFixture, recipientsFixture, securitySettingsFixture, vaultAccessFixture } from "./securityFixtures";
-import { channelsFixture } from "./GalleryChannels"; import { comfort6Get } from "./GalleryComfort6"; import { comfort7Get, officeFixture } from "./GalleryComfort7"; import { inboxFixture } from "./turnFixtures"; import { extensionsGet } from "./GalleryExtensions";
+import { channelsFixture } from "./GalleryChannels"; import { comfort6Get } from "./GalleryComfort6"; import { comfort7Get, officeFixture } from "./GalleryComfort7"; import { comfort9Get } from "./GalleryComfort9"; import { inboxFixture } from "./turnFixtures"; import { extensionsGet } from "./GalleryExtensions";
 
 export interface FakeApiState extends FixtureOptions { empty: boolean; fail: boolean }
 
@@ -73,6 +73,7 @@ export function installFakeApi(get: () => FakeApiState): void {
       await wait(600);
       return s.fail ? json(500, { error: s.lang === "fr" ? "Exemple d'erreur : le serveur n'a pas pu le faire." : "Sample error: the server could not do it." }) : json(200, {});
     }
+    { const w9 = comfort9Get(path, s); if (w9 !== undefined) return json(200, w9); } // wave 9 web rows (GalleryComfort9.tsx)
     { const r23 = rows23Get(path, s); if (r23 !== undefined) return json(200, r23); } // 23/11 rows (GalleryRows23.tsx)
     { const w6 = comfort6Get(path, s); if (w6 !== undefined) return json(200, w6); } // wave 6 comfort (GalleryComfort6.tsx)
     { const x7 = extensionsGet(path, s); if (x7 !== undefined) return json(200, x7); } // wave 7 extensions (GalleryExtensions.tsx)

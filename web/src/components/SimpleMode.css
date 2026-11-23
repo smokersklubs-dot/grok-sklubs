@@ -1,0 +1,4 @@
+/* L145 « Mode simple » toggle in the Settings navigation (SettingsNavigation.tsx). */
+.app-settings-nav .settings-simple { width: auto; flex: none; gap: 8px; padding: 6px 8px; font-size: 13.5px; color: var(--text); cursor: pointer; }
+.app-settings-nav .settings-simple input { margin: 0; }
+@media (max-width: 720px) { .app-settings-nav .settings-simple { padding: 4px 6px; font-size: 13px; white-space: nowrap; } }

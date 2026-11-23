@@ -46,8 +46,9 @@
     "android": "expo run:android",
     "test": "jest",
     "typecheck": "tsc --noEmit",
-    "qa": "tsc --noEmit && jest && node --test scripts/store-check.test.mjs",
+    "qa": "tsc --noEmit && jest && node --test scripts/store-check.test.mjs scripts/demo-watch.test.mjs",
     "store:check": "node scripts/store-check.mjs",
+    "demo:watch": "node scripts/demo-watch.mjs",
     "test:store": "node --test scripts/store-check.test.mjs"
   },
   "private": true,

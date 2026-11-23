@@ -9,7 +9,8 @@
     "test": "node --experimental-strip-types --no-warnings --test scripts/*.test.mjs",
     "check:contrast": "node scripts/check-contrast.mjs",
     "check:bundle": "node scripts/check-bundle.mjs",
-    "check:responsive": "node scripts/check-responsive.mjs"
+    "check:responsive": "node scripts/check-responsive.mjs",
+    "check:a11y": "node scripts/check-a11y.mjs"
   },
   "dependencies": {
     "@novnc/novnc": "^1.5.0",

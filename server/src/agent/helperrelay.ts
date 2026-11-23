@@ -12,6 +12,9 @@ import { steer } from "./steering.js";
  * bot's chat while one of its helpers has a turn running is also passed to that helper, as a note it takes in at its next
  * step (steering.ts, the same path as a note typed in its own chat; kept on disk until read). The bot itself still gets
  * the message as usual. The chat says which helper(s) got it.
+ * The same holds for the owner's words from the other ways in (23/11, RESTE L25): a message from the owner's linked
+ * Telegram chat (text, or a file's caption), from their linked Slack / Discord (channelrelay.ts ownerMessage), and what
+ * they say in a voice session (voice/session.ts) — never from a stranger, an approved contact or a group (members).
  *
  * Never for a workspace member's or a Bot API message (they are not the owner's words), never to a background task's
  * worker (it has its own card, where the owner writes to it: bgtasks.ts replyToTask), never to a paused helper. The note

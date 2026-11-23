@@ -25,7 +25,7 @@ import { audit, bots, type BotRecord, type UserRecord } from "./store.js";
 import { publicRoutine } from "./routines.js";
 import { registerRoutineOptionRoutes } from "./routineoptions.js";
 import { cleanParamValues } from "./clientshared/routineparams.js";
-import { registerRoutineIcalRoutes } from "./routineical.js"; import { registerUsageDaily } from "./usagedaily.js";
+import { registerRoutineIcalRoutes } from "./routineical.js"; import { registerUsageDaily } from "./usagedaily.js"; import { registerStepDetailRoutes } from "./stepdetail.js";
 
 type Env = { Variables: { user: UserRecord } };
 
@@ -56,7 +56,7 @@ export async function runNowGuard(c: Context<Env>, r: RoutineRecord): Promise<Re
 
 export function registerRoutinePlusRoutes(api: Hono<Env>) {
   registerRoutineOptionRoutes(api); // L54 / L86 / L183 options (routineoptions.ts)
-  registerRoutineIcalRoutes(api); registerUsageDaily(api); // L143: the calendar feed's link (routineical.ts); L142: 30 days of spending (usagedaily.ts)
+  registerRoutineIcalRoutes(api); registerUsageDaily(api); registerStepDetailRoutes(api); // L142 task cost and step detail (stepdetail.ts); // L143: the calendar feed's link (routineical.ts); L142: 30 days of spending (usagedaily.ts)
   api.get("/routines/:id/extras", (c) => {
     const r = ownRoutine(c);
     return c.json({ ...routineExtras(r, botOf(r)), track: trackFor(r, c.get("user").locale) });

@@ -211,13 +211,13 @@ et « une tâche longue » se comparent.
 
 ## À faire (du plus utile au moins utile)
 
-1. Commenter un passage d'une réponse ou d'une page du bot (sélection → remarque → retour structuré) — M.
+1. Commenter un passage d'une réponse ou d'une page du bot (sélection → remarque → retour structuré) — M. — FAIT 23/11 pour les pages aussi (`web/src/components/PageComment.tsx`, couche `server/src/clientshared/pagecomment.ts`).
 2. Cartes de question plus riches : pourquoi, recommandation, irréversible, choix multiples, images, plusieurs questions — S.
 3. `plan_propose` : plan par étapes à approuver, approuver avec note, version suivante avec diff — M.
 4. Vue unique « ce qui attend ta réponse » (toutes les cartes en attente, tous bots) — M.
-5. Remarque par fichier dans la carte « Fichiers modifiés » — S.
+5. Remarque par fichier dans la carte « Fichiers modifiés » — S. — FAIT 23/11 (`web/src/components/FileRemark.tsx`).
 6. Étiquettes rapides de retour sur une réponse (« trop long », « plus simple », « vérifie ») — S.
-7. Annoter une image générée (zone entourée + remarque) — M.
+7. Annoter une image générée (zone entourée + remarque) — M. — FAIT 23/11 (repères numérotés et stylo, `web/src/components/ImageAnnotate.tsx`).
 8. « Explique ce passage » sur une sélection — S.
 9. Diff entre deux versions d'une page publiée (`PageVersions.tsx` ne fait que restaurer) — S.
 10. Aperçu de ce qui sera supprimé avant d'effacer un bot ou ses données — S.

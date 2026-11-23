@@ -18,7 +18,14 @@ export interface TrajectoryRender { id: number; n: number; stage: CreationStage;
  * `renders`: the latest ones (at most TRAJECTORY_SHOWN), oldest first; `total`: how many there are in all.
  * `stalled`: the last STALL_AFTER renders brought no change at all (« aucun progrès »).
  */
-export interface TrajectoryCard { type: "trajectory"; creationId: string; title: string; stage: CreationStage; renders: TrajectoryRender[]; total: number; stalled: boolean }
+/** An open question or hypothesis of a creation, shown on the card; the owner ticks it off (agent/creationplus.ts). */
+export interface CreationQuestion { id: number; text: string }
+
+/**
+ * Optional fields (L158, 23/11; cards stored before them stay valid): `budgetUsd` set by the owner (null: none), `spentUsd`
+ * what the bot spent since the creation started, `budget` its state, `questions` the open ones.
+ */
+export interface TrajectoryCard { type: "trajectory"; creationId: string; title: string; stage: CreationStage; renders: TrajectoryRender[]; total: number; stalled: boolean; budgetUsd?: number | null; spentUsd?: number; budget?: "none" | "ok" | "warn" | "over"; questions?: CreationQuestion[] }
 
 export const TRAJECTORY_SHOWN = 12;
 /** Two renders in a row identical to the one before them = no progress. */

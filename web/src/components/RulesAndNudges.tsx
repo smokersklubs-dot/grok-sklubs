@@ -1,3 +1,4 @@
+import { TaskCostLine } from "./StepDetail";
 import { useEffect, useId, useMemo, useState } from "react";
 import { api, enc, errText } from "../api";
 import { useT, type Key } from "../i18n";
@@ -114,6 +115,7 @@ export function TaskCardView({ card, botId }: { card: TaskCard; botId: string })
           </button>
         )}
       </div>
+      <TaskCostLine botId={botId} taskId={card.taskId} state={card.state} />{/* L142 */}
       {running && now && <p className="task-now"><span className="dot-inline dot-step-running" /> {now}</p>}
       {card.approval && (
         <div className="task-approval">

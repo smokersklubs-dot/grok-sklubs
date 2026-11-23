@@ -7,7 +7,7 @@ import { q } from "./db.js";
 import { emit } from "./bus.js";
 import { seal, unseal } from "./auth.js";
 import { config } from "./config.js";
-import { audit, newId, now, randomToken, sha256 } from "./store.js";
+import { audit, newId, now, randomToken, rowScope, sha256 } from "./store.js"; import { connectorAllowedFor } from "./connectorbots.js"; import { watchAppEvents } from "./appevents.js";
 import type { ToolSpec } from "./llm/types.js";
 import type { Connector, ConnectorAuth } from "./shared.js";
 import { fetchProblem, guardedFetch } from "./net.js";
@@ -173,7 +173,7 @@ async function connect(entry: Entry) {
     }
     throw err;
   }
-  const listed = await client.listTools();
+  const listed = await client.listTools(); watchAppEvents(record, client, () => { void connectors.refresh(record.userId, record.id).catch(() => undefined); }); // L184 appevents.ts
   entry.live = {
     client, provider,
     tools: listed.tools.map((t) => ({
@@ -433,9 +433,10 @@ export const connectors = {
   },
 
   /** Tools from every ready connector, namespaced so two servers can expose the same tool name. */
-  async toolsFor(userId: string): Promise<{ spec: ToolSpec; connectorId: string; connectorName: string; remoteName: string; readOnly: boolean; destructive: boolean }[]> {
+  /** `botId` (default: the bot of the turn under way, store.ts rowScope): L159, only the apps that bot may use (connectorbots.ts). */
+  async toolsFor(userId: string, botId: string | undefined = rowScope.getStore()?.botId): Promise<{ spec: ToolSpec; connectorId: string; connectorName: string; remoteName: string; readOnly: boolean; destructive: boolean }[]> {
     const out = [];
-    for (const record of recordsFor(userId)) {
+    for (const record of recordsFor(userId).filter((r) => connectorAllowedFor(r.id, botId))) {
       const entry = ensure(record);
       if (entry.connecting) await entry.connecting;
       for (const t of entry.live?.tools ?? []) {
@@ -448,6 +449,7 @@ export const connectors = {
     return out;
   },
   async call(connectorId: string, tool: string, args: Record<string, unknown>, botId?: string, signal?: AbortSignal): Promise<{ text: string; isError: boolean }> {
+    if (!connectorAllowedFor(connectorId, botId)) throw new Error("this bot may not use this app: the owner unticked it in Settings → Apps"); // L159
     const entry = entries.get(connectorId);
     if (!entry?.live) throw new Error(entry ? downLine(entry.record.name, entry.error, entry.failedAt) : "this connector is not connected right now"); // L51: say it is down, and that retrying will not help
     const signInAgain = () => {

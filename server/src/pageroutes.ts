@@ -10,6 +10,7 @@ import { registerVideoStudio } from "./videostudio.js";
 import { exportArtifact } from "./artifact-export.js";
 import { audit, pages, randomToken, type UserRecord } from "./store.js";
 import { q } from "./db.js";
+import { PAGE_COMMENT_PARAM, withCommentLayer } from "./clientshared/pagecomment.js";
 
 /**
  * Pages published by bots (pagefiles.ts says the policy).
@@ -51,8 +52,10 @@ function documentHeaders(page: PageRow, directory: string) {
     "form-action 'none'", "base-uri 'none'", "frame-ancestors 'self'",
   ].join("; ") });
 }
+// L140: the chat's preview asks for the comment layer (clientshared/pagecomment.ts); the page keeps its sandbox and CSP.
+const commenting = (c: Context) => c.req.query(PAGE_COMMENT_PARAM) === "1";
 const html = (c: Context, page: PageRow, body: string) =>
-  c.body(body, 200, { ...documentHeaders(page, c.req.path.endsWith("/") ? c.req.path : `${c.req.path}/`), "content-type": "text/html; charset=utf-8", "x-frame-options": "SAMEORIGIN", "cache-control": page.visibility === "private" ? "private, no-store" : "no-cache" });
+  c.body(commenting(c) ? withCommentLayer(body) : body, 200, { ...documentHeaders(page, c.req.path.endsWith("/") ? c.req.path : `${c.req.path}/`), "content-type": "text/html; charset=utf-8", "x-frame-options": "SAMEORIGIN", "cache-control": page.visibility === "private" ? "private, no-store" : "no-cache" });
 
 function readHtml(page: PageRow): string | null {
   // Read through the library guard: a page file the bot replaced with a link is refused, never served.
@@ -73,8 +76,9 @@ export function registerPageSite(site: Hono<any>) {
     // A private page is only for its owner, signed in to this Sklubot (the session cookie); anyone else gets a 404.
     if (page.visibility === "private" && !owns(c, page)) return c.text("This page is private. Sign in to Sklubot as its owner to open it.", 404, { "cache-control": "no-store", "x-robots-tag": "noindex" });
     const hasFiles = pageFiles.names(page.botId, page.path).length > 0;
-    if (hasFiles && page.visibility === "private") return c.redirect(`/p/${page.token}/s/${signPage(page.token)}/`, 302);
-    if (hasFiles && !slash) return c.redirect(`/p/${page.token}/`, 302);
+    const keep = commenting(c) ? `?${PAGE_COMMENT_PARAM}=1` : "";
+    if (hasFiles && page.visibility === "private") return c.redirect(`/p/${page.token}/s/${signPage(page.token)}/${keep}`, 302);
+    if (hasFiles && !slash) return c.redirect(`/p/${page.token}/${keep}`, 302);
     const body = readHtml(page);
     return body === null ? c.text(NOT_SHARED, 404, pageHeaders()) : html(c, page, body);
   };

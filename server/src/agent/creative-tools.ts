@@ -3,7 +3,7 @@ import { workspaceOf } from "../computer.js";
 import { tr } from "../i18n.js";
 import { linuxExec } from "../linux.js";
 import { rows } from "../store.js";
-import { CRAFT_RUN_DIR, craftRounds, craftRunNotice, parseCraftRun } from "./craft-run.js";
+import { CRAFT_RUN_DIR, craftRounds, craftRunNotice, parseCraftRun } from "./craft-run.js"; import { noteCraftUpdate } from "./creationplus.js";
 import { userWordsFor } from "./grounding.js";
 import type { BuiltinTool } from "./tools.js";
 
@@ -26,6 +26,7 @@ export const craftReady: BuiltinTool = {
   },
   group: "shell", activity: "shell", label: "Preparing the design workspace",
   run: async (args, ctx) => {
+    void noteCraftUpdate(ctx.bot, ctx.thread).catch(() => {}); // L158: a newer Craft Anything is announced once, never installed (creationplus.ts)
     if (args.report === true) {
       // The newest kept output of a rebuild (install-craft.sh guard), its end only (questions and checks come late).
       const read = await linuxExec(ctx.bot.id, ctx.user.id, workspaceOf(ctx.bot.id), ["sh", "-c", `f=$(ls -1t ${CRAFT_RUN_DIR}/*.log 2>/dev/null | head -n 1); [ -n "$f" ] && tail -c 200000 "$f"`], 30, { signal: ctx.signal, maxBytes: 250_000 });

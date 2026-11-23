@@ -215,6 +215,13 @@ Claude / ChatGPT. Un seul bot à la fois s'en sert ; un autre attend qu'il se li
 Chaque bot garde sa bibliothèque à `~/files` (toutes celles des bots partageant l'ordinateur y sont montées sous
 `~/libraries/`, donc lisibles entre eux). Un ordinateur partagé n'appartient qu'à un compte.
 
+## Métriques pour un outil de surveillance (L184)
+
+`GET /api/metrics` donne les chiffres du serveur au format Prometheus (bots, groupes, applis, messages, jetons, coût
+estimé, accords en attente, passages des routines) : des nombres seulement, aucun nom ni texte. Fermé par défaut :
+mets `METRICS_TOKEN` (32 caractères ou plus) dans l'environnement du serveur, et fais lire la page avec l'en-tête
+`Authorization: Bearer <METRICS_TOKEN>`. Les chiffres de ton compte sont aussi dans Réglages → Usage → « Métriques ».
+
 ## Télécharger les applications : la page `/telecharger`
 
 Ton serveur a une page publique **Télécharger Sklubot** : `https://ton-adresse/telecharger` (lien en bas de la page de

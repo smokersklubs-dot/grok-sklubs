@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from "react"; import { BotTrash } from "./BotLifecycle"; import { HistoryRetention } from "./HistoryRetention";
 import { PersonalCommandsSection } from "./ComposerSlash"; import { DoctorSection } from "./DoctorSection"; // L152, L153
-import { UsageCapsBlock } from "./UsageCaps"; import { UsageChart } from "./UsageChart"; import { ComputerHoursBlock } from "./ComputerHours"; // L142 30 days ; L95 computer hours
+import { UsageCapsBlock } from "./UsageCaps"; import { UsageMetricsPanel } from "./ChatPlus"; import { UsageChart } from "./UsageChart"; import { ComputerHoursBlock } from "./ComputerHours"; // L142 30 days ; L95 computer hours
 import { api, ApiError, enc, errText } from "../api";
 import { LOCALES, tn, useT, type Key } from "../i18n";
 import { useStore, type AppSection, type Theme } from "../store";
@@ -596,7 +596,7 @@ function UsageSection() {
               <span>{t("usage.unknownCost", { tokens: compactNumber(usage.totals.unknownTokens), models: (usage.unknownModels ?? []).join(", "), estimate: money(usage.totals.estimatedUsd) })}</span>
             </div>
           )}
-          <UsageChart />{/* L142. The monthly budget's bar is with the caps (UsageCapsBlock): one place for every limit. */}
+          <UsageChart /><UsageMetricsPanel />{/* L184 metrics (ChatPlus.tsx). L142. The monthly budget's bar is with the caps (UsageCapsBlock): one place for every limit. */}
           <UsageCapsBlock /><ComputerHoursBlock />
           {(usage.subscriptions ?? []).length > 0 && <SubscriptionUsageBlock subs={usage.subscriptions} />}
           <h3 className="pane-heading">{t("usage.byBot")}</h3>

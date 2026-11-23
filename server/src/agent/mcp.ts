@@ -15,6 +15,7 @@ import { bindCall } from "./bind.js";
 import { actionHash } from "./executions.js";
 import type { Grant } from "../shared.js";
 import { LoopGuard, loopStopText } from "./reliability.js";
+import { handleCodeMcp } from "./toolcode.js";
 
 /**
  * Sklubot's tools for bots that run on a subscription tool (Claude Code, Codex) inside their computer.
@@ -37,6 +38,7 @@ const turnFor = (botId: string): Turn | null => engineTurnOf(botId);
 export const EXPIRED = "This was not approved: the request was cancelled or could not be kept open. Do not retry it unless the user asks.";
 
 export async function handleMcp(botId: string, req: IncomingMessage, res: ServerResponse, body: unknown) {
+  if (bots.byId(botId) && await handleCodeMcp(botId, req, res, body)) return; // L174: a run_code script's call, with its run's own token (toolcode.ts)
   if (!bots.byId(botId) || !authorised(botId, req.headers.authorization)) {
     res.writeHead(401, { "content-type": "application/json" }).end(JSON.stringify({ error: "unauthorised" }));
     return;

@@ -34,6 +34,7 @@ import {
   ACCEPTANCES, BOARD_STATES, IDEA_PROGRESS, IDEA_URGENCIES,
   type Acceptance, type BoardFile, type BoardIdea, type BoardState, type BoardTask, type BoardView, type IdeaProgress, type IdeaUrgency, type RecapItem,
 } from "./workboardtypes.js";
+import { checkMeta, executorFor, modelSets, noteExecutor, openDecisions, roles, setMeta, taskMetaView } from "./workboardroles.js";
 
 q.run(`CREATE TABLE IF NOT EXISTS board_tasks (
   id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, title TEXT NOT NULL, description TEXT NOT NULL DEFAULT '',
@@ -190,7 +191,7 @@ function toTask(r: TaskRow): BoardTask {
     // T1: a state this version does not know shows in « done », and is never rewritten.
     state: r.state, column: isState(r.state) ? r.state : "done", acceptance: r.acceptance === "owner" ? "owner" : "auto", armed: !!r.armed,
     goalId: r.goal_id, chantierId: r.chantier_id, ideaId: r.idea_id, thread: r.thread, note: r.note, summary: r.summary, batch: r.batch,
-    createdAt: r.created_at, updatedAt: r.updated_at, startedAt: r.started_at, endedAt: r.ended_at,
+    createdAt: r.created_at, updatedAt: r.updated_at, startedAt: r.started_at, endedAt: r.ended_at, ...taskMetaView(r), // L163 T10/T12 (workboardroles.ts)
   };
 }
 
@@ -233,13 +234,13 @@ function cleanDeps(userId: string, taskId: string, raw: unknown): string[] {
   return list;
 }
 
-export interface TaskInput { title?: unknown; description?: unknown; botId?: unknown; priority?: unknown; startAt?: unknown; deps?: unknown; acceptance?: unknown; chantierId?: unknown; ideaId?: unknown }
+export interface TaskInput { title?: unknown; description?: unknown; botId?: unknown; priority?: unknown; startAt?: unknown; deps?: unknown; acceptance?: unknown; chantierId?: unknown; ideaId?: unknown; kind?: unknown; model?: unknown }
 
 export const board = {
   view(userId: string, ideaLimit = IDEAS_PAGE): BoardView {
     syncLinked(userId);
     const tasks = q.all<TaskRow>("SELECT * FROM board_tasks WHERE user_id = ? ORDER BY priority, created_at", userId).map(toTask);
-    return { tasks, ideas: ideas.list(userId, ideaLimit) };
+    return { tasks, ideas: ideas.list(userId, ideaLimit), roles: roles.list(userId), modelSets: modelSets.list(userId), decisions: openDecisions(userId) };
   },
   get: (userId: string, id: string) => { const r = ownedRow(userId, id); return r ? toTask(r) : null; },
 
@@ -251,12 +252,13 @@ export const board = {
     const chantierId = o.chantierId ? (chantiers.owned(userId, String(o.chantierId))?.id ?? bad("That chantier is not one of yours.")) : null;
     const ideaId = o.ideaId ? (ideaRow(userId, String(o.ideaId)) ?? notFound()).id : null;
     if (ideaId && ideaRow(userId, ideaId)!.progress === "done") throw new BoardError(409, "A done idea is never reopened: write a new one.");
-    const id = newId("bt");
+    const meta = metaInput(userId, o); const id = newId("bt");
     const t = now();
     q.tx(() => {
       q.run("INSERT INTO board_tasks (id, user_id, title, description, bot_id, priority, start_at, acceptance, chantier_id, idea_id, batch, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         id, userId, title, clip(String(o.description ?? "").trim(), 20_000), bot?.id ?? null, cleanPriority(o.priority), startAt, cleanAcceptance(o.acceptance), chantierId, ideaId, o.batch ?? "", t, t);
       for (const d of cleanDeps(userId, id, o.deps ?? [])) q.run("INSERT INTO board_deps (task_id, dep_id) VALUES (?, ?)", id, d);
+      setMeta(id, meta);
     });
     return { task: toTask(taskRow(id)!), warning };
   },
@@ -275,8 +277,9 @@ export const board = {
     }
     if (o.startAt !== undefined) { const s = cleanStartAt(o.startAt); patch.startAt = s.startAt; warning = s.warning; }
     const deps = o.deps !== undefined ? cleanDeps(userId, id, o.deps) : null;
+    const meta = metaInput(userId, o);
     q.tx(() => {
-      setTask(id, patch);
+      setTask(id, patch); setMeta(id, meta);
       if (deps) { q.run("DELETE FROM board_deps WHERE task_id = ?", id); for (const d of deps) q.run("INSERT INTO board_deps (task_id, dep_id) VALUES (?, ?)", id, d); }
     });
     return { task: toTask(taskRow(id)!), warning };
@@ -311,7 +314,7 @@ export const board = {
     const out: BoardTask[] = [];
     for (const id of ids) {
       const r = ownedRow(userId, id) ?? notFound();
-      if (!r.bot_id && !r.chantier_id) throw new BoardError(400, "“{title}” has no bot: choose who does it first.", { title: r.title });
+      if (!r.bot_id && !r.chantier_id && !executorFor(r).botId) throw new BoardError(400, "“{title}” has no bot: choose who does it first.", { title: r.title }); // L163 T12: or a role that has one
       if (r.state === "done") throw new BoardError(409, "“{title}” is already done.", { title: r.title });
       setTask(id, { armed: true, ...(batch ? { batch } : {}), ...(r.state === "blocked" ? { state: "waiting", note: "" } : {}) });
       out.push(toTask(taskRow(id)!));
@@ -347,6 +350,10 @@ export const board = {
   },
 };
 const notFound = (): never => { throw new BoardError(404, "That card does not exist."); };
+/** L163: a task's kind and model, checked before anything is written (workboardroles.ts); its errors read as the board's. */
+function metaInput(userId: string, o: TaskInput) {
+  try { return checkMeta(userId, o); } catch (e) { const err = e as { status?: number; message: string; vars?: Record<string, string | number> }; throw new BoardError((err.status ?? 400) as 400, err.message, err.vars ?? {}); }
+}
 
 // ── Ideas (T4) ────────────────────────────────────────────────────────────────────────────────────────────────────
 interface IdeaRow { id: string; user_id: string; number: number; author: string; title: string; body: string; urgency: string; progress: string; created_at: number; updated_at: number }
@@ -442,6 +449,7 @@ export function taskBrief(r: TaskRow, files: string[]): string {
 }
 
 function dispatch(r: TaskRow) {
+  const ex = executorFor(r); if (ex.botId && ex.botId !== r.bot_id) { setTask(r.id, { botId: ex.botId }); r = { ...r, bot_id: ex.botId }; } noteExecutor(r.id, ex); // L163 T12 who really runs it (workboardroles.ts)
   const bot = r.bot_id ? bots.owned(r.user_id, r.bot_id) : null;
   const loc = users.localeOf(r.user_id);
   if (!bot) { setTask(r.id, { state: "blocked", armed: false, note: wt(loc, "its bot is gone") }); return; }

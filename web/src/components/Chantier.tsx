@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { api, errText } from "../api";
 import { useT, type Key } from "../i18n";
 import { useStore } from "../store";
@@ -241,12 +241,13 @@ function Graph({ plan, tasks, selected, onSelect }: { plan: ChantierPlan; tasks:
   const state = (k: string): TaskState => tasks.find((x) => x.key === k)?.state ?? "waiting";
   const title = (k: string) => plan.tasks.find((x) => x.key === k)?.title ?? k;
   const short = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
+  const arrowId = `ch-arrow${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`; // L160 a11y: one marker id per graph (two graphs on a page shared one)
   return (
     <>
       <div className="chantier-graph-svg">
         <svg viewBox={`0 0 ${g.width} ${g.height}`} width={g.width} role="img" aria-label={t("chantier.graph.title")}>
-          <defs><marker id="ch-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" className="chantier-arrow" /></marker></defs>
-          {g.edges.map((e) => <path key={`${e.from}>${e.to}`} d={e.path} className="chantier-edge" markerEnd="url(#ch-arrow)" />)}
+          <defs><marker id={arrowId} viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" className="chantier-arrow" /></marker></defs>
+          {g.edges.map((e) => <path key={`${e.from}>${e.to}`} d={e.path} className="chantier-edge" markerEnd={`url(#${arrowId})`} />)}
           {g.edges.map((e) => (
             <g key={`l${e.from}>${e.to}`} transform={`translate(${e.lx},${e.ly})`}>
               <rect x={-Math.min(74, e.artifact.length * 3.1 + 8)} y={-10} width={Math.min(148, e.artifact.length * 6.2 + 16)} height={20} rx={6} className="chantier-edge-label-bg" />

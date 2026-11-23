@@ -109,10 +109,20 @@ Code : `server/src/teammemory.ts` (section de consigne dans `agent/prompt.ts`). 
 
 Code : `server/src/agent/memorykeep.ts`, `server/src/agent/worklessons.ts`. Test : `server/test/teammemory-keep.test.ts`.
 
+## Rôles, modèles et décisions (reste de L163)
+
+- **Type et modèle d'une tâche** : code, relecture, recherche, documentation ou corvée ; un modèle peut être choisi sur la tâche.
+- **Rôles** (bouton « Rôles et modèles ») : pour chaque type, un bot et un modèle ; « Épinglé » : ce bot prend toutes les tâches de ce type. Le chef est ton bot principal, sauf si tu en choisis un autre.
+- **Quel modèle** : celui de la tâche, sinon celui du rôle, sinon celui du bot (puis ses réglages habituels). Un modèle qui ne peut pas tourner est ignoré.
+- **Qui exécute** : le bot épinglé du rôle ; sinon le bot choisi, sauf si c'est le chef ou s'il tient un autre rôle — alors le bot du rôle ; sinon le bot du rôle ; sinon personne (la tâche ne démarre pas). La carte dit « exécutée par … » et pourquoi. Aucun bot n'est créé tout seul.
+- **Jeux de modèles** : garde les modèles des rôles sous un nom (50 au plus) et réapplique-les d'un clic ; un modèle qui n'existe plus est sauté et nommé.
+- **Décisions qui t'attendent** : en haut du tableau, les tâches à relire, bloquées (avec la raison) ou que personne ne peut faire.
+- Pas encore : le formulaire de plan dans la discussion (T9).
+
 ## Limites connues
 
 - Le rejeu d'un parcours utilise le navigateur du bot : s'il travaille en même temps dans ce navigateur, les deux se
   gênent (rien n'est cliqué si la page a changé, le rejeu s'arrête).
-- Le modèle par tâche, les jeux de modèles et les rôles de projet (T9 à T12) ne sont pas faits : une tâche tourne
-  sur le modèle de son bot.
+- Le formulaire de plan dans la discussion (T9) n'est pas fait ; les rôles valent pour tout le tableau (pas de projets
+  séparés).
 - Le tableau se rafraîchit toutes les 10 s quand il est ouvert (pas d'événement temps réel dédié).

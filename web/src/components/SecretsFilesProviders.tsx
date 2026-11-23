@@ -1,3 +1,4 @@
+import { FileRemark } from "./FileRemark";
 import { PeerReview } from "./PeerReview";
 import { useEffect, useState } from "react";
 import { api, enc, errText } from "../api";
@@ -145,6 +146,7 @@ export function FilesCardView({ card, botId, seq }: { card: FilesCard; botId: st
                 {text && <Icon name={expanded ? "chevronDown" : "chevronRight"} size={14} />}
               </button>
               {expanded && <FileDiff botId={botId} seq={seq} path={f.path} />}
+              {own && (expanded || !text) && <FileRemark botId={botId} path={f.path} />}{/* L140 */}
             </li>
           );
         })}

@@ -62,9 +62,10 @@ export function RoutineCalendarFeed({ startStatus }: { /** Gallery: a fixed stat
     setBusy(true); setError(null);
     try { setStatus(await api<FeedStatus>(method, "/routine-calendar")); } catch (e) { setError(errText(e)); } finally { setBusy(false); }
   };
+  const titleId = `routine-feed-title${useId()}`; // L160 a11y: unique even when the card shows twice
   return (
-    <section className="routine-feed" aria-labelledby="routine-feed-title">
-      <h3 id="routine-feed-title" className="routine-feed-title"><Icon name="clock" size={14} /> {t("routineFeed.title")}</h3>
+    <section className="routine-feed" aria-labelledby={titleId}>
+      <h3 id={titleId} className="routine-feed-title"><Icon name="clock" size={14} /> {t("routineFeed.title")}</h3>
       <p className="small muted">{t("routineFeed.intro")}</p>
       {status?.url && (
         <div className="routine-feed-link">

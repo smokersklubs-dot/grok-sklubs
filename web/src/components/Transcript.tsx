@@ -9,7 +9,7 @@ import { isHumanSummary } from "../lib/callSummary";
 import { callClock, clockTime, dividerLabel, elapsed, fileSize, hostName, liveDuration, workDuration } from "../lib/format";
 import { accentStyle } from "../lib/colors";
 import { renderMarkdown } from "../lib/markdown";
-import { PagePreview } from "./PagePreview";
+import { PagePreview } from "./PagePreview"; import { AnnotateButton } from "./ImageAnnotate"; import { StepDetailButton } from "./StepDetail";
 import { FirstTaskIdeas, MentionedFiles, previewable, usePreview } from "./SpendSkillsFiles"; import { BotWelcome } from "./BotWelcome";
 import { Avatar, BotAvatar } from "./Avatar";
 import { CardView } from "./Cards";
@@ -22,7 +22,7 @@ import { SubLimitNoticeActions } from "./SubLimit";
 import { RouteNoticeActions } from "./RoomRouting";
 import { ENGINE_BRAND } from "../lib/engines";
 import { ReportAction } from "./ReportMessage";
-import { ReplyAction, useMessageEnhance } from "./ReplyAction"; import { SimplerAction } from "./PassageComment"; import { TurnDebugAction } from "./ChatExport"; import { stableMarkdown, useNewLineSeq, withNewLine } from "../lib/chatreading"; import { MessageMore } from "./MessageMore"; import { TurnNoticeActions } from "./TurnCards"; import { requestSummary } from "../lib/requestSummary";
+import { ReplyAction, useMessageEnhance } from "./ReplyAction"; import { SimplerAction } from "./PassageComment"; import { TurnDebugAction } from "./ChatExport"; import { stableMarkdown, useNewLineSeq, withNewLine } from "../lib/chatreading"; import { MessageMore } from "./MessageMore"; import { LinkPreview } from "./ChatPlus"; import { TurnNoticeActions } from "./TurnCards"; import { requestSummary } from "../lib/requestSummary";
 
 type MessageBody = Extract<RowBody, { kind: "message" }>;
 type StepBody = Extract<RowBody, { kind: "step" }>;
@@ -158,7 +158,7 @@ export function buildItems(all: Row[], running: boolean, thread = 0, viewer?: st
 
 const Markdown = memo(function Markdown({ text }: { text: string }) {
   const html = useMemo(() => renderMarkdown(text), [text]); const ref = useMessageEnhance(html); // nod item 6: Copier, quotes
-  return <div className="md" ref={ref} dangerouslySetInnerHTML={{ __html: html }} />;
+  return <><div className="md" ref={ref} dangerouslySetInnerHTML={{ __html: html }} /><LinkPreview text={text} /></>; // L184 link preview (ChatPlus.tsx)
 });
 
 function SenderLabel({ origin, role }: { origin: Origin; role: "user" | "assistant" }) {
@@ -231,6 +231,7 @@ function Lightbox({ botId, file, onClose }: { botId: string; file: Attachment; o
     <div className="lightbox" ref={root} role="dialog" aria-modal="true" aria-label={t("attach.viewer")} tabIndex={-1} onMouseDown={closeOnBackdrop}>
       <header className="lightbox-bar">
         <span className="lightbox-name truncate">{file.name}</span>
+        <AnnotateButton botId={botId} src={viewUrl(botId, file.path)} name={file.name} />{/* L140 */}
         <a className="btn btn-small" href={downloadUrl(botId, file.path)} download={file.name}>
           <Icon name="download" size={14} /> {t("attach.download")}
         </a>
@@ -439,7 +440,7 @@ function MessageGroup({ item }: { item: Extract<Item, { t: "msgs" }> }) {
 
 const STEP_MARK: Partial<Record<StepBody["status"], Key>> = { error: "step.mark.error", denied: "step.mark.denied", waiting: "step.mark.waiting", running: "step.mark.running" };
 
-function StepLine({ seq, body }: { seq: number; body: StepBody }) {
+function StepLine({ seq, body, botId, generation }: { seq: number; body: StepBody; botId?: string; generation?: number }) {
   const t = useT();
   const mark = STEP_MARK[body.status];
   return (
@@ -448,7 +449,7 @@ function StepLine({ seq, body }: { seq: number; body: StepBody }) {
       <div className="step-text">
         <span className="step-label">
           {body.label || body.tool}
-          {mark && <span className={`step-mark is-${body.status}`}>{t(mark)}</span>}
+          {mark && <span className={`step-mark is-${body.status}`}>{t(mark)}</span>}<StepDetailButton botId={botId} seq={seq} generation={generation} />{/* L142 */}
         </span>
         {body.summary && <span className="step-summary">{body.summary}</span>}
         {body.grant && <GrantLine grant={body.grant} />}
@@ -523,7 +524,7 @@ function WorkGroup({ item }: { item: Extract<Item, { t: "work" }> }) {
         <ol className="steps-list">
           {item.rows.map((r) => {
             const b = r.body;
-            if (b.kind === "step") return <StepLine key={r.seq} seq={r.seq} body={b} />;
+            if (b.kind === "step") return <StepLine key={r.seq} seq={r.seq} body={b} botId={r.botId} generation={r.generation} />;
             if (b.kind !== "message") return null;
             return (
               <li key={r.seq} className="step work-note" data-seq={r.seq}>

@@ -6,6 +6,7 @@ import { useScreen } from "../lib/screen";
 import { BotAvatar } from "./Avatar";
 import { LiveScreen } from "./LiveScreen";
 import { ClickTrail } from "./ClickTrail";
+import { ShowOnScreen } from "./ShowOnScreen";
 import { ScreenFrame } from "./ScreenFrame";
 import { Icon, Spinner } from "./Icon";
 import { IconButton, useDialogFocus, useEscape, useTick } from "./ui";
@@ -158,6 +159,7 @@ export function ComputerViewer({ botId }: { botId: string }) {
   const t = useT();
   // Read once: the details panel can open the viewer straight in control mode.
   const [control, setControl] = useState(() => useStore.getState().viewerControl);
+  const [showing, setShowing] = useState(false); // L140 « Montrer » (ShowOnScreen.tsx)
   const [error, setError] = useState<string | null>(null);
   const [address, setAddress] = useState("");
   const root = useRef<HTMLDivElement>(null);
@@ -458,6 +460,7 @@ export function ComputerViewer({ botId }: { botId: string }) {
         aria-label={control ? t("viewer.remote") : undefined}
       >
         {rec && <RecordingBadge rec={rec} />}
+        {showing && !control && <ShowOnScreen botId={botId} botName={bot.name} stage={stage} onClose={() => setShowing(false)} />}
         {rec && (rec.status === "review" || rec.status === "error") && <SkillReview key={rec.id + rec.status} botId={botId} rec={rec} botName={bot.name} />}
         {!engine ? (
           <div className="viewer-empty">
@@ -555,7 +558,10 @@ export function ComputerViewer({ botId }: { botId: string }) {
               <span className="viewer-hint">
                 <Icon name="eye" size={15} /> {t("viewer.watchingHint", { name: bot.name })}
               </span>
-              <button type="button" className="btn btn-small btn-primary" onClick={() => setControl(true)}>
+              {(live ? liveUp : !!url) && <button type="button" className={`btn btn-small ${showing ? "btn-accent" : ""}`} aria-pressed={showing} onClick={() => setShowing((v) => !v)} title={t("remarks.screenHint")}>
+                <Icon name="target" size={14} /> {t("remarks.screenShow")}
+              </button>}
+              <button type="button" className="btn btn-small btn-primary" onClick={() => { setShowing(false); setControl(true); }}>
                 <Icon name="cursor" size={14} /> {t("viewer.take")}
               </button>
             </>

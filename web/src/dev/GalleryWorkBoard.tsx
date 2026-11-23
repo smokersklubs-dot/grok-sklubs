@@ -21,11 +21,24 @@ function boardFixture(o: FixtureOptions, empty: boolean): BoardView {
   const base = { description: "", startAt: null, files: [], acceptance: "auto" as const, armed: false, goalId: null, chantierId: null, ideaId: null, thread: 0, note: "", summary: "", batch: "", createdAt: NOW - 3600_000, updatedAt: NOW, startedAt: null, endedAt: null, dependents: [], waitingOn: [], deps: [] };
   return {
     tasks: [
-      { ...base, id: "t1", title: (fr ? "Recherche des prix concurrents" : "Research competitors' prices") + long, botId: IDS.ada, priority: 1, state: "review", column: "review", acceptance: "owner", summary: fr ? "Tableau de 12 concurrents dans prix.xlsx." : "Table of 12 competitors in prix.xlsx.", dependents: ["t2"], files: [{ id: "f1", name: "consignes.pdf", type: "application/pdf", size: 220_000, addedAt: NOW }] },
+      { ...base, kind: "research", runModel: "openrouter:deepseek-v4", modelFrom: "role", executorId: IDS.ada, execReason: "role", id: "t1", title: (fr ? "Recherche des prix concurrents" : "Research competitors' prices") + long, botId: IDS.ada, priority: 1, state: "review", column: "review", acceptance: "owner", summary: fr ? "Tableau de 12 concurrents dans prix.xlsx." : "Table of 12 competitors in prix.xlsx.", dependents: ["t2"], files: [{ id: "f1", name: "consignes.pdf", type: "application/pdf", size: 220_000, addedAt: NOW }] },
       { ...base, id: "t2", title: fr ? "Nouvelle page tarifs" : "New pricing page", botId: IDS.bea, priority: 2, state: "waiting", column: "waiting", armed: true, deps: ["t1"], waitingOn: ["t1"], startAt: NOW + 20 * 3600_000 },
-      { ...base, id: "t3", title: fr ? "Relancer les devis" : "Follow up on quotes", botId: IDS.ada, priority: 3, state: "blocked", column: "blocked", note: fr ? "la boîte mail n'est pas connectée" : "the mailbox is not connected" },
+      { ...base, kind: "review", executorId: IDS.bea, execReason: "lead-redirected", id: "t3", title: fr ? "Relancer les devis" : "Follow up on quotes", botId: IDS.ada, priority: 3, state: "blocked", column: "blocked", note: fr ? "la boîte mail n'est pas connectée" : "the mailbox is not connected" },
       { ...base, id: "t4", title: fr ? "Résumé de la réunion" : "Meeting summary", botId: IDS.bea, priority: 4, state: "done", column: "done", summary: fr ? "Envoyé dans le fil." : "Posted in the thread." },
       { ...base, id: "t5", title: fr ? "Carte d'une ancienne version" : "Card from an older version", botId: null, priority: 5, state: "archived_v9", column: "done" },
+    ],
+    roles: [
+      { role: "lead", botId: IDS.ada, model: "", pinned: false },
+      { role: "code", botId: IDS.bea, model: "anthropic:claude-opus-5-5", pinned: true },
+      { role: "review", botId: IDS.bea, model: "", pinned: false },
+      { role: "research", botId: IDS.ada, model: "openrouter:deepseek-v4", pinned: false },
+      { role: "docs", botId: null, model: "", pinned: false },
+      { role: "chore", botId: null, model: "", pinned: false },
+    ],
+    modelSets: [{ id: "s1", name: fr ? "Économe" : "Thrifty", models: { research: "openrouter:deepseek-v4", chore: "openrouter:deepseek-v4" }, createdAt: NOW }],
+    decisions: [
+      { taskId: "t1", title: (fr ? "Recherche des prix concurrents" : "Research competitors' prices") + long, kind: "review", why: "" },
+      { taskId: "t3", title: fr ? "Relancer les devis" : "Follow up on quotes", kind: "blocked", why: fr ? "la boîte mail n'est pas connectée" : "the mailbox is not connected" },
     ],
     ideas: [
       { id: "i1", number: 7, author: "Owner", title: fr ? "Les prix de la page mobile sont faux" : "Prices on the mobile page are wrong", body: "", urgency: "bug", progress: "partial", files: [{ id: "f2", name: "capture.png", type: "image/png", size: 80_000, addedAt: NOW }], taskIds: ["t1", "t2"], done: 1, total: 2, createdAt: NOW - 86_400_000, updatedAt: NOW },

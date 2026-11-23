@@ -1,0 +1,11 @@
+/* L159 — apps per bot, verified sites, contact details (AccessPanels.tsx). Tokens only: light and dark follow the theme. */
+.app-bots-body { padding: 4px 0 8px 22px; }
+.app-bots-set { border: 0; margin: 0; padding: 0; display: grid; gap: 6px; }
+.app-bots-list { display: flex; flex-wrap: wrap; gap: 4px 16px; }
+.app-bots-list .check-row { min-height: 32px; }
+.connected-sites { margin-top: 16px; }
+.contact-cards { margin-top: 20px; }
+.contact-cards .pane-heading-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.contact-cards .pane-heading-row .pane-heading { margin: 0; }
+.contact-editor { width: 100%; display: grid; gap: 8px; }
+.contact-editor .form-cols { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px 12px; }

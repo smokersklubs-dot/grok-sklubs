@@ -120,7 +120,7 @@ import { healthReport } from "./monitor.js";
 import { accountCreated, HostedError, hostedMode, hostedSettings, isOperator, isPlanLimit, lentProviderIds, planInviteOpens, signupChoice, subscriptionEnginesFor, suspended, type SignupChoice } from "./hosted.js";
 import { registerHostedPages, registerHostedPrivate, registerHostedPublic, suspendedText } from "./hostedroutes.js";
 import { TodayError, todayReport, todaySettings } from "./today.js";
-import { registerBotClients, registerBotClientSettings } from "./botaccessroutes.js"; import { registerChannelRoutes } from "./channelroutes.js"; import { registerViewRoutes } from "./viewroutes.js"; import { registerCreationRoutes } from "./creationroutes.js";
+import { registerBotClients, registerBotClientSettings } from "./botaccessroutes.js"; import { registerChannelRoutes } from "./channelroutes.js"; import { registerViewRoutes } from "./viewroutes.js"; import { registerChatPlusRoutes, registerMetricsRoute } from "./chatplusroutes.js"; import { registerCreationRoutes } from "./creationroutes.js";
 import { registerSentinelRoutes } from "./sentinel/routes.js"; import { registerHookRoutes, registerHookSettingsRoutes } from "./hookroutes.js"; import { registerReportRoutes } from "./reports.js";
 import { registerAnnouncementRoutes } from "./announceroutes.js"; import { registerModelHealthRoutes } from "./modelhealth.js";
 import { registerSkillsLibraryRoutes } from "./skillsroutes.js";
@@ -257,7 +257,7 @@ api.get("/health", async (c) => {
   return c.json({ ok: r.status !== "down", status: r.status, code: r.code }, r.status === "down" ? 503 : 200, { "cache-control": "no-store" });
 });
 // The download page (/telecharger) is public: it is linked from the sign-in page.
-api.get("/downloads", (c) => c.json(appDownloads(undefined, releasedDesktopFiles())));
+api.get("/downloads", (c) => c.json(appDownloads(undefined, releasedDesktopFiles()))); registerMetricsRoute(api); // L184 Prometheus, METRICS_TOKEN (chatplusroutes.ts)
 
 api.get("/me", (c) => {
   const user = userForToken(getCookie(c, SESSION_COOKIE));
@@ -715,7 +715,7 @@ registerSectionRoutes(api); registerChatComfortRoutes(api, ownBot, ownAgent); re
 // with — viewer, member or admin — cannot pause or resume it (ownAgent / sections.owned answer 404, as for any other
 // account's thing); a stranger's call to "everything" pauses only their own bots. Each change is an audit line.
 // "Accès API" (botapi.ts): the owner's API keys of one bot — owner only (a workspace member never manages them).
-registerBotClientSettings(api, (c) => ownAgent(c as Context<Env>)); registerChannelRoutes(api, (c) => ownAgent(c as Context<Env>)); registerViewRoutes(api, (c) => ownBot(c as Context<Env>)); registerCreationRoutes(api, (c) => ownBot(c as Context<Env>)); // DS-Bot item 8 view forms; L162: Slack, Discord, IMAP, access requests
+registerBotClientSettings(api, (c) => ownAgent(c as Context<Env>)); registerChannelRoutes(api, (c) => ownAgent(c as Context<Env>)); registerViewRoutes(api, (c) => ownBot(c as Context<Env>)); registerChatPlusRoutes(api, (c) => ownBot(c as Context<Env>)); /* L184 */ registerCreationRoutes(api, (c) => ownBot(c as Context<Env>)); // DS-Bot item 8 view forms; L162: Slack, Discord, IMAP, access requests
 
 api.get("/pauses", (c) => c.json(pauses.state(c.get("user").id)));
 api.post("/bots/:id/pause", (c) => { const bot = ownAgent(c); return c.json(setPause(c.get("user"), "bot", bot.id, true, bot.name)); });

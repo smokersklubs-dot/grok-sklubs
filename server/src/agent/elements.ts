@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { clip } from "../store.js";
 import type { ElementAnswer, ElementRequest, ElementSnapshot, PageElement } from "../screen-elements.js";
-import { dialogWords, tabNote } from "../browser-cdp.js";
+import { dialogWords, tabNote } from "../browser-cdp.js"; import { noteSnapshot } from "../siteregistry.js"; // L159 verified sites
 
 /**
  * Element references (wave 8, item 6): what each bot's page was when it last looked, so a reference like "3f9a.12" can
@@ -46,7 +46,7 @@ function line(doc: Doc, n: number, e: PageElement): string {
 
 /** Takes a new look at the page into the bot's current document (same tab and document: same numbers), and what it was before. */
 function absorb(botId: string, s: ElementSnapshot): { doc: Doc; fresh: boolean; before: { url: string; title: string; els: Map<number, PageElement>; lines: string[] } | null } {
-  const prev = docs.get(botId);
+  const prev = docs.get(botId); noteSnapshot(botId, s);
   const same = !!prev && prev.target === s.target && prev.loader === s.loader;
   let doc: Doc;
   if (same) doc = prev!;

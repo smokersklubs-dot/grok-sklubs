@@ -72,7 +72,7 @@ export function SurveillanceView() {
           <h1>{t("surv.title")}</h1>
           <p className="today-date">{data?.lastScan ? t("surv.lastScan", { when: relTime(data.lastScan.at, now) }) : t("surv.noScanYet")}</p>
         </div>
-        <button type="button" className={`btn btn-small surv-scan ${busy ? "is-spinning" : ""}`} onClick={() => void scanNow()} disabled={busy}>
+        <button type="button" className={`btn btn-small surv-scan ${busy ? "is-spinning" : ""}`} onClick={() => void scanNow()} disabled={busy} aria-label={t("surv.scanNow")}>
           <Icon name="refresh" size={14} /> <span className="surv-scan-label">{t("surv.scanNow")}</span>
         </button>
         <IconButton icon="settings" label={t("surv.settings")} onClick={() => openAppSettings("surveillance")} />

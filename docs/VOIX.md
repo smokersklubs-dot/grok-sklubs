@@ -172,7 +172,7 @@ Code : `server/src/voice/realtime.ts`, `realtimecall.ts` ; routes `GET/PUT /api/
 
 ## API
 
-Voir [API.md](API.md#server-mediated-voice-servervoice) : `GET /voice/bots`, `GET /voice/piper/voices`,
+Voir [API.md](API.md#server-mediated-voice-serversrcvoice) : `GET /voice/bots`, `GET /voice/piper/voices`,
 `POST /voice/fish/bulk/propose`, `POST /voice/fish/bulk/apply`, et `provider: "piper"` dans les routes de voix par bot.
 
 ## Choix du micro (23/11/2026)

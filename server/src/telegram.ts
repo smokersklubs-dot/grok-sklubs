@@ -2,7 +2,7 @@ import { voiceNoteText } from "./telegramvoice.js";
 import { noteChannel } from "./shortreplies.js"; import { cardLinkLine, failedNotice, withRetry } from "./telegramsend.js";
 import { seal, unseal } from "./auth.js";
 import { getLive } from "./bus.js";
-import { decideApproval, interrupt, isPaused, onTurnEvent, submitUserMessage } from "./agent/loop.js";
+import { decideApproval, interrupt, isPaused, onTurnEvent, runningThreads, submitUserMessage } from "./agent/loop.js"; import { relayToHelpers } from "./agent/helperrelay.js";
 import { holdAndOffer, screen as screenSecrets } from "./pastedsecrets.js";
 import { config } from "./config.js";
 import { q } from "./db.js";
@@ -159,6 +159,7 @@ async function receive(botId: string, chatId: string, text: string, token: strin
   if (screened.secrets.length) holdAndOffer(bot, bot.userId, screened.secrets);
   // "Pause": the message is kept and waits in the bot's queue; the sender hears it now, not when it is resumed.
   if (isPaused(bot)) await reply(tr(users.localeOf(bot.userId), "⏸ {bot} is paused: your message is kept and will be handled when it is resumed.", { bot: bot.name }));
+  relayToHelpers(bot, screened.text, runningThreads, isPaused); // L25: also to a helper at work, as from the app (helperrelay.ts)
   submitUserMessage(bot, screened.text, false, [], "telegram");
   keepTyping(bot.id, token, chatId);
 }
@@ -218,6 +219,7 @@ async function receiveFile(botId: string, chatId: string, m: NonNullable<Update[
   rows.append(bot, { kind: "message", role: "user", text, attachments: [attachment] }); noteChannel(bot.id, "telegram");
   if (caption.secrets.length) holdAndOffer(bot, bot.userId, caption.secrets);
   audit(bot.userId, "channel", `${bot.name}: Telegram ${f.voice ? "voice message" : "file"} received (${file.name})`, bot.id);
+  relayToHelpers(bot, text, runningThreads, isPaused); // L25 (helperrelay.ts)
   submitUserMessage(bot, text, false, [attachment], "telegram");
   keepTyping(bot.id, token, chatId);
 }

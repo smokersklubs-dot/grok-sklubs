@@ -4,7 +4,7 @@ import { WebSocketServer, type WebSocket } from "ws";
 import { originAllowed, parseCookies, SESSION_COOKIE, userForToken } from "../auth.js";
 import { getLive, subscribe } from "../bus.js";
 import { callEnded, callStarted } from "../calls.js";
-import { decideApproval, interrupt, submitMemberMessage, submitUserMessage } from "../agent/loop.js";
+import { decideApproval, interrupt, isPaused, runningThreads, submitMemberMessage, submitUserMessage } from "../agent/loop.js"; import { relayToHelpers } from "../agent/helperrelay.js";
 import { holdAndOffer, screen as screenSecrets } from "../pastedsecrets.js";
 import { audit, bots, laneKey, rows, type BotRecord, type UserRecord } from "../store.js";
 import { botAccess } from "../workspaces.js";
@@ -428,6 +428,7 @@ function runCall(ws: WebSocket, bot: BotRecord, user: UserRecord, member: { role
       }
       const row = rows.append(b, { kind: "message", role: "user", text, origin: { kind: "voice", id: "", name: "Voice" } });
       if (screened.secrets.length) holdAndOffer(b, user.id, screened.secrets);
+      relayToHelpers(b, text, runningThreads, isPaused); // L25: spoken words reach a helper at work too (helperrelay.ts)
       submitUserMessage(b, text, true);
       return row.seq;
     };

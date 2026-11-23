@@ -21,7 +21,7 @@ import { cleanDay, saysChangeOfMind, setMarks, updateInPlace } from "./memorymar
 import { tidySweep } from "./memorytidy.js";
 import { restSummarySweep, writeSummary } from "./compactplus.js";
 import { threadLane } from "./lanes.js";
-import { cleanInvisible, focusPrompt, nearbyNotes } from "./memorysave.js";
+import { cleanInvisible, focusPrompt, nearbyNotes } from "./memorysave.js"; import { summaryAsker } from "./sidemodel.js";
 
 /** A short side request to the model (summaries, fact extraction): no tools, low effort. */
 export async function ask(bot: BotRecord, system: string, prompt: string, selectedBot = false): Promise<string> {
@@ -141,7 +141,8 @@ export async function compactIfNeeded(bot: BotRecord, force = false, opts: { thr
   const system = "You compress a long working conversation between a user and their AI teammate into notes the teammate will rely on afterwards. Be dense and factual. Never include passwords, keys or other secrets.";
   let summary: string;
   try {
-    summary = await writeSummary((sys, prompt) => ask(bot, sys, prompt), system, SUMMARY_PROMPT, source, summaryProblems, opts.instruction);
+    const small = summaryAsker(bot); // L69: a small model for this side pass when the bot's mode asks for thrift (sidemodel.ts); the bot's usual model if it fails
+    summary = await (small ? writeSummary(small, system, SUMMARY_PROMPT, source, summaryProblems, opts.instruction) : Promise.reject(null)).catch(() => writeSummary((sys, prompt) => ask(bot, sys, prompt), system, SUMMARY_PROMPT, source, summaryProblems, opts.instruction));
   } catch (err) {
     cooldown.set(`${bot.id}~${thread}`, now() + 10 * 60_000);
     throw err;

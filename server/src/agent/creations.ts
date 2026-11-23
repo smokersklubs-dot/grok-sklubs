@@ -23,6 +23,7 @@ import { q } from "../db.js";
 import { pageVersions } from "../pagefiles.js";
 import { clip, newId, now, pages, rows, type BotRecord } from "../store.js";
 import type { BuiltinTool, ToolContext, ToolOutput } from "./tools.js";
+import { botQuestions, budgetOf, budgetState, openQuestions, ownerTicks, spentOn } from "./creationplus.js";
 
 q.run(`CREATE TABLE IF NOT EXISTS creations (
   id TEXT PRIMARY KEY, bot_id TEXT NOT NULL REFERENCES bots(id) ON DELETE CASCADE, slug TEXT NOT NULL, title TEXT NOT NULL,
@@ -41,7 +42,7 @@ export const RENDERS_KEPT = 40;
 export const CREATIONS_PER_BOT = 100;
 
 interface RenderRow { id: number; creation_id: string; n: number; stage: string; kind: string; name: string; path: string; page_token: string | null; page_version: number | null; copy: string | null; digest: string; bytes: number; note: string; unchanged: number; created_at: number }
-interface CreationRow { id: string; bot_id: string; slug: string; title: string; stage: string; generation: number | null; seq: number | null }
+interface CreationRow { id: string; bot_id: string; slug: string; title: string; stage: string; generation: number | null; seq: number | null; created_at: number; updated_at: number }
 
 const copyDir = (botId: string) => path.join(config.dataDir, "creations", botId.replace(/[^\w-]/g, "_"));
 export const slugOf = (title: string) => title.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60);
@@ -74,6 +75,8 @@ export const creations = {
 
 const toRender = (r: RenderRow): TrajectoryRender => ({ id: r.id, n: r.n, stage: r.stage as CreationStage, kind: r.kind as RenderKind, name: r.name, note: r.note, at: r.created_at, bytes: r.bytes, unchanged: !!r.unchanged, preview: !!r.copy || (r.kind === "page" && r.page_version != null) });
 
+const budgetFields = (c: CreationRow) => { const budgetUsd = budgetOf(c.id); const spentUsd = spentOn(c); return { budgetUsd, spentUsd, budget: budgetState(budgetUsd, spentUsd) }; };
+
 /** The card for a creation as it is now. */
 export function trajectoryCard(c: CreationRow): TrajectoryCard {
   const all = creations.renders(c.id);
@@ -82,11 +85,12 @@ export function trajectoryCard(c: CreationRow): TrajectoryCard {
     type: "trajectory", creationId: c.id, title: c.title, stage: c.stage as CreationStage,
     renders: all.slice(-TRAJECTORY_SHOWN).map(toRender), total: all.length,
     stalled: last.length === STALL_AFTER && last.every((r) => r.unchanged),
+    ...budgetFields(c), questions: openQuestions(c.id), // L158 budget and open questions (creationplus.ts)
   };
 }
 
-export interface RenderInput { title: string; stage: string; path: string; note?: string }
-export type RenderResult = { error: string } | { creation: CreationRow; render: TrajectoryRender; card: TrajectoryCard; previous: number | null };
+export interface RenderInput { title: string; stage: string; path: string; note?: string; questions?: unknown; resolved?: unknown }
+export type RenderResult = { error: string } | { creation: CreationRow; render: TrajectoryRender; card: TrajectoryCard; previous: number | null; ticked?: string[] };
 
 /** Records one render (the tool and the tests). Throws nothing: a refusal comes back as `{ error }` the bot can fix. */
 export function recordRender(bot: Pick<BotRecord, "id" | "userId">, a: RenderInput): RenderResult {
@@ -139,10 +143,11 @@ export function recordRender(bot: Pick<BotRecord, "id" | "userId">, a: RenderInp
     if (p) rmSync(p, { force: true });
     q.run("DELETE FROM creation_renders WHERE id = ?", old.id);
   }
+  botQuestions(c.id, a.questions, a.resolved); // L158 open questions (creationplus.ts)
   c = creations.get(bot.id, c.id)!;
   const card = trajectoryCard(c);
   const render = card.renders[card.renders.length - 1];
-  return { creation: c, render, card, previous: unchanged ? prev!.n : null };
+  return { creation: c, render, card, previous: unchanged ? prev!.n : null, ticked: ownerTicks(c.id) };
 }
 
 /** Puts the creation's card in the conversation: the same card is updated while it is in the current conversation. */
@@ -156,9 +161,21 @@ export function showTrajectory(bot: BotRecord, c: CreationRow, card: TrajectoryC
   return row;
 }
 
+/** L158: the budget, the owner's ticks and the open questions, after the render line. */
+function extraReply(r: Exclude<RenderResult, { error: string }>): string {
+  const k = r.card;
+  const money = (n: number) => `$${n.toFixed(2)}`;
+  const parts: string[] = [];
+  if (k.budget === "over") parts.push(`BUDGET REACHED: ${money(k.spentUsd ?? 0)} spent of the ${money(k.budgetUsd ?? 0)} the owner set for this creation. Stop here, show the owner where it stands and ask before spending more.`);
+  else if (k.budget === "warn") parts.push(`Budget: ${money(k.spentUsd ?? 0)} spent of ${money(k.budgetUsd ?? 0)} (over 80 %): keep the remaining steps cheap.`);
+  if (r.ticked?.length) parts.push(`The owner ticked off: ${r.ticked.map((t) => `“${t}”`).join(", ")}.`);
+  if (k.questions?.length) parts.push(`Open questions on the card: ${k.questions.map((x) => `#${x.id} ${x.text}`).join("; ")}.`);
+  return parts.length ? ` ${parts.join(" ")}` : "";
+}
+
 /** What the tool tells the bot after a render (kept apart for the tests). */
 export function renderReply(r: Exclude<RenderResult, { error: string }>): string {
-  const head = `Render ${r.render.n} of “${r.creation.title}” recorded (stage: ${r.render.stage}). The owner sees it in the trajectory card; do not describe the card.`;
+  const head = `Render ${r.render.n} of “${r.creation.title}” recorded (stage: ${r.render.stage}). The owner sees it in the trajectory card; do not describe the card.` + extraReply(r);
   if (r.card.stalled) return `${head} NO PROGRESS: the last ${STALL_AFTER} renders are identical to the one before them. Stop repeating the same step: try a different approach, or ask the owner what to change.`;
   if (r.previous != null) return `${head} Nothing changed: this render is byte for byte the same as render ${r.previous}. Change the work before the next render, or say why it is unchanged.`;
   return head;
@@ -173,11 +190,13 @@ export const creationTools: BuiltinTool[] = [{
       stage: { type: "string", enum: [...CREATION_STAGES], description: "study, build, check or ready" },
       path: { type: "string", description: "The render's path in your library" },
       note: { type: "string", description: "One short line: what changed in this render" },
+      questions: { type: "array", items: { type: "string" }, description: "Open questions or hypotheses you cannot settle alone (shown on the card; the owner can tick them off)" },
+      resolved: { type: "array", items: { type: "string" }, description: "Open questions now settled (their #number or exact text)" },
     }, required: ["title", "stage", "path"] },
   },
   activity: "saving", label: "Recording a render",
   async run(a: Record<string, any>, c: ToolContext): Promise<ToolOutput> {
-    const r = recordRender(c.bot, { title: a.title, stage: a.stage, path: a.path, note: a.note });
+    const r = recordRender(c.bot, { title: a.title, stage: a.stage, path: a.path, note: a.note, questions: a.questions, resolved: a.resolved });
     if ("error" in r) return { content: `${r.error} Nothing was recorded.`, isError: true, summary: "not recorded" };
     showTrajectory(c.bot, r.creation, r.card, c.thread);
     return { content: renderReply(r), summary: clip(`${r.creation.title} · ${r.render.n}`, 60) };

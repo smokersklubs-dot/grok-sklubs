@@ -8,7 +8,8 @@ import { closeSync, createReadStream, openSync, fstatSync, constants as FS } fro
 import path from "node:path";
 import { Readable } from "node:stream";
 import type { Context, Hono } from "hono";
-import { creations, trajectoryCard } from "./agent/creations.js";
+import { creations, showTrajectory, trajectoryCard } from "./agent/creations.js";
+import { craftUpdate, ownerResolves, setBudget } from "./agent/creationplus.js";
 import { isInlineImage, isInlineVideo, mimeOf } from "./computer.js";
 import type { BotRecord, UserRecord } from "./store.js";
 
@@ -26,6 +27,28 @@ export function registerCreationRoutes(api: Hono<any>, ownBot: (c: Context) => B
     // Every render, not only the latest ones the card shows (the compare can pick any two).
     return c.json({ ...card, all: creations.renders(found.id).map((r) => ({ id: r.id, n: r.n, stage: r.stage, kind: r.kind, name: r.name, note: r.note, at: r.created_at, bytes: r.bytes, unchanged: !!r.unchanged, preview: !!r.copy || (r.kind === "page" && r.page_version != null) })) });
   });
+  // L158 (agent/creationplus.ts): the owner's budget for a creation, ticking an open question off, a newer Craft Anything.
+  const refresh = (bot: BotRecord, id: string) => {
+    const found = creations.get(bot.id, id)!;
+    const card = trajectoryCard(found);
+    if (found.seq != null && found.generation === bot.generation) showTrajectory(bot, found, card);
+    return card;
+  };
+  api.put("/bots/:id/creations/:cid/budget", async (c) => {
+    const bot = ownBot(c);
+    const found = creations.get(bot.id, c.req.param("cid"));
+    if (!found) return c.json({ error: say(c, "Cette création n'existe pas.", "That creation does not exist.") }, 404);
+    const body = await c.req.json().catch(() => ({})) as { usd?: unknown };
+    try { setBudget(found.id, body.usd); } catch { return c.json({ error: say(c, "Donne un montant entre 0,01 et 10 000 $.", "Give an amount between $0.01 and $10,000.") }, 400); }
+    return c.json(refresh(bot, found.id));
+  });
+  api.post("/bots/:id/creations/:cid/questions/:qid/resolve", (c) => {
+    const bot = ownBot(c);
+    const found = creations.get(bot.id, c.req.param("cid"));
+    if (!found || !ownerResolves(found.id, Number(c.req.param("qid")))) return c.json({ error: say(c, "Cette question n'est plus ouverte.", "That question is no longer open.") }, 404);
+    return c.json(refresh(bot, found.id));
+  });
+  api.get("/bots/:id/craft-update", async (c) => { ownBot(c); return c.json({ update: await craftUpdate() }); });
   api.get("/bots/:id/creations/:cid/renders/:rid", (c) => {
     const bot = ownBot(c);
     const found = creations.get(bot.id, c.req.param("cid"));

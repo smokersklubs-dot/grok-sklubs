@@ -11,7 +11,7 @@
  *  - Every finished reply of the bot in a person's thread is sent to them, once (last_sent_seq), files included.
  */
 import { subscribe } from "./bus.js";
-import { decideApproval, isPaused, submitMemberMessage, submitUserMessage } from "./agent/loop.js";
+import { decideApproval, isPaused, runningThreads, submitMemberMessage, submitUserMessage } from "./agent/loop.js"; import { relayToHelpers } from "./agent/helperrelay.js";
 import { holdAndOffer, screen as screenSecrets } from "./pastedsecrets.js";
 import { access, type ContactRecord } from "./channelaccess.js";
 import { groupMessage, groupSinkFor, groups, type GroupMessage } from "./channelgroups.js";
@@ -97,6 +97,7 @@ export function ownerMessage(bot: BotRecord, channel: "slack" | "discord", raw: 
   const row = rows.append(bot, { kind: "message", role: "user", text, ...(attachments.length ? { attachments } : {}) }, 0);
   if (screened.secrets.length) holdAndOffer(bot, bot.userId, screened.secrets);
   ownerSaid(bot, channel, sink, row.seq);
+  relayToHelpers(bot, text, runningThreads, isPaused); // L25: the owner's words from Slack / Discord reach a helper at work too (helperrelay.ts)
   submitUserMessage(bot, text, false, attachments);
   return { paused: isPaused(bot) };
 }

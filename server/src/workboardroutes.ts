@@ -15,18 +15,24 @@
  *  POST   /board/ideas/:id/files · GET /board/ideas/:id/files/:fid
  *  POST   /board/ideas/:id/promote { botId?, priority?, … }   once; a second time: 409 naming the task
  *  POST   /board/ideas/:id/send                  « Envoyer au chef »: the idea goes to the main bot to discuss it first
+ *  L163 (workboardroles.ts): tasks also take { kind, model };
+ *  PUT    /board/roles/:role { botId?, model?, pinned? } → { roles }
+ *  POST   /board/model-sets { name, models: { role: model } } → { set } · DELETE /board/model-sets/:id
+ *  POST   /board/model-sets/:id/apply            → { roles, applied, skipped }   (a model gone is skipped and named)
  */
 import type { Context, Hono } from "hono";
 import { submitUserMessage } from "./agent/loop.js";
 import { bots, clip, type UserRecord } from "./store.js";
 import { board, BoardError, ideas, IDEAS_PAGE, MAX_FILE_BYTES } from "./workboard.js";
 import { wt } from "./worki18n.js";
+import { modelSets, RoleError, roles } from "./workboardroles.js";
 
 type Env = { Variables: { user: UserRecord } };
 const body = async (c: Context) => ((await c.req.json().catch(() => ({}))) ?? {}) as Record<string, any>;
 
 function guard(c: Context<Env>, fn: () => Response | Promise<Response>) {
   return Promise.resolve().then(fn).catch((e) => {
+    if (e instanceof RoleError) return c.json({ error: wt(c.get("user").locale, e.message, e.vars) }, e.status);
     if (e instanceof BoardError) return c.json({ error: wt(c.get("user").locale, e.message, Object.fromEntries(Object.entries(e.vars).map(([k, v]) => [k, typeof v === "string" ? wt(c.get("user").locale, v) : v]))) }, e.status);
     throw e;
   });
@@ -56,6 +62,11 @@ export function registerBoardRoutes(api: Hono<Env>) {
   api.post("/board/tasks/:id/files", (c) => guard(c, async () => { const f = await rawFile(c); return c.json({ file: board.addFile(uid(c), c.req.param("id"), f.name, f.bytes) }); }));
   api.get("/board/tasks/:id/files/:fid", (c) => sendFile(c, board.fileBytes(uid(c), "task", c.req.param("id"), c.req.param("fid"))));
   api.delete("/board/tasks/:id/files/:fid", (c) => guard(c, () => { board.removeFile(uid(c), c.req.param("id"), c.req.param("fid")); return c.json({ ok: true }); }));
+
+  api.put("/board/roles/:role", (c) => guard(c, async () => c.json({ roles: roles.set(uid(c), c.req.param("role"), await body(c)) })));
+  api.post("/board/model-sets", (c) => guard(c, async () => { const b = await body(c); return c.json({ set: modelSets.save(uid(c), b.name, b.models) }); }));
+  api.delete("/board/model-sets/:id", (c) => guard(c, () => { modelSets.remove(uid(c), c.req.param("id")); return c.json({ ok: true }); }));
+  api.post("/board/model-sets/:id/apply", (c) => guard(c, () => c.json(modelSets.apply(uid(c), c.req.param("id")))));
 
   api.post("/board/ideas", (c) => guard(c, async () => c.json({ idea: ideas.create(uid(c), await body(c)) })));
   api.patch("/board/ideas/:id", (c) => guard(c, async () => c.json({ idea: ideas.update(uid(c), c.req.param("id"), await body(c)) })));

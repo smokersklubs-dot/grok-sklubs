@@ -43,7 +43,7 @@ import { cardLabel, cardTools } from "./payments.js";
 import { guideIndex, guideTools } from "./guides.js";
 import { anonymise } from "./anonymise.js"; import { evidenceFields, evidenceNote, proposalEvidence } from "../skillevidence.js";
 import { apiTools, scrubSecret } from "../apiconnectors.js";
-import { botMailTools } from "../botmail.js"; import { guardVault } from "../vaultaccess.js"; import { noteHost } from "../netjournal.js"; import { applyBrowserPolicy, netGate } from "../netpolicy.js"; import { offensiveRefusal } from "../offensive.js"; import { afterClick, hostBeforeClick } from "./clickhosts.js";
+import { botMailTools } from "../botmail.js"; import { guardVault } from "../vaultaccess.js"; import { noteLoginTyped } from "../siteregistry.js"; import { contactTools } from "../vaultcontacts.js"; import { pollTools } from "../polls.js"; import { noteHost } from "../netjournal.js"; import { applyBrowserPolicy, netGate } from "../netpolicy.js"; import { offensiveRefusal } from "../offensive.js"; import { afterClick, hostBeforeClick } from "./clickhosts.js";
 import { ruleTools } from "./ruletools.js";
 import { botNote } from "../skillscan.js"; import { extractSeoTags, seoTagsReport } from "../seotags.js"; import { guideSearchTools } from "./guidesearch.js"; import { contactSheetTools } from "../contactsheet.js"; import { afterSave, saveRefusal, skillFeedbackTools, skillReadOutput, skillSectionParam } from "./skilltools.js";
 import { pageTools } from "./pagetools.js";
@@ -72,7 +72,7 @@ import { memoryPrefs } from "./memoryprefs.js"; import { searchNotesSmart } from
 import { forgetNotes } from "./memorybook.js"; import { cleanInvisible, duplicateOf } from "./memorysave.js"; import { similar } from "./memory.js"; import { memoryKeep } from "./memorykeep.js"; import { recordable } from "./flowrecord.js"; // L66 ; L165 recorded flows
 import { recruitTools } from "./recruit.js";
 import { teamMdTools } from "./teamexport.js"; import { stepTools } from "./tools-steps.js"; import { waitTools } from "./waitlater.js"; import { offerUndo, undoText } from "./undoable.js"; import { planTools, questionCard, QUESTION_PROPS } from "./richquestion.js"; import { viewTools } from "./viewcard.js"; import { creationTools } from "./creations.js"; import { deleteCheckAnswer } from "./deletecheck.js"; // L97 wait_until, L98 « Annuler », L79, DS-Bot item 8 show_view
-import { botPath, spillPath, spillPreview } from "./context.js"; import { routineFrameTools } from "./routineframe.js"; import { routineOptionTools } from "../routineoptions.js"; import { askRefusal, requestHelper, startQueuedHelpers } from "./askrules.js"; import { lt } from "./looptext.js";
+import { botPath, spillPath, spillPreview } from "./context.js"; import { condenseResult } from "./sidemodel.js"; import { codeHost, toolCodeTools } from "./toolcode.js"; import { routineFrameTools } from "./routineframe.js"; import { routineOptionTools } from "../routineoptions.js"; import { askRefusal, requestHelper, startQueuedHelpers } from "./askrules.js"; import { lt } from "./looptext.js";
 
 export interface ToolContext {
   bot: BotRecord; user: UserRecord; depth: number; signal: AbortSignal;
@@ -211,14 +211,15 @@ export const readsKeptOutput = (command: string) => /\.sklubot\/outputs/.test(co
  */
 async function spillIfLong(c: ToolContext, text: string, fallback: number): Promise<string> {
   if (text.length <= appConfig.spillChars) return text;
+  const gist = await condenseResult(c.bot, text, c.signal); // L69: a few lines by a small model first, for thrifty modes only (sidemodel.ts)
   if (computerKind() === "linux" && screen.isOpen(c.bot.id)) {
     const path = spillPath();
     try {
       await writeComputerFile(c.bot.id, c.user.id, workspaceOf(c.bot.id), path, text, "600");
-      return spillPreview(text, botPath(path));
+      return gist + spillPreview(text, botPath(path));
     } catch (err) { console.error("[spill]", (err as Error).message); }
   }
-  return clip(text, fallback);
+  return gist + clip(text, fallback);
 }
 
 const workTools: BuiltinTool[] = [
@@ -490,7 +491,7 @@ export const screenVaultTools: BuiltinTool[] = guardVault([ // L41: per-item all
       // A saved login only goes into the site it was saved for: checked on the very tab, frame and field it goes into (tools-browser.ts).
       const wanted = siteHost(item.site);
       const r = wanted ? await typeSecret(c.bot.id, c.user.id, value, wanted, a.field === "username" ? "username" : "password") : { shot: await screen.type(c.bot.id, c.user.id, value) };
-      if ("refused" in r) return { content: `This login is saved for ${item.site}, but it was not typed: ${r.refused}. Open ${item.site} and click its ${a.field} field first; do not try to enter it anywhere else.`, isError: true };
+      if ("refused" in r) return { content: `This login is saved for ${item.site}, but it was not typed: ${r.refused}. Open ${item.site} and click its ${a.field} field first; do not try to enter it anywhere else.`, isError: true }; if (wanted && a.field !== "username") noteLoginTyped(c.user.id, c.bot.id, wanted, item.name); // L159 siteregistry.ts
       return { ...shot(r.shot, `Typed the saved ${a.field} into the focused field.`), summary: `${item.name} · ${a.field}` };
     },
   }),
@@ -1195,7 +1196,7 @@ function assemble(opts: { owner?: string; nativeSearch?: boolean; modelSearch?: 
     ...shareTools.map((t): BuiltinTool => ({ ...t, group: "files" })), ...(imageServiceFor(opts.owner) || (opts.owner && wan2gpTarget(opts.owner)) ? [{ ...imageTool, group: "images" as const }] : []),
     ...inGroup("vault", vaultTools),
     ...(browserAvailable() ? inGroup("vault", screenVaultTools).map(respectDriver).map(recordable) : []),
-    ...(browserAvailable() ? inGroup("vault", cardTools).map(respectDriver).map(recordable) : []),
+    ...(browserAvailable() ? inGroup("vault", cardTools).map(respectDriver).map(recordable) : []), ...contactTools, ...pollTools, // L159 vaultcontacts.ts, L184 polls.ts
     ...inGroup("apps", apiTools),
     // A bot's own email address (wave 6): offered by newTurn only to bots that have one.
     ...inGroup("apps", botMailTools),
@@ -1204,6 +1205,6 @@ function assemble(opts: { owner?: string; nativeSearch?: boolean; modelSearch?: 
     ...(opts.video ? inGroup("video", videoTools) : []),
     // The user's own computers (Sklubot Relais): offered by newTurn only to users who linked one.
     ...myComputerTools, ...myComputerPlusTools, ...myUiTools, ...phoneTools, ...liveDocTools, ...remoteAgentTools,
-    ...inGroup("memory", [...memoryTools, ...roomMemoryTools, ...skillFeedbackTools]), ...inGroup("routines", [...routineTools, ...routineFrameTools, ...routineOptionTools]), ...inGroup("tasks", taskTools), ...(opts.bgTasks === false ? [] : inGroup("tasks", bgTaskTools)), ...goalTools, ...waitTools, ...planTools, ...viewTools, ...creationTools, ...inGroup("team", [...teamTools, ...roomTools]), ...userTools.filter((t) => t.spec.name !== "ask_takeover" || browserAvailable()), ...(computerKind() === "linux" ? codeTools : []), ...reactTools,
+    ...inGroup("memory", [...memoryTools, ...roomMemoryTools, ...skillFeedbackTools]), ...inGroup("routines", [...routineTools, ...routineFrameTools, ...routineOptionTools]), ...inGroup("tasks", taskTools), ...(opts.bgTasks === false ? [] : inGroup("tasks", bgTaskTools)), ...goalTools, ...waitTools, ...planTools, ...viewTools, ...creationTools, ...inGroup("team", [...teamTools, ...roomTools]), ...userTools.filter((t) => t.spec.name !== "ask_takeover" || browserAvailable()), ...(computerKind() === "linux" ? codeTools : []), ...(codeHost.available() ? toolCodeTools : []), ...reactTools,
   ];
 }

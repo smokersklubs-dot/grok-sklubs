@@ -324,7 +324,7 @@ Lignes NON REPRIS non détaillées ci-dessus mais vues : passerelle vers un autr
 26. Favoris dans le choix de modèle ; modèle retiré affiché grisé. S.
 27. Réduction automatique des grandes images avant envoi au modèle. S.
 28. Plusieurs conversations par bot avec titres automatiques, filtre « automatiques ». M.
-29. Discussions côte à côte. M.
+29. Discussions côte à côte. M. — FAIT 23/11 en 1×2 (`web/src/components/SideChat.tsx`) ; grille 2×2 et modèles de grille non faits.
 30. ✅ FAIT (L79, 2026-11-23, `agent/planmode.ts` : « /plan », refus de tout changement avant un plan approuvé, « Relire mon plan contre la demande ») — Mode « Plan » (lire et proposer sans agir). S.
 
 ---

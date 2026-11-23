@@ -17,6 +17,7 @@ import { MeetingRecorder } from "./MeetingRecorder"; import { openChantiers } fr
 import { sendKeysFor } from "../../../mobile/shared/sendKey";
 import "./Comfort.css";
 import { ownMessages, recallStep, type RecallState } from "../lib/recall";
+import { openPollCreator, PollCreatorHost } from "./ChatPlus";
 
 const NO_UPLOADS: Upload[] = [];
 
@@ -359,6 +360,7 @@ export function Composer({ bot, live }: { bot: Bot; live: Live }) {
               state.showArtifact({kind:"research",token:"research-"+bot.id,botId:bot.id,title:state.locale === "fr" ? "Recherche approfondie" : "Deep research"});
             }}>{useStore.getState().locale === "fr" ? "Recherche approfondie" : "Deep research"}</MenuItem>}
             {bot.kind === "agent" && !bot.access && <MenuItem icon="play" onClick={()=>{setMenu(false);openModal({kind:"videoStudio"});}}>{t("studio.create")}</MenuItem>}
+            {!bot.access && <MenuItem icon="chart" onClick={() => { setMenu(false); openPollCreator(bot.id); }}>{t("poll.new")}</MenuItem>}{/* L184 polls (ChatPlus.tsx) */}
             {bot.kind === "agent" && (
               <MenuItem icon="target" onClick={() => { setMenu(false); setGoalMode((v) => !v); area.current?.focus(); }}>
                 {t(goalMode ? "composer.goalOff" : "composer.goal")}
@@ -378,6 +380,7 @@ export function Composer({ bot, live }: { bot: Bot; live: Live }) {
               {t("sidebar.connectApps")}
             </MenuItem>
           </Menu>
+          <PollCreatorHost botId={bot.id} thread={live.thread ?? 0} />
           {meetingBot === bot.id && <MeetingRecorder key={bot.id} botId={bot.id} close={() => setMeetingBot(null)} />}
           <input
             ref={picker}

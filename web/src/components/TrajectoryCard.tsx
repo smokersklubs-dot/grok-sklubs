@@ -3,6 +3,7 @@ import { useT } from "../i18n";
 import type { CreationStage, TrajectoryCard as TrajectoryCardData, TrajectoryRender } from "../types";
 import { Icon, type IconName } from "./Icon";
 import { defaultPair, pick, sameAsPrevious } from "../lib/trajectory";
+import { CreationExtras } from "./CreationExtras";
 import "./TrajectoryCard.css";
 
 /**
@@ -29,8 +30,10 @@ function Preview({ r, src, big }: { r: TrajectoryRender; src: string; big?: bool
   return <span className="traj-noprev"><Icon name="file" size={big ? 22 : 16} />{big && <span>{r.name}</span>}</span>;
 }
 
-export function TrajectoryCardView({ card, botId }: { card: TrajectoryCardData; botId: string }) {
+export function TrajectoryCardView({ card: given, botId }: { card: TrajectoryCardData; botId: string }) {
   const t = useT();
+  const [own, setOwn] = useState<TrajectoryCardData | null>(null); // L158: the card the server sent back after a budget or a tick
+  const card = own && own.creationId === given.creationId && own.total >= given.total ? own : given;
   const [picked, setPicked] = useState<number[]>(() => defaultPair(card.renders));
   const [comparing, setComparing] = useState(false);
   const strip = useRef<HTMLUListElement>(null);
@@ -74,6 +77,7 @@ export function TrajectoryCardView({ card, botId }: { card: TrajectoryCardData; 
           </li>
         ))}
       </ul>
+      <CreationExtras card={card} botId={botId} onCard={setOwn} />
       <div className="card-actions">
         <span className="muted traj-hint">{t("trajectory.pickHint")}</span>
         <span className="spacer" />

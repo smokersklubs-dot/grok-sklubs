@@ -3,11 +3,12 @@ import { api, apiBlob, enc, errText } from "../api";
 import { useT, type Key } from "../i18n";
 import { useStore } from "../store";
 import type { Bot } from "../types";
-import type { BoardIdea, BoardTask, BoardView, IdeaUrgency } from "../../../server/src/workboardtypes";
+import type { BoardIdea, BoardTask, BoardView, IdeaUrgency, TaskKind } from "../../../server/src/workboardtypes";
 import { BOARD_TABS, byColumn, MAX_FILE, openBoard, REFUSED_EXT, sizeText, sortIdeas, useBoard, withZone, type BoardTab, type EventTrigger, type FlowRunView, type FlowView, type GuestView, type TeamNote, type WeekReview } from "../lib/workboard";
 import { relTime } from "../lib/format";
 import { Icon } from "./Icon";
 import { Empty, ErrorNote, Loading, Modal } from "./ui";
+import { BoardDecisions, BoardRolesPanel, TaskKindModel, TaskRunLine } from "./BoardRoles";
 import "./WorkBoard.css";
 
 /**
@@ -81,7 +82,9 @@ export function BoardPanel({ data }: { data?: BoardView }) {
   return (
     <div className="wb-board">
       <ErrorNote onDismiss={() => setError(null)}>{error}</ErrorNote>
+      <BoardDecisions decisions={view.decisions} />
       <NewTask bots={bots} tasks={view.tasks} onDone={load} />
+      <BoardRolesPanel roles={view.roles} sets={view.modelSets} bots={bots} act={act} />
       <div className="wb-cols">
         <section className="wb-col" aria-label={t("board.col.ideas")}>
           <h4>{t("board.col.ideas")} <span className="chip">{view.ideas.length}</span></h4>
@@ -110,12 +113,14 @@ function NewTask({ bots, tasks, onDone }: { bots: Bot[]; tasks: BoardTask[]; onD
   const [start, setStart] = useState("");
   const [deps, setDeps] = useState<string[]>([]);
   const [review, setReview] = useState(false);
+  const [kind, setKind] = useState<TaskKind | "">("");
+  const [model, setModel] = useState("");
   const [busy, setBusy] = useState(false);
   if (!open) return <div className="wb-new-row"><button type="button" className="btn btn-primary btn-small" onClick={() => setOpen(true)}><Icon name="plus" size={14} />{t("board.task.new")}</button></div>;
   const submit = async () => {
     setBusy(true);
     try {
-      const r = await api<{ task: BoardTask; warning: string }>("POST", "/board/tasks", { title, description, botId: botId || null, priority, startAt: withZone(start), deps, acceptance: review ? "owner" : "auto" });
+      const r = await api<{ task: BoardTask; warning: string }>("POST", "/board/tasks", { title, description, botId: botId || null, priority, startAt: withZone(start), deps, acceptance: review ? "owner" : "auto", kind, model });
       if (r.warning) useStore.getState().showToast(t("board.task.farStart"));
       setOpen(false); setTitle(""); setDescription(""); setDeps([]); setStart("");
       onDone();
@@ -129,6 +134,7 @@ function NewTask({ bots, tasks, onDone }: { bots: Bot[]; tasks: BoardTask[]; onD
         <label className="field"><span>{t("board.task.bot")}</span><select value={botId} onChange={(e) => setBotId(e.target.value)}><option value="">{t("board.task.noBot")}</option>{bots.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></label>
         <label className="field"><span>{t("board.task.priority")}</span><select value={priority} onChange={(e) => setPriority(Number(e.target.value))}>{[1, 2, 3, 4, 5].map((p) => <option key={p} value={p}>{t("board.priority", { n: p })}</option>)}</select></label>
         <label className="field"><span>{t("board.task.start")}</span><input type="datetime-local" value={start} onChange={(e) => setStart(e.target.value)} /></label>
+        <TaskKindModel kind={kind} model={model} onKind={setKind} onModel={setModel} />
       </div>
       {tasks.length > 0 && (
         <fieldset className="wb-deps"><legend>{t("board.task.deps")}</legend>
@@ -167,6 +173,7 @@ function TaskCard({ task, bots, titleOf, act }: { task: BoardTask; bots: Bot[]; 
         {task.startAt && <span><Icon name="clock" size={12} /> {new Date(task.startAt).toLocaleString()}</span>}
         {task.files.length > 0 && <span><Icon name="clip" size={12} /> {task.files.length}</span>}
       </div>
+      <TaskRunLine task={task} bots={bots} />
       {task.waitingOn.length > 0 && <p className="wb-line wb-wait" title={task.waitingOn.map(titleOf).join(", ")}>{t("board.task.waits", { n: task.waitingOn.length })} : {task.waitingOn.map(titleOf).join(", ")}</p>}
       {task.dependents.length > 0 && <p className="wb-line muted">{t("board.task.unblocks", { n: task.dependents.length })}</p>}
       {task.note && <p className="wb-line wb-note">{task.note}</p>}

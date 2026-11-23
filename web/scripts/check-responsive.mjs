@@ -27,6 +27,7 @@ const PAGES = [
   "section=chat",
   "section=confort6&long=1", "section=confort6&nav=1&long=1", "section=confort6&view=doctor&theme=dark&lang=en", "section=confort6&view=commands&long=1", "section=confort6&slash=1&long=1", // wave 6 comfort (GalleryComfort6.tsx)
   "section=confort7&long=1", "section=confort7&view=welcome&long=1", "section=confort7&view=convs&long=1", "section=confort7&view=trash&long=1&theme=dark&lang=en", "section=confort7&view=office&long=1", "section=confort7&view=pages&long=1", "section=confort7&bell=1&long=1&nav=1", // wave 7 comfort (GalleryComfort7.tsx)
+  "section=confort9&long=1", "section=confort9&view=annotate", "section=confort9&view=show", "section=confort9&view=step&long=1&theme=dark&lang=en", "section=confort9&view=selfcheck", "section=confort9&view=settings", // wave 9 web rows L140 L142 L145 L153 (GalleryComfort9.tsx)
   "section=boucle&long=1", "section=boucle&long=1&theme=dark&lang=en", "section=boucle&empty=1", // loop and turns 23/11 (GalleryLoopPlus.tsx)
   "section=extensions&long=1", "section=extensions&view=editor&long=1", "section=extensions&view=editor&theme=dark&lang=en", "section=extensions&view=settings&long=1", "section=extensions&view=settings&empty=1&theme=dark&lang=en", "section=extensions&empty=1", // wave 7 L172 L174 L178 L179 (GalleryExtensions.tsx)
   "section=canaux&long=1",
@@ -94,6 +95,7 @@ const PAGES = [
   "section=relecture&theme=dark&lang=en",
   "section=relecture&empty=1",
   "section=creation", "section=creation&long=1&theme=dark&lang=en", "section=creation&empty=1", // audit OGAI: Settings → Keys → Création (GalleryMedia.tsx)
+  "section=acces&long=1", "section=acces&theme=dark&lang=en", "section=acces&empty=1", "section=plus&long=1", "section=plus&theme=dark&lang=en", "section=plus&empty=1", // wave 9 L159 L184 (GalleryWave9.tsx)
   "section=ecran&long=1", "section=ecran&theme=dark&lang=en", "section=salons&long=1", // L149, L155, L167 (GalleryScreen.tsx, GalleryRooms.tsx)
 ];
 const SCROLLERS = "pre, .md-table, .card-detail, .segmented, .tabs, .gallery-bar, .cmd-states, .sheet-wrap, .traj-strip"; // .traj-strip: the renders of a creation scroll sideways on purpose (L158)

@@ -15,6 +15,7 @@ import type { ApprovalCard, Bot, Card, QuestionCard } from "../api/types";
 import { useT, type Key } from "../i18n";
 import { cardReq, type Req } from "../lib/cardActions";
 import type { RootStack } from "../screens/types";
+import { PollCard } from "./PollCard";
 import { useStore } from "../state/store";
 import { radius, useTheme } from "../theme";
 import { SecretInput, useBusy } from "./cardKit";
@@ -579,6 +580,7 @@ export function CardView({ card, bot, seq }: { card: Card; bot: Bot; seq: number
     case "mail": return <Mail card={card} bot={bot} />;
     case "view": return <ViewText card={card} />;
     case "trajectory": return <TrajectoryText card={card} />; // L158
+    case "poll": return <PollCard card={card} />; // L184
     default: return null;
   }
 }

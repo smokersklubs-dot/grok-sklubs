@@ -80,6 +80,34 @@ de premier plan de type « microphone »** (`FOREGROUND_SERVICE`, `FOREGROUND_SE
 pendant un appel. Pas d’accès direct à la localisation (la position, seulement sur demande, passe par une page du navigateur) ni aux contacts ; **pas de service d’accessibilité**, **pas de service
 « special use »**, pas de connexion permanente.
 
+### Justification des permissions (texte pour les relecteurs)
+
+Source unique : `store/permissions.json` (L160). `npm run store:check` échoue si une permission déclarée n'y a pas sa
+ligne, si une permission interdite en version store apparaît, ou si ce tableau oublie une ligne. Pour contrôler aussi
+les permissions ajoutées par les bibliothèques : `aapt2 dump permissions <apk store> > perms.txt` puis
+`npm run store:check -- --permissions perms.txt`. Copier la colonne « Pourquoi » dans la Play Console quand elle
+demande une justification, et dans les notes pour la relecture Apple.
+
+| Permission Android | Pourquoi | Quand |
+|---|---|---|
+| `INTERNET` | Parler au serveur Sklubot dont tu as tapé l'adresse (messages, fichiers, appels). | Toujours ; aucune autre adresse n'est contactée. |
+| `POST_NOTIFICATIONS` | Te prévenir qu'un bot a répondu ou attend ton accord, et afficher la notification d'un appel en cours. | Demandée la première fois que l'appli veut te prévenir ; tu peux refuser. |
+| `VIBRATE` | Faire vibrer le téléphone avec une notification. | Seulement avec une notification. |
+| `RECEIVE_BOOT_COMPLETED` | Reprogrammer la vérification en arrière-plan (nouveaux messages) après un redémarrage du téléphone. | Au démarrage du téléphone, sans rien afficher ni envoyer d'autre. |
+| `ACCESS_NETWORK_STATE` | Ne lancer la vérification en arrière-plan que quand le téléphone a du réseau. | Pendant la vérification en arrière-plan. |
+| `WAKE_LOCK` | Laisser la vérification en arrière-plan finir quelques secondes (bibliothèque WorkManager d'Android). | Pendant la vérification en arrière-plan. |
+| `CAMERA` | Prendre une photo à joindre à un message, ou à envoyer quand un bot te la demande. | Seulement quand tu touches « Prendre une photo » ; le système demande ton accord. |
+| `RECORD_AUDIO` | Parler à un bot pendant un appel vocal. | Demandée au premier appel ; le micro ne sert que pendant l'appel. |
+| `MODIFY_AUDIO_SETTINGS` | Passer le son d'un appel du haut-parleur à l'écouteur. | Pendant un appel. |
+| `FOREGROUND_SERVICE` | Garder un appel vocal actif quand l'écran est verrouillé. | Seulement pendant un appel, avec une notification visible « Appel avec … ». |
+| `FOREGROUND_SERVICE_MICROPHONE` | Type du service d'appel : le micro reste actif écran verrouillé pendant un appel que tu as lancé. | Seulement pendant un appel ; s'arrête quand tu raccroches. |
+
+| Texte iOS | Pourquoi |
+|---|---|
+| `NSCameraUsageDescription` | Prendre une photo à joindre à un message pour un bot. |
+| `NSPhotoLibraryUsageDescription` | Choisir une photo à joindre à un message. |
+| `NSMicrophoneUsageDescription` | Parler à un bot pendant un appel vocal. |
+
 ### Nouveauté 1.1.0 : déclaration du service de premier plan (Play Console)
 
 Depuis la 1.1.0 la variante store déclare un service de premier plan de type **microphone** (appel vocal qui continue
@@ -96,6 +124,9 @@ Si Play refusait ce type de service, retirer `CallService` de la variante store 
 la Play Console (Contenu de l’appli → Accès aux applis) : l’adresse d’un serveur de démonstration accessible en https,
 un compte de test (e-mail + mot de passe) et une phrase d’explication (« Saisir l’adresse du serveur, puis se connecter »).
 Un serveur avec `DEMO_MODE=1` répond sans clé d’IA.
+Pendant toute la relecture, surveiller ce serveur (L160) : `npm run demo:watch -- https://demo.exemple.fr --every 5`
+(contrôle `/api/health`, `/api/me` et la page d’accueil toutes les 5 minutes ; s’arrête avec le code 1 après 3 échecs
+de suite, pour qu’une tâche planifiée te prévienne) ou `--once` pour un seul contrôle avant d’envoyer.
 
 ## Captures d’écran (prises sur l’émulateur Android 14, recadrées en 1080 × 2160)
 

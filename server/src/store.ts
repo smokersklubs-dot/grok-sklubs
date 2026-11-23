@@ -66,7 +66,7 @@ function previewOf(body: RowBody, locale: Locale): string {
     if (c.type === "pastedsecret") return tr(locale, "A secret was masked in your message");
     if (c.type === "files") return tr(locale, "Files changed: {n}", { n: c.files.length + c.more });
     if (c.type === "goal") return tr(locale, "Goal: {objective}", { objective: c.objective });
-    if (c.type === "failure") return tr(locale, "A problem needs you"); if (c.type === "view" || c.type === "trajectory") return c.title; // DS-Bot item 8, L158
+    if (c.type === "failure") return tr(locale, "A problem needs you"); if (c.type === "view" || c.type === "trajectory") return c.title; if (c.type === "poll") return c.question; // DS-Bot item 8, L158, L184 polls
     return tr(locale, "Connect {name}", { name: c.name });
   }
   return "";

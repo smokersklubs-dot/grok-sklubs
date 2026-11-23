@@ -332,7 +332,7 @@ Pour chaque flux : comment fait DS-Bot, comment fait Sklubot, puis ce qui est pl
 ### F9. Livrer un fichier ou une page
 - **DS-Bot** : un lien Markdown vers un chemin ouvre l'aperçu ; un lien vers un fichier absent est marqué (`claims.js`) ; un lien relatif est rendu absolu quand le texte passe à un autre bot (`links.js:1-6`) ; images envoyées dans les messageries.
 - **Sklubot** : `file_send`, artefacts, pages publiées avec contrôle automatique (`pagecheck.ts`).
-- **Écart** : un bot qui écrit « voici le fichier [rapport.pdf](rapport.pdf) » alors que le fichier n'existe pas n'est pas repéré. **Correction** : REUSE `claims.js` `missingFileRefs` (S).
+- **Écart** : un bot qui écrit « voici le fichier `[rapport.pdf](rapport.pdf)` » alors que le fichier n'existe pas n'est pas repéré. **Correction** : REUSE `claims.js` `missingFileRefs` (S).
 
 ### F10. Accueil d'un nouvel utilisateur
 - **DS-Bot** : le chef guide ; la page d'accueil des réglages demande **la clé manquante sur place** ; le bot lit le **manuel intégré** avant d'expliquer ou de changer un réglage (`prompt.js:25`, `skills/ds-bot-manual/`).

@@ -70,6 +70,7 @@ export function CuratorCard({ suggestions, onChanged, showBot }: { suggestions: 
   const openBotSettings = useStore((s) => s.openBotSettings);
   const bots = useStore((s) => s.bots);
   const [error, setError] = useState<string | null>(null);
+  const titleId = `skh-curator-title${useId()}`; // L160 a11y: the panel can show twice on a page, ids must stay unique
   if (!suggestions.length) return null;
   const meta = async (id: string, body: Record<string, unknown>) => {
     setError(null);
@@ -77,8 +78,8 @@ export function CuratorCard({ suggestions, onChanged, showBot }: { suggestions: 
   };
   const botIdOf = (name: string) => sortedBots(bots).find((b) => b.name === name)?.id;
   return (
-    <section className="skh-curator" aria-labelledby="skh-curator-title">
-      <h3 id="skh-curator-title" className="skh-curator-title"><Icon name="bulb" size={15} /> {t("skh.curator.title")}</h3>
+    <section className="skh-curator" aria-labelledby={titleId}>
+      <h3 id={titleId} className="skh-curator-title"><Icon name="bulb" size={15} /> {t("skh.curator.title")}</h3>
       <p className="muted small">{t("skh.curator.hint")}</p>
       <ul className="skh-suggestions">
         {suggestions.map((s) => (

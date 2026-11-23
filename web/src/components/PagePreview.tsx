@@ -1,8 +1,10 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useT } from "../i18n";
 import { useStore } from "../store";
 import { Icon } from "./Icon";
 import { CopyButton } from "./ui";
+import { PageComment } from "./PageComment";
+import { PAGE_COMMENT_PARAM } from "../../../server/src/clientshared/pagecomment";
 import "./PagePreview.css";
 
 /* The chat's preview of a page a bot published (server/src/pagefiles.ts): the page itself in an
@@ -12,9 +14,9 @@ import "./PagePreview.css";
 
 const LINK = /\[([^\]\n]{1,200})\]\((https?:\/\/[^\s)]+?\/p\/([A-Za-z0-9_-]{16,64}))\/?\)/;
 
-/** The dev gallery shows a sample page instead of a real address (dev/Gallery.tsx). */
-let sourceOf: (url: string) => string = (url) => url;
-export const setPagePreviewSource = (fn: (url: string) => string) => { sourceOf = fn; };
+/** The dev gallery shows a sample page instead of a real address (dev/Gallery.tsx). `comment`: with the L140 comment layer. */
+let sourceOf: (url: string, comment: boolean) => string = (url, comment) => (comment ? `${url}?${PAGE_COMMENT_PARAM}=1` : url);
+export const setPagePreviewSource = (fn: (url: string, comment: boolean) => string) => { sourceOf = fn; };
 let ownOrigin = () => location.origin;
 export const setPagePreviewOrigin = (fn: () => string) => { ownOrigin = fn; };
 
@@ -38,7 +40,10 @@ export function PagePreview({ text, page, botId, thread, readOnly }: {
     ? { title: page.title, url: `${ownOrigin()}/p/${page.token}` } : pageLinkIn(text);
   const token = link?.url.split("/").pop() ?? "";
   const revision = useStore((s) => s.pageChanges[token] ?? 0);
+  const own = useStore((s) => !!botId && !!s.bots[botId] && !s.bots[botId].access);
+  const frame = useRef<HTMLIFrameElement>(null);
   if (!link) return null;
+  const comment = own && !readOnly; // L140: only the bot's owner, never in a read-only earlier conversation
   return (
     <figure className="page-preview" aria-label={t("pagePreview.label", { title: link.title })}>
       <figcaption className="page-preview-head">
@@ -50,9 +55,10 @@ export function PagePreview({ text, page, botId, thread, readOnly }: {
       </figcaption>
       {shown && (
         <div className="page-preview-frame">
-          <iframe key={revision} src={sourceOf(link.url)} title={link.title} sandbox="allow-scripts allow-popups" loading="lazy" referrerPolicy="no-referrer" />
+          <iframe ref={frame} key={revision} src={sourceOf(link.url, comment)} title={link.title} sandbox="allow-scripts allow-popups" loading="lazy" referrerPolicy="no-referrer" />
         </div>
       )}
+      {shown && comment && botId && <PageComment frame={frame} botId={botId} title={link.title} url={link.url} />}
       <div className="page-preview-actions">
         <a className="btn btn-small" href={link.url} target="_blank" rel="noopener noreferrer"><Icon name="external" size={13} /> {t("pagePreview.open")}</a>
         <CopyButton text={link.url} label={t("pagePreview.copy")} />

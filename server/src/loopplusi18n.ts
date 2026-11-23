@@ -20,4 +20,8 @@ export const LOOPPLUS_FR: Record<string, string> = {
   "Plan review: some points of your request are not covered.": "Relecture du plan : certains points de ta demande ne sont pas couverts.",
   "Missing: {list}.": "Manque : {list}.",
   "Not asked: {list}.": "Pas demandé : {list}.",
+  // L174 (agent/toolcode.ts)
+  "Running code that calls tools": "Exécute du code qui appelle des outils",
+  // L158 (agent/creationplus.ts)
+  "A newer Craft Anything version is out ({latest}). Sklubot keeps the checked version {current} until a Sklubot update verifies the new one: nothing is installed by itself.": "Une nouvelle version de Craft Anything est sortie ({latest}). Sklubot garde la version vérifiée {current} jusqu'à ce qu'une mise à jour de Sklubot vérifie la nouvelle : rien n'est installé tout seul.",
 };

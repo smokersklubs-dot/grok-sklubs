@@ -1,4 +1,5 @@
 import { GithubActivity } from "./GithubActivity";
+import { AppEventsSection } from "./ChatPlus";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { IncidentsSection } from "./Incidents";
 import { api, enc, errText } from "../api";
@@ -651,6 +652,7 @@ export function DetailsPanel() {
             {!isRoom && !bot.access && <GithubActivity key={"gh"+bot.id} bot={bot.id}/>}
             {!isRoom && <GemsSection key={`g${bot.id}`} bot={bot} />}
             {!isRoom && <IncidentsSection key={`i${bot.id}`} bot={bot} />}
+            {!isRoom && !bot.access && <AppEventsSection key={`ae${bot.id}`} bot={bot} />}{/* L184 apps' own notices (ChatPlus.tsx) */}
             {isRoom && <Members room={bot} />}
             {!isRoom && <ComputerSection key={`c${bot.id}`} bot={bot} />}
             {!isRoom && !bot.disabledTools.includes("mycomputer") && <MyComputerSection />}

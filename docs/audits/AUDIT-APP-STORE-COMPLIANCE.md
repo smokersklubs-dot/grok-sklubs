@@ -121,10 +121,10 @@ Preuves Sklubot : `mobile/STORE.md` (165 lignes : fiche Play l.9-40, classificat
 2. Ajouter `PrivacyInfo.xcprivacy` (via la config Expo) et les questions d'âge Apple 2026 à la section iPhone de `mobile/STORE.md` — **S**. — **FAIT (2026-11-23)** : `mobile/store/privacy-manifest.json` → `ios.privacyManifests` (copie `store/PrivacyInfo.xcprivacy`), réponses d'âge et confidentialité dans `mobile/STORE.md`, contrôle `npm run store:check`
 3. Script de contrôle avant envoi pour l'appli mobile (permissions, cible API, manifeste iOS, URL de confidentialité, captures sans écran de connexion en premier) — **M**.
 4. Ajouter à `STORE.md` : statut de commerçant DSA, gabarit de notes pour la relecture Apple, argumentaire « client d'un serveur » (Apple 4.2), règle « jamais renvoyer une version inchangée après un rejet » — **S**.
-5. Surveiller la disponibilité du serveur de démonstration pendant la relecture (routine ou moniteur) — **S**.
+5. Surveiller la disponibilité du serveur de démonstration pendant la relecture (routine ou moniteur) — **S**. — **FAIT (2026-11-23)**
 6. **Fait le 22/11/2026** (`publier-une-appli`, depuis le commit MIT/CC BY 943e855 du 12/08/2026). Compétence client **« Préparer la publication d'une appli »** réécrite depuis les règles officielles (ou depuis une version MIT/CC BY antérieure au 24/08/2026), avec la règle « jamais prêt tant qu'un critique reste » — **M**.
 7. Routine de veille « règles des boutiques » (flux RSS officiel Apple, blog Android) pour le propriétaire — **S**.
-8. Contrôleur de docs (liens, chemins de fichiers, numéros de ligne cités dans `docs/*.md`) — **S**.
+8. Contrôleur de docs (liens, chemins de fichiers, numéros de ligne cités dans `docs/*.md`) — **S**. — **FAIT (2026-11-23)**
 
 ## 6. Non vérifié
 

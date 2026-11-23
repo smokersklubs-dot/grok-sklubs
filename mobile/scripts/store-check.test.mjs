@@ -10,7 +10,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { deflateSync } from "node:zlib";
-import { declaredReasons, findKeys, hasTransparency, pngInfo, runChecks, toPlist } from "./store-check.mjs";
+import { aaptPermissions, declaredReasons, findKeys, hasTransparency, manifestPermissions, pngInfo, runChecks, toPlist } from "./store-check.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -86,4 +86,17 @@ test("the whole check: this app passes; a broken copy fails on each problem", ()
   assert.match(fails, /raisons d'API manquantes : SystemBootTime 35F9\.1 \(react-native\)/);
   assert.match(fails, /src\/leak\.ts \(clé Anthropic/);
   assert.match(fails, /Signaler cette réponse/);
+});
+
+test("L160 permission justifications: every declared permission has its reason, the forbidden ones fail", () => {
+  assert.deepEqual(manifestPermissions('<uses-permission android:name="a.B"/>\n<uses-permission android:name="a.C" tools:node="remove"/>'), ["a.B"]);
+  assert.deepEqual(aaptPermissions("package: fr.sklubot.app\nuses-permission: name='android.permission.CAMERA'\nuses-permission: name='android.permission.WAKE_LOCK' maxSdkVersion='30'"), ["android.permission.CAMERA", "android.permission.WAKE_LOCK"]);
+  assert.ok(runChecks(ROOT).some((r) => r.level === "OK" && /permissions : 11 justifiées/.test(r.what)));
+  const dir = mkdtempSync(join(tmpdir(), "perms-"));
+  const list = join(dir, "perms.txt");
+  writeFileSync(list, "uses-permission: name='android.permission.INTERNET'\nuses-permission: name='android.permission.READ_CONTACTS'\nuses-permission: name='android.permission.BLUETOOTH_CONNECT'\nuses-permission: name='fr.sklubot.app.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION'");
+  const fails = runChecks(ROOT, { permissionFiles: [list] }).filter((r) => r.level === "ÉCHEC").map((r) => r.what).join("\n");
+  assert.match(fails, /jamais dans la version store : android\.permission\.READ_CONTACTS/);
+  assert.match(fails, /sans justification dans store\/permissions\.json : android\.permission\.BLUETOOTH_CONNECT$/m);
+  assert.doesNotMatch(fails, /DYNAMIC_RECEIVER/);
 });

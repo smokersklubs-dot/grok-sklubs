@@ -158,15 +158,15 @@ Taille = effort côté Sklubot. Licence de chaque ligne : MIT OR Apache-2.0 (sau
 6. ✅ **Fait (2026-11-22).** Claude Code : `assistant.error`, `api_error_status`, forme de la session perdue ; classe `server_fault` jamais relancée (Codex : pas de champ structuré) — M.
 7. ✅ **Fait en partie (2026-11-22).** `install-craft.sh` et la politique de `craft_workspace` testés (`craft-install.test.ts`). Reste : `layoutExpression` — S.
 8. Détection « aucun progrès » (rien n'a changé dans les fichiers après 2 tours) pour les tâches de création — M.
-9. Budget par création (images/vidéos générées) en plus des plafonds globaux — S.
+9. ✅ FAIT (23/11, `agent/creationplus.ts`) — Budget par création (images/vidéos générées) en plus des plafonds globaux — S.
 10. Étapes nommées (étudier / construire / vérifier / prêt) sur la carte d'une création — M.
 11. Notes pendant un tour gardées sur disque + « reprendre ma note » — S.
 12. Question « à côté » (`/btw`) qui n'interrompt pas le travail — S.
-13. Liste « questions ouvertes / hypothèses » visible sur une tâche longue — M.
+13. ✅ FAIT (23/11, questions ouvertes sur la carte d'une création) — Liste « questions ouvertes / hypothèses » visible sur une tâche longue — M.
 14. Parcours web enregistré puis rejoué pour surveiller un site (formulaire, panier) — M.
 15. Infobulles de glossaire sur les termes de l'interface — S.
 16. Export « rapport de cette conversation » (Markdown/PDF) — S.
-17. Alerte quand une nouvelle version vérifiée de Craft Anything existe — S.
+17. ✅ FAIT (23/11, alerte une fois par version, rien n'est installé) — Alerte quand une nouvelle version vérifiée de Craft Anything existe — S.
 18. Adaptateur ACP pour d'autres agents CLI — L.
 
 ## Non vérifié

@@ -175,7 +175,7 @@ Pages publiques : la page d'accueil confirme des fonctions déjà au cahier 02 (
 4. Sélecteur de modèle (et réflexion) dans la zone de saisie ; refus d'une clé sans crédit à la connexion. S.
 5. Telegram : fichiers reçus et envoyés ; lien vers la carte en attente. M.
 6. Routine « à côté » ou « dans » la discussion. S.
-7. Bouton « vérifier ce bot » (page, fichier, journal des outils). S.
+7. Bouton « vérifier ce bot » (page, fichier, journal des outils). S. — FAIT 23/11 (`server/src/selfcheck.ts`, `web/src/components/BotSelfCheck.tsx`).
 8. Citer la sélection au clavier ; `/` n'importe où. S.
 9. Mise de côté automatique du travail ouvert après 14 jours sans activité. S.
 10. Règle « oui et non à l'oral = pas d'accord » si les appels peuvent approuver. S.

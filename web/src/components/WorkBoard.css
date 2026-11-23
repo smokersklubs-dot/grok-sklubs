@@ -81,3 +81,21 @@
 .wb-list li.is-archived { opacity: 0.65; }
 .wb-link code { display: block; margin-top: 4px; font-size: 12px; overflow-wrap: anywhere; word-break: break-all; }
 .wb-lessons h4 { margin: 4px 0 0; font-size: 14px; }
+
+/* L163 roles, models, open decisions (BoardRoles.tsx) */
+.wb-decisions { padding: 8px 12px; border: 1px solid var(--warn); border-radius: var(--r-md); background: var(--warn-soft); }
+.wb-decisions h4 { display: flex; align-items: center; gap: 6px; margin: 0 0 4px; font-size: 13.5px; }
+.wb-decisions ul { margin: 0; padding-left: 18px; font-size: 13px; }
+.wb-decisions li { overflow-wrap: anywhere; }
+.wb-roles { border: 1px solid var(--border); border-radius: var(--r-md); padding: 6px 10px; }
+.wb-roles > summary { cursor: pointer; display: flex; align-items: center; gap: 6px; font-weight: 650; font-size: 13.5px; min-height: 32px; }
+.wb-roles-list { display: flex; flex-direction: column; gap: 6px; margin: 6px 0; }
+.wb-role { display: grid; grid-template-columns: 110px minmax(0, 1fr) minmax(0, 1fr) auto; align-items: center; gap: 6px; }
+.wb-role select { min-width: 0; width: 100%; }
+.wb-role-name { font-size: 13px; font-weight: 600; }
+.wb-sets { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--border); padding-top: 6px; }
+.wb-set { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.wb-set-name { font-weight: 600; font-size: 13px; }
+.wb-set .muted { flex: 1 1 160px; min-width: 0; overflow-wrap: anywhere; }
+.wb-run { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; overflow-wrap: anywhere; }
+@media (max-width: 560px) { .wb-role { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } .wb-role-name { grid-column: 1 / -1; } }

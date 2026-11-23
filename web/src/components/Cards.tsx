@@ -12,7 +12,7 @@ import { DiskCardView } from "./DiskAndTeamFolder";
 import { FilesCardView, PastedSecretCardView } from "./SecretsFilesProviders";
 import { GoalCardView } from "./GoalsAndJobs";
 import { FailureCardView } from "./Incidents";
-import { RecruitCardView } from "./RecruitCard"; import { ViewCardView } from "./ViewCard"; import { TrajectoryCardView } from "./TrajectoryCard"; import { CodeBoxCard } from "./CodeBox";
+import { PollCardView } from "./ChatPlus"; import { RecruitCardView } from "./RecruitCard"; import { ViewCardView } from "./ViewCard"; import { TrajectoryCardView } from "./TrajectoryCard"; import { CodeBoxCard } from "./CodeBox";
 import { sendKeysFor } from "../../../mobile/shared/sendKey";
 import { CardCountdown, detailWithout, DraftEditor, isRichQuestion, RichQuestion } from "./TurnCards";
 
@@ -421,6 +421,8 @@ export function CardView({ card, botId, seq }: { card: Card; botId: string; seq:
       return <RecruitCardView card={card} botId={botId} seq={seq} />;
     case "view":
       return <ViewCardView card={card} botId={botId} seq={seq} />; // DS-Bot item 8
+    case "poll":
+      return <PollCardView card={card} />; // L184 (ChatPlus.tsx)
     case "trajectory":
       return <TrajectoryCardView card={card} botId={botId} />; // L158 « Créations »
     case "code":

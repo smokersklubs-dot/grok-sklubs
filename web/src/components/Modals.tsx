@@ -1,4 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from "react";
+import { ConnectedSites, ConnectorBots } from "./AccessPanels";
 import { api, enc, errText } from "../api";
 import { tn, useT } from "../i18n";
 import { sortedBots, useStore } from "../store";
@@ -382,6 +383,7 @@ function ConnectorRow({ c }: { c: Connector }) {
       {needsAuth && !waiting && clientForm === null && <p className="field-hint connector-note">{t("connector.needsAuthHint")}</p>}
       {waiting && needsAuth && <p className="field-hint connector-note"><Spinner size={12} /> {t("connector.waitingSignIn")}</p>}
       {clientForm !== null && <OAuthClientFields redirectUri={clientForm} clientId={clientId} setClientId={setClientId} clientSecret={clientSecret} setClientSecret={setClientSecret} />}
+      {!needsAuth && <ConnectorBots connectorId={c.id} name={c.name} />}{/* L159 « pour tous mes bots » (AccessPanels.tsx) */}
       {!needsAuth && (
         <button type="button" className="connector-tools" onClick={() => setOpen((v) => !v)} aria-expanded={open} disabled={c.tools.length === 0}>
           <Icon name="chevronRight" size={13} className={open ? "is-rotated" : ""} />
@@ -673,6 +675,7 @@ export function ConnectorsModal({ onClose, prefill, catalogId }: { catalogId?: s
             </ul>
           </section>
         )}
+        <ConnectedSites />{/* L159 verified sites (AccessPanels.tsx) */}
         {connectors && connectors.length + nativeAccounts.length === 0 && !prefill && <Empty icon="plug" title={t("connectors.emptyTitle")}>{t("connectors.emptyText")}</Empty>}
 
         <Catalog catalogId={catalogId} connectors={connectors} prefill={prefill} onClose={onClose} />

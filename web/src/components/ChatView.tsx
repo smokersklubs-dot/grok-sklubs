@@ -12,7 +12,7 @@ import { Composer } from "./Composer";
 import { ModelHealthBanner } from "./ModelHealth";
 import { WorkContext } from "./WorkContext";
 import { Icon } from "./Icon";
-import { Transcript } from "./Transcript"; import { PassageBar } from "./PassageComment"; import { ExportMenuItems } from "./ChatExport";
+import { Transcript } from "./Transcript"; import { SideChatMenuItem } from "./SideChat"; import { SelfCheckHost, SelfCheckMenuItem } from "./BotSelfCheck"; import { PassageBar } from "./PassageComment"; import { ExportMenuItems } from "./ChatExport";
 import { TaskLanes } from "./TaskLanes";
 import { FindBar } from "./FindBar";
 import { FilePreviewPanel } from "./SpendSkillsFiles";
@@ -108,7 +108,7 @@ export function ChatView() {
             >
               {t(confirmNew ? "chat.confirmNew" : "chat.newConversation")}
             </MenuItem>}
-            {!bot.access && <MenuItem icon="history" onClick={() => { close(); setConvs(true); }}>{t("c7.conv.menu")}</MenuItem>}
+            {!bot.access && <MenuItem icon="history" onClick={() => { close(); setConvs(true); }}>{t("c7.conv.menu")}</MenuItem>}<SideChatMenuItem onDone={close} />{/* L146 */}<SelfCheckMenuItem bot={bot} onDone={close} />{/* L153 */}
             <ReadAloudMenuItem bot={bot} onDone={close} />
             <MuteMenuItems bot={bot} onDone={close} />
             <MenuItem
@@ -154,7 +154,7 @@ export function ChatView() {
       {bot.kind === "agent" && !bot.access && <WorkContext key={bot.id + ":" + bot.model} bot={bot} />}
       {finding && <FindBar key={bot.id} botId={bot.id} />}
       <PinnedStrip rows={thread?.rows ?? []} />
-      {convs && <ConversationsModal bot={bot} onClose={() => setConvs(false)} />}
+      {convs && <ConversationsModal bot={bot} onClose={() => setConvs(false)} />}<SelfCheckHost />
       <div className="chat-body-row">
         <Transcript bot={bot} thread={thread} live={live} /><PassageBar bot={bot} />
         <FilePreviewPanel />

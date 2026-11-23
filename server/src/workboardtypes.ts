@@ -58,6 +58,14 @@ export interface BoardTask {
   updatedAt: number;
   startedAt: number | null;
   endedAt: number | null;
+  /** L163 (workboardroles.ts): its kind (matching a role), its own model, the model it will run on and from where (T10),
+   * the bot that really runs it and why (T12). */
+  kind?: TaskKind | "";
+  model?: string;
+  runModel?: string;
+  modelFrom?: "task" | "role" | "bot";
+  executorId?: string | null;
+  execReason?: "pinned" | "named" | "role" | "lead-redirected" | "other-role" | "none";
 }
 
 export interface BoardIdea {
@@ -79,7 +87,19 @@ export interface BoardIdea {
   updatedAt: number;
 }
 
-export interface BoardView { tasks: BoardTask[]; ideas: BoardIdea[] }
+/** L163 T12: the kinds of task, each matching a project role; « lead » is the chef (the main bot unless set). */
+export const TASK_KINDS = ["code", "review", "research", "docs", "chore"] as const;
+export type TaskKind = (typeof TASK_KINDS)[number];
+export const BOARD_ROLES = ["lead", ...TASK_KINDS] as const;
+export type BoardRoleName = (typeof BOARD_ROLES)[number];
+/** A project role: who holds it, its model (T10), pinned = takes every task of its kind (T12). */
+export interface BoardRole { role: BoardRoleName; botId: string | null; model: string; pinned: boolean }
+/** T11: a named model per role. */
+export interface BoardModelSet { id: string; name: string; models: Partial<Record<BoardRoleName, string>>; createdAt: number }
+/** Something that waits for the owner: a task to review, a blocked one (its reason), one nobody can run. */
+export interface BoardDecision { taskId: string; title: string; kind: "review" | "blocked" | "nobody"; why: string }
+
+export interface BoardView { tasks: BoardTask[]; ideas: BoardIdea[]; roles?: BoardRole[]; modelSets?: BoardModelSet[]; decisions?: BoardDecision[] }
 
 /** One finished task in the grouped recap for the main bot (T6, T7). */
 export interface RecapItem { title: string; state: string; summary: string; note: string; priority: number }

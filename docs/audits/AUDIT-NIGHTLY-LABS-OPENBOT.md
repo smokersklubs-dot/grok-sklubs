@@ -329,7 +329,7 @@ Taille : S (moins d'un jour), M (quelques jours), L (une semaine ou plus). Chemi
 13. **Réserve de plusieurs comptes d'abonnement** avec bascule (M) — à vérifier contre les conditions des fournisseurs.
 14. **Détection d'un compactage inutile** et délai de 120 s sur le compactage (S).
 15. **Mémoire liée à un site** (S).
-16. **Fiche « coordonnées » dans le coffre** pour les formulaires d'adresse (S).
+16. **Fiche « coordonnées » dans le coffre** pour les formulaires d'adresse (S). — **FAIT (2026-11-23)**
 17. **Flux iCalendar des routines** (S).
 18. **Notifications téléphone seulement après 30 s d'inactivité sur l'ordinateur** (S).
 19. **Supprimer / épingler un message** ; **dossiers à plusieurs niveaux** (S).

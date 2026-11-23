@@ -274,14 +274,14 @@ Taille : S (moins d'un jour), M (quelques jours), L (une semaine ou plus). Chemi
 6. **Mode Auto** : classer la demande une fois (simple / moyen / complexe) et choisir le modèle pour toute la tâche (M).
 7. **Second facteur (e-mail ou TOTP) avant une action du plancher**, en option (M).
 8. **Alerte nouvel appareil** (« C'est moi / Ce n'est pas moi ») (S).
-9. **Registre vérifié des sites connectés** dans Connexions (M).
+9. **Registre vérifié des sites connectés** dans Connexions (M). — **FAIT (2026-11-23)**
 10. **Boîte « À toi »** : toutes les cartes en attente de tous les bots (M).
 11. **Demandes à toucher propres au rôle** d'un bot neuf ; **tour de chauffe** des moteurs après redémarrage (S).
 12. **Alerte de crédit OpenRouter avant la panne** (S).
 13. **Notification de fin seulement si le travail a pris du temps** (en plus de « aucune fenêtre visible ») (S).
 14. **Sortie réseau du navigateur par la maison** (Tailscale / proxy du Relais) (M).
 15. **Voix : accusé oral immédiat, phrases d'attente, rappel sortant** (S / M).
-16. **Connecteurs « pour tous mes bots »** ; **droit au coffre par bot** (S).
+16. **Connecteurs « pour tous mes bots »** ; **droit au coffre par bot** (S). — **FAIT (2026-11-23)**
 17. **Fichier d'installation pour agent de code** (S).
 18. **Mises à jour automatiques signées avec créneau calme et retour arrière** (L).
 19. **Modes de modèle nommés** (Rapide / Équilibré / Le plus fort / Gratuit) au-dessus de la chaîne de secours (S).

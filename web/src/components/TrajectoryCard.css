@@ -40,3 +40,21 @@
   .traj-stages li { flex-direction: column; gap: 3px; padding: 5px 2px; text-align: center; }
   .traj-stage-label { white-space: normal; }
 }
+
+/* L158 budget and open questions (CreationExtras.tsx) */
+.traj-extras { display: flex; flex-direction: column; gap: 6px; }
+.traj-budget { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 6px 10px; border-radius: var(--r-md); background: var(--surface-2); color: var(--text); font-size: 13px; }
+.traj-budget > svg { flex: none; color: var(--text-2); }
+.traj-budget.is-warn { background: var(--warn-soft); }
+.traj-budget.is-warn > svg, .traj-budget.is-over > svg { color: var(--warn); }
+.traj-budget.is-over { background: var(--warn-soft); font-weight: 600; }
+.traj-budget-text { flex: 1 1 160px; min-width: 0; overflow-wrap: anywhere; }
+.traj-budget-form { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; flex: 1 1 auto; }
+.traj-budget-input { width: 90px; min-height: 32px; }
+.traj-budget-note { margin: 0; font-size: 12px; }
+.traj-questions { padding: 6px 10px; border: 1px solid var(--border); border-radius: var(--r-md); }
+.traj-questions-title { font-size: 12.5px; font-weight: 650; margin-bottom: 4px; }
+.traj-questions ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.traj-questions li { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.traj-q-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.traj-questions li .btn { flex: none; }

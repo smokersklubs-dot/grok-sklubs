@@ -5,6 +5,7 @@ import { useStore } from "../store";
 import type { ViewBlock, ViewCard as ViewCardData, ViewField } from "../types";
 import { Icon } from "./Icon";
 import "./ViewCard.css";
+import { PinViewButton } from "./ChatPlus";
 
 /**
  * DS-Bot item 8: a view card in the chat (server agent/viewcard.ts) — key figures, a table, a bar or line chart, a
@@ -17,7 +18,7 @@ const PALETTE = ["var(--brand)", "var(--info)", "var(--ok)", "var(--warn)"];
 const lang = () => (typeof document !== "undefined" && document.documentElement.lang) || undefined;
 const fmt = (n: number) => n.toLocaleString(lang(), { maximumFractionDigits: 2 });
 
-export function ViewCardView({ card, botId, seq }: { card: ViewCardData; botId: string; seq: number }) {
+export function ViewCardView({ card, botId, seq, pinned = false }: { card: ViewCardData; botId: string; seq: number; /** On the dashboard (L184): no « Épingler ». */ pinned?: boolean }) {
   const t = useT();
   const [asText, setAsText] = useState(false);
   return (
@@ -29,6 +30,7 @@ export function ViewCardView({ card, botId, seq }: { card: ViewCardData; botId: 
       {asText ? <pre className="view-fallback">{card.fallback}</pre> : card.blocks.map((b, i) => <Block key={i} block={b} card={card} botId={botId} seq={seq} />)}
       <div className="card-actions">
         <button type="button" className="btn btn-small btn-ghost" aria-pressed={asText} onClick={() => setAsText((v) => !v)}>{asText ? t("view.asView") : t("view.asText")}</button>
+        {!pinned && <PinViewButton botId={botId} seq={seq} />}
       </div>
     </div>
   );
