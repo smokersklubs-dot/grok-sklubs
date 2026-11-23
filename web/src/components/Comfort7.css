@@ -121,3 +121,21 @@
 .conv-title { display: inline-flex; align-items: center; gap: 5px; overflow: hidden; }
 .conv-title > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 560px) { .bell-pop { position: fixed; top: 56px; left: 16px; right: 16px; width: auto; max-height: calc(100vh - 80px); } }
+
+/* L132 « Réponses courtes » (ShortReplies.tsx) */
+.short-replies .short-head { display: flex; gap: 12px; align-items: flex-start; justify-content: space-between; }
+.short-replies .short-rules { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-top: 8px; }
+.short-replies .short-rules label { display: grid; gap: 4px; }
+.short-replies .short-channels { grid-column: 1 / -1; border: 0; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 6px 16px; }
+.short-replies .short-channels legend { margin-bottom: 4px; }
+.short-replies .short-rules label.check { display: inline-flex; gap: 6px; align-items: center; min-height: 32px; }
+/* L67 « Retiens surtout… » (MemoryFocus.tsx) */
+.memx-focus { display: grid; gap: 4px; margin: 10px 0; }
+.memx-focus textarea { width: 100%; resize: vertical; }
+/* L150: a star beside each model of the menu (ComposerMeta.tsx); a model no longer offered is greyed. */
+.menu-item:disabled { color: var(--text-3); cursor: default; }
+.model-row { display: flex; align-items: center; gap: 2px; }
+.model-row > .menu-item { flex: 1 1 auto; min-width: 0; }
+.model-fav { flex: none; color: var(--text-3); opacity: 0.55; }
+.model-fav.is-on { color: var(--warn); opacity: 1; }
+.model-fav:hover, .model-fav:focus-visible { opacity: 1; }

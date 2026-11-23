@@ -19,7 +19,8 @@ import { dialogWords, tabNote } from "../browser-cdp.js";
  */
 interface Doc {
   id: string; target: string; loader: string; url: string; title: string; at: number;
-  byRef: Map<number, PageElement>; byNode: Map<number, number>; next: number; current: number[]; lines: string[];
+  byRef: Map<number, PageElement>; byNode: Map<string, number>; next: number; current: number[]; lines: string[];
+  /** L91: fields a code was typed into from the hidden box (codebox.ts): their value is never listed. */ hidden?: Set<number>;
 }
 const docs = new Map<string, Doc>();
 
@@ -40,7 +41,7 @@ function shortHref(href: string, page: string): string {
 
 function line(doc: Doc, n: number, e: PageElement): string {
   const st = states(e);
-  return `[${doc.id}.${n}] ${e.role} "${clip(e.name, 100)}"${e.value !== undefined ? ` value="${clip(e.value, 60)}"` : ""}${st.length ? ` (${st.join(", ")})` : ""}${e.hint ? ` hint="${clip(e.hint, 120)}"` : ""}${e.href ? ` → ${shortHref(e.href, doc.url)}` : ""}${e.frame ? ` [in frame: ${clip(e.frame, 60)}]` : ""}`;
+  return `[${doc.id}.${n}] ${e.role} "${clip(e.name, 100)}"${e.value !== undefined ? (doc.hidden?.has(n) ? ` value="(the code you were given, hidden)"` : ` value="${clip(e.value, 60)}"`) : ""}${st.length ? ` (${st.join(", ")})` : ""}${e.hint ? ` hint="${clip(e.hint, 120)}"` : ""}${e.href ? ` → ${shortHref(e.href, doc.url)}` : ""}${e.frame ? ` [in frame: ${clip(e.frame, 60)}${e.crossSite ? ", another site: click or hover only" : ""}]` : ""}`;
 }
 
 /** Takes a new look at the page into the bot's current document (same tab and document: same numbers), and what it was before. */
@@ -57,21 +58,25 @@ function absorb(botId: string, s: ElementSnapshot): { doc: Doc; fresh: boolean; 
   }
   const before = same ? { url: doc.url, title: doc.title, els: new Map(doc.current.map((n) => [n, doc.byRef.get(n)!] as const)), lines: doc.lines } : null;
   doc.current = s.elements.map((e) => {
-    let n = doc.byNode.get(e.node);
-    if (!n) { n = doc.next++; doc.byNode.set(e.node, n); }
+    let n = doc.byNode.get(nodeKey(e));
+    if (!n) { n = doc.next++; doc.byNode.set(nodeKey(e), n); }
     doc.byRef.set(n, e);
     return n;
   });
   // A long-lived page that keeps redrawing: only the elements still on it are kept once there are many.
   if (doc.byRef.size > 3000) {
     const keep = new Set(doc.current);
-    for (const [n, e] of doc.byRef) if (!keep.has(n)) { doc.byRef.delete(n); doc.byNode.delete(e.node); }
+    for (const [n, e] of doc.byRef) if (!keep.has(n)) { doc.byRef.delete(n); doc.byNode.delete(nodeKey(e)); }
   }
   Object.assign(doc, { url: s.url, title: s.title, at: Date.now(), lines: s.outline?.lines ?? [] });
   return { doc, fresh: !same, before };
 }
 
-const closedFrames = (s: ElementSnapshot) => (s.frames ?? []).filter((f) => !f.readable).map((f) => `- A frame from ${clip(f.label, 60)} is on this page, but its controls cannot be listed: use screen_view and the pixel tools for it.`);
+/** L14: a node number is only unique in its own frame's session: a control of a frame of another site is keyed with its frame. */
+const nodeKey = (e: PageElement) => (e.frameTarget ? `${e.frameTarget}:${e.node}` : String(e.node));
+const closedFrames = (s: ElementSnapshot) => (s.frames ?? []).filter((f) => !f.readable).map((f) => (f.captcha
+  ? `- A CAPTCHA from ${clip(f.label, 60)} is on this page: never solve it yourself — ask the user with ask_takeover (reason "captcha").`
+  : `- A frame from ${clip(f.label, 60)} is on this page, but its controls cannot be listed: use screen_view and the pixel tools for it.`));
 const outlineLines = (s: ElementSnapshot) => {
   const h = (s.outline?.headings ?? []).slice(0, 20).map((x) => `${"  ".repeat(Math.max(0, Math.min(2, x.level - 1)))}- h${x.level} ${clip(x.text, 100)}`);
   return h.length ? ["Headings:", ...h] : [];
@@ -95,6 +100,25 @@ function listing(doc: Doc, s: ElementSnapshot, intro: string): string {
 export function rememberSnapshot(botId: string, s: ElementSnapshot): string {
   const { doc } = absorb(botId, s);
   return listing(doc, s, "Element snapshot");
+}
+
+/** L91: the value of this field (a one-time code typed from the hidden box) is never listed again on this page. */
+export function hideValue(botId: string, ref: unknown) {
+  const m = REF_FORMAT.exec(String(ref ?? "").trim()), doc = docs.get(botId);
+  if (m && doc && doc.id === m[1]) (doc.hidden ??= new Set()).add(Number(m[2]));
+}
+
+/** L75 annotated capture: the references of the bot's current page that are on screen, with where they are (window px). */
+export function visibleRefs(botId: string, limit = 150): { n: number; ref: string; x: number; y: number }[] {
+  const doc = docs.get(botId);
+  if (!doc) return [];
+  const out: { n: number; ref: string; x: number; y: number }[] = [];
+  for (const n of doc.current) {
+    const e = doc.byRef.get(n);
+    if (e?.visible && e.at && Number.isFinite(e.at[0]) && Number.isFinite(e.at[1])) out.push({ n, ref: `${doc.id}.${n}`, x: e.at[0], y: e.at[1] });
+    if (out.length >= limit) break;
+  }
+  return out;
 }
 
 const sameControl = (a: PageElement, b: PageElement) => a.role === b.role && a.name === b.name && (a.frame ?? "") === (b.frame ?? "");
@@ -147,7 +171,7 @@ export function resolveRef(botId: string, ref: unknown): { req: Omit<ElementRequ
   if (doc.id !== m[1]) return { error: `That reference is from an older page (${m[1]}); references on the page in front start with ${doc.id}. Use one from your latest result, or take a new element_snapshot.` };
   const element = doc.byRef.get(Number(m[2]));
   if (!element) return { error: `The page ${doc.id} has no element ${m[2]}.` };
-  return { element, req: { node: element.node, role: element.role, name: element.name, target: doc.target, loader: doc.loader } };
+  return { element, req: { node: element.node, role: element.role, name: element.name, target: doc.target, loader: doc.loader, ...(element.frameTarget ? { frameTarget: element.frameTarget } : {}) } };
 }
 
 /** L74: the page redrew an element and the helper found it again (same role and name, unique): the reference now names the new node. */
@@ -156,9 +180,9 @@ export function noteMoved(botId: string, ref: unknown, node: number | undefined)
   if (!m || !doc || doc.id !== m[1] || !node) return;
   const n = Number(m[2]), e = doc.byRef.get(n);
   if (!e) return;
-  doc.byNode.delete(e.node);
+  doc.byNode.delete(nodeKey(e));
   doc.byRef.set(n, { ...e, node });
-  doc.byNode.set(node, n);
+  doc.byNode.set(nodeKey({ ...e, node }), n);
 }
 
 /** What the model is told when an action was refused, and whether trying again is safe (L74); a stale page also forgets the references. */

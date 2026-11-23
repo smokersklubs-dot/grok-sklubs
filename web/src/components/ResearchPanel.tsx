@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { api, errText } from "../api";
 import "./research.css";
 import { FindingMeta, ResearchOptions, SourceStates } from "./ResearchExtras";
+import { ReportWatch, ResearchArchive } from "./ResearchWatch";
+import { ReportExport } from "./ReportExport";
 import type { ResearchExtra, ResearchWindow, SourceState } from "../types";
 
 interface Report {
@@ -227,6 +229,7 @@ export function ResearchPanel({ bot, fr, active }: { bot: string; fr: boolean; a
             {loc("questions traitées", "questions processed")} · {covered}{" "}
             {loc("avec sources", "with evidence")}
           </p>
+          <ReportExport report={open} fr={fr} />
           {open.state === "interrupted" && (
             <button
               className="btn"
@@ -240,6 +243,7 @@ export function ResearchPanel({ bot, fr, active }: { bot: string; fr: boolean; a
               {loc("Reprendre à la dernière étape", "Resume from checkpoint")}
             </button>
           )}
+          {open.state === "done" && <ReportWatch base={base} report={open.id} fr={fr} />}
           <ol className="research-sections">
             {open.brief.plan.map((question, i) => {
               const step = open.sections[i];
@@ -278,6 +282,7 @@ export function ResearchPanel({ bot, fr, active }: { bot: string; fr: boolean; a
           </ol>
         </>
       )}
+      <ResearchArchive fr={fr} />
       <details>
         <summary>
           {loc("Source X", "X source")} ·{" "}

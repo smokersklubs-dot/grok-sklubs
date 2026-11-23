@@ -1,5 +1,6 @@
 import { marked } from "marked";
 import DOMPurify from "dompurify";
+import { extractMath, restoreMath } from "./mathtex";
 
 marked.setOptions({ gfm: true, breaks: true });
 
@@ -14,8 +15,9 @@ DOMPurify.addHook("afterSanitizeAttributes", (node) => {
 /** Markdown → sanitised HTML. Tables are wrapped so they can scroll sideways. */
 export function renderMarkdown(src: string): string {
   let html: string;
+  const math = extractMath(src); // L147: formulas set aside before Markdown, put back as spans after sanitising (mathtex.ts)
   try {
-    html = marked.parse(src, { async: false });
+    html = marked.parse(math.text, { async: false });
   } catch {
     html = "";
   }
@@ -24,7 +26,7 @@ export function renderMarkdown(src: string): string {
     FORBID_TAGS: ["style", "form", "button", "textarea", "select", "iframe", "object", "embed", "video", "audio"],
     FORBID_ATTR: ["style", "id", "class", "name"],
   });
-  return callouts(remoteImagesAsLinks(clean)).replace(/<table>/g, '<div class="md-table"><table>').replace(/<\/table>/g, "</table></div>");
+  return restoreMath(callouts(remoteImagesAsLinks(clean)).replace(/<table>/g, '<div class="md-table"><table>').replace(/<\/table>/g, "</table></div>"), math.items);
 }
 
 /**

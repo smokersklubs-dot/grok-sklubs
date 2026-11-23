@@ -50,7 +50,14 @@ Réglages du bot → Sécurité → « Accès à Internet » : **Partout** (par 
 
 ## « Montre-moi » (L40)
 - Les mots de passe, codes, numéros de carte et clés visibles sur une page sont **noircis** dans les captures ; les jetons
-  sont retirés des adresses gardées. Limite : les fenêtres d'applis (hors navigateur) ne peuvent pas être lues.
+  sont retirés des adresses gardées.
+- **Fenêtres d'applis** (terminal, éditeur…, sur l'ordinateur Linux du bot) : une fenêtre dont le titre annonce des
+  secrets (gestionnaire de mots de passe, trousseau, demande de phrase secrète ou de PIN) est noircie **entière** ; les
+  autres sont lues par OCR (Tesseract) et les mots qui ressemblent à une clé, un jeton ou un numéro de carte, ainsi que
+  ce qui suit « mot de passe : », « password: », « token = », « code »… sur la même ligne, sont noircis. Une fenêtre
+  qui ne peut pas être lue (pas d'OCR, trop lent) est noircie entière : dans le doute, on cache. Les cases sont
+  ramenées à la taille de l'image gardée (960 px) — avant, celles des pages étaient dessinées à la taille de l'écran
+  et pouvaient tomber à côté (corrigé). Code : `server/src/teachappmask.ts` ; test : `server/test/teach-app-mask.test.ts`.
 
 ## Coffre et e-mail du bot (L41, L42)
 - Chaque élément du coffre peut être **réservé à certains bots**, réglé sur **« demander à chaque fois »**, et montre

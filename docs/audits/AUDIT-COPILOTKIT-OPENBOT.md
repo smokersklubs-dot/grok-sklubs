@@ -429,20 +429,20 @@ Statuts : FAIT, PARTIEL, MANQUANT, DIFFÉRENT, NON REPRIS. Taille : S (moins d'u
 11. **2e échec identique → refus avec note au bot**, avant l'arrêt du tour (S).
 12. **Fuseau du navigateur envoyé à chaque message** quand le profil est vide (S).
 13. **Politique réseau sortante par bot** (tout / liste / rien, métadonnées cloud toujours refusées) (L).
-14. **File visible des messages en attente** avec « Envoyer maintenant » et « Retirer » (M).
+14. **File visible des messages en attente** avec « Envoyer maintenant » et « Retirer » (M). — **FAIT (2026-11-23)** : file visible + « Retirer » (`QueuedNotes.tsx`), « Envoyer maintenant » (`agent/sendnow.ts`, web ; pas encore sur mobile)
 15. **Bouton « Continuer »** sur l'avis de tour coupé ; avis « semble bloqué » plus tôt (S).
 16. **Assistants (helpers) en file** au-delà de 4 au lieu d'un refus (M).
 17. **Règles de provenance** (chiffres qui engagent, graphiques avec source) et **règles tableur** (formules vivantes) (S).
 18. **Règle « la conversation passe avant la mémoire »** (S).
 19. **Rappel par le sens** dans la mémoire (M).
 20. **Interdire Google dans le navigateur pour chercher** quand `web_search` existe (S).
-21. **Case masquée pour une seule valeur** (code SMS) qui va droit dans le champ de la page (M).
-22. **Carte « à faire par toi »** pour les changements de mot de passe sur un site (S).
+21. **Case masquée pour une seule valeur** (code SMS) qui va droit dans le champ de la page (M). — **FAIT (2026-11-23)** : `code_request` (L91, `agent/codebox.ts`)
+22. **Carte « à faire par toi »** pour les changements de mot de passe sur un site (S). — **FAIT (2026-11-23)** : `ask_takeover` raison `password`, « Je l'ai fait moi-même » (L91)
 23. **Test : fichier .html de la bibliothèque jamais rendu sur l'origine de l'app** (S).
 24. **Appel d'essai au modèle à la fin de l'accueil** (S).
 25. **Analyse de fond « compétences proposées »** à partir de plusieurs conversations, avec preuves et file d'approbation (M).
-26. **Masquage des secrets dans les captures de Teach** (M).
-27. **LaTeX** dans les messages (S).
+26. **Masquage des secrets dans les captures de Teach** (M). — **FAIT (2026-11-23)** : pages et fenêtres d'applis (OCR), cases à la taille de l'image (L40, `teachmask.ts`, `teachappmask.ts`)
+27. **LaTeX** dans les messages (S). — **FAIT (2026-11-23)** : KaTeX (MIT) en MathML, chargé seulement si besoin (`lib/mathtex.ts`, `mathrender.ts`)
 28. **Renommer une conversation / titre auto des fils** (S).
 29. **Sélecteur de modèle par conversation** et ligne « tu tournes sur X » (S).
 30. **Plancher 15 min et plafond 20 routines actives** (S).

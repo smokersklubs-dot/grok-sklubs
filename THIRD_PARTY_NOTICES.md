@@ -458,3 +458,52 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
+
+## KaTeX/KaTeX — MIT License (formulas in the chat, L147)
+
+- Source: https://github.com/KaTeX/KaTeX, npm package `katex@0.16.22`, file `dist/katex.mjs`, copied unmodified (except a
+  header comment) to `web/vendor/katex/katex.mjs`; its licence is `web/vendor/katex/LICENSE`.
+- Copyright (c) 2013-2020 Khan Academy and other contributors. MIT License.
+- Use: loaded only when a message holds a formula; MathML output only, no links (`web/src/lib/mathrender.ts`).
+
+## Anil-matcha/Open-Generative-AI — MIT License (Wan2GP client and catalogue, camera words, refund notice)
+
+- Source: https://github.com/Anil-matcha/Open-Generative-AI, commit `6f726e6539b06bb2f4288f20480c116e7173a06d` (cloned
+  23/11/2026, read only, never run, deleted after).
+- Adapted files (each starts with its own attribution header):
+  - `server/src/wan2gp.ts` ← `electron/lib/wan2gpMcp.js`, `electron/lib/wan2gpCatalog.js`,
+    `electron/lib/wan2gpModelAvailability.js`: TypeScript, injected transport (an address or the Sklubot Relais), polling
+    split from submission so a run resumes by its job id, same-origin check on transfer addresses, Sklubot client name.
+  - `server/src/camerawords.ts` ← `src/lib/promptUtils.js` and the camera-movement names of
+    `packages/studio/src/models.js` ("Motion Controls"): ids with French and English labels, gimmick entries and quality
+    tags dropped, words appended to the bot's own prompt only.
+  - `server/src/mediacost.ts` (`refundNotice`) ← `appendGenerationRefundNotice` of
+    `packages/studio/src/utils/generationLifecycle.js`: our own reservation release instead of MuAPI credits.
+- Not reused (excluded on purpose): watermark removers, "spicy" / reduced-filter models, body swap / recast / lip-sync
+  without consent, MuAPI-only or unofficial models, MuAPI itself, the demo thumbnails and videos of its CDNs, README texts,
+  the product's name and logo.
+- Upstream licence:
+
+```text
+MIT License
+
+Copyright (c) 2026 Open Generative AI Contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```

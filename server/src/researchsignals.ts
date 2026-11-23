@@ -8,8 +8,8 @@
  * and the « ce mois-ci » window words are Sklubot's. Nothing here reads cookies, sessions or browser data.
  */
 
-export type ResearchExtra = "hn" | "polymarket" | "reddit" | "youtube";
-export const RESEARCH_EXTRAS: ResearchExtra[] = ["hn", "polymarket", "reddit", "youtube"];
+export type ResearchExtra = "hn" | "polymarket" | "reddit" | "youtube" | "openalex" | "pubmed";
+export const RESEARCH_EXTRAS: ResearchExtra[] = ["hn", "polymarket", "reddit", "youtube", "openalex", "pubmed"];
 export type SourceName = "web" | "x" | ResearchExtra;
 /** What a source did for one question: never « nobody talks about it » when it is not "ok"/"empty". */
 export type SourceStateKind = "ok" | "empty" | "failed" | "rate_limited" | "timeout" | "login" | "unavailable";

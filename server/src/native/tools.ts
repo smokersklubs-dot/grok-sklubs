@@ -6,7 +6,7 @@ import { bots, clip, users } from "../store.js";
 import { maskIfAccess } from "./access.js";
 import { fetchProblem } from "../net.js";
 import { accounts, apiProblem, callApi, labelKey, type AccountRecord, type ApiAnswer } from "./accounts.js";
-import { vendorUrl } from "./vendors.js"; import { SEARCH_CONSOLE } from "./searchconsole.js"; import { mailFingerprint, proveGmailSent, proveOutlookSent, readRaw, reportProof } from "./mailproof.js";
+import { vendorUrl } from "./vendors.js"; import { SEARCH_CONSOLE } from "./searchconsole.js"; import { mailFingerprint, proveGmailSent, proveOutlookSent, readRaw, reportProof } from "./mailproof.js"; import { attachmentsOf, extrasLine, mimeMessage, outlookExtras, withSignature } from "./mailextras.js"; // L83 files, Bcc, signature
 
 /**
  * What bots can do with a built-in app account. Each account gets its own set of tools, named
@@ -79,19 +79,15 @@ export async function gmailList(acc: AccountRecord, query: string, max: number):
   const ids: { id: string }[] = r?.messages ?? [];
   return Promise.all(ids.slice(0, max).map((m) => gmailMeta(acc, m.id)));
 }
-const b64 = (s: string) => Buffer.from(s, "utf8").toString("base64");
-/** An RFC 5322 message, UTF-8, for users.drafts.create / users.messages.send (`raw`, base64url). */
-function rfc822(f: { to: string[]; cc: string[]; subject: string; body: string; inReplyTo?: string; references?: string }): string {
-  const lines = [
-    `To: ${f.to.join(", ")}`, ...(f.cc.length ? [`Cc: ${f.cc.join(", ")}`] : []),
-    `Subject: =?UTF-8?B?${b64(f.subject)}?=`, "MIME-Version: 1.0", "Content-Type: text/plain; charset=UTF-8", "Content-Transfer-Encoding: base64",
-    ...(f.inReplyTo ? [`In-Reply-To: ${f.inReplyTo}`, `References: ${[f.references, f.inReplyTo].filter(Boolean).join(" ")}`] : []),
-  ];
-  return Buffer.from(`${lines.join("\r\n")}\r\n\r\n${b64(f.body).replace(/.{76}/g, "$&\r\n")}`, "utf8").toString("base64url");
-}
-async function gmailCompose(acc: AccountRecord, a: Record<string, any>) {
+/** L83 (mailextras.ts): the body with the account's signature, the blind copies and the library files of a draft or send. */
+const extrasOf = (acc: AccountRecord, a: Record<string, any>, botId: string) => ({ body: withSignature(String(a.body ?? ""), acc.id, a.signature), bcc: addresses(a.bcc, "bcc", false), files: attachmentsOf(botId, a.attachments) });
+const extrasNote = (acc: AccountRecord, a: Record<string, any>, x: ReturnType<typeof extrasOf>) => { const l = extrasLine(x.files, x.bcc, x.body !== String(a.body ?? "")); return l ? ` (${l})` : ""; };
+/** Outlook answers a reply with the reply endpoints (comment only): files and blind copies go on a new email. */
+const plainReply = (x: ReturnType<typeof extrasOf>) => { if (x.files.length || x.bcc.length) throw new Error("on Outlook, attachments and Bcc work on a new email, not on a reply: write a new email (to, subject) instead of reply_to_id"); };
+async function gmailCompose(acc: AccountRecord, a: Record<string, any>, botId: string) {
   const to = addresses(a.to, "to", !a.reply_to_id);
   const cc = addresses(a.cc, "cc", false);
+  const x = extrasOf(acc, a, botId);
   let subject = noLines(a.subject, "subject");
   let threadId: string | undefined; let inReplyTo: string | undefined; let references: string | undefined;
   if (a.reply_to_id) {
@@ -100,7 +96,7 @@ async function gmailCompose(acc: AccountRecord, a: Record<string, any>) {
     if (!subject) subject = /^re:/i.test(header(m, "Subject")) ? header(m, "Subject") : `Re: ${header(m, "Subject")}`;
     if (!to.length) to.push(...addresses(header(m, "From").match(/<([^>]+)>/)?.[1] ?? header(m, "From"), "to", true));
   }
-  return { raw: rfc822({ to, cc, subject, body: String(a.body ?? ""), inReplyTo, references }), threadId, to, subject };
+  return { raw: mimeMessage({ to, cc, bcc: x.bcc, subject, body: x.body, inReplyTo, references, attachments: x.files }), threadId, to, subject, body: x.body, note: extrasNote(acc, a, x) };
 }
 
 // ── Microsoft Graph (https://learn.microsoft.com/en-us/graph/api/overview) ─────────────────────────────────────
@@ -243,70 +239,78 @@ const MAIL: NativeToolDef[] = [
   {
     action: "mail_draft", risk: "safe", label: "Writing a draft",
     description: "Save a draft in this mailbox (nothing is sent). To reply, give reply_to_id: the draft joins that conversation and goes to its sender unless you set to.",
-    schema: obj({ to: str("Recipients, comma-separated"), cc: str("Cc, comma-separated"), subject: str("Subject"), body: str("Plain-text body"), reply_to_id: str("Message id this replies to") }, ["body"]),
-    async run(acc, a) {
+    schema: obj({ to: str("Recipients, comma-separated"), cc: str("Cc, comma-separated"), bcc: str("Blind copies (Bcc), comma-separated"), attachments: strs("Files of your library to attach (e.g. reports/june.pdf), 10 at most, 3 MB in all"), signature: { type: "boolean", description: "Add the signature the user saved for this mailbox at the end (default true)" }, subject: str("Subject"), body: str("Plain-text body"), reply_to_id: str("Message id this replies to") }, ["body"]),
+    async run(acc, a, ctx) {
       if (isGoogle(acc)) {
-        const m = await gmailCompose(acc, a);
+        const m = await gmailCompose(acc, a, ctx.botId);
         // users.drafts.create
         const d = check(await callApi(acc, "POST", gmail("/drafts"), { json: { message: { raw: m.raw, ...(m.threadId ? { threadId: m.threadId } : {}) } } })).json;
-        return out(`Draft saved (id ${d.id}) to ${m.to.join(", ")}: ${m.subject}`, "draft saved");
+        return out(`Draft saved (id ${d.id}) to ${m.to.join(", ")}: ${m.subject}${m.note}`, "draft saved");
       }
+      const x = extrasOf(acc, a, ctx.botId);
       if (a.reply_to_id) {
+        plainReply(x);
         // createReply makes a reply draft in the conversation (https://learn.microsoft.com/en-us/graph/api/message-createreply).
-        const d = check(await callApi(acc, "POST", graph(`/messages/${encodeURIComponent(String(a.reply_to_id))}/createReply`), { json: { comment: String(a.body ?? "") } })).json;
-        return out(`Reply draft saved (id ${d.id}).`, "draft saved");
+        const d = check(await callApi(acc, "POST", graph(`/messages/${encodeURIComponent(String(a.reply_to_id))}/createReply`), { json: { comment: x.body } })).json;
+        return out(`Reply draft saved (id ${d.id}).${extrasNote(acc, a, x)}`, "draft saved");
       }
       const to = addresses(a.to, "to", true); const cc = addresses(a.cc, "cc", false);
       // POST /me/messages creates a draft (https://learn.microsoft.com/en-us/graph/api/user-post-messages).
-      const d = check(await callApi(acc, "POST", graph("/messages"), { json: { subject: noLines(a.subject, "subject"), body: { contentType: "Text", content: String(a.body ?? "") }, toRecipients: recipients(to), ccRecipients: recipients(cc) } })).json;
-      return out(`Draft saved (id ${d.id}) to ${to.join(", ")}.`, "draft saved");
+      const d = check(await callApi(acc, "POST", graph("/messages"), { json: { subject: noLines(a.subject, "subject"), body: { contentType: "Text", content: x.body }, toRecipients: recipients(to), ccRecipients: recipients(cc), ...outlookExtras(x.files, x.bcc) } })).json;
+      return out(`Draft saved (id ${d.id}) to ${to.join(", ")}.${extrasNote(acc, a, x)}`, "draft saved");
     },
   },
   {
     // L83: the brouillon-email skill asks to revise an existing draft instead of making another copy; this is that tool.
     action: "mail_draft_update", risk: "safe", label: "Updating a draft",
     description: "Replace the content of a draft you saved earlier in this mailbox (nothing is sent): give its draft id (the id mail_draft returned) and the full new recipients, subject and body. Use it for revisions instead of saving another draft.",
-    schema: obj({ id: str("Draft id (as returned by mail_draft)"), to: str("Recipients, comma-separated"), cc: str("Cc, comma-separated"), subject: str("Subject"), body: str("Plain-text body"), reply_to_id: str("Message id this replies to, if the draft is a reply") }, ["id", "body"]),
-    async run(acc, a) {
+    schema: obj({ id: str("Draft id (as returned by mail_draft)"), to: str("Recipients, comma-separated"), cc: str("Cc, comma-separated"), bcc: str("Blind copies (Bcc), comma-separated"), attachments: strs("Files of your library to attach (e.g. reports/june.pdf), 10 at most, 3 MB in all"), signature: { type: "boolean", description: "Add the signature the user saved for this mailbox at the end (default true)" }, subject: str("Subject"), body: str("Plain-text body"), reply_to_id: str("Message id this replies to, if the draft is a reply") }, ["id", "body"]),
+    async run(acc, a, ctx) {
       const id = encodeURIComponent(String(a.id ?? "").trim());
       if (!id) throw new Error("give the draft id");
       if (isGoogle(acc)) {
-        const m = await gmailCompose(acc, a);
+        const m = await gmailCompose(acc, a, ctx.botId);
         // users.drafts.update replaces the draft's message (https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.drafts/update).
         const d = check(await callApi(acc, "PUT", gmail(`/drafts/${id}`), { json: { id: String(a.id), message: { raw: m.raw, ...(m.threadId ? { threadId: m.threadId } : {}) } } })).json;
-        return out(`Draft updated (id ${d.id ?? a.id}) to ${m.to.join(", ")}: ${m.subject}`, "draft updated");
+        return out(`Draft updated (id ${d.id ?? a.id}) to ${m.to.join(", ")}: ${m.subject}${m.note}`, "draft updated");
       }
-      // A draft is a message in Outlook: PATCH changes its fields (https://learn.microsoft.com/en-us/graph/api/message-update).
+      // A draft is a message in Outlook: PATCH changes its fields (https://learn.microsoft.com/en-us/graph/api/message-update);
+      // new files are added to it (POST /messages/{id}/attachments: https://learn.microsoft.com/en-us/graph/api/message-post-attachments).
+      const x = extrasOf(acc, a, ctx.botId);
       const to = addresses(a.to, "to", !a.reply_to_id); const cc = addresses(a.cc, "cc", false);
-      check(await callApi(acc, "PATCH", graph(`/messages/${id}`), { json: { ...(a.subject !== undefined ? { subject: noLines(a.subject, "subject") } : {}), body: { contentType: "Text", content: String(a.body ?? "") }, ...(to.length ? { toRecipients: recipients(to) } : {}), ...(a.cc !== undefined ? { ccRecipients: recipients(cc) } : {}) } }));
-      return out(`Draft updated (id ${a.id}).`, "draft updated");
+      check(await callApi(acc, "PATCH", graph(`/messages/${id}`), { json: { ...(a.subject !== undefined ? { subject: noLines(a.subject, "subject") } : {}), body: { contentType: "Text", content: x.body }, ...(to.length ? { toRecipients: recipients(to) } : {}), ...(a.cc !== undefined ? { ccRecipients: recipients(cc) } : {}), ...(x.bcc.length ? outlookExtras([], x.bcc) : {}) } }));
+      for (const f of (outlookExtras(x.files, []).attachments ?? [])) check(await callApi(acc, "POST", graph(`/messages/${id}/attachments`), { json: f }));
+      return out(`Draft updated (id ${a.id}).${extrasNote(acc, a, x)}`, "draft updated");
     },
   },
   {
     action: "mail_send", risk: "write", label: "Sending an email",
     description: "Send an email from this mailbox. To reply, give reply_to_id (the reply stays in that conversation). Needs the user's approval.",
-    schema: obj({ to: str("Recipients, comma-separated"), cc: str("Cc, comma-separated"), subject: str("Subject"), body: str("Plain-text body"), reply_to_id: str("Message id this replies to") }, ["body"]),
+    schema: obj({ to: str("Recipients, comma-separated"), cc: str("Cc, comma-separated"), bcc: str("Blind copies (Bcc), comma-separated"), attachments: strs("Files of your library to attach (e.g. reports/june.pdf), 10 at most, 3 MB in all"), signature: { type: "boolean", description: "Add the signature the user saved for this mailbox at the end (default true)" }, subject: str("Subject"), body: str("Plain-text body"), reply_to_id: str("Message id this replies to") }, ["body"]),
     async run(acc, a, ctx) {
       if (isGoogle(acc)) {
-        const m = await gmailCompose(acc, a);
-        // L29 (mailproof.ts): the message as built for the wire is read back and must be the approved text, else nothing is sent.
-        const approved = { to: m.to, subject: m.subject, body: String(a.body ?? "") }, wire = readRaw(m.raw);
+        const m = await gmailCompose(acc, a, ctx.botId);
+        // L29 (mailproof.ts): the message as built for the wire is read back and must be the approved text, else nothing is
+        // sent. L83: the approved text is the body with the owner's own saved signature.
+        const approved = { to: m.to, subject: m.subject, body: m.body }, wire = readRaw(m.raw);
         if (!wire || mailFingerprint({ ...approved, body: wire.body }) !== mailFingerprint(approved) || wire.subject !== m.subject) throw new Error("the message built for sending differs from the approved text: nothing was sent");
         // users.messages.send
         const s = check(await callApi(acc, "POST", gmail("/messages/send"), { json: { raw: m.raw, ...(m.threadId ? { threadId: m.threadId } : {}) } })).json;
         const proof = await proveGmailSent((u, h) => callApi(acc, "GET", u, { headers: h }), gmail, String(s.id ?? ""), approved);
-        return out(`Sent (id ${s.id}) to ${m.to.join(", ")}: ${m.subject}.${reportProof(ctx.botId, acc.name, proof)}`, proof.state === "verified" ? "sent · checked" : "sent");
+        return out(`Sent (id ${s.id}) to ${m.to.join(", ")}: ${m.subject}${m.note}.${reportProof(ctx.botId, acc.name, proof)}`, proof.state === "verified" ? "sent · checked" : "sent");
       }
+      const x = extrasOf(acc, a, ctx.botId);
       if (a.reply_to_id) {
+        plainReply(x);
         // https://learn.microsoft.com/en-us/graph/api/message-reply
-        check(await callApi(acc, "POST", graph(`/messages/${encodeURIComponent(String(a.reply_to_id))}/reply`), { json: { comment: String(a.body ?? "") } }));
-        return out("Reply sent.", "sent");
+        check(await callApi(acc, "POST", graph(`/messages/${encodeURIComponent(String(a.reply_to_id))}/reply`), { json: { comment: x.body } }));
+        return out(`Reply sent.${extrasNote(acc, a, x)}`, "sent");
       }
       const to = addresses(a.to, "to", true); const cc = addresses(a.cc, "cc", false);
       // https://learn.microsoft.com/en-us/graph/api/user-sendmail
-      check(await callApi(acc, "POST", graph("/sendMail"), { json: { message: { subject: noLines(a.subject, "subject"), body: { contentType: "Text", content: String(a.body ?? "") }, toRecipients: recipients(to), ccRecipients: recipients(cc) }, saveToSentItems: true } }));
-      const proof = await proveOutlookSent((u, h) => callApi(acc, "GET", u, { headers: h }), graph, { to, subject: noLines(a.subject, "subject"), body: String(a.body ?? "") }); // L29
-      return out(`Sent to ${to.join(", ")}.${reportProof(ctx.botId, acc.name, proof)}`, proof.state === "verified" ? "sent · checked" : "sent");
+      check(await callApi(acc, "POST", graph("/sendMail"), { json: { message: { subject: noLines(a.subject, "subject"), body: { contentType: "Text", content: x.body }, toRecipients: recipients(to), ccRecipients: recipients(cc), ...outlookExtras(x.files, x.bcc) }, saveToSentItems: true } }));
+      const proof = await proveOutlookSent((u, h) => callApi(acc, "GET", u, { headers: h }), graph, { to, subject: noLines(a.subject, "subject"), body: x.body }); // L29
+      return out(`Sent to ${to.join(", ")}${extrasNote(acc, a, x)}.${reportProof(ctx.botId, acc.name, proof)}`, proof.state === "verified" ? "sent · checked" : "sent");
     },
   },
   {

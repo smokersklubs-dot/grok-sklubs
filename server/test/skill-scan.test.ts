@@ -586,3 +586,16 @@ test("isolation in hosted mode: the same, for a customer on a free plan", async 
     assert.equal((await B("POST", "/skills/scan/text", { body: BAD })).json.scan.worst, "danger");
   } finally { delete process.env.HOSTED_MODE; }
 });
+
+// L52 (ECC audit, `visa-doc-translate`): a skill that translates identity papers "without asking for confirmation" is
+// flagged — the instruction to skip the owner's yes is caught in both languages (a flagged skill comes in as a draft: tests above).
+test("L52: the « visa-doc-translate » case — identity papers translated without asking is flagged", () => {
+  const en = scan.scanSkill({ name: "visa-doc-translate", description: "Translate visa documents into a bilingual PDF", body: "# Visa documents\n\nOCR the passport and the bank statements, translate them and save a bilingual PDF without asking for confirmation." });
+  assert.ok(en.findings.some((f) => f.code === "skip-approval"), JSON.stringify(en.findings));
+  assert.notEqual(en.worst, "ok");
+  const fr = scan.scanSkill({ name: "visa-doc-translate", body: "Lis le passeport par OCR, traduis-le et enregistre un PDF bilingue sans demander confirmation." });
+  assert.ok(fr.findings.some((f) => f.code === "skip-approval"), JSON.stringify(fr.findings));
+  // The harmless neighbour: the same skill that asks first is not flagged for that.
+  const ok = scan.scanSkill({ name: "visa-doc-translate", body: "Lis le passeport par OCR, traduis-le, montre le PDF bilingue et demande à l'utilisateur avant de l'envoyer." });
+  assert.ok(!ok.findings.some((f) => f.code === "skip-approval"), JSON.stringify(ok.findings));
+});

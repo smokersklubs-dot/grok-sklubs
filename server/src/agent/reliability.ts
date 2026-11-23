@@ -46,6 +46,27 @@ export function backoffDelay(attempt: number, retryAfterMs: number | null, rand 
   return Math.round(exp / 2 + (rand * exp) / 2);
 }
 
+/**
+ * L60 — a longer budget for rate limits (backlog A-FAIRE L60; nod / OpenClaw audits, our own code). A rate limit (HTTP 429,
+ * "rate limit") says "come back a little later", unlike a broken server: it gets twice the account's new tries (at least
+ * RATE_LIMIT_MIN_TRIES) and waits of up to RATE_LIMIT_MAX_WAIT_MS each (a Retry-After up to that long is honoured instead
+ * of moving straight to the backup model). Other passing errors keep the account's budget.
+ */
+export const RATE_LIMIT_MIN_TRIES = 6;
+export const RATE_LIMIT_MAX_WAIT_MS = 180_000;
+export function isRateLimit(err: unknown): boolean {
+  const status = err instanceof ProviderError ? err.status : undefined;
+  return status === 429 || /rate.?limit|too many requests/i.test(String((err as Error)?.message ?? err));
+}
+/** How many new tries a failed call gets. */
+export const retryBudget = (err: unknown, maxRetries: number) => (isRateLimit(err) && maxRetries > 0 ? Math.max(RATE_LIMIT_MIN_TRIES, maxRetries * 2) : maxRetries);
+/** The wait before new try number `attempt` (0 = the first), or null: no new try (out of tries, or not worth one). */
+export function retryWait(err: unknown, attempt: number, maxRetries: number, rand = Math.random()): number | null {
+  if (!isTransient(err) || attempt >= retryBudget(err, maxRetries)) return null;
+  const retryAfter = err instanceof ProviderError ? err.retryAfterMs : null;
+  return isRateLimit(err) ? backoffDelay(attempt, retryAfter, rand, config.retryBaseMs * 2, Math.max(config.retryMaxWaitMs, RATE_LIMIT_MAX_WAIT_MS)) : backoffDelay(attempt, retryAfter, rand);
+}
+
 /** Waits, unless the turn is stopped first. */
 export function sleep(ms: number, signal: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {

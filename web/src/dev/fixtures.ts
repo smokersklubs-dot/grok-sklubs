@@ -2,7 +2,7 @@
  * Fake data for the dev gallery (web/src/dev/Gallery.tsx). Never shipped: the gallery is only loaded in development.
  * Every text comes in French and English (`L`), and `long` swaps in very long texts to check wrapping on a phone.
  */
-import { viewCardFixtures } from "./viewFixtures";
+import { viewCardFixtures } from "./viewFixtures"; import { trajectoryCardFixtures } from "./trajectoryFixtures"; // L158
 import type { AnnouncementAdminItem, AnnouncementsAdmin, AnnouncementsState, AnnouncementView, Bot, Card, ConversationGrantInfo, Row, SentinelIncidentView, SentinelOverview, TodayReport } from "../types";
 import { DEFAULT_MINUTES } from "../types";
 import { failureCardFixtures, failureSummaryFixture } from "./incidentsFixtures"; import { turnCardFixtures, turnNoticeRows } from "./turnFixtures";
@@ -102,6 +102,15 @@ export function cardFixtures(o: FixtureOptions): CardFixture[] {
     type: "takeover", takeoverId: `to_${status}`, status, reason: "captcha",
     detail: L("Le site demande de cocher « Je ne suis pas un robot ».", "The site asks to tick “I'm not a robot”."), expiresAt: NOW + 9 * MIN,
   }));
+  // L91: « fais-le toi-même » (a password change) and the hidden code box.
+  add("takeover", ["pending", "done"], (status) => ({
+    type: "takeover", takeoverId: `to_pw_${status}`, status, reason: "password",
+    detail: LONG(L("Change le mot de passe de ton compte Free Mobile : le site l'exige avant de continuer.", "Change your Free Mobile password: the site requires it before going on.")), expiresAt: NOW + 25 * MIN,
+  }));
+  add("code", ["pending", "typed", "failed", "dismissed", "timeout"], (status) => ({
+    type: "code", codeId: `code_${status}`, status, label: L("Code reçu par SMS", "Code received by text"), host: o.long ? "espace-client.banque-exemple-tres-longue.fr" : "banque.example",
+    detail: LONG(L("La banque t'a envoyé un code par SMS pour confirmer la connexion.", "The bank texted you a code to confirm the sign-in.")), expiresAt: NOW + 8 * MIN,
+  }));
   add("secret", ["pending", "saved", "dismissed"], (status) => ({
     type: "secret", status, name: "OPENWEATHER_KEY", host: "api.openweathermap.org", header: "Authorization", prefix: "Bearer",
     reason: L("Pour lire la météo de demain.", "To read tomorrow's weather."),
@@ -195,7 +204,7 @@ export function cardFixtures(o: FixtureOptions): CardFixture[] {
       { text: L("Les tests passent", "The tests pass"), evidence: "12/12" },
     ],
   } });
-  list.push(...turnCardFixtures(o)); list.push(...viewCardFixtures(o)); // L79, L83, L139 (turnFixtures.ts); DS-Bot item 8 (viewFixtures.ts)
+  list.push(...turnCardFixtures(o)); list.push(...viewCardFixtures(o)); list.push(...trajectoryCardFixtures(o)); // L79, L83, L139 (turnFixtures.ts); DS-Bot item 8 (viewFixtures.ts)
   return list;
 }
 

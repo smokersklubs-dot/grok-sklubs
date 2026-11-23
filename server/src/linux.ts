@@ -328,6 +328,9 @@ async function sleepMachine(key: string) {
 /** Hosted mode (hosted.ts): how many computers an account may keep awake, and the error when they are all busy. */
 let awakeLimitOf: (userId: string) => { max: number; error: () => Error } | null = () => null;
 export const setAwakeLimit = (fn: typeof awakeLimitOf) => { awakeLimitOf = fn; };
+/** L95 (computerhours.ts): an account past its computer hours gets this error instead of a computer that is asleep. */
+let wakeGate: (userId: string) => Error | null = () => null;
+export const setWakeGate = (fn: typeof wakeGate) => { wakeGate = fn; };
 /** Computers allowed to start under an account's own limit, not running yet (key → account). */
 const accountReserved = new Map<string, string>();
 
@@ -463,6 +466,8 @@ async function wake(key: string, userId: string, workspace?: string): Promise<Ma
         if (power !== "absent") madeWith.set(key, labels[SPEC_LABEL] ?? "");
       }
       if (power !== "running") {
+        const refused = wakeGate(userId);
+        if (refused) throw refused;
         // Hosted mode: the account's plan may allow fewer computers awake at once than the server (its own idle one goes
         // to sleep first, like below; all of them busy → a plan-limit error with the way forward).
         const account = awakeLimitOf(userId);

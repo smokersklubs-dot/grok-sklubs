@@ -61,9 +61,14 @@ export function checkModel(user: UserRecord, ref: string): Promise<ModelHealth> 
     } catch (err) {
       return { ...base, ...classify(err, user.locale), ms: null };
     }
-  })().then((h) => { cache.set(key, h); return h; }).finally(() => flying.delete(key));
+  })().then((h) => { cache.set(key, h); if (h.status === "ok") replayKept(user.id); return h; }).finally(() => flying.delete(key));
   flying.set(key, job);
   return job;
+}
+
+/** L59 (agent/heldfirst.ts): a model answers for this account — messages kept while no model could be reached go out. */
+function replayKept(userId: string) {
+  void Promise.all([import("./agent/heldfirst.js"), import("./agent/loop.js")]).then(([h, l]) => { if (h.heldCount(userId)) h.replayHeld(userId, l.enqueue); }).catch((err) => console.error("[held messages]", err));
 }
 
 /** The last result, if still fresh. */

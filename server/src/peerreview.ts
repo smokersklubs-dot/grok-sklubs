@@ -9,6 +9,7 @@ import { whyExcluded, packBatches, isSecretPath, isGeneratedPath, FILE_CHARS, ty
 import { anchorFindings, type Located } from "./reviewanchor.js";
 import { reviewerSystem, FILTER_SYSTEM, lenientJson, REVIEW_TOOL_ROUNDS, REVIEW_TOOLS_PER_ROUND } from "./reviewprompt.js";
 import type { PeerReviewResult, ReviewCategory, ReviewCoverage, ReviewSeverity } from "./peerreviewtypes.js";
+import { projectRulesBlock } from "./reviewplus.js";
 
 /**
  * L77 « Relecture entre bots ». The change is split into lots (no more « 12 files then stop »), every file ends
@@ -77,7 +78,7 @@ export async function reviewChanges(source: BotRecord, reviewer: BotRecord, row:
         evidence.push({ tool: b.tool, status: b.status, summary: mask(b.summary ?? "").slice(0, 1000) });
     }
 
-    const system = reviewerSystem(locale);
+    const system = reviewerSystem(locale) + projectRulesBlock(source); // L77 « règles par projet » (reviewplus.ts)
     const allPaths = card.files.map((f) => mask(f.path));
     let lookups = 0, dropped = 0, answered = 0;
     const summaries: string[] = [];

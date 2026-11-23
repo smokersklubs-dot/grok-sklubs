@@ -170,20 +170,20 @@ Ajouter dans `THIRD_PARTY_NOTICES` (ou équivalent) : « Portions adapted from O
 
 ## 5. À faire, par ordre de valeur
 
-1. Réserver au moins `DEFAULT_MAX_COST_USD` quand le prix vidéo est inconnu, au lieu de `0` (`tools.ts:395`). **S**
-2. Mettre l'étiquette IA sur les vidéos et images de `media_save` (Higgsfield et autres apps). **S**
-3. Ajouter une approbation et une réservation à `image_generate` (aujourd'hui aucune). **S**
-4. Élargir `CLONE_ACTION` (`recast`, `body_swap`, `motion_control`, `objects_swap`, `replace_character`) et tester les endpoints `api_send`. **S**
+1. ~~Réserver au moins `DEFAULT_MAX_COST_USD` quand le prix vidéo est inconnu, au lieu de `0` (`tools.ts:395`). **S**~~ — **Fait 23/11** : plafond par fournisseur et par durée (`mediacost.ts`).
+2. ~~Mettre l'étiquette IA sur les vidéos et images de `media_save` (Higgsfield et autres apps). **S**~~ — **Fait 23/11** (`aiprovenance.ts`, provenance existante gardée).
+3. ~~Ajouter une approbation et une réservation à `image_generate` (aujourd'hui aucune). **S**~~ — **Fait 23/11** (`agent/tools-media.ts`).
+4. ~~Élargir `CLONE_ACTION` (`recast`, `body_swap`, `motion_control`, `objects_swap`, `replace_character`) et tester les endpoints `api_send`. **S**~~ — **Fait 23/11** (`agent/consent.ts`, + `real_person`).
 5. Forcer `aiLabel` quand un montage contient un clip généré. **S**
-6. Clé vidéo et image du propriétaire par compte (formulaire et coffre), prioritaire, obligatoire en hébergé byok. **M**
-7. Fournisseur gratuit Wan2GP par MCP (reprise MIT de `wan2gpMcp.js` + catalogue). **M**
-8. Prix estimé affiché avant **chaque** génération au-delà d'un seuil, table de prix par modèle. **M**
-9. Garder le `request_id` et reprendre le suivi après un redémarrage ou un délai dépassé (pas de vidéo payée perdue). **M**
+6. ~~Clé vidéo et image du propriétaire par compte (formulaire et coffre), prioritaire, obligatoire en hébergé byok. **M**~~ — **Fait 23/11** (`mediakeys.ts`, Réglages → Clés → Création ; compte réel à essayer).
+7. ~~Fournisseur gratuit Wan2GP par MCP (reprise MIT de `wan2gpMcp.js` + catalogue). **M**~~ — **Fait 23/11** (`wan2gp.ts`, Relais `gpu.http` ou adresse ; vrai Wan2GP à essayer).
+8. ~~Prix estimé affiché avant **chaque** génération au-delà d'un seuil, table de prix par modèle. **M**~~ — **Fait 23/11** (plafonds par fournisseur, « Toujours » seulement ≤ 0,10 $ connu ; pas de table de prix par modèle copiée).
+9. Garder le `request_id` et reprendre le suivi après un redémarrage ou un délai dépassé (pas de vidéo payée perdue). **M** — **Fait pour Wan2GP 23/11** (`mediajobs.ts`) ; reste : xAI.
 10. Retouche d'image avec image(s) d'entrée (`images/edits` officiel). **M**
 11. Plusieurs références, image de fin et prolongation pour les fournisseurs officiels qui les documentent. **M**
 12. Panneau « Générer un clip » dans le Studio (prompt, réglages, prix, résultat dans les médias du montage). **M**
 13. AI Clipping local (transcription, choix de passages, découpe ffmpeg). **M**
-14. Aide « mots caméra » pour les prompts vidéo. **S**
+14. ~~Aide « mots caméra » pour les prompts vidéo. **S**~~ — **Fait 23/11** (`camerawords.ts`).
 15. Option moteur image local sd.cpp avec vérification sha256. **L**
 16. Agrandissement d'image ou de vidéo par API officielle. **M**
 

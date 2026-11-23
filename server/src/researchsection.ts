@@ -14,7 +14,7 @@ import { searchExtra } from "./researchsources.js";
  * researchsignals.ts.
  */
 const SOURCE_LABEL: Record<SourceState["source"], [string, string]> = {
-  web: ["Web", "Web"], x: ["X", "X"], hn: ["Hacker News", "Hacker News"], polymarket: ["Polymarket", "Polymarket"], reddit: ["Reddit", "Reddit"], youtube: ["YouTube", "YouTube"],
+  web: ["Web", "Web"], x: ["X", "X"], hn: ["Hacker News", "Hacker News"], polymarket: ["Polymarket", "Polymarket"], reddit: ["Reddit", "Reddit"], youtube: ["YouTube", "YouTube"], openalex: ["OpenAlex", "OpenAlex"], pubmed: ["PubMed", "PubMed"],
 };
 const STATE_LABEL: Record<SourceState["state"], [string, string]> = {
   ok: ["a répondu", "answered"], empty: ["rien trouvé", "nothing found"], failed: ["en panne", "failed"], rate_limited: ["limite de débit", "rate limited"],

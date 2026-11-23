@@ -1,5 +1,7 @@
 import { clip } from "./store.js";
 import { ELEMENT_OPS_PY, type PageDialog, type TabContext } from "./screen-elements.js";
+import { FRAME_OPS_PY } from "./screen-frames.js";
+import { HISTORY_OPS_PY } from "./browser-history.js";
 import { DEVTOOLS_PY } from "./browser-devtools.js";
 import { DOWNLOADS_OPS_PY, DOWNLOADS_WATCH_PY } from "./browser-downloads.js";
 
@@ -839,7 +841,7 @@ OPS = {"read": op_read, "where": op_read, "target": op_target, "open": op_open, 
        "tab_close": op_tab_close, "dialog_info": op_dialog_info, "dialog_answer": op_dialog_answer, "secret_type": op_secret_type,
        "click": op_click, "keys": op_keys, "snapshot": op_snapshot, "layout": op_layout, "sheet": op_sheet,
        "fill": op_fill, "wait": op_wait, "console": op_console, "network": op_network, "body": op_body, "pagecheck": op_pagecheck,
-       "downloads": op_downloads, "download": op_download}
+       "downloads": op_downloads, "download": op_download, "history": op_history, "annotate": op_annotate}
 req = json.loads(sys.stdin.read() or "{}")
 try:
     OPS.get(req.get("op"), act)(req)
@@ -853,7 +855,7 @@ except Exception as e:
     out({"error": "the browser could not be reached: %s" % (str(e)[:200] or type(e).__name__)})
 `;
 
-export const BROWSER_PY = `${CORE_PY}\nWATCH = r"""${WATCH_PY}"""\n${ELEMENT_OPS_PY}${OPS_PY}${SHEET_PY}${DEVTOOLS_PY}${DOWNLOADS_OPS_PY}${DISPATCH_PY}`;
+export const BROWSER_PY = `${CORE_PY}\nWATCH = r"""${WATCH_PY}"""\n${ELEMENT_OPS_PY}${FRAME_OPS_PY}${HISTORY_OPS_PY}${OPS_PY}${SHEET_PY}${DEVTOOLS_PY}${DOWNLOADS_OPS_PY}${DISPATCH_PY}`;
 
 /** One line of browser_tabs: a short stable id (the start of Chrome's target id), what it shows, and its state. */
 export interface TabLine { tab: string; title: string; url: string; active: boolean; dialog: string | null }

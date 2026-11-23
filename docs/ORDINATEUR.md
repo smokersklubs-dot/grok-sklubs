@@ -22,7 +22,10 @@ protégé.
 | **Plusieurs onglets** | Le bot lit et agit toujours sur **l'onglet affiché devant**. Un lien qui ouvre un nouvel onglet : le bot le suit tout seul. `browser_tabs` liste ses onglets, `browser_tab` en met un devant ou le ferme, `browser_open` avec `new_tab` en ouvre un nouveau. Un deuxième `browser_open` réutilise le navigateur ouvert (plus jamais deux navigateurs à la fois). |
 | **Fenêtre de la page** (« alerte », « Êtes-vous sûr ? », « Quitter la page ? ») | Le bot la voit tout de suite, avec son texte. `browser_dialog` : **« dismiss »** (Annuler / fermer) est toujours libre ; **« accept »** (OK) sur une question te demande d'abord ton accord, à chaque fois. |
 | Bouton caché par un bandeau | Avant de cliquer, le bot vérifie ce qui est vraiment sous le clic. Si un bandeau cookies ou une fenêtre couvre le bouton, **rien n'est cliqué** et il sait ce qui gêne. |
-| Cadres dans la page (iframes) | Les boutons d'un cadre du même site sont listés comme les autres (« in frame »). Un cadre d'un **autre site** (paiement, captcha) est signalé, mais ses boutons ne sont pas listés : le bot passe alors par l'image et les clics à l'écran. |
+| Cadres dans la page (iframes) | Les boutons d'un cadre du même site sont listés comme les autres (« in frame »). Ceux d'un cadre d'un **autre site** (boîte de paiement, bandeau cookies d'une autre société) sont **lus aussi** (« another site: click or hover only ») : le bot peut **cliquer ou survoler** ; un clic qui engage (payer…) te demande comme partout, et ce qui est sous le clic est vérifié dans la page puis dans le cadre. Taper dedans est refusé (carte : `card_fill` ; sinon clic puis `screen_type`). Un **CAPTCHA** n'est jamais lu ni touché : le bot te demande la main (L14). |
+| **Revenir en arrière** | `browser_back` revient à la page d'avant dans l'onglet (`forward` : celle d'après), puis la relit en mots (L75). |
+| **Capture avec numéros** | `element_snapshot` avec `picture` : une capture de la page où chaque bouton ou champ visible porte en rose le numéro de sa référence (utile pour une icône sans nom ou une page chargée). Les numéros sont posés par-dessus la page le temps de la capture, puis retirés (L75). |
+| **Lire une page sans navigateur** | `web_fetch` demande la page **en Markdown** (un site qui en sert le renvoie tel quel), sinon transforme le HTML en Markdown léger (titres, liens avec leur adresse, listes, code). `llms: true` lit d'abord le `llms.txt` du site (son sommaire pour les IA) ; `markdown_copy: true` essaie la copie `.md` de la page (sites de documentation) (L75). |
 | **Regarder une vidéo** | Il la lance dans son navigateur, puis `video_frames` lui montre jusqu'à 12 images de l'écran pendant qu'elle passe (ou d'un fichier vidéo). Il décrit ce qu'il voit. |
 | **Écouter une vidéo** (ou un appel) | `listen_screen` enregistre jusqu'à **10 minutes** de ce que joue l'ordinateur et le transforme en texte. Le son ne sort pas de l'ordinateur : personne ne l'entend. |
 | Transcrire une vidéo par son adresse | `transcribe` : les sous-titres d'abord (gratuit), sinon le son. |
@@ -57,6 +60,10 @@ protégé.
 - **Bail numéroté** : quand tu prends la main, le serveur te donne un numéro ; chaque rappel (toutes les 30 s) le cite,
   et « Rendre la main » libère ce numéro. Un rappel en retard sur le réseau ne reprend jamais la main après que tu l'as
   rendue ; un « Rendre la main » perdu est renvoyé (3 essais) et le bail expire de toute façon après 75 s.
+
+- **« Où le bot a cliqué »** (L149) : chaque clic du bot sur son écran (clic à l'écran, glisser, clic par référence, y
+  compris dans le cadre d'un autre site) laisse un petit cercle qui s'efface en 2,4 s sur l'image en direct. Rien n'est
+  gardé.
 
 Code : `web/src/lib/reconnect.ts` (délais, coller, capture — repris de hermes-bot-kit, MIT), `web/src/lib/liveReconnect.ts`,
 `web/src/lib/controlLease.ts`, `server/src/takeover.ts` (`controlRequest`). Tests : `web/scripts/screen-viewer.test.mjs`,
@@ -98,6 +105,15 @@ Le bot ne voit **jamais** un mot de passe, et ne doit jamais t'en demander un da
    code à 6 chiffres (2FA), tu peux y enregistrer la clé du code : le bot ne l'utilise que sur son site.
 3. **Quand seul un humain peut passer** (CAPTCHA, code reçu sur ton téléphone, confirmation de paiement) : le bot te
    demande la main (`ask_takeover`), attend, puis reprend quand tu as fini.
+4. **Un code reçu par SMS (case masquée, L91)** : le bot nomme le champ du code (`code_request`) ; tu reçois une carte
+   avec une **case masquée**. Ce que tu y tapes va **tout droit dans ce champ** de la page (même onglet, même site) :
+   le bot ne le voit jamais (ni dans sa réponse, ni dans les relectures de la page : « code caché »), et il n'est gardé
+   nulle part. « Je ne l'ai pas » le prévient. Il attend 10 minutes au plus. Limite : une capture d'écran prise ensuite
+   peut montrer les chiffres si la page les affiche (un code à usage unique expire vite). Un champ dans le cadre d'un
+   autre site : le bot te demande la main à la place.
+5. **Changer un mot de passe : « à faire par toi » (L91)** : le bot ne change jamais un mot de passe lui-même. Il te
+   passe l'étape (carte « À faire par toi », bouton **« Je l'ai fait moi-même »**) ; tu le fais sur son écran ou sur ton
+   appareil, et il reprend.
 
 Conseils : pour un site sensible, préfère un **compte secondaire** ; déconnecte un site depuis l'écran du bot (prends la
 main, « Se déconnecter » sur le site), ou « Effacer » l'ordinateur (Réglages → Ordinateur) pour tout remettre à zéro.

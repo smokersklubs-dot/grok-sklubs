@@ -5,7 +5,7 @@ import { guardedFetch } from "./net.js"; import { labelAiImage } from "./aimedia
  * (POST {base}/images/generations with a model and a prompt, answering with base64 data or a link).
  * Configure it with IMAGE_API_KEY / IMAGE_BASE_URL / IMAGE_MODEL, or let it reuse the OpenAI or xAI key.
  */
-interface ImageService { baseUrl: string; apiKey: string; model: string }
+export interface ImageService { baseUrl: string; apiKey: string; model: string; /** The account's own key (mediakeys.ts). */ ownKey?: boolean }
 
 export function imageService(): ImageService | null {
   const e = process.env;
@@ -15,10 +15,11 @@ export function imageService(): ImageService | null {
   return null;
 }
 
-export async function generateImage(prompt: string, signal?: AbortSignal): Promise<{ bytes: Buffer; mime: string }> {
-  const svc = imageService();
+export async function generateImage(prompt: string, signal?: AbortSignal, via?: ImageService | null): Promise<{ bytes: Buffer; mime: string }> {
+  const svc = via ?? imageService();
   if (!svc) throw new Error("no image service is configured on this server");
-  const res = await fetch(`${svc.baseUrl.replace(/\/$/, "")}/images/generations`, {
+  // An address the account typed itself (its own key, mediakeys.ts) is fetched like any outside address: never the local network.
+  const res = await (svc.ownKey ? guardedFetch : fetch)(`${svc.baseUrl.replace(/\/$/, "")}/images/generations`, {
     method: "POST",
     headers: { "content-type": "application/json", authorization: `Bearer ${svc.apiKey}` },
     body: JSON.stringify({ model: svc.model, prompt, n: 1 }),

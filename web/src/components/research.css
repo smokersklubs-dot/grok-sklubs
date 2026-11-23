@@ -94,3 +94,20 @@
   margin-top: 0.2rem;
   flex: none;
 }
+/* L87 « Veille », past reports and the Atom feed (ResearchWatch.tsx) */
+.research-watch {
+  margin: 0.6rem 0 0.2rem;
+}
+.research-watch label {
+  margin: 0.4rem 0;
+}
+.research-hits {
+  padding-inline-start: 1.2rem;
+  margin: 0.5rem 0;
+}
+.research-hits li {
+  margin: 0.5rem 0;
+}
+.research-hits p {
+  margin: 0.2rem 0 0;
+}

@@ -36,3 +36,11 @@ Manus décrit une recherche à grande échelle répartie entre plusieurs agents 
 Le bot peut aussi le demander dans la discussion (`deep_research_start` accepte `window` et `sources`). Code : `server/src/researchsection.ts`, `researchsignals.ts`, `researchsources.ts` ; tests : `server/test/research-reliable.test.ts`. Le calcul de pertinence, la fenêtre de dates et les appels Hacker News et Polymarket sont adaptés de last30days (licence MIT, voir `THIRD_PARTY_NOTICES.md`).
 
 Pas encore fait : veille « ce qui a changé depuis le dernier rapport », recherche dans les rapports passés, flux Atom. Non vérifié en conditions réelles : les champs exacts (votes, vues) renvoyés par Agent Reach pour Reddit et YouTube, et le taux de blocage de Reddit depuis un serveur.
+
+## Ajouts du 23/11/2026
+
+- **Ce qui a changé** : un nouveau rapport sur un sujet déjà étudié finit par les sources nouvelles et celles qui ne sont plus citées.
+- **Veille** : sous un rapport terminé, « Refaire ce rapport tout seul » chaque semaine ou chaque mois.
+- **Mes rapports passés** : recherche par mots dans tes rapports terminés (le bot le peut aussi).
+- **Flux Atom** : une adresse secrète pour lire tes rapports dans un lecteur de flux ; en créer une nouvelle coupe l'ancienne.
+- **OpenAlex et PubMed** : articles scientifiques gratuits, sans clé.

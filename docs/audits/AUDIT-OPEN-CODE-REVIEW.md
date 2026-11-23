@@ -163,7 +163,7 @@ paragraphe.
 6. Outils en lecture seule pour le relecteur (lire un fichier entier, chercher) sur l'instantané (M). — **FAIT 22/11 (L77/L180)**
 7. Commentaires ancrés aux lignes + affichage à côté du diff (M). — **FAIT 22/11 (L77/L180)**
 8. Passe de réflexion qui retire les faux positifs (S). — **FAIT 22/11 (L77/L180)**
-9. Bouton « faire corriger par l'auteur » + marquer corrigé/ignoré (S).
+9. ◐ 23/11 (`reviewplus.ts`, L77) : « faire corriger par l'auteur » fait ; reste marquer corrigé/ignoré — Bouton « faire corriger par l'auteur » + marquer corrigé/ignoré (S).
 10. Réparation/relance du JSON du verdict (S). — **FAIT 22/11 (L77/L180)**
 11. Règles de relecture par projet (fichier `rule.json`-like dans le dépôt de l'utilisateur) (M).
 12. Compter les échecs d'outil par (outil, raison) et pas seulement les appels identiques, dans le loop principal (S).

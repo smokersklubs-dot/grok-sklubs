@@ -12,7 +12,7 @@ import { DiskCardView } from "./DiskAndTeamFolder";
 import { FilesCardView, PastedSecretCardView } from "./SecretsFilesProviders";
 import { GoalCardView } from "./GoalsAndJobs";
 import { FailureCardView } from "./Incidents";
-import { RecruitCardView } from "./RecruitCard"; import { ViewCardView } from "./ViewCard";
+import { RecruitCardView } from "./RecruitCard"; import { ViewCardView } from "./ViewCard"; import { TrajectoryCardView } from "./TrajectoryCard"; import { CodeBoxCard } from "./CodeBox";
 import { sendKeysFor } from "../../../mobile/shared/sendKey";
 import { CardCountdown, detailWithout, DraftEditor, isRichQuestion, RichQuestion } from "./TurnCards";
 
@@ -271,12 +271,13 @@ function Takeover({ card, botId }: { card: TakeoverCard; botId: string }) {
     }
   };
   const pending = card.status === "pending";
+  const self = card.reason === "password"; // L91 « fais-le toi-même »: a password change the user does, the bot never sees it
   return (
     <div className={`card takeover-card ${pending ? "is-pending" : ""}`}>
       <div className="card-head">
         <span className="logo-tile is-takeover" aria-hidden="true"><Icon name="hand" size={18} /></span>
         <div className="card-head-text">
-          <p className="card-title">{t("takeover.title", { name: bot?.name ?? "" })}</p>
+          <p className="card-title">{t(self ? "takeover.selfTitle" : "takeover.title", { name: bot?.name ?? "" })}</p>
           <p className="card-sub">
             <span className="chip">{t(`takeover.reason.${card.reason}`)}</span>
             {pending && <> · {t("takeover.left", { n: minutesLeft(card.expiresAt, now) })}</>}
@@ -286,14 +287,14 @@ function Takeover({ card, botId }: { card: TakeoverCard; botId: string }) {
       {card.detail && <p className="card-reason">{card.detail}</p>}
       {pending ? (
         <>
-          <p className="card-sub">{t("takeover.hint")}</p>
+          <p className="card-sub">{t(self ? "takeover.selfHint" : "takeover.hint")}</p>
           <div className="card-actions">
             <button type="button" className="btn" disabled={busy} onClick={() => useStore.getState().openViewer(botId, { control: true })}>
               <Icon name="monitor" size={15} /> {t(viewing ? "takeover.opened" : "takeover.open")}
             </button>
             <span className="spacer" />
             <button type="button" className="btn btn-accent" disabled={busy} onClick={() => void done()}>
-              <Icon name="check" size={15} /> {t(busy ? "common.working" : "takeover.done")}
+              <Icon name="check" size={15} /> {t(busy ? "common.working" : self ? "takeover.selfDone" : "takeover.done")}
             </button>
           </div>
           {error && <p className="card-error" role="alert">{error}</p>}
@@ -301,7 +302,7 @@ function Takeover({ card, botId }: { card: TakeoverCard; botId: string }) {
       ) : (
         <p className={`card-outcome is-${card.status === "done" ? "allowed" : card.status === "timeout" ? "expired" : "denied"}`}>
           <Icon name={card.status === "done" ? "check" : card.status === "timeout" ? "clock" : "close"} size={14} />
-          {t(`takeover.status.${card.status}`)}
+          {t(self && card.status === "done" ? "takeover.selfStatusDone" : `takeover.status.${card.status}`)}
         </p>
       )}
     </div>
@@ -420,6 +421,10 @@ export function CardView({ card, botId, seq }: { card: Card; botId: string; seq:
       return <RecruitCardView card={card} botId={botId} seq={seq} />;
     case "view":
       return <ViewCardView card={card} botId={botId} seq={seq} />; // DS-Bot item 8
+    case "trajectory":
+      return <TrajectoryCardView card={card} botId={botId} />; // L158 « Créations »
+    case "code":
+      return <CodeBoxCard card={card} botId={botId} />; // L91 hidden code box
     default:
       return null;
   }

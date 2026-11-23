@@ -174,3 +174,7 @@ Code : `server/src/voice/realtime.ts`, `realtimecall.ts` ; routes `GET/PUT /api/
 
 Voir [API.md](API.md#server-mediated-voice-servervoice) : `GET /voice/bots`, `GET /voice/piper/voices`,
 `POST /voice/fish/bulk/propose`, `POST /voice/fish/bulk/apply`, et `provider: "piper"` dans les routes de voix par bot.
+
+## Choix du micro (23/11/2026)
+
+Pendant un appel, si ton ordinateur a plusieurs micros, un menu « Micro de l'appel » apparaît dans la barre d'appel. Ton choix est gardé dans ce navigateur. Si le micro se débranche, l'appel reprend tout seul avec le micro par défaut et te le dit.

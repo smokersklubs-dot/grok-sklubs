@@ -97,8 +97,8 @@ Lignes NON REPRIS supplémentaires vues : machines en nuage payantes, tâches du
 2. Écran : geste explicite « montre-moi ton écran » qui publie une capture dans le chat ; captures de travail hors du chat. S.
 3. Consigne mémoire : chercher avant « je ne sais pas » / « redis-moi », enregistrer dans le même tour. S.
 4. Groupes : consigne « ne présente pas le travail d'un coéquipier comme le tien ». S.
-5. Sentinelle : repérer et arrêter les conteneurs sans bot ; arrêter les ordinateurs inactifs longtemps en mode hébergé. S.
-6. Plafond « heures d'ordinateur » visible séparément du plafond de modèle. S.
+5. Sentinelle : repérer et arrêter les conteneurs sans bot ; arrêter les ordinateurs inactifs longtemps en mode hébergé. S. — **FAIT EN PARTIE (2026-11-23)** : conteneurs sans bot arrêtés (jamais supprimés), au démarrage et toutes les heures (L95, `computerhours.ts`)
+6. Plafond « heures d'ordinateur » visible séparément du plafond de modèle. S. — **FAIT (2026-11-23)** : Réglages → Consommation, `COMPUTER_HOURS_MONTH` en hébergé (L95)
 
 ---
 

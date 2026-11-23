@@ -1,10 +1,13 @@
 /**
  * The gallery's « écran et appels » section (section=ecran): L149 states of the large screen view — the bot using its
  * screen, a dropped stream retrying, given up with « Reconnecter », the tools while driving — and L167 « Modèle vocal temps
- * réel » (off, on without a key, on and ready). Development only, fake data.
+ * réel » (off, on without a key, on and ready); L149 « où le bot a cliqué » (two marks, drawn still); L83 the signature of a
+ * mail account (open, filled or empty). Development only, fake data.
  */
 import { LiveWait, ViewerTools } from "../components/ComputerViewer";
 import { RealtimeVoice } from "../components/RealtimeVoice";
+import { ClickMarks } from "../components/ClickTrail";
+import { MailSignature } from "../components/MailSignature";
 import "../components/ComputerViewer.css";
 import type { FixtureOptions } from "./fixtures";
 
@@ -34,12 +37,17 @@ export function GalleryScreen({ o }: { o: FixtureOptions }) {
           <LiveWait name={name} waiting={{ attempt: 2, dueAt: Date.now() + 2000 }} gaveUp={false} onRetry={() => undefined} />
         </Stage>
         <Stage><LiveWait name={name} waiting={null} gaveUp onRetry={() => undefined} /></Stage>
+        <Stage>
+          <div className="gallery-fake-desktop" aria-label={L("Écran du bot (exemple)", "Bot screen (example)")}><span>{L("Payer 10 €", "Pay €10")}</span></div>
+          <ClickMarks still marks={[{ key: 1, left: "38%", top: "46%" }, { key: 2, left: "70%", top: "30%" }]} />
+        </Stage>
       </div>
       <div className="gallery-page is-auto gallery-realtime">
         <RealtimeVoice initial={{ realtime: { enabled: false, model: MODELS[0], voice: "marin", available: false, reason: "off" }, models: MODELS, voices: VOICES }} />
         <RealtimeVoice initial={{ realtime: { enabled: true, model: MODELS[0], voice: "marin", available: false, reason: "no key" }, models: MODELS, voices: VOICES }} />
         <RealtimeVoice initial={{ realtime: { enabled: true, model: MODELS[1], voice: "cedar", available: true, reason: "" }, models: MODELS, voices: VOICES }} />
       </div>
+      <div className="gallery-page is-auto"><ul className="list"><li className="connector"><MailSignature accountId="acc_gallery" initial={o.long ? "Léa Martin — Responsable comptabilité et relances clients, Sklubs Distribution Europe\n06 00 00 00 00 · lea.martin@sklubs-distribution-europe.example" : "Léa Martin — Sklubs\n06 00 00 00 00"} /></li></ul></div>
     </section>
   );
 }

@@ -1,6 +1,6 @@
 import { remindStuck } from "./agent/stuck.js";
 import { emit } from "./bus.js";
-import { sweepIdleDesktops } from "./computer.js";
+import { computerKind, sweepIdleDesktops } from "./computer.js";
 import { config } from "./config.js";
 import { isValidTimezone, localParts, nextRun } from "./cron.js";
 import { q } from "./db.js";
@@ -30,6 +30,8 @@ import { subLimitFor } from "./agent/sublimit.js";
 import { lt } from "./agent/looptext.js";
 import { conditionGate } from "./agent/routinecondition.js";
 import { runWithoutAi } from "./automations.js";
+import { fillParams } from "./clientshared/routineparams.js";
+import { stopOrphanComputers, tickComputerHours } from "./computerhours.js";
 
 /** Next due time per routine. One timer walks this map; nothing is scheduled twice. */
 const due = new Map<string, number>();
@@ -52,7 +54,7 @@ export const unschedule = (routineId: string) => { due.delete(routineId); };
  * Runs a routine now: notes it in the chat and queues the work behind whatever the bot is doing.
  * `outside`: the payload came from outside (a webhook call); the turn treats it as outside content.
  */
-export function fireRoutine(r: RoutineRecord, payload?: unknown, opts: { outside?: boolean; label?: string; note?: string; byHand?: boolean; dueAt?: number; missed?: number } = {}): "fired" | "busy" | "paused" | "capped" {
+export function fireRoutine(r: RoutineRecord, payload?: unknown, opts: { outside?: boolean; label?: string; note?: string; byHand?: boolean; dueAt?: number; missed?: number; /** L143: values typed in « Lancer maintenant » */ params?: Record<string, string> } = {}): "fired" | "busy" | "paused" | "capped" {
   const bot = bots.byId(r.botId);
   if (!bot) return "busy";
   // Hosted mode: a suspended account's routines are paused, and one whose models only the operator's keys pay for waits
@@ -109,7 +111,7 @@ export function fireRoutine(r: RoutineRecord, payload?: unknown, opts: { outside
   const runId = runs.start(r.id);
   trackRun(runId, r.id, opts.dueAt ?? null, opts.missed ?? 0, !!opts.byHand);
   if (runWithoutAi(r, runId)) { emit(bot.userId, { type: "routines", botId: bot.id }); return "fired"; } // L173: a routine without AI (automations.ts): no model turn
-  enqueue(bot.id, { kind: "routine", name: r.name, text: r.prompt + extra + (opts.note ? `\n\n${opts.note}` : ""), runId, tainted: !!opts.outside && payload !== undefined, byHand: opts.byHand || undefined });
+  enqueue(bot.id, { kind: "routine", name: r.name, text: fillParams(r.prompt, opts.params) + extra + (opts.note ? `\n\n${opts.note}` : ""), runId, tainted: !!opts.outside && payload !== undefined, byHand: opts.byHand || undefined });
   emit(bot.userId, { type: "routines", botId: bot.id });
   return "fired";
 }
@@ -342,6 +344,8 @@ export function startScheduler() {
   setInterval(guard(tickDigests), 60_000).unref();
   setInterval(guard(consolidationSweep), 60_000).unref();
   setInterval(guard(sweepIdleDesktops), 60_000).unref();
+  // L95 (computerhours.ts): computer hours counted each minute (cap enforced); computers no bot owns stopped hourly.
+  if (computerKind() === "linux") { setInterval(guard(() => tickComputerHours()), 60_000).unref(); guard(() => stopOrphanComputers())(); setInterval(guard(() => stopOrphanComputers()), 3_600_000).unref(); }
   setInterval(guard(syncSlackSockets), 60_000).unref();
   // Work left waiting for hours (an approval, a running turn) gets one reminder.
   setInterval(guard(() => { remindStuck(); }), 60_000).unref();

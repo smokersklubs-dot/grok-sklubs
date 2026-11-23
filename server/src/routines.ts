@@ -19,6 +19,8 @@ export const ROUTINE_FAIL_PAUSE = 5;
 const STALE_RUN_MS = 2 * 3600_000;
 
 // A subscription can be limited longer than the timeout for abandoned runs; so can a run that waits behind an approval (deferred).
+// L142: when each run ended, so the routine's history shows how long it took (a table of its own, created at load).
+q.run("CREATE TABLE IF NOT EXISTS routine_run_ends (run_id TEXT PRIMARY KEY, ended_at INTEGER NOT NULL)");
 const queuedRun = `EXISTS (SELECT 1 FROM bot_queue b
   WHERE b.bot_id = (SELECT bot_id FROM routines WHERE id = routine_runs.routine_id)
     AND b.status IN ('pending', 'running', 'limited', 'held', 'deferred')
@@ -193,11 +195,13 @@ export const runs = {
     q.run("INSERT INTO routine_runs (id, routine_id, at) VALUES (?, ?, ?)", id, routineId, now());
     // Keep the newest 30 per routine.
     q.run(`DELETE FROM routine_runs WHERE routine_id = ? AND id NOT IN (SELECT id FROM routine_runs WHERE routine_id = ? ORDER BY at DESC, rowid DESC LIMIT 30) AND (status != 'running' OR NOT ${queuedRun})`, routineId, routineId);
+    q.run("DELETE FROM routine_run_ends WHERE run_id NOT IN (SELECT id FROM routine_runs)");
     return id;
   },
   finish(id: string, status: RoutineRun["status"], note: string, finishWork?: () => void) {
     q.tx(() => {
       q.run("UPDATE routine_runs SET status = ?, note = ? WHERE id = ?", status, note.slice(0, 300), id);
+      q.run("INSERT OR REPLACE INTO routine_run_ends (run_id, ended_at) VALUES (?, ?)", id, now());
       finishWork?.();
     });
     const r = q.get<{ routine_id: string }>("SELECT routine_id FROM routine_runs WHERE id = ?", id);
@@ -214,7 +218,8 @@ export const runs = {
   /** Whether a run of this routine is still under way (not one a restart left behind). */
   active: hasActiveRun,
   list: (routineId: string): RoutineRun[] =>
-    q.all<any>("SELECT * FROM routine_runs WHERE routine_id = ? ORDER BY at DESC, rowid DESC LIMIT 30", routineId).map((r) => ({ id: r.id, routineId: r.routine_id, at: r.at, status: r.status, note: r.note, costUsd: r.cost_usd ?? 0 })),
+    q.all<any>("SELECT x.*, e.ended_at FROM routine_runs x LEFT JOIN routine_run_ends e ON e.run_id = x.id WHERE x.routine_id = ? ORDER BY x.at DESC, x.rowid DESC LIMIT 30", routineId)
+      .map((r) => ({ id: r.id, routineId: r.routine_id, at: r.at, status: r.status, note: r.note, costUsd: r.cost_usd ?? 0, ...(r.ended_at ? { durationMs: Math.max(0, r.ended_at - r.at) } : {}) })),
 };
 
 /** Who wants to hear that a routine changed (routineplus.ts: an approved instruction lapses when it changes). */

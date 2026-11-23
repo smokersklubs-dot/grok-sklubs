@@ -121,10 +121,11 @@ def snapshot(limit, info):
         frames.append(entry)
         if len(frames) >= 20:
             break
-    # A frame of another site runs in its own process: it is not in this page's frame tree, so it is found in the page
-    # (its <iframe> element) and only named.
+    # A frame of another site runs in its own process: it is not in this page's frame tree. L14: it is read through its
+    # own target session (screen-frames.ts); one that cannot be (or a CAPTCHA) is found in the page and only named.
     try:
         listed = set(f["url"] for f in frames_of(tree))
+        listed |= cross_site_frames(info["id"], size, found, frames, top, listed)
         doc = call("Runtime.evaluate", expression="[...document.querySelectorAll('iframe, frame')].slice(0, 20).map((f) => f.src || '')", returnByValue=True)["result"].get("value") or []
         for src in doc:
             if src and src not in listed and len(frames) < 20:
@@ -133,7 +134,9 @@ def snapshot(limit, info):
         pass
     found.sort(key=lambda e: (not e["visible"], e["y"], e["x"]))
     for e in found:
-        del e["x"], e["y"]
+        x, y = e.pop("x"), e.pop("y")
+        if e["visible"]:
+            e["at"] = [x, y]  # L75: where the annotated capture draws its number
     kept = found[:limit]
     hints(kept)
     url, title = here(T[0])
@@ -173,6 +176,8 @@ def hints(found):
         counts[(e["role"], e["name"])] = counts.get((e["role"], e["name"]), 0) + 1
     asked, links = 0, 0
     for e in found:
+        if e.get("frameTarget"):
+            continue  # L14: its node belongs to another frame's session, not this page's
         try:
             if e["role"] == "link" and links < 150:
                 links += 1
@@ -305,6 +310,8 @@ def smart(t, cap=8.0, quiet=0.5):
 def finish(ans, r):
     """The answer of an action; with "after" (L65), a fresh snapshot of the tab in front once it is done (it may be a new
     tab the action opened), so the bot reads what changed instead of looking at a screenshot."""
+    if AT[0] and ans.get("ok") and "at" not in ans:
+        ans["at"] = AT[0]
     if r.get("after") and not ans.get("dialog"):
         try:
             t2, info2, ctx2 = front()
@@ -361,6 +368,16 @@ def check_node(r, relocate):
 class NotSent(Exception):
     pass
 
+AT = [None]
+def screen_point(x, y):
+    """L149: where a click at (x, y) of the window lands on the whole screen (the approximation of computer.ts
+    targetScript, good for a maximised window), for the trail of clicks on the screen view."""
+    try:
+        o = call("Runtime.evaluate", returnByValue=True, expression="(() => { const s = Math.max(0, (outerWidth - innerWidth) / 2); return [screenX + s, screenY + Math.max(0, outerHeight - innerHeight - s)]; })()")["result"]["value"]
+        AT[0] = [round(x + o[0]), round(y + o[1])]
+    except Exception:
+        AT[0] = None
+
 def press(backend, double=False):
     """A real mouse click in the middle of the element, after checking what is under that point. Returns what covers it,
     or None once the click was sent (a Fail after that point means: sent, not confirmed)."""
@@ -374,6 +391,7 @@ def press(backend, double=False):
         if not h.get("ok"):
             return h.get("by") or "?"
         call("Input.dispatchMouseEvent", type="mouseMoved", x=x, y=y)
+        screen_point(x, y)
     except Fail as e:
         raise NotSent(str(e))
     for n in ((1, 2) if double else (1,)):
@@ -406,6 +424,8 @@ def act(r):
     # found again by them when the page redrew it — never for a committing click or a check before one).
     same_page(r, info)
     what = r.get("action")
+    if r.get("frameTarget"):
+        frame_act(r, t, info)  # L14: a control of a frame of another site (screen-frames.ts)
     found = check_node(r, what in ("click", "type", "select", "hover", "upload") and not isinstance(r.get("expect"), dict))
     if "why" in found:
         out({"stale": found["why"]})
@@ -503,6 +523,8 @@ TRUE = (True, 1, "1", "true", "on", "yes", "checked", "oui", "vrai")
 CHECKABLE = ("checkbox", "switch", "radio", "menuitemcheckbox", "menuitemradio")
 
 def fill_one(f):
+    if f.get("frameTarget"):
+        return {"error": "that field is inside a frame of another site: click it, then type with screen_type (card_fill for a payment card)"}
     found = check_node(f, True)
     if "why" in found:
         return {"stale": found["why"]}
@@ -609,14 +631,14 @@ def op_layout(req):
 `;
 
 /** A frame of the page: `readable` false when the browser keeps it in another process (another site). */
-export interface PageFrame { label: string; url: string; sameSite: boolean; readable: boolean; elements?: number }
+export interface PageFrame { label: string; url: string; sameSite: boolean; readable: boolean; elements?: number; /** L14: kept by the browser in its own process (read through its own target). */ crossSite?: boolean; /** L14: a CAPTCHA: never read nor acted on. */ captcha?: boolean }
 /** `hint` (L74): icon, picture, stable attribute or row words of a control with no name or a shared one; `href`: a link's address. */
-export interface PageElement { node: number; role: string; name: string; visible: boolean; frame?: string; value?: string; disabled?: unknown; checked?: unknown; expanded?: unknown; selected?: unknown; required?: unknown; hint?: string; href?: string }
+export interface PageElement { node: number; role: string; name: string; visible: boolean; frame?: string; value?: string; disabled?: unknown; checked?: unknown; expanded?: unknown; selected?: unknown; required?: unknown; hint?: string; href?: string; /** L75: centre in the window (visible ones), for the annotated capture. */ at?: [number, number]; /** L14: inside a frame of another site, read through that frame's own target (its id). */ frameTarget?: string; crossSite?: boolean }
 /** L65: the page's headings, its visible text as lines, and the share of the screen a canvas, video or embed covers. */
 export interface PageOutline { headings?: { level: number; text: string }[]; lines?: string[]; textLength?: number; media?: number }
 export interface ElementSnapshot { url: string; title: string; target: string; loader: string; elements: PageElement[]; more: number; frames?: PageFrame[]; ctx?: TabContext; outline?: PageOutline }
 /** What an action asks for: the element as the snapshot saw it, and where. `expect`: an approved committing click. `after`: send a fresh snapshot back (L65). */
-export interface ElementRequest { action: "click" | "type" | "select" | "info" | "hover" | "upload"; node: number; role: string; name: string; target: string; loader: string; text?: string; clear?: boolean; submit?: boolean; value?: string; expect?: { label: string; host: string }; after?: boolean; double?: boolean; path?: string; limit?: number }
+export interface ElementRequest { action: "click" | "type" | "select" | "info" | "hover" | "upload"; node: number; role: string; name: string; target: string; loader: string; text?: string; clear?: boolean; submit?: boolean; value?: string; expect?: { label: string; host: string }; after?: boolean; double?: boolean; path?: string; limit?: number; /** L14: the control is in this frame of another site. */ frameTarget?: string }
 /** L74: what a field holds after typing (no value for a password), and whether it is what was typed. */
 export interface Typed { verified: boolean | null; value?: string }
 /** One field of element_fill, as the helper did it. */
@@ -628,6 +650,7 @@ export interface ElementAnswer {
   /** L74: the element was found again by its role and name under this node. */ moved?: number;
   typed?: Typed; verified?: boolean | null; uploaded?: string[]; results?: FillResult[];
   /** L65: the page once the action was done. */ after?: ElementSnapshot;
+  /** L149: where a click landed on the whole screen (pixels), for the trail on the screen view. */ at?: [number, number];
   /** L75 browser_wait: still not there. */ timeout?: boolean; textSeen?: boolean; goneSeen?: boolean; state?: string;
 }
 /** A JavaScript dialog a page shows (alert, confirm, prompt, beforeunload), as the browser reported it. */

@@ -41,8 +41,17 @@ export function readRaw(rawB64url: string): MailText | null {
   if (cut < 0) return null;
   const headers = src.slice(0, cut).split("\r\n");
   const get = (n: string) => headers.find((h) => h.toLowerCase().startsWith(`${n.toLowerCase()}:`))?.slice(n.length + 1).trim() ?? "";
-  const encoding = get("Content-Transfer-Encoding").toLowerCase();
-  const raw = src.slice(cut + 4);
+  let encoding = get("Content-Transfer-Encoding").toLowerCase();
+  let raw = src.slice(cut + 4);
+  // L83 (mailextras.ts): a message with files is multipart/mixed: its text is the first text/plain part.
+  const boundary = /multipart\/[a-z]+;\s*boundary="?([^";]+)"?/i.exec(get("Content-Type"))?.[1];
+  if (boundary) {
+    const part = raw.split(`--${boundary}`).map((p) => p.replace(/^\r\n/, "")).find((p) => /^content-type:\s*text\/plain/im.test(p.slice(0, Math.max(0, p.indexOf("\r\n\r\n")))));
+    if (!part) return null;
+    const pc = part.indexOf("\r\n\r\n");
+    encoding = /^content-transfer-encoding:\s*(\S+)/im.exec(part.slice(0, pc))?.[1].toLowerCase() ?? "";
+    raw = part.slice(pc + 4).replace(/\r\n$/, "");
+  }
   const body = encoding === "base64" ? Buffer.from(raw.replace(/\s+/g, ""), "base64").toString("utf8") : raw;
   return { to: get("To").split(",").map((s) => s.trim()).filter(Boolean), subject: decodeWords(get("Subject")), body };
 }

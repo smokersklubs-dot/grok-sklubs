@@ -2,6 +2,9 @@ import type { Context, Hono } from "hono";
 import { emit } from "./bus.js";
 import { messagesAround } from "./convsearch.js";
 import { memoryPrefs, summaries } from "./agent/memoryprefs.js";
+import { memoryFocus, setMemoryFocus } from "./agent/memorysave.js";
+import { whyEntry } from "./agent/turnknow.js";
+import { addDoc, addSiteNote, listDocs, listSiteNotes, ownScope, PlaceError, removeDoc, removeSiteNote } from "./agent/memoryplaces.js";
 import { promptView } from "./agent/promptview.js";
 import { embedderFor } from "./agent/semantic.js";
 import { looksSecret } from "./agent/sensitive.js";
@@ -13,6 +16,9 @@ import { audit, bots, memories, settings, type BotRecord, type UserRecord } from
 /**
  * Memory screens (registered after the session check, from memoryroutes.ts). Only the owner of a bot reaches it; anyone
  * else gets 404 (account isolation, hosted mode included).
+ *   GET|POST /site-notes, DELETE /site-notes/:id      L88 « Mémoire liée à un site »
+ *   GET|POST /docbase (?kind=bot|section&id=), DELETE /docbase/:id   L88 « Base de documents par bot ou projet »
+ *   GET  /journal/:id/why               L137 « Pourquoi ? »: what allowed the action and what the bot knew then
  *   GET  /bots/:id/prompt-view          L137 « Ce que reçoit ce bot » (+ memory seen, its cost, L138 context gauge)
  *   GET  /bots/:id/summary              L80/L138 « Voir le résumé »: the latest summary of the current conversation
  *   PUT  /bots/:id/memory-prefs         L88 { noLearn } « Ne rien retenir » for this bot
@@ -28,6 +34,16 @@ export function registerMemoryViewRoutes(api: Hono<any>) {
   };
   const missing = (c: Context) => c.json({ error: "That bot does not exist." }, 404);
 
+  // L88 « Mémoire liée à un site » and « Base de documents par bot ou projet » (agent/memoryplaces.ts); only the account's own
+  const placeErr = (c: Context, e: unknown) => e instanceof PlaceError ? c.json({ error: e.message }, e.status) : Promise.reject(e);
+  api.get("/site-notes", (c) => c.json({ notes: listSiteNotes(user(c).id) }));
+  api.post("/site-notes", async (c) => { try { const b = await body(c); return c.json({ note: addSiteNote(user(c).id, b.site, b.text) }); } catch (e) { return placeErr(c, e); } });
+  api.delete("/site-notes/:id", (c) => removeSiteNote(user(c).id, c.req.param("id")) ? c.json({ ok: true }) : c.json({ error: "Cette note n'existe pas." }, 404));
+  api.get("/docbase", (c) => { try { return c.json({ docs: listDocs(user(c).id, ownScope(user(c).id, c.req.query("kind"), c.req.query("id"))) }); } catch (e) { return placeErr(c, e); } });
+  api.post("/docbase", async (c) => { try { const b = await body(c); return c.json({ doc: addDoc(user(c).id, ownScope(user(c).id, b.kind, b.id), b.name, b.text) }); } catch (e) { return placeErr(c, e); } });
+  api.delete("/docbase/:id", (c) => removeDoc(user(c).id, c.req.param("id")) ? c.json({ ok: true }) : c.json({ error: "Ce document n'existe pas." }, 404));
+  // L137 « Pourquoi ? » on a line of the detailed journal: what allowed it, the user's last words, what the bot knew (turnknow.ts)
+  api.get("/journal/:id/why", (c) => { const w = whyEntry(user(c).id, Number(c.req.param("id"))); return w ? c.json(w) : c.json({ error: "Cette ligne du journal n'existe pas." }, 404); });
   api.get("/bots/:id/prompt-view", (c) => { const b = ownAgent(c); return b ? c.json(promptView(b, user(c))) : missing(c); });
   api.get("/bots/:id/summary", (c) => { const b = ownAgent(c); return b ? c.json({ summary: summaries.latest(b.id, b.generation) }) : missing(c); });
   api.put("/bots/:id/memory-prefs", async (c) => {
@@ -38,6 +54,13 @@ export function registerMemoryViewRoutes(api: Hono<any>) {
     memoryPrefs.setNoLearn(b.id, v);
     audit(user(c).id, "account", `« Ne rien retenir » ${v ? "on" : "off"} for ${b.name}`, b.id);
     return c.json({ noLearn: memoryPrefs.noLearn(b.id) });
+  });
+  // L67 « Retiens surtout… »: the owner's words that guide what this bot learns (agent/memorysave.ts)
+  api.get("/bots/:id/memory-focus", (c) => { const b = ownAgent(c); return b ? c.json({ text: memoryFocus(b.id) }) : missing(c); });
+  api.put("/bots/:id/memory-focus", async (c) => {
+    const b = ownAgent(c);
+    if (!b) return missing(c);
+    try { const text = setMemoryFocus(b.id, (await body(c)).text); audit(user(c).id, "account", `« Retiens surtout » ${text ? "set" : "cleared"} for ${b.name}`, b.id); return c.json({ text }); } catch (e) { return c.json({ error: (e as Error).message }, 400); }
   });
   api.get("/bots/:id/around", (c) => {
     const b = ownAgent(c);

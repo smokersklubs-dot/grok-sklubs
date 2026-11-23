@@ -3,7 +3,7 @@ export * from "./failuretypes.js"; export type * from "./recruittypes.js"; expor
  * Wire contract between the Sklubot server and web app.
  * Type-only: the web app imports this file with `import type`.
  */
-import type { TodayKind } from "./todayminutes.js"; import type { RecruitCard } from "./recruittypes.js"; import type { RouteNoticeAction } from "./roomroutingtypes.js"; import { EXTRA_SECRET_FORMATS } from "./secretformats.js"; import type { PeerReviewResult } from "./peerreviewtypes.js"; import type { ViewCard } from "./viewtypes.js";
+import type { TodayKind } from "./todayminutes.js"; import type { RecruitCard } from "./recruittypes.js"; import type { RouteNoticeAction } from "./roomroutingtypes.js"; import { EXTRA_SECRET_FORMATS } from "./secretformats.js"; import type { PeerReviewResult } from "./peerreviewtypes.js"; import type { ViewCard } from "./viewtypes.js"; import type { TrajectoryCard } from "./creationtypes.js"; import type { CodeCard } from "./codecardtypes.js";
 
 export const AVATAR_SHAPES = ["pebble", "egg", "mochi", "bean", "cloud", "cat", "bear", "ghost", "circle", "squircle", "hexagon", "diamond", "shield", "drop", "arch", "star", "clover", "pill", "triangle", "octagon"] as const;
 export const AVATAR_COLORS = ["ink", "clay", "ember", "amber", "moss", "teal", "sky", "indigo", "plum", "rose", "slate"] as const;
@@ -252,7 +252,7 @@ export type ActivityKind =
 
 export interface Live {
   running: boolean;
-  activity: { kind: ActivityKind; detail?: string; since: number } | null;
+  activity: { kind: ActivityKind; detail?: string; since: number; /** L149: where the bot just clicked on its screen (0–1 of its width and height). */ point?: { x: number; y: number; at: number } } | null;
   awaiting: { reason: string; since: number } | null;
   startedAt: number | null;
   /** Messages typed while the bot was busy, waiting to be folded into the running turn. */
@@ -378,7 +378,7 @@ export type Card =
   /** A nudge from a quiet preparation pass: "Do it", "Later" (snoozed) or "Never for this" (the matter never comes back). */
   | { type: "nudge"; nudgeId: string; title: string; body: string; status: "pending" | "doing" | "later" | "never" }
   | { type: "question"; question: string; options: string[]; status: "pending" | "answered" | "dismissed"; answer?: string; /** L79 rich card (agent/richquestion.ts) */ why?: string; recommended?: string; irreversible?: boolean; multiple?: boolean; images?: string[]; questions?: { question: string; options: string[]; recommended?: string; multiple?: boolean; why?: string }[]; plan?: { steps: string[]; version: number; added?: string[]; removed?: string[] } }
-  | { type: "connect"; name: string; hint: string; reason: string; status: "pending" | "connected" | "skipped" } | /** DS-Bot item 8: data drawn in the chat (agent/viewcard.ts) */ ViewCard
+  | { type: "connect"; name: string; hint: string; reason: string; status: "pending" | "connected" | "skipped" } | /** DS-Bot item 8: data drawn in the chat (agent/viewcard.ts) */ ViewCard | /** L158 « Créations » (agent/creations.ts) */ TrajectoryCard | /** L91 hidden code box (agent/codebox.ts) */ CodeCard
   /** The bot needs the user on its screen (CAPTCHA, 2FA code, login, payment…) and waits until they hand it back, or `expiresAt`. */
   | { type: "takeover"; takeoverId: string; reason: TakeoverReason; detail: string; status: "pending" | "done" | "timeout" | "cancelled"; expiresAt: number }
   /**
@@ -455,7 +455,7 @@ export type GoalWaiting = "" | "approval" | "user" | "checkpoint";
 export interface BotJob { id: string; botId: string; command: string; status: "running" | "done" | "failed" | "stopped" | "lost"; exitCode: number | null; startedAt: number; endedAt: number | null; log: string; note: string }
 
 /** Why a bot hands its screen to the user. */
-export const TAKEOVER_REASONS = ["captcha", "2fa", "login", "payment", "other"] as const;
+export const TAKEOVER_REASONS = ["captcha", "2fa", "login", "payment", "password", "other"] as const; // L91 "password": a password change the user does themselves
 export type TakeoverReason = (typeof TAKEOVER_REASONS)[number];
 
 export interface CallRecord { id: string; phase: "started" | "ended"; durationMs?: number; summary?: string; transcript?: { role: "user" | "assistant"; text: string }[] }
@@ -544,7 +544,7 @@ export interface Routine {
 }
 
 /** `skipped`: nothing new in its inputs, or still running from the previous due time: no model call. */
-export interface RoutineRun { id: string; routineId: string; at: number; status: "running" | "done" | "quiet" | "error" | "skipped"; note: string; costUsd: number }
+export interface RoutineRun { id: string; routineId: string; at: number; status: "running" | "done" | "quiet" | "error" | "skipped"; note: string; costUsd: number; durationMs?: number }
 
 /** One line of the account's activity log. Never edited or deleted. */
 export interface AuditEntry { id: number; at: number; botId: string | null; kind: "tool" | "approval" | "account" | "apps" | "vault" | "routine" | "channel" | "system" | "computer"; text: string }

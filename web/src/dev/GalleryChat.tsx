@@ -10,6 +10,10 @@
  *   &running=tasks                         three tasks at once (lanes): the header's « 3 tâches en cours » chip
  *   &listen=playing|paused|loading|browser|error   « Écouter »: the last reply in the player, in that state
  *                                          (with « Lire les réponses à voix haute » on: the header's mute button)
+ *   &retired=1                             L150: the bot's model is no longer offered (greyed in the model menu)
+ *   &math=1                                L136 / L147: a reply with formulas, a 30-line code block and a 16-row table
+ *   &test=1                                L176: the store on window.__galleryStore, for the browser tests of the chat
+ *                                          (web/scripts/chat-ui.test.mjs) to play server events into the real chat
  */
 import { useEffect } from "react";
 import { useStore } from "../store";
@@ -37,10 +41,11 @@ export function GalleryChat({ o }: { o: FixtureOptions }) {
   const listenAs = p.get("listen");
   const base = chatRows(o);
   const last = base[base.length - 1];
-  const rows = asked && last ? [...base, { ...last, seq: last.seq + 1, thread: undefined, body: { kind: "message", role: "user", text: o.long ? "Peux-tu comparer les trois devis de plomberie reçus cette semaine et me dire lequel est le plus intéressant pour la salle de bains ?\nMerci" : "Résume mes mails de la semaine" } } as typeof last] : base;
+  const rows: typeof base = asked && last ? [...base, { ...last, seq: last.seq + 1, thread: undefined, body: { kind: "message", role: "user", text: o.long ? "Peux-tu comparer les trois devis de plomberie reçus cette semaine et me dire lequel est le plus intéressant pour la salle de bains ?\nMerci" : "Résume mes mails de la semaine" } } as typeof last] : base;
+  if (p.get("math") === "1" && last) rows.push({ ...last, seq: last.seq + 2, thread: undefined, body: { kind: "message", role: "assistant", text: mathReply(o) } } as typeof last); // L136 / L147
   const parent = rows.find((r) => r.body.kind === "message" && r.body.replies);
   useEffect(() => {
-    const bot = listenAs ? { ...chatBot(o), voice: { name: "", rate: 1, lang: "auto", readAloud: true } } : chatBot(o);
+    const bot = { ...(listenAs ? { ...chatBot(o), voice: { name: "", rate: 1, lang: "auto", readAloud: true } } : chatBot(o)), ...(p.get("retired") === "1" ? { model: "anthropic:claude-3-opus-20240229" } : {}) } as Bot;
     if (listenAs) {
       // The last reply of the conversation, as the player shows it while it reads (no sound in the gallery).
       const last = [...rows].reverse().find((r) => !r.thread && r.body.kind === "message" && r.body.role === "assistant" && r.body.text.trim());
@@ -61,6 +66,8 @@ export function GalleryChat({ o }: { o: FixtureOptions }) {
       openThread: panel === "thread" && parent ? { botId: bot.id, seq: parent.seq } : null,
     } as never);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // L176: the chat's browser tests drive the real store (gallery only, development only).
+  if (p.get("test") === "1") (window as unknown as { __galleryStore?: typeof useStore }).__galleryStore = useStore;
   const openThread = useStore((s) => s.openThread);
   const ready = useStore((s) => s.selectedId === GALLERY_BOT_ID && !!s.threads[GALLERY_BOT_ID]);
   if (!ready) return null;
@@ -71,4 +78,17 @@ export function GalleryChat({ o }: { o: FixtureOptions }) {
       {openThread && <ThreadPanel key={openThread.seq} botId={openThread.botId} seq={openThread.seq} />}
     </div>
   );
+}
+
+/** L136 / L147 in the gallery: inline and block formulas, money that stays text, a long code block and a long table. */
+function mathReply(o: FixtureOptions): string {
+  const fr = o.lang === "fr";
+  const code = Array.from({ length: 30 }, (_, i) => `ligne_${i + 1} = calcule(${i + 1})  # ${fr ? "étape" : "step"} ${i + 1}`).join("\n");
+  const table = ["| " + (fr ? "Mois | Coût" : "Month | Cost") + " |", "|---|---|", ...Array.from({ length: 16 }, (_, i) => `| ${i + 1} | ${(i * 3.5).toFixed(2)} $ |`)].join("\n");
+  return [
+    fr ? "La surface d'un disque de rayon $r$ vaut $A = \\pi r^2$ ; pour 5 $ et 10 $ rien ne change." : "A disc of radius $r$ has area $A = \\pi r^2$; with $5 and $10 nothing changes.",
+    "$$\\sum_{k=1}^{n} k = \\frac{n(n+1)}{2}$$",
+    "```python\n" + code + "\n```",
+    table,
+  ].join("\n\n");
 }

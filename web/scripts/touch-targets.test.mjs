@@ -19,6 +19,7 @@ const ALWAYS = ["btn", "option", "files-row-head", "today-group-head", "icon-btn
 const LOOKS_LIKE_BUTTON = /(^|-)(btn|x|tab|close)$/;
 /** A class only ever used together with a covered one: [class, the covered class it sits on]. */
 const MODIFIERS = {
+  "journal-why-btn": "btn", // L137 « Pourquoi ? » (JournalWhy.tsx): always on .btn
   "pause-banner-btn": "btn",
   "gem-hunt-btn": "btn",
   "sidebar-close": "icon-btn",

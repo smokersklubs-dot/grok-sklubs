@@ -1,6 +1,7 @@
 import type { Context, Hono } from "hono";
 import { closeSync, readFileSync } from "node:fs";
 import { isBusy } from "./agent/loop.js";
+import { setShortReplies, shortReplies } from "./shortreplies.js";
 import { BOT_STYLES, botStyle, setBotStyle } from "./botstyle.js";
 import { deletionPreview, forgetTrash, restoreFromTrash, trashList, TrashError } from "./bottrash.js";
 import { emit } from "./bus.js";
@@ -86,6 +87,12 @@ export function registerChatComfortRoutes(api: Hono<E>, ownBot: (c: Context<E>) 
   api.put("/bots/:id/style", async (c) => {
     const bot = ownAgent(c);
     try { return c.json({ style: setBotStyle(bot.id, (await json(c)).style) }); } catch (err) { return no(c, 400, (err as Error).message); }
+  });
+  // L132 « Réponses courtes »: numbered rules and channels (shortreplies.ts)
+  api.get("/bots/:id/short-replies", (c) => c.json(shortReplies(ownAgent(c).id)));
+  api.put("/bots/:id/short-replies", async (c) => {
+    const bot = ownAgent(c);
+    try { return c.json(setShortReplies(bot.id, await json(c))); } catch (err) { return no(c, 400, (err as Error).message); }
   });
   api.get("/history-retention", (c) => c.json({ days: retentionDays(c.get("user").id), choices: RETENTION_DAYS }));
   api.put("/history-retention", async (c) => {

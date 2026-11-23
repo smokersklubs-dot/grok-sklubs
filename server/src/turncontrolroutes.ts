@@ -1,10 +1,13 @@
 import type { Context, Hono } from "hono";
 import { emit } from "./bus.js";
-import { enqueue, interrupt, runningThreads, submitUserMessage } from "./agent/loop.js";
+import { compactCommand, compactDoneText, localeFr, noticeIn } from "./agent/compactplus.js";
+import { compactIfNeeded } from "./agent/memory.js";
+import { threadLane } from "./agent/lanes.js";
+import { enqueue, inQueue, interrupt, runningThreads, submitUserMessage } from "./agent/loop.js";
 import { answerSide, sideCommand } from "./agent/sidequestion.js";
 import { removeNote, takeNote, waitingNotes } from "./agent/steering.js";
 import { askMode, setAskMode, setSectionLead } from "./agent/askrules.js";
-import { hasWork, isStopEmoji, stopCommand, stopText, stopWork, type StopReport } from "./agent/stopcommand.js";
+import { hasWork, isStopEmoji, stopCommand, stopText, stopWork, type StopReport } from "./agent/stopcommand.js"; import { planTyped } from "./turnplusroutes.js";
 import { tr } from "./i18n.js";
 import { fail } from "./routeinput.js";
 import { bots, rows, users, type BotRecord, type UserRecord } from "./store.js";
@@ -33,6 +36,9 @@ export async function typedControl(bot: BotRecord, _user: UserRecord, text: stri
   const stop = isStopEmoji(text) ? "stop" : stopCommand(text);
   if (stop === "all") { await stopAndReport(bot, { dropQueue: true }); return true; }
   if (stop === "stop" && hasWork(bot)) { await stopAndReport(bot, { dropQueue: false, thread }); return true; }
+  const compact = compactCommand(text); // L80 `/compact <consigne>`: summarised now, in this conversation's queue (compactplus.ts)
+  if (compact) { void inQueue(bot.id, () => compactIfNeeded(bots.byId(bot.id) ?? bot, true, { thread, instruction: compact.instruction }), threadLane(bot.id, thread)).then((r) => noticeIn(bot, thread, compactDoneText(localeFr(bot), r)), (e) => noticeIn(bot, thread, compactDoneText(localeFr(bot), { changed: false, before: 0, after: 0 }, (e as Error).message))); return true; }
+  if (planTyped(bot, text, thread)) return true; // L79 « /plan <demande> », « /plan off » (turnplusroutes.ts)
   const side = sideCommand(text);
   if (side?.kind === "btw") { void answerSide(bot, side.text, thread); return true; }
   // « Traite ça après »: its own turn, after the current work — never a note folded into the running turn.

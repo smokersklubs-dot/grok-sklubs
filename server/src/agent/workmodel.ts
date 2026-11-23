@@ -4,6 +4,7 @@ import type { BotRecord } from "../store.js";
 import { engineOf, isEngineRef } from "./engine.js";
 import type { Trigger } from "./turn-request.js";
 import { conversationModel } from "../convs.js";
+import { modeModelFor } from "./modelmodes.js";
 
 /**
  * nod item 2, hooked into the turn loop: a routine run (and its own continuations) runs on the model chosen for that
@@ -49,7 +50,8 @@ export function withWorkModel(bot: BotRecord | null | undefined, trigger: Trigge
 export function conversationChoice(bot: BotRecord, trigger: Trigger): string {
   if (trigger.kind === "routine") return bot.model;
   const ref = conversationModel(bot.id, bot.generation);
-  if (!ref || ref === bot.model) return bot.model;
+  if (!ref) return modeModelFor(bot, trigger); // L69 named modes (modelmodes.ts)
+  if (ref === bot.model) return bot.model;
   if (isEngineRef(ref)) return isEngineRef(bot.model) && engineOf(ref) === engineOf(bot.model) ? ref : bot.model;
   return modelAvailable(ref, bot.userId) ? ref : bot.model;
 }

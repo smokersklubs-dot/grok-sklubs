@@ -59,3 +59,7 @@ Serveur IMAP (port 993, connexion chiffrée), identifiant, mot de passe (un **mo
 ## Sécurité
 
 Les jetons et le mot de passe sont gardés chiffrés (clé de données du serveur), jamais réaffichés, jamais écrits dans un journal. Seules les API officielles sont utilisées (docs.slack.dev, discord.com/developers, RFC 3501).
+
+## Telegram : envoi vérifié et lien vers la carte (23/11/2026)
+
+Chaque message envoyé sur Telegram est vérifié. Si Telegram demande d'attendre ou ne répond pas, Sklubot réessaie (3 essais). Si ça échoue quand même (par exemple si tu as bloqué le bot), un avis apparaît dans la discussion web : rien n'est perdu, la réponse y est. Quand le bot attend ta réponse, le message Telegram finit par « Ouvrir la carte : … » pour aller tout de suite à la bonne discussion dans l'appli.

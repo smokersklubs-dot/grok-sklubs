@@ -8,6 +8,7 @@
 import { t } from "../i18n";
 import { useStore, type CallLine, type CallState } from "../store";
 import { voiceStarted, voiceStopped } from "./voiceLevel";
+import { micConstraints, setPreferredMic, watchMic } from "./micchoice"; // L154 choice of microphone, reconnection
 
 interface Conn {
   botId: string;
@@ -24,7 +25,12 @@ interface Conn {
   quietFrames: number;
   ducked: boolean;
   closed: boolean;
+  /** L154: the microphone's source node, the first filter it feeds, and the watch on its track. */
+  source?: MediaStreamAudioSourceNode;
+  input?: AudioNode;
+  unwatch?: () => void;
 }
+const MIC_BASE: MediaTrackConstraints = { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 };
 
 let conn: Conn | null = null;
 let lineId = 100_000;
@@ -77,7 +83,7 @@ export async function startServerCall(botId: string, lang: string, onEarlyFail?:
   let stream: MediaStream;
   try {
     // Echo cancellation keeps the bot's own voice out of the microphone (otherwise it would cut itself off).
-    stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 } });
+    stream = await navigator.mediaDevices.getUserMedia({ audio: micConstraints(MIC_BASE) });
   } catch {
     dropPrimedAudio();
     patch({ status: "error", error: t("call.micDenied") });
@@ -113,8 +119,9 @@ export async function startServerCall(botId: string, lang: string, onEarlyFail?:
   sink.gain.value = 0;
   node.connect(sink);
   sink.connect(ctx.destination);
-  const c: Conn = { botId, ws, ctx, stream, node, gain, sources: new Map(), expect: null, playAt: 0, loudFrames: 0, quietFrames: 0, ducked: false, closed: false };
+  const c: Conn = { botId, ws, ctx, stream, node, gain, sources: new Map(), expect: null, playAt: 0, loudFrames: 0, quietFrames: 0, ducked: false, closed: false, source, input: lp1 };
   conn = c;
+  c.unwatch = watchMic(stream, () => void switchMic(c, "", true));
   patch({ pipeline: "server" });
 
   node.port.onmessage = (e: MessageEvent<{ pcm: ArrayBuffer; level: number }>) => {
@@ -209,7 +216,38 @@ export function serverMute(on: boolean): void {
   if (c.ws.readyState === WebSocket.OPEN) c.ws.send(JSON.stringify({ type: "mute", on }));
 }
 
+/**
+ * L154: takes another microphone during the call (`id` "" = the default one), without hanging up: the new source feeds
+ * the same filters and worklet. `lost`: the old one stopped by itself (unplugged); the user is told either way.
+ */
+async function switchMic(c: Conn, id: string, lost = false): Promise<boolean> {
+  if (c.closed || !c.input) return false;
+  let next: MediaStream;
+  try { next = await navigator.mediaDevices.getUserMedia({ audio: micConstraints(MIC_BASE, id) }); } catch {
+    patch({ status: "error", error: t("call.micLost") });
+    return false;
+  }
+  if (c.closed) { next.getTracks().forEach((tr) => tr.stop()); return false; }
+  c.unwatch?.();
+  try { c.source?.disconnect(); } catch { /* */ }
+  c.stream.getTracks().forEach((tr) => tr.stop());
+  c.stream = next;
+  c.source = c.ctx.createMediaStreamSource(next);
+  c.source.connect(c.input);
+  c.unwatch = watchMic(next, () => void switchMic(c, "", true));
+  useStore.getState().showToast(t(lost ? "call.micReconnected" : "call.micChanged"));
+  return true;
+}
+
+/** The microphone picker of the call bar: remembered for the next calls, and used now when a call runs. */
+export async function changeCallMic(id: string): Promise<void> {
+  setPreferredMic(id);
+  const c = conn;
+  if (c && !c.closed) await switchMic(c, id);
+}
+
 function teardown(c: Conn): void {
+  c.unwatch?.();
   c.closed = true;
   stopAll(c);
   c.node.port.onmessage = null;

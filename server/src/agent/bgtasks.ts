@@ -4,6 +4,7 @@ import { tr } from "../i18n.js";
 import type { ToolSpec } from "../llm/types.js";
 import type { BgTask, BgTaskState, Card } from "../shared.js";
 import { modelForWork } from "../routineplus.js";
+import { taskModel } from "./modelmodes.js";
 import { approvals, audit, bots, clip, newId, now, paused, rows, users, type BotRecord } from "../store.js";
 
 /**
@@ -16,7 +17,8 @@ import { approvals, audit, bots, clip, newId, now, paused, rows, users, type Bot
  * The helper's grounding (grounding.ts) counts the user's words in the parent's main chat and on the card, never the goal
  * the bot wrote for it. Its approvals are answered from the task card.
  */
-export const MAX_BG_TASKS = 3;
+export { MAX_BG_TASKS } from "./bgtaskspecs.js";
+import { MAX_BG_TASKS } from "./bgtaskspecs.js";
 
 interface TaskRecord extends BgTask { helperId: string | null; goal: string; generation: number; cardSeq: number | null }
 const toTask = (r: any): TaskRecord => ({ id: r.id, botId: r.bot_id, helperId: r.helper_id ?? null, title: r.title, goal: r.goal, state: r.state, steps: r.steps, result: r.result, generation: r.generation, cardSeq: r.card_seq ?? null, createdAt: r.created_at, updatedAt: r.updated_at });
@@ -49,17 +51,18 @@ function refreshCard(t: TaskRecord, extra: Partial<Extract<Card, { type: "task" 
   emit(parent.userId, { type: "tasks", botId: parent.id });
 }
 
-export class TaskLimitError extends Error {}
+export { TaskLimitError } from "./bgtaskspecs.js";
+import { TaskLimitError } from "./bgtaskspecs.js";
 
 /** Starts a background task for `parent`: the hidden helper, its card in the main chat, and its first instruction. */
-export function startTask(parent: BotRecord, title: string, goal: string, depth: number, tainted = false): TaskRecord {
+export function startTask(parent: BotRecord, title: string, goal: string, depth: number, tainted = false, level?: unknown): TaskRecord {
   if (parent.parentId) throw new TaskLimitError("A helper or a background task cannot start background tasks.");
   if (bgTasks.active(parent.id) >= MAX_BG_TASKS) throw new TaskLimitError(`${MAX_BG_TASKS} background tasks are already under way. Wait for one to finish, or stop one.`);
   const loc = users.localeOf(parent.userId);
   const short = clip(title.replace(/\s+/g, " ").trim() || clip(goal, 40), 60);
   const helper = bots.create(parent.userId, {
     name: clip(`${parent.name} › ${short}`, 60), label: tr(loc, "Background task"), description: tr(loc, "Background task working for {name}.", { name: parent.name }),
-    shape: parent.shape, color: parent.color, mode: parent.mode, effort: parent.effort, model: modelForWork(parent, "task"), autonomy: parent.autonomy, // nod item 2: the bot's model for tasks
+    shape: parent.shape, color: parent.color, mode: parent.mode, effort: parent.effort, model: taskModel(parent, level, modelForWork(parent, "task")), autonomy: parent.autonomy, // nod item 2: the bot's model for tasks
     hidden: true, parentId: parent.id,
   });
   const id = newId("bgt");
@@ -162,12 +165,4 @@ export const bgTaskHooks = {
 };
 
 // ── Tools ───────────────────────────────────────────────────────────────────
-const obj = (properties: Record<string, unknown>, required: string[] = []): ToolSpec["inputSchema"] => ({ type: "object", properties, required });
-const str = (description: string) => ({ type: "string", description });
-
-/** Tool definitions (wired into the built-in list by tools.ts, group "tasks"). */
-export const bgTaskToolSpecs = {
-  start: { name: "task_start", description: `Start a background task for long work (research across several sources, a comparison, a report, a long check) so the main chat stays free. A worker of yours does it in its own conversation; the user follows it on a card (state, steps, Stop) and can reply to it there. Its report comes back to you when it is done. At most ${MAX_BG_TASKS} at once. Do not use it for quick questions.`, inputSchema: obj({ title: str("A short title for the card (a few words)"), goal: str("Everything the task needs: the goal, the context, what the report must contain, when it is done") }, ["title", "goal"]) } satisfies ToolSpec,
-  list: { name: "task_list", description: "List your background tasks with their state.", inputSchema: obj({}) } satisfies ToolSpec,
-  stop: { name: "task_stop", description: "Stop one of your background tasks.", inputSchema: obj({ id: str("Task id") }, ["id"]) } satisfies ToolSpec,
-};
+export { bgTaskToolSpecs } from "./bgtaskspecs.js";

@@ -13,8 +13,10 @@ const EXTRAS: [ResearchExtra, string, string][] = [
   ["polymarket", "Polymarket (paris en cours : des attentes, pas des faits)", "Polymarket (open bets: expectations, not facts)"],
   ["reddit", "Reddit (via l’ordinateur du bot, lecture seule)", "Reddit (through the bot’s computer, read-only)"],
   ["youtube", "YouTube (via l’ordinateur du bot, lecture seule)", "YouTube (through the bot’s computer, read-only)"],
+  ["openalex", "OpenAlex (articles scientifiques, gratuit)", "OpenAlex (scholarly papers, free)"],
+  ["pubmed", "PubMed (santé et biologie, gratuit)", "PubMed (medicine and biology, free)"],
 ];
-const NAMES: Record<SourceState["source"], string> = { web: "Web", x: "X", hn: "Hacker News", polymarket: "Polymarket", reddit: "Reddit", youtube: "YouTube" };
+const NAMES: Record<SourceState["source"], string> = { web: "Web", x: "X", hn: "Hacker News", polymarket: "Polymarket", reddit: "Reddit", youtube: "YouTube", openalex: "OpenAlex", pubmed: "PubMed" };
 const STATES: Record<SourceState["state"], [string, string]> = {
   ok: ["a répondu", "answered"], empty: ["rien trouvé", "nothing found"], failed: ["en panne", "failed"], rate_limited: ["limite de débit", "rate limited"],
   timeout: ["trop lent", "timed out"], login: ["connexion à faire", "needs a login"], unavailable: ["indisponible", "unavailable"],

@@ -3,6 +3,7 @@ import { q } from "./db.js";
 import { bots, rows, type BotRecord } from "./store.js";
 import { xSearchProvider } from "./xsearch.js";
 import { browseSection, reportMessage } from "./researchsection.js";
+import { changesBlock, previousReport, runDueWatches } from "./researchwatch.js";
 import { briefFrom, type ResearchBrief, type ResearchSection } from "./researchevidence.js";
 
 interface Job {
@@ -137,7 +138,7 @@ export async function nextResearchSection(work = browseSection) {
     else
       rows.append(
         bot,
-        { kind: "message", role: "assistant", text: message(job.brief, complete) },
+        { kind: "message", role: "assistant", text: message(job.brief, complete) + changesBlock(job.brief, complete, previousReport(bot.id, job.brief.subject, job.id)) }, // L87 « ce qui a changé » (researchwatch.ts)
         selected.thread,
         () => {
           if (!save(complete, "done")) throw Error("Lease expired.");
@@ -167,6 +168,7 @@ export function startResearchWorker() {
     if (busy) return;
     busy = true;
     try {
+      runDueWatches(createReport); // L87 « Veille » (researchwatch.ts)
       while (await nextResearchSection()) {
         /* drain in checkpoint order */
       }

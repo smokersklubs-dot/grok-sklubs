@@ -1,0 +1,3 @@
+/* L154 microphone picker in the call bar (MicPicker.tsx) */
+.call-mic { width: auto; max-width: 150px; min-width: 0; text-overflow: ellipsis; }
+@media (max-width: 480px) { .call-mic { max-width: 96px; } }

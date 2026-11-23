@@ -128,6 +128,10 @@ test("a bot can send a file and create a picture", async () => {
   await say(bot, 'call file_send {"path":"rapport.md","caption":"Voici le rapport"}');
   await until(async () => (await rowsOf(bot.id)).some((r) => r.body.kind === "message" && r.body.text === "Voici le rapport" && r.body.attachments?.[0].name === "rapport.md"), "file in chat");
   await say(bot, 'call image_generate {"prompt":"a red fox in the snow","filename":"renard"}');
+  // A paid picture asks first, with its price (audit OGAI: image_generate had no card and no reservation).
+  const paid = await until(async () => (await rowsOf(bot.id)).find((r) => r.body.kind === "card" && r.body.card.type === "approval" && r.body.card.status === "pending"), "picture approval");
+  assert.match(paid.body.kind === "card" && paid.body.card.type === "approval" ? paid.body.card.title : "", /créer une image/);
+  await call("POST", `/approvals/${paid.body.kind === "card" && paid.body.card.type === "approval" ? paid.body.card.approvalId : ""}`, { decision: "allow" });
   const row = await until(async () => (await rowsOf(bot.id)).find((r) => r.body.kind === "message" && r.body.attachments?.[0]?.path === "images/renard.png"), "picture in chat");
   assert.equal(row.body.kind === "message" && row.body.attachments![0].mime, "image/png");
   assert.deepEqual(imageCalls[0], { auth: "Bearer img-key", body: { model: "gpt-image-1", prompt: "a red fox in the snow", n: 1 } });

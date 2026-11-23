@@ -8,7 +8,7 @@ import { setRelayAsker } from "../egress.js";
 import { connectors } from "../connectors.js";
 import { defaultModelRef, modelLabel, ProviderError, resolveModel, validateToolInput, type TurnResult, type Block, type ChatMessage, type Effort, type TextBlock, type ToolResultBlock, type ToolSpec, type ToolUseBlock } from "../llm/index.js";
 import { tr } from "../i18n.js";
-import { imageService } from "../images.js";
+import { imageServiceFor } from "../mediakeys.js"; // audit OGAI: the account's own picture key counts too
 import type { ActivityKind, Attachment, Row } from "../shared.js";
 import { activeTurns, approvals, audit, botQueue, bots, clip, type QueuedWork, feedback, history, laneKey, newId, paused, policies, rows, redactSecrets, rowScope, settings, users, type BotRecord, type UserRecord } from "../store.js";
 import { aliasLane, laneBusy, laneOf, laneWaiting, MAIN_LANE, rowThread, schedule, threadLane } from "./lanes.js"; import { LaneMap, LaneSet } from "./lanemap.js"; import { acquire, releaseLane } from "./turnlocks.js";
@@ -31,7 +31,7 @@ import { pushLater, pushReplyIfAway } from "../push.js";
 import { onlyPhones, devices as relayDevices } from "../relay.js";
 /** "My computer" tools a phone cannot serve (relay protocol 1.2): hidden when every linked device is a phone. */
 const PHONE_LESS = new Set(["my_command", "my_command_output", "my_command_stop", "my_vault_fill", "my_window_focus", "my_files", "my_file_read", "my_file_write", "my_file_trash"]);
-import { backoffDelay, errorDetail, isTransient, LoopGuard, loopStopText, modelChain, repeatLimit, sleep, type LoopStop } from "./reliability.js";
+import { errorDetail, LoopGuard, loopStopText, modelChain, repeatLimit, retryBudget, retryWait, sleep, type LoopStop } from "./reliability.js"; import { nextBackupIndex, turnHasImages, warmBackups } from "./backupmodels.js"; // L60
 import { forgetCall, isParked, noteMessageBehindApproval, parkApproval, parkedOf, parkedResume, rememberCall } from "./approval-wait.js"; import { crashOf, guardTurn } from "./crashguard.js";
 import { authorize, external, groundable, withoutQuote, type Decision } from "./authorize.js";
 import { actionHash, executions, markUncertain, outcomeUnknown } from "./executions.js"; import { rememberAction, repeatedAction } from "./sameaction.js"; import { promiseNudge } from "./promises.js"; import { gt } from "./guardtext.js"; import { withWorkModel } from "./workmodel.js"; import { closeRoutineThread, openRoutineThread } from "./routinethread.js"; import { beginUnprotected, clearUnprotected, clearUnprotectedMarkers, endUnprotected, holdAfterRestart, RESTART_CHECK_TEXT, safePoint } from "./restartguard.js";
@@ -56,7 +56,7 @@ import { noteTurnFailure } from "../sentinel/signals.js";
 import { handleFailure, noteFallback, noteTurnOk } from "./failures.js";
 import { attendedTrigger } from "./attended.js"; // usage caps: moved out of this file
 export { attendedTrigger };
-import { holdForLimit, limitNote, noteLimitFallback, subLimitFor, waitForSubscription } from "./sublimit.js";
+import { holdForLimit, limitNote, noteLimitFallback, subLimitFor, waitForSubscription } from "./sublimit.js"; import { holdNoBrain } from "./heldfirst.js"; import { planGate } from "./planmode.js"; import { noteStopped } from "./stoprecap.js"; import { turnNotes } from "./turnnotes.js"; import { afterEngineTimeout } from "./timeoutresume.js"; // L59 L79 L63 L72
 import { callSignal, EngineGone, endWatch, isWatchStop, takeSwitch, TurnStalled, watchKind, watchNextModel, watchOutput, watchTool, watchTurn, watchWait, type WatchHandle } from "./watch.js";
 
 /** A skill the user asked for with "/skill <name>" in the composer. */
@@ -223,7 +223,7 @@ const runningJob = new LaneMap<number>();
 async function runQueued(id: number | null, botId: string, trigger: Trigger) {
   // "Pause": a paused bot starts nothing. Its work waits in the queue, in order, until it is resumed (or is let go, for
   // the kinds of work that have their own way back: routines, goal rounds, job ends). Checked right before the turn.
-  if (isCancelledJob(id) || holdIfPaused(id, botId, trigger)) return; // L63: cancelled by "Tout arrêter" (stopcommand.ts)
+  if (isCancelledJob(id) || holdIfPaused(id, botId, trigger) || (holdNoBrain(id, bots.byId(botId), trigger) && (liveJobs.delete(id ?? -1), true))) return; // L63: cancelled by "Tout arrêter" (stopcommand.ts); L59 no model at all: kept (heldfirst.ts)
   // The bot's subscription is at its usage limit and it has no backup model: the work waits for it (sublimit.ts).
   if (holdForLimit(id, bots.byId(botId), trigger)) { liveJobs.delete(id!); return; }
   if (id !== null) botQueue.start(id);
@@ -429,7 +429,7 @@ export async function newTurn(bot: BotRecord, user: UserRecord, depth: number, s
     : spec;
   return {
     bot, user, depth, signal, generation: bot.generation,
-    system: buildSystemPrompt(bot, user, { connectorNames, nativeAccounts: nativeAll.filter((a) => a.status === "ready").map((a) => `${a.name}${a.identity ? ` (${a.identity})` : ""}`), nativeNeedsSignIn: nativeAll.filter((a) => a.status !== "ready").map((a) => a.name), browser: browserAvailable(), shell: shellAvailable(), linux: computerKind() === "linux", images: !!imageService(), video, higgsfield: video === "connector" ? higgsfieldFor(user.id)?.name : undefined }),
+    system: buildSystemPrompt(bot, user, { connectorNames, nativeAccounts: nativeAll.filter((a) => a.status === "ready").map((a) => `${a.name}${a.identity ? ` (${a.identity})` : ""}`), nativeNeedsSignIn: nativeAll.filter((a) => a.status !== "ready").map((a) => a.name), browser: browserAvailable(), shell: shellAvailable(), linux: computerKind() === "linux", images: !!imageServiceFor(user.id), video, higgsfield: video === "connector" ? higgsfieldFor(user.id)?.name : undefined }),
     // Sorted so the tool list is byte-identical from call to call, which keeps provider caches warm.
     tools: [...builtins.map((b) => b.spec), ...remoteTools.map((r) => r.spec), ...nativeTools.map((r) => r.spec)].map(withQuote).sort((a, b) => a.name.localeCompare(b.name)),
     modelRef,
@@ -615,7 +615,7 @@ async function runScopedTurn(botId: string, trigger: Trigger, thread: number): P
         const extra = await drainSteering(bot, turn);
         const words = `${stampLine(user.id)}\n${triggerMessage(trigger)}`; // L92 (turnstamp.ts)
         const note = handedBack.delete(botId) ? "[The user took control of your computer since your last turn and has handed it back. Look at the screen before relying on what you saw earlier.]\n" : "";
-        const heard = feedbackNote(bot, thread);
+        const heard = turnNotes(feedbackNote(bot, thread), bot, thread, trigger); // L63 stop recap, L79 plan mode (turnnotes.ts)
         // A subscription tool keeps one session of its own: a thread reply carries the message it hangs on every time.
         const inThread = thread ? `${threadOpening(bot, thread)}\n[Answer in this thread.]\n` : "";
         const forced = trigger.kind === "user" && trigger.skill ? `\n\n${forcedSkillNote(trigger.skill)}` : "";
@@ -687,7 +687,7 @@ async function runScopedTurn(botId: string, trigger: Trigger, thread: number): P
       if (linkNote) first.push(text(linkNote));
       if (trigger.kind === "user" && trigger.skill) first.push(text(forcedSkillNote(trigger.skill)));
       if (handedBack.delete(botId)) first.unshift(text("[The user took control of your computer since your last turn and has handed it back. Windows, pages and fields may have changed: look at the screen before relying on what you saw earlier.]"));
-      const heard = feedbackNote(bot, thread);
+      const heard = turnNotes(feedbackNote(bot, thread), bot, thread, trigger); // L63 stop recap, L79 plan mode (turnnotes.ts)
       if (heard) first.unshift(text(heard));
       if (thread && !history.count(botId, bot.generation, thread)) first.unshift(text(threadOpening(bot, thread)));
       history.append(botId, bot.generation, { role: "user", content: [...repairDangling(botId, bot.generation, thread), ...first, ...extra] }, thread);
@@ -722,12 +722,11 @@ async function runScopedTurn(botId: string, trigger: Trigger, thread: number): P
     if (!stopped) noteDiskTrouble(bot, String((err as Error)?.message ?? err));
     if (bots.byId(botId)) {
       if (timedOut) {
-        // Never a dead end: what the tool said and did so far is kept (and its session, resumed next turn); "Continue" — or
-        // simply saying so — picks the work back up.
-        const minutes = Math.round((controller.signal.reason as EngineTimeout).limitMs / 60_000);
-        rows.append(bot, { kind: "notice", tone: "warn", text: tr(user.locale, "I stopped this turn after {min} minutes: that is the time limit for one turn on a subscription. What I did so far is kept. Press Continue, or just tell me to continue, to pick it back up.", { min: minutes }), action: { kind: "continue", status: "pending", reason: "timeout" } });
-        audit(user.id, "system", `${bot.name}: subscription turn stopped at its time limit (${minutes} min)`, bot.id);
-        handleFailure({ bot, trigger, thread, since: turnSince, err: controller.signal.reason, existingRemedy: true });
+        // L72 (timeoutresume.ts): carried on by itself while it makes progress (routine, task, « Continuer seul »); else the
+        // notice with Continue — never a dead end: what the tool did is kept (and its session, resumed next turn).
+        const carryOn = () => enqueue(botId, { kind: "system", text: TIMEOUT_CONTINUE_TEXT, resumeOf: "steps", thread: thread || undefined, tainted: turn?.tainted || undefined, depth: turn?.depth, origin: turn?.origin ?? (trigger.kind === "resume" ? "resume" : originOf(trigger)), spendScope: turn?.spendKey });
+        if (!afterEngineTimeout({ bot, locale: user.locale, trigger, thread, since: turnSince, limitMs: (controller.signal.reason as EngineTimeout).limitMs, carryOn }))
+          handleFailure({ bot, trigger, thread, since: turnSince, err: controller.signal.reason, existingRemedy: true });
       } else if (watchStop instanceof EngineGone) {
         // The tool's process ended in the computer while the turn still waited on it (watch.ts): said at once, with
         // Continue, instead of waiting for the time limit. What it did and said is kept (its session too).
@@ -753,7 +752,7 @@ async function runScopedTurn(botId: string, trigger: Trigger, thread: number): P
         rows.append(bot, { kind: "notice", tone: "info", text: tr(user.locale, "Paused. What I did so far is kept; I will pick this back up when I am resumed.") });
         if (trigger.kind !== "routine" && !(trigger.kind === "system" && trigger.goalRound))
           enqueue(botId, { kind: "system", text: PAUSE_CONTINUE_TEXT, thread: thread || undefined, tainted: turn?.tainted || undefined, depth: turn?.depth, origin: turn?.origin ?? (trigger.kind === "resume" ? "resume" : originOf(trigger)), spendScope: turn?.spendKey });
-      } else if (stopped) { if (!reportedStop(controller.signal)) rows.append(bot, { kind: "notice", tone: "info", text: tr(user.locale, "Stopped.") }); } // L63: stopcommand.ts wrote its own report
+      } else if (stopped) { noteStopped(bot, thread, turnSince); if (!reportedStop(controller.signal)) rows.append(bot, { kind: "notice", tone: "info", text: tr(user.locale, "Stopped.") }); } // L63: stopcommand.ts wrote its own report
       // failures.ts: a new try, a teammate or one card with remedies; only a hidden helper gets the plain notice.
       else if (!handleFailure({ bot, trigger, thread, since: turnSince, err, provider: turn && !isEngineRef(turn.modelRef) ? turn.modelRef.split(":")[0] : undefined, origin: turn?.origin, tainted: turn?.tainted })) rows.append(bot, { kind: "notice", tone: "error", text: tr(user.locale, "Something went wrong: {detail}", { detail: clip(String((err as Error)?.message ?? err), 400) }) });
     }
@@ -976,17 +975,17 @@ async function modelLoop(turn: Turn) {
             .catch((e) => { console.error(`[compaction ${bot.name}]`, (e as Error)?.message ?? e); return false; }).finally(waited);
           if (done) continue;
         }
-        const wait = isTransient(err) && attempt < rel.maxRetries ? backoffDelay(attempt, err instanceof ProviderError ? err.retryAfterMs : null) : null;
+        const wait = retryWait(err, attempt, rel.maxRetries); if (attempt === 0) warmBackups(turn.user, chain.slice(at + 1)); // L60: a rate limit gets a longer budget; the backups are checked meanwhile (backupmodels.ts)
         if (wait !== null) {
           attempt++;
-          setLive(turn.user.id, bot.id, { caption: tr(loc, "{model} failed ({detail}). New try {n}/{max} in {s} s…", { model: modelLabel(turn.modelRef, turn.user.id), detail: errorDetail(err), n: attempt, max: rel.maxRetries, s: Math.max(1, Math.round(wait / 1000)) }) }); // nod item 3
+          setLive(turn.user.id, bot.id, { caption: tr(loc, "{model} failed ({detail}). New try {n}/{max} in {s} s…", { model: modelLabel(turn.modelRef, turn.user.id), detail: errorDetail(err), n: attempt, max: retryBudget(err, rel.maxRetries), s: Math.max(1, Math.round(wait / 1000)) }) }); // nod item 3
           await sleep(wait, turn.signal);
           continue;
         }
         // Out of tries, or an error another try would not fix: on to the next model in the chain, if any.
-        const next = chain[at + 1];
+        const ni = nextBackupIndex(chain, at, turn.user.id, turnHasImages(turn)), next = chain[ni]; // L60: a backup known broken is skipped; one that reads pictures first
         if (!next) { stream.finish(); throw err; }
-        at++;
+        at = ni;
         attempt = 0;
         ({ provider, model } = resolveModel(next, turn.user.id));
         const from = turn.modelRef;
@@ -1443,7 +1442,7 @@ async function processCalls(turn: Turn, st: PausedTurn): Promise<"continue" | "e
       // Bound to the exact action and single-use: a second run, or anything different, needs a new approval.
       if (approvals.consume(answered, hash)) { verdict = { kind: "allow", grant: { by: "approval" } }; approvalUsed = answered; }
       else verdict = { kind: "block", reason: "This approval was already used, or was given for a different action." };
-    } else verdict = decided === "deny" ? { kind: "block" } : verdicts.get(call.id) ?? await authorize(turn, call);
+    } else verdict = decided === "deny" ? { kind: "block" } : verdicts.get(call.id) ?? planGate(turn, call) ?? await authorize(turn, call); // L79 plan mode only adds refusals (planmode.ts)
     decided = null;
     answered = "";
     if (verdict.kind === "ask") {

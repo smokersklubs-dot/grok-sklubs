@@ -14,7 +14,7 @@ import type { ToolOutput } from "./tools.js";
  * The memory lives with the turn object only: a new turn starts empty, and nothing stored is read differently.
  */
 const POINTER = /^(screen|element|my|browser|keyboard|mouse)_(click|type|key|keys|scroll|drag|move|press|open|focus|hover|select|navigate|back|wait)/;
-const NEVER = new Set(["shell_run", "my_command", "my_command_stop", "progress_update", "stay_quiet", "message_react", "ask_user", "ask_takeover"]);
+const NEVER = new Set(["shell_run", "my_command", "my_command_stop", "progress_update", "stay_quiet", "message_react", "ask_user", "ask_takeover", "code_request"]);
 
 const done = new WeakMap<object, Map<string, ToolOutput>>();
 

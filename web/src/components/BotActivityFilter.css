@@ -1,0 +1,8 @@
+/* L146: the sidebar's activity filter (BotActivityFilter.tsx). */
+.bot-activity { display: flex; flex-wrap: wrap; gap: 4px; padding: 4px 10px 6px; }
+.bot-activity-chip { display: inline-flex; align-items: center; gap: 4px; min-height: 28px; padding: 2px 8px; border: 1px solid var(--border); border-radius: 999px; background: transparent; color: var(--text-2); font: inherit; font-size: 12px; cursor: pointer; }
+.bot-activity-chip:hover { background: var(--hover); }
+.bot-activity-chip.is-on { background: var(--ink); border-color: var(--ink); color: var(--ink-fg); }
+.bot-activity-n { font-variant-numeric: tabular-nums; opacity: 0.8; }
+.bot-activity-none { flex-basis: 100%; margin: 2px 2px 0; }
+@media (pointer: coarse) { .bot-activity-chip { min-height: 44px; } }

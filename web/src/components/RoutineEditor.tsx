@@ -7,6 +7,7 @@ import { dateTime } from "../lib/format";
 import { Icon, Spinner } from "./Icon";
 import { ErrorNote } from "./ui";
 import { RoutineOptions } from "./RoutineOptions";
+import { RoutineRunForm } from "./RoutineParams";
 import "./RoutineEditor.css";
 
 /**
@@ -55,6 +56,7 @@ export function RoutineMore({ r, onNote, onError, open }: { r: Routine; onNote: 
     <div className="routine-more">
       {r.running && <RoutineLive r={r} />}
       {late && <p className="small routine-track"><Icon name="clock" size={12} /><span>{late.line}</span></p>}
+      <RoutineRunForm r={r} revision={extras?.revision} onNote={onNote} />
       {extras && <RoutineEdit r={r} extras={extras} startOpen={open} onSaved={(x) => setExtras(x)} onNote={onNote} onError={onError} />}
       {extras && <ApproveInstruction r={r} approval={extras.approval} startOpen={open} onChange={() => void load()} />}
       <RoutineOptions r={r} startOpen={open} />

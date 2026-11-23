@@ -241,3 +241,13 @@ fournisseur) ; le sens sert à `memory_search`, que le bot utilise avant de te r
 Réglages → **Activité** : une ligne « Notes recalled for … » par message, avec le début de chaque note rappelée (ligne
 en anglais, comme le reste de ce journal). Les notes rappelées sont aussi marquées « utilisées » (date de dernier
 usage).
+
+## Ajouts du 23/11/2026
+
+- **Doublons** : quand un bot veut retenir une chose qu'il sait déjà, il te le dit (« déjà retenu ») au lieu de l'écrire deux fois.
+- **« Retiens surtout… »** (réglages du bot → Mémoire) : tes mots sur ce qui compte pour toi. Les règles de prudence restent les mêmes.
+- **Résumés** : `/compact` (ou `/résumer`) suivi de ta consigne résume tout de suite, en gardant ce que tu demandes. Les fils sont résumés aussi. Une très longue conversation est résumée par morceaux, rien n'est coupé en silence. Quand tu t'absentes un quart d'heure, une conversation presque pleine est résumée en avance.
+- **Documents** : colle un texte (tarifs, procédure…) dans « Documents de {bot} » ; le bot y cherche quand il en a besoin.
+- **Notes sur les sites** : une note liée à un site revient à tous tes bots quand ils ouvrent ce site.
+- **Mémoire du projet** : dis « retiens pour le projet… » et la note va dans la mémoire que lisent tous les bots du projet.
+- **« Pourquoi ? »** dans le journal détaillé (Réglages → Activité) : ce qui a autorisé l'action, ton dernier message, et ce que le bot savait à ce moment.

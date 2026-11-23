@@ -32,6 +32,7 @@ import { attachLiveScreens } from "./vnc.js";
 import { relayUpgrade } from "./relay.js";
 import { closeLeftOpenWatchNotices } from "./agent/watch.js";
 import { expireOrphanApprovals, interrupt, recoverInterruptedTurns, startJobWatch } from "./agent/loop.js";
+import { startMediaJobs } from "./mediajobs.js";
 import { gracefulStop } from "./agent/restartguard.js";
 import { crashedTurn, TurnCrashed } from "./agent/crashguard.js";
 import { rowScope } from "./store.js";
@@ -115,7 +116,7 @@ startUploadSweep();
 if (process.env.NO_SCHEDULER !== "1") startGithubIssueWorker();
 if (computerKind() === "linux") startStudioExports();
 startAutoBackup();
-startHealthChecks();
+startHealthChecks(); startMediaJobs(); // Wan2GP runs left open by a restart (mediajobs.ts)
 // The Sentinelle (sentinel/): a read-only scan every SENTINEL_EVERY_MIN minutes, incidents and alerts to the owner/operators.
 startSentinel();
 // « Annonces » (announcements.ts): push and e-mail of announcements, once per reader, every minute.

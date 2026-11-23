@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from "react"; import { BotTrash } from "./BotLifecycle"; import { HistoryRetention } from "./HistoryRetention";
 import { PersonalCommandsSection } from "./ComposerSlash"; import { DoctorSection } from "./DoctorSection"; // L152, L153
-import { UsageCapsBlock } from "./UsageCaps";
+import { UsageCapsBlock } from "./UsageCaps"; import { UsageChart } from "./UsageChart"; import { ComputerHoursBlock } from "./ComputerHours"; // L142 30 days ; L95 computer hours
 import { api, ApiError, enc, errText } from "../api";
 import { LOCALES, tn, useT, type Key } from "../i18n";
 import { useStore, type AppSection, type Theme } from "../store";
@@ -29,6 +29,7 @@ import { TwoFactorSettings } from "./TwoFactor";
 import { AdminSection, SubscriptionSection } from "./Hosted";
 import { BackupSettings } from "./BackupSettings";
 import { SurveillanceSettingsSection } from "./SurveillanceView";
+import { TeamAskPolicy } from "./TeamAskPolicy";
 import { SkillsLibrarySection } from "./SkillsLibrary";
 import { SettingsNavigation, KeyboardShortcuts } from "./SettingsNavigation";
 import { PageVersions } from "./PageVersions"; import { ConversationGrantsBlock } from "./ConversationGrants"; import { SecuritySettingsBlock } from "./SecurityLot1";
@@ -595,8 +596,8 @@ function UsageSection() {
               <span>{t("usage.unknownCost", { tokens: compactNumber(usage.totals.unknownTokens), models: (usage.unknownModels ?? []).join(", "), estimate: money(usage.totals.estimatedUsd) })}</span>
             </div>
           )}
-          {/* The monthly budget's bar is with the caps (UsageCapsBlock): one place for every limit. */}
-          <UsageCapsBlock />
+          <UsageChart />{/* L142. The monthly budget's bar is with the caps (UsageCapsBlock): one place for every limit. */}
+          <UsageCapsBlock /><ComputerHoursBlock />
           {(usage.subscriptions ?? []).length > 0 && <SubscriptionUsageBlock subs={usage.subscriptions} />}
           <h3 className="pane-heading">{t("usage.byBot")}</h3>
           {usage.byBot.length === 0 ? (
@@ -1062,6 +1063,7 @@ function TeamSection() {
         </div>
         <GrokImportButton />
       </div>
+      <TeamAskPolicy /> {/* L96 « qui peut demander à qui », helpers inherit (TeamAskPolicy.tsx) */}
       <ErrorNote onDismiss={() => setError(null)}>{error}</ErrorNote>
       {note && (
         <div className="callout is-ok" role="status">

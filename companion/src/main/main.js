@@ -22,6 +22,7 @@ const { createDesktopCaps } = require('./capabilities/desktop');
 const { createBotPointer } = require('./bot-pointer');
 const { runShell } = require('./capabilities/shell');
 const { createFileCaps, shareProblem } = require('./capabilities/files');
+const { createGpuHttp } = require('./capabilities/gpu');
 const { createAccessibilityCaps } = require('./capabilities/accessibility');
 const i18n = require('./i18n');
 const { AppSettings } = require('./app-settings');
@@ -82,7 +83,7 @@ let quitting = false;
 /** @type {Record<string,string>} */ let dict = i18n.fr;
 let lang = /** @type {'fr'|'en'} */ ('fr');
 /** @type {{ code: string, expiresAt: string|null } | null} */ let pairing = null;
-/** @type {Map<string, { kind: 'session'|'command'|'terminal'|'shortcut', bot: { id: string, name: string }, data: any, resolve: (v: any) => void, win: Electron.BrowserWindow, shownAt: number, deadline: number }>} */
+/** @type {Map<string, { kind: 'session'|'command'|'terminal'|'shortcut'|'gpu', bot: { id: string, name: string }, data: any, resolve: (v: any) => void, win: Electron.BrowserWindow, shownAt: number, deadline: number }>} */
 const prompts = new Map();
 /** @type {string | null} */ let setupError = null;
 /** @type {string | null} */ let folderError = null;
@@ -123,7 +124,7 @@ async function boot() {
   core = new RelayCore({
     send: (msg) => (conn ? conn.send(msg) : false),
     // Files: only in the folders the user shares below; the previous version of a file goes to the OS trash.
-    caps: { ...desktop, ...axCaps(), runShell: awake.during(runShell), ...createFileCaps({ getFolders: () => store.folders(), trash: (p) => shell.trashItem(p) }) },
+    caps: { ...desktop, ...axCaps(), runShell: awake.during(runShell), ...createFileCaps({ getFolders: () => store.folders(), trash: (p) => shell.trashItem(p) }), ...createGpuHttp() },
     ui: consentUI,
     store,
     log,
@@ -261,7 +262,7 @@ const consentUI = {
     return openPrompt('command', p.promptId, p.bot, { command: p.command, cwd: p.cwd, scripts: p.scripts || [], floor: p.floor || null }, p.timeoutMs);
   },
   /** A terminal for this session, or a protected shortcut (guard.js): asked here, on this computer. */
-  /** @param {{ promptId: string, bot: { id: string, name: string }, kind: 'terminal'|'shortcut', detail: string, timeoutMs: number }} p */
+  /** @param {{ promptId: string, bot: { id: string, name: string }, kind: 'terminal'|'shortcut'|'gpu', detail: string, timeoutMs: number }} p */
   askGuard(p) {
     return openPrompt(p.kind, p.promptId, p.bot, { detail: p.detail }, p.timeoutMs);
   },
@@ -291,7 +292,7 @@ const consentUI = {
 };
 
 /**
- * @param {'session'|'command'|'terminal'|'shortcut'} kind @param {string} promptId @param {{ id: string, name: string }} bot
+ * @param {'session'|'command'|'terminal'|'shortcut'|'gpu'} kind @param {string} promptId @param {{ id: string, name: string }} bot
  * @param {any} data @param {number} timeoutMs
  */
 function openPrompt(kind, promptId, bot, data, timeoutMs) {

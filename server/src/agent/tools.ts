@@ -1,11 +1,10 @@
-import { htmlToText } from "../webreading.js";
+import { htmlToMarkdown, isMarkdown, MARKDOWN_ACCEPT, markdownExtras } from "./webfetchmd.js"; import { codeTools } from "./codebox.js"; // L75 web_fetch in Markdown, llms.txt ; L91 hidden code box
 import { routeQuestion } from "./delegatedask.js";
 import { unseal } from "../auth.js";
 import { emit, getLive, setLive } from "../bus.js";
 import { attachmentAt, botPathOf, browserAvailable, computerKind, isInlineImage, lastKnownUrl, readLibraryFile, readsTeamFolder, runShell, saveFile, screen, shellAvailable, storeBytes, teamEnabledFor, type Shot } from "../computer.js";
 import { noteDiskTrouble } from "../disk.js";
-import { generateImage, imageService } from "../images.js";
-import { generateVideo, videoService } from "../video.js";
+import { imageTool, videoTools } from "./tools-media.js"; import { imageServiceFor } from "../mediakeys.js"; import { wan2gpTarget } from "../wan2gptarget.js";
 import { connectors, slug } from "../connectors.js";
 import { config } from "../config.js";
 import { isValidTimezone, parseCron } from "../cron.js";
@@ -34,12 +33,12 @@ import { askAndWait, createRoom, deliverBotMessage, dispatchToRoom, MAX_HELPERS,
 import { addressesNoBot, BREAKER_LINE, dmChannel, postBudget, roomChannel, type Verdict } from "./roombudget.js";
 import { myComputerTools } from "./mycomputer.js"; import { myUiTools } from "./myui.js"; import { liveDocTools } from "./livedoctools.js"; import { phoneTools } from "./phonetools.js"; import { remoteAgentTools } from "./remoteagenttools.js"; // wave 7: L164 L178 L177 L172 L174
 import { botTools, profileTools, progressTools, skillImportTools, xSearchAvailable, xTools } from "./tools-team.js"; import { roomTools } from "./tools-room.js";
-import { bgTasks, bgTaskToolSpecs, publicTask, startTask, stopTask, TaskLimitError } from "./bgtasks.js";
+import { bgTasks, publicTask, startTask, stopTask } from "./bgtasks.js"; import { bgTaskToolSpecs, TaskLimitError } from "./bgtaskspecs.js";
 import { findCode, mailAccounts } from "../native/access.js";
 import { hideForAWhile } from "../store.js";
 import { explicitRemember, memoryVerdict } from "./sensitive.js";
 import { committingKind, probe, seenOf, seenTarget } from "./bind.js"; import { boundClick, browserDownloadTools, browserTabTools, shot, tabLine, typeSecret } from "./tools-browser.js";
-import { elementTools, openInWords } from "./tools-elements.js"; // L65/L74/L75/L81: element tools, in words
+import { elementTools, openInWords } from "./tools-elements.js"; import { noteShots, sameScreen } from "./screendedup.js"; import { traceClicks } from "./clicktrail.js"; // L65/L74/L75/L81: element tools, in words; L65 same screen skipped
 import { cardLabel, cardTools } from "./payments.js";
 import { guideIndex, guideTools } from "./guides.js";
 import { anonymise } from "./anonymise.js"; import { evidenceFields, evidenceNote, proposalEvidence } from "../skillevidence.js";
@@ -48,7 +47,7 @@ import { botMailTools } from "../botmail.js"; import { guardVault } from "../vau
 import { ruleTools } from "./ruletools.js";
 import { botNote } from "../skillscan.js"; import { extractSeoTags, seoTagsReport } from "../seotags.js"; import { guideSearchTools } from "./guidesearch.js"; import { contactSheetTools } from "../contactsheet.js"; import { afterSave, saveRefusal, skillFeedbackTools, skillReadOutput, skillSectionParam } from "./skilltools.js";
 import { pageTools } from "./pagetools.js";
-import { researchTool } from "../researchroutes.js";
+import { pastReportsTool, researchTool } from "../researchroutes.js"; import { scholarTool } from "../researchscholar.js"; import { placeTools, withSiteNotes } from "./memoryplaces.js"; import { myComputerPlusTools } from "./mycomputerplus.js";
 import { craftReady } from "./creative-tools.js"; import { craftCommandRefusal } from "./craft-run.js";
 import { openmanWorkspace } from "./openman-tool.js";
 import { meetingTranscribe } from "../meetings.js";
@@ -70,9 +69,9 @@ import { officeAvailable, officeTools } from "../office.js";
 import { mediaAvailable, mediaTools } from "../media.js";
 import { goalTools } from "./goals.js";
 import { memoryPrefs } from "./memoryprefs.js"; import { searchNotesSmart } from "./semantic.js";
-import { forgetNotes } from "./memorybook.js"; import { memoryKeep } from "./memorykeep.js"; import { recordable } from "./flowrecord.js"; // L66 ; L165 recorded flows
+import { forgetNotes } from "./memorybook.js"; import { cleanInvisible, duplicateOf } from "./memorysave.js"; import { similar } from "./memory.js"; import { memoryKeep } from "./memorykeep.js"; import { recordable } from "./flowrecord.js"; // L66 ; L165 recorded flows
 import { recruitTools } from "./recruit.js";
-import { teamMdTools } from "./teamexport.js"; import { stepTools } from "./tools-steps.js"; import { waitTools } from "./waitlater.js"; import { offerUndo, undoText } from "./undoable.js"; import { planTools, questionCard, QUESTION_PROPS } from "./richquestion.js"; import { viewTools } from "./viewcard.js"; import { deleteCheckAnswer } from "./deletecheck.js"; // L97 wait_until, L98 « Annuler », L79, DS-Bot item 8 show_view
+import { teamMdTools } from "./teamexport.js"; import { stepTools } from "./tools-steps.js"; import { waitTools } from "./waitlater.js"; import { offerUndo, undoText } from "./undoable.js"; import { planTools, questionCard, QUESTION_PROPS } from "./richquestion.js"; import { viewTools } from "./viewcard.js"; import { creationTools } from "./creations.js"; import { deleteCheckAnswer } from "./deletecheck.js"; // L97 wait_until, L98 « Annuler », L79, DS-Bot item 8 show_view
 import { botPath, spillPath, spillPreview } from "./context.js"; import { routineFrameTools } from "./routineframe.js"; import { routineOptionTools } from "../routineoptions.js"; import { askRefusal, requestHelper, startQueuedHelpers } from "./askrules.js"; import { lt } from "./looptext.js";
 
 export interface ToolContext {
@@ -139,9 +138,9 @@ const tool = (name: string, description: string, schema: ToolSpec["inputSchema"]
   ({ spec: { name, description, inputSchema: schema }, ...rest });
 
 const screenTools: BuiltinTool[] = [
-  tool("screen_view", "Take a screenshot of your screen to see what is on it right now.", obj({}), {
+  tool("screen_view", "Take a screenshot of your screen to see what is on it right now. If nothing changed since your last screenshot in this task, you are told so instead of getting the same picture again (fresh: true always sends it).", obj({ fresh: { type: "boolean", description: "Send the picture even if it is the same as your last one (default false)" } }), {
     activity: "computer", label: "Looking at the screen",
-    run: async (_a, c) => shot(await screen.view(c.bot.id, c.user.id), "Current screen."),
+    run: async (a, c) => sameScreen(c, a, shot(await screen.view(c.bot.id, c.user.id), "Current screen.")), // L65 (screendedup.ts)
   }),
   tool("browser_open", "Open a web address in your browser (in the tab in front, or in a new tab with new_tab). Once it has loaded, answers with the page's headings and its controls by reference, in words; screenshot: true adds a picture (one also comes when words are not enough).", obj({ url: str("Address to open, e.g. https://example.com"), new_tab: { type: "boolean", description: "Open it in a new tab (default false)" }, screenshot: { type: "boolean", description: "Also return a screenshot (default false)" } }, ["url"]), {
     activity: "browsing", label: "Opening a page", detail: (a) => hostOf(a.url), outside: true,
@@ -192,7 +191,7 @@ const screenTools: BuiltinTool[] = [
 ];
 
 /** Screen actions (not looking) wait while the user drives the screen: the server refuses them, whatever the bot says. */
-const ACTS_ON_SCREEN = new Set(["browser_open", "screen_click", "screen_type", "screen_key", "screen_scroll", "screen_drag", "vault_type", "card_fill", "element_click", "element_type", "element_select", "element_fill", "element_hover", "element_upload", "browser_tab", "browser_dialog"]);
+const ACTS_ON_SCREEN = new Set(["browser_open", "browser_back", "code_request", "screen_click", "screen_type", "screen_key", "screen_scroll", "screen_drag", "vault_type", "card_fill", "element_click", "element_type", "element_select", "element_fill", "element_hover", "element_upload", "browser_tab", "browser_dialog"]);
 function respectDriver(t: BuiltinTool): BuiltinTool {
   if (!ACTS_ON_SCREEN.has(t.spec.name)) return t;
   return { ...t, run: async (a, c) => (userDriving(c.bot.id) ? { content: DRIVING, isError: true, summary: "the user is driving" } : t.run(a, c)) };
@@ -223,20 +222,21 @@ async function spillIfLong(c: ToolContext, text: string, fallback: number): Prom
 }
 
 const workTools: BuiltinTool[] = [
-  tool("web_fetch", "Download a web page or text file and return its readable text. No browser needed. With tags: true, a web page's SEO tags (title, description, robots, canonical, hreflang, social, headings, JSON-LD, images without alt) come first.", obj({ url: str("http(s) address"), tags: { type: "boolean", description: "Also list the page's SEO tags (for a page check or an SEO audit)" } }, ["url"]), {
+  tool("web_fetch", "Download a web page or text file and return it as Markdown (headings, links with their address, lists), or the site's own Markdown when it serves one. No browser needed. With tags: true, a web page's SEO tags (title, description, robots, canonical, hreflang, social, headings, JSON-LD, images without alt) come first. llms: true also reads the site's llms.txt (its index for AI); markdown_copy: true tries the page's own .md copy first (docs sites).", obj({ url: str("http(s) address"), tags: { type: "boolean", description: "Also list the page's SEO tags (for a page check or an SEO audit)" }, llms: { type: "boolean", description: "Also read the site's /llms.txt first (an index of the site written for AI), when it has one" }, markdown_copy: { type: "boolean", description: "Try the page's own Markdown copy (its address + .md) first" } }, ["url"]), {
     activity: "reading", label: "Reading a page", detail: (a) => hostOf(a.url), outside: true, parallel: true,
     run: async (a, c) => {
       const url = String(a.url);
       if (!/^https?:\/\//i.test(url)) return { content: "Only http and https addresses can be fetched.", isError: true }; const net = netGate(c.bot, url, "web_fetch"); if (net) return { content: net, isError: true, summary: "blocked" }; noteHost(c.bot, url, "fetch", { tainted: c.tainted }); // L169, L39
       // Public addresses only, every redirect checked: a page must not steer the bot into this server's own network.
-      let res: Response;
-      try { res = await guardedFetch(url, { signal: AbortSignal.any([c.signal, AbortSignal.timeout(30_000)]), headers: { "user-agent": "Mozilla/5.0 (compatible; assistant)" }, redirect: "follow" }); }
+      let res: Response; const get = (u: string, accept: string) => guardedFetch(u, { signal: AbortSignal.any([c.signal, AbortSignal.timeout(30_000)]), headers: { "user-agent": "Mozilla/5.0 (compatible; assistant)", accept }, redirect: "follow" });
+      const extra = await markdownExtras(url, a, get); if (extra.copy) return { content: `Status 200 (the page's own Markdown copy: ${extra.copy.url})\n\n${extra.prefix}${await spillIfLong(c, extra.copy.text, 40_000)}`, summary: `200 · ${hostOf(url) ?? ""} · md` }; // L75 (webfetchmd.ts)
+      try { res = await get(url, MARKDOWN_ACCEPT); }
       catch (err) { const why = fetchProblem(err); if (why) return { content: `Could not fetch ${url}: ${why}`, isError: true, summary: "not fetched" }; throw err; }
       const type = res.headers.get("content-type") ?? "";
       if (!/text|json|xml|javascript/.test(type)) return { content: `Fetched ${url} (status ${res.status}) but it is ${type || "binary"} content, not text.`, isError: !res.ok };
       const body = await res.text();
       const tags = a.tags === true && /html/.test(type) ? `${seoTagsReport(extractSeoTags(body, res.url || url))}\n\n` : ""; // L117 (seotags.ts)
-      return { content: `Status ${res.status}\n\n${tags}${await spillIfLong(c, /html/.test(type) ? htmlToText(body) : body, 40_000)}`, summary: `${res.status} · ${hostOf(url) ?? ""}`, isError: !res.ok };
+      return { content: `Status ${res.status}${isMarkdown(type, res.url || url) ? " (the site served Markdown)" : ""}\n\n${extra.prefix}${tags}${await spillIfLong(c, /html/.test(type) ? htmlToMarkdown(body, res.url || url) : body, 40_000)}`, summary: `${res.status} · ${hostOf(url) ?? ""}`, isError: !res.ok };
     },
   }),
   tool("shell_run", "Run a shell command on your computer and return its exit code and output. A command still running at its time limit is not killed: it goes on as a background job (you get its id; check it with job_output, stop it with job_stop, and you get a message when it ends). For long work (builds, downloads, servers, long scripts) pass background: true to start it as a job straight away.",
@@ -304,141 +304,9 @@ const shareTools: BuiltinTool[] = [
       return { content: "The user can see it in the chat now.", summary: att.name };
     },
   }),
-  tool("image_generate", "Create a picture from a description. It is saved in your library and shown to the user in the chat.", obj({ prompt: str("What the picture should show, in detail: subject, style, colours, framing"), filename: str("Short file name without extension") }, ["prompt"]), {
-    activity: "saving", label: "Creating an image", audited: true,
-    run: async (a, c) => {
-      // Hosted mode: pictures are made with the server's key — the plan must let it pay (counted at the operator's estimate).
-      const held = operatorBlock(c.user.id);
-      if (held) return { content: toolRefusal(held), isError: true };
-      const img = await generateImage(String(a.prompt), c.signal);
-      meterOperatorUse(c.user.id, c.bot.id, "image_generate", unitEstimate("imageUsd"));
-      const ext = img.mime === "image/jpeg" ? "jpg" : img.mime === "image/webp" ? "webp" : "png";
-      const att = storeBytes(c.bot.id, "images", `${String(a.filename ?? "image").trim() || "image"}.${ext}`, img.bytes);
-      rows.append(c.bot, { kind: "message", role: "assistant", text: "", attachments: [att] });
-      bots.bumpUnread(c.bot.id);
-      return { content: `Created and shown to the user. Saved as ${botPathOf(att.path)}.`, summary: att.name };
-    },
-  }),
 ];
 
-/** The user's Higgsfield app, when it is connected and signed in (see catalog.ts). Video work then goes through it. */
-export function higgsfieldFor(userId: string): Connector | null {
-  return connectors.list(userId).find((k) => isHiggsfield(k) && k.status === "ready" && k.tools.length > 0) ?? null;
-}
-export const isHiggsfield = (k: { name: string; url: string }) => {
-  try { if (new URL(k.url).hostname === "mcp.higgsfield.ai") return true; } catch { /* not a URL */ }
-  return k.name.trim().toLowerCase() === "higgsfield";
-};
-/** How this user's bots make videos: through Higgsfield, through a video API, or not at all. */
-export function videoRoute(userId: string): "connector" | "api" | null {
-  return higgsfieldFor(userId) ? "connector" : videoService() ? "api" : null;
-}
-/** The Higgsfield tools that look like they create or follow media, as the bot sees them (app_<app>__<tool>). Read at run time, never hard-coded. */
-function higgsfieldTools(k: Connector): string[] {
-  const prefix = `app_${slug(k.name)}__`;
-  const names = k.tools.map((t) => t.name);
-  const media = names.filter((n) => /video|image|generat|job|status|wait|result|media|model|animat|motion/i.test(n));
-  return (media.length ? media : names).slice(0, 25).map((n) => (prefix + n).replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 64));
-}
-
-const mediaKind = (mime: string) => (mime.startsWith("video/") ? "video" : mime.startsWith("image/") ? "image" : null);
-const EXT: Record<string, string> = { "video/mp4": "mp4", "video/webm": "webm", "video/quicktime": "mov", "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "image/gif": "gif" };
-
-const videoTools: BuiltinTool[] = [
-  tool("video_generate", "Create a short video from a description (a few seconds). It is saved in your library and shown to the user in the chat with a player. It costs money: make one only when the user wants a video, and one at a time.",
-    obj({
-      prompt: str("What the video should show, in detail: subject, action, camera movement, style, light, sound"),
-      duration_seconds: int("Length in seconds (usually 3 to 15; default about 8)"),
-      aspect_ratio: { type: "string", enum: ["16:9", "9:16", "1:1"], description: "16:9 landscape (default), 9:16 portrait, 1:1 square" },
-      reference_image: str("Optional: path of a picture in your library to start from"),
-      filename: str("Short file name without extension"),
-    }, ["prompt"]), {
-    activity: "filming", label: "Creating a video", audited: true, detail: () => "0",
-    // A paid action: asked the first time for each bot, and "Always" lets that bot go on without asking.
-    gate: (_a, ctx) => {
-      const owner = bots.byId(ctx.botId);
-      if (!owner || videoRoute(owner.userId) !== "api") return null;
-      // Spec 08 A4: the cost is announced on the card when it is known (VIDEO_PRICE_USD), else the card says it is not.
-      const est = videoPriceEstimate();
-      return { key: `video_generate: ${owner.name}`, title: "Allow {bot} to create a video? Each video is billed by {provider}.", reason: "create a video", source: "Paid video", vars: { provider: videoServices().map((v) => v.label).join(", ") || (videoService()?.label ?? ""), cost: est ? est.toFixed(2) : "" },
-        note: est ? "Estimated cost: {cost} $ per video, reserved before the call and settled at the real cost." : "The price of a video is not known in advance; the real cost is recorded after." };
-    },
-    run: async (a, c) => {
-      const via = higgsfieldFor(c.user.id);
-      if (via) {
-        // The user's Higgsfield subscription is the preferred route: the bot works with that app's own tools.
-        return {
-          content: `Videos are made through the user's Higgsfield app (it spends their Higgsfield credits, so make one video at a time and only what they asked for). Use its tools for this: ${higgsfieldTools(via).join(", ")}. Start a generation with the tool that creates videos, follow it until it is finished, then call media_save with the finished video's address so the user can watch it here.`,
-          summary: "via Higgsfield",
-        };
-      }
-      if (!videoService()) return { content: "No video service is set up on this server. Tell the user they can connect Higgsfield in Settings → Apps, or ask the server's admin to add a video API key.", isError: true };
-      // Hosted mode: the video APIs run on the server's keys — the plan must let them pay.
-      const held = operatorBlock(c.user.id);
-      if (held) return { content: toolRefusal(held), isError: true };
-      let image: { mime: string; data: Buffer } | undefined;
-      if (typeof a.reference_image === "string" && a.reference_image.trim()) {
-        const att = attachmentAt(c.bot.id, libraryPath(a.reference_image));
-        if (!att || !isInlineImage(att.mime)) return { content: `There is no picture at ${a.reference_image} in your library (PNG, JPEG or WebP).`, isError: true };
-        if (att.size > 15_000_000) return { content: "That picture is too large (15 MB at most).", isError: true };
-        image = { mime: att.mime, data: readLibraryFile(c.bot.id, att.path) };
-      }
-      const show = (pct: number | null) => setLive(c.user.id, c.bot.id, { running: true, activity: { kind: "filming", detail: pct === null ? undefined : String(Math.round(pct)), since: Date.now() }, awaiting: null });
-      const aspect = a.aspect_ratio === "9:16" || a.aspect_ratio === "1:1" ? a.aspect_ratio : a.aspect_ratio === "16:9" ? "16:9" : undefined;
-      // Spec 08 A3/A4: the configured video APIs in order; each paid call reserves its cost first and settles the real
-      // cost after (no double charge for the same request sent again); a provider error moves on to the next one, but a
-      // job that may still finish is never doubled with another paid provider.
-      const est = videoPriceEstimate();
-      const reqArgs = { prompt: String(a.prompt), duration: Number(a.duration_seconds) || null, aspect: aspect ?? null, image: a.reference_image ?? null };
-      const tried: string[] = [];
-      for (const svc of videoServices()) {
-        const r = reserve({ userId: c.user.id, botId: c.bot.id, tool: "video", provider: svc.id, maxUsd: est ?? (c.bot.thirdPartyDailyCapUsd !== null ? Math.min(DEFAULT_MAX_COST_USD, c.bot.thirdPartyDailyCapUsd) : 0), idemKey: idemKeyOf(c.bot.id, "video", svc.id, reqArgs, typeof a.request_id === "string" ? a.request_id : undefined) });
-        if (r.kind === "refused") return { content: r.message, isError: true, summary: tr(c.user.locale, "budget refused") };
-        if (r.kind === "busy") return { content: "This same video is still being made. Wait for it; do not start another.", isError: true, summary: tr(c.user.locale, "in progress") };
-        if (r.kind === "replay") return { content: `${r.result}\n(This is the same request as a moment ago: it was not made or charged again.)`, summary: tr(c.user.locale, "same request, not charged again") };
-        let v: Awaited<ReturnType<typeof generateVideo>>;
-        try { v = await generateVideo({ prompt: String(a.prompt), duration: Number(a.duration_seconds) || undefined, aspect, image, signal: c.signal, onProgress: show }, svc); }
-        catch (err) {
-          release(r.id);
-          if (c.signal.aborted || /timed out|took too long/i.test(String((err as Error)?.message))) throw err;
-          tried.push(`${svc.label}: ${clip(String((err as Error)?.message ?? err), 120)}`);
-          continue;
-        }
-        const att = storeBytes(c.bot.id, "videos", `${String(a.filename ?? "video").trim() || "video"}.${EXT[v.mime] ?? "mp4"}`, v.bytes);
-        rows.append(c.bot, { kind: "message", role: "assistant", text: "", attachments: [att] });
-        bots.bumpUnread(c.bot.id);
-        const content = `Created and shown to the user with a player. Saved as ${botPathOf(att.path)}.${v.costUsd ? ` It cost $${v.costUsd.toFixed(2)}.` : ""}${tried.length ? ` (Served by ${svc.label}; tried first: ${tried.join("; ")}.)` : ""}`;
-        settle(r.id, v.costUsd ?? est ?? unitEstimate("videoUsd"), content, v.model);
-        return { content, summary: `${att.name}${v.costUsd ? ` · $${v.costUsd.toFixed(2)}` : ""}${tried.length ? ` · ${tr(c.user.locale, "served by {who}", { who: svc.label })}` : ""}` };
-      }
-      return { content: `No video service could make it: ${tried.join("; ") || "none is configured"}. Nothing was charged.`, isError: true, summary: tr(c.user.locale, "nobody answered") };
-    },
-  }),
-  tool("media_save", "Download a finished video or picture from its address (for example one an app such as Higgsfield just made) into your library and show it to the user in the chat, with a player for videos.",
-    obj({ url: str("The http(s) address of the video or picture"), filename: str("Short file name without extension"), caption: str("A line to go with it") }, ["url"]), {
-    activity: "saving", label: "Saving a video", audited: true, detail: (a) => hostOf(a.url),
-    run: async (a, c) => {
-      const url = String(a.url);
-      if (!/^https?:\/\//i.test(url)) return { content: "Only http and https addresses can be saved.", isError: true };
-      let res: Response;
-      const net = netGate(c.bot, url, "media_save"); if (net) return { content: net, isError: true, summary: "blocked" }; noteHost(c.bot, url, "media", { tainted: c.tainted }); try { res = await guardedFetch(url, { signal: AbortSignal.any([c.signal, AbortSignal.timeout(300_000)]), redirect: "follow" }); } // L39
-      catch (err) { const why = fetchProblem(err); if (why) return { content: `Could not download ${url}: ${why}`, isError: true, summary: "not saved" }; throw err; }
-      if (!res.ok) return { content: `Could not download it (status ${res.status}).`, isError: true, summary: `${res.status}` };
-      const type = (res.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
-      const fromName = /\.(mp4|webm|mov|png|jpe?g|webp|gif)(?:$|\?)/i.exec(new URL(url).pathname)?.[1]?.toLowerCase();
-      const mime = mediaKind(type) ? type : fromName ? ({ mp4: "video/mp4", webm: "video/webm", mov: "video/quicktime", png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp", gif: "image/gif" } as Record<string, string>)[fromName] : "";
-      if (!mime || !mediaKind(mime)) { await res.body?.cancel().catch(() => {}); return { content: `That address is not a video or a picture (${type || "unknown type"}).`, isError: true }; }
-      if (Number(res.headers.get("content-length") ?? 0) > 200_000_000) { await res.body?.cancel().catch(() => {}); return { content: "That file is too large (200 MB at most).", isError: true }; }
-      const bytes = Buffer.from(await res.arrayBuffer());
-      if (bytes.length > 200_000_000) return { content: "That file is too large (200 MB at most).", isError: true };
-      const kind = mediaKind(mime)!;
-      const att = storeBytes(c.bot.id, kind === "video" ? "videos" : "images", `${String(a.filename ?? kind).trim() || kind}.${EXT[mime] ?? (kind === "video" ? "mp4" : "png")}`, bytes);
-      rows.append(c.bot, { kind: "message", role: "assistant", text: typeof a.caption === "string" ? a.caption : "", attachments: [att] });
-      bots.bumpUnread(c.bot.id);
-      return { content: `Saved as ${botPathOf(att.path)} and shown to the user${kind === "video" ? " with a player" : ""}.`, summary: att.name };
-    },
-  }),
-];
+export { higgsfieldFor, isHiggsfield, videoRoute } from "./tools-media.js"; // audit OGAI: the media tools live in tools-media.ts
 
 /** Recent messages a bot may react to: in its own chat (or the thread it answers in), or in a group chat. */
 function reactable(list: Row[], words: string, role: "user" | "any"): Row | null {
@@ -798,7 +666,7 @@ const memoryTools: BuiltinTool[] = [
   tool("memory_save", "Remember a lasting fact or preference. Write one short, self-contained sentence.", obj({ text: str("The fact to remember"), until: str("Optional: the last day it holds, YYYY-MM-DD, when the user says it is only until a date") }, ["text"]), {
     activity: "remembering", label: "Saving a note",
     run: async (a, c) => {
-      const text = clip(String(a.text).trim(), 500);
+      const text = clip(cleanInvisible(String(a.text)), 500); // L67 invisible characters removed (memorysave.ts)
       if (!text) return { content: "Nothing to remember.", isError: true };
       // Sensitive topics (health, religion, politics…) and anything that looks like a secret are not kept, unless the user
       // turned that topic on or explicitly asked, in their own last message, to remember (sensitive.ts).
@@ -806,6 +674,7 @@ const memoryTools: BuiltinTool[] = [
       if (!v.ok) return { content: v.reason, isError: true, summary: "not kept" };
       if (!asked && memoryPrefs.noLearn(c.bot.id)) return { content: "Not kept: the user switched on « Ne rien retenir » for you. Only what they explicitly ask you to remember is kept.", isError: true, summary: "not kept" }; // L88
       if (asked) memoryKeep.unbury(c.bot.id, text); else if (memoryKeep.buried(c.bot.id, text)) return { content: "Not kept: the user removed this from your memory before. It is kept again only if they ask you to remember it, in their own words.", isError: true, summary: "not kept" }; // L66 (memorykeep.ts)
+      const dup = duplicateOf(c.bot.id, text, similar); if (dup) return { content: `Already remembered, nothing added: "${dup.text}" (note of ${new Date(dup.createdAt).toISOString().slice(0, 10)}). To change it, the user edits it in Settings → Memory.`, summary: "already known" }; // L67
       const note = memories.add(c.bot.id, text, "chat", { category: v.category }); const until = cleanDay(a.until); if (until) setMarks(c.user.id, note, { until }, "bot"); // audit DS-Bot #82
       emit(c.user.id, { type: "memories", botId: c.bot.id });
       return { content: "Remembered.", summary: clip(text, 80) };
@@ -986,7 +855,7 @@ const bgTaskTools: BuiltinTool[] = [
     run: async (a, c) => {
       if (!String(a.goal ?? "").trim()) return { content: "Describe the goal of the task.", isError: true };
       try {
-        const t = startTask(c.bot, String(a.title ?? ""), String(a.goal), c.depth, c.tainted);
+        const t = startTask(c.bot, String(a.title ?? ""), String(a.goal), c.depth, c.tainted, a.level); // L69 « modèle par tâche » (modelmodes.ts)
         return { content: JSON.stringify({ id: t.id, note: "Started. The user follows it on its card; its report will reach you when it is done. Tell the user in one line that you started it, then carry on." }), summary: t.title };
       } catch (err) { return { content: (err as Error).message, isError: true }; }
     },
@@ -1165,8 +1034,8 @@ const userTools: BuiltinTool[] = [
       return { content: "The user has been asked to connect it. Stop here; you will be told when it is connected or skipped.", summary: String(a.app), endTurn: true };
     },
   }),
-  tool("ask_takeover", "Ask the user to take over your screen for something only a human can do: a CAPTCHA, a two-factor code sent to their phone, a login with their own credentials, a payment confirmation. They get a card and a notification; you wait (up to 30 minutes) until they hand the screen back, then look at it again before carrying on.",
-    obj({ reason: { type: "string", enum: [...TAKEOVER_REASONS], description: "captcha, 2fa, login, payment or other" }, detail: str("What exactly they should do, in one or two sentences") }, ["reason", "detail"]), {
+  tool("ask_takeover", "Ask the user to take over your screen for something only a human can do: a CAPTCHA, a two-factor code sent to their phone, a login with their own credentials, a payment confirmation, or changing a password on a site (reason password: never change one yourself — they do it and you never see it). They get a card and a notification; you wait (up to 30 minutes) until they hand the screen back, then look at it again before carrying on.",
+    obj({ reason: { type: "string", enum: [...TAKEOVER_REASONS], description: "captcha, 2fa, login, payment, password (a password change they do themselves) or other" }, detail: str("What exactly they should do, in one or two sentences") }, ["reason", "detail"]), {
     activity: "waiting", label: "Waiting for you on the screen", group: "computer",
     run: async (a, c) => {
       const reason: TakeoverReason = (TAKEOVER_REASONS as readonly string[]).includes(String(a.reason)) ? (String(a.reason) as TakeoverReason) : "other";
@@ -1301,13 +1170,13 @@ const jobTools: BuiltinTool[] = [
 ];
 
 export function builtinTools(opts: { owner?: string; nativeSearch?: boolean; /** The bot's own model offers a documented web search (nativesearch.ts). */ modelSearch?: boolean; disabled?: readonly string[]; video?: "connector" | "api" | null; bgTasks?: boolean } = {}): BuiltinTool[] {
-  return assemble(opts).filter((t) => !t.group || !(opts.disabled ?? []).includes(t.group));
+  return [...assemble(opts), ...placeTools].map(withSiteNotes).filter((t) => !t.group || !(opts.disabled ?? []).includes(t.group)); // L88 site notes, documents, project memory (memoryplaces.ts)
 }
 
 function assemble(opts: { owner?: string; nativeSearch?: boolean; modelSearch?: boolean; video?: "connector" | "api" | null; bgTasks?: boolean }): BuiltinTool[] {
   return [
-    ...(browserAvailable() ? inGroup("computer", screenTools).map(respectDriver).map(recordable) : []),
-    ...(computerKind() === "linux" ? inGroup("computer", [...elementTools, ...browserTabTools, ...browserDownloadTools]).map(respectDriver).map(recordable) : []),
+    ...(browserAvailable() ? inGroup("computer", screenTools).map(respectDriver).map(noteShots).map(traceClicks).map(recordable) : []),
+    ...(computerKind() === "linux" ? inGroup("computer", [...elementTools, ...browserTabTools, ...browserDownloadTools]).map(respectDriver).map(noteShots).map(recordable) : []),
     // On its own Linux computer a bot's commands are contained, so they do not need a permission card.
     // Background jobs and office documents: on the bots' own Linux computers only (shell_run starts the jobs).
     ...(computerKind() === "linux" && shellAvailable() ? [...inGroup("shell", jobTools), craftReady, openmanWorkspace] : []),
@@ -1322,8 +1191,8 @@ function assemble(opts: { owner?: string; nativeSearch?: boolean; modelSearch?: 
     ...(computerKind() === "linux" || reachAvailable() ? transcribeTools : []),
     githubSearch, githubRead, videoWorkflowTool, videoStudioTool, updateVideoStudio, ...(computerKind() === "linux" ? [studioMp4Tool] : []), ...publicLinkTools,
     ...knowledgeTools, ...guideTools, ...guideSearchTools, ...(browserAvailable() ? contactSheetTools : []), ...ruleTools, ...pageTools, ...progressTools, ...profileTools, ...skillImportTools, ...botTools, ...recruitTools, ...inGroup("team", teamMdTools),
-    researchTool, ...(xSearchAvailable(opts.owner) ? xTools : []), ...stepTools,
-    ...shareTools.filter((t) => t.spec.name !== "image_generate" || imageService()).map((t): BuiltinTool => ({ ...t, group: t.spec.name === "image_generate" ? "images" : "files" })),
+    researchTool, scholarTool, pastReportsTool, ...(xSearchAvailable(opts.owner) ? xTools : []), ...stepTools,
+    ...shareTools.map((t): BuiltinTool => ({ ...t, group: "files" })), ...(imageServiceFor(opts.owner) || (opts.owner && wan2gpTarget(opts.owner)) ? [{ ...imageTool, group: "images" as const }] : []),
     ...inGroup("vault", vaultTools),
     ...(browserAvailable() ? inGroup("vault", screenVaultTools).map(respectDriver).map(recordable) : []),
     ...(browserAvailable() ? inGroup("vault", cardTools).map(respectDriver).map(recordable) : []),
@@ -1334,7 +1203,7 @@ function assemble(opts: { owner?: string; nativeSearch?: boolean; modelSearch?: 
     ...localServerTools,
     ...(opts.video ? inGroup("video", videoTools) : []),
     // The user's own computers (Sklubot Relais): offered by newTurn only to users who linked one.
-    ...myComputerTools, ...myUiTools, ...phoneTools, ...liveDocTools, ...remoteAgentTools,
-    ...inGroup("memory", [...memoryTools, ...roomMemoryTools, ...skillFeedbackTools]), ...inGroup("routines", [...routineTools, ...routineFrameTools, ...routineOptionTools]), ...inGroup("tasks", taskTools), ...(opts.bgTasks === false ? [] : inGroup("tasks", bgTaskTools)), ...goalTools, ...waitTools, ...planTools, ...viewTools, ...inGroup("team", [...teamTools, ...roomTools]), ...userTools.filter((t) => t.spec.name !== "ask_takeover" || browserAvailable()), ...reactTools,
+    ...myComputerTools, ...myComputerPlusTools, ...myUiTools, ...phoneTools, ...liveDocTools, ...remoteAgentTools,
+    ...inGroup("memory", [...memoryTools, ...roomMemoryTools, ...skillFeedbackTools]), ...inGroup("routines", [...routineTools, ...routineFrameTools, ...routineOptionTools]), ...inGroup("tasks", taskTools), ...(opts.bgTasks === false ? [] : inGroup("tasks", bgTaskTools)), ...goalTools, ...waitTools, ...planTools, ...viewTools, ...creationTools, ...inGroup("team", [...teamTools, ...roomTools]), ...userTools.filter((t) => t.spec.name !== "ask_takeover" || browserAvailable()), ...(computerKind() === "linux" ? codeTools : []), ...reactTools,
   ];
 }

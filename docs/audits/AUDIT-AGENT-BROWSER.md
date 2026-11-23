@@ -254,14 +254,14 @@ Si on l'installe quand même, n'exposer que la lecture (`read`, `snapshot`, `con
 3. `vault_type` : taper par CDP dans l'onglet vérifié, après contrôle du champ focalisé (le contrôle d'hôte actuel peut être trompé par le bug du 2ᵉ navigateur) (S). — **FAIT (2026-11-22)** : `Input.insertText` dans l'onglet actif après contrôle du site de la page et de chaque cadre jusqu'au champ, mot de passe seulement dans un champ mot de passe (`tools-browser.ts` `typeSecret`)
 4. Indices pour boutons sans nom ou en double dans `element_snapshot` (M). — **FAIT (2026-11-22)** : `HINT_FUNCTION` d'agent-browser repris tel quel (`screen-elements.ts`), `hint="icon:…; in:…"` (L74)
 5. Refs stables + récupération rôle+nom unique (S). — **FAIT (2026-11-22)** : même numéro pour le même élément tant que le document ne change pas, élément redessiné retrouvé par rôle + nom unique, jamais pour un clic engageant (`agent/elements.ts`, `screen-elements.ts` `check_node`)
-6. Iframes dans le snapshot, refs utilisables directement (M). — **FAIT (2026-11-22)** : PARTIEL : cadres du même site listés et utilisables (« in frame ») ; cadres d'un autre site signalés, non listés
-7. Actions par référence sans capture ; `screen_view` qui saute une image identique (M). — **FAIT EN PARTIE (2026-11-22)** : `browser_open` et actions par référence en texte avec « ce qui a changé » (L65) ; `screen_view` envoie toujours l'image
+6. Iframes dans le snapshot, refs utilisables directement (M). — **FAIT (2026-11-22)** : PARTIEL : cadres du même site listés et utilisables (« in frame ») ; cadres d'un autre site signalés, non listés — **FAIT (2026-11-23)** : cadres d'un autre site lus par leur propre cible, clic / survol par référence, CAPTCHA jamais touché (L14, `screen-frames.ts`)
+7. Actions par référence sans capture ; `screen_view` qui saute une image identique (M). — **FAIT EN PARTIE (2026-11-22)** : `browser_open` et actions par référence en texte avec « ce qui a changé » (L65) ; `screen_view` envoie toujours l'image — **FAIT (2026-11-23)** : `screen_view` saute une image identique (L65, `agent/screendedup.ts`)
 8. Outil d'attente (`wait` texte / URL / disparition / chargement) (S). — **FAIT (2026-11-22)** : `browser_wait` (L75)
 9. Outil onglets (lister, ouvrir, activer, fermer) (S). — **FAIT (2026-11-22)** : `browser_tabs`, `browser_tab` (activer, fermer), `browser_open` `new_tab` ; nouvel onglet suivi seul
 10. Nouvel hôte atteint par un clic dans un tour teinté : signaler/demander (M).
 11. `check`/`uncheck`, `hover`, `upload`, fin de téléchargement (S à M). — **FAIT EN PARTIE (2026-11-22)** : cases via `element_fill`, `element_hover`, `element_upload` (accord à chaque fois) ; fin de téléchargement non faite
-12. Capture annotée (numéros = refs) pour icônes et canvas (M).
-13. `web_fetch` : `Accept: text/markdown`, essai `.md`, `llms.txt` (S).
+12. Capture annotée (numéros = refs) pour icônes et canvas (M). — **FAIT (2026-11-23)** : `element_snapshot` `picture` (L75, `browser-history.ts`)
+13. `web_fetch` : `Accept: text/markdown`, essai `.md`, `llms.txt` (S). — **FAIT (2026-11-23)** : L75, `agent/webfetchmd.ts`
 14. `-u` adresses des liens et `-s` portée dans le snapshot (S). — **FAIT EN PARTIE (2026-11-22)** : adresses des liens (`→ /chemin`) ; pas de portée `-s`
 15. Comparaison de page (structure/pixels) pour la veille (M).
 16. Avertissement « Chromium de l'image en retard de N failles » côté admin (S).

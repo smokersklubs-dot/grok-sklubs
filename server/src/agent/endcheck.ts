@@ -2,6 +2,7 @@ import { q } from "../db.js";
 import { tr } from "../i18n.js";
 import { clip, rows, users, type BotRecord } from "../store.js";
 import { ask } from "./memory.js";
+import { deliverableUrls, liveCheck } from "./livecheck.js";
 import type { Trigger, Turn } from "./loop.js";
 
 /**
@@ -48,7 +49,7 @@ export const looksUnfinished = (report: string) => PARTIAL.test(report);
 
 /** Whether this finished turn gets an end check. `asked`: the turn put an approval card in front of the owner. */
 export function wantsEndCheck(bot: BotRecord, trigger: Trigger, turn: Pick<Turn, "lastText" | "waitsUser" | "loopStop" | "missingReport">, o: { taskHelper: boolean; asked: boolean }): boolean {
-  if (!turn.lastText.trim() || turn.waitsUser || turn.loopStop || turn.missingReport || o.asked || !looksUnfinished(turn.lastText)) return false;
+  if (!turn.lastText.trim() || turn.waitsUser || turn.loopStop || turn.missingReport || o.asked || !(looksUnfinished(turn.lastText) || deliverableUrls(turn.lastText).length)) return false; // L84: or it gives live deliverables (livecheck.ts)
   if (trigger.kind === "routine") return true;
   if (trigger.kind === "bot" && o.taskHelper) return true;
   // A continuation of such work (the step-limit, auto-continue or end-check relaunch): the conversation has a task on file.
@@ -60,13 +61,18 @@ const threadOfTurn = (t: Trigger) => ("thread" in t && typeof t.thread === "numb
  * Runs the check and acts on it. `relaunch` queues the continuation (loop.ts enqueue). Never throws: a failed check is the
  * old behaviour (the report stands).
  */
-export async function endCheck(bot: BotRecord, trigger: Trigger, report: string, thread: number, relaunch: (text: string) => void, run: typeof ask = ask): Promise<EndVerdict | null> {
+export async function endCheck(bot: BotRecord, trigger: Trigger, report: string, thread: number, relaunch: (text: string) => void, run: typeof ask = ask, live: typeof liveCheck = liveCheck): Promise<EndVerdict | null> {
   const known = q.get<{ task: string; relaunches: number }>("SELECT task, relaunches FROM end_checks WHERE bot_id = ? AND thread = ?", bot.id, thread);
   const task = trigger.kind === "routine" || trigger.kind === "bot" ? trigger.text : known?.task ?? "";
   if (!task) return null;
   if (!known || trigger.kind !== "system") q.run("INSERT INTO end_checks (bot_id, thread, task, relaunches, updated_at) VALUES (?, ?, ?, 0, ?) ON CONFLICT(bot_id, thread) DO UPDATE SET task = excluded.task, relaunches = CASE WHEN ? THEN end_checks.relaunches ELSE 0 END, updated_at = excluded.updated_at", bot.id, thread, clip(task, 6000), Date.now(), trigger.kind === "system" ? 1 : 0);
   let found: ReturnType<typeof readVerdict> = null;
-  try { found = readVerdict(await run(bot, CHECK_SYSTEM, `Task:\n${clip(task, 6000)}\n\nFinal report:\n${clip(report, 6000)}`)); } catch (err) { console.error(`[end check ${bot.name}]`, (err as Error)?.message ?? err); }
+  // L84: the live deliverables the report gives are opened first; a broken one is a precise reason to go back to work.
+  const urls = deliverableUrls(report);
+  const tested = urls.length ? await live(urls).catch(() => null) : null;
+  if (tested?.problems.length) found = { verdict: "continue", reason: clip(`live check: ${tested.problems.join("; ")}`, 240) };
+  else if (!looksUnfinished(report)) found = { verdict: "done", reason: "" };
+  else try { found = readVerdict(await run(bot, CHECK_SYSTEM, `Task:\n${clip(task, 6000)}\n\nFinal report:\n${clip(report, 6000)}`)); } catch (err) { console.error(`[end check ${bot.name}]`, (err as Error)?.message ?? err); }
   if (!found) return null;
   const loc = users.localeOf(bot.userId);
   const done = (n: number) => q.run("UPDATE end_checks SET relaunches = ?, updated_at = ? WHERE bot_id = ? AND thread = ?", n, Date.now(), bot.id, thread);

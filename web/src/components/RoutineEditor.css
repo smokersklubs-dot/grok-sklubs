@@ -15,3 +15,14 @@
 .work-models { display: grid; gap: 6px; margin-top: 10px; }
 .work-models p { margin: 0; }
 @media (max-width: 560px) { .routine-edit-form .form-cols, .routine-approve-form .form-cols, .work-models-cols { grid-template-columns: 1fr; } }
+/* L143: run form of a routine with parameters; the calendar feed of routines. */
+.routine-params { display: grid; gap: 8px; margin-top: 8px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--r-md, 10px); background: var(--surface-2); }
+.routine-params p { margin: 0; }
+.routine-params-fields { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
+.routine-params .field { margin: 0; }
+.routine-feed { display: grid; gap: 8px; margin-top: 16px; padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--r-md, 10px); background: var(--surface); }
+.routine-feed p { margin: 0; }
+.routine-feed-title { display: flex; align-items: center; gap: 6px; margin: 0; font-size: 14px; }
+.routine-feed-link { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.routine-feed-link .input { flex: 1 1 220px; min-width: 0; }
+.routine-feed-link p { flex-basis: 100%; }

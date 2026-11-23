@@ -6,6 +6,8 @@
  * The normative description lives in docs/RELAIS-PROTOCOLE.md.
  */
 
+const { validateGpuArgs } = require('./capabilities/gpu');
+
 const PROTOCOL_VERSION = 1;
 /**
  * Minor revision, sent as hello.protocol (informational). 1.1 adds the fs.* operations (files in folders the user
@@ -15,8 +17,9 @@ const PROTOCOL_VERSION = 1;
  * 1.4: commands on by default (owner switch), project folders, shell.start/read/stop (background), output streamed as
  * `shell.output` events, vault.type (a saved login typed by the relay after its own checks).
  * 1.5 (L164): ax.tree / ax.act — the accessibility tree of an app and actions by reference (macOS, Windows only).
+ * 1.6 (audit Open Generative AI): gpu.http — the owner's own Wan2GP on 127.0.0.1 of this computer (capabilities/gpu.js).
  */
-const PROTOCOL_REVISION = '1.5';
+const PROTOCOL_REVISION = '1.6';
 const CONNECT_PATH = '/api/relay/connect';
 
 /** Size limits (bytes). Server → client messages above MAX_INBOUND are rejected by `ws` (close 1009). */
@@ -91,6 +94,8 @@ const OPS = Object.freeze({
   // Accessibility tree (1.5, L164): read an app's controls, act on one by reference (capabilities/accessibility.js).
   'ax.tree': { session: true, input: false },
   'ax.act': { session: true, input: true },
+  // The owner's own Wan2GP on 127.0.0.1 (1.6): no mouse or keyboard, so no control session; asked here the first time.
+  'gpu.http': { session: false, input: false },
 });
 
 const ERR = Object.freeze({
@@ -284,6 +289,8 @@ function validateArgs(op, rawArgs) {
         format,
         maxWidth: optNum(args.maxWidth, 1280, 64, LIMITS.MAX_CAPTURE_WIDTH),
         quality: optNum(args.quality, 70, 10, 95),
+        // L159: which screen (0 = the main one, 1… = the others, left to right); only sent when asked.
+        ...(args.display === undefined ? {} : { display: optNum(args.display, 0, 0, 15) }),
       };
     }
     case 'view.start':
@@ -401,6 +408,8 @@ function validateArgs(op, rawArgs) {
     }
     case 'fs.trash':
       return { root: str(args.root, 'root', 200), path: str(args.path, 'path', LIMITS.MAX_PATH) };
+    case 'gpu.http':
+      try { return validateGpuArgs(args); } catch (e) { throw new ProtocolError(/** @type {any} */ (e).code || ERR.INVALID_ARGS, /** @type {Error} */ (e).message); }
     default:
       throw new ProtocolError(ERR.UNKNOWN_OP, `unknown op ${op}`);
   }

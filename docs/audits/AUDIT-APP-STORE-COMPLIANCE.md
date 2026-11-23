@@ -118,7 +118,7 @@ Preuves Sklubot : `mobile/STORE.md` (165 lignes : fiche Play l.9-40, classificat
 ## 5. À faire (classé)
 
 1. Bouton **« Signaler cette réponse »** sur les messages de bot (mobile + web), remontée au propriétaire/opérateur — **M**.
-2. Ajouter `PrivacyInfo.xcprivacy` (via la config Expo) et les questions d'âge Apple 2026 à la section iPhone de `mobile/STORE.md` — **S**.
+2. Ajouter `PrivacyInfo.xcprivacy` (via la config Expo) et les questions d'âge Apple 2026 à la section iPhone de `mobile/STORE.md` — **S**. — **FAIT (2026-11-23)** : `mobile/store/privacy-manifest.json` → `ios.privacyManifests` (copie `store/PrivacyInfo.xcprivacy`), réponses d'âge et confidentialité dans `mobile/STORE.md`, contrôle `npm run store:check`
 3. Script de contrôle avant envoi pour l'appli mobile (permissions, cible API, manifeste iOS, URL de confidentialité, captures sans écran de connexion en premier) — **M**.
 4. Ajouter à `STORE.md` : statut de commerçant DSA, gabarit de notes pour la relecture Apple, argumentaire « client d'un serveur » (Apple 4.2), règle « jamais renvoyer une version inchangée après un rejet » — **S**.
 5. Surveiller la disponibilité du serveur de démonstration pendant la relecture (routine ou moniteur) — **S**.

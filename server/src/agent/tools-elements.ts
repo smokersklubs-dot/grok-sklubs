@@ -9,8 +9,9 @@ import { maskSecrets } from "../shared.js";
 import { clip } from "../store.js";
 import { committingKind, probe, seenOf, seenTarget } from "./bind.js";
 import { afterClick, hostBeforeClick } from "./clickhosts.js";
-import { afterAction, noteMoved, refusal, rememberSnapshot, resolveRef, snapshotUrl, typedWords } from "./elements.js";
+import { afterAction, noteMoved, refusal, rememberSnapshot, resolveRef, snapshotUrl, typedWords, visibleRefs } from "./elements.js";
 import { shot } from "./tools-browser.js";
+import { noteClick } from "./clicktrail.js";
 import type { BuiltinTool, ToolContext, ToolOutput } from "./tools.js";
 
 /**
@@ -78,11 +79,28 @@ export async function openInWords(c: ToolContext, a: Record<string, any>): Promi
 const hostOfUrl = (u: string) => { try { return new URL(u).hostname.replace(/^www\./, ""); } catch { return ""; } };
 
 export const elementTools: BuiltinTool[] = [
-  tool("element_snapshot", "List the interactive elements (links with their address, buttons, fields, lists, checkboxes…) of the page in front of your browser, each with a short reference, its role, its name, its state, and a hint for a control without a name; also the page's headings. Prefer this and the element_* tools over pixel coordinates when the browser is in front.", obj({ limit: int("At most this many elements (default 150, max 300)") }), {
+  tool("element_snapshot", "List the interactive elements (links with their address, buttons, fields, lists, checkboxes…) of the page in front of your browser, each with a short reference, its role, its name, its state, and a hint for a control without a name; also the page's headings. Prefer this and the element_* tools over pixel coordinates when the browser is in front. picture: true adds a screenshot of the page with each visible element's reference number drawn on it (for icons without a name, canvases, crowded pages).", obj({ limit: int("At most this many elements (default 150, max 300)"), picture: { type: "boolean", description: "Also return a screenshot with the reference numbers drawn on the elements (default false)" } }), {
     activity: "reading", label: "Listing the page's controls", outside: true,
     run: async (a, c) => {
       const snap = await screen.elements(c.bot.id, c.user.id, Math.min(300, Math.max(1, Number(a.limit) || 150)));
-      return { content: rememberSnapshot(c.bot.id, snap), summary: `${snap.elements.length} · ${clip(snap.title || snap.url, 60)}` };
+      const text = rememberSnapshot(c.bot.id, snap), summary = `${snap.elements.length} · ${clip(snap.title || snap.url, 60)}`;
+      if (a.picture !== true) return { content: text, summary };
+      // L75 (browser-history.ts op_annotate): the numbers drawn are the part after the dot of each reference.
+      const refs = visibleRefs(c.bot.id);
+      const r = await linuxScreen.browserOp<{ data?: string; error?: string }>(c.bot.id, c.user.id, ws(c), { op: "annotate", marks: refs.map((m) => [String(m.n), m.x, m.y]) }, 30_000).catch((e: Error) => ({ error: e.message }) as { data?: string; error?: string });
+      if (!r.data) return { content: `${text}\n(The annotated picture could not be taken${r.error ? `: ${clip(r.error, 120)}` : ""}.)`, summary };
+      const prefix = refs[0]?.ref.split(".")[0];
+      return { content: [{ type: "text", text: `${text}\nIn the picture, each pink number N is the reference ${prefix ?? "<page>"}.N (${refs.length} visible).` }, { type: "image", mediaType: "image/jpeg", data: r.data }], summary };
+    },
+  }),
+  tool("browser_back", "Go back one page in the tab in front of your browser (forward: true goes forward again), like the browser's arrow. Answers with the page you land on, in words.", obj({ forward: { type: "boolean", description: "Go forward instead of back (default false)" }, screenshot: SHOT }), {
+    activity: "computer", label: "Going back", outside: true,
+    run: async (a, c) => {
+      const r = await linuxScreen.browserOp<ElementAnswer & { title?: string }>(c.bot.id, c.user.id, ws(c), { op: "history", forward: a.forward === true, after: true }, 45_000);
+      if (r.dialog && !r.ok) return { content: dialogWords(r.dialog), isError: true, summary: "dialog open" };
+      if (!r.ok) return { content: r.error ?? "The tab could not go back.", isError: true, summary: "not done" };
+      noteReportedUrl(c.bot.id, r.url ?? "");
+      return inWords(c, r, `Went ${a.forward === true ? "forward" : "back"} to ${clip(r.title || r.url || "?", 100)}${r.waited ? ` (loaded in ${r.waited} s)` : ""}.`, a.screenshot === true, clip(r.title || r.url || "", 60));
     },
   }),
   tool("element_click", "Click an element of the page by its reference. It is scrolled into view first, and refused (nothing done) when something covers it or the reference is stale. Answers with what changed on the page, in words (screenshot: true adds a picture). double: double-click.", obj({ ref: REF, double: { type: "boolean", description: "Double-click (default false)" }, screenshot: SHOT, confirm: { type: "boolean", description: "Only to confirm a delete click you were asked to check (same element)" } }, ["ref"]), {
@@ -104,7 +122,7 @@ export const elementTools: BuiltinTool[] = [
       const before = hostBeforeClick(c.bot.id); // L33
       const r = await act(c, { ...found.req, action: "click", double: a.double === true, ...(seen && committing ? { expect: { label: seen.label, host: seen.host } } : {}) });
       if (!r.ok) return notDone(c, r, "click");
-      noteMoved(c.bot.id, a.ref, r.moved);
+      noteMoved(c.bot.id, a.ref, r.moved); noteClick(c, r.at); // L149 trail on the screen view
       return afterClick(c, before, await inWords(c, r, `${a.double === true ? "Double-clicked" : "Clicked"} ${found.element.role} “${clip(found.element.name, 80)}”${movedLine(r)}.`, a.screenshot === true, clip(found.element.name || found.element.role, 60)));
     },
   }),
@@ -143,6 +161,7 @@ export const elementTools: BuiltinTool[] = [
         const found = resolveRef(c.bot.id, f?.ref);
         if ("error" in found) { lines[i] = `${i + 1}. ${clip(String(f?.ref ?? "?"), 20)}: ${found.error}`; continue; }
         if (/^(checkbox|switch|radio|menuitemcheckbox|menuitemradio)$/.test(found.element.role) && committingKind(found.element.name)) { lines[i] = `${i + 1}. ${found.element.role} “${clip(found.element.name, 60)}”: not ticked here — its words commit something, so use element_click on it (the user is asked).`; continue; }
+        if (found.element.frameTarget) { lines[i] = `${i + 1}. ${found.element.role} “${clip(found.element.name, 60)}”: inside a frame of another site — click it with element_click, then type with screen_type (card_fill for a payment card).`; continue; } // L14
         req ??= found.req;
         send.push({ node: found.element.node, role: found.element.role, name: found.element.name, value: f.value });
         index.push(i);

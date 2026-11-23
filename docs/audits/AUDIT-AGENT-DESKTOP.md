@@ -204,7 +204,7 @@ voir les contrôles d'une application de bureau par leur nom.
 6. Guide pas à pas des autorisations macOS dans le Relais (S).
 7. Capture d'un écran secondaire ou d'une fenêtre choisie (M).
 8. Attente d'une fenêtre / d'un texte côté Relais (M).
-9. Artefact visuel « où le bot a cliqué » pour l'utilisateur (M).
+9. Artefact visuel « où le bot a cliqué » pour l'utilisateur (M). — **FAIT (2026-11-23)** : cercle éphémère sur la vue de l'écran (L149, `agent/clicktrail.ts`, `ClickTrail.tsx`)
 10. Essai d'AT-SPI dans l'image du bot (bus d'accessibilité, applis GTK) — seulement si des tâches hors navigateur deviennent fréquentes (M).
 
 ## Non vérifié

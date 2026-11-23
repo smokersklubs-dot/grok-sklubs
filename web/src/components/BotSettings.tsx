@@ -1,4 +1,6 @@
 import { ModelHealthLine } from "./ModelHealth";
+import { MemoryFocusField } from "./MemoryFocus"; import { MemoryPlaces } from "./MemoryPlaces";
+import { ShortRepliesField } from "./ShortReplies"; import { ModelModesField } from "./ModelModes";
 import { BotDangerZone } from "./BotLifecycle"; import { BotStyleField } from "./BotStyle";
 import { BotReachTab } from "./KeysHealthLinks";
 import { BotCapsField } from "./UsageCaps";
@@ -15,7 +17,7 @@ import { BotSpendField, ConfidenceBadge, RoutineExtras } from "./SpendSkillsFile
 import { RoomWhoAnswers } from "./RoomRouting"; import { RoomNotes } from "./RoomNotes"; import { RoomLimits } from "./RoomLimits";
 import type { Autonomy, AvatarColor, AvatarShape, Bot, BotBundle, Character as CharacterLook, BotMode, Effort, Memory, MemoryStatus, ModelOption, NativeTrigger, RoomRule, Routine, RoutineRun, Skill, SkillExtras, SkillRef, TelegramStatus, ToolGroup } from "../types";
 import { useNative } from "./NativeApps";
-import { dateTime, nextRunLabel, relTime, shortDate } from "../lib/format";
+import { dateTime, money, nextRunLabel, relTime, shortDate, workDuration } from "../lib/format";
 import { BotAvatar } from "./Avatar";
 import { Character } from "./Character";
 import { CharacterEditor } from "./CharacterEditor";
@@ -31,7 +33,7 @@ import { NoLearnRow, PromptInspector, SummaryView, ToProfileButton } from "./Mem
 import { runNote } from "./Pause";
 import { BotVoicePicker } from "./VoicePicker";
 import { HookSecurity } from "./HookSecurity";
-import { RoutineMore, WorkModels } from "./RoutineEditor";
+import { RoutineMore, WorkModels } from "./RoutineEditor"; import { RoutineCalendarFeed } from "./RoutineParams";
 import { MemoryEdit } from "./MemoryEdit";
 import { TelegramVoiceText } from "./TelegramVoiceText"; import { BotChannelsTab } from "./BotChannels";
 
@@ -319,7 +321,7 @@ function General({ bot, onClose }: { bot: Bot; onClose: () => void }) {
         </div>
       )}
 
-      <BotStyleField bot={bot} />
+      <BotStyleField bot={bot} /><ShortRepliesField bot={bot} /><ModelModesField bot={bot} /> {/* L69 named modes (ModelModes.tsx) */}
       <BotDangerZone bot={bot} isRoom={isRoom} onDeleted={() => { onClose(); void loadBots(); }} /> {/* L144: export, what goes, trash (BotLifecycle.tsx) */}
       <ErrorNote>{actionError}</ErrorNote>
     </form>
@@ -702,7 +704,7 @@ function Memories({ bot, bundle }: { bot: Bot; bundle: BotBundle | undefined }) 
       ) : (
         <Loading />
       )}
-      <NoLearnRow bot={bot} initial={noLearn} />
+      <NoLearnRow bot={bot} initial={noLearn} /><MemoryFocusField bot={bot} /><MemoryPlaces bot={bot} />
       <PromptInspector bot={bot} tick={(memories?.length ?? 0) + (status?.lastCompactedAt ?? 0)} onView={(v) => setNoLearn(v.noLearn)} />
     </div>
   );
@@ -713,7 +715,7 @@ function Memories({ bot, bundle }: { bot: Bot; bundle: BotBundle | undefined }) 
 const RUN_STATE: Record<RoutineRun["status"], string> = { running: "state-working", done: "state-done", quiet: "", error: "state-error", skipped: "" };
 
 /** The last runs of one routine; reloads whenever the server says this bot's routines changed. */
-function RoutineHistory({ r }: { r: Routine }) {
+export function RoutineHistory({ r }: { r: Routine }) {
   const tick = useStore((s) => s.routineTicks[r.botId] ?? 0);
   const t = useT();
   const [runs, setRuns] = useState<RoutineRun[] | null>(null);
@@ -743,7 +745,7 @@ function RoutineHistory({ r }: { r: Routine }) {
             <li key={run.id} className="run">
               <time className="run-time" dateTime={new Date(run.at).toISOString()}>{dateTime(run.at, r.timezone || undefined)}</time>
               <span className={`chip ${RUN_STATE[run.status] ?? ""}`}>{t(`routine.run.${run.status}`)}</span>
-              {run.note && <span className="run-note">{runNote(run.note)}</span>}
+              {(run.durationMs !== undefined || run.costUsd > 0) && <span className="run-cost muted small">{[run.durationMs !== undefined ? workDuration(run.durationMs) : "", run.costUsd > 0 ? money(run.costUsd) : ""].filter(Boolean).join(" · ")}</span>}{run.note && <span className="run-note">{runNote(run.note)}</span>}
             </li>
           ))}
         </ul>
@@ -1024,6 +1026,7 @@ function Routines({ bot, bundle }: { bot: Bot; bundle: BotBundle | undefined }) 
           ))}
         </ul>
       )}
+      <RoutineCalendarFeed />
     </div>
   );
 }

@@ -84,10 +84,10 @@ test("a second browser_open reuses the running browser: one Chromium, and every 
   assert.equal((await screen.read(B, user.id)).title, "Main");
 });
 
-test("the snapshot lists a frame's controls, names another site's frame, and a covered element is not clicked", async () => {
+test("the snapshot lists a frame's controls, reads another site's frame (L14), and a covered element is not clicked", async () => {
   const snap = await snapshot();
   assert.match(snap, /button "Frame button" \[in frame: /);
-  assert.match(snap, /A frame from localhost is on this page, but its controls cannot be listed/);
+  assert.match(snap, /button "Inner pay" \[in frame: localhost, another site: click or hover only\]/, "L14: another site's frame is read through its own target");
   const covered = await tool("element_click").run({ ref: refOf(snap, "Buy now") }, ctx());
   assert.ok(covered.isError && /covered by div#cover "We use cookies/.test(text(covered)), text(covered));
   assert.equal((await screen.read(B, user.id)).title, "Main", "nothing was clicked");

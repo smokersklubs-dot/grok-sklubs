@@ -28,7 +28,7 @@ const VIEW_KEEPALIVE_MS = 5_000;
  * @typedef {{
  *   askSession(p: { promptId: string, bot: Bot, reason: string, timeoutMs: number }): Promise<'once'|'always'|'refuse'|'expired'>,
  *   askCommand(p: { promptId: string, bot: Bot, command: string, cwd: string|null, timeoutMs: number, floor?: string, scripts?: { path: string, sha256: string, lines: string[], more: number, binary: boolean }[] }): Promise<{ decision: 'run'|'refuse'|'expired', alwaysForBot?: boolean }>,
- *   askGuard?(p: { promptId: string, bot: Bot, kind: 'terminal'|'shortcut', detail: string, timeoutMs: number }): Promise<'allow'|'refuse'|'expired'>,
+ *   askGuard?(p: { promptId: string, bot: Bot, kind: 'terminal'|'shortcut'|'gpu', detail: string, timeoutMs: number }): Promise<'allow'|'refuse'|'expired'>,
  *   cancelPrompt(promptId: string): void,
  *   onSession(session: Session|null): void,
  *   onLocked(locked: boolean): void,
@@ -107,6 +107,8 @@ class RelayCore {
     this.jobSeq = 0;
     /** Accessibility snapshots of this session (L164): references stay valid for the last 3 reads. */
     this.ax = new AX.SnapshotStore();
+    /** Bots the owner allowed to use Wan2GP on this computer (gpu.http), as "botId:port": cleared by Stop. */
+    this.gpuOk = new Set();
   }
 
   get locked() {
@@ -227,6 +229,7 @@ class RelayCore {
           const p = G.peekScript({ path: args.path, cwd: args.cwd, keepFolders: this.owner.keepFolders });
           return this.ok(id, { sha256: p.sha256, size: p.size, lines: p.lines, more: p.more, binary: p.binary });
         }
+        case 'gpu.http': return await this.gpuHttp(id, bot, args);
         case 'app.open': {
           const result = await this.d.caps.openApp(args);
           this.opened.add(G.normApp(args.name));
@@ -367,6 +370,7 @@ class RelayCore {
    */
   stop(source) {
     if (this.pendingPromptId) this.d.ui.cancelPrompt(this.pendingPromptId);
+    this.gpuOk.clear();
     this.endSession(source === 'hotkey' ? 'hotkey' : 'user_stop');
     if (!this.locked) {
       this.d.store.setLocked(true);
@@ -623,7 +627,24 @@ class RelayCore {
     return null;
   }
 
-  /** @param {Bot} bot @param {'terminal'|'shortcut'} kind @param {string} detail @returns {Promise<string>} */
+  /**
+   * gpu.http (1.6): the owner's own Wan2GP on 127.0.0.1 of this computer. The first use by a bot for a port is asked here
+   * (kind "gpu"); the yes lasts until Stop or until the Relais restarts. Reading the rest of a long answer asks nothing.
+   * @param {string} id @param {Bot} bot @param {Record<string, any>} args
+   */
+  async gpuHttp(id, bot, args) {
+    const key = `${bot.id}:${args.port}`;
+    if (!args.read && !this.gpuOk.has(key) && !this.d.autoConfirm) {
+      const answer = await this.askGuard(bot, 'gpu', `http://127.0.0.1:${args.port} (Wan2GP)`);
+      if (answer !== 'allow') return this.fail(id, ERR.CONSENT_REFUSED, 'the user did not allow Wan2GP on this computer');
+      if (this.locked) return this.fail(id, ERR.LOCKED, 'the user stopped remote control on this computer');
+      this.gpuOk.add(key);
+    }
+    if (typeof this.d.caps.gpuHttp !== 'function') return this.fail(id, ERR.UNSUPPORTED, 'not available on this computer');
+    return this.ok(id, await this.d.caps.gpuHttp(args));
+  }
+
+  /** @param {Bot} bot @param {'terminal'|'shortcut'|'gpu'} kind @param {string} detail @returns {Promise<string>} */
   async askGuard(bot, kind, detail) {
     const ask = this.d.ui.askGuard;
     if (typeof ask !== 'function') return 'refuse';
@@ -724,6 +745,8 @@ function summarize(op, args) {
   if (op === 'ax.act') return { ref: args.ref, action: args.action, background: args.background, length: args.text.length };
   // A file written by a bot: where and how much, never its content.
   if (op === 'fs.write') return { root: args.root, path: args.path, mode: args.mode, bytes: Buffer.byteLength(args.text, 'utf8') };
+  // Wan2GP on this computer: where, never the prompt or the picture.
+  if (op === 'gpu.http') return args.read ? { port: args.port, read: args.read.offset } : { port: args.port, method: args.method, path: args.path, bytes: args.body ? args.body.length : 0 };
   return args;
 }
 

@@ -1,0 +1,10 @@
+/* L142: 30 days of spending (UsageChart.tsx). */
+.usage-chart { margin: 12px 0; padding: 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+.usage-chart-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; margin-bottom: 8px; }
+.usage-chart-title { font-weight: 600; }
+.usage-chart svg { display: block; width: 100%; height: 110px; }
+.usage-chart-axis { stroke: var(--border-strong); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.usage-chart-bar { fill: var(--brand); }
+.usage-chart-est { fill: var(--text-3); }
+.usage-chart-scale { display: flex; justify-content: space-between; gap: 8px; margin-top: 2px; }
+.usage-chart p { margin: 6px 0 0; }

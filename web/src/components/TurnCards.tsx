@@ -95,6 +95,12 @@ export function RichQuestion({ card, botId, seq }: { card: QuestionCard; botId: 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const plan = card.plan;
+  const [review, setReview] = useState<{ verdict: "ok" | "gaps"; missing: string[]; extra: string[] } | null>(null);
+  // L79 « Relire mon plan contre la demande » (server agent/planmode.ts): a separate check; its full note lands in the chat.
+  const checkPlan = async () => {
+    setBusy(true); setError(null);
+    try { setReview((await api<{ review: { verdict: "ok" | "gaps"; missing: string[]; extra: string[] } }>("POST", `/bots/${botId}/rows/${seq}/plan-review`)).review); } catch (e) { setError(errText(e)); } finally { setBusy(false); }
+  };
   const send = async (answer: string) => {
     if (!answer.trim()) return;
     setBusy(true); setError(null);
@@ -118,6 +124,8 @@ export function RichQuestion({ card, botId, seq }: { card: QuestionCard; botId: 
       {plan ? (
         pending ? (
           <>
+            {review && <p className={`plan-review ${review.verdict === "ok" ? "is-ok" : "is-gaps"}`} role="status">{review.verdict === "ok" ? t("plan.reviewOk") : t("plan.reviewGaps", { list: review.missing.join(" ; ") || "—" })}{review.extra.length ? ` ${t("plan.reviewExtra", { list: review.extra.join(" ; ") })}` : ""}</p>}
+            <button type="button" className="btn btn-small btn-ghost plan-review-open" disabled={busy} onClick={() => void checkPlan()}><Icon name="search" size={13} /> {t("plan.review")}</button>
             <textarea className="input" rows={2} placeholder={t("plan.notePlaceholder")} value={note} disabled={busy} onChange={(e) => setNote(e.target.value)} aria-label={t("plan.notePlaceholder")} />
             <div className="card-actions">
               <button type="button" className="btn btn-ghost" disabled={busy || !note.trim()} onClick={() => void send(`${card.options[2] ?? "Change it"}: ${note.trim()}`)}>{t("plan.change")}</button>

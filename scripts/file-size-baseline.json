@@ -1,6 +1,6 @@
 {
   "server/src/agent/loop.ts": 1887,
-  "server/src/agent/tools.ts": 1378,
+  "server/src/agent/tools.ts": 1209,
   "server/src/routes.ts": 2857,
   "server/src/shared.ts": 1332,
   "web/src/components/AppSettings.tsx": 1295,

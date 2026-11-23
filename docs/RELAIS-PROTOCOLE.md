@@ -443,3 +443,33 @@ règles dans `relay-core.js` ; côté serveur, outils `my_ui_tree` / `my_ui_act`
 **Non vérifié sur une vraie machine** : les deux scripts (JXA et PowerShell) n'ont pas pu tourner ici (pas de Mac ni de
 PC Windows) ; le découpage, les références et toutes les règles sont testés (`companion/test/unit/accessibility.test.js`,
 `server/test/relay-guard.test.ts`).
+
+## 17. Wan2GP sur la carte graphique du propriétaire (révision 1.6)
+
+Le Relais peut joindre **Wan2GP** (vidéos et images gratuites) que le propriétaire a installé et démarré sur **ce même
+ordinateur**, avec son serveur MCP (`python wgp.py --mcp --mcp-api-version 1 --mcp-transport streamable-http --mcp-host
+127.0.0.1 --mcp-port 7866`). Une seule opération :
+
+| `op` | Session requise | `args` | `result` |
+|---|---|---|---|
+| `gpu.http` | non | `{ port, method: "GET"\|"POST"\|"PUT", path, headers?, body? }` ou `{ port, read: { token, offset } }` | `{ status, headers, size, offset, data, token }` |
+
+Règles imposées par le Relais (`companion/src/main/capabilities/gpu.js`, `relay-core.js`) :
+
+- l'hôte est toujours `127.0.0.1` ; le serveur ne donne qu'un port (1024–65535) et un **chemin** (jamais une adresse
+  complète, jamais `//`) ; en-têtes gardés : `content-type`, `accept`, `mcp-protocol-version`, `mcp-session-id` (ni cookie
+  ni `Authorization`) ; réponse : `content-type` et `mcp-session-id` seulement ;
+- corps envoyé : 180 Kio au plus (le serveur réduit l'image de départ pour tenir) ; réponse en morceaux de 2 Mio (`data`
+  en base64 ; `token` tant qu'il en reste, relu avec `read`), gardée 5 minutes au plus, 300 Mio au plus ;
+- la **première** demande d'un bot pour un port ouvre une question sur l'ordinateur (« {bot} veut utiliser Wan2GP sur ta
+  carte graphique », Autoriser / Refuser) ; l'accord vaut jusqu'à Stop ou la fermeture du Relais ; Stop verrouille comme
+  le reste (`locked`) ;
+- pas de souris, pas de clavier : pas de session de contrôle.
+
+Côté serveur : `server/src/wan2gptarget.ts` (`relayFetch`), `server/src/mediajobs.ts` (un travail en cours est repris
+quand l'ordinateur se reconnecte). Tests : `companion/test/unit/gpu.test.js`, `server/test/media-open-gen.test.ts`.
+**Non vérifié** avec un vrai Wan2GP ni une vraie carte graphique (faux serveur MCP dans les tests).
+
+## `screen.capture` : autre écran (23/11/2026)
+
+Argument facultatif `display` (entier 0 à 15) : 0 = écran principal, puis les autres de gauche à droite. La réponse ajoute `displayIndex` et `displays` (nombre d'écrans). Un écran autre que le principal sert seulement à regarder : les clics et touches restent sur l'écran principal, et le serveur ne garde pas cette capture comme référence des clics. Un Relais plus ancien ignore `display` et renvoie l'écran principal (sans `displayIndex`).

@@ -38,3 +38,8 @@
 }
 .draft-editor > .card-note { display: flex; align-items: flex-start; gap: 6px; margin: 0; }
 .draft-editor > .card-note svg { flex: none; margin-top: 3px; }
+/* L79 « Relire mon plan contre la demande » */
+.plan-review-open { align-self: flex-start; margin-top: 6px; }
+.plan-review { margin: 8px 0 0; padding: 6px 10px; border-radius: var(--r-sm); font-size: 13px; overflow-wrap: anywhere; color: var(--text); }
+.plan-review.is-ok { background: var(--ok-soft); }
+.plan-review.is-gaps { background: var(--warn-soft, var(--info-soft)); }

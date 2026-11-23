@@ -1,4 +1,5 @@
 import { useMemo, useState, type ReactNode } from "react";
+import { ReviewRulesField } from "./ReviewRules"; // L77 project review rules
 import { NotifyBell } from "./NotifyBell";
 import { InboxNavRow } from "./InboxView"; import { LiveDocsNavRow } from "./LiveDocs";
 import { createPortal } from "react-dom";
@@ -12,6 +13,7 @@ import { Icon } from "./Icon";
 import { IconButton, Menu, MenuItem, Modal, modKey } from "./ui";
 import { PauseAllNotice, PausedBadge, setPaused } from "./Pause";
 import { AnnouncementBell } from "./AnnouncementCard";
+import { BotActivityFilter, useActivityFilter } from "./BotActivityFilter"; import { FILTER_FROM, matches } from "../lib/botactivity"; // L146
 import { useAnnouncements } from "../lib/announcements"; import { StopCauseChip, WorkingBar, useStopCauseSync } from "./SidebarStatus";
 
 function statusOf(bot: Bot, live: Live): "attention" | "working" | "unread" | null {
@@ -219,6 +221,7 @@ function SectionActions({ section }: { section: BotSection }) {
                 <textarea className="input" rows={6} maxLength={4000} value={instructions} onChange={e => setInstructions(e.target.value)} />
               </label>
               <p className="muted">{t("sections.instructionsHelp")}</p>
+              <ReviewRulesField sectionId={section.id} />
               {error && <p role="alert">{error}</p>}
             </div>
             <div className="modal-foot">
@@ -270,9 +273,10 @@ export function Sidebar() {
   const team = visible.filter((b) => !b.pinned && (!b.sectionId || !known.has(b.sectionId)));
   const hiddenBots = others.filter((b) => b.listHidden && !b.access);
   const { organise } = useStore.getState();
+  const [activity, setActivity] = useActivityFilter(); const filtering = !collapsed && others.length >= FILTER_FROM && activity !== "all";
   const rowsOf = (list: Bot[]) => (
     <ul className="bot-list">
-      {list.map((b) => <BotRow key={b.id} bot={b} live={live[b.id] ?? IDLE_LIVE} active={chatActive && selectedId === b.id} collapsed={collapsed} />)}
+      {(filtering ? list.filter((b) => matches(b, live[b.id], activity)) : list).map((b) => <BotRow key={b.id} bot={b} live={live[b.id] ?? IDLE_LIVE} active={chatActive && selectedId === b.id} collapsed={collapsed} />)}
     </ul>
   );
   const addSection = async () => {
@@ -437,6 +441,7 @@ export function Sidebar() {
             </div>
           )}
 
+          {!collapsed && others.length >= FILTER_FROM && <BotActivityFilter bots={others.filter((b) => !b.listHidden)} live={live} value={activity} onChange={setActivity} />}
           {collapsed ? (
             rowsOf([...pinned, ...sections.flatMap((sec) => bySection(sec.id)), ...team, ...sharedBots])
           ) : (

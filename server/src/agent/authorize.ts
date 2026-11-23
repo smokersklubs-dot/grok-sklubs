@@ -48,7 +48,7 @@ export function groundable(turn: Pick<Turn, "builtin" | "remote">, name: string)
   if (r) return r.native ? r.native.risk !== "read" : !r.readOnly;
   const b = turn.builtin.get(name);
   if (!b) return false;
-  return !!b.sensitive || !!b.gate || name in CARRIES_FURTHER || EXTRA_GROUNDABLE.has(name) || (b.group === "mycomputer" && !["my_screen", "my_windows", "my_computers", "my_release", "my_window_focus", "my_files", "my_file_read", "my_command_output", "my_command_stop"].includes(name));
+  return !!b.sensitive || !!b.gate || name in CARRIES_FURTHER || EXTRA_GROUNDABLE.has(name) || (b.group === "mycomputer" && !["my_screen", "my_windows", "my_computers", "my_screen_other", "my_window_wait", "my_release", "my_window_focus", "my_files", "my_file_read", "my_command_output", "my_command_stop"].includes(name));
 }
 /** Tools whose run is reserved before it starts and can end up "uncertain". A click is, when it commits something. */
 export function external(turn: Pick<Turn, "builtin" | "remote">, name: string, input?: Record<string, unknown>): boolean {

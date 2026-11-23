@@ -38,7 +38,7 @@ export function splitPrompt(prompt: string): PromptPart[] {
 }
 
 export function promptView(bot: BotRecord, user: UserRecord): PromptView {
-  const extras: PromptExtras = { connectorNames: [], browser: browserAvailable(), shell: shellAvailable(), linux: computerKind() === "linux" };
+  const extras: PromptExtras = { connectorNames: [], browser: browserAvailable(), shell: shellAvailable(), linux: computerKind() === "linux", preview: true };
   const parts = splitPrompt(buildSystemPrompt(bot, user, extras));
   const mem = pickMemories(bot);
   const memChars = mem.lines.reduce((n, l) => n + l.length + 1, 0);

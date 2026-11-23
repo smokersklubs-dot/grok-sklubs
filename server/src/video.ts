@@ -32,7 +32,7 @@ import { labelAiVideo } from "./aivideo.js";
  * (gemini-omni-1.2-flash). DEMO_MODE=1 with VIDEO_PROVIDER=demo makes a test clip locally (needs ffmpeg).
  */
 export type VideoProviderId = "xai" | "gemini" | "demo";
-export interface VideoService { id: VideoProviderId; label: string; model: string; baseUrl: string; apiKey: string }
+export interface VideoService { id: VideoProviderId; label: string; model: string; baseUrl: string; apiKey: string; /** The account's own key (mediakeys.ts): never the operator's, never metered on a hosted plan. */ ownKey?: boolean }
 
 export function videoService(): VideoService | null {
   const e = process.env;

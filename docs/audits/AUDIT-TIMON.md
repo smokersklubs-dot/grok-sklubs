@@ -325,7 +325,7 @@ Lignes NON REPRIS non détaillées ci-dessus mais vues : passerelle vers un autr
 27. Réduction automatique des grandes images avant envoi au modèle. S.
 28. Plusieurs conversations par bot avec titres automatiques, filtre « automatiques ». M.
 29. Discussions côte à côte. M.
-30. Mode « Plan » (lire et proposer sans agir). S.
+30. ✅ FAIT (L79, 2026-11-23, `agent/planmode.ts` : « /plan », refus de tout changement avant un plan approuvé, « Relire mon plan contre la demande ») — Mode « Plan » (lire et proposer sans agir). S.
 
 ---
 

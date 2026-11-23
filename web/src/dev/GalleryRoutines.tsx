@@ -4,6 +4,11 @@
  * models for routines, background tasks and other background work. `empty=1`: a routine that never ran and has no approval.
  */
 import { RoutineMore, WorkModels } from "../components/RoutineEditor";
+import { RoutineCalendarFeed, RoutineRunForm } from "../components/RoutineParams";
+import { RoutineHistory } from "../components/BotSettings";
+import { UsageChart } from "../components/UsageChart";
+import { ComputerHoursBlock } from "../components/ComputerHours";
+import { ResearchPanel } from "../components/ResearchPanel";
 import type { Routine } from "../types";
 import { fakeBot, GALLERY_BOT_ID, NOW, type FixtureOptions } from "./fixtures";
 
@@ -29,6 +34,28 @@ export function GalleryRoutines({ o, empty }: { o: FixtureOptions; empty: boolea
           <ul className="list"><li className="routine"><div className="list-row-text"><span className="list-row-title">{r.name}</span><span className="list-row-sub">{r.describe}</span></div><p className="routine-prompt">{r.prompt}</p><RoutineMore r={r} open onNote={() => undefined} onError={() => undefined} /></li></ul>
           <WorkModels bot={fakeBot(o)} />
         </div>
+      </section>
+      <section className="gallery-section" aria-label="L143">
+        <h2>{fr ? "Routine avec paramètres ; mes routines dans mon agenda" : "Routine with parameters; my routines in my calendar"}</h2>
+        <div className="gallery-page is-auto">
+          <RoutineRunForm r={{ ...r, id: "rtn_gallery_params", prompt: fr ? "Résume les nouvelles de {{secteur=l'énergie}} pour {{période=cette semaine}} et envoie-les à {{destinataire}}." : "Summarise the news of {{sector=energy}} for {{period=this week}} and send them to {{recipient}}." }} onNote={() => undefined} />
+          <RoutineCalendarFeed startStatus={empty ? { active: false, createdAt: null, lastReadAt: null } : { active: true, createdAt: NOW - 86400_000, lastReadAt: null, url: `${location.origin}/api/calendar/${o.long ? "x".repeat(32) : "Zx81_qLmT0pa9w2KcV7nYb3hR5sE1uFg"}.ics` }} />
+          {!empty && <RoutineCalendarFeed startStatus={{ active: true, createdAt: NOW - 5 * 86400_000, lastReadAt: NOW - 3600_000 }} />}
+        </div>
+      </section>
+      <section className="gallery-section" aria-label="L142">
+        <h2>{fr ? "Durée et coût de chaque exécution ; dépenses des 30 derniers jours ; heures d'ordinateur" : "Duration and cost of each run; spending over the last 30 days; computer hours"}</h2>
+        <div className="gallery-page is-auto">
+          <RoutineHistory r={r} />
+          <UsageChart />
+          {/* L95: computer hours of the month with a cap (reached when `empty`), and without one. */}
+          <ComputerHoursBlock initial={{ month: "2026-11", usedHours: empty ? 40 : 12.5, capHours: 40, ownCapHours: 40, operatorCapHours: o.long ? 60 : null, reached: empty }} />
+          <ComputerHoursBlock initial={{ month: "2026-11", usedHours: 3.2, capHours: null, ownCapHours: null, operatorCapHours: null, reached: false }} />
+        </div>
+      </section>
+      <section className="gallery-section" aria-label="L156">
+        <h2>{fr ? "Exporter un rapport de recherche" : "Export a research report"}</h2>
+        <div className="gallery-page is-auto"><ResearchPanel bot={GALLERY_BOT_ID} fr={fr} active /></div>
       </section>
     </main>
   );

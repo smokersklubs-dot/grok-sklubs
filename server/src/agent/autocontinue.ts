@@ -57,3 +57,15 @@ export function takeAuto(botId: string, thread: number, s: Stretch): { go: true;
 const atLimit = new WeakSet<object>();
 export const markAtLimit = (turn: object) => { atLimit.add(turn); };
 export const wasAtLimit = (turn: object) => atLimit.has(turn);
+
+/**
+ * L72 — the same automatic continuation after the TIME limit of a subscription turn (Claude Code, Codex:
+ * ENGINE_TURN_TIMEOUT_MINUTES). The tool's own session is kept, so its work goes on where it stopped. A routine or a
+ * helper's task gets the unattended allowance by itself, the owner's chat only after « Continuer seul jusqu'au bout »; the
+ * progress test is the same, on the steps the chat shows for that turn (tool and arguments, as Turn.repeats has them for
+ * an API turn). Returns the decision (a continuation is used when it says go).
+ */
+export function autoAfterTimeout(bot: { id: string; parentId: string | null }, unattended: boolean, thread: number, steps: { tool: string; args?: Record<string, unknown> }[]): ReturnType<typeof takeAuto> {
+  if (unattended || bot.parentId) ensureUnattended(bot.id, thread);
+  return takeAuto(bot.id, thread, { calls: steps.map((s) => `${s.tool}:${JSON.stringify(s.args ?? {})}`), loopStopped: false });
+}

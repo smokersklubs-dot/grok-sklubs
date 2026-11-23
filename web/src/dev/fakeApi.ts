@@ -7,12 +7,12 @@ import { landingData, sampleDownloads } from "./landingFixtures";
 import { announcementsAdmin, announcementsState, conversationGrantFixtures, memoryHistoryFixture, sentinelOverview, todayReport, type FixtureOptions } from "./fixtures";
 import { promptViewFixture, semanticFixture, summaryFixture } from "./GalleryMemory";
 import { githubPreviewFixture, libraryFixture, scanReportFixture, versionsFixture } from "./skillsFixtures"; import { benchFixture, catalogFixture, skillHealthFixture, versionsListFixture } from "./skillHealthFixtures";
-import { incidentsFixture } from "./incidentsFixtures";
+import { incidentsFixture } from "./incidentsFixtures"; import { rows23Get } from "./GalleryRows23";
 import { commandFixture, fakeScreen } from "./commandFixtures";
 import { teamMdExportFixture, teamMdPreviewFixture, teamMdReportFixture } from "./teamMdFixtures";
 import { hookSignedFixture, hookTestFixture, reportsFixture } from "./trustFixtures";
 import { relayGuardFixture } from "./relayGuardFixtures";
-import { routineExtrasFixture, routinePreviewFixture } from "./routineFixtures";
+import { routineExtrasFixture, routinePreviewFixture, researchFixture, routineRunsFixture, usageDailyFixture } from "./routineFixtures";
 import { botSecurityFixture, browserFixture, recipientsFixture, securitySettingsFixture, vaultAccessFixture } from "./securityFixtures";
 import { channelsFixture } from "./GalleryChannels"; import { comfort6Get } from "./GalleryComfort6"; import { comfort7Get, officeFixture } from "./GalleryComfort7"; import { inboxFixture } from "./turnFixtures"; import { extensionsGet } from "./GalleryExtensions";
 
@@ -68,18 +68,28 @@ export function installFakeApi(get: () => FakeApiState): void {
       // nod items 2, 8, 13 (GalleryRoutines.tsx): the preview of the next runs, saving, approving.
       if (/^\/bots\/[^/]+\/routines\/preview$/.test(path) && !s.fail) { await wait(100); return json(200, routinePreviewFixture(s)); }
       if (/^\/reports\/[^/]+\/done$/.test(path) && !s.fail) { await wait(150); return json(200, reportsFixture(s, s.empty)); }
+      // L79 (GalleryLoopPlus.tsx): « Relire mon plan contre ma demande ».
+      if (/^\/bots\/[^/]+\/rows\/\d+\/plan-review$/.test(path) && !s.fail) { await wait(300); const fr = s.lang === "fr"; return json(200, { review: { verdict: "gaps", missing: [fr ? (s.long ? "le formulaire de contact avec l'envoi d'une copie au client et la protection contre les robots" : "le formulaire de contact") : "the contact form"], extra: [fr ? "la page À propos" : "the About page"], note: "" } }); }
       await wait(600);
       return s.fail ? json(500, { error: s.lang === "fr" ? "Exemple d'erreur : le serveur n'a pas pu le faire." : "Sample error: the server could not do it." }) : json(200, {});
     }
+    { const r23 = rows23Get(path, s); if (r23 !== undefined) return json(200, r23); } // 23/11 rows (GalleryRows23.tsx)
     { const w6 = comfort6Get(path, s); if (w6 !== undefined) return json(200, w6); } // wave 6 comfort (GalleryComfort6.tsx)
     { const x7 = extensionsGet(path, s); if (x7 !== undefined) return json(200, x7); } // wave 7 extensions (GalleryExtensions.tsx)
     { const w7 = path.endsWith("/files/office-preview") ? officeFixture(url.searchParams.get("path") ?? "", s) : comfort7Get(path, s); if (w7 !== undefined) return json(200, w7); } // wave 7 comfort (GalleryComfort7.tsx)
     if (path === "/today") return json(200, todayReport(s, s.empty));
     if (path === "/inbox") return json(200, inboxFixture(s)); // L139 « À toi »
     if (/^\/routines\/[^/]+\/extras$/.test(path)) return json(200, routineExtrasFixture(s, s.empty));
+    if (/^\/routines\/[^/]+\/runs$/.test(path)) return json(200, routineRunsFixture(s, s.empty)); if (path === "/usage/daily") return json(200, usageDailyFixture(s.empty)); // L142
+    if (/^\/bots\/[^/]+\/research$/.test(path)) return json(200, researchFixture(s, s.empty)); if (path === "/research/x-account") return json(200, { provider: null, personal: false }); // L156
     // Wave 6 (L54 / L86 / L183, RoutineOptions.tsx; L58, QueuedNotes.tsx).
     if (/^\/routines\/[^/]+\/options$/.test(path)) return json(200, s.empty ? { announce: "thread", condition: "", heavy: false } : { announce: "thread", condition: s.lang === "fr" ? "Seulement si un concurrent baisse ses prix" : "Only if a competitor cuts its prices", heavy: true });
     if (/^\/bots\/[^/]+\/notes$/.test(path)) return json(200, { notes: s.empty ? [] : [{ id: 1, thread: 0, text: s.lang === "fr" ? (s.long ? "Ajoute aussi les prix de livraison pour la Belgique, la Suisse et le Luxembourg, et vérifie les délais annoncés sur chaque site de chaque transporteur international." : "Ajoute aussi la Belgique") : "Add Belgium too" }, { id: 2, thread: 0, text: s.lang === "fr" ? "Et c'est quoi le délai moyen ?" : "And what is the average delay?" }] });
+    // Loop and turns 23/11 (GalleryLoopPlus.tsx): L69 model modes, L96 who can ask whom.
+    if (/^\/bots\/[^/]+\/model-mode$/.test(path)) return json(200, { mode: s.empty ? "balanced" : "auto", subscription: false, models: s.empty ? { balanced: "", fast: null, strongest: null, free: null } : { balanced: "anthropic:claude-sonnet-5-5", fast: s.long ? "up-openrouter-personnel:google/gemini-2.5-flash-lite-preview-with-a-very-long-name" : "anthropic:claude-haiku-5-5", strongest: "anthropic:claude-opus-5-5", free: null } });
+    if (path === "/team/ask-policy") return json(200, { mode: s.empty ? "open" : "hierarchy" });
+    if (path === "/team/helper-inherit") return json(200, { on: true });
+    if (path === "/team/section-leads") return json(200, { leads: s.empty ? {} : { sec_sales: "bot_max", sec_support: "bot_sam" } });
     if (/^\/bots\/[^/]+\/routines\/live$/.test(path)) return json(200, { live: s.empty ? [] : [{ routineId: "rtn_gallery_nod", steps: 4, caption: s.lang === "fr" ? "Lit les nouvelles du secteur" : "Reading the industry news", activity: "browsing", since: Date.now() - 90_000, awaiting: null }] });
     if (/^\/bots\/[^/]+\/work-models$/.test(path)) return json(200, { routines: "", tasks: s.empty ? "" : "openrouter:google/gemini-2.5-flash", background: "" });
     // Réglages → Mémoire, « Modifier » then « Historique » (MemoryEdit.tsx): what changed in a note.

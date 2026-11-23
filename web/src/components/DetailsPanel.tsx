@@ -16,6 +16,7 @@ import { canCall, canSpeak, makeUtterance, useVoices } from "../lib/speech";
 import { BotAvatar } from "./Avatar";
 import { SubscriptionBadge } from "./Brain";
 import { LiveScreen } from "./LiveScreen";
+import { ClickTrail } from "./ClickTrail";
 import { ScreenFrame } from "./ScreenFrame";
 import { MyComputerSection } from "./MyComputer";
 import { JobsList } from "./GoalsAndJobs";
@@ -329,6 +330,7 @@ function ComputerSection({ bot }: { bot: Bot }) {
               onConnect={() => { setLiveUp(true); recon.connected(); }}
               onClose={() => { setLiveUp(false); recon.dropped(); }}
             />
+            {liveUp && <ClickTrail botId={bot.id} />}
             {!liveUp && !recon.gaveUp && <span className="screen-hero-wait"><span className="dot-inline dot-pulse" /></span>}
             {!liveUp && recon.gaveUp && <span className="screen-hero-wait"><button type="button" className="btn btn-small" onClick={recon.retryNow}>{t("viewer.reconnect")}</button></span>}
             {/* The picture swallows clicks: a clear layer over it opens the large view (not while driving). */}

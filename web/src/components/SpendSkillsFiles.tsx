@@ -1,5 +1,6 @@
-import { useEffect, useId, useMemo, useState, type FormEvent } from "react";
+import { Fragment, useEffect, useId, useMemo, useState, type FormEvent } from "react";
 import { OFFICE_FILE, OfficeView, SheetTable } from "./OfficeView";
+import { JournalWhy, WhyButton } from "./JournalWhy"; // L137
 import { create } from "zustand";
 import { api, enc, errText } from "../api";
 import { useT, type Key } from "../i18n";
@@ -198,6 +199,7 @@ export function JournalView() {
   const [days, setDays] = useState("7");
   const [data, setData] = useState<{ entries: JournalEntry[]; totals: { lines: number; costUsd: number; byDecision: Record<string, number> } } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [why, setWhy] = useState<number | null>(null); // L137 « Pourquoi ? » (JournalWhy.tsx)
   const query = useMemo(() => new URLSearchParams({ ...(bot ? { bot } : {}), ...(decision ? { decision } : {}), ...(tool.trim() ? { tool: tool.trim() } : {}), ...(days ? { days } : {}) }).toString(), [bot, decision, tool, days]);
   useEffect(() => {
     let dead = false;
@@ -232,15 +234,16 @@ export function JournalView() {
               <div className="journal-row is-head" role="row">
                 <span role="columnheader">{t("journal.when")}</span><span role="columnheader">{t("journal.bot")}</span><span role="columnheader">{t("journal.action")}</span><span role="columnheader">{t("journal.decision")}</span><span role="columnheader">{t("journal.cost")}</span>
               </div>
-              {data.entries.map((e) => (
-                <div key={e.id} className={`journal-row is-${e.status}`} role="row">
+              {data.entries.map((e) => (<Fragment key={e.id}>
+                <div className={`journal-row is-${e.status}`} role="row">
                   <span role="cell" className="muted">{relTime(e.at)}</span>
                   <span role="cell">{e.botName}</span>
                   <span role="cell" className="journal-action"><code>{e.tool}</code> <span className="truncate">{e.label}</span>{e.origin && e.origin !== "user" ? <span className="chip chip-quiet">{t(`journal.o.${e.origin}` as Key) || e.origin}</span> : null}</span>
-                  <span role="cell"><span className={`chip journal-decision is-${e.decision}`}>{t(`journal.d.${e.decision}` as Key)}</span>{e.quote ? <span className="journal-quote"> « {e.quote} »</span> : e.reason ? <span className="journal-quote muted"> {e.reason}</span> : null}</span>
+                  <span role="cell"><span className={`chip journal-decision is-${e.decision}`}>{t(`journal.d.${e.decision}` as Key)}</span>{e.quote ? <span className="journal-quote"> « {e.quote} »</span> : e.reason ? <span className="journal-quote muted"> {e.reason}</span> : null} <WhyButton open={why === e.id} onToggle={() => setWhy(why === e.id ? null : e.id)} /></span>
                   <span role="cell" className="muted">{e.costUsd > 0 ? `${e.costUsd.toFixed(3)} $` : "—"}</span>
                 </div>
-              ))}
+                {why === e.id && <JournalWhy id={e.id} />}
+              </Fragment>))}
             </div>
           )}
         </>

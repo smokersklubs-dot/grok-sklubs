@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api, enc, errText } from "../api";
 import { useT } from "../i18n";
 import { prettyModel } from "../lib/engines";
+import { orderModels, parseFavs, retiredRefs, toggleFav } from "../lib/modelfavs";
 import { useStore } from "../store";
 import type { Bot, Live, ModelOption } from "../types";
 import type { PromptView } from "../types";
@@ -15,12 +16,17 @@ import "./Comfort7.css";
  * model stays its default), and how full the conversation's context is, with « Compacter » one tap away in the bot's
  * memory settings. Both read from the server; nothing is guessed: an unknown value shows « — », never 0 %.
  */
+const FAVS_KEY = "sklubot.models.favs";
+
 export function ComposerMeta({ bot, live }: { bot: Bot; live: Live }) {
   const t = useT();
   const [models, setModels] = useState<ModelOption[] | null>(null);
   const [chosen, setChosen] = useState<string>("");
   const [percent, setPercent] = useState<number | null>(null);
   const [menu, setMenu] = useState(false);
+  // L150: starred models first (kept in this browser), and a model no longer offered shown greyed (lib/modelfavs.ts).
+  const [favs, setFavs] = useState<string[]>(() => { try { return parseFavs(localStorage.getItem(FAVS_KEY)); } catch { return []; } });
+  const star = (ref: string) => setFavs((f) => { const next = toggleFav(f, ref); try { localStorage.setItem(FAVS_KEY, JSON.stringify(next)); } catch { /* not kept */ } return next; });
   const running = live.running;
   useEffect(() => {
     let dead = false;
@@ -60,8 +66,14 @@ export function ComposerMeta({ bot, live }: { bot: Bot; live: Live }) {
         <Menu open={menu} onClose={() => setMenu(false)} side="top" label={t("c7.model.title")}>
           <MenuItem icon={chosen ? "refresh" : "check"} onClick={() => void pick("")}>{t("c7.model.botDefault", { model: bot.model ? label(bot.model) : t("c7.model.default") })}</MenuItem>
           {models === null && <MenuItem icon="clock" onClick={() => {}}>{t("common.loading")}</MenuItem>}
-          {models?.map((m) => (
-            <MenuItem key={m.ref} icon={m.ref === chosen ? "check" : "brain"} hint={m.provider} onClick={() => void pick(m.ref)}>{prettyModel(m.model)}</MenuItem>
+          {models && orderModels(models, favs).map((m) => (
+            <div key={m.ref} className="model-row">
+              <MenuItem icon={m.ref === chosen ? "check" : "brain"} hint={m.provider} onClick={() => void pick(m.ref)}>{prettyModel(m.model)}</MenuItem>
+              <button type="button" className={`icon-btn model-fav${favs.includes(m.ref) ? " is-on" : ""}`} aria-pressed={favs.includes(m.ref)} aria-label={t(favs.includes(m.ref) ? "c7.model.unstar" : "c7.model.star", { model: prettyModel(m.model) })} title={t(favs.includes(m.ref) ? "c7.model.unstar" : "c7.model.star", { model: prettyModel(m.model) })} onClick={() => star(m.ref)}><Icon name="star" size={14} /></button>
+            </div>
+          ))}
+          {retiredRefs(models, [chosen, bot.model]).map((ref) => (
+            <MenuItem key={ref} icon="eyeOff" hint={t("c7.model.retired")} disabled onClick={() => {}}>{label(ref)}</MenuItem>
           ))}
         </Menu>
       </div>

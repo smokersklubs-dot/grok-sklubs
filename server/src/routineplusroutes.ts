@@ -24,6 +24,8 @@ import { schedule } from "./scheduler.js";
 import { audit, bots, type BotRecord, type UserRecord } from "./store.js";
 import { publicRoutine } from "./routines.js";
 import { registerRoutineOptionRoutes } from "./routineoptions.js";
+import { cleanParamValues } from "./clientshared/routineparams.js";
+import { registerRoutineIcalRoutes } from "./routineical.js"; import { registerUsageDaily } from "./usagedaily.js";
 
 type Env = { Variables: { user: UserRecord } };
 
@@ -45,14 +47,16 @@ function trackFor(r: RoutineRecord, locale: UserRecord["locale"]) {
 }
 
 /** "Run now": refused on a routine changed after a failure unless the editor sends the revision it shows. */
-export async function runNowGuard(c: Context<Env>, r: RoutineRecord): Promise<void> {
+export async function runNowGuard(c: Context<Env>, r: RoutineRecord): Promise<Record<string, string>> {
   const b = await body(c);
   const revision = b.revision === undefined || b.revision === null ? undefined : Number(b.revision);
   wrap(c, () => runNowCheck(r, Number.isFinite(revision) ? revision : undefined));
+  return cleanParamValues(b.params); // L143: the values typed in the run form (clientshared/routineparams.ts)
 }
 
 export function registerRoutinePlusRoutes(api: Hono<Env>) {
   registerRoutineOptionRoutes(api); // L54 / L86 / L183 options (routineoptions.ts)
+  registerRoutineIcalRoutes(api); registerUsageDaily(api); // L143: the calendar feed's link (routineical.ts); L142: 30 days of spending (usagedaily.ts)
   api.get("/routines/:id/extras", (c) => {
     const r = ownRoutine(c);
     return c.json({ ...routineExtras(r, botOf(r)), track: trackFor(r, c.get("user").locale) });

@@ -189,16 +189,45 @@ function Takeover({ card, bot }: { card: Of<"takeover">; bot: Bot }) {
   const done = () => run("done", () => post(cardReq.takeoverDone(bot.id, card.takeoverId)));
   return (
     <Shell accent={pending ? c.warn : undefined}>
-      <Head icon="hand" title={t("takeover.title", { name: bot.name })} sub={`${t(`takeover.reason.${card.reason}` as Key)}${pending ? ` · ${t("takeover.left", { n: minutesLeft(card.expiresAt, now) })}` : ""}`} tone={pending ? c.warn : undefined} />
+      <Head icon="hand" title={t(card.reason === "password" ? "takeover.selfTitle" : "takeover.title", { name: bot.name })} sub={`${t(`takeover.reason.${card.reason}` as Key)}${pending ? ` · ${t("takeover.left", { n: minutesLeft(card.expiresAt, now) })}` : ""}`} tone={pending ? c.warn : undefined} />
       {card.detail ? <Reason text={card.detail} /> : null}
       {pending ? (
         <>
-          <Text style={{ color: c.text3, fontSize: 13 }}>{t("takeover.hint")}</Text>
+          <Text style={{ color: c.text3, fontSize: 13 }}>{t(card.reason === "password" ? "takeover.selfHint" : "takeover.hint")}</Text>
           <Button small variant="ghost" icon="monitor" label={t("takeover.open")} disabled={!!busy} onPress={() => nav.navigate("Computer", { botId: bot.id, control: true })} />
-          <Button small variant="accent" icon="check" label={t("takeover.done")} busy={busy === "done"} disabled={!!busy} onPress={() => void done()} />
+          <Button small variant="accent" icon="check" label={t(card.reason === "password" ? "takeover.selfDone" : "takeover.done")} busy={busy === "done"} disabled={!!busy} onPress={() => void done()} />
         </>
       ) : (
-        <Outcome ok={card.status === "done" ? true : card.status === "timeout" ? null : false} icon={card.status === "done" ? "check" : card.status === "timeout" ? "clock" : "close"} label={t(`takeover.status.${card.status}` as Key)} />
+        <Outcome ok={card.status === "done" ? true : card.status === "timeout" ? null : false} icon={card.status === "done" ? "check" : card.status === "timeout" ? "clock" : "close"} label={t(card.reason === "password" && card.status === "done" ? "takeover.selfStatusDone" : (`takeover.status.${card.status}` as Key))} />
+      )}
+      <ErrorNote>{error}</ErrorNote>
+    </Shell>
+  );
+}
+
+/* ---------- L91: a one-time code typed into a hidden box, straight into the page's field (server agent/codebox.ts) ---------- */
+
+function CodeBox({ card, bot }: { card: Of<"code">; bot: Bot }) {
+  const { c } = useTheme();
+  const t = useT();
+  const [code, setCode] = useState("");
+  const pending = card.status === "pending";
+  const now = useNow(15_000, pending);
+  const { busy, error, run } = useBusy();
+  const send = (body: { code?: string; dismiss?: true }) => run(body.dismiss ? "dismiss" : "send", async () => { await post(cardReq.code(bot.id, card.codeId, body)); setCode(""); });
+  return (
+    <Shell accent={pending ? c.warn : undefined}>
+      <Head icon="key" title={t("codebox.title", { name: bot.name })} sub={`${card.host || "?"} · ${t("codebox.field", { field: card.label })}${pending ? ` · ${t("takeover.left", { n: minutesLeft(card.expiresAt, now) })}` : ""}`} tone={pending ? c.warn : undefined} />
+      {card.detail ? <Reason text={card.detail} /> : null}
+      {pending ? (
+        <>
+          <Text style={{ color: c.text3, fontSize: 13 }}>{t("codebox.hint")}</Text>
+          <SecretInput value={code} onChangeText={setCode} placeholder="123456" label={t("codebox.title", { name: bot.name })} />
+          <Button small variant="ghost" label={t("codebox.dismiss")} busy={busy === "dismiss"} disabled={!!busy} onPress={() => void send({ dismiss: true })} />
+          <Button small variant="accent" icon="send" label={t("codebox.send")} busy={busy === "send"} disabled={!!busy || !code.trim()} onPress={() => void send({ code: code.trim() })} />
+        </>
+      ) : (
+        <Outcome ok={card.status === "typed" ? true : card.status === "timeout" ? null : false} icon={card.status === "typed" ? "check" : card.status === "timeout" ? "clock" : "close"} label={t(`codebox.status.${card.status}` as Key)} />
       )}
       <ErrorNote>{error}</ErrorNote>
     </Shell>
@@ -518,12 +547,27 @@ function ViewText({ card }: { card: Of<"view"> }) {
   );
 }
 
+/** L158 « Créations »: the trajectory in words (stage, renders, no change / no progress); previews are on the website. */
+function TrajectoryText({ card }: { card: Of<"trajectory"> }) {
+  const t = useT();
+  const last = card.renders[card.renders.length - 1];
+  return (
+    <Shell>
+      <Head icon="image" title={card.title} />
+      <Reason text={t("trajectory.summary", { n: card.total, stage: t(`trajectory.stage.${card.stage}`) })} />
+      {card.stalled ? <Reason text={t("trajectory.stalled")} /> : last?.unchanged ? <Reason text={t("trajectory.unchanged")} /> : null}
+      <Reason text={t("trajectory.onWeb")} />
+    </Shell>
+  );
+}
+
 export function CardView({ card, bot, seq }: { card: Card; bot: Bot; seq: number }) {
   switch (card.type) {
     case "approval": return <Approval card={card} bot={bot} />;
     case "question": return <Question card={card} bot={bot} seq={seq} />;
     case "connect": return <Connect card={card} bot={bot} seq={seq} />;
     case "takeover": return <Takeover card={card} bot={bot} />;
+    case "code": return <CodeBox card={card} bot={bot} />; // L91
     case "secret": return <Secret card={card} bot={bot} seq={seq} />;
     case "uncertain": return <Uncertain card={card} />;
     case "task": return <TaskCard card={card} bot={bot} />;
@@ -534,6 +578,7 @@ export function CardView({ card, bot, seq }: { card: Card; bot: Bot; seq: number
     case "memory": return <Memory card={card} bot={bot} seq={seq} />;
     case "mail": return <Mail card={card} bot={bot} />;
     case "view": return <ViewText card={card} />;
+    case "trajectory": return <TrajectoryText card={card} />; // L158
     default: return null;
   }
 }

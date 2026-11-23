@@ -1,4 +1,4 @@
-import type { Locale } from "./shared.js"; import { SECURITY_FR } from "./securityi18n.js"; import { COMFORT_FR } from "./comforti18n.js"; import { TURN_FR } from "./turni18n.js"; import { COMFORT7_FR } from "./comfort7i18n.js"; import { WAVE7_FR } from "./wave7i18n.js";
+import type { Locale } from "./shared.js"; import { SECURITY_FR } from "./securityi18n.js"; import { COMFORT_FR } from "./comforti18n.js"; import { TURN_FR } from "./turni18n.js"; import { COMFORT7_FR } from "./comfort7i18n.js"; import { WAVE7_FR } from "./wave7i18n.js"; import { LOOPPLUS_FR } from "./loopplusi18n.js"; import { MEDIA_FR } from "./mediai18n.js";
 
 /**
  * Texts the server itself writes into a chat (notices, event lines, step labels, approval titles).
@@ -645,9 +645,15 @@ const FR: Record<string, string> = {
   "wrong site": "mauvais site", "address unknown": "adresse inconnue", "wrong app": "mauvaise appli", "not a password field": "pas un champ mot de passe",
   "Commands allowed on {device}": "Commandes autorisées sur {device}", "Commands turned off on {device}": "Commandes désactivées sur {device}", "Project folders or command time changed on {device}": "Dossiers de projet ou durée des commandes modifiés sur {device}",
   "Keep-out list changed on {device}": "Liste « garder à l'écart » modifiée sur {device}", "At most {n} entries.": "{n} éléments au plus.",
+  "Give a number of hours between 0 and 744 (0: no cap).": "Donne un nombre d'heures entre 0 et 744 (0 : pas de plafond).", // L95 computerhoursroutes.ts
+  "That account does not exist.": "Ce compte n'existe pas.", "A signature has {n} characters at most.": "Une signature fait {n} caractères au plus.", // L83 native/mailsignatureroutes.ts
+  "Needs a code from you": "A besoin d'un code de ta part", // L91 agent/codebox.ts
+  "no code": "pas de code", "code typed": "code saisi", // L91 agent/codebox.ts
+  "A code has 1 to 16 letters, digits, spaces or dashes.": "Un code fait de 1 à 16 lettres, chiffres, espaces ou tirets.", "The bot no longer waits for this code (it was stopped or restarted). Ask it again if it still needs one.": "Le bot n'attend plus ce code (il a été arrêté ou redémarré). Redemande-lui s'il en a encore besoin.", // L91 codeboxroutes.ts
+  "That request no longer exists.": "Cette demande n'existe plus.", // L91 codeboxroutes.ts
 };
 
-Object.assign(FR, SECURITY_FR, COMFORT_FR, TURN_FR, COMFORT7_FR, WAVE7_FR); // Lot 1 security texts (securityi18n.ts); comfort batch (comforti18n.ts); turn control (turni18n.ts)
+Object.assign(FR, SECURITY_FR, COMFORT_FR, TURN_FR, COMFORT7_FR, WAVE7_FR, LOOPPLUS_FR, MEDIA_FR); // Lot 1 security texts (securityi18n.ts); comfort batch (comforti18n.ts); turn control (turni18n.ts)
 export function tr(locale: Locale | undefined, english: string, vars: Record<string, string | number> = {}): string {
   const template = locale === "fr" ? FR[english] ?? english : english;
   return template.replace(/\{(\w+)\}/g, (_m, k) => String(vars[k] ?? ""));

@@ -3,6 +3,7 @@ import { useT } from "../i18n";
 import { useStore } from "../store";
 import type { Row } from "../types";
 import { addCopyButtons, jumpToQuoted, replyDraft, selectedText } from "../lib/messagecopy";
+import { addFoldToggles } from "../lib/blockfold";
 import { Icon } from "./Icon";
 import { RowContext } from "./Transcript";
 import "./ReplyAction.css";
@@ -40,13 +41,18 @@ export function ReplyAction({ row }: { row: Row }) {
   );
 }
 
-/** A rendered message: « Copier » on its code blocks and tables; a click on a quote goes to the passage it quotes. */
+/**
+ * A rendered message: « Copier » on its code blocks and tables, long blocks folded (L136), formulas drawn with KaTeX
+ * loaded only when the message has some (L147, lib/mathrender.ts); a click on a quote goes to the passage it quotes.
+ */
 export function useMessageEnhance(html: string) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
     addCopyButtons(el);
+    addFoldToggles(el);
+    if (el.querySelector(".md-math")) void import("../lib/mathrender").then((m) => { if (ref.current === el) m.renderMathIn(el); }, () => undefined);
     const onClick = (e: MouseEvent) => {
       const quote = (e.target as HTMLElement).closest("blockquote:not(.md-callout)") as HTMLElement | null;
       if (quote && el.contains(quote) && !(e.target as HTMLElement).closest("a,button")) jumpToQuoted(quote);

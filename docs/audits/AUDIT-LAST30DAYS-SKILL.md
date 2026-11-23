@@ -148,7 +148,7 @@ Preuves Sklubot : `server/src/researchroutes.ts` (outil `deep_research_start` l.
 4. Seuil de pertinence avant de garder une source + état vide honnête « rien de solide sur la période » — **S**. — **FAIT 22/11 (L87)**
 5. État par source (panne / limite / vide) et règle « ne jamais conclure au silence si la source a échoué » dans la synthèse — **S**. — **FAIT 22/11 (L87)**
 6. Plus de 4 résultats par question, regroupement en histoires et diversité de sources — **M**.
-7. Veille : sujet suivi + routine + « ce qui a changé depuis le dernier rapport » — **M**.
+7. ✅ FAIT 23/11 (`researchwatch.ts`, L87) — Veille : sujet suivi + routine + « ce qui a changé depuis le dernier rapport » — **M**.
 8. Recherche dans les rapports passés, utilisés comme contexte daté — **M**.
 9. Compétences « Comparer A et B », « Avant un rendez-vous (personne publique) », « Signaux d'embauche d'une entreprise » sur la recherche approfondie — **S** chacune.
 10. Requête X `from:` du sujet lui-même dans le mode personne — **S**.

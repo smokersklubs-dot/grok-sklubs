@@ -850,6 +850,9 @@ a.btn { text-decoration: none; }
 .caps-explain summary { cursor: pointer; font-weight: 600; color: var(--text); }
 .caps-explain ul { margin: 6px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
 .caps-admin { grid-column: 1 / -1; }
+/* L95 computer hours (ComputerHours.tsx) */
+.chours-line { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 10px; }
+.chours-line .caps-line-limit .input { width: 110px; }
 .cap-card .cap-raise { margin-top: 8px; }
 @media (max-width: 720px) {
   .caps-editor-head { display: none; }
@@ -859,3 +862,21 @@ a.btn { text-decoration: none; }
 
 .voice-disclosure > summary { cursor: pointer; font-weight: 650; color: var(--text-2); min-height: 44px; align-content: center; }
 .voice-disclosure[open] > summary { margin-bottom: 8px; }
+
+/* L149: where the bot just clicked on its screen (ClickTrail.tsx): a ring in the bot's colour that fades out. */
+.click-trail { position: absolute; inset: 0; z-index: 2; pointer-events: none; overflow: hidden; }
+.click-mark { position: absolute; width: 28px; height: 28px; margin: -14px 0 0 -14px; border-radius: 50%; border: 2.5px solid var(--accent); background: color-mix(in srgb, var(--accent) 22%, transparent); box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.85), 0 2px 10px rgba(0, 0, 0, 0.35); animation: click-mark 2.4s ease-out forwards; }
+@keyframes click-mark { 0% { transform: scale(0.4); opacity: 1; } 15% { transform: scale(1); opacity: 1; } 100% { transform: scale(1.5); opacity: 0; } }
+.click-mark.is-still { animation: none; }
+@media (prefers-reduced-motion: reduce) { .click-mark:not(.is-still) { animation: click-mark-still 2.4s step-end forwards; } @keyframes click-mark-still { to { opacity: 0; } } }
+
+/* L83 mail signature (MailSignature.tsx) */
+.mail-signature.connector-note { display: block; }
+.mail-signature summary { cursor: pointer; font-size: 13px; font-weight: 600; min-height: 32px; align-content: center; }
+.mail-signature textarea { width: 100%; min-width: 0; margin-top: 4px; resize: vertical; }
+.mail-signature-actions { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+
+/* L91 hidden code box (CodeBox.tsx) */
+.code-form { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+.code-row { display: flex; align-items: center; gap: 6px; }
+.code-input { width: 14ch; min-width: 0; font-size: 18px; letter-spacing: 0.2em; font-variant-numeric: tabular-nums; }

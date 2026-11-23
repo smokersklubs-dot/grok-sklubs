@@ -5,6 +5,7 @@ import { useStore } from "../store";
 import { useScreen } from "../lib/screen";
 import { BotAvatar } from "./Avatar";
 import { LiveScreen } from "./LiveScreen";
+import { ClickTrail } from "./ClickTrail";
 import { ScreenFrame } from "./ScreenFrame";
 import { Icon, Spinner } from "./Icon";
 import { IconButton, useDialogFocus, useEscape, useTick } from "./ui";
@@ -471,6 +472,7 @@ export function ComputerViewer({ botId }: { botId: string }) {
               <LiveScreen key={recon.key} botId={botId} control={control} label={t("viewer.screenAlt", { name: bot.name })} onClient={setClient}
                 onConnect={() => { setLiveUp(true); recon.connected(); }} onClose={() => { setLiveUp(false); recon.dropped(); }} />
               {!liveUp && <LiveWait name={bot.name} waiting={recon.waiting} gaveUp={recon.gaveUp} onRetry={recon.retryNow} />}
+              {liveUp && <ClickTrail botId={botId} />}
               {liveUp && !control && botDriving && <div className="viewer-bot-driving" role="status"><span className="dot-inline dot-pulse" /> {t("viewer.botDriving", { name: bot.name })}</div>}
             </ScreenFrame>
           </>

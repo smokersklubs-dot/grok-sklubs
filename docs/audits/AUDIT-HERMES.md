@@ -538,10 +538,10 @@ Sklubot a déjà repris trois compétences (`brouillon-email`, `cartes-de-suivi`
 | 8 | Telegram : recevoir photos, vocaux et fichiers ; envoyer les fichiers du bot ; mise en forme propre. (lignes 88-90) | M |
 | 9 | ✅ **Fait (2026-11-22).** Code du curateur de hermes-agent (MIT) repris dans `server/src/skillhealth.ts` : compteur, peu servie / archivée, épingler, verrouiller, 10 versions avec retour ; fusion par un modèle remplacée par une carte « doublon ». Curateur de compétences : compter l'usage, archiver les inutilisées, épingler, verrouiller, garder la version d'avant. (lignes 115-118) | M |
 | 10 | Mémoire : noyau fixe de notes confirmées, notes du tour hors du prompt système (cache), taux de remplissage dit au bot. (§ 3.5, lignes 102-103, 157) | M |
-| 11 | Brouillons d'e-mail : outil de mise à jour (la compétence actuelle demande une chose impossible), pièces jointes, Cci, signature. (lignes 143-144) | M |
+| 11 | Brouillons d'e-mail : outil de mise à jour (la compétence actuelle demande une chose impossible), pièces jointes, Cci, signature. (lignes 143-144) | M | — **FAIT (2026-11-23)** : `mail_draft_update` (22/11) ; pièces jointes, Cci, signature (L83, `native/mailextras.ts`)
 | 12 | Carte de brouillon modifiable dans le chat avec Envoyer / Abandonner. (ligne 142) | M |
 | 13 | Tests de l'interface du chat (défilement, flux, envoi, cartes). (ligne 196) | L |
-| 14 | Réponses courtes en réglage du bot, avec les règles chiffrées et le choix par canal. (§ 3.13, ligne 139) | S |
+| 14 | ✅ FAIT 23/11 (`shortreplies.ts`, L132) — Réponses courtes en réglage du bot, avec les règles chiffrées et le choix par canal. (§ 3.13, ligne 139) | S |
 | 15 | Mise en forme stable pendant la frappe (pas de `**` ni de tableau à moitié écrit). (ligne 26) | M |
 | 16 | Ligne « NOUVEAU » au premier message non lu. (ligne 23) | S |
 | 17 | Pastilles de sources + consigne « finis la ligne par un lien court et exact ». (ligne 56) | M |
@@ -562,7 +562,7 @@ Sklubot a déjà repris trois compétences (`brouillon-email`, `cartes-de-suivi`
 | 32 | Commandes `/` dans le chat web avec liste. (ligne 40) | S |
 | 33 | Liste d'adresses autorisées pour les envois. (ligne 145) | S |
 | 34 | Détail complet d'une étape (résultat, diff). (ligne 33) | S |
-| 35 | Filtre d'activité dans la liste des bots ; deux chats côte à côte. (lignes 6, 10) | S / M |
+| 35 | Filtre d'activité dans la liste des bots ; deux chats côte à côte. (lignes 6, 10) — **filtre FAIT (2026-11-23)** (`BotActivityFilter.tsx`) ; côte à côte : reste | S / M |
 | 36 | Garder en base ce qui est en mémoire vive (garde-boucle des salons, appels en cours). (§ 3.8) | S |
 | 37 | Serveur compatible OpenAI, webhooks sortants. (lignes 98-99) | M |
 | 38 | Résultat d'aide au format imposé ; `@fichier` ; routage OpenRouter ; filtre d'outils par appli. (lignes 161, 159, 153, 202) | S chacun |

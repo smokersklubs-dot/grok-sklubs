@@ -1,5 +1,5 @@
 import { body, fail, HttpError } from "./routeinput.js";
-import { registerSectionRoutes } from "./sectionroutes.js"; import { registerChatComfortRoutes } from "./chatcomfortroutes.js"; import { putInTrash } from "./bottrash.js"; import { registerStopCauseRoutes } from "./stopcauseroutes.js"; import { registerPersonalCommandRoutes } from "./personalcommandroutes.js"; import { registerDoctorRoutes } from "./doctorroutes.js";
+import { registerSectionRoutes } from "./sectionroutes.js"; import { registerChatComfortRoutes } from "./chatcomfortroutes.js"; import { putInTrash } from "./bottrash.js"; import { registerStopCauseRoutes } from "./stopcauseroutes.js"; import { registerPersonalCommandRoutes } from "./personalcommandroutes.js"; import { registerDoctorRoutes } from "./doctorroutes.js"; import { registerComputerHoursRoutes } from "./computerhoursroutes.js"; import { registerMailSignatureRoutes } from "./native/mailsignatureroutes.js"; import { registerCodeBoxRoutes } from "./codeboxroutes.js";
 import { createHash } from "node:crypto";
 import { closeSync, createReadStream } from "node:fs";
 import path from "node:path";
@@ -11,7 +11,7 @@ import { registerNoticeRoutes } from "./agent/noticeroutes.js"; import { registe
 import { registerFailureRoutes } from "./agent/failureroutes.js"; import { decideForConversation, registerConversationGrantRoutes } from "./agent/conversationgrantroutes.js";
 import { registerRecruitRoutes } from "./agent/recruit.js"; import { registerTeamMdRoutes } from "./teammdroutes.js";
 import { registerCommandRoutes } from "./command.js"; import { registerRelayGuardRoutes } from "./relayguardroutes.js"; import { registerComfortRoutes } from "./comfortroutes.js"; import { registerChantierRoutes } from "./chantierroutes.js"; import { registerTeamGuestPublic, registerWorkRoutes } from "./workroutes.js";
-import { continueAfterStepLimit, decideApproval, enqueue, inQueue, interrupt, noteHandBack, submitUserMessage, type ForcedSkill } from "./agent/loop.js"; import { sendOnce } from "./sendkeys.js";
+import { continueAfterStepLimit, decideApproval, enqueue, inQueue, interrupt, isPaused, noteHandBack, runningThreads, submitUserMessage, type ForcedSkill } from "./agent/loop.js"; import { sendOnce } from "./sendkeys.js"; import { relayToHelpers } from "./agent/helperrelay.js"; import { registerTurnPlus } from "./turnplusroutes.js";
 import { cleanProfile, fetchSkillMarkdown, saveImportedSkill, undoRevision } from "./agent/tools-team.js";
 import { xSearchProvider } from "./xsearch.js";
 import { registerResearch } from "./researchroutes.js";
@@ -42,7 +42,7 @@ import { publicRoutine, routines, runs } from "./routines.js"; import { register
 import { fireCheckin, fireRoutine, schedule, unschedule } from "./scheduler.js";
 import { REACTIONS, type CheckinSettings, type ReactionEmoji, type ServerEvent, type VideoStatus } from "./shared.js";
 import { videoService } from "./video.js";
-import { higgsfieldFor } from "./agent/tools.js";
+import { higgsfieldFor } from "./agent/tools.js"; import { registerMediaRoutes } from "./mediaroutes.js"; import { imageServiceFor } from "./mediakeys.js"; // audit OGAI: own media keys, Wan2GP
 import { dropRecording, noteInput, recording, retryRecording, saveRecording, startRecording, stopRecording } from "./teach.js";
 import { dayBound, searchMessages } from "./convsearch.js";
 import { registerMemoryNoteRoutes } from "./memoryroutes.js";
@@ -51,7 +51,7 @@ import { controlRequest, finishTakeover, holdControl, releaseControl } from "./t
 import { deskRun, deskShot, startDeskTest } from "./desktest.js";
 import { notePresence, push, pushSettings, savePushSettings, sendPush } from "./push.js";
 import { parseTotp } from "./totp.js";
-import { registerEmailLinkPublic } from "./emaillink.js";
+import { registerEmailLinkPublic } from "./emaillink.js"; import { registerRoutineIcalPublic } from "./routineical.js";
 import { registerTwoFactorPrivate, registerTwoFactorPublic, startSessionOrChallenge } from "./twofactor.js";
 import { registerDataKeyRoutes } from "./datakeyrotate.js";
 import { detectMapping, loginsFrom, parseCsv, type Mapping } from "./vault-import.js";
@@ -120,7 +120,7 @@ import { healthReport } from "./monitor.js";
 import { accountCreated, HostedError, hostedMode, hostedSettings, isOperator, isPlanLimit, lentProviderIds, planInviteOpens, signupChoice, subscriptionEnginesFor, suspended, type SignupChoice } from "./hosted.js";
 import { registerHostedPages, registerHostedPrivate, registerHostedPublic, suspendedText } from "./hostedroutes.js";
 import { TodayError, todayReport, todaySettings } from "./today.js";
-import { registerBotClients, registerBotClientSettings } from "./botaccessroutes.js"; import { registerChannelRoutes } from "./channelroutes.js"; import { registerViewRoutes } from "./viewroutes.js";
+import { registerBotClients, registerBotClientSettings } from "./botaccessroutes.js"; import { registerChannelRoutes } from "./channelroutes.js"; import { registerViewRoutes } from "./viewroutes.js"; import { registerCreationRoutes } from "./creationroutes.js";
 import { registerSentinelRoutes } from "./sentinel/routes.js"; import { registerHookRoutes, registerHookSettingsRoutes } from "./hookroutes.js"; import { registerReportRoutes } from "./reports.js";
 import { registerAnnouncementRoutes } from "./announceroutes.js"; import { registerModelHealthRoutes } from "./modelhealth.js";
 import { registerSkillsLibraryRoutes } from "./skillsroutes.js";
@@ -267,7 +267,7 @@ api.get("/me", (c) => {
   const hosted = hostedMode() ? { operator: !!user && isOperator(user.id), creditsForSale: hostedSettings.get().creditsForSale, links: locale === "fr" ? { pricing: "/tarifs", terms: "/cgu", legal: "/mentions-legales", privacy: "/confidentialite" } : { pricing: "/pricing", terms: "/terms", legal: "/legal-notice", privacy: "/privacy" } } : undefined;
   // `sentinel`: the signed-in person watches this server (the owner, or a hosted operator): the Surveillance page is theirs.
   const sentinel = !!user && sentinelWatcher(user.id);
-  return c.json({ user: user ? publicUser(user) : null, signupOpen: signupOpen(), setupCodeRequired: setupCodeRequired(), imageGeneration: !!imageService(), video, firstBot: firstBotIdentity(locale), ...(hosted ? { hosted } : {}), ...(sentinel ? { sentinel } : {}), ...publicSignupInfo() });
+  return c.json({ user: user ? publicUser(user) : null, signupOpen: signupOpen(), setupCodeRequired: setupCodeRequired(), imageGeneration: !!imageServiceFor(user?.id), video, firstBot: firstBotIdentity(locale), ...(hosted ? { hosted } : {}), ...(sentinel ? { sentinel } : {}), ...publicSignupInfo() });
 });
 
 // Slows down password guessing: a handful of attempts per account, and a few dozen per client address,
@@ -396,7 +396,7 @@ api.post("/auth/logout", (c) => {
   return c.json({ ok: true });
 });
 
-registerHookRoutes(api, clientIp); registerTeamGuestPublic(api, clientIp); registerPhonePublic(api); /* L177 « Partager ma position » page (extroutes.ts) */ // L171 team memory guest links (workroutes.ts) ; Webhooks: POST /hooks/:token — signature, repeats, bursts, refusals (hookroutes.ts, L20)
+registerHookRoutes(api, clientIp); registerRoutineIcalPublic(api); /* L143 routines calendar feed */ registerTeamGuestPublic(api, clientIp); registerPhonePublic(api); /* L177 « Partager ma position » page (extroutes.ts) */ // L171 team memory guest links (workroutes.ts) ; Webhooks: POST /hooks/:token — signature, repeats, bursts, refusals (hookroutes.ts, L20)
 
 /**
  * "Accès API" (botapi.ts, docs/API-BOT.md): the Bot API and its MCP control server, under /api/v1, authenticated by a
@@ -708,14 +708,14 @@ api.post("/bots/:id/duplicate", async (c) => {
 });
 
 // ── Sidebar sections ─────────────────────────────────────────────────────────
-registerSectionRoutes(api); registerChatComfortRoutes(api, ownBot, ownAgent); registerStopCauseRoutes(api); registerPersonalCommandRoutes(api); registerDoctorRoutes(api); // L142 stop-cause chips (stopcauseroutes.ts) ; L152 personal / commands ; L153 « Docteur » (doctorroutes.ts)
+registerSectionRoutes(api); registerChatComfortRoutes(api, ownBot, ownAgent); registerStopCauseRoutes(api); registerPersonalCommandRoutes(api); registerDoctorRoutes(api); registerComputerHoursRoutes(api); registerMailSignatureRoutes(api); registerCodeBoxRoutes(api, ownAgent); // L91 hidden code box (codeboxroutes.ts) ; L95 computer hours (computerhoursroutes.ts) ; L83 mail signature (native/mailsignatureroutes.ts) ; L142 stop-cause chips (stopcauseroutes.ts) ; L152 personal / commands ; L153 « Docteur » (doctorroutes.ts)
 
 // ── Pause (agent/pause.ts) ───────────────────────────────────────────────────
 // Owner only: pausing decides about the owner's bots, spend and subscriptions. Someone of a workspace a bot is shared
 // with — viewer, member or admin — cannot pause or resume it (ownAgent / sections.owned answer 404, as for any other
 // account's thing); a stranger's call to "everything" pauses only their own bots. Each change is an audit line.
 // "Accès API" (botapi.ts): the owner's API keys of one bot — owner only (a workspace member never manages them).
-registerBotClientSettings(api, (c) => ownAgent(c as Context<Env>)); registerChannelRoutes(api, (c) => ownAgent(c as Context<Env>)); registerViewRoutes(api, (c) => ownBot(c as Context<Env>)); // DS-Bot item 8 view forms; L162: Slack, Discord, IMAP, access requests
+registerBotClientSettings(api, (c) => ownAgent(c as Context<Env>)); registerChannelRoutes(api, (c) => ownAgent(c as Context<Env>)); registerViewRoutes(api, (c) => ownBot(c as Context<Env>)); registerCreationRoutes(api, (c) => ownBot(c as Context<Env>)); // DS-Bot item 8 view forms; L162: Slack, Discord, IMAP, access requests
 
 api.get("/pauses", (c) => c.json(pauses.state(c.get("user").id)));
 api.post("/bots/:id/pause", (c) => { const bot = ownAgent(c); return c.json(setPause(c.get("user"), "bot", bot.id, true, bot.name)); });
@@ -837,7 +837,7 @@ api.post("/bots/:id/messages", (c) => sendOnce(c, accessBot(c, "talk").bot.id, a
   }
   if (bot.kind === "agent" && !attachments.length && objective === null && await typedControl(bot, c.get("user"), text, thread)) return c.json({ row }); // L63 typed stop, L78 /btw and /apres
   if (bot.kind === "room") dispatchToRoom(bot, c.get("user"), text, null, 0, false, thread);
-  else { relayUserSpoke(bot.id); submitUserMessage(bot, agentText, voice, attachments, undefined, thread, skillCommand(bot, text), goalId); }
+  else { relayUserSpoke(bot.id); relayToHelpers(bot, agentText, runningThreads, isPaused); submitUserMessage(bot, agentText, voice, attachments, undefined, thread, skillCommand(bot, text), goalId); } // L25: also to a helper at work (helperrelay.ts)
   return c.json({ row });
 }));
 
@@ -927,7 +927,7 @@ registerResearch(api);
 
 registerUploadRoutes(api, ownAgent);
 
-registerTurnControl(api, ownBot); // L63 "Stop" (cascade) and "Tout arrêter", L94 « Reprendre ma note » (turncontrolroutes.ts)
+registerTurnControl(api, ownBot); registerTurnPlus(api, ownBot); // L58 send now, L79 plan mode and review, L96 inheritance (turnplusroutes.ts); L63 "Stop" (cascade) and "Tout arrêter", L94 « Reprendre ma note » (turncontrolroutes.ts)
 registerMessageActions(api, ownAgent); registerInbox(api); // L136 edit / write again / branch, L98 « Annuler », L139 « À toi »
 
 api.post("/bots/:id/reset", (c) => {
@@ -1195,7 +1195,7 @@ api.get("/routines/:id/runs", (c) => c.json({ runs: runs.list(ownRoutine(c).id) 
 // "Run now" does not move the next due time and does not turn a paused routine back on; a run under way is not doubled.
 api.post("/routines/:id/run", async (c) => {
   // "Run now" is the user's own: only a usage cap set to stop everything refuses it. nod item 8: not on an unreviewed change after a failure.
-  const routine = ownRoutine(c); await runNowGuard(c, routine); const r = fireRoutine(routine, undefined, { byHand: true });
+  const routine = ownRoutine(c); const params = await runNowGuard(c, routine); const r = fireRoutine(routine, undefined, { byHand: true, params });
   if (r === "paused") fail(409, tr(c.get("user").locale, "This routine's bot is paused. Resume it to run the routine."));
   if (r === "capped") fail(409, cm(c.get("user").locale, "This usage cap still stops this work. Raise it (Settings → Usage) or wait until it resets."));
   return r === "busy" ? fail(409, "This routine is already running.") : c.json({ ok: true });
@@ -1295,7 +1295,7 @@ registerFailureRoutes(api); registerConversationGrantRoutes(api); // « Coordina
 registerRecruitRoutes(api); registerHookSettingsRoutes(api); registerReportRoutes(api); // « Bot recruteur » ; webhook settings (L20) ; « Signaler cette réponse » (L31)
 registerTeamMdRoutes(api); registerRoutinePlusRoutes(api); registerConnectorPlusRoutes(api); // « Équipe Sklubot (.md) » (teammdroutes.ts): import with review, share ; routines nod 2/8/13 (routineplusroutes.ts)
 registerCommandRoutes(api); registerRelayGuardRoutes(api); registerComfortRoutes(api); registerChantierRoutes(api); registerWorkRoutes(api); // « Chantier » (chantierroutes.ts) ; wave 7 board, flows, automations, team memory (workroutes.ts) ; « Centre de commandement » (command.ts); « Règles de sécurité » of a linked computer (relayguardroutes.ts)
-registerSkillsLibraryRoutes(api); registerSecurityRoutes(api); // « Bibliothèque de compétences » (skillsroutes.ts) ; Lot 1 security (securityroutes.ts)
+registerSkillsLibraryRoutes(api); registerSecurityRoutes(api); registerMediaRoutes(api); // « Bibliothèque de compétences » (skillsroutes.ts) ; Lot 1 security (securityroutes.ts)
 registerOpenRouterRoutes(api); registerSubscriptionConnectRoutes(api); registerExtensionRoutes(api); /* wave 7 (extroutes.ts) */ // OpenRouter, « Connecter mon compte ChatGPT / Claude »
 api.put("/account/password", async (c) => {
   const user = c.get("user");

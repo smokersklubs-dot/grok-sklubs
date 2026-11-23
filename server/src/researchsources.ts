@@ -18,6 +18,7 @@ import { reachAvailable, reachChannelSearch } from "./reach.js";
 import type { BotRecord } from "./store.js";
 import type { ResearchSource } from "./researchevidence.js";
 import { isoDay, windowRange, type ResearchWindow } from "./researchsignals.js";
+import { searchOpenAlex, searchPubMed } from "./researchscholar.js";
 
 import type { ResearchExtra, SourceName, SourceState, SourceStateKind } from "./researchsignals.js";
 export { RESEARCH_EXTRAS, type ResearchExtra, type SourceName, type SourceState, type SourceStateKind } from "./researchsignals.js";
@@ -27,8 +28,8 @@ const HN_MIN_POINTS = 2;
 const hnBase = () => (process.env.RESEARCH_HN_BASE ?? "https://hn.algolia.com").replace(/\/$/, "");
 const pmBase = () => (process.env.RESEARCH_POLYMARKET_BASE ?? "https://gamma-api.polymarket.com").replace(/\/$/, "");
 
-class SourceError extends Error { constructor(readonly kind: SourceStateKind) { super(kind); } }
-async function getJson(url: string, signal: AbortSignal): Promise<any> {
+export class SourceError extends Error { constructor(readonly kind: SourceStateKind) { super(kind); } }
+export async function getJson(url: string, signal: AbortSignal): Promise<any> {
   let res: Response;
   try {
     res = await guardedFetch(url, { signal: AbortSignal.any([signal, AbortSignal.timeout(15_000)]), headers: { accept: "application/json", "user-agent": "Sklubot research" } });
@@ -41,8 +42,8 @@ async function getJson(url: string, signal: AbortSignal): Promise<any> {
   try { return JSON.parse(text); } catch { throw new SourceError("failed"); }
 }
 const strip = (html: string) => html.replace(/<p>/gi, "\n").replace(/<[^>]+>/g, "").replace(/&#x27;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").trim();
-const done = (source: SourceName, items: ResearchSource[]): SourceOutcome => ({ state: { source, state: items.length ? "ok" : "empty", count: items.length }, items });
-const failed = (source: SourceName, e: unknown): SourceOutcome => ({ state: { source, state: e instanceof SourceError ? e.kind : "failed", count: 0 }, items: [] });
+export const done = (source: SourceName, items: ResearchSource[]): SourceOutcome => ({ state: { source, state: items.length ? "ok" : "empty", count: items.length }, items });
+export const failed = (source: SourceName, e: unknown): SourceOutcome => ({ state: { source, state: e instanceof SourceError ? e.kind : "failed", count: 0 }, items: [] });
 
 export async function searchHackerNews(query: string, window: ResearchWindow, signal: AbortSignal, now = Date.now()): Promise<SourceOutcome> {
   try {
@@ -145,6 +146,8 @@ export async function searchReach(bot: BotRecord, channel: "reddit" | "youtube",
 }
 
 export function searchExtra(extra: ResearchExtra, bot: BotRecord, query: string, window: ResearchWindow, signal: AbortSignal, fr: boolean): Promise<SourceOutcome> {
+  if (extra === "openalex") return searchOpenAlex(query, window, signal); // L118 (researchscholar.ts)
+  if (extra === "pubmed") return searchPubMed(query, window, signal);
   if (extra === "hn") return searchHackerNews(query, window, signal);
   if (extra === "polymarket") return searchPolymarket(query, signal, fr);
   return searchReach(bot, extra, query, signal);

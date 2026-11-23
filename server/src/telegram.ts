@@ -1,4 +1,5 @@
 import { voiceNoteText } from "./telegramvoice.js";
+import { noteChannel } from "./shortreplies.js"; import { cardLinkLine, failedNotice, withRetry } from "./telegramsend.js";
 import { seal, unseal } from "./auth.js";
 import { getLive } from "./bus.js";
 import { decideApproval, interrupt, isPaused, onTurnEvent, submitUserMessage } from "./agent/loop.js";
@@ -43,8 +44,8 @@ async function call<T>(token: string, method: string, body?: Record<string, unkn
     method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body ?? {}),
     signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(40_000)]) : AbortSignal.timeout(40_000),
   });
-  const data = (await res.json().catch(() => ({}))) as { ok?: boolean; result?: T; description?: string };
-  if (!res.ok || !data.ok) throw new Error(data.description ?? `Telegram answered ${res.status}`);
+  const data = (await res.json().catch(() => ({}))) as { ok?: boolean; result?: T; description?: string; parameters?: { retry_after?: number } };
+  if (!res.ok || !data.ok) throw Object.assign(new Error(data.description ?? `Telegram answered ${res.status}`), { status: res.status, retryAfter: data.parameters?.retry_after }); // L76 (telegramsend.ts)
   return data.result as T;
 }
 
@@ -71,7 +72,7 @@ export async function send(bot: BotRecord, text: string, meaning?: Meaning): Pro
   for (const [i, part] of parts.entries()) {
     // nod item 5: an approval question carries ✅ / ❌ buttons (on its last part), in the user's language.
     const markup = meaning?.kind === "approval" && i === parts.length - 1 ? { reply_markup: approvalKeyboard(meaning.approvalId, users.localeOf(bot.userId)) } : {};
-    const m = await call<{ message_id: number }>(token, "sendMessage", { chat_id: bot.telegramChatId, text: part, ...markup }).catch((err) => { console.error("[telegram send]", err.message); return null; });
+    const m = await withRetry(() => call<{ message_id: number }>(token, "sendMessage", { chat_id: bot.telegramChatId, text: part, ...markup })).catch((err) => { console.error("[telegram send]", err.message); failedNotice(bot, err); return null; }); // L76 checked, retried, notice
     if (m?.message_id) { ids.push(m.message_id); if (meaning) remember(bot.id, m.message_id, meaning); }
   }
   return ids;
@@ -154,7 +155,7 @@ async function receive(botId: string, chatId: string, text: string, token: strin
   if (messageId && getLive(bot.id).running) void call(token, "setMessageReaction", { chat_id: chatId, message_id: messageId, reaction: [{ type: "emoji", emoji: "👀" }] }).catch(() => {});
   // A pasted secret is masked before it is stored or sent to a model; the card to save it waits in the web chat.
   const screened = screenSecrets(text, users.localeOf(bot.userId));
-  rows.append(bot, { kind: "message", role: "user", text: screened.text });
+  rows.append(bot, { kind: "message", role: "user", text: screened.text }); noteChannel(bot.id, "telegram"); // L132 (shortreplies.ts)
   if (screened.secrets.length) holdAndOffer(bot, bot.userId, screened.secrets);
   // "Pause": the message is kept and waits in the bot's queue; the sender hears it now, not when it is resumed.
   if (isPaused(bot)) await reply(tr(users.localeOf(bot.userId), "⏸ {bot} is paused: your message is kept and will be handled when it is resumed.", { bot: bot.name }));
@@ -214,7 +215,7 @@ async function receiveFile(botId: string, chatId: string, m: NonNullable<Update[
   const heard = spoken ? screenSecrets(tgText(loc, "🎤 Voice message (written out): {text}", { text: spoken }), loc) : null;
   if (heard?.secrets.length) holdAndOffer(bot, bot.userId, heard.secrets);
   const text = [caption.text, heard?.text].filter(Boolean).join("\n\n") || tgText(loc, f.voice ? "(voice message: {name})" : "(file: {name})", { name: file.name });
-  rows.append(bot, { kind: "message", role: "user", text, attachments: [attachment] });
+  rows.append(bot, { kind: "message", role: "user", text, attachments: [attachment] }); noteChannel(bot.id, "telegram");
   if (caption.secrets.length) holdAndOffer(bot, bot.userId, caption.secrets);
   audit(bot.userId, "channel", `${bot.name}: Telegram ${f.voice ? "voice message" : "file"} received (${file.name})`, bot.id);
   submitUserMessage(bot, text, false, [attachment], "telegram");
@@ -391,7 +392,7 @@ export const telegram = {
       const prefix = target.id === e.bot.id ? "" : `[${e.bot.name}] `;
       if (e.type === "waiting") {
         const answerable = !!e.approvalId && !privateApproval(e.tool ?? "");
-        const hint = e.approvalId ? (answerable ? `\n${tr(loc, "👍 = yes · 👎 = no")}` : `\n${tr(loc, "🔒 Answer in the app.")}`) : "";
+        const hint = (e.approvalId ? (answerable ? `\n${tr(loc, "👍 = yes · 👎 = no")}` : `\n${tr(loc, "🔒 Answer in the app.")}`) : "") + `\n${cardLinkLine(e.bot.id, loc === "fr")}`; // L76 link to the card
         void send(target, `⏳ ${prefix}${e.text}${hint}`, answerable ? { kind: "approval", approvalId: e.approvalId! } : undefined);
         return;
       }

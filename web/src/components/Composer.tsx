@@ -16,6 +16,7 @@ import { useComposerMentions } from "./ComposerMentions"; import { useSlashComma
 import { MeetingRecorder } from "./MeetingRecorder"; import { openChantiers } from "../lib/chantiers";
 import { sendKeysFor } from "../../../mobile/shared/sendKey";
 import "./Comfort.css";
+import { ownMessages, recallStep, type RecallState } from "../lib/recall";
 
 const NO_UPLOADS: Upload[] = [];
 
@@ -94,6 +95,8 @@ export function Composer({ bot, live }: { bot: Bot; live: Live }) {
   const picker = useRef<HTMLInputElement>(null);
   const dragDepth = useRef(0);
   const pressStarted = useRef<{ at: number; started: boolean } | null>(null);
+  const recall = useRef<RecallState | null>(null); // L136: ↑ / ↓ bring back your earlier messages (lib/recall.ts)
+  useEffect(() => { recall.current = null; }, [bot.id]);
 
   const insertAtCaret = useCallback(
     (text: string) => {
@@ -420,8 +423,15 @@ export function Composer({ bot, live }: { bot: Bot; live: Live }) {
                 return;
               }
             }
+            if ((e.key === "ArrowUp" || e.key === "ArrowDown") && !e.shiftKey && !e.altKey && !e.metaKey && !e.ctrlKey) {
+              const el = e.currentTarget;
+              const edge = e.key === "ArrowUp" ? !el.value.slice(0, el.selectionStart).includes("\n") : !el.value.slice(el.selectionEnd).includes("\n");
+              const step = edge ? recallStep(ownMessages(useStore.getState().threads[bot.id]?.rows ?? []), recall.current, draft, e.key === "ArrowUp" ? "up" : "down") : null;
+              if (step) { e.preventDefault(); recall.current = step.state; setDraft(bot.id, step.text); return; }
+            }
             if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
               e.preventDefault();
+              recall.current = null;
               void send();
             }
           }}

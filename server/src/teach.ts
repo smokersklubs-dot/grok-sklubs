@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { emit } from "./bus.js";
-import { screen } from "./computer.js";
+import { computerKind, screen } from "./computer.js";
 import { config } from "./config.js";
 import { tr } from "./i18n.js";
 import { defaultModelRef, listProviders, resolveModel, userProvidersOf, type Block } from "./llm/index.js";
@@ -10,7 +10,7 @@ import { describeKey, MODIFIERS, type RfbEvent } from "./rfb.js";
 import type { Recording, SkillDraft } from "./shared.js";
 import { audit, bots, clip, newId, now, rows, skills, users, type BotRecord } from "./store.js";
 import { record } from "./usage.js";
-import { isEngineRef } from "./agent/engine.js"; import { asBoxes, blackOut, maskUrl, secretBoxesScript } from "./teachmask.js";
+import { isEngineRef } from "./agent/engine.js"; import { asBoxes, blackOut, maskUrl, secretBoxesScript } from "./teachmask.js"; import { appSecretBoxes, scaleBoxes, screenWidth } from "./teachappmask.js";
 
 /**
  * "Show me how": the user performs a task on a bot's screen while the server keeps a few screenshots and a
@@ -57,7 +57,9 @@ async function capture(r: Rec, force = false) {
     const raw = await screen.frame(r.botId).catch(() => null);
     if (!raw || r.status !== "recording") return;
     // L40 (teachmask.ts): secret fields and secret-looking text on the page are painted black before the picture is kept.
-    const shot = await blackOut(raw, asBoxes(await screen.secretBoxes(r.botId, secretBoxesScript).catch(() => null)));
+    // L40 (teachappmask.ts): on the Linux computer, app windows too; boxes are in screen pixels, the picture is 960 px wide.
+    const page = asBoxes(await screen.secretBoxes(r.botId, secretBoxesScript).catch(() => null));
+    const shot = await blackOut(raw, computerKind() === "linux" ? scaleBoxes([...page, ...(await appSecretBoxes(r.botId))], 960 / screenWidth()) : page);
     const hash = createHash("sha1").update(shot).digest("hex");
     if (hash === r.lastHash && !force) return;
     r.lastHash = hash;

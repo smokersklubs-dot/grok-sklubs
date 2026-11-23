@@ -4,10 +4,13 @@ import { useStore } from "../store";
 import type { PeerReviewState } from "../types";
 import { ErrorNote } from "./ui";
 import { PeerReviewFindings } from "./PeerReviewFindings";
+import { ReviewPlus, useCandidates } from "./PeerReviewPlus"; // L77 rest
 export function PeerReview({ bot, seq, saved }: { bot: string; seq: number; saved: boolean }) {
   const bots = useStore((s) => s.bots),
     fr = useStore((s) => s.locale === "fr");
   const others = Object.values(bots).filter((b) => b.id !== bot && b.kind === "agent" && !b.access);
+  const [more, setMore] = useState(false);
+  const candidates = useCandidates(saved || more ? bot : ""), other = new Set(candidates.filter((c) => c.otherProvider).map((c) => c.id));
   const [choice, setChoice] = useState(""),
     [requesting, setBusy] = useState(false),
     [error, setError] = useState("");
@@ -85,7 +88,7 @@ export function PeerReview({ bot, seq, saved }: { bot: string; seq: number; save
             <select disabled={busy} value={id} onChange={(e) => setChoice(e.target.value)}>
               {others.map((b) => (
                 <option key={b.id} value={b.id}>
-                  {b.name}
+                  {b.name}{other.has(b.id) ? (fr ? " · autre fournisseur" : " · other provider") : ""}
                 </option>
               ))}
             </select>
@@ -101,6 +104,8 @@ export function PeerReview({ bot, seq, saved }: { bot: string; seq: number; save
           </button>
         </div>
       )}
+      {saved || more ? <ReviewPlus bot={bot} seq={seq} fr={fr} changes={review?.verdict === "changes"} candidates={candidates} />
+        : others.length >= 2 && <button className="btn btn-ghost btn-small" onClick={() => setMore(true)}>{fr ? "Relire à plusieurs…" : "Review by several…"}</button>}
       <ErrorNote>{error || status.error}</ErrorNote>
     </div>
   );

@@ -1,5 +1,5 @@
 import { reachAvailable } from "../reach.js"; import { connectors } from "../connectors.js"; import { downLine } from "../connectorhealth.js";
-import { styleLine } from "../botstyle.js";
+import { styleLine } from "../botstyle.js"; import { shortRepliesLine } from "../shortreplies.js"; import { noteKnowledge } from "./turnknow.js"; import { inheritedBlock } from "./helperinherit.js";
 import { config } from "../config.js";
 import { describeRoutine, routines } from "../routines.js";
 import { bots, memories, rows, sections, settings, skills, type BotRecord, type UserRecord } from "../store.js";
@@ -55,7 +55,7 @@ export function pickMemories(bot: BotRecord): { lines: string[]; omitted: number
   return { lines: chosen.map((m) => `- ${m.pinned ? "(pinned) " : ""}${m.status === "contested" ? UNCERTAIN_MARK : m.confidence === "confirmed" ? "(confirmed) " : ""}${m.text} ${notedOn(m)}${m.until ? ` (holds until ${m.until})` : ""}`), omitted: total - chosen.length, shown: new Set(chosen.map((m) => m.id)), full: total > all.length };
 }
 
-export interface PromptExtras { connectorNames: string[]; /** Signed-in built-in app accounts ("Gmail — perso (lea@…)") and those waiting for a new sign-in. */ nativeAccounts?: string[]; nativeNeedsSignIn?: string[]; browser: boolean; shell: boolean; linux?: boolean; images?: boolean; engine?: "claude-code" | "codex"; video?: "connector" | "api" | null; /** Name of the user's Higgsfield app, when videos go through it. */ higgsfield?: string }
+export interface PromptExtras { connectorNames: string[]; /** Signed-in built-in app accounts ("Gmail — perso (lea@…)") and those waiting for a new sign-in. */ nativeAccounts?: string[]; nativeNeedsSignIn?: string[]; browser: boolean; shell: boolean; linux?: boolean; images?: boolean; engine?: "claude-code" | "codex"; video?: "connector" | "api" | null; /** Name of the user's Higgsfield app, when videos go through it. */ higgsfield?: string; /** L137: the read-only preview (promptview.ts): no snapshot is kept. */ preview?: boolean }
 
 /**
  * Links and sites the user gives: the bot looks at them on its own screen first, where the user watches it live (the
@@ -106,6 +106,7 @@ export function buildSystemPrompt(bot: BotRecord, user: UserRecord, extras: Prom
     ? "You act as a shared teammate: several people may rely on your work, so keep things clear, neutral and easy to hand over."
     : `You act as ${user.name}'s personal assistant: adapt to their preferences and keep their matters private.`);
   if (bot.instructions.trim()) out.push(`## Standing instructions from ${user.name} (they come first)\n${bot.instructions.trim()}`); // L61: the bot's own instructions at the top
+  { const inherited = inheritedBlock(bot, user); if (inherited) out.push(inherited); } // L96 a helper inherits its parent's instructions (helperinherit.ts)
   { const style = styleLine(bot.id); if (style) out.push(style); } // L161 « Style par bot » (botstyle.ts)
 
   const method = [
@@ -140,10 +141,10 @@ export function buildSystemPrompt(bot: BotRecord, user: UserRecord, extras: Prom
     "- For a new slide deck, use openman_workspace with the slide content when available, then open its HTML with artifact_from_file. Convert its editable source for a requested PowerPoint or PDF. When the user explicitly asks for a video or a montage, video_studio_create opens Sklubot's private editable timeline. Build a coherent shot sequence with real uploaded assets, timed titles and soundtrack when supplied. For questions or analysis answer in chat. For new interactive creations use artifact_create. Open an existing standalone HTML file with artifact_from_file. Read the saved source to revise the original artifact.",
     extras.video === "connector"
       ? `- Videos (and, when it suits, pictures) are made with the user's ${extras.higgsfield ?? "Higgsfield"} app: use its app_ tools (video_generate lists the right ones). Every generation spends the user's ${extras.higgsfield ?? "Higgsfield"} credits, so make only what was asked, one at a time. When a video is ready, save it with media_save so the user can watch it here.`
-      : extras.video === "api" ? "- You can create short videos with video_generate when the user asks for one. Each video costs money (the user is asked the first time)." : "",
+      : extras.video === "api" ? "- You can create short videos with video_generate when the user asks for one. On the user's own GPU (Wan2GP) it is free; otherwise each video costs money and the user approves its price first." : "",
     "- React to a message with message_react when a short acknowledgement is enough. Reactions the user puts on your messages are passed to you as feedback: take them into account quietly.",
     extras.browser ? "- Signing in to the user's accounts is part of your job, done safely. Your browser keeps its sessions: a site you are already signed in to stays open for you. When a site asks you to sign in, check vault_list first, without being asked, and enter the saved login with vault_type (click the field first). If none is saved, ask the user either to save it in Settings → Vault (Réglages → Coffre), or to sign in once themselves on your screen" + (extras.linux ? " (the button \"Sign in to a site\" / \"Se connecter à un site\" under your computer in the details panel opens that site on your screen for them; the session then stays in your browser)" : "") + ". You never see passwords, and you must never ask the user to type one into the chat." : "",
-    extras.browser ? "- When only a human can get past a step on your screen (a CAPTCHA, a code sent to their phone, signing in with their own credentials, confirming a payment), use ask_takeover and wait; never try to solve a CAPTCHA yourself. Two-factor codes saved in the vault come from totp_code, only on their own site. While the user drives your screen, your screen actions are refused: wait." : "",
+    extras.browser ? "- When only a human can get past a step on your screen (a CAPTCHA, a code sent to their phone, signing in with their own credentials, confirming a payment), use ask_takeover and wait; never try to solve a CAPTCHA yourself. Never change a password on a site yourself: ask_takeover with reason password, the user does it. When a page asks for a one-time code you cannot read (an SMS, their authenticator app), use code_request with the field's reference: the user types it into a hidden box and it goes straight into the field. Two-factor codes saved in the vault come from totp_code, only on their own site. While the user drives your screen, your screen actions are refused: wait." : "",
     "- For an API key or token, use secret_request (the user types it into a secure card) and call the API with secret_use; never ask for a secret in the chat. To sign up somewhere, password_generate saves a new password straight into the vault.",
     extras.linux && !bot.disabledTools.includes("reach") && reachAvailable()
       ? "- reach_search and reach_read read the web and social sites (Reddit, X, Instagram, Facebook, YouTube, GitHub, V2EX…) with Agent Reach on your computer; reach_status says which channels work. Reading only: never post, comment, like or send messages anywhere. When a channel needs a login, the user signs in themselves from your settings (Reading logins), preferably with a secondary account; never ask for a password. transcribe gets a video's transcript."
@@ -249,6 +250,7 @@ export function buildSystemPrompt(bot: BotRecord, user: UserRecord, extras: Prom
   context.push(...connectors.down(user.id).slice(0, 5).map((d) => `- ${downLine(d.name, d.error, d.since)}`)); // L51 (connectorhealth.ts)
   if (rooms.length) context.push(`- Group chats you are in: ${rooms.map((r) => r.name).join(", ")}`);
   turn.push(context.join("\n"));
+  { const short = shortRepliesLine(bot.id); if (short) turn.push(short); } // L132 « Réponses courtes » (shortreplies.ts)
 
   const mine = routines.forBot(bot.id);
   if (mine.length)
@@ -262,5 +264,7 @@ export function buildSystemPrompt(bot: BotRecord, user: UserRecord, extras: Prom
   if (mem.lines.length || recalled.length)
     turn.push(["## What you remember", "(Each note ends with the day it was written; a date inside a note is a real calendar date.)", ...mem.lines, ...recallLines(recalled), hidden ? `(${hidden} older memories are not shown; memory_search can find them.)` : ""].filter(Boolean).join("\n"));
 
-  return [...out, ...(turn.length ? [`${TURN_CONTEXT_HEADING}\n${turn.join("\n\n")}`] : [])].join("\n\n");
+  const prompt = [...out, ...(turn.length ? [`${TURN_CONTEXT_HEADING}\n${turn.join("\n\n")}`] : [])].join("\n\n");
+  if (!extras.preview) noteKnowledge(bot.id, user.id, prompt); // L137 « ce que le bot savait quand il a décidé » (turnknow.ts)
+  return prompt;
 }

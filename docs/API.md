@@ -75,6 +75,12 @@ Authentication is an HTTP-only session cookie; every route except the auth route
 | DELETE | `/bots/:id/notes/:noteId` | – | `{ ok, notes }` — « Retirer » ; 404 si le bot l'a déjà lu |
 | GET / PUT | `/team/ask-policy` | `{ mode: "open" \| "hierarchy" }` | `{ mode }` — « qui peut demander à qui » (L96) |
 | PUT | `/sections/:id/lead` | `{ botId }` | `{ lead }` — le chef d'une section (L96) |
+| POST | `/bots/:id/notes/:noteId/send-now` | – | `{ ok, state: "sent" \| "idle", notes }` — « Envoyer maintenant » : arrête l'étape en cours, ce qui est fait est gardé (L58) ; 404 si déjà lu |
+| GET / PUT | `/bots/:id/plan-mode` | `{ on, thread? }` | `{ on }` — mode Plan d'une conversation (L79) ; aussi « /plan <demande> », « /plan off » |
+| POST | `/bots/:id/rows/:seq/plan-review` | – | `{ review: { verdict, missing, extra, note } }` — « Relire mon plan contre ma demande » (L79) ; 400 si ce n'est pas une carte de plan |
+| GET / PUT | `/bots/:id/model-mode` | `{ mode: "balanced" \| "fast" \| "strongest" \| "free" \| "auto" }` | `{ mode, models }` — modes nommés (L69) ; seulement les modèles du compte au prix connu ; 400 pour un bot sur abonnement |
+| GET / PUT | `/team/helper-inherit` | `{ on }` | `{ on }` — les assistants reçoivent les consignes du bot parent (L96, activé par défaut) |
+| GET | `/team/section-leads` | – | `{ leads: { [sectionId]: botId \| null } }` — le chef de chaque section (L96) |
 | GET | `/tasks` | – | `{ tasks: Task[] }` (all bots) |
 | GET | `/bots/:id/tasks` | – | `{ tasks: Task[] }` |
 | POST | `/hooks/:token` | any JSON | `{ ok }` — fires a webhook routine (no session needed). L20 (`hookroutes.ts`, `hooktrust.ts`): a repeated delivery id (`webhook-id`, `X-GitHub-Delivery`, `X-Gitlab-Event-UUID`, `Idempotency-Key`, `X-Delivery-Id`, Stripe's event id) answers `{ ok, duplicate: true }` without running (7 days); with a signing secret, a call must carry a valid HMAC-SHA256 signature (GitHub `X-Hub-Signature-256`, Stripe `Stripe-Signature`, Standard Webhooks `webhook-signature`; timestamps ±5 min) or gets 401 (logged, not counted in the hook's rate); with grouping on, `{ ok, grouped: true }` and one run per window. A webhook without a secret works as before ("non signé") |
@@ -275,6 +281,13 @@ Outlook); `drive_search`, `drive_read`, `drive_upload` (Drive); `slack_channels`
 reactions ask only a careful bot; send, label/archive, create/update/delete, upload and post ask like a connector
 write (a trusted bot may go ahead) and always ask once the turn is tainted. Permission keys are per account:
 `"Gmail — pro: mail_send"`.
+
+**Attachments, Bcc, signature (L83).** `mail_draft`, `mail_draft_update` and `mail_send` take `bcc` (addresses),
+`attachments` (files of the bot's library, 10 at most, 3 MB in all — Gmail: multipart/mixed raw message; Outlook:
+`fileAttachment` / `bccRecipients`; an Outlook reply with files or Bcc is refused with a plain sentence) and
+`signature` (default true: the owner's signature for that account is added after `-- `). The signature is set by the
+owner only: `GET` / `PUT /api/native/accounts/:id/signature` `{ text }` (2000 characters at most, `""` removes it; 404 for
+another account's mailbox). The L29 proof compares the wire text, signature included, with what was approved.
 
 **Triggers.** `Routine.trigger` can be `email`, `slack` or `calendar`, with `Routine.native` (account, query, channel,
 mentionsOnly, leadMin, everyMin, lastCheckedAt, accountStatus). Each check asks only for what came after the previous

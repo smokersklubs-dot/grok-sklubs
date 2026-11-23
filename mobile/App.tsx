@@ -19,6 +19,7 @@ import { ComputerScreen } from "./src/screens/Computer";
 import { DetailsScreen } from "./src/screens/Details";
 import { SettingsScreen } from "./src/screens/Settings";
 import { TasksScreen } from "./src/screens/Tasks";
+import { InboxScreen, useInbox } from "./src/screens/Inbox";
 import { ChantiersScreen } from "./src/screens/Chantiers";
 import type { RootStack } from "./src/screens/types";
 import { ServerScreen, SignInScreen } from "./src/screens/Welcome";
@@ -39,9 +40,11 @@ function MainTabs() {
   const t = useT();
   const waiting = useStore((s) => Object.values(s.bots).reduce((n, b) => n + (b.unread > 0 || s.live[b.id]?.awaiting ? 1 : 0), 0));
   const openTasks = useStore((s) => s.tasks?.filter((x) => x.state === "needs_input").length ?? 0);
+  const inbox = useInbox().items?.length ?? 0; // « À toi » (L139 on the phone)
   return (
     <Tabs.Navigator screenOptions={{ headerShown: false, tabBarActiveTintColor: c.text, tabBarInactiveTintColor: c.text3, tabBarStyle: { backgroundColor: c.surface, borderTopColor: c.border }, tabBarLabelStyle: { fontSize: 12, fontWeight: "600" } }}>
       <Tabs.Screen name="Bots" component={BotsScreen} options={{ title: t("tabs.bots"), tabBarIcon: ({ color }) => <Icon name="bots" color={color} />, tabBarBadge: waiting || undefined, tabBarBadgeStyle: { backgroundColor: c.brand } }} />
+      <Tabs.Screen name="Inbox" component={InboxScreen} options={{ title: t("tabs.inbox"), tabBarIcon: ({ color }) => <Icon name="hand" color={color} />, tabBarBadge: inbox || undefined, tabBarBadgeStyle: { backgroundColor: c.warn } }} />
       <Tabs.Screen name="Tasks" component={TasksScreen} options={{ title: t("tabs.tasks"), tabBarIcon: ({ color }) => <Icon name="tasks" color={color} />, tabBarBadge: openTasks || undefined, tabBarBadgeStyle: { backgroundColor: c.warn } }} />
       <Tabs.Screen name="Settings" component={SettingsScreen} options={{ title: t("tabs.settings"), tabBarIcon: ({ color }) => <Icon name="settings" color={color} /> }} />
     </Tabs.Navigator>

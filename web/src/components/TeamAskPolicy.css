@@ -1,0 +1,15 @@
+/* L96 « Qui peut demander à qui » and L69 named model modes (TeamAskPolicy.tsx, ModelModes.tsx). */
+.team-ask, .model-modes { display: flex; flex-direction: column; gap: 8px; padding: 12px 0; border-top: 1px solid var(--border); min-width: 0; }
+.team-ask-modes, .model-modes-list { display: grid; gap: 6px; }
+.team-ask-mode, .model-mode { display: flex; align-items: flex-start; gap: 10px; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); cursor: pointer; min-width: 0; }
+.team-ask-mode.is-on, .model-mode.is-on { border-color: var(--accent); background: var(--surface-2); }
+.team-ask-mode > span, .model-mode > span { display: flex; flex-direction: column; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
+.team-ask-mode input, .model-mode input { margin-top: 3px; flex: none; }
+.model-mode.is-off { opacity: 0.6; cursor: not-allowed; }
+.model-mode-ref { font-family: var(--font-mono, ui-monospace, monospace); font-size: 12px; }
+.team-ask-leads { display: grid; gap: 6px; }
+.team-ask-lead { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
+.team-ask-section { flex: 1 1 120px; min-width: 0; overflow-wrap: anywhere; font-weight: 600; }
+.team-ask-lead select { flex: 1 1 160px; min-width: 0; max-width: 100%; }
+.team-ask-inherit { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; }
+.team-ask-inherit > div { min-width: 0; }

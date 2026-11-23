@@ -79,6 +79,7 @@ const { registerProvider, ProviderError, retryAfterOf } = await import("../src/l
 const { OpenAiCompatProvider } = await import("../src/llm/openai-compat.js");
 const { api } = await import("../src/routes.js");
 const { backoffDelay, LoopGuard, modelChain } = await import("../src/agent/reliability.js");
+const { resetBackupChecks, verifyBackup } = await import("../src/agent/backupmodels.js");
 const { remindStuck } = await import("../src/agent/stuck.js");
 const { expireAllApprovals, newTurn, submitUserMessage, waitForApproval } = await import("../src/agent/loop.js");
 const { parseSkillMarkdown } = await import("../src/agent/tools-team.js");
@@ -256,14 +257,18 @@ test("fallbacks: an ordered list (account, then per bot), unavailable models ski
   assert.deepEqual(saved.json.fallbackModels, ["dead:m", "absent:m", "script:script-1"], "deduplicated, invalid refs dropped");
   const b = await fresh("Olga", { model: "overloaded:m" });
   assert.deepEqual(modelChain(bots.byId(b.id)!), ["overloaded:m", "dead:m", "script:script-1"], "the absent provider is left out");
+  // L60: a backup is checked before it is used (agent/backupmodels.ts). Known results first, so the path is deterministic:
+  // "dead:m" fails its check, so the chain goes straight from the failing model to the next WORKING backup.
+  resetBackupChecks();
+  assert.equal((await verifyBackup({ id: userId }, "dead:m")).ok, false, "the dead backup fails its check");
   overloadedCalls = 0;
   await say(b, "still there?");
   await replied(b, "Echo: still there?");
   assert.equal(overloadedCalls, 2, "one new try (maxRetries 1), then the next model");
   const lines = notices(await rowsOf(b.id));
-  assert.equal(lines.length, 2);
-  assert.match(lines[0], /overloaded:m ne répond pas \(overloaded\).*dead:m/);
-  assert.match(lines[1], /dead:m ne répond pas.*script:script-1/);
+  assert.equal(lines.length, 1, lines.join(" | "));
+  assert.match(lines[0], /overloaded:m ne répond pas \(overloaded\).*script:script-1/);
+  resetBackupChecks();
   // A bot's own list wins over the account's.
   const own = (await call("PATCH", `/bots/${b.id}`, { fallbackModels: ["script:script-1"] })).json.bot;
   assert.deepEqual(own.fallbackModels, ["script:script-1"]);

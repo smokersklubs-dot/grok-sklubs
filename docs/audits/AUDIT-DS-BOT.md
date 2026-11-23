@@ -178,7 +178,7 @@ Taille : **S** ≤ 1 jour, **M** 2 à 4 jours, **L** 1 à 2 semaines. Chemins DS
 | 104 | **Suppression en 2 temps** : 1ᵉʳ clic refusé avec instantané, 2ᵉ clic avec `confirm` sur le même élément marqué d'un jeton (`browser/session.js:681-690`) | MANQUANT | une carte d'accord, pas cette vérification d'élément | — | S | — ✅ FAIT (22/11)
 | 105 | Écriture incertaine (POST vu après le clic) jamais refaite à l'aveugle | FAIT | L74 « envoyé mais non confirmé » ; test `browser-text.test.ts` | — | — |
 | 106 | Téléchargements sous accord, capturés dans l'action qui les lance | MANQUANT | L75 « reste : téléchargements » | — | S | — ✅ FAIT (22/11, ordinateur Linux)
-| 107 | Retour arrière (`browser_back`) | MANQUANT | L75 | — | S |
+| 107 | Retour arrière (`browser_back`) | MANQUANT | L75 | — | S | ✅ FAIT (23/11, ordinateur Linux)
 | 108 | Envoi de fichier limité à des dossiers permis | FAIT | `element_upload` (`agent/tools-elements.ts`) | — | — |
 | 109 | Autorisations d'actions **bot × site × actions × durée** | PARTIEL | « pour cette conversation / toujours » limité au même domaine (`agent/scopedkeys.ts`) ; test `security-lot1.test.ts` | Pas de durée ni de liste d'actions par site | S |
 | 110 | Passer la main (connexion, captcha, paiement) et reprendre | FAIT | `ask_takeover` (`agent/tools.ts:1166`), `server/src/takeover.ts` | — | — |

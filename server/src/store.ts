@@ -51,7 +51,7 @@ function previewOf(body: RowBody, locale: Locale): string {
     const c = body.card;
     if (c.type === "approval") return tr(locale, "Waiting for you: {title}", { title: c.title });
     if (c.type === "question") return c.question;
-    if (c.type === "takeover") return tr(locale, "Needs you on its screen");
+    if (c.type === "takeover") return tr(locale, "Needs you on its screen"); if (c.type === "code") return tr(locale, "Needs a code from you"); // L91
     if (c.type === "secret") return tr(locale, "Asks for a secret: {name}", { name: c.name });
     if (c.type === "uncertain") return tr(locale, "Did it go through? {title}", { title: c.title });
     if (c.type === "task") return tr(locale, "Background task: {title}", { title: c.title });
@@ -66,7 +66,7 @@ function previewOf(body: RowBody, locale: Locale): string {
     if (c.type === "pastedsecret") return tr(locale, "A secret was masked in your message");
     if (c.type === "files") return tr(locale, "Files changed: {n}", { n: c.files.length + c.more });
     if (c.type === "goal") return tr(locale, "Goal: {objective}", { objective: c.objective });
-    if (c.type === "failure") return tr(locale, "A problem needs you"); if (c.type === "view") return c.title; // DS-Bot item 8
+    if (c.type === "failure") return tr(locale, "A problem needs you"); if (c.type === "view" || c.type === "trajectory") return c.title; // DS-Bot item 8, L158
     return tr(locale, "Connect {name}", { name: c.name });
   }
   return "";

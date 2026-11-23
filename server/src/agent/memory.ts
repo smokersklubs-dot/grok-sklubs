@@ -6,19 +6,22 @@ import { defaultModelRef, listProviders, resolveModel, type ChatMessage } from "
 import { ModelOutputLimit } from "../llm/types.js";
 import { engineAsk, isEngineRef } from "./engine.js";
 import type { Memory, MemoryBookkeeping, SensitiveCategory } from "../shared.js";
-import { bots, clip, history, memories, now, paused, rows, settings, users, type BotRecord } from "../store.js";
+import { bots, clip, history, laneKey, memories, now, paused, rows, settings, users, type BotRecord } from "../store.js";
 import { memoryPrefs, summaries } from "./memoryprefs.js";
 import { findQuote, typedByUser } from "./grounding.js";
 import { looksSecret, memoryVerdict, sensitiveCategory } from "./sensitive.js";
 import { fold, stem, tokenize } from "./recall.js";
 import { noteHistory } from "./memorybook.js";
 import { record } from "../usage.js";
-import { hostedHoldsBot, isBusy, isPaused } from "./loop.js";
+import { hostedHoldsBot, inQueue, isBusy, isPaused } from "./loop.js";
 import { capHolds } from "../usagecaps.js";
 import { isHostedStop } from "../hosted.js";
 import { betweenTurnsChars, userWordsBlock } from "./compactlines.js";
 import { cleanDay, saysChangeOfMind, setMarks, updateInPlace } from "./memorymarks.js";
 import { tidySweep } from "./memorytidy.js";
+import { restSummarySweep, writeSummary } from "./compactplus.js";
+import { threadLane } from "./lanes.js";
+import { cleanInvisible, focusPrompt, nearbyNotes } from "./memorysave.js";
 
 /** A short side request to the model (summaries, fact extraction): no tools, low effort. */
 export async function ask(bot: BotRecord, system: string, prompt: string, selectedBot = false): Promise<string> {
@@ -63,8 +66,7 @@ function render(messages: ChatMessage[]): string {
       else if (b.type === "tool_use") lines.push(`BOT used ${b.name}: ${clip(JSON.stringify(b.input), 400)}`);
       else if (b.type === "tool_result") lines.push(`RESULT${b.isError ? " (failed)" : ""}: ${clip(b.content.map((c) => (c.type === "text" ? c.text : "[image]")).join(" "), 600)}`);
     }
-  const all = lines.join("\n");
-  return all.length > 200_000 ? "[earlier part cut]\n" + all.slice(-200_000) : all;
+  return lines.join("\n"); // L80: a long conversation is summarised in parts (compactplus.ts), never cut here
 }
 
 const SUMMARY_MARK = "[Automatic summary of the earlier conversation — treat it as your own notes]";
@@ -108,13 +110,14 @@ const summaryLine = (locale: string | undefined, n: number) => locale === "fr"
  * one short line saying it happened. Before summarising, a quiet learning pass notes what matters from the user's own
  * words (L80, « note ce qui compte » — the same rules as the learning: never from the bot's replies or outside content).
  */
-export async function compactIfNeeded(bot: BotRecord, force = false): Promise<{ before: number; after: number; changed: boolean }> {
-  const all = history.load(bot.id, bot.generation);
+export async function compactIfNeeded(bot: BotRecord, force = false, opts: { thread?: number; instruction?: string } = {}): Promise<{ before: number; after: number; changed: boolean }> {
+  const thread = opts.thread ?? 0; // L80: threads are summarised too, and `/compact <consigne>` (compactplus.ts)
+  const all = history.load(bot.id, bot.generation, thread);
   const same = { before: all.length, after: all.length, changed: false };
-  if (paused.get(bot.id)) return same;
+  if (paused.get(bot.id) || (thread && paused.get(laneKey(bot.id, thread)))) return same;
   // Audit DS-Bot #72: the line follows the bot's model (capped), never above COMPACT_CHARS (compactlines.ts).
   const line = betweenTurnsChars(bot.userId, bot.model || defaultModelRef());
-  if (!force && (historyChars(all) < line || (cooldown.get(bot.id) ?? 0) > now())) return same;
+  if (!force && (historyChars(all) < line || (cooldown.get(`${bot.id}~${thread}`) ?? 0) > now())) return same;
 
   // Cut only at the start of a user turn, so no tool call is separated from its result.
   const turnStarts = all.map((m, i) => (m.role === "user" && !m.content.some((b) => b.type === "tool_result") ? i : -1)).filter((i) => i > 0);
@@ -138,25 +141,19 @@ export async function compactIfNeeded(bot: BotRecord, force = false): Promise<{ 
   const system = "You compress a long working conversation between a user and their AI teammate into notes the teammate will rely on afterwards. Be dense and factual. Never include passwords, keys or other secrets.";
   let summary: string;
   try {
-    summary = await ask(bot, system, `${SUMMARY_PROMPT}\n\nConversation:\n${source}`);
-    let problems = summary ? summaryProblems(summary, source.length) : ["empty"];
-    if (problems.length) {
-      summary = await ask(bot, system, `${SUMMARY_PROMPT}\n\nYour previous notes were refused (${problems.join("; ")}). Write them again.\n\nConversation:\n${source}`);
-      problems = summary ? summaryProblems(summary, source.length) : ["empty"];
-      if (problems.length) throw new Error(`The summary failed its check (${problems.join("; ")}); the conversation was kept whole.`);
-    }
+    summary = await writeSummary((sys, prompt) => ask(bot, sys, prompt), system, SUMMARY_PROMPT, source, summaryProblems, opts.instruction);
   } catch (err) {
-    cooldown.set(bot.id, now() + 10 * 60_000);
+    cooldown.set(`${bot.id}~${thread}`, now() + 10 * 60_000);
     throw err;
   }
   // Only commit if nothing was appended while the summary was being written.
-  if (history.count(bot.id, bot.generation) !== all.length) return same;
+  if (history.count(bot.id, bot.generation, thread) !== all.length) return same;
   // Audit DS-Bot #74: the user's own messages of the condensed part travel word for word next to the summary.
-  const next: ChatMessage[] = [{ role: "user", content: [{ type: "text", text: `${SUMMARY_MARK}\n${summary}${userWordsBlock(bot, all.slice(cut))}` }] }, ...all.slice(cut)];
-  history.replace(bot.id, bot.generation, next);
+  const next: ChatMessage[] = [{ role: "user", content: [{ type: "text", text: `${SUMMARY_MARK}\n${summary}${userWordsBlock(bot, all.slice(cut), thread)}` }] }, ...all.slice(cut)];
+  history.replace(bot.id, bot.generation, next, thread);
   q.run("INSERT INTO compactions (bot_id, generation, at, before_items, after_items) VALUES (?, ?, ?, ?, ?)", bot.id, bot.generation, now(), all.length, next.length);
   summaries.add(bot.id, bot.generation, all.length, next.length, summary, flushed);
-  rows.append(bot, { kind: "notice", tone: "info", text: summaryLine(users.localeOf(bot.userId), older.length) }, 0);
+  rows.append(bot, { kind: "notice", tone: "info", text: summaryLine(users.localeOf(bot.userId), older.length) }, thread);
   return { before: all.length, after: next.length, changed: true };
 }
 
@@ -273,7 +270,8 @@ async function learnBatch(bot: BotRecord): Promise<{ added: string[]; considered
   }
 
   const transcript = own.map((r) => `- [${isoDay(r.createdAt)}] ${r.body.kind === "message" ? clip(r.body.text, 2000) : ""}`).join("\n").slice(-24_000);
-  const existing = memories.list(bot.id, 200);
+  // L67: the model sees the notes closest to what it reads (memorysave.ts); the checks below use every note.
+  const existing = nearbyNotes(bot.id, transcript), all = memories.list(bot.id, 5000).filter((m) => m.status !== "archived");
   const answer = await ask(bot,
     "You maintain the long-term memory of an AI teammate. You read only the user's own messages and pick out what will still matter in weeks.",
     `Keep: facts about the user (role, company, team, timezone, key people, accounts and tools), their preferences and standing instructions, lasting facts about ongoing projects.\n` +
@@ -281,7 +279,7 @@ async function learnBatch(bot: BotRecord): Promise<{ added: string[]; considered
     `Write each fact as one short stand-alone sentence in the third person, under 200 characters, and give with it an excerpt copied word for word from the user message it comes from. At most 8. If nothing qualifies, return an empty list.\n` +
     `Each message starts with the day it was written, in brackets. Today is ${isoDay(now())}. Never keep a relative date or time in a fact ("tomorrow", "next week", "lundi prochain", "dans 3 jours", "cet été"): turn it into a real date counted from the day of the message it comes from (for example "on 2026-11-24", "the week of 2026-11-30", "in summer 2027"). The excerpt stays word for word, without the day in brackets.\n` +
     `When the user restates a fact an existing memory already holds, list it again with its new excerpt (it confirms it). When the user says something that contradicts an existing memory, add the new fact with "contradicts" set to that memory, word for word.\n` +
-    `When the user says a fact holds only until a date ("jusqu'à fin mars", "until Friday"), give that last day as "until" (YYYY-MM-DD, counted from the day of the message).\n` +
+    `When the user says a fact holds only until a date ("jusqu'à fin mars", "until Friday"), give that last day as "until" (YYYY-MM-DD, counted from the day of the message).\n${focusPrompt(bot.id)}` +
     `Answer with JSON only, in the form {"facts": [{"text": "…", "quote": "…", "contradicts": "…(optional)", "until": "YYYY-MM-DD (optional)"}]}.\n\nExisting memories:\n${existing.map((m) => `- ${m.text}`).join("\n") || "(none)"}\n\nThe user's messages:\n${transcript}`);
   const facts = parseFacts(answer);
   if (!facts) {
@@ -295,10 +293,10 @@ async function learnBatch(bot: BotRecord): Promise<{ added: string[]; considered
   const words = own.map((r) => ({ seq: r.seq, text: r.body.kind === "message" ? r.body.text : "", at: r.createdAt }));
   const added: string[] = [];
   for (const fact of (facts ?? []).slice(0, 8)) {
-    const t = clip(fact.text.trim(), 300);
+    const t = clip(cleanInvisible(fact.text), 300);
     if (!t) continue;
     // A contradiction of an existing note, in the user's own later words: the note is contested and the user is asked.
-    const old = fact.contradicts ? existing.find((m) => m.status !== "archived" && (m.text === fact.contradicts || similar(m.text, fact.contradicts!))) : undefined;
+    const old = fact.contradicts ? all.find((m) => m.status !== "archived" && (m.text === fact.contradicts || similar(m.text, fact.contradicts!))) : undefined;
     if (old) {
       const src = findQuote(fact.quote, words);
       // Audit DS-Bot F5: the user clearly changed their mind ("finalement…", "from now on…"): the note is updated in place
@@ -307,7 +305,7 @@ async function learnBatch(bot: BotRecord): Promise<{ added: string[]; considered
       continue;
     }
     // The same fact again, in a later message of the user's: confirmed.
-    const same = existing.find((m) => similar(m.text, t));
+    const same = all.find((m) => similar(m.text, t));
     if (same) {
       const src = findQuote(fact.quote, words);
       if (src && src.at > same.createdAt && same.confidence !== "confirmed") { memories.confirm(same.id); confirmed++; }
@@ -479,4 +477,6 @@ export async function consolidationSweep() {
   }
   // Audit DS-Bot #84: then at most one daily tidy (memorytidy.ts), never for a bot that is working or held.
   await tidySweep((b) => !!(isBusy(b.id) || getLive(b.id).running || hostedHoldsBot(b) || isPaused(b) || capHolds(b)));
+  // L80 « résumé à chaud »: one long conversation (main chat or thread) summarised while the owner is away (compactplus.ts).
+  await restSummarySweep((b) => !!(isBusy(b.id) || getLive(b.id).running || hostedHoldsBot(b) || isPaused(b) || capHolds(b)), (b, thread) => inQueue(b.id, () => compactIfNeeded(bots.byId(b.id) ?? b, false, { thread }), threadLane(b.id, thread)));
 }

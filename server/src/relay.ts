@@ -413,6 +413,7 @@ function onRes(conn: Conn, msg: Json) {
 const grantOf = (g: unknown): Session["grant"] => (g === "always" || g === "test" ? g : "once");
 
 function noteCapture(conn: Conn, r: Json) {
+  if (typeof r.displayIndex === "number" && r.displayIndex > 0) return; // L159: another screen is for looking only (mycomputerplus.ts)
   const width = num(r.width, 1, 100_000), height = num(r.height, 1, 100_000);
   const sw = num(r.screenWidth, 1, 100_000), sh = num(r.screenHeight, 1, 100_000);
   if (width && height) conn.lastCapture = { width, height, screenWidth: sw ?? width, screenHeight: sh ?? height };

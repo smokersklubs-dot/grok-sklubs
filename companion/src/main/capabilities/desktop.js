@@ -68,10 +68,22 @@ function createDesktopCaps(electron, showPointer = () => {}, getSession) {
     };
   }
 
-  /** @param {number} maxWidth */
-  async function grab(maxWidth) {
+  /** L159: the screens in order — the main one first, then the others from left to right. */
+  const displaysInOrder = () => {
+    const main = primary();
+    return [main, ...screen.getAllDisplays().filter((x) => x.id !== main.id).sort((a, b) => a.bounds.x - b.bounds.x || a.bounds.y - b.bounds.y)];
+  };
+
+  /** @param {number} maxWidth @param {number} [display] */
+  async function grab(maxWidth, display = 0) {
     if (process.platform === 'darwin' && ['denied', 'restricted'].includes(systemPreferences.getMediaAccessStatus('screen'))) throw missing('Screen Recording');
-    const d = primary();
+    const list = displaysInOrder();
+    if (display >= list.length) {
+      const e = new Error(`there is no screen number ${display + 1} (${list.length} connected)`);
+      /** @type {any} */ (e).code = 'invalid_args';
+      throw e;
+    }
+    const d = list[display];
     const physW = Math.round(d.size.width * d.scaleFactor);
     const physH = Math.round(d.size.height * d.scaleFactor);
     const w = Math.min(maxWidth, physW);
@@ -86,12 +98,12 @@ function createDesktopCaps(electron, showPointer = () => {}, getSession) {
     return { image: src.thumbnail, display: d };
   }
 
-  /** @param {{ format: 'jpeg'|'png', maxWidth: number, quality: number }} a */
+  /** @param {{ format: 'jpeg'|'png', maxWidth: number, quality: number, display?: number }} a */
   async function capture(a) {
-    const { image, display } = await grab(a.maxWidth);
+    const { image, display } = await grab(a.maxWidth, a.display ?? 0);
     const size = image.getSize();
     const data = a.format === 'png' ? image.toPNG() : image.toJPEG(a.quality);
-    return { format: a.format, width: size.width, height: size.height, screenWidth: display.size.width, screenHeight: display.size.height, data };
+    return { format: a.format, width: size.width, height: size.height, screenWidth: display.size.width, screenHeight: display.size.height, data, displayIndex: a.display ?? 0, displays: screen.getAllDisplays().length };
   }
 
   /** @param {{ maxWidth: number, quality: number }} a */

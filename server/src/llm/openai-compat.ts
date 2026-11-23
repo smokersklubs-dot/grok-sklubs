@@ -1,5 +1,6 @@
 import { cacheLayout } from "./cachelayout.js";
 import { toolsForCall } from "./toolsearch.js";
+import { repairJson } from "./jsonrepair.js";
 import { isContextTooLong, isTransientStatus, ProviderError, retryAfterOf, type Block, type ChatMessage, type LlmProvider, type StopReason, type TurnRequest, type TurnResult } from "./types.js";
 
 interface WireMessage {
@@ -240,7 +241,7 @@ export class OpenAiCompatProvider implements LlmProvider {
     if (text) content.push({ type: "text", text });
     for (const c of calls.values()) {
       let input: Record<string, unknown>;
-      try { input = c.args ? JSON.parse(c.args) : {}; } catch { input = { INVALID_JSON: c.args }; }
+      try { input = c.args ? JSON.parse(c.args) : {}; } catch { input = repairJson(c.args) ?? { INVALID_JSON: c.args }; } // L75 (jsonrepair.ts)
       content.push({ type: "tool_use", id: c.id, name: c.name, input });
     }
     const stopReason: StopReason = calls.size ? "tool_use" : finish === "length" ? "max_tokens" : finish === "content_filter" ? "refusal" : "end";

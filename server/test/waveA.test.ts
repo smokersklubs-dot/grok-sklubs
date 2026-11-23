@@ -344,6 +344,8 @@ test("video: not offered without a provider; settings report how videos are made
 });
 
 test("video (xAI): asks the first time per bot, polls with progress, saves the file, shows a player, records the cost", async () => {
+  // A known, small admin price: "Always" is offered (an unknown price asks before every video: media-open-gen.test.ts).
+  process.env.VIDEO_PRICE_USD = "0.05";
   process.env.XAI_API_KEY = "xai-test-key";
   process.env.XAI_BASE_URL = `${base}/v1`;
   assert.equal((await call("GET", "/me")).json.video.provider, "xai");
@@ -408,7 +410,7 @@ test("video (Gemini): the video comes back by address, is polled until ready, an
   assert.equal(gem.keys.at(-1), "gem-test-key");
   assert.ok(gem.filePolls >= 2);
   assert.equal(gem.downloadKeys.at(-1), "gem-test-key", "same host as the API");
-  delete process.env.VIDEO_PROVIDER; delete process.env.GEMINI_API_KEY; delete process.env.GEMINI_BASE_URL;
+  delete process.env.VIDEO_PROVIDER; delete process.env.GEMINI_API_KEY; delete process.env.GEMINI_BASE_URL; delete process.env.VIDEO_PRICE_USD;
 });
 
 test("video through Higgsfield (OAuth app): preferred over the API, tools discovered at run time, result saved with media_save", async () => {

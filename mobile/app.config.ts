@@ -39,6 +39,11 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     buildNumber: String(VERSION_CODE),
     supportsTablet: true,
     config: { usesNonExemptEncryption: false },
+    // L160: the app's privacy manifest (written to PrivacyInfo.xcprivacy at prebuild; https://docs.expo.dev/guides/apple-privacy/).
+    // One source, store/privacy-manifest.json, also copied to store/PrivacyInfo.xcprivacy; `npm run store:check` keeps them
+    // equal and checks every required-reason API declared by the installed libraries is covered.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    privacyManifests: require("./store/privacy-manifest.json"),
   },
   android: {
     package: store ? "fr.sklubot.app" : "fr.sklubot.app.complet",
