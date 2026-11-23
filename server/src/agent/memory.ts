@@ -1,4 +1,5 @@
 import { emit, getLive } from "../bus.js";
+import { memoryKeep } from "./memorykeep.js";
 import { config } from "../config.js";
 import { q } from "../db.js";
 import { defaultModelRef, listProviders, resolveModel, type ChatMessage } from "../llm/index.js";
@@ -256,7 +257,8 @@ async function learnBatch(bot: BotRecord): Promise<{ added: string[]; considered
   const newest = batch[batch.length - 1].createdAt;
   const recent = batch.filter((r) => r.body.kind === "message" && r.body.text.trim() && !r.body.streaming);
   // Only what the user typed (or said on a call) can teach anything; long pastes are skipped.
-  const own = recent.filter((r) => typedByUser(r) && r.body.kind === "message" && r.body.text.length <= 4000);
+  const skipped = memoryKeep.skippedSeqs(bot.id, bot.generation); // L66 « Ne pas retenir ce message » (memorykeep.ts)
+  const own = recent.filter((r) => typedByUser(r) && r.body.kind === "message" && r.body.text.length <= 4000 && !skipped.has(r.seq));
   // L88 « Ne rien retenir »: nothing is learned from this bot's conversation while it is on (the mark still moves on).
   if (!own.length || !settings.memory(bot.userId).autoCapture || memoryPrefs.noLearn(bot.id)) { setMark(bot.id, newest); return { added: [], considered: recent.length, confirmed: 0, more }; }
 
@@ -311,7 +313,7 @@ async function learnBatch(bot: BotRecord): Promise<{ added: string[]; considered
       if (src && src.at > same.createdAt && same.confidence !== "confirmed") { memories.confirm(same.id); confirmed++; }
       continue;
     }
-    if (added.some((a) => similar(a, t))) continue;
+    if (added.some((a) => similar(a, t)) || memoryKeep.buried(bot.id, t)) continue; // L66: a fact the owner removed is never learned again by itself
     // The excerpt must really be in one of the user's messages: otherwise the fact may come from somewhere else.
     const source = findQuote(fact.quote, words);
     if (!source) continue;

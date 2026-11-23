@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { api, errText } from "../api";
 import { useT } from "../i18n";
 import { useStore } from "../store";
@@ -9,6 +9,10 @@ import { ScreenFrame } from "./ScreenFrame";
 import { Icon, Spinner } from "./Icon";
 import { IconButton, useDialogFocus, useEscape, useTick } from "./ui";
 import type { Recording } from "../types";
+import { useLiveReconnect } from "../lib/liveReconnect";
+import { captureBlob, captureName, pasteInto, reconnectView, type ScreenClient } from "../lib/reconnect";
+import { createControlLease, type LeaseAnswer } from "../lib/controlLease";
+import "./ComputerViewer.css";
 
 const clock = (ms: number) => `${String(Math.floor(ms / 60_000)).padStart(2, "0")}:${String(Math.floor(ms / 1000) % 60).padStart(2, "0")}`;
 
@@ -98,6 +102,45 @@ function SkillReview({ botId, rec, botName }: { botId: string; rec: Recording; b
   );
 }
 
+/** L149: the live screen is down — connecting, a try planned in N s (with « Reconnecter maintenant »), or given up. */
+export function LiveWait({ name, waiting, gaveUp, onRetry }: { name: string; waiting: { attempt: number; dueAt: number } | null; gaveUp: boolean; onRetry: () => void }) {
+  const t = useT();
+  const now = useTick(waiting ? 500 : 60_000);
+  if (gaveUp) {
+    return (
+      <div className="viewer-empty live-wait" role="alert">
+        <Icon name="alert" size={32} />
+        <p>{t("viewer.lostTitle", { name })}</p>
+        <button type="button" className="btn" onClick={onRetry}><Icon name="refresh" size={14} /> {t("viewer.reconnect")}</button>
+      </div>
+    );
+  }
+  if (waiting) {
+    const v = reconnectView(waiting.attempt, waiting.dueAt - now);
+    return (
+      <div className="viewer-empty live-wait" role="status">
+        <Spinner size={28} />
+        <p>{v.kind === "wait" ? t("viewer.reconnecting", { n: v.attempt, of: v.of, s: v.seconds }) : t("common.connecting")}</p>
+        <button type="button" className="btn" onClick={onRetry}>{t("viewer.reconnectNow")}</button>
+      </div>
+    );
+  }
+  return <div className="viewer-empty live-wait"><Spinner size={28} /><p>{t("common.connecting")}</p></div>;
+}
+
+/** L149: Coller / Ctrl+Alt+Suppr (while driving) and Capture (always) under the live screen. */
+export function ViewerTools({ control, note, onPaste, onCtrlAltDel, onCapture }: { control: boolean; note: string | null; onPaste: () => void; onCtrlAltDel: () => void; onCapture: () => void }) {
+  const t = useT();
+  return (
+    <div className="viewer-tools" role="toolbar" aria-label={t("viewer.tools")}>
+      {control && <button type="button" className="btn btn-small" onClick={onPaste} title={t("viewer.pasteHint")}><Icon name="clip" size={14} /> {t("viewer.paste")}</button>}
+      {control && <button type="button" className="btn btn-small" onClick={onCtrlAltDel}><Icon name="key" size={14} /> {t("viewer.ctrlAltDel")}</button>}
+      <button type="button" className="btn btn-small" onClick={onCapture}><Icon name="image" size={14} /> {t("viewer.capture")}</button>
+      {note && <span className="viewer-tool-note" role="status">{note}</span>}
+    </div>
+  );
+}
+
 const SPECIAL_KEYS = new Set(["Enter", "Backspace", "Tab", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Escape"]);
 type Input =
   | { type: "click"; x: number; y: number }
@@ -164,22 +207,25 @@ export function ComputerViewer({ botId }: { botId: string }) {
   // Leaving control mode ("Hand back", closing the viewer while in control) tells the server once,
   // so the bot looks at its screen again before relying on what it saw earlier.
   const controlling = useRef(false);
+  // L149: a numbered lease (lib/controlLease.ts): a late renewal never takes control again after « Rendre la main ».
+  const lease = useMemo(() => createControlLease((b) => (b.on
+    ? api<LeaseAnswer>("POST", `/bots/${botId}/desktop/control`, b)
+    : api<LeaseAnswer>("POST", `/bots/${botId}/desktop/handback`, b.epoch !== undefined ? { epoch: b.epoch } : undefined))), [botId]);
   const handBack = useCallback(() => {
     if (!controlling.current) return;
     controlling.current = false;
-    api("POST", `/bots/${botId}/desktop/handback`).catch(() => undefined);
-  }, [botId]);
+    void lease.handBack();
+  }, [lease]);
   useEffect(() => {
     if (control) controlling.current = true;
   }, [control]);
   // While in control mode the server is told so (and reminded every 30 s): the bot's own screen actions wait.
   useEffect(() => {
     if (!control) return;
-    const hold = () => api("POST", `/bots/${botId}/desktop/control`, { on: true }).catch(() => undefined);
-    void hold();
-    const timer = window.setInterval(hold, 30_000);
+    void lease.take();
+    const timer = window.setInterval(() => void lease.renew(), 30_000);
     return () => window.clearInterval(timer);
-  }, [control, botId]);
+  }, [control, lease]);
   // The bot asked for the user (ask_takeover): "I'm done" hands the screen back and lets it carry on.
   const takeover = useStore((s) => {
     const rows = s.threads[botId]?.rows ?? [];
@@ -226,13 +272,42 @@ export function ComputerViewer({ botId }: { botId: string }) {
     void wakeUp();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [linux, desktop?.open]);
-  // A successful reset reconnects the stream (U-007).
-  const [liveAttempt, setLiveAttempt] = useState(0);
+  // L149: a stream that drops after working comes back by itself (1, 2, 4, 8, 15 s), then « Reconnecter »; one that never
+  // opened falls back to screenshots. A successful reset reconnects the stream too (U-007).
+  const recon = useLiveReconnect(liveKey, () => setLiveFailedFor(liveKey));
+  const [client, setClient] = useState<ScreenClient | null>(null);
+  const [toolNote, setToolNote] = useState<string | null>(null);
+  const noteTimer = useRef<number | undefined>(undefined);
+  const flashTool = (text: string) => { window.clearTimeout(noteTimer.current); setToolNote(text); noteTimer.current = window.setTimeout(() => setToolNote(null), 3000); };
+  useEffect(() => () => window.clearTimeout(noteTimer.current), []);
   const resetScreen = async () => {
     await api("POST", `/bots/${botId}/desktop/tidy`);
     setLiveUp(false);
-    setLiveAttempt((n) => n + 1);
+    recon.retryNow();
   };
+  const paste = async () => {
+    if (!client) return;
+    try {
+      const text = await navigator.clipboard.readText();
+      flashTool(pasteInto(client, text) ? t("viewer.pasted") : t("viewer.pasteEmpty"));
+    } catch { flashTool(t("viewer.pasteBlocked")); }
+    stage.current?.focus();
+  };
+  const capture = async () => {
+    if (!client) return;
+    const blob = await captureBlob(client);
+    if (!blob) { flashTool(t("viewer.captureFailed")); return; }
+    const href = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = href;
+    a.download = captureName(bot?.name ?? "bot");
+    a.click();
+    window.setTimeout(() => URL.revokeObjectURL(href), 1500);
+    flashTool(t("viewer.captured"));
+  };
+  const ctrlAltDel = () => { client?.sendCtrlAltDel(); flashTool(t("viewer.ctrlAltDelSent")); stage.current?.focus(); };
+  // L149: the bot itself is using its screen right now (its live activity says so): shown while the user only watches.
+  const botDriving = useStore((s) => { const l = s.live[botId]; return !!l?.running && l.activity?.kind === "computer"; });
   const leaveControl = () => {
     flushTyped();
     // Handing back ends a demonstration under way.
@@ -393,8 +468,10 @@ export function ComputerViewer({ botId }: { botId: string }) {
           <>
             <ScreenFrame bot={bot} variant="stage" live={liveUp} control={control} hint={takeover ? t("takeover.bar", { name: bot.name }) : null}
               onTakeControl={() => setControl(true)} onHandBack={leaveControl} onReset={resetScreen}>
-              <LiveScreen key={liveAttempt} botId={botId} control={control} label={t("viewer.screenAlt", { name: bot.name })} onConnect={() => setLiveUp(true)} onClose={() => { if (!liveUp) setLiveFailedFor(liveKey); setLiveUp(false); }} />
-              {!liveUp && <div className="viewer-empty live-wait"><Spinner size={28} /><p>{t("common.connecting")}</p></div>}
+              <LiveScreen key={recon.key} botId={botId} control={control} label={t("viewer.screenAlt", { name: bot.name })} onClient={setClient}
+                onConnect={() => { setLiveUp(true); recon.connected(); }} onClose={() => { setLiveUp(false); recon.dropped(); }} />
+              {!liveUp && <LiveWait name={bot.name} waiting={recon.waiting} gaveUp={recon.gaveUp} onRetry={recon.retryNow} />}
+              {liveUp && !control && botDriving && <div className="viewer-bot-driving" role="status"><span className="dot-inline dot-pulse" /> {t("viewer.botDriving", { name: bot.name })}</div>}
             </ScreenFrame>
           </>
         ) : url ? (
@@ -481,6 +558,7 @@ export function ComputerViewer({ botId }: { botId: string }) {
               </button>
             </>
           )}
+          {live && liveUp && client && <ViewerTools control={control} note={toolNote} onPaste={() => void paste()} onCtrlAltDel={ctrlAltDel} onCapture={() => void capture()} />}
           {error && <span className="viewer-error" role="alert">{error}</span>}
         </footer>
       )}

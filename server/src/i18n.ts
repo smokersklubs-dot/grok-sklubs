@@ -1,4 +1,4 @@
-import type { Locale } from "./shared.js"; import { SECURITY_FR } from "./securityi18n.js"; import { COMFORT_FR } from "./comforti18n.js"; import { TURN_FR } from "./turni18n.js";
+import type { Locale } from "./shared.js"; import { SECURITY_FR } from "./securityi18n.js"; import { COMFORT_FR } from "./comforti18n.js"; import { TURN_FR } from "./turni18n.js"; import { COMFORT7_FR } from "./comfort7i18n.js"; import { WAVE7_FR } from "./wave7i18n.js";
 
 /**
  * Texts the server itself writes into a chat (notices, event lines, step labels, approval titles).
@@ -647,7 +647,7 @@ const FR: Record<string, string> = {
   "Keep-out list changed on {device}": "Liste « garder à l'écart » modifiée sur {device}", "At most {n} entries.": "{n} éléments au plus.",
 };
 
-Object.assign(FR, SECURITY_FR, COMFORT_FR, TURN_FR); // Lot 1 security texts (securityi18n.ts); comfort batch (comforti18n.ts); turn control (turni18n.ts)
+Object.assign(FR, SECURITY_FR, COMFORT_FR, TURN_FR, COMFORT7_FR, WAVE7_FR); // Lot 1 security texts (securityi18n.ts); comfort batch (comforti18n.ts); turn control (turni18n.ts)
 export function tr(locale: Locale | undefined, english: string, vars: Record<string, string | number> = {}): string {
   const template = locale === "fr" ? FR[english] ?? english : english;
   return template.replace(/\{(\w+)\}/g, (_m, k) => String(vars[k] ?? ""));

@@ -10,5 +10,10 @@ declare module "@novnc/novnc/lib/rfb.js" {
     background: string;
     disconnect(): void;
     focus(): void;
+    // L149 (noVNC 1.5 lib/rfb.js, public API in docs/API.md): paste, Ctrl+Alt+Del, keys, capture.
+    clipboardPasteFrom(text: string): void;
+    sendCtrlAltDel(): void;
+    sendKey(keysym: number, code: string | null, down?: boolean): void;
+    toBlob(callback: (blob: Blob | null) => void, type?: string, quality?: number): void;
   }
 }

@@ -1,7 +1,8 @@
 import { ModelHealthLine } from "./ModelHealth";
+import { BotDangerZone } from "./BotLifecycle"; import { BotStyleField } from "./BotStyle";
 import { BotReachTab } from "./KeysHealthLinks";
 import { BotCapsField } from "./UsageCaps";
-import { LocalToolsTab } from "./LocalTools";
+import { LocalToolsTab } from "./LocalTools"; import { PluginsPanel, RemoteAgentsPanel } from "./ExtensionsPanels";
 import { BotApiTab } from "./BotApi";
 import { engineOfRef } from "../lib/engines";
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
@@ -11,7 +12,7 @@ import { useStore, type BotSettingsTab } from "../store";
 import { BotEmailTab, BotSharingTab } from "./WorkspacesMailVoice"; import { BotSecurityTab } from "./SecurityLot1";
 import { DEFAULT_CHARACTER, TOOL_GROUPS } from "../types";
 import { BotSpendField, ConfidenceBadge, RoutineExtras } from "./SpendSkillsFiles";
-import { RoomWhoAnswers } from "./RoomRouting"; import { RoomNotes } from "./RoomNotes";
+import { RoomWhoAnswers } from "./RoomRouting"; import { RoomNotes } from "./RoomNotes"; import { RoomLimits } from "./RoomLimits";
 import type { Autonomy, AvatarColor, AvatarShape, Bot, BotBundle, Character as CharacterLook, BotMode, Effort, Memory, MemoryStatus, ModelOption, NativeTrigger, RoomRule, Routine, RoutineRun, Skill, SkillExtras, SkillRef, TelegramStatus, ToolGroup } from "../types";
 import { useNative } from "./NativeApps";
 import { dateTime, nextRunLabel, relTime, shortDate } from "../lib/format";
@@ -261,7 +262,7 @@ function General({ bot, onClose }: { bot: Bot; onClose: () => void }) {
         </>
       )}
 
-      {isRoom && <RoomWhoAnswers room={bot} value={form.roomRule} onChange={(v) => set("roomRule", v)} />}{isRoom && <RoomNotes room={bot} />}
+      {isRoom && <RoomWhoAnswers room={bot} value={form.roomRule} onChange={(v) => set("roomRule", v)} />}{isRoom && <RoomNotes room={bot} />}{isRoom && <RoomLimits room={bot} />}
 
       <div className={`save-bar ${dirty || note ? "is-visible" : ""}`}>
         <span className={`save-note ${note?.tone === "error" ? "is-error" : ""}`} role="status">{note ? note.text : dirty ? t("bot.unsaved") : ""}</span>
@@ -318,32 +319,8 @@ function General({ bot, onClose }: { bot: Bot; onClose: () => void }) {
         </div>
       )}
 
-      <h3 className="pane-heading is-danger">{t("bot.danger")}</h3>
-      <div className="action-row">
-        <div>
-          <p className="action-title">{t(isRoom ? "bot.deleteRoom" : "bot.deleteBot")}</p>
-          <p className="muted small">
-            {t(bot.primary ? "bot.deletePrimaryHint" : "bot.deleteHint")}
-          </p>
-        </div>
-        <ConfirmButton
-          label={t("common.delete")}
-          confirmLabel={t("common.confirmDelete")}
-          busyLabel={t("common.deleting")}
-          className="btn btn-small btn-danger"
-          disabled={bot.primary}
-          onConfirm={async () => {
-            setActionError(null);
-            try {
-              await api("DELETE", `/bots/${bot.id}`);
-              onClose();
-              await loadBots();
-            } catch (e) {
-              setActionError(errText(e));
-            }
-          }}
-        />
-      </div>
+      <BotStyleField bot={bot} />
+      <BotDangerZone bot={bot} isRoom={isRoom} onDeleted={() => { onClose(); void loadBots(); }} /> {/* L144: export, what goes, trash (BotLifecycle.tsx) */}
       <ErrorNote>{actionError}</ErrorNote>
     </form>
   );
@@ -1351,7 +1328,7 @@ export function BotSettings({ botId, tab }: { botId: string; tab: BotSettingsTab
           {active === "skills" && <Skills bot={bot} bundle={bundle} />}
           {active === "memories" && <Memories bot={bot} bundle={bundle} />}
           {active === "routines" && <Routines bot={bot} bundle={bundle} />}
-          {active === "localTools" && <LocalToolsTab key={bot.id} bot={bot} />}
+          {active === "localTools" && <><LocalToolsTab key={bot.id} bot={bot} /><div className="settings-pane"><PluginsPanel bot={bot} /><RemoteAgentsPanel /></div></>}{/* L174 plugins, L172 other agents */}
           {active === "reach" && <BotReachTab key={bot.id} bot={bot} />}
           {active === "telegram" && <Telegram key={bot.id} bot={bot} />}{active === "channels" && <BotChannelsTab key={bot.id} bot={bot} />}
           {active === "email" && <BotEmailTab key={bot.id} bot={bot} />}

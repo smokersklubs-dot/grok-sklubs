@@ -2,7 +2,7 @@
 const { RelayCore } = require('../../src/main/relay-core');
 
 /** Build a RelayCore with in-memory fakes. `answers` drives the fake consent UI. */
-function makeCore({ answers = {}, perms = {}, autoConfirm = false, gateOptions, active, platform = 'linux' } = {}) {
+function makeCore({ answers = {}, perms = {}, autoConfirm = false, gateOptions, active, platform = 'linux', extraCaps = {} } = {}) {
   // The window in front (guard.js): a plain text editor unless a test says otherwise; a function may change it per call.
   const fg = { current: active === undefined ? { app: 'gedit', bundle: 'gedit', pid: 42, windowId: '0x1', title: 'notes.txt - gedit', passwordField: false } : active };
   const sent = [];
@@ -14,6 +14,7 @@ function makeCore({ answers = {}, perms = {}, autoConfirm = false, gateOptions, 
   const caps = new Proxy({}, {
     get: (_t, name) => async (args) => {
       calls.push({ name, args });
+      if (typeof extraCaps[name] === 'function') return extraCaps[name](args);
       if (name === 'runShell') return { exitCode: 0, stdout: 'ok\n', stderr: '', truncated: false, timedOut: false, cancelled: false, durationMs: 1, signal: null };
       if (name === 'capture') return { format: 'jpeg', width: 10, height: 10, screenWidth: 10, screenHeight: 10, data: Buffer.from('x') };
       if (name === 'captureFrame') return { width: 10, height: 10, data: Buffer.from('f' + Math.random()), hash: String(Math.random()) };

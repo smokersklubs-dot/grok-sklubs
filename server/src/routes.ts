@@ -1,5 +1,5 @@
 import { body, fail, HttpError } from "./routeinput.js";
-import { registerSectionRoutes } from "./sectionroutes.js"; import { registerStopCauseRoutes } from "./stopcauseroutes.js"; import { registerPersonalCommandRoutes } from "./personalcommandroutes.js"; import { registerDoctorRoutes } from "./doctorroutes.js";
+import { registerSectionRoutes } from "./sectionroutes.js"; import { registerChatComfortRoutes } from "./chatcomfortroutes.js"; import { putInTrash } from "./bottrash.js"; import { registerStopCauseRoutes } from "./stopcauseroutes.js"; import { registerPersonalCommandRoutes } from "./personalcommandroutes.js"; import { registerDoctorRoutes } from "./doctorroutes.js";
 import { createHash } from "node:crypto";
 import { closeSync, createReadStream } from "node:fs";
 import path from "node:path";
@@ -10,7 +10,7 @@ import { streamSSE } from "hono/streaming";
 import { registerNoticeRoutes } from "./agent/noticeroutes.js"; import { registerRoomRoutingRoutes, roomReaction } from "./agent/roomroutes.js";
 import { registerFailureRoutes } from "./agent/failureroutes.js"; import { decideForConversation, registerConversationGrantRoutes } from "./agent/conversationgrantroutes.js";
 import { registerRecruitRoutes } from "./agent/recruit.js"; import { registerTeamMdRoutes } from "./teammdroutes.js";
-import { registerCommandRoutes } from "./command.js"; import { registerRelayGuardRoutes } from "./relayguardroutes.js"; import { registerComfortRoutes } from "./comfortroutes.js"; import { registerChantierRoutes } from "./chantierroutes.js";
+import { registerCommandRoutes } from "./command.js"; import { registerRelayGuardRoutes } from "./relayguardroutes.js"; import { registerComfortRoutes } from "./comfortroutes.js"; import { registerChantierRoutes } from "./chantierroutes.js"; import { registerTeamGuestPublic, registerWorkRoutes } from "./workroutes.js";
 import { continueAfterStepLimit, decideApproval, enqueue, inQueue, interrupt, noteHandBack, submitUserMessage, type ForcedSkill } from "./agent/loop.js"; import { sendOnce } from "./sendkeys.js";
 import { cleanProfile, fetchSkillMarkdown, saveImportedSkill, undoRevision } from "./agent/tools-team.js";
 import { xSearchProvider } from "./xsearch.js";
@@ -47,7 +47,7 @@ import { dropRecording, noteInput, recording, retryRecording, saveRecording, sta
 import { dayBound, searchMessages } from "./convsearch.js";
 import { registerMemoryNoteRoutes } from "./memoryroutes.js";
 import { approvals, account, audit, auditList, bots, clip, feedback, history, memories, pages, policies, publicBot, publicVault, rows, sections, settings, sha256, skills, skillText, tasks, users, vault, type BotRecord, type UserRecord, type VaultFields } from "./store.js";
-import { finishTakeover, holdControl, releaseControl } from "./takeover.js";
+import { controlRequest, finishTakeover, holdControl, releaseControl } from "./takeover.js";
 import { deskRun, deskShot, startDeskTest } from "./desktest.js";
 import { notePresence, push, pushSettings, savePushSettings, sendPush } from "./push.js";
 import { parseTotp } from "./totp.js";
@@ -124,7 +124,7 @@ import { registerBotClients, registerBotClientSettings } from "./botaccessroutes
 import { registerSentinelRoutes } from "./sentinel/routes.js"; import { registerHookRoutes, registerHookSettingsRoutes } from "./hookroutes.js"; import { registerReportRoutes } from "./reports.js";
 import { registerAnnouncementRoutes } from "./announceroutes.js"; import { registerModelHealthRoutes } from "./modelhealth.js";
 import { registerSkillsLibraryRoutes } from "./skillsroutes.js";
-import { registerOpenRouterRoutes } from "./openrouterroutes.js";
+import { registerOpenRouterRoutes } from "./openrouterroutes.js"; import { registerExtensionRoutes, registerPhonePublic } from "./extroutes.js"; // wave 7: L172 L174 L177 L178 L179
 import { registerSubscriptionConnectRoutes } from "./subscriptionconnect.js";
 import { registerStudioMp4 } from "./studiomp4.js";
 import { registerPageApi, registerPageSite, revisionTarget } from "./pageroutes.js";
@@ -396,7 +396,7 @@ api.post("/auth/logout", (c) => {
   return c.json({ ok: true });
 });
 
-registerHookRoutes(api, clientIp); // Webhooks: POST /hooks/:token — signature, repeats, bursts, refusals (hookroutes.ts, L20)
+registerHookRoutes(api, clientIp); registerTeamGuestPublic(api, clientIp); registerPhonePublic(api); /* L177 « Partager ma position » page (extroutes.ts) */ // L171 team memory guest links (workroutes.ts) ; Webhooks: POST /hooks/:token — signature, repeats, bursts, refusals (hookroutes.ts, L20)
 
 /**
  * "Accès API" (botapi.ts, docs/API-BOT.md): the Bot API and its MCP control server, under /api/v1, authenticated by a
@@ -667,10 +667,10 @@ api.delete("/bots/:id", async (c) => {
   const bot = ownBot(c);
   if (bot.primary) fail(409, "Make another bot your main contact before deleting this one.");
   // Interrupt, routines and triggers, engine, screen, files, then the record: each failure logged, none blocking (U-003).
-  await retireBot(bot);
+  const trashId = putInTrash(bot); await retireBot(bot); // L144: a copy goes to the trash first (bottrash.ts)
   usageCaps.forgetBot(bot.id);
   emit(bot.userId, { type: "roster" });
-  return c.json({ ok: true });
+  return c.json({ ok: true, trashId });
 });
 
 api.post("/bots/:id/primary", (c) => {
@@ -708,7 +708,7 @@ api.post("/bots/:id/duplicate", async (c) => {
 });
 
 // ── Sidebar sections ─────────────────────────────────────────────────────────
-registerSectionRoutes(api); registerStopCauseRoutes(api); registerPersonalCommandRoutes(api); registerDoctorRoutes(api); // L142 stop-cause chips (stopcauseroutes.ts) ; L152 personal / commands ; L153 « Docteur » (doctorroutes.ts)
+registerSectionRoutes(api); registerChatComfortRoutes(api, ownBot, ownAgent); registerStopCauseRoutes(api); registerPersonalCommandRoutes(api); registerDoctorRoutes(api); // L142 stop-cause chips (stopcauseroutes.ts) ; L152 personal / commands ; L153 « Docteur » (doctorroutes.ts)
 
 // ── Pause (agent/pause.ts) ───────────────────────────────────────────────────
 // Owner only: pausing decides about the owner's bots, spend and subscriptions. Someone of a workspace a bot is shared
@@ -1294,9 +1294,9 @@ registerNoticeRoutes(api); registerRoomRoutingRoutes(api); // « Qui répond » 
 registerFailureRoutes(api); registerConversationGrantRoutes(api); // « Coordinateur d'échecs » (agent/failures.ts) ; « Autoriser pour cette conversation »
 registerRecruitRoutes(api); registerHookSettingsRoutes(api); registerReportRoutes(api); // « Bot recruteur » ; webhook settings (L20) ; « Signaler cette réponse » (L31)
 registerTeamMdRoutes(api); registerRoutinePlusRoutes(api); registerConnectorPlusRoutes(api); // « Équipe Sklubot (.md) » (teammdroutes.ts): import with review, share ; routines nod 2/8/13 (routineplusroutes.ts)
-registerCommandRoutes(api); registerRelayGuardRoutes(api); registerComfortRoutes(api); registerChantierRoutes(api); // « Chantier » (chantierroutes.ts) ; « Centre de commandement » (command.ts); « Règles de sécurité » of a linked computer (relayguardroutes.ts)
+registerCommandRoutes(api); registerRelayGuardRoutes(api); registerComfortRoutes(api); registerChantierRoutes(api); registerWorkRoutes(api); // « Chantier » (chantierroutes.ts) ; wave 7 board, flows, automations, team memory (workroutes.ts) ; « Centre de commandement » (command.ts); « Règles de sécurité » of a linked computer (relayguardroutes.ts)
 registerSkillsLibraryRoutes(api); registerSecurityRoutes(api); // « Bibliothèque de compétences » (skillsroutes.ts) ; Lot 1 security (securityroutes.ts)
-registerOpenRouterRoutes(api); registerSubscriptionConnectRoutes(api); // OpenRouter, « Connecter mon compte ChatGPT / Claude »
+registerOpenRouterRoutes(api); registerSubscriptionConnectRoutes(api); registerExtensionRoutes(api); /* wave 7 (extroutes.ts) */ // OpenRouter, « Connecter mon compte ChatGPT / Claude »
 api.put("/account/password", async (c) => {
   const user = c.get("user");
   const b = await body(c);
@@ -1552,12 +1552,12 @@ api.post("/bots/:id/teach/save", async (c) => {
   try { return c.json(saveRecording(bot, { name: String(b.name ?? ""), when: String(b.when ?? ""), steps: String(b.steps ?? "") })); } catch (err) { return fail(400, (err as Error).message); }
 });
 api.post("/bots/:id/teach/discard", (c) => { dropRecording(ownAgent(c).id); return c.json({ ok: true }); });
-api.post("/bots/:id/desktop/handback", (c) => { const bot = ownAgent(c); releaseControl(bot.id); noteHandBack(bot.id); return c.json({ ok: true }); });
+api.post("/bots/:id/desktop/handback", async (c) => { const bot = ownAgent(c); releaseControl(bot.id, (await body(c)).epoch); noteHandBack(bot.id); return c.json({ ok: true }); });
 /** The viewer is in control mode ({ on: true }, renewed every 30 s) or left it: the bot's screen actions wait meanwhile. */
 api.post("/bots/:id/desktop/control", async (c) => {
   const bot = ownAgent(c);
-  if ((await body(c)).on === false) releaseControl(bot.id); else holdControl(bot.id);
-  return c.json({ ok: true });
+  // L149: a numbered lease (takeover.ts controlRequest); a renewal with an old number is refused.
+  return c.json(controlRequest(bot.id, await body(c)));
 });
 api.get("/bots/:id/engine", async (c) => {
   const bot = ownAgent(c);
@@ -2083,7 +2083,7 @@ api.post("/push/test", async (c) => {
 /** Open app windows say whether they are visible, so a finished reply is pushed only when nobody is looking. */
 api.post("/presence", async (c) => {
   const b = await body(c);
-  notePresence(c.get("user").id, String(b.clientId ?? "default"), b.visible === true);
+  notePresence(c.get("user").id, String(b.clientId ?? "default"), b.visible === true, typeof b.idleMs === "number" ? b.idleMs : null); // L151 idleMs (notifyrules.ts)
   return c.json({ ok: true });
 });
 

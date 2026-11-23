@@ -415,3 +415,31 @@ Décision du propriétaire : les commandes sont **activées par défaut** sur so
   ailleurs que dans un champ mot de passe), `password_field` (identifiant ou code dans un champ mot de passe). Le texte
   n'est jamais écrit dans le journal local (seulement le champ, le site, la longueur) et la variable est vidée après la
   frappe. Le serveur vérifie les mêmes règles avant d'envoyer (`vaultVerdict`, identique des deux côtés).
+
+## 16. Arbre d'accessibilité (révision 1.5, L164)
+
+Sur **macOS et Windows seulement** (le Relais ne liste pas ces opérations sous Linux), le bot lit les commandes d'une
+appli (boutons, champs, cases, listes…) et agit **par référence** au lieu de viser un pixel. Code :
+`companion/src/main/capabilities/accessibility.js` (tables de rôles reprises de vercel-labs/agent-desktop, Apache-2.0),
+règles dans `relay-core.js` ; côté serveur, outils `my_ui_tree` / `my_ui_act` (`server/src/agent/myui.ts`).
+
+- `ax.tree { app? }` (session de contrôle) : lit l'appli nommée, ou celle au premier plan. Réponse :
+  `{ snapshotId, app, complete, dialogs: [{ role, name }], elements: [{ ref, role, name, value?, secure?, enabled, depth, inDialog? }], text }`.
+  Une référence ressemble à `@s1a2b3:e8` ; elle n'est valable que pour cette lecture (les 3 dernières sont gardées, toutes
+  oubliées à la fin de la session). Les boîtes ouvertes (dialogue, feuille, alerte) sont listées en premier.
+- `ax.act { ref, action, text?, background?, expect? }` : `press`, `set_value`, `focus`, `toggle`, `select`, `expand`.
+  `background: true` : l'action passe par l'API d'accessibilité sans bouger le pointeur ni amener l'appli devant.
+- Refus décidés **sur l'ordinateur**, quoi que demande le serveur : appli toujours refusée ou « garder à l'écart » (même pas
+  lue) → `blocked_app` / `keep_out` ; champ mot de passe (AXSecureTextField, IsPassword) jamais rempli ni lu →
+  `password_field` (seul `focus` passe : l'utilisateur tape lui-même) ; sans `background`, l'appli doit encore être au
+  premier plan, relue juste avant → `window_changed` / `foreground_unknown` ; action qui ne va pas au rôle →
+  `invalid_args` ; référence nue, ancienne ou commande qui a changé (rôle et nom revérifiés par le script juste avant)
+  → `stale_ref`.
+- Côté serveur, en plus : la carte de prise de contrôle habituelle ; appuyer sur une commande dont les mots engagent
+  (envoyer, payer, supprimer, publier, confirmer… `committingKind`) demande une carte à usage unique, sans « Toujours ».
+- Lecture : macOS par `osascript -l JavaScript` (System Events, permission « Accessibilité » déjà demandée pour la
+  souris) ; Windows par PowerShell (System.Windows.Automation), le texte d'un `set_value` passe par l'entrée standard.
+
+**Non vérifié sur une vraie machine** : les deux scripts (JXA et PowerShell) n'ont pas pu tourner ici (pas de Mac ni de
+PC Windows) ; le découpage, les références et toutes les règles sont testés (`companion/test/unit/accessibility.test.js`,
+`server/test/relay-guard.test.ts`).

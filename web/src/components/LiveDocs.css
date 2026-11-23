@@ -1,0 +1,43 @@
+/* L178 « Documents partagés » (LiveDocs.tsx). Tokens only: light and dark follow tokens.css. */
+.livedoc-view .tasks-body { display: flex; flex-direction: column; gap: 12px; padding: 16px 20px 24px; overflow-y: auto; }
+.livedoc-lead { margin: 0; width: 100%; max-width: 900px; }
+.livedoc-list { width: 100%; max-width: 900px; }
+.livedoc-open { all: unset; display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; cursor: pointer; }
+.livedoc-open:focus-visible { outline: 2px solid var(--focus); outline-offset: 4px; border-radius: var(--r-sm); }
+.livedoc-open .list-row-title { overflow-wrap: anywhere; }
+.livedoc-editor { display: flex; flex-direction: column; gap: 10px; max-width: 900px; width: 100%; }
+.livedoc-top { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.livedoc-title { flex: 1 1 220px; min-width: 0; font-size: 17px; font-weight: 600; }
+.livedoc-status.is-saved { color: var(--ok); background: var(--ok-soft); }
+.livedoc-status.is-sending { color: var(--warn); background: var(--warn-soft); }
+.livedoc-share { border: 1px solid var(--border); border-radius: var(--r-md); padding: 8px 12px; margin: 0; display: flex; flex-wrap: wrap; gap: 6px 16px; }
+.livedoc-share legend { padding: 0 4px; font-size: 13px; color: var(--text-2); }
+.livedoc-bot { display: inline-flex; gap: 6px; align-items: center; min-height: 32px; }
+.livedoc-text { height: 52vh; min-height: 220px; flex: none; font-family: var(--mono); font-size: 14px; line-height: 1.55; resize: vertical; width: 100%; box-sizing: border-box; }
+.livedoc-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.livedoc-history { max-width: 900px; }
+.livedoc-change { gap: 8px; flex-wrap: wrap; }
+.livedoc-change .list-row-text { flex: 1 1 200px; min-width: 0; }
+.livedoc-past { border: 1px solid var(--border-strong); border-radius: var(--r-md); background: var(--surface-2); padding: 8px 12px; }
+.livedoc-past-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.livedoc-past pre { white-space: pre-wrap; overflow-wrap: anywhere; font-family: var(--mono); font-size: 13px; margin: 6px 0 0; max-height: 40vh; overflow: auto; color: var(--text); }
+@media (max-width: 640px) {
+  .livedoc-view .tasks-body { padding: 12px 12px 20px; }
+  .livedoc-text { height: 46vh; font-size: 15px; }
+}
+/* Wave 7 settings panels (ExtensionsPanels.tsx). */
+.ext-panel { display: flex; flex-direction: column; gap: 8px; margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--border); }
+.ext-panel h3 { margin: 0; font-size: 16px; }
+.ext-panel > p { margin: 0; }
+.ext-row, .ext-plugin { flex-wrap: wrap; gap: 8px; }
+.ext-row .list-row-text, .ext-plugin .list-row-text { flex: 1 1 220px; min-width: 0; }
+.ext-row .list-row-sub, .ext-plugin .list-row-sub { overflow-wrap: anywhere; }
+.ext-form { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface-2); }
+.ext-form .field-label { display: flex; flex-direction: column; gap: 4px; font-size: 14px; color: var(--text-2); }
+.ext-search { display: flex; gap: 8px; flex-wrap: wrap; }
+.ext-search .input { flex: 1 1 200px; min-width: 0; }
+.ext-manifest { min-height: 180px; font-family: var(--mono); font-size: 13px; }
+.ext-actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.ext-warn { color: var(--warn); }
+.ext-danger { color: var(--danger); font-weight: 600; }
+.ext-finding { font-family: var(--mono); font-size: 12px; }

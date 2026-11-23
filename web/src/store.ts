@@ -199,7 +199,7 @@ interface Store {
   history: HistoryTarget | null;
 
   selectedId: string | null;
-  view: "chat" | "tasks" | "today" | "surveillance" | "announcements" | "command" | "inbox"; // "inbox": « À toi » (L139)
+  view: "chat" | "tasks" | "today" | "surveillance" | "announcements" | "command" | "inbox" | "docs"; // "inbox": « À toi » (L139)
   detailsOpen: boolean;
   sidebarCollapsed: boolean;
   mobileNav: boolean;
@@ -260,7 +260,7 @@ interface Store {
   removeUpload(botId: string, id: string): void;
   clearUploads(botId: string, ids: string[]): void;
   setTheme(theme: Theme): void;
-  setView(view: "chat" | "tasks" | "today" | "surveillance" | "announcements" | "command" | "inbox"): void;
+  setView(view: "chat" | "tasks" | "today" | "surveillance" | "announcements" | "command" | "inbox" | "docs"): void;
   toggleDetails(open?: boolean): void;
   toggleSidebar(): void;
   setMobileNav(open: boolean): void;
@@ -433,7 +433,7 @@ export const useStore = create<Store>((set, get) => ({
     // Opened from the daily digest (/?view=today): the Today page; from a Sentinelle alert (/?view=surveillance): Surveillance.
     const wantedView = new URLSearchParams(window.location.search).get("view");
     // « Centre de commandement »: /?view=command.
-    if (wantedView === "today" || wantedView === "surveillance" || wantedView === "command") {
+    if (wantedView === "today" || wantedView === "surveillance" || wantedView === "command" || wantedView === "docs") { // "docs": L178 shared documents
       get().setView(wantedView);
       window.history.replaceState(null, "", window.location.pathname);
     }
@@ -757,7 +757,7 @@ export const useStore = create<Store>((set, get) => ({
         set((s) => ({ live: { ...s.live, [ev.botId]: ev.live } }));
         if (!was && ev.live.awaiting && document.visibilityState !== "visible") {
           const bot = get().bots[ev.botId];
-          if (bot) notifyBot(bot.id, bot.name, firstWords(ev.live.awaiting.reason || t("notify.waiting")), () => get().selectBot(bot.id));
+          if (bot) notifyBot(bot.id, bot.name, firstWords(ev.live.awaiting.reason || t("notify.waiting")), () => get().selectBot(bot.id), "needs");
         }
         break;
       }

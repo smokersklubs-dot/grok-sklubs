@@ -22,6 +22,7 @@ const { createDesktopCaps } = require('./capabilities/desktop');
 const { createBotPointer } = require('./bot-pointer');
 const { runShell } = require('./capabilities/shell');
 const { createFileCaps, shareProblem } = require('./capabilities/files');
+const { createAccessibilityCaps } = require('./capabilities/accessibility');
 const i18n = require('./i18n');
 const { AppSettings } = require('./app-settings');
 const { createAppShell } = require('./app-window');
@@ -122,7 +123,7 @@ async function boot() {
   core = new RelayCore({
     send: (msg) => (conn ? conn.send(msg) : false),
     // Files: only in the folders the user shares below; the previous version of a file goes to the OS trash.
-    caps: { ...desktop, runShell: awake.during(runShell), ...createFileCaps({ getFolders: () => store.folders(), trash: (p) => shell.trashItem(p) }) },
+    caps: { ...desktop, ...axCaps(), runShell: awake.during(runShell), ...createFileCaps({ getFolders: () => store.folders(), trash: (p) => shell.trashItem(p) }) },
     ui: consentUI,
     store,
     log,
@@ -227,7 +228,16 @@ function startConnection() {
 }
 
 function capabilityList() {
-  return Object.keys(OPS).filter((op) => !(op === 'window.focus' && process.platform === 'linux' && !hasWmctrl()));
+  return Object.keys(OPS).filter((op) => !(op === 'window.focus' && process.platform === 'linux' && !hasWmctrl()))
+    // The accessibility tree (L164) is offered on macOS and Windows only.
+    .filter((op) => !op.startsWith('ax.') || process.platform === 'darwin' || process.platform === 'win32');
+}
+
+/** Accessibility tree (L164): read an app, act by reference. macOS needs the Accessibility permission (same as robotjs). */
+function axCaps() {
+  if (process.platform !== 'darwin' && process.platform !== 'win32') return {};
+  const ax = createAccessibilityCaps({ trusted: () => process.platform !== 'darwin' || electron.systemPreferences.isTrustedAccessibilityClient(false) });
+  return { axRead: (/** @type {any} */ a) => ax.readRaw(a), axAct: (/** @type {any} */ a) => ax.act(a) };
 }
 
 function hasWmctrl() {

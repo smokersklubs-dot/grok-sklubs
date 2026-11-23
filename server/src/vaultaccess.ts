@@ -1,6 +1,7 @@
 import { q } from "./db.js";
 import { audit, bots, now, vault, type BotRecord } from "./store.js";
 import type { BuiltinTool } from "./agent/tools.js";
+import { refreshLinked } from "./vaultlive.js";
 
 /**
  * L41 — finer rules for each vault item (Rakazo, Noah audits).
@@ -84,6 +85,7 @@ export function guardVault(tools: BuiltinTool[]): BuiltinTool[] {
       run: async (a, c) => {
         const item = vault.byName(c.user.id, String(a[arg] ?? ""));
         if (item && !vaultAccess.allowed(item.id, c.bot.id)) { vaultAccess.note(item.id, c.user.id, c.bot, t.spec.name, hostIn(a), false); return { content: reservedLine(item.name), isError: true, summary: "reserved" }; }
+        if (item) { const why = await refreshLinked(item); if (why) { vaultAccess.note(item.id, c.user.id, c.bot, t.spec.name, hostIn(a), false); return { content: why, isError: true, summary: "live vault unreachable" }; } } // L179: linked 1Password / Bitwarden item read again first (vaultlive.ts)
         const out = await t.run(a, c);
         if (item) vaultAccess.note(item.id, c.user.id, c.bot, t.spec.name, hostIn(a), !out.isError);
         return out;

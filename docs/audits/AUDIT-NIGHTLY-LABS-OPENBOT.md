@@ -270,7 +270,7 @@ Taille : S (moins d'un jour), M (quelques jours), L (une semaine ou plus). Chemi
 - **nightly.** Salon avec un **responsable** de la tâche, délégation explicite, boutons Réassigner / Archiver / Restaurer. Consignes : un coéquipier ne voit pas ton chat, donc message autonome (but, demande complète, contexte, ce qui a été essayé, ce qui a été approuvé) ; tu restes responsable de ce que tu délègues ; pas d'accusés de réception en boucle.
 - **Sklubot.** Mention puis routage (`agent/roomrouting.ts`), 3 rebonds, budget, `stay_quiet`. Testé.
 - **Différence.** Le routage de Sklubot est plus automatique ; ce qui manque est la **qualité du message de délégation**. Aujourd'hui `bot_message` peut envoyer « fais ça » sans contexte.
-- **Corrections.** Deux phrases dans le prompt : message de délégation autonome, et responsabilité de ce qu'on délègue (S). Option « responsable » dans un salon (M).
+- **Corrections.** Deux phrases dans le prompt : message de délégation autonome, et responsabilité de ce qu'on délègue (S). Option « responsable » dans un salon (M) — ✅ fait le 2026-11-23 (L155 : Responsable, Réassigner, Archiver, Restaurer).
 
 ### 8. Appel vocal
 

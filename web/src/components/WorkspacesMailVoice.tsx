@@ -1,4 +1,5 @@
 import { useEffect, useId, useState, type FormEvent } from "react";
+import { RealtimeVoice } from "./RealtimeVoice"; // L167
 import { api, enc, errText } from "../api";
 import { useT } from "../i18n";
 import { useStore } from "../store";
@@ -419,6 +420,7 @@ export function VoiceSection() {
         <label className="field-label">{t("voice.sensitivity", { ms: s.bargeIn.minSpeechMs })}</label>
         <input type="range" min={100} max={1000} step={50} value={s.bargeIn.minSpeechMs} onChange={(e) => set({ bargeIn: { ...s.bargeIn, minSpeechMs: Number(e.target.value) } })} aria-label={t("voice.sensitivityAria")} />
       </div>
+      <RealtimeVoice />
       <ErrorNote onDismiss={() => setError(null)}>{error}</ErrorNote>
       <div className="row-end">
         <button type="button" className="btn btn-small" onClick={() => void runTest()}>{t("voice.test")}</button>

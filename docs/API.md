@@ -315,8 +315,11 @@ A subscription answered 404/410 by its push service is deleted.
 | Method | Path | Body | Returns |
 |---|---|---|---|
 | POST | `/bots/:id/takeover/:takeoverId/done` | – | `{ ok }` — "I'm done, hand it back": the waiting `ask_takeover` call returns; after a restart a new turn is started instead |
-| POST | `/bots/:id/desktop/control` | `{ on: boolean }` | `{ ok }` — the viewer is in control mode (renew every 30 s; lease 75 s) |
-| POST | `/bots/:id/desktop/handback` | – | `{ ok }` — also ends the control lease |
+| POST | `/bots/:id/desktop/control` | `{ on: true }` · `{ on: true, epoch }` · `{ on: false, epoch? }` | `{ ok, epoch? }` — L149 numbered lease: `{ on: true }` takes a new lease (`epoch`), a renewal names it (every 30 s; lease 75 s) and gets `ok: false` once that number is no longer the lease (handed back, lapsed, restart) |
+| POST | `/bots/:id/desktop/handback` | `{ epoch? }` | `{ ok }` — hands the screen back; with `epoch`, only that lease (an older hand-back never ends a newer one) |
+| GET / PUT | `/bots/:id/limits` | PUT `{ botId, minutes: 1–240 \| null }` | `{ limits: { botId: minutes }, min, max, held: [botId] }` — L155, a group's time limit per member and the members on hold (« stop @Bot ») |
+| POST | `/bots/:id/rows/:seq/archive` | `{ archived: boolean }` | `{ action }` — L155 « Archiver » / « Restaurer » a routed task of a group (`status: "archived"`); `/rows/:seq/reroute` (« Réassigner ») works on open and rerouted tasks |
+| GET / PUT | `/voice/realtime` | PUT `{ enabled?, model?, voice? }` | `{ realtime: { enabled, model, voice, available, reason }, models, voices }` — L167 real-time voice model option (off by default; uses the account's own OpenAI key; never returns it) |
 
 Card `{ type: "takeover", takeoverId, reason: TakeoverReason, detail, status, expiresAt }`. The tool waits up to 30 min
 (`TAKEOVER_TIMEOUT_MS` overrides it). While the user drives the screen — a live screen open in control mode (counted in
@@ -810,3 +813,6 @@ Bot settings → Accès API → « Webhooks sortants » (owner, session): `GET/P
 
 ### Import from a local setup (`server/src/localimport.ts`)
 `POST /import/local/preview { files: [{ path, text }], source? }` (`source`: `claude-code`, `codex`, `openclaw`, `hermes`, else detected) → the Grok preview (`GrokImportPreview`) plus `source`, `excluded: [{ path, why }]`, `read`. Commit with `POST /import/grok/commit` and the same `previewId`. Files never read: `.env*`, `auth.json`, `.credentials.json`, `credentials*`, keys, tokens, SQLite; settings that may hold keys (`config.toml`, `config.yaml`, `openclaw.json`, `settings*.json`, `.claude.json`, `.mcp.json`). 300 files, 200 KB each, 2 MB in all.
+
+### Wave 7 comfort (`server/src/chatcomfortroutes.ts`)
+Owner only. `GET /bots/:id/deletion-preview`, `GET /bot-trash`, `POST /bot-trash/:id/restore`, `DELETE /bot-trash/:id`, `GET /bots/:id/export`, `POST /bots/import` (bottrash.ts, botfile.ts) · `GET /bots/:id/conversations?automatic=1|0&folder=&q=`, `PATCH /bots/:id/conversations/:gen` (`title`, `pinned`, `folder`, `model`), `POST /bots/:id/conversations/:gen/open` (convs.ts) · `GET /bell`, `POST /bell/read`, `DELETE /bell` (notifyrules.ts; `POST /presence` now takes `idleMs`) · `GET|PUT /bots/:id/style`, `GET|PUT /history-retention` · `POST /bots/:id/rows/:seq/pin`, `DELETE /bots/:id/rows/:seq` · `GET /bots/:id/files/office-preview?path=` (officepreview.ts) · `GET /pages/:token/diff?from=&to=`, `GET /pages/:token/standalone`, `GET /pages/:token/a4`, `POST /pages/:token/capture` (`selector`, `width`, `dark`; pageextras.ts).

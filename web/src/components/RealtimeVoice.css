@@ -1,0 +1,6 @@
+/* L167 « Modèle vocal temps réel » (RealtimeVoice.tsx). */
+.realtime-voice { display: grid; gap: 6px; margin-top: 4px; }
+.realtime-voice-warn { margin: 0; padding: 8px 10px; border-radius: 8px; background: var(--warn-soft); color: var(--text); font-size: 13px; }
+.realtime-voice-pickers { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px 12px; }
+.realtime-voice .realtime-voice-pickers select.input { width: 100%; max-width: none; }
+.realtime-voice-pickers .field { margin: 0; }

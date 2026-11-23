@@ -5,6 +5,7 @@
 import { AppState } from "react-native";
 import { create } from "zustand";
 import { ApiClient, checkHealth } from "../api/client";
+import { phoneRequestsEvent } from "../lib/phoneRequests";
 import { EventStream } from "../api/sse";
 import type { Attachment, Bot, BotBundle, Live, MeResponse, Row, ServerEvent, Task, User } from "../api/types";
 import { errText, getLocale, setLocale, t } from "../i18n";
@@ -119,6 +120,7 @@ function startStream() {
       if (!ev || typeof ev !== "object") return;
       if (ev.type === "hello") { stream?.resetBackoff(); return; }
       if (ev.type === "ping") return;
+      if (phoneRequestsEvent(ev as { type?: unknown })) return; // L177 (lib/phoneRequests.ts)
       useStore.getState().applyEvent(ev);
     },
   });

@@ -383,3 +383,78 @@ WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEM
 COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
 OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
+
+## milind-soni/OpenMausBot — Apache License 2.0 (group holds and per-member time limit, code adapted)
+
+- Source: https://github.com/milind-soni/OpenMausBot, commit `6ef53dd808eecd0669edd5e639f151fca87b246c` (cloned
+  23/11/2026, files `server/room-holds.ts` and `server/room-turn-timeout.ts` only), Copyright 2026 Milind Soni and
+  OpenMausBot contributors, Apache License 2.0 — https://www.apache.org/licenses/LICENSE-2.0.
+- Adapted in `server/src/agent/roomholds.ts` (L155): `maskQuotedAndCode`, the stop-word placement next to a mention,
+  `classifyHoldDirective` / applying holds, and the limit range check of the per-member time limit. Modified for
+  Sklubot: French stop and resume words, holds stored in SQLite (kept after a restart), a typed « reprends @Bot »,
+  the time limit as a watchdog over Sklubot's live state instead of engine events, texts in the owner's language.
+- Upstream NOTICE (first lines, reproduced as required by section 4(d) of the licence):
+
+```text
+OpenMausBot
+Copyright 2026 Milind Soni and OpenMausBot contributors
+
+OpenMausBot was relicensed from the MIT License to the Apache License,
+Version 2.0, with the consent of all contributors whose copyright was
+incorporated before the transition.
+```
+
+  (The rest of the upstream NOTICE concerns T3 Code portions and other parts that Sklubot does not use.)
+
+## thomasbek3/hermes-bot-kit — MIT License (screen viewer)
+
+- Source: https://github.com/thomasbek3/hermes-bot-kit, commit `ae8a590e5ac21fdbdf77dc4ddc030e59acd15a68` (cloned
+  23/11/2026, `computer-viewer/plugin.js` only; its vendored noVNC copy under MPL-2.0 was not used).
+- Copyright (c) 2026 Thomas Bekkers. MIT License: permission is hereby granted, free of charge, to any person obtaining a
+  copy of this software and associated documentation files, to deal in the Software without restriction, provided the
+  copyright notice and this permission notice are included in all copies or substantial portions of the Software. THE
+  SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.
+- Adapted in `web/src/lib/reconnect.ts` (L149): the reconnect delays (1, 2, 4, 8, 15 s, 5 tries), pasting the
+  clipboard into the remote screen and saving a capture. Modified for Sklubot: pure functions, a paste that also sends
+  Ctrl+V, a capture named after the bot, French messages.
+
+## vercel-labs/agent-desktop — Apache License 2.0 (Relais accessibility tree, L164)
+
+- Source: https://github.com/vercel-labs/agent-desktop, commit `e8934a5e95e1d212c74ead95cd3e4701c04eca31` (cloned 23/11/2026).
+- Licence: Apache License, Version 2.0 — https://www.apache.org/licenses/LICENSE-2.0 (full text in the upstream `LICENSE`).
+  Copyright Vercel, Inc. The upstream repository ships no NOTICE file.
+- Adapted in `companion/src/main/capabilities/accessibility.js`: the canonical role vocabulary and the list of
+  interactive roles (`crates/core/src/tree/roles.rs`), the macOS AXRole / AXSubrole tables (`crates/macos/src/tree/roles.rs`),
+  the Windows UI Automation ControlType table and its pattern refinements (`crates/windows/src/tree/roles.rs`), and the
+  rule that a reference belongs to its snapshot. Modified: rewritten in JavaScript; the tree is read by osascript (JXA)
+  and PowerShell instead of the Rust adapters; no CLI, no telemetry; secure-field values never read; every action goes
+  through the Relais safety rules.
+
+## Operational-Transformation/ot.js — MIT License (shared documents, L178)
+
+- Source: https://github.com/Operational-Transformation/ot.js, commit `e9a3a0e214dd6c001e25515274bae0842a8415f2`.
+- Adapted in `server/src/clientshared/textop.ts` (TextOperation: retain / insert / delete, apply, invert, compose,
+  transform; the client states of `lib/client.js`). Modified: TypeScript, input validation, `diffOp` and
+  `transformIndex` added, no undo-manager or socket adapters.
+
+```text
+Copyright © 2012-2014 Tim Baumann, http://timbaumann.info
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the “Software”), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+```

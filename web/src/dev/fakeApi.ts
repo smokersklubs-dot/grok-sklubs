@@ -14,7 +14,7 @@ import { hookSignedFixture, hookTestFixture, reportsFixture } from "./trustFixtu
 import { relayGuardFixture } from "./relayGuardFixtures";
 import { routineExtrasFixture, routinePreviewFixture } from "./routineFixtures";
 import { botSecurityFixture, browserFixture, recipientsFixture, securitySettingsFixture, vaultAccessFixture } from "./securityFixtures";
-import { channelsFixture } from "./GalleryChannels"; import { comfort6Get } from "./GalleryComfort6"; import { inboxFixture } from "./turnFixtures";
+import { channelsFixture } from "./GalleryChannels"; import { comfort6Get } from "./GalleryComfort6"; import { comfort7Get, officeFixture } from "./GalleryComfort7"; import { inboxFixture } from "./turnFixtures"; import { extensionsGet } from "./GalleryExtensions";
 
 export interface FakeApiState extends FixtureOptions { empty: boolean; fail: boolean }
 
@@ -72,6 +72,8 @@ export function installFakeApi(get: () => FakeApiState): void {
       return s.fail ? json(500, { error: s.lang === "fr" ? "Exemple d'erreur : le serveur n'a pas pu le faire." : "Sample error: the server could not do it." }) : json(200, {});
     }
     { const w6 = comfort6Get(path, s); if (w6 !== undefined) return json(200, w6); } // wave 6 comfort (GalleryComfort6.tsx)
+    { const x7 = extensionsGet(path, s); if (x7 !== undefined) return json(200, x7); } // wave 7 extensions (GalleryExtensions.tsx)
+    { const w7 = path.endsWith("/files/office-preview") ? officeFixture(url.searchParams.get("path") ?? "", s) : comfort7Get(path, s); if (w7 !== undefined) return json(200, w7); } // wave 7 comfort (GalleryComfort7.tsx)
     if (path === "/today") return json(200, todayReport(s, s.empty));
     if (path === "/inbox") return json(200, inboxFixture(s)); // L139 « À toi »
     if (/^\/routines\/[^/]+\/extras$/.test(path)) return json(200, routineExtrasFixture(s, s.empty));

@@ -14,8 +14,9 @@ const PROTOCOL_VERSION = 1;
  * keyboard.press, `scripts` on shell.run, and the refusal codes blocked_app, keep_out, password_field… (guard.js).
  * 1.4: commands on by default (owner switch), project folders, shell.start/read/stop (background), output streamed as
  * `shell.output` events, vault.type (a saved login typed by the relay after its own checks).
+ * 1.5 (L164): ax.tree / ax.act — the accessibility tree of an app and actions by reference (macOS, Windows only).
  */
-const PROTOCOL_REVISION = '1.4';
+const PROTOCOL_REVISION = '1.5';
 const CONNECT_PATH = '/api/relay/connect';
 
 /** Size limits (bytes). Server → client messages above MAX_INBOUND are rejected by `ws` (close 1009). */
@@ -87,6 +88,9 @@ const OPS = Object.freeze({
   'shell.read': { session: true, input: false },
   'shell.stop': { session: true, input: false },
   'vault.type': { session: true, input: true },
+  // Accessibility tree (1.5, L164): read an app's controls, act on one by reference (capabilities/accessibility.js).
+  'ax.tree': { session: true, input: false },
+  'ax.act': { session: true, input: true },
 });
 
 const ERR = Object.freeze({
@@ -126,6 +130,8 @@ const ERR = Object.freeze({
   HOST_UNKNOWN: 'host_unknown',
   APP_MISMATCH: 'app_mismatch',
   NOT_PASSWORD_FIELD: 'not_password_field',
+  // Accessibility (1.5).
+  STALE_REF: 'stale_ref',
 });
 
 /** Keys accepted by keyboard.press (names follow @jitsi/robotjs' key table, src/robotjs.cc). */
@@ -370,6 +376,18 @@ function validateArgs(op, rawArgs) {
       return { path: str(args.path, 'path', LIMITS.MAX_PATH), cwd: args.cwd === undefined || args.cwd === null ? null : str(args.cwd, 'cwd', 1024) };
     case 'guard.set':
       return { keepApps: parseStrList(args.keepApps, 'keepApps'), keepFolders: parseStrList(args.keepFolders, 'keepFolders'), projectFolders: parseStrList(args.projectFolders, 'projectFolders'), terminal: args.terminal !== false };
+    case 'ax.tree': {
+      const app = args.app === undefined || args.app === null ? null : str(args.app, 'app', 100).trim();
+      if (app !== null && (!/^[\p{L}\p{N} ._+-]{1,100}$/u.test(app) || app.startsWith('-'))) throw new ProtocolError(ERR.INVALID_ARGS, 'invalid application name');
+      return { app: app || null, interactiveOnly: args.interactiveOnly !== false };
+    }
+    case 'ax.act': {
+      const action = str(args.action, 'action', 16);
+      if (!['press', 'set_value', 'focus', 'toggle', 'select', 'expand'].includes(action)) throw new ProtocolError(ERR.INVALID_ARGS, 'action must be press, set_value, focus, toggle, select or expand');
+      const text = args.text === undefined ? '' : str(args.text, 'text', LIMITS.MAX_TYPE_TEXT * 4).slice(0, LIMITS.MAX_TYPE_TEXT);
+      if (action === 'set_value' && args.text === undefined) throw new ProtocolError(ERR.INVALID_ARGS, 'text required');
+      return { ref: str(args.ref, 'ref', 40), action, text, background: args.background === true, expect: parseExpect(args.expect) };
+    }
     case 'fs.roots':
       return {};
     case 'fs.list':

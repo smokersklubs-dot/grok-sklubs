@@ -484,6 +484,48 @@ test("isolation: another account cannot see this computer's rules nor fill this 
   cookie = keep;
 });
 
+test("L164 accessibility tree: read by reference, act in the background, committing press asked once, refused apps and stale refs", async () => {
+  // Without the capability (Linux relay): the tools say so and send nothing.
+  const none = await run('call my_ui_tree {"app":"Mail"}');
+  assert.match(none.reply, /does not offer the accessibility tree/);
+  assert.ok(!none.ops.includes("ax.tree"));
+  relay.close();
+  await until(async () => (await call("GET", "/relay/devices")).json.devices[0].status !== "online", "offline");
+  const token = relay.token;
+  relay = await new TestRelay().open({ deviceId, token }, [...CAPS, ...GUARD_CAPS, "ax.tree", "ax.act"]);
+  await until(() => relay.msgs.some((m) => m.type === "welcome"), "welcome");
+  relay.handlers["ax.tree"] = () => ({ result: { snapshotId: "sab12", app: "Mail", complete: true, dialogs: [{ role: "sheet", name: "Brouillon" }],
+    elements: [{ ref: "@sab12:e1", role: "textfield", name: "À", value: "lea@example.com", enabled: true, depth: 1 }, { ref: "@sab12:e2", role: "button", name: "Envoyer", enabled: true, depth: 1 }, { ref: "@sab12:e3", role: "textfield", name: "Mot de passe", secure: true, enabled: true, depth: 1 }, { ref: "@sab12:e4", role: "button", name: "Mise en forme", enabled: true, depth: 1 }],
+    text: "Open dialogs: sheet “Brouillon”\n- textfield “À” = “lea@example.com” [@sab12:e1]\n- button “Envoyer” [@sab12:e2]\n- textfield “Mot de passe” (password field: the user types it) [@sab12:e3]\n- button “Mise en forme” [@sab12:e4]" } });
+  relay.handlers["ax.act"] = (a) => ({ result: { done: true, ref: a.ref, action: a.action } });
+  await run("call my_screen {}");
+  const blocked = await run('call my_ui_tree {"app":"1Password"}');
+  assert.ok(!blocked.ops.includes("ax.tree"), "a refused app is never read");
+  const tree = await run('call my_ui_tree {"app":"Mail"}');
+  assert.match(tree.reply, /Open dialogs: sheet/);
+  assert.match(tree.reply, /\[@sab12:e2\]/);
+  const fmt = await run('call my_ui_act {"ref":"@sab12:e4","action":"press","background":true}');
+  const sent = fmt.reqs.find((r) => r.op === "ax.act");
+  assert.ok(sent && sent.args.background === true && !fmt.card, fmt.reply);
+  const fill = await run('call my_ui_act {"ref":"@sab12:e1","action":"set_value","text":"paul@example.com"}');
+  assert.equal(fill.reqs.find((r) => r.op === "ax.act")?.args.text, "paul@example.com");
+  const pwd = await run('call my_ui_act {"ref":"@sab12:e3","action":"set_value","text":"x"}');
+  assert.match(pwd.reply, /password field/);
+  assert.ok(!pwd.ops.includes("ax.act"));
+  const stale = await run('call my_ui_act {"ref":"@zz999:e1","action":"press"}');
+  assert.match(stale.reply, /out of date/);
+  assert.ok(!stale.ops.includes("ax.act"));
+  const send = await run('call my_ui_act {"ref":"@sab12:e2","action":"press"}', "always");
+  assert.match(send.card.title, /Envoyer/);
+  assert.ok(send.ops.includes("ax.act"));
+  const again = await run('call my_ui_act {"ref":"@sab12:e2","action":"press"}', "deny");
+  assert.ok(again.card, "asked again: “Always” does not hold for a committing press");
+  assert.ok(!again.ops.includes("ax.act"));
+  relay.handlers["ax.act"] = () => ({ error: { code: "stale_ref", message: "changed" } });
+  const changed = await run('call my_ui_act {"ref":"@sab12:e4","action":"press"}');
+  assert.match(changed.reply, /out of date/);
+});
+
 test("an old relay without the safety checks: no click or key is sent, the user is asked to update", async () => {
   relay.close();
   await until(async () => (await call("GET", "/relay/devices")).json.devices[0].status !== "online", "offline");

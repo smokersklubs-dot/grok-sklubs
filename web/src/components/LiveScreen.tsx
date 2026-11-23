@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import RFBExport from "@novnc/novnc/lib/rfb.js";
+import type { ScreenClient } from "../lib/reconnect";
 
 // The client is published as CommonJS; depending on the bundler its class arrives wrapped once more.
 const RFB: typeof RFBExport = (RFBExport as unknown as { default?: typeof RFBExport }).default ?? RFBExport;
@@ -8,16 +9,18 @@ const RFB: typeof RFBExport = (RFBExport as unknown as { default?: typeof RFBExp
  * A bot's Linux screen, streamed live (remote-screen protocol over a WebSocket). In watch mode the
  * server only opens a view-only stream, so nothing typed or clicked here can reach the computer.
  */
-export function LiveScreen({ botId, control, label, onConnect, onClose }: {
+export function LiveScreen({ botId, control, label, onConnect, onClose, onClient }: {
   botId: string;
   control: boolean;
   label: string;
   onConnect?: () => void;
   onClose?: () => void;
+  /** L149: the connected client (paste, Ctrl+Alt+Del, capture), or null once the stream is closed. */
+  onClient?: (client: ScreenClient | null) => void;
 }) {
   const box = useRef<HTMLDivElement>(null);
-  const handlers = useRef({ onConnect, onClose });
-  handlers.current = { onConnect, onClose };
+  const handlers = useRef({ onConnect, onClose, onClient });
+  handlers.current = { onConnect, onClose, onClient };
 
   useEffect(() => {
     if (!box.current) return;
@@ -36,9 +39,9 @@ export function LiveScreen({ botId, control, label, onConnect, onClose }: {
     rfb.viewOnly = !control;
     rfb.focusOnClick = control;
     rfb.background = "transparent";
-    rfb.addEventListener("connect", () => { handlers.current.onConnect?.(); if (control) rfb.focus(); });
-    rfb.addEventListener("disconnect", () => handlers.current.onClose?.());
-    return () => { try { rfb.disconnect(); } catch { /* already closed */ } };
+    rfb.addEventListener("connect", () => { handlers.current.onClient?.(rfb); handlers.current.onConnect?.(); if (control) rfb.focus(); });
+    rfb.addEventListener("disconnect", () => { handlers.current.onClient?.(null); handlers.current.onClose?.(); });
+    return () => { handlers.current.onClient?.(null); try { rfb.disconnect(); } catch { /* already closed */ } };
   }, [botId, control]);
 
   return <div className={`live-screen ${control ? "is-control" : ""}`} ref={box} role="img" aria-label={label} />;

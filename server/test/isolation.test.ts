@@ -214,6 +214,10 @@ function resolve(routePath: string, param: string, bot: "bot1" | "bot2"): string
     "channel-groups:gid": "a_group",
     // Turn control (turncontrolroutes.ts, messageactionroutes.ts): a kept note, a change to undo (the owner's alone).
     "notes:noteId": "1", "undo:undoId": "und_alpha",
+    // Wave 7 comfort (chatcomfortroutes.ts): a trashed bot, a conversation of A's bot (restore, rename, reopen are the owner's alone).
+    "bot-trash:trashId": "a_trash", "conversations:gen": "1",
+    // Wave 7 extensions (extroutes.ts): a shared document and one of its versions, a phone request, another agent, a plugin; the one-time location page.
+    "livedocs:id": "a_livedoc", "at:rev": "1", "requests:id": "a_phonereq", "remote-agents:id": "a_ragent", "plugins:pid": "a_plugin", "where:token": "not-a-real-token-for-the-location-page", "team-guest:token": "not-a-real-guest-link-token", "tasks:id": "a_boardtask", "ideas:id": "a_boardidea", "files:fid": "a_boardfile", "flows:id": "a_flow", "team-memory:kind": "workspace", "workspace:id": "a_workspace", "guests:gid": "a_guest", "flow-runs:rid": "a_flowrun", "shots:n": "0", "proposals:key": "a_proposalskey", "team-notes:nid": "a_team-notesnid", "triggers:id": "a_trigger",
   };
   if (param === "action" && prev2 === "reach") return "login";
   if (param === "rid" && prev2 === "resources") return "a_conn";
@@ -238,7 +242,7 @@ function fill(routePath: string, bot: "bot1" | "bot2"): string {
  * token, an invitation) or they say nothing about anyone. They are still called below: with A's tokens unknown to B
  * (not-a-real-…) they must say nothing; with A's real hook token they do what a hook does (that token IS the secret).
  */
-const PUBLIC = new Set(["POST /hooks/:token", "GET /invites/:token", "GET /native/:vendor/callback", "GET /p/:token", "GET /p/:token/", "GET /p/:token/*", "GET /p/:token/s/:sig/*", "GET /p/:token/v/:id/:sig/*", "GET /l/:token", "HEAD /l/:token", "GET /plan-invites/:token", "POST /billing/webhook/:provider"]);
+const PUBLIC = new Set(["POST /hooks/:token", "GET /invites/:token", "GET /native/:vendor/callback", "GET /p/:token", "GET /p/:token/", "GET /p/:token/*", "GET /p/:token/s/:sig/*", "GET /p/:token/v/:id/:sig/*", "GET /l/:token", "HEAD /l/:token", "GET /plan-invites/:token", "POST /billing/webhook/:provider", "GET /phone/where/:token", "POST /phone/where/:token", "GET /team-guest/:token", "POST /team-guest/:token"]);
 /** Whether this run is the hosted-mode one (isolation-hosted.test.ts). */
 const HOSTED = process.env.HOSTED_MODE === "1";
 /**

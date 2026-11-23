@@ -1,0 +1,9 @@
+/* L149 — the large screen view: reconnect states, screen tools, « the bot is using its screen ». The viewer is always dark. */
+.live-wait button { pointer-events: auto; }
+.live-wait p { max-width: 34ch; text-align: center; }
+.viewer-tools { display: inline-flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; }
+.viewer-tools .btn { min-height: 40px; }
+.viewer-tool-note { font-size: 13px; color: #c9ced6; }
+.viewer-bot-driving { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 3; display: inline-flex; align-items: center; gap: 8px; width: max-content; max-width: calc(100% - 24px);
+  padding: 6px 12px; border-radius: 16px; background: rgba(15, 18, 24, .82); color: #f2f4f7; font-size: 13px; line-height: 1.35; text-align: center; overflow-wrap: anywhere; pointer-events: none; }
+.screen-hero-wait button { pointer-events: auto; }

@@ -32,7 +32,7 @@ import { generatePassword, parseTotp, totpNow } from "../totp.js";
 import { seal } from "../auth.js";
 import { askAndWait, createRoom, deliverBotMessage, dispatchToRoom, MAX_HELPERS, MAX_HOPS, startHelper, waitsOn } from "./team.js";
 import { addressesNoBot, BREAKER_LINE, dmChannel, postBudget, roomChannel, type Verdict } from "./roombudget.js";
-import { myComputerTools } from "./mycomputer.js";
+import { myComputerTools } from "./mycomputer.js"; import { myUiTools } from "./myui.js"; import { liveDocTools } from "./livedoctools.js"; import { phoneTools } from "./phonetools.js"; import { remoteAgentTools } from "./remoteagenttools.js"; // wave 7: L164 L178 L177 L172 L174
 import { botTools, profileTools, progressTools, skillImportTools, xSearchAvailable, xTools } from "./tools-team.js"; import { roomTools } from "./tools-room.js";
 import { bgTasks, bgTaskToolSpecs, publicTask, startTask, stopTask, TaskLimitError } from "./bgtasks.js";
 import { findCode, mailAccounts } from "../native/access.js";
@@ -70,7 +70,7 @@ import { officeAvailable, officeTools } from "../office.js";
 import { mediaAvailable, mediaTools } from "../media.js";
 import { goalTools } from "./goals.js";
 import { memoryPrefs } from "./memoryprefs.js"; import { searchNotesSmart } from "./semantic.js";
-import { forgetNotes } from "./memorybook.js";
+import { forgetNotes } from "./memorybook.js"; import { memoryKeep } from "./memorykeep.js"; import { recordable } from "./flowrecord.js"; // L66 ; L165 recorded flows
 import { recruitTools } from "./recruit.js";
 import { teamMdTools } from "./teamexport.js"; import { stepTools } from "./tools-steps.js"; import { waitTools } from "./waitlater.js"; import { offerUndo, undoText } from "./undoable.js"; import { planTools, questionCard, QUESTION_PROPS } from "./richquestion.js"; import { viewTools } from "./viewcard.js"; import { deleteCheckAnswer } from "./deletecheck.js"; // L97 wait_until, L98 « Annuler », L79, DS-Bot item 8 show_view
 import { botPath, spillPath, spillPreview } from "./context.js"; import { routineFrameTools } from "./routineframe.js"; import { routineOptionTools } from "../routineoptions.js"; import { askRefusal, requestHelper, startQueuedHelpers } from "./askrules.js"; import { lt } from "./looptext.js";
@@ -805,6 +805,7 @@ const memoryTools: BuiltinTool[] = [
       const asked = explicitRemember(c.bot, c.thread ?? 0), v = memoryVerdict(c.user.id, text, asked);
       if (!v.ok) return { content: v.reason, isError: true, summary: "not kept" };
       if (!asked && memoryPrefs.noLearn(c.bot.id)) return { content: "Not kept: the user switched on « Ne rien retenir » for you. Only what they explicitly ask you to remember is kept.", isError: true, summary: "not kept" }; // L88
+      if (asked) memoryKeep.unbury(c.bot.id, text); else if (memoryKeep.buried(c.bot.id, text)) return { content: "Not kept: the user removed this from your memory before. It is kept again only if they ask you to remember it, in their own words.", isError: true, summary: "not kept" }; // L66 (memorykeep.ts)
       const note = memories.add(c.bot.id, text, "chat", { category: v.category }); const until = cleanDay(a.until); if (until) setMarks(c.user.id, note, { until }, "bot"); // audit DS-Bot #82
       emit(c.user.id, { type: "memories", botId: c.bot.id });
       return { content: "Remembered.", summary: clip(text, 80) };
@@ -1305,8 +1306,8 @@ export function builtinTools(opts: { owner?: string; nativeSearch?: boolean; /**
 
 function assemble(opts: { owner?: string; nativeSearch?: boolean; modelSearch?: boolean; video?: "connector" | "api" | null; bgTasks?: boolean }): BuiltinTool[] {
   return [
-    ...(browserAvailable() ? inGroup("computer", screenTools).map(respectDriver) : []),
-    ...(computerKind() === "linux" ? inGroup("computer", [...elementTools, ...browserTabTools, ...browserDownloadTools]).map(respectDriver) : []),
+    ...(browserAvailable() ? inGroup("computer", screenTools).map(respectDriver).map(recordable) : []),
+    ...(computerKind() === "linux" ? inGroup("computer", [...elementTools, ...browserTabTools, ...browserDownloadTools]).map(respectDriver).map(recordable) : []),
     // On its own Linux computer a bot's commands are contained, so they do not need a permission card.
     // Background jobs and office documents: on the bots' own Linux computers only (shell_run starts the jobs).
     ...(computerKind() === "linux" && shellAvailable() ? [...inGroup("shell", jobTools), craftReady, openmanWorkspace] : []),
@@ -1324,8 +1325,8 @@ function assemble(opts: { owner?: string; nativeSearch?: boolean; modelSearch?: 
     researchTool, ...(xSearchAvailable(opts.owner) ? xTools : []), ...stepTools,
     ...shareTools.filter((t) => t.spec.name !== "image_generate" || imageService()).map((t): BuiltinTool => ({ ...t, group: t.spec.name === "image_generate" ? "images" : "files" })),
     ...inGroup("vault", vaultTools),
-    ...(browserAvailable() ? inGroup("vault", screenVaultTools).map(respectDriver) : []),
-    ...(browserAvailable() ? inGroup("vault", cardTools).map(respectDriver) : []),
+    ...(browserAvailable() ? inGroup("vault", screenVaultTools).map(respectDriver).map(recordable) : []),
+    ...(browserAvailable() ? inGroup("vault", cardTools).map(respectDriver).map(recordable) : []),
     ...inGroup("apps", apiTools),
     // A bot's own email address (wave 6): offered by newTurn only to bots that have one.
     ...inGroup("apps", botMailTools),
@@ -1333,7 +1334,7 @@ function assemble(opts: { owner?: string; nativeSearch?: boolean; modelSearch?: 
     ...localServerTools,
     ...(opts.video ? inGroup("video", videoTools) : []),
     // The user's own computers (Sklubot Relais): offered by newTurn only to users who linked one.
-    ...myComputerTools,
+    ...myComputerTools, ...myUiTools, ...phoneTools, ...liveDocTools, ...remoteAgentTools,
     ...inGroup("memory", [...memoryTools, ...roomMemoryTools, ...skillFeedbackTools]), ...inGroup("routines", [...routineTools, ...routineFrameTools, ...routineOptionTools]), ...inGroup("tasks", taskTools), ...(opts.bgTasks === false ? [] : inGroup("tasks", bgTaskTools)), ...goalTools, ...waitTools, ...planTools, ...viewTools, ...inGroup("team", [...teamTools, ...roomTools]), ...userTools.filter((t) => t.spec.name !== "ask_takeover" || browserAvailable()), ...reactTools,
   ];
 }

@@ -44,10 +44,10 @@ export const controlKey = (botName: string) => `mycomputer: control: ${botName}`
 export const commandKey = (botName: string) => `mycomputer: command: ${botName}`;
 const urlKey = (botName: string) => `mycomputer: url: ${botName}`;
 
-interface Target { id: string; name: string; label: string; kind: DeviceKind; platform: string }
+export interface Target { id: string; name: string; label: string; kind: DeviceKind; platform: string }
 
 /** The device a call is about: the one named, else the only one connected. */
-function pick(userId: string, wanted: unknown): { target?: Target; error?: string } {
+export function pick(userId: string, wanted: unknown): { target?: Target; error?: string } {
   const all = devices.list(userId);
   if (!all.length) return { error: "The user has no computer or phone linked to Sklubot. They can link one in Settings → Computers (with the Sklubot Relais app, or the Sklubot Android app for a phone)." };
   const w = typeof wanted === "string" ? wanted.trim().toLowerCase() : "";
@@ -78,7 +78,7 @@ function controlCard(botName: string, label: string, tainted: boolean, note = CO
 }
 
 /** Taking control: asked when the bot has no session on that computer yet. Within its session, the computer's own Stop rules. */
-const controlGate: Gate = (a, ctx) => {
+export const controlGate: Gate = (a, ctx) => {
   const bot = bots.byId(ctx.botId);
   if (!bot) return null;
   const { target } = pick(bot.userId, a.device);
@@ -229,7 +229,7 @@ type Need = "control" | "session-only";
  * when the app's approval already covers it (the gate asked for this call, or "Always" for this bot outside a tainted
  * turn); a session that ended under the bot's feet sends it back through the card otherwise.
  */
-async function inSession(c: ToolContext, a: Record<string, any>, need: Need, reason: string, fn: (t: Target) => Promise<ToolOutput>): Promise<ToolOutput> {
+export async function inSession(c: ToolContext, a: Record<string, any>, need: Need, reason: string, fn: (t: Target) => Promise<ToolOutput>): Promise<ToolOutput> {
   const p = pick(c.user.id, a.device);
   if (!p.target) return { content: p.error!, isError: true, summary: tr(c.user.locale, "no computer") };
   const t = p.target;
@@ -249,7 +249,7 @@ async function inSession(c: ToolContext, a: Record<string, any>, need: Need, rea
 }
 
 /** One request; a lost session is reopened only when the app's approval allows it without asking. */
-async function act(c: ToolContext, t: Target, op: string, args: Record<string, unknown>, timeoutMs?: number): Promise<RelayResult> {
+export async function act(c: ToolContext, t: Target, op: string, args: Record<string, unknown>, timeoutMs?: number): Promise<RelayResult> {
   const r = await call(c, t, op, args, timeoutMs);
   if (r.ok || r.code !== "no_session") return r;
   const allowed = policies.get(c.user.id, controlKey(c.bot.name)) === "always_allow" && !c.tainted;
@@ -260,7 +260,7 @@ async function act(c: ToolContext, t: Target, op: string, args: Record<string, u
 }
 
 const SESSION_ENDED: ToolOutput = { content: "Your control session on this computer has ended (on the computer). If you still need it, call the tool again: the user will be asked for control again.", isError: true, summary: "session ended" };
-const failed = (c: ToolContext, t: Target, r: RelayResult): ToolOutput => (r.ok ? { content: "" } : r.code === "session_ended" ? { ...SESSION_ENDED, summary: tr(c.user.locale, "session ended") } : refusal(c, t, r));
+export const failed = (c: ToolContext, t: Target, r: RelayResult): ToolOutput => (r.ok ? { content: "" } : r.code === "session_ended" ? { ...SESSION_ENDED, summary: tr(c.user.locale, "session ended") } : refusal(c, t, r));
 
 /** Takes a screenshot of the computer: the picture for the model, and the scale for later clicks. */
 async function capture(c: ToolContext, t: Target): Promise<{ text: string; image: ImageBlock } | RelayResult> {

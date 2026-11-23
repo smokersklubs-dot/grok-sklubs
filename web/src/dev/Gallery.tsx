@@ -5,6 +5,7 @@
  *   npm run dev -w web   →   http://localhost:5173/?dev=gallery
  *
  * Everything is in the address, so a state can be shared or screenshotted:
+ *   (tableau: « Tableau de travail », parcours, automatisations, mémoire d'équipe, bilan — GalleryWorkBoard.tsx)
  *   (chantier: « Chantier », the article → cards example: running page, plan to approve, list — GalleryChantier.tsx)
  *   section=all|basics|cards|notices|banners|empty|today|command|incidents|recruit|salons|surveillance|announcements|landing|download
  *   (confiance: webhooks signés ou non, réponses signalées ; view=report ouvre « Signaler cette réponse » — GalleryTrust.tsx)
@@ -19,7 +20,7 @@
  * main.tsx loads this file only when `import.meta.env.DEV` is true: production builds never contain it
  * (`npm run check:bundle -w web` checks the built files).
  */
-import { GalleryRoutines } from "./GalleryRoutines"; import { GalleryReview } from "./GalleryReview"; import { GalleryChantier } from "./GalleryChantier";
+import { GalleryRoutines } from "./GalleryRoutines"; import { GalleryReview } from "./GalleryReview"; import { GalleryChantier } from "./GalleryChantier"; import { GalleryWorkBoard } from "./GalleryWorkBoard";
 import { InboxView } from "../components/InboxView";
 import { CreateBotModal } from "../components/Modals";
 import { RelayGuardPanel } from "../components/RelayGuardPanel"; import { TelegramVoiceText } from "../components/TelegramVoiceText";
@@ -45,12 +46,12 @@ import Landing from "../components/Landing";
 import DownloadPage from "../components/DownloadPage";
 import { announcementsState, cardFixtures, fakeBot, GALLERY_BOT_ID, noticeRows, NOW, type FixtureOptions } from "./fixtures";
 import { installFakeApi, type FakeApiState } from "./fakeApi";
-import { GalleryChat } from "./GalleryChat"; import { GalleryComfort6 } from "./GalleryComfort6";
+import { GalleryChat } from "./GalleryChat"; import { GalleryComfort6 } from "./GalleryComfort6"; import { GalleryComfort7 } from "./GalleryComfort7"; import { GalleryExtensions } from "./GalleryExtensions";
 import { GalleryCommand } from "./GalleryCommand";
 import { IncidentsSection } from "../components/Incidents";
 import { failureCardFixtures } from "./incidentsFixtures";
 import { recruitCardFixtures } from "./recruitFixtures";
-import { GalleryRooms } from "./GalleryRooms";
+import { GalleryRooms } from "./GalleryRooms"; import { GalleryScreen } from "./GalleryScreen";
 import { GalleryTeamMd } from "./GalleryTeamMd";
 import { GalleryTrust } from "./GalleryTrust"; import { GallerySecurity } from "./GallerySecurity"; import { GalleryChannels } from "./GalleryChannels";
 import { SkillsLibrarySection } from "../components/SkillsLibrary";
@@ -66,7 +67,7 @@ import samplePage from "./sample-page.html?url";
 setPagePreviewSource(() => samplePage);
 import "./gallery.css";
 
-const SECTIONS = ["all", "basics", "cards", "notices", "inbox", "banners", "empty", "today", "command", "incidents", "recruit", "salons", "surveillance", "announcements", "skills", "skillhealth", "skillscan", "pages", "landing", "download", "chat", "equipe", "grants", "confiance", "securite", "canaux", "memoire", "relais", "routines", "createbot", "chantier", "confort6", "relecture"] as const;
+const SECTIONS = ["all", "basics", "cards", "notices", "inbox", "banners", "empty", "today", "command", "incidents", "recruit", "salons", "surveillance", "announcements", "skills", "skillhealth", "skillscan", "pages", "landing", "download", "chat", "equipe", "grants", "confiance", "securite", "canaux", "memoire", "relais", "routines", "createbot", "chantier", "tableau", "confort6", "confort7", "relecture", "ecran", "extensions"] as const;
 type Section = (typeof SECTIONS)[number];
 
 interface GalleryState extends FakeApiState {
@@ -147,7 +148,7 @@ function Gallery() {
   return (
     <div className={`gallery ${s.embed ? "is-embed" : ""}`} data-gallery="sklubot-dev-gallery">
       {!s.embed && <Toolbar s={s} set={set} />}
-      {s.section === "chat" ? <GalleryChat key={`${s.lang}`} o={{ lang: s.lang, long: s.long }} /> : s.section === "confort6" ? <GalleryComfort6 key={`${s.lang}:${s.long}`} o={{ lang: s.lang, long: s.long }} /> : s.section === "equipe" ? <GalleryTeamMd key={`${s.lang}:${s.long}`} o={{ lang: s.lang, long: s.long }} /> : s.section === "routines" ? <GalleryRoutines key={`${s.lang}:${s.long}:${s.empty}`} o={{ lang: s.lang, long: s.long }} empty={s.empty} /> : s.section === "confiance" ? <GalleryTrust key={`${s.lang}:${s.long}:${s.empty}`} o={{ lang: s.lang, long: s.long }} empty={s.empty} /> : s.section === "securite" ? <GallerySecurity key={`${s.lang}:${s.long}:${s.empty}`} o={{ lang: s.lang, long: s.long }} empty={s.empty} /> : s.section === "canaux" ? <GalleryChannels key={`${s.lang}:${s.long}:${s.empty}`} o={{ lang: s.lang, long: s.long }} /> : s.section === "relecture" ? <GalleryReview key={`${s.lang}:${s.long}:${s.empty}`} o={{ lang: s.lang, long: s.long }} empty={s.empty} />: s.section === "chantier" ? <GalleryChantier key={`${s.lang}:${s.long}:${s.empty}`} o={{ lang: s.lang, long: s.long }} empty={s.empty} /> : s.section === "createbot" ? <CreateBotModal key={s.lang} onClose={() => undefined} /> : s.section === "landing" ? <Landing key={`${s.lang}:${s.empty}`} onAuth={() => undefined} /> : s.section === "download" ? <DownloadPage key={`${s.lang}:${s.empty}`} /> : <Sections key={`${s.lang}:${s.long}:${s.empty}`} s={s} />}
+      {s.section === "chat" ? <GalleryChat key={`${s.lang}`} o={{ lang: s.lang, long: s.long }} /> : s.section === "confort6" ? <GalleryComfort6 key={`${s.lang}:${s.long}`} o={{ lang: s.lang, long: s.long }} /> : s.section === "confort7" ? <GalleryComfort7 key={`${s.lang}:${s.long}`} o={{ lang: s.lang, long: s.long }} /> : s.section === "extensions" ? <GalleryExtensions key={`${s.lang}:${s.long}:${s.empty}`} o={{ lang: s.lang, long: s.long }} /> : s.section === "equipe" ? <GalleryTeamMd key={`${s.lang}:${s.long}`} o={{ lang: s.lang, long: s.long }} /> : s.section === "routines" ? <GalleryRoutines key={`${s.lang}:${s.long}:${s.empty}`} o={{ lang: s.lang, long: s.long }} empty={s.empty} /> : s.section === "confiance" ? <GalleryTrust key={`${s.lang}:${s.long}:${s.empty}`} o={{ lang: s.lang, long: s.long }} empty={s.empty} /> : s.section === "securite" ? <GallerySecurity key={`${s.lang}:${s.long}:${s.empty}`} o={{ lang: s.lang, long: s.long }} empty={s.empty} /> : s.section === "canaux" ? <GalleryChannels key={`${s.lang}:${s.long}:${s.empty}`} o={{ lang: s.lang, long: s.long }} /> : s.section === "relecture" ? <GalleryReview key={`${s.lang}:${s.long}:${s.empty}`} o={{ lang: s.lang, long: s.long }} empty={s.empty} />: s.section === "chantier" ? <GalleryChantier key={`${s.lang}:${s.long}:${s.empty}`} o={{ lang: s.lang, long: s.long }} empty={s.empty} /> : s.section === "tableau" ? <GalleryWorkBoard key={`${s.lang}:${s.long}:${s.empty}`} o={{ lang: s.lang, long: s.long }} empty={s.empty} /> : s.section === "createbot" ? <CreateBotModal key={s.lang} onClose={() => undefined} /> : s.section === "landing" ? <Landing key={`${s.lang}:${s.empty}`} onAuth={() => undefined} /> : s.section === "download" ? <DownloadPage key={`${s.lang}:${s.empty}`} /> : <Sections key={`${s.lang}:${s.long}:${s.empty}`} s={s} />}
     </div>
   );
 }
@@ -202,6 +203,7 @@ function Sections({ s }: { s: GalleryState }) {
       {show("incidents") && <Section id="incidents" title="Incidents" hint="Coordinateur d'échecs : la section « Incidents » de l'onglet Activité (interrupteur « Vide » : aucun incident), puis les cartes d'échec."><div className="gallery-page is-auto"><IncidentsSection bot={fakeBot(o)} /><div className="gallery-cards">{failureCardFixtures(o).map((c) => <figure key={c.failureId} className="gallery-figure"><figcaption><code>{c.cls} · {c.status}</code></figcaption><CardView card={c} botId={GALLERY_BOT_ID} seq={1} /></figure>)}</div></div></Section>}
       {show("recruit") && <Section id="recruit" title="Bot recruteur" hint="La carte où le bot principal propose un nouveau spécialiste : en attente (« Modifier » édite sur place), limites (offre, quota du jour), créé, refusé."><div className="gallery-cards recruit-gallery">{recruitCardFixtures(o).map((x) => <figure key={x.label} className="gallery-figure"><figcaption><code>recruit · {x.label}</code></figcaption><CardView card={x.card} botId={GALLERY_BOT_ID} seq={1} /></figure>)}</div></Section>}
       {show("salons") && <GalleryRooms o={o} />}
+      {show("ecran") && <GalleryScreen o={o} />}
       {show("relais") && <Section id="relais" title="Relais : règles de sécurité" hint="Réglages → Ordinateurs → « Règles de sécurité » d'un ordinateur : terminaux (désactivés par défaut, avertissement), listes « garder à l'écart », applis toujours refusées, raccourcis protégés (« Vide » : aucune liste)."><div className="gallery-page is-auto"><RelayGuardPanel deviceId="dev_gallery" /><div className="transcript"><RelayEventRow seq={1} warn={false} text={"$ npm test — ~/projets/site · portable-lea (macOS) · exit 0\n> site@1.0.0 test\n> vitest run\n\n ✓ src/panier.test.ts (12 tests) 41ms\n Test Files  1 passed (1)\n      Tests  12 passed (12)\n API_KEY=[secret]"} /><RelayEventRow seq={2} warn={false} botId="dev_gallery" cmd={{ ref: "gallery", running: true }} text={"$ npm run build -- --watch=false --reporter=verbose-with-a-long-name — ~/projets/site · portable-lea (macOS) · en cours\n> vite build"} /></div><div className="gallery-page is-auto"><TelegramVoiceText botId="dev_gallery" initial={{ enabled: false, provider: "whisper-cpp", cost: "local", maxSeconds: 120 }} /><TelegramVoiceText botId="dev_gallery2" initial={{ enabled: true, provider: "openai", cost: "paid", maxSeconds: 120 }} /></div></div></Section>}
       {show("memoire") && <Section id="memoire" title="Mémoire : modifier une note" hint="Réglages → Mémoire → « Modifier » : le texte se corrige sur place, l'historique montre chaque changement (« Vide » : aucun)."><div className="gallery-page is-auto"><ul className="list"><li className="list-row is-card"><div className="list-row-text"><MemoryEdit key={`${s.lang}:${s.long}:${s.empty}`} historyOpen memory={{ id: "mem_gallery", botId: GALLERY_BOT_ID, text: o.lang === "fr" ? "Préfère les réunions le matin" : "Prefers meetings in the morning", source: "learned", createdAt: NOW - 10 * 86400_000, status: "active", quote: "", category: null, confidence: "once", confirmedAt: null, lastUsedAt: null, pinned: true, until: "2027-03-31" }} onSaved={() => undefined} onCancel={() => undefined} /></div></li></ul></div></Section>}
       {show("memoire") && <Section id="memoire-insight" title="Mémoire : ce que reçoit ce bot" hint="Réglages du bot → Mémoire : « Voir le résumé » (« Vide » : jamais compactée), « Ne rien retenir », « Ce que reçoit ce bot » avec le coût de la mémoire, et « Mémoire par le sens » (Réglages → Mémoire ; « Vide » : aucune clé qui le permet)."><GalleryMemory key={`${s.lang}:${s.long}:${s.empty}`} o={{ ...o, empty: s.empty }} /></Section>}

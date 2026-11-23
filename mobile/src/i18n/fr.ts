@@ -495,6 +495,20 @@ export const fr = {
   "chantier.approve": "Approuver et lancer",
   "chantier.stop": "Arrêter le chantier",
   "chantier.stopConfirm": "Les tâches en cours s'arrêtent ; tout ce qui est fait est gardé.",
+  "phoneReq.photoTitle": "{bot} voudrait une photo",
+  "phoneReq.whereTitle": "{bot} voudrait ta position",
+  "phoneReq.why": "Raison : {reason}",
+  "phoneReq.photoNote": "Rien n’est pris sans ton geste. La photo va seulement à ce bot.",
+  "phoneReq.whereNote": "Ta position est lue une seule fois, seulement après ton geste sur « Partager » dans la page qui s’ouvre.",
+  "phoneReq.take": "Prendre la photo",
+  "phoneReq.share": "Partager ma position",
+  "phoneReq.refuse": "Refuser",
+  "phoneReq.left": "Encore {time}",
+  "phoneReq.sent": "Envoyé.",
+  "phoneReq.refused": "Refusé : rien n’a été envoyé.",
+  "phoneReq.cancelled": "Pas de photo prise : rien n’a été envoyé.",
+  "phoneReq.noCamera": "L’appareil photo n’est pas autorisé pour Sklubot : rien n’a été envoyé.",
+  "phoneReq.failed": "Ça n’a pas marché. Réessaie, ou refuse.",
 } as const;
 
 export type Key = keyof typeof fr;

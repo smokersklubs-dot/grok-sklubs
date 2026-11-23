@@ -1,4 +1,4 @@
-import { mutedPush } from "./chatmute.js";
+import { mutedPush } from "./chatmute.js"; import { logNotification, noteDesk, replyPushDecision, type HeldReason } from "./notifyrules.js";
 import { createCipheriv, createECDH, createHmac, createPrivateKey, generateKeyPairSync, randomBytes, sign, type KeyObject } from "node:crypto";
 import { seal, unseal } from "./auth.js";
 import { config } from "./config.js";
@@ -149,7 +149,8 @@ export const push = {
 /** Open app windows report whether they are visible (POST /presence). A reply is pushed only when none is. */
 const presence = new Map<string, Map<string, { visible: boolean; at: number }>>();
 const PRESENCE_MS = 75_000;
-export function notePresence(userId: string, clientId: string, visible: boolean) {
+export function notePresence(userId: string, clientId: string, visible: boolean, idleMs: number | null = null) {
+  noteDesk(userId, clientId, visible, idleMs);
   let m = presence.get(userId);
   if (!m) presence.set(userId, (m = new Map()));
   m.set(clip(clientId, 64), { visible, at: Date.now() });
@@ -184,13 +185,15 @@ const recent = new Map<string, number>();
  */
 export async function sendPush(userId: string, msg: PushMessage): Promise<number> {
   const settings = pushSettings(userId);
-  if (msg.kind === "digest" ? inQuietHours(settings) : msg.kind !== "test" && msg.kind !== "sentinel" && (!settings.kinds[msg.kind] || inQuietHours(settings))) return 0;
-  if (mutedPush(userId, msg.botId, msg.kind)) return 0; // « Sourdine » on that chat (chatmute.ts)
+  const held = (reason: HeldReason) => { logNotification(userId, msg, false, reason); return 0; }; // L151: the bell keeps what was held back, and why
+  if (msg.kind === "digest" ? inQuietHours(settings) : msg.kind !== "test" && msg.kind !== "sentinel" && (!settings.kinds[msg.kind] || inQuietHours(settings))) return held(msg.kind !== "digest" && msg.kind !== "test" && msg.kind !== "sentinel" && !settings.kinds[msg.kind] ? "kindOff" : "quiet");
+  if (mutedPush(userId, msg.botId, msg.kind)) return held("muted"); // « Sourdine » on that chat (chatmute.ts)
   const subs = q.all<SubRow>("SELECT * FROM push_subscriptions WHERE user_id = ? AND enabled = 1", userId);
-  if (!subs.length) return 0;
+  if (!subs.length) return held("noDevice");
   const tag = msg.tag ?? (msg.botId ? `${msg.kind}-${msg.botId}` : msg.kind);
   const key = `${userId}:${tag}:${msg.body}`;
   if (msg.kind !== "test" && (recent.get(key) ?? 0) > Date.now() - 10_000) return 0;
+  logNotification(userId, msg, true);
   recent.set(key, Date.now());
   if (recent.size > 2000) for (const [k, v] of recent) if (v < Date.now() - 60_000) recent.delete(k);
   // Kept well under the 4096 octets a push service must accept (RFC 8030 section 7.2 / RFC 8291 section 4).
@@ -223,4 +226,13 @@ export async function sendPush(userId: string, msg: PushMessage): Promise<number
 /** Fire and forget, for the places a bot does something worth a notification. */
 export function pushLater(userId: string, msg: PushMessage) {
   void sendPush(userId, msg).catch((err) => console.error("[push]", err));
+}
+
+/**
+ * L151: a finished reply to the owner goes to the phone only when the computer has been idle 30 s and the work took
+ * time (notifyrules.ts); otherwise it is kept in the bell with the reason.
+ */
+export function pushReplyIfAway(userId: string, msg: PushMessage, startedAt: number | null | undefined) {
+  const d = replyPushDecision(userId, startedAt);
+  if (d.push) pushLater(userId, msg); else logNotification(userId, msg, false, d.reason);
 }

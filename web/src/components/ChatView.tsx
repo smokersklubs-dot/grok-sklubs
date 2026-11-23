@@ -1,4 +1,5 @@
 import { MuteMenuItems } from "./ChatMute";
+import { ConversationsModal } from "./Conversations"; import { PinnedStrip } from "./MessagePinDelete";
 import { useEffect, useState } from "react"; import { trackUnread } from "../lib/chatreading";
 import { useT } from "../i18n";
 import { IDLE_LIVE, useStore } from "../store";
@@ -30,6 +31,7 @@ export function ChatView() {
   const finding = useStore((s) => !!s.find && s.find.botId === s.selectedId);
   const [menu, setMenu] = useState(false);
   const [confirmNew, setConfirmNew] = useState(false);
+  const [convs, setConvs] = useState(false); // L146 « Conversations » (Conversations.tsx)
   const t = useT();
   useReadAloud(bot, thread); useEffect(() => trackUnread(useStore.subscribe), []); // L147 « NOUVEAU »
 
@@ -57,7 +59,7 @@ export function ChatView() {
   };
 
   return (
-    <section className="main chat" style={accentStyle(bot.color, bot.character?.customColor)} aria-label={t("chat.with", { name: bot.name })}>
+    <section className="main chat" data-chat-bot={bot.id} style={accentStyle(bot.color, bot.character?.customColor)} aria-label={t("chat.with", { name: bot.name })}>
       <header className="chat-head">
         <IconButton icon="menu" label={t("common.openMenu")} className="only-mobile" onClick={() => setMobileNav(true)} />
         <div className="menu-wrap chat-head-center">
@@ -106,6 +108,7 @@ export function ChatView() {
             >
               {t(confirmNew ? "chat.confirmNew" : "chat.newConversation")}
             </MenuItem>}
+            {!bot.access && <MenuItem icon="history" onClick={() => { close(); setConvs(true); }}>{t("c7.conv.menu")}</MenuItem>}
             <ReadAloudMenuItem bot={bot} onDone={close} />
             <MuteMenuItems bot={bot} onDone={close} />
             <MenuItem
@@ -150,6 +153,8 @@ export function ChatView() {
       </header>
       {bot.kind === "agent" && !bot.access && <WorkContext key={bot.id + ":" + bot.model} bot={bot} />}
       {finding && <FindBar key={bot.id} botId={bot.id} />}
+      <PinnedStrip rows={thread?.rows ?? []} />
+      {convs && <ConversationsModal bot={bot} onClose={() => setConvs(false)} />}
       <div className="chat-body-row">
         <Transcript bot={bot} thread={thread} live={live} /><PassageBar bot={bot} />
         <FilePreviewPanel />

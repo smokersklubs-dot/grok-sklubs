@@ -11,3 +11,16 @@
 .notice.has-action .route-actions span { padding: 0; background: none; border-radius: 0; font-size: inherit; color: inherit; }
 .route-actions .route-ask { gap: 4px; color: var(--text-2); min-height: 28px; }
 .route-actions .menu { min-width: 200px; }
+
+/* L155: the task's owner on the routed line, « Réassigner » / « Archiver » / « Restaurer »; an archived task is dimmed. */
+.route-actions { display: inline-flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 0 2px; }
+.notice.has-action .route-actions .route-owner { font-size: 12px; color: var(--text-2); padding: 0 4px; }
+.notice.has-action:has(.route-actions.is-archived) > span:first-child { text-decoration: line-through; opacity: .75; }
+
+/* L155: time limit per member in the group's settings. */
+.room-limits-list { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }
+.room-limits-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; }
+.room-limits-who { display: grid; min-width: 0; }
+.room-limits-who .action-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.room-limits-select { width: auto; min-width: 120px; min-height: 40px; }
+.room-limits { margin: 16px 0; }

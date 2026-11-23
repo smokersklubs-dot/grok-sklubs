@@ -8,7 +8,7 @@ import { bots, clip, now, rows, skills, users, type BotRecord, type UserRecord }
 import { record } from "../usage.js";
 import { isEngineRef } from "./engine.js";
 import { isPaused } from "./loop.js";
-import { wakeInRoom } from "./team.js";
+import { wakeInRoom } from "./team.js"; import { roomHolds } from "./roomholds.js";
 
 /**
  * « Qui répond » in a group chat, mode "auto" (spec 09 §2, V1-010–V1-013; the idea of a fast decision model that picks
@@ -82,7 +82,8 @@ export function routeLine(loc: Locale, bot: BotRecord | null, why: string): stri
 /** Who may be chosen: agent bots of the room's owner, on its list, not hidden helpers, not paused. Order = the room's. */
 export function candidatesOf(room: BotRecord, members?: BotRecord[]): BotRecord[] {
   const list = members ?? room.memberIds.map((id) => bots.byId(id)).filter((b): b is BotRecord => !!b);
-  return list.filter((b) => b.kind === "agent" && b.userId === room.userId && room.memberIds.includes(b.id) && !b.hidden && !b.parentId && !isPaused(b));
+  const held = new Set(roomHolds.list(room.id)); // L155: a member on hold in this group is never picked
+  return list.filter((b) => b.kind === "agent" && b.userId === room.userId && room.memberIds.includes(b.id) && !b.hidden && !b.parentId && !isPaused(b) && !held.has(b.id));
 }
 
 const fold = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
@@ -314,6 +315,7 @@ export function reroute(room: BotRecord, user: UserRecord, noticeSeq: number, bo
   const row = rows.get(room.id, room.generation, noticeSeq);
   const action = row?.body.kind === "notice" && row.body.action?.kind === "route" ? row.body.action : null;
   if (!row || !action || row.body.kind !== "notice") throw new RerouteRefused("There is no routed message here.");
+  if (action.status === "archived") throw new RerouteRefused("This task is archived. Restore it first.");
   const bot = candidatesOf(room).find((b) => b.id === botId);
   if (!bot) throw new RerouteRefused("That bot is not an available member of this group.");
   if (bot.id === action.botId) throw new RerouteRefused("That bot already has the question.");
@@ -327,5 +329,24 @@ export function reroute(room: BotRecord, user: UserRecord, noticeSeq: number, bo
   const o = offerOf(room.id);
   if (o && o.botId === action.botId) offers.delete(room.id);
   wakeInRoom(room, user, text, null, 0, false, action.thread, [bot], new Map([[bot.id, `${user.name} asked for you to answer this message instead of ${action.botName || "nobody"}. Answer it yourself.`]]));
+  return next;
+}
+
+/**
+ * L155 « Archiver » / « Restaurer » on a routed task: the line keeps its owner; archived, it offers only « Restaurer ».
+ * Archiving never stops or deletes anything: it closes the task for the group.
+ */
+export function archiveTask(room: BotRecord, noticeSeq: number, archived: boolean): RouteNoticeAction {
+  const row = rows.get(room.id, room.generation, noticeSeq);
+  const action = row?.body.kind === "notice" && row.body.action?.kind === "route" ? row.body.action : null;
+  if (!row || !action || row.body.kind !== "notice" || !action.botId) throw new RerouteRefused("There is no routed message here.");
+  if (archived === (action.status === "archived")) return action;
+  const next: RouteNoticeAction = archived
+    ? { ...action, status: "archived", archivedFrom: action.status === "archived" ? "open" : action.status }
+    : { ...action, status: action.archivedFrom ?? "open", archivedFrom: undefined };
+  if (!archived) delete next.archivedFrom;
+  rows.rewrite(room, room.generation, noticeSeq, { ...row.body, action: next });
+  const o = offerOf(room.id);
+  if (archived && o && o.botId === action.botId && o.thread === action.thread) offers.delete(room.id);
   return next;
 }

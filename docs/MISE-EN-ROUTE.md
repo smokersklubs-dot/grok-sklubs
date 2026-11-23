@@ -50,5 +50,14 @@ Réglages du bot → Apparence → **Essayer : Euphorique** (clique d'abord une 
 - **Dans la liste des bots**, une petite pastille dit pourquoi un bot s'est arrêté (limite d'étapes, erreur, arrêté…), et la barre « Au travail » montre qui travaille en ce moment.
 - **Un souci ?** Réglages → Docteur : un contrôle en lecture seule, ligne par ligne « OK » ou « À corriger ». « Copier le résumé » donne un texte sans chemin, adresse, e-mail ni secret, à coller dans une demande d'aide.
 
+## Petits conforts (23/11)
+- **Plusieurs conversations par bot** : menu du bot → « Conversations… ». Titres automatiques, Renommer, Épingler, Dossier, filtre « Automatiques » ; toucher une ancienne conversation la rouvre.
+- **Au-dessus de la zone de saisie** : le modèle de cette conversation (à changer en deux clics) et la jauge « Contexte » (un clic : résumé et Compacter).
+- **Un bot supprimé** part 30 jours dans Réglages → Équipe → Corbeille, d'où « Restaurer ». « Voir ce qui sera supprimé » avant de confirmer. « Exporter ce bot » / « Importer un bot » : un fichier, sans secrets ni conversations.
+- **Fichiers Word, Excel, PowerPoint et CSV** s'ouvrent dans l'aperçu (les macros ne sont jamais lancées).
+- **Notifications** : le téléphone ne sonne qu'après 30 s sans activité sur l'ordinateur, et si le travail a pris du temps ; tout est gardé dans « Notifications » (barre latérale), avec les sons au choix.
+- **Pages** : « Comparer » une version, « Copie autonome », « Fiche A4 (PDF) », « Capture ».
+- **Façon de parler** d'un bot (plus simple / normal / me contredire), **Garder l'historique** (Réglages → Mémoire), mots techniques expliqués en les touchant.
+
 ## Ce que je fais de tes retours
 Pour chaque point qui coince : copie le message exact affiché (ou une capture) et envoie-le-moi. Je corrige, je teste, et tu relances `bash deploy/update.sh`.

@@ -84,6 +84,14 @@ Au premier lancement, Sklubot reprend une fois les réglages de l'ancien Relais 
 - **macOS et Linux** : l'accès de l'ancien Relais était chiffré par le trousseau du système au nom de « Sklubot Relais » ; la nouvelle application (« Sklubot ») ne peut pas le relire. Le Relais affiche alors un nouveau code : tape‑le dans **Réglages › Ordinateurs** (et retire l'ancien ordinateur de la liste). Les autorisations des bots et les dossiers partagés sont conservés.
 - **Désinstalle l'ancien « Sklubot Relais »** ensuite (et décoche son démarrage automatique) : deux Relais avec le même accès se renverraient la connexion.
 
+### Lire une appli au lieu de viser des pixels (Mac et Windows)
+
+Sur Mac et Windows, un bot peut lire les boutons et les champs d'une appli (son « arbre d'accessibilité ») et agir sur
+l'un d'eux directement, même en arrière-plan sans bouger ta souris. Les mêmes règles s'appliquent : les applis refusées
+et ta liste « garder à l'écart » ne sont même pas lues, un champ mot de passe n'est jamais rempli ni lu, et appuyer sur
+un bouton qui envoie, paie ou supprime te demande ton accord dans Sklubot. Sur Mac, c'est la même autorisation
+« Accessibilité » que pour la souris.
+
 ## Autorisations à donner selon ton système (pour le Relais)
 
 ### macOS

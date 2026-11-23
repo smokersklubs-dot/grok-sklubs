@@ -41,6 +41,47 @@ protégé.
 - `video_frames` envoie des images au modèle : comme `screen_view`, chaque image compte dans les jetons du modèle.
 - `ocr`, `video_download` : gratuits (ils tournent sur l'ordinateur du bot), seul l'espace disque compte.
 
+## Regarder et prendre la main (vue de l'écran)
+
+- **Reconnexion toute seule** : si l'image en direct se coupe après avoir marché, la vue réessaie après 1, 2, 4, 8 puis
+  15 secondes (« Connexion perdue. Nouvel essai (2/5) dans 2 s… », avec « Reconnecter maintenant »). Après 5 essais
+  elle dit que l'écran est injoignable et propose **« Reconnecter »**. Dans le petit panneau comme dans la grande vue
+  (avant, la grande vue restait sur « connexion… » sans fin : corrigé).
+- **Coller** (quand tu as la main) : le texte de ton presse-papiers devient celui de l'ordinateur du bot, puis Ctrl+V le
+  colle où est le curseur. Pratique pour une adresse ou un long texte sur téléphone. Ton navigateur peut te demander la
+  permission de lire le presse-papiers.
+- **Ctrl+Alt+Suppr** (quand tu as la main) et **Capture** (toujours) : la capture est enregistrée en PNG dans tes
+  téléchargements (« ecran-<bot>-<date>.png »).
+- **« Léa utilise son écran en ce moment »** s'affiche en haut de l'image quand le bot agit sur son ordinateur et que tu
+  regardes seulement.
+- **Bail numéroté** : quand tu prends la main, le serveur te donne un numéro ; chaque rappel (toutes les 30 s) le cite,
+  et « Rendre la main » libère ce numéro. Un rappel en retard sur le réseau ne reprend jamais la main après que tu l'as
+  rendue ; un « Rendre la main » perdu est renvoyé (3 essais) et le bail expire de toute façon après 75 s.
+
+Code : `web/src/lib/reconnect.ts` (délais, coller, capture — repris de hermes-bot-kit, MIT), `web/src/lib/liveReconnect.ts`,
+`web/src/lib/controlLease.ts`, `server/src/takeover.ts` (`controlRequest`). Tests : `web/scripts/screen-viewer.test.mjs`,
+`server/test/control-lease.test.ts`. Captures : `docs/screenshots/ecran/`.
+
+### Diffusion de l'écran : pourquoi noVNC reste (L182, mesuré le 23/11/2026)
+
+On a cherché plus léger que x11vnc + noVNC parmi ce que contient l'image du bureau (`sklubot-desktop`). Mesure : un
+écran 1280×800 (Xvfb + Openbox + un terminal), un client qui demande des images sans arrêt pendant 20 s, temps de
+processeur du diffuseur lu dans `/proc` :
+
+| Diffuseur | Écran immobile | Écran qui change sans arrêt |
+|---|---|---|
+| x11vnc, réglage actuel (`-noxdamage`) | 0,35 s (1,8 % d'un cœur) | 1,48 s (7,4 %) |
+| x11vnc avec XDAMAGE | 0,23 s (1,2 %) | 1,55 s (7,8 %) |
+| ffmpeg x11grab → MJPEG, 10 images/s | 1,76 s (8,8 %) | 1,89 s (9,5 %) |
+| ffmpeg x11grab → VP8 temps réel, 10 images/s | 4,05 s (20 %) | 17,6 s (88 %) |
+
+Conclusion : x11vnc n'envoie que ce qui change et ne travaille presque pas sur un écran immobile ; un flux vidéo encode
+tout, tout le temps, et demanderait un autre lecteur dans le navigateur et un autre chemin (jetons, proxy). Le
+diffuseur de Superbot n'est pas dans l'image et sa licence n'a pas été vérifiée : pas repris. On ne passe pas non plus
+à XDAMAGE (gain de 0,6 % seulement, et des images manquées possibles avec Chromium sur Xvfb : à vérifier à l'œil avant).
+**noVNC reste.** Pour refaire la mesure : un conteneur `sklubot-desktop` sans réseau, Xvfb `:1`, x11vnc sur un port
+local, un petit client RFB qui envoie `FramebufferUpdateRequest` en boucle, et `ps`/`/proc/<pid>/stat` avant et après.
+
 ## Lui ouvrir tes comptes, sans lui donner tes mots de passe
 
 Le bot ne voit **jamais** un mot de passe, et ne doit jamais t'en demander un dans la discussion. Trois façons :

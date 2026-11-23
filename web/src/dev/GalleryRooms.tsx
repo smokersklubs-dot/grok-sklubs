@@ -9,6 +9,7 @@ import type { Bot, RoomRule, Row } from "../types";
 import { buildItems, RowItems } from "../components/Transcript";
 import { RoomWhoAnswers } from "../components/RoomRouting";
 import { RoomNotes } from "../components/RoomNotes";
+import { RoomLimits } from "../components/RoomLimits";
 import { NOW, type FixtureOptions } from "./fixtures";
 
 const ROOM = "room_gallery";
@@ -32,7 +33,7 @@ export function GalleryRooms({ o }: { o: FixtureOptions }) {
     const at = NOW - 30 * 60_000;
     const r = (body: Row["body"], i: number): Row => ({ botId: ROOM, generation: 1, seq: ++seq, rev: 1, createdAt: at + i * 60_000, body });
     const fromBot = (b: Bot, text: string) => ({ kind: "message" as const, role: "assistant" as const, text, origin: { kind: "bot" as const, id: b.id, name: b.name } });
-    const route = (messageSeq: number, b: Bot | null, by: "keywords" | "model" | "none" | "reroute", why: string, status: "open" | "rerouted", text: string) =>
+    const route = (messageSeq: number, b: Bot | null, by: "keywords" | "model" | "none" | "reroute", why: string, status: "open" | "rerouted" | "archived", text: string) =>
       ({ kind: "notice" as const, tone: "info" as const, text, action: { kind: "route" as const, messageSeq, thread: 0, botId: b?.id ?? "", botName: b?.name ?? "", by, why, status } });
     return [
       r({ kind: "message", role: "user", text: L("La facture de mars pour Dupont est partie ?", "Did the March invoice for Dupont go out?") }, 0),
@@ -47,6 +48,9 @@ export function GalleryRooms({ o }: { o: FixtureOptions }) {
       r(fromBot(marc, L("Je peux m'en charger : un post de 5 lignes avec le visuel du lancement. Je m'y mets ?", "I can take this: a 5-line post with the launch visual. Shall I start?")), 9),
       r({ kind: "message", role: "user", text: L("oui", "yes") }, 10),
       r({ kind: "notice", tone: "info", text: L("Marc s'y met.", "Marc is on it.") }, 11),
+      r({ kind: "message", role: "user", text: L("Qui peut trier les vieux tickets ?", "Who can sort the old tickets?") }, 12),
+      r(route(13, zoe, "keywords", L("son rôle correspond", "its role matches"), "archived", L("→ Zoé (Support) a pris la question · son rôle correspond", "→ Zoé (Support) took the question · its role matches")), 12),
+      r({ kind: "notice", tone: "info", text: L("Zoé est en attente dans ce groupe : écris « reprends @Zoé » pour le relancer.", "Zoé is on hold in this group: write « reprends @Zoé » to bring it back.") }, 12),
       r(fromBot(marc, L("@Zoé, je te passe la main : les questions des clients sur le lancement sont pour toi.", "@Zoé, I'm handing this over to you: customer questions about the launch are yours.")), 12),
     ];
   }, [o.lang]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -56,7 +60,7 @@ export function GalleryRooms({ o }: { o: FixtureOptions }) {
       <h2 id="g-salons-h" className="gallery-h">{L("Salons : qui répond", "Group chats: who answers")}</h2>
       <div className="gallery-rooms">
         <div className="gallery-chat rooms-chat"><RowItems items={items} bot={room} /></div>
-        <div className="gallery-chat rooms-settings"><RoomWhoAnswers room={room} value={rule} onChange={setRule} /><RoomNotes room={room} initial={[
+        <div className="gallery-chat rooms-settings"><RoomWhoAnswers room={room} value={rule} onChange={setRule} /><RoomLimits room={room} initial={{ limits: { [lea.id]: 30 }, min: 1, max: 240, held: [zoe.id] }} /><RoomNotes room={room} initial={[
           { id: "mem_room_1", botId: ROOM, text: L("Les livrables partent le vendredi avant 17 h.", "Deliverables go out on Fridays before 5 pm."), source: "chat", createdAt: NOW - 3 * 86400_000, status: "active", quote: "", category: null, confidence: "once", confirmedAt: null, lastUsedAt: null, pinned: true, until: null },
           { id: "mem_room_2", botId: ROOM, text: L("Marc relit chaque newsletter avant l'envoi.", "Marc proofreads every newsletter before it goes out."), source: "chat", createdAt: NOW - 86400_000, status: "active", quote: "", category: null, confidence: "once", confirmedAt: null, lastUsedAt: null, until: "2027-03-31" },
         ]} /></div>

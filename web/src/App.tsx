@@ -20,7 +20,7 @@ import { TeamMdImportModal, TeamMdShareModal } from "./components/TeamMarkdown";
 import { Sidebar } from "./components/Sidebar";
 import { SignIn } from "./components/SignIn";
 import { EmailConfirmPage, ResetPasswordPage, takeLinkAction } from "./components/AccountRecovery";
-import { TasksView } from "./components/TasksView"; import { InboxView } from "./components/InboxView";
+import { TasksView } from "./components/TasksView"; import { InboxView } from "./components/InboxView"; import { LiveDocsView } from "./components/LiveDocs";
 import { TodayView } from "./components/TodayView";
 import { SurveillanceView } from "./components/SurveillanceView";
 import { CommandView } from "./components/CommandView";
@@ -28,7 +28,7 @@ import { AnnouncementsView } from "./components/AnnouncementsView";
 import { SiteAnnouncementBanner } from "./components/AnnouncementCard";
 import { useAnnouncements } from "./lib/announcements";
 import { ThreadPanel } from "./components/ThreadPanel";
-import { ChantierOverlay } from "./components/Chantier";
+import { ChantierOverlay } from "./components/Chantier"; import { WorkBoardOverlay } from "./components/WorkBoard";
 import { isDownloadPath } from "./lib/platform";
 import { useDesktopBadge } from "./lib/desktop";
 import { takeVerifyLink, VerifyEmailGate, VerifyEmailPage } from "./components/VerifyEmail";
@@ -149,7 +149,7 @@ function Shell() {
     <div className={`shell ${activeArtifact ? "has-artifact" : ""} ${showDetails || showThread ? "has-details" : ""} ${siteBanner ? "has-site-banner" : ""}`}>
       <SiteAnnouncementBanner />
       <Sidebar />
-      {view === "tasks" ? <TasksView /> : view === "inbox" ? <InboxView /> : view === "today" ? <TodayView /> : view === "command" ? <CommandView /> : view === "surveillance" && sentinel ? <SurveillanceView /> : view === "announcements" && author ? <AnnouncementsView /> : <ChatView />}
+      {view === "tasks" ? <TasksView /> : view === "inbox" ? <InboxView /> : view === "docs" ? <LiveDocsView /> : view === "today" ? <TodayView /> : view === "command" ? <CommandView /> : view === "surveillance" && sentinel ? <SurveillanceView /> : view === "announcements" && author ? <AnnouncementsView /> : <ChatView />}
       {activeArtifact && <WorkspaceDock active={activeArtifact}/>}
       {modal?.kind === "videoStudio" && <VideoStudio onClose={close}/>}
       {showDetails && <DetailsPanel />}
@@ -171,7 +171,7 @@ function Shell() {
 
       {history && <HistoryViewer key={`${history.botId}:${history.generation}:${history.seq}`} target={history} />}
 
-      <ChantierOverlay />
+      <ChantierOverlay /><WorkBoardOverlay />
       <Onboarding />
       <ToastView toast={toast} />
     </div>

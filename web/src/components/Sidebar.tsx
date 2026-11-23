@@ -1,5 +1,6 @@
 import { useMemo, useState, type ReactNode } from "react";
-import { InboxNavRow } from "./InboxView";
+import { NotifyBell } from "./NotifyBell";
+import { InboxNavRow } from "./InboxView"; import { LiveDocsNavRow } from "./LiveDocs";
 import { createPortal } from "react-dom";
 import { api, errText } from "../api";
 import { IDLE_LIVE, primaryBot, sortedBots, useStore } from "../store";
@@ -297,7 +298,7 @@ export function Sidebar() {
           <span className="sidebar-top-actions">
             {!collapsed && (
               <>
-                <AnnouncementBell />
+                <AnnouncementBell /><NotifyBell />
                 <IconButton icon="search" label={t("palette.open")} title={`${t("palette.open")} (${modKey}K)`} onClick={() => openModal({ kind: "search" })} />
                 <span className="menu-wrap">
                   <IconButton icon="plus" label={t("sidebar.newBot")} onClick={() => setAddOpen((v) => !v)} active={addOpen} />
@@ -384,7 +385,7 @@ export function Sidebar() {
         )}
         {collapsed && <AnnouncementBell row />}
 
-        <InboxNavRow collapsed={collapsed} />{/* L139 « À toi » (InboxView.tsx) */}
+        <InboxNavRow collapsed={collapsed} /><LiveDocsNavRow collapsed={collapsed} />{/* L139 « À toi » (InboxView.tsx) */}
         <button
           type="button"
           className={`nav-row ${view === "tasks" ? "is-active" : ""}`}

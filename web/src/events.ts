@@ -1,6 +1,7 @@
 import { useStore } from "./store";
 import type { ServerEvent } from "./types";
 import { startAnnouncements, useAnnouncements } from "./lib/announcements";
+import { handleExtensionEvent } from "./lib/livedocEvents";
 
 /**
  * One server-sent event stream for the whole app.
@@ -38,6 +39,7 @@ function open(): void {
     if (ev.type === "hello" || ev.type === "ping") return;
     // « Annonces »: their own small store (lib/announcements.ts).
     if (ev.type === "announcements") { void useAnnouncements.getState().load(); return; }
+    if (handleExtensionEvent(ev as { type?: unknown })) return; // wave 7: shared documents (lib/livedocEvents.ts)
     useStore.getState().applyEvent(ev);
   };
 

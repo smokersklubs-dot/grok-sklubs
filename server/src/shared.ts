@@ -307,7 +307,7 @@ export interface PeerReviewState {
 }
 
 export type RowBody =
-  | { kind: "message"; role: "user" | "assistant"; text: string; page?: { token: string; title: string; open?: boolean }; streaming?: boolean; origin?: Origin; sources?: { url: string; title?: string }[]; attachments?: Attachment[]; reactions?: Reaction[]; replies?: Replies; /** L136 (agent/editmessage.ts): this is an edited version of message `editOf`; `editedTo`: a newer version of this one exists */ editOf?: number; editedTo?: number }
+  | { kind: "message"; role: "user" | "assistant"; text: string; page?: { token: string; title: string; open?: boolean }; streaming?: boolean; origin?: Origin; sources?: { url: string; title?: string }[]; attachments?: Attachment[]; reactions?: Reaction[]; replies?: Replies; /** L136 (agent/editmessage.ts): this is an edited version of message `editOf`; `editedTo`: a newer version of this one exists */ editOf?: number; editedTo?: number; /** L141 (chatcomfortroutes.ts): pinned at the top of the chat; deleted: hidden, text emptied */ pinned?: boolean; deleted?: boolean }
   /** `grant`: what allowed this state-changing action (the user's quote, the reviewer's reason, a card). */
   | { kind: "step"; callId: string; tool: string; label: string; status: "running" | "done" | "error" | "waiting" | "denied"; args: Record<string, unknown>; summary?: string; grant?: Grant }
   | { kind: "card"; card: Card }

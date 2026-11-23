@@ -6,6 +6,7 @@ import type { SharedPage } from "../types";
 import { Icon } from "./Icon";
 import { ConfirmButton, ErrorNote, Loading } from "./ui";
 import "./PagePreview.css";
+import { PageDiffButton, PageExports } from "./PageExtras";
 
 /* Settings → Pages: a page's history (every publish, edit and restore, server/src/pagefiles.ts), a version previewed in
    the same sandbox, a version put back, and a new address (the old link stops working). */
@@ -54,6 +55,7 @@ export function PageVersions({ page, defaultOpen = false }: { page: SharedPage; 
         </button>
         <ConfirmButton className="btn btn-small" label={t("pages.rotate")} confirmLabel={t("pages.rotateConfirm")} busyLabel="…" onConfirm={rotate} />
       </div>
+      <PageExports token={page.token} title={page.title} />
       <ErrorNote onDismiss={() => setError(null)}>{error}</ErrorNote>
       {open && !list && <Loading />}
       {open && list && (
@@ -65,6 +67,7 @@ export function PageVersions({ page, defaultOpen = false }: { page: SharedPage; 
                 <span className="muted small">{noteText(t, v.note)} · {when(v.createdAt)}{v.files ? ` · ${t("pages.files" as Key, { n: v.files })}` : ""}</span>
               </span>
               <a className="btn btn-small" href={`/api/pages/${enc}/versions/${v.id}/view`} target="_blank" rel="noopener noreferrer"><Icon name="eye" size={13} /> {t("pages.viewVersion")}</a>
+              {!v.current && <PageDiffButton token={page.token} from={v.id} n={v.n} />}
               {!v.current && <ConfirmButton className="btn btn-small" label={t("pages.restore")} confirmLabel={t("pages.restoreConfirm")} busyLabel="…" onConfirm={() => restore(v)} />}
             </li>
           ))}

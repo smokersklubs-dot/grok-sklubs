@@ -12,6 +12,7 @@ process.env.NO_SCHEDULER = "1";
 // The fake push service and API of these tests listen on this machine; outside tests such addresses are refused.
 process.env.ALLOW_PRIVATE_FETCH = "1";
 process.env.SHELL_ENABLED = "1";
+process.env.PUSH_MIN_WORK_SEC = "0"; // L151 (notifyrules.ts): these scripted replies are instant; the « only if the work took time » rule has its own test (comfort-wave7)
 process.env.COMPUTER = "browser";
 process.env.PUBLIC_URL = "https://sklubot.example";
 

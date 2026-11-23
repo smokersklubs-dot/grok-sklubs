@@ -27,7 +27,7 @@ import { videoService } from "../video.js";
 import { nativeToolsFor, runNativeTool, type Risk } from "../native/tools.js";
 import { localTools } from "../localtools.js";
 import { accounts as nativeAccounts } from "../native/accounts.js";
-import { appVisible, pushLater } from "../push.js";
+import { pushLater, pushReplyIfAway } from "../push.js";
 import { onlyPhones, devices as relayDevices } from "../relay.js";
 /** "My computer" tools a phone cannot serve (relay protocol 1.2): hidden when every linked device is a phone. */
 const PHONE_LESS = new Set(["my_command", "my_command_output", "my_command_stop", "my_vault_fill", "my_window_focus", "my_files", "my_file_read", "my_file_write", "my_file_trash"]);
@@ -182,7 +182,7 @@ onTurnEvent((e) => { if (e.type === "waiting") pushLater(e.bot.userId, { kind: "
 function pushOutcome(bot: BotRecord, user: UserRecord, trigger: Trigger, said: string) {
   if (!said || paused.get(bot.id)) return;
   if (trigger.kind === "routine") pushLater(user.id, { kind: "routine", title: `${bot.name} · ${trigger.name}`, body: said, botId: bot.id });
-  else if (trigger.kind === "user" && trigger.channel !== "telegram" && !appVisible(user.id)) pushLater(user.id, { kind: "reply", title: bot.name, body: said, botId: bot.id });
+  else if (trigger.kind === "user" && trigger.channel !== "telegram") pushReplyIfAway(user.id, { kind: "reply", title: bot.name, body: said, botId: bot.id }, getLive(bot.id).startedAt); // L151 (notifyrules.ts)
 }
 
 // ── Per-bot lanes (lanes.ts): up to 3 turns at once, one per thread; each lane's state below is keyed by its lane ──

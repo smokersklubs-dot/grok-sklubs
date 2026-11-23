@@ -10,7 +10,7 @@ import { callClock, clockTime, dividerLabel, elapsed, fileSize, hostName, liveDu
 import { accentStyle } from "../lib/colors";
 import { renderMarkdown } from "../lib/markdown";
 import { PagePreview } from "./PagePreview";
-import { FirstTaskIdeas, MentionedFiles, previewable, usePreview } from "./SpendSkillsFiles";
+import { FirstTaskIdeas, MentionedFiles, previewable, usePreview } from "./SpendSkillsFiles"; import { BotWelcome } from "./BotWelcome";
 import { Avatar, BotAvatar } from "./Avatar";
 import { CardView } from "./Cards";
 import { GrantLine } from "./RulesAndNudges";
@@ -397,9 +397,9 @@ function MessageGroup({ item }: { item: Extract<Item, { t: "msgs" }> }) {
         const b = row.body as MessageBody;
         const pos = n === 1 ? "only" : i === 0 ? "first" : i === n - 1 ? "last" : "mid";
         return (
-          <div key={row.seq} className={`msg is-${pos}`} data-seq={row.seq}>
+          <div key={row.seq} className={`msg is-${pos}${b.pinned ? " is-pinned" : ""}`} data-seq={row.seq}>
             {b.attachments && b.attachments.length > 0 && <Attachments botId={row.botId} files={b.attachments} />}
-            {(b.text.trim() || b.streaming) && (
+            {b.deleted ? <p className="msg-deleted muted small">{t("c7.msg.deleted")}</p> : (b.text.trim() || b.streaming) && (
               <div className={`bubble ${b.streaming ? "is-streaming" : ""}`}>
                 {item.mine ? <p className="plain">{b.text}</p> : <Markdown text={b.streaming ? stableMarkdown(b.text) : b.text} />}
                 {b.streaming && <span className="stream-dots" aria-label={t("msg.stillWriting")}><i /><i /><i /></span>}
@@ -888,7 +888,7 @@ function EmptyChat({ bot }: { bot: Bot }) {
       <p>{bot.description || fallback}</p>
       {imageGeneration && bot.kind !== "room" && <p className="chat-empty-hint">{t("empty.images")}</p>}
       {bot.kind !== "room" && <p className="chat-empty-hint">{t(video.higgsfield ? "empty.videoHiggsfield" : video.provider ? "empty.video" : "empty.videoOff")}</p>}
-      {bot.kind === "agent" && bot.primary && <FirstTaskIdeas bot={bot} />}
+      {bot.kind === "agent" && (bot.primary ? <FirstTaskIdeas bot={bot} /> : !bot.access && <BotWelcome bot={bot} />)}{/* L145 (BotWelcome.tsx) */}
     </div>
   );
 }

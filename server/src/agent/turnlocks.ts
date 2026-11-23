@@ -17,7 +17,7 @@ import { laneKey } from "../store.js";
 /** The bot's own screen and browser: looking at it counts too (another task's page would be misleading). */
 export const SCREEN_TOOLS = new Set(["screen_view", "screen_click", "screen_type", "screen_key", "screen_scroll", "screen_drag", "browser_open", "browser_tabs", "browser_tab", "browser_dialog", "page_read", "element_snapshot", "element_click", "element_type", "element_select", "element_fill", "element_hover", "element_upload", "browser_wait", "browser_console", "browser_network", "vault_type", "card_fill", "email_code_type", "totp_code", "design_reference_layout"]);
 /** Control of the owner's computer screen (mycomputer.ts). */
-export const MY_SCREEN_TOOLS = new Set(["my_screen", "my_point", "my_click", "my_drag", "my_scroll", "my_type", "my_key", "my_open", "my_window_focus", "my_vault_fill"]);
+export const MY_SCREEN_TOOLS = new Set(["my_screen", "my_point", "my_click", "my_drag", "my_scroll", "my_type", "my_key", "my_open", "my_window_focus", "my_vault_fill", "my_ui_tree", "my_ui_act"]);
 
 const norm = (s: unknown) => String(s ?? "").trim().replace(/\\/g, "/").replace(/^\.?\/+/, "").replace(/\/{2,}/g, "/").toLowerCase();
 

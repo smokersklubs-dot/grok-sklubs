@@ -15,6 +15,7 @@
 const { OPS, ERR, LIMITS, ProtocolError, validateArgs, parseBot } = require('./protocol');
 const { ConsentGate } = require('./consent');
 const G = require('./guard');
+const AX = require('./capabilities/accessibility');
 
 const IDLE_SESSION_MS = 15 * 60_000;
 const VIEW_ACK_TIMEOUT_MS = 15_000;
@@ -104,6 +105,8 @@ class RelayCore {
     /** @type {Map<string, { ac: AbortController, botId: string, command: string, out: string, err: string, truncated: boolean, done: boolean, exitCode: number|null, startedAt: number, endedAt: number }>} */
     this.jobs = new Map();
     this.jobSeq = 0;
+    /** Accessibility snapshots of this session (L164): references stay valid for the last 3 reads. */
+    this.ax = new AX.SnapshotStore();
   }
 
   get locked() {
@@ -204,6 +207,8 @@ class RelayCore {
           return this.ok(id, { stopped: true });
         }
         case 'vault.type': return await this.vaultType(id, args);
+        case 'ax.tree': return await this.axTree(id, bot, args);
+        case 'ax.act': return await this.axAct(id, bot, args);
         case 'view.start': return this.ok(id, this.startView(/** @type {any} */ (args)));
         case 'view.stop':
           if (this.view && (!args.viewId || args.viewId === this.view.id)) this.stopView('requested');
@@ -344,6 +349,7 @@ class RelayCore {
     this.idleTimer = null;
     this.releaseInput();
     this.opened.clear();
+    this.ax.clear();
     this.commandsOk = false;
     for (const j of this.jobs.values()) j.ac.abort();
     this.jobs.clear();
@@ -513,6 +519,63 @@ class RelayCore {
     }
   }
 
+  // ───────────────────────── accessibility tree (L164) ─────────────────────────
+
+  /** The app a snapshot is about, as guard.js reads a window. @param {{ app?: string, bundle?: string, pid?: number|null, windows?: string[] }} t */
+  axTarget(t) { return { app: t.app || '', bundle: t.bundle || '', pid: t.pid ?? null, title: (t.windows || []).join(' — ') }; }
+
+  /** Refusal for an app the bot must not read or touch (refused apps, the owner's keep-out list), else null. @param {any} target */
+  axRefusal(target) {
+    const group = G.deniedGroup(target) || G.deniedName(String(target.title || ''));
+    if (group) return { code: ERR.BLOCKED_APP, message: `${group}: refused on this computer` };
+    if (G.keepOutHit(target, this.owner)) return { code: ERR.KEEP_OUT, message: 'the owner keeps this app out of reach' };
+    return null;
+  }
+
+  /** Reads an app's controls (the app named, or the one in front). Nothing of a refused app is kept or sent. @param {string} id @param {Bot} bot @param {Record<string, any>} args */
+  async axTree(id, bot, args) {
+    if (typeof this.d.caps.axRead !== 'function') return this.fail(id, ERR.UNSUPPORTED, 'the accessibility tree is offered on macOS and Windows only');
+    if (args.app) { const pre = this.axRefusal({ app: args.app, title: args.app }); if (pre) return this.fail(id, pre.code, pre.message); }
+    const raw = await this.d.caps.axRead({ app: args.app });
+    const names = (raw && Array.isArray(raw.windows) ? raw.windows : []).map((/** @type {any} */ w) => String(w && (w.n || w.t) || ''));
+    const no = this.axRefusal(this.axTarget({ app: raw && raw.app, bundle: raw && raw.bundle, pid: raw && raw.pid, windows: names }));
+    if (no) { this.d.log({ kind: 'refused', bot, op: 'ax.tree', why: no.code }); return this.fail(id, no.code, no.message); }
+    const snap = AX.buildSnapshot(raw, { platform: this.platform, snapshotId: this.ax.nextId(), interactiveOnly: args.interactiveOnly });
+    AX.rememberNative(snap, raw);
+    this.ax.add(snap);
+    return this.ok(id, { snapshotId: snap.snapshotId, app: snap.app, complete: snap.complete, dialogs: snap.dialogs.map((d) => ({ role: d.role, name: d.name })), elements: snap.elements.map(({ path, ...e }) => e), text: AX.renderSnapshot(snap) });
+  }
+
+  /**
+   * Acts on one control by reference. The relay's rules, whatever the server asks: the app must not be refused or kept
+   * out; a password field is never filled (only focused: the user types it); without `background`, the app must still
+   * be the one in front, re-read right now; the script checks the control is still the same before acting.
+   * @param {string} id @param {Bot} bot @param {Record<string, any>} args
+   */
+  async axAct(id, bot, args) {
+    if (typeof this.d.caps.axAct !== 'function') return this.fail(id, ERR.UNSUPPORTED, 'the accessibility tree is offered on macOS and Windows only');
+    const { snap, el } = AX.resolveRef(this.ax.map, args.ref);
+    const target = this.axTarget(snap);
+    const no = this.axRefusal(target);
+    if (no) return this.fail(id, no.code, no.message);
+    if (el.secure && args.action !== 'focus') return this.fail(id, ERR.PASSWORD_FIELD, 'a password field: the user types passwords themselves');
+    if (!AX.actionFits(args.action, el.role)) return this.fail(id, ERR.INVALID_ARGS, `${args.action} does not fit a ${el.role}`);
+    if (!args.background) {
+      if (typeof this.d.caps.activeWindow !== 'function') return this.fail(id, ERR.FOREGROUND_UNKNOWN, 'cannot tell which window is in front');
+      const a = await this.d.caps.activeWindow();
+      if (!a || !a.app) return this.fail(id, ERR.FOREGROUND_UNKNOWN, 'cannot tell which window is in front: nothing was done');
+      const same = G.normApp(a.app) === G.normApp(snap.app) || (!!a.pid && a.pid === snap.pid);
+      if (!same || (args.expect && !G.sameWindow(args.expect, a))) return this.fail(id, ERR.WINDOW_CHANGED, 'another app came to the front: nothing was done');
+      const front = this.axRefusal(a);
+      if (front) return this.fail(id, front.code, front.message);
+    }
+    try {
+      await this.d.caps.axAct({ snap, el, action: args.action, text: args.text });
+    } finally { args.text = ''; }
+    this.d.log({ kind: 'ax.act', bot, op: 'ax.act', role: el.role, name: el.name.slice(0, 80), action: args.action, background: !!args.background });
+    return this.ok(id, { done: true, ref: el.ref, role: el.role, name: el.name, action: args.action, background: !!args.background });
+  }
+
   // ───────────────────────── safety rules (guard.js) ─────────────────────────
 
   /** Every held key and mouse button is let go (session end, Stop, lost connection): fail closed. */
@@ -657,6 +720,8 @@ function summarize(op, args) {
   if (op === 'shell.run' || op === 'shell.start') return { command: args.command.slice(0, 1000), timeoutMs: args.timeoutMs, cwd: args.cwd, scripts: (args.scripts || []).length };
   // A saved login: where and which field, never the text.
   if (op === 'vault.type') return { field: args.field, site: args.site, length: args.text.length };
+  // A value filled by reference: its length only (it may be personal).
+  if (op === 'ax.act') return { ref: args.ref, action: args.action, background: args.background, length: args.text.length };
   // A file written by a bot: where and how much, never its content.
   if (op === 'fs.write') return { root: args.root, path: args.path, mode: args.mode, bytes: Buffer.byteLength(args.text, 'utf8') };
   return args;

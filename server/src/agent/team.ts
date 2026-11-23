@@ -6,6 +6,7 @@ import { BREAKER_LINE, dmChannel, postBudget, roomChannel } from "./roombudget.j
 import "./budgetstore.js"; // L53: the anti-loop state survives a restart
 import { gt } from "./guardtext.js"; import { scrubHandoff } from "./handoffscrub.js"; // L46
 import { answerOffer, noteBotPost, roomRouting, routeAuto } from "./roomrouting.js"; import { roomNotesText } from "./roommemory.js";
+import { applyHolds, roomHolds, watchMemberTurn } from "./roomholds.js"; // L155
 
 export const MAX_HOPS = 3;
 export const MAX_HELPERS = 4;
@@ -165,7 +166,13 @@ export function dispatchToRoom(room: BotRecord, user: UserRecord, text: string, 
   const all = room.memberIds.map((id) => bots.byId(id)).filter((b): b is BotRecord => !!b && b.kind === "agent" && b.userId === room.userId);
   // "Pause": a paused member is skipped and the room goes on with the others. One that was called by name says so in the
   // room (once per message), so whoever wrote knows not to wait for it.
-  const members = all.filter((m) => !isPaused(m));
+  // L155: « stop @Léa » / « reprends @Léa » (roomholds.ts): a member on hold in this group is woken by none of its messages.
+  let members = all.filter((m) => !isPaused(m));
+  if (!fromBot) {
+    const h = applyHolds(room, text, members, mentioned(text, all).map((m) => m.id), thread);
+    if (h.consumed) return;
+    members = h.awake;
+  } else { const held = new Set(roomHolds.list(room.id)); members = members.filter((m) => !held.has(m.id)); }
   const asleep = mentioned(text, all).filter((m) => m.id !== fromBot?.id && isPaused(m));
   if (asleep.length && depth < MAX_HOPS) {
     const loc = users.localeOf(room.userId);
@@ -205,7 +212,8 @@ export function wakeInRoom(room: BotRecord, user: UserRecord, text: string, from
   const quiet = roomRouting.get(room.id).discreet
     ? "\nThis group is set to discreet: answer only what you were asked or what is clearly for you; never add unprompted remarks. When the message is not for you, call stay_quiet." : "";
   for (const target of targets) {
-    if (target.userId !== room.userId || target.kind !== "agent") continue;
+    if (target.userId !== room.userId || target.kind !== "agent" || roomHolds.held(room.id, target.id)) continue;
+    watchMemberTurn(room, target, thread); // L155: its time limit in this group, if it has one
     const note = notes?.get(target.id);
     enqueue(target.id, {
       kind: "system", depth: depth + 1, tainted: !!fromBot && tainted, unattended: !!fromBot || undefined,

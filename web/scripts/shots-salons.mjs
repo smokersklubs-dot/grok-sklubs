@@ -1,6 +1,6 @@
 // Screenshots of « Qui répond » in group chats (agent/roomrouting.ts): from the dev gallery (section=salons, fake
 // data), at 390 and 1440 px, light and dark → docs/screenshots/salons/. The conversation with its routed lines, the same
-// with « Plutôt demander à… » open, and the group's settings (Qui répond, Discret, Proposer avant de commencer).
+// with « Réassigner » open (L155: owner, Archiver, Restaurer, time limits), and the group's settings (Qui répond, Discret, Proposer avant de commencer).
 //
 //   node web/scripts/shots-salons.mjs        (starts its own Vite dev server; needs Playwright's Chromium)
 import { createServer } from "vite";
@@ -27,7 +27,7 @@ try {
       await page.waitForTimeout(400);
       await page.locator(".rooms-chat").screenshot({ path: join(OUT, `salon-conversation-${w}-${theme}.png`) });
       await page.locator(".rooms-settings").screenshot({ path: join(OUT, `salon-reglages-${w}-${theme}.png`) });
-      await page.getByRole("button", { name: "Plutôt demander à…" }).first().click();
+      await page.getByRole("button", { name: "Réassigner" }).first().click();
       await page.waitForTimeout(200);
       const notice = page.locator(".notice:has(.route-actions)").first();
       await notice.evaluate((el) => el.scrollIntoView({ block: "center" }));

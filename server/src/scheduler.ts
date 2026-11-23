@@ -29,6 +29,7 @@ import { routineOptions } from "./routineoptions.js";
 import { subLimitFor } from "./agent/sublimit.js";
 import { lt } from "./agent/looptext.js";
 import { conditionGate } from "./agent/routinecondition.js";
+import { runWithoutAi } from "./automations.js";
 
 /** Next due time per routine. One timer walks this map; nothing is scheduled twice. */
 const due = new Map<string, number>();
@@ -107,6 +108,7 @@ export function fireRoutine(r: RoutineRecord, payload?: unknown, opts: { outside
   const extra = payload === undefined ? "" : `\n\n${opts.label ?? "[Data received with this call]"}\n${clip(JSON.stringify(payload, null, 2), 8000)}`;
   const runId = runs.start(r.id);
   trackRun(runId, r.id, opts.dueAt ?? null, opts.missed ?? 0, !!opts.byHand);
+  if (runWithoutAi(r, runId)) { emit(bot.userId, { type: "routines", botId: bot.id }); return "fired"; } // L173: a routine without AI (automations.ts): no model turn
   enqueue(bot.id, { kind: "routine", name: r.name, text: r.prompt + extra + (opts.note ? `\n\n${opts.note}` : ""), runId, tainted: !!opts.outside && payload !== undefined, byHand: opts.byHand || undefined });
   emit(bot.userId, { type: "routines", botId: bot.id });
   return "fired";

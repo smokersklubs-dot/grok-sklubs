@@ -6,7 +6,7 @@ import type { VaultImportResult, VaultItem, VaultKind } from "../types";
 import { Icon, type IconName } from "./Icon";
 import { ConfirmButton, Empty, ErrorNote, IconButton, Loading, Menu, MenuItem } from "./ui";
 import { CardVaultEditor, cardSub, PaymentsList } from "./SpendSkillsFiles";
-import { HealthBadge, useHealth } from "./KeysHealthLinks"; import { VaultAccessBlock } from "./SecurityLot1";
+import { HealthBadge, useHealth } from "./KeysHealthLinks"; import { VaultAccessBlock } from "./SecurityLot1"; import { VaultLivePanel } from "./ExtensionsPanels";
 
 const KIND_ICON: Record<VaultKind, IconName> = { login: "key", secret: "lock", totp: "clock", card: "bolt" };
 
@@ -307,7 +307,7 @@ export function VaultSection() {
           )}
         </ul>
       )}
-      <PaymentsList />
+      <PaymentsList /><VaultLivePanel />{/* L179 1Password / Bitwarden live (ExtensionsPanels.tsx) */}
     </>
   );
 }

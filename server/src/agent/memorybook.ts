@@ -6,6 +6,7 @@ import { audit, clip, memories, now, rows, settings, type BotRecord, type UserRe
 import { rankNotes, RECALL_POOL } from "./recall.js";
 import { explicitForget, looksSecret, sensitiveCategory } from "./sensitive.js";
 import { cleanDay, setMarks } from "./memorymarks.js";
+import { memoryKeep, proposeFreshConversation } from "./memorykeep.js";
 
 /**
  * The life of a memory note after it is written (audits mem0 and claude-mem, « Gestion »):
@@ -95,6 +96,7 @@ export function trashNote(userId: string, memoryId: string): boolean {
     memories.removeOwned(userId, memoryId);
     noteHistory(memoryId, String(row.bot_id), "deleted", String(row.text), null, "owner");
   });
+  memoryKeep.bury(String(row.bot_id), String(row.text)); proposeFreshConversation({ id: String(row.bot_id), userId }); // L66 (memorykeep.ts)
   emit(userId, { type: "memories", botId: String(row.bot_id) });
   return true;
 }
@@ -112,6 +114,7 @@ export function restoreNote(userId: string, memoryId: string): Memory {
     q.run("DELETE FROM memory_trash WHERE id = ?", memoryId);
     noteHistory(memoryId, t.bot_id, "restored", null, String(saved.text ?? ""), "owner");
   });
+  memoryKeep.unbury(t.bot_id, String(saved.text ?? "")); // « Annuler »: the owner wants it back
   emit(userId, { type: "memories", botId: t.bot_id });
   return memories.owned(userId, memoryId)!;
 }
@@ -138,13 +141,14 @@ export function forgetNotes(bot: BotRecord, user: UserRecord, query: string, ctx
   const shown: string[] = [];
   for (const { note } of found) {
     memories.setStatus(note.id, "archived");
-    noteHistory(note.id, bot.id, "forgotten", note.status, "archived", "bot");
+    noteHistory(note.id, bot.id, "forgotten", note.status, "archived", "bot"); memoryKeep.bury(bot.id, note.text); // L66
     audit(user.id, "system", `Note set aside by ${bot.name} at the user's request: "${clip(note.text, 80)}"`, bot.id);
     const category = note.category ?? sensitiveCategory(note.text);
     shown.push(looksSecret(note.text) || (category && !prefs.allowSensitive[category]) ? "(a note on a sensitive topic)" : note.text);
   }
   // The owner sees it in the chat (without the notes' words: a shared bot's chat may be read by others), and can undo it.
   rows.append(bot, { kind: "notice", tone: "info", text: tr(user.locale, found.length === 1 ? "1 note set aside at your request. It stays in Settings → Memory (Archived), where you can bring it back." : "{n} notes set aside at your request. They stay in Settings → Memory (Archived), where you can bring them back.", { n: String(found.length) }) }, ctx.thread ?? 0);
+  proposeFreshConversation(bot);
   emit(user.id, { type: "memories", botId: bot.id });
   return { content: `Set aside (archived; the user can bring them back in Settings → Memory):\n${shown.map((t) => `- ${t}`).join("\n")}`, summary: `${found.length} forgotten` };
 }

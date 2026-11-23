@@ -103,7 +103,7 @@ NON REPRIS supplémentaires : utilisation de la marque d'un produit tiers (le pr
 2. Carte « viens sur mon écran » (ouvrir l'écran + fini) demandable par le bot, qui attend la réponse. S.
 3. Garde mémoire de l'hôte (échange + tueur préventif) dans le guide VPS ; limites mémoire par conteneur vérifiées. S.
 4. Évaluer le lecteur d'applis par accessibilité dans l'image du bureau. M.
-5. Évaluer un diffuseur d'écran plus léger que noVNC. M.
+5. ✅ **Évalué (2026-11-23, L182).** Diffuseur d'écran plus léger que noVNC : mesuré, noVNC + x11vnc reste le plus léger de ce qui est dans l'image (`docs/ORDINATEUR.md` § « Diffusion de l'écran »). M.
 6. « Arrêter » qui vide aussi la file des messages en attente (ou le dit). S.
 7. Consigne « préviens d'une ligne avant un long travail ». S.
 8. Vérifier que le Chromium du bureau garde son bac à sable. S.

@@ -499,13 +499,13 @@ Taille : **S** ≤ 1 jour, **M** 2 à 4 jours, **L** 1 à 2 semaines. Chemins Sk
 13. ✅ **Fait (2026-11-22).** **Erreur non attrapée** : le tour concerné est arrêté, sa file est libérée, l'échec passe par le coordinateur d'échecs et une carte s'affiche ; le serveur et les autres bots continuent (`agent/crashguard.ts`, `index.ts`). M
 14. **Échecs de routine** : espacer au lieu de mettre en pause. S
 15. **File d'attente visible** des messages envoyés pendant le travail ; test de `drainSteering` (✅ le test existe depuis le 2026-11-22 : `core-reliability.test.ts`, point 6 ; la file visible reste à faire). M
-16. **Accords à la voix** pendant un appel, et « je travaille encore » toutes les 30 s. M
+16. ✅ **Fait (2026-11-23, L154).** **Accords à la voix** pendant un appel (« oui »/« non » net, jamais le plancher, un paiement ni une suppression), et « je travaille encore » toutes les 30 s (`voice/callflow.ts`). M
 17. ✅ **Fait (2026-11-22).** **Accords des bots sur abonnement gardés au redémarrage** : la demande est gardée en base (table `parked_approvals`), la carte reste ouverte, et un « oui » relance l'action exacte, une seule fois. Ce qui ne peut pas reprendre (relais d'identifiants, API de bot, membre d'équipe) expire avec un bouton « Relancer ». M
 18. **Vérifier que le modèle de secours accepte outils et images** avant de basculer. S
 19. **Changements réversibles appliqués avec « Annuler »** (profil, compétence, routine en pause) au lieu d'une carte. M
 20. **Modifier un message / branches.** M
 21. **Copier, épingler, exporter, réessayer** sur un message. S
-22. **« stop @Bot »** dans un groupe, gardé après redémarrage. S
+22. ✅ **Fait (2026-11-23, L155).** **« stop @Bot »** dans un groupe, gardé après redémarrage (`agent/roomholds.ts`, repris d'OMB sous Apache-2.0), plus la limite de temps par membre. S
 23. **Rappel de mémoire devant le message**, et liste des faits oubliés. S
 24. ✅ **Fait en partie (2026-11-22).** **Identifiant d'envoi** contre les doublons : fait, web et mobile (`server/src/sendkeys.ts`, `mobile/shared/sendKey.ts`). Reste : **Stop qui vise un tour**. S
 25. **Résumé à chaud** pendant le repos de la discussion. M

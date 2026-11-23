@@ -26,6 +26,8 @@ const WIDTHS = [[360, 740], [390, 844], [768, 1024]];
 const PAGES = [
   "section=chat",
   "section=confort6&long=1", "section=confort6&nav=1&long=1", "section=confort6&view=doctor&theme=dark&lang=en", "section=confort6&view=commands&long=1", "section=confort6&slash=1&long=1", // wave 6 comfort (GalleryComfort6.tsx)
+  "section=confort7&long=1", "section=confort7&view=welcome&long=1", "section=confort7&view=convs&long=1", "section=confort7&view=trash&long=1&theme=dark&lang=en", "section=confort7&view=office&long=1", "section=confort7&view=pages&long=1", "section=confort7&bell=1&long=1&nav=1", // wave 7 comfort (GalleryComfort7.tsx)
+  "section=extensions&long=1", "section=extensions&view=editor&long=1", "section=extensions&view=editor&theme=dark&lang=en", "section=extensions&view=settings&long=1", "section=extensions&view=settings&empty=1&theme=dark&lang=en", "section=extensions&empty=1", // wave 7 L172 L174 L178 L179 (GalleryExtensions.tsx)
   "section=canaux&long=1",
   "section=canaux&theme=dark&lang=en",
   "section=canaux&empty=1",
@@ -50,6 +52,9 @@ const PAGES = [
   "section=chantier",
   "section=chantier&long=1&theme=dark&lang=en",
   "section=chantier&empty=1",
+  "section=tableau",
+  "section=tableau&long=1&theme=dark&lang=en",
+  "section=tableau&empty=1",
   "section=createbot&theme=dark&lang=en",
   "section=relais&theme=dark&lang=en&empty=1",
   "section=command",
@@ -83,8 +88,9 @@ const PAGES = [
   "section=relecture&long=1",
   "section=relecture&theme=dark&lang=en",
   "section=relecture&empty=1",
+  "section=ecran&long=1", "section=ecran&theme=dark&lang=en", "section=salons&long=1", // L149, L155, L167 (GalleryScreen.tsx, GalleryRooms.tsx)
 ];
-const SCROLLERS = "pre, .md-table, .card-detail, .segmented, .tabs, .gallery-bar, .cmd-states";
+const SCROLLERS = "pre, .md-table, .card-detail, .segmented, .tabs, .gallery-bar, .cmd-states, .sheet-wrap";
 
 const server = await createServer({ root: ROOT, logLevel: "error", server: { port: 0, strictPort: false } });
 await server.listen();

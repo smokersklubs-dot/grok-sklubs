@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { ComposerMeta } from "./ComposerMeta";
 import { api, errText } from "../api";
 import { t, useT } from "../i18n";
 import { useStore, type Upload } from "../store";
@@ -326,6 +327,7 @@ export function Composer({ bot, live }: { bot: Bot; live: Live }) {
           ))}
         </div>
       )}
+      {bot.kind === "agent" && !bot.access && <ComposerMeta bot={bot} live={live} />}{/* L150 model per conversation, L138 context gauge */}
       <div className="composer">
         <div className="menu-wrap">
           <button type="button" className="icon-btn composer-plus" aria-label={t("composer.more")} title={t("composer.more")} aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu((v) => !v)}>

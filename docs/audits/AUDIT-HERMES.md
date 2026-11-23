@@ -550,14 +550,14 @@ Sklubot a déjà repris trois compétences (`brouillon-email`, `cartes-de-suivi`
 | 20 | ✅ **Fait (2026-11-22, L20).** Signature HMAC-SHA256 facultative sur les webhooks entrants (GitHub, Stripe, Standard Webhooks), clé scellée et montrée une fois, dédoublonnage, regroupement, essai à blanc, journal des refus. `server/src/hooktrust.ts`, `hookroutes.ts`. (ligne 97) | S |
 | 21 | Longue tâche demandée dans le chat : continuer seule après 60 pas, N fois au choix. (§ 3.3, ligne 188) | S |
 | 22 | Slack comme canal (mode Socket officiel). (ligne 92) | L |
-| 23 | Coller le presse-papiers, Ctrl+Alt+Suppr et capture dans la vue de l'écran. (ligne 77) | S |
+| 23 | ✅ **Fait (2026-11-23, L149).** Coller le presse-papiers, Ctrl+Alt+Suppr et capture dans la vue de l'écran ; reconnexion 1-2-4-8-15 s et « Reconnecter » (bogue de la grande vue corrigé). (lignes 73, 77) | S |
 | 24 | Visionneuse de tableur (xlsx, onglets, copie de cellules, CSV entier). (ligne 58) | M |
 | 25 | Jauge « contexte rempli à X % » et résumé plus tôt que 80 %. (lignes 47, 155) | S |
 | 26 | Routines sans IA (script planifié) et enchaînement de routines. (lignes 129-130) | M |
 | 27 | Plusieurs clés par fournisseur avec rotation. (ligne 152) | M |
 | 28 | Consigne « long texte = fichier .md ». (ligne 59) | S |
 | 29 | Retrouver sa place par message visible quand on charge les anciens messages. (ligne 20) | S |
-| 30 | Bail numéroté pour la prise en main de l'écran. (ligne 75) | S |
+| 30 | ✅ **Fait (2026-11-23, L149).** Bail numéroté pour la prise en main de l'écran (`takeover.ts` controlRequest). (ligne 75) | S |
 | 31 | Docteur avec résumé à coller, sans chemin ni secret. (ligne 193) | S |
 | 32 | Commandes `/` dans le chat web avec liste. (ligne 40) | S |
 | 33 | Liste d'adresses autorisées pour les envois. (ligne 145) | S |

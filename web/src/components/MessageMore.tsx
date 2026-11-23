@@ -6,6 +6,7 @@ import type { Row } from "../types";
 import { Icon } from "./Icon";
 import { RowContext } from "./Transcript";
 import { Modal } from "./ui";
+import { MessagePinDelete } from "./MessagePinDelete";
 
 /**
  * Lot 4 comfort (L136 / L141 in part): « Copier » the whole message (its Markdown text), « Partager » it with the
@@ -23,6 +24,7 @@ export function MessageMore({ row, mine }: { row: Row; mine: boolean }) {
   const [editing, setEditing] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [noMemory, setNoMemory] = useState(false); // L66 « Ne pas retenir ce message » (server agent/memorykeep.ts)
   if (row.body.kind !== "message" || !row.body.text.trim()) return null;
   const body = row.body;
   const text = body.text;
@@ -42,6 +44,7 @@ export function MessageMore({ row, mine }: { row: Row; mine: boolean }) {
       <button type="button" className="msg-action" aria-label={t(copied ? "msg.copied" : "msg.copy")} title={t(copied ? "msg.copied" : "msg.copy")} onClick={() => void copy()}>
         <Icon name={copied ? "check" : "copy"} size={15} />
       </button>
+      {mode === "main" && <MessagePinDelete row={row} />}
       {canShare && (
         <button type="button" className="msg-action" aria-label={t("msg.share")} title={t("msg.share")} onClick={() => void navigator.share({ text }).catch(() => {})}>
           <Icon name="send" size={15} />
@@ -61,6 +64,11 @@ export function MessageMore({ row, mine }: { row: Row; mine: boolean }) {
       {live && ownWords && !body.editedTo && (
         <button type="button" className="msg-action" aria-label={t("msg.edit")} title={t("msg.edit")} disabled={busy} onClick={() => setEditing(text)}>
           <Icon name="edit" size={15} />
+        </button>
+      )}
+      {live && ownWords && (
+        <button type="button" className={`msg-action${noMemory ? " is-on" : ""}`} aria-pressed={noMemory} aria-label={t(noMemory ? "msg.noMemoryOff" : "msg.noMemory")} title={t(noMemory ? "msg.noMemoryOff" : "msg.noMemory")} onClick={async () => { try { await api("PUT", `/bots/${row.botId}/rows/${row.seq}/no-memory`, { on: !noMemory }); if (!noMemory) useStore.getState().showToast(t("msg.noMemoryDone")); setNoMemory(!noMemory); } catch (e) { useStore.getState().showToast(errText(e)); } }}>
+          <Icon name={noMemory ? "eyeOff" : "brain"} size={15} />
         </button>
       )}
       {live && !mine && body.role === "assistant" && !body.origin && (

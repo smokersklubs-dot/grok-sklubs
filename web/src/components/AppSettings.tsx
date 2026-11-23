@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type FormEvent } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent } from "react"; import { BotTrash } from "./BotLifecycle"; import { HistoryRetention } from "./HistoryRetention";
 import { PersonalCommandsSection } from "./ComposerSlash"; import { DoctorSection } from "./DoctorSection"; // L152, L153
 import { UsageCapsBlock } from "./UsageCaps";
 import { api, ApiError, enc, errText } from "../api";
@@ -1240,14 +1240,14 @@ export function AppSettings({ section }: { section: AppSection }) {
           {section === "devices" && <DevicesSection />}
           {section === "permissions" && <PermissionsSection />}
           {section === "rules" && <RulesSection />}
-          {section === "memory" && <MemorySettingsSection />}
+          {section === "memory" && <><MemorySettingsSection /><HistoryRetention /></>}
           {section === "skills" && <SkillsLibrarySection />}
           {section === "connectors" && <ConnectorsSection />}
           {section === "vault" && <VaultSection />}
           {section === "keys" && <KeysSection />}
           {section === "pages" && <PagesSection />}
           {section === "activity" && <ActivitySection />}
-          {section === "team" && <TeamSection />}
+          {section === "team" && <><TeamSection /><BotTrash /></>}
           {section === "workspaces" && <WorkspacesSection />}
           {section === "voice" && <VoiceSection />}
           {section === "email" && <MailSection />}

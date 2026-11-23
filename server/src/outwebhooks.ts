@@ -105,6 +105,14 @@ function queue(r: HookRow, event: WebhookEvent, key: string, bot: Pick<BotRecord
   kick();
 }
 
+/** L173 (automations.ts): an owner's trigger sends one internal event to one of the bot's own active webhooks, signed like the others. */
+export function queueAutomationEvent(bot: Pick<BotRecord, "id" | "name" | "userId">, webhookId: string, key: string, data: Record<string, unknown>): boolean {
+  const r = q.get<HookRow>("SELECT * FROM bot_webhooks WHERE id = ? AND bot_id = ? AND user_id = ? AND active = 1", webhookId, bot.id, bot.userId);
+  if (!r) return false;
+  queue(r, "automation.event" as WebhookEvent, key, bot, data);
+  return true;
+}
+
 /** What events a batch of rows of one bot holds (exported for the tests). */
 export function eventsOf(rows: Row[]): { event: WebhookEvent; key: string; data: Record<string, unknown> }[] {
   const out: { event: WebhookEvent; key: string; data: Record<string, unknown> }[] = [];

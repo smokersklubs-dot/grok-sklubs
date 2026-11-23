@@ -1,10 +1,11 @@
 import { reachAvailable } from "../reach.js"; import { connectors } from "../connectors.js"; import { downLine } from "../connectorhealth.js";
+import { styleLine } from "../botstyle.js";
 import { config } from "../config.js";
 import { describeRoutine, routines } from "../routines.js";
 import { bots, memories, rows, sections, settings, skills, type BotRecord, type UserRecord } from "../store.js";
 import { sharedForPrompt, skillsPromptBlock } from "../skillhealth.js";
 import { xSearchProvider } from "../xsearch.js";
-import { rules } from "../rules.js";
+import { rules } from "../rules.js"; import { teamMemoryBlock } from "../teammemory.js";
 import { guideIndex } from "./guides.js";
 import { apiConnectors } from "../apiconnectors.js";
 import { libraryLines } from "./recruit.js";
@@ -105,6 +106,7 @@ export function buildSystemPrompt(bot: BotRecord, user: UserRecord, extras: Prom
     ? "You act as a shared teammate: several people may rely on your work, so keep things clear, neutral and easy to hand over."
     : `You act as ${user.name}'s personal assistant: adapt to their preferences and keep their matters private.`);
   if (bot.instructions.trim()) out.push(`## Standing instructions from ${user.name} (they come first)\n${bot.instructions.trim()}`); // L61: the bot's own instructions at the top
+  { const style = styleLine(bot.id); if (style) out.push(style); } // L161 « Style par bot » (botstyle.ts)
 
   const method = [
     "## How you work",
@@ -229,7 +231,7 @@ export function buildSystemPrompt(bot: BotRecord, user: UserRecord, extras: Prom
   if (apis.length) out.push(["## Your API connectors (api_get / api_send)", ...apis.map((a) => `- ${a.name} (${a.baseUrl}): ${a.endpoints.slice(0, 15).map((e) => `${e.method} ${e.path}${e.description ? ` — ${e.description}` : ""}`).join("; ")}`)].join("\n"));
   const sectionId = bot.sectionId ?? parent?.sectionId;
   const project = sectionId ? sections.owned(bot.userId, sectionId) : null;
-  if (project?.instructions) out.push(`## Project instructions — ${project.name}\n${project.instructions}`);
+  if (project?.instructions) out.push(`## Project instructions — ${project.name}\n${project.instructions}`); const teamNotesBlock = teamMemoryBlock(bot); if (teamNotesBlock) out.push(teamNotesBlock); // L171 team memory (teammemory.ts)
   out.push(METHOD_BLOCK, CLOSING_RULES); // L55 « Méthode », L61 the closing rules (conversationrules.ts)
 
   // L57 (prompt caching): what changes from turn to turn — the team, connectors that are down, routines, the notes picked

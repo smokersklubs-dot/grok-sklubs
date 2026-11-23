@@ -10,6 +10,8 @@ import { accentStyle } from "../lib/colors";
 import { botTitle, dateTime, fileSize, hostName, relTime, sortTasks } from "../lib/format";
 import { callPossible, endCall, startCall } from "../lib/call";
 import { useScreen } from "../lib/screen";
+import { useLiveReconnect } from "../lib/liveReconnect";
+import { createControlLease, type LeaseAnswer } from "../lib/controlLease";
 import { canCall, canSpeak, makeUtterance, useVoices } from "../lib/speech";
 import { BotAvatar } from "./Avatar";
 import { SubscriptionBadge } from "./Brain";
@@ -252,7 +254,8 @@ function ComputerSection({ bot }: { bot: Bot }) {
   const liveKey = `${bot.id}-${desktop?.open}`;
   const [liveFailedFor, setLiveFailedFor] = useState<string | null>(null);
   const [liveUp, setLiveUp] = useState(false);
-  const [attempt, setAttempt] = useState(0);
+  // L149: the same reconnection as the large view (1, 2, 4, 8, 15 s, then a button); never opened: screenshots.
+  const recon = useLiveReconnect(liveKey, () => setLiveFailedFor(liveKey));
   const live = linux && !!desktop?.open && tabVisible && !viewerOpen && liveFailedFor !== liveKey;
   const { url, status, refresh } = useScreen(bot.id, 4000, engine && !(live && liveUp));
   const [busy, setBusy] = useState<"tidy" | "wake" | null>(null);
@@ -278,21 +281,24 @@ function ComputerSection({ bot }: { bot: Bot }) {
   const asleep = status === "none" && !(live && liveUp);
   // Driving from the panel: only in the panel's own full screen (B-8.3). Outside it, "take control" opens the large view.
   const [panelControl, setPanelControl] = useState(false);
+  // L149: the numbered control lease (lib/controlLease.ts).
+  const lease = useMemo(() => createControlLease((b) => (b.on
+    ? api<LeaseAnswer>("POST", `/bots/${bot.id}/desktop/control`, b)
+    : api<LeaseAnswer>("POST", `/bots/${bot.id}/desktop/handback`, b.epoch !== undefined ? { epoch: b.epoch } : undefined))), [bot.id]);
   useEffect(() => {
     if (!panelControl) return;
-    const hold = () => api("POST", `/bots/${bot.id}/desktop/control`, { on: true }).catch(() => undefined);
-    void hold();
-    const timer = window.setInterval(hold, 30_000);
+    void lease.take();
+    const timer = window.setInterval(() => void lease.renew(), 30_000);
     return () => window.clearInterval(timer);
-  }, [panelControl, bot.id]);
+  }, [panelControl, lease]);
   const handBackFromPanel = useCallback(() => {
     setPanelControl(false);
-    api("POST", `/bots/${bot.id}/desktop/handback`).catch(() => undefined);
-  }, [bot.id]);
+    void lease.handBack();
+  }, [lease]);
   const resetFromPanel = async () => {
     await api("POST", `/bots/${bot.id}/desktop/tidy`);
     setLiveUp(false);
-    setAttempt((n) => n + 1);
+    recon.retryNow();
   };
   const text = !engine
     ? t("computer.noneTitle")
@@ -316,19 +322,15 @@ function ComputerSection({ bot }: { bot: Bot }) {
             onTakeControl={(full) => (full ? setPanelControl(true) : openViewer(bot.id, { control: true }))}
             onHandBack={handBackFromPanel} onReset={resetFromPanel}>
             <LiveScreen
-              key={attempt}
+              key={recon.key}
               botId={bot.id}
               control={panelControl}
               label={t("viewer.screenAlt", { name: bot.name })}
-              onConnect={() => setLiveUp(true)}
-              onClose={() => {
-                // A stream that drops after working reconnects once; one that never opened falls back to screenshots.
-                if (liveUp) setAttempt((n) => n + 1);
-                else setLiveFailedFor(liveKey);
-                setLiveUp(false);
-              }}
+              onConnect={() => { setLiveUp(true); recon.connected(); }}
+              onClose={() => { setLiveUp(false); recon.dropped(); }}
             />
-            {!liveUp && <span className="screen-hero-wait"><span className="dot-inline dot-pulse" /></span>}
+            {!liveUp && !recon.gaveUp && <span className="screen-hero-wait"><span className="dot-inline dot-pulse" /></span>}
+            {!liveUp && recon.gaveUp && <span className="screen-hero-wait"><button type="button" className="btn btn-small" onClick={recon.retryNow}>{t("viewer.reconnect")}</button></span>}
             {/* The picture swallows clicks: a clear layer over it opens the large view (not while driving). */}
             {liveUp && !panelControl && <button type="button" className="screen-hero-open" onClick={() => openViewer(bot.id)} aria-label={t("details.openComputer", { name: bot.name })} />}
           </ScreenFrame>
