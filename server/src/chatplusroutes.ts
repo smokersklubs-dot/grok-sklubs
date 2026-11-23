@@ -63,7 +63,11 @@ export function registerChatPlusRoutes(api: Hono<any>, ownBot: (c: Context) => B
   });
   api.get("/dashboard/pins", (c) => c.json({ pins: dashboard.list(user(c).id) }));
   api.delete("/dashboard/pins/:id", (c) => (dashboard.unpin(user(c).id, c.req.param("id")) ? c.json({ pins: dashboard.list(user(c).id) }) : fail(404, "No such pin.")));
-  api.post("/dashboard/pins/:id/move", async (c) => c.json({ pins: dashboard.move(user(c).id, c.req.param("id"), (await body(c)).dir === -1 ? -1 : 1) }));
+  api.post("/dashboard/pins/:id/move", async (c) => {
+    const uid = user(c).id, id = c.req.param("id");
+    if (!dashboard.list(uid).some((p) => p.id === id)) return fail(404, "No such pin.");
+    return c.json({ pins: dashboard.move(uid, id, (await body(c)).dir === -1 ? -1 : 1) });
+  });
 
   api.get("/link-preview", async (c) => {
     const u = user(c);

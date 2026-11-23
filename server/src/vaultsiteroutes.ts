@@ -22,6 +22,7 @@ export function registerVaultSiteRoutes(api: Hono<Env>) {
     try { return c.json({ contact: contacts.save(c.get("user").id, await body(c)) }); } catch (e) { return fail(400, (e as Error).message); }
   });
   api.put("/vault/contacts/:id", async (c) => {
+    if (!contacts.list(c.get("user").id).some((k) => k.id === c.req.param("id"))) return fail(404, "That contact card does not exist.");
     let saved;
     try { saved = contacts.save(c.get("user").id, await body(c), c.req.param("id")); } catch (e) { return fail(400, (e as Error).message); }
     return saved ? c.json({ contact: saved }) : fail(404, "That contact card does not exist.");
