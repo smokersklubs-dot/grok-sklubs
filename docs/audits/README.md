@@ -42,6 +42,7 @@ Chaque dépôt donné par le propriétaire a été audité en entier : une ligne
 | elementalsouls/Claude-BugHunter | MIT + CC BY 4.0 (usage défensif seulement) | [AUDIT-CLAUDE-BUGHUNTER.md](AUDIT-CLAUDE-BUGHUNTER.md) |
 | meta/astryx | MIT | [AUDIT-ASTRYX.md](AUDIT-ASTRYX.md) |
 | Fei2411/DS-Bot | Apache-2.0 (+ MIT pour certains fichiers) | [AUDIT-DS-BOT.md](AUDIT-DS-BOT.md) |
+| Anil-matcha/Open-Generative-AI | MIT (passe par MuAPI, service payant) | [AUDIT-OPEN-GENERATIVE-AI.md](AUDIT-OPEN-GENERATIVE-AI.md) |
 | nilbuild/stick-scene | MIT | [AUDIT-STICK-SCENE.md](AUDIT-STICK-SCENE.md) |
 
 Ajouté ensuite au catalogue : Scribiz (connecteur, https://scribiz.com/mcp). Étudié sans intégration : le « Code Mode » de Claude Code (expérimental, terminal seulement).
