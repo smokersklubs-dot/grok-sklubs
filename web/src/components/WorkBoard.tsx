@@ -9,6 +9,7 @@ import { relTime } from "../lib/format";
 import { Icon } from "./Icon";
 import { Empty, ErrorNote, Loading, Modal } from "./ui";
 import { BoardDecisions, BoardRolesPanel, TaskKindModel, TaskRunLine } from "./BoardRoles";
+import { TaskDelivery } from "./BoardDelivery";
 import "./WorkBoard.css";
 
 /**
@@ -20,10 +21,10 @@ import "./WorkBoard.css";
 
 const TAB_KEY: Record<BoardTab, Key> = { board: "board.tab.board", flows: "board.tab.flows", automations: "board.tab.automations", team: "board.tab.team", lessons: "board.tab.lessons" };
 const COL_KEY: Record<string, Key> = { ideas: "board.col.ideas", waiting: "board.col.waiting", running: "board.col.running", blocked: "board.col.blocked", done: "board.col.done" };
-const STATE_KEY: Record<string, Key> = { waiting: "board.state.waiting", running: "board.state.running", review: "board.state.review", blocked: "board.state.blocked", done: "board.state.done" };
+const STATE_KEY: Record<string, Key> = { waiting: "board.state.waiting", running: "board.state.running", review: "board.state.review", delivering: "board.state.delivering", blocked: "board.state.blocked", done: "board.state.done" };
 const URG_KEY: Record<IdeaUrgency, Key> = { critical: "board.urgency.critical", bug: "board.urgency.bug", minor: "board.urgency.minor", idea: "board.urgency.idea" };
 const PROG_KEY: Record<string, Key> = { todo: "board.progress.todo", analysed: "board.progress.analysed", partial: "board.progress.partial", to_test: "board.progress.to_test", done: "board.progress.done" };
-const TONE: Record<string, string> = { waiting: "muted", running: "info", review: "warn", blocked: "danger", done: "ok" };
+const TONE: Record<string, string> = { waiting: "muted", running: "info", review: "warn", delivering: "info", blocked: "danger", done: "ok" };
 
 function agentBots(bots: Record<string, Bot>): Bot[] {
   return Object.values(bots).filter((b) => b.kind === "agent" && !b.access).sort((a, b) => a.name.localeCompare(b.name));
@@ -178,6 +179,7 @@ function TaskCard({ task, bots, titleOf, act }: { task: BoardTask; bots: Bot[]; 
       {task.dependents.length > 0 && <p className="wb-line muted">{t("board.task.unblocks", { n: task.dependents.length })}</p>}
       {task.note && <p className="wb-line wb-note">{task.note}</p>}
       {task.summary && <p className="wb-line">{task.summary}</p>}
+      <TaskDelivery task={task} act={act} />
       <div className="wb-card-actions">
         {(task.state === "waiting" || task.state === "blocked") && !task.armed && <button type="button" className="btn btn-small btn-primary" onClick={() => act(() => api("POST", "/board/tasks/launch", { ids: [task.id] }))}>{t("board.task.launch")}</button>}
         {task.state === "waiting" && task.armed && <span className="muted wb-small">{task.waitingOn.length ? t("board.task.armedWaiting") : t("board.task.armed")}</span>}
@@ -186,8 +188,8 @@ function TaskCard({ task, bots, titleOf, act }: { task: BoardTask; bots: Bot[]; 
           <button type="button" className="btn btn-small btn-primary" onClick={() => act(() => api("POST", `/board/tasks/${task.id}/accept`))}>{t("board.task.accept")}</button>
           <button type="button" className="btn btn-small" onClick={() => setFix("")}>{t("board.task.fix")}</button>
         </>}
-        {task.state !== "running" && task.state !== "review" && <label className="btn btn-small wb-file"><Icon name="clip" size={13} />{t("board.file.add")}<input type="file" hidden onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) act(() => sendFile(`/board/tasks/${task.id}/files`, f)); }} /></label>}
-        {task.state !== "running" && task.state !== "review" && <button type="button" className="btn btn-small btn-ghost" aria-label={t("board.task.delete")} onClick={() => act(() => api("DELETE", `/board/tasks/${task.id}`))}><Icon name="trash" size={13} /></button>}
+        {task.state !== "running" && task.state !== "review" && task.state !== "delivering" && <label className="btn btn-small wb-file"><Icon name="clip" size={13} />{t("board.file.add")}<input type="file" hidden onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) act(() => sendFile(`/board/tasks/${task.id}/files`, f)); }} /></label>}
+        {task.state !== "running" && task.state !== "review" && task.state !== "delivering" && <button type="button" className="btn btn-small btn-ghost" aria-label={t("board.task.delete")} onClick={() => act(() => api("DELETE", `/board/tasks/${task.id}`))}><Icon name="trash" size={13} /></button>}
       </div>
       {task.files.length > 0 && <ul className="wb-files">{task.files.map((f) => <li key={f.id}><a href={`/api/board/tasks/${task.id}/files/${f.id}`}>{f.name}</a> <span className="muted">{sizeText(f.size)}</span></li>)}</ul>}
       {fix !== null && (

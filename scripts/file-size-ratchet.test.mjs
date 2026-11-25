@@ -22,6 +22,8 @@ const BASELINE = join(ROOT, "scripts/file-size-baseline.json");
 const DIRS = ["web/src", "server/src"];
 const EXT = /\.(ts|tsx|css|mjs|js)$/;
 const EXEMPT = new Set(["web/src/i18n/fr.ts", "web/src/i18n/en.ts", "server/src/i18n.ts"]);
+// Every language's dictionary file (web/src/i18n/<code>.ts, server/src/lang/<code>.ts, docs/LANGUES.md) is exempt too.
+const EXEMPT_RE = /^(web\/src\/i18n|server\/src\/lang)\/[a-z]{2}\.ts$/;
 export const LISTED_FROM = 1000;
 export const MARGIN = 25;
 export const NEW_FILE_LIMIT = 1500;
@@ -43,7 +45,7 @@ export function measure() {
   for (const d of DIRS) {
     for (const f of walk(join(ROOT, d))) {
       const rel = relative(ROOT, f).split("\\").join("/");
-      if (EXEMPT.has(rel)) continue;
+      if (EXEMPT.has(rel) || EXEMPT_RE.test(rel)) continue;
       counts[rel] = readFileSync(f, "utf8").split("\n").length - 1;
     }
   }

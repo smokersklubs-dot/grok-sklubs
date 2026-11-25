@@ -27,7 +27,7 @@
  * so changing the Sklubot address keeps "Continuer avec Google" working for the same Google account. Workspace members
  * are stored by account id; invitations are matched against the account's current address when they are accepted.
  */
-import net from "node:net";
+import net from "node:net"; import { localize } from "./lang/index.js"; import { byLocale } from "./lang/index.js";
 import type { Context, Hono } from "hono";
 import nodemailer from "nodemailer";
 import { hashPassword, originAllowed, seal, unseal, verifyPassword } from "./auth.js";
@@ -116,7 +116,7 @@ const FR: Record<string, string> = {
   "The SMTP server refused or did not answer: {detail}": "Le serveur SMTP a refusé ou n'a pas répondu : {detail}",
 };
 const m = (locale: Locale, english: string, vars: Record<string, string> = {}) =>
-  (locale === "fr" ? FR[english] ?? english : english).replace(/\{(\w+)\}/g, (_x, k: string) => vars[k] ?? "");
+  localize(locale, english, FR).replace(/\{(\w+)\}/g, (_x, k: string) => vars[k] ?? "");
 const pickLoc = (value: unknown, acceptLanguage?: string | null): Locale =>
   value === "fr" || value === "en" ? value : /^\s*fr/i.test(acceptLanguage ?? "") ? "fr" : "en";
 
@@ -125,32 +125,38 @@ const MAILS = {
   reset: {
     fr: (link: string) => ({ subject: "Sklubot : choisis un nouveau mot de passe", text: `Bonjour,\n\nQuelqu'un (sans doute toi) a demandé à changer le mot de passe de ton compte Sklubot.\n\nPour choisir un nouveau mot de passe, ouvre ce lien (valable 30 minutes, une seule fois) :\n${link}\n\nTous les appareils connectés à ton compte seront déconnectés.\n\nSi ce n'est pas toi, ignore cet e-mail : ton mot de passe ne change pas.\n\n— Sklubot (${config.publicUrl})` }),
     en: (link: string) => ({ subject: "Sklubot: choose a new password", text: `Hello,\n\nSomeone (probably you) asked to change the password of your Sklubot account.\n\nTo choose a new password, open this link (valid 30 minutes, once):\n${link}\n\nEvery device signed in to your account will be signed out.\n\nIf it was not you, ignore this e-mail: your password does not change.\n\n— Sklubot (${config.publicUrl})` }),
+    es: (link: string) => ({ subject: "Sklubot: elige una contraseña nueva", text: `Hola:\n\nAlguien (seguramente tú) ha pedido cambiar la contraseña de tu cuenta de Sklubot.\n\nPara elegir una contraseña nueva, abre este enlace (válido 30 minutos, una sola vez):\n${link}\n\nSe cerrará la sesión en todos los dispositivos conectados a tu cuenta.\n\nSi no has sido tú, ignora este correo: tu contraseña no cambia.\n\n— Sklubot (${config.publicUrl})` }),
   },
   confirm: {
     fr: (link: string) => ({ subject: "Sklubot : confirme ta nouvelle adresse", text: `Bonjour,\n\nTu as demandé à utiliser cette adresse pour ton compte Sklubot.\n\nPour confirmer, ouvre ce lien (valable 30 minutes, une seule fois) :\n${link}\n\nSi ce n'est pas toi, ignore cet e-mail : rien ne change.\n\n— Sklubot (${config.publicUrl})` }),
     en: (link: string) => ({ subject: "Sklubot: confirm your new address", text: `Hello,\n\nYou asked to use this address for your Sklubot account.\n\nTo confirm, open this link (valid 30 minutes, once):\n${link}\n\nIf it was not you, ignore this e-mail: nothing changes.\n\n— Sklubot (${config.publicUrl})` }),
+    es: (link: string) => ({ subject: "Sklubot: confirma tu nueva dirección", text: `Hola:\n\nHas pedido usar esta dirección para tu cuenta de Sklubot.\n\nPara confirmarlo, abre este enlace (válido 30 minutos, una sola vez):\n${link}\n\nSi no has sido tú, ignora este correo: no cambia nada.\n\n— Sklubot (${config.publicUrl})` }),
   },
   notice: {
     fr: (next: string) => ({ subject: "Sklubot : changement d'adresse demandé", text: `Bonjour,\n\nUn changement de l'adresse de ton compte Sklubot vers ${next} vient d'être demandé, avec ton mot de passe. Il ne prendra effet que si le lien envoyé à cette nouvelle adresse est ouvert dans les 30 minutes.\n\nSi ce n'est pas toi : connecte-toi, change ton mot de passe (Réglages → Compte), puis annule le changement en attente.\n\n— Sklubot (${config.publicUrl})` }),
     en: (next: string) => ({ subject: "Sklubot: change of address requested", text: `Hello,\n\nA change of your Sklubot account's address to ${next} was just requested, with your password. It only takes effect if the link sent to that new address is opened within 30 minutes.\n\nIf it was not you: sign in, change your password (Settings → Account), then cancel the pending change.\n\n— Sklubot (${config.publicUrl})` }),
+    es: (next: string) => ({ subject: "Sklubot: cambio de dirección solicitado", text: `Hola:\n\nSe acaba de solicitar, con tu contraseña, cambiar la dirección de tu cuenta de Sklubot a ${next}. Solo se aplicará si el enlace enviado a esa nueva dirección se abre en los próximos 30 minutos.\n\nSi no has sido tú: inicia sesión, cambia tu contraseña (Ajustes → Cuenta) y cancela el cambio pendiente.\n\n— Sklubot (${config.publicUrl})` }),
   },
   signIn: {
     fr: (link: string) => ({ subject: "Sklubot : ton lien de connexion", text: `Bonjour,\n\nVoici ton lien pour te connecter à Sklubot (valable 15 minutes, une seule fois) :\n${link}\n\nSi tu n'as rien demandé, ignore cet e-mail : personne ne peut se connecter sans ce lien.\n\n— Sklubot (${config.publicUrl})` }),
     en: (link: string) => ({ subject: "Sklubot: your sign-in link", text: `Hello,\n\nHere is your link to sign in to Sklubot (valid 15 minutes, once):\n${link}\n\nIf you did not ask for it, ignore this e-mail: nobody can sign in without this link.\n\n— Sklubot (${config.publicUrl})` }),
+    es: (link: string) => ({ subject: "Sklubot: tu enlace para iniciar sesión", text: `Hola:\n\nAquí tienes tu enlace para iniciar sesión en Sklubot (válido 15 minutos, una sola vez):\n${link}\n\nSi no has pedido nada, ignora este correo: nadie puede iniciar sesión sin este enlace.\n\n— Sklubot (${config.publicUrl})` }),
   },
   signUp: {
     fr: (link: string) => ({ subject: "Sklubot : crée ton compte", text: `Bonjour,\n\nPour créer ton compte Sklubot avec cette adresse, ouvre ce lien (valable 15 minutes, une seule fois) :\n${link}\n\nSi tu n'as rien demandé, ignore cet e-mail : aucun compte n'est créé.\n\n— Sklubot (${config.publicUrl})` }),
     en: (link: string) => ({ subject: "Sklubot: create your account", text: `Hello,\n\nTo create your Sklubot account with this address, open this link (valid 15 minutes, once):\n${link}\n\nIf you did not ask for it, ignore this e-mail: no account is created.\n\n— Sklubot (${config.publicUrl})` }),
+    es: (link: string) => ({ subject: "Sklubot: crea tu cuenta", text: `Hola:\n\nPara crear tu cuenta de Sklubot con esta dirección, abre este enlace (válido 15 minutos, una sola vez):\n${link}\n\nSi no has pedido nada, ignora este correo: no se crea ninguna cuenta.\n\n— Sklubot (${config.publicUrl})` }),
   },
   test: {
     fr: () => ({ subject: "Sklubot : e-mail de test", text: `Bonjour,\n\nCet e-mail de test confirme que ton serveur Sklubot sait envoyer des e-mails (mot de passe oublié, changement d'adresse).\n\n— Sklubot (${config.publicUrl})` }),
     en: () => ({ subject: "Sklubot: test e-mail", text: `Hello,\n\nThis test e-mail confirms that your Sklubot server can send e-mails (forgotten password, change of address).\n\n— Sklubot (${config.publicUrl})` }),
+    es: () => ({ subject: "Sklubot: correo de prueba", text: `Hola:\n\nEste correo de prueba confirma que tu servidor de Sklubot puede enviar correos (contraseña olvidada, cambio de dirección).\n\n— Sklubot (${config.publicUrl})` }),
   },
 };
 
 /** "Recevoir un lien de connexion par e-mail" (emaillink.ts): sent after answering, never logged with its link. */
 export function sendLinkMail(kind: "signIn" | "signUp", to: string, locale: Locale, link: string) {
-  const mail = MAILS[kind][locale](link);
+  const mail = byLocale(locale, MAILS[kind])(link);
   setImmediate(() => { void sendSystemMail(to, mail.subject, mail.text).catch(logFailure(kind === "signIn" ? "sign-in link e-mail" : "sign-up link e-mail")); });
 }
 
@@ -250,7 +256,7 @@ export function registerAccountMailPublic(api: Hono<any>, deps: AccountMailDeps)
     const user = users.byEmail(email);
     if (user) {
       const token = newResetToken(user.id);
-      const mail = MAILS.reset[user.locale](`${config.publicUrl}/?reset=${encodeURIComponent(token)}`);
+      const mail = byLocale(user.locale, MAILS.reset)(`${config.publicUrl}/?reset=${encodeURIComponent(token)}`);
       audit(user.id, "account", "Password reset e-mail requested");
       // Sent after answering: an existing account must not answer more slowly than an unknown address.
       setImmediate(() => { void sendSystemMail(user.email, mail.subject, mail.text).catch(logFailure("password reset e-mail")); });
@@ -352,8 +358,8 @@ export function registerAccountMailPrivate(api: Hono<any>, deps: AccountMailDeps
     });
     audit(user.id, "account", `E-mail address change to ${email} requested (confirmation link sent to the new address)`);
     const taken = !!users.byEmail(email);
-    const confirm = MAILS.confirm[user.locale](`${config.publicUrl}/?email_change=${encodeURIComponent(token)}`);
-    const notice = MAILS.notice[user.locale](email);
+    const confirm = byLocale(user.locale, MAILS.confirm)(`${config.publicUrl}/?email_change=${encodeURIComponent(token)}`);
+    const notice = byLocale(user.locale, MAILS.notice)(email);
     setImmediate(() => {
       // An address that already has an account gets nothing (the answer above is the same, so nothing is revealed).
       if (!taken) void sendSystemMail(email, confirm.subject, confirm.text).catch(logFailure("address confirmation e-mail"));
@@ -422,7 +428,7 @@ export function registerAccountMailPrivate(api: Hono<any>, deps: AccountMailDeps
   api.post("/settings/smtp/test", handle(userLoc, async (c, locale) => {
     const user = ownerOnly(c);
     deps.throttle(`smtp-test:${user.id}`, 10);
-    const mail = MAILS.test[user.locale]();
+    const mail = byLocale(user.locale, MAILS.test)();
     try {
       await sendSystemMail(user.email, mail.subject, mail.text);
     } catch (err) {

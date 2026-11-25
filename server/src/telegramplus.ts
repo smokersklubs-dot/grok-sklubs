@@ -16,7 +16,7 @@
  *   sendPhoto (photos up to 10 MB), sendVoice (OGG/Opus, MP3 or M4A), sendAudio, sendDocument ("files of any type of up
  *   to 50 MB"), sendChatAction (action "typing" / "upload_document", shown for 5 seconds or less).
  */
-import { config } from "./config.js";
+import { config } from "./config.js"; import { localize } from "./lang/index.js";
 import type { Attachment, Locale } from "./shared.js";
 
 export const TG_TEXT_MAX = 4096;
@@ -37,7 +37,7 @@ const FR: Record<string, string> = {
   "“{name}” is over 50 MB: Telegram refuses it. It is in the app.": "« {name} » dépasse 50 Mo : Telegram le refuse. Il est dans l'appli.",
 };
 export const tgText = (locale: Locale | undefined, en: string, vars: Record<string, string | number> = {}) =>
-  (locale === "fr" ? FR[en] ?? en : en).replace(/\{(\w+)\}/g, (_m, k) => String(vars[k] ?? ""));
+  localize(locale, en, FR).replace(/\{(\w+)\}/g, (_m, k) => String(vars[k] ?? ""));
 
 // ── Long replies ─────────────────────────────────────────────────────────────────────────────────────────────────
 /**

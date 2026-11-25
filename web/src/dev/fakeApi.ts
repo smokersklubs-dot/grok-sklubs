@@ -7,13 +7,13 @@ import { landingData, sampleDownloads } from "./landingFixtures";
 import { announcementsAdmin, announcementsState, conversationGrantFixtures, memoryHistoryFixture, sentinelOverview, todayReport, type FixtureOptions } from "./fixtures";
 import { promptViewFixture, semanticFixture, summaryFixture } from "./GalleryMemory";
 import { githubPreviewFixture, libraryFixture, scanReportFixture, versionsFixture } from "./skillsFixtures"; import { benchFixture, catalogFixture, skillHealthFixture, versionsListFixture } from "./skillHealthFixtures";
-import { incidentsFixture } from "./incidentsFixtures"; import { rows23Get } from "./GalleryRows23";
+import { incidentsFixture } from "./incidentsFixtures"; import { batchCostGet } from "./batchFixtures"; import { rows23Get } from "./GalleryRows23";
 import { commandFixture, fakeScreen } from "./commandFixtures";
 import { teamMdExportFixture, teamMdPreviewFixture, teamMdReportFixture } from "./teamMdFixtures";
 import { hookSignedFixture, hookTestFixture, reportsFixture } from "./trustFixtures";
 import { relayGuardFixture } from "./relayGuardFixtures";
 import { routineExtrasFixture, routinePreviewFixture, researchFixture, routineRunsFixture, usageDailyFixture } from "./routineFixtures";
-import { botSecurityFixture, browserFixture, recipientsFixture, securitySettingsFixture, vaultAccessFixture } from "./securityFixtures";
+import { botSecurityFixture, browserFixture, passkeysFixture, recipientsFixture, securitySettingsFixture, signInsFixture, vaultAccessFixture } from "./securityFixtures";
 import { careGet, careSend } from "./GalleryCare"; import { channelsFixture } from "./GalleryChannels"; import { comfort6Get } from "./GalleryComfort6"; import { comfort7Get, officeFixture } from "./GalleryComfort7"; import { comfort9Get } from "./GalleryComfort9"; import { comfort10Get } from "./GalleryComfort10"; import { inboxFixture } from "./turnFixtures"; import { extensionsGet } from "./GalleryExtensions";
 
 export interface FakeApiState extends FixtureOptions { empty: boolean; fail: boolean }
@@ -78,6 +78,7 @@ export function installFakeApi(get: () => FakeApiState): void {
     { const w9 = comfort9Get(path, s); if (w9 !== undefined) return json(200, w9); } // wave 9 web rows (GalleryComfort9.tsx)
     { const w10 = comfort10Get(path, s); if (w10 !== undefined) return json(200, w10); } // wave 10 rows (GalleryComfort10.tsx)
     { const r23 = rows23Get(path, s); if (r23 !== undefined) return json(200, r23); } // 23/11 rows (GalleryRows23.tsx)
+    { const bc = batchCostGet(path); if (bc !== undefined) return json(200, bc); } // L99 (batchFixtures.ts)
     { const w6 = comfort6Get(path, s); if (w6 !== undefined) return json(200, w6); } // wave 6 comfort (GalleryComfort6.tsx)
     { const x7 = extensionsGet(path, s); if (x7 !== undefined) return json(200, x7); } // wave 7 extensions (GalleryExtensions.tsx)
     { const w7 = path.endsWith("/files/office-preview") ? officeFixture(url.searchParams.get("path") ?? "", s) : comfort7Get(path, s); if (w7 !== undefined) return json(200, w7); } // wave 7 comfort (GalleryComfort7.tsx)
@@ -123,6 +124,8 @@ export function installFakeApi(get: () => FakeApiState): void {
     // Lot 1 security (GallerySecurity.tsx).
     if (path === "/security/settings") return json(200, securitySettingsFixture(s.empty));
     if (path === "/security/browser") return json(200, browserFixture(s.empty));
+    if (path === "/account/passkeys") return json(200, passkeysFixture(s, s.empty)); // L44 (Passkeys.tsx)
+    if (path === "/account/sign-ins") return json(200, signInsFixture(s, s.empty));
     if (/^\/bots\/[^/]+\/security$/.test(path)) return json(200, botSecurityFixture(s, s.empty));
     if (/^\/bots\/[^/]+\/email\/recipients$/.test(path)) return json(200, recipientsFixture(s.empty));
     // Wave 6 (OpenAccess.tsx): network access, provider keys, outgoing webhooks.

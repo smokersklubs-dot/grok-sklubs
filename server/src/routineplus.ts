@@ -9,9 +9,9 @@
  * preview of the next runs), 13 (approve a routine's whole instruction with its scope), 45 (a correction changes only
  * the fields it names).
  */
-import { createHash } from "node:crypto";
+import { createHash } from "node:crypto"; import { localize } from "./lang/index.js";
 import { getLive } from "./bus.js";
-import { describeCron, isValidTimezone, nextRun } from "./cron.js";
+import { describeCron, isValidTimezone, nextRun } from "./cron.js"; import { belowFloor, FLOOR_REFUSAL } from "./routinefloor.js"; import { PACE_FR } from "./pacei18n.js";
 import { q } from "./db.js";
 import { describeRoutine, onRoutineUpdated, routines, runs, typicalRunUsd, type RoutineRecord } from "./routines.js";
 import { rules } from "./rules.js";
@@ -47,9 +47,10 @@ export const ROUTINE_FR: Record<string, string> = {
   "The daily limit must be between 1 and 1440 runs.": "La limite par jour doit être entre 1 et 1440 exécutions.",
   "The end date must be in the future.": "La date de fin doit être dans le futur.",
   "Save your changes first, then run it.": "Enregistre d'abord tes changements, puis lance-la.",
+  [FLOOR_REFUSAL]: PACE_FR[FLOOR_REFUSAL], // L143 (routinefloor.ts, pacei18n.ts)
 };
 export function tr(locale: Locale | undefined, en: string, vars: Record<string, string | number> = {}): string {
-  const s = locale === "fr" ? ROUTINE_FR[en] ?? en : en;
+  const s = localize(locale, en, ROUTINE_FR);
   return s.replace(/\{(\w+)\}/g, (_m, k) => String(vars[k] ?? ""));
 }
 
@@ -134,6 +135,7 @@ export function editRoutine(r: RoutineRecord, f: RoutineEdit, revision?: number)
   const model = f.model === undefined ? m.model : cleanModelRef(f.model);
   if (model !== m.model) changed.push("model");
   if (changed.includes("schedule") || changed.includes("timezone")) checkSchedule(r.trigger, next.schedule, next.timezone);
+  if (changed.includes("schedule") && r.trigger === "cron" && belowFloor(next.schedule)) throw new RoutineEditError(400, FLOOR_REFUSAL); // L143 (routinefloor.ts)
   if (!changed.length) return { routine: r, changed };
   ensure(r.id);
   q.tx(() => {

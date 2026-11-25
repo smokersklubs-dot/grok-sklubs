@@ -1,4 +1,4 @@
-import { apiProviders } from "../apimodels.js";
+import { apiProviders } from "../apimodels.js"; import type { Locale } from "../shared.js";
 import { config } from "../config.js";
 import { tr } from "../i18n.js";
 import type { Block, ChatMessage, LlmProvider, TextBlock, ToolSpec } from "../llm/index.js";
@@ -181,7 +181,7 @@ const CHECKPOINT_PREAMBLE = "[Automatic checkpoint: an earlier part of this turn
 
 export interface CompactionTarget {
   bot: BotRecord; generation: number; thread: number; system: string; tools: ToolSpec[];
-  provider: LlmProvider; model: string; signal: AbortSignal; locale?: "fr" | "en";
+  provider: LlmProvider; model: string; signal: AbortSignal; locale?: Locale;
 }
 
 /**

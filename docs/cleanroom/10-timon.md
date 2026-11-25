@@ -132,7 +132,7 @@ Comparé à Sklubot : Sklubot a déjà un ordinateur Linux par bot, des accords 
 - **Pourquoi.** Respecter le flux d'équipe existant.
 - **Contrôle.** Projet réglé ainsi : la tâche finit par une demande ouverte, pas une fusion.
 - **Valeurs relevées (v2).** Avant de pousser : le compte connecté à la forge doit être celui attendu, l'adresse de destination celle du projet, les auteurs des enregistrements l'identité du dépôt ; jamais de poussée forcée ; une branche distante qui a bougé seule n'est jamais écrasée ; aucune référence interne (numéro de tâche, d'idée, mention d'attribution) dans les messages, le titre ou la description. Une idée liée ne se ferme qu'à l'intégration réelle de la demande, pas à la fusion intermédiaire.
-- **Sklubot.** PARTIEL : issues et réponses GitHub (`server/src/githubissues.ts`, test `server/test/github-issue-workflow.test.ts`).
+- **Sklubot.** FAIT (L175, 25/11/2026) : « Livrer par demande d'intégration (pull request) » sur une tâche du tableau (`server/src/workboardpr.ts`, test `server/test/board-pr-delivery.test.ts`) ; issues et réponses GitHub à part (`server/src/githubissues.ts`). Pas encore essayé avec un vrai compte GitHub.
 
 ### A.4 Missions : conduite, reprise, états
 

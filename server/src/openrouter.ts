@@ -1,4 +1,4 @@
-import { ProviderError } from "./llm/types.js";
+import { ProviderError } from "./llm/types.js"; import { byLocale, type LocaleTexts } from "./lang/index.js";
 import { fetchProblem, guardedFetch } from "./net.js";
 import type { ApiProviderModel, Locale } from "./shared.js";
 import { audit, bots, rows, users } from "./store.js";
@@ -154,11 +154,12 @@ export async function testOpenRouterKey(key: string): Promise<{ ok: boolean; det
   }
 }
 
-const TEXT: Record<Locale, { credit: string; wait: string }> = {
+const TEXT: LocaleTexts<{ credit: string; wait: string }> = {
   fr: { credit: "Ton crédit OpenRouter est épuisé (ou la limite de ta clé est atteinte) : recharge sur openrouter.ai (https://openrouter.ai/settings/credits), puis redemande.", wait: "OpenRouter limite les requêtes en cours sur ton crédit : nouvel essai dans un instant." },
   en: { credit: "Your OpenRouter credit is used up (or your key's limit is reached): top up on openrouter.ai (https://openrouter.ai/settings/credits), then ask again.", wait: "OpenRouter is limiting the requests running on your credit: trying again in a moment." },
+  es: { credit: "Tu crédito de OpenRouter se ha agotado (o se ha alcanzado el límite de tu clave): recárgalo en openrouter.ai (https://openrouter.ai/settings/credits) y vuelve a pedirlo.", wait: "OpenRouter está limitando las solicitudes en curso con tu crédito: lo intento de nuevo en un momento." },
 };
-export const outOfCreditText = (loc: Locale) => TEXT[loc].credit;
+export const outOfCreditText = (loc: Locale) => byLocale(loc, TEXT).credit;
 
 /** Owners already told (one notice per owner every 6 hours). */
 const told = new Map<string, number>();
@@ -180,7 +181,7 @@ export const resetOutOfCreditNotices = () => told.clear();
 export function openRouterError(ownerId: string, status: number, detail: string, retryAfterMs: number | null): ProviderError | null {
   if (status !== 402) return null;
   const loc = users.localeOf(ownerId);
-  if (/openrouter_in_flight_budget/.test(detail) && retryAfterMs !== null) return new ProviderError(TEXT[loc].wait, { status, transient: true, retryAfterMs });
+  if (/openrouter_in_flight_budget/.test(detail) && retryAfterMs !== null) return new ProviderError(byLocale(loc, TEXT).wait, { status, transient: true, retryAfterMs });
   noteOutOfCredit(ownerId);
-  return new ProviderError(TEXT[loc].credit, { status, transient: false, code: "out_of_credit" });
+  return new ProviderError(byLocale(loc, TEXT).credit, { status, transient: false, code: "out_of_credit" });
 }

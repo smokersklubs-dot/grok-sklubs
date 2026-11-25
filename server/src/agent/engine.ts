@@ -16,7 +16,7 @@ import { sessionLost } from "./session-rebuild.js";
 import { getLive, setLive } from "../bus.js";
 import { buildSystemPrompt } from "./prompt.js";
 import { imageService } from "../images.js";
-import { browserAvailable } from "../computer.js";
+import { browserAvailable } from "../computer.js"; import { browserReadyFor, claudeToolList, NO_WEBFETCH_NOTE } from "./enginetools.js";
 import { collectSideReply } from "./sidereply.js";
 import { noteDiskTrouble } from "../disk.js";
 import { claudeLimitFrom, claudeLimitFromText, codexLimitFrom, noteEngineLimit, type LimitHit } from "./sublimit.js";
@@ -219,6 +219,8 @@ export interface EngineHost {
   ready(bot: BotRecord): Promise<void>;
   /** Whether the computer is on right now (never wakes it). */
   awake(botId: string): boolean;
+  /** L64: whether the bot's browser answers right now (never wakes it). Optional: a host without it counts as "not ready". */
+  browserAnswers?(bot: BotRecord): Promise<boolean>;
   /**
    * Marks the computer busy while a turn (or a side request) runs in it, so it is never put to sleep meanwhile; returns
    * the release. Optional: a host without it (a test's fake) has nothing to keep awake.
@@ -260,6 +262,7 @@ const dockerHost: EngineHost = {
   kill: (botId) => killEngineProcesses(botId),
   ready: (bot) => screen.ready(bot.id, bot.userId),
   awake: (botId) => screen.isOpen(botId),
+  browserAnswers: (bot) => screen.browserAnswers(bot.id),
   hold: (bot) => screen.holdTurn(bot.id, bot.userId),
   machineOf: (botId) => machineOf(botId),
   async probe(botId, args, timeoutMs) {
@@ -730,8 +733,10 @@ async function engineTurnOn(turn: Turn, prompt: string, attachments: Attachment[
   try { await host.ready(bot); } catch (err) { console.error(`[screen ready ${bot.id}]`, (err as Error)?.message ?? err); }
   if (turn.signal.aborted) throw new Error("aborted");
   const engine = engineOf(bot.model);
+  // L64 (owner decision n° 8): Claude Code loses WebFetch for this turn only when the browser answers (enginetools.ts).
+  const noFetch = engine === "claude-code" && await browserReadyFor(browserAvailable(), host.browserAnswers ? () => host.browserAnswers!(bot) : undefined);
   const files = await desktopAttachmentNotes(bot.id, attachments, (dest, data) => host.writeFile(bot.id, dest, data, "base64"));
-  const system = buildSystemPrompt(bot, turn.user, { connectorNames: [...new Set([...turn.remote.values()].map((r) => r.connectorName))], browser: browserAvailable(), shell: true, linux: true, images: !!imageService(), engine });
+  const system = buildSystemPrompt(bot, turn.user, { connectorNames: [...new Set([...turn.remote.values()].map((r) => r.connectorName))], browser: browserAvailable(), shell: true, linux: true, images: !!imageService(), engine }) + (noFetch ? NO_WEBFETCH_NOTE : "");
   await writeFile(bot.id, "/root/.sklubot/engine-prompt.md", system);
   const t = new Transcript(turn);
   runningTurns.set(bot.id, turn);
@@ -740,7 +745,7 @@ async function engineTurnOn(turn: Turn, prompt: string, attachments: Attachment[
   let threw = false;
   ready();
   try {
-    if (engine === "claude-code") await claudeTurn(turn, t, prompt + files, token);
+    if (engine === "claude-code") await claudeTurn(turn, t, prompt + files, token, claudeToolList(noFetch));
     else await codexTurn(turn, t, prompt + files, system, token);
   } catch (err) { threw = true; throw err; } finally {
     revokeEngineToken(bot.id);
@@ -796,7 +801,7 @@ async function watchedExec(turn: Turn, t: Transcript, args: string[], env: Recor
  */
 const TOOL_TIMEOUT_MS = 30 * 60_000;
 
-async function claudeTurn(turn: Turn, t: Transcript, prompt: string, token: string, retried = false) {
+async function claudeTurn(turn: Turn, t: Transcript, prompt: string, token: string, tools: string, retried = false) {
   const { bot } = turn;
   const mcp = { mcpServers: { sklubot: { type: "http", url: `${botBaseUrl()}/mcp/${encodeURIComponent(bot.id)}`, headers: { Authorization: `Bearer ${token}` }, timeout: TOOL_TIMEOUT_MS } } };
   await writeFile(bot.id, "/root/.sklubot/mcp.json", JSON.stringify(mcp));
@@ -808,7 +813,7 @@ async function claudeTurn(turn: Turn, t: Transcript, prompt: string, token: stri
     // The computer is the bot's own sandbox: tools run without per-call prompts there. Sklubot's own
     // tools still ask the user where they must (apps that change things, saved logins…).
     "--permission-mode", "bypassPermissions",
-    "--tools", "Bash,Read,Write,Edit,WebFetch,WebSearch,Task,NotebookEdit",
+    "--tools", tools, // L64: without WebFetch once the bot's browser is ready (enginetools.ts)
     "--strict-mcp-config", "--mcp-config", "/root/.sklubot/mcp.json",
     "--append-system-prompt-file", "/root/.sklubot/engine-prompt.md",
     ...(model && model !== "default" ? ["--model", model] : []),
@@ -886,7 +891,7 @@ async function claudeTurn(turn: Turn, t: Transcript, prompt: string, token: stri
   if (turn.signal.aborted || t.switched) return;
   if (toolsMissing) { t.notice(failure); t.fatal = true; return; }
   // The saved session is gone: a new one starts from a compact copy of the stored conversation, and the chat says so (session-rebuild.ts).
-  if (missingSession && !retried) { dropSession(bot.id, turn.generation, scope); return claudeTurn(turn, t, sessionLost(turn, "claude-code", prompt) + prompt, token, true); }
+  if (missingSession && !retried) { dropSession(bot.id, turn.generation, scope); return claudeTurn(turn, t, sessionLost(turn, "claude-code", prompt) + prompt, token, tools, true); }
   if (!sawResult && !failure) failure = NOT_SIGNED_IN.test(res.stderr) ? signInHint(turn, "claude-code") : clip(res.stderr.trim() || `Claude Code stopped (code ${res.code}).`, 300);
   if (failure && limit) t.limit(limit, failure);
   else if (failure) { t.notice(failure); t.fatal = true; }

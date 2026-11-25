@@ -2,7 +2,7 @@
  * L162: what Sklubot says on Slack, Discord and Telegram to the owner and to the people who ask for access, in the
  * owner's language (English key, French text), like telegramplus.ts tgText.
  */
-import type { Locale } from "./shared.js";
+import type { Locale } from "./shared.js"; import { localize } from "./lang/index.js";
 
 const FR: Record<string, string> = {
   "Yes": "Oui", "No": "Non",
@@ -40,6 +40,6 @@ const FR: Record<string, string> = {
 };
 
 export const chText = (locale: Locale | undefined, en: string, vars: Record<string, string | number> = {}) =>
-  (locale === "fr" ? FR[en] ?? en : en).replace(/\{(\w+)\}/g, (_m, k) => String(vars[k] ?? ""));
+  localize(locale, en, FR).replace(/\{(\w+)\}/g, (_m, k) => String(vars[k] ?? ""));
 
 export const CHANNEL_LABEL: Record<string, string> = { telegram: "Telegram", slack: "Slack", discord: "Discord", imap: "IMAP" };

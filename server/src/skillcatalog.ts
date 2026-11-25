@@ -109,7 +109,7 @@ function newerSource(s: Skill, locale: Locale): { name: string; description: str
   if (!m.originKind) { skillMeta.setOrigin(s.id, "library", lib.id, version); return null; }
   if (m.originVersion === version) return null;
   const t = lib.text[locale] ?? lib.text.en!;
-  return { name: s.name, description: t.description || lib.summary[locale], body: t.body, extras: {}, version, kind: "library", title: lib.title[locale] };
+  return { name: s.name, description: t.description || (lib.summary[locale] ?? lib.summary.en), body: t.body, extras: {}, version, kind: "library", title: (lib.title[locale] ?? lib.title.en) };
 }
 setUpdateCheck((s) => {
   const owner = bots.byId(s.botId)?.userId;

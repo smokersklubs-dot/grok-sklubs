@@ -10,7 +10,7 @@
 import { CreditAlertField } from "./CreditAlertField"; // L150 OpenRouter credit alert
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, enc, errText } from "../api";
-import { useStore } from "../store";
+import { useStore } from "../store"; import { sideText } from "../i18n";
 import type { ApiProvider, Engine } from "../types";
 import { Icon } from "./Icon";
 import { LiveScreen } from "./LiveScreen";
@@ -74,7 +74,7 @@ const TEXT = {
 type K = keyof typeof TEXT.fr;
 function useA() {
   const locale = useStore((s) => s.locale);
-  return (k: K, vars: Record<string, string | number> = {}) => (TEXT[locale === "fr" ? "fr" : "en"][k] as string).replace(/\{(\w+)\}/g, (_m, n) => String(vars[n] ?? ""));
+  return (k: K, vars: Record<string, string | number> = {}) => (sideText("aiAccounts", TEXT, locale)[k] as string).replace(/\{(\w+)\}/g, (_m, n) => String(vars[n] ?? ""));
 }
 const usePrimary = () => useStore((s) => Object.values(s.bots).find((b) => b.kind === "agent" && b.primary) ?? null);
 const money = (n: number) => (n === 0 ? "0" : n < 0.01 ? n.toPrecision(2) : n < 10 ? n.toFixed(2).replace(/\.?0+$/, "") : String(Math.round(n * 10) / 10));

@@ -224,6 +224,10 @@ function resolve(routePath: string, param: string, bot: "bot1" | "bot2"): string
     "themes:themeId": "thm_alpha",
     // L153 « pas à pas » (stepguide.ts): a Docteur line (the card goes to the caller's own main bot).
     "guides:checkId": "account.two_factor",
+    // L99 « lots en parallèle » (agent/batches.ts): a batch of A's bot (its cost and Stop are the owner's alone).
+    "batches:batchId": "bat_alpha",
+    // L44 (passkeys.ts, newdevice.ts): a passkey and a new-device sign-in of A's (rename, remove, « Ce n'est pas moi » are A's alone).
+    "passkeys:pkId": "a_passkey", "sign-ins:alertId": "sia_alpha",
   };
   if (param === "action" && prev2 === "reach") return "login";
   if (param === "rid" && prev2 === "resources") return "a_conn";

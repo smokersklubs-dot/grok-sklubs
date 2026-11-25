@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Alert, KeyboardAvoidingView, Linking, Modal, ScrollView, Switch, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Logo } from "../components/Character";
+import { LanguageChoice } from "../components/LanguageChoice";
 import { Icon } from "../components/Icon";
 import { Button, Card, ErrorNote, Field, Row, Segmented, SectionTitle, tap, text } from "../components/ui";
 import { errText, useT } from "../i18n";
@@ -102,7 +103,7 @@ export function SettingsScreen() {
       </Card>
 
       <SectionTitle>{t("settings.language")}</SectionTitle>
-      <Segmented label={t("settings.language")} value={t.locale} onChange={(l) => prefs.set({ locale: l })} options={[{ id: "fr", label: "Français" }, { id: "en", label: "English" }]} />
+      <LanguageChoice label={t("settings.language")} value={t.locale} onChange={(l) => prefs.set({ locale: l })} />
 
       <SectionTitle>{t("settings.theme")}</SectionTitle>
       <Segmented<ThemePref> label={t("settings.theme")} value={prefs.theme} onChange={(v) => prefs.set({ theme: v })} options={[{ id: "system", label: t("settings.theme.system") }, { id: "light", label: t("settings.theme.light") }, { id: "dark", label: t("settings.theme.dark") }]} />

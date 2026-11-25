@@ -1,4 +1,4 @@
-import { ask } from "./agent/memory.js";
+import { ask } from "./agent/memory.js"; import { languageName } from "./clientshared/locales.js";
 import { q } from "./db.js";
 import { tr } from "./i18n.js";
 import { bots, clip, rows, users, type BotRecord } from "./store.js";
@@ -60,7 +60,7 @@ export function callEnded(bot: BotRecord, callId: string, rawTranscript: unknown
   // A one-line summary is added to the row a moment later; the call is already recorded without it.
   if (transcript.length)
     void ask(bot, "You summarise voice calls between a user and their AI teammate. Answer with the sentence only, in plain words: no JSON, no list, no quotes, no preamble.",
-      `Write ONE sentence, past tense, third person, at most 25 words, in ${locale === "fr" ? "French" : "English"}, saying what the call was about and what was agreed.\n\n${transcript.map((l) => `${l.role === "user" ? "User" : bot.name}: ${l.text}`).join("\n").slice(-12_000)}`)
+      `Write ONE sentence, past tense, third person, at most 25 words, in ${languageName(locale)}, saying what the call was about and what was agreed.\n\n${transcript.map((l) => `${l.role === "user" ? "User" : bot.name}: ${l.text}`).join("\n").slice(-12_000)}`)
       .then((answer) => {
         // Only a short human sentence is shown; anything else (an empty memory list, JSON, code) leaves the row as it is.
         const summary = callSummaryText(answer);

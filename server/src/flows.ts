@@ -19,7 +19,7 @@
  *
  * Isolation: every flow and run carries its owner's user id; every read goes through `owned`. Tables at load.
  */
-import { createHash } from "node:crypto";
+import { createHash } from "node:crypto"; import type { Locale } from "./shared.js";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { config } from "./config.js";
@@ -249,7 +249,7 @@ export async function continueRun(runId: string): Promise<FlowRunView | null> {
 const lastText = new Map<string, string>();
 const stepWords = (s: FlowStep) => s.kind === "open" ? `open ${hostOf(s.url ?? "") || "?"}` : s.label ? `“${clip(s.label, 60)}”` : s.keys ? s.keys : s.kind;
 
-async function runStep(d: FlowDriver, bot: BotRecord, s: FlowStep, n: number, runId: string, loc: "fr" | "en"): Promise<StepEvidence> {
+async function runStep(d: FlowDriver, bot: BotRecord, s: FlowStep, n: number, runId: string, loc: Locale): Promise<StepEvidence> {
   let shot: Shot | null = null;
   const no = (note: string): StepEvidence => ({ n, kind: s.kind, ok: false, url: "", title: "", excerpt: "", hash: "", note, shot: false });
   switch (s.kind) {

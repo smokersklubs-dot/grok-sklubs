@@ -12,19 +12,19 @@ interface BoardStore { open: BoardTab | null; setOpen: (t: BoardTab | null) => v
 export const useBoard = create<BoardStore>((set) => ({ open: null, setOpen: (open) => set({ open }) }));
 export const openBoard = (t: BoardTab | null) => useBoard.getState().setOpen(t);
 
-/** The kanban's columns, left to right; « à relire » shows with « en cours ». */
+/** The kanban's columns, left to right; « à relire » and « en livraison » (L175) show with « en cours ». */
 export const COLUMNS: { key: BoardState | "ideas"; states: string[] }[] = [
   { key: "ideas", states: [] },
   { key: "waiting", states: ["waiting"] },
-  { key: "running", states: ["running", "review"] },
+  { key: "running", states: ["running", "review", "delivering"] },
   { key: "blocked", states: ["blocked"] },
   { key: "done", states: ["done"] },
 ];
 
 /** Tasks per column (the server's `column` already puts an unknown state in « done »), most urgent first. */
 export function byColumn(tasks: BoardTask[]): Record<BoardState, BoardTask[]> {
-  const out: Record<BoardState, BoardTask[]> = { waiting: [], running: [], review: [], blocked: [], done: [] };
-  for (const t of tasks) out[t.column === "review" ? "running" : t.column].push(t);
+  const out: Record<BoardState, BoardTask[]> = { waiting: [], running: [], review: [], delivering: [], blocked: [], done: [] };
+  for (const t of tasks) out[t.column === "review" || t.column === "delivering" ? "running" : t.column].push(t);
   for (const k of Object.keys(out) as BoardState[]) out[k].sort((a, b) => a.priority - b.priority || a.createdAt - b.createdAt);
   return out;
 }

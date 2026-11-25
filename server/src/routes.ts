@@ -1,4 +1,4 @@
-import { body, fail, HttpError } from "./routeinput.js";
+import { body, fail, HttpError } from "./routeinput.js"; import { isLocale } from "./clientshared/locales.js"; import type { Locale } from "./shared.js";
 import { registerSectionRoutes } from "./sectionroutes.js"; import { registerChatComfortRoutes } from "./chatcomfortroutes.js"; import { putInTrash } from "./bottrash.js"; import { registerStopCauseRoutes } from "./stopcauseroutes.js"; import { registerPersonalCommandRoutes } from "./personalcommandroutes.js"; import { registerDoctorRoutes } from "./doctorroutes.js"; import { registerComputerHoursRoutes } from "./computerhoursroutes.js"; import { registerMailSignatureRoutes } from "./native/mailsignatureroutes.js"; import { registerCodeBoxRoutes } from "./codeboxroutes.js";
 import { createHash } from "node:crypto";
 import { closeSync, createReadStream } from "node:fs";
@@ -52,7 +52,7 @@ import { deskRun, deskShot, startDeskTest } from "./desktest.js";
 import { notePresence, push, pushSettings, savePushSettings, sendPush } from "./push.js";
 import { parseTotp } from "./totp.js";
 import { registerEmailLinkPublic } from "./emaillink.js"; import { registerRoutineIcalPublic } from "./routineical.js";
-import { registerTwoFactorPrivate, registerTwoFactorPublic, startSessionOrChallenge } from "./twofactor.js";
+import { registerTwoFactorPrivate, registerTwoFactorPublic, startSessionOrChallenge } from "./twofactor.js"; import { registerPasskeyPrivate, registerPasskeyPublic } from "./passkeys.js"; import { registerNewDevicePrivate, registerNewDevicePublic } from "./newdevice.js"; // L44
 import { registerDataKeyRoutes } from "./datakeyrotate.js";
 import { detectMapping, loginsFrom, parseCsv, type Mapping } from "./vault-import.js";
 import { PUSH_KINDS, VAULT_KINDS, type VaultKind } from "./shared.js";
@@ -301,7 +301,7 @@ let dummyHash: string | null = null;
 const dummyCheck = (password: string) => { dummyHash ??= hashPassword("not-a-real-password"); verifyPassword(password, dummyHash); };
 
 /** The first bot's name and role: chosen at sign-up, else the server's settings, else "Juno" / "Chief of staff". */
-export function firstBotIdentity(locale: "fr" | "en", name?: unknown, label?: unknown): { name: string; label: string } {
+export function firstBotIdentity(locale: Locale, name?: unknown, label?: unknown): { name: string; label: string } {
   const pick = (v: unknown) => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, 60) : "");
   return {
     name: pick(name) || config.firstBotName || "Juno",
@@ -431,7 +431,7 @@ api.get("/connectors/oauth/callback", async (c) => {
 });
 
 /** The page the browser lands on after an app's sign-in: says how it went, tells the app's other tabs, then closes. */
-function signInPage(c: Context, locale: "fr" | "en", ok: boolean, message: string) {
+function signInPage(c: Context, locale: Locale, ok: boolean, message: string) {
   const back = tr(locale, "Back to Sklubot");
   // Tell the app (any open tab, via BroadcastChannel; the opener when it still exists), then close or go back to the app.
   const script = `try{new BroadcastChannel("sklubot-oauth").postMessage({ok:${ok}})}catch(e){}try{window.opener&&window.opener.postMessage({type:"sklubot-oauth",ok:${ok}},${JSON.stringify(config.publicUrl)})}catch(e){}${ok ? 'setTimeout(function(){window.close();setTimeout(function(){location.replace("/")},400)},1200)' : ""}`;
@@ -477,7 +477,7 @@ registerPublicSignupPublic(api, googleDeps);
 // "Recevoir un lien de connexion par e-mail" (emaillink.ts): passwordless sign-in and sign-up, through the same 2FA gate.
 registerEmailLinkPublic(api, googleDeps);
 // The second step of a sign-in with two-factor on (twofactor.ts).
-registerTwoFactorPublic(api, googleDeps);
+registerTwoFactorPublic(api, googleDeps); registerPasskeyPublic(api, googleDeps); registerNewDevicePublic(api, site, googleDeps); // L44 passkeys, « Ce n'est pas moi »
 
 // ── Everything below needs a session ─────────────────────────────────────────
 api.use("*", async (c, next) => {
@@ -502,7 +502,7 @@ registerGithubActivity(api,throttle);
 registerGithubIssueRoutes(api,throttle);
 registerWorkContext(api); registerFinishRoutes(api); // L161 bot themes, global recap, notes archive (finishroutes.ts)
 registerPublicSignupPrivate(api);
-registerTwoFactorPrivate(api, googleDeps);
+registerTwoFactorPrivate(api, googleDeps); registerPasskeyPrivate(api, googleDeps); registerNewDevicePrivate(api); // L44
 registerDataKeyRoutes(api);
 
 api.get("/events", (c) =>
@@ -527,7 +527,7 @@ api.get("/events", (c) =>
 
 api.put("/prefs", async (c) => {
   const b = await body(c);
-  users.setPrefs(c.get("user").id, { locale: b.locale === "fr" || b.locale === "en" ? b.locale : undefined, name: typeof b.name === "string" ? b.name : undefined });
+  users.setPrefs(c.get("user").id, { locale: isLocale(b.locale) ? b.locale : undefined, name: typeof b.name === "string" ? b.name : undefined });
   return c.json({ user: publicUser(users.byId(c.get("user").id)!) });
 });
 
@@ -2171,7 +2171,7 @@ api.post("/connectors/:id/oauth/disconnect", async (c) => c.json({ connector: (a
 
 // ── Built-in apps (Gmail, Google Calendar, Google Drive, Outlook, Slack) ─────
 const vendorParam = (c: Context<Env>): NativeVendor => { const v = c.req.param("vendor") as NativeVendor; return VENDORS.includes(v) ? v : fail(404, "Unknown app vendor."); };
-function vendorSetup(userId: string, locale: "fr" | "en", vendor: NativeVendor): NativeVendorSetup {
+function vendorSetup(userId: string, locale: Locale, vendor: NativeVendor): NativeVendorSetup {
   const client = nativeClients.get(userId, vendor);
   return {
     vendor, name: VENDOR_NAMES[vendor], redirectUri: nativeRedirectUri(vendor), steps: setupSteps(vendor, locale), docs: setupDocs(vendor),

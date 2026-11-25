@@ -534,3 +534,36 @@ pinned there, with its own licence file inside `node_modules`). None of their co
   `CHROME_DEVTOOLS_MCP_NO_UPDATE_CHECKS`, `--no-usage-statistics`, `--no-performance-crux`).
 - The rest of the tree (about 280 packages) is MIT, ISC, Apache-2.0, BSD-2/3-Clause, BlueOak-1.0.0, 0BSD, Unlicense or
   CC0-1.0, as recorded per package in the lockfile.
+
+## MasterKale/SimpleWebAuthn and levischuck/tiny-cbor — MIT License (passkeys, L44)
+
+- Sources: `@simplewebauthn/server` 14.1.0 (https://github.com/MasterKale/SimpleWebAuthn, commit
+  `01d1a640d5ded4fced0b45a9d806fd0ff44ad244`), `@simplewebauthn/browser` 14.0.0 (same repository, commit
+  `83f87addc67b652ff5b84e681669451648216ef6`), `@levischuck/tiny-cbor` 0.2.11 (https://github.com/levischuck/tiny-cbor,
+  commit `3dfd6c890abf450966fc0349dd2ebb94a30144bb`); read from their npm packages on 25/11/2026, not installed.
+- Adapted in `server/src/webauthn.ts` (order of the registration and authentication checks, authenticator data parser,
+  COSE constants, CBOR decoder) and `web/src/lib/webauthn.ts` (options and
+  answers between JSON and the browser's WebAuthn calls, base64url helpers). Modified for Sklubot: TypeScript without
+  dependencies, keys and signatures through node:crypto, decoding only with a depth limit, user verification always
+  required, no metadata service, attestation other than "none" / self "packed" not checked, no autofill or abort service.
+- Licence text (both projects, MIT):
+
+```text
+MIT License
+
+Copyright (c) 2020 Matthew Miller            (SimpleWebAuthn)
+Copyright (c) 2025 Levi                       (tiny-cbor)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
+rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit
+persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the
+Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE
+WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+```

@@ -85,3 +85,15 @@ quel, et sa barre est affichée avec celles des plafonds.
 
 Un webhook d'une routine sautée répond `200 { ok: true, skipped: "usage_cap" }` (pas d'erreur : un expéditeur qui
 réessaie ne s'emballe pas).
+
+## Rythme des routines et lots en parallèle (25/11/2026)
+
+- **Au plus une fois toutes les 15 minutes** pour une routine à horaire : un horaire plus serré est refusé avec un message
+  clair (« Une routine tourne au plus une fois toutes les 15 minutes… »). Une surveillance de page ou de fichier est vérifiée
+  au plus toutes les 15 minutes. Une routine plus ancienne et plus fréquente est gardée, mais ralentie à 15 minutes (sa
+  description le dit). Les routines lancées par un évènement (adresse web, e-mail, Slack, agenda) et « Lancer maintenant »
+  ne sont pas concernées. Pas de limite au nombre de routines en auto-hébergé ; l'offre hébergée garde celle du forfait.
+- **Lots en parallèle** : un bot peut lancer d'un coup 2 à 20 tâches indépendantes (par exemple dix recherches). Elles
+  tournent au plus 3 à la fois (1 à la fois pour un bot sur abonnement), avec ses autres tâches de fond ; une carte montre
+  l'avancement, le coût et un bouton « Arrêter » qui annule ce qui n'a pas commencé ; un seul résumé arrive à la fin.
+

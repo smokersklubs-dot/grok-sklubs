@@ -6,7 +6,8 @@
  */
 
 /** A task's state. An unknown state left by another version is shown in « done » without being rewritten (T1). */
-export const BOARD_STATES = ["waiting", "running", "review", "blocked", "done"] as const;
+/** « delivering » (L175, workboardpr.ts): the work is done and goes out as a pull request; it is done when that is merged. */
+export const BOARD_STATES = ["waiting", "running", "review", "delivering", "blocked", "done"] as const;
 export type BoardState = (typeof BOARD_STATES)[number];
 
 /** What « done » means for the tasks that wait on this one: the goal's own end, or the owner's acceptance (T3). */
@@ -66,6 +67,31 @@ export interface BoardTask {
   modelFrom?: "task" | "role" | "bot";
   executorId?: string | null;
   execReason?: "pinned" | "named" | "role" | "lead-redirected" | "other-role" | "none";
+  /** L175 (workboardpr.ts): delivered by a pull request on GitHub instead of staying local; null: local. */
+  delivery?: BoardDelivery | null;
+}
+
+/** L175, T16 « Livrer par demande d'intégration » (workboardpr.ts). */
+export const DELIVERY_PHASES = ["idle", "approval", "pushing", "open", "merged", "closed", "refused"] as const;
+export type DeliveryPhase = (typeof DELIVERY_PHASES)[number];
+export interface BoardDelivery {
+  repo: string;
+  /** The project's clone, inside the bot's files. */
+  folder: string;
+  /** The branch the pull request goes into ("" : the repository's default branch, found at the first delivery). */
+  base: string;
+  connectorId: string;
+  /** The repository identity commits must carry ("" : the clone's own git identity). */
+  identityName: string;
+  identityEmail: string;
+  branch: string;
+  phase: DeliveryPhase;
+  prNumber: number | null;
+  prUrl: string;
+  prState: "" | "open" | "merged" | "closed";
+  note: string;
+  /** What the owner is asked to allow before the first push to this repository (or after the account changed). */
+  pending: { login: string; name: string; email: string; remote: string; base: string; branch: string; expectedLogin: string } | null;
 }
 
 export interface BoardIdea {

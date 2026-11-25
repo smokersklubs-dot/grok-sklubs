@@ -63,6 +63,7 @@ export const fr = {
   "signin.newHere": "Pas encore de compte ?",
   "signin.createLink": "Créer un compte",
   "signin.closed": "Les inscriptions sont fermées sur ce serveur. Demande un compte à la personne qui le gère.",
+  "signin.passkeyNote": "Les clés d'accès ne marchent pas encore dans l'appli : connecte-toi avec ton mot de passe ou Google. Tu peux les utiliser dans le navigateur (Réglages → Sécurité).",
   "signin.foot": "Sklubot est un logiciel libre que tu héberges toi-même. Tes conversations restent sur ce serveur.",
   "signin.firstBot": "Ton premier bot",
   "signin.firstBotName": "Son nom",

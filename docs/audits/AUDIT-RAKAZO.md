@@ -183,7 +183,7 @@ Pages publiques : la page d'accueil confirme des fonctions déjà au cahier 02 (
 12. E-mail du bot : propriétaire seul par défaut, liste de destinataires visible. S.
 13. Rétention réglable de l'historique des discussions. S.
 14. Audit ReDoS et injection par noms d'affichage (lignes 65-66). M.
-15. Clés d'accès (passkeys) à la connexion. M.
+15. Clés d'accès (passkeys) à la connexion. M. — **FAIT (2026-11-25, L44)** : web seulement, l'appli mobile dit « pas encore » (`server/src/passkeys.ts`).
 16. Invités extérieurs par espace. M.
 17. Mémoire partagée par espace (isolée par défaut). L.
 18. Bot qui rejoint une réunion (bloqué par un fournisseur). L.

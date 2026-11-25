@@ -1,4 +1,4 @@
-import type { Context, Hono } from "hono";
+import type { Context, Hono } from "hono"; import { localize } from "./lang/index.js";
 import { isPaused } from "./agent/loop.js";
 import { hookLimits } from "./hardening.js";
 import { deliveryKeys, GROUP_CHOICES, GROUP_MAX_CALLS, hookTrust, newSecret, signSample, verifySignature, type HookSettings, type RefusalReason } from "./hooktrust.js";
@@ -30,7 +30,7 @@ const FR: Record<string, string> = {
   "A pasted secret must be 8 to 300 characters, without spaces.": "Une clé collée doit faire de 8 à 300 caractères, sans espace.",
   "Choose 0, 10, 30, 60, 300 or 600 seconds.": "Choisis 0, 10, 30, 60, 300 ou 600 secondes.",
 };
-const m = (c: Context<Env>, en: string) => (c.get("user").locale === "fr" ? FR[en] ?? en : en);
+const m = (c: Context<Env>, en: string) => localize(c.get("user").locale, en, FR);
 
 /** Burst windows waiting to close, per routine. */
 const windows = new Map<string, NodeJS.Timeout>();

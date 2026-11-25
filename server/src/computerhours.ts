@@ -1,4 +1,4 @@
-import { q } from "./db.js";
+import { q } from "./db.js"; import { localize } from "./lang/index.js";
 import { emit } from "./bus.js";
 import { hostedMode, isOperator } from "./hosted.js";
 import type { Locale } from "./shared.js";
@@ -34,7 +34,7 @@ const FR: Record<string, string> = {
   "Computer hours used up for this month: computers will not be woken until the 1st.": "Heures d'ordinateur épuisées pour ce mois : les ordinateurs ne seront plus allumés avant le 1er.",
 };
 const t = (locale: Locale | undefined, en: string, vars: Record<string, string | number> = {}) =>
-  (locale === "fr" ? FR[en] ?? en : en).replace(/\{(\w+)\}/g, (_, k: string) => String(vars[k] ?? ""));
+  localize(locale, en, FR).replace(/\{(\w+)\}/g, (_, k: string) => String(vars[k] ?? ""));
 
 export const monthOf = (ms = Date.now()) => new Date(ms).toISOString().slice(0, 7);
 const hours = (ms: number) => Math.round((ms / 3_600_000) * 10) / 10;

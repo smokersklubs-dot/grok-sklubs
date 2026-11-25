@@ -273,7 +273,7 @@ Taille : S (moins d'un jour), M (quelques jours), L (une semaine ou plus). Chemi
 5. ✅ FAIT (L67, `isCorrection` / `learningDue` : dans la minute, sans modèle pour le repérer ; un passage au plus par lot de messages) — **Apprentissage immédiat sur un mot de correction** (repéré sans modèle, plafond par heure) (S).
 6. **Mode Auto** : classer la demande une fois (simple / moyen / complexe) et choisir le modèle pour toute la tâche (M).
 7. **Second facteur (e-mail ou TOTP) avant une action du plancher**, en option (M).
-8. **Alerte nouvel appareil** (« C'est moi / Ce n'est pas moi ») (S).
+8. **Alerte nouvel appareil** (« C'est moi / Ce n'est pas moi ») (S). — **FAIT (2026-11-25, L44)** : e-mail + notification, « Ce n'est pas moi » (`server/src/newdevice.ts`).
 9. **Registre vérifié des sites connectés** dans Connexions (M). — **FAIT (2026-11-23)**
 10. **Boîte « À toi »** : toutes les cartes en attente de tous les bots (M).
 11. **Demandes à toucher propres au rôle** d'un bot neuf ; **tour de chauffe** des moteurs après redémarrage (S).

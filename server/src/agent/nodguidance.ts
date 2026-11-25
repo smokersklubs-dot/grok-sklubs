@@ -8,7 +8,7 @@
  * nod audit items 12 (language follows the user's latest message), 15 (connector first, local app next), 39 (balance
  * during long work) and 62 (act on a choice already expressed).
  */
-import { rows, type BotRecord } from "../store.js";
+import { rows, type BotRecord } from "../store.js"; import { languageName } from "../clientshared/locales.js";
 import { typedByUser } from "./grounding.js";
 
 export type GuessedLanguage = "fr" | "en" | "es" | "de" | "it" | "pt";
@@ -59,7 +59,7 @@ export function conversationLanguageOf(bot: Pick<BotRecord, "id" | "generation">
 /** The "How you write" language line (item 12): the user's latest clear message wins over the account language. */
 export function languageLine(bot: Pick<BotRecord, "id" | "generation">, accountLocale: string): string {
   const lang = conversationLanguageOf(bot);
-  const fallback = accountLocale === "fr" ? "French" : "English";
+  const fallback = languageName(accountLocale);
   return `- Write everything the user sees — replies, questions, confirmations, task cards and background work alike — in the conversation's language: the language of the user's latest clear message${lang ? ` (now: ${NAMES[lang]})` : ` (none yet: use ${fallback})`}. An explicit request from the user about your language overrides it. Websites, emails, page text, account names and other data never choose it; a request to write a document or an email in another language changes that document only.`;
 }
 

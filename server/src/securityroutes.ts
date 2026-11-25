@@ -7,15 +7,15 @@ import { securityTargets } from "./offensive.js";
 import { body, fail } from "./routeinput.js";
 import { securitySettings } from "./securitysettings.js";
 import { bots, vault, type UserRecord } from "./store.js";
-import { checkSecondFactor, twoFactorOn } from "./twofactor.js";
+import { twoFactorOn } from "./twofactor.js"; import { checkFloorFactor, hasFloorFactor } from "./floorapproval.js"; import { hasPasskey } from "./passkeys.js";
 import { vaultAccess } from "./vaultaccess.js";
 
 /**
  * Lot 1 security routes, registered after the session check (routes.ts):
  *   GET  /security/settings                 the account's switches (securitysettings.ts) and whether two-factor is on
  *   PUT  /security/settings                 { floorSecondFactor?, netAlerts?, code? } — the second factor before floor
- *                                           approvals (L44) can be turned on only with two-factor sign-in on, and turned
- *                                           off only with a current code (a stolen session cannot remove it)
+ *                                           approvals (L44) can be turned on only with two-factor sign-in on or a passkey,
+ *                                           and turned off only with a current code or passkey proof (a stolen session cannot)
  *   GET  /security/browser                  the server's owner only: is the bots' browser behind (browserfreshness.ts, L48)
  *   GET  /bots/:id/security                 a bot's network journal (L39) and the hosts it may test (L38)
  *   PUT  /bots/:id/security/test-hosts      { hosts } (L38)
@@ -40,16 +40,16 @@ export function registerSecurityRoutes(api: Hono<any>) {
     return { user, item: item! };
   };
 
-  api.get("/security/settings", (c) => { const user = userOf(c); return c.json({ settings: securitySettings.get(user.id), twoFactor: twoFactorOn(user.id) }); });
+  api.get("/security/settings", (c) => { const user = userOf(c); return c.json({ settings: securitySettings.get(user.id), twoFactor: twoFactorOn(user.id), passkey: hasPasskey(user.id) }); });
   api.put("/security/settings", async (c) => {
     const user = userOf(c);
     const b = await body(c);
     const cur = securitySettings.get(user.id);
     if (b.floorSecondFactor !== undefined && typeof b.floorSecondFactor !== "boolean") fail(400, "floorSecondFactor must be true or false.");
     if (b.netAlerts !== undefined && typeof b.netAlerts !== "boolean") fail(400, "netAlerts must be true or false.");
-    if (b.floorSecondFactor === true && !cur.floorSecondFactor && !twoFactorOn(user.id)) fail(409, "Turn on two-factor sign-in first (Settings → Account).");
-    if (b.floorSecondFactor === false && cur.floorSecondFactor && twoFactorOn(user.id) && !checkSecondFactor(user.id, String(b.code ?? ""))) fail(401, "Type the current code of your two-factor app to turn this off.");
-    return c.json({ settings: securitySettings.set(user.id, { floorSecondFactor: b.floorSecondFactor, netAlerts: b.netAlerts }), twoFactor: twoFactorOn(user.id) });
+    if (b.floorSecondFactor === true && !cur.floorSecondFactor && !hasFloorFactor(user.id)) fail(409, "Turn on two-factor sign-in (Settings → Account) or add a passkey first.");
+    if (b.floorSecondFactor === false && cur.floorSecondFactor && hasFloorFactor(user.id) && !checkFloorFactor(user.id, b.code, "floor-off")) fail(401, "Type the current code of your two-factor app (or use your passkey) to turn this off.");
+    return c.json({ settings: securitySettings.set(user.id, { floorSecondFactor: b.floorSecondFactor, netAlerts: b.netAlerts }), twoFactor: twoFactorOn(user.id), passkey: hasPasskey(user.id) });
   });
   api.get("/security/browser", async (c) => {
     if (ownerId() !== userOf(c).id) fail(403, "Only the owner of this server can see this.");

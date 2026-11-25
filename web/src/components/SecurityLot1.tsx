@@ -7,6 +7,7 @@ import { relTime } from "../lib/format";
 import { Icon } from "./Icon";
 import { ErrorNote, Loading, Toggle } from "./ui";
 import { BotNetworkBlock, BotProviderKeysBlock } from "./OpenAccess";
+import { PasskeyProofButton, PasskeySettings, SignInAlerts, useHasPasskey } from "./Passkeys";
 import "./SecurityLot1.css";
 
 /* Lot 1 security (docs/SECURITE.md): the account's switches (L44, L39), a bot's network journal and the hosts it may
@@ -39,48 +40,56 @@ export function useFloorCode(card: Extract<Card, { type: "approval" }>): boolean
   return on && card.status === "pending" && needsFloorCode(card);
 }
 
-export function FloorCodeField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+/** The approver's code, or (L44) a passkey proof for `purpose` ("floor:<approval id>", "floor-off") when they have a passkey. */
+export function FloorCodeField({ value, onChange, purpose }: { value: string; onChange: (v: string) => void; purpose?: string }) {
   const t = useT();
-  return (
+  const passkey = useHasPasskey(!!purpose);
+  if (value.startsWith("pk:")) return (
+    <p className="floor-passkey" role="status"><span className="chip state-working"><Icon name="check" size={13} /> {t("pk.verified")}</span>
+      <button type="button" className="link" onClick={() => onChange("")}>{t("pk.useCode")}</button></p>
+  );
+  return (<>
+    {passkey && purpose && <div className="floor-passkey"><PasskeyProofButton purpose={purpose} onProof={onChange} /></div>}
     <label className="field floor-code">
       <span className="field-label"><Icon name="shield" size={13} /> {t("security.floorCode")}</span>
       <input className="input mono" inputMode="numeric" autoComplete="one-time-code" maxLength={14} value={value} onChange={(e) => onChange(e.target.value)} placeholder="123 456" />
     </label>
-  );
+  </>);
 }
 
 /** Settings → Permissions → « Sécurité » : the two switches; the server's owner also sees the bots' browser freshness. */
 export function SecuritySettingsBlock() {
   const t = useT();
-  const [data, setData] = useState<{ settings: SecuritySettings; twoFactor: boolean } | null>(null);
+  const [data, setData] = useState<{ settings: SecuritySettings; twoFactor: boolean; passkey?: boolean } | null>(null);
   const [code, setCode] = useState("");
   const [askCode, setAskCode] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [browser, setBrowser] = useState<Freshness | null>(null);
   useEffect(() => {
-    void api<{ settings: SecuritySettings; twoFactor: boolean }>("GET", "/security/settings").then(setData, (e) => setError(errText(e)));
+    void api<{ settings: SecuritySettings; twoFactor: boolean; passkey?: boolean }>("GET", "/security/settings").then(setData, (e) => setError(errText(e)));
     void api<{ browser: Freshness }>("GET", "/security/browser").then((r) => setBrowser(r.browser), () => undefined);
   }, []);
   const save = async (patch: Partial<SecuritySettings> & { code?: string }) => {
     setError(null);
     try {
-      const r = await api<{ settings: SecuritySettings; twoFactor: boolean }>("PUT", "/security/settings", patch);
+      const r = await api<{ settings: SecuritySettings; twoFactor: boolean; passkey?: boolean }>("PUT", "/security/settings", patch);
       setData(r); settingsOnce = null; setAskCode(false); setCode("");
     } catch (e) { setError(errText(e)); }
   };
   if (!data) return error ? <ErrorNote>{error}</ErrorNote> : <Loading />;
   const s = data.settings;
+  const factor = data.twoFactor || !!data.passkey; // L44: a two-factor app or a passkey
   return (
     <section className="security-block" aria-labelledby="security-title">
       <h3 className="pane-heading" id="security-title"><Icon name="shield" size={15} /> {t("security.title")}</h3>
       <div className="action-row">
-        <div><p className="action-title">{t("security.floor")}</p><p className="muted small">{t(data.twoFactor ? "security.floorHint" : "security.floorNeeds2fa")}</p></div>
-        <Toggle checked={s.floorSecondFactor} disabled={!data.twoFactor && !s.floorSecondFactor} label={t("security.floor")}
+        <div><p className="action-title">{t("security.floor")}</p><p className="muted small">{t(factor ? "security.floorHint" : "security.floorNeeds2fa")}</p></div>
+        <Toggle checked={s.floorSecondFactor} disabled={!factor && !s.floorSecondFactor} label={t("security.floor")}
           onChange={(next) => { if (!next && s.floorSecondFactor) setAskCode(true); else void save({ floorSecondFactor: next }); }} />
       </div>
       {askCode && (
         <form className="field-inline" onSubmit={(e) => { e.preventDefault(); void save({ floorSecondFactor: false, code }); }}>
-          <FloorCodeField value={code} onChange={setCode} />
+          <FloorCodeField value={code} onChange={setCode} purpose="floor-off" />
           <button type="submit" className="btn btn-small btn-primary">{t("security.turnOff")}</button>
           <button type="button" className="btn btn-small" onClick={() => { setAskCode(false); setCode(""); }}>{t("common.cancel")}</button>
         </form>
@@ -101,6 +110,7 @@ export function SecuritySettingsBlock() {
           {t(sandboxKey(browser.sandbox)!, { n: String(browser.sandbox.unsandboxed > 0 ? browser.sandbox.unsandboxed : browser.sandbox.oldComputers) })}
         </p>
       )}
+      <PasskeySettings onChange={(has) => setData((d) => (d ? { ...d, passkey: has } : d))} /><SignInAlerts />{/* L44 (Passkeys.tsx) */}
       <ErrorNote onDismiss={() => setError(null)}>{error}</ErrorNote>
     </section>
   );

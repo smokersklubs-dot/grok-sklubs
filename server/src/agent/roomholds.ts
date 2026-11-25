@@ -6,7 +6,7 @@
  * « reprends @Bot » releases, quoted text never counts, the per-member time limit is a watchdog over Sklubot's live
  * state (bus.ts) instead of engine events, and every line the group shows is in the owner's language.
  */
-import { getLive } from "../bus.js";
+import { getLive } from "../bus.js"; import { localize } from "../lang/index.js";
 import { q } from "../db.js";
 import type { Locale } from "../shared.js";
 import { laneKey, now, rows, users, type BotRecord } from "../store.js";
@@ -107,7 +107,7 @@ const FR: Record<string, string> = {
   "{bots} are back in the group.": "{bots} sont de retour dans le groupe.",
   "{bot} went past its time limit in this group ({n} min): it was stopped. What it did stays.": "{bot} a dépassé sa limite de temps dans ce groupe ({n} min) : il a été arrêté. Ce qu'il a fait reste.",
 };
-const say = (loc: Locale, en: string, vars: Record<string, string>) => (loc === "fr" ? FR[en] ?? en : en).replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? "");
+const say = (loc: Locale, en: string, vars: Record<string, string>) => localize(loc, en, FR).replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? "");
 
 /**
  * Applies the message's stop / resume order to the room (team.ts dispatchToRoom, a human's message only). Writes the

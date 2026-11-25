@@ -4,7 +4,7 @@
  * is the key; French here (tutoiement, simple words). Kept apart from i18n.ts like chantieri18n.ts does.
  * test/workboard-i18n.test.ts checks that every wt("…") text of these files has its French line.
  */
-import type { Locale } from "./shared.js";
+import type { Locale } from "./shared.js"; import { localize } from "./lang/index.js";
 
 export const WORK_FR: Record<string, string> = {
   // Board (L163)
@@ -145,6 +145,6 @@ export const WORK_FR: Record<string, string> = {
 };
 
 export function wt(locale: Locale | undefined, en: string, vars: Record<string, string | number> = {}): string {
-  const t = locale === "fr" ? WORK_FR[en] ?? en : en;
+  const t = localize(locale, en, WORK_FR);
   return t.replace(/\{(\w+)\}/g, (_m, k) => String(vars[k] ?? ""));
 }

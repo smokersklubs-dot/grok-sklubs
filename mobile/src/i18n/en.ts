@@ -65,6 +65,7 @@ export const en: Record<Key, string> = {
   "signin.newHere": "New here?",
   "signin.createLink": "Create an account",
   "signin.closed": "New accounts are closed on this server. Ask the person who runs it for an account.",
+  "signin.passkeyNote": "Passkeys do not work in the app yet: sign in with your password or Google. You can use them in the browser (Settings → Security).",
   "signin.foot": "Sklubot is free software you host yourself. Your conversations stay on this server.",
   "signin.firstBot": "Your first bot",
   "signin.firstBotName": "Its name",

@@ -47,7 +47,7 @@ export function slug(text: string, fallback = "note"): string {
 const day = (t: number | null) => (t ? new Date(t).toISOString().slice(0, 10) : "");
 
 export function noteMarkdown(m: Memory, locale: Locale): string {
-  const w = words[locale];
+  const w = words[locale === "fr" ? "fr" : "en"]; // folder and field names: French, else English
   const title = m.text.split("\n")[0].slice(0, 80);
   const facts = [
     `- ${w.state} : ${w.status[m.status]}`,
@@ -69,7 +69,7 @@ export function notesArchive(bot: BotRecord, locale: Locale, t = new Date()): { 
   const used = new Set<string>();
   const counters: Record<string, number> = {};
   for (const m of list) {
-    const dir = `notes/${STATUS_DIR[m.status][locale]}`;
+    const dir = `notes/${STATUS_DIR[m.status][locale === "fr" ? "fr" : "en"]}`;
     const n = (counters[dir] = (counters[dir] ?? 0) + 1);
     let name = `${dir}/${String(n).padStart(3, "0")}-${slug(m.text)}.md`;
     for (let i = 2; used.has(name); i++) name = `${dir}/${String(n).padStart(3, "0")}-${slug(m.text)}-${i}.md`;

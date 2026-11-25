@@ -1,14 +1,15 @@
 import { useId, useState, type ReactNode } from "react";
-import { useStore } from "../store";
-import { glossOf, type GlossTerm } from "../lib/glossary";
+import { sideText, useLocale } from "../i18n";
+import { GLOSS_TEXT, type GlossTerm } from "../lib/glossary";
 import "./Comfort7.css";
 
 /** A word with its plain explanation (L161): on hover, keyboard focus or tap; Escape closes it. */
 export function Gloss({ term, children }: { term: GlossTerm; children?: ReactNode }) {
-  const lang = useStore((s) => (s.locale === "fr" ? "fr" : "en"));
+  const lang = useLocale();
   const [open, setOpen] = useState(false);
   const id = useId();
-  const [word, text] = glossOf(term, lang);
+  const g = sideText("gloss", GLOSS_TEXT, lang);
+  const [word, text] = [g[term], g[`${term}Text`]];
   return (
     <span className="gloss" onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}>
       <button type="button" className="gloss-word" aria-describedby={open ? id : undefined} aria-expanded={open}

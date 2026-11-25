@@ -244,8 +244,8 @@ export function commitTeamMd(user: UserRecord, input: Partial<TeamMdCommitInput>
           if (!e || have.has(lower(e.title.fr)) || have.has(lower(e.title.en))) continue;
           const t = e.text[locale] ?? e.text.en!;
           // A skill bundled with Sklubot, which the owner read on the review screen: active, as from the Bibliothèque.
-          skills.create(bot.id, e.title[locale], t.description || e.summary[locale], t.body, false);
-          have.add(lower(e.title[locale]));
+          skills.create(bot.id, (e.title[locale] ?? e.title.en), t.description || (e.summary[locale] ?? e.summary.en), t.body, false);
+          have.add(lower((e.title[locale] ?? e.title.en)));
         } else {
           if (have.has(lower(s.name))) continue;
           skills.create(bot.id, s.name, s.when, s.body, false, { draft: true });

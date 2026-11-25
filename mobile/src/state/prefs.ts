@@ -1,6 +1,7 @@
 import * as SecureStore from "expo-secure-store";
 import { create } from "zustand";
 import { setLocale, deviceLocale, type Locale } from "../i18n";
+import { isLocale } from "../../../server/src/clientshared/locales";
 
 export type ThemePref = "system" | "light" | "dark";
 export interface Prefs {
@@ -30,7 +31,7 @@ export const usePrefs = create<Prefs & { loaded: boolean; set(patch: Partial<Pre
       const p = raw ? (JSON.parse(raw) as Partial<Prefs>) : {};
       const next: Prefs = {
         theme: p.theme === "light" || p.theme === "dark" ? p.theme : "system",
-        locale: p.locale === "fr" || p.locale === "en" ? p.locale : null,
+        locale: isLocale(p.locale) ? p.locale : null,
         notify: p.notify !== false,
         botTheme: p.botTheme !== false,
       };

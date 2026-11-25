@@ -1,4 +1,4 @@
-import { setLive } from "../bus.js";
+import { setLive } from "../bus.js"; import type { Locale } from "../shared.js";
 import { tr } from "../i18n.js";
 import { endForHandover, heldBack, holderIdleMs, liveDevice, stoppedAt, type RelayResult } from "../relay.js";
 import { waitText } from "../sharedqueue.js";
@@ -51,7 +51,7 @@ class WaitLine {
   private seq: number | null = null;
   private generation = 0;
   private last = "";
-  constructor(private readonly bot: BotRecord, private readonly locale: "fr" | "en", private readonly device: string, private readonly startedAt: number) {}
+  constructor(private readonly bot: BotRecord, private readonly locale: Locale, private readonly device: string, private readonly startedAt: number) {}
   waiting(holder: string, ahead: string[], t: number) {
     if (t - this.startedAt < HANDOVER.announceAfterMs) return;
     const text = ahead.length

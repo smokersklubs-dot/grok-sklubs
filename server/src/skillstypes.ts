@@ -1,4 +1,4 @@
-import type { SkillScan } from "./skillscantypes.js";
+import type { SkillScan } from "./skillscantypes.js"; import type { Locale } from "./clientshared/locales.js";
 
 /**
  * « Bibliothèque de compétences » (skillslibrary.ts, skillsgithub.ts, docs/COMPETENCES.md): wire types shared with the
@@ -12,7 +12,7 @@ export const LIBRARY_CATEGORIES: readonly LibraryCategory[] = ["method", "writin
 export interface LibrarySkill {
   id: string; origin: LibraryOrigin; category: LibraryCategory; licence: string; source: string; title: string; summary: string;
   /** The text the bot will read (in the account's language when the skill has one). */
-  body: string; language: "fr" | "en";
+  body: string; language: Locale;
   /** The attribution line (NOTICE's first line). */
   notice: string;
   /** How many of the account's assistant bots already have it, out of how many. */

@@ -295,12 +295,14 @@ test("routines: skipped without a model call when nothing is new, one at a time,
   const afterFirst = requests.length;
   assert.ok(afterFirst > before);
   // Nothing new in the mailbox: skipped, no model call.
-  assert.equal(await dueRoutine(routines.byId(r.id)!, 2_000), "skipped");
+  // Due times 20 and 40 minutes later (a real daily schedule's are a day apart; the 15-minute floor, L143, skips slots
+  // closer than that to the last one).
+  assert.equal(await dueRoutine(routines.byId(r.id)!, 1_000 + 20 * 60_000), "skipped");
   assert.equal(requests.length, afterFirst, "no model call for a skipped run");
   assert.equal(runs.list(r.id)[0].status, "skipped");
   // A new email: it runs.
   inbox.push({ id: "m9", from: "Camille Martin <camille.martin@exemple.fr>", to: "zoe@exemple.fr", subject: "Re: devis", body: "C'est bon pour moi.", at: Date.now() });
-  assert.equal(await dueRoutine(routines.byId(r.id)!, 3_000), "fired");
+  assert.equal(await dueRoutine(routines.byId(r.id)!, 1_000 + 40 * 60_000), "fired");
   await until(() => runs.list(r.id).filter((x) => x.status === "quiet" || x.status === "done").length >= 2, "second run");
   await idle(b);
   // One at a time: while a run is under way, a new due time is skipped.

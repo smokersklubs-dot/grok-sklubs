@@ -1,4 +1,4 @@
-import { q } from "../db.js";
+import { q } from "../db.js"; import { languageName } from "../clientshared/locales.js";
 import type { Memory } from "../shared.js";
 import { bots, clip, memories, now, paused, rows, users, type BotRecord } from "../store.js";
 import { ask } from "./memory.js";
@@ -79,7 +79,7 @@ export async function tidyMemory(bot: BotRecord, force = false): Promise<TidyRes
   let changes: NonNullable<ReturnType<typeof parseTidy>> = [];
   if (open.length >= ENTRIES_MIN) {
     const max = Math.max(1, Math.floor(offered.length / SHARE_MAX));
-    const reply = await ask(bot, tidySystem(`one bot, ${bot.name}`, max), tidyRequest(open, users.localeOf(bot.userId) === "fr" ? "French" : "English"));
+    const reply = await ask(bot, tidySystem(`one bot, ${bot.name}`, max), tidyRequest(open, languageName(users.localeOf(bot.userId))));
     changes = parseTidy(reply) ?? [];
   }
   // Applied against the notes as they are NOW: a note that changed while the model was answering is left alone.

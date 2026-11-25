@@ -15,6 +15,7 @@ import { q } from "./db.js";
 import { fail } from "./routeinput.js";
 import { bots, clip, redactSecrets, rows, type UserRecord } from "./store.js";
 import { registerSelfCheckRoutes } from "./selfcheck.js";
+import { registerBatchRoutes } from "./agent/batches.js";
 
 export interface TaskCost { taskId: string; costUsd: number; estimatedUsd: number; turns: number; inputTokens: number; outputTokens: number; startedAt: number; endedAt: number | null; durationMs: number }
 
@@ -88,6 +89,7 @@ export function stepDetail(bot: { id: string; userId: string; generation: number
 
 export function registerStepDetailRoutes(api: Hono<{ Variables: { user: UserRecord } }>) {
   registerSelfCheckRoutes(api); // L153 « Vérifier ce bot » (selfcheck.ts)
+  registerBatchRoutes(api); // L99 « lots en parallèle » (agent/batches.ts)
   const own = (userId: string, id: string, fr: boolean) => bots.owned(userId, id) ?? fail(404, fr ? "Ce bot n'existe pas." : "That bot does not exist.");
   api.get("/bots/:id/bgtasks/:taskId/cost", (c) => {
     const user = c.get("user");

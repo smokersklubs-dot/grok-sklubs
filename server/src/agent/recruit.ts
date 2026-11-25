@@ -53,7 +53,7 @@ const brainLabel = (brain: RecruitCard["brain"], primary: BotRecord, userId: str
 function pickSkills(raw: unknown, locale: UserRecord["locale"]): RecruitSkill[] {
   const ids = Array.isArray(raw) ? raw.map((x) => String(x).trim()) : [];
   const out: RecruitSkill[] = [];
-  for (const e of libraryEntries()) if (ids.includes(e.id) && out.length < MAX_SKILLS) out.push({ id: e.id, title: e.title[locale] });
+  for (const e of libraryEntries()) if (ids.includes(e.id) && out.length < MAX_SKILLS) out.push({ id: e.id, title: (e.title[locale] ?? e.title.en) });
   return out;
 }
 
@@ -70,7 +70,7 @@ function pickRoutines(raw: unknown, locale: UserRecord["locale"]): RecruitRoutin
 }
 
 export function libraryLines(locale: UserRecord["locale"]): string[] {
-  return libraryEntries().map((e) => `  - ${e.id} — ${e.title[locale]}: ${e.summary[locale]}`);
+  return libraryEntries().map((e) => `  - ${e.id} — ${(e.title[locale] ?? e.title.en)}: ${(e.summary[locale] ?? e.summary.en)}`);
 }
 
 export const recruitTools: BuiltinTool[] = [

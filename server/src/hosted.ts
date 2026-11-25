@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { randomBytes } from "node:crypto"; import { localize } from "./lang/index.js";
 import { lstatSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { emit } from "./bus.js";
@@ -95,7 +95,7 @@ const FR: Record<string, string> = {
   trial: "essai", active: "actif", past_due: "paiement en retard", suspended: "suspendu",
 };
 export const hm = (locale: Locale | undefined, english: string, vars: Record<string, string | number> = {}) =>
-  (locale === "fr" ? FR[english] ?? english : english).replace(/\{(\w+)\}/g, (_m, k) => String(vars[k] ?? ""));
+  localize(locale, english, FR).replace(/\{(\w+)\}/g, (_m, k) => String(vars[k] ?? ""));
 
 const dateText = (locale: Locale, ms: number) => new Date(ms).toLocaleDateString(locale === "fr" ? "fr-FR" : "en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
 const eur = (n: number) => (Math.round(n * 100) / 100).toFixed(2).replace(/\.00$/, "");

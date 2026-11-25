@@ -1,6 +1,6 @@
 import { q } from "./db.js";
 import { config } from "./config.js";
-import { describeCron, nextRun } from "./cron.js";
+import { describeCron, nextRun } from "./cron.js"; import { belowFloor, floorNote, nextFlooredRun } from "./routinefloor.js";
 import { defaultModelRef } from "./llm/index.js";
 import { costOf } from "./usage.js";
 import { newId, now, randomToken } from "./store.js";
@@ -43,7 +43,7 @@ export function describeRoutine(r: { trigger: string; schedule: string; runAt: n
   if (r.trigger === "watch") return tr(locale, "When what it watches changes");
   if (r.trigger === "once")
     return r.runAt ? tr(locale, "Once on {date}", { date: new Date(r.runAt).toLocaleString(locale === "fr" ? "fr-FR" : "en-US", { timeZone: r.timezone, dateStyle: "medium", timeStyle: "short" }) }) : tr(locale, "Once");
-  return describeCron(r.schedule, locale);
+  return describeCron(r.schedule, locale) + floorNote(r.schedule, locale); // L143: an older, more frequent schedule is slowed down
 }
 
 function nativeOf(r: any): Routine["native"] {
@@ -76,7 +76,7 @@ function runsPerMonth(r: any): number | null {
     let t = now();
     const end = t + 30 * 86400_000;
     // Counted one by one, up to a cap; a very frequent schedule is extrapolated from the cap.
-    while (n < 3000) { const next = nextRun(r.schedule, r.timezone, t); if (!next || next > end) break; n++; t = next; }
+    while (n < 3000) { const next = nextRun(r.schedule, r.timezone, belowFloor(r.schedule) ? t + 14 * 60_000 : t); if (!next || next > end) break; n++; t = next; } // L143 floor
     return n >= 3000 ? Math.round((n * (end - now())) / Math.max(1, t - now())) : n;
   }
   if (r.trigger === "once") return r.last_run_at ? 0 : 1;
@@ -105,7 +105,7 @@ function toRoutine(r: any): RoutineRecord {
   const native = nativeOf(r);
   let nativeState: NativeState = {};
   try { nativeState = JSON.parse(r.native_state || "{}"); } catch { /* start over */ }
-  const next = !enabled ? null : r.trigger === "cron" ? nextRun(r.schedule, r.timezone, now()) : r.trigger === "once" && r.run_at > now() ? r.run_at : null;
+  const next = !enabled ? null : r.trigger === "cron" ? nextFlooredRun({ id: r.id, schedule: r.schedule, timezone: r.timezone, lastRunAt: r.last_run_at ?? null }, now()) : r.trigger === "once" && r.run_at > now() ? r.run_at : null;
   return {
     id: r.id, botId: r.bot_id, name: r.name, prompt: r.prompt, trigger: r.trigger, schedule: r.schedule, timezone: r.timezone,
     runAt: r.run_at, hookToken: r.hook_token, watchHash: r.watch_hash ?? null,

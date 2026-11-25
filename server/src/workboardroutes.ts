@@ -26,6 +26,7 @@ import { bots, clip, type UserRecord } from "./store.js";
 import { board, BoardError, ideas, IDEAS_PAGE, MAX_FILE_BYTES } from "./workboard.js";
 import { wt } from "./worki18n.js";
 import { modelSets, RoleError, roles } from "./workboardroles.js";
+import { registerBoardDeliveryRoutes } from "./workboardprroutes.js";
 
 type Env = { Variables: { user: UserRecord } };
 const body = async (c: Context) => ((await c.req.json().catch(() => ({}))) ?? {}) as Record<string, any>;
@@ -51,6 +52,7 @@ const sendFile = (c: Context, f: { file: { name: string; type: string }; bytes: 
 
 export function registerBoardRoutes(api: Hono<Env>) {
   const uid = (c: Context<Env>) => c.get("user").id;
+  registerBoardDeliveryRoutes(api); // L175: delivery by pull request (workboardprroutes.ts)
   api.get("/board", (c) => guard(c, () => c.json(board.view(uid(c), Number(c.req.query("ideas") ?? IDEAS_PAGE) || IDEAS_PAGE))));
   api.post("/board/tasks", (c) => guard(c, async () => c.json(board.create(uid(c), await body(c)))));
   api.post("/board/tasks/launch", (c) => guard(c, async () => { const b = await body(c); return c.json({ tasks: board.launch(uid(c), Array.isArray(b.ids) ? b.ids.map(String).slice(0, 50) : []) }); }));

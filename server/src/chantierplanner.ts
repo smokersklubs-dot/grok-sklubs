@@ -10,7 +10,7 @@
  * is paused, held by a usage cap or by the hosted plan is not asked. When it cannot answer usably, the owner gets a blank
  * plan to fill in, with the reason.
  */
-import { hostedHoldsBot, isPaused, tell } from "./agent/loop.js";
+import { hostedHoldsBot, isPaused, tell } from "./agent/loop.js"; import type { Locale } from "./shared.js";
 import { capHolds } from "./usagecaps.js";
 import { bots, clip, now, rows, users, type BotRecord } from "./store.js";
 import { ct } from "./chantieri18n.js";
@@ -28,7 +28,7 @@ const SHAPE = `{"observations":["what the brief says for sure"],"assumptions":["
 "checks":[{"id":"c1","kind":"file_exists|file_count|size_between|json_fields|same_order|text_present|image_size","label":"in plain words","path":"relative to the task's folder", "...":"the fields that kind needs"}]}}],
 "edges":[{"from":"task-key","to":"task-key","artifact":"what passes: requirements, sources, code, failure report…"}],"maxAttempts":3}`;
 
-export function plannerSystem(locale: "fr" | "en"): string {
+export function plannerSystem(locale: Locale): string {
   return [
     PLANNER_MARK,
     `You plan a "chantier": a piece of work split between several bots. Write every text for the owner in ${locale === "fr" ? "French, simple words, tutoiement" : "English, simple words"}.`,

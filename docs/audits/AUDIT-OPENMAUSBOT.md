@@ -495,7 +495,7 @@ Taille : **S** ≤ 1 jour, **M** 2 à 4 jours, **L** 1 à 2 semaines. Chemins Sk
 9. **Reprise automatique bornée par le progrès** après la limite d'étapes ou de temps. M
 10. **Outils de navigateur manquants** : onglets, retour, attendre un texte, alertes, envoi de fichier. M
 11. **Règles de conversation** à la fin du prompt, et instructions du bot remontées en tête. S
-12. **Bots sur abonnement et liens** : retirer `WebFetch` quand le navigateur est prêt, et un test avec le vrai bureau. S
+12. ✅ **Fait (2026-11-25, sans le vrai bureau).** **Bots sur abonnement et liens** : retirer `WebFetch` quand le navigateur est prêt (`agent/enginetools.ts`) ; le test avec le vrai bureau reste à faire. S
 13. ✅ **Fait (2026-11-22).** **Erreur non attrapée** : le tour concerné est arrêté, sa file est libérée, l'échec passe par le coordinateur d'échecs et une carte s'affiche ; le serveur et les autres bots continuent (`agent/crashguard.ts`, `index.ts`). M
 14. **Échecs de routine** : espacer au lieu de mettre en pause. S
 15. **File d'attente visible** des messages envoyés pendant le travail ; test de `drainSteering` (✅ le test existe depuis le 2026-11-22 : `core-reliability.test.ts`, point 6 ; la file visible reste à faire). M
@@ -511,7 +511,7 @@ Taille : **S** ≤ 1 jour, **M** 2 à 4 jours, **L** 1 à 2 semaines. Chemins Sk
 25. **Résumé à chaud** pendant le repos de la discussion. M
 26. **Résultat d'un clic « envoyé mais non confirmé »**. S
 27. **Deuxième avis sur un autre modèle**. M
-28. **« Burst »** en lots parallèles. M
+28. ✅ **Fait (2026-11-25).** **« Burst »** en lots parallèles : `batch_start`, 3 à la fois, une carte, un résumé (`agent/batches.ts`). M
 29. **`check_back` / `wait_until`** dans la même discussion. M
 30. ✅ **Fait (2026-11-22).** **Classe « faute du serveur »** (`server_fault`) qui interdit la relance : outils Sklubot non joints au moteur, mémoire / fichiers / base pleins (codes d'erreur, pas de phrases) ; une carte, jamais de nouvel essai ni de passage à un collègue (`agent/failures.ts`). S
 31. **Réglage qui répare dans la ligne d'erreur.** S

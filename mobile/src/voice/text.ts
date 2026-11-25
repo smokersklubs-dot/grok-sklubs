@@ -1,6 +1,7 @@
 /** Text helpers of calls (same rules as web/src/lib/speech.ts and web/src/lib/call.ts). Pure: unit-tested. */
 import type { Bot } from "../api/types";
 import { t, type Locale } from "../i18n";
+import { LOCALE_INTL } from "../../../server/src/clientshared/locales";
 
 /** What can be read aloud: no code, links, markdown marks. */
 export function speakable(md: string): string {
@@ -19,7 +20,7 @@ export function speakable(md: string): string {
 /** The language to recognise: the bot's voice language, else the app's (the web follows the interface language). */
 export function recognitionLang(voice: Bot["voice"] | undefined, locale: Locale): string {
   if (voice?.lang && voice.lang !== "auto") return voice.lang;
-  return locale === "fr" ? "fr-FR" : "en-US";
+  return locale === "en" ? "en-US" : LOCALE_INTL[locale];
 }
 
 export interface CallLine { id: number; role: "user" | "assistant"; text: string; final: boolean; cut?: boolean }

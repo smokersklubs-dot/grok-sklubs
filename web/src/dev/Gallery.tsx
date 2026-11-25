@@ -27,7 +27,7 @@ import { RelayGuardPanel } from "../components/RelayGuardPanel"; import { Telegr
 import { RelayEventRow } from "../components/RelayEventRow";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
-import { setLocale, useT } from "../i18n";
+import { setLocale, useT, type Locale } from "../i18n";
 import { applyTheme, useStore } from "../store";
 import type { Bot } from "../types";
 import { CardView } from "../components/Cards";
@@ -109,6 +109,8 @@ function toQuery(s: GalleryState, extra: Record<string, string> = {}): string {
   return `?${p.toString()}`;
 }
 
+/** `?ui=<code>`: show the interface in any language of the list (the fixtures' data stay English). */
+const UI_LANG = ((v) => (v && v !== "fr" && v !== "en" && /^[a-z]{2}$/.test(v) ? (v as Locale) : null))(new URLSearchParams(location.search).get("ui"));
 let current = readState();
 installFakeApi(() => current);
 
@@ -128,7 +130,7 @@ function Gallery() {
 
   useEffect(() => {
     applyTheme(s.theme);
-    setLocale(s.lang);
+    setLocale(UI_LANG ?? s.lang); // ?ui=es: the interface in another language (fixtures stay in English), docs/LANGUES.md
     useAnnouncements.setState({ state: announcementsState(s, s.empty) });
     if (!s.embed) history.replaceState(null, "", toQuery(s));
   }, [s]);

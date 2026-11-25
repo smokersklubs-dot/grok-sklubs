@@ -1,4 +1,4 @@
-import type { Context, Hono } from "hono";
+import type { Context, Hono } from "hono"; import { localize } from "./lang/index.js";
 import { engineLogin, engineModelsFor, engineStatus } from "./agent/engine.js";
 import { disconnectPersonal, personalActive, personalEnabled, verifyPersonal } from "./personalplan.js";
 import { startPersonalLogin, personalLoginState } from "./personalsignin.js";
@@ -33,7 +33,7 @@ const FR: Record<string, string> = {
   "Your account is suspended.": "Ton compte est suspendu.",
   "The sign-in window could not open on the bot's computer: {detail}": "La fenêtre de connexion n'a pas pu s'ouvrir sur l'ordinateur du bot : {detail}",
 };
-const say = (loc: Locale | undefined, en: string, vars: Record<string, string> = {}) => (loc === "fr" ? FR[en] ?? en : en).replace(/\{(\w+)\}/g, (_m, k) => vars[k] ?? "");
+const say = (loc: Locale | undefined, en: string, vars: Record<string, string> = {}) => localize(loc, en, FR).replace(/\{(\w+)\}/g, (_m, k) => vars[k] ?? "");
 const WHY_TEXT: Record<Why, string> = {
   engines: "Subscriptions are not available on this service for your plan.",
   suspended: "Your account is suspended.",

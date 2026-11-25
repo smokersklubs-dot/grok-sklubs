@@ -17,7 +17,7 @@
 .lp-nav-links a { display: inline-flex; align-items: center; min-height: 40px; padding: 0 12px; border-radius: 999px; font-size: 14px; font-weight: 550; color: var(--text-2); text-decoration: none; }
 .lp-nav-links a:hover { color: var(--text); background: var(--hover); }
 .lp-nav-actions { display: flex; align-items: center; gap: 6px; margin-left: auto; }
-.lp-lang { background: var(--surface-3); }
+.lp-lang { background: var(--surface-3); flex-wrap: wrap; justify-content: center; } /* up to 7 languages */
 .lp-lang button { min-width: 38px; }
 .lp-signin, .lp-nav-cta { display: none; }
 .lp-nav-cta { border-radius: 999px; padding: 0 16px; }

@@ -5,7 +5,7 @@
  */
 import { useEffect, useId, useState, type FormEvent, type ReactNode } from "react";
 import { api, ApiError, errText } from "../api";
-import { useStore } from "../store";
+import { useStore } from "../store"; import { sideText } from "../i18n";
 import { CopyButton, ErrorNote } from "./ui";
 import "./GoogleLogin.css";
 
@@ -94,7 +94,7 @@ const TEXT = {
 type Key = keyof typeof TEXT.fr;
 function useG() {
   const locale = useStore((s) => s.locale);
-  const dict = locale === "fr" ? TEXT.fr : TEXT.en;
+  const dict = sideText("google", TEXT, locale);
   return (k: Key, vars: Record<string, string> = {}) => dict[k].replace(/\{(\w+)\}/g, (_m, v: string) => vars[v] ?? "");
 }
 

@@ -8,7 +8,7 @@
  * with Siteverify. A token is valid 300 s and single use: after a refused sign-up the form asks for a new one (reset).
  */
 import { useEffect, useRef, useState } from "react";
-import { useLocale } from "../i18n";
+import { sideText, useLocale } from "../i18n";
 
 const SCRIPT = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
 interface TurnstileApi {
@@ -41,7 +41,7 @@ const TEXT = {
 export function TurnstileWidget({ siteKey, onToken, resetKey = 0 }: { siteKey: string; onToken: (token: string | null) => void; resetKey?: number }) {
   const box = useRef<HTMLDivElement>(null);
   const locale = useLocale();
-  const t = TEXT[locale === "fr" ? "fr" : "en"];
+  const t = sideText("turnstile", TEXT, locale);
   const [state, setState] = useState<"loading" | "ready" | "failed">("loading");
   useEffect(() => {
     let id: string | null = null;

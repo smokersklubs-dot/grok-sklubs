@@ -8,7 +8,7 @@ import { CreditsSection } from "./Credits";
 import { AdminRevokeSessions } from "./TwoFactor";
 import { useEffect, useId, useState, type ReactNode } from "react";
 import { api, enc, errText } from "../api";
-import { useStore } from "../store";
+import { useStore } from "../store"; import { sideText } from "../i18n";
 import type { AdminAuditEntry, AdminCustomer, HostedAccountView, HostedNoticeAction, HostedPlan, HostedSettings, PlanInviteView, SubscriptionStatus } from "../types";
 import { Icon } from "./Icon";
 import { CopyButton, ErrorNote, Loading, Toggle } from "./ui";
@@ -150,7 +150,7 @@ const TEXT = {
 type TextKey = keyof typeof TEXT.fr;
 function useH() {
   const locale = useStore((s) => s.locale);
-  return (k: TextKey, vars: Record<string, string | number> = {}) => (TEXT[locale === "fr" ? "fr" : "en"][k] as string).replace(/\{(\w+)\}/g, (_m, n) => String(vars[n] ?? ""));
+  return (k: TextKey, vars: Record<string, string | number> = {}) => (sideText("hosted", TEXT, locale)[k] as string).replace(/\{(\w+)\}/g, (_m, n) => String(vars[n] ?? ""));
 }
 const useLoc = () => (useStore((s) => s.locale) === "fr" ? "fr" : "en");
 const eur = (n: number, loc: "fr" | "en") => n.toLocaleString(loc === "fr" ? "fr-FR" : "en-GB", { minimumFractionDigits: 0, maximumFractionDigits: 2 });

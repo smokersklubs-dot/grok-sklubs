@@ -7,7 +7,7 @@ import { noteDiskTrouble } from "../disk.js";
 import { imageTool, videoTools } from "./tools-media.js"; import { imageServiceFor } from "../mediakeys.js"; import { wan2gpTarget } from "../wan2gptarget.js";
 import { connectors, slug } from "../connectors.js";
 import { config } from "../config.js";
-import { isValidTimezone, parseCron } from "../cron.js";
+import { isValidTimezone, parseCron } from "../cron.js"; import { belowFloor, floorRefusalForBot, ROUTINE_FLOOR_MIN } from "../routinefloor.js";
 import { tr } from "../i18n.js";
 import type { ImageBlock, TextBlock, ToolSpec } from "../llm/types.js";
 import { describeRoutine, routines, type RoutineInput } from "../routines.js";
@@ -33,7 +33,7 @@ import { askAndWait, createRoom, deliverBotMessage, dispatchToRoom, MAX_HELPERS,
 import { addressesNoBot, BREAKER_LINE, dmChannel, postBudget, roomChannel, type Verdict } from "./roombudget.js";
 import { myComputerTools } from "./mycomputer.js"; import { myUiTools } from "./myui.js"; import { liveDocTools } from "./livedoctools.js"; import { phoneTools } from "./phonetools.js"; import { voiceNoteTools } from "../voice/voicenote.js"; import { reminderCallTools } from "../voice/remindercall.js"; import { remoteAgentTools } from "./remoteagenttools.js"; // wave 7: L164 L178 L177 L172 L174
 import { botTools, profileTools, progressTools, skillImportTools, xSearchAvailable, xTools } from "./tools-team.js"; import { roomTools } from "./tools-room.js";
-import { bgTasks, publicTask, startTask, stopTask } from "./bgtasks.js"; import { bgTaskToolSpecs, TaskLimitError } from "./bgtaskspecs.js";
+import { bgTasks, publicTask, startTask, stopTask } from "./bgtasks.js"; import { batchTools } from "./batches.js"; import { bgTaskToolSpecs, TaskLimitError } from "./bgtaskspecs.js";
 import { findCode, mailAccounts } from "../native/access.js";
 import { hideForAWhile } from "../store.js";
 import { explicitRemember, memoryVerdict } from "./sensitive.js";
@@ -701,8 +701,8 @@ function announceRoutine(c: ToolContext, text: string) {
   emit(c.user.id, { type: "routines", botId: c.bot.id });
 }
 
-function checkSchedule(scheduleExpr: string, tz: string): string | null {
-  try { parseCron(scheduleExpr); } catch (e) { return `Invalid schedule: ${(e as Error).message}.`; }
+function checkSchedule(scheduleExpr: string, tz: string, floor = true): string | null {
+  try { parseCron(scheduleExpr); } catch (e) { return `Invalid schedule: ${(e as Error).message}.`; } if (floor && belowFloor(scheduleExpr)) return floorRefusalForBot(scheduleExpr); // L143 (routinefloor.ts)
   return isValidTimezone(tz) ? null : `Unknown timezone "${tz}". Use an IANA name such as Europe/Paris.`;
 }
 
@@ -719,7 +719,7 @@ const routineTools: BuiltinTool[] = [
       lead_minutes: int("For calendar: minutes before the event (1 to 1440, default 10)"),
       watch_url: str("For watch: a web address to check regularly; the routine runs when its content changes"),
       watch_file: str("For watch: instead of a web address, a file in your library to check"),
-      every_minutes: int("For watch: minutes between checks (5 to 1440, default 30). For email, slack and calendar: 2 to 1440, default 5"),
+      every_minutes: int("For watch: minutes between checks (15 to 1440, default 30). For email, slack and calendar: 2 to 1440, default 5"),
       schedule: str("For cron: five fields — minute hour day-of-month month day-of-week, e.g. '0 9 * * 1-5'"),
       only_if_new: { type: "array", items: { type: "string" }, description: "For cron routines that wait for something new (a reply, a new email, a page change): the mail accounts (exact names) or web addresses to check first. When nothing changed since the last run, the run is skipped without calling the model. Not for reminders or summaries, which must run every time." },
       run_at: str("For once: ISO 8601 date and time with offset, e.g. 2030-01-31T09:00:00+01:00"),
@@ -751,7 +751,7 @@ const routineTools: BuiltinTool[] = [
         runAt = Date.parse(String(a.run_at ?? ""));
         if (!Number.isFinite(runAt) || runAt <= Date.now()) return { content: "run_at must be a valid date and time in the future.", isError: true };
       } else if (kind === "watch") {
-        const everyMin = Math.min(1440, Math.max(5, Number(a.every_minutes) || 30));
+        const everyMin = Math.min(1440, Math.max(ROUTINE_FLOOR_MIN, Number(a.every_minutes) || 30)); // L143 floor
         if (a.watch_url) {
           if (!/^https?:\/\//i.test(String(a.watch_url))) return { content: "watch_url must be an http(s) address.", isError: true };
           watch = { kind: "url", target: String(a.watch_url), everyMin };
@@ -776,7 +776,7 @@ const routineTools: BuiltinTool[] = [
       schedule(r.id);
       const cost = r.projectedMonthlyUsd ? tr(c.user.locale, " · about {usd} $ a month", { usd: r.projectedMonthlyUsd.toFixed(2) }) : "";
       announceRoutine(c, tr(c.user.locale, "Routine created: {name} — {when}", { name: r.name, when: describeRoutine(r, c.user.locale) }) + (r.skipUnchanged ? tr(c.user.locale, " (skipped when nothing is new)") : "") + cost);
-      return { content: JSON.stringify({ id: r.id, when: describeRoutine(r), webhook_url: r.hookUrl ?? undefined, projected_monthly_usd: r.projectedMonthlyUsd ?? undefined, skips_when_unchanged: r.skipUnchanged || undefined }), summary: r.name };
+      return { content: JSON.stringify({ id: r.id, when: describeRoutine(r), webhook_url: r.hookUrl ?? undefined, projected_monthly_usd: r.projectedMonthlyUsd ?? undefined, skips_when_unchanged: r.skipUnchanged || undefined, note: watch && Number(a.every_minutes) > 0 && Number(a.every_minutes) < ROUTINE_FLOOR_MIN ? `Checks were set to every ${ROUTINE_FLOOR_MIN} minutes, the minimum: tell the user.` : undefined }), summary: r.name };
     },
   }),
   tool("routine_list", "List your routines with their ids, schedules and state.", obj({}), {
@@ -793,7 +793,7 @@ const routineTools: BuiltinTool[] = [
       const cur = routines.byId(String(a.id));
       if (!cur || cur.botId !== c.bot.id) return { content: "No routine of yours has that id.", isError: true };
       if (cur.trigger === "cron") {
-        const problem = checkSchedule(a.schedule ?? cur.schedule, a.timezone ?? cur.timezone);
+        const problem = checkSchedule(a.schedule ?? cur.schedule, a.timezone ?? cur.timezone, a.schedule !== undefined); // an older frequent schedule is kept
         if (problem) return { content: problem, isError: true };
       }
       const r = routines.update(cur.id, { name: a.name, prompt: a.prompt, schedule: cur.trigger === "cron" ? a.schedule : undefined, timezone: a.timezone, enabled: typeof a.enabled === "boolean" ? a.enabled : undefined })!;
@@ -1205,6 +1205,6 @@ function assemble(opts: { owner?: string; nativeSearch?: boolean; modelSearch?: 
     ...(opts.video ? inGroup("video", videoTools) : []),
     // The user's own computers (Sklubot Relais): offered by newTurn only to users who linked one.
     ...myComputerTools, ...myComputerPlusTools, ...myUiTools, ...phoneTools, ...liveDocTools, ...remoteAgentTools, ...voiceNoteTools, ...reminderCallTools, // L154
-    ...inGroup("memory", [...memoryTools, ...roomMemoryTools, ...skillFeedbackTools]), ...inGroup("routines", [...routineTools, ...routineFrameTools, ...routineOptionTools]), ...inGroup("tasks", taskTools), ...(opts.bgTasks === false ? [] : inGroup("tasks", bgTaskTools)), ...goalTools, ...themeTools, ...recapTools, ...waitTools, ...planTools, ...viewTools, ...creationTools, ...inGroup("team", [...teamTools, ...roomTools]), ...userTools.filter((t) => t.spec.name !== "ask_takeover" || browserAvailable()), ...(computerKind() === "linux" ? [...codeTools, ...teamFolderTools] : []), ...(codeHost.available() ? toolCodeTools : []), ...reactTools,
+    ...inGroup("memory", [...memoryTools, ...roomMemoryTools, ...skillFeedbackTools]), ...inGroup("routines", [...routineTools, ...routineFrameTools, ...routineOptionTools]), ...inGroup("tasks", taskTools), ...(opts.bgTasks === false ? [] : inGroup("tasks", [...bgTaskTools, ...batchTools])), ...goalTools, ...themeTools, ...recapTools, ...waitTools, ...planTools, ...viewTools, ...creationTools, ...inGroup("team", [...teamTools, ...roomTools]), ...userTools.filter((t) => t.spec.name !== "ask_takeover" || browserAvailable()), ...(computerKind() === "linux" ? [...codeTools, ...teamFolderTools] : []), ...(codeHost.available() ? toolCodeTools : []), ...reactTools,
   ];
 }

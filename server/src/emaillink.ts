@@ -21,7 +21,7 @@
  *    and creates the account. The link proves the address: the account counts as verified. Each use is in the
  *    account's activity log.
  */
-import { randomBytes } from "node:crypto";
+import { randomBytes } from "node:crypto"; import { localize } from "./lang/index.js"; import { isLocale } from "./clientshared/locales.js";
 import type { Context, Hono } from "hono";
 import { mailConfigured, sendLinkMail } from "./accountmail.js";
 import { originAllowed, setupCodeRequired, signupOpen } from "./auth.js";
@@ -49,7 +49,7 @@ const FR: Record<string, string> = {
   "The team is full on this server: no new account can be created.": "L'équipe est complète sur ce serveur : aucun nouveau compte ne peut être créé.",
 };
 class LinkError extends Error { constructor(public status: 400 | 403 | 409, message: string) { super(message); this.name = "LinkError"; } }
-const say = (loc: Locale, english: string) => (loc === "fr" ? FR[english] ?? english : english);
+const say = (loc: Locale, english: string) => localize(loc, english, FR);
 
 interface Pending { name?: string; locale?: Locale; plan?: string; planInvite?: string; acceptTerms?: boolean }
 const str = (v: unknown, max: number) => (typeof v === "string" ? v.replace(/[\0-\x1f]/g, "").trim().slice(0, max) : "");
@@ -120,7 +120,7 @@ export function registerEmailLinkPublic(api: Hono<any>, deps: GoogleDeps) {
       if (pend.expires_at < now()) { q.run("DELETE FROM email_link_signups WHERE token_hash = ?", h); throw expired; }
       let p: Pending = {};
       try { p = JSON.parse(pend.payload) as Pending; } catch { /* the defaults */ }
-      loc = p.locale === "fr" || p.locale === "en" ? p.locale : loc;
+      loc = isLocale(p.locale) ? p.locale : loc;
       const existing = users.byEmail(pend.email);
       if (existing) { q.run("DELETE FROM email_link_signups WHERE token_hash = ?", h); return signIn(c, deps, existing.id, "Signed in with an e-mail link"); }
       // First answer: what the next step needs (the link is not used up yet).

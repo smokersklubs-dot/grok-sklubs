@@ -125,6 +125,41 @@ Code : `server/src/agent/memorykeep.ts`, `server/src/agent/worklessons.ts`. Test
 - Tu décoches ce que tu ne veux pas, tu choisis « Lancer tout de suite » ou non, puis « Mettre sur le tableau ». Tout est créé, ou rien (tableau trop plein : refus avant de créer). Une tâche qui attendait une tâche décochée ne l'attend plus.
 - **Bot pour un rôle que personne ne tient** : une carte de proposition (« Nouveau coéquipier ») arrive dans la discussion de ton bot principal, une par rôle, jamais deux fois tant qu'une attend. Le bot n'est créé que si tu appuies sur « Créer » ; il tient alors le rôle et prend le modèle du bot principal. Aussi depuis « Rôles et modèles » → « Proposer un bot ».
 
+## Livrer par demande d'intégration (L175)
+
+Salle blanche : écrit à partir de `docs/cleanroom/10-timon.md` (T16) seulement.
+
+- Sur une carte du tableau : **« Livrer par demande d'intégration (pull request) »**. Tu donnes le dépôt GitHub
+  (`propriétaire/nom`), le **dossier du projet** dans les fichiers du bot (là où il a cloné le dépôt) et ton compte
+  **GitHub Code** (Applis). En option : la branche cible (sinon la branche principale du dépôt), le nom de la branche
+  (sinon nommée d'après la tâche) et l'**identité du dépôt** (nom + e-mail ; sinon celle réglée dans le clone).
+- Le bot est prévenu dans sa consigne : il enregistre son travail dans ce clone, avec cette identité, **sans pousser**.
+- Quand le travail est fini (ou que tu l'as accepté, si tu relis), la tâche passe **« En livraison »** au lieu de
+  « Faite ». Sklubot vérifie, puis pousse **une branche** et ouvre la **demande d'intégration**. La carte montre son
+  lien et son état (ouverte, intégrée, fermée).
+- **Ton accord avant la première poussée vers un dépôt** : la carte « Autoriser la première poussée » montre le compte
+  GitHub connecté, l'identité, l'adresse et la branche. Si plus tard le compte connecté ou l'identité change, ton
+  accord est redemandé (la carte nomme l'ancien compte). « Refuser » : rien n'est poussé, la tâche est bloquée.
+- Avant de pousser, sinon refus avec la raison et rien n'est envoyé : le compte connecté est celui que tu as autorisé ;
+  l'origine du clone est bien le dépôt du projet ; chaque enregistrement envoyé porte l'identité du dépôt ; aucun
+  message ne contient de référence interne (numéro de tâche ou d'idée, identifiant Sklubot, ligne d'attribution comme
+  « Co-Authored-By » ou « Generated with ») ; les réglages git du clone se limitent à une courte liste sûre (rien qui
+  lance un programme ou détourne l'envoi).
+- **Jamais de poussée forcée.** Une branche distante qui a bougé sans Sklubot n'est **jamais écrasée** : refus, la carte
+  le dit ; regarde-la sur GitHub, puis « Réessayer » ou choisis une autre branche.
+- Le titre et la description de la demande viennent de la tâche et du résumé du bot, **nettoyés** des références
+  internes.
+- **Faite seulement quand c'est intégré** : Sklubot relit la demande toutes les 2 minutes. Intégrée dans la branche
+  cible ⇒ la tâche est faite, ce qui l'attend démarre, une idée liée se coche. Fermée sans intégration, ou intégrée
+  dans une autre branche (fusion intermédiaire) ⇒ tâche bloquée avec la raison ; l'idée reste ouverte.
+- « Réessayer » après un refus (enregistrement corrigé, autre branche) ou une demande fermée (une nouvelle est ouverte).
+  « Livrer en local » retire le réglage.
+
+Code : `server/src/workboardpr.ts`, `workboardprroutes.ts`, `workboardpri18n.ts` ; web `BoardDelivery.tsx`. Test :
+`server/test/board-pr-delivery.test.ts` (faux GitHub local + dépôt git nu, aucun réseau). Captures :
+`docs/screenshots/tableau/livraison-*.png`. Pas encore essayé avec un vrai compte GitHub ; la relecture se fait par
+interrogation régulière (pas de webhook).
+
 ## Limites connues
 
 - Le rejeu d'un parcours utilise le navigateur du bot : s'il travaille en même temps dans ce navigateur, les deux se

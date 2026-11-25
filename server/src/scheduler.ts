@@ -2,7 +2,7 @@ import { remindStuck } from "./agent/stuck.js";
 import { emit } from "./bus.js";
 import { computerKind, sweepIdleDesktops } from "./computer.js";
 import { config } from "./config.js";
-import { isValidTimezone, localParts, nextRun } from "./cron.js";
+import { isValidTimezone, localParts, nextRun } from "./cron.js"; import { nextFlooredRun, tooSoon, watchEvery } from "./routinefloor.js";
 import { q } from "./db.js";
 import { enqueue, hostedHoldsBot, isPaused } from "./agent/loop.js";
 import { hostedTick, postStopNotice } from "./hosted.js";
@@ -41,10 +41,10 @@ export function schedule(routineId: string) {
   due.delete(routineId);
   if (!r || !r.enabled || config.schedulerOff) return;
   if (r.trigger === "cron") {
-    const next = nextRun(r.schedule, r.timezone, now());
+    const next = nextFlooredRun(r, now()); // L143: at least 15 minutes after the last scheduled run (routinefloor.ts)
     if (next) due.set(r.id, next);
   } else if (r.trigger === "once" && r.runAt && !r.lastRunAt) due.set(r.id, r.runAt);
-  else if (r.trigger === "watch" && r.watch) due.set(r.id, (r.watch.lastCheckedAt ?? 0) + r.watch.everyMin * 60_000);
+  else if (r.trigger === "watch" && r.watch) due.set(r.id, (r.watch.lastCheckedAt ?? 0) + watchEvery(r.watch.everyMin) * 60_000);
   else if (isNativeTrigger(r.trigger) && r.native) due.set(r.id, (r.native.lastCheckedAt ?? 0) + r.native.everyMin * 60_000);
 }
 
@@ -143,6 +143,7 @@ export async function inputsFingerprint(r: RoutineRecord): Promise<string | null
  * failure always happen. Running more than 10 minutes late is said in the instruction.
  */
 export async function dueRoutine(r: RoutineRecord, slot: number): Promise<"fired" | "skipped" | "busy" | "claimed" | "paused" | "capped"> {
+  if (tooSoon(r, slot)) return "skipped"; // L143: the 15-minute floor (a made-up run after a restart, an old frequent schedule)
   if (!routines.claimSlot(r.id, String(slot))) return "claimed";
   // L62: a routine that keeps failing is spaced out instead of paused: a due time too soon after its last failure is skipped.
   const spaced = spacedUntil(r.id, r.failures, ROUTINE_FAIL_PAUSE);

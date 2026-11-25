@@ -19,7 +19,7 @@
  * Isolation: every row carries the owner's user id; every read goes through `owned(userId, id)`; a task's bot must be
  * one of that owner's own agent bots. Nothing here reads another account's data. Tables are created at load (house pattern).
  */
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"; import type { Locale } from "./shared.js";
 import path from "node:path";
 import { config } from "./config.js";
 import { q } from "./db.js";
@@ -35,6 +35,7 @@ import {
   type Acceptance, type BoardFile, type BoardIdea, type BoardState, type BoardTask, type BoardView, type IdeaProgress, type IdeaUrgency, type RecapItem,
 } from "./workboardtypes.js";
 import { checkMeta, executorFor, modelSets, noteExecutor, openDecisions, roles, setMeta, taskMetaView } from "./workboardroles.js";
+import { deliveryBrief, deliveryView, interceptDone, onDeliveryEnd, sweepDeliveries } from "./workboardpr.js";
 
 q.run(`CREATE TABLE IF NOT EXISTS board_tasks (
   id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, title TEXT NOT NULL, description TEXT NOT NULL DEFAULT '',
@@ -191,7 +192,7 @@ function toTask(r: TaskRow): BoardTask {
     // T1: a state this version does not know shows in « done », and is never rewritten.
     state: r.state, column: isState(r.state) ? r.state : "done", acceptance: r.acceptance === "owner" ? "owner" : "auto", armed: !!r.armed,
     goalId: r.goal_id, chantierId: r.chantier_id, ideaId: r.idea_id, thread: r.thread, note: r.note, summary: r.summary, batch: r.batch,
-    createdAt: r.created_at, updatedAt: r.updated_at, startedAt: r.started_at, endedAt: r.ended_at, ...taskMetaView(r), // L163 T10/T12 (workboardroles.ts)
+    createdAt: r.created_at, updatedAt: r.updated_at, startedAt: r.started_at, endedAt: r.ended_at, ...taskMetaView(r), delivery: deliveryView(r.id), // L163 T10/T12 (workboardroles.ts); L175 pull request (workboardpr.ts)
   };
 }
 
@@ -288,7 +289,7 @@ export const board = {
   /** T8: a task is deleted only when nothing depends on it and it is not under way; its files go with it. */
   remove(userId: string, id: string) {
     const r = ownedRow(userId, id) ?? notFound();
-    if (r.state === "running" || r.state === "review") throw new BoardError(409, "“{title}” is under way: stop it first.", { title: r.title });
+    if (r.state === "running" || r.state === "review" || r.state === "delivering") throw new BoardError(409, "“{title}” is under way: stop it first.", { title: r.title });
     const waiting = dependentsOf(id).map((d) => taskRow(d)?.title ?? "?");
     if (waiting.length) throw new BoardError(409, "“{title}” cannot be deleted: {list} wait(s) on it. Remove that link first.", { title: r.title, list: waiting.map((t) => `« ${t} »`).join(", ") });
     q.run("DELETE FROM board_tasks WHERE id = ?", id);
@@ -443,6 +444,7 @@ export function taskBrief(r: TaskRow, files: string[]): string {
     files.length ? `Its files (copied into your library):\n${files.map((f) => `- ${f}`).join("\n")}` : "",
     deps.length ? `It follows these finished tasks (their results):\n${deps.map((d) => `- “${d.title}”: ${clip(d.summary || "(no summary)", 600)}`).join("\n")}` : "",
     r.note ? `The owner's note (fix this first): ${r.note}` : "",
+    deliveryBrief(r.id),
     "When it is done, mark the goal complete with evidence (what you produced and where). If you cannot finish, mark it blocked with the reason.",
     loc === "fr" ? "Answer the owner in French." : "",
   ].filter(Boolean).join("\n\n");
@@ -497,6 +499,7 @@ function syncLinked(userId: string) {
 
 /** A task ends: done (releases what waits on it), blocked, or waiting for the owner's review. */
 function finish(r: TaskRow, state: "done" | "blocked" | "review", summary: string, note: string) {
+  if (state === "done" && interceptDone(r.id, summary)) return; // L175: delivered by pull request — done only once it is merged
   const end = state === "review" ? null : now();
   setTask(r.id, { state, summary: clip(summary, 2000), note: clip(note, 2000), endedAt: end, ...(state === "done" ? { armed: false } : {}) });
   const bot = r.bot_id ? bots.byId(r.bot_id) : null;
@@ -506,6 +509,9 @@ function finish(r: TaskRow, state: "done" | "blocked" | "review", summary: strin
   if (state !== "review" && r.batch) recapIfBatchDone(r.user_id, r.batch);
   if (state === "done") sweep(r.user_id);
 }
+
+// L175: the pull request was merged (done) or the delivery stopped (blocked, with the reason).
+onDeliveryEnd((id, outcome, note) => { const r = taskRow(id); if (r && r.state === "delivering") finish(r, outcome === "merged" ? "done" : "blocked", r.summary, note); });
 
 onGoalStatus((g: GoalRecord) => {
   if (g.origin !== "board") return;
@@ -523,7 +529,7 @@ onGoalStatus((g: GoalRecord) => {
 
 // ── Grouped recap for the main bot (T6, T7) ─────────────────────────────────────────────────────────────────────
 /** Blocked first, then by priority; a finished task with nothing readable is flagged, never sent empty. */
-export function recapText(items: RecapItem[], locale: "fr" | "en"): string {
+export function recapText(items: RecapItem[], locale: Locale): string {
   const rank = (s: string) => (s === "blocked" ? 0 : s === "review" ? 1 : 2);
   const sorted = [...items].sort((a, b) => rank(a.state) - rank(b.state) || a.priority - b.priority);
   const lines = sorted.map((i) => {
@@ -547,6 +553,6 @@ let timer: NodeJS.Timeout | null = null;
 /** Every 30 s: tasks whose date came or whose deps just ended start (a restart picks up where it was: all in SQLite). */
 export function startBoard() {
   if (timer || config.schedulerOff) return;
-  timer = setInterval(() => { try { sweep(); } catch (err) { console.error("[board]", (err as Error).message); } }, 30_000);
+  timer = setInterval(() => { try { sweep(); } catch (err) { console.error("[board]", (err as Error).message); } void sweepDeliveries().catch((err) => console.error("[board pr]", (err as Error).message)); }, 30_000);
   timer.unref();
 }

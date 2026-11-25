@@ -1,4 +1,4 @@
-import { tr } from "../i18n.js";
+import { tr } from "../i18n.js"; import type { Locale } from "../shared.js";
 import { audit, rows, type BotRecord } from "../store.js";
 import { autoAfterTimeout } from "./autocontinue.js";
 import { stepsSince } from "./stoprecap.js";
@@ -17,7 +17,7 @@ import type { Trigger } from "./turn-request.js";
  */
 export interface TimeoutCtx {
   bot: BotRecord;
-  locale: "fr" | "en";
+  locale: Locale;
   trigger: Trigger;
   thread: number;
   /** The turn's start (its steps are the chat's step rows since then). */

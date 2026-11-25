@@ -7,6 +7,7 @@ export type {
 } from "../../../server/src/shared";
 
 import type { Card, RowBody } from "../../../server/src/shared";
+import type { Locale } from "../../../server/src/clientshared/locales";
 export type MessageBody = Extract<RowBody, { kind: "message" }>;
 export type StepBody = Extract<RowBody, { kind: "step" }>;
 export type CardBody = Extract<RowBody, { kind: "card" }>;
@@ -17,7 +18,7 @@ export type QuestionCard = Extract<Card, { type: "question" }>;
 
 /** GET /api/me (server/src/routes.ts). */
 export interface MeResponse {
-  user: { id: string; email: string; name: string; locale: "fr" | "en" } | null;
+  user: { id: string; email: string; name: string; locale: Locale } | null;
   signupOpen: boolean;
   setupCodeRequired: boolean;
   firstBot: { name: string; label: string };

@@ -10,7 +10,7 @@ import type { Bot, FileEntry, Gem, Routine } from "../types";
 import { accentStyle } from "../lib/colors";
 import { botTitle, dateTime, fileSize, hostName, relTime, sortTasks } from "../lib/format";
 import { callPossible, endCall, startCall } from "../lib/call";
-import { useScreen } from "../lib/screen";
+import { useScreen } from "../lib/screen"; import { consumeScreenFocus, SCREEN_FOCUS_EVENT } from "../lib/autoscreen";
 import { useLiveReconnect } from "../lib/liveReconnect";
 import { createControlLease, type LeaseAnswer } from "../lib/controlLease";
 import { canCall, canSpeak, makeUtterance, useVoices } from "../lib/speech";
@@ -589,11 +589,27 @@ function LibraryTab({ bot }: { bot: Bot }) {
 
 /* ---------- Panel ---------- */
 
+/** L64: brings the live screen into view when the bot starts using its browser (lib/autoscreen.ts). */
+function useScreenFocus(botId: string | undefined, setTab: (t: Tab) => void) {
+  useEffect(() => {
+    if (!botId) return;
+    const focus = () => {
+      if (!consumeScreenFocus(botId)) return;
+      setTab("activity");
+      window.requestAnimationFrame(() => document.querySelector(".details .screen-card-wrap")?.scrollIntoView({ block: "nearest", behavior: "smooth" }));
+    };
+    focus();
+    window.addEventListener(SCREEN_FOCUS_EVENT, focus);
+    return () => window.removeEventListener(SCREEN_FOCUS_EVENT, focus);
+  }, [botId, setTab]);
+}
+
 export function DetailsPanel() {
   const bot = useStore((s) => (s.selectedId ? s.bots[s.selectedId] : undefined));
   const { toggleDetails, openBotSettings } = useStore.getState();
   const [tab, setTab] = useState<Tab>("activity");
   const t = useT();
+  useScreenFocus(bot?.id, setTab); // L64: the bot started using its browser (lib/autoscreen.ts)
   if (!bot) return null;
   const isRoom = bot.kind === "room";
   // Wave 6: a bot someone shares with you — only what you may see: who owns it, your role, the call button.

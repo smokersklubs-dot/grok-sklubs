@@ -1,4 +1,4 @@
-import { AsyncLocalStorage } from "node:async_hooks"; import { oneLine } from "./displayname.js";
+import { AsyncLocalStorage } from "node:async_hooks"; import { oneLine } from "./displayname.js"; import { isLocale } from "./clientshared/locales.js";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { q } from "./db.js"; import { isAssumed } from "./policyassume.js";
 import { pauses } from "./pauses.js";
@@ -20,14 +20,14 @@ export const clip = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1) 
 
 // ── Users ────────────────────────────────────────────────────────────────────
 export interface UserRecord extends User { passHash: string }
-const toUser = (r: any): UserRecord => ({ id: r.id, email: r.email, name: r.name, locale: r.locale === "fr" ? "fr" : "en", passHash: r.pass_hash });
+const toUser = (r: any): UserRecord => ({ id: r.id, email: r.email, name: r.name, locale: isLocale(r.locale) ? r.locale : "en", passHash: r.pass_hash });
 
 export const users = {
   count: () => q.get<{ n: number }>("SELECT COUNT(*) AS n FROM users")!.n,
   byId: (id: string) => { const r = q.get("SELECT * FROM users WHERE id = ?", id); return r ? toUser(r) : null; },
   byEmail: (email: string) => { const r = q.get("SELECT * FROM users WHERE email = ?", email.trim()); return r ? toUser(r) : null; },
   all: () => q.all("SELECT * FROM users").map(toUser),
-  localeOf: (id: string): Locale => (q.get<{ locale: string }>("SELECT locale FROM users WHERE id = ?", id)?.locale === "fr" ? "fr" : "en"),
+  localeOf: (id: string): Locale => { const l = q.get<{ locale: string }>("SELECT locale FROM users WHERE id = ?", id)?.locale; return isLocale(l) ? l : "en"; },
   setPrefs(id: string, f: { locale?: Locale; name?: string }) {
     if (f.locale) q.run("UPDATE users SET locale = ? WHERE id = ?", f.locale, id);
     if (f.name?.trim()) q.run("UPDATE users SET name = ? WHERE id = ?", oneLine(f.name).slice(0, 80) || f.name.trim().slice(0, 80), id);
@@ -66,7 +66,7 @@ function previewOf(body: RowBody, locale: Locale): string {
     if (c.type === "pastedsecret") return tr(locale, "A secret was masked in your message");
     if (c.type === "files") return tr(locale, "Files changed: {n}", { n: c.files.length + c.more });
     if (c.type === "goal") return tr(locale, "Goal: {objective}", { objective: c.objective });
-    if (c.type === "failure") return tr(locale, "A problem needs you"); if (c.type === "view" || c.type === "trajectory") return c.title; if (c.type === "poll") return c.question; if (c.type === "pageloss") return tr(locale, "Parts of a page disappeared: {title}", { title: c.title }); if (c.type === "stepguide" || c.type === "boardplan") return c.title; // DS-Bot item 8, L158, L184 polls, L157
+    if (c.type === "failure") return tr(locale, "A problem needs you"); if (c.type === "view" || c.type === "trajectory") return c.title; if (c.type === "poll") return c.question; if (c.type === "pageloss") return tr(locale, "Parts of a page disappeared: {title}", { title: c.title }); if (c.type === "stepguide" || c.type === "boardplan" || c.type === "batch") return c.title; // DS-Bot item 8, L158, L184 polls, L157, L99 batches
     return tr(locale, "Connect {name}", { name: c.name });
   }
   return "";

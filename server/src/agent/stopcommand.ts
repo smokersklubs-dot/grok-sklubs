@@ -3,6 +3,7 @@ import { tr } from "../i18n.js";
 import type { Locale } from "../shared.js";
 import { botQueue, bots, laneKey, type BotRecord } from "../store.js";
 import { bgTasks, stopTask } from "./bgtasks.js";
+import { stopBatchesOf } from "./batches.js";
 import { laneBusy, rowThread } from "./lanes.js";
 import { discardSteering } from "./steering.js";
 import { teammateLanes } from "./team.js";
@@ -36,6 +37,12 @@ export interface StopReport { turns: number; helpers: number; tasks: number; tea
 /** Queue rows cancelled by "Tout arrêter": runQueued (loop.ts) skips them if they come up in memory before being dropped. */
 const cancelled = new Set<number>();
 export const isCancelledJob = (id: number | null) => id !== null && cancelled.has(id);
+/** L99: drops a worker's work that has not started yet (a batch task stopped before its turn began). */
+export function dropPendingWork(botId: string): number {
+  const pending = q.all<{ id: number }>("SELECT id FROM bot_queue WHERE bot_id = ? AND status = 'pending'", botId);
+  for (const row of pending) { cancelled.add(row.id); botQueue.done(row.id); }
+  return pending.length;
+}
 
 /** Whether anything of this bot runs or waits right now (only then does a typed "stop" mean Stop). */
 export function hasWork(bot: BotRecord): boolean {
@@ -62,6 +69,7 @@ export async function stopWork(bot: BotRecord, opts: { dropQueue: boolean; threa
   for (const l of teammateLanes(bot.id)) if (interrupt(laneKey(l.toId, l.thread))) r.teammates++;
   for (const t of opts.thread === undefined ? ctl.runningThreads(bot.id) : [opts.thread]) if (interrupt(laneKey(bot.id, t))) r.turns++;
   for (const t of bgTasks.forBot(bot.id)) if (t.state === "running" || t.state === "waiting") { await stopTask(t); r.tasks++; }
+  r.tasks += await stopBatchesOf(bot.id); // L99: a batch's tasks are not in that list (batches.ts)
   for (const h of bots.children(bot.id)) if (ctl.runningThreads(h.id).length && interrupt(h.id)) r.helpers++;
   const pending = q.all<{ id: number; trigger: string }>("SELECT id, trigger FROM bot_queue WHERE bot_id = ? AND status = 'pending' ORDER BY id", bot.id);
   if (opts.dropQueue) {

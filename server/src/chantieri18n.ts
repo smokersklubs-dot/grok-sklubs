@@ -2,7 +2,7 @@
  * « Chantier » — the texts the server writes for the owner (English is the key; French here, tutoiement, simple words).
  * Kept apart from i18n.ts like routineplus.ts does, so this feature's words stay together.
  */
-import type { Locale } from "./shared.js";
+import type { Locale } from "./shared.js"; import { localize } from "./lang/index.js";
 
 export const CHANTIER_FR: Record<string, string> = {
   "(accepted by you)": "(accepté par toi)",
@@ -121,6 +121,6 @@ export const CHANTIER_FR: Record<string, string> = {
 };
 
 export function ct(locale: Locale | undefined, en: string, vars: Record<string, string | number> = {}): string {
-  const t = locale === "fr" ? CHANTIER_FR[en] ?? en : en;
+  const t = localize(locale, en, CHANTIER_FR);
   return t.replace(/\{(\w+)\}/g, (_m, k) => String(vars[k] ?? ""));
 }

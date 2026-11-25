@@ -28,7 +28,7 @@
  * { code, verifier } and receives its session cookie (Set-Cookie), exactly like POST /api/auth/login. Another app that
  * intercepts the sklubot:// address gets the code but not the verifier, which never leaves the app that started.
  */
-import { createHash, createPublicKey, randomBytes, timingSafeEqual, verify as verifySignature, type KeyObject } from "node:crypto";
+import { createHash, createPublicKey, randomBytes, timingSafeEqual, verify as verifySignature, type KeyObject } from "node:crypto"; import { localize } from "./lang/index.js";
 import type { Context, Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { hashPassword, originAllowed, seal, SESSION_COOKIE, setupCodeMatches, setupCodeRequired, signupOpen, unseal } from "./auth.js";
@@ -116,7 +116,7 @@ const FR: Record<string, string> = {
   "This code is wrong, used or expired. Sign in again.": "Ce code est faux, déjà utilisé ou expiré. Reconnecte-toi.",
   "The app did not send a valid code_challenge (S256).": "L'application n'a pas envoyé de code_challenge valide (S256).",
 };
-const m = (locale: Locale, english: string) => (locale === "fr" ? FR[english] ?? english : english);
+const m = (locale: Locale, english: string) => localize(locale, english, FR);
 const pickLoc = (value: unknown, acceptLanguage?: string | null): Locale =>
   value === "fr" || value === "en" ? value : /^\s*fr/i.test(acceptLanguage ?? "") ? "fr" : "en";
 

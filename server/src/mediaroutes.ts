@@ -1,4 +1,4 @@
-import type { Context, Hono } from "hono";
+import type { Context, Hono } from "hono"; import { localize } from "./lang/index.js";
 import { APERTURES, CAMERA_MOVES, CAMERAS, FOCALS, LENSES } from "./camerawords.js";
 import { hostedMode, isOperator } from "./hosted.js";
 import { mediaJobs } from "./mediajobs.js";
@@ -38,7 +38,7 @@ const FR: Record<string, string> = {
 
 export function registerMediaRoutes(api: Hono<any>) {
   const user = (c: Context) => c.get("user") as UserRecord;
-  const say = (c: Context, en: string, vars: Record<string, string> = {}) => (user(c).locale === "fr" ? FR[en] ?? en : en).replace(/\{(\w+)\}/g, (_m, k) => vars[k] ?? "");
+  const say = (c: Context, en: string, vars: Record<string, string> = {}) => localize(user(c).locale, en, FR).replace(/\{(\w+)\}/g, (_m, k) => vars[k] ?? "");
   const guard = async <T>(c: Context, fn: () => Promise<T> | T): Promise<T> => {
     try { return await fn(); } catch (e) {
       if (e instanceof MediaKeyError || e instanceof Wan2gpSetupError) return fail(e.status, say(c, e.message));

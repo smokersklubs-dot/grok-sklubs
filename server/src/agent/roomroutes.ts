@@ -1,4 +1,4 @@
-import type { Context, Hono } from "hono";
+import type { Context, Hono } from "hono"; import { localize } from "../lang/index.js";
 import { modelLabel } from "../llm/index.js";
 import type { Locale } from "../shared.js";
 import { audit, bots, type BotRecord, type UserRecord } from "../store.js";
@@ -30,7 +30,7 @@ const FR: Record<string, string> = {
   "archived must be true or false.": "archived doit valoir true ou false.",
   "The limit is a whole number of minutes from 1 to 240, or none.": "La limite est un nombre entier de minutes, de 1 à 240, ou aucune.",
 };
-const say = (loc: Locale | undefined, en: string) => (loc === "fr" ? FR[en] ?? en : en);
+const say = (loc: Locale | undefined, en: string) => localize(loc, en, FR);
 const err = (c: Context<Env>, status: 400 | 404 | 409 | 429, en: string) => c.json({ error: say(c.get("user").locale, en) }, status);
 const json = async (c: Context): Promise<Record<string, unknown>> => { const b = await c.req.json().catch(() => ({})); return b && typeof b === "object" ? b : {}; };
 const ownRoom = (c: Context<Env>): BotRecord | "missing" | "agent" => {

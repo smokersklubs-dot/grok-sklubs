@@ -49,6 +49,7 @@ const PAGES = [
   "section=inbox&empty=1",
   "section=cards&long=1",
   "section=cards&type=trajectory&long=1", "section=cards&type=trajectory&theme=dark&lang=en", // L158 « Créations » (TrajectoryCard.tsx)
+  "section=cards&type=batch&long=1", "section=cards&type=batch&theme=dark&lang=en", // L99 lots en parallèle (BatchCard.tsx)
   "section=routines&long=1", "section=chat&math=1&theme=dark&lang=en", "section=chat&retired=1", // L142 L143 L156 (GalleryRoutines.tsx), L136 L147 L150 (GalleryChat.tsx)
   "section=today",
   "section=memoire&long=1",

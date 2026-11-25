@@ -1,4 +1,4 @@
-import { refuseCreditless } from "./modelplusroutes.js";
+import { refuseCreditless } from "./modelplusroutes.js"; import { localize } from "./lang/index.js";
 import type { Context, Hono } from "hono";
 import { apiProviders } from "./apimodels.js";
 import { previewLocalImport } from "./localimport.js";
@@ -31,7 +31,7 @@ const FR: Record<string, string> = {
 };
 export function registerAccountNetRoutes(api: Hono<any>, ownAgent: (c: Context) => BotRecord) {
   const user = (c: Context) => c.get("user") as UserRecord;
-  const say = (c: Context, en: string) => (user(c).locale === "fr" ? FR[en] ?? en : en);
+  const say = (c: Context, en: string) => localize(user(c).locale, en, FR);
   const guard = <T>(c: Context, fn: () => T): T => {
     try { return fn(); } catch (e) {
       if (e instanceof ProviderKeyError || e instanceof WebhookError) return fail(e.status, say(c, e.message));

@@ -1,4 +1,4 @@
-import { emit } from "./bus.js";
+import { emit } from "./bus.js"; import { localize } from "./lang/index.js";
 import { isValidTimezone, localParts } from "./cron.js";
 import { q } from "./db.js";
 import type { CapMode, CapPeriod, CapSetBy, CapStateView, CapUnit, Card, Locale, UsageAmount, UsageCapsView, UsageCapView } from "./shared.js";
@@ -72,7 +72,7 @@ const FR: Record<string, string> = {
   "Unknown bot.": "Bot inconnu.",
 };
 export const cm = (locale: Locale | undefined, english: string, vars: Record<string, string | number> = {}) =>
-  (locale === "fr" ? FR[english] ?? english : english).replace(/\{(\w+)\}/g, (_m, k) => String(vars[k] ?? ""));
+  localize(locale, english, FR).replace(/\{(\w+)\}/g, (_m, k) => String(vars[k] ?? ""));
 
 export class CapError extends Error {
   constructor(public status: 400 | 403 | 404 | 409, public english: string) { super(english); this.name = "CapError"; }

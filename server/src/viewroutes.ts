@@ -3,7 +3,7 @@
  * question card (routes.ts cards/:seq/answer): the owner's own bot only, the answer is checked against the form's
  * fields, a secret typed in it is masked, and it reaches the bot as the owner's next message in that conversation.
  */
-import type { Context, Hono } from "hono";
+import type { Context, Hono } from "hono"; import { localize } from "./lang/index.js";
 import { submitUserMessage } from "./agent/loop.js";
 import { formAnswer } from "./agent/viewcard.js";
 import { holdAndOffer, screen as screenSecrets } from "./pastedsecrets.js";
@@ -14,7 +14,7 @@ const FR: Record<string, string> = {
   "That is not a form.": "Ce n'est pas un formulaire.",
   "This form was already answered.": "Ce formulaire a déjà une réponse.",
 };
-const say = (loc: string | undefined, msg: string) => (loc === "fr" ? FR[msg] ?? msg.replace(/^“(.+)” is needed\.$/, "« $1 » est à remplir.").replace(/^“(.+)” must be a number\.$/, "« $1 » doit être un nombre.").replace(/^“(.+)”: pick one of the options\.$/, "« $1 » : choisis une des options.") : msg);
+const say = (loc: string | undefined, msg: string) => (loc === "fr" ? FR[msg] ?? msg.replace(/^“(.+)” is needed\.$/, "« $1 » est à remplir.").replace(/^“(.+)” must be a number\.$/, "« $1 » doit être un nombre.").replace(/^“(.+)”: pick one of the options\.$/, "« $1 » : choisis une des options.") : localize(loc, msg));
 
 export function registerViewRoutes(api: Hono<any>, ownBot: (c: Context) => BotRecord) {
   const cardOf = (c: Context, bot: BotRecord) => {

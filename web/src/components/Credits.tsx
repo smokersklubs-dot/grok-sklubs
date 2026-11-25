@@ -6,7 +6,7 @@
  */
 import { useEffect, useState, type ReactNode } from "react";
 import { api, ApiError, errText } from "../api";
-import { useStore } from "../store";
+import { useStore } from "../store"; import { sideText } from "../i18n";
 import type { CreditsView } from "../types";
 import { Icon, type IconName } from "./Icon";
 import { AiAccountCards } from "./AiAccounts";
@@ -82,7 +82,7 @@ const TEXT = {
 type K = keyof typeof TEXT.fr;
 function useC() {
   const locale = useStore((s) => s.locale);
-  return (k: K, vars: Record<string, string | number> = {}) => (TEXT[locale === "fr" ? "fr" : "en"][k] as string).replace(/\{(\w+)\}/g, (_m, n) => String(vars[n] ?? ""));
+  return (k: K, vars: Record<string, string | number> = {}) => (sideText("credits", TEXT, locale)[k] as string).replace(/\{(\w+)\}/g, (_m, n) => String(vars[n] ?? ""));
 }
 const money = (n: number, loc: "fr" | "en") => n.toLocaleString(loc === "fr" ? "fr-FR" : "en-GB", { style: "currency", currency: "EUR", minimumFractionDigits: Number.isInteger(n) ? 0 : 2, maximumFractionDigits: 2 });
 const date = (ts: number, loc: "fr" | "en") => new Date(ts).toLocaleDateString(loc === "fr" ? "fr-FR" : "en-GB", { day: "numeric", month: "short", year: "numeric" });

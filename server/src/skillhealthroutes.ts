@@ -1,4 +1,4 @@
-import type { Context, Hono } from "hono";
+import type { Context, Hono } from "hono"; import { localize } from "./lang/index.js";
 import { RateWindow } from "./hardening.js";
 import type { Locale } from "./shared.js";
 import { CatalogError, teamCatalog, updateFromSource } from "./skillcatalog.js";
@@ -39,7 +39,7 @@ const FR: Record<string, string> = {
   "A usage cap stops this bot right now.": "Un plafond de dépenses arrête ce bot en ce moment.",
   "The test could not run: {detail}": "L'essai n'a pas pu se faire : {detail}",
 };
-const say = (loc: Locale | undefined, en: string, vars: Record<string, string> = {}) => (loc === "fr" ? FR[en] ?? en : en).replace(/\{(\w+)\}/g, (_m, k) => vars[k] ?? "");
+const say = (loc: Locale | undefined, en: string, vars: Record<string, string> = {}) => localize(loc, en, FR).replace(/\{(\w+)\}/g, (_m, k) => vars[k] ?? "");
 class RouteError extends Error { constructor(public status: 400 | 404 | 429, message: string, public vars: Record<string, string> = {}) { super(message); } }
 
 const benches = new RateWindow(12, 3_600_000);
@@ -120,7 +120,7 @@ export function registerSkillHealthRoutes(api: Hono<any>) {
   api.post("/skills-library/:id/bench", handle(async (c, user, b) => {
     const e = libraryEntries().find((x) => x.id === c.req.param("id")) ?? (() => { throw new RouteError(404, "That skill is not in the library."); })();
     const t = e.text[user.locale] ?? e.text.en!;
-    return c.json({ result: await bench(String(b.botId ?? ""), user.id, e.title[user.locale], skillText({ description: t.description, body: t.body }), b) });
+    return c.json({ result: await bench(String(b.botId ?? ""), user.id, (e.title[user.locale] ?? e.title.en), skillText({ description: t.description, body: t.body }), b) });
   }));
   api.get("/skills-catalog", handle((c, user) => c.json({ catalog: teamCatalog.list(user.id) })));
   api.post("/skills-catalog/:id/add", handle((c, user, b) => c.json({ report: teamCatalog.add(user.id, c.req.param("id")!, typeof b.target === "string" && b.target ? b.target : "all") })));

@@ -7,6 +7,7 @@ import { useStore } from "../store";
 import type { Card } from "../types";
 import { Icon } from "./Icon";
 import { NudgeCardView, TaskCardView, Uncertain } from "./RulesAndNudges";
+import { BatchCardView } from "./BatchCard";
 import { ApiConnectorCardView, MemoryCardView, SkillCardView, SpendCardView } from "./SpendSkillsFiles";
 import { DiskCardView } from "./DiskAndTeamFolder";
 import { FilesCardView, PastedSecretCardView } from "./SecretsFilesProviders";
@@ -109,7 +110,7 @@ function Approval({ card, botId }: { card: ApprovalCard; botId: string }) {
       {card.status === "pending" && !canDecide ? (
         <p className="card-note"><Icon name="users" size={13} /> {t("ws.approvalOwner", { name: access?.ownerName ?? "" })}</p>
       ) : card.status === "pending" ? (
-        <>{floorCode && <FloorCodeField value={code} onChange={setCode} />}
+        <>{floorCode && <FloorCodeField value={code} onChange={setCode} purpose={`floor:${card.approvalId}`} />}
           <div className="card-actions">
             <button type="button" className="btn btn-ghost" disabled={busy !== null} onClick={() => void decide("deny")}>
               {t(busy === "deny" ? "approval.denying" : "approval.deny")}
@@ -442,6 +443,8 @@ export function CardView({ card, botId, seq }: { card: Card; botId: string; seq:
       return <StepGuideCardView card={card} botId={botId} seq={seq} />; // L153 / L145 « pas à pas »
     case "boardplan":
       return <BoardPlanCardView card={card} botId={botId} seq={seq} />; // L163 plan → tableau
+    case "batch":
+      return <BatchCardView card={card} botId={botId} />; // L99 lots en parallèle
     default:
       return null;
   }

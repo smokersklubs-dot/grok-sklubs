@@ -437,6 +437,8 @@ export const useStore = create<Store>((set, get) => ({
       get().setView(wantedView);
       window.history.replaceState(null, "", window.location.pathname);
     }
+    // L44: a security notification (/?view=security) opens Settings → Permissions → Sécurité; « Ce n'est pas moi » (/?view=account) the password.
+    if (wantedView === "security" || wantedView === "account") { get().openAppSettings(wantedView === "security" ? "permissions" : "account"); window.history.replaceState(null, "", window.location.pathname); }
     // Wave 6: opened from a workspace invitation while signed in: join, then show the bots shared there.
     const invite = new URLSearchParams(window.location.search).get("invite");
     if (invite) {

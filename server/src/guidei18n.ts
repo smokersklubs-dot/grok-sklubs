@@ -4,7 +4,7 @@
  * is the key; French here (tutoiement, simple words). Kept apart from i18n.ts like worki18n.ts does.
  * test/guide-plan-warmup.test.ts checks that every gt("…") text of these files has its French line.
  */
-import type { Locale } from "./shared.js";
+import type { Locale } from "./shared.js"; import { localize } from "./lang/index.js";
 
 export const GUIDE_FR: Record<string, string> = {
   // Checks (guidechecks.ts)
@@ -110,6 +110,6 @@ export const GUIDE_FR: Record<string, string> = {
 
 /** The owner's text: French when the account is in French and the text has its line, else the English key. */
 export function gt(locale: Locale | undefined, english: string, vars: Record<string, string | number> = {}): string {
-  const template = locale === "fr" ? GUIDE_FR[english] ?? english : english;
+  const template = localize(locale, english, GUIDE_FR);
   return template.replace(/\{(\w+)\}/g, (_m, k) => String(vars[k] ?? ""));
 }

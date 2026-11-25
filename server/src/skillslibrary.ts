@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs"; import { byLocale, type LocaleTexts } from "./lang/index.js";
 import { join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { emit } from "./bus.js";
@@ -27,7 +27,7 @@ import { audit, bots, sha256, skills, type BotRecord } from "./store.js";
 
 interface Entry {
   id: string; origin: LibraryOrigin; category: LibraryCategory; licence: string; source: string;
-  title: Record<Locale, string>; summary: Record<Locale, string>;
+  title: LocaleTexts<string>; summary: LocaleTexts<string>;
   text: Partial<Record<Locale, { description: string; body: string }>>; notice: string;
   /** L130: text files of its `files/` folder (templates, styles), copied with the skill, never run. */
   files: CompanionFile[];
@@ -131,8 +131,8 @@ export function libraryFor(userId: string, locale: Locale): LibrarySkill[] {
   return libraryEntries().map((e) => {
     const t = textFor(e, locale);
     return {
-      id: e.id, origin: e.origin, category: e.category, licence: e.licence, source: e.source, title: e.title[locale], summary: e.summary[locale],
-      body: t.body, language: t.language, notice: e.notice, scan: scanSkill({ name: e.title[locale], description: t.description || e.summary[locale], body: t.body }), addedTo: agents.filter((b) => hasIt(b.id, e)).length, botCount: agents.length,
+      id: e.id, origin: e.origin, category: e.category, licence: e.licence, source: e.source, title: byLocale(locale, e.title), summary: byLocale(locale, e.summary),
+      body: t.body, language: t.language, notice: e.notice, scan: scanSkill({ name: byLocale(locale, e.title), description: t.description || byLocale(locale, e.summary), body: t.body }), addedTo: agents.filter((b) => hasIt(b.id, e)).length, botCount: agents.length,
     };
   });
 }
@@ -156,7 +156,7 @@ export function addFromLibrary(userId: string, id: string, target: string, local
   for (const b of targets) {
     if (hasIt(b.id, e)) { report.already.push({ botId: b.id, botName: b.name }); continue; }
     // A text the safety check flags as "danger" comes back as a draft (store.ts → skillscan.ts): said in the report.
-    const made = skills.create(b.id, e.title[locale], t.description || e.summary[locale], t.body, false);
+    const made = skills.create(b.id, (e.title[locale] ?? e.title.en), t.description || (e.summary[locale] ?? e.summary.en), t.body, false);
     if (made.draft) (report.flagged ??= []).push(b.name);
     if (e.files.length) skillFiles.save(made.id, e.files); // L130: its templates travel with it
     skillMeta.setMadeBy(made.id, "library"); skillMeta.setOrigin(made.id, "library", e.id, libraryVersion(e.id)!); // versioned copy (skillcatalog.ts)

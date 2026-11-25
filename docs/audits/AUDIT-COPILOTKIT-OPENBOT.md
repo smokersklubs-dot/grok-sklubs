@@ -445,7 +445,7 @@ Statuts : FAIT, PARTIEL, MANQUANT, DIFFÉRENT, NON REPRIS. Taille : S (moins d'u
 27. **LaTeX** dans les messages (S). — **FAIT (2026-11-23)** : KaTeX (MIT) en MathML, chargé seulement si besoin (`lib/mathtex.ts`, `mathrender.ts`)
 28. **Renommer une conversation / titre auto des fils** (S).
 29. **Sélecteur de modèle par conversation** et ligne « tu tournes sur X » (S).
-30. **Plancher 15 min et plafond 20 routines actives** (S).
+30. **Plancher 15 min et plafond 20 routines actives** (S). — **FAIT (2026-11-25)** : plancher 15 min (`routinefloor.ts`) ; pas de plafond en auto-hébergé (décision du propriétaire), l'offre hébergée garde le sien
 31. **Journal : « demande au journal », « Pourquoi ? », « Que se passerait-il si »** (M).
 32. **Enveloppe standard sur chaque résultat d'app** (a tourné / partiellement / échec + quoi essayer) et **conversion de types** selon le schéma (S).
 33. **Web Bot Auth** et **proxy par bot** en option opérateur (M).

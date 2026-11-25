@@ -16,7 +16,7 @@ export function selfCheckToken(random: () => number): string {
 }
 
 /** The message sent to the bot: three steps with its real tools, then a one-line report. */
-export function selfCheckMessage(lang: "fr" | "en", token: string, pageUrl: string): string {
+export function selfCheckMessage(lang: string, token: string, pageUrl: string): string {
   return lang === "fr"
     ? `Vérification de tes outils (demandée depuis « Vérifier ce bot ») :\n1. Lis la page ${pageUrl} avec ton outil de lecture de page (web_fetch).\n2. Enregistre un fichier « ${SELFCHECK_FILE} » dans tes fichiers, qui contient seulement : ${token}\n3. Relis ce fichier et vérifie qu'il contient bien ${token}.\nPuis réponds en une ligne : ce qui a marché et ce qui n'a pas marché. Ne fais rien d'autre.`
     : `Tool check (asked from "Check this bot"):\n1. Read the page ${pageUrl} with your page reading tool (web_fetch).\n2. Save a file "${SELFCHECK_FILE}" in your files, containing only: ${token}\n3. Read that file back and check it holds ${token}.\nThen answer in one line: what worked and what did not. Do nothing else.`;

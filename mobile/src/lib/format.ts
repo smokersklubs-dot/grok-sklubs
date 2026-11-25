@@ -7,32 +7,44 @@ export function clockTime(at: number): string {
   return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-const MONTHS: Record<Locale, string[]> = {
+const MONTHS: Partial<Record<Locale, string[]>> & { en: string[] } = {
   fr: ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."],
   en: ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
+  es: ["ene.", "feb.", "mar.", "abr.", "may.", "jun.", "jul.", "ago.", "sept.", "oct.", "nov.", "dic."],
 };
+/** Words of the dates below, per language (missing → English). */
+const WORDS: Partial<Record<Locale, { today: string; yesterday: string; now: string; min: (n: number) => string; h: (n: number) => string }>> = {
+  fr: { today: "Aujourd’hui", yesterday: "Hier", now: "à l’instant", min: (n) => `il y a ${n} min`, h: (n) => `il y a ${n} h` },
+  es: { today: "Hoy", yesterday: "Ayer", now: "ahora mismo", min: (n) => `hace ${n} min`, h: (n) => `hace ${n} h` },
+};
+const EN_WORDS = { today: "Today", yesterday: "Yesterday", now: "just now", min: (n: number) => `${n} min ago`, h: (n: number) => `${n} h ago` };
+const words = (l: Locale) => WORDS[l] ?? EN_WORDS;
+/** Day before month ("12 mars", "12 mar."): every language here but English. */
+const dayFirst = (l: Locale) => l !== "en" && !!MONTHS[l];
+/** Decimal comma: French, Spanish, German, Italian, Portuguese. */
+const comma = (l: Locale) => l === "fr" || l === "es" || l === "de" || l === "it" || l === "pt";
 
 /** "Aujourd'hui", "Hier", "12 mars", "12 mars 2025". */
 export function dayLabel(at: number, locale: Locale, now = Date.now()): string {
   const d = new Date(at);
   const today = new Date(now);
   const start = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
-  if (at >= start) return locale === "fr" ? "Aujourd’hui" : "Today";
-  if (at >= start - 86_400_000) return locale === "fr" ? "Hier" : "Yesterday";
-  const m = MONTHS[locale][d.getMonth()];
-  const base = locale === "fr" ? `${d.getDate()} ${m}` : `${m} ${d.getDate()}`;
+  if (at >= start) return words(locale).today;
+  if (at >= start - 86_400_000) return words(locale).yesterday;
+  const m = (MONTHS[locale] ?? MONTHS.en)[d.getMonth()];
+  const base = dayFirst(locale) ? `${d.getDate()} ${m}` : `${m} ${d.getDate()}`;
   return d.getFullYear() === today.getFullYear() ? base : `${base} ${d.getFullYear()}`;
 }
 
 /** "à l'instant", "il y a 5 min", "il y a 3 h", then a date. */
 export function relTime(at: number, locale: Locale, now = Date.now()): string {
   const s = Math.max(0, Math.round((now - at) / 1000));
-  const fr = locale === "fr";
-  if (s < 45) return fr ? "à l’instant" : "just now";
+  const w = words(locale);
+  if (s < 45) return w.now;
   const m = Math.round(s / 60);
-  if (m < 60) return fr ? `il y a ${m} min` : `${m} min ago`;
+  if (m < 60) return w.min(m);
   const h = Math.round(m / 60);
-  if (h < 24) return fr ? `il y a ${h} h` : `${h} h ago`;
+  if (h < 24) return w.h(h);
   return dayLabel(at, locale, now);
 }
 
@@ -50,7 +62,7 @@ export function fileSize(bytes: number, locale: Locale): string {
   let i = 0;
   while (v >= 1024 && i < unit.length - 1) { v /= 1024; i++; }
   const n = i === 0 ? String(v) : v.toFixed(v < 10 ? 1 : 0);
-  return `${locale === "fr" ? n.replace(".", ",") : n} ${unit[i]}`;
+  return `${comma(locale) ? n.replace(".", ",") : n} ${unit[i]}`;
 }
 
 export const isImage = (mime: string) => /^image\/(png|jpe?g|gif|webp|heic|heif|bmp)$/i.test(mime);

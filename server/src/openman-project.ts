@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync } from "node:fs"; import type { Locale } from "./shared.js";
 import { SLIDE_THEMES, themeById, themeCss, type SlideTheme } from "./openman-themes.js";
 
 // OpenMan 12ea5bdd: src/lib/generators/registry.ts and types.ts define these portable project paths.
@@ -58,7 +58,7 @@ ${slides.map((s, i) => `<draw:page draw:name="${i + 1}" draw:style-name="Backgro
 </office:presentation></office:body></office:document>`;
 }
 
-function deckFiles(title: string, slides: Slide[], theme: SlideTheme, locale: "fr" | "en") {
+function deckFiles(title: string, slides: Slide[], theme: SlideTheme, locale: Locale) {
   const files: Record<string, string> = {};
   const css = themeCss(theme) + "\n/*!\n" + licence + "\n*/";
   const section = (s: Slide) => `<section class="slide center"><h2>${escape(s.title)}</h2>${s.points.length ? `<ul class="bullets">${s.points.map(p => `<li>${escape(p)}</li>`).join("")}</ul>` : ""}</section>`;
@@ -76,7 +76,7 @@ html,body{width:100%;height:auto;overflow:visible}main{max-width:80rem;margin:au
   return files;
 }
 
-export function openmanProject(a: Record<string, unknown>, locale: "en" | "fr") {
+export function openmanProject(a: Record<string, unknown>, locale: Locale) {
   if (!kinds.includes(a.kind as Kind)) throw new Error("Choose one of the listed project kinds.");
   const kind = a.kind as Kind;
   const title = field(a.title, 140, "project title");

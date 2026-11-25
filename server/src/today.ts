@@ -1,4 +1,4 @@
-import { isValidTimezone, localParts } from "./cron.js";
+import { isValidTimezone, localParts } from "./cron.js"; import { localize } from "./lang/index.js";
 import { q } from "./db.js";
 import { hostedMode, hostedSettings, isOperator, operatorBlock, subscriptions, budgetEur, spentEur } from "./hosted.js";
 import { pauses } from "./pauses.js";
@@ -423,7 +423,7 @@ const FR: Record<string, string> = {
     "Le temps gagné est une estimation : pour chaque type de résultat, le nombre fait × les minutes qu'il prend d'habitude à la main (Réglages → Aujourd'hui).",
   "Cost": "Coût", "Open Sklubot": "Ouvrir Sklubot", "and {n} more": "et {n} de plus",
 };
-const tx = (loc: Locale, en: string, vars: Record<string, string | number> = {}) => (loc === "fr" ? FR[en] ?? en : en).replace(/\{(\w+)\}/g, (_m, k) => String(vars[k] ?? ""));
+const tx = (loc: Locale, en: string, vars: Record<string, string | number> = {}) => localize(loc, en, FR).replace(/\{(\w+)\}/g, (_m, k) => String(vars[k] ?? ""));
 export const durationText = (min: number) => (min < 60 ? `${min} min` : `${Math.floor(min / 60)} h${min % 60 ? ` ${pad(min % 60)}` : ""}`);
 
 export interface Digest { title: string; body: string; text: string; report: TodayReport }

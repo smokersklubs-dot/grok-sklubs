@@ -1,4 +1,4 @@
-import { WebSocket } from "ws";
+import { WebSocket } from "ws"; import { languageName } from "../clientshared/locales.js";
 import { unseal } from "../auth.js";
 import { q } from "../db.js";
 import { hostedMode } from "../hosted.js";
@@ -136,7 +136,7 @@ export class Upsampler {
 
 export const ASK_BOT = "ask_bot";
 const instructionsFor = (botName: string, locale: string) =>
-  `You are the voice of ${botName}, the user's AI teammate, in a live phone-like call. Speak ${locale === "fr" ? "French" : "English"}, in short spoken sentences (one to three), warm and plain; never read out code, links or lists. ` +
+  `You are the voice of ${botName}, the user's AI teammate, in a live phone-like call. Speak ${languageName(locale)}, in short spoken sentences (one to three), warm and plain; never read out code, links or lists. ` +
   `You cannot act, look anything up or remember anything yourself. For anything beyond small talk or a short general answer — doing something, the user's files, email, calendar, the web, memory, anything about their work — call ${ASK_BOT} with the user's request written out in full, after saying in a few words that you are asking. ` +
   `When ${ASK_BOT} answers, say the answer briefly; say that the full answer is written in the chat when it is long. If it says an approval waits, tell the user to answer it on the screen. Never invent results.`;
 

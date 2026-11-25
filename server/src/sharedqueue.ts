@@ -1,4 +1,4 @@
-import { tr } from "./i18n.js";
+import { tr } from "./i18n.js"; import type { Locale } from "./shared.js";
 import { bots, rows, users, type BotRecord } from "./store.js";
 
 /**
@@ -12,14 +12,14 @@ import { bots, rows, users, type BotRecord } from "./store.js";
  */
 export const queueTiming = { announceAfterMs: 2_000 };
 
-const name = (id: string, locale: "fr" | "en") => bots.byId(id)?.name ?? tr(locale, "another bot");
-const list = (names: string[], locale: "fr" | "en") => names.length <= 1 ? names.join("") : `${names.slice(0, -1).join(", ")} ${locale === "fr" ? "et" : "and"} ${names[names.length - 1]}`;
-export const waitText = (ms: number, locale: "fr" | "en") => {
+const name = (id: string, locale: Locale) => bots.byId(id)?.name ?? tr(locale, "another bot");
+const list = (names: string[], locale: Locale) => names.length <= 1 ? names.join("") : `${names.slice(0, -1).join(", ")} ${locale === "fr" ? "et" : "and"} ${names[names.length - 1]}`;
+export const waitText = (ms: number, locale: Locale) => {
   const s = Math.max(1, Math.round(ms / 1000));
   return s < 60 ? `${s} s` : `${Math.round(s / 60)} min`;
 };
 
-export function queueLine(locale: "fr" | "en", holders: string[], ahead: string[]): string {
+export function queueLine(locale: Locale, holders: string[], ahead: string[]): string {
   const h = list(holders.map((id) => name(id, locale)), locale) || tr(locale, "another bot");
   if (!ahead.length) return tr(locale, "The shared computer is being used by {holders}. I am waiting for my turn (next in line). I will go on by myself as soon as it is free.", { holders: h });
   return tr(locale, "The shared computer is being used by {holders}. I am waiting for my turn: number {position} in line, behind {ahead}. I will go on by myself as soon as it is free.", { holders: h, position: ahead.length + 1, ahead: list(ahead.map((id) => name(id, locale)), locale) });
@@ -31,7 +31,7 @@ export class QueueNotice {
   private generation = 0;
   private last = "";
   private readonly bot: BotRecord | null;
-  private readonly locale: "fr" | "en";
+  private readonly locale: Locale;
   constructor(botId: string, private readonly startedAt = Date.now()) {
     this.bot = bots.byId(botId);
     this.locale = this.bot ? users.localeOf(this.bot.userId) : "en";

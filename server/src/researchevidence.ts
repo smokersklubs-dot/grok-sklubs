@@ -1,4 +1,4 @@
-import { windowFromText, RESEARCH_EXTRAS, type Engagement, type ResearchWindow, type ResearchExtra, type SourceName, type SourceState } from "./researchsignals.js";
+import { windowFromText, RESEARCH_EXTRAS, type Engagement, type ResearchWindow, type ResearchExtra, type SourceName, type SourceState } from "./researchsignals.js"; import type { Locale } from "./shared.js"; import { isLocale } from "./clientshared/locales.js";
 /** Findings kept per question (was 4; more sources now answer). */
 export const MAX_FINDINGS = 6;
 export interface ResearchBrief {
@@ -8,7 +8,7 @@ export interface ResearchBrief {
   discover: boolean;
   model: boolean;
   includeX: boolean;
-  locale: "fr" | "en";
+  locale: Locale;
   /** L87: only sources published in this window count (absent on older reports: "any"). */
   window?: ResearchWindow;
   /** L87: free sources besides the web (Hacker News, Polymarket, Reddit and YouTube through Agent Reach). */
@@ -85,7 +85,7 @@ export function briefFrom(value: Partial<ResearchBrief>) {
     discover,
     includeX: value.includeX === true,
     model: value.model === true,
-    locale: value.locale === "en" ? "en" : "fr",
+    locale: isLocale(value.locale) ? value.locale : "fr",
     window,
     extras,
   } satisfies ResearchBrief;

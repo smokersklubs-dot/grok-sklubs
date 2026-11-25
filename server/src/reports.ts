@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto"; import { localize } from "./lang/index.js"; import type { Locale } from "./shared.js";
 import type { Context, Hono } from "hono";
 import { q } from "./db.js";
 import { screen } from "./pastedsecrets.js";
@@ -39,7 +39,7 @@ export interface MessageReport {
  * The masked copy: secrets first (the same detector as a pasted key, pastedsecrets.ts), then what identifies a person
  * or an account. Errs on the side of hiding too much; the reason and the note say what was wrong.
  */
-export function maskForReport(text: string, locale: "fr" | "en" = "fr"): string {
+export function maskForReport(text: string, locale: Locale = "fr"): string {
   const fr = locale === "fr";
   let s = screen(text, locale).text;
   s = s.replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, "[e-mail]");
@@ -52,7 +52,7 @@ export function maskForReport(text: string, locale: "fr" | "en" = "fr"): string 
 
 const CONTEXT_LINES = 4;
 
-function contextOf(botId: string, generation: number, seq: number, thread: number, locale: "fr" | "en"): ContextLine[] {
+function contextOf(botId: string, generation: number, seq: number, thread: number, locale: Locale): ContextLine[] {
   const found = q.all<{ body: string }>(
     "SELECT body FROM rows WHERE bot_id = ? AND generation = ? AND seq < ? AND thread = ? AND kind = 'message' ORDER BY seq DESC LIMIT ?",
     botId, generation, seq, thread, CONTEXT_LINES,
@@ -81,7 +81,7 @@ const toReport = (r: any): MessageReport => {
 export const reports = {
   /** Files (or updates) the owner's report on one reply. Returns its id. */
   file(owner: UserRecord, bot: { id: string; name: string; generation: number }, row: { seq: number; thread?: number; text: string }, reason: ReportReason, note: string): string {
-    const loc = owner.locale === "en" ? "en" : "fr";
+    const loc = owner.locale;
     const thread = row.thread ?? 0;
     const text = clip(maskForReport(row.text, loc), 4000);
     const ctx = JSON.stringify(contextOf(bot.id, bot.generation, row.seq, thread, loc));
@@ -109,7 +109,7 @@ const FR: Record<string, string> = {
   "No such endpoint.": "Cette adresse n'existe pas.",
   "That report does not exist.": "Ce signalement n'existe pas.",
 };
-const m = (c: Context<Env>, en: string) => (c.get("user").locale === "fr" ? FR[en] ?? en : en);
+const m = (c: Context<Env>, en: string) => localize(c.get("user").locale, en, FR);
 
 export function registerReportRoutes(api: Hono<Env>) {
   api.post("/bots/:id/rows/:seq/report", async (c) => {

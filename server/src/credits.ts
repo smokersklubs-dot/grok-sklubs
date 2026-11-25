@@ -22,7 +22,7 @@
  *        which are not re-credited automatically: the owner decides, with "Add AI credits").
  *    The older address POST /api/billing/webhook/paddle is the same handler once Paddle is configured (501 before).
  */
-import type { Context, Hono } from "hono";
+import type { Context, Hono } from "hono"; import { localize } from "./lang/index.js";
 import { config } from "./config.js";
 import { q } from "./db.js";
 import { adminLog, addPrepaid, creditEur, HostedError, hostedMode, hostedSettings, isOperator, monthBounds, operatorKeysAllowed, planBaseEur, prepaidLeftEur, prepaidUseByMonth, removePrepaid, spentEur, subscriptionEnginesFor } from "./hosted.js";
@@ -43,7 +43,7 @@ const FR: Record<string, string> = {
   "Invalid signature.": "Signature invalide.",
 };
 const m = (loc: Locale | undefined, english: string, vars: Record<string, string | number> = {}) =>
-  (loc === "fr" ? FR[english] ?? english : english).replace(/\{(\w+)\}/g, (_x, k) => String(vars[k] ?? ""));
+  localize(loc, english, FR).replace(/\{(\w+)\}/g, (_x, k) => String(vars[k] ?? ""));
 class CreditsError extends HostedError {
   constructor(status: 400 | 403 | 404 | 409 | 429 | 502 | 503, english: string, code: string, vars: Record<string, string | number> = {}) { super(status, english, vars, code); this.name = "CreditsError"; }
   override text(locale: Locale | undefined) { return m(locale, this.english, this.vars); }

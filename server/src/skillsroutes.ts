@@ -1,4 +1,4 @@
-import type { Context, Hono } from "hono";
+import type { Context, Hono } from "hono"; import { localize } from "./lang/index.js";
 import { RateWindow } from "./hardening.js";
 import type { Locale } from "./shared.js";
 import { commitGithub, githubImportAllowed, GithubError, previewGithub } from "./skillsgithub.js";
@@ -36,7 +36,7 @@ const FR: Record<string, string> = {
   "Choose at least one skill.": "Choisis au moins une compétence.",
 };
 const say = (loc: Locale | undefined, en: string, vars: Record<string, string | number> = {}) =>
-  (loc === "fr" ? FR[en] ?? en : en).replace(/\{(\w+)\}/g, (_m, k) => String(vars[k] ?? ""));
+  localize(loc, en, FR).replace(/\{(\w+)\}/g, (_m, k) => String(vars[k] ?? ""));
 
 const previews = new RateWindow(10, 3_600_000);
 const writes = new RateWindow(60, 60_000);

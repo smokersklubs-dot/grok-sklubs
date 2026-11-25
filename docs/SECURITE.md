@@ -70,7 +70,35 @@ Réglages du bot → Sécurité → « Accès à Internet » : **Partout** (par 
   `npm test` n'approuve pas `npm test && rm -rf ~`) ; sur un fichier, que ce fichier.
 - **Option (désactivée par défaut)** : « Code à double facteur avant les accords sensibles ». Activée, accepter un
   paiement, une suppression définitive, un envoi à quelqu'un de nouveau demande le code de ton appli. La désactiver
-  demande aussi le code. Pas encore : alerte « nouvel appareil », passkeys.
+  demande aussi le code (ou la clé d'accès, voir plus bas).
+
+## Nouvel appareil et clés d'accès (L44, décision du 25/11/2026)
+- **Alerte « nouvel appareil »** : quand ton compte se connecte depuis un navigateur ou un appareil jamais utilisé, tu
+  reçois un **e-mail** et une **notification** (téléphone, et la cloche) : l'heure, le navigateur et le système (« Safari
+  sur iOS »), la façon de se connecter (mot de passe, Google, clé d'accès, lien par e-mail…). Pas de lieu : Sklubot n'en
+  connaît pas et n'en demande à personne. Un lien et un bouton **« Ce n'est pas moi »** (Réglages → Autorisations →
+  Sécurité) ferment cette connexion et oublient l'appareil ; il faut ensuite changer le mot de passe. Le lien de l'e-mail
+  marche une fois, 7 jours, et ouvre d'abord une page avec un bouton (un antivirus qui ouvre les liens ne déclenche rien).
+- Comment l'appareil est reconnu : un **numéro au hasard** dans un cookie du navigateur (`sklubot_device`, 400 jours),
+  dont le serveur ne garde qu'une empreinte, plus la famille du navigateur. Pas de pistage, pas d'adresse IP gardée.
+  L'inscription et la toute première connexion d'un compte qui n'a encore aucun appareil connu ne préviennent pas (rien
+  à comparer). **Au plus 5 alertes par heure** et par compte ; au-delà, la connexion reste listée et dans le journal.
+- **Clés d'accès (passkeys)** : Réglages → Autorisations → Sécurité → « Ajouter une clé d'accès » (mot de passe demandé ;
+  sans mot de passe, une connexion de moins de 15 minutes). Renommer, retirer. Sur la page de connexion : « Se connecter
+  avec une clé d'accès ». La clé demande toujours de déverrouiller l'appareil (empreinte, visage ou code) : elle vaut
+  deux facteurs, donc la double authentification n'est pas redemandée après elle ; le mot de passe la redemande toujours.
+- Une clé d'accès remplace aussi le **code avant les accords sensibles** : « Utiliser ma clé d'accès » sur la carte
+  donne une preuve à usage unique, valable 2 minutes, pour **cette** carte seulement.
+- Perdre ses clés ne bloque jamais : mot de passe, Google, lien par e-mail et « Mot de passe oublié ? » marchent toujours.
+- Il faut que le serveur soit en **https** (son `PUBLIC_URL`) ou sur `localhost`. L'appli mobile ne les gère pas encore
+  (un message le dit sur son écran de connexion).
+- Contrôles (W3C WebAuthn niveau 3) : défi de 32 octets au hasard, à usage unique, 5 minutes, lié à son usage et au
+  compte ; origine et identifiant du site (`PUBLIC_URL`) vérifiés ; vérification de l'utilisateur exigée ; compteur qui
+  doit monter (sinon clé copiée) ; signature vérifiée. Vérification écrite d'après SimpleWebAuthn (MIT, voir
+  `THIRD_PARTY_NOTICES.md`), sans dépendance ajoutée. Code : `server/src/webauthn.ts`, `passkeys.ts`, `newdevice.ts`,
+  `web/src/components/Passkeys.tsx` ; tests : `server/test/passkeys.test.ts`, `newdevice.test.ts` ; captures :
+  `docs/screenshots/passkeys/`. **Pas encore essayé avec un vrai appareil** (téléphone, clé de sécurité) : les tests
+  utilisent un authentificateur logiciel.
 
 ## Pages, secrets, outils ajoutés (L45, L46, L47, L49, L51)
 - Pages publiées : un script de CDN sans empreinte `integrity` ou sans version exacte déclenche un avertissement.

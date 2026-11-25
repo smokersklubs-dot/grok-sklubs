@@ -1,4 +1,4 @@
-import { catalogFor } from "./catalog.js";
+import { catalogFor } from "./catalog.js"; import { localize } from "./lang/index.js";
 import { describeCron, isValidTimezone } from "./cron.js";
 import { CREDENTIAL_KEY, GrokImportError, scrub, validCron, type Cleaner } from "./grokimport.js";
 import { mentionsKey } from "./projectimport.js";
@@ -85,7 +85,7 @@ const FR: Record<string, string> = {
   "Too many tries. Wait a little and try again.": "Trop d'essais. Attends un peu et réessaie.",
 };
 const say = (loc: Locale | undefined, en: string, vars: Record<string, string | number> = {}) =>
-  (loc === "fr" ? FR[en] ?? en : en).replace(/\{(\w+)\}/g, (_m, k) => String(vars[k] ?? ""));
+  localize(loc, en, FR).replace(/\{(\w+)\}/g, (_m, k) => String(vars[k] ?? ""));
 
 /** A refusal in plain words (English text, translated here); a `detail` var is translated too. Shown by routes.ts onError. */
 export class TeamMdError extends GrokImportError {
@@ -230,7 +230,7 @@ export function parseTeamMd(raw: string, opts: { locale?: Locale; timezone?: str
         const id = sf.library.trim().toLowerCase();
         const e = library.find((x) => x.id === id);
         if (!e) unknownLibrary.push(clip(id, 60));
-        skills.push({ kind: "library", libraryId: clip(id, 64), name: e ? e.title[locale] : clip(id, 64), when: e ? e.summary[locale] : "", body: "", known: !!e, mentionsKey: false });
+        skills.push({ kind: "library", libraryId: clip(id, 64), name: e ? (e.title[locale] ?? e.title.en) : clip(id, 64), when: e ? (e.summary[locale] ?? e.summary.en) : "", body: "", known: !!e, mentionsKey: false });
         continue;
       }
       let sName = str(sf.name), when = str(sf.when), steps = str(sf.steps);
@@ -411,7 +411,7 @@ function playbookOf(input: TeamMdInput, locale: Locale): string {
     if (b.skills.length) {
       out.push(fr ? "**Compétences**" : "**Skills**", "");
       for (const s of b.skills) {
-        if (s.kind === "library") { const e = lib.find((x) => x.id === s.libraryId); out.push(`- ${md(e ? e.title[locale] : s.libraryId)}${fr ? " (bibliothèque)" : " (library)"}`); }
+        if (s.kind === "library") { const e = lib.find((x) => x.id === s.libraryId); out.push(`- ${md(e ? (e.title[locale] ?? e.title.en) : s.libraryId)}${fr ? " (bibliothèque)" : " (library)"}`); }
         else out.push(`- ${md(s.name)}${s.when ? ` — ${md(s.when)}` : ""}`);
       }
       out.push("");

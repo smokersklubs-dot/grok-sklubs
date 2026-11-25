@@ -127,7 +127,7 @@ Lecture rapide : Sklubot fait faire beaucoup de **pages web** à ses bots (`page
 4. Statut de support navigateur (paquet `web-features`) dans les guides + règle « largement disponible seulement » — **M**.
 5. Exiger `integrity` sur les scripts CDN des pages (consigne + avertissement) — **S**.
 6. Si l'outil est installé sur le bureau : version épinglée, `DISABLE_TELEMETRY=1` — **S**.
-7. Passer l'appli web de Sklubot (`web/`) au crible des guides PWA, passkeys et accessibilité (travail développeur, pas bots) — **M**. — **FAIT (2026-11-23)** (PWA et accessibilité ; passkeys non faits)
+7. Passer l'appli web de Sklubot (`web/`) au crible des guides PWA, passkeys et accessibilité (travail développeur, pas bots) — **M**. — **FAIT (2026-11-23)** (PWA et accessibilité ; passkeys faits le 2026-11-25, L44 : `server/src/passkeys.ts`)
 8. Reprendre de `chrome-extensions` la liste « justification des permissions + politique de confidentialité + réponse à un refus » pour la publication du compagnon/des applis mobiles — **S**.
 9. Vérifier que `guide_read`/`skill_read` signalent une coupure au lieu de couper au milieu — **S**.
 

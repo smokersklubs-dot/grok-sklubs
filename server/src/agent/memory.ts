@@ -5,7 +5,7 @@ import { q } from "../db.js";
 import { defaultModelRef, listProviders, resolveModel, type ChatMessage } from "../llm/index.js";
 import { ModelOutputLimit } from "../llm/types.js";
 import { engineAsk, isEngineRef } from "./engine.js";
-import type { Memory, MemoryBookkeeping, SensitiveCategory } from "../shared.js";
+import type { Locale, Memory, MemoryBookkeeping, SensitiveCategory } from "../shared.js";
 import { bots, clip, history, laneKey, memories, now, paused, rows, settings, users, type BotRecord } from "../store.js";
 import { memoryPrefs, summaries } from "./memoryprefs.js";
 import { findQuote, typedByUser } from "./grounding.js";
@@ -389,7 +389,7 @@ export function importMemories(bot: BotRecord, raw: string, chosen: string[] | n
   return { imported, skipped };
 }
 
-export function exportMemories(bot: BotRecord, format: "md" | "json", locale: "fr" | "en"): string {
+export function exportMemories(bot: BotRecord, format: "md" | "json", locale: Locale): string {
   const list = memories.list(bot.id, 5000).reverse();
   if (format === "json") return JSON.stringify({ bot: bot.name, exportedAt: new Date().toISOString(), memories: list.map(({ botId: _b, ...m }) => m) }, null, 2);
   const head = locale === "fr" ? `# Mémoire de ${bot.name}` : `# ${bot.name}'s memory`;

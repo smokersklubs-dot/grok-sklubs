@@ -1,4 +1,4 @@
-import type { Locale } from "./shared.js"; import { SECURITY_FR } from "./securityi18n.js"; import { COMFORT_FR } from "./comforti18n.js"; import { TURN_FR } from "./turni18n.js"; import { COMFORT7_FR } from "./comfort7i18n.js"; import { WAVE7_FR } from "./wave7i18n.js"; import { LOOPPLUS_FR } from "./loopplusi18n.js"; import { MEDIA_FR } from "./mediai18n.js"; import { BOTCARE_FR } from "./botcarei18n.js"; import { FINISH_FR } from "./finishi18n.js"; import { MODELVOICE_FR } from "./modelvoicei18n.js"; import { COMPUTERSHARE_FR } from "./computersharei18n.js";
+import type { Locale } from "./shared.js"; import { localizeVars, pickLocale } from "./lang/index.js"; import { SECURITY_FR } from "./securityi18n.js"; import { COMFORT_FR } from "./comforti18n.js"; import { TURN_FR } from "./turni18n.js"; import { COMFORT7_FR } from "./comfort7i18n.js"; import { WAVE7_FR } from "./wave7i18n.js"; import { LOOPPLUS_FR } from "./loopplusi18n.js"; import { MEDIA_FR } from "./mediai18n.js"; import { BOTCARE_FR } from "./botcarei18n.js"; import { FINISH_FR } from "./finishi18n.js"; import { MODELVOICE_FR } from "./modelvoicei18n.js"; import { COMPUTERSHARE_FR } from "./computersharei18n.js"; import { PACE_FR } from "./pacei18n.js";
 
 /**
  * Texts the server itself writes into a chat (notices, event lines, step labels, approval titles).
@@ -653,11 +653,9 @@ const FR: Record<string, string> = {
   "That request no longer exists.": "Cette demande n'existe plus.", // L91 codeboxroutes.ts
 };
 
-Object.assign(FR, SECURITY_FR, COMFORT_FR, TURN_FR, COMFORT7_FR, WAVE7_FR, LOOPPLUS_FR, MEDIA_FR, FINISH_FR, BOTCARE_FR, MODELVOICE_FR, COMPUTERSHARE_FR); // Lot 1 security texts (securityi18n.ts); comfort batch (comforti18n.ts); turn control (turni18n.ts)
+Object.assign(FR, SECURITY_FR, COMFORT_FR, TURN_FR, COMFORT7_FR, WAVE7_FR, LOOPPLUS_FR, MEDIA_FR, FINISH_FR, BOTCARE_FR, MODELVOICE_FR, COMPUTERSHARE_FR, PACE_FR); // Lot 1 security texts (securityi18n.ts); comfort batch (comforti18n.ts); turn control (turni18n.ts)
 export function tr(locale: Locale | undefined, english: string, vars: Record<string, string | number> = {}): string {
-  const template = locale === "fr" ? FR[english] ?? english : english;
-  return template.replace(/\{(\w+)\}/g, (_m, k) => String(vars[k] ?? ""));
+  return localizeVars(locale, english, FR, vars); // other languages: lang/<code>.ts (docs/LANGUES.md)
 }
 
-export const pickLocale = (value: unknown, acceptLanguage?: string | null): Locale =>
-  value === "fr" || value === "en" ? value : /^\s*fr/i.test(acceptLanguage ?? "") ? "fr" : "en";
+export { pickLocale };

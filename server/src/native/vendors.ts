@@ -1,4 +1,4 @@
-import { config } from "../config.js";
+import { config } from "../config.js"; import { byLocale, type LocaleTexts } from "../lang/index.js";
 import type { Locale, NativeApp, NativeAppId, NativeVendor } from "../shared.js";
 
 /**
@@ -102,7 +102,7 @@ export const appsFor = (locale: Locale): NativeApp[] => (locale === "fr" ? NATIV
  * How to create each vendor's OAuth client, step by step. Wording follows the vendors' own pages (linked in `docs`).
  * `{redirect}` and `{scopes}` are filled in by the caller.
  */
-const STEPS: Record<NativeVendor, Record<Locale, string[]>> = {
+const STEPS: Record<NativeVendor, LocaleTexts<string[]>> = {
   google: {
     en: [
       "Open the Google Cloud console (console.cloud.google.com) and create a project, or pick an existing one.",
@@ -179,5 +179,5 @@ const DOCS: Record<NativeVendor, { label: string; url: string }[]> = {
   ],
 };
 
-export const setupSteps = (vendor: NativeVendor, locale: Locale) => STEPS[vendor][locale === "fr" ? "fr" : "en"];
+export const setupSteps = (vendor: NativeVendor, locale: Locale) => byLocale(locale, STEPS[vendor]);
 export const setupDocs = (vendor: NativeVendor) => DOCS[vendor];
