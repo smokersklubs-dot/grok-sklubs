@@ -15,15 +15,24 @@
  *    `env DISABLE_TELEMETRY=1 …` (a local server gets no environment variable otherwise, localtools.ts).
  *  - both: the package must name an exact version (`chrome-devtools-mcp@1.13.0`); `@latest` or no version is refused
  *    with the reason (each start would download whatever is newest, telemetry included).
+ *  - L115: chrome-devtools-mcp 1.14.0 is also IN the computer image (docker/desktop/Dockerfile, pinned by its lockfile):
+ *    the bare command `chrome-devtools-mcp` runs that copy, so it needs no version. When it is not told to join a running
+ *    browser (--browserUrl/-u, --wsEndpoint/-w, --autoConnect) nor given a browser (--executablePath/-e, --channel), it
+ *    gets the computer's own Chromium, headless: `--executablePath=/opt/sklubot/headless-chromium --headless` (its
+ *    browser options, out/Default/gen/src/config/browser-options.js of 1.14.0), never a downloaded Chrome nor a second
+ *    window on the bot's screen. Its 1.14 `set_logpoints` changes how a page's scripts run: committing too.
  */
-export interface ThirdParty { id: string; pkg: string; flags: string[]; env: Record<string, string>; committing: RegExp }
+export interface ThirdParty { id: string; pkg: string; flags: string[]; env: Record<string, string>; committing: RegExp; preinstalled?: boolean }
 
 export const THIRD_PARTY: ThirdParty[] = [
-  { id: "chrome-devtools-mcp", pkg: "chrome-devtools-mcp", flags: ["--no-usage-statistics", "--no-performance-crux"], env: {},
-    committing: /^(?:click|fill|fill_form|drag|hover|press_key|type_text|upload_file|handle_dialog|navigate_page|navigate_page_history|new_page|close_page|select_page|evaluate_script|emulate\w*|resize_page)$/ },
+  { id: "chrome-devtools-mcp", pkg: "chrome-devtools-mcp", flags: ["--no-usage-statistics", "--no-performance-crux"], env: {}, preinstalled: true,
+    committing: /^(?:click|fill|fill_form|drag|hover|press_key|type_text|upload_file|handle_dialog|navigate_page|navigate_page_history|new_page|close_page|select_page|evaluate_script|emulate\w*|resize_page|set_logpoints)$/ },
   { id: "modern-web-guidance", pkg: "modern-web-guidance", flags: [], env: { DISABLE_TELEMETRY: "1" }, committing: /^$/ },
 ];
 
+/** The computer's Chromium for tools that start their own browser (docker/desktop/headless-chromium). */
+export const IMAGE_CHROMIUM = "/opt/sklubot/headless-chromium";
+const BROWSER_GIVEN = /^(?:--(?:browserUrl|browser-url|wsEndpoint|ws-endpoint|autoConnect|auto-connect|executablePath|executable-path|channel)\b|-[uwe]$|-[uwe]=)/;
 const pkgOf = (arg: string) => arg.replace(/^@?[^@]+/, (m) => m).split("@").filter(Boolean);
 /** The package argument of a known third-party server in a command line, if any. */
 export function thirdPartyOf(command: string, args: string[]): { tp: ThirdParty; arg: string } | null {
@@ -43,9 +52,11 @@ export const hasExactVersion = (arg: string) => /@\d+\.\d+\.\d+(?:[-+][\w.]+)?$/
 export function hardenCommand(command: string, args: string[]): { command: string; args: string[] } {
   const hit = thirdPartyOf(command, args);
   if (!hit) return { command, args };
-  if (!hasExactVersion(hit.arg)) throw new Error(`Give ${hit.tp.pkg} an exact version (for example ${hit.tp.pkg}@1.2.3), not "latest" or none: otherwise every start downloads whatever is newest.`);
+  const image = !!hit.tp.preinstalled && hit.arg === command && command === hit.tp.pkg; // L115: the image's own pinned copy
+  if (!image && !hasExactVersion(hit.arg)) throw new Error(`Give ${hit.tp.pkg} an exact version (for example ${hit.tp.pkg}@1.2.3), not "latest" or none: otherwise every start downloads whatever is newest.`);
   let out = [...args];
   for (const f of hit.tp.flags) if (!out.includes(f)) out.push(f);
+  if (hit.tp.id === "chrome-devtools-mcp" && !out.some((x) => BROWSER_GIVEN.test(x))) out.push(`--executablePath=${IMAGE_CHROMIUM}`, ...(out.some((x) => /^--(no-)?headless\b/.test(x)) ? [] : ["--headless"]));
   const env = Object.entries(hit.tp.env).map(([k, v]) => `${k}=${v}`);
   if (!env.length) return { command, args: out };
   if (command === "env") { out = out.filter((x) => !env.some((e) => x.startsWith(`${e.split("=")[0]}=`))); return { command, args: [...env, ...out] }; }

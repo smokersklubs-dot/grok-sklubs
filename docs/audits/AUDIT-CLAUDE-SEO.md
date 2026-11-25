@@ -152,7 +152,7 @@ Les 20 fichiers `agents/*.md` sont des fiches de sous-agents (rôle, modèle Son
 10. Contrôle JSON-LD et nettoyage des caractères invisibles à la publication d'une page (`page_publish`) — **S**.
 11. Signaler dans l'aperçu d'import GitHub les références non importées ; ajouter un test pour `skillsgithub.ts` — **S**.
 12. Ajouter les 41 prompts FLOW comme annexe de la compétence contenu, avec attribution CC BY 4.0 — **S**.
-13. Installer Lighthouse dans l'image du bureau (après vérification licence/télémétrie) — **M**.
+13. Installer Lighthouse dans l'image du bureau (après vérification licence/télémétrie) — **M**. — **FAIT (2026-11-25, L115)** : Lighthouse 13.6.0 (Apache-2.0), rapports d'erreurs coupés et module d'envoi retiré
 14. IndexNow / Indexing API en action externe soumise à accord — **M**.
 15. Étiquette IPTC « généré par IA » sur les images des bots — **S**.
 16. Test ReDoS pour les expressions de `skillscan.ts` — **S**.

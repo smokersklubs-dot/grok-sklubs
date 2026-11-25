@@ -19,6 +19,7 @@ protégé.
 | **Console et requêtes de la page** | `browser_console` (erreurs JavaScript de l'onglet, ses 3 dernières pages) et `browser_network` (requêtes, état, taille ; le détail d'une requête avec ses en-têtes). Lecture seule ; les valeurs qui peuvent contenir un secret (cookies, autorisation, jetons, clés) sont **masquées**. |
 | **Contrôle automatique des pages publiées** | Après `page_publish` ou `page_edit`, la page est ouverte dans un onglet temporaire en **téléphone (390 px)** et **ordinateur (1280 px)** : le bot reçoit une image des deux, les erreurs de la console, les fichiers qui ne se chargent pas, et des règles (textes des images, contraste, débordement de côté, titre visible, viewport, focus clavier, mouvement réduit, `transition: all`, `100vw`, couleurs en dur, JSON-LD, caractères invisibles). Il doit te dire ce qui a été trouvé ; « rien trouvé » n'est jamais présenté comme « parfait ». Sans navigateur, seules les règles du code sont vérifiées, et c'est dit. |
 | Lire une page | `page_read` (le texte), `screen_view` (une capture). |
+| **Mesurer une page** (L115) | `page_audit` passe une page publiée par le bot (`name`) ou une adresse (`url` : ton site, une page de son serveur de test) dans **Lighthouse** (notes sur 100 : accessibilité, rapidité, bonnes pratiques, référencement) et **axe** (règles d'accessibilité), en taille téléphone, sur son ordinateur. Le bot reçoit un **court résumé** (les notes, au plus 8 problèmes par outil, où ils sont) ; les **rapports complets** vont dans sa bibliothèque (`audits/<nom>-<date>/` : `lighthouse.report.html` à ouvrir dans un navigateur, `lighthouse.report.json`, `axe.json`), jamais collés dans la discussion. Environ 30 secondes. Rien n'est modifié ni envoyé ailleurs. Un audit automatique ne trouve qu'une partie des problèmes : le bot fait aussi les vérifications à la main (compétence « Accessibilité mesurée »). |
 | **Les autres applis, par leurs commandes** (L164) | `app_windows` liste les applis ouvertes et leurs fenêtres ; `app_tree` lit les boutons, menus, champs et listes de l'appli devant (une boîte de dialogue ouverte d'abord), chacun avec une référence comme `x3f9a.12` ; `app_act` clique, met le focus ou remplace le texte d'un champ (relu ensuite) **par sa référence**, sans viser au pixel. Si l'appli a changé depuis la lecture, rien n'est fait. Un champ mot de passe n'est jamais lu ni rempli ; un clic sur « Envoyer », « Payer », « Supprimer »… te demande ton accord à chaque fois ; rien ne se fait pendant que tu as la main. Ça marche avec les applis GTK (éditeur de texte, gestionnaire de fichiers, boîtes « Enregistrer sous ») ; pour les pages du navigateur, `element_snapshot` reste plus précis. Une appli ouverte avant le démarrage du lecteur doit être rouverte. |
 | **Plusieurs onglets** | Le bot lit et agit toujours sur **l'onglet affiché devant**. Un lien qui ouvre un nouvel onglet : le bot le suit tout seul. `browser_tabs` liste ses onglets, `browser_tab` en met un devant ou le ferme, `browser_open` avec `new_tab` en ouvre un nouveau. Un deuxième `browser_open` réutilise le navigateur ouvert (plus jamais deux navigateurs à la fois). |
 | **Fenêtre de la page** (« alerte », « Êtes-vous sûr ? », « Quitter la page ? ») | Le bot la voit tout de suite, avec son texte. `browser_dialog` : **« dismiss »** (Annuler / fermer) est toujours libre ; **« accept »** (OK) sur une question te demande d'abord ton accord, à chaque fois. |
@@ -34,7 +35,30 @@ protégé.
 | **Lire le texte d'une image** (OCR) | `ocr` : son écran (ou une zone), une image, ou une page d'un PDF scanné, en français et en anglais (Tesseract). |
 | Documents de bureau | `office_convert`, `office_recalculate`, `office_render` (LibreOffice). |
 | Lire le web et les réseaux | `reach_search`, `reach_read` (Agent Reach, lecture seule). |
-| Scripts et données | Un terminal root : Python avec pandas, requests, Beautiful Soup, lxml, Pillow, openpyxl, python-docx ; ffmpeg, ImageMagick, poppler, yt-dlp, Tesseract, xclip (presse-papiers), git, Node 22, Claude Code et Codex. |
+| Scripts et données | Un terminal root : Python avec pandas, requests, Beautiful Soup, lxml, Pillow, openpyxl, python-docx ; ffmpeg, ImageMagick, poppler, yt-dlp, Tesseract, xclip (presse-papiers), git, Node 22, Claude Code et Codex ; pour les pages et les schémas : `lighthouse`, `sklubot-axe`, `mmdc` (mermaid-cli) et `chrome-devtools-mcp` (voir plus bas). |
+
+### Outils pour les pages et les schémas (L115, décision n° 10)
+
+Tous utilisent **le Chromium déjà présent** sur l'ordinateur (par `/opt/sklubot/headless-chromium`, sans fenêtre, sous
+l'utilisateur « browser » avec la protection de Chromium, comme le navigateur du bot) : aucun deuxième Chrome n'est
+téléchargé. Versions figées (fichier `docker/desktop/web-tools/package-lock.json`), **télémétrie coupée**.
+
+| Outil | Version, licence | Commande sur l'ordinateur | Télémétrie |
+|---|---|---|---|
+| Lighthouse | 13.6.0, Apache-2.0 | `lighthouse <adresse> --only-categories=accessibility --output=json --output-path=/root/files/audits/a11y.json --chrome-flags="--headless=new" --quiet --no-enable-error-reporting` (le bot passe d'abord par `page_audit`) | rapports d'erreurs coupés (`--no-enable-error-reporting`, et jamais proposés hors d'un terminal interactif) ; le module d'envoi (Sentry) est **retiré** de l'image : impossible de l'allumer |
+| axe-core (par `sklubot-axe`) | 4.14.1, MPL-2.0 (non modifié) | `sklubot-axe <adresse> --json /root/files/audits/axe.json` : une ligne par règle en échec | aucune (axe-core n'envoie rien) |
+| mermaid-cli (`mmdc`) | 12.2.0, MIT | `mmdc -i schema.mmd -o schema.svg` (ou `-o schema.png -s 2`) | aucune |
+| chrome-devtools-mcp | 1.14.0, Apache-2.0 | comme **outil local** (Applis → outils locaux) : la commande `chrome-devtools-mcp`, sans version (celle de l'image) ; Sklubot ajoute `--no-usage-statistics --no-performance-crux` et, s'il ne rejoint pas un navigateur, `--executablePath=/opt/sklubot/headless-chromium --headless` | statistiques d'usage et recherche de mises à jour coupées (`CHROME_DEVTOOLS_MCP_NO_USAGE_STATISTICS`, `CHROME_DEVTOOLS_MCP_NO_UPDATE_CHECKS`) ; ses outils qui agissent (clic, saisie, navigation, script…) te demandent à chaque fois |
+
+**Place sur le disque** (mesurée le 25/11/2026 sur l'image du bot) : **+588 Mo** décompressés (+121 Mo à télécharger),
+dont mermaid-cli pour l'essentiel (~420 Mo : mermaid, ses polices et icônes, l'extension ZenUML), Lighthouse ~80 Mo,
+Puppeteer (partagé par Lighthouse, mmdc et `sklubot-axe`) ~40 Mo, chrome-devtools-mcp 12 Mo, axe-core 3 Mo ; les
+modules d'envoi d'erreurs de Lighthouse et deux bibliothèques inutiles ici (−92 Mo) sont retirés.
+
+**`sloplint` n'est pas installé** : aucun paquet publié de ce nom n'existe avec une licence (le nom npm a été dépublié
+le 02/06/2026 ; le `sloplint` de PyPI est un autre outil, pour la prose Markdown). Le `sloplint.mjs` de Hallmark n'est
+qu'un script dans son dépôt ; ses règles utiles sont déjà reprises dans le contrôle automatique des pages
+(`server/src/pagecheck.ts`).
 
 ### Ce que ça coûte
 

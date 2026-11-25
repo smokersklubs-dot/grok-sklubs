@@ -168,7 +168,7 @@ et la méthode `/cli-anything` comme compétence de bot. NON 49.)
 
 ## À faire (classé)
 
-1. Compétence « diagrammes » + `mermaid-cli` local dans l'image (S).
+1. Compétence « diagrammes » + `mermaid-cli` local dans l'image (S). — **FAIT (2026-11-25, L115)** : `mmdc` (mermaid-cli 12.2.0) dans l'image, avec le Chromium de l'ordinateur
 2. Compétence « sous-titres » adaptée de videocaptioner avec les outils existants (S).
 3. Compétence « trouver/installer un outil CLI » (méta-skill), avec la règle « depuis la source officielle, version figée, empreinte vérifiée » (S) — **fait le 22/11/2026** (`installer-un-outil-cli`).
 4. Compétence « notes Obsidian » sur un coffre partagé par le Relais (fichiers .md) (M).

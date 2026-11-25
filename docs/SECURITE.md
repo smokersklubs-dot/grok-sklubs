@@ -78,6 +78,9 @@ Réglages du bot → Sécurité → « Accès à Internet » : **Partout** (par 
 - `git branch -D` est une commande irréversible : toujours demandée.
 - chrome-devtools-mcp et modern-web-guidance ajoutés comme outils locaux : version exacte obligatoire, télémétrie
   coupée, leurs outils de clic et de saisie demandent à chaque fois.
+- L115 : Lighthouse, axe, mermaid-cli et chrome-devtools-mcp sont dans l'ordinateur du bot, à des versions figées,
+  télémétrie coupée (le module d'envoi d'erreurs de Lighthouse est retiré). Ils lancent le Chromium de l'ordinateur sous
+  l'utilisateur « browser », avec le bac à sable de Chromium quand l'ordinateur le permet, jamais en root.
 - Un connecteur qui ne répond plus deux fois de suite passe **« en panne »** : visible dans Réglages → Applis, dit au bot,
   pas de réessais à l'aveugle. L'adresse est vérifiée à chaque connexion, sur l'adresse réellement jointe.
 

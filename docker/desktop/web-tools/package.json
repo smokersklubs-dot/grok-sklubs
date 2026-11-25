@@ -1,0 +1,18 @@
+{
+  "name": "sklubot-web-tools",
+  "private": true,
+  "description": "Page audit and diagram tools of the bot's Linux computer (docker/desktop/Dockerfile, L115). Exact versions; the whole tree is pinned by package-lock.json and installed with npm ci.",
+  "license": "UNLICENSED",
+  "dependencies": {
+    "@mermaid-js/mermaid-cli": "12.2.0",
+    "axe-core": "4.14.1",
+    "chrome-devtools-mcp": "1.14.0",
+    "lighthouse": "13.6.0",
+    "puppeteer": "25.18.1",
+    "puppeteer-core": "25.18.1"
+  },
+  "overrides": {
+    "puppeteer": "25.18.1",
+    "puppeteer-core": "25.18.1"
+  }
+}

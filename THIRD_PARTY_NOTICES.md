@@ -507,3 +507,30 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+## Page audit and diagram tools of the bot's computer image (L115) — installed unmodified, not copied into Sklubot
+
+Installed by `docker/desktop/Dockerfile` with `npm ci` from `docker/desktop/web-tools/package-lock.json` (every package
+pinned there, with its own licence file inside `node_modules`). None of their code is copied into Sklubot's sources;
+`docker/desktop/sklubot-axe` and `server/src/pageaudit.ts` are our own code calling their documented interfaces.
+
+- **Lighthouse 13.6.0** — https://github.com/GoogleChrome/lighthouse — Apache License 2.0, Copyright Google LLC.
+  Modification of the installed tree: its error-reporting SDK (`@sentry/*` and `sentry`, which Lighthouse imports only
+  when `--enable-error-reporting` is on) is deleted after installation, so reports can never be sent; `sentry` is under
+  FSL-1.1-Apache-2.0 and is not shipped.
+- **axe-core 4.14.1** (and the copy 4.14.0 that Lighthouse pins) — https://github.com/dequelabs/axe-core — Mozilla Public
+  License 2.0, Copyright Deque Systems, Inc. Unmodified; its source is available at that address and in the package
+  itself. Third-party parts listed in its `LICENSE-3RD-PARTY.txt` (MIT, e.g. colorjs.io © 2021 Lea Verou, Chris Lilley).
+- **Puppeteer / puppeteer-core 25.18.1** — https://github.com/puppeteer/puppeteer — Apache License 2.0, Copyright Google
+  Inc. Installed with `--ignore-scripts`: no browser is downloaded.
+- **mermaid-cli 12.2.0** (`mmdc`) — https://github.com/mermaid-js/mermaid-cli — MIT License, Copyright (c) 2017-2026
+  Tyler Long, Mindaugas Laganeckas, Alois Klink; with **mermaid 12.3.0** — https://github.com/mermaid-js/mermaid — MIT
+  License, Copyright (c) 2014 - 2022 Knut Sveidqvist. Among mermaid's dependencies: elkjs (EPL-2.0 OR GPL-3.0-or-later,
+  used under EPL-2.0, unmodified), DOMPurify (MPL-2.0 OR Apache-2.0), the Open Sans and Recursive fonts (SIL OFL 1.1) and
+  Font Awesome Free by Fonticons, Inc. (CC BY 4.0 icons, OFL 1.1 fonts, MIT code). The musl builds of `@napi-rs/canvas` and of
+  `@oxc-parser/binding` are deleted (this image uses glibc).
+- **chrome-devtools-mcp 1.14.0** — https://github.com/ChromeDevTools/chrome-devtools-mcp — Apache License 2.0, Copyright
+  Google LLC. Unmodified; usage statistics and update checks off (`CHROME_DEVTOOLS_MCP_NO_USAGE_STATISTICS`,
+  `CHROME_DEVTOOLS_MCP_NO_UPDATE_CHECKS`, `--no-usage-statistics`, `--no-performance-crux`).
+- The rest of the tree (about 280 packages) is MIT, ISC, Apache-2.0, BSD-2/3-Clause, BlueOak-1.0.0, 0BSD, Unlicense or
+  CC0-1.0, as recorded per package in the lockfile.

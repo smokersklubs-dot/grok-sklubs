@@ -3,7 +3,7 @@ name: Diagrammes
 description: Faire des schémas modifiables (processus, organigramme, frise, parcours client, échanges, carte mentale) - du texte Mermaid dessiné dans la page par une bibliothèque à version figée ou rendu sur l'ordinateur du bot en SVG/PNG, ou un fichier draw.io que le patron peut ouvrir et modifier - jamais envoyés à un service de rendu en ligne.
 ---
 
-> Adaptée de CLI-Anything « cli-anything-mermaid » et « cli-anything-drawio » (© 2026 HKUDS CLI-Anything Team, Apache License 2.0). Modifiée pour Sklubot (22/11/2026) : les outils Python et le service de rendu en ligne mermaid.ink retirés (le contenu du schéma serait envoyé à un tiers) ; schémas dessinés dans les pages Sklubot ou rendus sur l'ordinateur du bot ; fichiers draw.io écrits directement ; traduite en français.
+> Adaptée de CLI-Anything « cli-anything-mermaid » et « cli-anything-drawio » (© 2026 HKUDS CLI-Anything Team, Apache License 2.0). Modifiée pour Sklubot (22/11/2026) : les outils Python et le service de rendu en ligne mermaid.ink retirés (le contenu du schéma serait envoyé à un tiers) ; schémas dessinés dans les pages Sklubot ou rendus sur l'ordinateur du bot ; fichiers draw.io écrits directement ; traduite en français. Mise à jour le 25/11/2026 (L115) : les outils viennent avec l'image de l'ordinateur (page_audit, sklubot-axe, mmdc).
 
 # Diagrammes
 
@@ -36,7 +36,7 @@ flowchart TD
 ## Le montrer
 
 - **Dans une page ou un artefact Sklubot** (le mieux, reste modifiable) : charge la bibliothèque Mermaid depuis un CDN autorisé à une version exacte, par exemple `<script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js"></script>`, mets le texte dans `<pre class="mermaid">…</pre>`, appelle `mermaid.initialize({ startOnLoad: true, theme: "neutral" })`, et garde aussi le texte Mermaid sous le dessin (un bloc « Source ») pour pouvoir le modifier. Vérifie en clair, en sombre et en largeur téléphone (screen_view).
-- **En fichier image** (pour un document, une diapo ou un e-mail) : rends-le sur ton ordinateur avec l'outil de rendu en ligne de commande de Mermaid, `@mermaid-js/mermaid-cli`, à une version figée (il a besoin de Chromium, présent sur ton ordinateur). S'il n'est pas installé, l'installer est le choix du patron : demande d'abord. Puis `mmdc -i schema.mmd -o schema.svg` (ou `.png -s 2` pour une image nette) et regarde le résultat.
+- **En fichier image** (pour un document, une diapo ou un e-mail) : rends-le sur ton ordinateur avec l'outil de rendu en ligne de commande de Mermaid, `@mermaid-js/mermaid-cli`, déjà installé sur ton ordinateur à une version figée (il utilise le Chromium de l'ordinateur, rien ne part en ligne) : `mmdc -i schema.mmd -o schema.svg` (ou `.png -s 2` pour une image nette) et regarde le résultat.
 - **Jamais** coller le schéma dans un service de rendu en ligne (il recevrait le contenu).
 
 ## Fichier draw.io

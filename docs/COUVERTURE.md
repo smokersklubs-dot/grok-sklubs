@@ -867,3 +867,14 @@ Tests : `mobile/__tests__/chatplus.test.ts` (12), `server/test/app-tree.test.ts`
 | L145 tour de chauffe des moteurs | Fait (sans Docker réel ici) | 20 s après le démarrage : bots Claude Code / Codex utilisés ces 3 derniers jours (8 au plus) : ordinateur réveillé et `--version` lancé (aucun jeton) ; état au-dessus de la zone de saisie (préchauffage, prêt, raté + « Réessayer ») | `server/src/enginewarmup.ts`, `web/src/components/EngineWarmup.tsx` |
 | L163 plan créé depuis la discussion | Fait | Outil `board_plan_propose` → carte ; « Mettre sur le tableau » avec les tâches gardées, « Lancer tout de suite » | `server/src/boardplan.ts`, `web/src/components/BoardPlan.tsx` |
 | L163 bot pour un rôle non tenu | Fait (toujours une proposition) | Carte « Nouveau coéquipier » dans la discussion du bot principal, créé seulement sur « Créer », tient le rôle | `server/src/boardplan.ts`, `server/src/agent/recruit.ts`, `BoardRoles.tsx` |
+
+## L115 — Lighthouse, axe, mermaid-cli et chrome-devtools-mcp dans l'ordinateur du bot (25/11/2026, décision n° 10)
+
+| Élément | État | Ce qui marche | Où |
+|---|---|---|---|
+| Outils dans l'image | Fait (couche de test construite sur l'image existante, pas l'image complète) | Lighthouse 13.6.0, axe-core 4.14.1 (`sklubot-axe`), mermaid-cli 12.2.0 (`mmdc`), chrome-devtools-mcp 1.14.0 ; arbre npm figé par un fichier de verrouillage ; tous lancent le Chromium de l'ordinateur (`headless-chromium` : utilisateur « browser », bac à sable de Chromium, jamais root, jamais un 2ᵉ Chrome) ; télémétrie coupée (module d'envoi de Lighthouse retiré) ; +588 Mo | `docker/desktop/Dockerfile`, `docker/desktop/web-tools/`, `docker/desktop/headless-chromium`, `docker/desktop/sklubot-axe` |
+| `page_audit` | Fait | Une page publiée (`name`, servie en mémoire dans l'ordinateur avec ses fichiers et ses en-têtes) ou une adresse http(s) (`url`) : notes Lighthouse, 8 problèmes au plus par outil, rapports complets rangés dans `audits/…` de la bibliothèque, jamais collés dans la discussion ; ordinateur ancien : message clair | `server/src/pageaudit.ts`, `server/src/agent/tools-pageaudit.ts` |
+| chrome-devtools-mcp de l'image | Fait | Outil local `chrome-devtools-mcp` sans version (celle de l'image) ; Chromium de l'ordinateur sans fenêtre par défaut ; `set_logpoints` demande comme les autres outils qui agissent | `server/src/thirdpartymcp.ts` |
+| `sloplint` | Non ajouté | Aucun paquet publié avec une licence (nom npm dépublié ; celui de PyPI est un autre outil) ; règles de Hallmark déjà dans `pagecheck.ts` | — |
+
+Tests : `server/test/page-audit.test.ts` (7, dont un essai réel de Lighthouse et axe dans l'image avec `SKLUBOT_AUDIT_IMAGE`). Compétences mises à jour : `accessibilite-mesuree`, `diagrammes`.

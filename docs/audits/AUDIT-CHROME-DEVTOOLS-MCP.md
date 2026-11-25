@@ -246,10 +246,10 @@ ou bien reprendre ses idées dans les outils natifs.
 11. `page_console` lecture seule (erreurs JS, 3 navigations) pour les bots qui construisent des pages (M). — **FAIT (2026-11-22)** : `browser_console` (veilleur, 3 pages) + contrôle automatique au `page_publish` (L56)
 12. Lecture des requêtes réseau (en-têtes masqués) pour trouver l'API d'un site (M). — **FAIT (2026-11-22)** : `browser_network` (en-têtes, adresses et réponses texte masqués)
 13. Capture d'un élément / pleine page à livrer à l'utilisateur (S).
-14. Audit Lighthouse (accessibilité/SEO) + skill a11y adapté (M).
+14. Audit Lighthouse (accessibilité/SEO) + skill a11y adapté (M). — **FAIT (2026-11-25, L115)** : Lighthouse 13.6.0 et axe dans l'image du bot, outil `page_audit` (résumé court, rapports dans `audits/…`), compétence `accessibilite-mesuree`
 15. Émulation mobile/sombre pour vérifier une page publiée (M).
 16. Liste de sites interdits dans le navigateur du bot, réglable par l'utilisateur (M).
-17. Si `chrome-devtools-mcp` est proposé via `local_tool_server_add` : marquer ses outils d'entrée comme engageants ou les retirer, couper la télémétrie (S).
+17. Si `chrome-devtools-mcp` est proposé via `local_tool_server_add` : marquer ses outils d'entrée comme engageants ou les retirer, couper la télémétrie (S). — **FAIT (L49, complété le 2026-11-25, L115)** : 1.14.0 dans l'image, statistiques d'usage et recherche de mises à jour coupées, `set_logpoints` engageant (`thirdpartymcp.ts`)
 18. `wait_for` texte (S). — **FAIT (2026-11-22)** : `browser_wait`
 
 ## Non vérifié

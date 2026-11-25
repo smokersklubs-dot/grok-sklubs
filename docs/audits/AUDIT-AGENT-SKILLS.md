@@ -130,7 +130,7 @@ Licence de chaque ligne : MIT (dépôt).
 
 1. Compétence « Comprendre ce que tu veux vraiment » adaptée d'`interview-me` (hypothèse + confiance, une question, arrêt, jamais en routine) — S.
 2. Compétence « Creuser une idée » adaptée d'`idea-refine` (+ cadres et critères) — S.
-3. Outil « erreurs de la page » + audit d'accessibilité/performance des pages publiées (axe-core, Lighthouse dans l'image du bot) — M.
+3. Outil « erreurs de la page » + audit d'accessibilité/performance des pages publiées (axe-core, Lighthouse dans l'image du bot) — M. — **FAIT (2026-11-25, L115)** : `page_audit` (Lighthouse + axe dans l'image du bot)
 4. « Tour de table » dans un groupe : avis indépendants de plusieurs bots, puis synthèse go/no-go (idée `/ship`) — M.
 5. Compétence « Avant de lancer » (version non technique de `shipping-and-launch`) — S.
 6. Alerte « compétence presque identique à une autre » à l'ajout (idée des évaluations de déclenchement) — M.

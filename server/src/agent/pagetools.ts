@@ -19,7 +19,7 @@ import type { BuiltinTool, ToolContext } from "./tools.js";
 const obj = (properties: Record<string, unknown>, required: string[] = []): ToolSpec["inputSchema"] => ({ type: "object", properties, required });
 const str = (description: string) => ({ type: "string", description });
 const tool = (name: string, description: string, schema: ToolSpec["inputSchema"], rest: Omit<BuiltinTool, "spec">): BuiltinTool => ({ spec: { name, description, inputSchema: schema }, ...rest });
-function pathOf(botId: string, name: unknown, creatingArtifact = false): string {
+export function pathOf(botId: string, name: unknown, creatingArtifact = false): string {
   const slug = String(name ?? "").replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 60) || "page";
   const artifactPath = `artifacts/${slug}.html`;
   if (creatingArtifact || (slug.startsWith("artifact-") && pages.forPath(botId, artifactPath, appConfig.publicUrl))) return artifactPath;

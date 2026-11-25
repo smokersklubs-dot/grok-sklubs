@@ -3,18 +3,19 @@ name: Accessibilité mesurée
 description: Auditer l'accessibilité d'une page publiée par le bot (ou du site du patron) et la corriger - un audit automatique quand Lighthouse ou axe est disponible sur l'ordinateur du bot, puis titres et repères, noms des boutons, champs et images, clavier et focus, zones à toucher, contraste, zoom et mouvement - avec un court rapport de ce qui échoue, où, et la correction.
 ---
 
-> Adaptée de chrome-devtools-mcp « a11y-debugging » (© 2025-2026 Google LLC, Apache License 2.0) et de agent-skills « accessibility-engineering » avec sa liste d'accessibilité (© 2025 Addy Osmani, MIT). Modifiée pour Sklubot (22/11/2026) : les outils du serveur DevTools remplacés par les outils de navigateur de Sklubot (browser_open, element_snapshot, screen_key, screen_view) et un audit facultatif en ligne de commande sur l'ordinateur du bot ; script d'installation retiré ; traduite en français.
+> Adaptée de chrome-devtools-mcp « a11y-debugging » (© 2025-2026 Google LLC, Apache License 2.0) et de agent-skills « accessibility-engineering » avec sa liste d'accessibilité (© 2025 Addy Osmani, MIT). Modifiée pour Sklubot (22/11/2026) : les outils du serveur DevTools remplacés par les outils de navigateur de Sklubot (browser_open, element_snapshot, screen_key, screen_view) et un audit facultatif en ligne de commande sur l'ordinateur du bot ; script d'installation retiré ; traduite en français. Mise à jour le 25/11/2026 (L115) : les outils viennent avec l'image de l'ordinateur (page_audit, sklubot-axe, mmdc).
 
 # Accessibilité mesurée
 
 Une page accessible marche pour les personnes qui utilisent un clavier, un lecteur d'écran, un écran agrandi ou un téléphone en plein soleil, et elle est meilleure pour tout le monde. On mesure, on ne devine pas.
 
-## 1. Audit automatique (quand l'outil est là)
+## 1. Audit automatique
 
-Sur ton ordinateur, vérifie si un outil d'audit est déjà installé (shell_run : `command -v lighthouse`, `command -v axe`). S'il y en a un :
-- Lighthouse : `lighthouse <adresse> --only-categories=accessibility --output=json --output-path=/tmp/a11y.json --chrome-flags="--headless" --quiet`, puis liste seulement les échecs (un court filtre `node -e` ou `jq` sur les audits dont le score est sous 1 : id, titre, sélecteur, extrait). Ne lis pas tout le rapport.
-- axe : `axe <adresse> --exit` et lis les violations.
-S'il n'y a aucun outil, n'en installe pas de toi-même : dis lequel aiderait et demande au patron (installer un logiciel sur l'ordinateur du bot, c'est son choix). Les contrôles à la main ci-dessous trouvent déjà la plupart des problèmes.
+Pour une page que tu as publiée, ou n'importe quelle adresse http(s) (le site du patron, un serveur de test sur ton ordinateur), appelle **page_audit** (`name` ou `url`) : Lighthouse et axe tournent sur ton ordinateur en taille téléphone et tu reçois les notes et les principaux échecs ; les rapports complets sont rangés dans ta bibliothèque (`audits/…`). Ne les colle pas ; n'en ouvre une partie que pour un détail.
+Dans le terminal, les mêmes outils sont sur ton ordinateur (versions figées, télémétrie coupée, le Chromium de l'ordinateur) :
+- Lighthouse : `lighthouse <adresse> --only-categories=accessibility --output=json --output-path=/root/files/audits/a11y.json --chrome-flags="--headless=new" --quiet --no-enable-error-reporting`, puis liste seulement les échecs (un court filtre `node -e` ou `jq` sur les audits dont le score est sous 1 : id, titre, sélecteur). Ne lis pas tout le rapport.
+- axe : `sklubot-axe <adresse> --json /root/files/audits/axe.json` écrit une ligne par règle en échec.
+Sur un ordinateur fait avec une image plus ancienne, ces outils manquent (page_audit le dit) : ne les installe pas de toi-même ; les contrôles à la main ci-dessous trouvent déjà la plupart des problèmes.
 
 Un audit automatique trouve environ un tiers des problèmes. Fais toujours la partie manuelle.
 

@@ -18,10 +18,10 @@ Une ligne n'est ✅ que si **toute** la demande du titre est faite. Une option c
 | Lot 0 (L1–L14) | 14 | 0 | 0 | 14 |
 | Lot 1 (L15–L53) | 38 | 1 | 0 | 39 |
 | Lot 2 (L54–L100) | 45 | 2 | 0 | 47 |
-| Lot 3 (L101–L135) | 34 | 1 | 0 | 35 |
+| Lot 3 (L101–L135) | 35 | 0 | 0 | 35 |
 | Lot 4 (L136–L161) | 24 | 2 | 0 | 26 |
 | Lot 5 (L162–L184) | 19 | 4 | 0 | 23 |
-| **Total** | **174** | **10** | **0** | **184** |
+| **Total** | **175** | **9** | **0** | **184** |
 
 Vague 8 : 31 lignes passent de ◐ à ✅ (L14, L25, L40, L52, L58, L59, L60, L63, L65, L67, L72, L75, L76, L77, L79, L80, L83, L84, L87, L88, L91, L95, L96, L118, L132, L136, L137, L147, L149, L156, L176) ; L158 (Créations) et L160 (appli mobile avant envoi aux boutiques) passent de À FAIRE à ◐ ; L69, L142, L143, L146, L150, L153, L154, L159 avancent sans être finies. Plus aucune ligne n'est entièrement à faire.
 
@@ -210,7 +210,7 @@ Règle commune : joindre la licence d'origine (`LICENSE.txt` + `NOTICE` pour Apa
 | L112 | « Site en plusieurs passes » avec plan du site coché et navigation commune | « Un site de 4 pages » donne un vrai site, pas 4 pages isolées. | COMPÉTENCE | stitch-skills (stitch-loop, site-md) | M | REUSE Apache | ✅ FAIT (`site-en-plusieurs-passes` ; test `skills-library.test.ts`) |
 | L113 | « Figure explicative interactive » + kit récupéré sur l'ordinateur du bot | Des schémas animés qui expliquent un produit. | COMPÉTENCE | Anatomy | M | REUSE MIT | ✅ FAIT (`figure-explicative` ; test `skills-library.test.ts`) |
 | L114 | « Illustration animée de page » (`stick.js`) + outil « planche-contact » (une page à N instants) | Des illustrations animées vérifiées image par image. | COMPÉTENCE + MANQUE | stick-scene, Anatomy | M | REUSE MIT | ✅ FAIT : `page_contact_sheet` à plusieurs largeurs ou, avec `moments`, une page à N instants (`contactsheet.ts`) ; test `page-qa-tools.test.ts` (mode navigateur ; ordinateur Linux écrit, non essayé) |
-| L115 | Accessibilité (audit ARIA, focus, contraste) avec Lighthouse / axe dans l'image du bot | Des pages accessibles, mesurées. | COMPÉTENCE + MANQUE | Chrome DevTools MCP (a11y-debugging), agent-skills, claude-seo | M | REUSE Apache + MIT | ◐ EN PARTIE : compétence `accessibilite-mesuree` (test `skills-library.test.ts`) ; manque Lighthouse / axe dans l'image du bot (décision du propriétaire n° 10) |
+| L115 | Accessibilité (audit ARIA, focus, contraste) avec Lighthouse / axe dans l'image du bot | Des pages accessibles, mesurées. | COMPÉTENCE + MANQUE | Chrome DevTools MCP (a11y-debugging), agent-skills, claude-seo | M | REUSE Apache + MIT | ✅ FAIT : Lighthouse 13.6.0, axe-core 4.14.1 (`sklubot-axe`), mermaid-cli 12.2.0, chrome-devtools-mcp 1.14.0 dans l'image du bot, télémétrie coupée, Chromium de l'image seulement ; outil `page_audit` (`pageaudit.ts`, test `page-audit.test.ts` avec un vrai audit dans l'image) ; `sloplint` non ajouté (aucun paquet publié sous licence) ; image complète à reconstruire au déploiement |
 | L116 | « Testeur de site » + modèle de bot « Contrôleur qualité des pages » | Le bot teste les pages qu'il publie comme un client. | COMPÉTENCE | agent-browser (dogfood), agent-skills | M | REUSE Apache | ✅ FAIT (`testeur-de-site`, `templates/controle-qualite-pages.md`) |
 | **SEO et recherche** | | | | | | | |
 | L117 | Paquet SEO : « Référencement : méthode et audit », « SEO local », « Surveillance SEO » (photo de référence + routine), « Contenu SEO » (+ 41 prompts), « Données structurées et sitemap », « Visibilité dans les IA », e-commerce, pages comparatives prudentes, règle « pas de score sans données », option « balises » de `web_fetch` ; remplace le modèle `seo-contenu` | Un vrai savoir-faire SEO pour les petits commerces. | COMPÉTENCE | claude-seo, ECC (seo) | M | REUSE MIT + CC BY 4.0 (prompts) | ✅ FAIT (7 compétences `seo-*`, `seotags.ts`, test `page-qa-tools.test.ts`) |
@@ -348,7 +348,7 @@ Ces choix changent la façon dont Sklubot se comporte ou ce qu'il coûte : seul 
 7. **Copier du code sous MIT / Apache** (avec attribution) ou rester sur « idées seulement, code à nous » comme aujourd'hui ?
 8. **Bots Claude Code sur abonnement** : retirer `WebFetch` et `WebSearch` quand le navigateur du bot est prêt (L64) ? Et que faire du `bypassPermissions` du moteur pendant que les outils Sklubot du même tour demandent tout ?
 9. **Second facteur** avant les actions du plancher (L44) : sécurité en plus contre un geste de plus.
-10. **Outils dans l'image du bot** (Lighthouse, axe, `sloplint`, `mermaid-cli`, chrome-devtools-mcp, lecteur d'accessibilité) : image plus lourde, télémétrie à couper.
+10. **Outils dans l'image du bot** (Lighthouse, axe, `sloplint`, `mermaid-cli`, chrome-devtools-mcp, lecteur d'accessibilité) : image plus lourde, télémétrie à couper. **DÉCIDÉ (25/11/2026)** : tout le lot (sauf `sloplint`, qui n'existe pas comme paquet publié).
 11. **Voix temps réel payante** (L167) : réponse plus rapide, mais clé et coût d'un fournisseur.
 12. **Adresses MCP locales** en auto-hébergé seulement, tapées par l'utilisateur (L159) : oui ou non ?
 13. **Ordre des canaux** : Slack, Discord ou Telegram complet d'abord (L76, L162) ?

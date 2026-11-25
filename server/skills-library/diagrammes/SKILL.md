@@ -3,7 +3,7 @@ name: Diagrams
 description: Make editable diagrams (process, organisation chart, timeline, customer journey, sequence, mind map) - Mermaid text drawn in the page by a pinned library or rendered locally to SVG/PNG on the bot's computer, or a draw.io file the owner can open and edit - never sent to an online rendering service.
 ---
 
-> Adapted from CLI-Anything "cli-anything-mermaid" and "cli-anything-drawio" (© 2026 HKUDS CLI-Anything Team, Apache License 2.0). Modified for Sklubot (2026-11-22): the Python harnesses and the online mermaid.ink renderer removed (the diagram's content would be sent to a third party); diagrams drawn inside Sklubot pages or rendered on the bot's computer; draw.io files written directly; translated into French.
+> Adapted from CLI-Anything "cli-anything-mermaid" and "cli-anything-drawio" (© 2026 HKUDS CLI-Anything Team, Apache License 2.0). Modified for Sklubot (2026-11-22): the Python harnesses and the online mermaid.ink renderer removed (the diagram's content would be sent to a third party); diagrams drawn inside Sklubot pages or rendered on the bot's computer; draw.io files written directly; translated into French. Updated 2026-11-25 (L115): the tools now come with the computer image (page_audit, sklubot-axe, mmdc).
 
 # Diagrams
 
@@ -36,7 +36,7 @@ flowchart TD
 ## Show it
 
 - **In a Sklubot page or artifact** (preferred, stays editable): include the Mermaid library from an allowed CDN at an exact version, for example `<script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js"></script>`, put the text in `<pre class="mermaid">…</pre>`, call `mermaid.initialize({ startOnLoad: true, theme: "neutral" })`, and also keep the Mermaid text under the drawing (a "Source" block) so it can be edited. Check light and dark and phone width (screen_view).
-- **As an image file** (for a document, a slide or an email): render on your computer with Mermaid's own command-line renderer, `@mermaid-js/mermaid-cli`, at a pinned version (it needs Chromium, which your computer has). If it is not installed, installing it is the owner's choice: ask first. Then `mmdc -i diagram.mmd -o diagram.svg` (or `.png -s 2` for a sharp picture) and look at the result.
+- **As an image file** (for a document, a slide or an email): render on your computer with Mermaid's own command-line renderer, `@mermaid-js/mermaid-cli`, already installed on your computer at a pinned version (it uses the computer's own Chromium, nothing goes online): `mmdc -i diagram.mmd -o diagram.svg` (or `.png -s 2` for a sharp picture) and look at the result.
 - **Never** paste the diagram into an online rendering service (it would receive the content).
 
 ## draw.io file

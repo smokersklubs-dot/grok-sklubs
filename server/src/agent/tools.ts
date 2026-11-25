@@ -38,7 +38,7 @@ import { findCode, mailAccounts } from "../native/access.js";
 import { hideForAWhile } from "../store.js";
 import { explicitRemember, memoryVerdict } from "./sensitive.js";
 import { committingKind, probe, seenOf, seenTarget } from "./bind.js"; import { boundClick, browserDownloadTools, browserTabTools, shot, tabLine, typeSecret } from "./tools-browser.js";
-import { elementTools, openInWords } from "./tools-elements.js"; import { noteShots, sameScreen } from "./screendedup.js"; import { traceClicks } from "./clicktrail.js"; import { appTreeTools } from "./tools-apptree.js"; // L65/L74/L75/L81: element tools, in words; L65 same screen skipped; L164 app reader
+import { elementTools, openInWords } from "./tools-elements.js"; import { noteShots, sameScreen } from "./screendedup.js"; import { traceClicks } from "./clicktrail.js"; import { appTreeTools } from "./tools-apptree.js"; import { pageAuditTools } from "./tools-pageaudit.js"; // L65/L74/L75/L81: element tools, in words; L65 same screen skipped; L164 app reader; L115 page_audit
 import { cardLabel, cardTools } from "./payments.js";
 import { guideIndex, guideTools } from "./guides.js"; import { careTools } from "./caretools.js"; // L161 capability_gap, shortcut_note, docs_read
 import { anonymise } from "./anonymise.js"; import { evidenceFields, evidenceNote, proposalEvidence } from "../skillevidence.js";
@@ -1177,7 +1177,7 @@ export function builtinTools(opts: { owner?: string; nativeSearch?: boolean; /**
 function assemble(opts: { owner?: string; nativeSearch?: boolean; modelSearch?: boolean; video?: "connector" | "api" | null; bgTasks?: boolean }): BuiltinTool[] {
   return [
     ...(browserAvailable() ? inGroup("computer", screenTools).map(respectDriver).map(noteShots).map(traceClicks).map(recordable) : []),
-    ...(computerKind() === "linux" ? inGroup("computer", [...elementTools, ...browserTabTools, ...browserDownloadTools, ...appTreeTools]).map(respectDriver).map(noteShots).map(recordable) : []),
+    ...(computerKind() === "linux" ? inGroup("computer", [...elementTools, ...browserTabTools, ...browserDownloadTools, ...appTreeTools]).map(respectDriver).map(noteShots).map(recordable) : []), ...(computerKind() === "linux" ? inGroup("computer", pageAuditTools) : []),
     // On its own Linux computer a bot's commands are contained, so they do not need a permission card.
     // Background jobs and office documents: on the bots' own Linux computers only (shell_run starts the jobs).
     ...(computerKind() === "linux" && shellAvailable() ? [...inGroup("shell", jobTools), craftReady, openmanWorkspace] : []),

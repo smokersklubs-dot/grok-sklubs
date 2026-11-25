@@ -82,6 +82,36 @@ RUN apt-get update && apt-get install -y --no-install-recommends at-spi2-core gi
     && test -x /usr/libexec/at-spi-bus-launcher
 ENV QT_LINUX_ACCESSIBILITY_ALWAYS_ON=1
 
+# L115 (owner decision n° 10) — page audits and diagrams with the computer's own Chromium, never a second Chrome:
+# Lighthouse 13.6.0 (Apache-2.0), axe-core 4.14.1 (MPL-2.0, unmodified) run by sklubot-axe through puppeteer-core 25.18.1
+# (Apache-2.0), mermaid-cli 12.2.0 (MIT, `mmdc`) and chrome-devtools-mcp 1.14.0 (Apache-2.0). The whole npm tree is pinned
+# by web-tools/package-lock.json and installed with `npm ci --ignore-scripts` (puppeteer's only install script downloads
+# a browser; PUPPETEER_SKIP_DOWNLOAD says the same, puppeteer-core src/common/Configuration.ts). Every tool starts
+# /opt/sklubot/headless-chromium (CHROME_PATH for Lighthouse's chrome-launcher, `lighthouse --help`; PUPPETEER_EXECUTABLE_PATH
+# for Puppeteer and mmdc; chrome-devtools-mcp gets --executablePath, server/src/thirdpartymcp.ts). Telemetry off:
+# chrome-devtools-mcp's usage statistics and update checks by its documented variables (its README, "Usage statistics",
+# "Update checks"); Lighthouse's error reporting is off for non-interactive runs and page_audit also passes
+# --no-enable-error-reporting (lighthouse docs/error-reporting.md); its Sentry SDK, imported only when reporting is on
+# (lighthouse core/lib/sentry.js, inside a try), is removed, so reporting cannot be switched on at all (-61 MB); so are the
+# musl builds of two native modules this glibc image never loads (-31 MB). axe-core and mermaid-cli send nothing. `sloplint` is
+# not here: no such package is published with a licence (the npm name was unpublished; Hallmark's sloplint.mjs is a
+# script inside its repository, already adapted in server/src/pagecheck.ts). +588 MB on this image, mostly mermaid-cli (~420 MB);
+# details in docs/ORDINATEUR.md.
+ENV CHROME_PATH=/opt/sklubot/headless-chromium PUPPETEER_EXECUTABLE_PATH=/opt/sklubot/headless-chromium \
+    PUPPETEER_SKIP_DOWNLOAD=true CHROME_DEVTOOLS_MCP_NO_USAGE_STATISTICS=1 CHROME_DEVTOOLS_MCP_NO_UPDATE_CHECKS=1
+COPY web-tools/package.json web-tools/package-lock.json /opt/sklubot/web-tools/
+COPY headless-chromium sklubot-axe /opt/sklubot/
+RUN cd /opt/sklubot/web-tools && npm ci --ignore-scripts --omit=dev --no-audit --no-fund --no-update-notifier \
+    && npm cache clean --force \
+    && rm -rf node_modules/@sentry node_modules/sentry node_modules/@napi-rs/canvas-linux-x64-musl \
+       node_modules/@oxc-parser/binding-linux-x64-musl \
+    && chmod 755 /opt/sklubot/headless-chromium /opt/sklubot/sklubot-axe \
+    && ln -sf /opt/sklubot/web-tools/node_modules/.bin/lighthouse /usr/local/bin/lighthouse \
+    && ln -sf /opt/sklubot/web-tools/node_modules/.bin/mmdc /usr/local/bin/mmdc \
+    && ln -sf /opt/sklubot/web-tools/node_modules/.bin/chrome-devtools-mcp /usr/local/bin/chrome-devtools-mcp \
+    && ln -sf /opt/sklubot/sklubot-axe /usr/local/bin/sklubot-axe \
+    && lighthouse --version && mmdc --version && chrome-devtools-mcp --version
+
 # Clients of the sound card find it here (docker/desktop/sound.sh). What the bot installs in its home folder stays (the
 # home is a volume): ~/.local/bin comes last on the PATH, so it never hides the computer's own programs.
 ENV PULSE_SERVER=unix:/tmp/pulse/native PATH=$PATH:/root/.local/bin
