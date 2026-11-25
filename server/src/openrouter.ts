@@ -158,6 +158,10 @@ const TEXT: LocaleTexts<{ credit: string; wait: string }> = {
   fr: { credit: "Ton crédit OpenRouter est épuisé (ou la limite de ta clé est atteinte) : recharge sur openrouter.ai (https://openrouter.ai/settings/credits), puis redemande.", wait: "OpenRouter limite les requêtes en cours sur ton crédit : nouvel essai dans un instant." },
   en: { credit: "Your OpenRouter credit is used up (or your key's limit is reached): top up on openrouter.ai (https://openrouter.ai/settings/credits), then ask again.", wait: "OpenRouter is limiting the requests running on your credit: trying again in a moment." },
   es: { credit: "Tu crédito de OpenRouter se ha agotado (o se ha alcanzado el límite de tu clave): recárgalo en openrouter.ai (https://openrouter.ai/settings/credits) y vuelve a pedirlo.", wait: "OpenRouter está limitando las solicitudes en curso con tu crédito: lo intento de nuevo en un momento." },
+  de: { credit: "Dein OpenRouter-Guthaben ist aufgebraucht (oder das Limit deines Schlüssels ist erreicht): Lade es auf openrouter.ai auf (https://openrouter.ai/settings/credits) und frag dann noch einmal.", wait: "OpenRouter begrenzt die laufenden Anfragen auf deinem Guthaben: neuer Versuch gleich." },
+  it: { credit: "Il tuo credito OpenRouter è esaurito (o è stato raggiunto il limite della tua chiave): ricaricalo su openrouter.ai (https://openrouter.ai/settings/credits), poi chiedi di nuovo.", wait: "OpenRouter sta limitando le richieste in corso sul tuo credito: nuovo tentativo tra un momento." },
+  pt: { credit: "Seu crédito do OpenRouter acabou (ou o limite da sua chave foi atingido): recarregue em openrouter.ai (https://openrouter.ai/settings/credits) e peça de novo.", wait: "O OpenRouter está limitando os pedidos em andamento no seu crédito: nova tentativa daqui a pouco." },
+  zh: { credit: "你的 OpenRouter 额度已用完（或已达到密钥上限）：请在 openrouter.ai（https://openrouter.ai/settings/credits）充值，然后再问一次。", wait: "OpenRouter 正在限制使用你额度的进行中请求：稍后重试。" },
 };
 export const outOfCreditText = (loc: Locale) => byLocale(loc, TEXT).credit;
 

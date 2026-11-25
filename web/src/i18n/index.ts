@@ -29,6 +29,10 @@ export type PartialDict = Partial<Dict>;
  */
 const LOADERS: Partial<Record<Locale, () => Promise<LangModule>>> = {
   es: () => import("./es").then((m) => ({ dict: m.es, side: m.side })),
+  de: () => import("./de").then((m) => ({ dict: m.de, side: m.side })),
+  it: () => import("./it").then((m) => ({ dict: m.it, side: m.side })),
+  pt: () => import("./pt").then((m) => ({ dict: m.pt, side: m.side })),
+  zh: () => import("./zh").then((m) => ({ dict: m.zh, side: m.side })),
 };
 
 /** A language file: its main texts, and its part of the component-local tables (`side`, see `sideText`). */

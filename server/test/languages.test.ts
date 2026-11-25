@@ -46,10 +46,12 @@ test("server texts: French from its map, Spanish from lang/es.ts, English for a 
   assert.equal(tr("es", "Backup failed"), es["Backup failed"]);
   assert.notEqual(tr("es", "Backup failed"), "Backup failed");
   assert.equal(tr("es", "{bot} is paused", { bot: "Lía" }), "Lía está en pausa");
-  // A language still without a file (de, it, pt, zh) and a text nobody translated: the English text, filled in.
-  assert.equal(tr("de", "{bot} is paused", { bot: "Max" }), "Max is paused");
+  // Portuguese (Brazil) and Simplified Chinese have their file too (lang/pt.ts, lang/zh.ts).
+  assert.equal(tr("pt", "{bot} is paused", { bot: "Lia" }), "Lia está pausado");
+  assert.equal(tr("zh", "Backup failed"), "备份失败");
+  // A text nobody translated: the English text, filled in.
   assert.equal(tr("es", "A text no dictionary has: {x}", { x: "1" }), "A text no dictionary has: 1");
-  assert.equal(lang.localize("zh", "Backup failed", { "Backup failed": "x" }), "Backup failed");
+  assert.equal(lang.localize("zh", "A text no dictionary has", { "A text no dictionary has": "x" }), "A text no dictionary has");
   assert.equal(lang.byLocale("es", { en: "a", fr: "b", es: "c" }), "c");
   assert.equal(lang.byLocale("it", { en: "a", fr: "b" }), "a");
 });

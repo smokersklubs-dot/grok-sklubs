@@ -374,6 +374,10 @@ const KIND_WORD: LocaleTexts<Record<AnnounceKind, string>> = {
   fr: { info: "Info", new: "Nouveauté", maintenance: "Maintenance", important: "Important" },
   en: { info: "Info", new: "New", maintenance: "Maintenance", important: "Important" },
   es: { info: "Info", new: "Novedad", maintenance: "Mantenimiento", important: "Importante" },
+  de: { info: "Info", new: "Neu", maintenance: "Wartung", important: "Wichtig" },
+  it: { info: "Info", new: "Novità", maintenance: "Manutenzione", important: "Importante" },
+  pt: { info: "Info", new: "Novidade", maintenance: "Manutenção", important: "Importante" },
+  zh: { info: "信息", new: "新功能", maintenance: "维护", important: "重要" },
 };
 export function mailFor(r: AnnRow, loc: Locale, base: string): { subject: string; text: string } {
   const open = `${base.replace(/\/$/, "")}/?view=today`;

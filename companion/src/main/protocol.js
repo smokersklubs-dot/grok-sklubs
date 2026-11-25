@@ -7,6 +7,7 @@
  */
 
 const { validateGpuArgs } = require('./capabilities/gpu');
+const { validateNetArgs } = require('./capabilities/netexit');
 
 const PROTOCOL_VERSION = 1;
 /**
@@ -21,8 +22,10 @@ const PROTOCOL_VERSION = 1;
  * 1.7: one computer for all the bots of the account — « all my bots » on the session question (grant "account"), an
  * idle session handed over to the next bot (session.ended reason "handover" + `to`, session.started `from`), `busy`
  * with `holder` and `retryAfterMs`, capability "session.handover". Older servers ignore the new fields.
+ * 1.8 (L169): net.fetch — a bot's web request leaves from this computer's connection (« sortir par la maison »),
+ * asked here first, never to the home network (capabilities/netexit.js). Older servers never send it.
  */
-const PROTOCOL_REVISION = '1.7';
+const PROTOCOL_REVISION = '1.8';
 const CONNECT_PATH = '/api/relay/connect';
 
 /** Size limits (bytes). Server → client messages above MAX_INBOUND are rejected by `ws` (close 1009). */
@@ -99,6 +102,8 @@ const OPS = Object.freeze({
   'ax.act': { session: true, input: true },
   // The owner's own Wan2GP on 127.0.0.1 (1.6): no mouse or keyboard, so no control session; asked here the first time.
   'gpu.http': { session: false, input: false },
+  // A bot's web request through this computer's connection (1.8): no mouse or keyboard; asked here the first time.
+  'net.fetch': { session: false, input: false },
 });
 
 const ERR = Object.freeze({
@@ -140,6 +145,8 @@ const ERR = Object.freeze({
   NOT_PASSWORD_FIELD: 'not_password_field',
   // Accessibility (1.5).
   STALE_REF: 'stale_ref',
+  // Home exit (1.8): the address is on the home network or a private one.
+  BLOCKED_ADDRESS: 'blocked_address',
 });
 
 /** Keys accepted by keyboard.press (names follow @jitsi/robotjs' key table, src/robotjs.cc). */
@@ -411,6 +418,8 @@ function validateArgs(op, rawArgs) {
     }
     case 'fs.trash':
       return { root: str(args.root, 'root', 200), path: str(args.path, 'path', LIMITS.MAX_PATH) };
+    case 'net.fetch':
+      try { return validateNetArgs(args); } catch (e) { throw new ProtocolError(/** @type {any} */ (e).code || ERR.INVALID_ARGS, /** @type {Error} */ (e).message); }
     case 'gpu.http':
       try { return validateGpuArgs(args); } catch (e) { throw new ProtocolError(/** @type {any} */ (e).code || ERR.INVALID_ARGS, /** @type {Error} */ (e).message); }
     default:

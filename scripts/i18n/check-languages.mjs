@@ -16,7 +16,7 @@ import { NO_PLURAL_LOCALES, SURFACES, locales } from "./dicts.mjs";
  * Lowest coverage (%) accepted per language, all surfaces together. French and English are complete by type.
  * A new language starts at 0 and raises its floor as it is translated (docs/LANGUES.md, step 5).
  */
-export const COVERAGE_FLOOR = { fr: 100, en: 100, es: 95 };
+export const COVERAGE_FLOOR = { fr: 100, en: 100, es: 95, de: 95, it: 95, pt: 95, zh: 95 };
 
 const placeholders = (s) => [...s.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort().join(",");
 // Link hosts only: example paths may be translated (github.com/owner/repository → github.com/proprietaire/depot).

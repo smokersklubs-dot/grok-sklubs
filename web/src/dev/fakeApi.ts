@@ -130,6 +130,9 @@ export function installFakeApi(get: () => FakeApiState): void {
     if (/^\/bots\/[^/]+\/email\/recipients$/.test(path)) return json(200, recipientsFixture(s.empty));
     // Wave 6 (OpenAccess.tsx): network access, provider keys, outgoing webhooks.
     if (/^\/bots\/[^/]+\/network$/.test(path)) return json(200, { policy: s.empty ? { mode: "all", hosts: [] } : { mode: "list", hosts: ["wikipedia.org", "api.github.com"] }, blocked: s.empty ? [] : ["exemple-interdit.com"], max: 200 });
+    // L169 (BotEgress.tsx): the bot's exit — a proxy with a saved login and signed visits; « Vide »: direct.
+    if (/^\/bots\/[^/]+\/egress\/test$/.test(path)) return json(200, { test: { ok: true, ip: "203.0.113.77", ms: 412 } });
+    if (/^\/bots\/[^/]+\/egress$/.test(path)) return json(200, { egress: egressFixture(s.empty) });
     if (/^\/bots\/[^/]+\/provider-keys$/.test(path)) return json(200, { choices: {}, providers: s.empty ? [] : [{ id: "up-demo", name: "DeepSeek", keys: [{ id: "main", name: "Clé principale", resting: false }, { id: "pk_1", name: "Travail", resting: true }] }] });
     if (/^\/api-providers\/[^/]+\/keys$/.test(path)) return json(200, { keys: [{ id: "main", name: "Clé principale", resting: false }, { id: "pk_1", name: "Travail", resting: true, lastError: "limit reached (429)" }] });
     if (/^\/bots\/[^/]+\/webhooks$/.test(path)) return json(200, { events: ["message.created", "task.finished", "approval.pending"], webhooks: s.empty ? [] : [{ id: "owh_1", url: "https://exemple.com/webhook", events: ["message.created", "task.finished"], active: true, createdAt: Date.now() - 86400_000, deliveries: [{ id: "d1", event: "message.created", status: "done", attempts: 1, lastStatus: 204, lastError: "", createdAt: Date.now() - 600_000, deliveredAt: Date.now() - 600_000 }, { id: "d2", event: "task.finished", status: "failed", attempts: 7, lastStatus: 500, lastError: "HTTP 500", createdAt: Date.now() - 7200_000, deliveredAt: null }] }] });
@@ -145,4 +148,14 @@ export function installFakeApi(get: () => FakeApiState): void {
     if (/^\/bots\/[^/]+\/voice$/.test(path)) return json(200, { status: { mode: "browser" } });
     return json(200, {});
   };
+}
+
+/** L169 (BotEgress.tsx): a proxy with a saved login, Web Bot Auth on, the browser covered; empty: direct, nothing set. */
+export function egressFixture(empty: boolean, route: "direct" | "proxy" | "relay" | "tailscale" = empty ? "direct" : "proxy") {
+  return {
+    route, proxy: empty ? null : { address: "socks5://proxy.example.com:1080", hasLogin: true }, deviceId: empty ? null : "dev_gallery",
+    sign: !empty, signHome: false, canSign: true, directoryUrl: "https://bots.example.com/.well-known/http-message-signatures-directory", keyId: empty ? null : "kPrK_qmxVWaYVA9wwBF6Iuo3vVzz7TxHCTwXBygrS4k",
+    tailscale: !empty, browser: route === "relay" ? "relay" : route === "direct" ? "direct" : "yes",
+    devices: empty ? [] : [{ id: "dev_gallery", name: "portable-lea", online: true, capable: true }, { id: "dev_old", name: "bureau", online: false, capable: false }],
+  } as const;
 }

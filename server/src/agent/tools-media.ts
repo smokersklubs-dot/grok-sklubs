@@ -11,7 +11,7 @@ import type { ToolSpec } from "../llm/types.js";
 import { alwaysAllowed, costNote, imageCost, refundNotice, videoCost } from "../mediacost.js";
 import { follow, keepResult, mediaJobs, pct, resumeJob } from "../mediajobs.js";
 import { anyVideoApi, imageServiceFor, videoServicesFor } from "../mediakeys.js";
-import { fetchProblem, guardedFetch } from "../net.js";
+import { fetchProblem, guardedFetch } from "../net.js"; import { botFetch, exitProblem } from "../botroute.js"; // L169 the bot's exit
 import { noteHost } from "../netjournal.js";
 import { netGate } from "../netpolicy.js";
 import type { Connector } from "../shared.js";
@@ -287,8 +287,8 @@ export const videoTools: BuiltinTool[] = [
       const url = String(a.url);
       if (!/^https?:\/\//i.test(url)) return { content: "Only http and https addresses can be saved.", isError: true };
       let res: Response;
-      const net = netGate(c.bot, url, "media_save"); if (net) return { content: net, isError: true, summary: "blocked" }; noteHost(c.bot, url, "media", { tainted: c.tainted }); try { res = await guardedFetch(url, { signal: AbortSignal.any([c.signal, AbortSignal.timeout(300_000)]), redirect: "follow" }); } // L39
-      catch (err) { const why = fetchProblem(err); if (why) return { content: `Could not download ${url}: ${why}`, isError: true, summary: "not saved" }; throw err; }
+      const net = netGate(c.bot, url, "media_save"); if (net) return { content: net, isError: true, summary: "blocked" }; noteHost(c.bot, url, "media", { tainted: c.tainted }); try { res = await botFetch(c.bot, url, { signal: AbortSignal.any([c.signal, AbortSignal.timeout(300_000)]), redirect: "follow" }); } // L39
+      catch (err) { const why = exitProblem(err) ?? fetchProblem(err); if (why) return { content: `Could not download ${url}: ${why}`, isError: true, summary: "not saved" }; throw err; }
       if (!res.ok) return { content: `Could not download it (status ${res.status}).`, isError: true, summary: `${res.status}` };
       const type = (res.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
       const fromName = /\.(mp4|webm|mov|png|jpe?g|webp|gif)(?:$|\?)/i.exec(new URL(url).pathname)?.[1]?.toLowerCase();

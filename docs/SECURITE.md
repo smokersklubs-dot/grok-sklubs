@@ -48,6 +48,8 @@ Réglages du bot → Sécurité → « Accès à Internet » : **Partout** (par 
 - Couvert : ouvrir une page (`browser_open`), lire une page (`web_fetch`), télécharger (`media_save`), photographier une page à plusieurs largeurs, envoyer une clé (`secret_use`), appeler une API connectée (`api_get` / `api_send`), le relais de clés des programmes de son ordinateur. Sur un ordinateur Linux, la même règle est écrite en règles gérées de Chromium (`URLBlocklist` / `URLAllowlist`) : le navigateur refuse aussi les clics, les redirections et les fichiers qu'une page charge, dès son prochain démarrage.
 - Pas couvert : les programmes de son ordinateur qui vont sur Internet tout seuls (curl, pip, git…) — l'ordinateur est la machine du bot et il y est administrateur ; pour un vrai mur, le pare-feu de l'hôte (`deploy/bots-firewall.sh`). Ni les applications que tu as connectées (MCP), ni les fournisseurs de modèles, ni ce que le serveur charge pour lui-même (pages de connexion, images de la discussion).
 
+- **Sortie Internet** (même écran, « Sortie Internet ») : direct, proxy HTTP(S)/SOCKS5 (identifiant scellé, jamais réaffiché, jamais dans l'ordinateur du bot ; un proxy sur le réseau interne du serveur est refusé), sortie par la maison (Relais : accord sur l'ordinateur, réseau de la maison refusé, Stop ; ou Tailscale, serveur à soi seulement) et signature Web Bot Auth (éteinte par défaut, jamais par la maison sans accord). La politique ci-dessus s'applique par-dessus, à chaque redirection et au tunnel du navigateur. Détails : docs/ORDINATEUR.md, « Sortie Internet ».
+
 ## « Montre-moi » (L40)
 - Les mots de passe, codes, numéros de carte et clés visibles sur une page sont **noircis** dans les captures ; les jetons
   sont retirés des adresses gardées.

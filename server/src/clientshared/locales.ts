@@ -36,7 +36,7 @@ export const LOCALE_INTL: Record<Locale, string> = {
   es: "es-ES",
   de: "de-DE",
   it: "it-IT",
-  pt: "pt-PT",
+  pt: "pt-BR",
   zh: "zh-CN",
 };
 

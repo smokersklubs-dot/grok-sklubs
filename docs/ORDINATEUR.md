@@ -255,6 +255,94 @@ Limites : la capture d'écran montre tout l'écran (une fenêtre « gardée à l
 bot ne peut pas agir dedans) ; sous Linux, il faut une session X11 avec `xprop`, et le système ne dit pas si un champ
 est un mot de passe (le bot ne tape alors rien dans une fenêtre qui ressemble à une connexion).
 
+## Sortie Internet : proxy, maison, signature (L169)
+
+Réglages du bot → Sécurité → « **Sortie Internet** ». Tu choisis par où le bot sort pour aller sur les sites. Son
+« Accès à Internet » (partout / liste / nulle part, sites interdits) s'applique **toujours par-dessus**, à chaque
+redirection aussi.
+
+| Choix | Ce qui se passe | Son navigateur |
+|---|---|---|
+| **Direct** (par défaut) | Le bot sort depuis le serveur. | en direct |
+| **Proxy** | Tu donnes l'adresse d'un proxy HTTP(S) ou SOCKS5 (`socks5://proxy.exemple.com:1080`) et, s'il en faut, un nom et un mot de passe. Ils sont scellés comme le coffre, **jamais réaffichés**, jamais posés dans l'ordinateur du bot. | passe aussi par le proxy* |
+| **Maison · Relais** | Ses lectures de pages et téléchargements partent de **ta** connexion, par l'appli Sklubot de ton ordinateur. La première fois, ton ordinateur te demande ton accord ; **Stop** l'arrête ; ton réseau à la maison (box, imprimante…) est toujours refusé. | reste en direct |
+| **Maison · Tailscale** | Le bot sort par ton nœud de sortie Tailscale (voir plus bas). Seulement sur un serveur à toi. | passe aussi par là* |
+
+\* quand les ordinateurs des bots sont reliés au serveur par leur socket (le réglage par défaut avec un volume de
+données, `BOT_LINK=socket`) et pour l'ordinateur du bot lui-même (pas un ordinateur partagé). Chromium reçoit une règle
+gérée `ProxySettings` qui l'envoie vers le port du socket dans l'ordinateur ; le serveur ouvre alors le tunnel par le
+proxy, après avoir vérifié la politique réseau du bot. Les pages en `http://` simple sont passées en `https://`
+(`HttpsOnlyMode`). Pris en compte au prochain démarrage du navigateur.
+
+**Le bouton « Tester »** fait une demande par la sortie choisie et dit l'adresse que les sites voient (page de test :
+`https://www.cloudflare.com/cdn-cgi/trace`, changeable avec `EGRESS_TEST_URL`). Les erreurs sont dites simplement :
+mot de passe refusé, proxy injoignable, pas un proxy de ce type, Relais pas connecté, accord refusé…
+
+**Pour sortir par la maison, ton ordinateur doit rester allumé** (et, pour le Relais, Sklubot ouvert dessus). S'il
+s'éteint, le bot ne peut plus lire de pages tant que tu ne remets pas « Direct ».
+
+### Pourquoi deux façons de sortir par la maison
+
+- **Relais** : rien à installer de plus si tu as déjà l'appli Sklubot sur ton ordinateur. Le plus simple, mais
+  seulement pour les lectures de pages et les téléchargements (l'appli relaie des demandes entières, pas les tunnels
+  chiffrés d'un navigateur). Détails : docs/RELAIS-PROTOCOLE.md §19.
+- **Tailscale** : tout passe (navigateur compris), mais il faut un compte Tailscale et l'installer à deux endroits.
+
+### Installer la sortie Tailscale (serveur à toi)
+
+Uniquement avec les options officielles de Tailscale :
+
+1. Sur l'ordinateur de la maison : installer Tailscale, puis `sudo tailscale set --advertise-exit-node` et
+   `sudo tailscale up` ; dans la console d'administration Tailscale, menu de l'appareil → **Edit route settings** →
+   **Use as exit node** (https://tailscale.com/kb/1103/exit-nodes). Sous Linux, il faut aussi activer le transfert IP
+   (même page).
+2. Sur le serveur : ajouter le conteneur officiel `tailscale/tailscale` à côté de Sklubot, en réseau « userspace »
+   avec son serveur SOCKS5 (https://tailscale.com/kb/1282/docker, paramètres https://tailscale.com/docs/features/containers/docker/docker-params,
+   et https://tailscale.com/kb/1112/userspace-networking) :
+   ```yaml
+   tailscale:
+     image: tailscale/tailscale:stable
+     hostname: sklubot-sortie
+     environment:
+       - TS_AUTHKEY=${TS_AUTHKEY}          # clé d'authentification Tailscale
+       - TS_STATE_DIR=/var/lib/tailscale   # garder l'état, sinon un nouvel appareil à chaque redémarrage
+       - TS_USERSPACE=true
+       - TS_SOCKS5_SERVER=:1055
+       - TS_EXTRA_ARGS=--exit-node=100.x.y.z   # l'adresse Tailscale de l'ordinateur de la maison
+     volumes:
+       - tailscale-state:/var/lib/tailscale
+   ```
+   La **clé d'authentification** se met dans les variables d'environnement du serveur (dans Coolify : l'onglet
+   « Environment Variables » de l'application), **jamais dans une discussion** avec un bot ou avec quelqu'un. Sklubot
+   lui-même ne la voit jamais.
+3. Dans les variables de Sklubot : `TAILSCALE_PROXY=socks5://tailscale:1055`, puis redémarrer. Le choix
+   « Maison · Tailscale » apparaît dans les réglages des bots. Ce proxy est le seul qui peut être sur le réseau interne
+   du serveur (c'est l'administrateur qui le règle, pas une adresse tapée dans l'écran).
+
+**Pas essayé ici avec un vrai compte Tailscale** : la doc de Tailscale ne dit pas en toutes lettres que le serveur
+SOCKS5 du mode « userspace » suit `--exit-node` ; vérifie avec « Tester » (l'adresse affichée doit être celle de ta
+maison).
+
+### Signer ses visites (Web Bot Auth)
+
+Case « **Signer ses visites (Web Bot Auth)** », éteinte par défaut. Allumée, chaque lecture de page du bot porte une
+signature (normes IETF : HTTP Message Signatures, RFC 9421, et draft-ietf-webbotauth-httpsig-protocol-01) qui dit au
+site « je suis le Sklubot de ce serveur ». Les sites qui acceptent les bots identifiés (par exemple derrière Cloudflare)
+peuvent alors le laisser passer au lieu de le bloquer.
+
+- Une seule paire de clés par installation, faite la première fois ; la clé privée est scellée comme le coffre.
+- La clé publique est publiée à `https://<ton serveur>/.well-known/http-message-signatures-directory` (format JWKS,
+  réponse signée elle aussi). Il faut donc un serveur en **https** (`PUBLIC_URL`) ; sinon la case est grisée.
+- Chaque signature vaut 5 minutes et ne couvre que le nom du site : elle dit qui demande, pas ce qui est demandé.
+- **Jamais par la maison** sans la seconde case « Signer aussi quand il sort par la maison » : sinon un site pourrait
+  relier l'adresse de ta maison à ton serveur.
+- Pas signé : le navigateur du bot (ses connexions sont chiffrées de bout en bout jusqu'au site), les appels d'API avec
+  tes clés.
+
+Code : `server/src/botroute.ts`, `proxyconnect.ts`, `webbotauth.ts`, `botforward.ts`, `botrouteroutes.ts` ;
+`companion/src/main/capabilities/netexit.js`. Tests : `server/test/l169-egress.test.ts`,
+`companion/test/unit/netexit.test.js`.
+
 ## Pour l'administrateur
 
 Les ajouts de l'image (environ **+130 Mo**) : Tesseract 5.3 + données fra/eng (Apache-2.0), PulseAudio 16.1 avec une

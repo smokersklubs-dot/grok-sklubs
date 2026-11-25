@@ -1,6 +1,6 @@
 # Langues de Sklubot
 
-Sklubot parle **français** et **anglais** (complets), et **espagnol** (complet le 25/11/2026). L'**allemand**, l'**italien**, le **portugais** et le **chinois simplifié** sont déclarés : il reste à écrire leurs dictionnaires, en suivant la recette ci-dessous.
+Sklubot parle **français** et **anglais** (complets), et **espagnol** (complet le 25/11/2026). Le **portugais** (du Brésil) et le **chinois simplifié** sont complets depuis le 25/11/2026 (web, mobile, serveur, e-mails du compte). L'**allemand** (*du*) et l'**italien** (*tu*) sont complets depuis le 25/11/2026 (web, mobile, serveur, e-mails du compte ; plancher 95 %). Sur l'accueil à 390 px, la fin colorée du titre allemand peut passer à la ligne (`:lang(de) .lp-h1 em` dans `web/src/styles/landing.css`).
 
 Règle d'or : **un texte qui manque dans une langue s'affiche en anglais**, jamais une clé brute, jamais un plantage. Une langue peut donc arriver petit à petit.
 
@@ -58,6 +58,15 @@ La langue est déjà déclarée dans `server/src/clientshared/locales.ts` (`LOCA
 ## Taille des fichiers (`npm run check:size`)
 
 Le cliquet de taille (`scripts/file-size-ratchet.test.mjs`) ne compte pas les dictionnaires : une ligne par texte, ils grandissent avec chaque fonction. La règle est écrite dans le script (`EXEMPT` pour `fr.ts`, `en.ts`, `server/src/i18n.ts` ; `EXEMPT_RE` pour **tout** fichier de langue nommé par son code à deux lettres : `web/src/i18n/<code>.ts` et `server/src/lang/<code>.ts`). Un nouveau dictionnaire n'a donc rien à déclarer et ne monte aucune limite. Tout le reste (code de chargement, composants, scripts) reste soumis au cliquet : ne pas mettre de code dans un fichier de langue. Les dictionnaires mobiles (`mobile/src/i18n/`) ne sont pas mesurés.
+
+## Portugais et chinois : choix faits
+
+- **Portugais = portugais du Brésil** (`pt`, `Intl` : `pt-BR`) : le public le plus large. *Você* informel, vocabulaire brésilien (*celular*, *tela*, *arquivo*, *Configurações*, *senha*). Un navigateur `pt-PT` reçoit aussi ce portugais.
+- **Chinois simplifié** (`zh`, `Intl` : `zh-CN`) : ton simple et chaleureux avec 你 ; ponctuation pleine chasse (，。：？）) ; pas de pluriel (seules les clés `_other`). « bot » se dit 机器人.
+- Mots gardés en français dans les deux langues parce que l'utilisateur les tape ou les voit tels quels : « reprends @Nom », `/taches`, `/etat`, `/memoire`, les boutons « Vérifier » / « Créer » des cartes serveur, les titres de sections des guides (« Sortir par la maison »).
+- **Polices** : uniquement celles du système (la CSP n'en autorise aucune venue d'ailleurs). Pour `<html lang="zh">`, `web/src/styles/tokens.css` met les polices CJK du système en tête de `--font` (PingFang SC, Hiragino Sans GB, Microsoft YaHei, Noto Sans CJK SC…), sinon Windows choisit une police au hasard ; le grand titre de l'accueil coupe seulement après la ponctuation (`word-break: keep-all`, `web/src/styles/landing.css`). Le mobile utilise la police du téléphone (PingFang sur iOS, Noto Sans CJK sur Android), qui couvre le chinois sans rien à faire.
+- Piège vu en traduisant : le `merge` retire les espaces en fin de texte. Un texte anglais qui finit par une espace (`lp.h1b`, `dl.h1a`) doit la garder, sinon le titre de l'accueil déborde à 390 px (corrigé à la main dans `pt.ts`).
+- Un même texte anglais court (« New », « Watch », « Done ») est exporté une seule fois : relire sa traduction dans chaque contexte (corrigé pour `ann.kind.new`, `relay.watch`, `frame.watch`, `today.stat.done`…).
 
 ## Pluriels
 

@@ -36,7 +36,7 @@ const VIEW_KEEPALIVE_MS = 5_000;
  * @typedef {{
  *   askSession(p: { promptId: string, bot: Bot, reason: string, timeoutMs: number, holder?: Bot }): Promise<'once'|'always'|'all'|'refuse'|'expired'>,
  *   askCommand(p: { promptId: string, bot: Bot, command: string, cwd: string|null, timeoutMs: number, floor?: string, scripts?: { path: string, sha256: string, lines: string[], more: number, binary: boolean }[] }): Promise<{ decision: 'run'|'refuse'|'expired', alwaysForBot?: boolean }>,
- *   askGuard?(p: { promptId: string, bot: Bot, kind: 'terminal'|'shortcut'|'gpu', detail: string, timeoutMs: number }): Promise<'allow'|'refuse'|'expired'>,
+ *   askGuard?(p: { promptId: string, bot: Bot, kind: 'terminal'|'shortcut'|'gpu'|'net', detail: string, timeoutMs: number }): Promise<'allow'|'refuse'|'expired'>,
  *   cancelPrompt(promptId: string): void,
  *   onSession(session: Session|null): void,
  *   onLocked(locked: boolean): void,
@@ -119,6 +119,10 @@ class RelayCore {
     this.ax = new AX.SnapshotStore();
     /** Bots the owner allowed to use Wan2GP on this computer (gpu.http), as "botId:port": cleared by Stop. */
     this.gpuOk = new Set();
+    /** Bots the owner allowed to go out through this computer's connection (net.fetch, 1.8): cleared by Stop. */
+    this.netOk = new Set();
+    /** net.fetch has its own, slower rate: 20 at once, then 2 a second. */
+    this.netBucket = new TokenBucket(20, 2, this.now);
   }
 
   get locked() {
@@ -240,6 +244,7 @@ class RelayCore {
           return this.ok(id, { sha256: p.sha256, size: p.size, lines: p.lines, more: p.more, binary: p.binary });
         }
         case 'gpu.http': return await this.gpuHttp(id, bot, args);
+        case 'net.fetch': return await this.netFetch(id, bot, args);
         case 'app.open': {
           const result = await this.d.caps.openApp(args);
           this.opened.add(G.normApp(args.name));
@@ -414,6 +419,7 @@ class RelayCore {
   stop(source) {
     if (this.pendingPromptId) this.d.ui.cancelPrompt(this.pendingPromptId);
     this.gpuOk.clear();
+    this.netOk.clear();
     this.endSession(source === 'hotkey' ? 'hotkey' : 'user_stop');
     if (!this.locked) {
       this.d.store.setLocked(true);
@@ -687,7 +693,24 @@ class RelayCore {
     return this.ok(id, await this.d.caps.gpuHttp(args));
   }
 
-  /** @param {Bot} bot @param {'terminal'|'shortcut'|'gpu'} kind @param {string} detail @returns {Promise<string>} */
+  /**
+   * net.fetch (1.8, L169): a bot's web request through this computer's connection. The first use by each bot is asked
+   * here (kind "net"); the yes lasts until Stop or until the Relais restarts. Rate-limited on its own.
+   * @param {string} id @param {Bot} bot @param {Record<string, any>} args
+   */
+  async netFetch(id, bot, args) {
+    if (!this.netBucket.take()) return this.fail(id, ERR.RATE_LIMITED, 'too many web requests through this computer');
+    if (!this.netOk.has(bot.id) && !this.d.autoConfirm) {
+      const answer = await this.askGuard(bot, 'net', new URL(args.url).host);
+      if (answer !== 'allow') return this.fail(id, ERR.CONSENT_REFUSED, 'the user did not allow web requests through this computer');
+      if (this.locked) return this.fail(id, ERR.LOCKED, 'the user stopped remote control on this computer');
+      this.netOk.add(bot.id);
+    }
+    if (typeof this.d.caps.netFetch !== 'function') return this.fail(id, ERR.UNSUPPORTED, 'not available on this computer');
+    return this.ok(id, await this.d.caps.netFetch(args));
+  }
+
+  /** @param {Bot} bot @param {'terminal'|'shortcut'|'gpu'|'net'} kind @param {string} detail @returns {Promise<string>} */
   async askGuard(bot, kind, detail) {
     const ask = this.d.ui.askGuard;
     if (typeof ask !== 'function') return 'refuse';
@@ -789,6 +812,8 @@ function summarize(op, args) {
   // A file written by a bot: where and how much, never its content.
   if (op === 'fs.write') return { root: args.root, path: args.path, mode: args.mode, bytes: Buffer.byteLength(args.text, 'utf8') };
   // Wan2GP on this computer: where, never the prompt or the picture.
+  // A web request through this computer: where, never the query string or the body.
+  if (op === 'net.fetch') { const u = new URL(args.url); return { method: args.method, host: u.host, path: u.pathname.slice(0, 200), bytes: args.body ? args.body.length : 0 }; }
   if (op === 'gpu.http') return args.read ? { port: args.port, read: args.read.offset } : { port: args.port, method: args.method, path: args.path, bytes: args.body ? args.body.length : 0 };
   return args;
 }

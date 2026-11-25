@@ -21,6 +21,10 @@ let routesFor: RoutesFor | null = null;
 let membersOf: (key: string) => string[] = (key) => [key];
 
 const servers = new Map<string, http.Server>();
+/** L169: the tunnel for a bot's browser (botforward.ts sets it; a CONNECT on a socket without it is refused). */
+type ConnectHook = (key: string, req: http.IncomingMessage, socket: import("node:stream").Duplex, head: Buffer) => void;
+let connectHook: ConnectHook | null = null;
+export const setBotLinkConnect = (fn: ConnectHook | null) => { connectHook = fn; };
 const opening = new Map<string, Promise<void>>();
 
 /** The socket path on this server's side. */
@@ -45,7 +49,10 @@ export function openBotLink(key: string): Promise<void> {
     app.use("*", (c, next) => /^\/personal-plan\/[^/]+\/v1\/responses$/.test(c.req.path) ? next() : limitBodies(c, next));
     // The members are read at each request: a bot that stops sharing a computer loses its way in at once.
     app.route("/", routesFor!((botId) => (isSharedMachine(key) ? membersOf(key) : machineMembers(key)).includes(botId)));
-    const server = http.createServer(getRequestListener(app.fetch));
+    const listener = getRequestListener(app.fetch);
+    // L169: a request in absolute form (a browser using this socket as its proxy for a plain http page) is not a route here.
+    const server = http.createServer((req, res) => (/^[a-z]+:\/\//i.test(req.url ?? "") ? res.writeHead(403, { "content-type": "text/plain; charset=utf-8" }).end("Sklubot: only https pages go through the bot's proxy.\n") : listener(req, res)));
+    server.on("connect", (req, socket, head) => (connectHook ? connectHook(key, req, socket, head) : socket.end("HTTP/1.1 403 Forbidden\r\n\r\n")));
     // A subscription tool's call may wait for the user's approval (up to 30 minutes, see engine.ts TOOL_TIMEOUT_MS).
     server.requestTimeout = 0;
     server.on("error", reject);

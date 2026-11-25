@@ -2,7 +2,11 @@ import { getLocales } from "expo-localization";
 import { useSyncExternalStore } from "react";
 import { LOCALE_LABELS, localeFromTag, pluralForm, type Locale } from "../../../server/src/clientshared/locales";
 import { en } from "./en";
+import { de, serverDe } from "./de";
 import { es, serverEs } from "./es";
+import { it, serverIt } from "./it";
+import { pt, serverPt } from "./pt";
+import { zh, serverZh } from "./zh";
 import { fr, type Key } from "./fr";
 
 /**
@@ -11,7 +15,7 @@ import { fr, type Key } from "./fr";
  * key. How to add a language: docs/LANGUES.md.
  */
 export type { Key, Locale };
-const DICTS: Partial<Record<Locale, Partial<Record<Key, string>>>> = { fr, en, es };
+const DICTS: Partial<Record<Locale, Partial<Record<Key, string>>>> = { fr, en, es, de, it, pt, zh };
 
 /** The languages offered in the pickers (those with a dictionary), with their own names. */
 export const LANGUAGES: { id: Locale; label: string }[] = (Object.keys(LOCALE_LABELS) as Locale[])
@@ -84,7 +88,7 @@ const SERVER_FR: Record<string, string> = {
   "This address is not allowed to create an account on this server.": "Cette adresse ne peut pas créer de compte sur ce serveur.",
 };
 
-const SERVER_TEXT: Partial<Record<Locale, Record<string, string>>> = { fr: SERVER_FR, es: serverEs };
+const SERVER_TEXT: Partial<Record<Locale, Record<string, string>>> = { fr: SERVER_FR, es: serverEs, de: serverDe, it: serverIt, pt: serverPt, zh: serverZh };
 
 /** A readable message for any error thrown by the API client. */
 export function errText(e: unknown): string {

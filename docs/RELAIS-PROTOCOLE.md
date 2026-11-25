@@ -1,5 +1,7 @@
 # Protocole Sklubot Relais — version 1 (révision 1.2)
 
+> **Révision 1.8 (compatible, 25/11/2026)** : `net.fetch` — une demande web d'un bot du propriétaire part de la connexion de cet ordinateur (« sortir par la maison », §19). Annoncée dans `capabilities` ; un serveur plus ancien ne l'envoie jamais, un Relais plus ancien répond `unknown_op` (Sklubot dit alors « mets Sklubot à jour »). `hello.v` reste `1`, `hello.protocol` vaut `"1.8"`.
+
 > **Révision 1.2 (compatible)** : un **téléphone** peut être un Relais (l'appli Sklubot pour Android, §13). Son `hello` porte `"device": { …, "kind": "phone", "platform": "android" }` et `"protocol": "1.2"`, et il annonce ses propres opérations. Un serveur 1.1 le voit comme un ordinateur sans souris ; un serveur 1.2 lui envoie les opérations du §13.
 
 > **Révision 1.1 (compatible)** : ajoute les opérations de fichiers `fs.*` (§12). `hello.v` reste `1` ; le Relais envoie en plus `"protocol": "1.1"` et liste les nouvelles opérations dans `capabilities`. Un serveur 1.0 les ignore ; un serveur 1.1 ne les utilise que si elles sont annoncées.
@@ -512,3 +514,47 @@ un autre.
 Tests : `companion/test/unit/handover.test.js`, `companion/test/unit/store.test.js`, `server/test/computer-share.test.ts`.
 **Non vérifié** sur un vrai Mac ou PC (fenêtre de question à quatre boutons, liste « Bots » du Relais) : la logique est
 testée en Node, l'interface du Relais n'a pas été ouverte ici.
+
+## 19. Sortir par la maison : `net.fetch` (révision 1.8, 25/11/2026, A-FAIRE L169)
+
+Le propriétaire peut faire sortir les lectures de pages d'un bot par **sa propre connexion** (les sites voient l'adresse
+de sa maison, pas celle du serveur) : Réglages du bot → Sécurité → « Sortie Internet » → « Maison · Relais ». Sklubot
+envoie alors chaque demande web du bot (lire une page, télécharger un fichier, « Tester ») au Relais de l'ordinateur
+choisi. Le serveur n'envoie `net.fetch` qu'à un appareil **du même compte que le bot** (`devices.owned`).
+
+| Opération | Session ? | Arguments | Résultat |
+|---|---|---|---|
+| `net.fetch` | non | `{ url, method?: "GET"\|"HEAD"\|"POST", headers?: {…}, body?: base64 ≤ 180 Kio }` | `{ status, headers, data: base64, truncated }` |
+
+- `url` : `http://` ou `https://`, 4 096 caractères au plus, sans nom ni mot de passe dedans.
+- `headers` : seuls `accept`, `accept-language`, `content-type`, `user-agent` et les trois en-têtes Web Bot Auth
+  (`signature`, `signature-input`, `signature-agent`) passent ; jamais de cookie ni d'`authorization`.
+- Réponse : 2,5 Mio au plus (le reste est coupé, `truncated: true`), 30 s au plus ; en-têtes rendus : `content-type`,
+  `content-length`, `content-language`, `location`, `last-modified`, `etag`, `retry-after`, `cache-control`.
+- **Redirections non suivies** par le Relais : il rend le 3xx et `location` ; Sklubot suit lui-même et vérifie la
+  politique réseau du bot à chaque étape.
+
+Règles imposées **par le Relais** (`companion/src/main/capabilities/netexit.js`, `relay-core.js`), quoi que demande le
+serveur :
+
+1. **Accord sur l'ordinateur** : la première demande de chaque bot ouvre une question (« {bot} veut sortir sur Internet
+   par ta connexion », `kind: "net"`) ; le oui vaut pour ce bot jusqu'à **Stop** ou la fermeture du Relais. Refus :
+   `consent_refused`. Stop verrouille tout (`locked`), comme pour le reste.
+2. **Jamais le réseau de la maison** : chaque adresse que le nom résout est vérifiée au moment de la connexion ; box,
+   imprimante, NAS, cet ordinateur lui-même et toutes les plages privées ou réservées (la même liste que le serveur,
+   `server/src/net.ts`) sont refusés → `blocked_address` (nouveau code d'erreur).
+3. **Visible** : chaque demande est écrite dans le journal du Relais (méthode, site, chemin — jamais la requête ni le corps).
+4. **Débit à part** : 20 demandes d'un coup, puis 2 par seconde (`rate_limited` au-delà), en plus de la limite générale (§2).
+5. L'ordinateur doit **rester allumé** avec Sklubot ouvert : sinon `offline`, et Sklubot dit au propriétaire de l'ouvrir.
+
+Pas couvert par ce chemin : le **navigateur** du bot (il ouvre des tunnels chiffrés que ce protocole ne transporte pas) ;
+il reste en direct, et l'écran le dit. Pour que le navigateur sorte aussi par la maison, utiliser Tailscale
+(docs/ORDINATEUR.md, « Sortir par la maison »).
+
+Signature Web Bot Auth : jamais ajoutée à une demande qui part de la maison, sauf si le propriétaire a coché « Signer
+aussi quand il sort par la maison » (sinon un site pourrait relier l'adresse de sa maison à ce serveur).
+
+Tests : `companion/test/unit/netexit.test.js` (accord, refus, Stop, débit, réseau de la maison, redirections, réponses
+coupées) ; `server/test/l169-egress.test.ts` (un faux Relais qui répond avec le code du Relais).
+**Non vérifié** sur un vrai Mac ou PC : la fenêtre de question « net » n'a pas été ouverte ici.
+

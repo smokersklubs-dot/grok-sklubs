@@ -294,7 +294,7 @@ const HEADERS = {
   es: "Textos en español (tuteo, como el francés).",
   de: "Texte auf Deutsch (Du-Form, wie das französische Duzen).",
   it: "Testi in italiano (dare del tu, come in francese).",
-  pt: "Textos em português (tratamento por tu/você informal, como no francês).",
+  pt: "Textos em português do Brasil (você informal, como o tu do francês).",
   zh: "简体中文文本（语气亲切，与法语的 tu 对应）。",
 };
 

@@ -32,7 +32,7 @@ async function main() {
     add('consent.allBots', '', 'all');
     add('consent.always', '', 'always');
     add('consent.once', 'primary', 'once');
-  } else if (p.kind === 'terminal' || p.kind === 'shortcut' || p.kind === 'gpu') {
+  } else if (p.kind === 'terminal' || p.kind === 'shortcut' || p.kind === 'gpu' || p.kind === 'net') {
     // guard.js: a terminal for this session, or a protected shortcut the owner approved in Sklubot; gpu: Wan2GP on 127.0.0.1.
     $('title').textContent = t(`consent.${p.kind}.title`, { bot });
     $('text').textContent = t(`consent.${p.kind}.text`);

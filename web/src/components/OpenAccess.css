@@ -10,3 +10,5 @@
 .open-local { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border); }
 .open-local-pick { display: inline-flex; gap: 6px; align-items: center; cursor: pointer; }
 .open-excluded ul { margin: 6px 0 0; padding-left: 18px; word-break: break-all; }
+.open-dir { word-break: break-all; }
+.open-warn { margin: 10px 0 6px; }

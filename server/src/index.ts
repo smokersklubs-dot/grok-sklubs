@@ -30,6 +30,7 @@ import { startAnnouncements } from "./announcements.js";
 import { installErrorCounter, noteSignal } from "./sentinel/signals.js";
 import { attachLiveScreens } from "./vnc.js";
 import { relayUpgrade } from "./relay.js";
+import { registerWebBotAuthDirectory } from "./botrouteroutes.js"; import "./botforward.js"; // L169: key directory, browser tunnel
 import { closeLeftOpenWatchNotices } from "./agent/watch.js";
 import { expireOrphanApprovals, interrupt, recoverInterruptedTurns, startJobWatch } from "./agent/loop.js";
 import { startMediaJobs } from "./mediajobs.js";
@@ -63,6 +64,7 @@ app.use("*", limitBodies);
 app.route("/api", api);
 app.all("/api/*", (c) => c.json({ error: "No such endpoint." }, 404));
 
+registerWebBotAuthDirectory(app);
 app.route("/", site);
 
 // In production the server also serves the built web app; unknown paths fall back to its index page.

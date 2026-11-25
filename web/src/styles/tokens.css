@@ -82,3 +82,10 @@
   --shadow-lg: 0 24px 64px rgba(0, 0, 0, 0.6), 0 2px 8px rgba(0, 0, 0, 0.4);
   color-scheme: dark;
 }
+
+/* Simplified Chinese (<html lang="zh">): the system's CJK fonts before the Latin ones, so Windows does not fall back to
+   a random font. System fonts only (the CSP allows no font from elsewhere). docs/LANGUES.md. */
+:root:lang(zh) {
+  --font: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Segoe UI", Roboto, "Noto Sans SC", "Noto Sans CJK SC", "Source Han Sans SC", "WenQuanYi Micro Hei", sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+  --display: "Songti SC", "STSong", "SimSun", "Noto Serif CJK SC", "Source Han Serif SC", Georgia, serif;
+}

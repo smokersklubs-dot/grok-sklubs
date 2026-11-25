@@ -17,7 +17,7 @@ import { schedule, unschedule } from "../scheduler.js";
 import { GEM_KINDS, GEMS_PER_DAY, REACTIONS, TAKEOVER_REASONS, type TakeoverReason, type ActivityKind, type Connector, type Gem, type GemKind, type ReactionEmoji, type Row, type ToolGroup, type SkillExtras, SKILL_EXTRA_KEYS } from "../shared.js";
 import { q } from "../db.js";
 import { searchConfigured, searchWeb } from "../search.js"; import { cleanDay, setMarks } from "./memorymarks.js"; import { roomMemoryTools } from "./roommemory.js";
-import { fetchProblem, guardedFetch } from "../net.js";
+import { fetchProblem, guardedFetch } from "../net.js"; import { botFetch, exitProblem } from "../botroute.js"; // L169 the bot's exit
 import { config as appConfig } from "../config.js";
 import { audit, bots, clip, memories, newId, pages, rows, settings, skills, skillText, tasks, vault, type BotRecord, type UserRecord } from "../store.js";
 import { conversationSearchAnswer } from "../convsearch.js";
@@ -229,10 +229,10 @@ const workTools: BuiltinTool[] = [
       const url = String(a.url);
       if (!/^https?:\/\//i.test(url)) return { content: "Only http and https addresses can be fetched.", isError: true }; const net = netGate(c.bot, url, "web_fetch"); if (net) return { content: net, isError: true, summary: "blocked" }; noteHost(c.bot, url, "fetch", { tainted: c.tainted }); // L169, L39
       // Public addresses only, every redirect checked: a page must not steer the bot into this server's own network.
-      let res: Response; const get = (u: string, accept: string) => guardedFetch(u, { signal: AbortSignal.any([c.signal, AbortSignal.timeout(30_000)]), headers: { "user-agent": "Mozilla/5.0 (compatible; assistant)", accept }, redirect: "follow" });
+      let res: Response; const get = (u: string, accept: string) => botFetch(c.bot, u, { signal: AbortSignal.any([c.signal, AbortSignal.timeout(30_000)]), headers: { "user-agent": "Mozilla/5.0 (compatible; assistant)", accept }, redirect: "follow" });
       const extra = await markdownExtras(url, a, get); if (extra.copy) return { content: `Status 200 (the page's own Markdown copy: ${extra.copy.url})\n\n${extra.prefix}${await spillIfLong(c, extra.copy.text, 40_000)}`, summary: `200 · ${hostOf(url) ?? ""} · md` }; // L75 (webfetchmd.ts)
       try { res = await get(url, MARKDOWN_ACCEPT); }
-      catch (err) { const why = fetchProblem(err); if (why) return { content: `Could not fetch ${url}: ${why}`, isError: true, summary: "not fetched" }; throw err; }
+      catch (err) { const why = exitProblem(err) ?? fetchProblem(err); if (why) return { content: `Could not fetch ${url}: ${why}`, isError: true, summary: "not fetched" }; throw err; }
       const type = res.headers.get("content-type") ?? "";
       if (!/text|json|xml|javascript/.test(type)) return { content: `Fetched ${url} (status ${res.status}) but it is ${type || "binary"} content, not text.`, isError: !res.ok };
       const body = await decodedText(res); // « doit marcher »: any charset, broken bytes never fail (textdecode.ts)

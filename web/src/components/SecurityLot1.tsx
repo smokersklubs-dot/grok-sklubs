@@ -7,6 +7,7 @@ import { relTime } from "../lib/format";
 import { Icon } from "./Icon";
 import { ErrorNote, Loading, Toggle } from "./ui";
 import { BotNetworkBlock, BotProviderKeysBlock } from "./OpenAccess";
+import { BotEgressBlock } from "./BotEgress";
 import { PasskeyProofButton, PasskeySettings, SignInAlerts, useHasPasskey } from "./Passkeys";
 import "./SecurityLot1.css";
 
@@ -135,7 +136,7 @@ export function BotSecurityTab({ bot }: { bot: Bot }) {
   if (!data) return error ? <ErrorNote>{error}</ErrorNote> : <Loading />;
   return (
     <div className="settings-pane">
-      <BotNetworkBlock bot={bot} /><BotProviderKeysBlock bot={bot} />{/* L169, L82 (OpenAccess.tsx) */}
+      <BotNetworkBlock bot={bot} /><BotEgressBlock bot={bot} /><BotProviderKeysBlock bot={bot} />{/* L169 (OpenAccess.tsx, BotEgress.tsx), L82 */}
       <h3 className="pane-heading">{t("security.netJournal")}</h3>
       <p className="muted small">{t("security.netJournalHint", { name: bot.name })}</p>
       {data.hosts.length === 0 ? <p className="muted small">{t("security.netEmpty")}</p> : (

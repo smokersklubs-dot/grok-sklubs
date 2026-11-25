@@ -101,6 +101,9 @@ export function browserPolicy(bot: Pick<BotRecord, "id" | "userId">): { URLBlock
   return { URLBlocklist: blocked, URLAllowlist: [] };
 }
 
+/** More managed policies for the same file (botroute.ts: the bot's proxy for its browser), merged after the URL lists. */
+let extra: (bot: BotRecord) => Record<string, unknown> = () => ({});
+export const setBrowserPolicyExtra = (fn: typeof extra) => { extra = fn; };
 /** What writes the policy on the bot's computer (replaceable in tests). */
 let writer = (bot: BotRecord, content: string) => writeComputerFile(bot.id, bot.userId, workspaceOf(bot.id), POLICY_FILE, content, "644");
 export const setBrowserPolicyWriter = (fn: typeof writer) => { writer = fn; };
@@ -108,7 +111,7 @@ const written = new Map<string, string>();
 /** Puts the bot's rule on its Linux computer when it changed since the last write (best effort; never blocks a tool). */
 export async function applyBrowserPolicy(bot: BotRecord, force = false): Promise<boolean> {
   if (computerKind() !== "linux" && !force) return false;
-  const content = JSON.stringify(browserPolicy(bot));
+  const content = JSON.stringify({ ...browserPolicy(bot), ...extra(bot) });
   if (written.get(bot.id) === content) return true;
   try { await writer(bot, content); written.set(bot.id, content); return true; } catch { return false; }
 }

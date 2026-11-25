@@ -11,11 +11,15 @@ const MONTHS: Partial<Record<Locale, string[]>> & { en: string[] } = {
   fr: ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."],
   en: ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
   es: ["ene.", "feb.", "mar.", "abr.", "may.", "jun.", "jul.", "ago.", "sept.", "oct.", "nov.", "dic."],
+  de: ["Jan.", "Feb.", "März", "Apr.", "Mai", "Juni", "Juli", "Aug.", "Sept.", "Okt.", "Nov.", "Dez."],
+  it: ["gen", "feb", "mar", "apr", "mag", "giu", "lug", "ago", "set", "ott", "nov", "dic"],
 };
 /** Words of the dates below, per language (missing → English). */
 const WORDS: Partial<Record<Locale, { today: string; yesterday: string; now: string; min: (n: number) => string; h: (n: number) => string }>> = {
   fr: { today: "Aujourd’hui", yesterday: "Hier", now: "à l’instant", min: (n) => `il y a ${n} min`, h: (n) => `il y a ${n} h` },
   es: { today: "Hoy", yesterday: "Ayer", now: "ahora mismo", min: (n) => `hace ${n} min`, h: (n) => `hace ${n} h` },
+  de: { today: "Heute", yesterday: "Gestern", now: "gerade eben", min: (n) => `vor ${n} Min.`, h: (n) => `vor ${n} Std.` },
+  it: { today: "Oggi", yesterday: "Ieri", now: "proprio ora", min: (n) => `${n} min fa`, h: (n) => `${n} h fa` },
 };
 const EN_WORDS = { today: "Today", yesterday: "Yesterday", now: "just now", min: (n: number) => `${n} min ago`, h: (n: number) => `${n} h ago` };
 const words = (l: Locale) => WORDS[l] ?? EN_WORDS;

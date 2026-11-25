@@ -5,7 +5,7 @@ import { previewLocalImport } from "./localimport.js";
 import { applyBrowserPolicies, applyBrowserPolicy, netPolicy, MAX_SITES } from "./netpolicy.js";
 import { outWebhooks, WebhookError, WEBHOOK_EVENTS } from "./outwebhooks.js";
 import { providerKeys, ProviderKeyError } from "./providerkeys.js";
-import { body, fail } from "./routeinput.js";
+import { body, fail } from "./routeinput.js"; import { registerBotRouteRoutes } from "./botrouteroutes.js";
 import type { BotRecord, UserRecord } from "./store.js";
 
 /**
@@ -78,6 +78,7 @@ export function registerAccountNetRoutes(api: Hono<any>, ownAgent: (c: Context) 
     void applyBrowserPolicy(bot);
     return c.json({ policy, blocked: netPolicy.blocked(user(c).id), max: MAX_SITES });
   });
+  registerBotRouteRoutes(api, ownAgent); // L169 exit: proxy, home (Relais / Tailscale), Web Bot Auth (botrouteroutes.ts)
   api.get("/network/blocked-sites", (c) => c.json({ hosts: netPolicy.blocked(user(c).id), max: MAX_SITES }));
   api.put("/network/blocked-sites", async (c) => {
     const hosts = netPolicy.setBlocked(user(c).id, (await body(c)).hosts);

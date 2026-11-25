@@ -7,6 +7,8 @@
 import { BotRecipientsBlock, BotSecurityTab, SecuritySettingsBlock, VaultAccessBlock } from "../components/SecurityLot1";
 import { CardView } from "../components/Cards";
 import { fakeBot, GALLERY_BOT_ID, type FixtureOptions } from "./fixtures";
+import { BotEgressBlock } from "../components/BotEgress";
+import { egressFixture } from "./fakeApi";
 
 export function GallerySecurity({ o, empty }: { o: FixtureOptions; empty: boolean }) {
   const fr = o.lang === "fr";
@@ -20,6 +22,10 @@ export function GallerySecurity({ o, empty }: { o: FixtureOptions; empty: boolea
       <section className="gallery-section" aria-label="Bot">
         <h2>{fr ? "Réglages du bot → Sécurité, et ses destinataires" : "Bot settings → Security, and its recipients"}</h2>
         <div className="gallery-page is-auto"><BotSecurityTab bot={bot} /><BotRecipientsBlock bot={bot} /></div>
+      </section>
+      <section className="gallery-section" aria-label="Sortie">
+        <h2>{fr ? "Sortie Internet : par la maison (Relais)" : "Internet exit: through home (Relais)"}</h2>
+        <div className="gallery-page is-auto"><BotEgressBlock bot={bot} initial={{ ...egressFixture(empty, empty ? "direct" : "relay"), devices: [...egressFixture(empty).devices] }} /></div>
       </section>
       <section className="gallery-section" aria-label="Coffre">
         <h2>{fr ? "Coffre : un élément en modification" : "Vault: an item being edited"}</h2>

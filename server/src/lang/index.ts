@@ -4,10 +4,14 @@
  * here (`lang/<code>.ts`, keyed by the same English wording). Missing text → English. How to add a language: docs/LANGUES.md.
  */
 import { isLocale, localeFromTag, type Locale } from "../clientshared/locales.js";
+import { de } from "./de.js";
 import { es } from "./es.js";
+import { it } from "./it.js";
+import { pt } from "./pt.js";
+import { zh } from "./zh.js";
 
 /** The languages other than French and English: register a new dictionary here. */
-const DICTS: Partial<Record<Locale, Record<string, string>>> = { es };
+const DICTS: Partial<Record<Locale, Record<string, string>>> = { es, de, it, pt, zh };
 
 /**
  * One text in the reader's language: French from the caller's French map (`fr`), other languages from their file
