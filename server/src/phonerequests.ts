@@ -1,9 +1,9 @@
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto"; import { tr } from "./i18n.js";
 import sharp from "sharp";
 import { q } from "./db.js";
 import { emit } from "./bus.js";
 import { pushLater } from "./push.js";
-import type { ServerEvent } from "./shared.js";
+import type { Locale, ServerEvent } from "./shared.js";
 import { audit, clip, newId, now } from "./store.js";
 
 /**
@@ -120,12 +120,10 @@ export const phoneRequests = {
 export const locationCsp = (nonce: string) => `default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'`;
 
 /** The page the phone opens for « Partager ma position » (French and English, no outside script). */
-export function locationPage(req: PhoneRequest, token: string, locale: "fr" | "en", nonce: string): string {
-  const fr = locale === "fr";
+export function locationPage(req: PhoneRequest, token: string, locale: Locale, nonce: string): string {
+  const l = (en: string, vars: Record<string, string> = {}) => tr(locale, en, vars);
   const esc = (s: string) => s.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
-  const t = fr
-    ? { title: "Partager ta position", ask: `${esc(req.botName)} voudrait savoir où tu es`, why: "Raison :", share: "Partager ma position", refuse: "Refuser", done: "C'est envoyé. Tu peux fermer cette page.", no: "Refusé. Rien n'a été envoyé.", err: "Ta position n'a pas pu être lue (autorisation refusée ou indisponible). Rien n'a été envoyé." }
-    : { title: "Share your location", ask: `${esc(req.botName)} would like to know where you are`, why: "Reason:", share: "Share my location", refuse: "Refuse", done: "Sent. You can close this page.", no: "Refused. Nothing was sent.", err: "Your location could not be read (permission refused or unavailable). Nothing was sent." };
+  const t = { title: l("Share your location"), ask: l("{bot} would like to know where you are", { bot: esc(req.botName) }), why: l("Reason:"), share: l("Share my location"), refuse: l("Refuse"), done: l("Sent. You can close this page."), no: l("Refused. Nothing was sent."), err: l("Your location could not be read (permission refused or unavailable). Nothing was sent.") };
   const url = `/api/phone/where/${token}`;
   return `<!doctype html><html lang="${locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${t.title}</title>
 <style>:root{color-scheme:light dark;--bg:#f4f2ee;--fg:#1d1d1f;--mut:#5b5b60;--acc:#c2401c}@media (prefers-color-scheme:dark){:root{--bg:#131416;--fg:#f2f2f2;--mut:#b4b4b8;--acc:#ff8a5c}}

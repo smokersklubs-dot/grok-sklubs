@@ -13,6 +13,7 @@ import * as WebBrowser from "expo-web-browser";
 import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { firstLink } from "../../shared/chatPlus";
+import { LOCALE_INTL } from "../../../server/src/clientshared/locales";
 import { errText, useT } from "../i18n";
 import { dash, fetchPreview, metricTiles, quoteMessage, type Metrics, type Pin, type Preview } from "../lib/chatPlus";
 import { relTime } from "../lib/format";
@@ -132,7 +133,7 @@ export function UsageMetrics() {
   useEffect(() => { useStore.getState().call<{ metrics: Metrics }>("GET", "/usage-metrics").then((r) => setM(r.metrics), (e) => setError(errText(e))); }, []);
   if (error) return <ErrorNote>{error}</ErrorNote>;
   if (!m) return null;
-  const n = (v: number) => v.toLocaleString(t.locale === "fr" ? "fr-FR" : "en-US");
+  const n = (v: number) => v.toLocaleString(t.locale === "en" ? "en-US" : LOCALE_INTL[t.locale]);
   return (
     <View style={{ gap: 8 }}>
       <View style={styles.tiles}>

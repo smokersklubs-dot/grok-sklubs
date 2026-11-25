@@ -8,9 +8,10 @@
  * How to add a language: docs/LANGUES.md.
  */
 import { useSyncExternalStore } from "react";
-import { LOCALE_LABELS, isLocale as isKnownLocale, localeFromTag, type Locale } from "../../../server/src/clientshared/locales";
+import { LOCALE_INTL, LOCALE_LABELS, isLocale as isKnownLocale, localeFromTag, type Locale } from "../../../server/src/clientshared/locales";
 import { en, type Dict } from "./en";
 import { fr } from "./fr";
+import { setLookup } from "./lookup";
 
 export type { Locale };
 export type Key = keyof typeof en;
@@ -129,6 +130,7 @@ function translate(locale: Locale, key: Key, vars?: Vars): string {
 export function t(key: Key, vars?: Vars): string {
   return translate(current, key, vars);
 }
+setLookup((key, vars) => (key in en ? translate(current, key as Key, vars) : undefined));
 
 const rules = new Map<Locale, Intl.PluralRules>();
 /**
@@ -147,6 +149,15 @@ export function intlLocale(): string {
   const nav = typeof navigator !== "undefined" ? navigator.language || "" : "";
   return nav.toLowerCase().startsWith(current) ? nav : current;
 }
+
+/** The `Intl` tag of a language (es → es-ES, pt → pt-BR…), for dates and numbers shown in that language. */
+export const intlTag = (locale: Locale | string | undefined | null): string => (isKnownLocale(locale) ? LOCALE_INTL[locale] : "en-GB");
+
+/** "label: value" punctuation: French puts a space before the colon, Chinese uses a full-width one. */
+export const colon = (locale: Locale | string | undefined | null): string => (locale === "fr" ? " : " : locale === "zh" ? "：" : ": ");
+/** An amount in euros in the reader's language ("12 €", "€12", "12,50 €"…). */
+export const euros = (n: number, locale: Locale | string | undefined | null, digits = 2): string =>
+  n.toLocaleString(intlTag(locale), { style: "currency", currency: "EUR", minimumFractionDigits: Number.isInteger(n) ? 0 : digits, maximumFractionDigits: digits });
 
 const BOUND = new Map<Locale, typeof t>();
 function boundFor(locale: Locale): typeof t {

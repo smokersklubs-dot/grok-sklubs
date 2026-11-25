@@ -1,4 +1,4 @@
-import { mailConfigured, sendSystemMail } from "./accountmail.js"; import { byLocale, localize, type LocaleTexts } from "./lang/index.js";
+import { mailConfigured, sendSystemMail } from "./accountmail.js"; import { byLocale, colon, localize, type LocaleTexts } from "./lang/index.js"; import { tr } from "./i18n.js";
 import {
   ANNOUNCE_KINDS, ANNOUNCE_LIMITS, safeHttpsUrl,
   type AnnounceAudience, type AnnounceKind, type AnnouncementAdminItem, type AnnouncementsAdmin, type AnnouncementsState, type AnnouncementView, type AnnounceStatus,
@@ -381,10 +381,8 @@ const KIND_WORD: LocaleTexts<Record<AnnounceKind, string>> = {
 };
 export function mailFor(r: AnnRow, loc: Locale, base: string): { subject: string; text: string } {
   const open = `${base.replace(/\/$/, "")}/?view=today`;
-  const link = r.link_url ? `\n\n${r.link_label || (loc === "fr" ? "Lien" : "Link")}${loc === "fr" ? " : " : ": "}${r.link_url}` : "";
-  const foot = loc === "fr"
-    ? `Ouvrir Sklubot : ${open}\n\n— Sklubot\nTu reçois cette annonce parce que tu as un compte sur ce serveur. Pour ne plus la recevoir par e-mail : Réglages → Notifications.`
-    : `Open Sklubot: ${open}\n\n— Sklubot\nYou get this announcement because you have an account on this server. To stop getting announcements by e-mail: Settings → Notifications.`;
+  const link = r.link_url ? `\n\n${r.link_label || tr(loc, "Link")}${colon(loc)}${r.link_url}` : "";
+  const foot = tr(loc, "Open Sklubot: {open}\n\n— Sklubot\nYou get this announcement because you have an account on this server. To stop getting announcements by e-mail: Settings → Notifications.", { open });
   return { subject: `[Sklubot] ${byLocale(loc, KIND_WORD)[r.kind]} · ${r.title}`, text: `${r.title}\n\n${r.body}${link}\n\n${foot}\n` };
 }
 

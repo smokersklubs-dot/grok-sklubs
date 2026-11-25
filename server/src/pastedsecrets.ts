@@ -53,9 +53,7 @@ export function holdAndOffer(bot: BotRecord, userId: string, found: SecretFound[
   sweep();
   for (const s of found.slice(0, 5)) {
     if (s.value.startsWith("sk-team-")) {
-      const text = users.localeOf(userId) === "fr"
-        ? "Jeton d’équipe Sklubot masqué. Utilise-le dans l’invite de connexion de Claude Code sur ton ordinateur."
-        : "Sklubot team token hidden. Use it at the Claude Code connection prompt on your computer.";
+      const text = tr(users.localeOf(userId), "Sklubot team token hidden. Use it at the Claude Code connection prompt on your computer.");
       rows.append(bot, { kind: "notice", tone: "info", text }, thread);
       continue;
     }

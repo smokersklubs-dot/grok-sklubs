@@ -10,7 +10,7 @@
 import { CreditAlertField } from "./CreditAlertField"; // L150 OpenRouter credit alert
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, enc, errText } from "../api";
-import { useStore } from "../store"; import { sideText } from "../i18n";
+import { useStore } from "../store"; import { intlLocale, sideText } from "../i18n";
 import type { ApiProvider, Engine } from "../types";
 import { Icon } from "./Icon";
 import { LiveScreen } from "./LiveScreen";
@@ -89,7 +89,7 @@ interface OrState { provider: ApiProvider | null; links: { keys: string; credits
 export function OpenRouterModels({ chosen, onSaved, onClose }: { chosen: string[]; onSaved: (p: ApiProvider) => void; onClose: () => void }) {
   const a = useA();
   const fr = useStore((s) => s.locale === "fr");
-  const dec = (v: string | number) => (fr ? String(v).replace(".", ",") : String(v));
+  const dec = (v: string | number) => String(v).replace(".", (1.5).toLocaleString(intlLocale()).charAt(1)); // the reader's decimal mark
   const [cat, setCat] = useState<Catalog | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");

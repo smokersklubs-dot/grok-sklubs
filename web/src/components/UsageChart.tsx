@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, errText } from "../api";
-import { useT } from "../i18n";
+import { useT, intlTag } from "../i18n";
 import { money } from "../lib/format";
 import { bars, busiest, type UsageDay } from "../lib/usagechart";
 import { useStore } from "../store";
@@ -22,7 +22,7 @@ export function UsageChart({ initial }: { initial?: { days: UsageDay[]; totalUsd
   const H = 96, W = 300, gap = 2, bw = W / data.days.length - gap;
   const { top, bars: list } = bars(data.days, H);
   const peak = busiest(data.days);
-  const dayLabel = (d: string) => new Date(d + "T12:00:00Z").toLocaleDateString(locale === "fr" ? "fr-FR" : "en", { day: "numeric", month: "short", timeZone: "UTC" });
+  const dayLabel = (d: string) => new Date(d + "T12:00:00Z").toLocaleDateString(intlTag(locale), { day: "numeric", month: "short", timeZone: "UTC" });
   const summary = t("usage.daily.summary", { total: money(data.totalUsd), estimate: money(data.estimatedUsd) });
   return (
     <figure className="usage-chart">

@@ -9,7 +9,7 @@
  *   - journal: this bot's journal lines since then (at most 30, newest first), as Settings → Journal shows them.
  * Owner only (bots.owned).
  */
-import type { Hono } from "hono";
+import type { Hono } from "hono"; import { tr } from "./i18n.js";
 import { readLibraryFile } from "./computer.js";
 import { listJournal } from "./journal.js";
 import { fail } from "./routeinput.js";
@@ -35,11 +35,10 @@ export function selfCheck(userId: string, botId: string, token: string, since: n
 export function registerSelfCheckRoutes(api: Hono<{ Variables: { user: UserRecord } }>) {
   api.get("/bots/:id/selfcheck", (c) => {
     const user = c.get("user");
-    const fr = user.locale === "fr";
-    const bot = bots.owned(user.id, c.req.param("id") ?? "") ?? fail(404, fr ? "Ce bot n'existe pas." : "That bot does not exist.");
+    const bot = bots.owned(user.id, c.req.param("id") ?? "") ?? fail(404, tr(user.locale, "That bot does not exist."));
     const token = c.req.query("token") ?? "";
     const since = Number(c.req.query("since"));
-    if (!SELFCHECK_TOKEN.test(token) || !Number.isFinite(since) || since <= 0) fail(400, fr ? "Vérification inconnue." : "Unknown check.");
+    if (!SELFCHECK_TOKEN.test(token) || !Number.isFinite(since) || since <= 0) fail(400, tr(user.locale, "Unknown check."));
     return c.json(selfCheck(user.id, bot.id, token, since), 200, { "cache-control": "no-store" });
   });
 }

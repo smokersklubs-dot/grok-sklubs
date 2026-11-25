@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto"; import { tr } from "./i18n.js";
 import { q } from "./db.js";
 import { attachmentAt } from "./computer.js";
 import { bots, rows, type BotRecord } from "./store.js";
@@ -44,9 +44,7 @@ export function exportStatus(item: RenderJob) {
       state: "failed" as const,
       file: undefined,
       error:
-        item.locale === "fr"
-          ? "Le fichier a été retiré de la bibliothèque. Tu peux relancer l’export."
-          : "The file was removed. You can render it again.",
+        tr(item.locale, "The file was removed. You can render it again."),
     };
   }
   return {
@@ -112,9 +110,7 @@ export function enqueueExport(
     )!.n;
     if (count >= 8)
       throw Error(
-        locale === "fr"
-          ? "Huit rendus sont déjà en attente sur ce bureau."
-          : "Eight renders are already waiting on this desktop.",
+        tr(locale, "Eight renders are already waiting on this desktop."),
       );
     const id = old?.id ?? randomUUID();
     if (old)
@@ -217,9 +213,7 @@ export function drainExports(encode: Encoder) {
         throw Error("Montage indisponible.");
       if (job.attempts > 3)
         throw Error(
-          job.locale === "fr"
-            ? "Le serveur a interrompu plusieurs rendus. Tu peux relancer cet export."
-            : "The server interrupted multiple attempts. You can retry this export.",
+          tr(job.locale, "The server interrupted multiple attempts. You can retry this export."),
         );
       return encode(
         bot,

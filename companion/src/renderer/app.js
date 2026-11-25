@@ -125,6 +125,13 @@ function render(s) {
     el.append(name, where, lab, rm);
     fl.append(el);
   }
+  // Android phones by USB (protocol 1.9): « {phone} utilisé par {bot} », and how to install adb when it is missing.
+  const pl = $('phones');
+  pl.replaceChildren();
+  const uses = s.phones || [];
+  if (!uses.length) { const p = document.createElement('p'); p.className = 'muted small'; p.textContent = t('phones.none'); pl.append(p); }
+  for (const u of uses) { const p = document.createElement('p'); p.className = 'name'; p.textContent = t('phones.inUse', { phone: u.model, bot: u.botName }); pl.append(p); }
+  show($('phones-guide'), !s.adbFound);
   const fe = $('folder-error');
   fe.textContent = s.folderError || '';
   show(fe, !!s.folderError);

@@ -1,6 +1,6 @@
 import type { Context, Hono } from "hono";
 import { emit } from "./bus.js";
-import { compactCommand, compactDoneText, localeFr, noticeIn } from "./agent/compactplus.js";
+import { compactCommand, compactDoneText, localeOfBot, noticeIn } from "./agent/compactplus.js";
 import { compactIfNeeded } from "./agent/memory.js";
 import { threadLane } from "./agent/lanes.js";
 import { enqueue, inQueue, interrupt, runningThreads, submitUserMessage } from "./agent/loop.js";
@@ -37,7 +37,7 @@ export async function typedControl(bot: BotRecord, _user: UserRecord, text: stri
   if (stop === "all") { await stopAndReport(bot, { dropQueue: true }); return true; }
   if (stop === "stop" && hasWork(bot)) { await stopAndReport(bot, { dropQueue: false, thread }); return true; }
   const compact = compactCommand(text); // L80 `/compact <consigne>`: summarised now, in this conversation's queue (compactplus.ts)
-  if (compact) { void inQueue(bot.id, () => compactIfNeeded(bots.byId(bot.id) ?? bot, true, { thread, instruction: compact.instruction }), threadLane(bot.id, thread)).then((r) => noticeIn(bot, thread, compactDoneText(localeFr(bot), r)), (e) => noticeIn(bot, thread, compactDoneText(localeFr(bot), { changed: false, before: 0, after: 0 }, (e as Error).message))); return true; }
+  if (compact) { void inQueue(bot.id, () => compactIfNeeded(bots.byId(bot.id) ?? bot, true, { thread, instruction: compact.instruction }), threadLane(bot.id, thread)).then((r) => noticeIn(bot, thread, compactDoneText(localeOfBot(bot), r)), (e) => noticeIn(bot, thread, compactDoneText(localeOfBot(bot), { changed: false, before: 0, after: 0 }, (e as Error).message))); return true; }
   if (planTyped(bot, text, thread)) return true; // L79 « /plan <demande> », « /plan off » (turnplusroutes.ts)
   const side = sideCommand(text);
   if (side?.kind === "btw") { void answerSide(bot, side.text, thread); return true; }
@@ -61,14 +61,14 @@ export function registerTurnControl<E extends { Variables: { user: UserRecord } 
   api.get("/team/ask-policy", (c) => c.json({ mode: askMode(c.get("user").id) }));
   api.put("/team/ask-policy", async (c) => {
     const mode = (await c.req.json().catch(() => ({})))?.mode;
-    if (mode !== "open" && mode !== "hierarchy") return c.json({ error: c.get("user").locale === "fr" ? "Choix inconnu." : "Unknown choice." }, 400);
+    if (mode !== "open" && mode !== "hierarchy") return c.json({ error: tr(c.get("user").locale, "Unknown choice.") }, 400);
     return c.json({ mode: setAskMode(c.get("user").id, mode) });
   });
   api.put("/sections/:id/lead", async (c) => {
     const user = c.get("user");
     const botId = String((await c.req.json().catch(() => ({})))?.botId ?? "");
     const lead = bots.owned(user.id, botId);
-    if (!lead || lead.kind !== "agent" || lead.sectionId !== c.req.param("id")) return c.json({ error: user.locale === "fr" ? "Ce bot n'est pas dans cette section." : "That bot is not in this section." }, 404);
+    if (!lead || lead.kind !== "agent" || lead.sectionId !== c.req.param("id")) return c.json({ error: tr(user.locale, "That bot is not in this section.") }, 404);
     setSectionLead(user.id, lead.sectionId, lead.id);
     return c.json({ lead: lead.id });
   });
@@ -76,7 +76,7 @@ export function registerTurnControl<E extends { Variables: { user: UserRecord } 
   api.get("/bots/:id/notes", (c) => c.json({ notes: waitingNotes(ownAgent(c).id) }));
   api.delete("/bots/:id/notes/:noteId", (c) => {
     const bot = ownAgent(c);
-    if (!removeNote(bot.id, Number(c.req.param("noteId")))) return c.json({ error: c.get("user").locale === "fr" ? "Ce message a déjà été lu par le bot." : "The bot has already read this message." }, 404);
+    if (!removeNote(bot.id, Number(c.req.param("noteId")))) return c.json({ error: tr(c.get("user").locale, "The bot has already read this message.") }, 404);
     return c.json({ ok: true, notes: waitingNotes(bot.id) });
   });
   /** « Reprendre ma note » (L94): the note a restart kept is sent again as a new message. */

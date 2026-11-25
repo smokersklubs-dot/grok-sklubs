@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { t as tr } from "../i18n";
 import { api, errText } from "../api";
 import type { Attachment } from "../types";
 import { ErrorNote } from "./ui";
@@ -98,7 +99,7 @@ export function StudioMp4({
             setError("");
           }}
         />{" "}
-        {fr ? "Lire les titres en voix off" : "Narrate the captions"}
+        {tr("studio.narrateCaptions")}
       </label>
       {job?.file && !dirty ? (
         <a
@@ -108,32 +109,22 @@ export function StudioMp4({
           }
           download
         >
-          {fr ? "Télécharger le MP4" : "Download MP4"}
+          {tr("studio.downloadMp")}
         </a>
       ) : (
         <button type="button" className="btn btn-small" disabled={dirty || busy} onClick={start}>
           {job?.state === "queued"
-            ? fr
-              ? "En file d’attente…"
-              : "Queued…"
+            ? tr("studio.queued")
             : busy
-              ? fr
-                ? "Rendu MP4 en cours…"
-                : "Rendering MP4…"
+              ? tr("studio.renderingMp")
               : job?.state === "failed"
-                ? fr
-                  ? "Relancer le MP4"
-                  : "Retry MP4"
-                : fr
-                  ? "Créer le MP4"
-                  : "Create MP4"}
+                ? tr("studio.retryMp")
+                : tr("studio.createMp")}
         </button>
       )}
       {dirty && (
         <small>
-          {fr
-            ? "Enregistre le montage pour exporter cette version."
-            : "Save the timeline to export this version."}
+          {tr("studio.saveTimelineExportVersion")}
         </small>
       )}
       {(error || job?.error) && <ErrorNote>{error || job?.error}</ErrorNote>}

@@ -13,7 +13,7 @@
  *   GET /routines/:id/options   → { announce, condition, heavy }
  *   PUT /routines/:id/options   { announce?, condition?, heavy? } → same
  */
-import type { Context, Hono } from "hono";
+import type { Context, Hono } from "hono"; import { tr } from "./i18n.js";
 import { q } from "./db.js";
 import { emit } from "./bus.js";
 import { body, fail } from "./routeinput.js";
@@ -54,12 +54,12 @@ export function announceOfRun(runId: string): Announce {
 type Env = { Variables: { user: UserRecord } };
 
 export function registerRoutineOptionRoutes(api: Hono<Env>) {
-  const own = (c: Context<Env>) => routines.owned(c.get("user").id, c.req.param("id") ?? "") ?? fail(404, c.get("user").locale === "fr" ? "Cette routine n'existe pas." : "That routine does not exist.");
+  const own = (c: Context<Env>) => routines.owned(c.get("user").id, c.req.param("id") ?? "") ?? fail(404, tr(c.get("user").locale, "That routine does not exist."));
   api.get("/routines/:id/options", (c) => c.json(routineOptions(own(c).id)));
   api.put("/routines/:id/options", async (c) => {
     const r = own(c);
     const b = await body(c);
-    if (b.announce !== undefined && b.announce !== "chat" && b.announce !== "thread") fail(400, c.get("user").locale === "fr" ? "Choix d'annonce inconnu." : "Unknown announce choice.");
+    if (b.announce !== undefined && b.announce !== "chat" && b.announce !== "thread") fail(400, tr(c.get("user").locale, "Unknown announce choice."));
     const next = setRoutineOptions(r.id, { announce: b.announce as Announce | undefined, condition: typeof b.condition === "string" ? b.condition : undefined, heavy: typeof b.heavy === "boolean" ? b.heavy : undefined });
     audit(c.get("user").id, "routine", `${r.name}: options changed (announce ${next.announce}, condition ${next.condition ? "set" : "none"}, heavy ${next.heavy ? "yes" : "no"})`, r.botId);
     emit(c.get("user").id, { type: "routines", botId: r.botId });

@@ -1,0 +1,138 @@
+{
+  "_about": "L160 — texts of the App Store and Google Play listings, one entry per app language (server/src/clientshared/locales.ts). Checked by `npm run store:check` (scripts/store-listing.mjs: length limits of both stores). Screenshots: `npm run store:shots` (captions below). Simple guide: docs/BOUTIQUES.md.",
+  "screens": [
+    "01-bots.png",
+    "02-chat.png",
+    "04-details.png",
+    "05-tasks.png",
+    "07-dark.png"
+  ],
+  "locales": {
+    "fr": {
+      "apple": "fr-FR",
+      "play": "fr-FR",
+      "name": "Sklubot – équipe de bots IA",
+      "subtitle": "Tes bots IA, sur ton serveur",
+      "shortDescription": "Tes bots IA hébergés chez toi : réponses en direct, tâches et fichiers.",
+      "promotionalText": "Suis tes bots IA où que tu sois : réponses en direct, accords en un geste, tâches et fichiers. Tout reste sur ton propre serveur Sklubot.",
+      "keywords": "assistant,chatbot,bot,agent,productivité,tâches,serveur,auto-hébergé,chat,équipe,automatisation",
+      "description": "Sklubot, c'est ta propre équipe de bots IA, chacun avec sa mémoire, ses compétences et ses routines, qui tourne sur ton serveur. Cette appli est le client mobile de ton serveur Sklubot.\n\nCe que tu peux faire\n• Voir tes bots et tes salons, leurs messages non lus et ce qu'ils font en ce moment.\n• Discuter avec un bot et suivre sa réponse en direct, étape par étape.\n• Joindre une photo, une image prise avec l'appareil photo ou un fichier.\n• Autoriser ou refuser une action en un geste quand un bot te demande la permission.\n• Répondre aux questions de tes bots et suivre leurs tâches.\n• Regarder l'écran de l'ordinateur d'un bot et prendre la main quand il a besoin de toi.\n• Parcourir la bibliothèque de chaque bot (rapports, notes, images) et partager un fichier.\n• Recevoir une notification quand un bot t'attend ou a fini.\n• Thème clair ou sombre, en sept langues.\n\nTes données restent chez toi\nL'appli ne parle qu'au serveur dont tu saisis l'adresse. Pas de publicité, pas de mesure d'audience, pas de traceur. Ta session est gardée chiffrée sur le téléphone.\n\nIl te faut un serveur Sklubot\nSklubot est un logiciel libre que tu installes sur ton serveur (ou celui de ton organisation). Les réglages avancés se font sur le site web de ton serveur.",
+      "releaseNotes": "Fiche en sept langues, captions des captures, préparation de l'envoi aux boutiques.",
+      "captions": [
+        "Tous tes bots, d'un coup d'œil",
+        "Suis chaque réponse en direct",
+        "Ce que fait chaque bot",
+        "Les tâches en cours et à faire",
+        "Clair ou sombre, à ton goût"
+      ]
+    },
+    "en": {
+      "apple": "en-US",
+      "play": "en-US",
+      "name": "Sklubot – Your AI bot team",
+      "subtitle": "Your AI bots, on your server",
+      "shortDescription": "Chat with the AI bots you host yourself: live answers, tasks and files.",
+      "promotionalText": "Follow your AI bots wherever you are: live answers, approvals in one tap, tasks and files. Everything stays on your own Sklubot server.",
+      "keywords": "assistant,chatbot,bot,agent,productivity,tasks,server,self-hosted,chat,team,automation",
+      "description": "Sklubot is your own team of AI bots, each with its memory, skills and routines, running on your server. This app is the mobile client of your Sklubot server.\n\nWhat you can do\n• See your bots and rooms, their unread messages and what they are doing right now.\n• Chat with a bot and follow its answer live, step by step.\n• Attach a photo, a picture from the camera or a file.\n• Allow or refuse an action in one tap when a bot asks for permission.\n• Answer your bots' questions and follow their tasks.\n• Watch a bot's computer screen and take over when it needs you.\n• Browse each bot's library (reports, notes, pictures) and share a file.\n• Get a notification when a bot is waiting for you or has finished.\n• Light or dark theme, in seven languages.\n\nYour data stays with you\nThe app only talks to the server whose address you type. No ads, no analytics, no trackers. Your session is kept encrypted on the phone.\n\nYou need a Sklubot server\nSklubot is free software you install on your server (or your organisation's). Advanced settings are on your server's website.",
+      "releaseNotes": "Store listing in seven languages, screenshot captions, store submission ready.",
+      "captions": [
+        "All your bots at a glance",
+        "Follow every answer live",
+        "What each bot is doing",
+        "Tasks in progress and to do",
+        "Light or dark, your choice"
+      ]
+    },
+    "es": {
+      "apple": "es-ES",
+      "play": "es-ES",
+      "name": "Sklubot – Tu equipo de bots IA",
+      "subtitle": "Tus bots IA, en tu servidor",
+      "shortDescription": "Habla con los bots de IA que alojas tú: respuestas en directo, tareas, archivos.",
+      "promotionalText": "Sigue a tus bots de IA estés donde estés: respuestas en directo, permisos con un toque, tareas y archivos. Todo se queda en tu propio servidor Sklubot.",
+      "keywords": "asistente,chatbot,bot,agente,productividad,tareas,servidor,autoalojado,chat,equipo,automatización",
+      "description": "Sklubot es tu propio equipo de bots de IA, cada uno con su memoria, sus habilidades y sus rutinas, que funciona en tu servidor. Esta app es el cliente móvil de tu servidor Sklubot.\n\nLo que puedes hacer\n• Ver tus bots y tus salas, sus mensajes sin leer y lo que están haciendo ahora.\n• Hablar con un bot y seguir su respuesta en directo, paso a paso.\n• Adjuntar una foto, una imagen de la cámara o un archivo.\n• Permitir o rechazar una acción con un toque cuando un bot te pide permiso.\n• Responder a las preguntas de tus bots y seguir sus tareas.\n• Ver la pantalla del ordenador de un bot y tomar el control cuando te necesita.\n• Explorar la biblioteca de cada bot (informes, notas, imágenes) y compartir un archivo.\n• Recibir una notificación cuando un bot te espera o ha terminado.\n• Tema claro u oscuro, en siete idiomas.\n\nTus datos se quedan contigo\nLa app solo habla con el servidor cuya dirección escribes. Sin anuncios, sin analítica, sin rastreadores. Tu sesión se guarda cifrada en el teléfono.\n\nNecesitas un servidor Sklubot\nSklubot es software libre que instalas en tu servidor (o en el de tu organización). Los ajustes avanzados están en la web de tu servidor.",
+      "releaseNotes": "Ficha en siete idiomas, textos de las capturas, envío a las tiendas preparado.",
+      "captions": [
+        "Todos tus bots de un vistazo",
+        "Sigue cada respuesta en directo",
+        "Lo que hace cada bot",
+        "Tareas en curso y pendientes",
+        "Claro u oscuro, como prefieras"
+      ]
+    },
+    "de": {
+      "apple": "de-DE",
+      "play": "de-DE",
+      "name": "Sklubot – Dein KI-Bot-Team",
+      "subtitle": "Deine KI-Bots, dein Server",
+      "shortDescription": "Chatte mit KI-Bots auf deinem eigenen Server: Live-Antworten, Aufgaben, Dateien.",
+      "promotionalText": "Behalte deine KI-Bots überall im Blick: Live-Antworten, Freigaben mit einem Tipp, Aufgaben und Dateien. Alles bleibt auf deinem eigenen Sklubot-Server.",
+      "keywords": "Assistent,Chatbot,Bot,Agent,Produktivität,Aufgaben,Server,selbst gehostet,Chat,Team,Automatisierung",
+      "description": "Sklubot ist dein eigenes Team aus KI-Bots, jeder mit eigenem Gedächtnis, eigenen Fähigkeiten und Routinen, das auf deinem Server läuft. Diese App ist der mobile Client deines Sklubot-Servers.\n\nWas du tun kannst\n• Deine Bots und Räume sehen, ungelesene Nachrichten und was sie gerade tun.\n• Mit einem Bot chatten und seine Antwort live verfolgen, Schritt für Schritt.\n• Ein Foto, ein Kamerabild oder eine Datei anhängen.\n• Eine Aktion mit einem Tipp erlauben oder ablehnen, wenn ein Bot um Erlaubnis bittet.\n• Die Fragen deiner Bots beantworten und ihre Aufgaben verfolgen.\n• Den Bildschirm des Computers eines Bots ansehen und übernehmen, wenn er dich braucht.\n• Die Bibliothek jedes Bots durchsuchen (Berichte, Notizen, Bilder) und eine Datei teilen.\n• Benachrichtigt werden, wenn ein Bot auf dich wartet oder fertig ist.\n• Helles oder dunkles Design, in sieben Sprachen.\n\nDeine Daten bleiben bei dir\nDie App spricht nur mit dem Server, dessen Adresse du eingibst. Keine Werbung, keine Analyse, keine Tracker. Deine Sitzung wird verschlüsselt auf dem Telefon gespeichert.\n\nDu brauchst einen Sklubot-Server\nSklubot ist freie Software, die du auf deinem Server (oder dem deiner Organisation) installierst. Erweiterte Einstellungen findest du auf der Website deines Servers.",
+      "releaseNotes": "Store-Eintrag in sieben Sprachen, Bildtexte der Screenshots, Store-Einreichung vorbereitet.",
+      "captions": [
+        "Alle Bots auf einen Blick",
+        "Jede Antwort live verfolgen",
+        "Was jeder Bot gerade tut",
+        "Laufende und offene Aufgaben",
+        "Hell oder dunkel, wie du willst"
+      ]
+    },
+    "it": {
+      "apple": "it",
+      "play": "it-IT",
+      "name": "Sklubot – Team di bot IA",
+      "subtitle": "I tuoi bot IA, sul tuo server",
+      "shortDescription": "Chatta con i bot IA ospitati da te: risposte in diretta, attività, file.",
+      "promotionalText": "Segui i tuoi bot IA ovunque tu sia: risposte in diretta, autorizzazioni con un tocco, attività e file. Tutto resta sul tuo server Sklubot.",
+      "keywords": "assistente,chatbot,bot,agente,produttività,attività,server,self-hosted,chat,team,automazione",
+      "description": "Sklubot è il tuo team di bot IA, ognuno con la sua memoria, le sue competenze e le sue routine, che gira sul tuo server. Questa app è il client mobile del tuo server Sklubot.\n\nCosa puoi fare\n• Vedere i tuoi bot e le tue stanze, i messaggi non letti e cosa stanno facendo ora.\n• Chattare con un bot e seguire la sua risposta in diretta, passo dopo passo.\n• Allegare una foto, un'immagine dalla fotocamera o un file.\n• Autorizzare o rifiutare un'azione con un tocco quando un bot ti chiede il permesso.\n• Rispondere alle domande dei tuoi bot e seguire le loro attività.\n• Guardare lo schermo del computer di un bot e prendere il controllo quando ha bisogno di te.\n• Sfogliare la libreria di ogni bot (rapporti, note, immagini) e condividere un file.\n• Ricevere una notifica quando un bot ti aspetta o ha finito.\n• Tema chiaro o scuro, in sette lingue.\n\nI tuoi dati restano con te\nL'app parla solo con il server di cui inserisci l'indirizzo. Niente pubblicità, niente statistiche, niente tracker. La tua sessione è conservata cifrata sul telefono.\n\nTi serve un server Sklubot\nSklubot è software libero che installi sul tuo server (o su quello della tua organizzazione). Le impostazioni avanzate sono sul sito del tuo server.",
+      "releaseNotes": "Scheda in sette lingue, didascalie degli screenshot, invio agli store pronto.",
+      "captions": [
+        "Tutti i tuoi bot a colpo d'occhio",
+        "Segui ogni risposta in diretta",
+        "Cosa fa ogni bot",
+        "Attività in corso e da fare",
+        "Chiaro o scuro, come preferisci"
+      ]
+    },
+    "pt": {
+      "apple": "pt-BR",
+      "play": "pt-BR",
+      "name": "Sklubot – Equipe de bots IA",
+      "subtitle": "Seus bots IA no seu servidor",
+      "shortDescription": "Converse com seus bots de IA: respostas ao vivo, tarefas e arquivos.",
+      "promotionalText": "Acompanhe seus bots de IA onde estiver: respostas ao vivo, autorizações com um toque, tarefas e arquivos. Tudo fica no seu próprio servidor Sklubot.",
+      "keywords": "assistente,chatbot,bot,agente,produtividade,tarefas,servidor,auto-hospedado,chat,equipe,automação",
+      "description": "Sklubot é a sua própria equipe de bots de IA, cada um com sua memória, suas habilidades e suas rotinas, rodando no seu servidor. Este app é o cliente móvel do seu servidor Sklubot.\n\nO que você pode fazer\n• Ver seus bots e salas, as mensagens não lidas e o que eles estão fazendo agora.\n• Conversar com um bot e acompanhar a resposta ao vivo, passo a passo.\n• Anexar uma foto, uma imagem da câmera ou um arquivo.\n• Autorizar ou recusar uma ação com um toque quando um bot pede permissão.\n• Responder às perguntas dos seus bots e acompanhar as tarefas deles.\n• Ver a tela do computador de um bot e assumir o controle quando ele precisar de você.\n• Navegar na biblioteca de cada bot (relatórios, notas, imagens) e compartilhar um arquivo.\n• Receber uma notificação quando um bot está esperando por você ou terminou.\n• Tema claro ou escuro, em sete idiomas.\n\nSeus dados ficam com você\nO app só conversa com o servidor cujo endereço você digita. Sem anúncios, sem análises, sem rastreadores. Sua sessão fica guardada criptografada no telefone.\n\nVocê precisa de um servidor Sklubot\nSklubot é um software livre que você instala no seu servidor (ou no da sua organização). As configurações avançadas ficam no site do seu servidor.",
+      "releaseNotes": "Página da loja em sete idiomas, legendas das capturas, envio às lojas preparado.",
+      "captions": [
+        "Todos os seus bots num relance",
+        "Acompanhe cada resposta ao vivo",
+        "O que cada bot está fazendo",
+        "Tarefas em andamento e a fazer",
+        "Claro ou escuro, como preferir"
+      ]
+    },
+    "zh": {
+      "apple": "zh-Hans",
+      "play": "zh-CN",
+      "name": "Sklubot – 你的 AI 机器人团队",
+      "subtitle": "你的 AI 机器人，在你的服务器上",
+      "shortDescription": "与你自己托管的 AI 机器人聊天：实时回答、任务和文件。",
+      "promotionalText": "随时随地关注你的 AI 机器人：实时回答、一键批准、任务和文件。所有内容都留在你自己的 Sklubot 服务器上。",
+      "keywords": "助手,人工智能,机器人,智能体,效率,任务,服务器,自托管,聊天,团队",
+      "description": "Sklubot 是你自己的 AI 机器人团队，每个机器人都有自己的记忆、技能和例行任务，运行在你的服务器上。这个应用是你的 Sklubot 服务器的移动客户端。\n\n你可以做什么\n• 查看你的机器人和聊天室、未读消息以及它们正在做的事情。\n• 与机器人聊天，一步一步实时关注它的回答。\n• 附上一张照片、相机拍摄的图片或一个文件。\n• 当机器人请求许可时，一键允许或拒绝某个操作。\n• 回答机器人的问题，关注它们的任务。\n• 查看机器人电脑的屏幕，在它需要你时接手操作。\n• 浏览每个机器人的资料库（报告、笔记、图片）并分享文件。\n• 当机器人在等你或已完成时收到通知。\n• 浅色或深色主题，支持七种语言。\n\n你的数据留在你这里\n应用只与你输入地址的服务器通信。没有广告，没有统计分析，没有追踪器。你的会话以加密方式保存在手机上。\n\n你需要一台 Sklubot 服务器\nSklubot 是自由软件，可安装在你的服务器（或你所在组织的服务器）上。高级设置在你服务器的网站上进行。",
+      "releaseNotes": "七种语言的商店页面、截图说明文字，已准备好提交到应用商店。",
+      "captions": [
+        "一眼看到所有机器人",
+        "实时关注每个回答",
+        "每个机器人在做什么",
+        "进行中和待办的任务",
+        "浅色或深色，随你选择"
+      ]
+    }
+  }
+}

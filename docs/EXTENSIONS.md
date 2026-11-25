@@ -28,10 +28,43 @@ l'appli Sklubot sur ton téléphone, avec la raison et le temps qu'il reste (3 m
   par le serveur.
 - **Pas faits, avec la raison** : Android par USB (outil `adb`) — gratuit et officiel, mais il faut le mode
   développeur et le « débogage USB » sur le téléphone et un câble vers l'ordinateur ; le contrôle du téléphone existe déjà
-  par l'appli Android (service d'accessibilité), sans ces réglages risqués. Bot qui rejoint une réunion — Zoom (Meeting SDK),
-  Google Meet (Media API) et Teams (Graph, communications) demandent une inscription développeur, une validation ou un
-  abonnement Azure payant : pas « officiel et gratuit » pour tout le monde. Live Activity iPhone et appli iOS : pas
+  par l'appli Android (service d'accessibilité), sans ces réglages risqués. Bot qui rejoint une réunion : fait autrement que par
+  les SDK payants ou soumis à validation, comme un invité dans le navigateur de son ordinateur (voir « Bot en réunion »
+  plus bas). Live Activity iPhone et appli iOS : pas
   d'appli iOS construite ici.
+
+## Bot en réunion (L177)
+
+Tu donnes à ton bot le lien d'une réunion **Google Meet, Zoom (client web), Microsoft Teams ou Jitsi**. Il y entre comme
+un invité, depuis le navigateur de **son propre ordinateur Linux**, prend des notes, puis poste dans la discussion le
+résumé, les décisions et les actions à faire (« qui — quoi — quand »).
+
+- **Seulement toi** : par le menu « + » de la discussion → « Envoyer dans une réunion en ligne » (une carte à vérifier :
+  le lien, le nom affiché, la durée maximale, l'avertissement), ou en le demandant au bot dans la discussion (une carte
+  d'accord avec le lien, montrée à chaque fois, même si tu as déjà dit « toujours »). Une routine, un courriel, un autre
+  bot, l'API ou un membre de ton espace ne peuvent pas l'envoyer.
+- **Nom affiché** : « <Bot> (assistant de <toi>) — prend des notes ». Dès qu'il est entré, il écrit dans la discussion de
+  la réunion : « Je prends des notes pour <toi> ; dites-le si vous refusez (écrivez « je refuse ») et je quitte la
+  réunion ». S'il ne peut pas écrire ce message, il repart tout de suite sans rien enregistrer.
+- **Il part** quand tu le demandes (bouton « Faire partir le bot » ou dans la discussion), quand quelqu'un écrit un mot de
+  refus (« je refuse », « pas d'enregistrement », « no recording »… et tes propres mots, dans les réglages), à la durée
+  maximale (60 min par défaut, de 5 à 240), ou quand la réunion se termine.
+- **Jamais de compte** : il ne se connecte à rien. Une réunion qui demande de se connecter n'est pas rejointe. Une salle
+  d'attente que personne n'ouvre en 10 minutes : il abandonne.
+- **Muet** : micro et caméra refusés au site de la réunion par le navigateur ; il ne parle jamais (la voix n'est pas
+  branchée sur les réunions).
+- **Ce qui est gardé** : la transcription et les notes, seulement dans tes fichiers du bot (`meetings/…`). Le son n'est
+  pas gardé. La transcription utilise ta reconnaissance vocale (Réglages → Voix ; ton Whisper est gratuit, un service
+  payant seulement si tu l'as coché pour cette réunion).
+- **Attention à la loi** : selon le pays, enregistrer ou transcrire une réunion peut demander l'accord de chaque
+  participant. Préviens-les avant d'envoyer le bot.
+
+Comment : le navigateur Chromium de l'ordinateur du bot est piloté par le protocole DevTools documenté (onglet, clics,
+texte tapé, touche Entrée) ; les boutons sont trouvés par leur nom affiché ou leur étiquette d'accessibilité, en français
+et en anglais. Le son est celui que joue l'onglet, capté par la carte son virtuelle de l'ordinateur (comme
+`listen_screen`), minute par minute. Pas de SDK, pas d'API privée. **Jamais essayé sur une vraie réunion ici** : testé
+sur une fausse page de réunion dans un vrai Chromium (`server/test/meeting-bot.test.ts`). Les pages des services changent :
+si un bouton n'est pas trouvé, le bot le dit et ferme la réunion, sans rien enregistrer.
 
 ## 1Password et Bitwarden en direct (L179)
 

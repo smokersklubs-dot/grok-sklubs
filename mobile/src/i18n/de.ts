@@ -579,6 +579,10 @@ export const de: Partial<Record<Key, string>> = {
   "metrics.hint": "Für ein Monitoring-Tool (Prometheus) kann der Betreiber des Servers /api/metrics mit METRICS_TOKEN einschalten (docs/DEPLOIEMENT.md).",
   "settings.botTheme": "Bot-Design",
   "settings.botThemeHint": "Die Farben des Designs, das du in der Web-App angewendet hast. Schalte es aus, um auf diesem Handy zu den Originalfarben zurückzukehren.",
+  "liveActivity.stop": "Stoppen",
+  "liveActivity.running": "Läuft",
+  "liveActivity.stopTitle": "Die Aufgabe von {name} stoppen?",
+  "liveActivity.stopBody": "Was bereits erledigt ist, bleibt im Chat.",
 };
 
 /** The server's English account errors (src/i18n/index.ts, SERVER_FR). */

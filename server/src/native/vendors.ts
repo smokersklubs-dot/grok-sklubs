@@ -1,4 +1,4 @@
-import { config } from "../config.js"; import { byLocale, type LocaleTexts } from "../lang/index.js";
+import { config } from "../config.js"; import { localize } from "../lang/index.js";
 import type { Locale, NativeApp, NativeAppId, NativeVendor } from "../shared.js";
 
 /**
@@ -88,21 +88,14 @@ export const appOf = (id: string): NativeApp | undefined => NATIVE_APPS.find((a)
 export const VENDORS: NativeVendor[] = ["google", "microsoft", "slack"];
 export const VENDOR_NAMES: Record<NativeVendor, string> = { google: "Google", microsoft: "Microsoft", slack: "Slack" };
 
-const FR_APPS: Record<NativeAppId, { category: string; description: string }> = {
-  gmail: { category: "Mail & agenda", description: "Chercher et lire les e-mails, écrire des brouillons, envoyer (avec ton accord), étiqueter et archiver. Déclencheur : nouvel e-mail correspondant à une recherche." },
-  gcalendar: { category: "Mail & agenda", description: "Voir ton agenda et tes disponibilités ; créer, déplacer ou annuler des événements (avec ton accord). Déclencheur : un événement qui commence bientôt." },
-  gdrive: { category: "Fichiers", description: "Chercher dans ton Drive, lire les documents en texte (Docs, Sheets et Slides exportés), envoyer des fichiers depuis la bibliothèque d'un bot (avec ton accord)." },
-  outlook: { category: "Mail & agenda", description: "Mail et agenda Microsoft 365 ou Outlook.com : recherche, lecture, brouillons, envoi, archivage ; agenda, disponibilités et événements. Déclencheurs : nouvel e-mail, événement qui commence bientôt." },
-  slack: { category: "Communication", description: "Lire les canaux et messages directs, publier (avec ton accord) et réagir, avec ta propre app Slack. Déclencheurs : nouveau message dans un canal ou en privé, ou une mention." },
-  searchconsole: { category: "Analytique & SEO", description: "Tes vraies données de recherche Google : clics, impressions, positions par requête et par page, plans de site, pourquoi une page n'est pas indexée. Aussi PageSpeed pour n'importe quelle page, et IndexNow pour signaler aux moteurs qu'une page a changé (avec ton accord)." },
-};
-export const appsFor = (locale: Locale): NativeApp[] => (locale === "fr" ? NATIVE_APPS.map((a) => ({ ...a, ...FR_APPS[a.id] })) : NATIVE_APPS);
+export const appsFor = (locale: Locale): NativeApp[] =>
+  NATIVE_APPS.map((a) => ({ ...a, category: localize(locale, a.category, VENDOR_FR), description: localize(locale, a.description, VENDOR_FR) }));
 
 /**
  * How to create each vendor's OAuth client, step by step. Wording follows the vendors' own pages (linked in `docs`).
  * `{redirect}` and `{scopes}` are filled in by the caller.
  */
-const STEPS: Record<NativeVendor, LocaleTexts<string[]>> = {
+const STEPS: Record<NativeVendor, { en: string[] }> = {
   google: {
     en: [
       "Open the Google Cloud console (console.cloud.google.com) and create a project, or pick an existing one.",
@@ -111,14 +104,6 @@ const STEPS: Record<NativeVendor, LocaleTexts<string[]>> = {
       "Google Auth platform → Data Access → Add or Remove Scopes: add the scopes listed below, then Save.",
       "Google Auth platform → Clients → Create Client → Application type: Web application. Under Authorized redirect URIs, add exactly the address below, then click Create.",
       "Copy the client ID and the client secret shown for this client into the fields below.",
-    ],
-    fr: [
-      "Ouvre la console Google Cloud (console.cloud.google.com) et crée un projet, ou choisis-en un existant.",
-      "Menu → APIs & Services → Library : active Gmail API, Google Calendar API, Google Drive API et/ou Google Search Console API — seulement celles que tu vas connecter.",
-      "Menu → Google Auth platform → Branding : indique un nom d'app (par ex. Sklubot) et ton e-mail d'assistance. Puis Audience : choisis External (ou Internal sur Google Workspace) et, sous Test users, clique sur Add users et ajoute chaque adresse Google que tu vas connecter.",
-      "Google Auth platform → Data Access → Add or Remove Scopes : ajoute les autorisations (scopes) listées ci-dessous, puis Save.",
-      "Google Auth platform → Clients → Create Client → Application type : Web application. Sous Authorized redirect URIs, ajoute exactement l'adresse ci-dessous, puis clique sur Create.",
-      "Copie l'identifiant client (client ID) et le secret client (client secret) de ce client dans les champs ci-dessous.",
     ],
   },
   microsoft: {
@@ -130,14 +115,6 @@ const STEPS: Record<NativeVendor, LocaleTexts<string[]>> = {
       "Manage → API permissions → Add a permission → Microsoft Graph → Delegated permissions: add the permissions listed below.",
       "Copy the Application (client) ID from the Overview page and the secret value into the fields below.",
     ],
-    fr: [
-      "Connecte-toi au centre d'administration Microsoft Entra (entra.microsoft.com) avec un compte autorisé à inscrire des applications.",
-      "Entra ID → App registrations → New registration. Donne-lui un nom (par ex. Sklubot). Supported account types : « Any Entra ID Tenant + Personal Microsoft accounts » pour connecter Outlook.com et des comptes professionnels (ou « Single tenant only » pour ton organisation : indique alors son ID de locataire dans le champ Annuaire ci-dessous). Clique sur Register.",
-      "Manage → Authentication → Add Redirect URI → Web : colle exactement l'adresse ci-dessous, puis Configure.",
-      "Manage → Certificates & secrets → New client secret. Copie tout de suite sa Value (elle n'est affichée qu'une fois).",
-      "Manage → API permissions → Add a permission → Microsoft Graph → Delegated permissions : ajoute les autorisations listées ci-dessous.",
-      "Copie l'Application (client) ID depuis la page Overview et la valeur du secret dans les champs ci-dessous.",
-    ],
   },
   slack: {
     en: [
@@ -147,14 +124,6 @@ const STEPS: Record<NativeVendor, LocaleTexts<string[]>> = {
       "For instant triggers without a public address (optional): Socket Mode → Enable Socket Mode; Basic Information → App-Level Tokens → Generate Token and Scopes with the connections:write scope, and paste the xapp-… token below. Then Event Subscriptions → Subscribe to bot events: message.channels, message.groups, message.im and app_mention. Without it, triggers check Slack every few minutes.",
       "Basic Information → App Credentials: copy the Client ID and the Client Secret into the fields below.",
       "After signing in, invite the app into each channel it should read or post in (/invite @your-app).",
-    ],
-    fr: [
-      "Ouvre api.slack.com/apps → Create New App → From scratch. Donne-lui un nom (par ex. Sklubot) et choisis ton espace de travail.",
-      "OAuth & Permissions → Redirect URLs : ajoute exactement l'adresse ci-dessous (Slack exige https) et clique sur Save URLs.",
-      "OAuth & Permissions → Scopes → Bot Token Scopes : ajoute les autorisations listées ci-dessous.",
-      "Pour des déclencheurs instantanés sans adresse publique (facultatif) : Socket Mode → Enable Socket Mode ; Basic Information → App-Level Tokens → Generate Token and Scopes avec l'autorisation connections:write, puis colle le jeton xapp-… ci-dessous. Ensuite Event Subscriptions → Subscribe to bot events : message.channels, message.groups, message.im et app_mention. Sans cela, les déclencheurs vérifient Slack toutes les quelques minutes.",
-      "Basic Information → App Credentials : copie le Client ID et le Client Secret dans les champs ci-dessous.",
-      "Après la connexion, invite l'app dans chaque canal qu'elle doit lire ou où elle doit écrire (/invite @ton-app).",
     ],
   },
 };
@@ -179,5 +148,39 @@ const DOCS: Record<NativeVendor, { label: string; url: string }[]> = {
   ],
 };
 
-export const setupSteps = (vendor: NativeVendor, locale: Locale) => byLocale(locale, STEPS[vendor]);
+/**
+ * French for the app texts and the OAuth setup steps above, keyed by the English text (other languages: server/src/lang/<code>.ts,
+ * docs/LANGUES.md). The vendors' own menu names (APIs & Services, Create Client…) stay in English: their consoles show them so.
+ */
+const VENDOR_FR: Record<string, string> = {
+  "Open the Google Cloud console (console.cloud.google.com) and create a project, or pick an existing one.": "Ouvre la console Google Cloud (console.cloud.google.com) et crée un projet, ou choisis-en un existant.",
+  "Menu → APIs & Services → Library: enable the Gmail API, the Google Calendar API, the Google Drive API and/or the Google Search Console API — only those you will connect.": "Menu → APIs & Services → Library : active Gmail API, Google Calendar API, Google Drive API et/ou Google Search Console API — seulement celles que tu vas connecter.",
+  "Menu → Google Auth platform → Branding: enter an app name (e.g. Sklubot) and your support email. Then Audience: choose External (or Internal on Google Workspace) and, under Test users, click Add users and add every Google address you will connect.": "Menu → Google Auth platform → Branding : indique un nom d'app (par ex. Sklubot) et ton e-mail d'assistance. Puis Audience : choisis External (ou Internal sur Google Workspace) et, sous Test users, clique sur Add users et ajoute chaque adresse Google que tu vas connecter.",
+  "Google Auth platform → Data Access → Add or Remove Scopes: add the scopes listed below, then Save.": "Google Auth platform → Data Access → Add or Remove Scopes : ajoute les autorisations (scopes) listées ci-dessous, puis Save.",
+  "Google Auth platform → Clients → Create Client → Application type: Web application. Under Authorized redirect URIs, add exactly the address below, then click Create.": "Google Auth platform → Clients → Create Client → Application type : Web application. Sous Authorized redirect URIs, ajoute exactement l'adresse ci-dessous, puis clique sur Create.",
+  "Copy the client ID and the client secret shown for this client into the fields below.": "Copie l'identifiant client (client ID) et le secret client (client secret) de ce client dans les champs ci-dessous.",
+  "Sign in to the Microsoft Entra admin center (entra.microsoft.com) with an account that may register applications.": "Connecte-toi au centre d'administration Microsoft Entra (entra.microsoft.com) avec un compte autorisé à inscrire des applications.",
+  "Entra ID → App registrations → New registration. Give it a name (e.g. Sklubot). Supported account types: “Any Entra ID Tenant + Personal Microsoft accounts” to connect both Outlook.com and work accounts (or “Single tenant only” for your organisation: then enter its tenant ID in the Directory field below). Click Register.": "Entra ID → App registrations → New registration. Donne-lui un nom (par ex. Sklubot). Supported account types : « Any Entra ID Tenant + Personal Microsoft accounts » pour connecter Outlook.com et des comptes professionnels (ou « Single tenant only » pour ton organisation : indique alors son ID de locataire dans le champ Annuaire ci-dessous). Clique sur Register.",
+  "Manage → Authentication → Add Redirect URI → Web: paste exactly the address below, then Configure.": "Manage → Authentication → Add Redirect URI → Web : colle exactement l'adresse ci-dessous, puis Configure.",
+  "Manage → Certificates & secrets → New client secret. Copy its Value right away (it is shown only once).": "Manage → Certificates & secrets → New client secret. Copie tout de suite sa Value (elle n'est affichée qu'une fois).",
+  "Manage → API permissions → Add a permission → Microsoft Graph → Delegated permissions: add the permissions listed below.": "Manage → API permissions → Add a permission → Microsoft Graph → Delegated permissions : ajoute les autorisations listées ci-dessous.",
+  "Copy the Application (client) ID from the Overview page and the secret value into the fields below.": "Copie l'Application (client) ID depuis la page Overview et la valeur du secret dans les champs ci-dessous.",
+  "Open api.slack.com/apps → Create New App → From scratch. Name it (e.g. Sklubot) and pick your workspace.": "Ouvre api.slack.com/apps → Create New App → From scratch. Donne-lui un nom (par ex. Sklubot) et choisis ton espace de travail.",
+  "OAuth & Permissions → Redirect URLs: add exactly the address below (Slack requires https) and click Save URLs.": "OAuth & Permissions → Redirect URLs : ajoute exactement l'adresse ci-dessous (Slack exige https) et clique sur Save URLs.",
+  "OAuth & Permissions → Scopes → Bot Token Scopes: add the scopes listed below.": "OAuth & Permissions → Scopes → Bot Token Scopes : ajoute les autorisations listées ci-dessous.",
+  "For instant triggers without a public address (optional): Socket Mode → Enable Socket Mode; Basic Information → App-Level Tokens → Generate Token and Scopes with the connections:write scope, and paste the xapp-… token below. Then Event Subscriptions → Subscribe to bot events: message.channels, message.groups, message.im and app_mention. Without it, triggers check Slack every few minutes.": "Pour des déclencheurs instantanés sans adresse publique (facultatif) : Socket Mode → Enable Socket Mode ; Basic Information → App-Level Tokens → Generate Token and Scopes avec l'autorisation connections:write, puis colle le jeton xapp-… ci-dessous. Ensuite Event Subscriptions → Subscribe to bot events : message.channels, message.groups, message.im et app_mention. Sans cela, les déclencheurs vérifient Slack toutes les quelques minutes.",
+  "Basic Information → App Credentials: copy the Client ID and the Client Secret into the fields below.": "Basic Information → App Credentials : copie le Client ID et le Client Secret dans les champs ci-dessous.",
+  "After signing in, invite the app into each channel it should read or post in (/invite @your-app).": "Après la connexion, invite l'app dans chaque canal qu'elle doit lire ou où elle doit écrire (/invite @ton-app).",
+  "Mail & calendar": "Mail & agenda",
+  "Search and read mail, write drafts, send (with your approval), label and archive. Triggers: new email matching a search.": "Chercher et lire les e-mails, écrire des brouillons, envoyer (avec ton accord), étiqueter et archiver. Déclencheur : nouvel e-mail correspondant à une recherche.",
+  "See your agenda and free/busy times; create, move or cancel events (with your approval). Triggers: an event starting soon.": "Voir ton agenda et tes disponibilités ; créer, déplacer ou annuler des événements (avec ton accord). Déclencheur : un événement qui commence bientôt.",
+  "Files": "Fichiers",
+  "Search your Drive, read documents as text (Google Docs, Sheets and Slides exported), upload files from a bot's library (with your approval).": "Chercher dans ton Drive, lire les documents en texte (Docs, Sheets et Slides exportés), envoyer des fichiers depuis la bibliothèque d'un bot (avec ton accord).",
+  "Analytics & SEO": "Analytique & SEO",
+  "Your real Google Search data: clicks, impressions, positions by query and page, sitemaps, why a page is not indexed. Also PageSpeed for any page, and IndexNow to tell search engines a page changed (with your approval).": "Tes vraies données de recherche Google : clics, impressions, positions par requête et par page, plans de site, pourquoi une page n'est pas indexée. Aussi PageSpeed pour n'importe quelle page, et IndexNow pour signaler aux moteurs qu'une page a changé (avec ton accord).",
+  "Microsoft 365 or Outlook.com mail and calendar: search, read, drafts, send, archive; agenda, free/busy and events. Triggers: new email, event starting soon.": "Mail et agenda Microsoft 365 ou Outlook.com : recherche, lecture, brouillons, envoi, archivage ; agenda, disponibilités et événements. Déclencheurs : nouvel e-mail, événement qui commence bientôt.",
+  "Communication": "Communication",
+  "Read channels and direct messages, post (with your approval) and react, as your own Slack app. Triggers: new message in a channel or DM, or a mention.": "Lire les canaux et messages directs, publier (avec ton accord) et réagir, avec ta propre app Slack. Déclencheurs : nouveau message dans un canal ou en privé, ou une mention.",
+};
+export const setupSteps = (vendor: NativeVendor, locale: Locale) => STEPS[vendor].en.map((step) => localize(locale, step, VENDOR_FR));
 export const setupDocs = (vendor: NativeVendor) => DOCS[vendor];

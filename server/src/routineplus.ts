@@ -9,7 +9,7 @@
  * preview of the next runs), 13 (approve a routine's whole instruction with its scope), 45 (a correction changes only
  * the fields it names).
  */
-import { createHash } from "node:crypto"; import { localize } from "./lang/index.js";
+import { createHash } from "node:crypto"; import { localize } from "./lang/index.js"; import { intlOf } from "./lang/index.js";
 import { getLive } from "./bus.js";
 import { describeCron, isValidTimezone, nextRun } from "./cron.js"; import { belowFloor, FLOOR_REFUSAL } from "./routinefloor.js"; import { PACE_FR } from "./pacei18n.js";
 import { q } from "./db.js";
@@ -190,7 +190,7 @@ export function trackOf(runId: string): RunTrack | null {
 }
 /** Late by more than this: said at the top of the run's first line in the chat. */
 export const LATE_MS = 10 * 60_000;
-const hm = (at: number, tz: string, locale?: Locale) => new Date(at).toLocaleString(locale === "fr" ? "fr-FR" : "en-US", { timeZone: tz, dateStyle: "short", timeStyle: "short" });
+const hm = (at: number, tz: string, locale?: Locale) => new Date(at).toLocaleString(intlOf(locale, "en-US"), { timeZone: tz, dateStyle: "short", timeStyle: "short" });
 /** "Prévue le 22/11 à 08:00, lancée à 08:42 · 3 exécutions sautées pendant l'arrêt" — or "" when on time. */
 export function lateLine(dueAt: number, startedAt: number, missed: number, timezone: string, locale?: Locale): string {
   if (startedAt - dueAt <= LATE_MS && !missed) return "";

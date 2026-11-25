@@ -1063,8 +1063,7 @@ export async function engineLogin(bot: BotRecord, engine: Engine) {
     return;
   }
   await ensureComputer(bot);
-  const fr = (await import("../store.js")).users.localeOf(bot.userId) === "fr";
-  const done = fr ? "Connexion terminée. Tu peux fermer cette fenêtre et rendre la main." : "Signed in. You can close this window and hand back.";
+  const done = tr((await import("../store.js")).users.localeOf(bot.userId), "Signed in. You can close this window and hand back.");
   const cmd = `${SUBSCRIPTION_ENV}; ${engine === "codex" ? "codex login" : "claude auth login --claudeai"}`;
   const title = engine === "codex" ? "ChatGPT" : "Claude";
   const r = await docker(["exec", "-d", containerName(bot.id), "xterm", "-T", title, "-geometry", "100x24+80+60", "-e", "sh", "-c", `${cmd} && echo && echo '${done}'; sleep 3600`], { timeoutMs: 20_000 });

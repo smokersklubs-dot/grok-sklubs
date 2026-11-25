@@ -1,3 +1,4 @@
+import { text } from "../i18n/lookup.ts";
 /**
  * L136 — long blocks of a message fold. A code block of more than FOLD_LINES lines, or a table of more than FOLD_ROWS
  * rows, shows its first part with a « Tout afficher (N lignes) » button; « Replier » folds it again. Our own button,
@@ -18,9 +19,8 @@ export function shouldFold(kind: "code" | "table", size: number): boolean {
 }
 
 function label(open: boolean, kind: "code" | "table", n: number): string {
-  const fr = document.documentElement.lang === "fr";
-  if (open) return fr ? "Replier" : "Fold";
-  return kind === "code" ? (fr ? `Tout afficher (${n} lignes)` : `Show all (${n} lines)`) : (fr ? `Tout afficher (${n} rangées)` : `Show all (${n} rows)`);
+  if (open) return text("fold.fold", "Fold");
+  return kind === "code" ? text("fold.showAllLines", "Show all ({n} lines)", { n }) : text("fold.showAllRows", "Show all ({n} rows)", { n });
 }
 
 export function addFoldToggles(root: HTMLElement): void {

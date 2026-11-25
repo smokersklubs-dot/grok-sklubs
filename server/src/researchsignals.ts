@@ -1,3 +1,4 @@
+import { tr } from "./i18n.js"; import { isLocale, LOCALE_INTL, type Locale } from "./clientshared/locales.js";
 /*
  * Portions adapted from mvanhorn/last30days-skill (https://github.com/mvanhorn/last30days-skill, commit
  * 64b1f006f800640022ce07f51de5ce56aad34b76), Copyright (c) 2026 Matt Van Horn, MIT License; modified for Sklubot:
@@ -128,14 +129,14 @@ export const rankScore = (rel: number, date: string | undefined, e: Engagement |
   0.7 * rel + 0.15 * recency(date, w, now) + engagementBoost(e);
 
 /** A short human label: « 412 points, 96 commentaires », « 1,2 M$ misés »… */
-export function engagementLabel(e: Engagement | undefined, fr: boolean): string {
+export function engagementLabel(e: Engagement | undefined, locale: Locale | undefined): string {
   if (!e) return "";
-  const n = (v: number) => new Intl.NumberFormat(fr ? "fr-FR" : "en-US", { notation: "compact", maximumFractionDigits: 1 }).format(v);
+  const n = (v: number) => new Intl.NumberFormat(isLocale(locale) ? LOCALE_INTL[locale] : "en-US", { notation: "compact", maximumFractionDigits: 1 }).format(v);
   const parts: string[] = [];
   if (e.points) parts.push(`${n(e.points)} points`);
-  if (e.score) parts.push(fr ? `${n(e.score)} votes` : `${n(e.score)} votes`);
-  if (e.comments) parts.push(fr ? `${n(e.comments)} commentaires` : `${n(e.comments)} comments`);
-  if (e.views) parts.push(fr ? `${n(e.views)} vues` : `${n(e.views)} views`);
-  if (e.volume) parts.push(fr ? `${n(e.volume)} $ misés` : `$${n(e.volume)} traded`);
+  if (e.score) parts.push(tr(locale, "{n} votes", { n: n(e.score) }));
+  if (e.comments) parts.push(tr(locale, "{n} comments", { n: n(e.comments) }));
+  if (e.views) parts.push(tr(locale, "{n} views", { n: n(e.views) }));
+  if (e.volume) parts.push(tr(locale, "${n} traded", { n: n(e.volume) }));
   return parts.join(", ");
 }

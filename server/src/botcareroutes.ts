@@ -24,7 +24,7 @@ import { audit, bots, clip, type UserRecord } from "./store.js";
 export function registerBotCareRoutes(api: Hono<any>) {
   startAsideSweep();
   const me = (c: Context) => c.get("user") as UserRecord;
-  const loc = (c: Context) => (me(c).locale === "fr" ? "fr" : "en") as "fr" | "en";
+  const loc = (c: Context) => me(c).locale;
   const ownBot = (c: Context) => {
     const bot = bots.owned(me(c).id, c.req.param("id") ?? "");
     if (!bot || bot.kind !== "agent") fail(404, tr(me(c).locale, "That bot does not exist."));

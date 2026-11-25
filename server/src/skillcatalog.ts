@@ -102,7 +102,7 @@ function newerSource(s: Skill, locale: Locale): { name: string; description: str
     return { name: r.name, description: r.description, body: r.body, extras: extrasFrom(r), version: String(r.version), kind: "catalog", title: r.name };
   }
   const lib = m.originKind === "library" && m.originId ? libraryEntries().find((e) => e.id === m.originId)
-    : !m.originKind ? libraryEntries().find((e) => [e.title.fr, e.title.en].some((n) => n.toLowerCase() === s.name.toLowerCase())) : undefined;
+    : !m.originKind ? libraryEntries().find((e) => Object.values(e.title).some((n) => !!n && n.toLowerCase() === s.name.toLowerCase())) : undefined;
   if (!lib) return null;
   const version = libraryVersion(lib.id)!;
   // A copy made before versions existed: seeded at today's version on first sight.

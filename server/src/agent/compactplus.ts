@@ -1,4 +1,4 @@
-import { defaultModelRef } from "../llm/index.js";
+import { defaultModelRef } from "../llm/index.js"; import { tr } from "../i18n.js"; import type { Locale } from "../shared.js";
 import { bots, history, laneKey, paused, rows, users, type BotRecord } from "../store.js";
 import { getLive } from "../bus.js";
 import { q } from "../db.js";
@@ -73,9 +73,9 @@ export function compactCommand(text: string): { instruction: string } | null {
   return m ? { instruction: (m[1] ?? "").trim() } : null;
 }
 
-export const compactDoneText = (fr: boolean, r: { changed: boolean; before: number; after: number }, error?: string) => error
-  ? (fr ? `Je n'ai pas pu résumer la conversation : ${error}` : `I could not summarise the conversation: ${error}`)
-  : r.changed ? "" : (fr ? "Rien à résumer pour l'instant : la conversation est encore courte." : "Nothing to summarise yet: the conversation is still short.");
+export const compactDoneText = (loc: Locale, r: { changed: boolean; before: number; after: number }, error?: string) => error
+  ? tr(loc, "I could not summarise the conversation: {error}", { error })
+  : r.changed ? "" : tr(loc, "Nothing to summarise yet: the conversation is still short.");
 
 // ── Résumé à chaud pendant le repos ──────────────────────────────────────────────────────────────────────────────
 /** Conversations (bot, thread) past REST_SHARE of their limit whose last message is older than REST_MIN minutes. */
@@ -109,5 +109,5 @@ export async function restSummarySweep(busy: (b: BotRecord) => boolean, compact:
 }
 
 export const historyLen = (bot: BotRecord, thread: number) => history.count(bot.id, bot.generation, thread);
-export const localeFr = (bot: BotRecord) => users.localeOf(bot.userId) === "fr";
+export const localeOfBot = (bot: BotRecord): Locale => users.localeOf(bot.userId);
 export const noticeIn = (bot: BotRecord, thread: number, text: string) => { if (text) rows.append(bot, { kind: "notice", tone: "info", text }, thread || undefined); };

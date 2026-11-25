@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { api, enc, errText } from "../api";
-import { useT } from "../i18n";
+import { useT, type Key } from "../i18n";
 import { welcomeFor } from "../lib/starters";
 import { useStore } from "../store";
 import type { Bot } from "../types";
@@ -13,8 +13,7 @@ import "./Comfort7.css";
  */
 export function BotWelcome({ bot }: { bot: Bot }) {
   const t = useT();
-  const lang = useStore((s) => (s.locale === "fr" ? "fr" : "en"));
-  const w = useMemo(() => welcomeFor(bot, lang), [bot, lang]);
+  const w = useMemo(() => welcomeFor(bot, (key) => t(key as Key)), [bot, t]);
   const [sending, setSending] = useState<string | null>(null);
   const send = async (label: string, prompt: string) => {
     setSending(label);

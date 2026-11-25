@@ -218,9 +218,9 @@ setTimeout(() => { try { resumeBatches(); } catch (err) { console.error("[batche
 export function registerBatchRoutes(api: Hono<{ Variables: { user: UserRecord } }>) {
   const own = (c: { get(k: "user"): UserRecord; req: { param(k: string): string | undefined } }) => {
     const user = c.get("user");
-    const bot = bots.owned(user.id, c.req.param("id") ?? "") ?? fail(404, user.locale === "fr" ? "Ce bot n'existe pas." : "That bot does not exist.");
+    const bot = bots.owned(user.id, c.req.param("id") ?? "") ?? fail(404, tr(user.locale, "That bot does not exist."));
     const cost = batchCost(bot.id, c.req.param("batchId") ?? "");
-    return cost ? { bot, cost } : fail(404, user.locale === "fr" ? "Ce lot n'existe pas." : "That batch does not exist.");
+    return cost ? { bot, cost } : fail(404, tr(user.locale, "That batch does not exist."));
   };
   api.get("/bots/:id/batches/:batchId", (c) => c.json(own(c).cost, 200, { "cache-control": "no-store" }));
   api.post("/bots/:id/batches/:batchId/stop", async (c) => {

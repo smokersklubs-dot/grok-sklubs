@@ -12,7 +12,7 @@
  *
  * Tables at load; rows go with their bot.
  */
-import { createHash } from "node:crypto";
+import { createHash } from "node:crypto"; import { tr } from "../i18n.js";
 import { q } from "../db.js";
 import { rules } from "../rules.js";
 import { bots, clip, now, users } from "../store.js";
@@ -83,7 +83,7 @@ export function weekReview(userId: string, at = now()): WeekReview {
     const reason = clip(f.reason.replace(/\s+/g, " ").trim(), 200);
     proposals.push({
       key, botId: f.botId, botName: perBot.get(f.botId)?.name ?? "?", count: group.length,
-      text: fr ? `Avant de commencer un travail, vérifier d'abord ce qui a bloqué ${group.length} fois cette semaine : ${reason}. Si c'est encore le cas, me le dire tout de suite.` : `Before starting a piece of work, first check what blocked it ${group.length} times this week: ${reason}. If it still holds, tell me at once.`,
+      text: tr(users.localeOf(userId), "Before starting a piece of work, first check what blocked it {n} times this week: {reason}. If it still holds, tell me at once.", { n: group.length, reason }),
       evidence: group.map((x) => clip(x.objective, 120)),
     });
   }

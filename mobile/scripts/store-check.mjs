@@ -35,6 +35,7 @@ import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { inflateSync } from "node:zlib";
+import { listingChecks } from "./store-listing.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -252,6 +253,9 @@ export function runChecks(root = ROOT, opts = {}) {
   const sheet = read("STORE.md");
   if (/Localisation, contacts/.test(sheet) && !/position/i.test(sheet.split("Sécurité des données")[1] ?? "")) fail("STORE.md : la sécurité des données ne dit pas que la position peut être partagée (demande d'un bot, L177)");
   if (!/Classification par âge \(App Store\)/.test(sheet)) fail("STORE.md : réponses au questionnaire d'âge Apple manquantes");
+
+  // Listing texts in every language, store screenshots, eas.json, Live Activity (L160, L177: store-listing.mjs)
+  listingChecks(root, ok, warn, fail);
   return results;
 }
 

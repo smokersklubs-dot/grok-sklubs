@@ -1,4 +1,4 @@
-import type { Context, Hono } from "hono"; import { localize } from "./lang/index.js";
+import type { Context, Hono } from "hono"; import { localize } from "./lang/index.js"; import { tr } from "./i18n.js";
 import { isPaused } from "./agent/loop.js";
 import { hookLimits } from "./hardening.js";
 import { deliveryKeys, GROUP_CHOICES, GROUP_MAX_CALLS, hookTrust, newSecret, signSample, verifySignature, type HookSettings, type RefusalReason } from "./hooktrust.js";
@@ -146,8 +146,7 @@ export function registerHookSettingsRoutes(api: Hono<Env>) {
   // without recording it, using the rate budget, or running the routine. The answer says what a real call would do.
   api.post("/routines/:id/hook/test", (c) => {
     const r = own(c);
-    const fr = c.get("user").locale === "fr";
-    const sample = { exemple: true, message: fr ? "Appel d'essai envoyé par Sklubot depuis la page de la routine." : "Test call sent by Sklubot from the routine's page.", at: new Date().toISOString() };
+    const sample = { exemple: true, message: tr(c.get("user").locale, "Test call sent by Sklubot from the routine's page."), at: new Date().toISOString() };
     const raw = Buffer.from(JSON.stringify(sample), "utf8");
     const secrets = hookTrust.secrets(r.id);
     const headers = secrets?.length ? signSample(secrets[0], raw, `test_${Date.now()}`) : {};

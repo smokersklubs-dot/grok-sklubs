@@ -4,7 +4,7 @@ import path from "node:path";
 import { emit } from "./bus.js";
 import { computerKind, screen } from "./computer.js";
 import { config } from "./config.js";
-import { tr } from "./i18n.js";
+import { tr } from "./i18n.js"; import { languageName } from "./clientshared/locales.js";
 import { defaultModelRef, listProviders, resolveModel, userProvidersOf, type Block } from "./llm/index.js";
 import { describeKey, MODIFIERS, type RfbEvent } from "./rfb.js";
 import type { Recording, SkillDraft } from "./shared.js";
@@ -227,7 +227,7 @@ async function draftSkill(r: Rec) {
     text: `${r.note ? `What the user said about it: ${r.note}\n\n` : ""}Timeline of the demonstration (screen coordinates are pixels on a ${config.desktopResolution.split("x").slice(0, 2).join("×")} screen; for privacy, typed text is only counted):\n${timeline}\n\n` +
       `Write the skill as JSON only: {"name": "short name", "when": "when to use it, one line", "steps": ["step 1", "step 2", …]}. ` +
       `Steps must be concrete and reusable: name the site or program, the buttons, menus and fields by their visible labels (not coordinates), and say where the user must type something (for example "type the client's name"). ` +
-      `Never include passwords or other secrets; for a sign-in, say to use the saved login from the vault. Write in ${loc === "fr" ? "French" : "English"}.`,
+      `Never include passwords or other secrets; for a sign-in, say to use the saved login from the vault. Write in ${languageName(loc)}.`,
   });
   const res = await provider.runTurn({
     model, tools: [], effort: "low", maxTokens: 4000, signal: AbortSignal.timeout(180_000),

@@ -38,7 +38,7 @@ export function registerTurnPlus<E extends { Variables: { user: UserRecord } }>(
   api.post("/bots/:id/notes/:noteId/send-now", (c) => {
     const bot = ownAgent(c);
     const state = sendNoteNow(bot, Number(c.req.param("noteId")), interrupt);
-    if (state === "gone") return c.json({ error: c.get("user").locale === "fr" ? "Ce message a déjà été lu par le bot." : "The bot has already read this message." }, 404);
+    if (state === "gone") return c.json({ error: tr(c.get("user").locale, "The bot has already read this message.") }, 404);
     emit(bot.userId, { type: "tasks", botId: bot.id });
     return c.json({ ok: true, state, notes: waitingNotes(bot.id) });
   });
@@ -68,8 +68,8 @@ export function registerTurnPlus<E extends { Variables: { user: UserRecord } }>(
   api.put("/bots/:id/model-mode", async (c) => {
     const bot = ownAgent(c);
     const mode = (await c.req.json().catch(() => ({})))?.mode;
-    if (!isModelMode(mode)) return c.json({ error: c.get("user").locale === "fr" ? "Mode inconnu." : "Unknown mode." }, 400);
-    if (isEngineRef(bot.model) && mode !== "balanced") return c.json({ error: c.get("user").locale === "fr" ? "Un bot sur abonnement garde son outil : les modes valent pour les modèles par clé." : "A subscription bot keeps its tool: modes apply to models used with a key." }, 400);
+    if (!isModelMode(mode)) return c.json({ error: tr(c.get("user").locale, "Unknown mode.") }, 400);
+    if (isEngineRef(bot.model) && mode !== "balanced") return c.json({ error: tr(c.get("user").locale, "A subscription bot keeps its tool: modes apply to models used with a key.") }, 400);
     return c.json({ mode: setMode(bot.id, mode), models: modeModels(bot) });
   });
 

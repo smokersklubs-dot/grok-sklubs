@@ -338,7 +338,7 @@ export function exportTeamMd(user: UserRecord, opts: { sectionId?: unknown; botI
   list = list.slice(0, TEAM_MD_LIMITS.bots);
 
   let masked = 0;
-  const mask = (s: string) => { const r = maskSecrets(s, locale === "fr" ? "[secret retiré]" : "[secret removed]"); masked += r.secrets.length; return r.text; };
+  const mask = (s: string) => { const r = maskSecrets(s, tr(locale, "[secret removed]")); masked += r.secrets.length; return r.text; };
   const lib = libraryEntries();
   const ids = new Set(list.map((b) => b.id));
   const primary = list.find((b) => b.primary);

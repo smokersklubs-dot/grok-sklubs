@@ -13,7 +13,7 @@ import { Icon, Spinner } from "./Icon";
 import { ErrorNote, Menu, MenuItem, useEscape } from "./ui";
 import { PauseBanner } from "./Pause";
 import { useComposerMentions } from "./ComposerMentions"; import { useSlashCommands } from "./ComposerSlash";
-import { MeetingRecorder } from "./MeetingRecorder"; import { openChantiers } from "../lib/chantiers";
+import { MeetingRecorder } from "./MeetingRecorder"; import { openChantiers } from "../lib/chantiers"; import { MeetingBotDialog } from "./MeetingBotDialog"; // L177 bot in an online meeting
 import { sendKeysFor } from "../../../mobile/shared/sendKey";
 import "./Comfort.css";
 import { ownMessages, recallStep, type RecallState } from "../lib/recall";
@@ -86,8 +86,8 @@ export function Composer({ bot, live }: { bot: Bot; live: Live }) {
   const [stopping, setStopping] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [menu, setMenu] = useState(false);
-  const [meetingBot, setMeetingBot] = useState<string | null>(null);
-  useEffect(() => setMeetingBot(null), [bot.id]);
+  const [meetingBot, setMeetingBot] = useState<string | null>(null); const [meetingOnline, setMeetingOnline] = useState<string | null>(null);
+  useEffect(() => { setMeetingBot(null); setMeetingOnline(null); }, [bot.id]);
   const [confirmNew, setConfirmNew] = useState(false);
   const [dragging, setDragging] = useState(false);
   // Goal mode ("Objectif"): the next message becomes an objective the bot keeps working on until it is done.
@@ -338,7 +338,7 @@ export function Composer({ bot, live }: { bot: Bot; live: Live }) {
             <Icon name="plus" size={20} />
           </button>
           <Menu open={menu} onClose={() => setMenu(false)} side="top" label={t("composer.more")}>
-            {bot.kind === "agent" && !bot.access && <MenuItem icon="record" onClick={() => { setMenu(false); setMeetingBot(bot.id); }}>{t("composer.meeting")}</MenuItem>}
+            {bot.kind === "agent" && !bot.access && <MenuItem icon="record" onClick={() => { setMenu(false); setMeetingBot(bot.id); }}>{t("composer.meeting")}</MenuItem>}{bot.kind === "agent" && !bot.access && <MenuItem icon="users" onClick={() => { setMenu(false); setMeetingOnline(bot.id); }}>{t("meetingbot.menu")}</MenuItem>}
             <MenuItem
               icon="clip"
               onClick={() => {
@@ -357,8 +357,8 @@ export function Composer({ bot, live }: { bot: Bot; live: Live }) {
             {bot.kind === "agent" && !bot.access && !bot.disabledTools.includes("web") && <MenuItem icon="search" onClick={()=>{
               setMenu(false);
               const state = useStore.getState();
-              state.showArtifact({kind:"research",token:"research-"+bot.id,botId:bot.id,title:state.locale === "fr" ? "Recherche approfondie" : "Deep research"});
-            }}>{useStore.getState().locale === "fr" ? "Recherche approfondie" : "Deep research"}</MenuItem>}
+              state.showArtifact({kind:"research",token:"research-"+bot.id,botId:bot.id,title:t("research.deepResearch")});
+            }}>{t("research.deepResearch")}</MenuItem>}
             {bot.kind === "agent" && !bot.access && <MenuItem icon="play" onClick={()=>{setMenu(false);openModal({kind:"videoStudio"});}}>{t("studio.create")}</MenuItem>}
             {!bot.access && <MenuItem icon="chart" onClick={() => { setMenu(false); openPollCreator(bot.id); }}>{t("poll.new")}</MenuItem>}{/* L184 polls (ChatPlus.tsx) */}
             {bot.kind === "agent" && (
@@ -381,7 +381,7 @@ export function Composer({ bot, live }: { bot: Bot; live: Live }) {
             </MenuItem>
           </Menu>
           <PollCreatorHost botId={bot.id} thread={live.thread ?? 0} />
-          {meetingBot === bot.id && <MeetingRecorder key={bot.id} botId={bot.id} close={() => setMeetingBot(null)} />}
+          {meetingBot === bot.id && <MeetingRecorder key={bot.id} botId={bot.id} close={() => setMeetingBot(null)} />}{meetingOnline === bot.id && <MeetingBotDialog key={bot.id} botId={bot.id} close={() => setMeetingOnline(null)} />}
           <input
             ref={picker}
             type="file"

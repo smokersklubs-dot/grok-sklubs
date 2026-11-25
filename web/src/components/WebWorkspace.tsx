@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { t as tr } from "../i18n";
 import { api, errText } from "../api";
 import { useStore } from "../store";
 import { SignInSite } from "./SignInSite";
@@ -74,20 +75,20 @@ export function WebWorkspace({ bot, fr, initialUrl }: { bot: string; fr: boolean
   return (
     <section className="dock-reader">
       <form className="studio-actions" onSubmit={(event) => { event.preventDefault(); void visit(input); }}>
-        <button type="button" className="btn btn-small" aria-label={fr ? "Précédent" : "Back"} disabled={busy || index < 1} onClick={() => navigate(index - 1)}>←</button>
-        <button type="button" className="btn btn-small" aria-label={fr ? "Suivant" : "Forward"} disabled={busy || index >= entries.length - 1} onClick={() => navigate(index + 1)}>→</button>
-        <input className="input" aria-label={fr ? "Adresse ou recherche" : "Address or search"} placeholder={fr ? "Rechercher ou saisir une adresse" : "Search or enter an address"} value={input} onChange={(e) => setInput(e.target.value)} autoCapitalize="off" />
-        <button className="btn btn-small" disabled={busy || !input.trim()}>{busy ? "…" : fr ? "Ouvrir" : "Go"}</button>
+        <button type="button" className="btn btn-small" aria-label={tr("webws.back")} disabled={busy || index < 1} onClick={() => navigate(index - 1)}>←</button>
+        <button type="button" className="btn btn-small" aria-label={tr("webws.forward")} disabled={busy || index >= entries.length - 1} onClick={() => navigate(index + 1)}>→</button>
+        <input className="input" aria-label={tr("webws.addressSearch")} placeholder={tr("webws.searchEnterAddress")} value={input} onChange={(e) => setInput(e.target.value)} autoCapitalize="off" />
+        <button className="btn btn-small" disabled={busy || !input.trim()}>{busy ? "…" : tr("viewer.go")}</button>
       </form>
       <div className="studio-actions">
         <SignInSite botId={bot} name={useStore.getState().bots[bot]?.name ?? ""} address={asUrl(input.trim()) ?? ""} />
-        <button type="button" className="btn btn-small" onClick={() => useStore.getState().openModal({ kind: "connectors" })}>{fr ? "Applis connectées" : "Connected apps"}</button>
+        <button type="button" className="btn btn-small" onClick={() => useStore.getState().openModal({ kind: "connectors" })}>{tr("lp.more.apps")}</button>
       </div>
       <ErrorNote>{error}</ErrorNote>
       {current && ("url" in current ? (
         <article>
           <h3>{current.title}</h3>
-          <a href={current.url} target="_blank" rel="noopener noreferrer">{fr ? "Ouvrir le site original" : "Open original site"}</a>
+          <a href={current.url} target="_blank" rel="noopener noreferrer">{tr("webws.openOriginalSite")}</a>
           <p>{current.text}</p>
           {current.links.map((link) => <button key={link.url} type="button" className="btn btn-small" disabled={busy} onClick={() => void visit(link.url)}>{link.label}</button>)}
         </article>
@@ -107,8 +108,8 @@ export function WebWorkspace({ bot, fr, initialUrl }: { bot: string; fr: boolean
             </>
           ) : (
             <>
-              <p>{fr ? "Aucun résultat disponible pour cette recherche." : "No results available for this search."}</p>
-              <a href={"https://duckduckgo.com/?q=" + encodeURIComponent(current.query)} target="_blank" rel="noopener noreferrer">{fr ? "Rechercher sur DuckDuckGo" : "Search on DuckDuckGo"}</a>
+              <p>{tr("webws.noResultsAvailableSearch")}</p>
+              <a href={"https://duckduckgo.com/?q=" + encodeURIComponent(current.query)} target="_blank" rel="noopener noreferrer">{tr("webws.searchDuckduckgo")}</a>
             </>
           )}
         </article>

@@ -295,6 +295,10 @@ export function whenOnline(fn: OnlineHook) { onlineHooks().push(fn); }
 type OutputHook = (userId: string, deviceId: string, ref: string, stream: "stdout" | "stderr", text: string) => void;
 /** Called for each `shell.output` event (same hoisted pattern as whenOnline). */
 export function whenShellOutput(fn: OutputHook) { outputHooks().push(fn); }
+type EventHook = (userId: string, deviceId: string, name: string, msg: Json) => void;
+/** Called for each event this file does not handle itself (same hoisted pattern as whenOnline). */
+export function whenRelayEvent(fn: EventHook) { eventHooks().push(fn); }
+function eventHooks(): EventHook[] { const f = whenRelayEvent as unknown as { hooks?: EventHook[] }; return (f.hooks ??= []); }
 function outputHooks(): OutputHook[] { const f = whenShellOutput as unknown as { hooks?: OutputHook[] }; return (f.hooks ??= []); }
 function onlineHooks(): OnlineHook[] { const f = whenOnline as unknown as { hooks?: OnlineHook[] }; return (f.hooks ??= []); }
 
@@ -557,7 +561,8 @@ function onEvent(conn: Conn, msg: Json) {
       }
       return;
     }
-    default:
+    default: // other events (phone.started / phone.ended of Android by USB, 1.9: androidusb.ts) go to their hooks
+      for (const fn of eventHooks()) { try { fn(conn.userId, conn.deviceId, name, msg); } catch (err) { console.error("[relay] event hook", err); } }
       return;
   }
 }

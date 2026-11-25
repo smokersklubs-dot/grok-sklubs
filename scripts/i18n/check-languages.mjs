@@ -9,8 +9,10 @@
 // A problem (always fails): a key the reference (English) does not have, an empty text, a `{name}` placeholder added
 // or lost, a link host changed, a different number of backticks (Markdown code), a broken `_one`/`_other` pair.
 // A missing text is NOT a problem: it shows in English (the documented fallback). Only the coverage floor below fails.
+import { readdirSync, readFileSync } from "node:fs";
+import { join, relative } from "node:path";
 import { pathToFileURL } from "node:url";
-import { NO_PLURAL_LOCALES, SURFACES, locales } from "./dicts.mjs";
+import { NO_PLURAL_LOCALES, ROOT, SURFACES, locales } from "./dicts.mjs";
 
 /**
  * Lowest coverage (%) accepted per language, all surfaces together. French and English are complete by type.
@@ -88,6 +90,43 @@ export function summary(results) {
   return [...by.values()].map((s) => ({ ...s, coverage: pct(s.done, s.total), floor: COVERAGE_FLOOR[s.lang] ?? 0 }));
 }
 
+// ── Inline French/English branches ──────────────────────────────────────────────────────────────────────────────
+// A text written in the code as `locale === "fr" ? "…" : "…"` (or `fr ? … : …`) shows in English in every other
+// language. They were moved to the dictionaries on 25/11/2026; scripts/i18n/inline-allowlist.json lists the few left,
+// per file, with why. The test fails when a file has more than its count, or a new file has one.
+
+/** `x === "fr" ?`, `x !== 'fr' ?`, `fr ?`, `isFr ?`, `french ?` (not `fr?.`, not `fr ??`). */
+export const INLINE_BRANCH = /(?:[=!]==\s*["']fr["']|(?<![\w.$])(?:fr|isFr|french)\b)\s*\?(?![?.])/g;
+const INLINE_DIRS = ["server/src", "web/src", "mobile/src"];
+/** Dictionaries, tests and the dev-only gallery fixtures (web/src/dev, never shipped) are not product code. */
+const INLINE_SKIP = /^(web\/src\/i18n|mobile\/src\/i18n|server\/src\/lang|web\/src\/dev)\/|\.test\.tsx?$/;
+
+/** Counts the inline branches of a source text (comments ignored, line numbers kept). */
+export function countInline(src) {
+  const code = src.replace(/\/\*[\s\S]*?\*\//g, (c) => c.replace(/[^\n]/g, " ")).replace(/(^|[^:"'`\\])\/\/.*$/gm, "$1");
+  return [...code.matchAll(INLINE_BRANCH)].map((m) => code.slice(0, m.index).split("\n").length);
+}
+
+/** Every product source file with inline branches: { "server/src/x.ts": [line, …] }. */
+export function inlineBranches(root = ROOT) {
+  const walk = (d) => readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.name === "node_modules" || e.name === "dist" ? [] : e.isDirectory() ? walk(join(d, e.name)) : /\.tsx?$/.test(e.name) ? [join(d, e.name)] : []));
+  const out = {};
+  for (const dir of INLINE_DIRS) for (const f of walk(join(root, dir))) {
+    const rel = relative(root, f).split("\\").join("/");
+    if (INLINE_SKIP.test(rel)) continue;
+    const lines = countInline(readFileSync(f, "utf8"));
+    if (lines.length) out[rel] = lines;
+  }
+  return out;
+}
+
+export const inlineAllowlist = () => JSON.parse(readFileSync(join(ROOT, "scripts/i18n/inline-allowlist.json"), "utf8")).files;
+
+/** Files over their allowed count (or not listed at all): [{ file, found, allowed, lines }]. */
+export function inlineProblems(found = inlineBranches(), allow = inlineAllowlist()) {
+  return Object.entries(found).filter(([f, lines]) => lines.length > (allow[f]?.max ?? 0)).map(([file, lines]) => ({ file, found: lines.length, allowed: allow[file]?.max ?? 0, lines }));
+}
+
 function report(langs) {
   const results = checkAll(langs);
   const pad = (s, n) => String(s).padEnd(n);
@@ -97,6 +136,10 @@ function report(langs) {
     console.log(`${pad(s.lang, 9)}${cells.join("")}${s.coverage}% (floor ${s.floor}%)${s.problems.length ? `, ${s.problems.length} problem(s)` : ""}`);
   }
   for (const s of summary(results)) for (const p of s.problems.slice(0, 40)) console.log(`  ${s.lang} ${p}`);
+  const found = inlineBranches();
+  const total = Object.values(found).reduce((n, l) => n + l.length, 0);
+  console.log(`inline fr/en text branches: ${total} in ${Object.keys(found).length} file(s) (allowed: scripts/i18n/inline-allowlist.json)`);
+  for (const p of inlineProblems(found)) console.log(`  ${p.file}: ${p.found} (allowed ${p.allowed}), lines ${p.lines.join(", ")} — put the text in a dictionary (docs/LANGUES.md)`);
   if (langs.length === 1) {
     for (const r of results) if (r.missing.length) console.log(`  ${r.surface}: ${r.missing.length} missing, e.g. ${r.missing.slice(0, 8).join(", ")}`);
     for (const r of results) if (r.sameAsEnglish) console.log(`  ${r.surface}: ${r.sameAsEnglish} text(s) identical to English (names, "OK"… or not translated yet)`);

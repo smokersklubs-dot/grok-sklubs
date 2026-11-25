@@ -1,5 +1,5 @@
-import { config } from "./config.js";
-import { rows, users, type BotRecord } from "./store.js";
+import { config } from "./config.js"; import { tr } from "./i18n.js";
+import { rows, users, type BotRecord } from "./store.js"; import type { Locale } from "./shared.js";
 
 /**
  * L76, the rest of « Telegram » (Sklubot's own code):
@@ -45,21 +45,19 @@ export async function withRetry<T>(attempt: () => Promise<T>, tries = SEND_TRIES
 
 /** The address that opens this bot (and its waiting card) in the app. */
 export const cardLink = (botId: string) => `${config.publicUrl}/?bot=${encodeURIComponent(botId)}`;
-export const cardLinkLine = (botId: string, fr: boolean) => (fr ? `Ouvrir la carte : ${cardLink(botId)}` : `Open the card: ${cardLink(botId)}`);
+export const cardLinkLine = (botId: string, locale: Locale) => tr(locale, "Open the card: {link}", { link: cardLink(botId) });
 
 const lastNotice = new Map<string, number>();
 /** After the retries failed: one notice in the web chat (the text stays in the app). Returns whether one was written. */
 export function failedNotice(bot: BotRecord, err: unknown, now = Date.now()): boolean {
   if ((lastNotice.get(bot.id) ?? 0) > now - NOTICE_EVERY_MS) return false;
   lastNotice.set(bot.id, now);
-  const fr = users.localeOf(bot.userId) === "fr";
+  const loc = users.localeOf(bot.userId);
   const e = err as TelegramFailure;
   const why = e?.status === 403
-    ? (fr ? "Telegram refuse : le bot a peut-être été bloqué dans Telegram." : "Telegram refuses: the bot may have been blocked in Telegram.")
-    : e?.status === 429 ? (fr ? "Telegram demande d'attendre (trop de messages)." : "Telegram asks to wait (too many messages).")
-    : (fr ? "Telegram ne répond pas pour l'instant." : "Telegram is not answering for now.");
-  rows.append(bot, { kind: "notice", tone: "warn", text: fr
-    ? `Un message n'a pas pu partir sur Telegram. ${why} Il reste lisible ici.`
-    : `A message could not be sent to Telegram. ${why} It stays readable here.` });
+    ? tr(loc, "Telegram refuses: the bot may have been blocked in Telegram.")
+    : e?.status === 429 ? tr(loc, "Telegram asks to wait (too many messages).")
+    : tr(loc, "Telegram is not answering for now.");
+  rows.append(bot, { kind: "notice", tone: "warn", text: tr(loc, "A message could not be sent to Telegram. {why} It stays readable here.", { why }) });
   return true;
 }

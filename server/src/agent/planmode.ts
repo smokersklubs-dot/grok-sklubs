@@ -1,5 +1,5 @@
 import { q } from "../db.js";
-import { tr } from "../i18n.js";
+import { tr } from "../i18n.js"; import { LOCALES } from "../clientshared/locales.js";
 import { clip, rows, users, type BotRecord } from "../store.js";
 import { groundable, type Decision } from "./authorize.js";
 import { ask } from "./memory.js";
@@ -42,7 +42,8 @@ export function planCommand(raw: string): { on: true; text: string } | { on: fal
 /** What the model is told at the top of a turn while plan mode is on. */
 export const PLAN_MODE_NOTE = "[Plan mode is on for this conversation: before changing anything, look around as much as you need (reading only), then put your plan in front of the user with plan_propose and end your turn. Tools that change something are refused until the user approves a plan.]";
 
-const APPROVALS = [...PLAN_OPTIONS.en.slice(0, 2), ...PLAN_OPTIONS.fr.slice(0, 2)].map((s) => s.toLowerCase());
+/** "Approve" and "Approve with a note" in every language (the card shows them in the account's language). */
+const APPROVALS = [...new Set(LOCALES.flatMap((l) => PLAN_OPTIONS.en.slice(0, 2).map((o) => tr(l, o))))].map((s) => s.toLowerCase());
 /** Whether an answer on a plan card approves it ("Approve", "Approve with a note: …"). */
 export const approves = (answer: string | undefined) => { const a = String(answer ?? "").trim().toLowerCase(); return APPROVALS.some((o) => a === o || a.startsWith(`${o}:`) || a.startsWith(`${o} :`) || a.startsWith(`${o} —`) || a.startsWith(`${o}\n`)); };
 

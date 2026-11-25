@@ -1,4 +1,4 @@
-import { q } from "./db.js";
+import { q } from "./db.js"; import { tr } from "./i18n.js"; import { localeFromTag, type Locale } from "./clientshared/locales.js";
 import type { BuiltinTool } from "./agent/tools.js";
 import type { ToolSpec } from "./llm/types.js";
 import { fetchProblem, guardedFetch } from "./net.js";
@@ -64,10 +64,10 @@ export function commonsFile(src: string): string | null {
 }
 
 /** The credit line, in the page's language (fr or en). */
-export function creditHtml(p: Pick<CommonsPhoto, "title" | "page" | "author" | "licence" | "licenceUrl">, lang: "fr" | "en" = "fr"): string {
-  const by = p.author ? (lang === "fr" ? ` par ${esc(p.author)}` : ` by ${esc(p.author)}`) : "";
+export function creditHtml(p: Pick<CommonsPhoto, "title" | "page" | "author" | "licence" | "licenceUrl">, lang: Locale = "fr"): string {
+  const by = p.author ? tr(lang, " by {author}", { author: esc(p.author) }) : "";
   const lic = p.licenceUrl ? `<a href="${esc(p.licenceUrl)}" rel="license noopener" target="_blank">${esc(p.licence)}</a>` : esc(p.licence);
-  return `<a href="${esc(p.page)}" rel="noopener" target="_blank">${esc(p.title)}</a>${by}, ${lic}, ${lang === "fr" ? "via Wikimedia Commons" : "via Wikimedia Commons"}`;
+  return `<a href="${esc(p.page)}" rel="noopener" target="_blank">${esc(p.title)}</a>${by}, ${lic}, via Wikimedia Commons`;
 }
 
 interface ApiPage { title?: string; index?: number; missing?: boolean; imageinfo?: { url?: string; thumburl?: string; descriptionurl?: string; width?: number; height?: number; mime?: string; thumbwidth?: number; thumbheight?: number; extmetadata?: Record<string, { value?: string }> }[] }
@@ -135,12 +135,12 @@ export async function withCommonsCredits(bot: Pick<BotRecord, "id" | "userId" | 
       }
     } catch (e) { problems.push(`could not look up ${missing.length} image${missing.length > 1 ? "s" : ""} on Wikimedia Commons (${fetchProblem(e) ?? (e as Error).message})`); }
   }
-  const lang: "fr" | "en" = /<html[^>]*\slang\s*=\s*["']?(?!fr)[a-z]/i.test(base) ? "en" : "fr";
+  const lang: Locale = localeFromTag(/<html[^>]*\slang\s*=\s*["']?([a-zA-Z_-]+)/i.exec(base)?.[1]) ?? "fr"; // the page's own language
   const lines = files.map((f) => known(bot.userId, f)).filter((k): k is NonNullable<typeof k> => !!k)
     .map((k) => `<li>${creditHtml({ title: k.title, page: k.page, author: k.author, licence: k.licence, licenceUrl: k.licence_url }, lang)}</li>`);
   for (const f of files) if (!known(bot.userId, f) && !problems.some((p) => p.startsWith(f) || p.startsWith(f.replace(/_/g, " ")))) problems.push(`${f}: no credit found`);
   if (!lines.length) return { html: base, added: 0, problems };
-  const block = `\n<aside data-sklubot-credits style="max-width:72rem;margin:2rem auto 1rem;padding:0 1rem;font:13px/1.5 system-ui,sans-serif;opacity:.85"><p style="margin:0 0 .25rem;font-weight:600">${lang === "fr" ? "Crédits photo" : "Photo credits"}</p><ul style="margin:0;padding-left:1.2rem">${lines.join("")}</ul></aside>\n`;
+  const block = `\n<aside data-sklubot-credits style="max-width:72rem;margin:2rem auto 1rem;padding:0 1rem;font:13px/1.5 system-ui,sans-serif;opacity:.85"><p style="margin:0 0 .25rem;font-weight:600">${tr(lang, "Photo credits")}</p><ul style="margin:0;padding-left:1.2rem">${lines.join("")}</ul></aside>\n`;
   const out = /<\/body>/i.test(base) ? base.replace(/<\/body>(?![\s\S]*<\/body>)/i, `${block}</body>`) : base + block;
   return { html: out, added: lines.length, problems };
 }

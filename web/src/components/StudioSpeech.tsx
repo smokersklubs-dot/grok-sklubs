@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from "react";
+import { getLocale, t as tr } from "../i18n";
 import { api, apiUpload, errText } from "../api";
 import { mediaUrl, type Scene, type SpeechTake } from "../lib/studioStory";
 import type { Attachment, PiperVoiceInfo } from "../types";
@@ -41,8 +42,8 @@ export function StudioSpeech({
       abort.abort();
     };
   }, []);
-  const selected = voice || voices.find((v) => v.language === (fr ? "fr" : "en"))?.id || voices[0]?.id || "";
-  const name = speaker.trim() || (fr ? "Narrateur" : "Narrator");
+  const selected = voice || voices.find((v) => v.language === getLocale())?.id || voices.find((v) => v.language === "en")?.id || voices[0]?.id || "";
+  const name = speaker.trim() || (tr("studio.narrator"));
   const attach = (path: string, id: string) => onChange({ speaker: name, text, voice: id, path });
   async function record(file?: File) {
     setError("");
@@ -65,16 +66,16 @@ export function StudioSpeech({
   }
   return (
     <details className="studio-speech">
-      <summary>{fr ? "Réplique de ce plan" : "Shot dialogue"}</summary>
+      <summary>{tr("studio.shotDialogue")}</summary>
       <fieldset disabled={busy} className="studio-controls">
         <label>
-          {fr ? "Intervenant" : "Speaker"}
+          {tr("studio.speaker")}
           <input
             className="input"
             maxLength={64}
             list={list}
             value={speaker}
-            placeholder={fr ? "Narrateur" : "Narrator"}
+            placeholder={tr("studio.narrator")}
             onChange={(e) => {
               const value = e.target.value;
               setSpeaker(value);
@@ -89,12 +90,12 @@ export function StudioSpeech({
           ))}
         </datalist>
         <label>
-          {fr ? "Texte de la réplique" : "Dialogue text"}
+          {tr("studio.dialogueText")}
           <textarea className="input" maxLength={300} value={text} onChange={(e) => setText(e.target.value)} />
         </label>
         {voices.length > 0 && (
           <label>
-            {fr ? "Voix de synthèse" : "Speech voice"}
+            {tr("studio.speechVoice")}
             <select className="input" value={selected} onChange={(e) => setVoice(e.target.value)}>
               {voices.map((v) => (
                 <option key={v.id} value={v.id}>
@@ -112,25 +113,19 @@ export function StudioSpeech({
             onClick={() => void record()}
           >
             {busy
-              ? fr
-                ? "En cours…"
-                : "Working…"
+              ? tr("common.working")
               : scene.speech
-                ? fr
-                  ? "Refaire cette réplique"
-                  : "Regenerate line"
-                : fr
-                  ? "Générer cette réplique"
-                  : "Generate line"}
+                ? tr("studio.regenerateLine")
+                : tr("studio.generateLine")}
           </button>
           {scene.speech && (
             <button type="button" className="btn btn-small" onClick={() => onChange(undefined)}>
-              {fr ? "Retirer la prise" : "Remove take"}
+              {tr("studio.removeTake")}
             </button>
           )}
         </div>
         <label>
-          {fr ? "Importer une prise" : "Import a take"}
+          {tr("studio.importTake")}
           <input
             type="file"
             accept=".wav,.mp3,.m4a,.aac,.ogg,.flac,.opus"

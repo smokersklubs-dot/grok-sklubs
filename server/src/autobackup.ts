@@ -28,7 +28,7 @@
  * (AUTO_BACKUP_TIMEOUT_HOURS, 6). The result is written to <DATA_DIR>/backup-status.json, which /api/health reads
  * (monitor.ts), like deploy/backup.sh does. Two failures in a row: a notice in the owner's main chat and a push.
  */
-import { lstat, opendir, readlink } from "node:fs/promises"; import { localize } from "./lang/index.js";
+import { lstat, opendir, readlink } from "node:fs/promises"; import { colon, localize } from "./lang/index.js";
 import { mkdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { Readable } from "node:stream";
@@ -417,7 +417,7 @@ const m = (locale: Locale, english: string): string => {
   if (whole !== english) return whole;
   const i = english.indexOf(": ");
   const head = i > 0 ? localize(locale, english.slice(0, i), FR) : "";
-  if (i > 0 && head !== english.slice(0, i)) return `${head}${locale === "fr" ? " : " : ": "}${m(locale, english.slice(i + 2))}`;
+  if (i > 0 && head !== english.slice(0, i)) return `${head}${colon(locale)}${m(locale, english.slice(i + 2))}`;
   return english;
 };
 

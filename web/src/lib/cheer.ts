@@ -9,6 +9,7 @@
  * audio after a user gesture, so the audio context is created (or resumed) on the first pointer or
  * key press; before that, the shout fails silently.
  */
+import { intlTag, t } from "../i18n";
 import { create } from "zustand";
 import type { Locale } from "../types";
 
@@ -151,8 +152,8 @@ export function playShout(locale: Locale, opts: { speak?: boolean } = {}): void 
   try {
     const synth = typeof window !== "undefined" ? window.speechSynthesis : undefined;
     if (!synth || synth.speaking || synth.pending) return;
-    const u = new SpeechSynthesisUtterance(locale === "fr" ? "Youhou !" : "Woohoo!");
-    u.lang = locale === "fr" ? "fr-FR" : "en-US";
+    const u = new SpeechSynthesisUtterance(t("cheer.shout"));
+    u.lang = intlTag(locale);
     u.rate = 1.15;
     u.pitch = 1.8;
     u.volume = 0.8;

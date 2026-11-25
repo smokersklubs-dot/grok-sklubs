@@ -10,6 +10,33 @@ import type { ConfigContext, ExpoConfig } from "expo/config";
 
 const variant = process.env.SKLUBOT_VARIANT === "store" ? "store" : "complet";
 const store = variant === "store";
+/**
+ * Store submission (docs/BOUTIQUES.md). The owner's account values come from the environment, never from this file:
+ * - SKLUBOT_IOS_BUNDLE_ID / SKLUBOT_ANDROID_PACKAGE: the identifiers registered with Apple / Google (default fr.sklubot.app;
+ *   the "complet" Android build adds ".complet");
+ * - SKLUBOT_EAS_PROJECT_ID (shown by `eas init`; on Expo's build servers EAS_BUILD_PROJECT_ID is set by Expo:
+ *   https://docs.expo.dev/eas/environment-variables/usage/#built-in-environment-variables) and SKLUBOT_EXPO_OWNER (the Expo
+ *   account, app config `owner`: https://docs.expo.dev/versions/latest/config/app/#owner);
+ * - SKLUBOT_APPLE_TEAM_ID: app config `ios.appleTeamId`, needed by the Live Activity target below.
+ */
+const IOS_BUNDLE_ID = process.env.SKLUBOT_IOS_BUNDLE_ID?.trim() || "fr.sklubot.app";
+const ANDROID_PACKAGE = process.env.SKLUBOT_ANDROID_PACKAGE?.trim() || "fr.sklubot.app";
+const EAS_PROJECT_ID = process.env.SKLUBOT_EAS_PROJECT_ID?.trim() || process.env.EAS_BUILD_PROJECT_ID?.trim() || "";
+/**
+ * L177 iPhone Live Activity (a bot's running task on the Lock Screen / Dynamic Island): OFF by default. With
+ * SKLUBOT_LIVE_ACTIVITY=1 (and `npx expo install @bacons/apple-targets@5.0.0`, MIT, https://github.com/EvanBacon/expo-apple-targets)
+ * the build adds the widget target in targets/sklubot-live, `NSSupportsLiveActivities`
+ * (https://developer.apple.com/documentation/bundleresources/information-property-list/nssupportsliveactivities) and the
+ * Push Notifications entitlement ActivityKit push tokens need (`aps-environment`:
+ * https://developer.apple.com/documentation/bundleresources/entitlements/aps-environment; "production" when the build
+ * profile sets SKLUBOT_APS_ENV=production, see eas.json). Untested on a device: see docs/BOUTIQUES.md.
+ */
+const LIVE_ACTIVITY = process.env.SKLUBOT_LIVE_ACTIVITY === "1";
+const APS_ENV = process.env.SKLUBOT_APS_ENV === "production" ? "production" : "development";
+if (LIVE_ACTIVITY) {
+  try { require.resolve("@bacons/apple-targets/app.plugin"); }
+  catch { throw new Error("SKLUBOT_LIVE_ACTIVITY=1 demande le module @bacons/apple-targets : lance « npx expo install @bacons/apple-targets@5.0.0 » dans mobile/ (docs/BOUTIQUES.md)."); }
+}
 const VERSION = "1.1.0";
 const VERSION_CODE = 2;
 /** Launcher badge permissions that expo-notifications' badge library declares; the app sets no badge count. */
@@ -26,6 +53,7 @@ const BADGE_PERMISSIONS = [
 
 export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
+  ...(process.env.SKLUBOT_EXPO_OWNER?.trim() ? { owner: process.env.SKLUBOT_EXPO_OWNER.trim() } : {}),
   name: store ? "Sklubot" : "Sklubot Complet",
   slug: "sklubot",
   version: VERSION,
@@ -35,10 +63,15 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   userInterfaceStyle: "automatic",
   backgroundColor: "#f4f2ee",
   ios: {
-    bundleIdentifier: "fr.sklubot.app",
+    bundleIdentifier: IOS_BUNDLE_ID,
     buildNumber: String(VERSION_CODE),
-    supportsTablet: true,
+    // Phone-only layout: on an iPad the app runs in iPhone mode, so App Store Connect asks no iPad screenshots
+    // (https://developer.apple.com/help/app-store-connect/reference/app-information/screenshot-specifications: the 13" iPad
+    // set is "Required if app runs on iPad"). Turn it back on together with real iPad screenshots.
+    supportsTablet: false,
     config: { usesNonExemptEncryption: false },
+    ...(process.env.SKLUBOT_APPLE_TEAM_ID?.trim() ? { appleTeamId: process.env.SKLUBOT_APPLE_TEAM_ID.trim() } : {}),
+    ...(LIVE_ACTIVITY ? { infoPlist: { NSSupportsLiveActivities: true }, entitlements: { "aps-environment": APS_ENV } } : {}),
     // L160: the app's privacy manifest (written to PrivacyInfo.xcprivacy at prebuild; https://docs.expo.dev/guides/apple-privacy/).
     // One source, store/privacy-manifest.json, also copied to store/PrivacyInfo.xcprivacy; `npm run store:check` keeps them
     // equal and checks every required-reason API declared by the installed libraries is covered.
@@ -46,7 +79,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     privacyManifests: require("./store/privacy-manifest.json"),
   },
   android: {
-    package: store ? "fr.sklubot.app" : "fr.sklubot.app.complet",
+    package: store ? ANDROID_PACKAGE : `${ANDROID_PACKAGE}.complet`,
     versionCode: VERSION_CODE,
     adaptiveIcon: {
       backgroundColor: "#e2552d",
@@ -79,6 +112,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     "./plugins/withDevCleartext",
     "./plugins/withReleaseSigning",
     ["./plugins/withRelayVariant", { variant }],
+    ...(LIVE_ACTIVITY ? ["@bacons/apple-targets"] : []),
   ],
-  extra: { variant },
+  extra: { variant, liveActivity: LIVE_ACTIVITY, ...(EAS_PROJECT_ID ? { eas: { projectId: EAS_PROJECT_ID } } : {}) },
 });

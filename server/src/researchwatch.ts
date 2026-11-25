@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto"; import { tr } from "./i18n.js";
 import type { Hono } from "hono";
 import { db, q } from "./db.js";
 import { bots, type BotRecord } from "./store.js";
@@ -35,15 +35,15 @@ export function previousReport(botId: string, subject: string, exceptId: string)
 /** « Ce qui a changé depuis le rapport du … »: new sources and sources no longer cited; "" when there is no earlier report. */
 export function changesBlock(brief: ResearchBrief, sections: ResearchSection[], prev: { updated: number; sections: ResearchSection[] } | null): string {
   if (!prev) return "";
-  const fr = brief.locale === "fr", before = urlsOf(prev.sections), now = urlsOf(sections);
+  const loc = brief.locale, before = urlsOf(prev.sections), now = urlsOf(sections);
   const added = sections.flatMap((s) => s.findings.filter((f) => !before.has(f.url)).map((f) => f));
   const gone = prev.sections.flatMap((s) => s.findings.filter((f) => !now.has(f.url)));
   const day = new Date(prev.updated).toISOString().slice(0, 10);
   const safe = (s: string) => s.replace(/[<>()\[\]_*#`\\]/g, " ").replace(/\s+/g, " ").trim().slice(0, 120);
-  const lines = [fr ? `\nCe qui a changé depuis le rapport du ${day} :` : `\nWhat changed since the report of ${day}:`];
-  if (!added.length && !gone.length) lines.push(fr ? "- Rien de nouveau : les mêmes sources." : "- Nothing new: the same sources.");
-  if (added.length) lines.push(fr ? `- ${added.length} source(s) nouvelle(s) :` : `- ${added.length} new source(s):`, ...added.slice(0, 10).map((f) => `  - ${safe(f.title) || f.url}${f.published ? ` (${f.published})` : ""}`));
-  if (gone.length) lines.push(fr ? `- ${gone.length} source(s) plus citée(s) cette fois.` : `- ${gone.length} source(s) no longer cited this time.`);
+  const lines = [`\n${tr(loc, "What changed since the report of {day}:", { day })}`];
+  if (!added.length && !gone.length) lines.push(tr(loc, "- Nothing new: the same sources."));
+  if (added.length) lines.push(tr(loc, "- {n} new source(s):", { n: added.length }), ...added.slice(0, 10).map((f) => `  - ${safe(f.title) || f.url}${f.published ? ` (${f.published})` : ""}`));
+  if (gone.length) lines.push(tr(loc, "- {n} source(s) no longer cited this time.", { n: gone.length }));
   return lines.join("\n");
 }
 

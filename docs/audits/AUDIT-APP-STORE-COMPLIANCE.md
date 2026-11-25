@@ -123,7 +123,7 @@ Preuves Sklubot : `mobile/STORE.md` (165 lignes : fiche Play l.9-40, classificat
 4. Ajouter à `STORE.md` : statut de commerçant DSA, gabarit de notes pour la relecture Apple, argumentaire « client d'un serveur » (Apple 4.2), règle « jamais renvoyer une version inchangée après un rejet » — **S**.
 5. Surveiller la disponibilité du serveur de démonstration pendant la relecture (routine ou moniteur) — **S**. — **FAIT (2026-11-23)**
 6. **Fait le 22/11/2026** (`publier-une-appli`, depuis le commit MIT/CC BY 943e855 du 12/08/2026). Compétence client **« Préparer la publication d'une appli »** réécrite depuis les règles officielles (ou depuis une version MIT/CC BY antérieure au 24/08/2026), avec la règle « jamais prêt tant qu'un critique reste » — **M**.
-7. Routine de veille « règles des boutiques » (flux RSS officiel Apple, blog Android) pour le propriétaire — **S**.
+7. Routine de veille « règles des boutiques » (flux RSS officiel Apple, blog Android) pour le propriétaire — **S**. — **FAIT (2026-11-25)** : `npm run store:rules` dans `mobile/` (date « Last Updated » des App Review Guidelines et bandeau du centre des règles Google Play, comparée à `mobile/store/rules-watch.json` ; code 2 si changement), à lancer par une tâche planifiée ; guide `docs/BOUTIQUES.md`
 8. Contrôleur de docs (liens, chemins de fichiers, numéros de ligne cités dans `docs/*.md`) — **S**. — **FAIT (2026-11-23)**
 
 ## 6. Non vérifié

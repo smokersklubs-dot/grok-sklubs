@@ -15,7 +15,7 @@ Règle d'or : **un texte qui manque dans une langue s'affiche en anglais**, jama
 | Serveur (avis dans le chat, erreurs, cartes, e-mails) | les textes anglais eux-mêmes ; le français est dans les tables `FR` / `…_FR` à côté du code | `server/src/lang/<code>.ts`, export `<code>`, **clé = texte anglais** | au démarrage |
 | E-mails du compte (lien de connexion, mot de passe, adresse, test, confirmation) | `server/src/accountmail.ts` (`MAILS`), `server/src/publicsignup.ts` (`MAIL`) | une entrée `<code>: (…) => ({ subject, text })` par e-mail | — |
 
-La langue du compte (`users.locale`) accepte toutes les langues de la liste. Avant connexion, le web suit la langue du navigateur (`es-MX` → `es`, `pt-BR` → `pt`, `zh-Hans` → `zh`), le serveur l'en-tête `Accept-Language`, le mobile la langue du téléphone.
+La langue du compte (`users.locale`) accepte toutes les langues de la liste. Avant connexion, le web suit la langue du navigateur (`es-MX` → `es`, `pt-BR` → `pt`, `zh-Hans` → `zh`), le serveur l'en-tête `Accept-Language` parmi les 7 langues (y compris les e-mails envoyés avant connexion : lien de connexion, mot de passe oublié, Google), le mobile la langue du téléphone.
 
 Les bots répondent dans la langue de la conversation ; quand elle n'est pas encore connue, dans la langue du compte (`languageName()` de `locales.ts` donne « Spanish », « Simplified Chinese »… aux consignes des modèles).
 
@@ -52,7 +52,7 @@ La langue est déjà déclarée dans `server/src/clientshared/locales.ts` (`LOCA
    npm run check:i18n           # le test (fait partie de npm test)
    ```
    Le test échoue sur : une clé inconnue de la référence, un texte vide, une `{variable}` ajoutée ou perdue, un domaine de lien changé, un nombre de `` ` `` différent, une paire `_one` / `_other` cassée. Un texte manquant **n'échoue pas** (repli anglais), sauf sous le plancher de la langue : relever `COVERAGE_FLOOR` dans `scripts/i18n/check-languages.mjs` quand la langue est traduite (l'espagnol est à 95 % : les nouveautés peuvent arriver d'abord en anglais).
-6. **E-mails** : ajouter l'entrée `de` à chaque e-mail de `MAILS` (`server/src/accountmail.ts`) et de `MAIL` (`server/src/publicsignup.ts`), et les petites tables `{ en, fr, es }` lues par `byLocale()` (`grep -rn "byLocale(" server/src` : annonces, OpenRouter, étapes OAuth des applis intégrées).
+6. **E-mails** : ajouter l'entrée `de` à chaque e-mail de `MAILS` (`server/src/accountmail.ts`) et de `MAIL` (`server/src/publicsignup.ts`), et les petites tables `{ en, fr, es }` lues par `byLocale()` (`grep -rn "byLocale(" server/src` : annonces, OpenRouter). Les étapes OAuth des applis intégrées (`server/src/native/vendors.ts`), le catalogue (`catalog.ts`) et la Sentinelle (`sentinel/texts.ts`) passent par les fichiers de langue (clé = texte anglais) ; les titres et résumés de la bibliothèque de compétences se traduisent dans `server/skills-library/catalog.json` (une entrée par langue).
 7. **Regarder** : `UI=de node web/scripts/shots-langues.mjs` (connexion, chat, Aujourd'hui, accueil, création de bot à 390 et 1440 px dans `docs/screenshots/langues/` ; la galerie accepte `?ui=de`). Les sélecteurs de langue (connexion, accueil) passent à la ligne au-delà de 3 langues : vérifier l'en-tête de l'accueil à 390 px. Puis `npm run build -w web`, `npm run check:bundle -w web` (vérifie que le dictionnaire est bien dans son propre fichier), captures à 390 et 1440 px dans la langue (les mots allemands sont longs : boutons, onglets, menus).
 
 ## Taille des fichiers (`npm run check:size`)
@@ -74,9 +74,17 @@ Les textes à compter ont deux clés `xxx_one` / `xxx_other`. Le web choisit ave
 
 ## Ce qui reste en anglais pour une langue autre que français et anglais
 
-- Quelques phrases écrites directement dans le code sous la forme `locale === "fr" ? "…" : "…"` (environ 140 côté serveur, 140 côté web, surtout studio vidéo, recherche, revue par les pairs, activité GitHub) : elles s'affichent en anglais. Les convertir en clés de dictionnaire quand on touche ces écrans.
-- Les étapes de création des clients OAuth (Google, Microsoft, Slack) dans Réglages → Applications, les textes des modèles d'équipe et de la bibliothèque de compétences, les exemples de démarrage du web (`web/src/lib/starters.ts`), l'invite d'export Grok (français ou anglais au choix).
-- Les noms de dossiers de l'export des notes (`notes/active`…).
+Le 25/11/2026, les phrases écrites dans le code sous la forme `locale === "fr" ? "…" : "…"` ont été déplacées dans les dictionnaires et traduites dans les 7 langues (≈ 175 serveur dans `server/src/inlinei18n.ts`, ≈ 330 web, plus les étapes OAuth, le catalogue d'applis, la Sentinelle, les rôles et personnalités, les exemples de démarrage et les titres de la bibliothèque de compétences). Restent volontairement en français ou en anglais (liste exacte et raison de chacun : `scripts/i18n/inline-allowlist.json`) :
+
+- les pages légales publiques (tarifs, CGU, mentions légales, confidentialité) : une adresse française et une anglaise, texte juridique non traduit automatiquement ;
+- les noms d'offres saisis par l'exploitant (`nameFr` / `nameEn`), l'invite d'export Grok (au choix), les noms de dossiers de l'export des notes (`notes/active`…), les titres de section des fichiers d'équipe (relus à l'import) ;
+- le texte complet des modèles d'équipe (`server/templates/*.md`) et des compétences de la bibliothèque (`SKILL.md` / `SKILL.fr.md`) : leur titre et leur résumé sont traduits (`server/skills-library/catalog.json`), pas leur corps ;
+- la voix : le oui/non dicté au téléphone n'est reconnu qu'en français et en anglais, les voix locales Piper n'existent qu'en français et en anglais ;
+- les réponses du modèle de démonstration (`server/src/llm/demo.ts`) et le bot de réunion en cours d'écriture (`server/src/meetingbot/`).
+
+**Garde-fou** : `npm run check:i18n` échoue si un fichier gagne une branche `=== "fr" ?` / `fr ? … : …` de plus que sa liste, ou si un nouveau fichier en a une (`inlineBranches()` de `scripts/i18n/check-languages.mjs`, rapport dans `npm run i18n:report`). Un nouveau texte s'écrit en anglais avec `tr()` côté serveur (le français dans la table `…_FR` de la zone, ou `INLINE_FR`) et avec une clé de `en.ts` / `fr.ts` côté web. Quand on retire une branche autorisée, baisser son compte dans la liste.
+
+Outils pour ne pas en réécrire : `intlOf(locale)` et `colon(locale)` (`server/src/lang/index.ts`), `intlTag()`, `intlLocale()`, `colon()` et `euros()` (`web/src/i18n/index.ts`) pour les dates, nombres, montants et la ponctuation « libellé : valeur » ; `text(key, english)` de `web/src/i18n/lookup.ts` pour un module que les tests node chargent sans l'appli (`lib/blockfold.ts`).
 
 ## Fichiers
 

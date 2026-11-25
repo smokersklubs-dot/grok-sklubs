@@ -1,4 +1,4 @@
-import { q } from "./db.js";
+import { q } from "./db.js"; import { tr } from "./i18n.js";
 import { computerKind, workspaceOf } from "./computer.js";
 import { addJournal } from "./journal.js";
 import { writeComputerFile } from "./linux.js";
@@ -75,12 +75,12 @@ export const netPolicy = {
 export function netRefusal(bot: Pick<BotRecord, "id" | "userId" | "name">, target: unknown): string | null {
   const host = cleanHost(target);
   if (!host || LOCAL.has(host)) return null;
-  const fr = users.localeOf(bot.userId) === "fr";
+  const loc = users.localeOf(bot.userId);
   const site = netPolicy.blocked(bot.userId).find((s) => covers(host, s));
-  if (site) return fr ? `Le propriétaire a interdit le site ${site} à tous ses bots : rien n'a été envoyé. N'essaie pas un autre chemin.` : `The owner blocked ${site} for all their bots: nothing was sent. Do not try another way.`;
+  if (site) return tr(loc, "The owner blocked {site} for all their bots: nothing was sent. Do not try another way.", { site });
   const p = netPolicy.get(bot.id);
-  if (p.mode === "none") return fr ? `${bot.name} n'a pas accès à Internet (réglage du propriétaire) : rien n'a été envoyé.` : `${bot.name} has no internet access (owner's setting): nothing was sent.`;
-  if (p.mode === "list" && !p.hosts.some((s) => covers(host, s))) return fr ? `${host} n'est pas dans la liste des sites permis à ${bot.name} : rien n'a été envoyé. Demande au propriétaire de l'ajouter s'il le faut.` : `${host} is not in the list of sites ${bot.name} may reach: nothing was sent. Ask the owner to add it if needed.`;
+  if (p.mode === "none") return tr(loc, "{bot} has no internet access (owner's setting): nothing was sent.", { bot: bot.name });
+  if (p.mode === "list" && !p.hosts.some((s) => covers(host, s))) return tr(loc, "{host} is not in the list of sites {bot} may reach: nothing was sent. Ask the owner to add it if needed.", { host, bot: bot.name });
   return null;
 }
 

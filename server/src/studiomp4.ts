@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync } from "node:fs"; import { tr } from "./i18n.js";
 import { mkdir, open, readdir, stat, statfs, unlink } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
@@ -28,7 +28,8 @@ const namePattern = /^artifact-video-[a-f0-9-]{36}$/;
 const template = (name: string) =>
   readFileSync(new URL("../templates/moneyprinter/" + name, import.meta.url), "utf8");
 const staging = path.join(config.dataDir, "studio-encoding");
-const message = (fr: boolean, local: string, english: string) => (fr ? local : english);
+/** A message in the reader's language (French in INLINE_FR, other languages in server/src/lang). */
+const message = (locale: string, english: string, vars: Record<string, string> = {}) => tr(locale, english, vars);
 export function startStudioExports() {
   // A stopped process may leave a partial export outside the bot library.
   const sweep = async () => {
@@ -53,7 +54,6 @@ async function encode(
   language: string,
   stillOwned: () => boolean,
 ) {
-  const fr = locale === "fr";
   const voices: (string | null)[] = [];
   for (const scene of story.scenes) {
     if (scene.speech || !voice || !scene.text) {
@@ -62,11 +62,7 @@ async function encode(
     }
     if (config.voiceTtsProvider !== "piper" || config.voiceTtsUrl !== LOCAL_TTS_URL)
       throw Error(
-        message(
-          fr,
-          "La voix locale est indisponible. Le montage peut être exporté sans narration.",
-          "Local narration is unavailable. The timeline can be exported without narration.",
-        ),
+        message(locale, "Local narration is unavailable. The timeline can be exported without narration."),
       );
     const wav = await piperTts(
       { url: LOCAL_TTS_URL, trusted: true },
@@ -78,11 +74,7 @@ async function encode(
       AbortSignal.timeout(45000),
     ).catch(() => {
       throw Error(
-        message(
-          fr,
-          "La voix locale ne répond pas. Réessaie ou choisis un export sans narration.",
-          "The local voice could not respond. Retry or export without narration.",
-        ),
+        message(locale, "The local voice could not respond. Retry or export without narration."),
       );
     });
     voices.push(wav.toString("base64"));
@@ -129,17 +121,13 @@ async function encode(
       header.toString("ascii", 4, 8) !== "ftyp"
     ) {
       if (/VIDEO_TOO_LARGE/.test(rendered.stderr))
-        throw Error(message(fr, "Le MP4 dépasse 1 Go. Raccourcis le montage.", "The MP4 exceeds 1 GB. Shorten the timeline."));
+        throw Error(message(locale, "The MP4 exceeds 1 GB. Shorten the timeline."));
       if (/STUDIO_STORAGE_FULL|ENOSPC/.test(rendered.stderr))
-        throw Error(message(fr, "Le serveur manque d’espace pour enregistrer le MP4.", "The server needs more storage to save the MP4."));
+        throw Error(message(locale, "The server needs more storage to save the MP4."));
       const long = /VOICE_TOO_LONG:(\d+)/.exec(rendered.stderr);
       if (long)
         throw Error(
-          message(
-            fr,
-            "Allonge le plan " + long[1] + " pour laisser le temps à la voix de le lire.",
-            "Give shot " + long[1] + " more time for its narration.",
-          ),
+          message(locale, "Give shot {n} more time for its narration.", { n: long[1] }),
         );
       console.warn(
         "[studio-mp4]",
@@ -149,11 +137,7 @@ async function encode(
         rendered.stderr.split("\n").filter(Boolean).at(-1)?.slice(0, 180),
       );
       throw Error(
-        message(
-          fr,
-          "Le rendu MP4 a échoué. Vérifie les médias du montage puis réessaie.",
-          "MP4 rendering failed. Check the timeline media and retry.",
-        ),
+        message(locale, "MP4 rendering failed. Check the timeline media and retry."),
       );
     }
     // L30: a montage marked « Généré par IA » also carries the IPTC marker in its metadata (aivideo.ts).
@@ -175,22 +159,21 @@ function start(
   thread?: number,
   language = user.locale,
 ) {
-  const fr = user.locale === "fr";
-  const say = (a: string, b: string) => message(fr, a, b);
+  const say = (english: string) => message(user.locale, english);
   if (computerKind() !== "linux")
     throw Error(
-      say("Le rendu MP4 nécessite le bureau Linux du bot.", "MP4 rendering requires a Linux bot desktop."),
+      say("MP4 rendering requires a Linux bot desktop."),
     );
   const path = "artifacts/" + name + ".html";
   const page = namePattern.test(name) && pages.forPath(bot.id, path, config.publicUrl);
   if (!page || page.userId !== user.id || page.visibility !== "private")
-    throw Error(say("Montage introuvable.", "Timeline not found."));
+    throw Error(say("Timeline not found."));
   const id = version === undefined ? pageVersions.list(bot.id, path)[0]?.id : version;
   if (typeof id !== "number" || !Number.isSafeInteger(id))
-    throw Error(say("Version introuvable.", "Version not found."));
+    throw Error(say("Version not found."));
   const source = pageVersions.get(bot.id, path, id)?.files.find((f) => f.file === "studio.json")?.content;
   const story = source && storyFor(bot.id, JSON.parse(source));
-  if (!story) throw Error(say("Version ou média introuvable.", "Version or media not found."));
+  if (!story) throw Error(say("Version or media not found."));
   const job = enqueueExport(bot, name, id, thread ?? 0, voice, language, user.locale, story);
   drainExports(encode);
   return job;

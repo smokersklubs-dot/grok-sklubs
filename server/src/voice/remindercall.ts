@@ -1,4 +1,4 @@
-import { seal, unseal } from "../auth.js"; import type { Locale } from "../shared.js";
+import { seal, unseal } from "../auth.js"; import type { Locale } from "../shared.js"; import { intlOf } from "../lang/index.js"; import { tr } from "../i18n.js";
 import { q } from "../db.js";
 import type { ToolSpec } from "../llm/types.js";
 import { fetchProblem, guardedFetch } from "../net.js";
@@ -81,9 +81,10 @@ export function removeReminderSettings(userId: string): boolean {
 const xml = (s: string) => s.replace(/[<>&'"]/g, (ch) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", "'": "&apos;", '"': "&quot;" }[ch]!));
 /** The TwiML read to the owner: the bot's name, the reminder, said twice. */
 export function reminderTwiml(botName: string, message: string, locale: Locale): string {
-  const lang = locale === "fr" ? "fr-FR" : "en-US";
-  const intro = locale === "fr" ? `Bonjour, ici ${botName}, de Sklubot. Petit rappel :` : `Hello, this is ${botName} from Sklubot. A reminder:`;
-  const again = locale === "fr" ? "Je répète :" : "Once more:";
+  const lang = intlOf(locale, "en-US");
+  // <Say language> takes these tags (es-ES, de-DE, it-IT, pt-BR, zh-CN…): https://www.twilio.com/docs/voice/twiml/say#attributes-language
+  const intro = tr(locale, "Hello, this is {bot} from Sklubot. A reminder:", { bot: botName });
+  const again = tr(locale, "Once more:");
   return `<Response><Say language="${lang}">${xml(intro)} ${xml(message)}</Say><Pause length="1"/><Say language="${lang}">${xml(again)} ${xml(message)}</Say></Response>`;
 }
 

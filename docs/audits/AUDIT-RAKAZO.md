@@ -186,7 +186,7 @@ Pages publiques : la page d'accueil confirme des fonctions déjà au cahier 02 (
 15. Clés d'accès (passkeys) à la connexion. M. — **FAIT (2026-11-25, L44)** : web seulement, l'appli mobile dit « pas encore » (`server/src/passkeys.ts`).
 16. Invités extérieurs par espace. M.
 17. Mémoire partagée par espace (isolée par défaut). L.
-18. Bot qui rejoint une réunion (bloqué par un fournisseur). L.
+18. Bot qui rejoint une réunion (bloqué par un fournisseur). L. (bot qui rejoint une réunion : ✅ fait le 25/11, comme invité dans le navigateur du bot, `server/src/meetingbot/`, L177)
 
 **À ajouter au cahier 02** (mise à jour du 22/11) : lignes 1-2, 5-6, 8, 10, 12-15, 18, 20-22, 25, 29, 31-33, 39-41, 43, 45-46, 49, 53-56, 61-62, 64-66, 68.
 

@@ -1,5 +1,7 @@
 # Protocole Sklubot Relais — version 1 (révision 1.2)
 
+> **Révision 1.9 (compatible, 25/11/2026)** : `android.*` — un **téléphone Android branché en USB** sur cet ordinateur, piloté avec `adb` (§20). Annoncé dans `capabilities` ; un serveur plus ancien ne l'envoie jamais, un Relais plus ancien répond `unknown_op`. `hello.protocol` vaut `"1.9"`.
+
 > **Révision 1.8 (compatible, 25/11/2026)** : `net.fetch` — une demande web d'un bot du propriétaire part de la connexion de cet ordinateur (« sortir par la maison », §19). Annoncée dans `capabilities` ; un serveur plus ancien ne l'envoie jamais, un Relais plus ancien répond `unknown_op` (Sklubot dit alors « mets Sklubot à jour »). `hello.v` reste `1`, `hello.protocol` vaut `"1.8"`.
 
 > **Révision 1.2 (compatible)** : un **téléphone** peut être un Relais (l'appli Sklubot pour Android, §13). Son `hello` porte `"device": { …, "kind": "phone", "platform": "android" }` et `"protocol": "1.2"`, et il annonce ses propres opérations. Un serveur 1.1 le voit comme un ordinateur sans souris ; un serveur 1.2 lui envoie les opérations du §13.
@@ -558,3 +560,74 @@ Tests : `companion/test/unit/netexit.test.js` (accord, refus, Stop, débit, rés
 coupées) ; `server/test/l169-egress.test.ts` (un faux Relais qui répond avec le code du Relais).
 **Non vérifié** sur un vrai Mac ou PC : la fenêtre de question « net » n'a pas été ouverte ici.
 
+
+
+## 20. Un téléphone Android branché en USB (révision 1.9, 25/11/2026, A-FAIRE L177)
+
+Le propriétaire branche son téléphone Android sur l'ordinateur où tourne le Relais ; ses bots l'utilisent à travers le
+Relais, avec **`adb`**, l'outil officiel de Google (« Android SDK Platform-Tools »), que **le propriétaire installe
+lui-même** : le Relais ne télécharge jamais rien. S'il ne trouve pas `adb` (dans le `PATH`, `ANDROID_HOME` /
+`ANDROID_SDK_ROOT`, ou les dossiers habituels `platform-tools`), `android.devices` répond `adb.found: false` et la
+fenêtre du Relais comme Réglages → Ordinateurs affichent le guide d'installation
+(https://developer.android.com/tools/releases/platform-tools, Options pour les développeurs, Débogage USB, « Autoriser »).
+
+Le téléphone lui-même doit d'abord avoir accepté l'ordinateur (sa fenêtre « Autoriser le débogage USB ? », clé RSA,
+https://developer.android.com/tools/adb) : avant, `adb devices -l` le montre `unauthorized`, sans modèle, et rien ne lui
+est envoyé (`phone_unauthorized`).
+
+Commandes `adb` utilisées (toutes documentées, aucune inventée ; liste des sources dans
+`companion/src/main/capabilities/adb.js`) : `adb version`, `adb devices -l`, `adb -s <série> shell getprop …`,
+`adb -s <série> exec-out screencap -p`, `input tap | swipe | text | keyevent`, `monkey -p <paquet> -c
+android.intent.category.LAUNCHER 1`, `uiautomator dump`, `dumpsys window`. Arguments passés en liste (jamais par un
+shell local) ; ce qui part dans le shell du téléphone est un nombre, un nom de paquet vérifié, ou un texte entre
+apostrophes.
+
+| `op` | Session de l'ordinateur ? | `args` | `result` |
+|---|---|---|---|
+| `android.devices` | non | `{}` | `{ adb: { found, version? }, devices: [{ serial, state: "device" \| "unauthorized" \| "offline"…, usb, model?, android?, sdk?, inUse }] }` — modèle et version **seulement** pour un téléphone qui a autorisé l'ordinateur |
+| `android.screenshot` | non | `{ serial, maxWidth?: 64–2560 (1080) }` | `{ format: "jpeg" \| "png", width, height, screenWidth, screenHeight, data: base64 }` |
+| `android.ui` | non | `{ serial, maxNodes?: 1–400 (200) }` | `{ app: { package }, nodes: [{ text?, desc?, id?, class?, bounds: [x, y, w, h], click?, edit?, password?, focused?, checked? }], truncated }` — texte d'un champ mot de passe remplacé par `••••` |
+| `android.tap` | non | `{ serial, x, y, long?: bool }` (pixels réels de l'écran) | `{}` |
+| `android.swipe` | non | `{ serial, fromX, fromY, toX, toY, durationMs?: 50–3000 (300) }` | `{}` |
+| `android.type` | non | `{ serial, text ≤ 500 (ASCII imprimable), force?: bool }` | `{ typed }` |
+| `android.key` | non | `{ serial, key: "back" \| "home" \| "recents" \| "enter" \| "delete" \| "tab" \| "escape" }` | `{}` |
+| `android.open` | non | `{ serial, package }` | `{ launched, package }` |
+| `android.release` | non | `{ serial? }` | `{ released }` — un bot rend le téléphone ; envoyé par Sklubot (bot `sklubot`), le Relais oublie aussi tous les accords pour ce téléphone |
+
+**Aucune opération d'installation** : rien n'est installé par ce chemin.
+
+Règles imposées **par le Relais** (`companion/src/main/phone-usb.js`), quoi que demande le serveur :
+
+1. **Accord sur l'ordinateur** : la première demande de chaque bot pour chaque téléphone ouvre une question (« {bot} veut
+   utiliser ton téléphone Android branché en USB », `kind: "phone"`, avec modèle, version et numéro de série) ; le oui
+   vaut pour ce bot et ce téléphone jusqu'à Stop ou la fermeture du Relais. Lister les téléphones ne demande rien.
+2. **Un bot à la fois par téléphone** : un autre bot reçoit `busy` (avec `holder`, `retryAfterMs`) tant que le premier a
+   agi il y a moins de 20 s. « {téléphone} utilisé par {bot} » est affiché sur l'ordinateur (bandeau rouge, fenêtre,
+   icône) et envoyé à Sklubot : événements `phone.started { bot, serial, model }` et `phone.ended { bot, serial, model,
+   reason }` (`reason` : `bot`, `stopped`, `idle` après 2 min, `unplugged`, `handover`, `user_stop`, `hotkey`,
+   `disconnected`, `paused`).
+3. **Stop gagne** : il termine toutes les utilisations, coupe les commandes `adb` en cours, oublie tous les accords et
+   verrouille le Relais (`locked`, comme pour l'ordinateur).
+4. **Jamais** dans Sklubot lui-même, l'installateur d'applis (`packageinstaller`, `permissioncontroller`) ni les
+   réglages (`com.android.settings`) → `blocked_app` ; ni dans une appli de la liste « garder à l'écart » (`guard.set
+   keepApps`, comparée au nom du paquet) → `keep_out`. L'appli au premier plan est relue juste avant chaque capture,
+   lecture, appui, glissement, saisie ou Entrée ; illisible → `foreground_unknown`.
+5. **Mot de passe** : avant `android.type`, le champ qui a le focus est relu ; un champ mot de passe est refusé
+   (`password_field`) sauf `force: true` (seulement depuis le coffre, `phone_vault_fill`, après une carte Sklubot) **et** un
+   nouveau oui sur l'ordinateur (`kind: "phone_password"`). Le journal local ne garde que la longueur du texte.
+
+Nouveaux codes d'erreur : `adb_missing`, `phone_unauthorized`, `phone_offline`.
+
+Côté serveur : outils `phone_devices`, `phone_screen`, `phone_ui_tree`, `phone_tap`, `phone_swipe`, `phone_type`,
+`phone_key`, `phone_open`, `phone_vault_fill` (`server/src/agent/phoneusb.ts`) ; carte « Utiliser le téléphone » la première fois (stricte
+après un contenu extérieur) ; carte à usage unique pour un appui sur une commande qui engage (envoyer, payer, supprimer,
+publier, confirmer, **installer / désinstaller / mettre à jour**), lue dans le dernier `android.ui` et relue avant l'appui ;
+jamais de mot de passe écrit par le bot : `phone_type` est refusé dans un champ mot de passe ; `phone_vault_fill`
+(identifiant, mot de passe ou code enregistré au coffre, règles du coffre) montre une carte à usage unique (élément,
+champ, appli, « •••• (N caractères) ») puis envoie `force` ; le secret n'est jamais dans les arguments d'un outil, donc
+jamais dans la carte, la discussion, les étapes ou le journal. Réglages → Ordinateurs : `GET /api/relay/devices/:id/android`, `POST /api/relay/devices/:id/android/stop`
+(`server/src/androidusbroutes.ts`, « Arrêter » tient le bot à l'écart 10 min, jusqu'à ce que le propriétaire lui
+écrive). Tests : `companion/test/unit/android-usb.test.js` (faux `adb`), `server/test/android-usb.test.ts` (faux Relais
+qui répond avec le code du Relais et le faux `adb`).
+**Non vérifié** avec un vrai téléphone ni un vrai `adb` : les formats de sortie (`adb devices -l`, `uiautomator dump`,
+`dumpsys window`) viennent de la documentation et sont joués par un faux programme.

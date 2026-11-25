@@ -29,7 +29,7 @@ import { enqueue } from "./agent/loop.js";
 import { chantiers } from "./chantiers.js";
 import { emitInternal } from "./internalevents.js";
 import { audit, bots, clip, newId, now, rows, users, type BotRecord } from "./store.js";
-import { wt } from "./worki18n.js";
+import { wt } from "./worki18n.js"; import { languageName } from "./clientshared/locales.js";
 import {
   ACCEPTANCES, BOARD_STATES, IDEA_PROGRESS, IDEA_URGENCIES,
   type Acceptance, type BoardFile, type BoardIdea, type BoardState, type BoardTask, type BoardView, type IdeaProgress, type IdeaUrgency, type RecapItem,
@@ -446,7 +446,7 @@ export function taskBrief(r: TaskRow, files: string[]): string {
     r.note ? `The owner's note (fix this first): ${r.note}` : "",
     deliveryBrief(r.id),
     "When it is done, mark the goal complete with evidence (what you produced and where). If you cannot finish, mark it blocked with the reason.",
-    loc === "fr" ? "Answer the owner in French." : "",
+    loc && loc !== "en" ? `Answer the owner in ${languageName(loc)}.` : "",
   ].filter(Boolean).join("\n\n");
 }
 

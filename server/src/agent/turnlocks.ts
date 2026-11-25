@@ -19,12 +19,15 @@ export const SCREEN_TOOLS = new Set(["screen_view", "screen_click", "screen_type
 /** Control of the owner's computer screen (mycomputer.ts). */
 export const MY_SCREEN_TOOLS = new Set(["my_screen", "my_point", "my_click", "my_drag", "my_scroll", "my_type", "my_key", "my_open", "my_window_focus", "my_vault_fill", "my_ui_tree", "my_ui_act"]);
 
+/** An Android phone plugged by USB into the owner's computer (phoneusb.ts). */
+const PHONE_USB_TOOLS = new Set(["phone_screen", "phone_ui_tree", "phone_tap", "phone_swipe", "phone_type", "phone_key", "phone_open", "phone_vault_fill"]);
 const norm = (s: unknown) => String(s ?? "").trim().replace(/\\/g, "/").replace(/^\.?\/+/, "").replace(/\/{2,}/g, "/").toLowerCase();
 
 /** The shared resources a tool call changes or drives, as keys (empty: none). */
 export function resourcesOf(name: string, input: Record<string, unknown>): string[] {
   if (SCREEN_TOOLS.has(name)) return ["screen"];
   if (MY_SCREEN_TOOLS.has(name)) return ["my-screen"];
+  if (PHONE_USB_TOOLS.has(name)) return [`phone:${norm(input.device)}:${norm(input.phone)}`]; // L177 Android by USB: one task at a time on a phone
   switch (name) {
     case "file_save": return [`file:${norm(input.filename)}`];
     case "page_publish": case "page_edit": return [`page:${norm(input.name)}`];

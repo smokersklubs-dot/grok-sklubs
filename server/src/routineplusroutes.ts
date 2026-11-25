@@ -12,7 +12,7 @@
  *   PUT  /bots/:id/work-models           same fields, partial
  * "Run now" (routes.ts) calls runNowGuard first.
  */
-import type { Context, Hono } from "hono";
+import type { Context, Hono } from "hono"; import { tr as gtr } from "./i18n.js";
 import { emit } from "./bus.js";
 import { bgTasks } from "./agent/bgtasks.js";
 import { body, fail } from "./routeinput.js";
@@ -35,8 +35,8 @@ const wrap = <T>(c: Context<Env>, fn: () => T): T => {
     throw err;
   }
 };
-const ownRoutine = (c: Context<Env>): RoutineRecord => routines.owned(c.get("user").id, c.req.param("id") ?? "") ?? fail(404, c.get("user").locale === "fr" ? "Cette routine n'existe pas." : "That routine does not exist.");
-const ownBot = (c: Context<Env>): BotRecord => bots.owned(c.get("user").id, c.req.param("id") ?? "") ?? fail(404, c.get("user").locale === "fr" ? "Ce bot n'existe pas." : "That bot does not exist.");
+const ownRoutine = (c: Context<Env>): RoutineRecord => routines.owned(c.get("user").id, c.req.param("id") ?? "") ?? fail(404, gtr(c.get("user").locale, "That routine does not exist."));
+const ownBot = (c: Context<Env>): BotRecord => bots.owned(c.get("user").id, c.req.param("id") ?? "") ?? fail(404, gtr(c.get("user").locale, "That bot does not exist."));
 const botOf = (r: RoutineRecord) => bots.byId(r.botId)!;
 
 function trackFor(r: RoutineRecord, locale: UserRecord["locale"]) {

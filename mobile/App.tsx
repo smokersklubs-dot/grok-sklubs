@@ -6,12 +6,14 @@ import * as Notifications from "expo-notifications";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useMemo } from "react";
-import { View } from "react-native";
+import { Alert, View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { Icon } from "./src/components/Icon";
-import { useT } from "./src/i18n";
+import { t, useT } from "./src/i18n";
 import { ensurePermission, setBackgroundCheck } from "./src/notify";
 import { useLive } from "./src/live";
+import { liveActivities } from "./src/liveActivity";
+import { parseStopUrl } from "../server/src/clientshared/taskactivity";
 import { openRelay } from "./src/relay";
 import { BotsScreen } from "./src/screens/Bots";
 import { ChatScreen } from "./src/screens/Chat";
@@ -59,8 +61,36 @@ function handleUrl(url: string | null) {
   const parsed = Linking.parse(url);
   if (parsed.scheme !== "sklubot") return;
   if (parsed.hostname === "relay") { openRelay(); return; }
+  // L177: « Stop » on the iPhone Live Activity — opens the chat and asks before stopping (never stops on the tap alone).
+  const stop = parseStopUrl(url);
+  if (stop) { askStop(stop.botId, stop.thread); return; }
   const id = parsed.hostname === "bot" ? parsed.path?.split("/")[0] : null;
   if (id && navRef.isReady() && useStore.getState().bots[id]) navRef.navigate("Chat", { botId: id });
+}
+
+function askStop(botId: string, thread: number) {
+  const bot = useStore.getState().bots[botId];
+  if (!bot || !navRef.isReady()) return;
+  navRef.navigate("Chat", { botId });
+  Alert.alert(t("liveActivity.stopTitle", { name: bot.name }), t("liveActivity.stopBody"), [
+    { text: t("common.cancel"), style: "cancel" },
+    { text: t("liveActivity.stop"), style: "destructive", onPress: () => void useStore.getState().stop(botId, thread).catch(() => undefined) },
+  ]);
+}
+
+/** L177: the iPhone Live Activities follow the bots' live state (src/liveActivity.ts; off unless built and enabled). */
+function useLiveActivities(boot: string) {
+  useEffect(() => {
+    if (boot !== "ready") { void liveActivities.reset(); return; }
+    const texts = { stop: t("liveActivity.stop"), running: t("liveActivity.running"), waiting: t("activity.waiting"), label: (k: string) => t(`activity.${k}` as Parameters<typeof t>[0]) };
+    let alive = true;
+    void liveActivities.connect(useStore.getState().call).then((on) => {
+      if (!alive || !on) return;
+      void liveActivities.sync(useStore.getState().bots, useStore.getState().live, texts);
+    });
+    const unsub = useStore.subscribe((s, prev) => { if (s.live !== prev.live || s.bots !== prev.bots) void liveActivities.sync(s.bots, s.live, texts); });
+    return () => { alive = false; unsub(); };
+  }, [boot]);
 }
 
 export default function App() {
@@ -68,6 +98,7 @@ export default function App() {
   const boot = useStore((s) => s.boot);
   const notify = usePrefs((p) => p.notify);
   const liveOn = useLive((l) => l.enabled);
+  useLiveActivities(boot);
 
   useEffect(() => { void useStore.getState().init(); }, []);
   useEffect(() => { if (boot !== "loading") SplashScreen.hideAsync().catch(() => undefined); }, [boot]);

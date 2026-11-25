@@ -28,7 +28,7 @@
  * { password? }; POST
  * /account/passkey-proof/options { purpose }; POST /account/passkey-proof { flow, response } → { proof }.
  */
-import type { Context, Hono } from "hono";
+import type { Context, Hono } from "hono"; import { localize } from "./lang/index.js";
 import { getCookie } from "hono/cookie";
 import { originAllowed, SESSION_COOKIE, verifyPassword } from "./auth.js";
 import { config } from "./config.js";
@@ -87,7 +87,7 @@ const FR: Record<string, string> = {
   "Passkey": "Clé d'accès",
 };
 const m = (locale: Locale, english: string, vars: Record<string, string | number> = {}) =>
-  (locale === "fr" ? FR[english] ?? english : english).replace(/\{(\w+)\}/g, (_x, k: string) => String(vars[k] ?? ""));
+  localize(locale, english, FR).replace(/\{(\w+)\}/g, (_x, k: string) => String(vars[k] ?? ""));
 export class PasskeyError extends Error { constructor(public status: 400 | 401 | 403 | 404 | 409 | 410 | 429 | 503, message: string, public vars: Record<string, string | number> = {}) { super(message); } }
 
 // ── Relying Party ────────────────────────────────────────────────────────────────────────────────────────────────

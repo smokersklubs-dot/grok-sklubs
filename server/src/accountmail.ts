@@ -27,7 +27,7 @@
  * so changing the Sklubot address keeps "Continuer avec Google" working for the same Google account. Workspace members
  * are stored by account id; invitations are matched against the account's current address when they are accepted.
  */
-import net from "node:net"; import { localize } from "./lang/index.js"; import { byLocale } from "./lang/index.js";
+import net from "node:net"; import { localize, pickLocale } from "./lang/index.js"; import { byLocale } from "./lang/index.js";
 import type { Context, Hono } from "hono";
 import nodemailer from "nodemailer";
 import { hashPassword, originAllowed, seal, unseal, verifyPassword } from "./auth.js";
@@ -117,8 +117,8 @@ const FR: Record<string, string> = {
 };
 const m = (locale: Locale, english: string, vars: Record<string, string> = {}) =>
   localize(locale, english, FR).replace(/\{(\w+)\}/g, (_x, k: string) => vars[k] ?? "");
-const pickLoc = (value: unknown, acceptLanguage?: string | null): Locale =>
-  value === "fr" || value === "en" ? value : /^\s*fr/i.test(acceptLanguage ?? "") ? "fr" : "en";
+/** Before sign-in: the posted language, else the browser's (Accept-Language) among the 7, else English. */
+const pickLoc = (value: unknown, acceptLanguage?: string | null): Locale => pickLocale(value, acceptLanguage);
 
 /** The e-mails themselves, in the account's language. Plain text: nothing to render, nothing to inject. */
 const MAILS = {

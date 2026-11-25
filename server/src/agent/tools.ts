@@ -31,7 +31,7 @@ import { generatePassword, parseTotp, totpNow } from "../totp.js";
 import { seal } from "../auth.js";
 import { askAndWait, createRoom, deliverBotMessage, dispatchToRoom, MAX_HELPERS, MAX_HOPS, startHelper, waitsOn } from "./team.js";
 import { addressesNoBot, BREAKER_LINE, dmChannel, postBudget, roomChannel, type Verdict } from "./roombudget.js";
-import { myComputerTools } from "./mycomputer.js"; import { myUiTools } from "./myui.js"; import { liveDocTools } from "./livedoctools.js"; import { phoneTools } from "./phonetools.js"; import { voiceNoteTools } from "../voice/voicenote.js"; import { reminderCallTools } from "../voice/remindercall.js"; import { remoteAgentTools } from "./remoteagenttools.js"; // wave 7: L164 L178 L177 L172 L174
+import { myComputerTools } from "./mycomputer.js"; import { myUiTools } from "./myui.js"; import { liveDocTools } from "./livedoctools.js"; import { phoneTools } from "./phonetools.js"; import { phoneUsbTools } from "./phoneusb.js"; import { voiceNoteTools } from "../voice/voicenote.js"; import { reminderCallTools } from "../voice/remindercall.js"; import { remoteAgentTools } from "./remoteagenttools.js"; // wave 7: L164 L178 L177 L172 L174
 import { botTools, profileTools, progressTools, skillImportTools, xSearchAvailable, xTools } from "./tools-team.js"; import { roomTools } from "./tools-room.js";
 import { bgTasks, publicTask, startTask, stopTask } from "./bgtasks.js"; import { batchTools } from "./batches.js"; import { bgTaskToolSpecs, TaskLimitError } from "./bgtaskspecs.js";
 import { findCode, mailAccounts } from "../native/access.js";
@@ -50,7 +50,7 @@ import { pageTools } from "./pagetools.js";
 import { pastReportsTool, researchTool } from "../researchroutes.js"; import { scholarTool } from "../researchscholar.js"; import { placeTools, withSiteNotes } from "./memoryplaces.js"; import { myComputerPlusTools } from "./mycomputerplus.js";
 import { craftReady } from "./creative-tools.js"; import { craftCommandRefusal } from "./craft-run.js";
 import { openmanWorkspace } from "./openman-tool.js";
-import { meetingTranscribe } from "../meetings.js";
+import { meetingTranscribe } from "../meetings.js"; import { meetingBotTools } from "../meetingbot/tools.js"; // L177 bot in a meeting
 import { videoStudioTool, updateVideoStudio } from "../videostudio.js";
 import { studioMp4Tool } from "../studiomp4.js";
 import { videoWorkflowTool } from "../videoworkflows.js";
@@ -1183,7 +1183,7 @@ function assemble(opts: { owner?: string; nativeSearch?: boolean; modelSearch?: 
     ...(computerKind() === "linux" && shellAvailable() ? [...inGroup("shell", jobTools), craftReady, openmanWorkspace] : []),
     ...(officeAvailable() ? officeTools : []),
     // Listening, watching a video, downloading one, OCR: on the bots' own Linux computers only (media.ts).
-    ...(mediaAvailable() ? inGroup("computer", [...mediaTools, meetingTranscribe]) : []),
+    ...(mediaAvailable() ? inGroup("computer", [...mediaTools, meetingTranscribe, ...meetingBotTools]) : []),
     ...workTools.filter((t) => t.spec.name !== "shell_run" || shellAvailable())
       .map((t): BuiltinTool => ({ ...t, group: t.spec.name === "shell_run" ? "shell" : t.spec.name === "web_fetch" ? "web" : "files", sensitive: t.spec.name === "shell_run" && computerKind() === "linux" ? false : t.sensitive })),
     ...((searchChainAvailable() || opts.modelSearch) && !opts.nativeSearch ? searchTools : []),
@@ -1204,7 +1204,7 @@ function assemble(opts: { owner?: string; nativeSearch?: boolean; modelSearch?: 
     ...localServerTools,
     ...(opts.video ? inGroup("video", videoTools) : []),
     // The user's own computers (Sklubot Relais): offered by newTurn only to users who linked one.
-    ...myComputerTools, ...myComputerPlusTools, ...myUiTools, ...phoneTools, ...liveDocTools, ...remoteAgentTools, ...voiceNoteTools, ...reminderCallTools, // L154
+    ...myComputerTools, ...myComputerPlusTools, ...myUiTools, ...phoneTools, ...phoneUsbTools, ...liveDocTools, ...remoteAgentTools, ...voiceNoteTools, ...reminderCallTools, // L154
     ...inGroup("memory", [...memoryTools, ...roomMemoryTools, ...skillFeedbackTools]), ...inGroup("routines", [...routineTools, ...routineFrameTools, ...routineOptionTools]), ...inGroup("tasks", taskTools), ...(opts.bgTasks === false ? [] : inGroup("tasks", [...bgTaskTools, ...batchTools])), ...goalTools, ...themeTools, ...recapTools, ...waitTools, ...planTools, ...viewTools, ...creationTools, ...inGroup("team", [...teamTools, ...roomTools]), ...userTools.filter((t) => t.spec.name !== "ask_takeover" || browserAvailable()), ...(computerKind() === "linux" ? [...codeTools, ...teamFolderTools] : []), ...(codeHost.available() ? toolCodeTools : []), ...reactTools,
   ];
 }

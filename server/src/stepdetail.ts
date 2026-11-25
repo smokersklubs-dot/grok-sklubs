@@ -9,7 +9,7 @@
  * Read-only, owner only (bots.owned): a step's result can hold the owner's data. Known vault values are removed
  * (redactSecrets) before anything is answered. Routes: GET /bots/:id/bgtasks/:taskId/cost, GET /bots/:id/steps/:seq.
  */
-import type { Hono } from "hono";
+import type { Hono } from "hono"; import { tr } from "./i18n.js"; import type { Locale } from "./shared.js";
 import { bgTasks } from "./agent/bgtasks.js";
 import { q } from "./db.js";
 import { fail } from "./routeinput.js";
@@ -90,18 +90,18 @@ export function stepDetail(bot: { id: string; userId: string; generation: number
 export function registerStepDetailRoutes(api: Hono<{ Variables: { user: UserRecord } }>) {
   registerSelfCheckRoutes(api); // L153 « Vérifier ce bot » (selfcheck.ts)
   registerBatchRoutes(api); // L99 « lots en parallèle » (agent/batches.ts)
-  const own = (userId: string, id: string, fr: boolean) => bots.owned(userId, id) ?? fail(404, fr ? "Ce bot n'existe pas." : "That bot does not exist.");
+  const own = (userId: string, id: string, locale: Locale) => bots.owned(userId, id) ?? fail(404, tr(locale, "That bot does not exist."));
   api.get("/bots/:id/bgtasks/:taskId/cost", (c) => {
     const user = c.get("user");
-    const bot = own(user.id, c.req.param("id") ?? "", user.locale === "fr");
+    const bot = own(user.id, c.req.param("id") ?? "", user.locale);
     const cost = taskCost(bot.id, c.req.param("taskId") ?? "");
-    return cost ? c.json(cost, 200, { "cache-control": "no-store" }) : fail(404, user.locale === "fr" ? "Cette tâche n'existe pas." : "That task does not exist.");
+    return cost ? c.json(cost, 200, { "cache-control": "no-store" }) : fail(404, tr(user.locale, "That task does not exist."));
   });
   api.get("/bots/:id/steps/:seq", (c) => {
     const user = c.get("user");
-    const bot = own(user.id, c.req.param("id") ?? "", user.locale === "fr");
+    const bot = own(user.id, c.req.param("id") ?? "", user.locale);
     const g = Number(c.req.query("generation"));
     const detail = stepDetail(bot, Number(c.req.param("seq")), Number.isInteger(g) && g > 0 ? g : bot.generation);
-    return detail ? c.json(detail, 200, { "cache-control": "no-store" }) : fail(404, user.locale === "fr" ? "Cette étape n'existe pas." : "That step does not exist.");
+    return detail ? c.json(detail, 200, { "cache-control": "no-store" }) : fail(404, tr(user.locale, "That step does not exist."));
   });
 }

@@ -1,4 +1,4 @@
-import type { HostedLegal, HostedPlan, HostedSettings } from "./shared.js";
+import type { HostedLegal, HostedPlan, HostedSettings } from "./shared.js"; import { intlOf } from "./lang/index.js";
 
 /**
  * Hosted mode's public pages (no session, no script, strict CSP like /confidentialite): the prices, generated from the
@@ -40,7 +40,7 @@ const draftBanner = (loc: Loc) => loc === "fr"
   ? `<p class="draft">Brouillon — à faire valider par un professionnel. Ce modèle n'est pas un conseil juridique ; les passages ${TODO} doivent être remplis avant toute mise en ligne commerciale.</p>`
   : `<p class="draft">Draft — to be checked by a professional. This template is not legal advice; the ${TODO} parts must be filled in before any commercial launch. The French version prevails.</p>`;
 
-const money = (n: number, loc: Loc) => n.toLocaleString(loc === "fr" ? "fr-FR" : "en-GB", { minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits: 2 });
+const money = (n: number, loc: Loc) => n.toLocaleString(intlOf(loc), { minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits: 2 });
 const limitLine = (n: number | null, loc: Loc, one: [string, string], many: [string, string], none: [string, string]) =>
   n === null ? (loc === "fr" ? none[0] : none[1]) : `${n} ${n === 1 ? (loc === "fr" ? one[0] : one[1]) : (loc === "fr" ? many[0] : many[1])}`;
 

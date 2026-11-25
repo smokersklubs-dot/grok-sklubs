@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto"; import { tr } from "./i18n.js";
 import { db, q } from "./db.js";
 import { defaultModelRef } from "./llm/index.js";
 import { enqueue } from "./agent/loop.js";
@@ -117,11 +117,9 @@ export function startPanel(bot: BotRecord, reviewerIds: unknown, row: Row, card:
 
 // ── Fix by the author ───────────────────────────────────────────────────────────────────────────────────────────
 /** The message the author receives: the findings, most serious first (at most 20). */
-export function fixMessage(review: PeerReviewResult, fr: boolean): string {
+export function fixMessage(review: PeerReviewResult, locale: Locale): string {
   const findings = (review.findings ?? []).slice(0, 20);
-  const head = fr
-    ? `${review.reviewer} a relu ta dernière modification et demande des corrections. Corrige ce qui est juste, dis ce que tu ne changes pas et pourquoi, puis relance tes tests.`
-    : `${review.reviewer} reviewed your last change and asks for fixes. Fix what is right, say what you leave as it is and why, then run your tests again.`;
+  const head = tr(locale, "{reviewer} reviewed your last change and asks for fixes. Fix what is right, say what you leave as it is and why, then run your tests again.", { reviewer: review.reviewer });
   const lines = findings.map((f) => `- [${f.severity}/${f.category}] ${f.path}${f.line ? `:${f.line}${f.endLine && f.endLine !== f.line ? `-${f.endLine}` : ""}` : ""} — ${clip(f.text, 600)}`);
   return [head, clip(review.reason, 1500), ...lines].filter(Boolean).join("\n");
 }
@@ -139,7 +137,6 @@ export const fixSend = { enqueue: (...a: Parameters<typeof enqueue>) => enqueue(
 export function fixByAuthor(bot: BotRecord, row: Row): { sent: true } {
   const review = changesReview(bot, row.seq);
   if (!review) throw new ReviewPlusError(409, "Aucune relecture ne demande de correction sur cette modification.");
-  const fr = users.localeOf(bot.userId) === "fr";
-  fixSend.enqueue(bot.id, { kind: "bot", fromName: review.reviewer, text: fixMessage(review, fr), depth: 1, tainted: true, thread: row.thread || undefined });
+  fixSend.enqueue(bot.id, { kind: "bot", fromName: review.reviewer, text: fixMessage(review, users.localeOf(bot.userId)), depth: 1, tainted: true, thread: row.thread || undefined });
   return { sent: true };
 }

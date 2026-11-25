@@ -24,6 +24,7 @@ const { runShell } = require('./capabilities/shell');
 const { createFileCaps, shareProblem } = require('./capabilities/files');
 const { createGpuHttp } = require('./capabilities/gpu');
 const { createNetExit } = require('./capabilities/netexit');
+const { createAdb, findAdb } = require('./capabilities/adb');
 const { createAccessibilityCaps } = require('./capabilities/accessibility');
 const i18n = require('./i18n');
 const { AppSettings } = require('./app-settings');
@@ -84,7 +85,7 @@ let quitting = false;
 /** @type {Record<string,string>} */ let dict = i18n.fr;
 let lang = /** @type {'fr'|'en'} */ ('fr');
 /** @type {{ code: string, expiresAt: string|null } | null} */ let pairing = null;
-/** @type {Map<string, { kind: 'session'|'command'|'terminal'|'shortcut'|'gpu'|'net', bot: { id: string, name: string }, data: any, resolve: (v: any) => void, win: Electron.BrowserWindow, shownAt: number, deadline: number }>} */
+/** @type {Map<string, { kind: 'session'|'command'|'terminal'|'shortcut'|'gpu'|'net'|'phone'|'phone_password', bot: { id: string, name: string }, data: any, resolve: (v: any) => void, win: Electron.BrowserWindow, shownAt: number, deadline: number }>} */
 const prompts = new Map();
 /** @type {string | null} */ let setupError = null;
 /** @type {string | null} */ let folderError = null;
@@ -125,7 +126,7 @@ async function boot() {
   core = new RelayCore({
     send: (msg) => (conn ? conn.send(msg) : false),
     // Files: only in the folders the user shares below; the previous version of a file goes to the OS trash.
-    caps: { ...desktop, ...axCaps(), runShell: awake.during(runShell), ...createFileCaps({ getFolders: () => store.folders(), trash: (p) => shell.trashItem(p) }), ...createGpuHttp(), ...createNetExit() },
+    caps: { ...desktop, ...axCaps(), runShell: awake.during(runShell), ...createFileCaps({ getFolders: () => store.folders(), trash: (p) => shell.trashItem(p) }), ...createGpuHttp(), ...createNetExit(), ...androidCaps() },
     ui: consentUI,
     store,
     log,
@@ -236,6 +237,25 @@ function capabilityList() {
     .filter((op) => !op.startsWith('ax.') || process.platform === 'darwin' || process.platform === 'win32');
 }
 
+/**
+ * Android phones by USB (1.9, L177): the owner's own adb (never downloaded here). Screenshots are made smaller with
+ * Electron's nativeImage (resize + toJPEG) so they fit one message.
+ */
+function androidCaps() {
+  const adb = createAdb();
+  return {
+    ...adb,
+    androidScreenshot: async (/** @type {any} */ a) => {
+      const r = await adb.androidScreenshot(a);
+      const img = nativeImage.createFromBuffer(r.data);
+      if (img.isEmpty()) return { ...r, screenWidth: r.width, screenHeight: r.height };
+      const small = r.width > a.maxWidth ? img.resize({ width: a.maxWidth, quality: 'good' }) : img;
+      const size = small.getSize();
+      return { format: 'jpeg', width: size.width, height: size.height, screenWidth: r.width, screenHeight: r.height, data: small.toJPEG(70) };
+    },
+  };
+}
+
 /** Accessibility tree (L164): read an app, act by reference. macOS needs the Accessibility permission (same as robotjs). */
 function axCaps() {
   if (process.platform !== 'darwin' && process.platform !== 'win32') return {};
@@ -265,7 +285,7 @@ const consentUI = {
     return openPrompt('command', p.promptId, p.bot, { command: p.command, cwd: p.cwd, scripts: p.scripts || [], floor: p.floor || null }, p.timeoutMs);
   },
   /** A terminal for this session, or a protected shortcut (guard.js): asked here, on this computer. */
-  /** @param {{ promptId: string, bot: { id: string, name: string }, kind: 'terminal'|'shortcut'|'gpu'|'net', detail: string, timeoutMs: number }} p */
+  /** @param {{ promptId: string, bot: { id: string, name: string }, kind: 'terminal'|'shortcut'|'gpu'|'net'|'phone'|'phone_password', detail: string, timeoutMs: number }} p */
   askGuard(p) {
     return openPrompt(p.kind, p.promptId, p.bot, { detail: p.detail }, p.timeoutMs);
   },
@@ -281,8 +301,15 @@ const consentUI = {
   /** @param {any} session */
   onSession(session) {
     if (session) { showBanner(session.botName); pointer.start(session.botName); }
-    else { pointer.close(); hideBanner(); }
+    else { pointer.close(); if (!core.android.uses.size) hideBanner(); }
     awake.session(!!session);
+    updateTray();
+    pushState();
+  },
+  /** Android phones in use by a bot (1.9): the red banner says so too. @param {{ serial: string, model: string, botName: string }[]} uses */
+  onPhones(uses) {
+    if (uses.length && !core.session) showBanner(uses[0].botName);
+    else if (!uses.length && !core.session) hideBanner();
     updateTray();
     pushState();
   },
@@ -295,7 +322,7 @@ const consentUI = {
 };
 
 /**
- * @param {'session'|'command'|'terminal'|'shortcut'|'gpu'|'net'} kind @param {string} promptId @param {{ id: string, name: string }} bot
+ * @param {'session'|'command'|'terminal'|'shortcut'|'gpu'|'net'|'phone'|'phone_password'} kind @param {string} promptId @param {{ id: string, name: string }} bot
  * @param {any} data @param {number} timeoutMs
  */
 function openPrompt(kind, promptId, bot, data, timeoutMs) {
@@ -404,7 +431,7 @@ function showBanner(botName) {
     lockDownContents(bannerWin);
     bannerWin.loadFile(path.join(RENDERER, 'banner.html'));
     bannerWin.once('ready-to-show', () => bannerWin && bannerWin.showInactive());
-    bannerWin.on('close', (e) => { if (!quitting && core.session) e.preventDefault(); });
+    bannerWin.on('close', (e) => { if (!quitting && (core.session || core.android.uses.size)) e.preventDefault(); });
     bannerWin.on('closed', () => { bannerWin = null; });
   } else {
     bannerWin.showInactive();
@@ -438,12 +465,12 @@ function createTray() {
 
 function updateTray() {
   if (!tray) return;
-  const active = !!(core && core.session);
+  const active = !!(core && (core.session || core.android.uses.size));
   const relayOn = relayEnabled();
   const paused = relayOn && (!conn || conn.status === 'paused');
   tray.setImage(trayIcon(active ? 'active' : paused ? 'paused' : unread > 0 ? 'unread' : 'idle'));
   const unreadText = unread > 0 ? ` — ${tr('tray.unread', { n: unread })}` : '';
-  tray.setToolTip(relayOn ? tr('tray.tooltip', { status: active ? tr('session.active', { bot: core.session ? core.session.botName : '' }) : statusText() }) + unreadText : `Sklubot${unreadText}`);
+  tray.setToolTip(relayOn ? tr('tray.tooltip', { status: active ? (core.session ? tr('session.active', { bot: core.session.botName }) : tr('phone.active', { bot: core.android.state()[0]?.botName || '', phone: core.android.state()[0]?.model || '' })) : statusText() }) + unreadText : `Sklubot${unreadText}`);
   // macOS menu bar: the count next to the icon (Tray.setTitle is macOS only).
   if (process.platform === 'darwin') tray.setTitle(unread > 0 ? String(unread > 99 ? '99+' : unread) : '');
   /** @type {Electron.MenuItemConstructorOptions[]} */
@@ -551,6 +578,8 @@ function uiState() {
     logPath: actionLog.file,
     version: app.getVersion(),
     protocol: PROTOCOL_REVISION,
+    phones: core ? core.android.state() : [],
+    adbFound: !!findAdb(),
   };
 }
 
@@ -575,7 +604,7 @@ function registerIpc() {
     return { kind: pr.kind, bot: pr.bot, data: pr.data, deadline: pr.deadline, testMode: TEST_AUTOCONFIRM };
   });
   ipcMain.handle('prompt:answer', (ev, id, decision, extra) => answerPrompt(ev, id, decision, extra));
-  ipcMain.handle('banner:get', () => ({ botName: core.session ? core.session.botName : '', testMode: TEST_AUTOCONFIRM }));
+  ipcMain.handle('banner:get', () => ({ botName: core.session ? core.session.botName : '', phones: core.android.state(), testMode: TEST_AUTOCONFIRM }));
   // Stop is always allowed, from any of our windows.
   ipcMain.handle('session:stop', () => { core.stop('user'); return true; });
 

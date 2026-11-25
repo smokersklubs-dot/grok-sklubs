@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { t as tr } from "../i18n";
 import { api, apiUpload, errText } from "../api";
 import { MAX_UPLOAD_BYTES, useStore } from "../store";
 import { scenesFrom, validStory, type Story } from "../lib/studioStory";
@@ -45,7 +46,7 @@ export function VideoStudio({ onClose }: { onClose: () => void }) {
     setError("");
     try {
       if (files.length > 60 || [...files, ...(song ? [song] : [])].some((f) => f.size > MAX_UPLOAD_BYTES))
-        throw Error(fr ? "Maximum 60 plans et 1 Go par fichier." : "Up to 60 shots and 1 GB per file.");
+        throw Error(tr("studio.upShotsGbPer"));
       const paths: string[] = [];
       for (const f of files) paths.push(await upload(f));
       const story: Story = {
@@ -58,9 +59,7 @@ export function VideoStudio({ onClose }: { onClose: () => void }) {
       };
       if (!validStory(story))
         throw Error(
-          fr
-            ? "Vérifie les repères et les durées. Le montage accepte 0,5 à 60 s par plan et 5 minutes au total."
-            : "Check the timings. Use 0.5–60 seconds per shot and up to 5 minutes overall.",
+          tr("studio.checkTimingsUseSeconds"),
         );
       const result = await api<{ token: string; title: string }>("POST", "/bots/" + bot + "/video-studio", {
         key: key.current,
@@ -79,7 +78,7 @@ export function VideoStudio({ onClose }: { onClose: () => void }) {
   }
   return (
     <Modal
-      title={fr ? "Studio vidéo" : "Video Studio"}
+      title={tr("studio.videoStudio")}
       onClose={() => {
         if (!busy) onClose();
       }}
@@ -93,7 +92,7 @@ export function VideoStudio({ onClose }: { onClose: () => void }) {
         }}
       >
         <label>
-          {fr ? "Titre du montage" : "Project title"}
+          {tr("studio.projectTitle")}
           <input
             className="input"
             autoFocus
@@ -101,12 +100,12 @@ export function VideoStudio({ onClose }: { onClose: () => void }) {
             value={title}
             maxLength={110}
             onChange={(e) => setTitle(e.target.value)}
-            placeholder={fr ? "Ex. Présentation de la collection" : "e.g. Collection preview"}
+            placeholder={tr("studio.eGCollectionPreview")}
           />
         </label>
         <div className="studio-pair">
           <label>
-            {fr ? "Bureau du bot" : "Bot workspace"}
+            {tr("studio.botWorkspace")}
             <select className="input" value={bot} onChange={(e) => { setBot(e.target.value); setLibraryAudio(""); }}>
               {choices.map((b) => (
                 <option key={b.id} value={b.id}>
@@ -125,7 +124,7 @@ export function VideoStudio({ onClose }: { onClose: () => void }) {
           </label>
         </div>
         <label>
-          {fr ? "Texte des plans" : "Shot captions"}
+          {tr("studio.shotCaptions")}
           <textarea
             className="input"
             rows={4}
@@ -133,15 +132,13 @@ export function VideoStudio({ onClose }: { onClose: () => void }) {
             maxLength={7500}
             onChange={(e) => setLines(e.target.value)}
             placeholder={
-              fr
-                ? "Une ligne par plan. Pour des paroles synchronisées, commence chaque ligne par [mm:ss.xx]."
-                : "One line per shot. Start each line with [mm:ss.xx] for timed lyrics."
+              tr("studio.oneLinePerShot")
             }
           />
         </label>
         <div className="studio-pair">
           <label>
-            {fr ? "Images et clips" : "Images and clips"}
+            {tr("studio.imagesClips")}
             <input
               type="file"
               multiple
@@ -150,7 +147,7 @@ export function VideoStudio({ onClose }: { onClose: () => void }) {
             />
           </label>
           <label>
-            {fr ? "Bande-son" : "Soundtrack"}
+            {tr("studio.soundtrack")}
             <input
               type="file"
               accept=".mp3,.m4a,.wav,.ogg,.aac,.flac,.opus"
@@ -164,7 +161,7 @@ export function VideoStudio({ onClose }: { onClose: () => void }) {
         }} />
         <ErrorNote>{error}</ErrorNote>
         <button className="btn btn-primary" disabled={busy || !title.trim() || !bot}>
-          {busy ? progress || (fr ? "Préparation…" : "Preparing…") : fr ? "Ouvrir le montage" : "Open timeline"}
+          {busy ? progress || (tr("studio.preparing")) : tr("studio.openTimeline")}
         </button>
       </form>
     </Modal>

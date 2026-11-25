@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto"; import { localize } from "./lang/index.js"; import type { Locale } from "./shared.js";
+import { randomUUID } from "node:crypto"; import { localize } from "./lang/index.js"; import type { Locale } from "./shared.js"; import { tr } from "./i18n.js";
 import type { Context, Hono } from "hono";
 import { q } from "./db.js";
 import { screen } from "./pastedsecrets.js";
@@ -40,13 +40,12 @@ export interface MessageReport {
  * or an account. Errs on the side of hiding too much; the reason and the note say what was wrong.
  */
 export function maskForReport(text: string, locale: Locale = "fr"): string {
-  const fr = locale === "fr";
   let s = screen(text, locale).text;
   s = s.replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, "[e-mail]");
   s = s.replace(/\b(https?:\/\/[^\s/?#)]+)([^\s)]*)/gi, (_m, origin: string, rest: string) => (rest && rest !== "/" ? `${origin}/…` : origin));
   s = s.replace(/\b[A-Z]{2}\d{2}(?:[ ]?[A-Z0-9]{4}){3,7}(?:[ ]?[A-Z0-9]{1,3})?\b/g, "[IBAN]");
-  s = s.replace(/\b(?:\d[ -]?){13,19}\b/g, (m) => (m.replace(/\D/g, "").length >= 13 ? (fr ? "[numéro de carte]" : "[card number]") : m));
-  s = s.replace(/(?:\+\d{1,3}[\s.-]?)?(?:\(?\d{1,4}\)?[\s.-]?){2,5}\d{2,4}\b/g, (m) => (m.replace(/\D/g, "").length >= 9 ? (fr ? "[téléphone]" : "[phone]") : m));
+  s = s.replace(/\b(?:\d[ -]?){13,19}\b/g, (m) => (m.replace(/\D/g, "").length >= 13 ? tr(locale, "[card number]") : m));
+  s = s.replace(/(?:\+\d{1,3}[\s.-]?)?(?:\(?\d{1,4}\)?[\s.-]?){2,5}\d{2,4}\b/g, (m) => (m.replace(/\D/g, "").length >= 9 ? tr(locale, "[phone]") : m));
   return s;
 }
 

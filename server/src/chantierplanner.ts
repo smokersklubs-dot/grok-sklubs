@@ -13,7 +13,7 @@
 import { hostedHoldsBot, isPaused, tell } from "./agent/loop.js"; import type { Locale } from "./shared.js";
 import { capHolds } from "./usagecaps.js";
 import { bots, clip, now, rows, users, type BotRecord } from "./store.js";
-import { ct } from "./chantieri18n.js";
+import { ct } from "./chantieri18n.js"; import { languageName } from "./clientshared/locales.js";
 import { applyLessons, chantiers, checkPlan, lessons, spend, usageBetween, type ChantierRecord } from "./chantiers.js";
 import type { ChantierPlan } from "./chantiertypes.js";
 
@@ -31,7 +31,7 @@ const SHAPE = `{"observations":["what the brief says for sure"],"assumptions":["
 export function plannerSystem(locale: Locale): string {
   return [
     PLANNER_MARK,
-    `You plan a "chantier": a piece of work split between several bots. Write every text for the owner in ${locale === "fr" ? "French, simple words, tutoiement" : "English, simple words"}.`,
+    `You plan a "chantier": a piece of work split between several bots. Write every text for the owner in ${languageName(locale)}, simple words${locale === "en" ? "" : ", informal (tu/du/tú…)"}.`,
     "1. Turn the brief into observable, testable requirements. Keep apart what is observed (stated), assumed, and unknown (questions only the owner can answer). Every requirement has an acceptance check. Reconstruct behaviour only: never ask anyone to copy another product's source code, prompts, texts, names or assets.",
     "2. Give each participant (a bot of the team) a bounded job with a defined deliverable (research with sources, specification, build, check).",
     "3. Draw the graph: independent tasks have no link (they run in parallel), a task that needs another's result has a link naming the artifact that passes. Two tasks touching the same file name it in resources.",

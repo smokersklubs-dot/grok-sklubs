@@ -18,6 +18,7 @@ const { OPS, ERR, LIMITS, ProtocolError, validateArgs, parseBot } = require('./p
 const { ConsentGate } = require('./consent');
 const G = require('./guard');
 const AX = require('./capabilities/accessibility');
+const { PhoneUsb } = require('./phone-usb');
 
 const IDLE_SESSION_MS = 15 * 60_000;
 /**
@@ -36,7 +37,8 @@ const VIEW_KEEPALIVE_MS = 5_000;
  * @typedef {{
  *   askSession(p: { promptId: string, bot: Bot, reason: string, timeoutMs: number, holder?: Bot }): Promise<'once'|'always'|'all'|'refuse'|'expired'>,
  *   askCommand(p: { promptId: string, bot: Bot, command: string, cwd: string|null, timeoutMs: number, floor?: string, scripts?: { path: string, sha256: string, lines: string[], more: number, binary: boolean }[] }): Promise<{ decision: 'run'|'refuse'|'expired', alwaysForBot?: boolean }>,
- *   askGuard?(p: { promptId: string, bot: Bot, kind: 'terminal'|'shortcut'|'gpu'|'net', detail: string, timeoutMs: number }): Promise<'allow'|'refuse'|'expired'>,
+ *   askGuard?(p: { promptId: string, bot: Bot, kind: 'terminal'|'shortcut'|'gpu'|'net'|'phone'|'phone_password', detail: string, timeoutMs: number }): Promise<'allow'|'refuse'|'expired'>,
+ *   onPhones?(uses: { serial: string, model: string, botName: string, since: number }[]): void,
  *   cancelPrompt(promptId: string): void,
  *   onSession(session: Session|null): void,
  *   onLocked(locked: boolean): void,
@@ -123,6 +125,8 @@ class RelayCore {
     this.netOk = new Set();
     /** net.fetch has its own, slower rate: 20 at once, then 2 a second. */
     this.netBucket = new TokenBucket(20, 2, this.now);
+    /** Android phones plugged in by USB (1.9, L177): their own yes per bot and phone, cleared by Stop. */
+    this.android = new PhoneUsb(this);
   }
 
   get locked() {
@@ -245,6 +249,8 @@ class RelayCore {
         }
         case 'gpu.http': return await this.gpuHttp(id, bot, args);
         case 'net.fetch': return await this.netFetch(id, bot, args);
+        case 'android.devices': case 'android.screenshot': case 'android.ui': case 'android.tap': case 'android.swipe':
+        case 'android.type': case 'android.key': case 'android.open': case 'android.release': return await this.android.handle(id, bot, op, args);
         case 'app.open': {
           const result = await this.d.caps.openApp(args);
           this.opened.add(G.normApp(args.name));
@@ -420,6 +426,7 @@ class RelayCore {
     if (this.pendingPromptId) this.d.ui.cancelPrompt(this.pendingPromptId);
     this.gpuOk.clear();
     this.netOk.clear();
+    this.android.stopAll(source === 'hotkey' ? 'hotkey' : 'user_stop', true);
     this.endSession(source === 'hotkey' ? 'hotkey' : 'user_stop');
     if (!this.locked) {
       this.d.store.setLocked(true);
@@ -442,6 +449,7 @@ class RelayCore {
   /** @param {string} [reason] */
   onDisconnected(reason = 'disconnected') {
     if (this.pendingPromptId) this.d.ui.cancelPrompt(this.pendingPromptId);
+    this.android.stopAll(reason, false);
     this.endSession(reason);
   }
 
@@ -710,7 +718,7 @@ class RelayCore {
     return this.ok(id, await this.d.caps.netFetch(args));
   }
 
-  /** @param {Bot} bot @param {'terminal'|'shortcut'|'gpu'|'net'} kind @param {string} detail @returns {Promise<string>} */
+  /** @param {Bot} bot @param {'terminal'|'shortcut'|'gpu'|'net'|'phone'|'phone_password'} kind @param {string} detail @returns {Promise<string>} */
   async askGuard(bot, kind, detail) {
     const ask = this.d.ui.askGuard;
     if (typeof ask !== 'function') return 'refuse';
@@ -803,6 +811,8 @@ const CAP_FOR_OP = /** @type {Record<string, string>} */ ({
 
 /** What goes into the local action log (never image data). @param {string} op @param {Record<string, any>} args */
 function summarize(op, args) {
+  // Typed on a phone: its length only (it may be personal).
+  if (op === 'android.type') return { serial: args.serial, length: args.text.length, force: args.force };
   if (op === 'keyboard.type') return { text: args.text.length > 200 ? args.text.slice(0, 200) + '…' : args.text, length: args.text.length };
   if (op === 'shell.run' || op === 'shell.start') return { command: args.command.slice(0, 1000), timeoutMs: args.timeoutMs, cwd: args.cwd, scripts: (args.scripts || []).length };
   // A saved login: where and which field, never the text.

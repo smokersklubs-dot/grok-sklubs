@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { randomBytes } from "node:crypto"; import { pickLocale, tr } from "./i18n.js";
 import type { IncomingMessage } from "node:http";
 import type { Context, Hono } from "hono";
 import { config } from "./config.js";
@@ -78,7 +78,6 @@ export function cleanScopes(raw: unknown): BotApiScope[] {
 export class BotApiError extends Error {
   constructor(public status: 400 | 401 | 403 | 404 | 409 | 413 | 429, public code: string, message: string, public extra: Record<string, unknown> = {}) { super(message); this.name = "BotApiError"; }
 }
-const say = (loc: Locale | undefined, en: string, fr: string) => (loc === "fr" ? fr : en);
 
 export const apiKeys = {
   list: (botId: string): ApiKeyRecord[] => q.all("SELECT * FROM bot_api_keys WHERE bot_id = ? ORDER BY revoked_at IS NOT NULL, created_at DESC", botId).map(toKey),
@@ -87,17 +86,17 @@ export const apiKeys = {
   /** A new key for the owner's bot. Returns the key itself, which is never stored nor shown again. */
   create(user: UserRecord, bot: BotRecord, rawName: unknown, rawScopes: unknown): { key: ApiKeyRecord; secret: string } {
     const loc = user.locale;
-    if (bot.kind !== "agent" || bot.parentId || bot.userId !== user.id) throw new BotApiError(400, "not_a_bot", say(loc, "Only one of your own bots can have API keys.", "Seul un de tes propres bots peut avoir des clés API."));
+    if (bot.kind !== "agent" || bot.parentId || bot.userId !== user.id) throw new BotApiError(400, "not_a_bot", tr(loc, "Only one of your own bots can have API keys."));
     const name = String(rawName ?? "").replace(/\s+/g, " ").trim();
-    if (!name) throw new BotApiError(400, "name", say(loc, "Give the key a name (the program that will use it).", "Donne un nom à la clé (le programme qui va s'en servir)."));
-    if (name.length > 60) throw new BotApiError(400, "name", say(loc, "That name is too long (60 characters at most).", "Ce nom est trop long (60 caractères au plus)."));
+    if (!name) throw new BotApiError(400, "name", tr(loc, "Give the key a name (the program that will use it)."));
+    if (name.length > 60) throw new BotApiError(400, "name", tr(loc, "That name is too long (60 characters at most)."));
     const scopes = cleanScopes(rawScopes);
-    if (!scopes.length) throw new BotApiError(400, "scopes", say(loc, "Choose at least one permission: read, write, tasks or memory.", "Choisis au moins une permission : lire, écrire, tâches ou mémoire."));
+    if (!scopes.length) throw new BotApiError(400, "scopes", tr(loc, "Choose at least one permission: read, write, tasks or memory."));
     const secret = KEY_PREFIX + randomBytes(32).toString("base64url");
     const id = newId("bak");
     const t = now();
     q.tx(() => {
-      if (apiKeys.activeCount(bot.id) >= MAX_KEYS_PER_BOT) throw new BotApiError(409, "too_many_keys", say(loc, `This bot already has ${MAX_KEYS_PER_BOT} keys. Revoke one to create another.`, `Ce bot a déjà ${MAX_KEYS_PER_BOT} clés. Révoque-en une pour en créer une autre.`));
+      if (apiKeys.activeCount(bot.id) >= MAX_KEYS_PER_BOT) throw new BotApiError(409, "too_many_keys", tr(loc, "This bot already has {n} keys. Revoke one to create another.", { n: MAX_KEYS_PER_BOT }));
       q.run("INSERT INTO bot_api_keys (id, user_id, bot_id, name, prefix, key_hash, scopes, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", id, user.id, bot.id, name, secret.slice(0, SHOWN), sha256(secret), JSON.stringify(scopes), t);
     });
     audit(user.id, "channel", `${bot.name}: API key "${name}" created (${scopes.join(", ")}; ${secret.slice(0, SHOWN)}…)`, bot.id);
@@ -145,19 +144,19 @@ const author = (c: Caller): ApiAuthor => ({ keyId: c.key.id, name: c.key.name })
  * Throws BotApiError; on success the key's last use is noted.
  */
 export function authenticate(header: string | undefined | null, address: string, locale?: Locale): Caller {
-  if (apiLimits.perAddress.over(address)) throw new BotApiError(429, "rate_limited", say(locale, "Too many requests. Wait a minute and try again.", "Trop de requêtes. Attends une minute et réessaie."));
+  if (apiLimits.perAddress.over(address)) throw new BotApiError(429, "rate_limited", tr(locale, "Too many requests. Wait a minute and try again."));
   const m = /^Bearer\s+(\S+)\s*$/i.exec(header ?? "");
   const found = m ? apiKeys.verify(m[1]) : null;
-  if (!found) throw new BotApiError(401, "unauthorized", say(locale, "Missing, wrong or revoked API key (Authorization: Bearer sk_bot_…).", "Clé API absente, fausse ou révoquée (Authorization: Bearer sk_bot_…)."));
-  if (apiLimits.perKey.over(found.key.id)) throw new BotApiError(429, "rate_limited", say(found.user.locale, "Too many requests for this key. Wait a minute and try again.", "Trop de requêtes pour cette clé. Attends une minute et réessaie."));
+  if (!found) throw new BotApiError(401, "unauthorized", tr(locale, "Missing, wrong or revoked API key (Authorization: Bearer sk_bot_…)."));
+  if (apiLimits.perKey.over(found.key.id)) throw new BotApiError(429, "rate_limited", tr(found.user.locale, "Too many requests for this key. Wait a minute and try again."));
   apiKeys.touch(found.key);
   return found;
 }
 
 export function requireScope(c: Caller, scope: BotApiScope) {
   if (!c.key.scopes.includes(scope)) {
-    const names = { read: say(c.user.locale, "read", "lire"), write: say(c.user.locale, "write", "écrire"), tasks: say(c.user.locale, "tasks", "tâches"), memory: say(c.user.locale, "memory", "mémoire") };
-    throw new BotApiError(403, "scope", say(c.user.locale, `This key does not have the "${names[scope]}" permission.`, `Cette clé n'a pas la permission « ${names[scope]} ».`), { scope });
+    const names = { read: tr(c.user.locale, "read"), write: tr(c.user.locale, "write"), tasks: tr(c.user.locale, "tasks"), memory: tr(c.user.locale, "memory") };
+    throw new BotApiError(403, "scope", tr(c.user.locale, "This key does not have the \"{scope}\" permission.", { scope: names[scope] }), { scope });
   }
 }
 
@@ -167,13 +166,13 @@ export function requireScope(c: Caller, scope: BotApiScope) {
  */
 function assertCanWork(c: Caller) {
   const loc = c.user.locale;
-  if (hostedMode() && suspended(c.user.id)) throw new BotApiError(403, "suspended", say(loc, "The account is suspended: it is read-only.", "Le compte est suspendu : il est en lecture seule."));
-  if (pauses.of(c.bot)) throw new BotApiError(409, "paused", say(loc, `${c.bot.name} is paused by its owner. Try again once it is resumed.`, `${c.bot.name} est en pause (mis par son propriétaire). Réessaie à la reprise.`));
+  if (hostedMode() && suspended(c.user.id)) throw new BotApiError(403, "suspended", tr(loc, "The account is suspended: it is read-only."));
+  if (pauses.of(c.bot)) throw new BotApiError(409, "paused", tr(loc, "{bot} is paused by its owner. Try again once it is resumed.", { bot: c.bot.name }));
   const why = hostedHoldsBot(c.bot);
-  if (why) throw new BotApiError(403, "plan", say(loc, "The account's plan does not let this bot work right now (budget used up, or a model the plan does not allow).", "L'offre du compte ne permet pas à ce bot de travailler pour l'instant (budget épuisé, ou modèle non permis par l'offre)."), { reason: why });
+  if (why) throw new BotApiError(403, "plan", tr(loc, "The account's plan does not let this bot work right now (budget used up, or a model the plan does not allow)."), { reason: why });
   const cap = capHolds(c.bot);
-  if (cap) throw new BotApiError(429, "usage_cap", say(loc, "A usage cap the owner set is reached: work no person started (the API included) waits until it resets.", "Un plafond d'usage fixé par le propriétaire est atteint : le travail lancé par personne (l'API comprise) attend sa remise à zéro."), { resetAt: cap.resetAt });
-  if (apiLimits.writes.over(c.key.id)) throw new BotApiError(429, "rate_limited", say(loc, "Too many messages for this key (10 a minute). Wait a minute and try again.", "Trop de messages pour cette clé (10 par minute). Attends une minute et réessaie."));
+  if (cap) throw new BotApiError(429, "usage_cap", tr(loc, "A usage cap the owner set is reached: work no person started (the API included) waits until it resets."), { resetAt: cap.resetAt });
+  if (apiLimits.writes.over(c.key.id)) throw new BotApiError(429, "rate_limited", tr(loc, "Too many messages for this key (10 a minute). Wait a minute and try again."));
 }
 
 /** The message of the main chat a thread hangs on (0: the main chat). */
@@ -181,13 +180,13 @@ function threadOf(c: Caller, raw: unknown): number {
   if (raw === undefined || raw === null || raw === "" || raw === 0) return 0;
   const seq = Number(raw);
   const parent = Number.isInteger(seq) && seq > 0 ? rows.get(c.bot.id, c.bot.generation, seq) : null;
-  if (!parent || parent.thread || parent.body.kind !== "message") throw new BotApiError(400, "thread", say(c.user.locale, "That message cannot have a thread.", "Ce message ne peut pas avoir de fil."));
+  if (!parent || parent.thread || parent.body.kind !== "message") throw new BotApiError(400, "thread", tr(c.user.locale, "That message cannot have a thread."));
   return seq;
 }
 
 function cleanText(c: Caller, raw: unknown, what: "text" | "objective"): string {
-  if (typeof raw !== "string" || !raw.trim()) throw new BotApiError(400, what, say(c.user.locale, `Send a non-empty "${what}".`, `Envoie un « ${what} » non vide.`));
-  if (raw.length > MAX_TEXT) throw new BotApiError(413, "too_long", say(c.user.locale, `"${what}" is too long (${MAX_TEXT} characters at most).`, `« ${what} » est trop long (${MAX_TEXT} caractères au plus).`));
+  if (typeof raw !== "string" || !raw.trim()) throw new BotApiError(400, what, tr(c.user.locale, "Send a non-empty \"{what}\".", { what }));
+  if (raw.length > MAX_TEXT) throw new BotApiError(413, "too_long", tr(c.user.locale, "\"{what}\" is too long ({n} characters at most).", { what, n: MAX_TEXT }));
   // A secret pasted by a program is masked before anything is stored or sent to a model (pastedsecrets.ts).
   return screenSecrets(raw.trim(), c.user.locale).text;
 }
@@ -264,7 +263,7 @@ const taskView = (g: NonNullable<ReturnType<typeof goals.byId>>) => ({ id: g.id,
 export function readTask(c: Caller, id: string) {
   requireScope(c, "tasks");
   const g = goals.byId(id);
-  if (!g || g.botId !== c.bot.id || g.origin !== "api") throw new BotApiError(404, "not_found", say(c.user.locale, "No such task.", "Tâche inconnue."));
+  if (!g || g.botId !== c.bot.id || g.origin !== "api") throw new BotApiError(404, "not_found", tr(c.user.locale, "No such task."));
   return { task: taskView(g) };
 }
 
@@ -277,7 +276,7 @@ export type ReplyStatus = "working" | "done" | "no_reply" | "needs_approval" | "
 export function replyState(c: Caller, seq: number): { status: ReplyStatus; seq: number; thread: number; replies: ApiMessage[]; reply: string } {
   const bot = bots.byId(c.bot.id) ?? c.bot;
   const row = Number.isInteger(seq) && seq > 0 ? rows.get(bot.id, bot.generation, seq) : null;
-  if (!row || row.body.kind !== "message" || row.body.role !== "user") throw new BotApiError(404, "not_found", say(c.user.locale, "No such message.", "Message inconnu."));
+  if (!row || row.body.kind !== "message" || row.body.role !== "user") throw new BotApiError(404, "not_found", tr(c.user.locale, "No such message."));
   const thread = row.thread ?? 0;
   const later = q.all("SELECT * FROM rows WHERE bot_id = ? AND generation = ? AND thread = ? AND kind = 'message' AND seq > ? ORDER BY seq LIMIT 50", bot.id, bot.generation, thread, seq).map(rowOf);
   const replies: ApiMessage[] = [];
@@ -300,7 +299,7 @@ export async function waitReply(c: Caller, seq: number, timeoutS: unknown, signa
   let state = replyState(c, seq);
   if (state.status !== "working" || limit === 0) return state;
   const held = waiting.get(c.key.id) ?? 0;
-  if (held >= MAX_WAITS_PER_KEY) throw new BotApiError(429, "too_many_waits", say(c.user.locale, `This key already waits for ${MAX_WAITS_PER_KEY} replies. Wait for one to come back first.`, `Cette clé attend déjà ${MAX_WAITS_PER_KEY} réponses. Attends que l'une revienne d'abord.`));
+  if (held >= MAX_WAITS_PER_KEY) throw new BotApiError(429, "too_many_waits", tr(c.user.locale, "This key already waits for {n} replies. Wait for one to come back first.", { n: MAX_WAITS_PER_KEY }));
   waiting.set(c.key.id, held + 1);
   try {
     const until = Date.now() + limit * 1000;
@@ -329,7 +328,7 @@ export function apiClientIp(c: Context): string {
   const env = c.env as { incoming?: IncomingMessage } | undefined;
   return clientAddress(config.trustProxy, env?.incoming?.socket?.remoteAddress, c.req.header("x-forwarded-for"));
 }
-const callerOf = (c: Context): Caller => authenticate(c.req.header("authorization"), apiClientIp(c), c.req.header("accept-language")?.toLowerCase().startsWith("fr") ? "fr" : "en");
+const callerOf = (c: Context): Caller => authenticate(c.req.header("authorization"), apiClientIp(c), pickLocale(undefined, c.req.header("accept-language")));
 
 async function jsonBody(c: Context): Promise<Record<string, unknown>> {
   const raw = await c.req.text();
@@ -387,7 +386,7 @@ export function registerBotApiOwner(api: Hono<any>, ownAgent: (c: Context) => Bo
   }));
   api.delete("/bots/:id/api-keys/:keyId", handle((c) => {
     const bot = ownAgent(c);
-    if (!apiKeys.revoke(c.get("user") as UserRecord, bot, c.req.param("keyId") ?? "")) throw new BotApiError(404, "not_found", say((c.get("user") as UserRecord).locale, "No such key.", "Clé inconnue."));
+    if (!apiKeys.revoke(c.get("user") as UserRecord, bot, c.req.param("keyId") ?? "")) throw new BotApiError(404, "not_found", tr((c.get("user") as UserRecord).locale, "No such key."));
     return c.json(keysView(bot.id));
   }));
 }

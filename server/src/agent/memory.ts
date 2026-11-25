@@ -1,4 +1,4 @@
-import { emit, getLive } from "../bus.js";
+import { emit, getLive } from "../bus.js"; import { tr } from "../i18n.js";
 import { memoryKeep } from "./memorykeep.js";
 import { config } from "../config.js";
 import { q } from "../db.js";
@@ -100,9 +100,8 @@ export function summaryProblems(summary: string, sourceChars: number): string[] 
 }
 
 /** The visible line in the chat after a summary (L80): the owner sees it happened and where to read it. */
-const summaryLine = (locale: string | undefined, n: number) => locale === "fr"
-  ? `J'ai résumé le début de notre conversation (${n} messages) pour garder l'essentiel sans m'encombrer. Rien n'est perdu : le résumé se lit dans mes réglages, onglet Mémoire, « Voir le résumé ».`
-  : `I summarised the start of our conversation (${n} messages) to keep the gist without the bulk. Nothing is lost: read the summary in my settings, Memory tab, "See the summary".`;
+const summaryLine = (locale: string | undefined, n: number) =>
+  tr(locale, "I summarised the start of our conversation ({n} messages) to keep the gist without the bulk. Nothing is lost: read the summary in my settings, Memory tab, \"See the summary\".", { n });
 
 /**
  * When the conversation outgrows its budget, everything except the last few exchanges is replaced by
@@ -392,8 +391,8 @@ export function importMemories(bot: BotRecord, raw: string, chosen: string[] | n
 export function exportMemories(bot: BotRecord, format: "md" | "json", locale: Locale): string {
   const list = memories.list(bot.id, 5000).reverse();
   if (format === "json") return JSON.stringify({ bot: bot.name, exportedAt: new Date().toISOString(), memories: list.map(({ botId: _b, ...m }) => m) }, null, 2);
-  const head = locale === "fr" ? `# Mémoire de ${bot.name}` : `# ${bot.name}'s memory`;
-  const groups: [string, string][] = locale === "fr" ? [["active", "Utilisées"], ["contested", "Contestées"], ["archived", "Archivées"]] : [["active", "Active"], ["contested", "Contested"], ["archived", "Archived"]];
+  const head = tr(locale, "# {bot}'s memory", { bot: bot.name });
+  const groups: [string, string][] = [["active", tr(locale, "Active")], ["contested", tr(locale, "Contested")], ["archived", tr(locale, "Archived")]];
   return [head, "", ...groups.flatMap(([st, title]) => { const l = list.filter((m) => m.status === st); return l.length ? [`## ${title}`, "", ...l.map((m) => `- ${m.text}`), ""] : []; })].join("\n");
 }
 

@@ -8,6 +8,7 @@
 
 const { validateGpuArgs } = require('./capabilities/gpu');
 const { validateNetArgs } = require('./capabilities/netexit');
+const { validateAndroidArgs } = require('./capabilities/adb-args');
 
 const PROTOCOL_VERSION = 1;
 /**
@@ -24,8 +25,10 @@ const PROTOCOL_VERSION = 1;
  * with `holder` and `retryAfterMs`, capability "session.handover". Older servers ignore the new fields.
  * 1.8 (L169): net.fetch — a bot's web request leaves from this computer's connection (« sortir par la maison »),
  * asked here first, never to the home network (capabilities/netexit.js). Older servers never send it.
+ * 1.9 (L177): android.* — Android phones plugged into this computer by USB, driven with the owner's own adb
+ * (capabilities/adb.js, rules in phone-usb.js). Listed in capabilities only when present; older servers never send it.
  */
-const PROTOCOL_REVISION = '1.8';
+const PROTOCOL_REVISION = '1.9';
 const CONNECT_PATH = '/api/relay/connect';
 
 /** Size limits (bytes). Server → client messages above MAX_INBOUND are rejected by `ws` (close 1009). */
@@ -104,6 +107,16 @@ const OPS = Object.freeze({
   'gpu.http': { session: false, input: false },
   // A bot's web request through this computer's connection (1.8): no mouse or keyboard; asked here the first time.
   'net.fetch': { session: false, input: false },
+  // Android phones by USB (1.9): no control session of the computer; each bot is asked here the first time per phone.
+  'android.devices': { session: false, input: false },
+  'android.screenshot': { session: false, input: false },
+  'android.ui': { session: false, input: false },
+  'android.tap': { session: false, input: true },
+  'android.swipe': { session: false, input: true },
+  'android.type': { session: false, input: true },
+  'android.key': { session: false, input: true },
+  'android.open': { session: false, input: true },
+  'android.release': { session: false, input: false },
 });
 
 const ERR = Object.freeze({
@@ -147,6 +160,10 @@ const ERR = Object.freeze({
   STALE_REF: 'stale_ref',
   // Home exit (1.8): the address is on the home network or a private one.
   BLOCKED_ADDRESS: 'blocked_address',
+  // Android by USB (1.9).
+  ADB_MISSING: 'adb_missing',
+  PHONE_UNAUTHORIZED: 'phone_unauthorized',
+  PHONE_OFFLINE: 'phone_offline',
 });
 
 /** Keys accepted by keyboard.press (names follow @jitsi/robotjs' key table, src/robotjs.cc). */
@@ -420,6 +437,9 @@ function validateArgs(op, rawArgs) {
       return { root: str(args.root, 'root', 200), path: str(args.path, 'path', LIMITS.MAX_PATH) };
     case 'net.fetch':
       try { return validateNetArgs(args); } catch (e) { throw new ProtocolError(/** @type {any} */ (e).code || ERR.INVALID_ARGS, /** @type {Error} */ (e).message); }
+    case 'android.devices': case 'android.screenshot': case 'android.ui': case 'android.tap': case 'android.swipe':
+    case 'android.type': case 'android.key': case 'android.open': case 'android.release':
+      try { return validateAndroidArgs(op, args); } catch (e) { throw new ProtocolError(/** @type {any} */ (e).code || ERR.INVALID_ARGS, /** @type {Error} */ (e).message); }
     case 'gpu.http':
       try { return validateGpuArgs(args); } catch (e) { throw new ProtocolError(/** @type {any} */ (e).code || ERR.INVALID_ARGS, /** @type {Error} */ (e).message); }
     default:

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, apiBlob, enc, errText } from "../api";
-import { useT, type Key } from "../i18n";
+import { t, useT, type Key } from "../i18n";
 import { useStore } from "../store";
 import type { Bot } from "../types";
 import type { BoardIdea, BoardTask, BoardView, IdeaUrgency, TaskKind } from "../../../server/src/workboardtypes";
@@ -151,7 +151,7 @@ function NewTask({ bots, tasks, onDone }: { bots: Bot[]; tasks: BoardTask[]; onD
 }
 
 async function sendFile(path: string, file: File) {
-  if (REFUSED_EXT.test(file.name)) throw new Error(`${file.name} : ${useStore.getState().locale === "fr" ? "ce type de fichier n'est pas accepté" : "this type of file is not accepted"}`);
+  if (REFUSED_EXT.test(file.name)) throw new Error(t("workBoard.fileTypeRefused", { name: file.name }));
   if (file.size > MAX_FILE) throw new Error(`${file.name} : > 15 Mo`);
   return apiBlob(`${path}?name=${enc(file.name)}`, file);
 }

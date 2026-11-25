@@ -575,6 +575,10 @@ export const zh: Partial<Record<Key, string>> = {
   "metrics.hint": "对于监控工具（Prometheus），服务器所有者可以用 METRICS_TOKEN 开启 /api/metrics（docs/DEPLOIEMENT.md）。",
   "settings.botTheme": "机器人主题",
   "settings.botThemeHint": "你在网页版应用的主题配色。关闭后，这部手机恢复原始配色。",
+  "liveActivity.stop": "停止",
+  "liveActivity.running": "进行中",
+  "liveActivity.stopTitle": "停止 {name} 的任务？",
+  "liveActivity.stopBody": "已经完成的内容会保留在对话中。",
 };
 
 /** The server's English account errors (src/i18n/index.ts, SERVER_FR). */

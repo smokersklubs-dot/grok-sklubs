@@ -17,7 +17,7 @@
  * the audit log, without a message. The « Ce n'est pas moi » link works once, for 7 days; opening it only shows a page
  * with a button (a mail scanner that fetches links uses nothing up), the button posts the token.
  */
-import type { Context, Hono } from "hono";
+import type { Context, Hono } from "hono"; import { intlOf, localize } from "./lang/index.js";
 import { getCookie, setCookie } from "hono/cookie";
 import { originAllowed, SESSION_COOKIE } from "./auth.js";
 import { mailConfigured, sendSystemMail } from "./accountmail.js";
@@ -74,7 +74,7 @@ const FR: Record<string, string> = {
   "Too many attempts. Wait a few minutes and try again.": "Trop d'essais. Attends quelques minutes et réessaie.",
 };
 const m = (locale: Locale, english: string, vars: Record<string, string> = {}) =>
-  (locale === "fr" ? FR[english] ?? english : english).replace(/\{(\w+)\}/g, (_x, k: string) => vars[k] ?? "");
+  localize(locale, english, FR).replace(/\{(\w+)\}/g, (_x, k: string) => vars[k] ?? "");
 class DeviceError extends Error { constructor(public status: 403 | 404 | 409 | 410 | 429, message: string) { super(message); } }
 
 // ── Device family (coarse, from the User-Agent) ─────────────────────────────────────────────────────────────────
@@ -97,7 +97,7 @@ const viaText = (locale: Locale, via: string) => m(locale, via);
 function whenText(userId: string, locale: Locale, at: number): string {
   let tz = "UTC";
   try { tz = pushSettings(userId).quiet.timezone || "UTC"; } catch { /* default */ }
-  const fmt = (zone: string) => new Intl.DateTimeFormat(locale === "fr" ? "fr-FR" : "en-GB", { dateStyle: "full", timeStyle: "short", timeZone: zone }).format(new Date(at));
+  const fmt = (zone: string) => new Intl.DateTimeFormat(intlOf(locale), { dateStyle: "full", timeStyle: "short", timeZone: zone }).format(new Date(at));
   try { return `${fmt(tz)} (${tz})`; } catch { return `${fmt("UTC")} (UTC)`; }
 }
 

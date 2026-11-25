@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { t as tr } from "../i18n";
 import { api, errText } from "../api";
 import { ErrorNote } from "./ui";
 
@@ -27,7 +28,6 @@ export function useCandidates(bot: string): Candidate[] {
 }
 
 export function ReviewPlus({ bot, seq, fr, changes, candidates }: { bot: string; seq: number; fr: boolean; changes: boolean; candidates: Candidate[] }) {
-  const loc = (f: string, e: string) => (fr ? f : e);
   const base = `/bots/${encodeURIComponent(bot)}/cards/${seq}/files`;
   const [panel, setPanel] = useState<Panel | null>(null);
   const [picked, setPicked] = useState<string[]>([]);
@@ -51,19 +51,19 @@ export function ReviewPlus({ bot, seq, fr, changes, candidates }: { bot: string;
     <div className="review-plus">
       {(changes || panelChanges) && (
         <button className="btn btn-small" disabled={sent} onClick={() => void run(async () => { await api("POST", `${base}/review/fix`); setSent(true); })}>
-          {sent ? loc("Envoyé à l'auteur", "Sent to the author") : loc("Faire corriger par l'auteur", "Have the author fix it")}
+          {sent ? tr("review.sentAuthor") : tr("review.haveAuthorFix")}
         </button>
       )}
       {panel && panel.reviews.length > 0 && (
         <div className="review-plus-panel" role="status">
           <strong>
-            {panel.verdict === "ready" ? loc("Prête à publier", "Ready to publish") : panel.verdict === "changes" ? loc("Corrections demandées", "Changes requested") : panel.verdict === "working" ? loc("Relectures en cours…", "Reviews under way…") : loc("Pas encore assez d'accords", "Not enough approvals yet")}
+            {panel.verdict === "ready" ? tr("review.readyPublish") : panel.verdict === "changes" ? tr("review.changesRequested") : panel.verdict === "working" ? tr("review.reviewsUnderWay") : tr("review.notEnoughApprovalsYet")}
             {" "}({panel.approvals}/{panel.needed})
           </strong>
           <ul>
             {panel.reviews.map((r) => (
               <li key={r.reviewer}>
-                {r.name} · {r.state === "working" ? loc("relit…", "reviewing…") : r.state === "failed" ? (r.error ?? loc("échec", "failed")) : r.review?.verdict === "approved" ? loc("approuvé", "approved") : r.review?.verdict === "changes" ? loc("corrections demandées", "changes requested") : loc("à vérifier", "inconclusive")}
+                {r.name} · {r.state === "working" ? tr("review.reviewing2") : r.state === "failed" ? (r.error ?? tr("step.mark.error")) : r.review?.verdict === "approved" ? tr("review.approved") : r.review?.verdict === "changes" ? tr("review.changesRequested2") : tr("review.inconclusive2")}
               </li>
             ))}
           </ul>
@@ -71,18 +71,18 @@ export function ReviewPlus({ bot, seq, fr, changes, candidates }: { bot: string;
       )}
       {candidates.length >= 2 && (
         <details>
-          <summary>{loc("Faire relire à plusieurs (2 ou 3 bots)", "Review by several bots (2 or 3)")}</summary>
+          <summary>{tr("review.reviewSeveralBots")}</summary>
           <fieldset className="review-plus-pick">
             {candidates.map((c) => (
               <label key={c.id} className="small">
                 <input type="checkbox" checked={picked.includes(c.id)} disabled={!picked.includes(c.id) && picked.length >= 3}
                   onChange={(e) => setPicked(e.target.checked ? [...picked, c.id] : picked.filter((x) => x !== c.id))} />
-                {" "}{c.name}{c.otherProvider ? loc(" · autre fournisseur", " · other provider") : ""}
+                {" "}{c.name}{c.otherProvider ? tr("review.otherProviderSuffix") : ""}
               </label>
             ))}
           </fieldset>
           <button className="btn btn-small" disabled={picked.length < 2 || working} onClick={() => void run(async () => setPanel(await api<Panel>("POST", `${base}/review-panel`, { reviewers: picked })))}>
-            {loc("Lancer les relectures", "Start the reviews")}
+            {tr("review.startReviews")}
           </button>
         </details>
       )}

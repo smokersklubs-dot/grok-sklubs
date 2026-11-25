@@ -193,6 +193,22 @@ Ton ordinateur relié sert à **tous** tes bots, un seul à la fois :
 - avec plusieurs ordinateurs reliés, chaque bot a « **Ordinateur de ce bot** » dans ses réglages : « Celui qui est
   connecté » (par défaut) ou un ordinateur précis.
 
+### Ton téléphone Android branché en USB
+
+Tes bots peuvent aussi utiliser ton **téléphone Android branché en USB** sur ton ordinateur (sans appli sur le
+téléphone) :
+
+1. installe les « **SDK Platform-Tools** » de Google sur l'ordinateur
+   (https://developer.android.com/tools/releases/platform-tools) — Sklubot ne télécharge rien tout seul ;
+2. sur le téléphone, active les **Options pour les développeurs** puis le **Débogage USB** ;
+3. branche le téléphone et touche « **Autoriser** » sur son écran.
+
+Le téléphone apparaît dans Réglages → Ordinateurs, « Téléphones Android (USB) ». La première fois qu'un bot veut s'en
+servir, Sklubot te montre une carte, puis l'ordinateur te demande aussi. Pendant qu'il s'en sert, le bandeau rouge dit
+« Sklubot utilise ton téléphone … » ; **Stop** (ou « Arrêter » dans les Réglages) arrête tout. Jamais dans Sklubot,
+l'installateur d'applis ni les réglages du téléphone ; un appui sur « Envoyer », « Payer », « Installer »… te sont demandés à chaque fois ; un mot de
+passe n'est jamais écrit par le bot : il vient de ton coffre, après une carte qui ne le montre pas (« •••• »). Détails : `docs/RELAIS-PROTOCOLE.md` § 20.
+
 ### Le terminal, sous contrôle (pour coder)
 
 - **Les commandes sont activées par défaut** sur ton ordinateur : le bot peut lancer `npm test`, `git status`,

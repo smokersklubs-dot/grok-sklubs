@@ -83,6 +83,6 @@ test("L76 a 403 is not retried and leaves one notice in the web chat; a second f
 
 test("L76 the link to the card opens this bot in the app", () => {
   assert.equal(cardLink(created.id), `https://bots.example.test/?bot=${created.id}`);
-  assert.equal(cardLinkLine(created.id, true), `Ouvrir la carte : https://bots.example.test/?bot=${created.id}`);
-  assert.match(cardLinkLine(created.id, false), /^Open the card: https:\/\/bots\.example\.test\/\?bot=/);
+  assert.equal(cardLinkLine(created.id, "fr"), `Ouvrir la carte : https://bots.example.test/?bot=${created.id}`);
+  assert.match(cardLinkLine(created.id, "en"), /^Open the card: https:\/\/bots\.example\.test\/\?bot=/);
 });

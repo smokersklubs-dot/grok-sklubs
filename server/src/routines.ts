@@ -1,4 +1,4 @@
-import { q } from "./db.js";
+import { q } from "./db.js"; import { intlOf } from "./lang/index.js";
 import { config } from "./config.js";
 import { describeCron, nextRun } from "./cron.js"; import { belowFloor, floorNote, nextFlooredRun } from "./routinefloor.js";
 import { defaultModelRef } from "./llm/index.js";
@@ -42,7 +42,7 @@ export function describeRoutine(r: { trigger: string; schedule: string; runAt: n
   if (r.native && r.trigger === "calendar") return tr(locale, "{n} minutes before each event in {account}", { n: r.native.leadMin, account: r.native.account });
   if (r.trigger === "watch") return tr(locale, "When what it watches changes");
   if (r.trigger === "once")
-    return r.runAt ? tr(locale, "Once on {date}", { date: new Date(r.runAt).toLocaleString(locale === "fr" ? "fr-FR" : "en-US", { timeZone: r.timezone, dateStyle: "medium", timeStyle: "short" }) }) : tr(locale, "Once");
+    return r.runAt ? tr(locale, "Once on {date}", { date: new Date(r.runAt).toLocaleString(intlOf(locale, "en-US"), { timeZone: r.timezone, dateStyle: "medium", timeStyle: "short" }) }) : tr(locale, "Once");
   return describeCron(r.schedule, locale) + floorNote(r.schedule, locale); // L143: an older, more frequent schedule is slowed down
 }
 

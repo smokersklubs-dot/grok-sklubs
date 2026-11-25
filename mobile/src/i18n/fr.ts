@@ -591,6 +591,10 @@ export const fr = {
   "metrics.hint": "Pour un outil de surveillance (Prometheus), le propriétaire du serveur peut ouvrir /api/metrics avec METRICS_TOKEN (docs/DEPLOIEMENT.md).",
   "settings.botTheme": "Thème du bot",
   "settings.botThemeHint": "Les couleurs du thème que tu as appliqué dans l'appli web. Coupe-le pour revenir aux couleurs d'origine sur ce téléphone.",
+  "liveActivity.stop": "Arrêter",
+  "liveActivity.running": "En cours",
+  "liveActivity.stopTitle": "Arrêter la tâche de {name} ?",
+  "liveActivity.stopBody": "Ce qu'il a déjà fait reste dans la discussion.",
 } as const;
 
 export type Key = keyof typeof fr;

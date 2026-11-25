@@ -86,7 +86,7 @@ export function turnDebug(rows: Row[], seq: number, find: SecretFinder): { reque
 /** Markdown-light → a self-contained printable HTML page (no script, no outside resource). */
 export function printableHtml(title: string, markdownHtml: string, lang: string): string {
   const esc = title.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
-  return `<!doctype html><html lang="${lang === "fr" ? "fr" : "en"}"><head><meta charset="utf-8"><title>${esc}</title><style>
+  return `<!doctype html><html lang="${/^[a-z]{2}$/.test(lang) ? lang : "en"}"><head><meta charset="utf-8"><title>${esc}</title><style>
 @page { size: A4; margin: 18mm 16mm; }
 body { font: 11pt/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; color: #1d1b17; max-width: 720px; margin: 24px auto; padding: 0 16px; }
 h1 { font-size: 18pt; } pre, code { font-family: ui-monospace, Menlo, monospace; font-size: 9.5pt; } pre { white-space: pre-wrap; background: #f4f2ee; padding: 8px; border-radius: 6px; }

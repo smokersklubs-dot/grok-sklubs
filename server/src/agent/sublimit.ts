@@ -1,4 +1,4 @@
-import { q } from "../db.js";
+import { q } from "../db.js"; import { intlOf } from "../lang/index.js";
 import { tr } from "../i18n.js";
 import { modelLabel } from "../llm/index.js";
 import { pushLater } from "../push.js";
@@ -156,7 +156,7 @@ export function limitBackup(bot: BotRecord): string | undefined {
 /** The time a notice shows: HH:MM in the user's time zone, with the day when it is not today. */
 export function untilText(userId: string, locale: Locale | undefined, until: number): string {
   const tz = userTimezone(userId);
-  const lang = locale === "fr" ? "fr-FR" : "en-GB";
+  const lang = intlOf(locale);
   const day = (t: number) => new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(t);
   const hm = new Intl.DateTimeFormat(lang, { timeZone: tz, hour: "2-digit", minute: "2-digit", hour12: false }).format(until);
   if (day(until) === day(nowMs())) return hm;

@@ -438,7 +438,7 @@ Pour chaque flux : comment OpenClaw fait, comment Sklubot fait, ce qui est plus 
 31. Téléphone : appareil photo et position (F11). **M**
 32. API compatible OpenAI (M4). **M**
 33. Bifurquer une conversation, export de débogage d'un tour (B5, B7). **M**
-34. Le reste, à la demande : musique, sondages, mot de réveil, bot qui rejoint une réunion, tableaux de bord épinglés, métriques, wiki mémoire, IMAP, événements MCP, autres canaux (G10, G19, H5, H6, G20, L11, C10, E11, E12, I5). **M à L**
+34. Le reste, à la demande : musique, sondages, mot de réveil, bot qui rejoint une réunion, tableaux de bord épinglés, métriques, wiki mémoire, IMAP, événements MCP, autres canaux (G10, G19, H5, H6, G20, L11, C10, E11, E12, I5). **M à L** (bot qui rejoint une réunion : ✅ fait le 25/11, comme invité dans le navigateur du bot, `server/src/meetingbot/`, L177)
 
 ## Non vérifié
 

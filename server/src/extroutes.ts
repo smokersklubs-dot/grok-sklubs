@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import type { Context, Hono } from "hono";
-import { tr } from "./i18n.js";
+import { pickLocale, tr } from "./i18n.js";
 import { registerLiveDocRoutes } from "./livedocroutes.js";
 import { locationCsp, locationPage, phoneRequests } from "./phonerequests.js";
 import { PluginError, plugins } from "./plugins.js";
@@ -84,9 +84,9 @@ export function registerPhonePublic(api: Hono<any>) {
   api.get("/phone/where/:token", (c) => {
     const token = c.req.param("token") ?? "";
     const req = phoneRequests.byToken(token);
-    const locale = /^\s*fr/i.test(c.req.header("accept-language") ?? "") ? "fr" : "en";
+    const locale = pickLocale(undefined, c.req.header("accept-language"));
     const headers = { "cache-control": "no-store", "referrer-policy": "no-referrer", "x-content-type-options": "nosniff", "x-robots-tag": "noindex" };
-    if (!req) return c.text(locale === "fr" ? "Cette demande n'attend plus." : "This request is no longer waiting.", 404, headers);
+    if (!req) return c.text(tr(locale, "This request is no longer waiting."), 404, headers);
     const nonce = randomBytes(16).toString("base64");
     return c.html(locationPage(req, token, locale, nonce), 200, { ...headers, "content-security-policy": locationCsp(nonce) });
   });

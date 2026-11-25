@@ -90,7 +90,7 @@ test("the schema: kinds, sizes, finite numbers, one form, simple ids; anything e
 test("fallback text: every block in words, in the owner's language", () => {
   const c = checkView(SALES);
   if ("error" in c) throw new Error(c.error);
-  const fr = fallbackText(c.title, c.blocks, true);
+  const fr = fallbackText(c.title, c.blocks, "fr");
   assert.match(fr, /^📊 Ventes de la semaine/);
   assert.match(fr, /• Chiffre : 4 210 € \(\+12 %\)/);
   assert.match(fr, /Ventes : Lun 1200€, Mar 1500\.5€, Mer 1510€/);
@@ -98,7 +98,7 @@ test("fallback text: every block in words, in the owner's language", () => {
   assert.match(fr, /Objectif du mois : 4210 \/ 10000 \(42 %\)/);
   const f = checkView(FORM);
   if ("error" in f) throw new Error(f.error);
-  assert.match(fallbackText(f.title, f.blocks, false), /📝 Form \(Personnes, Salle, Note, Végétarien\): answer in the app/);
+  assert.match(fallbackText(f.title, f.blocks, "en"), /📝 Form \(Personnes, Salle, Note, Végétarien\): answer in the app/);
 });
 
 test("form answers are checked against the fields", () => {

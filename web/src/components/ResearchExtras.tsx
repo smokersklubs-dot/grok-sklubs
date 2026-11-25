@@ -1,25 +1,26 @@
 import type { ResearchExtra, ResearchWindow, SourceState } from "../types";
+import { intlLocale, t as tr, type Key } from "../i18n";
 
 /** L87: the period and the free sources of a new report, and what each source did for a question. */
-const WINDOWS: [ResearchWindow | "auto", string, string][] = [
-  ["auto", "Selon la demande (« ce mois-ci »…)", "From the request (\"this month\"…)"],
-  ["week", "7 derniers jours", "Last 7 days"],
-  ["month", "30 derniers jours", "Last 30 days"],
-  ["year", "12 derniers mois", "Last 12 months"],
-  ["any", "Toutes dates", "Any date"],
+const WINDOWS: [ResearchWindow | "auto", Key][] = [
+  ["auto", "research.window.auto"],
+  ["week", "research.window.week"],
+  ["month", "research.window.month"],
+  ["year", "research.window.year"],
+  ["any", "research.window.any"],
 ];
-const EXTRAS: [ResearchExtra, string, string][] = [
-  ["hn", "Hacker News (discussions tech, gratuit)", "Hacker News (tech discussions, free)"],
-  ["polymarket", "Polymarket (paris en cours : des attentes, pas des faits)", "Polymarket (open bets: expectations, not facts)"],
-  ["reddit", "Reddit (via l’ordinateur du bot, lecture seule)", "Reddit (through the bot’s computer, read-only)"],
-  ["youtube", "YouTube (via l’ordinateur du bot, lecture seule)", "YouTube (through the bot’s computer, read-only)"],
-  ["openalex", "OpenAlex (articles scientifiques, gratuit)", "OpenAlex (scholarly papers, free)"],
-  ["pubmed", "PubMed (santé et biologie, gratuit)", "PubMed (medicine and biology, free)"],
+const EXTRAS: [ResearchExtra, Key][] = [
+  ["hn", "research.extra.hn"],
+  ["polymarket", "research.extra.polymarket"],
+  ["reddit", "research.extra.reddit"],
+  ["youtube", "research.extra.youtube"],
+  ["openalex", "research.extra.openalex"],
+  ["pubmed", "research.extra.pubmed"],
 ];
 const NAMES: Record<SourceState["source"], string> = { web: "Web", x: "X", hn: "Hacker News", polymarket: "Polymarket", reddit: "Reddit", youtube: "YouTube", openalex: "OpenAlex", pubmed: "PubMed" };
-const STATES: Record<SourceState["state"], [string, string]> = {
-  ok: ["a répondu", "answered"], empty: ["rien trouvé", "nothing found"], failed: ["en panne", "failed"], rate_limited: ["limite de débit", "rate limited"],
-  timeout: ["trop lent", "timed out"], login: ["connexion à faire", "needs a login"], unavailable: ["indisponible", "unavailable"],
+const STATES: Record<SourceState["state"], Key> = {
+  ok: "research.state.ok", empty: "research.state.empty", failed: "research.state.failed", rate_limited: "research.state.rate_limited",
+  timeout: "research.state.timeout", login: "research.state.login", unavailable: "research.state.unavailable",
 };
 
 export function ResearchOptions({ fr, window, setWindow, extras, setExtras }: {
@@ -28,17 +29,17 @@ export function ResearchOptions({ fr, window, setWindow, extras, setExtras }: {
   return (
     <>
       <label>
-        {fr ? "Période des sources" : "Source period"}
+        {tr("research.sourcePeriod")}
         <select className="input" value={window} onChange={(e) => setWindow(e.target.value as ResearchWindow | "auto")}>
-          {WINDOWS.map(([v, f, e]) => <option key={v} value={v}>{fr ? f : e}</option>)}
+          {WINDOWS.map(([v, k]) => <option key={v} value={v}>{tr(k)}</option>)}
         </select>
       </label>
       <fieldset className="research-extras">
-        <legend>{fr ? "Sources gratuites en plus du web" : "Free sources besides the web"}</legend>
-        {EXTRAS.map(([v, f, e]) => (
+        <legend>{tr("research.freeSourcesBesidesWeb")}</legend>
+        {EXTRAS.map(([v, k]) => (
           <label className="research-check" key={v}>
             <input type="checkbox" checked={extras.includes(v)} onChange={(ev) => setExtras(ev.target.checked ? [...extras, v] : extras.filter((x) => x !== v))} />
-            {fr ? f : e}
+            {tr(k)}
           </label>
         ))}
       </fieldset>
@@ -49,10 +50,10 @@ export function ResearchOptions({ fr, window, setWindow, extras, setExtras }: {
 export function SourceStates({ states, fr }: { states?: SourceState[]; fr: boolean }) {
   if (!states?.length) return null;
   return (
-    <ul className="research-states" aria-label={fr ? "État des sources" : "Source status"}>
+    <ul className="research-states" aria-label={tr("research.sourceStatus")}>
       {states.map((s) => (
         <li key={s.source} data-state={s.state}>
-          {NAMES[s.source]}{fr ? " : " : ": "}{STATES[s.state][fr ? 0 : 1]}{s.count ? ` (${s.count})` : ""}
+          {tr("research.stateLine", { source: NAMES[s.source], state: tr(STATES[s.state]) })}{s.count ? ` (${s.count})` : ""}
         </li>
       ))}
     </ul>
@@ -63,7 +64,7 @@ export function FindingMeta({ published, engagement, fr }: { published?: string;
   if (!published && !engagement) return null;
   return (
     <small className="research-meta">
-      {published ? (fr ? `Publié le ${new Date(published).toLocaleDateString("fr-FR")}` : `Published ${new Date(published).toLocaleDateString("en")}`) : ""}
+      {published ? tr("research.publishedOn", { date: new Date(published).toLocaleDateString(intlLocale()) }) : ""}
       {published && engagement ? " · " : ""}
       {engagement}
     </small>

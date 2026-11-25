@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { emit } from "./bus.js";
 import { describeCron, isValidTimezone, parseCron } from "./cron.js";
 import { planLimitError, planRoom } from "./hosted.js";
-import { tr } from "./i18n.js";
+import { tr } from "./i18n.js"; import { localize } from "./lang/index.js";
 import { routines } from "./routines.js";
 import {
   GROK_EXPORT_FORMAT, GROK_EXPORT_VERSION, maskSecrets,
@@ -159,12 +159,13 @@ function luhn(d: string): boolean {
   return sum % 10 === 0;
 }
 
-const LABELS: Record<string, { fr: string; en: string }> = {
-  role: { fr: "rôle", en: "role" }, personality: { fr: "personnalité", en: "personality" }, instructions: { fr: "consignes", en: "instructions" },
-  memory: { fr: "souvenir", en: "memory" }, skill: { fr: "compétence", en: "skill" }, routine: { fr: "routine", en: "routine" },
-  app: { fr: "application", en: "app" }, name: { fr: "nom", en: "name" }, field: { fr: "champ", en: "field" },
+const LABELS: Record<string, string> = {
+  role: "role", personality: "personality", instructions: "instructions",
+  memory: "memory", skill: "skill", routine: "routine",
+  app: "app", name: "name", field: "field",
 };
-const label = (k: string, l: Locale) => (l === "fr" ? LABELS[k]?.fr : LABELS[k]?.en) ?? k;
+const GROKLABEL_FR: Record<string, string> = { "role": "rôle", "personality": "personnalité", "instructions": "consignes", "memory": "souvenir", "skill": "compétence", "app": "application", "name": "nom", "field": "champ" };
+const label = (k: string, l: Locale) => (LABELS[k] ? localize(l, LABELS[k], GROKLABEL_FR) : k);
 
 export interface Cleaner { stripped: GrokImportStripped[]; placeholder: string }
 /** The text without its secrets (each replaced by the placeholder and reported under `where`). */
@@ -239,7 +240,7 @@ export function parseGrokExport(raw: string, opts: { locale?: Locale; timezone?:
   }
   if (repaired) warnings.push({ code: "repaired" });
 
-  const cx: Cleaner = { stripped: [], placeholder: locale === "fr" ? "[secret retiré]" : "[secret removed]" };
+  const cx: Cleaner = { stripped: [], placeholder: tr(locale, "[secret removed]") };
   let list: unknown[];
   if (Array.isArray(root)) { list = root; warnings.push({ code: "no_version" }); }
   else if (isObj(root) && Array.isArray(root.bots)) {

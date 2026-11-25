@@ -13,7 +13,7 @@
  *  - Polymarket Gamma API, https://docs.polymarket.com/ (GET https://gamma-api.polymarket.com/public-search with q,
  *    events_status, keep_closed_markets, limit_per_type, sort — as last30days calls it).
  */
-import { guardedFetch } from "./net.js";
+import { guardedFetch } from "./net.js"; import { tr } from "./i18n.js"; import type { Locale } from "./shared.js";
 import { reachAvailable, reachChannelSearch } from "./reach.js";
 import type { BotRecord } from "./store.js";
 import type { ResearchSource } from "./researchevidence.js";
@@ -83,7 +83,7 @@ function outcomes(market: any): [string, number][] {
 }
 
 /** Open prediction markets about the subject, biggest money first. Shown as « ce que parient les gens », never as a fact. */
-export async function searchPolymarket(query: string, signal: AbortSignal, fr: boolean, now = Date.now()): Promise<SourceOutcome> {
+export async function searchPolymarket(query: string, signal: AbortSignal, locale: Locale | undefined, now = Date.now()): Promise<SourceOutcome> {
   try {
     const params = new URLSearchParams({ q: query.slice(0, 200), sort: "volume", events_status: "active", keep_closed_markets: "0", limit_per_type: "10" });
     const data = await getJson(`${pmBase()}/public-search?${params}`, signal);
@@ -97,7 +97,7 @@ export async function searchPolymarket(query: string, signal: AbortSignal, fr: b
         const o = outcomes(m)[0];
         if (!o) return [];
         const pct = Math.round(o[1] * 100);
-        return [fr ? `Pari en cours : ${m.question} — « ${o[0]} » à ${pct} % selon les parieurs.` : `Open bet: ${m.question} — "${o[0]}" at ${pct}% according to bettors.`];
+        return [tr(locale, "Open bet: {question} — \"{outcome}\" at {pct}% according to bettors.", { question: m.question, outcome: o[0], pct })];
       });
       if (!lines.length) continue;
       items.push({
@@ -145,10 +145,10 @@ export async function searchReach(bot: BotRecord, channel: "reddit" | "youtube",
   }
 }
 
-export function searchExtra(extra: ResearchExtra, bot: BotRecord, query: string, window: ResearchWindow, signal: AbortSignal, fr: boolean): Promise<SourceOutcome> {
+export function searchExtra(extra: ResearchExtra, bot: BotRecord, query: string, window: ResearchWindow, signal: AbortSignal, locale: Locale | undefined): Promise<SourceOutcome> {
   if (extra === "openalex") return searchOpenAlex(query, window, signal); // L118 (researchscholar.ts)
   if (extra === "pubmed") return searchPubMed(query, window, signal);
   if (extra === "hn") return searchHackerNews(query, window, signal);
-  if (extra === "polymarket") return searchPolymarket(query, signal, fr);
+  if (extra === "polymarket") return searchPolymarket(query, signal, locale);
   return searchReach(bot, extra, query, signal);
 }

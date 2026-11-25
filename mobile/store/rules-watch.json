@@ -1,0 +1,14 @@
+{
+  "apple": {
+    "url": "https://developer.apple.com/app-store/review/guidelines/",
+    "date": "October 16, 2026",
+    "lastModified": null,
+    "checkedAt": "2026-11-25"
+  },
+  "google": {
+    "url": "https://play.google/developer-content-policy/",
+    "date": "October 29, 2026",
+    "lastModified": "Fri, 30 Oct 2026 09:48:00 GMT",
+    "checkedAt": "2026-11-25"
+  }
+}

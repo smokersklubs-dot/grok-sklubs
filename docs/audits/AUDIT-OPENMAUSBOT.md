@@ -533,7 +533,7 @@ Taille : **S** ≤ 1 jour, **M** 2 à 4 jours, **L** 1 à 2 semaines. Chemins Sk
 47. ✅ **Fait (2026-11-22, L50).** **Verrou « un seul serveur »** sur le dossier de données : `DATA_DIR/server.lock`, 2e serveur refusé avec un message en français, verrou abandonné repris tout seul (`server/src/datalock.ts`, test `data-lock.test.ts`). S
 48. **Sélection d'outils un par un** et pont `find_tool` / `use_tool`. M
 49. **Autres langues.** M
-50. Le reste des lignes PARTIEL / MANQUANT du tableau (aperçu de lien, citation, avatar image, apprentissage automatique de compétences, rêve, mémoire d'équipe, Android par USB, étapes rejouées, rejoindre une réunion, appli iOS, liste des personnes…), dans l'ordre du tableau.
+50. Le reste des lignes PARTIEL / MANQUANT du tableau (aperçu de lien, citation, avatar image, apprentissage automatique de compétences, rêve, mémoire d'équipe, Android par USB, étapes rejouées, rejoindre une réunion, appli iOS, liste des personnes…), dans l'ordre du tableau. (bot qui rejoint une réunion : ✅ fait le 25/11, comme invité dans le navigateur du bot, `server/src/meetingbot/`, L177)
 
 ## 5. Non vérifié
 

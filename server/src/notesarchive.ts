@@ -1,4 +1,4 @@
-import { q } from "./db.js";
+import { q } from "./db.js"; import { tr } from "./i18n.js";
 import { summaries } from "./agent/memoryprefs.js";
 import type { Locale, Memory } from "./shared.js";
 import { memories, settings, type BotRecord } from "./store.js";
@@ -62,14 +62,15 @@ export function noteMarkdown(m: Memory, locale: Locale): string {
 }
 
 export function notesArchive(bot: BotRecord, locale: Locale, t = new Date()): { name: string; zip: Buffer; files: string[] } {
-  const fr = locale === "fr";
+  const fr = locale === "fr"; // file and folder names: French, else English (docs/LANGUES.md)
+  const fw = fr ? "fr" : "en";
   const files: ZipFile[] = [];
   const index: string[] = [];
   const list = memories.list(bot.id, NOTES_MAX).reverse();
   const used = new Set<string>();
   const counters: Record<string, number> = {};
   for (const m of list) {
-    const dir = `notes/${STATUS_DIR[m.status][locale === "fr" ? "fr" : "en"]}`;
+    const dir = `notes/${STATUS_DIR[m.status][fw]}`;
     const n = (counters[dir] = (counters[dir] ?? 0) + 1);
     let name = `${dir}/${String(n).padStart(3, "0")}-${slug(m.text)}.md`;
     for (let i = 2; used.has(name); i++) name = `${dir}/${String(n).padStart(3, "0")}-${slug(m.text)}-${i}.md`;
@@ -77,7 +78,7 @@ export function notesArchive(bot: BotRecord, locale: Locale, t = new Date()): { 
     files.push({ name, data: noteMarkdown(m, locale), mtime: new Date(m.createdAt) });
   }
   const summary = summaries.latest(bot.id, bot.generation);
-  if (summary?.summary) files.push({ name: fr ? "resume-conversation.md" : "conversation-summary.md", data: `# ${fr ? "Résumé de la conversation" : "Conversation summary"}\n\n${fr ? "Écrit le" : "Written on"} ${day(summary.at)}.\n\n${summary.summary}\n`, mtime: new Date(summary.at) });
+  if (summary?.summary) files.push({ name: fr ? "resume-conversation.md" : "conversation-summary.md", data: `# ${tr(locale, "Conversation summary")}\n\n${tr(locale, "Written on {day}.", { day: day(summary.at) })}\n\n${summary.summary}\n`, mtime: new Date(summary.at) });
   for (const d of q.all<{ name: string; text: string; created_at: number }>("SELECT name, text, created_at FROM doc_base WHERE user_id = ? AND scope_kind = 'bot' AND scope_id = ? ORDER BY created_at", bot.userId, bot.id)) {
     let name = `documents/${slug(d.name, "document")}.md`;
     for (let i = 2; used.has(name); i++) name = `documents/${slug(d.name, "document")}-${i}.md`;
@@ -85,21 +86,19 @@ export function notesArchive(bot: BotRecord, locale: Locale, t = new Date()): { 
     files.push({ name, data: `# ${d.name}\n\n${d.text}\n`, mtime: new Date(d.created_at) });
   }
   const p = settings.profile(bot.userId);
-  const profile = [p.name && `- ${fr ? "Nom" : "Name"} : ${p.name}`, p.company && `- ${fr ? "Entreprise" : "Company"} : ${p.company}`, p.timezone && `- ${fr ? "Fuseau horaire" : "Time zone"} : ${p.timezone}`, p.preferences && `\n${p.preferences}`].filter(Boolean);
-  if (profile.length) files.push({ name: fr ? "profil.md" : "profile.md", data: `# ${fr ? "Ce que tes bots savent de toi" : "What your bots know about you"}\n\n${profile.join("\n")}\n` });
+  const profile = [p.name && `- ${tr(locale, "Name")} : ${p.name}`, p.company && `- ${tr(locale, "Company")} : ${p.company}`, p.timezone && `- ${tr(locale, "Time zone")} : ${p.timezone}`, p.preferences && `\n${p.preferences}`].filter(Boolean);
+  if (profile.length) files.push({ name: fr ? "profil.md" : "profile.md", data: `# ${tr(locale, "What your bots know about you")}\n\n${profile.join("\n")}\n` });
   const counts = (st: Memory["status"]) => list.filter((m) => m.status === st).length;
   index.push(
-    fr ? `# Notes de ${bot.name}` : `# ${bot.name}'s notes`, "",
-    fr ? `Exportées le ${day(t.getTime())}. Des fichiers texte simples (Markdown) : ouvre-les avec n'importe quel éditeur de texte ou une appli de notes (Obsidian, Notes, Word…).`
-      : `Exported on ${day(t.getTime())}. Plain text files (Markdown): open them with any text editor or notes app (Obsidian, Notes, Word…).`, "",
-    fr ? `- notes/${STATUS_DIR.active.fr}/ : ${counts("active")} note(s) que le bot utilise` : `- notes/${STATUS_DIR.active.en}/: ${counts("active")} note(s) the bot uses`,
-    fr ? `- notes/${STATUS_DIR.contested.fr}/ : ${counts("contested")} note(s) utilisée(s) avec prudence` : `- notes/${STATUS_DIR.contested.en}/: ${counts("contested")} note(s) used with caution`,
-    fr ? `- notes/${STATUS_DIR.archived.fr}/ : ${counts("archived")} note(s) qu'il n'utilise plus` : `- notes/${STATUS_DIR.archived.en}/: ${counts("archived")} note(s) it no longer uses`,
+    tr(locale, "# {bot}'s notes", { bot: bot.name }), "",
+    tr(locale, "Exported on {day}. Plain text files (Markdown): open them with any text editor or notes app (Obsidian, Notes, Word…).", { day: day(t.getTime()) }), "",
+    tr(locale, "- notes/{dir}/: {n} note(s) the bot uses", { dir: STATUS_DIR.active[fw], n: counts("active") }),
+    tr(locale, "- notes/{dir}/: {n} note(s) used with caution", { dir: STATUS_DIR.contested[fw], n: counts("contested") }),
+    tr(locale, "- notes/{dir}/: {n} note(s) it no longer uses", { dir: STATUS_DIR.archived[fw], n: counts("archived") }),
     ...files.filter((f) => !f.name.startsWith("notes/")).map((f) => `- ${f.name}`), "",
-    fr ? "Rien n'est changé dans Sklubot par cet export. Pour corriger une note : modifie-la dans l'appli (Réglages du bot → Mémoire), ou colle le texte corrigé dans Mémoire → Importer, qui te montre chaque ligne avant de l'ajouter."
-      : "This export changes nothing in Sklubot. To correct a note: edit it in the app (bot settings → Memory), or paste the corrected text into Memory → Import, which shows you every line before adding it.", "",
+    tr(locale, "This export changes nothing in Sklubot. To correct a note: edit it in the app (bot settings → Memory), or paste the corrected text into Memory → Import, which shows you every line before adding it."), "",
   );
   files.unshift({ name: fr ? "LISEZMOI.md" : "README.md", data: index.join("\n") });
-  const name = `${fr ? "Notes" : "Notes"}-${slug(bot.name, "bot")}-${day(t.getTime())}.zip`;
+  const name = `Notes-${slug(bot.name, "bot")}-${day(t.getTime())}.zip`;
   return { name, zip: writeZip(files), files: files.map((f) => String(f.name)) };
 }

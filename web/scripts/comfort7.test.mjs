@@ -5,6 +5,11 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { roleOf, welcomeFor } from "../src/lib/starters.ts";
 import { GLOSSARY } from "../src/lib/glossary.ts";
+import { en } from "../src/i18n/en.ts";
+import { fr } from "../src/i18n/fr.ts";
+
+/** The app's lookup, read from the dictionaries (French falls back to English, like the app). */
+const texts = { fr: (k) => fr[k] ?? en[k] ?? k, en: (k) => en[k] ?? k };
 
 test("L145: the role comes from the bot's own words; an unknown role gets the general welcome", () => {
   assert.equal(roleOf("Comptable · factures et devis"), "money");
@@ -18,7 +23,7 @@ test("L145: the role comes from the bot's own words; an unknown role gets the ge
 test("L145: one question, exactly 3 choices and 4 starters, in both languages, with distinct labels", () => {
   for (const label of ["Comptable", "Développeur", "Marketing", "Rédacteur", "Recherche", "Support client", "Designer", "Assistant agenda", ""]) {
     for (const lang of ["fr", "en"]) {
-      const w = welcomeFor({ name: "Bot", label }, lang);
+      const w = welcomeFor({ name: "Bot", label }, texts[lang]);
       assert.ok(w.question.endsWith("?"), `${label}/${lang}`);
       assert.equal(w.choices.length, 3);
       assert.equal(w.starters.length, 4);
@@ -27,7 +32,7 @@ test("L145: one question, exactly 3 choices and 4 starters, in both languages, w
       for (const c of [...w.choices, ...w.starters]) assert.ok(c.prompt.length > 20 && c.label.length <= 32, c.label);
     }
   }
-  assert.equal(welcomeFor({ name: "Max", label: "Comptable" }, "fr").question, "Par quoi on commence côté chiffres ?");
+  assert.equal(welcomeFor({ name: "Max", label: "Comptable" }, texts.fr).question, "Par quoi on commence côté chiffres ?");
 });
 
 test("L161: every glossary word has a French and an English explanation", () => {

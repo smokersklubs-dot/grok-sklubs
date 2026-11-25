@@ -1,18 +1,16 @@
 import type { StudioTechnique } from "../../../server/src/studiotechniques";
+import type { Key } from "../i18n/index.ts";
 
-export const techniqueLabels: Record<StudioTechnique, [string, string]> = {
-  "retro-collage": ["Collage rétro", "Retro collage"],
-  "drawn-stroke": ["Tracé dessiné", "Ink drawing"],
-  "math-geometry": ["Géométrie mathématique", "Mathematical geometry"],
-  "procedural-illustration": [
-    "Illustration procédurale",
-    "Procedural illustration",
-  ],
-  "motion-timing": ["Typographie cinétique", "Kinetic typography"],
-  "canvas-animation": ["Flux de particules", "Particle flow"],
-  "expressive-character": ["Personnage expressif", "Expressive character"],
-  "moving-paint": ["Peinture en mouvement", "Moving paint"],
-  "doodle-timelapse": ["Doodle accéléré", "Doodle timelapse"],
+export const techniqueLabels: Record<StudioTechnique, Key> = {
+  "retro-collage": "studio.technique.retro-collage",
+  "drawn-stroke": "studio.technique.drawn-stroke",
+  "math-geometry": "studio.technique.math-geometry",
+  "procedural-illustration": "studio.technique.procedural-illustration",
+  "motion-timing": "studio.technique.motion-timing",
+  "canvas-animation": "studio.technique.canvas-animation",
+  "expressive-character": "studio.technique.expressive-character",
+  "moving-paint": "studio.technique.moving-paint",
+  "doodle-timelapse": "studio.technique.doodle-timelapse",
 };
 
 type Ctx = CanvasRenderingContext2D;

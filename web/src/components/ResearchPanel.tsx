@@ -1,3 +1,4 @@
+import { intlLocale, t as tr } from "../i18n";
 import { useEffect, useRef, useState } from "react";
 import { api, errText } from "../api";
 import "./research.css";
@@ -24,7 +25,6 @@ interface XAccount {
   personal: boolean;
 }
 export function ResearchPanel({ bot, fr, active }: { bot: string; fr: boolean; active: boolean }) {
-  const loc = (f: string, e: string) => (fr ? f : e);
   const [reports, setReports] = useState<Report[]>([]),
     [selected, setSelected] = useState(""),
     [editing, setEditing] = useState(false);
@@ -110,16 +110,16 @@ export function ResearchPanel({ bot, fr, active }: { bot: string; fr: boolean; a
   return (
     <section className="dock-reader research-panel">
       <header className="studio-actions">
-        <h2>{loc("Recherche approfondie", "Deep research")}</h2>
+        <h2>{tr("research.deepResearch")}</h2>
         {reports.length > 0 && (
           <button className="btn btn-small" onClick={newReport}>
-            {loc("Nouveau rapport", "New report")}
+            {tr("research.newReport")}
           </button>
         )}
       </header>
       {reports.length > 0 && (
         <label>
-          {loc("Rapports du bot", "Bot reports")}
+          {tr("research.botReports")}
           <select
             className="input"
             value={editing ? "" : (open?.id ?? "")}
@@ -128,7 +128,7 @@ export function ResearchPanel({ bot, fr, active }: { bot: string; fr: boolean; a
               setEditing(false);
             }}
           >
-            {editing && <option value="">{loc("Choisir un rapport", "Choose a report")}</option>}
+            {editing && <option value="">{tr("research.chooseReport")}</option>}
             {reports.map((r) => (
               <option key={r.id} value={r.id}>
                 {r.brief.subject}
@@ -161,7 +161,7 @@ export function ResearchPanel({ bot, fr, active }: { bot: string; fr: boolean; a
           }}
         >
           <label>
-            {loc("Sujet", "Topic")}
+            {tr("dj.topicLabel")}
             <input
               className="input"
               required
@@ -171,21 +171,18 @@ export function ResearchPanel({ bot, fr, active }: { bot: string; fr: boolean; a
             />
           </label>
           <label>
-            {loc("Questions du plan, une par ligne", "Plan questions, one per line")}
+            {tr("research.planQuestionsOnePer")}
             <textarea
               className="input"
               rows={4}
               required
               value={plan}
               onChange={(e) => setPlan(e.target.value)}
-              placeholder={loc(
-                "Que sait-on ? Sur quelles données ? Quelles limites ?",
-                "What do we know? What evidence supports it? What are its limits?",
-              )}
+              placeholder={tr("research.whatDoWeKnow")}
             />
           </label>
           <label>
-            {loc("Sources de départ, une adresse par ligne", "Starting sources, one URL per line")}
+            {tr("research.startingSourcesOneUrl")}
             <textarea
               className="input"
               rows={2}
@@ -196,12 +193,12 @@ export function ResearchPanel({ bot, fr, active }: { bot: string; fr: boolean; a
           </label>
           <label className="research-check">
             <input type="checkbox" checked={discover} onChange={(e) => setDiscover(e.target.checked)} />
-            {loc("Chercher aussi sur le web", "Also search the web")}
+            {tr("research.alsoSearchWeb")}
           </label>
           <ResearchOptions fr={fr} window={period} setWindow={setPeriod} extras={extras} setExtras={setExtras} />
           <label className="research-check">
             <input type="checkbox" checked={model} onChange={(e) => setModel(e.target.checked)} />
-            {loc("Synthétiser avec le modèle du bot", "Summarize with the bot’s model")}
+            {tr("research.summarizeBotSModel")}
           </label>
           <label className="research-check">
             <input
@@ -210,10 +207,10 @@ export function ResearchPanel({ bot, fr, active }: { bot: string; fr: boolean; a
               checked={!!account.provider && includeX}
               onChange={(e) => setIncludeX(e.target.checked)}
             />
-            {loc("Inclure X (tarif du fournisseur)", "Include X (provider charges may apply)")}
+            {tr("research.includeXProviderCharges")}
           </label>
           <button className="btn" disabled={busy}>
-            {loc("Lancer la recherche", "Start research")}
+            {tr("research.startResearch")}
           </button>
         </form>
       ) : (
@@ -221,13 +218,13 @@ export function ResearchPanel({ bot, fr, active }: { bot: string; fr: boolean; a
           <h3>{open.brief.subject}</h3>
           <p role="status">
             {open.state === "queued"
-              ? loc("En cours", "In progress")
+              ? tr("tasks.filter.open")
               : open.state === "done"
-                ? loc("Terminé", "Completed")
-                : loc("Interrompu", "Interrupted")}{" "}
+                ? tr("research.completed")
+                : tr("stop.cause.interrupted")}{" "}
             · {open.sections.length}/{open.brief.plan.length}{" "}
-            {loc("questions traitées", "questions processed")} · {covered}{" "}
-            {loc("avec sources", "with evidence")}
+            {tr("research.questionsProcessed")} · {covered}{" "}
+            {tr("research.evidence")}
           </p>
           <ReportExport report={open} fr={fr} />
           {open.state === "interrupted" && (
@@ -240,7 +237,7 @@ export function ResearchPanel({ bot, fr, active }: { bot: string; fr: boolean; a
                 })
               }
             >
-              {loc("Reprendre à la dernière étape", "Resume from checkpoint")}
+              {tr("research.resumeFromCheckpoint")}
             </button>
           )}
           {open.state === "done" && <ReportWatch base={base} report={open.id} fr={fr} />}
@@ -253,8 +250,8 @@ export function ResearchPanel({ bot, fr, active }: { bot: string; fr: boolean; a
                   {step ? (
                     <>
                       <small>
-                        {step.read} {loc("sources lues", "sources read")} ·{" "}
-                        {new Date(step.at).toLocaleDateString(fr ? "fr-FR" : "en")}
+                        {step.read} {tr("research.sourcesRead")} ·{" "}
+                        {new Date(step.at).toLocaleDateString(intlLocale())}
                       </small>
                       {step.findings.map((f, j) => (
                         <div className="research-finding" key={j}>
@@ -274,7 +271,7 @@ export function ResearchPanel({ bot, fr, active }: { bot: string; fr: boolean; a
                       ))}
                     </>
                   ) : (
-                    <small>{loc("À traiter", "Pending")}</small>
+                    <small>{tr("research.pending")}</small>
                   )}
                 </li>
               );
@@ -285,12 +282,12 @@ export function ResearchPanel({ bot, fr, active }: { bot: string; fr: boolean; a
       <ResearchArchive fr={fr} />
       <details>
         <summary>
-          {loc("Source X", "X source")} ·{" "}
+          {tr("research.xSource")} ·{" "}
           {account.personal
-            ? loc("jeton personnel enregistré", "personal token saved")
+            ? tr("research.personalTokenSaved")
             : account.provider
-              ? loc("configurée sur le serveur", "configured on server")
-              : loc("non configurée", "not configured")}
+              ? tr("research.configuredServer")
+              : tr("research.notConfigured")}
         </summary>
         <form
           onSubmit={(e) => {
@@ -302,7 +299,7 @@ export function ResearchPanel({ bot, fr, active }: { bot: string; fr: boolean; a
           }}
         >
           <label>
-            {loc("Jeton Bearer de l’API X", "X API bearer token")}
+            {tr("research.xApiBearerToken")}
             <input
               className="input"
               type="password"
@@ -313,7 +310,7 @@ export function ResearchPanel({ bot, fr, active }: { bot: string; fr: boolean; a
           </label>
           <div className="studio-actions">
             <button className="btn btn-small" disabled={busy || !token.trim()}>
-              {loc("Enregistrer", "Save")}
+              {tr("common.save")}
             </button>
             {account.personal && (
               <button
@@ -328,7 +325,7 @@ export function ResearchPanel({ bot, fr, active }: { bot: string; fr: boolean; a
                   })
                 }
               >
-                {loc("Déconnecter", "Disconnect")}
+                {tr("native.disconnect")}
               </button>
             )}
           </div>

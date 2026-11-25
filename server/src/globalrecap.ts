@@ -69,23 +69,22 @@ export function globalRecap(userId: string, o: { days?: unknown; ownOnly?: boole
 
 /** The recap in a few lines, bounded (RECAP_TEXT_MAX characters, RECAP_TEXT_BOTS bots, the others counted). */
 export function recapText(r: GlobalRecap, locale: Locale, t = now()): string {
-  const fr = locale === "fr";
-  const head = `${tr(locale, "Recap of your bots, last {days} days", { days: r.days })} — ${fr
-    ? `${r.totals.finished} chose${r.totals.finished > 1 ? "s" : ""} finie${r.totals.finished > 1 ? "s" : ""}${r.totals.minutes ? ` (≈ ${durationText(r.totals.minutes)} gagnées, estimation)` : ""}, ${r.totals.waiting} t'attend${r.totals.waiting > 1 ? "ent" : ""}.`
-    : `${r.totals.finished} finished${r.totals.minutes ? ` (≈ ${durationText(r.totals.minutes)} saved, estimate)` : ""}, ${r.totals.waiting} waiting for you.`}`;
-  const ago = (at: number) => `${Math.max(0, Math.floor((t - at) / DAY))} ${fr ? "j" : "d"}`;
+  const n = (one: string, many: string, count: number, zero = many) => tr(locale, count === 0 ? zero : count === 1 ? one : many, { n: count });
+  const saved = r.totals.minutes ? tr(locale, " (≈ {time} saved, estimate)", { time: durationText(r.totals.minutes) }) : "";
+  const head = `${tr(locale, "Recap of your bots, last {days} days", { days: r.days })} — ${n("1 thing finished", "{n} things finished", r.totals.finished, "0 things finished")}${saved}, ${n("1 waiting for you.", "{n} waiting for you.", r.totals.waiting, "0 waiting for you.")}`;
+  const ago = (at: number) => tr(locale, "{n} d", { n: Math.max(0, Math.floor((t - at) / DAY)) });
   const lines = [head];
   const shown = r.bots.filter((b) => b.finished || b.waiting || b.dormant || b.openGoals.length).slice(0, RECAP_TEXT_BOTS);
   for (const b of shown) {
-    const parts = [fr ? `${b.finished} finie${b.finished > 1 ? "s" : ""}` : `${b.finished} finished`];
-    if (b.waiting) parts.push(fr ? `${b.waiting} t'attend${b.waiting > 1 ? "ent" : ""}` : `${b.waiting} waiting`);
-    if (b.highlights[0]) parts.push(fr ? `dernier : « ${clip(b.highlights[0], 90)} »` : `latest: "${clip(b.highlights[0], 90)}"`);
-    if (b.dormant) parts.push(fr ? `au point mort ${b.lastActiveAt === null ? "sans avoir commencé" : `depuis ${ago(b.lastActiveAt)}`} (objectif « ${clip(b.openGoals[0], 80)} »)` : `left aside ${b.lastActiveAt === null ? "before starting" : `for ${ago(b.lastActiveAt)}`} (goal "${clip(b.openGoals[0], 80)}")`);
-    else if (b.openGoals[0]) parts.push(fr ? `en cours : « ${clip(b.openGoals[0], 80)} »` : `working on: "${clip(b.openGoals[0], 80)}"`);
-    lines.push(`• ${b.botName}${b.shared ? (fr ? " (partagé)" : " (shared)") : ""} : ${parts.join(" ; ")}`);
+    const parts = [n("1 finished", "{n} finished", b.finished, "0 finished")];
+    if (b.waiting) parts.push(n("1 waiting", "{n} waiting", b.waiting));
+    if (b.highlights[0]) parts.push(tr(locale, "latest: \"{text}\"", { text: clip(b.highlights[0], 90) }));
+    if (b.dormant) parts.push(b.lastActiveAt === null ? tr(locale, "left aside before starting (goal \"{goal}\")", { goal: clip(b.openGoals[0], 80) }) : tr(locale, "left aside for {ago} (goal \"{goal}\")", { ago: ago(b.lastActiveAt), goal: clip(b.openGoals[0], 80) }));
+    else if (b.openGoals[0]) parts.push(tr(locale, "working on: \"{goal}\"", { goal: clip(b.openGoals[0], 80) }));
+    lines.push(`• ${b.botName}${b.shared ? tr(locale, " (shared)") : ""} : ${parts.join(" ; ")}`);
   }
   const quiet = r.bots.length - shown.length;
-  if (quiet > 0) lines.push(fr ? `• ${quiet} autre${quiet > 1 ? "s" : ""} bot${quiet > 1 ? "s" : ""} sans rien de neuf.` : `• ${quiet} other bot${quiet > 1 ? "s" : ""} with nothing new.`);
+  if (quiet > 0) lines.push(n("• 1 other bot with nothing new.", "• {n} other bots with nothing new.", quiet));
   let text = lines.join("\n");
   if (text.length > RECAP_TEXT_MAX) text = `${text.slice(0, RECAP_TEXT_MAX - 1).replace(/\n[^\n]*$/, "")}\n…`;
   return text;

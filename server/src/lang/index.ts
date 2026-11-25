@@ -3,7 +3,7 @@
  * lives in the French maps next to the code (i18n.ts, *i18n.ts, local `FR` maps), every other language in one file
  * here (`lang/<code>.ts`, keyed by the same English wording). Missing text → English. How to add a language: docs/LANGUES.md.
  */
-import { isLocale, localeFromTag, type Locale } from "../clientshared/locales.js";
+import { isLocale, localeFromTag, LOCALE_INTL, type Locale } from "../clientshared/locales.js";
 import { de } from "./de.js";
 import { es } from "./es.js";
 import { it } from "./it.js";
@@ -45,3 +45,10 @@ export function byLocale<T>(locale: Locale | undefined, variants: { en: T } & Pa
 }
 
 export const languagesWithDictionary = (): Locale[] => Object.keys(DICTS) as Locale[];
+
+/** The `Intl` tag for dates and numbers in the reader's language (English: `en`, "en-GB" unless the caller wants "en-US"). */
+export const intlOf = (locale: Locale | string | undefined | null, english = "en-GB"): string =>
+  isLocale(locale) && locale !== "en" ? LOCALE_INTL[locale] : english;
+
+/** "label: value" punctuation per language: French puts a space before the colon, Chinese uses a full-width colon. */
+export const colon = (locale: Locale | string | undefined | null): string => (locale === "fr" ? " : " : locale === "zh" ? "：" : ": ");

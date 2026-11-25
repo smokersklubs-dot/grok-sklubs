@@ -1,4 +1,4 @@
-import { labelAiImage } from "./aimedia.js";
+import { labelAiImage } from "./aimedia.js"; import { tr } from "./i18n.js";
 import { labelAiVideo } from "./aivideo.js";
 import { storeBytes } from "./computer.js";
 import { q } from "./db.js";
@@ -70,10 +70,7 @@ export async function resumeJob(job: MediaJob, why: "restart" | "long", o: { tar
     if (item === "waiting") { mediaJobs.end(job.id, "failed", "still not finished after 6 hours"); return; }
     const att = await keepResult(client, job, item);
     mediaJobs.end(job.id, "done", att.path);
-    const fr = users.localeOf(job.user_id) === "fr";
-    const text = why === "restart"
-      ? (fr ? "Ta création Wan2GP est prête (reprise après un redémarrage du serveur). Gratuit, faite sur ta carte graphique." : "Your Wan2GP creation is ready (picked up again after a server restart). Free, made on your GPU.")
-      : (fr ? "Ta création Wan2GP est prête. Gratuit, faite sur ta carte graphique." : "Your Wan2GP creation is ready. Free, made on your GPU.");
+    const text = tr(users.localeOf(job.user_id), why === "restart" ? "Your Wan2GP creation is ready (picked up again after a server restart). Free, made on your GPU." : "Your Wan2GP creation is ready. Free, made on your GPU.");
     rows.append(bot, { kind: "message", role: "assistant", text, attachments: [att] });
     bots.bumpUnread(bot.id);
   } catch (err) {

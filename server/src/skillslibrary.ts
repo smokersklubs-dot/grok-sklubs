@@ -2,7 +2,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs"; import { byLoca
 import { join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { emit } from "./bus.js";
-import type { Locale } from "./shared.js";
+import type { Locale } from "./shared.js"; import { LOCALES } from "./clientshared/locales.js";
 import { scanSkill } from "./skillscan.js";
 import { LIBRARY_CATEGORIES, type LibraryAddReport, type LibraryCategory, type LibraryOrigin, type LibrarySkill } from "./skillstypes.js";
 import { skillMeta } from "./skillhealth.js"; import { keepCompanions, skillFiles, type CompanionFile } from "./skillfiles.js";
@@ -102,11 +102,20 @@ function load(): Entry[] {
     const str = (v: unknown, n: number) => (typeof v === "string" ? v.trim().slice(0, n) : "");
     out.push({
       id: e.id, origin: e.origin, category: (LIBRARY_CATEGORIES as readonly unknown[]).includes(e.category) ? e.category : "method", licence: str(e.licence, 60), source: str(e.source, 300),
-      title: { fr: str(e.title?.fr, 80) || e.id, en: str(e.title?.en, 80) || e.id },
-      summary: { fr: str(e.summary?.fr, 300), en: str(e.summary?.en, 300) },
+      // French and English are required; the other languages (es, de…) are optional in catalog.json (missing → English).
+      title: { fr: str(e.title?.fr, 80) || e.id, en: str(e.title?.en, 80) || e.id, ...inLanguages(e.title, 80) },
+      summary: { fr: str(e.summary?.fr, 300), en: str(e.summary?.en, 300), ...inLanguages(e.summary, 300) },
       text, notice: readFileSync(file("NOTICE"), "utf8").split("\n")[0].trim(), files: libraryFiles(dir),
     });
   }
+  return out;
+}
+
+/** The other languages of a catalog.json text ({ "es": "…", "zh": "…" }), each trimmed to `n` characters. */
+function inLanguages(v: unknown, n: number): Partial<Record<Locale, string>> {
+  const out: Partial<Record<Locale, string>> = {};
+  if (!v || typeof v !== "object") return out;
+  for (const l of LOCALES) { const x = (v as Record<string, unknown>)[l]; if (l !== "fr" && l !== "en" && typeof x === "string" && x.trim()) out[l] = x.trim().slice(0, n); }
   return out;
 }
 
@@ -121,7 +130,7 @@ export const libraryVersion = (id: string): string | null => {
 const textFor = (e: Entry, loc: Locale) => (e.text[loc] ? { ...e.text[loc]!, language: loc } : { ...e.text.en!, language: "en" as const });
 const agentsOf = (userId: string) => bots.list(userId).filter((b) => b.kind === "agent");
 const hasIt = (botId: string, e: Entry) => {
-  const names = new Set([e.title.fr, e.title.en].map((n) => n.toLowerCase()));
+  const names = new Set(Object.values(e.title).filter((n): n is string => !!n).map((n) => n.toLowerCase()));
   return skills.list(botId).some((k) => names.has(k.name.toLowerCase()));
 };
 

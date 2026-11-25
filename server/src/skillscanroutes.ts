@@ -1,4 +1,4 @@
-import type { Context, Hono } from "hono";
+import type { Context, Hono } from "hono"; import { tr } from "./i18n.js";
 import { fetchSkillMarkdown } from "./agent/tools-team.js";
 import { emit } from "./bus.js";
 import { RateWindow } from "./hardening.js";
@@ -16,14 +16,13 @@ import { bots, type UserRecord } from "./store.js";
  */
 const texts = new RateWindow(120, 60_000);
 const fetches = new RateWindow(20, 600_000);
-const fr = (c: Context, f: string, e: string) => ((c.get("user") as UserRecord).locale === "fr" ? f : e);
 const str = (v: unknown, n: number) => (typeof v === "string" ? v.slice(0, n) : "");
 
 export function registerSkillScanRoutes(api: Hono<any>) {
   const json = async (c: Context): Promise<Record<string, any>> => { const b = await c.req.json().catch(() => ({})); return b && typeof b === "object" && !Array.isArray(b) ? b : {}; };
   const ownedAgent = (c: Context) => { const b = bots.owned((c.get("user") as UserRecord).id, c.req.param("id")!); return b && b.kind === "agent" ? b : null; };
-  const noBot = (c: Context) => c.json({ error: fr(c, "Ce bot n'existe pas.", "That bot does not exist.") }, 404);
-  const tooMany = (c: Context) => c.json({ error: fr(c, "Trop de vérifications. Attends un peu et réessaie.", "Too many checks. Wait a little and try again.") }, 429);
+  const noBot = (c: Context) => c.json({ error: tr((c.get("user") as UserRecord).locale, "That bot does not exist.") }, 404);
+  const tooMany = (c: Context) => c.json({ error: tr((c.get("user") as UserRecord).locale, "Too many checks. Wait a little and try again.") }, 429);
 
   api.post("/skills/scan", (c) => {
     const user = c.get("user") as UserRecord;
@@ -53,7 +52,7 @@ export function registerSkillScanRoutes(api: Hono<any>) {
   api.post("/skills/:id/scan/accept", (c) => {
     const user = c.get("user") as UserRecord;
     const skill = acceptSkill(user.id, c.req.param("id")!);
-    if (!skill) return c.json({ error: fr(c, "Cette compétence n'existe pas.", "That skill does not exist.") }, 404);
+    if (!skill) return c.json({ error: tr((c.get("user") as UserRecord).locale, "That skill does not exist.") }, 404);
     emit(user.id, { type: "memories", botId: skill.botId });
     return c.json({ skill });
   });

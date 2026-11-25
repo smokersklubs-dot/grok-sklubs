@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { t as tr } from "../i18n";
 import type { Story } from "../lib/studioStory";
 import { studioSubtitles } from "../lib/studioSubtitles";
 
@@ -15,11 +16,11 @@ export function StudioSubtitles({ story, fr }: { story: Story; fr: boolean }) {
   if (!story.scenes.some(s => s.text.trim())) return null;
   const name = story.title.replace(/[<>:"/\\|?*\x00-\x1f]/g, "_").trim() || "studio";
   return <details onToggle={e => setOpen(e.currentTarget.open)}>
-    <summary>{fr ? "Sous-titres des plans" : "Shot subtitles"}</summary>
+    <summary>{tr("studio.shotSubtitles")}</summary>
     {open && links && <div className="studio-actions">
       {(["srt", "vtt"] as const).map(format => <a className="btn btn-small" key={format}
         href={links[format]} download={name + "." + format}>
-        {(fr ? "Télécharger le " : "Download ") + format.toUpperCase()}
+        {tr("studio.downloadFormat", { format: format.toUpperCase() })}
       </a>)}
     </div>}
   </details>;

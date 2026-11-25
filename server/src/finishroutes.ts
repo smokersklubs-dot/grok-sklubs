@@ -1,4 +1,4 @@
-import type { Context, Hono } from "hono";
+import type { Context, Hono } from "hono"; import { tr } from "./i18n.js";
 import { applyTheme, removeTheme, ThemeError, themesView } from "./botthemes.js";
 import { globalRecap } from "./globalrecap.js";
 import { notesArchive } from "./notesarchive.js";
@@ -30,7 +30,7 @@ export function registerFinishRoutes(api: Hono<any>) {
     const bot = bots.owned(u.id, c.req.param("id") ?? "");
     if (!bot || bot.kind !== "agent") return fail(404, "That bot does not exist.");
     const a = notesArchive(bot!, u.locale);
-    audit(u.id, "account", u.locale === "fr" ? `${bot!.name} : notes exportées en fichiers Markdown (${a.files.length} fichiers)` : `${bot!.name}: notes exported as Markdown files (${a.files.length} files)`, bot!.id);
+    audit(u.id, "account", tr(u.locale, "{bot}: notes exported as Markdown files ({n} files)", { bot: bot!.name, n: a.files.length }), bot!.id);
     return new Response(new Uint8Array(a.zip), { headers: { "content-type": "application/zip", "content-disposition": `attachment; filename="notes.zip"; filename*=UTF-8''${encodeURIComponent(a.name)}`, "cache-control": "no-store" } });
   });
 }

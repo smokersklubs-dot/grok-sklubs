@@ -1,5 +1,5 @@
 import { body, fail, HttpError } from "./routeinput.js"; import { isLocale } from "./clientshared/locales.js"; import type { Locale } from "./shared.js";
-import { registerSectionRoutes } from "./sectionroutes.js"; import { registerChatComfortRoutes } from "./chatcomfortroutes.js"; import { putInTrash } from "./bottrash.js"; import { registerStopCauseRoutes } from "./stopcauseroutes.js"; import { registerPersonalCommandRoutes } from "./personalcommandroutes.js"; import { registerDoctorRoutes } from "./doctorroutes.js"; import { registerComputerHoursRoutes } from "./computerhoursroutes.js"; import { registerMailSignatureRoutes } from "./native/mailsignatureroutes.js"; import { registerCodeBoxRoutes } from "./codeboxroutes.js";
+import { registerSectionRoutes } from "./sectionroutes.js"; import { registerChatComfortRoutes } from "./chatcomfortroutes.js"; import { putInTrash } from "./bottrash.js"; import { registerStopCauseRoutes } from "./stopcauseroutes.js"; import { registerPersonalCommandRoutes } from "./personalcommandroutes.js"; import { registerDoctorRoutes } from "./doctorroutes.js"; import { registerComputerHoursRoutes } from "./computerhoursroutes.js"; import { registerMailSignatureRoutes } from "./native/mailsignatureroutes.js"; import { registerCodeBoxRoutes } from "./codeboxroutes.js"; import { registerLiveActivityRoutes } from "./liveactivity.js";
 import { createHash } from "node:crypto";
 import { closeSync, createReadStream } from "node:fs";
 import path from "node:path";
@@ -8,7 +8,7 @@ import { Hono, type Context } from "hono";
 import { deleteCookie, getCookie } from "hono/cookie";
 import { streamSSE } from "hono/streaming";
 import { registerNoticeRoutes } from "./agent/noticeroutes.js"; import { registerRoomRoutingRoutes, roomReaction } from "./agent/roomroutes.js";
-import { registerFailureRoutes } from "./agent/failureroutes.js"; import { decideForConversation, registerConversationGrantRoutes } from "./agent/conversationgrantroutes.js"; import { decideForAllBots, registerComputerShareRoutes } from "./computershareroutes.js";
+import { registerFailureRoutes } from "./agent/failureroutes.js"; import { decideForConversation, registerConversationGrantRoutes } from "./agent/conversationgrantroutes.js"; import { decideForAllBots, registerComputerShareRoutes } from "./computershareroutes.js"; import { registerAndroidUsbRoutes } from "./androidusbroutes.js"; import { phoneUserSpoke } from "./androidusb.js";
 import { registerRecruitRoutes } from "./agent/recruit.js"; import { routeAnswer } from "./agent/lateanswer.js"; import { registerTeamMdRoutes } from "./teammdroutes.js";
 import { registerCommandRoutes } from "./command.js"; import { registerRelayGuardRoutes } from "./relayguardroutes.js"; import { registerComfortRoutes } from "./comfortroutes.js"; import { registerBotCareRoutes } from "./botcareroutes.js"; import { registerChantierRoutes } from "./chantierroutes.js"; import { registerTeamGuestPublic, registerWorkRoutes } from "./workroutes.js";
 import { continueAfterStepLimit, decideApproval, enqueue, inQueue, interrupt, isPaused, noteHandBack, runningThreads, submitUserMessage, type ForcedSkill } from "./agent/loop.js"; import { sendOnce } from "./sendkeys.js"; import { relayToHelpers } from "./agent/helperrelay.js"; import { registerTurnPlus } from "./turnplusroutes.js";
@@ -124,7 +124,7 @@ import { registerBotClients, registerBotClientSettings } from "./botaccessroutes
 import { registerSentinelRoutes } from "./sentinel/routes.js"; import { registerHookRoutes, registerHookSettingsRoutes } from "./hookroutes.js"; import { registerReportRoutes } from "./reports.js";
 import { registerAnnouncementRoutes } from "./announceroutes.js"; import { registerModelHealthRoutes } from "./modelhealth.js"; import { registerEngineWarmupRoutes } from "./enginewarmup.js";
 import { registerSkillsLibraryRoutes } from "./skillsroutes.js";
-import { registerOpenRouterRoutes } from "./openrouterroutes.js"; import { refuseCreditless } from "./modelplusroutes.js"; import { registerExtensionRoutes, registerPhonePublic } from "./extroutes.js"; // wave 7: L172 L174 L177 L178 L179
+import { registerOpenRouterRoutes } from "./openrouterroutes.js"; import { refuseCreditless } from "./modelplusroutes.js"; import { registerExtensionRoutes, registerPhonePublic } from "./extroutes.js"; import { registerMeetingBotRoutes } from "./meetingbot/routes.js"; // wave 7: L172 L174 L177 L178 L179
 import { registerSubscriptionConnectRoutes } from "./subscriptionconnect.js";
 import { registerStudioMp4 } from "./studiomp4.js";
 import { registerPageApi, registerPageSite, revisionTarget } from "./pageroutes.js";
@@ -708,7 +708,7 @@ api.post("/bots/:id/duplicate", async (c) => {
 });
 
 // ── Sidebar sections ─────────────────────────────────────────────────────────
-registerSectionRoutes(api); registerChatComfortRoutes(api, ownBot, ownAgent); registerStopCauseRoutes(api); registerPersonalCommandRoutes(api); registerDoctorRoutes(api); registerComputerHoursRoutes(api); registerMailSignatureRoutes(api); registerCodeBoxRoutes(api, ownAgent); // L91 hidden code box (codeboxroutes.ts) ; L95 computer hours (computerhoursroutes.ts) ; L83 mail signature (native/mailsignatureroutes.ts) ; L142 stop-cause chips (stopcauseroutes.ts) ; L152 personal / commands ; L153 « Docteur » (doctorroutes.ts)
+registerSectionRoutes(api); registerChatComfortRoutes(api, ownBot, ownAgent); registerStopCauseRoutes(api); registerPersonalCommandRoutes(api); registerDoctorRoutes(api); registerComputerHoursRoutes(api); registerMailSignatureRoutes(api); registerCodeBoxRoutes(api, ownAgent); registerLiveActivityRoutes(api, ownBot); // L177 iPhone Live Activity push (liveactivity.ts) ; L91 hidden code box (codeboxroutes.ts) ; L95 computer hours (computerhoursroutes.ts) ; L83 mail signature (native/mailsignatureroutes.ts) ; L142 stop-cause chips (stopcauseroutes.ts) ; L152 personal / commands ; L153 « Docteur » (doctorroutes.ts)
 
 // ── Pause (agent/pause.ts) ───────────────────────────────────────────────────
 // Owner only: pausing decides about the owner's bots, spend and subscriptions. Someone of a workspace a bot is shared
@@ -811,8 +811,8 @@ api.post("/bots/:id/messages", (c) => sendOnce(c, accessBot(c, "talk").bot.id, a
   let agentText = text;
   if (b.artifact !== undefined) {
     const target = typeof b.artifact === "string" && revisionTarget(c.get("user").id, bot.id, b.artifact);
-    if (!target) return c.json({ error: c.get("user").locale === "fr" ? "Outil introuvable." : "Tool not found." }, 404);
-    if (b.artifactVersion !== target.version) return c.json({ error: c.get("user").locale === "fr" ? "Cet outil vient de changer. Rouvre sa dernière version." : "This tool has changed. Reopen its latest version." }, 409);
+    if (!target) return c.json({ error: tr(c.get("user").locale, "Tool not found.") }, 404);
+    if (b.artifactVersion !== target.version) return c.json({ error: tr(c.get("user").locale, "This tool has changed. Reopen its latest version.") }, 409);
     agentText = `${target.instruction}\n\n${text}`;
   }
   // Only files this bot already holds under uploads/ can be attached; anything else is ignored.
@@ -837,7 +837,7 @@ api.post("/bots/:id/messages", (c) => sendOnce(c, accessBot(c, "talk").bot.id, a
   }
   if (bot.kind === "agent" && !attachments.length && objective === null && await typedControl(bot, c.get("user"), text, thread)) return c.json({ row }); // L63 typed stop, L78 /btw and /apres
   if (bot.kind === "room") dispatchToRoom(bot, c.get("user"), text, null, 0, false, thread);
-  else { relayUserSpoke(bot.id); relayToHelpers(bot, agentText, runningThreads, isPaused); submitUserMessage(bot, agentText, voice, attachments, undefined, thread, skillCommand(bot, text), goalId); } // L25: also to a helper at work (helperrelay.ts)
+  else { relayUserSpoke(bot.id); phoneUserSpoke(bot.id); relayToHelpers(bot, agentText, runningThreads, isPaused); submitUserMessage(bot, agentText, voice, attachments, undefined, thread, skillCommand(bot, text), goalId); } // L25: also to a helper at work (helperrelay.ts)
   return c.json({ row });
 }));
 
@@ -1291,12 +1291,12 @@ registerSentinelRoutes(api);
 // « Annonces » (announcements.ts): readers' feed, and the owner/operators' page to write them.
 registerAnnouncementRoutes(api); registerModelHealthRoutes(api); registerEngineWarmupRoutes(api); // model health: nod 3/4, L59, L60 (modelhealth.ts); L145 engine warm-up (enginewarmup.ts)
 registerNoticeRoutes(api); registerRoomRoutingRoutes(api); // « Qui répond » in group chats (agent/roomrouting.ts)
-registerFailureRoutes(api); registerConversationGrantRoutes(api); registerComputerShareRoutes(api); // « Coordinateur d'échecs » (agent/failures.ts) ; « Autoriser pour cette conversation »
+registerFailureRoutes(api); registerConversationGrantRoutes(api); registerComputerShareRoutes(api); registerAndroidUsbRoutes(api); // « Coordinateur d'échecs » (agent/failures.ts) ; « Autoriser pour cette conversation »
 registerRecruitRoutes(api); registerHookSettingsRoutes(api); registerReportRoutes(api); // « Bot recruteur » ; webhook settings (L20) ; « Signaler cette réponse » (L31)
 registerTeamMdRoutes(api); registerRoutinePlusRoutes(api); registerConnectorPlusRoutes(api); // « Équipe Sklubot (.md) » (teammdroutes.ts): import with review, share ; routines nod 2/8/13 (routineplusroutes.ts)
 registerCommandRoutes(api); registerRelayGuardRoutes(api); registerComfortRoutes(api); registerBotCareRoutes(api); registerChantierRoutes(api); registerWorkRoutes(api); // « Chantier » (chantierroutes.ts) ; wave 7 board, flows, automations, team memory (workroutes.ts) ; « Centre de commandement » (command.ts); « Règles de sécurité » of a linked computer (relayguardroutes.ts)
 registerSkillsLibraryRoutes(api); registerSecurityRoutes(api); registerMediaRoutes(api); // « Bibliothèque de compétences » (skillsroutes.ts) ; Lot 1 security (securityroutes.ts)
-registerOpenRouterRoutes(api); registerSubscriptionConnectRoutes(api); registerExtensionRoutes(api); /* wave 7 (extroutes.ts) */ // OpenRouter, « Connecter mon compte ChatGPT / Claude »
+registerOpenRouterRoutes(api); registerSubscriptionConnectRoutes(api); registerExtensionRoutes(api); registerMeetingBotRoutes(api); /* wave 7 (extroutes.ts); L177 meeting bot (meetingbot/routes.ts) */ // OpenRouter, « Connecter mon compte ChatGPT / Claude »
 api.put("/account/password", async (c) => {
   const user = c.get("user");
   const b = await body(c);

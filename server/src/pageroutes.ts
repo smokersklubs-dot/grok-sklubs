@@ -1,4 +1,4 @@
-import type { Context, Hono } from "hono";
+import type { Context, Hono } from "hono"; import { tr } from "./i18n.js";
 import { getCookie } from "hono/cookie";
 import { SESSION_COOKIE, userForToken } from "./auth.js";
 import { emit } from "./bus.js";
@@ -124,7 +124,7 @@ export function registerPageApi(api: Hono<any>) {
     return page && page.userId === user.id ? page : null;
   };
   const loc = (c: Context) => (c.get("user") as UserRecord).locale;
-  const gone = (c: Context) => c.json({ error: loc(c) === "fr" ? "Cette page n'existe pas." : "That page does not exist." }, 404);
+  const gone = (c: Context) => c.json({ error: tr(loc(c), "That page does not exist.") }, 404);
 
   const versionUrl = (token: string, id: number) => `/p/${token}/v/${id}/${signPage(`version:${token}:${id}`)}/`;
   api.get("/pages/:token/export", (c) => {
@@ -152,7 +152,7 @@ export function registerPageApi(api: Hono<any>) {
   });
   api.post("/pages/:token/versions/:id/restore", (c) => {
     const user = c.get("user") as UserRecord;
-    if (restores.over(user.id)) return c.json({ error: loc(c) === "fr" ? "Trop de demandes. Attends une minute." : "Too many requests. Wait a minute." }, 429);
+    if (restores.over(user.id)) return c.json({ error: tr(loc(c), "Too many requests. Wait a minute.") }, 429);
     const page = mine(c);
     const v = page ? pageVersions.get(page.botId, page.path, Number(c.req.param("id"))) : null;
     if (!page || !v) return gone(c);

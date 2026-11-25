@@ -394,7 +394,7 @@ export const telegram = {
       const prefix = target.id === e.bot.id ? "" : `[${e.bot.name}] `;
       if (e.type === "waiting") {
         const answerable = !!e.approvalId && !privateApproval(e.tool ?? "");
-        const hint = (e.approvalId ? (answerable ? `\n${tr(loc, "👍 = yes · 👎 = no")}` : `\n${tr(loc, "🔒 Answer in the app.")}`) : "") + `\n${cardLinkLine(e.bot.id, loc === "fr")}`; // L76 link to the card
+        const hint = (e.approvalId ? (answerable ? `\n${tr(loc, "👍 = yes · 👎 = no")}` : `\n${tr(loc, "🔒 Answer in the app.")}`) : "") + `\n${cardLinkLine(e.bot.id, loc)}`; // L76 link to the card
         void send(target, `⏳ ${prefix}${e.text}${hint}`, answerable ? { kind: "approval", approvalId: e.approvalId! } : undefined);
         return;
       }

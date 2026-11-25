@@ -10,7 +10,7 @@
  * comes back as the user's own next message (POST /bots/:id/cards/:seq/view, viewroutes.ts), checked against the form's
  * fields. Every card carries a plain-text fallback for the phone app and the chat services.
  */
-import { clip, rows, type BotRecord } from "../store.js";
+import { clip, rows, type BotRecord } from "../store.js"; import { tr } from "../i18n.js"; import type { Locale } from "../shared.js";
 import type { ViewBlock, ViewCard, ViewField } from "../viewtypes.js";
 import { VIEW_LIMITS as L } from "../viewtypes.js";
 import type { BuiltinTool, ToolContext, ToolOutput } from "./tools.js";
@@ -97,15 +97,15 @@ export function checkView(a: Record<string, unknown>): { title: string; blocks: 
 const numText = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(2).replace(/0+$/, "").replace(/\.$/, ""));
 
 /** The same view in plain text (phone app, Telegram / Slack / Discord, the bot's own record). */
-export function fallbackText(title: string, blocks: ViewBlock[], fr: boolean): string {
+export function fallbackText(title: string, blocks: ViewBlock[], loc: Locale | undefined): string {
   const out: string[] = [`📊 ${title}`];
   for (const b of blocks) {
     if (b.kind === "text") out.push(b.text);
     else if (b.kind === "stats") out.push(b.items.map((x) => `• ${x.label} : ${x.value}${x.hint ? ` (${x.hint})` : ""}`).join("\n"));
-    else if (b.kind === "table") out.push([b.columns.join(" | "), ...b.rows.slice(0, 20).map((r) => r.join(" | ")), ...(b.rows.length > 20 ? [fr ? `… ${b.rows.length - 20} lignes de plus dans l'appli` : `… ${b.rows.length - 20} more rows in the app`] : [])].join("\n"));
+    else if (b.kind === "table") out.push([b.columns.join(" | "), ...b.rows.slice(0, 20).map((r) => r.join(" | ")), ...(b.rows.length > 20 ? [tr(loc, "… {n} more rows in the app", { n: b.rows.length - 20 })] : [])].join("\n"));
     else if (b.kind === "chart") out.push(b.series.map((x) => `${x.name} : ${b.labels.map((l, i) => `${l} ${numText(x.values[i])}${b.unit ?? ""}`).join(", ")}`).join("\n"));
     else if (b.kind === "progress") out.push(`${b.label ? `${b.label} : ` : ""}${numText(b.value)} / ${numText(b.max)} (${Math.round((b.value / b.max) * 100)} %)`);
-    else if (b.kind === "form") out.push(fr ? `📝 Formulaire (${b.fields.map((f) => f.label).join(", ") || "confirmation"}) : réponds dans l'appli, ou écris ta réponse.` : `📝 Form (${b.fields.map((f) => f.label).join(", ") || "confirmation"}): answer in the app, or write your answer.`);
+    else if (b.kind === "form") out.push(tr(loc, "📝 Form ({fields}): answer in the app, or write your answer.", { fields: b.fields.map((f) => f.label).join(", ") || tr(loc, "confirmation") }));
   }
   return out.join("\n\n").slice(0, 6000);
 }
@@ -171,8 +171,7 @@ export const viewTools: BuiltinTool[] = [{
   async run(a: Record<string, any>, c: ToolContext): Promise<ToolOutput> {
     const checked = checkView(a);
     if ("error" in checked) return { content: `${checked.error} Nothing was shown.`, isError: true, summary: "not shown" };
-    const fr = c.user.locale === "fr";
-    const card: ViewCard = { type: "view", title: checked.title, blocks: checked.blocks, fallback: fallbackText(checked.title, checked.blocks, fr), status: checked.interactive ? "pending" : "shown" };
+    const card: ViewCard = { type: "view", title: checked.title, blocks: checked.blocks, fallback: fallbackText(checked.title, checked.blocks, c.user.locale), status: checked.interactive ? "pending" : "shown" };
     postView(c.bot, card, c.thread);
     if (!checked.interactive) return { content: "The view is on screen. Do not repeat its numbers in your reply; say only what they mean, in a sentence or two.", summary: clip(checked.title, 60) };
     return { content: "The form is in front of the user. Stop here: their answer arrives as their next message.", summary: clip(checked.title, 60), endTurn: true };

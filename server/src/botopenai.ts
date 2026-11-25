@@ -1,4 +1,4 @@
-import type { Context, Hono } from "hono";
+import type { Context, Hono } from "hono"; import { pickLocale } from "./i18n.js";
 import { BotApiError, handleApiRequest, requireScope, sendMessage, waitReply, authenticate, apiClientIp, type Caller } from "./botapi.js";
 import { maskSecrets } from "./shared.js";
 import { memories } from "./store.js";
@@ -22,7 +22,7 @@ import { deprecationHeaders, openApiDocument, PUBLIC_ROUTES } from "./openapi.js
  *    archived, binned or sensitive ones — health, religion… — which stay in the app), each text through the secret mask.
  *  - GET /api/v1/openapi.json — the OpenAPI 3.1 description of the public API (openapi.ts), no key needed.
  */
-const callerOf = (c: Context): Caller => authenticate(c.req.header("authorization"), apiClientIp(c), c.req.header("accept-language")?.toLowerCase().startsWith("fr") ? "fr" : "en");
+const callerOf = (c: Context): Caller => authenticate(c.req.header("authorization"), apiClientIp(c), pickLocale(undefined, c.req.header("accept-language")));
 
 /** OpenAI's error shape: { error: { message, type, code } } with the same HTTP statuses as the Bot API. */
 const openAiHandle = (fn: (c: Context) => Promise<Response> | Response) => async (c: Context) => {

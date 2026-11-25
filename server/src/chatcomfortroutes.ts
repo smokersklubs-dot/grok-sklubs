@@ -164,7 +164,7 @@ export function registerChatComfortRoutes(api: Hono<E>, ownBot: (c: Context<E>) 
     const page = mine(c);
     const s = snapshot(c, page, c.req.query("version"));
     // Shown under the same sandbox rules as a published page: never with the app's own origin rights.
-    return c.body(a4Html(s.html, s.files, c.get("user").locale === "fr" ? "Enregistrer en PDF" : "Save as PDF"), 200, {
+    return c.body(a4Html(s.html, s.files, tr(c.get("user").locale, "Save as PDF")), 200, {
       "content-type": "text/html; charset=utf-8", "cache-control": "private, no-store", "x-content-type-options": "nosniff",
       "content-security-policy": "sandbox allow-scripts allow-modals; default-src 'none'; img-src data: https:; style-src 'unsafe-inline' https:; font-src data: https:; script-src 'unsafe-inline'",
     });

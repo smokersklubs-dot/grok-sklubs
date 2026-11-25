@@ -1,4 +1,4 @@
-import { emit } from "./bus.js"; import { localize } from "./lang/index.js";
+import { emit } from "./bus.js"; import { localize } from "./lang/index.js"; import { intlOf } from "./lang/index.js";
 import { isValidTimezone, localParts } from "./cron.js";
 import { q } from "./db.js";
 import type { CapMode, CapPeriod, CapSetBy, CapStateView, CapUnit, Card, Locale, UsageAmount, UsageCapsView, UsageCapView } from "./shared.js";
@@ -249,11 +249,11 @@ export const turnAttended = (botId: string) => attendedTurns.get(botId) ?? true;
 
 // ── Words ───────────────────────────────────────────────────────────────────────────────────────────────────────
 export function amountText(unit: CapUnit, n: number, locale: Locale): string {
-  if (unit === "usd") return locale === "fr" ? `${n.toFixed(2).replace(".", ",")} $` : `${n.toFixed(2)} $`;
-  return `${Math.round(n).toLocaleString(locale === "fr" ? "fr-FR" : "en-GB")} tokens`;
+  if (unit === "usd") return `${new Intl.NumberFormat(intlOf(locale), { minimumFractionDigits: 2, maximumFractionDigits: 2, useGrouping: false }).format(n)} $`;
+  return `${Math.round(n).toLocaleString(intlOf(locale))} tokens`;
 }
 export function whenText(at: number, tz: string, locale: Locale): string {
-  const f = new Intl.DateTimeFormat(locale === "fr" ? "fr-FR" : "en-GB", { timeZone: tz, day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
+  const f = new Intl.DateTimeFormat(intlOf(locale), { timeZone: tz, day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
   return `${f.format(at)} (${tz})`;
 }
 export function capName(c: Pick<UsageCapView, "botId" | "period" | "unit" | "setBy">, locale: Locale): string {

@@ -10,7 +10,7 @@
  *  - The global mute (« Couper toutes les voix ») is per browser (localStorage), and stops what is playing.
  */
 import { create } from "zustand";
-import { getLocale, t } from "../i18n";
+import { getLocale, intlTag, isLocale, t } from "../i18n";
 import { useStore } from "../store";
 import type { Bot } from "../types";
 import { speechParts, speechText } from "../../../server/src/speechtext";
@@ -158,7 +158,7 @@ function playBrowser(s: Session): void {
     s.part = i;
     set({ progress: i / parts.length });
     const u = makeUtterance(parts[i], s.input.voice);
-    if (!s.input.voice.lang || s.input.voice.lang === "auto") u.lang = lang(s.input.voice) === "fr" ? "fr-FR" : lang(s.input.voice) === "en" ? "en-US" : u.lang;
+    if (!s.input.voice.lang || s.input.voice.lang === "auto") { const l = lang(s.input.voice); u.lang = l === "en" ? "en-US" : isLocale(l) ? intlTag(l) : u.lang; }
     u.onend = () => say(i + 1);
     u.onerror = () => { if (session === s) finish(s); };
     synth.speak(u);

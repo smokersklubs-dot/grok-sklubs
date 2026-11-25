@@ -7,7 +7,7 @@
  */
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { api } from "../api";
-import { LOCALES, tn, useLocale, useT, type Key } from "../i18n";
+import { LOCALES, euros, tn, useLocale, useT, type Key, type Locale } from "../i18n";
 import { useStore } from "../store";
 import type { HostedPlan, TeamFileLook } from "../types";
 import { Avatar } from "./Avatar";
@@ -68,7 +68,7 @@ function Tile({ title, text, children, className = "", delay = 0 }: { title: str
   );
 }
 
-function Ways({ packs, forSale, loc, onStart }: { packs: { amountEur: number }[]; forSale: boolean; loc: "fr" | "en"; onStart: () => void }) {
+function Ways({ packs, forSale, loc, onStart }: { packs: { amountEur: number }[]; forSale: boolean; loc: Locale; onStart: () => void }) {
   const t = useT();
   const from = packs.length ? Math.min(...packs.map((p) => p.amountEur)) : null;
   // No Sklubot credits for sale (the default): free, on the person's own OpenRouter, ChatGPT or Claude account.
@@ -90,7 +90,7 @@ function Ways({ packs, forSale, loc, onStart }: { packs: { amountEur: number }[]
             <span className="lp-way-icon" aria-hidden="true"><Icon name={w.icon} size={18} /></span>
             <h3>{t(w.title)}</h3>
             <p>{t(w.text)}</p>
-            {w.icon === "bolt" && from !== null && <p className="lp-chip">{t("lp.ways.from", { n: loc === "fr" ? `${String(from).replace(".", ",")} €` : `€${from}` })}</p>}
+            {w.icon === "bolt" && from !== null && <p className="lp-chip">{t("lp.ways.from", { n: euros(from, loc) })}</p>}
           </article>
         ))}
       </div>
@@ -102,7 +102,7 @@ function Ways({ packs, forSale, loc, onStart }: { packs: { amountEur: number }[]
 export default function Landing({ onAuth }: { onAuth: OnAuth }) {
   const t = useT();
   const locale = useLocale();
-  const loc = locale === "fr" ? "fr" : "en";
+  const loc = locale;
   const setLocale = useStore((s) => s.setLocale);
   const [data, setData] = useState<LandingData | null>(null);
   const [menu, setMenu] = useState(false);

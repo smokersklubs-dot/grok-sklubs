@@ -1,4 +1,4 @@
-import { bots, type BotRecord } from "./store.js";
+import { bots, type BotRecord } from "./store.js"; import { tr } from "./i18n.js"; import { localize } from "./lang/index.js"; import type { Locale } from "./shared.js";
 import { readPublicPage } from "./webreading.js";
 import { xSearch } from "./xsearch.js";
 import { checkedFindings, extractEvidence, publicAddress, MAX_FINDINGS, type ResearchBrief, type ResearchSection, type ResearchSource } from "./researchevidence.js";
@@ -24,9 +24,25 @@ export const WINDOW_LABEL: Record<ResearchWindow, [string, string]> = {
   any: ["toutes dates", "any date"], week: ["7 derniers jours", "last 7 days"], month: ["30 derniers jours", "last 30 days"], year: ["12 derniers mois", "last 12 months"],
 };
 const broken = (s: SourceState) => !["ok", "empty"].includes(s.state);
+/** French for the labels above (their own map: "failed" or "timed out" read differently elsewhere); other languages: server/src/lang. */
+const RESEARCHLABEL_FR: Record<string, string> = {
+  "answered": "a répondu",
+  "nothing found": "rien trouvé",
+  "failed": "en panne",
+  "rate limited": "limite de débit",
+  "timed out": "trop lent",
+  "needs a login in settings": "connexion à faire dans les réglages",
+  "unavailable on this server": "indisponible sur ce serveur",
+  "any date": "toutes dates",
+  "last 7 days": "7 derniers jours",
+  "last 30 days": "30 derniers jours",
+  "last 12 months": "12 derniers mois",
+};
+/** A label of the tables above in the reader's language (the English one is the key). */
+const lab = (loc: Locale | undefined, pair: [string, string]) => localize(loc, pair[1], RESEARCHLABEL_FR);
 
 export async function browseSection(bot: BotRecord, brief: ResearchBrief, question: string): Promise<ResearchSection> {
-  const fr = brief.locale === "fr";
+  const loc = brief.locale;
   const window: ResearchWindow = brief.window ?? "any";
   const notes: string[] = [], states: SourceState[] = [];
   const urls = new Set(brief.seeds);
@@ -47,7 +63,7 @@ export async function browseSection(bot: BotRecord, brief: ResearchBrief, questi
     }
   }
   const attempted = urls.size;
-  const extras = (brief.extras ?? []).map((x) => searchExtra(x, bot, query, window, AbortSignal.timeout(100_000), fr));
+  const extras = (brief.extras ?? []).map((x) => searchExtra(x, bot, query, window, AbortSignal.timeout(100_000), loc));
   const pages = await Promise.allSettled([...urls].map((url) => readPublicPage(url, AbortSignal.timeout(16_000))));
   let webRead = 0;
   for (const p of pages)
@@ -56,7 +72,7 @@ export async function browseSection(bot: BotRecord, brief: ResearchBrief, questi
       webRead++;
     }
   const failures = pages.filter((r) => r.status === "rejected").length;
-  if (failures) notes.push(fr ? `${failures} page(s) illisible(s) ou inaccessible(s).` : `${failures} unreadable or inaccessible page(s).`);
+  if (failures) notes.push(tr(loc, "{n} unreadable or inaccessible page(s).", { n: failures }));
   if (brief.discover || attempted) states.push({ source: "web", state: webState === "failed" ? "failed" : webRead ? "ok" : failures && failures === attempted ? "failed" : "empty", count: webRead });
   for (const outcome of await Promise.all(extras)) {
     states.push(outcome.state);
@@ -84,9 +100,9 @@ export async function browseSection(bot: BotRecord, brief: ResearchBrief, questi
   sources = dated
     .map((x) => ({ ...x.s, boost: rankScore(x.rel, x.s.published, x.s.engagement, window) }))
     .sort((a, b) => (b.boost ?? 0) - (a.boost ?? 0));
-  if (offTopic) notes.push(fr ? `${offTopic} source(s) hors sujet écartée(s).` : `${offTopic} off-topic source(s) set aside.`);
-  if (outOfWindow) notes.push(fr ? `${outOfWindow} source(s) publiée(s) avant la période (${WINDOW_LABEL[window][0]}) écartée(s).` : `${outOfWindow} source(s) published before the period (${WINDOW_LABEL[window][1]}) set aside.`);
-  if (undated) notes.push(fr ? `${undated} source(s) sans date de publication : à vérifier.` : `${undated} source(s) without a publication date: check them.`);
+  if (offTopic) notes.push(tr(loc, "{n} off-topic source(s) set aside.", { n: offTopic }));
+  if (outOfWindow) notes.push(tr(loc, "{n} source(s) published before the period ({period}) set aside.", { n: outOfWindow, period: lab(loc, WINDOW_LABEL[window]) }));
+  if (undated) notes.push(tr(loc, "{n} source(s) without a publication date: check them.", { n: undated }));
 
   const meta = new Map(sources.map((s) => [s.url, s]));
   let findings = extractEvidence(question, sources), synthesis = false;
@@ -103,7 +119,7 @@ export async function browseSection(bot: BotRecord, brief: ResearchBrief, questi
         question,
         period: window === "any" ? undefined : WINDOW_LABEL[window][1],
         sources_that_failed: failedSources.length ? failedSources : undefined,
-        sources: sources.slice(0, 12).map((s, k) => ({ source: k + 1, title: s.title, published: s.published ?? "unknown", engagement: engagementLabel(s.engagement, false) || undefined, text: s.text.slice(0, 4200) })),
+        sources: sources.slice(0, 12).map((s, k) => ({ source: k + 1, title: s.title, published: s.published ?? "unknown", engagement: engagementLabel(s.engagement, "en") || undefined, text: s.text.slice(0, 4200) })),
       };
       const answer = await ask(
         fresh,
@@ -114,7 +130,7 @@ export async function browseSection(bot: BotRecord, brief: ResearchBrief, questi
       const checked = checkedFindings(answer, sources);
       if (checked.length) { findings = checked; synthesis = true; } else throw Error();
     } catch {
-      notes.push(fr ? "Synthèse du modèle indisponible ou citations introuvables. Les extraits disponibles sont affichés." : "Model synthesis unavailable or citations could not be matched. Available extracts are shown.");
+      notes.push(tr(loc, "Model synthesis unavailable or citations could not be matched. Available extracts are shown."));
     }
   }
   // Community and market sources (already above the relevance floor) are evidence in their own words: their opening
@@ -129,48 +145,45 @@ export async function browseSection(bot: BotRecord, brief: ResearchBrief, questi
     .slice(0, MAX_FINDINGS);
   findings = findings.map((f) => {
     const s = meta.get(f.url);
-    const engagement = engagementLabel(s?.engagement, fr);
+    const engagement = engagementLabel(s?.engagement, loc);
     return { ...f, ...(s?.published ? { published: s.published } : {}), ...(engagement ? { engagement } : {}) };
   });
   if (!findings.length) {
     const down = states.filter(broken);
     if (down.length)
-      notes.push(fr
-        ? `Pas de conclusion possible : ${down.map((s) => `${SOURCE_LABEL[s.source][0]} (${STATE_LABEL[s.state][0]})`).join(", ")}. Impossible de dire que personne n’en parle.`
-        : `No conclusion possible: ${down.map((s) => `${SOURCE_LABEL[s.source][1]} (${STATE_LABEL[s.state][1]})`).join(", ")}. This does not mean nobody talks about it.`);
+      notes.push(tr(loc, "No conclusion possible: {sources}. This does not mean nobody talks about it.", { sources: down.map((s) => `${SOURCE_LABEL[s.source][1]} (${lab(loc, STATE_LABEL[s.state])})`).join(", ") }));
     else if (window !== "any")
-      notes.push(fr ? `Rien de solide sur la période (${WINDOW_LABEL[window][0]}) avec les sources consultées.` : `Nothing solid in the period (${WINDOW_LABEL[window][1]}) with the sources consulted.`);
-    else notes.push(fr ? "Cette question reste ouverte avec les sources consultées." : "This question remains open with the sources consulted.");
+      notes.push(tr(loc, "Nothing solid in the period ({period}) with the sources consulted.", { period: lab(loc, WINDOW_LABEL[window]) }));
+    else notes.push(tr(loc, "This question remains open with the sources consulted."));
   }
   return { question, findings, read, attempted, notes, synthesis, at: Date.now(), sources: states, offTopic, outOfWindow, undated };
 }
 
 /** « Sources : Web a répondu (5) · Reddit limite de débit » — one line per question, failures never hidden. */
-export function sourcesLine(states: SourceState[] | undefined, fr: boolean): string {
+export function sourcesLine(states: SourceState[] | undefined, loc: Locale | undefined): string {
   if (!states?.length) return "";
-  const i = fr ? 0 : 1;
-  return (fr ? "Sources : " : "Sources: ") + states.map((s) => `${SOURCE_LABEL[s.source][i]} ${STATE_LABEL[s.state][i]}${s.count ? ` (${s.count})` : ""}`).join(" · ");
+  return tr(loc, "Sources: {list}", { list: states.map((s) => `${SOURCE_LABEL[s.source][1]} ${lab(loc, STATE_LABEL[s.state])}${s.count ? ` (${s.count})` : ""}`).join(" · ") });
 }
 
 export function reportMessage(brief: ResearchBrief, sections: ResearchSection[]) {
-  const fr = brief.locale === "fr", covered = sections.filter((s) => s.findings.length).length;
+  const loc = brief.locale, covered = sections.filter((s) => s.findings.length).length;
   const safe = (s: string) => s.replace(/[<>()\[\]_*#`\\]/g, " ").replace(/\s+/g, " ").trim();
   const window = brief.window ?? "any";
   const lines = [
     safe(brief.subject),
-    (fr ? `${covered}/${brief.plan.length} questions avec des éléments sourcés.` : `${covered}/${brief.plan.length} questions with sourced evidence.`) +
-      (window !== "any" ? (fr ? ` Période : ${WINDOW_LABEL[window][0]}.` : ` Period: ${WINDOW_LABEL[window][1]}.`) : ""),
+    tr(loc, "{covered}/{total} questions with sourced evidence.", { covered, total: brief.plan.length }) +
+      (window !== "any" ? tr(loc, " Period: {period}.", { period: lab(loc, WINDOW_LABEL[window]) }) : ""),
   ];
   for (const s of sections) {
     lines.push("\n" + safe(s.question));
     for (const f of s.findings) {
       const url = f.url.replaceAll("(", "%28").replaceAll(")", "%29");
-      const when = f.published ? (fr ? ` — publié le ${f.published}` : ` — published ${f.published}`) : window !== "any" ? (fr ? " — date inconnue" : " — date unknown") : "";
+      const when = f.published ? tr(loc, " — published {date}", { date: f.published }) : window !== "any" ? tr(loc, " — date unknown") : "";
       const crowd = f.engagement ? ` — ${safe(f.engagement)}` : "";
       lines.push(`- ${f.claim ? safe(f.claim) + " " : ""}« ${safe(f.quote)} » [${safe(f.title).slice(0, 120) || "Source"}](${url})${when}${crowd}`);
     }
     lines.push(...s.notes);
-    const src = sourcesLine(s.sources, fr);
+    const src = sourcesLine(s.sources, loc);
     if (src) lines.push(src);
   }
   return lines.join("\n");

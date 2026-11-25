@@ -11,7 +11,7 @@
  *
  * Tables at load (the house pattern); they go with their bot (ON DELETE CASCADE).
  */
-import { q } from "../db.js";
+import { q } from "../db.js"; import { tr } from "../i18n.js";
 import { clip, now, rows, users, type BotRecord } from "../store.js";
 import { similar } from "./memory.js";
 
@@ -54,9 +54,6 @@ const lastProposed = new Map<string, number>();
 export function proposeFreshConversation(bot: Pick<BotRecord, "id" | "userId">, at = now()) {
   if ((lastProposed.get(bot.id) ?? 0) > at - 3600_000) return false;
   lastProposed.set(bot.id, at);
-  const fr = users.localeOf(bot.userId) === "fr";
-  rows.append(bot, { kind: "notice", tone: "info", text: fr
-    ? "Note retirée de la mémoire : le bot ne la réapprendra pas tout seul. La conversation en cours peut encore la contenir : pour repartir propre, démarre une « Nouvelle conversation »."
-    : "Note removed from memory: the bot will not learn it again by itself. The current conversation may still hold it: to start clean, begin a « New conversation »." });
+  rows.append(bot, { kind: "notice", tone: "info", text: tr(users.localeOf(bot.userId), "Note removed from memory: the bot will not learn it again by itself. The current conversation may still hold it: to start clean, begin a « New conversation ».") });
   return true;
 }

@@ -82,7 +82,7 @@ test("L77 several reviewers: each reads with the project rules; ready only with 
   assert.equal(panelStatus(a, row.seq).verdict, "changes", "one reviewer asks for changes: not ready");
   const review = changesReview(a, row.seq)!;
   assert.equal(review.reviewer, "Même");
-  const msg = fixMessage(review, true);
+  const msg = fixMessage(review, "fr");
   assert.match(msg, /^Même a relu ta dernière modification et demande des corrections\./);
   assert.match(msg, /- \[medium\/other\] src\/a\.ts:\d+ — console\.log interdit/);
   const sent: any[] = [];

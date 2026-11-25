@@ -1,4 +1,4 @@
-import type { Card } from "../shared.js";
+import type { Card } from "../shared.js"; import { tr } from "../i18n.js"; import type { Locale } from "../shared.js";
 import { q } from "../db.js";
 import { clip, rows, type BotRecord } from "../store.js";
 import type { BuiltinTool, ToolContext, ToolOutput } from "./tools.js";
@@ -78,14 +78,15 @@ function lastPlan(bot: BotRecord, thread: number): { steps: string[]; version: n
 export const PLAN_OPTIONS = { en: ["Approve", "Approve with a note", "Change it"], fr: ["Approuver", "Approuver avec une note", "Le modifier"] };
 
 /** A plan card: its steps, its version and, from version 2 on, the steps added and removed since the last one. */
-export function planCard(bot: BotRecord, thread: number, a: Record<string, unknown>, locale: "fr" | "en"): QuestionCard | { error: string } {
+export function planCard(bot: BotRecord, thread: number, a: Record<string, unknown>, locale: Locale): QuestionCard | { error: string } {
   const title = clip(String(a.title ?? "").trim(), 200);
   const steps = strs(a.steps, 20, 400);
   if (!title || steps.length < 2) return { error: "A plan needs a title and at least 2 steps." };
   const prev = lastPlan(bot, thread);
   const plan: NonNullable<QuestionCard["plan"]> = { steps, version: (prev?.version ?? 0) + 1 };
   if (prev) { plan.added = steps.filter((s) => !prev.steps.includes(s)); plan.removed = prev.steps.filter((s) => !steps.includes(s)); }
-  const card: QuestionCard = { type: "question", question: title, options: PLAN_OPTIONS[locale], status: "pending", plan, recommended: PLAN_OPTIONS[locale][0] };
+  const options = PLAN_OPTIONS.en.map((o) => tr(locale, o)); // French in INLINE_FR, other languages in server/src/lang
+  const card: QuestionCard = { type: "question", question: title, options, status: "pending", plan, recommended: options[0] };
   if (typeof a.why === "string" && a.why.trim()) card.why = clip(a.why.trim(), 300);
   if (a.irreversible === true) card.irreversible = true;
   return card;
@@ -102,7 +103,7 @@ export const planTools: BuiltinTool[] = [{
   },
   activity: "waiting", label: "Proposing a plan",
   async run(a: Record<string, any>, c: ToolContext): Promise<ToolOutput> {
-    const card = planCard(c.bot, c.thread ?? 0, a, c.user.locale === "fr" ? "fr" : "en");
+    const card = planCard(c.bot, c.thread ?? 0, a, c.user.locale);
     if ("error" in card) return { content: card.error, isError: true };
     postQuestion(c.bot, card, c.thread);
     return { content: `Plan v${card.plan!.version} is in front of the user. Stop here and wait for their answer; do not start the work before they approve it.`, summary: `v${card.plan!.version} · ${clip(card.question, 60)}`, endTurn: true };

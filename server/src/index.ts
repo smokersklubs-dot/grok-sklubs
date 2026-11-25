@@ -1,5 +1,5 @@
 // L50: first of all, the « un seul serveur » lock on the data folder (datalock.ts), before the database opens.
-import "./datalockboot.js";
+import "./datalockboot.js"; import { tr } from "./i18n.js";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { serve } from "@hono/node-server";
@@ -85,8 +85,7 @@ setLookSource((key) => {
     const shared = sharedComputers.byId(key);
     const owner = shared ? users.byId(shared.userId) : null;
     if (!shared || !owner) return null;
-    const fr = owner.locale === "fr";
-    return { name: `${fr ? "Ordinateur partagé" : "Shared computer"} ${shared.name}`, label: fr ? "Partagé entre tes bots" : "Shared by your bots", color: "slate", locale: owner.locale, owner: owner.name };
+    return { name: tr(owner.locale, "Shared computer {name}", { name: shared.name }), label: tr(owner.locale, "Shared by your bots"), color: "slate", locale: owner.locale, owner: owner.name };
   }
   const owner = users.byId(bot.userId);
   // A custom character colour also tints the bot's computer.

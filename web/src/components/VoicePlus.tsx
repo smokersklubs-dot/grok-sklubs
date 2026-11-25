@@ -1,6 +1,6 @@
 import { useEffect, useId, useState } from "react";
 import { api, errText } from "../api";
-import { getLocale, useT } from "../i18n";
+import { getLocale, useT, intlTag } from "../i18n";
 import { installLocal, localStatus, setWakeEnabled, wakeEnabled, type LocalStatus } from "../lib/wakeword";
 import { ErrorNote } from "./ui";
 import "./VoicePlus.css";
@@ -18,7 +18,7 @@ export function VoicePlus({ initialStatus }: { initialStatus?: LocalStatus }) {
   );
 }
 
-const langOf = () => (getLocale() === "fr" ? "fr-FR" : "en-US");
+const langOf = () => (intlTag(getLocale()));
 
 export function WakeWordSetting({ initialStatus }: { initialStatus?: LocalStatus }) {
   const t = useT();

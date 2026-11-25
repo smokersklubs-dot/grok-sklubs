@@ -593,4 +593,8 @@ export const en: Record<Key, string> = {
   "metrics.hint": "For a monitoring tool (Prometheus), the server's owner can turn on /api/metrics with METRICS_TOKEN (docs/DEPLOIEMENT.md).",
   "settings.botTheme": "Bot theme",
   "settings.botThemeHint": "The colours of the theme you applied in the web app. Turn it off to go back to the original colours on this phone.",
+  "liveActivity.stop": "Stop",
+  "liveActivity.running": "Working",
+  "liveActivity.stopTitle": "Stop {name}’s task?",
+  "liveActivity.stopBody": "What it has already done stays in the chat.",
 };

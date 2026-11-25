@@ -337,7 +337,7 @@ Taille : S (moins d'un jour), M (quelques jours), L (une semaine ou plus). Chemi
 21. **Canaux Slack et Discord** par app commune et orchestrateur (L).
 22. **Plusieurs actions de navigateur en un appel** (M).
 23. **Workflows en graphe** (L).
-24. **Live Activity iPhone** (M).
+24. **Live Activity iPhone** (M). — **EN PARTIE (2026-11-25)** : écrite et éteinte par défaut (widget `mobile/targets/sklubot-live`, module `mobile/modules/sklubot-liveactivity`, `mobile/src/liveActivity.ts`, mises à jour APNs `server/src/liveactivity.ts`) ; jamais essayée sur un iPhone (compte Apple nécessaire), voir `docs/BOUTIQUES.md`
 
 ## Non vérifié
 

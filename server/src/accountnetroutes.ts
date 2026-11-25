@@ -1,4 +1,4 @@
-import { refuseCreditless } from "./modelplusroutes.js"; import { localize } from "./lang/index.js";
+import { refuseCreditless } from "./modelplusroutes.js"; import { localize } from "./lang/index.js"; import { tr } from "./i18n.js";
 import type { Context, Hono } from "hono";
 import { apiProviders } from "./apimodels.js";
 import { previewLocalImport } from "./localimport.js";
@@ -39,7 +39,7 @@ export function registerAccountNetRoutes(api: Hono<any>, ownAgent: (c: Context) 
     }
   };
   const provider = (c: Context) => apiProviders.get(user(c).id, c.req.param("id") ?? "") ?? fail(404, say(c, "That provider does not exist."));
-  const keysOf = (c: Context, p: { id: string; hasKey: boolean }) => providerKeys.list(user(c).id, p.id, p.hasKey, user(c).locale === "fr" ? "Clé principale" : "Main key");
+  const keysOf = (c: Context, p: { id: string; hasKey: boolean }) => providerKeys.list(user(c).id, p.id, p.hasKey, tr(user(c).locale, "Main key"));
 
   // ── L82 ──
   api.get("/api-providers/:id/keys", (c) => { const p = provider(c); return c.json({ keys: keysOf(c, p) }); });
@@ -113,7 +113,7 @@ export function registerAccountNetRoutes(api: Hono<any>, ownAgent: (c: Context) 
 
   // ── L181 ──
   api.post("/import/local/preview", async (c) => {
-    if (Number(c.req.header("content-length") ?? 0) > 3_000_000) fail(413, user(c).locale === "fr" ? "Trop lourd : 2 Mo de texte au plus." : "Too large: 2 MB of text at most.");
+    if (Number(c.req.header("content-length") ?? 0) > 3_000_000) fail(413, tr(user(c).locale, "Too large: 2 MB of text at most."));
     return c.json(previewLocalImport(user(c), await body(c)));
   });
 }

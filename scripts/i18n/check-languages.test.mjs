@@ -1,7 +1,7 @@
 // The language check as a test (npm run check:i18n, part of npm test). Rules: scripts/i18n/check-languages.mjs.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { checkAll, checkSurface, compare, requiredKeys, summary } from "./check-languages.mjs";
+import { checkAll, checkSurface, compare, countInline, inlineAllowlist, inlineBranches, inlineProblems, requiredKeys, summary } from "./check-languages.mjs";
 import { locales, SURFACES } from "./dicts.mjs";
 
 const results = checkAll();
@@ -43,4 +43,26 @@ test("the rules catch broken translations (placeholders, links, code, plurals, u
   assert.deepEqual(zh.problems, []);
   assert.deepEqual(zh.missing, ["hi", "link", "code"]);
   assert.ok(compare(source, new Map([["n_one", "{n}"]]), "zh").problems.some((p) => p.includes("only needs _other")));
+});
+
+test("no new inline French/English text (`x === \"fr\" ? … : …`) outside scripts/i18n/inline-allowlist.json", () => {
+  const problems = inlineProblems();
+  assert.deepEqual(problems, [], problems.map((p) => `${p.file}: ${p.found} inline fr/en branch(es), ${p.allowed} allowed (lines ${p.lines.join(", ")}): put the text in a dictionary (docs/LANGUES.md)`).join("\n"));
+  for (const [file, entry] of Object.entries(inlineAllowlist())) assert.ok(entry.why && entry.max > 0, `${file}: each allowed file says why`);
+  assert.ok(Object.keys(inlineBranches()).length > 0, "the scan sees the allowed files");
+});
+
+test("the inline scan catches the forms it should and ignores comments, lookups and optional chaining", () => {
+  const src = [
+    'const a = locale === "fr" ? "Bonjour" : "Hello";',
+    "const b = fr ? `Salut ${x}` : `Hi ${x}`;",
+    'const c = user.locale !== "fr" ? en : fr2;',
+    "const d = isFr ? 1 : 2;",
+    "// fr ? \"commented\" : \"out\"",
+    "/* locale === \"fr\" ? 1 : 2 */",
+    "const e = fr?.length ?? 0;",
+    "const f = fr ?? \"en\";",
+    'const g = localize(locale, "Hello", FR);',
+  ].join("\n");
+  assert.deepEqual(countInline(src), [1, 2, 3, 4]);
 });

@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { t as tr } from "../i18n";
 import { api, errText } from "../api";
 import { useStore } from "../store";
 import type { PeerReviewState } from "../types";
@@ -64,48 +65,38 @@ export function PeerReview({ bot, seq, saved }: { bot: string; seq: number; save
           <strong>
             {review.reviewer} ·{" "}
             {review.verdict === "approved"
-              ? fr
-                ? "Approuvé"
-                : "Approved"
+              ? tr("apiCard.approved")
               : review.verdict === "changes"
-                ? fr
-                  ? "Corrections demandées"
-                  : "Changes requested"
-                : fr
-                  ? "À vérifier"
-                  : "Inconclusive"}
+                ? tr("review.changesRequested")
+                : tr("review.inconclusive")}
           </strong>
           <br />
           {review.reason}
-          {review.partial && <small> · {fr ? "Diff partiel" : "Partial diff"}</small>}
+          {review.partial && <small> · {tr("review.partialDiff")}</small>}
         </p>
       )}
       {review && <PeerReviewFindings review={review} fr={fr} />}
       {id && (
         <div className="studio-actions">
           <label>
-            {fr ? "Relecteur" : "Reviewer"}{" "}
+            {tr("review.reviewer")}{" "}
             <select disabled={busy} value={id} onChange={(e) => setChoice(e.target.value)}>
               {others.map((b) => (
                 <option key={b.id} value={b.id}>
-                  {b.name}{other.has(b.id) ? (fr ? " · autre fournisseur" : " · other provider") : ""}
+                  {b.name}{other.has(b.id) ? tr("review.otherProviderSuffix") : ""}
                 </option>
               ))}
             </select>
           </label>
           <button className="btn btn-small" disabled={busy} onClick={() => void request()}>
             {busy
-              ? fr
-                ? "Relecture en cours…"
-                : "Reviewing…"
-              : fr
-                ? "Faire relire les modifications"
-                : "Review changes"}
+              ? tr("review.reviewing")
+              : tr("review.reviewChanges")}
           </button>
         </div>
       )}
       {saved || more ? <ReviewPlus bot={bot} seq={seq} fr={fr} changes={review?.verdict === "changes"} candidates={candidates} />
-        : others.length >= 2 && <button className="btn btn-ghost btn-small" onClick={() => setMore(true)}>{fr ? "Relire à plusieurs…" : "Review by several…"}</button>}
+        : others.length >= 2 && <button className="btn btn-ghost btn-small" onClick={() => setMore(true)}>{tr("review.reviewSeveral")}</button>}
       <ErrorNote>{error || status.error}</ErrorNote>
     </div>
   );

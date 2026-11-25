@@ -1,4 +1,4 @@
-import { tr } from "./i18n.js"; import type { Locale } from "./shared.js";
+import { tr } from "./i18n.js"; import type { Locale } from "./shared.js"; import { intlOf } from "./lang/index.js";
 import { bots, rows, users, type BotRecord } from "./store.js";
 
 /**
@@ -13,7 +13,7 @@ import { bots, rows, users, type BotRecord } from "./store.js";
 export const queueTiming = { announceAfterMs: 2_000 };
 
 const name = (id: string, locale: Locale) => bots.byId(id)?.name ?? tr(locale, "another bot");
-const list = (names: string[], locale: Locale) => names.length <= 1 ? names.join("") : `${names.slice(0, -1).join(", ")} ${locale === "fr" ? "et" : "and"} ${names[names.length - 1]}`;
+const list = (names: string[], locale: Locale) => names.length <= 1 ? names.join("") : new Intl.ListFormat(intlOf(locale), { type: "conjunction" }).format(names);
 export const waitText = (ms: number, locale: Locale) => {
   const s = Math.max(1, Math.round(ms / 1000));
   return s < 60 ? `${s} s` : `${Math.round(s / 60)} min`;

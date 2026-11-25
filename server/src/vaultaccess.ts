@@ -56,7 +56,7 @@ export const vaultAccess = {
 };
 
 /** Which argument names the vault item, per tool. */
-export const VAULT_ARG: Record<string, string> = { secret_use: "secret", vault_type: "item", totp_code: "item", card_fill: "card", my_vault_fill: "item" };
+export const VAULT_ARG: Record<string, string> = { secret_use: "secret", vault_type: "item", totp_code: "item", card_fill: "card", my_vault_fill: "item", phone_vault_fill: "item" };
 const hostIn = (a: Record<string, unknown>) => { try { return new URL(String(a.url ?? "")).hostname.toLowerCase(); } catch { return ""; } };
 
 /** The refusal a bot gets for an item reserved to other bots (English: the model reads it). */

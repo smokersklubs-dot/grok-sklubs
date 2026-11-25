@@ -8,12 +8,17 @@ Fichiers à envoyer : `dist/sklubot-store-1.1.0.aab` (version 1.1.0, versionCode
 
 ## Fiche Google Play
 
-**Nom de l’appli (30 car. max)** : `Sklubot – ton équipe de bots IA` (30)
+**Source des textes : `store/listing.json`** (7 langues : fr, en, es, de, it, pt-BR, zh-Hans ; nom, sous-titre Apple,
+description courte, description, mots-clés, texte promotionnel, nouveautés, légendes des captures). `npm run store:check`
+y vérifie les longueurs maximales d'Apple et de Google. Guide pas à pas de l'envoi : [`docs/BOUTIQUES.md`](../docs/BOUTIQUES.md).
+
+**Nom de l’appli (30 car. max)** : `Sklubot – équipe de bots IA` (27 ; l'ancien « Sklubot – ton équipe de bots IA »
+faisait 31 caractères, refusé par les deux boutiques)
 
 **Description courte (80 car. max)** :
-`Discute avec tes bots IA hébergés chez toi : réponses en direct, tâches, fichiers.` (80)
+`Tes bots IA hébergés chez toi : réponses en direct, tâches et fichiers.` (71)
 
-**Description complète** :
+**Description complète** (version de référence ; celle de `store/listing.json` la reprend, en plus court) :
 
 > Sklubot, c’est ta propre équipe de bots IA — chacun avec sa mémoire, ses compétences, ses routines et son ordinateur —
 > qui tourne sur **ton** serveur. Cette appli est le client mobile de ton serveur Sklubot.
@@ -68,6 +73,11 @@ n’y a pas d’échange entre utilisateurs inconnus (pas de réseau social). At
 | Position (localisation précise) | **Collectée seulement quand l'utilisateur touche « Partager ma position »** sur une demande d'un de ses bots (L177) : la position est lue par la page du navigateur du téléphone (le système redemande l'autorisation), envoyée une fois au serveur de l'utilisateur. Facultatif, finalité : *fonctionnalités de l'appli*. Jamais en arrière-plan. |
 | Contacts, agenda, santé, finance, historique web | **Non collectés.** |
 | Données éphémères ? | Non (les messages sont gardés sur le serveur de l’utilisateur jusqu’à suppression). |
+
+**Live Activity iPhone** (éteinte par défaut, L177) : si elle est allumée, l'iPhone donne au serveur de l'utilisateur un
+jeton de notification propre à chaque Live Activity, effacé à sa fin ; ce n'est pas un identifiant de l'appareil et il
+ne part chez aucun tiers (sauf Apple, qui achemine la notification). Rien à ajouter aux réponses ; le dire dans la page
+de confidentialité du serveur.
 
 Remarque à mettre dans la fiche : « Les données sont envoyées au serveur Sklubot dont l’utilisateur saisit l’adresse et
 qu’il (ou son organisation) gère. »
@@ -181,6 +191,11 @@ dans la zone centrale (Play peut rogner les bords). À produire avec l’outil g
    importer le nouvel AAB dans une nouvelle version.
 
 ## iPhone plus tard (App Store)
+
+**Tout est prêt jusqu'aux comptes** : `eas.json` (profils `preview` et `production`), identifiants par variables
+d'environnement, captures 6,9" dans `store/shots/<langue>/iphone-6.9/`, appli en mode téléphone seulement
+(`supportsTablet: false`, donc pas de captures iPad). Étapes simples : [`docs/BOUTIQUES.md`](../docs/BOUTIQUES.md).
+Les notes ci-dessous restent valables.
 
 - **Compte Apple Developer** (99 $/an) : https://developer.apple.com/programs/ — identité vérifiée ; pour une
   organisation, D-U-N-S.

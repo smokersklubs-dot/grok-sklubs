@@ -42,6 +42,8 @@ yarn-error.*
 
 # Release signing (see README): never commit
 keystore.properties
+# EAS local credentials (docs/BOUTIQUES.md): passwords, never commit
+credentials.json
 # Build outputs
 /dist/*.apk
 /dist/*.aab

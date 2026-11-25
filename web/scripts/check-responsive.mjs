@@ -34,6 +34,7 @@ const PAGES = [
   "section=boucle&long=1", "section=boucle&long=1&theme=dark&lang=en", "section=boucle&empty=1", // loop and turns 23/11 (GalleryLoopPlus.tsx)
   "section=extensions&long=1", "section=extensions&view=editor&long=1", "section=extensions&view=editor&theme=dark&lang=en", "section=extensions&view=settings&long=1", "section=extensions&view=settings&empty=1&theme=dark&lang=en", "section=extensions&empty=1", // wave 7 L172 L174 L178 L179 (GalleryExtensions.tsx)
   "section=soin&long=1", "section=soin&empty=1&theme=dark&lang=en", "section=soin&view=team&long=1", "section=soin&view=team&empty=1", "section=soin&view=chat&nav=1", // L161 bot care (GalleryCare.tsx)
+  "section=reunion&long=1", "section=reunion&view=review&long=1", "section=reunion&view=live&theme=dark&lang=en", "section=reunion&empty=1", // L177 bot in an online meeting (GalleryMeetingBot.tsx)
   "section=finitions&long=1", "section=finitions&empty=1&theme=dark&lang=en", "section=finitions&view=applied", // L161 themes, global recap, queue (GalleryFinish.tsx)
   "section=canaux&long=1",
   "section=canaux&theme=dark&lang=en",
