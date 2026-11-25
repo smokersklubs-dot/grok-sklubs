@@ -1,4 +1,5 @@
-// Responsive check: no page of the dev gallery is wider than the screen, on a phone (360, 390 px) and a tablet (768 px).
+// Responsive check: no page of the dev gallery is wider than the screen, on a phone (360, 390 px), a tablet (768 px) and a
+// computer (1440 px), and the end of every page, long chat and list can be scrolled to by hand (scroll-rule.mjs).
 //
 //   npm run check:responsive -w web            (starts its own Vite dev server; needs Playwright's Chromium)
 //   SHOTS=dir npm run check:responsive -w web  (also saves a screenshot of each page)
@@ -9,6 +10,7 @@
 // with fake data, including the chat page that broke on an iPhone (section=chat: long replies, a long link, a code
 // block, a table, a raw tool warning, several « Stopped. » notices).
 import { createServer } from "vite";
+import { scrollTrap } from "./scroll-rule.mjs";
 import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -22,14 +24,16 @@ try {
   process.exit(2);
 }
 
-const WIDTHS = [[360, 740], [390, 844], [768, 1024]];
+const WIDTHS = [[360, 740], [390, 844], [768, 1024], [1440, 900]]; // 1440: a normal computer screen (« doit marcher »: every screen scrolls)
 const PAGES = [
   "section=chat",
   "section=confort6&long=1", "section=confort6&nav=1&long=1", "section=confort6&view=doctor&theme=dark&lang=en", "section=confort6&view=commands&long=1", "section=confort6&slash=1&long=1", // wave 6 comfort (GalleryComfort6.tsx)
-  "section=confort7&long=1", "section=confort7&view=welcome&long=1", "section=confort7&view=convs&long=1", "section=confort7&view=trash&long=1&theme=dark&lang=en", "section=confort7&view=office&long=1", "section=confort7&view=pages&long=1", "section=confort7&bell=1&long=1&nav=1", // wave 7 comfort (GalleryComfort7.tsx)
+  "section=confort7&long=1", "section=confort7&view=welcome&long=1", "section=confort7&view=convs&long=1", "section=confort7&view=trash&long=1&theme=dark&lang=en", "section=confort7&view=office&long=1", "section=confort7&view=pages&long=1", "section=confort7&view=pages&theme=dark&lang=en", "section=confort7&bell=1&long=1&nav=1", // wave 7 comfort (GalleryComfort7.tsx)
   "section=confort9&long=1", "section=confort9&view=annotate", "section=confort9&view=show", "section=confort9&view=step&long=1&theme=dark&lang=en", "section=confort9&view=selfcheck", "section=confort9&view=settings", // wave 9 web rows L140 L142 L145 L153 (GalleryComfort9.tsx)
   "section=boucle&long=1", "section=boucle&long=1&theme=dark&lang=en", "section=boucle&empty=1", // loop and turns 23/11 (GalleryLoopPlus.tsx)
   "section=extensions&long=1", "section=extensions&view=editor&long=1", "section=extensions&view=editor&theme=dark&lang=en", "section=extensions&view=settings&long=1", "section=extensions&view=settings&empty=1&theme=dark&lang=en", "section=extensions&empty=1", // wave 7 L172 L174 L178 L179 (GalleryExtensions.tsx)
+  "section=soin&long=1", "section=soin&empty=1&theme=dark&lang=en", "section=soin&view=team&long=1", "section=soin&view=team&empty=1", "section=soin&view=chat&nav=1", // L161 bot care (GalleryCare.tsx)
+  "section=finitions&long=1", "section=finitions&empty=1&theme=dark&lang=en", "section=finitions&view=applied", // L161 themes, global recap, queue (GalleryFinish.tsx)
   "section=canaux&long=1",
   "section=canaux&theme=dark&lang=en",
   "section=canaux&empty=1",
@@ -138,6 +142,7 @@ try {
       if (errors.length) failures.push(`${label}: page error: ${errors[0]}`);
       if (result.scrollWidth > result.vw) failures.push(`${label}: the page scrolls sideways (${result.scrollWidth} > ${result.vw})`);
       if (result.out.length) failures.push(`${label}: past the edge: ${result.out.join(", ")}`);
+      for (const trap of await page.evaluate(`(${scrollTrap.toString()})()`)) failures.push(`${label}: cannot scroll to the end: ${trap}`); // scroll-rule.mjs
       if (shots) await page.screenshot({ path: join(shots, `${w}-${q.replace(/[^a-z0-9]+/gi, "_")}.png`) });
       await page.close();
     }
@@ -152,4 +157,4 @@ if (failures.length) {
   console.error(`check:responsive — ${failures.length} problem(s):\n- ${failures.join("\n- ")}`);
   process.exit(1);
 }
-console.log(`check:responsive — ${PAGES.length} pages × ${WIDTHS.length} widths: nothing wider than the screen.`);
+console.log(`check:responsive — ${PAGES.length} pages × ${WIDTHS.length} widths: nothing wider than the screen, every end reachable by scrolling.`);

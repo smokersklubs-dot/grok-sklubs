@@ -1,5 +1,5 @@
 import { reachAvailable } from "../reach.js"; import { connectors } from "../connectors.js"; import { downLine } from "../connectorhealth.js";
-import { styleLine } from "../botstyle.js"; import { shortRepliesLine } from "../shortreplies.js"; import { noteKnowledge } from "./turnknow.js"; import { inheritedBlock } from "./helperinherit.js";
+import { styleLine } from "../botstyle.js"; import { careBlocks } from "../botcare.js"; import { shortRepliesLine } from "../shortreplies.js"; import { noteKnowledge } from "./turnknow.js"; import { inheritedBlock } from "./helperinherit.js";
 import { config } from "../config.js";
 import { describeRoutine, routines } from "../routines.js";
 import { bots, memories, rows, sections, settings, skills, type BotRecord, type UserRecord } from "../store.js";
@@ -107,7 +107,7 @@ export function buildSystemPrompt(bot: BotRecord, user: UserRecord, extras: Prom
     : `You act as ${user.name}'s personal assistant: adapt to their preferences and keep their matters private.`);
   if (bot.instructions.trim()) out.push(`## Standing instructions from ${user.name} (they come first)\n${bot.instructions.trim()}`); // L61: the bot's own instructions at the top
   { const inherited = inheritedBlock(bot, user); if (inherited) out.push(inherited); } // L96 a helper inherits its parent's instructions (helperinherit.ts)
-  { const style = styleLine(bot.id); if (style) out.push(style); } // L161 « Style par bot » (botstyle.ts)
+  for (const s of [styleLine(bot.id), ...careBlocks(bot, user)]) if (s) out.push(s); // L161 « Style par bot » (botstyle.ts); for every bot, shared role, identity documents (botcare.ts)
 
   const method = [
     "## How you work",

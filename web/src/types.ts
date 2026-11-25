@@ -31,3 +31,6 @@ export type * from "../../server/src/commandtypes";
 export { COMMAND_STATES, commandStateOf } from "../../server/src/commandtypes";
 export type * from "../../server/src/peerreviewtypes";
 export type { ResearchWindow, ResearchExtra, SourceState } from "../../server/src/researchsignals";
+/** L161 « thèmes créés par le bot » and « récapitulatif global » (botthemes.ts, globalrecap.ts). */
+export type * from "../../server/src/botthemetypes";
+export type * from "../../server/src/globalrecaptypes";

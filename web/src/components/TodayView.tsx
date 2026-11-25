@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useMemo, useState, type ReactNode } from "react"; import { GlobalRecapBlock } from "./GlobalRecap";
 import { PinnedDashboard } from "./ChatPlus";
 import { FailureSummaryLine } from "./Incidents";
 import { PushPromptBanner } from "./PushPromptBanner";
@@ -174,6 +174,7 @@ export function TodayView() {
             <Block icon="chart" title={t("today.cost.title")}>
               <CostBlock report={report} onMore={() => openAppSettings("usage")} />
             </Block>
+            <GlobalRecapBlock />{/* L161 one recap of every bot (GlobalRecap.tsx) */}
           </div>
         )}
       </div>

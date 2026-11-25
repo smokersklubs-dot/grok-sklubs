@@ -12,7 +12,7 @@ import { DiskCardView } from "./DiskAndTeamFolder";
 import { FilesCardView, PastedSecretCardView } from "./SecretsFilesProviders";
 import { GoalCardView } from "./GoalsAndJobs";
 import { FailureCardView } from "./Incidents";
-import { PollCardView } from "./ChatPlus"; import { RecruitCardView } from "./RecruitCard"; import { ViewCardView } from "./ViewCard"; import { TrajectoryCardView } from "./TrajectoryCard"; import { CodeBoxCard } from "./CodeBox";
+import { PollCardView } from "./ChatPlus"; import { PageLossCardView } from "./PageKeep"; import { RecruitCardView } from "./RecruitCard"; import { ViewCardView } from "./ViewCard"; import { TrajectoryCardView } from "./TrajectoryCard"; import { CodeBoxCard } from "./CodeBox";
 import { sendKeysFor } from "../../../mobile/shared/sendKey";
 import { CardCountdown, detailWithout, DraftEditor, isRichQuestion, RichQuestion } from "./TurnCards";
 
@@ -427,6 +427,8 @@ export function CardView({ card, botId, seq }: { card: Card; botId: string; seq:
       return <TrajectoryCardView card={card} botId={botId} />; // L158 « Créations »
     case "code":
       return <CodeBoxCard card={card} botId={botId} />; // L91 hidden code box
+    case "pageloss":
+      return <PageLossCardView card={card} botId={botId} seq={seq} />; // L157 « rien de perdu »
     default:
       return null;
   }

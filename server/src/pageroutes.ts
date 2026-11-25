@@ -10,7 +10,7 @@ import { registerVideoStudio } from "./videostudio.js";
 import { exportArtifact } from "./artifact-export.js";
 import { audit, pages, randomToken, type UserRecord } from "./store.js";
 import { q } from "./db.js";
-import { PAGE_COMMENT_PARAM, withCommentLayer } from "./clientshared/pagecomment.js";
+import { PAGE_COMMENT_PARAM, withCommentLayer } from "./clientshared/pagecomment.js"; import { withWebglFallback } from "./pagewebgl.js";
 
 /**
  * Pages published by bots (pagefiles.ts says the policy).
@@ -54,7 +54,7 @@ function documentHeaders(page: PageRow, directory: string) {
 }
 // L140: the chat's preview asks for the comment layer (clientshared/pagecomment.ts); the page keeps its sandbox and CSP.
 const commenting = (c: Context) => c.req.query(PAGE_COMMENT_PARAM) === "1";
-const html = (c: Context, page: PageRow, body: string) =>
+const html = (c: Context, page: PageRow, raw: string, body = withWebglFallback(raw, pageFiles.list(page.botId, page.path))) => // L157: visitors without WebGL get a clear message (pagewebgl.ts)
   c.body(commenting(c) ? withCommentLayer(body) : body, 200, { ...documentHeaders(page, c.req.path.endsWith("/") ? c.req.path : `${c.req.path}/`), "content-type": "text/html; charset=utf-8", "x-frame-options": "SAMEORIGIN", "cache-control": page.visibility === "private" ? "private, no-store" : "no-cache" });
 
 function readHtml(page: PageRow): string | null {

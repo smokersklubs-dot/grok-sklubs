@@ -6,11 +6,12 @@
  *   view=convs     « Conversations » of the bot: filters, folders, pinned, automatic (L146)
  *   view=trash     a bot's danger zone with « Voir ce qui sera supprimé » open, and Settings → Team → Corbeille (L144)
  *   view=office    Excel (two sheets), Word, PowerPoint and a CSV in the file viewer (L148)
- *   view=pages     a page's exports and « Comparer » (L157); bell=1 opens the bell (L151)
+ *   view=connect  « Connecter des applis »: the catalog, before anything is added (connect-flow.test.mjs)
+ *   view=pages     a page's exports, « Comparer », the « rien de perdu » card and the design journal (L157); bell=1 opens the bell (L151)
  */
 import { useEffect } from "react";
 import { useStore } from "../store";
-import type { Bot, Live, Row } from "../types";
+import type { Bot, Live, PageLossCard, Row } from "../types";
 import { ChatView } from "../components/ChatView";
 import { Sidebar } from "../components/Sidebar";
 import { ConversationsModal } from "../components/Conversations";
@@ -18,7 +19,7 @@ import { BotDangerZone, BotTrash } from "../components/BotLifecycle";
 import { BotStyleField } from "../components/BotStyle";
 import { HistoryRetention } from "../components/HistoryRetention";
 import { OfficeView, SheetTable } from "../components/OfficeView";
-import { PageDiffButton, PageExports } from "../components/PageExtras";
+import { PageDiffButton, PageExports } from "../components/PageExtras"; import { DesignJournal, PageLossCardView } from "../components/PageKeep"; import { ConnectorsModal } from "../components/Modals";
 import { chatRows, GALLERY_BOT_ID, NOW, type FixtureOptions } from "./fixtures";
 import { chatBot } from "./GalleryChat";
 
@@ -46,6 +47,7 @@ export function GalleryComfort7({ o }: { o: FixtureOptions }) {
   const ready = useStore((s) => s.selectedId === GALLERY_BOT_ID && !!s.threads[GALLERY_BOT_ID]);
   if (!ready || !bot) return null;
   const pane = (children: React.ReactNode) => <div className="app-settings-content settings-pane" style={{ maxWidth: 760, margin: "0 auto", padding: 16 }}>{children}</div>;
+  if (view === "connect") return <ConnectorsModal onClose={() => undefined} />; // « doit marcher »: Connecter des applis (scripts/connect-flow.test.mjs)
   if (view === "convs") return <ConversationsModal bot={bot} onClose={() => undefined} />;
   if (view === "trash") return pane(<><BotStyleField bot={bot} /><BotDangerZone bot={{ ...bot, primary: false }} isRoom={false} onDeleted={() => undefined} /><BotTrash /><HistoryRetention /></>);
   if (view === "office") return pane(<>
@@ -58,6 +60,9 @@ export function GalleryComfort7({ o }: { o: FixtureOptions }) {
     <h3 className="pane-heading">{fr(o) ? "Ma page de tarifs" : "My pricing page"}</h3>
     <PageExports token="tok_gallery" title="Tarifs" />
     <div className="page-exports"><PageDiffButton token="tok_gallery" from={2} n={2} /></div>
+    <PageLossCardView card={pageLoss(o, "pending")} botId={bot.id} seq={41} />
+    <PageLossCardView card={pageLoss(o, "restored")} botId={bot.id} seq={42} />
+    <DesignJournal />
   </>);
   return (
     <div className="shell gallery-app">
@@ -65,6 +70,21 @@ export function GalleryComfort7({ o }: { o: FixtureOptions }) {
       <ChatView />
     </div>
   );
+}
+
+/** L157 « rien de perdu »: the card after a page was redone (pending, or answered). */
+function pageLoss(o: FixtureOptions, status: PageLossCard["status"]): PageLossCard {
+  const F = fr(o);
+  const lost: PageLossCard["lost"] = [
+    { kind: "section", text: F ? "Horaires d'ouverture" : "Opening hours" },
+    { kind: "section", text: "section « horaires »" },
+    { kind: "image", text: F ? "Le four à bois" : "The wood oven", detail: "four.jpg" },
+    { kind: "link", text: F ? "Commander en ligne" : "Order online", detail: o.long ? "https://boulangerie-martin.example.com/commander/en-ligne?retrait=magasin&creneau=matin" : "https://example.com/commander" },
+    { kind: "text", text: o.long ? (F ? "Ouvert du mardi au dimanche, de 7 heures à 19 heures 30, sans interruption, et le lundi matin pendant les vacances scolaires." : "Open Tuesday to Sunday, 7 am to 7:30 pm, non-stop, and Monday mornings during school holidays.") : (F ? "Ouvert du mardi au dimanche, de 7 h à 19 h 30." : "Open Tuesday to Sunday, 7 am to 7:30 pm.") },
+    { kind: "file", text: "css/horaires.css" },
+    ...(o.long ? [{ kind: "text" as const, text: F ? "Nos pains sont faits sur place chaque matin avec des farines de la région." : "Our bread is baked here every morning with local flour." }, { kind: "link" as const, text: "Instagram", detail: "https://instagram.com/boulangerie" }] : []),
+  ];
+  return { type: "pageloss", token: "tok_gallery", title: o.long ? (F ? "Boulangerie Martin — tarifs, horaires et commandes" : "Martin bakery — prices, hours and orders") : "Boulangerie", previousVersion: 2, lost, total: lost.length + (o.long ? 3 : 0), status };
 }
 
 /** What the fake API answers for the wave 7 routes (fakeApi.ts). */
@@ -96,6 +116,17 @@ export function comfort7Get(path: string, o: FixtureOptions & { empty: boolean }
   if (/^\/pages\/[^/]+\/diff$/.test(path)) return { html: { added: 2, removed: 1, truncated: false, lines: [
     { op: "fold", text: "", count: 12 }, { op: "same", text: "<section id=\"tarifs\">", a: 13, b: 13 }, { op: "del", text: "  <p class=\"prix\">29 € par mois</p>", a: 14 }, { op: "add", text: "  <p class=\"prix\">24 € par mois</p>", b: 14 }, { op: "add", text: L ? "  <p class=\"note\">Offre de lancement valable jusqu'à la fin du mois prochain pour les nouveaux clients uniquement</p>" : "  <p class=\"note\">Offre de lancement</p>", b: 15 }, { op: "same", text: "</section>", a: 15, b: 16 }, { op: "fold", text: "", count: 30 },
   ] }, files: [{ name: "style.css", added: 1, removed: 0, truncated: false, lines: [{ op: "fold", text: "", count: 4 }, { op: "add", text: ".note { color: #b45309; }", b: 5 }] }] };
+  if (path === "/connectors") return { connectors: [] };
+  if (path === "/connectors/catalog") return { oauthRedirectUri: "https://bots.example.com/api/connectors/oauth/callback", apps: [
+    { id: "notion", name: "Notion", category: F ? "Notes" : "Notes", description: F ? "Tes pages et bases Notion" : "Your Notion pages and databases", url: "https://mcp.notion.com/mcp", auth: "oauth", oauthClient: "dynamic", tokenHelp: "" },
+    { id: "linear", name: "Linear", category: F ? "Projets" : "Projects", description: F ? "Tickets et projets" : "Issues and projects", url: "https://mcp.linear.app/mcp", auth: "token", tokenHelp: F ? "Crée une clé dans Linear → Réglages → API." : "Create a key in Linear → Settings → API." },
+    { id: "docs", name: "Docs publiques", category: F ? "Lecture" : "Reading", description: F ? "Documentation en lecture seule" : "Read-only documentation", url: "https://docs.example.com/mcp", auth: "none", tokenHelp: "" },
+  ] };
+  if (path === "/design-journal") return { decisions: o.empty ? [] : [
+    { id: "dj_1", topic: "colors", decision: F ? "Titres en bleu nuit #1e3a5f, fond crème #faf7f0" : "Titles in navy #1e3a5f, cream background #faf7f0", why: F ? "le client aime le calme" : "the client likes calm", by: "bot", createdAt: NOW - 86_400_000 },
+    { id: "dj_2", topic: "fonts", decision: o.long ? (F ? "Titres en Fraunces 600, texte courant en Inter 16 px avec une hauteur de ligne de 1,6 pour la lecture sur téléphone" : "Titles in Fraunces 600, body text in Inter 16 px with 1.6 line height for phone reading") : (F ? "Titres en Fraunces, texte en Inter" : "Titles in Fraunces, text in Inter"), why: "", by: "user", createdAt: NOW - 2 * 86_400_000 },
+    { id: "dj_3", topic: "layout", decision: F ? "Une seule colonne sur téléphone, boutons pleine largeur" : "One column on phones, full-width buttons", why: "", by: "bot", createdAt: NOW - 3 * 86_400_000 },
+  ] };
   if (path === "/models") return { models: [{ ref: "codex:default", provider: "Codex", model: "default", kind: "subscription" }, { ref: "anthropic:claude-sonnet", provider: "Anthropic", model: "claude-sonnet", kind: "api" }], defaultRef: "codex:default" };
   return undefined;
 }

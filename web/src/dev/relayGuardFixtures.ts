@@ -3,7 +3,7 @@ export function relayGuardFixture(empty: boolean, patch: { keepApps?: string[]; 
   return {
     guard: {
       keepApps: patch.keepApps ?? (empty ? [] : ["Banque Populaire", "Signal"]),
-      keepFolders: patch.keepFolders ?? (empty ? [] : ["/Users/lea/Impots", "Medical"]),
+      keepFolders: patch.keepFolders ?? (empty ? [] : ["~/Impots", "Medical"]),
       projectFolders: patch.projectFolders ?? (empty ? [] : ["~/projets/site"]),
       allowTerminal: patch.allowTerminal ?? true,
       commandTimeout: patch.commandTimeout ?? 120,

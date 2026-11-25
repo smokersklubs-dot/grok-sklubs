@@ -409,7 +409,7 @@ function ImportExport() {
           {agents.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
         </select>
         <a className="btn btn-small" href={`/api/bots/${enc(botId)}/memories/export?format=md`} download><Icon name="download" size={14} /> Markdown</a>
-        <a className="btn btn-small" href={`/api/bots/${enc(botId)}/memories/export?format=json`} download><Icon name="download" size={14} /> JSON</a>
+        <a className="btn btn-small" href={`/api/bots/${enc(botId)}/memories/export?format=json`} download><Icon name="download" size={14} /> JSON</a><a className="btn btn-small" href={`/api/bots/${enc(botId)}/notes.zip`} download><Icon name="download" size={14} /> {t("memset.notesZip")}</a>
       </div>
       <textarea className="input" rows={4} value={text} onChange={(e) => setText(e.target.value)} placeholder={t("memset.importPlaceholder")} aria-label={t("memset.importLabel")} />
       <div className="row-end">

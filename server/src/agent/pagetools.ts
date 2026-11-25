@@ -7,6 +7,7 @@ import { checkFiles, cleanFileName, FILE_EXT, PAGE_CDNS, pageFiles, pageLimits, 
 import { atelierTokens } from "../artifact-design.js";
 import { bots, pages, randomToken, rows } from "../store.js";
 import { withPageCheck } from "../pagecheck.js"; // L56
+import { checkNothingLost } from "../pagekeep.js"; import { designJournalTools, journalNoteForNewPage } from "../designjournal.js"; import { creditsNote, photoTools, withCommonsCredits } from "../commonsphotos.js"; // L157
 import type { BuiltinTool, ToolContext } from "./tools.js";
 
 /**
@@ -36,7 +37,12 @@ const publish = tool("page_publish", `Publish a web page (a report, a dashboard,
   }, ["name", "title", "html"]), {
   activity: "saving", label: "Publishing a page", group: "pages", audited: true, detail: (a) => String(a.title ?? ""),
   // L56: once saved, the page is checked (phone and computer pictures, console, rules) and the report goes back to the bot.
-  run: async (a, c) => { const r = publishPage(a, c); return r.isError ? r : withPageCheck(r, c, String(a.html), filesOf(c.bot.id, pathOf(c.bot.id, a.name))); },
+  run: async (a, c) => {
+    // L157: the credits of its Wikimedia Commons photos are kept at the end of the page (commonsphotos.ts).
+    const credits = await withCommonsCredits(c.bot, String(a.html ?? ""), (Array.isArray(a.files) ? a.files : []).filter((f) => /\.css$/i.test(String(f?.path ?? ""))).map((f) => String(f?.content ?? "")).join("\n"));
+    const r = publishPage({ ...a, html: credits.html }, c);
+    return r.isError ? r : withPageCheck({ ...r, content: r.content + creditsNote(credits) }, c, credits.html, filesOf(c.bot.id, pathOf(c.bot.id, a.name)));
+  },
 });
 const filesOf = (botId: string, rel: string) => pageFiles.list(botId, rel).map((f) => ({ path: f.file, content: f.content }));
 
@@ -44,13 +50,17 @@ export function publishPage(a: Record<string, unknown>, c: Pick<ToolContext, "bo
   const html = String(a.html);
   let files;
   try { files = checkFiles(c.user.id, a.files, Buffer.byteLength(html)); } catch (err) { if (err instanceof PageFileError) return { content: `${err.message} Nothing was published.`, isError: true }; throw err; }
-  const rel = saveFile(c.bot.id, pathOf(c.bot.id, a.name, creatingArtifact), html);
+  const target = pathOf(c.bot.id, a.name, creatingArtifact);
+  const before = pages.forPath(c.bot.id, target, appConfig.publicUrl) ? snapshotOf(c.bot.id, target) : null; // L157 « rien de perdu »
+  const rel = saveFile(c.bot.id, target, html);
   const existing = pages.forPath(c.bot.id, rel, appConfig.publicUrl);
   const visibility = a.visibility === "private" ? "private" : a.visibility === "link" ? "link" : undefined;
   if (existing) { pages.retitle(existing.token, String(a.title)); if (visibility) pages.setVisibility(existing.token, visibility); }
   const page = existing ?? pages.create(c.bot, String(a.title), rel, appConfig.publicUrl, visibility ?? "link");
   pageFiles.replace(c.bot.id, rel, files);
   pageVersions.record(c.user.id, c.bot.id, rel, html, existing ? "published again" : "published");
+  const kept = existing ? checkNothingLost(c, { token: page.token, title: page.title, path: rel }, before, html) : ""; // L157 (pagekeep.ts)
+  const journal = existing ? "" : journalNoteForNewPage(c.user.id, html + "\n" + files.map((f) => f.content).join("\n")); // L157 (designjournal.ts)
   if (!existing) {
     const chatUrl = creatingArtifact ? appConfig.publicUrl + "/?artifact=" + page.token : page.url;
     rows.append(c.bot, { kind: "message", role: "assistant", page: { token: page.token, title: page.title, open: creatingArtifact }, text: `[${String(a.title).replace(/[\[\]\r\n]/g, " ").slice(0, 120) || "Artefact"}](${chatUrl})` }, c.thread);
@@ -58,11 +68,16 @@ export function publishPage(a: Record<string, unknown>, c: Pick<ToolContext, "bo
   }
   emit(c.user.id, { type: "pages", token: page.token });
   const vis = visibility ?? existing?.visibility ?? "link";
-  return { content: `${existing ? "Updated" : "Published"} at ${page.url}${existing ? "" : " — the link is in the chat"}${files.length ? `, with ${files.length} file${files.length > 1 ? "s" : ""}` : ""}. ${vis === "private" ? "Private: only the user, signed in, can open it." : "Anyone with the link can open it."} The previous version is kept in its history.${cdnWarning(html)}`, summary: String(a.title) };
+  return { content: `${existing ? "Updated" : "Published"} at ${page.url}${existing ? "" : " — the link is in the chat"}${files.length ? `, with ${files.length} file${files.length > 1 ? "s" : ""}` : ""}. ${vis === "private" ? "Private: only the user, signed in, can open it." : "Anyone with the link can open it."} The previous version is kept in its history.${cdnWarning(html)}${kept ? `\n\n${kept}` : ""}${journal}`, summary: String(a.title) };
+}
+
+/** The page as saved now (its HTML and files), or null when its file is gone. */
+function snapshotOf(botId: string, rel: string) {
+  try { return { html: readLibraryFile(botId, rel).toString("utf8"), files: pageFiles.list(botId, rel) }; } catch { return null; }
 }
 
 export const pageTools: BuiltinTool[] = [
-  publish,
+  publish, ...designJournalTools, ...photoTools, // L157 (designjournal.ts, commonsphotos.ts)
   tool("artifact_from_file", "Deliver an existing self-contained HTML tool from this bot's own file library as a private artifact in the current chat. Use after generating a tool with Craft Anything. For subsequent edits use page_source and page_edit on the returned name.", obj({
     title: str("User-facing title"), file: str("Relative library path to a standalone .html file"),
   }, ["title", "file"]), {
@@ -114,7 +129,10 @@ export const pageTools: BuiltinTool[] = [
     activity: "reading", label: "Reading artifact source", group: "pages", outside: true,
     run: async (a, c) => {
       const path = pathOf(c.bot.id, a.name);
-      if (!pages.forPath(c.bot.id, path, appConfig.publicUrl)) return { content: "Page not found.", isError: true };
+      if (!pages.forPath(c.bot.id, path, appConfig.publicUrl)) { // « doit marcher »: the bot is told which pages it has, so it can read them back
+        const mine = pages.list(c.user.id, appConfig.publicUrl).filter((p) => p.botId === c.bot.id).slice(0, 30).map((p) => `${p.path.split("/").pop()!.replace(/\.html$/, "")} (“${p.title}”)`);
+        return { content: `Page not found.${mine.length ? ` Your saved pages (name to give): ${mine.join(", ")}.` : " You have no saved page."}`, isError: true };
+      }
       const file = a.file ? cleanFileName(a.file) : null;
       const source = a.file ? (file && pageFiles.get(c.bot.id, path, file)) : readLibraryFile(c.bot.id, path).toString("utf8");
       if (source == null) return { content: "File not found.", isError: true };
@@ -134,7 +152,7 @@ export const pageTools: BuiltinTool[] = [
       if (!page) return { content: `You have no published page called "${a.name}". Publish it first with page_publish.`, isError: true };
       let html: string;
       try { html = readLibraryFile(c.bot.id, rel).toString("utf8"); } catch { return { content: "That page's file is gone. Publish it again with page_publish.", isError: true }; }
-      const file = a.file ? cleanFileName(a.file) : null;
+      const file = a.file ? cleanFileName(a.file) : null; const before = { html, files: pageFiles.list(c.bot.id, rel) }; // L157 « rien de perdu »
       if (a.file && !file) return { content: `"${String(a.file).slice(0, 80)}" is not an accepted file name (a relative name ending in ${EXTS}). Nothing was changed.`, isError: true };
       const current = file ? pageFiles.get(c.bot.id, rel, file) : html;
       const edits = (Array.isArray(a.edits) ? a.edits : []).slice(0, 20);
@@ -154,6 +172,8 @@ export const pageTools: BuiltinTool[] = [
           text = text.replace(find, () => String(e?.replace ?? ""));
         }
       }
+      const credits = file ? null : await withCommonsCredits(c.bot, text, before.files.filter((f) => /\.css$/i.test(f.file)).map((f) => f.content).join("\n")); // L157
+      if (credits) text = credits.html;
       // The limits of the whole page, with the change.
       const others = pageFiles.list(c.bot.id, rel).filter((f) => f.file !== file).map((f) => ({ path: f.file, content: f.content }));
       try { checkFiles(c.user.id, file ? [...others, { path: file, content: text }] : others, Buffer.byteLength(file ? html : text)); }
@@ -161,7 +181,8 @@ export const pageTools: BuiltinTool[] = [
       if (file) pageFiles.put(c.bot.id, rel, file, text); else { saveFile(c.bot.id, rel, text); html = text; }
       pageVersions.record(c.user.id, c.bot.id, rel, html, file ? `edited ${file}` : "edited");
       emit(c.user.id, { type: "pages", token: page.token });
-      return withPageCheck({ content: `Applied ${edits.length} edit${edits.length > 1 ? "s" : ""} to ${file ? `${file} of ` : ""}${page.url}. The previous version is kept (${pageLimits(c.user.id).versions} versions at most).${file ? "" : cdnWarning(html)}`, summary: `${page.title} · ${edits.length}` }, c, html, filesOf(c.bot.id, rel)); // L56
+      const kept = file ? "" : checkNothingLost(c, { token: page.token, title: page.title, path: rel }, before, html); // L157 (pagekeep.ts)
+      return withPageCheck({ content: `Applied ${edits.length} edit${edits.length > 1 ? "s" : ""} to ${file ? `${file} of ` : ""}${page.url}. The previous version is kept (${pageLimits(c.user.id).versions} versions at most).${file ? "" : cdnWarning(html)}${credits ? creditsNote(credits) : ""}${kept ? `\n\n${kept}` : ""}`, summary: `${page.title} · ${edits.length}` }, c, html, filesOf(c.bot.id, rel)); // L56
     },
   }),
 ];

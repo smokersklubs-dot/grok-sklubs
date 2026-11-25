@@ -9,8 +9,8 @@ import { deleteCookie, getCookie } from "hono/cookie";
 import { streamSSE } from "hono/streaming";
 import { registerNoticeRoutes } from "./agent/noticeroutes.js"; import { registerRoomRoutingRoutes, roomReaction } from "./agent/roomroutes.js";
 import { registerFailureRoutes } from "./agent/failureroutes.js"; import { decideForConversation, registerConversationGrantRoutes } from "./agent/conversationgrantroutes.js";
-import { registerRecruitRoutes } from "./agent/recruit.js"; import { registerTeamMdRoutes } from "./teammdroutes.js";
-import { registerCommandRoutes } from "./command.js"; import { registerRelayGuardRoutes } from "./relayguardroutes.js"; import { registerComfortRoutes } from "./comfortroutes.js"; import { registerChantierRoutes } from "./chantierroutes.js"; import { registerTeamGuestPublic, registerWorkRoutes } from "./workroutes.js";
+import { registerRecruitRoutes } from "./agent/recruit.js"; import { routeAnswer } from "./agent/lateanswer.js"; import { registerTeamMdRoutes } from "./teammdroutes.js";
+import { registerCommandRoutes } from "./command.js"; import { registerRelayGuardRoutes } from "./relayguardroutes.js"; import { registerComfortRoutes } from "./comfortroutes.js"; import { registerBotCareRoutes } from "./botcareroutes.js"; import { registerChantierRoutes } from "./chantierroutes.js"; import { registerTeamGuestPublic, registerWorkRoutes } from "./workroutes.js";
 import { continueAfterStepLimit, decideApproval, enqueue, inQueue, interrupt, isPaused, noteHandBack, runningThreads, submitUserMessage, type ForcedSkill } from "./agent/loop.js"; import { sendOnce } from "./sendkeys.js"; import { relayToHelpers } from "./agent/helperrelay.js"; import { registerTurnPlus } from "./turnplusroutes.js";
 import { cleanProfile, fetchSkillMarkdown, saveImportedSkill, undoRevision } from "./agent/tools-team.js";
 import { xSearchProvider } from "./xsearch.js";
@@ -97,7 +97,7 @@ import { adminView, approversOf, botAccess, exportWorkspace, invites, resources,
 import { invalidateAudience } from "./bus.js";
 import { registerGithubIssueRoutes } from "./githubissues.js";
 import { registerGithubActivity } from "./githubactivity.js";
-import { registerWorkContext } from "./workcontext.js";
+import { registerWorkContext } from "./workcontext.js"; import { registerFinishRoutes } from "./finishroutes.js";
 import { registerPeerReview } from "./peerreviewroutes.js";
 import { listedPathOk, undoFiles } from "./snapshots.js";
 import { forgetHeld, holdAndOffer, screen as screenSecrets, takeHeld } from "./pastedsecrets.js";
@@ -500,7 +500,7 @@ registerHostedPrivate(api);
 registerConnectorCatalog(api);
 registerGithubActivity(api,throttle);
 registerGithubIssueRoutes(api,throttle);
-registerWorkContext(api);
+registerWorkContext(api); registerFinishRoutes(api); // L161 bot themes, global recap, notes archive (finishroutes.ts)
 registerPublicSignupPrivate(api);
 registerTwoFactorPrivate(api, googleDeps);
 registerDataKeyRoutes(api);
@@ -968,10 +968,10 @@ api.post("/bots/:id/cards/:seq/answer", async (c) => {
   rows.updateCard(bot, row!.generation, row!.seq, (k) => (k.type === "question" ? { ...k, status: "answered", answer } : k));
   // A question asked in a thread is answered in that thread.
   const thread = row!.thread ?? 0;
-  rows.append(bot, { kind: "message", role: "user", text: answer }, thread);
+  const shown = rows.append(bot, { kind: "message", role: "user", text: answer }, thread);
   if (screened.secrets.length) holdAndOffer(bot, c.get("user").id, screened.secrets, thread);
-  submitUserMessage(bot, `(Answering your question "${card?.type === "question" ? card.question : ""}")\n${answer}`, false, [], undefined, thread);
-  return c.json({ ok: true });
+  const fate = routeAnswer(bot, row!, shown.seq, card?.type === "question" ? card.question : "", answer, () => submitUserMessage(bot, `(Answering your question "${card?.type === "question" ? card.question : ""}")\n${answer}`, false, [], undefined, thread)); // L161 late answer (agent/lateanswer.ts)
+  return c.json({ ok: true, fate });
 });
 
 api.post("/bots/:id/cards/:seq/dismiss", (c) => {
@@ -1294,7 +1294,7 @@ registerNoticeRoutes(api); registerRoomRoutingRoutes(api); // « Qui répond » 
 registerFailureRoutes(api); registerConversationGrantRoutes(api); // « Coordinateur d'échecs » (agent/failures.ts) ; « Autoriser pour cette conversation »
 registerRecruitRoutes(api); registerHookSettingsRoutes(api); registerReportRoutes(api); // « Bot recruteur » ; webhook settings (L20) ; « Signaler cette réponse » (L31)
 registerTeamMdRoutes(api); registerRoutinePlusRoutes(api); registerConnectorPlusRoutes(api); // « Équipe Sklubot (.md) » (teammdroutes.ts): import with review, share ; routines nod 2/8/13 (routineplusroutes.ts)
-registerCommandRoutes(api); registerRelayGuardRoutes(api); registerComfortRoutes(api); registerChantierRoutes(api); registerWorkRoutes(api); // « Chantier » (chantierroutes.ts) ; wave 7 board, flows, automations, team memory (workroutes.ts) ; « Centre de commandement » (command.ts); « Règles de sécurité » of a linked computer (relayguardroutes.ts)
+registerCommandRoutes(api); registerRelayGuardRoutes(api); registerComfortRoutes(api); registerBotCareRoutes(api); registerChantierRoutes(api); registerWorkRoutes(api); // « Chantier » (chantierroutes.ts) ; wave 7 board, flows, automations, team memory (workroutes.ts) ; « Centre de commandement » (command.ts); « Règles de sécurité » of a linked computer (relayguardroutes.ts)
 registerSkillsLibraryRoutes(api); registerSecurityRoutes(api); registerMediaRoutes(api); // « Bibliothèque de compétences » (skillsroutes.ts) ; Lot 1 security (securityroutes.ts)
 registerOpenRouterRoutes(api); registerSubscriptionConnectRoutes(api); registerExtensionRoutes(api); /* wave 7 (extroutes.ts) */ // OpenRouter, « Connecter mon compte ChatGPT / Claude »
 api.put("/account/password", async (c) => {

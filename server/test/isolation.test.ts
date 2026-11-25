@@ -217,7 +217,11 @@ function resolve(routePath: string, param: string, bot: "bot1" | "bot2"): string
     // Wave 7 comfort (chatcomfortroutes.ts): a trashed bot, a conversation of A's bot (restore, rename, reopen are the owner's alone).
     "bot-trash:trashId": "a_trash", "conversations:gen": "1",
     // Wave 7 extensions (extroutes.ts): a shared document and one of its versions, a phone request, another agent, a plugin; the one-time location page.
-    "livedocs:id": "a_livedoc", "at:rev": "1", "requests:id": "a_phonereq", "remote-agents:id": "a_ragent", "plugins:pid": "a_plugin", "where:token": "not-a-real-token-for-the-location-page", "team-guest:token": "not-a-real-guest-link-token", "calendar:file": "not-a-real-calendar-token.ics", "research-feed:token": "not-a-real-feed-token.atom", "docbase:id": "a_docbaseid", "site-notes:id": "a_site-notesid", "media-keys:provider": "a_media-keysprovider", "code:codeId": "a_codecodeId", "journal:id": "a_journalid", "renders:rid": "a_rendersrid", "creations:cid": "a_creationscid", "tasks:id": "a_boardtask", "ideas:id": "a_boardidea", "files:fid": "a_boardfile", "flows:id": "a_flow", "team-memory:kind": "workspace", "workspace:id": "a_workspace", "guests:gid": "a_guest", "flow-runs:rid": "a_flowrun", "shots:n": "0", "proposals:key": "a_proposalskey", "team-notes:nid": "a_team-notesnid", "triggers:id": "a_trigger", ":botId:host": "a_:botIdhost", "sites:botId": "a_bot", "model-sets:id": "a_model-setsid", "roles:role": "a_rolesrole", "contacts:id": "a_contactsid", "questions:qid": "a_questionsqid", "pins:id": "a_pinsid", "polls:pollId": "a_pollspollId", "steps:seq": "999999",
+    "livedocs:id": "a_livedoc", "at:rev": "1", "requests:id": "a_phonereq", "remote-agents:id": "a_ragent", "plugins:pid": "a_plugin", "where:token": "not-a-real-token-for-the-location-page", "team-guest:token": "not-a-real-guest-link-token", "calendar:file": "not-a-real-calendar-token.ics", "research-feed:token": "not-a-real-feed-token.atom", "docbase:id": "a_docbaseid", "site-notes:id": "a_site-notesid", "media-keys:provider": "a_media-keysprovider", "code:codeId": "a_codecodeId", "journal:id": "a_journalid", "renders:rid": "a_rendersrid", "creations:cid": "a_creationscid", "tasks:id": "a_boardtask", "ideas:id": "a_boardidea", "files:fid": "a_boardfile", "flows:id": "a_flow", "team-memory:kind": "workspace", "workspace:id": "a_workspace", "guests:gid": "a_guest", "flow-runs:rid": "a_flowrun", "shots:n": "0", "proposals:key": "a_proposalskey", "team-notes:nid": "a_team-notesnid", "triggers:id": "a_trigger", ":botId:host": "a_:botIdhost", "sites:botId": "a_bot", "model-sets:id": "a_model-setsid", "roles:role": "a_rolesrole", "contacts:id": "a_contactsid", "questions:qid": "a_questionsqid", "pins:id": "a_pinsid", "polls:pollId": "a_pollspollId", "steps:seq": "999999", "design-journal:id": "a_designdecision",
+    // L161 (botcareroutes.ts): A's shared role, a document of A's bot, a shortcut and a missing capability noted by A's bot.
+    "shared-roles:rid": "a_role", "identity:docId": "a_idoc", "bot-shortcuts:sid": "a_shortcut", "capability-gaps:gid": "a_gap",
+    // L161 (finishroutes.ts): a colour theme proposed by A's bot (apply, remove are the owner's alone).
+    "themes:themeId": "thm_alpha",
   };
   if (param === "action" && prev2 === "reach") return "login";
   if (param === "rid" && prev2 === "resources") return "a_conn";
@@ -731,4 +735,10 @@ test("dictation (POST /voice/transcribe?bot=): only someone who may talk to the 
   for (const who of ["b", "v"] as const) assert.ok(!MARK.test((await call(api, who, "POST", `/voice/transcribe?bot=${ids.bot1}`, {})).text));
   // Without a session, nothing.
   assert.equal((await call(api, null, "POST", "/voice/transcribe", {})).status, 401);
+});
+
+test("no two routes share the same method and path (a later one would be shadowed)", () => {
+  const seen = new Map<string, number>();
+  for (const r of discover()) { const k = `${r.app === api ? "api" : "site"} ${r.key}`; seen.set(k, (seen.get(k) ?? 0) + 1); }
+  assert.deepEqual([...seen].filter(([, n]) => n > 1).map(([k]) => k), []);
 });

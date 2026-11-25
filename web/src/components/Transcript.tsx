@@ -566,7 +566,7 @@ function NoticeRow({ body, botId, seq, readOnly }: { body: NoticeBody; botId: st
       ) : action.status === "done" ? <em className="notice-done">{t("notice.continued")}</em> : null)}
       {action?.kind === "settings" && !readOnly && (
         <button type="button" className="btn btn-small notice-action" onClick={() => useStore.getState().openAppSettings(action.section as AppSection)}>
-          {action.section === "usage" ? <><Icon name="chart" size={13} /> {t("caps.openUsage")}</> : <><Icon name="key" size={13} /> {t("health.openKeys")}</>}
+          {action.section === "usage" ? <><Icon name="chart" size={13} /> {t("caps.openUsage")}</> : action.section === "team" ? <>{t("care.openTeam")}</> : <><Icon name="key" size={13} /> {t("health.openKeys")}</>}
         </button>
       )}
       {action?.kind === "plan" && !readOnly && <PlanNoticeActions action={action} />}

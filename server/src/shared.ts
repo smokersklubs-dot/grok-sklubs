@@ -3,7 +3,7 @@ export * from "./failuretypes.js"; export type * from "./recruittypes.js"; expor
  * Wire contract between the Sklubot server and web app.
  * Type-only: the web app imports this file with `import type`.
  */
-import type { TodayKind } from "./todayminutes.js"; import type { RecruitCard } from "./recruittypes.js"; import type { RouteNoticeAction } from "./roomroutingtypes.js"; import { EXTRA_SECRET_FORMATS } from "./secretformats.js"; import type { PeerReviewResult } from "./peerreviewtypes.js"; import type { ViewCard } from "./viewtypes.js"; import type { TrajectoryCard } from "./creationtypes.js"; import type { CodeCard } from "./codecardtypes.js"; import type { PollCard } from "./polltypes.js";
+import type { TodayKind } from "./todayminutes.js"; import type { RecruitCard } from "./recruittypes.js"; import type { RouteNoticeAction } from "./roomroutingtypes.js"; import { EXTRA_SECRET_FORMATS } from "./secretformats.js"; import type { PeerReviewResult } from "./peerreviewtypes.js"; import type { ViewCard } from "./viewtypes.js"; import type { TrajectoryCard } from "./creationtypes.js"; import type { CodeCard } from "./codecardtypes.js"; import type { PollCard } from "./polltypes.js"; import type { PageLossCard } from "./pagekeeptypes.js"; export type * from "./pagekeeptypes.js";
 
 export const AVATAR_SHAPES = ["pebble", "egg", "mochi", "bean", "cloud", "cat", "bear", "ghost", "circle", "squircle", "hexagon", "diamond", "shield", "drop", "arch", "star", "clover", "pill", "triangle", "octagon"] as const;
 export const AVATAR_COLORS = ["ink", "clay", "ember", "amber", "moss", "teal", "sky", "indigo", "plum", "rose", "slate"] as const;
@@ -378,7 +378,7 @@ export type Card =
   /** A nudge from a quiet preparation pass: "Do it", "Later" (snoozed) or "Never for this" (the matter never comes back). */
   | { type: "nudge"; nudgeId: string; title: string; body: string; status: "pending" | "doing" | "later" | "never" }
   | { type: "question"; question: string; options: string[]; status: "pending" | "answered" | "dismissed"; answer?: string; /** L79 rich card (agent/richquestion.ts) */ why?: string; recommended?: string; irreversible?: boolean; multiple?: boolean; images?: string[]; questions?: { question: string; options: string[]; recommended?: string; multiple?: boolean; why?: string }[]; plan?: { steps: string[]; version: number; added?: string[]; removed?: string[] } }
-  | { type: "connect"; name: string; hint: string; reason: string; status: "pending" | "connected" | "skipped" } | /** DS-Bot item 8: data drawn in the chat (agent/viewcard.ts) */ ViewCard | /** L158 « Créations » (agent/creations.ts) */ TrajectoryCard | /** L91 hidden code box (agent/codebox.ts) */ CodeCard | /** L184 polls (polls.ts) */ PollCard
+  | { type: "connect"; name: string; hint: string; reason: string; status: "pending" | "connected" | "skipped" } | /** DS-Bot item 8: data drawn in the chat (agent/viewcard.ts) */ ViewCard | /** L158 « Créations » (agent/creations.ts) */ TrajectoryCard | /** L91 hidden code box (agent/codebox.ts) */ CodeCard | /** L184 polls (polls.ts) */ PollCard | /** L157 « rien de perdu » (pagekeep.ts) */ PageLossCard
   /** The bot needs the user on its screen (CAPTCHA, 2FA code, login, payment…) and waits until they hand it back, or `expiresAt`. */
   | { type: "takeover"; takeoverId: string; reason: TakeoverReason; detail: string; status: "pending" | "done" | "timeout" | "cancelled"; expiresAt: number }
   /**
@@ -701,8 +701,8 @@ export interface SharedComputerView {
   power: "running" | "asleep" | "absent";
   /** The bot driving it right now (null: free). */
   busyWith: string | null;
-  /** Bots that used it last (most recent first). */
-  lastBots: string[];
+  /** Bots that used it last (most recent first). L161: `waiting`, the account's bots waiting for one, first in line first. */
+  lastBots: string[]; waiting?: string[];
   lastUsedAt: number | null;
 }
 

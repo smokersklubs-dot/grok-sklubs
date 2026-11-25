@@ -12,7 +12,7 @@ import { colorOf } from "../lib/colors";
 import { followPointer, pointerMovedAt, reducedMotion } from "../lib/pointer";
 import type { CharacterState } from "../lib/botState";
 import { useT } from "../i18n";
-import { Icon } from "./Icon";
+import { Icon } from "./Icon"; import { withPhoto } from "./BotPhoto";
 import "../styles/character.css";
 
 export type { CharacterState };
@@ -1128,4 +1128,4 @@ function CharacterView({ bot, size = 36, state = "idle", level, levelSource, int
   );
 }
 
-export const Character = memo(CharacterView);
+export const Character = memo(withPhoto(CharacterView)); // L161 a bot's photo instead of its character (BotPhoto.tsx)

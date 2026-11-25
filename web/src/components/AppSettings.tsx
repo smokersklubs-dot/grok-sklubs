@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type FormEvent } from "react"; import { BotTrash } from "./BotLifecycle"; import { HistoryRetention } from "./HistoryRetention";
+import { useEffect, useId, useRef, useState, type FormEvent } from "react"; import { BotTrash } from "./BotLifecycle"; import { TeamCare } from "./TeamCare"; import { HistoryRetention } from "./HistoryRetention"; import { BotThemes } from "./BotThemes";
 import { PersonalCommandsSection } from "./ComposerSlash"; import { DoctorSection } from "./DoctorSection"; // L152, L153
 import { UsageCapsBlock } from "./UsageCaps"; import { UsageMetricsPanel } from "./ChatPlus"; import { UsageChart } from "./UsageChart"; import { ComputerHoursBlock } from "./ComputerHours"; // L142 30 days ; L95 computer hours
 import { api, ApiError, enc, errText } from "../api";
@@ -32,7 +32,7 @@ import { SurveillanceSettingsSection } from "./SurveillanceView";
 import { TeamAskPolicy } from "./TeamAskPolicy";
 import { SkillsLibrarySection } from "./SkillsLibrary";
 import { SettingsNavigation, KeyboardShortcuts } from "./SettingsNavigation";
-import { PageVersions } from "./PageVersions"; import { ConversationGrantsBlock } from "./ConversationGrants"; import { SecuritySettingsBlock } from "./SecurityLot1";
+import { PageVersions } from "./PageVersions"; import { DesignJournal } from "./PageKeep"; import { ConversationGrantsBlock } from "./ConversationGrants"; import { SecuritySettingsBlock } from "./SecurityLot1";
 
 /* ---------- General ---------- */
 
@@ -66,7 +66,7 @@ function GeneralSection() {
           </button>
         ))}
       </div>
-      <p className="muted small">{t("general.themeHint")}</p>
+      <p className="muted small">{t("general.themeHint")}</p><BotThemes />{/* L161 themes proposed by the bots (BotThemes.tsx) */}
 
       <h3 className="pane-heading">{t("general.language")}</h3>
       <div className="choice-list lang-choices" role="radiogroup" aria-label={t("general.language")}>
@@ -240,7 +240,7 @@ function SharedComputers({ computer, onError }: { computer: ComputerState; onErr
     <div className="shared-computers">
       <h3 className="pane-heading">{t("shared.heading")}</h3>
       <p className="muted small">{t("shared.intro")}</p>
-      <p className="muted small">{sharing.length ? t("shared.usedBy", { names: sharing.map((b) => b.name).join(", ") }) : t("shared.nobody")}</p>
+      <p className="muted small">{sharing.length ? t("shared.usedBy", { names: sharing.map((b) => b.name).join(", ") }) : t("shared.nobody")}</p>{list[0]?.waiting?.length ? <p className="muted small" role="status">{t("shared.queue", { names: names(list[0].waiting) })}</p> : null}{/* L161 queue */}
       {list.length === 0 ? (
         <p className="muted small">{t("shared.none")}</p>
       ) : (
@@ -849,7 +849,7 @@ function PagesSection() {
           })}
         </ul>
       )}
-      <PublicLinksBlock />
+      <DesignJournal /><PublicLinksBlock />
     </>
   );
 }
@@ -1249,7 +1249,7 @@ export function AppSettings({ section }: { section: AppSection }) {
           {section === "keys" && <KeysSection />}
           {section === "pages" && <PagesSection />}
           {section === "activity" && <ActivitySection />}
-          {section === "team" && <><TeamSection /><BotTrash /></>}
+          {section === "team" && <><TeamSection /><BotTrash /><TeamCare /></>}
           {section === "workspaces" && <WorkspacesSection />}
           {section === "voice" && <VoiceSection />}
           {section === "email" && <MailSection />}

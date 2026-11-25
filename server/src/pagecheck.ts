@@ -15,7 +15,7 @@
  */
 import { browserAvailable, screen } from "./computer.js";
 import { composeSheet } from "./contactsheet.js";
-import { pageHeaders } from "./pagefiles.js";
+import { pageHeaders } from "./pagefiles.js"; import { rulesFor, usesWebgl, webglLine, withWebglFallback } from "./pagewebgl.js";
 import { clip } from "./store.js";
 import { userDriving } from "./takeover.js";
 import type { BotRecord, UserRecord } from "./store.js";
@@ -150,14 +150,14 @@ export function formatReport(stat: StaticFinding[], rendered: PageCheckAnswer | 
 
 /** Runs the check of a page just saved and returns what to add to the tool's answer (the report, and the picture when rendered). */
 export async function pageCheckBlocks(c: { bot: BotRecord; user: UserRecord }, html: string, files: CheckFile[]): Promise<{ text: string; image: ImageBlock | null }> {
-  const stat = staticFindings(html, files);
+  const stat = staticFindings(html, files); const gl = usesWebgl(html, files); // L157 « WebGL vérifié » (pagewebgl.ts)
   let why: string | null = null, rendered: PageCheckAnswer | null = null;
   if (!browserAvailable()) why = "there is no browser on this server";
   else if ((c.bot.disabledTools ?? []).includes("computer")) why = "this bot's computer is switched off";
   else if (userDriving(c.bot.id)) why = "the user is using the bot's computer right now";
   else {
     try {
-      const req: PageCheckRequest = { html, files, headers: pageHeaders(), sizes: CHECK_SIZES, rules: PAGE_RULES_JS };
+      const req: PageCheckRequest = { html: withWebglFallback(html, files), files, headers: pageHeaders(), sizes: CHECK_SIZES, rules: rulesFor(PAGE_RULES_JS, gl) };
       rendered = await Promise.race([screen.pageCheck(c.bot.id, c.user.id, req), new Promise<PageCheckAnswer>((_, no) => setTimeout(() => no(new Error("it took longer than 2 minutes")), 120_000).unref())]);
       if (!rendered.ok) { why = (rendered.error ?? "the browser did not render it").replace(/\.$/, ""); rendered = null; }
     } catch (err) { why = `the browser could not render it (${clip((err as Error).message, 160)})`; rendered = null; }
@@ -166,7 +166,8 @@ export async function pageCheckBlocks(c: { bot: BotRecord; user: UserRecord }, h
   if (rendered?.shots?.length && rendered.shots.every((s) => s.data)) {
     try { image = { type: "image", mediaType: "image/jpeg", data: (await composeSheet(rendered.shots)).toString("base64") }; } catch { image = null; }
   }
-  return { text: formatReport(stat, rendered, why), image };
+  const glLine = webglLine(rendered, gl), report = formatReport(stat, rendered, why);
+  return { text: glLine ? report.replace("\n", `\n- ${glLine}\n`) : report, image };
 }
 
 /** A page tool's answer with the check added: a picture of the page at both widths and the short report. */

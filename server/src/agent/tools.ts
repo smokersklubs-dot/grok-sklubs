@@ -40,10 +40,10 @@ import { explicitRemember, memoryVerdict } from "./sensitive.js";
 import { committingKind, probe, seenOf, seenTarget } from "./bind.js"; import { boundClick, browserDownloadTools, browserTabTools, shot, tabLine, typeSecret } from "./tools-browser.js";
 import { elementTools, openInWords } from "./tools-elements.js"; import { noteShots, sameScreen } from "./screendedup.js"; import { traceClicks } from "./clicktrail.js"; // L65/L74/L75/L81: element tools, in words; L65 same screen skipped
 import { cardLabel, cardTools } from "./payments.js";
-import { guideIndex, guideTools } from "./guides.js";
+import { guideIndex, guideTools } from "./guides.js"; import { careTools } from "./caretools.js"; // L161 capability_gap, shortcut_note, docs_read
 import { anonymise } from "./anonymise.js"; import { evidenceFields, evidenceNote, proposalEvidence } from "../skillevidence.js";
 import { apiTools, scrubSecret } from "../apiconnectors.js";
-import { botMailTools } from "../botmail.js"; import { guardVault } from "../vaultaccess.js"; import { noteLoginTyped } from "../siteregistry.js"; import { contactTools } from "../vaultcontacts.js"; import { pollTools } from "../polls.js"; import { noteHost } from "../netjournal.js"; import { applyBrowserPolicy, netGate } from "../netpolicy.js"; import { offensiveRefusal } from "../offensive.js"; import { afterClick, hostBeforeClick } from "./clickhosts.js";
+import { botMailTools } from "../botmail.js"; import { guardVault } from "../vaultaccess.js"; import { noteLoginTyped } from "../siteregistry.js"; import { contactTools } from "../vaultcontacts.js"; import { pollTools } from "../polls.js"; import { noteHost } from "../netjournal.js"; import { applyBrowserPolicy, netGate } from "../netpolicy.js"; import { offensiveRefusal } from "../offensive.js"; import { decodedText } from "../textdecode.js"; import { afterClick, hostBeforeClick } from "./clickhosts.js";
 import { ruleTools } from "./ruletools.js";
 import { botNote } from "../skillscan.js"; import { extractSeoTags, seoTagsReport } from "../seotags.js"; import { guideSearchTools } from "./guidesearch.js"; import { contactSheetTools } from "../contactsheet.js"; import { afterSave, saveRefusal, skillFeedbackTools, skillReadOutput, skillSectionParam } from "./skilltools.js";
 import { pageTools } from "./pagetools.js";
@@ -71,7 +71,7 @@ import { goalTools } from "./goals.js";
 import { memoryPrefs } from "./memoryprefs.js"; import { searchNotesSmart } from "./semantic.js";
 import { forgetNotes } from "./memorybook.js"; import { cleanInvisible, duplicateOf } from "./memorysave.js"; import { similar } from "./memory.js"; import { memoryKeep } from "./memorykeep.js"; import { recordable } from "./flowrecord.js"; // L66 ; L165 recorded flows
 import { recruitTools } from "./recruit.js";
-import { teamMdTools } from "./teamexport.js"; import { stepTools } from "./tools-steps.js"; import { waitTools } from "./waitlater.js"; import { offerUndo, undoText } from "./undoable.js"; import { planTools, questionCard, QUESTION_PROPS } from "./richquestion.js"; import { viewTools } from "./viewcard.js"; import { creationTools } from "./creations.js"; import { deleteCheckAnswer } from "./deletecheck.js"; // L97 wait_until, L98 « Annuler », L79, DS-Bot item 8 show_view
+import { teamMdTools } from "./teamexport.js"; import { teamFolderTools } from "./tools-teamfolder.js"; import { themeTools } from "./tools-theme.js"; import { recapTools } from "./tools-recap.js"; import { shellLockRefusal } from "../teamlock.js"; /* L161 team-folder write lock */ import { stepTools } from "./tools-steps.js"; import { waitTools } from "./waitlater.js"; import { offerUndo, undoText } from "./undoable.js"; import { planTools, questionCard, QUESTION_PROPS } from "./richquestion.js"; import { viewTools } from "./viewcard.js"; import { creationTools } from "./creations.js"; import { deleteCheckAnswer } from "./deletecheck.js"; // L97 wait_until, L98 « Annuler », L79, DS-Bot item 8 show_view
 import { botPath, spillPath, spillPreview } from "./context.js"; import { condenseResult } from "./sidemodel.js"; import { codeHost, toolCodeTools } from "./toolcode.js"; import { routineFrameTools } from "./routineframe.js"; import { routineOptionTools } from "../routineoptions.js"; import { askRefusal, requestHelper, startQueuedHelpers } from "./askrules.js"; import { lt } from "./looptext.js";
 
 export interface ToolContext {
@@ -235,7 +235,7 @@ const workTools: BuiltinTool[] = [
       catch (err) { const why = fetchProblem(err); if (why) return { content: `Could not fetch ${url}: ${why}`, isError: true, summary: "not fetched" }; throw err; }
       const type = res.headers.get("content-type") ?? "";
       if (!/text|json|xml|javascript/.test(type)) return { content: `Fetched ${url} (status ${res.status}) but it is ${type || "binary"} content, not text.`, isError: !res.ok };
-      const body = await res.text();
+      const body = await decodedText(res); // « doit marcher »: any charset, broken bytes never fail (textdecode.ts)
       const tags = a.tags === true && /html/.test(type) ? `${seoTagsReport(extractSeoTags(body, res.url || url))}\n\n` : ""; // L117 (seotags.ts)
       return { content: `Status ${res.status}${isMarkdown(type, res.url || url) ? " (the site served Markdown)" : ""}\n\n${extra.prefix}${tags}${await spillIfLong(c, /html/.test(type) ? htmlToMarkdown(body, res.url || url) : body, 40_000)}`, summary: `${res.status} · ${hostOf(url) ?? ""}`, isError: !res.ok };
     },
@@ -245,7 +245,7 @@ const workTools: BuiltinTool[] = [
     activity: "shell", label: "Running a command", sensitive: true, audited: true, detail: (a) => clip(String(a.command ?? ""), 60),
     run: async (a, c) => {
       const timeout = Math.min(290, Math.max(1, Number(a.timeout_seconds) || 120));
-      const command = String(a.command); const craftRefused = craftCommandRefusal(command); if (craftRefused) return { content: craftRefused, isError: true, summary: "refused" }; const offensive = offensiveRefusal(c.bot.id, command); if (offensive) return { content: offensive, isError: true, summary: "refused" }; // L23: Craft Anything stays in clean-room mode; L38: no security test of a system that is not the owner's (offensive.ts)
+      const command = String(a.command); const craftRefused = craftCommandRefusal(command); if (craftRefused) return { content: craftRefused, isError: true, summary: "refused" }; const offensive = offensiveRefusal(c.bot.id, command); if (offensive) return { content: offensive, isError: true, summary: "refused" }; const teamHeld = shellLockRefusal(c.bot, command); if (teamHeld) return { content: teamHeld, isError: true, summary: "locked" }; // L23: Craft Anything stays in clean-room mode; L38: no security test of a system that is not the owner's (offensive.ts)
       // Wave 7 (spec 08 A1): with the credential relay on, the computer gets the relay's address and its token (never a
       // key), and the relay knows whether this command's turn read outside content while it runs.
       if (c.bot.relayEnabled) await provisionRelay(c.bot).catch((err) => console.error("[relay]", (err as Error).message));
@@ -1191,7 +1191,7 @@ function assemble(opts: { owner?: string; nativeSearch?: boolean; modelSearch?: 
     ...(reachAvailable() ? inGroup("reach", reachTools) : []),
     ...(computerKind() === "linux" || reachAvailable() ? transcribeTools : []),
     githubSearch, githubRead, videoWorkflowTool, videoStudioTool, updateVideoStudio, ...(computerKind() === "linux" ? [studioMp4Tool] : []), ...publicLinkTools,
-    ...knowledgeTools, ...guideTools, ...guideSearchTools, ...(browserAvailable() ? contactSheetTools : []), ...ruleTools, ...pageTools, ...progressTools, ...profileTools, ...skillImportTools, ...botTools, ...recruitTools, ...inGroup("team", teamMdTools),
+    ...knowledgeTools, ...guideTools, ...careTools, ...guideSearchTools, ...(browserAvailable() ? contactSheetTools : []), ...ruleTools, ...pageTools, ...progressTools, ...profileTools, ...skillImportTools, ...botTools, ...recruitTools, ...inGroup("team", teamMdTools),
     researchTool, scholarTool, pastReportsTool, ...(xSearchAvailable(opts.owner) ? xTools : []), ...stepTools,
     ...shareTools.map((t): BuiltinTool => ({ ...t, group: "files" })), ...(imageServiceFor(opts.owner) || (opts.owner && wan2gpTarget(opts.owner)) ? [{ ...imageTool, group: "images" as const }] : []),
     ...inGroup("vault", vaultTools),
@@ -1205,6 +1205,6 @@ function assemble(opts: { owner?: string; nativeSearch?: boolean; modelSearch?: 
     ...(opts.video ? inGroup("video", videoTools) : []),
     // The user's own computers (Sklubot Relais): offered by newTurn only to users who linked one.
     ...myComputerTools, ...myComputerPlusTools, ...myUiTools, ...phoneTools, ...liveDocTools, ...remoteAgentTools,
-    ...inGroup("memory", [...memoryTools, ...roomMemoryTools, ...skillFeedbackTools]), ...inGroup("routines", [...routineTools, ...routineFrameTools, ...routineOptionTools]), ...inGroup("tasks", taskTools), ...(opts.bgTasks === false ? [] : inGroup("tasks", bgTaskTools)), ...goalTools, ...waitTools, ...planTools, ...viewTools, ...creationTools, ...inGroup("team", [...teamTools, ...roomTools]), ...userTools.filter((t) => t.spec.name !== "ask_takeover" || browserAvailable()), ...(computerKind() === "linux" ? codeTools : []), ...(codeHost.available() ? toolCodeTools : []), ...reactTools,
+    ...inGroup("memory", [...memoryTools, ...roomMemoryTools, ...skillFeedbackTools]), ...inGroup("routines", [...routineTools, ...routineFrameTools, ...routineOptionTools]), ...inGroup("tasks", taskTools), ...(opts.bgTasks === false ? [] : inGroup("tasks", bgTaskTools)), ...goalTools, ...themeTools, ...recapTools, ...waitTools, ...planTools, ...viewTools, ...creationTools, ...inGroup("team", [...teamTools, ...roomTools]), ...userTools.filter((t) => t.spec.name !== "ask_takeover" || browserAvailable()), ...(computerKind() === "linux" ? [...codeTools, ...teamFolderTools] : []), ...(codeHost.available() ? toolCodeTools : []), ...reactTools,
   ];
 }

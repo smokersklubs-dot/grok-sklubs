@@ -1,5 +1,12 @@
 /** French texts of the wave-7 comfort batch (chatcomfortroutes.ts and its modules), merged into i18n.ts FR. */
 export const COMFORT7_FR: Record<string, string> = {
+  // L157 « rien de perdu », journal de design (pagekeep.ts, designjournal.ts, pagekeeproutes.ts)
+  "Parts of a page disappeared: {title}": "Des parties d'une page ont disparu : {title}",
+  "choice must be keep or restore.": "Choisis « garder » ou « remettre ».", "There is no such card here.": "Cette carte n'existe pas ici.",
+  "This card was already answered.": "Cette carte a déjà une réponse.", "That page no longer exists.": "Cette page n'existe plus.",
+  "The old version is no longer in the page's history.": "L'ancienne version n'est plus dans l'historique de la page.",
+  "topic must be colors, fonts, layout or other.": "Choisis couleurs, polices, mise en page ou autre.", "Write the decision (a few words at least).": "Écris la décision (quelques mots au moins).",
+  "A decision is 300 characters at most.": "Une décision fait 300 caractères au plus.", "That decision does not exist.": "Cette décision n'existe pas.", "The design journal is full (60 decisions): remove an old one first.": "Le journal de design est plein (60 décisions) : retire d'abord une ancienne.",
   "Captures need the browser of this server, which is not installed.": "Les captures ont besoin du navigateur de ce serveur, qui n'est pas installé.",
   "Choose 30, 90 or 365 days, or keep everything.": "Choisis 30, 90 ou 365 jours, ou garde tout.",
   "Choose simpler, normal or challenge.": "Choisis plus simple, normal ou me contredire.",

@@ -1,7 +1,7 @@
 import { ModelHealthLine } from "./ModelHealth";
 import { MemoryFocusField } from "./MemoryFocus"; import { MemoryPlaces } from "./MemoryPlaces";
 import { ShortRepliesField } from "./ShortReplies"; import { ModelModesField } from "./ModelModes";
-import { BotDangerZone } from "./BotLifecycle"; import { BotStyleField } from "./BotStyle";
+import { BotDangerZone } from "./BotLifecycle"; import { BotStyleField } from "./BotStyle"; import { BotCareFields } from "./BotCare";
 import { BotReachTab } from "./KeysHealthLinks";
 import { BotCapsField } from "./UsageCaps";
 import { LocalToolsTab } from "./LocalTools"; import { PluginsPanel, RemoteAgentsPanel } from "./ExtensionsPanels";
@@ -321,7 +321,7 @@ function General({ bot, onClose }: { bot: Bot; onClose: () => void }) {
         </div>
       )}
 
-      <BotStyleField bot={bot} /><ShortRepliesField bot={bot} /><ModelModesField bot={bot} /> {/* L69 named modes (ModelModes.tsx) */}
+      <BotStyleField bot={bot} /><ShortRepliesField bot={bot} /><ModelModesField bot={bot} /><BotCareFields bot={bot} /> {/* L69 named modes (ModelModes.tsx) ; L161 photo, shared role, identity, set aside, what it can read and write (BotCare.tsx) */}
       <BotDangerZone bot={bot} isRoom={isRoom} onDeleted={() => { onClose(); void loadBots(); }} /> {/* L144: export, what goes, trash (BotLifecycle.tsx) */}
       <ErrorNote>{actionError}</ErrorNote>
     </form>
@@ -645,7 +645,7 @@ function Memories({ bot, bundle }: { bot: Bot; bundle: BotBundle | undefined }) 
             </button>
           ))}
           <span className="spacer" />
-          <a className="link small" href={`/api/bots/${bot.id}/memories/export?format=md`} download>{t("memory.export")}</a>
+          <a className="link small" href={`/api/bots/${bot.id}/memories/export?format=md`} download>{t("memory.export")}</a> <a className="link small" href={`/api/bots/${enc(bot.id)}/notes.zip`} download>{t("memory.notesZip")}</a>
         </div>
       )}
       {memories && memories.length > 6 && (

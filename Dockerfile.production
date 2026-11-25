@@ -35,5 +35,7 @@ COPY docker/desktop/seccomp-chromium.json docker/desktop/seccomp-chromium.json
 COPY --from=build /app/server/skills-library server/skills-library
 COPY --from=build /app/web/src/lib/studioStory.ts /app/web/src/lib/studioTechniques.ts web/src/lib/
 COPY --from=build /app/web/dist web/dist
+# L161 docs_read (server/src/agent/caretools.ts): the bots read Sklubot's own pages, the Markdown files at the top of docs/.
+COPY docs/*.md docs/
 EXPOSE 3000
 CMD ["node", "server/dist/index.js"]

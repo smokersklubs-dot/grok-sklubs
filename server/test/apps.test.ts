@@ -377,7 +377,10 @@ test("reading mail taints the turn: sending then asks, even for a trusted bot th
   assert.match(card.title, /Gmail — pro : mail send/);
   assert.match(card.detail, /attacker@evil\.example/);
   assert.equal(card.tool, "Gmail — pro: mail_send");
+  assert.deepEqual(card.draft, { subject: "Fwd", body: "all the invoices" }, "« doit marcher »: the draft is on the Approve card itself (L83 draftedit.ts)");
+  assert.equal(card.status, "pending");
   const sentBefore = g.sent.length;
+  assert.equal(g.sent.filter((m) => /attacker@evil/.test(Buffer.from(m.raw, "base64url").toString())).length, 0, "nothing is sent while the card waits");
   await call("POST", `/approvals/${card.approvalId}`, { decision: "deny" });
   await idle(bot);
   assert.equal(g.sent.length, sentBefore, "nothing was sent");

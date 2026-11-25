@@ -7,6 +7,10 @@ import "./styles/shell.css";
 import "./styles/chat.css";
 import "./styles/panels.css";
 import "./styles/today.css";
+import { startCustomTheme } from "./lib/customtheme";
+
+// L161: the colour theme the owner applied from a bot's proposal (lib/customtheme.ts).
+startCustomTheme();
 
 // The service worker only makes the app shell launch offline; it never touches /api/ requests.
 if (import.meta.env.PROD && "serviceWorker" in navigator) {

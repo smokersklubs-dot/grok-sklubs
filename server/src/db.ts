@@ -2,8 +2,11 @@ import { DatabaseSync } from "node:sqlite";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { config } from "./config.js";
-import { migrate } from "./migrations/index.js";
+import { migrate } from "./migrations/index.js"; import { refuseRepoDbInTests } from "./testdataguard.js";
+// L161: the real server checks its data disk first and waits in safe mode while it fails (diskboot.ts).
+import "./diskboot.js";
 
+refuseRepoDbInTests(config.dbPath); // « doit marcher »: tests never touch data/sklubot.db (testdataguard.ts)
 mkdirSync(path.dirname(config.dbPath), { recursive: true });
 export const db = new DatabaseSync(config.dbPath);
 db.exec("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;");
