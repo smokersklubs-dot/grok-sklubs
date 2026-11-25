@@ -353,7 +353,7 @@ Ces choix changent la façon dont Sklubot se comporte ou ce qu'il coûte : seul 
 12. **Adresses MCP locales** en auto-hébergé seulement, tapées par l'utilisateur (L159) : oui ou non ?
 13. **Ordre des canaux** : Slack, Discord ou Telegram complet d'abord (L76, L162) ?
 14. **Mises à jour automatiques** du serveur (L168) : oui pour les installations auto-hébergées ?
-15. **Craft Anything** : relayer ses questions en direct (plus long) ou seulement montrer après coup ce qu'il a choisi (L23) ?
+15. **Craft Anything** : relayer ses questions en direct (plus long) ou seulement montrer après coup ce qu'il a choisi (L23) ? **DÉCIDÉ (25/11/2026)** : en direct quand le propriétaire suit le travail ; seul (`--unattended`) quand personne ne suit.
 
 ---
 
