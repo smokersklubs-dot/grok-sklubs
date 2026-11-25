@@ -543,6 +543,8 @@ export const mimeOf = (name: string) => MIME[name.split(".").pop()?.toLowerCase(
 export const isInlineImage = (mime: string) => ["image/png", "image/jpeg", "image/gif", "image/webp"].includes(mime);
 /** Video formats a browser can play in the chat's player. */
 export const isInlineVideo = (mime: string) => ["video/mp4", "video/webm"].includes(mime);
+/** L154: audio the chat's player plays (a bot's voice note); never a page, never a script. */
+export const isInlineAudio = (mime: string) => ["audio/wav", "audio/mpeg", "audio/ogg"].includes(mime);
 
 /** Describes a file in the bot's library for showing it in the chat, or null if it is not a plain file there. */
 export function attachmentAt(botId: string, rel: string): Attachment | null {

@@ -56,7 +56,7 @@ const actGate: NonNullable<BuiltinTool["gate"]> = (a, ctx) => {
   const control = controlGate(a, ctx);
   if (control) return control;
   const bot = bots.byId(ctx.botId);
-  const { target } = bot ? pick(bot.userId, a.device) : {};
+  const { target } = bot ? pick(bot.userId, a.device, bot.id) : {};
   if (!bot || !target) return null;
   const el = knownElement(bot.id, target.id, String(a.ref ?? ""));
   if (!el) return null; // the tool refuses an unknown reference

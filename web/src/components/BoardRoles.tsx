@@ -4,6 +4,7 @@ import { useT, type Key } from "../i18n";
 import type { Bot, ModelOption } from "../types";
 import { TASK_KINDS, type BoardDecision, type BoardModelSet, type BoardRole, type BoardTask, type TaskKind } from "../../../server/src/workboardtypes";
 import { Icon } from "./Icon";
+import { useStore } from "../store";
 
 /**
  * « Tableau de travail », the rest of L163 (server workboardroles.ts; clean room: 10-timon.md T10–T12): the open
@@ -70,7 +71,7 @@ export function BoardRolesPanel({ roles, sets, bots, act }: { roles?: BoardRole[
               {bots.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
             </select>
             <ModelSelect value={r.model} models={models} onChange={(v) => put(r.role, { model: v })} label={t("board.roles.modelFor", { role: t(ROLE_KEY[r.role]) })} empty={t("board.model.botOwn")} />
-            {r.role === "lead" ? <span aria-hidden="true" /> : <label className="wb-check"><input type="checkbox" checked={r.pinned} disabled={!r.botId} onChange={(e) => put(r.role, { pinned: e.target.checked })} />{t("board.roles.pinned")}</label>}
+            {r.role === "lead" ? <span aria-hidden="true" /> : !r.botId ? <button type="button" className="btn btn-small wb-propose" onClick={() => act(async () => { await api("POST", `/board/roles/${r.role}/propose-bot`); useStore.getState().showToast(t("board.roles.proposed")); })} title={t("board.roles.proposeHint")}><Icon name="plus" size={13} /> {t("board.roles.propose")}</button> /* L163 (boardplan.ts) */ : <label className="wb-check"><input type="checkbox" checked={r.pinned} disabled={!r.botId} onChange={(e) => put(r.role, { pinned: e.target.checked })} />{t("board.roles.pinned")}</label>}
           </div>
         ))}
       </div>

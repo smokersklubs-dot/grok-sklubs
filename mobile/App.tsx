@@ -21,6 +21,8 @@ import { SettingsScreen } from "./src/screens/Settings";
 import { TasksScreen } from "./src/screens/Tasks";
 import { InboxScreen, useInbox } from "./src/screens/Inbox";
 import { ChantiersScreen } from "./src/screens/Chantiers";
+import { DashboardScreen } from "./src/screens/Dashboard";
+import { clearBotTheme, loadBotTheme } from "./src/theme/botTheme";
 import type { RootStack } from "./src/screens/types";
 import { ServerScreen, SignInScreen } from "./src/screens/Welcome";
 import { usePrefs } from "./src/state/prefs";
@@ -71,6 +73,8 @@ export default function App() {
   useEffect(() => { if (boot !== "loading") SplashScreen.hideAsync().catch(() => undefined); }, [boot]);
   // Signed out (or the session lost): a call in progress ends.
   useEffect(() => { if (boot !== "ready") endCall(); }, [boot]);
+  // L184: the owner's applied bot theme (a theme belongs to an account: cleared when signed out).
+  useEffect(() => { if (boot === "ready") void loadBotTheme(useStore.getState().call); else clearBotTheme(); }, [boot]);
   useEffect(() => {
     if (boot !== "ready") return;
     // With the background connection on (complet build), the service notifies at once: no periodic check on top.
@@ -118,6 +122,7 @@ export default function App() {
                 <Stack.Screen name="Details" component={DetailsScreen} />
                 <Stack.Screen name="Computer" component={ComputerScreen} />
                 <Stack.Screen name="Chantiers" component={ChantiersScreen} />
+                <Stack.Screen name="Dashboard" component={DashboardScreen} />
               </>
             )}
         </Stack.Navigator>

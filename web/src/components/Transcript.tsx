@@ -10,7 +10,7 @@ import { callClock, clockTime, dividerLabel, elapsed, fileSize, hostName, liveDu
 import { accentStyle } from "../lib/colors";
 import { renderMarkdown } from "../lib/markdown";
 import { PagePreview } from "./PagePreview"; import { AnnotateButton } from "./ImageAnnotate"; import { StepDetailButton } from "./StepDetail";
-import { FirstTaskIdeas, MentionedFiles, previewable, usePreview } from "./SpendSkillsFiles"; import { BotWelcome } from "./BotWelcome";
+import { FirstTaskIdeas, MentionedFiles, previewable, usePreview } from "./SpendSkillsFiles"; import { BotWelcome } from "./BotWelcome"; import { SetupGuideOffer } from "./StepGuide";
 import { Avatar, BotAvatar } from "./Avatar";
 import { CardView } from "./Cards";
 import { GrantLine } from "./RulesAndNudges";
@@ -22,7 +22,7 @@ import { SubLimitNoticeActions } from "./SubLimit";
 import { RouteNoticeActions } from "./RoomRouting";
 import { ENGINE_BRAND } from "../lib/engines";
 import { ReportAction } from "./ReportMessage";
-import { ReplyAction, useMessageEnhance } from "./ReplyAction"; import { SimplerAction } from "./PassageComment"; import { TurnDebugAction } from "./ChatExport"; import { stableMarkdown, useNewLineSeq, withNewLine } from "../lib/chatreading"; import { MessageMore } from "./MessageMore"; import { LinkPreview } from "./ChatPlus"; import { TurnNoticeActions } from "./TurnCards"; import { requestSummary } from "../lib/requestSummary";
+import { ReplyAction, useMessageEnhance } from "./ReplyAction"; import { SimplerAction } from "./PassageComment"; import { TurnDebugAction } from "./ChatExport"; import { stableMarkdown, useNewLineSeq, withNewLine } from "../lib/chatreading"; import { MessageMore } from "./MessageMore"; import { LinkPreview } from "./ChatPlus"; import { TurnNoticeActions } from "./TurnCards"; import { requestSummary } from "../lib/requestSummary"; import { AudioAttachment } from "./AudioAttachment"; // L154
 
 type MessageBody = Extract<RowBody, { kind: "message" }>;
 type StepBody = Extract<RowBody, { kind: "step" }>;
@@ -249,7 +249,7 @@ function Attachments({ botId, files }: { botId: string; files: Attachment[] }) {
   const t = useT();
   const images = files.filter((f) => f.mime.startsWith("image/"));
   const videos = files.filter((f) => f.mime === "video/mp4" || f.mime === "video/webm");
-  const others = files.filter((f) => !f.mime.startsWith("image/") && !videos.includes(f));
+  const others = files.filter((f) => !f.mime.startsWith("image/") && !videos.includes(f) && !f.mime.startsWith("audio/")); // L154 audio plays inline (AudioAttachment.tsx)
   return (
     <div className="attachments">
       {videos.map((f) => (
@@ -265,6 +265,7 @@ function Attachments({ botId, files }: { botId: string; files: Attachment[] }) {
           </figcaption>
         </figure>
       ))}
+      {files.filter((f) => f.mime.startsWith("audio/")).map((f) => <AudioAttachment key={f.path} file={f} src={viewUrl(botId, f.path)} download={downloadUrl(botId, f.path)} />)}
       {images.map((f) => (
         <button key={f.path} type="button" className="attach-image" onClick={() => setOpen(f)} aria-label={t("attach.open", { name: f.name })} title={f.name}>
           <img src={viewUrl(botId, f.path)} alt={f.name} loading="lazy" />
@@ -889,7 +890,7 @@ function EmptyChat({ bot }: { bot: Bot }) {
       <p>{bot.description || fallback}</p>
       {imageGeneration && bot.kind !== "room" && <p className="chat-empty-hint">{t("empty.images")}</p>}
       {bot.kind !== "room" && <p className="chat-empty-hint">{t(video.higgsfield ? "empty.videoHiggsfield" : video.provider ? "empty.video" : "empty.videoOff")}</p>}
-      {bot.kind === "agent" && (bot.primary ? <FirstTaskIdeas bot={bot} /> : !bot.access && <BotWelcome bot={bot} />)}{/* L145 (BotWelcome.tsx) */}
+      {bot.kind === "agent" && (bot.primary ? <>{!bot.access && <SetupGuideOffer bot={bot} />}<FirstTaskIdeas bot={bot} /></> : !bot.access && <BotWelcome bot={bot} />)}{/* L145 (BotWelcome.tsx) */}
     </div>
   );
 }

@@ -9,7 +9,9 @@
 #  - it refuses `--deep` and anything naming `deep_mode`, so a page the bot read cannot talk it into "deep copy" mode;
 #  - it keeps the output of each `rebuild` in $log_dir, where Sklubot reads the questions the builder answered on its own
 #    (`--unattended`: "? <question> → <first choice> (unattended)") and the "[Check N] X% alike" lines
-#    (apps/craft-anything-cli/src/rebuild_cmd.rs in 0.6.1), to show them to the owner (agent/craft-run.ts).
+#    (apps/craft-anything-cli/src/rebuild_cmd.rs in 0.6.1), to show them to the owner (agent/craft-run.ts);
+#  - a rebuild WITHOUT --unattended reads its answers from the named pipe "<log>.in": Sklubot relays each question to the
+#    owner and writes the owner's own answer there (agent/craft-relay.ts, L23).
 # Paths can be moved for the tests (server/test/craft-install.test.ts); the bot's computer uses the defaults.
 set -eu
 version=0.6.1
@@ -42,7 +44,16 @@ esac
 if [ "\$1" = rebuild ]; then
   mkdir -p "$log_dir"
   log="$log_dir/\$(date +%Y%m%d-%H%M%S)-\$\$.log"
-  ( "$real" --clean-room "\$@" 2>&1; echo "\$?" > "\$log.code" ) | tee "\$log"
+  relay=yes
+  for a in "\$@"; do [ "\$a" = --unattended ] && relay=no; done
+  if [ "\$relay" = yes ]; then
+    # Questions relayed to the owner (L23): answers come through the named pipe "<log>.in" (agent/craft-relay.ts).
+    rm -f "\$log.in"; mkfifo -m 600 "\$log.in"
+    ( "$real" --clean-room "\$@" <>"\$log.in" 2>&1; echo "\$?" > "\$log.code" ) | tee "\$log"
+    rm -f "\$log.in"
+  else
+    ( "$real" --clean-room "\$@" 2>&1; echo "\$?" > "\$log.code" ) | tee "\$log"
+  fi
   code=\$(cat "\$log.code" 2>/dev/null || echo 1)
   rm -f "\$log.code"
   exit "\$code"

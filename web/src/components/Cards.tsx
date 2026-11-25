@@ -12,7 +12,7 @@ import { DiskCardView } from "./DiskAndTeamFolder";
 import { FilesCardView, PastedSecretCardView } from "./SecretsFilesProviders";
 import { GoalCardView } from "./GoalsAndJobs";
 import { FailureCardView } from "./Incidents";
-import { PollCardView } from "./ChatPlus"; import { PageLossCardView } from "./PageKeep"; import { RecruitCardView } from "./RecruitCard"; import { ViewCardView } from "./ViewCard"; import { TrajectoryCardView } from "./TrajectoryCard"; import { CodeBoxCard } from "./CodeBox";
+import { PollCardView } from "./ChatPlus"; import { PageLossCardView } from "./PageKeep"; import { StepGuideCardView } from "./StepGuide"; import { BoardPlanCardView } from "./BoardPlan"; import { RecruitCardView } from "./RecruitCard"; import { ViewCardView } from "./ViewCard"; import { TrajectoryCardView } from "./TrajectoryCard"; import { CodeBoxCard } from "./CodeBox";
 import { sendKeysFor } from "../../../mobile/shared/sendKey";
 import { CardCountdown, detailWithout, DraftEditor, isRichQuestion, RichQuestion } from "./TurnCards";
 
@@ -36,7 +36,7 @@ function Approval({ card, botId }: { card: ApprovalCard; botId: string }) {
   const [error, setError] = useState<string | null>(null);
   const floorCode = useFloorCode(card); const [code, setCode] = useState(""); // L44 (option): the approver's two-factor code on a floor card
   const [draft, setDraft] = useState<Record<string, string>>(() => card.draft ?? {}); const edited = !!card.draft && Object.keys(draft).some((k) => draft[k] !== card.draft![k]); // L83 (TurnCards.tsx)
-  const decide = async (decision: "allow" | "always" | "conversation" | "deny") => {
+  const decide = async (decision: "allow" | "always" | "conversation" | "allbots" | "deny") => {
     setBusy(decision);
     setError(null);
     try {
@@ -67,6 +67,8 @@ function Approval({ card, botId }: { card: ApprovalCard; botId: string }) {
   const relay = card.tool.startsWith("mycomputer:");
   // « Autoriser pour cette conversation » (server agent/conversationgrants.ts): offered by the server, to the owner only.
   const scoped = !!card.conversation && !card.once && !access;
+  // « Pour tous mes bots » (server computershare.ts): on the card that asks to take control of a computer, owner only.
+  const allBots = card.tool.startsWith("mycomputer: control: ") && !card.once && !access;
   return (
     <div className="card">
       <div className="card-head">
@@ -130,6 +132,13 @@ function Approval({ card, botId }: { card: ApprovalCard; botId: string }) {
               </button>
               <button type="button" className="btn btn-small" disabled={busy !== null} onClick={() => void decide("always")} title={t("approval.alwaysTitle")}>
                 {t(busy === "always" ? "common.saving" : "approval.alwaysBtn")}
+              </button>
+            </div>
+          )}
+          {allBots && (
+            <div className="card-actions is-more">
+              <button type="button" className="btn btn-small" disabled={busy !== null} onClick={() => void decide("allbots")} title={t("approval.allBotsTitle")}>
+                <Icon name="users" size={14} /> {t(busy === "allbots" ? "approval.allowing" : "approval.allBotsBtn")}
               </button>
             </div>
           )}
@@ -429,6 +438,10 @@ export function CardView({ card, botId, seq }: { card: Card; botId: string; seq:
       return <CodeBoxCard card={card} botId={botId} />; // L91 hidden code box
     case "pageloss":
       return <PageLossCardView card={card} botId={botId} seq={seq} />; // L157 « rien de perdu »
+    case "stepguide":
+      return <StepGuideCardView card={card} botId={botId} seq={seq} />; // L153 / L145 « pas à pas »
+    case "boardplan":
+      return <BoardPlanCardView card={card} botId={botId} seq={seq} />; // L163 plan → tableau
     default:
       return null;
   }

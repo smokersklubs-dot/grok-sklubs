@@ -19,6 +19,7 @@ protégé.
 | **Console et requêtes de la page** | `browser_console` (erreurs JavaScript de l'onglet, ses 3 dernières pages) et `browser_network` (requêtes, état, taille ; le détail d'une requête avec ses en-têtes). Lecture seule ; les valeurs qui peuvent contenir un secret (cookies, autorisation, jetons, clés) sont **masquées**. |
 | **Contrôle automatique des pages publiées** | Après `page_publish` ou `page_edit`, la page est ouverte dans un onglet temporaire en **téléphone (390 px)** et **ordinateur (1280 px)** : le bot reçoit une image des deux, les erreurs de la console, les fichiers qui ne se chargent pas, et des règles (textes des images, contraste, débordement de côté, titre visible, viewport, focus clavier, mouvement réduit, `transition: all`, `100vw`, couleurs en dur, JSON-LD, caractères invisibles). Il doit te dire ce qui a été trouvé ; « rien trouvé » n'est jamais présenté comme « parfait ». Sans navigateur, seules les règles du code sont vérifiées, et c'est dit. |
 | Lire une page | `page_read` (le texte), `screen_view` (une capture). |
+| **Les autres applis, par leurs commandes** (L164) | `app_windows` liste les applis ouvertes et leurs fenêtres ; `app_tree` lit les boutons, menus, champs et listes de l'appli devant (une boîte de dialogue ouverte d'abord), chacun avec une référence comme `x3f9a.12` ; `app_act` clique, met le focus ou remplace le texte d'un champ (relu ensuite) **par sa référence**, sans viser au pixel. Si l'appli a changé depuis la lecture, rien n'est fait. Un champ mot de passe n'est jamais lu ni rempli ; un clic sur « Envoyer », « Payer », « Supprimer »… te demande ton accord à chaque fois ; rien ne se fait pendant que tu as la main. Ça marche avec les applis GTK (éditeur de texte, gestionnaire de fichiers, boîtes « Enregistrer sous ») ; pour les pages du navigateur, `element_snapshot` reste plus précis. Une appli ouverte avant le démarrage du lecteur doit être rouverte. |
 | **Plusieurs onglets** | Le bot lit et agit toujours sur **l'onglet affiché devant**. Un lien qui ouvre un nouvel onglet : le bot le suit tout seul. `browser_tabs` liste ses onglets, `browser_tab` en met un devant ou le ferme, `browser_open` avec `new_tab` en ouvre un nouveau. Un deuxième `browser_open` réutilise le navigateur ouvert (plus jamais deux navigateurs à la fois). |
 | **Fenêtre de la page** (« alerte », « Êtes-vous sûr ? », « Quitter la page ? ») | Le bot la voit tout de suite, avec son texte. `browser_dialog` : **« dismiss »** (Annuler / fermer) est toujours libre ; **« accept »** (OK) sur une question te demande d'abord ton accord, à chaque fois. |
 | Bouton caché par un bandeau | Avant de cliquer, le bot vérifie ce qui est vraiment sous le clic. Si un bandeau cookies ou une fenêtre couvre le bouton, **rien n'est cliqué** et il sait ce qui gêne. |
@@ -153,6 +154,19 @@ Quand tu relies **ton** ordinateur avec le Relais (l'appli Sklubot pour ordinate
 accord. Sklubot vérifie d'abord, sur le serveur, avant d'envoyer quoi que ce soit ; puis l'ordinateur vérifie encore de
 son côté (au cas où l'appli serait ancienne ou modifiée). Tout se règle dans **Réglages → Ordinateurs → Règles de
 sécurité**.
+
+### Un ordinateur pour tous tes bots
+
+Ton ordinateur relié sert à **tous** tes bots, un seul à la fois :
+
+- sur la question du Relais, « **Autoriser tous mes bots de ce compte** » : ensuite, n'importe lequel de tes bots
+  prend la main sans nouvelle question (tu le retires dans la liste « Bots » du Relais). Dans Sklubot, la carte
+  « prendre le contrôle » propose aussi « **Pour tous mes bots** » (retirable dans Réglages → Ordinateurs) ;
+- si un bot utilise déjà l'ordinateur, le suivant attend son tour et l'écrit dans son chat : « En attente de
+  l'ordinateur …, utilisé par Léa ». Quand le premier ne fait plus rien depuis 20 secondes, il laisse la main tout seul ;
+- les commandes sont toujours demandées comme avant, et **Stop** arrête tout, y compris les bots qui attendent ;
+- avec plusieurs ordinateurs reliés, chaque bot a « **Ordinateur de ce bot** » dans ses réglages : « Celui qui est
+  connecté » (par défaut) ou un ordinateur précis.
 
 ### Le terminal, sous contrôle (pour coder)
 

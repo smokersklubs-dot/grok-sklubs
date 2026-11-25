@@ -12,6 +12,7 @@ import { cachedPeek, commandFloor, commandPrefix, findScripts, fingerprint, FLOO
 import type { BuiltinTool, ToolContext, ToolOutput } from "./tools.js";
 import { commandStops } from "../commandstop.js";
 import { FILE_ACCESS_ALSO, FILE_ACCESS_CARD, fileAccess, fileAccessKey } from "../fileaccess.js";
+import { allBotsControl, botDevice } from "../computershare.js"; import { takeComputer } from "./computerqueue.js"; // one computer for all the bots of the account
 
 /**
  * "mycomputer": the bot uses one of the user's own computers through Sklubot Relais (relay.ts, protocol in
@@ -46,13 +47,18 @@ const urlKey = (botName: string) => `mycomputer: url: ${botName}`;
 
 export interface Target { id: string; name: string; label: string; kind: DeviceKind; platform: string }
 
-/** The device a call is about: the one named, else the only one connected. */
-export function pick(userId: string, wanted: unknown): { target?: Target; error?: string } {
+/** The device a call is about: the one named, else the bot's own choice (computershare.ts), else the only one connected. */
+export function pick(userId: string, wanted: unknown, botId?: string): { target?: Target; error?: string } {
   const all = devices.list(userId);
   if (!all.length) return { error: "The user has no computer or phone linked to Sklubot. They can link one in Settings → Computers (with the Sklubot Relais app, or the Sklubot Android app for a phone)." };
   const w = typeof wanted === "string" ? wanted.trim().toLowerCase() : "";
   let row = w ? all.find((d) => d.id.toLowerCase() === w) ?? all.find((d) => d.name.toLowerCase() === w) ?? all.find((d) => d.name.toLowerCase().startsWith(w)) : undefined;
   if (w && !row) return { error: `No linked computer is called "${clip(String(wanted), 60)}". Linked: ${all.map((d) => d.name).join(", ")}.` };
+  const chosen = !row && botId ? botDevice.get(userId, botId) : null;
+  if (chosen) {
+    row = all.find((d) => d.id === chosen)!;
+    if (!liveDevice(userId, row.id)) return { error: `This bot is set to use the computer "${row.name}" (its settings: Computer of this bot), and it is not connected right now. Ask the user to open Sklubot Relais on it, or to pick another computer for you in your settings. Do not use another computer on your own.` };
+  }
   if (!row) {
     const up = all.filter((d) => liveDevice(userId, d.id));
     if (up.length > 1) return { error: `Several computers are connected (${up.map((d) => d.name).join(", ")}). Say which one with "device".` };
@@ -81,9 +87,10 @@ function controlCard(botName: string, label: string, tainted: boolean, note = CO
 export const controlGate: Gate = (a, ctx) => {
   const bot = bots.byId(ctx.botId);
   if (!bot) return null;
-  const { target } = pick(bot.userId, a.device);
+  const { target } = pick(bot.userId, a.device, bot.id);
   if (!target || !liveDevice(bot.userId, target.id)) return null; // the tool itself explains
-  return hasSession(bot.userId, target.id, bot.id) ? null : controlCard(bot.name, target.label, ctx.tainted);
+  // « Pour tous mes bots » (computershare.ts): the account's yes, never after outside content nor for a blocked bot.
+  return hasSession(bot.userId, target.id, bot.id) || allBotsControl.covers(bot.userId, bot.name, ctx.tainted) ? null : controlCard(bot.name, target.label, ctx.tainted);
 };
 
 /** Opening an address after outside content could carry what the bot read out in the URL: asked every time then. */
@@ -91,7 +98,7 @@ const openGate: Gate = (a, ctx) => {
   const control = controlGate(a, ctx);
   if (control || !ctx.tainted || typeof a.url !== "string" || !a.url.trim()) return control;
   const bot = bots.byId(ctx.botId);
-  const { target } = bot ? pick(bot.userId, a.device) : {};
+  const { target } = bot ? pick(bot.userId, a.device, bot.id) : {};
   if (!bot || !target) return null;
   return { key: urlKey(bot.name), strict: true, once: true, vars: { device: target.label, url: clip(a.url, 200) }, source: SOURCE, title: "{bot} has read outside content. Allow it to open {url} on {device}?", reason: "open an address on {device}" };
 };
@@ -109,7 +116,7 @@ const commandCwd = (a: Record<string, any>, projects: string[]) => (typeof a.cwd
 const commandGate: Gate = (a, ctx) => {
   const bot = bots.byId(ctx.botId);
   if (!bot) return null;
-  const { target } = pick(bot.userId, a.device);
+  const { target } = pick(bot.userId, a.device, bot.id);
   // Without a session the tool answers "take control first", and a phone has no commands: no card for a command that cannot run.
   if (!target || target.kind === "phone" || !hasSession(bot.userId, target.id, bot.id)) return null;
   // Commands off for this computer, or a keep-out folder in it: the tool refuses, no card.
@@ -230,18 +237,18 @@ type Need = "control" | "session-only";
  * turn); a session that ended under the bot's feet sends it back through the card otherwise.
  */
 export async function inSession(c: ToolContext, a: Record<string, any>, need: Need, reason: string, fn: (t: Target) => Promise<ToolOutput>): Promise<ToolOutput> {
-  const p = pick(c.user.id, a.device);
+  const p = pick(c.user.id, a.device, c.bot.id);
   if (!p.target) return { content: p.error!, isError: true, summary: tr(c.user.locale, "no computer") };
   const t = p.target;
   const live = liveDevice(c.user.id, t.id);
   if (!live) return refusal(c, t, { ok: false, code: "offline", message: "" });
   if (heldBack(c.bot.id, t.id)) return { content: "The user stopped your control of this computer from Sklubot. Do not take control again unless they ask you to.", isError: true, summary: tr(c.user.locale, "stopped by you") };
   if (live.locked) return refusal(c, t, { ok: false, code: "locked", message: "" });
-  if (live.session && live.session.botId !== c.bot.id) return refusal(c, t, { ok: false, code: "busy", message: "" });
   const hadSession = live.session?.botId === c.bot.id;
   if (!hadSession) {
     if (need === "session-only") return { content: `You have no control session on ${t.label}. Look at its screen with my_screen first: that asks the user for control.`, isError: true, summary: tr(c.user.locale, "no control session") };
-    const s = await startSession(c, t, reason);
+    // Another bot drives it: hand-over when it is idle, else wait in line (agent/computerqueue.ts).
+    const s = await takeComputer(c, t, () => startSession(c, t, reason));
     if (!s.ok) return refusal(c, t, s);
   }
   const out = await fn(t);
@@ -252,9 +259,9 @@ export async function inSession(c: ToolContext, a: Record<string, any>, need: Ne
 export async function act(c: ToolContext, t: Target, op: string, args: Record<string, unknown>, timeoutMs?: number): Promise<RelayResult> {
   const r = await call(c, t, op, args, timeoutMs);
   if (r.ok || r.code !== "no_session") return r;
-  const allowed = policies.get(c.user.id, controlKey(c.bot.name)) === "always_allow" && !c.tainted;
+  const allowed = (policies.get(c.user.id, controlKey(c.bot.name)) === "always_allow" || allBotsControl.covers(c.user.id, c.bot.name, false)) && !c.tainted;
   if (!allowed) return { ok: false, code: "session_ended", message: "" };
-  const s = await startSession(c, t, "");
+  const s = await takeComputer(c, t, () => startSession(c, t, "")); // handed over meanwhile: wait for it again
   if (!s.ok) return s;
   return call(c, t, op, args, timeoutMs);
 }
@@ -362,7 +369,7 @@ const FILE_PATH = str("Path inside that folder, with / between folders (e.g. \"f
 const filesWriteGate: Gate = (a, ctx) => {
   const bot = bots.byId(ctx.botId);
   if (!bot) return null;
-  const { target } = pick(bot.userId, a.device);
+  const { target } = pick(bot.userId, a.device, bot.id);
   if (!target) return null;
   const trash = a.mode === undefined && a.text === undefined;
   const off = !fileAccess.on(bot.userId, target.id) ? FILE_ACCESS_ALSO : "";
@@ -377,7 +384,7 @@ const filesWriteGate: Gate = (a, ctx) => {
 /** nod 9: listing or reading while the owner's file access is off → one card that turns it back on (fileaccess.ts). */
 const filesReadGate: Gate = (a, ctx) => {
   const bot = bots.byId(ctx.botId);
-  const { target } = bot ? pick(bot.userId, a.device) : {};
+  const { target } = bot ? pick(bot.userId, a.device, bot.id) : {};
   if (!bot || !target || target.kind === "phone" || fileAccess.on(bot.userId, target.id)) return null;
   return { key: fileAccessKey(bot.name), strict: true, once: true, source: SOURCE, vars: { device: target.label }, ...FILE_ACCESS_CARD };
 };
@@ -389,7 +396,7 @@ const filesReadGate: Gate = (a, ctx) => {
  */
 function filesTarget(c: ToolContext, a: Record<string, any>): { target: Target } | { out: ToolOutput } {
   if (c.origin !== "user" || c.bot.parentId) return { out: { content: "The user's own files can only be used in work the user started themselves in this chat — not from a routine, a background task, a nudge or a message from another bot. Ask the user in the chat.", isError: true, summary: tr(c.user.locale, "not from background work") } };
-  const p = pick(c.user.id, a.device);
+  const p = pick(c.user.id, a.device, c.bot.id);
   if (!p.target) return { out: { content: p.error!, isError: true, summary: tr(c.user.locale, "no computer") } };
   const live = liveDevice(c.user.id, p.target.id);
   if (!live) return { out: refusal(c, p.target, { ok: false, code: "offline", message: "" }) };
@@ -469,7 +476,7 @@ const fileTools: BuiltinTool[] = [
     activity: "computer", label: "Switching access to your files", audited: true,
     gate: (a, ctx) => (a.on === true ? filesReadGate(a, ctx) : null),
     run: async (a, c) => {
-      const p = pick(c.user.id, a.device);
+      const p = pick(c.user.id, a.device, c.bot.id);
       if (!p.target) return { content: p.error!, isError: true, summary: tr(c.user.locale, "no computer") };
       if (p.target.kind === "phone") return { content: `${p.target.label} is a phone: shared folders exist only on computers (Sklubot Relais).`, isError: true, summary: tr(c.user.locale, "not on a phone") };
       const on = a.on === true;
@@ -520,7 +527,7 @@ const vaultFillGate: Gate = (a, ctx) => {
   const control = controlGate(a, ctx);
   if (control) return control;
   const bot = bots.byId(ctx.botId);
-  const { target } = bot ? pick(bot.userId, a.device) : {};
+  const { target } = bot ? pick(bot.userId, a.device, bot.id) : {};
   if (!bot || !target || target.kind === "phone") return null;
   const item = vault.byName(bot.userId, String(a.item ?? ""));
   if (!item) return null; // the tool says it does not exist
@@ -579,7 +586,7 @@ const keyGate: Gate = (a, ctx) => {
   const control = controlGate(a, ctx);
   if (control || a.force !== true) return control;
   const bot = bots.byId(ctx.botId);
-  const { target } = bot ? pick(bot.userId, a.device) : {};
+  const { target } = bot ? pick(bot.userId, a.device, bot.id) : {};
   const v = target && target.kind === "computer" ? protectedShortcut(String(a.keys ?? ""), target.platform) : null;
   if (!bot || !target || !v) return null;
   return { key: `mycomputer: shortcut: ${bot.name}`, strict: true, once: true, vars: { device: target.label, keys: v.combo, why: v.why }, source: SOURCE, title: "Allow {bot} to press {keys} on {device}?", reason: "press a protected shortcut on {device}", note: "This shortcut is protected because {why}. The computer will ask you too." };
@@ -777,7 +784,7 @@ export const myComputerTools: BuiltinTool[] = guardVault([ // L41 (vaultaccess.t
     activity: "shell", label: "Running a command on your computer", outside: true, audited: true, gate: commandGate, detail: (a) => clip(String(a.command ?? ""), 60),
     run: async (a, c) => {
       // A phone never runs commands (its relay does not offer shell.run): refused here, nothing is sent.
-      const p = pick(c.user.id, a.device);
+      const p = pick(c.user.id, a.device, c.bot.id);
       if (p.target?.kind === "phone") return { ...NOT_ON_PHONE(`Running commands on ${p.target.label}`), summary: tr(c.user.locale, "not on a phone") };
       return inSession(c, a, "session-only", "", async (t) => {
       const command = String(a.command ?? "");
@@ -850,7 +857,7 @@ export const myComputerTools: BuiltinTool[] = guardVault([ // L41 (vaultaccess.t
   tool("my_release", "Give control of the user's computer or phone back to them (end your control session) when you are done with it.", obj({ device: DEVICE }), {
     activity: "computer", label: "Handing your computer back",
     run: async (a, c) => {
-      const p = pick(c.user.id, a.device);
+      const p = pick(c.user.id, a.device, c.bot.id);
       if (!p.target) return { content: p.error!, isError: true };
       if (!hasSession(c.user.id, p.target.id, c.bot.id)) return { content: "You had no control session there.", summary: tr(c.user.locale, "nothing to release") };
       const r = await call(c, p.target, "session.end", {});

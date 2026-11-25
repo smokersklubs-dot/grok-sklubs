@@ -36,7 +36,7 @@ import { approveStep, FlowError, flows, startReplay, stopRun } from "./flows.js"
 import { routines } from "./routines.js";
 import { bots, rows, type UserRecord } from "./store.js";
 import { cleanScope, guests, teamMemoryBots, TeamMemoryError, teamNotes } from "./teammemory.js";
-import { registerBoardRoutes } from "./workboardroutes.js";
+import { registerBoardRoutes } from "./workboardroutes.js"; import { registerBoardPlanRoutes } from "./boardplan.js";
 import { startBoard } from "./workboard.js";
 import { wt } from "./worki18n.js";
 
@@ -51,7 +51,7 @@ function guard(c: Context<Env>, fn: () => Response | Promise<Response>) {
 }
 
 export function registerWorkRoutes(api: Hono<Env>) {
-  registerBoardRoutes(api);
+  registerBoardRoutes(api); registerBoardPlanRoutes(api); // L163 plan → tableau, bot pour un rôle (boardplan.ts)
   startBoard();
   const uid = (c: Context<Env>) => c.get("user").id;
   const ownBot = (c: Context<Env>) => { const b = bots.owned(uid(c), c.req.param("id") ?? ""); if (!b) throw new FlowError(404, "That bot is not one of yours."); return b; };

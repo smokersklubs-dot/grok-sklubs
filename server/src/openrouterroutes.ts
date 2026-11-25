@@ -1,5 +1,6 @@
 import type { Context, Hono } from "hono";
 import { apiProviders } from "./apimodels.js";
+import { refuseCreditless } from "./modelplusroutes.js";
 import { unseal } from "./auth.js";
 import { q } from "./db.js";
 import { RateWindow } from "./hardening.js";
@@ -54,6 +55,7 @@ export function registerOpenRouterRoutes(api: Hono<any>) {
     const b = await json(c);
     const key = cleanKey(b.key);
     if (key === "bad") return bad(c, 400, "That key does not look right.");
+    if (key) await refuseCreditless(c, openRouterBase(), key, "openrouter"); // L150: a key with no credit is refused (providercredit.ts)
     let models: ApiProviderModel[] | undefined;
     if (b.models !== undefined) {
       try { models = modelsFromCatalog(b.models, await openRouterCatalog()); }

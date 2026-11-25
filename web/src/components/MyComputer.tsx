@@ -1,3 +1,4 @@
+import { AllBotsControlLine } from "./ComputerShare";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { api, enc, errText } from "../api";
 import { useT } from "../i18n";
@@ -369,6 +370,7 @@ export function DevicesSection() {
           ))}
         </ul>
       )}
+      <AllBotsControlLine />
       <p className="muted small">{t("relay.privacy")}</p>
     </>
   );

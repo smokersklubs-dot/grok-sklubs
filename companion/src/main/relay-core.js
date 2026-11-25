@@ -3,7 +3,9 @@
 /**
  * Relay core: everything that happens once the device is authenticated.
  * Enforces, on the client, the rules the server cannot override:
- *  - a control session must be accepted locally (once / always for this bot / refuse);
+ *  - a control session must be accepted locally (once / always for this bot / all bots of this account / refuse);
+ *  - one bot drives at a time; another bot of the account takes over only when the holder has been idle for
+ *    HANDOVER_IDLE_MS and the newcomer is allowed (protocol 1.7, docs/RELAIS-PROTOCOLE.md §7);
  *  - every shell command is confirmed locally unless the user enabled commands for this bot;
  *  - Stop (button or hotkey) ends the session and locks the relay until the user re-allows;
  *  - consent prompts are rate limited; mouse/keyboard input is refused while a prompt is open;
@@ -18,15 +20,21 @@ const G = require('./guard');
 const AX = require('./capabilities/accessibility');
 
 const IDLE_SESSION_MS = 15 * 60_000;
+/**
+ * Hand-over (1.7): a bot asking for control while another one holds it gets it only when the holder made no request
+ * for this long and runs no command. 20 s: longer than the gap between two clicks of a working bot, short enough for
+ * the owner's next bot not to wait long. Before that, the newcomer is told `busy` with `retryAfterMs`.
+ */
+const HANDOVER_IDLE_MS = 20_000;
 const VIEW_ACK_TIMEOUT_MS = 15_000;
 const VIEW_MAX_INFLIGHT = 2;
 const VIEW_KEEPALIVE_MS = 5_000;
 
 /**
  * @typedef {{ id: string, name: string }} Bot
- * @typedef {{ botId: string, botName: string, grant: 'once'|'always'|'test', startedAt: number, lastActivity: number }} Session
+ * @typedef {{ botId: string, botName: string, grant: 'once'|'always'|'account'|'test', startedAt: number, lastActivity: number }} Session
  * @typedef {{
- *   askSession(p: { promptId: string, bot: Bot, reason: string, timeoutMs: number }): Promise<'once'|'always'|'refuse'|'expired'>,
+ *   askSession(p: { promptId: string, bot: Bot, reason: string, timeoutMs: number, holder?: Bot }): Promise<'once'|'always'|'all'|'refuse'|'expired'>,
  *   askCommand(p: { promptId: string, bot: Bot, command: string, cwd: string|null, timeoutMs: number, floor?: string, scripts?: { path: string, sha256: string, lines: string[], more: number, binary: boolean }[] }): Promise<{ decision: 'run'|'refuse'|'expired', alwaysForBot?: boolean }>,
  *   askGuard?(p: { promptId: string, bot: Bot, kind: 'terminal'|'shortcut'|'gpu', detail: string, timeoutMs: number }): Promise<'allow'|'refuse'|'expired'>,
  *   cancelPrompt(promptId: string): void,
@@ -38,6 +46,8 @@ const VIEW_KEEPALIVE_MS = 5_000;
  *   setBotPerm(bot: Bot, key: 'control'|'commands', value: any): void,
  *   isLocked(): boolean,
  *   setLocked(v: boolean): void,
+ *   getAllBots?(): boolean,
+ *   setAllBots?(v: boolean): void,
  * }} PermStore
  */
 
@@ -265,36 +275,69 @@ class RelayCore {
 
   /** @param {string} id @param {Bot} bot @param {string} reason */
   async startSession(id, bot, reason) {
+    /** @type {Bot|undefined} the idle bot this one takes over from (1.7) */
+    let holder;
     if (this.session) {
       if (this.session.botId === bot.id) return this.ok(id, { sessionId: this.sessionIdValue, grant: this.session.grant, already: true });
-      return this.fail(id, ERR.BUSY, 'another bot has the control session');
+      const busy = this.busyFor();
+      if (busy > 0) return this.failBusy(id, busy);
+      holder = { id: this.session.botId, name: this.session.botName };
     }
     const perm = this.d.store.getBot(bot.id);
-    /** @type {'once'|'always'|'test'} */
+    /** @type {'once'|'always'|'account'|'test'} */
     let grant;
+    let asked = false;
     if (perm && perm.control === 'always') {
       grant = 'always';
+    } else if (this.d.store.getAllBots && this.d.store.getAllBots()) {
+      grant = 'account';
     } else if (this.d.autoConfirm) {
       grant = 'test';
     } else {
-      const decision = await this.prompt(bot, 'session', (promptId, timeoutMs) => this.d.ui.askSession({ promptId, bot, reason, timeoutMs }));
+      asked = true;
+      const decision = await this.prompt(bot, 'session', (promptId, timeoutMs) => this.d.ui.askSession({ promptId, bot, reason, timeoutMs, ...(holder ? { holder } : {}) }));
       if (typeof decision === 'object') return this.fail(id, decision.code, decision.message, decision.extra);
       if (decision === 'refuse') return this.fail(id, ERR.CONSENT_REFUSED, 'the user refused the control session');
       if (decision === 'expired') return this.fail(id, ERR.CONSENT_EXPIRED, 'nobody answered on the computer');
       if (decision === 'always') this.d.store.setBotPerm(bot, 'control', 'always');
-      grant = decision === 'always' ? 'always' : 'once';
+      if (decision === 'all' && this.d.store.setAllBots) this.d.store.setAllBots(true);
+      grant = decision === 'always' ? 'always' : decision === 'all' ? 'account' : 'once';
     }
     // The user may have pressed Stop, or another bot may have won, while the dialog was open.
     if (this.locked) return this.fail(id, ERR.LOCKED, 'the user stopped remote control on this computer');
-    if (this.session) return this.fail(id, ERR.BUSY, 'another bot has the control session');
+    if (this.session && this.session.botId === bot.id) return this.ok(id, { sessionId: this.sessionIdValue, grant: this.session.grant, already: true });
+    if (this.session) {
+      // Only the idle bot seen above can be replaced: after the owner's yes on this screen, or silently while it is
+      // still idle; never a bot that won the computer while the question was open.
+      const busy = this.busyFor();
+      if (!holder || this.session.botId !== holder.id || (!asked && busy > 0)) return this.failBusy(id, Math.max(busy, 1));
+      this.endSession('handover', { to: bot });
+    }
     const t = this.now();
     this.session = { botId: bot.id, botName: bot.name, grant, startedAt: t, lastActivity: t };
     this.sessionIdValue = `s${t.toString(36)}${++this.sessionSeq}`;
     this.touch();
     this.d.ui.onSession(this.session);
-    this.d.log({ kind: 'session.started', bot, grant });
-    this.event('session.started', { bot, grant, sessionId: this.sessionIdValue });
-    return this.ok(id, { sessionId: this.sessionIdValue, grant });
+    this.d.log({ kind: 'session.started', bot, grant, ...(holder ? { from: holder } : {}) });
+    this.event('session.started', { bot, grant, sessionId: this.sessionIdValue, ...(holder ? { from: holder } : {}) });
+    return this.ok(id, { sessionId: this.sessionIdValue, grant, ...(holder ? { from: holder } : {}) });
+  }
+
+  /**
+   * How long the bot holding the session still counts as working (ms): 0 when it may be replaced. A running command
+   * (in front or in the background) or an open question keeps it busy whatever the time.
+   */
+  busyFor() {
+    if (!this.session) return 0;
+    const jobs = [...this.jobs.values()].some((j) => !j.done);
+    if (this.running.size || jobs || this.gate.pending) return HANDOVER_IDLE_MS;
+    return Math.max(0, HANDOVER_IDLE_MS - (this.now() - this.session.lastActivity));
+  }
+
+  /** `busy`, saying who drives and when to ask again (1.7; older servers read the code only). @param {string} id @param {number} waitMs */
+  failBusy(id, waitMs) {
+    const s = /** @type {Session} */ (this.session);
+    return this.fail(id, ERR.BUSY, 'another bot has the control session', { holder: { id: s.botId, name: s.botName }, retryAfterMs: Math.max(1000, Math.ceil(waitMs)) });
   }
 
   /**
@@ -343,8 +386,8 @@ class RelayCore {
     this.idleTimer = unref(this.setTimer(() => this.endSession('idle'), IDLE_SESSION_MS));
   }
 
-  /** @param {string} reason */
-  endSession(reason) {
+  /** @param {string} reason @param {{ to?: Bot }} [extra] who takes over, for a hand-over */
+  endSession(reason, extra = {}) {
     this.stopView('session_ended');
     for (const ac of this.running.values()) ac.abort();
     this.running.clear();
@@ -360,8 +403,8 @@ class RelayCore {
     const s = this.session;
     this.session = null;
     this.d.ui.onSession(null);
-    this.d.log({ kind: 'session.ended', bot: { id: s.botId, name: s.botName }, reason });
-    this.event('session.ended', { bot: { id: s.botId, name: s.botName }, reason, sessionId: this.sessionIdValue });
+    this.d.log({ kind: 'session.ended', bot: { id: s.botId, name: s.botName }, reason, ...extra });
+    this.event('session.ended', { bot: { id: s.botId, name: s.botName }, reason, sessionId: this.sessionIdValue, ...extra });
   }
 
   /**
@@ -750,4 +793,4 @@ function summarize(op, args) {
   return args;
 }
 
-module.exports = { RelayCore, TokenBucket, IDLE_SESSION_MS };
+module.exports = { RelayCore, TokenBucket, IDLE_SESSION_MS, HANDOVER_IDLE_MS };

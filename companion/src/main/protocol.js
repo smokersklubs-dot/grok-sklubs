@@ -18,8 +18,11 @@ const PROTOCOL_VERSION = 1;
  * `shell.output` events, vault.type (a saved login typed by the relay after its own checks).
  * 1.5 (L164): ax.tree / ax.act — the accessibility tree of an app and actions by reference (macOS, Windows only).
  * 1.6 (audit Open Generative AI): gpu.http — the owner's own Wan2GP on 127.0.0.1 of this computer (capabilities/gpu.js).
+ * 1.7: one computer for all the bots of the account — « all my bots » on the session question (grant "account"), an
+ * idle session handed over to the next bot (session.ended reason "handover" + `to`, session.started `from`), `busy`
+ * with `holder` and `retryAfterMs`, capability "session.handover". Older servers ignore the new fields.
  */
-const PROTOCOL_REVISION = '1.6';
+const PROTOCOL_REVISION = '1.7';
 const CONNECT_PATH = '/api/relay/connect';
 
 /** Size limits (bytes). Server → client messages above MAX_INBOUND are rejected by `ws` (close 1009). */

@@ -7,6 +7,7 @@
  *    bot's browser and shows that screen live here (server subscriptionconnect.ts); the status is polled until signed in.
  * Passwords are typed on the provider's page only, never in Sklubot; keys are write-only (never shown again).
  */
+import { CreditAlertField } from "./CreditAlertField"; // L150 OpenRouter credit alert
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, enc, errText } from "../api";
 import { useStore } from "../store";
@@ -221,6 +222,7 @@ export function OpenRouterCard({ onChanged }: { onChanged?: () => void }) {
         {note && <p className="provider-check is-ok" role="status"><Icon name="check" size={14} /> {note}</p>}
         {connected && p && !picking && <p className="muted small">{a("orModelsN", { n: p.models.length })}{p.models.length ? ` : ${p.models.slice(0, 4).map((m) => m.id).join(", ")}${p.models.length > 4 ? "…" : ""}` : ""}</p>}
       </form>
+      {connected && !picking && <CreditAlertField />}
       {picking && p && <OpenRouterModels chosen={p.models.map((m) => m.id)} onClose={() => setPicking(false)} onSaved={(np) => { setSt({ ...st, provider: np }); setPicking(false); onChanged?.(); }} />}
       <ErrorNote onDismiss={() => setError(null)}>{error}</ErrorNote>
     </article>

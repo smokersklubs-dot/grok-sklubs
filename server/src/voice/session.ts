@@ -3,7 +3,7 @@ import type { Duplex } from "node:stream";
 import { WebSocketServer, type WebSocket } from "ws";
 import { originAllowed, parseCookies, SESSION_COOKIE, userForToken } from "../auth.js";
 import { getLive, subscribe } from "../bus.js";
-import { callEnded, callStarted } from "../calls.js";
+import { callEnded, callProgress, callStarted } from "../calls.js";
 import { decideApproval, interrupt, isPaused, runningThreads, submitMemberMessage, submitUserMessage } from "../agent/loop.js"; import { relayToHelpers } from "../agent/helperrelay.js";
 import { holdAndOffer, screen as screenSecrets } from "../pastedsecrets.js";
 import { audit, bots, laneKey, rows, type BotRecord, type UserRecord } from "../store.js";
@@ -386,7 +386,7 @@ function runCall(ws: WebSocket, bot: BotRecord, user: UserRecord, member: { role
     }
   });
   const limit = setTimeout(() => ws.close(4000, "call too long"), MAX_CALL_MS);
-  const ticker = setInterval(() => session?.tick(), 400);
+  const ticker = setInterval(() => { session?.tick(); if (callId) callProgress(callId, session?.transcript ?? rt?.bridge.transcript ?? []); }, 400); // L154: kept across a restart (calls.ts)
   const finish = () => {
     clearTimeout(limit);
     clearInterval(ticker);
@@ -439,7 +439,7 @@ function runCall(ws: WebSocket, bot: BotRecord, user: UserRecord, member: { role
       if (live.available) {
         rt = startRealtimeCall({ bot, user, send, post });
         if (rt) {
-          callId = callStarted(bots.byId(bot.id)!, user.locale);
+          callId = callStarted(bots.byId(bot.id)!, user.locale, "server");
           send(JSON.stringify({ type: "ready", callId, stt: "realtime", tts: "realtime", realtime: live.model, voice: `${live.model} · ${live.voice}` }));
           return;
         }
@@ -460,7 +460,7 @@ function runCall(ws: WebSocket, bot: BotRecord, user: UserRecord, member: { role
           if (decideApproval(bot.userId, approvalId, allow ? "allow" : "deny")) audit(bot.userId, "channel", `${bot.name}: approval answered by voice during a call (${allow ? "yes" : "no"})`, bot.id);
         },
       });
-      callId = callStarted(current, user.locale);
+      callId = callStarted(current, user.locale, "server");
       const st = voiceStatus(bot.userId, bot.id);
       // `voice`: the name of the voice the bot speaks with (its own, or the free one it was given), shown in the call bar.
       send(JSON.stringify({ type: "ready", callId, stt: settings.stt.provider, tts: st.tts ?? settings.tts.provider, ...(st.voice ? { voice: st.voice } : {}) }));

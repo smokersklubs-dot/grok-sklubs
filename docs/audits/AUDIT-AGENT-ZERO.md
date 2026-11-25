@@ -300,7 +300,7 @@ Taille : S (moins d'un jour), M (quelques jours), L (une semaine ou plus). Chemi
 12. **Mémoire par projet** et règle « pas d'historique de tâche en mémoire » dans `memory_save` (S/M).
 13. **Export d'une conversation** ; **jauge de contexte** ; **bouton « résumer maintenant »** (S).
 14. **Commandes « / » personnelles** (S).
-15. **Préréglages de modèles par conversation et par projet** ; **rotation de plusieurs clés** (S).
+15. **Préréglages de modèles par conversation et par projet** ; **rotation de plusieurs clés** (S). — *Fait 25/11/2026 : préréglages par projet et réflexion par conversation (`server/src/projectpresets.ts`, `convs.ts`).*
 16. **Import depuis Claude Code / Hermes / OpenClaw / Codex** avec aperçu, secrets exclus (M).
 17. **Épingler** des conversations et projets (S).
 18. **Édition partagée en direct** d'un document Markdown (M).

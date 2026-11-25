@@ -27,7 +27,7 @@ import { CommandView } from "./components/CommandView";
 import { AnnouncementsView } from "./components/AnnouncementsView";
 import { SiteAnnouncementBanner } from "./components/AnnouncementCard";
 import { useAnnouncements } from "./lib/announcements";
-import { ThreadPanel } from "./components/ThreadPanel"; import { SideChat, useSideBot } from "./components/SideChat";
+import { ThreadPanel } from "./components/ThreadPanel"; import { SideChat, useSideBots } from "./components/SideChat"; import { ChatLayoutsHost } from "./components/ChatLayouts"; import { layoutClass } from "./lib/sidechat";
 import { ChantierOverlay } from "./components/Chantier"; import { WorkBoardOverlay } from "./components/WorkBoard";
 import { isDownloadPath } from "./lib/platform";
 import { useDesktopBadge } from "./lib/desktop";
@@ -142,18 +142,18 @@ function Shell() {
   const openThread = useStore((s) => (s.openThread && s.openThread.botId === s.selectedId ? s.openThread : null));
   const artifact = useStore(s=>s.artifact);
   const activeArtifact = view === "chat" && hasBot ? artifact : null;
-  const sideBot = useSideBot(); const showSide = !activeArtifact && view === "chat" && hasBot && !!sideBot; // L146 a second chat beside (SideChat.tsx)
+  const sideBots = useSideBots(); const showSide = !activeArtifact && view === "chat" && hasBot && sideBots.length > 0; // L146 chats beside, a 2×2 grid from 1 400 px (SideChat.tsx)
   const showThread = !activeArtifact && !showSide && view === "chat" && hasBot && !!openThread;
   const showDetails = !activeArtifact && !showSide && view === "chat" && hasBot && detailsOpen && !showThread;
 
   return (
-    <div className={`shell ${activeArtifact ? "has-artifact" : ""} ${showDetails || showThread ? "has-details" : ""} ${showSide ? "has-side" : ""} ${siteBanner ? "has-site-banner" : ""}`}>
+    <div className={`shell ${activeArtifact ? "has-artifact" : ""} ${showDetails || showThread ? "has-details" : ""} ${showSide ? layoutClass(sideBots.length) : ""} ${siteBanner ? "has-site-banner" : ""}`}>
       <SiteAnnouncementBanner />
       <Sidebar />
       {view === "tasks" ? <TasksView /> : view === "inbox" ? <InboxView /> : view === "docs" ? <LiveDocsView /> : view === "today" ? <TodayView /> : view === "command" ? <CommandView /> : view === "surveillance" && sentinel ? <SurveillanceView /> : view === "announcements" && author ? <AnnouncementsView /> : <ChatView />}
       {activeArtifact && <WorkspaceDock active={activeArtifact}/>}
       {modal?.kind === "videoStudio" && <VideoStudio onClose={close}/>}
-      {showSide && sideBot && <SideChat key={sideBot} botId={sideBot} />}
+      {showSide && sideBots.map((id) => <SideChat key={id} botId={id} />)}<ChatLayoutsHost />
       {showDetails && <DetailsPanel />}
       {showThread && openThread && <ThreadPanel key={`${openThread.botId}:${openThread.seq}`} botId={openThread.botId} seq={openThread.seq} />}
 

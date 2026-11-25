@@ -10,6 +10,7 @@ import { Gloss } from "./Gloss";
 import { Icon } from "./Icon";
 import { Menu, MenuItem } from "./ui";
 import "./Comfort7.css";
+import { ComposerReasoning } from "./ComposerReasoning"; // L150 reasoning per conversation
 
 /**
  * Above the composer (backlog A-FAIRE L150 / L138): the model of this conversation, changed in two clicks (the bot's own
@@ -77,6 +78,7 @@ export function ComposerMeta({ bot, live }: { bot: Bot; live: Live }) {
           ))}
         </Menu>
       </div>
+      {bot.kind === "agent" && <ComposerReasoning bot={bot} />}
       <span className="composer-gauge" data-level={level}>
         <Gloss term="context" />
         <span className="gauge-bar" role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent ?? undefined} aria-valuetext={percent === null ? t("c7.ctx.unknown") : `${percent} %`} aria-label={t("c7.ctx.label")}>

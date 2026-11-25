@@ -15,7 +15,7 @@ import type { ApprovalCard, Bot, Card, QuestionCard } from "../api/types";
 import { useT, type Key } from "../i18n";
 import { cardReq, type Req } from "../lib/cardActions";
 import type { RootStack } from "../screens/types";
-import { PollCard } from "./PollCard";
+import { PollCard } from "./PollCard"; import { PinButton } from "./ChatPlus"; // L184
 import { useStore } from "../state/store";
 import { radius, useTheme } from "../theme";
 import { SecretInput, useBusy } from "./cardKit";
@@ -536,7 +536,7 @@ function Mail({ card, bot }: { card: Of<"mail">; bot: Bot }) {
 }
 
 /** DS-Bot item 8: a view card (chart, table, form…) as the plain text the server keeps for the phone; a form is answered in the web app. */
-function ViewText({ card }: { card: Of<"view"> }) {
+function ViewText({ card, bot, seq }: { card: Of<"view">; bot: Bot; seq: number }) {
   const { c } = useTheme();
   const t = useT();
   return (
@@ -544,6 +544,7 @@ function ViewText({ card }: { card: Of<"view"> }) {
       <Head icon="chart" title={card.title} />
       <Text selectable style={[styles.detail, { backgroundColor: c.surface2, color: c.text }]}>{card.fallback}</Text>
       {card.status === "pending" ? <Reason text={t("view.answerOnWeb")} /> : card.status === "answered" && card.answer ? <Reason text={t("view.answered", { answer: card.answer })} /> : null}
+      {!bot.access && card.status !== "pending" ? <PinButton botId={bot.id} seq={seq} /> : null}
     </Shell>
   );
 }
@@ -578,7 +579,7 @@ export function CardView({ card, bot, seq }: { card: Card; bot: Bot; seq: number
     case "apiconnector": return <ApiConnector card={card} bot={bot} seq={seq} />;
     case "memory": return <Memory card={card} bot={bot} seq={seq} />;
     case "mail": return <Mail card={card} bot={bot} />;
-    case "view": return <ViewText card={card} />;
+    case "view": return <ViewText card={card} bot={bot} seq={seq} />; // L184: « Épingler »
     case "trajectory": return <TrajectoryText card={card} />; // L158
     case "poll": return <PollCard card={card} />; // L184
     default: return null;

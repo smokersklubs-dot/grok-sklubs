@@ -5,6 +5,7 @@ import { useStore } from "../store";
 import type { Bot, VoiceStatus } from "../types";
 import { IconButton } from "./ui";
 import { useVT } from "./VoicePicker";
+import { useWakeWord } from "../lib/wakelisten"; // L154 « mot de réveil » (opt-in, on-device only)
 
 /**
  * The call button of the chat header (also on phones, where the details panel is hidden): starts a voice call with the
@@ -14,6 +15,7 @@ export function CallHeadButton({ bot }: { bot: Bot }) {
   const vt = useVT();
   const inCall = useStore((s) => s.call?.botId === bot.id);
   const [voice, setVoice] = useState("");
+  useWakeWord(bot);
   useEffect(() => {
     if (bot.kind !== "agent") return;
     let live = true;

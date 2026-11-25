@@ -127,8 +127,8 @@ Coordonnées logiques de l'**écran principal** (points/DIP), origine en haut à
 
 | `op` | Session requise | `args` | `result` |
 |---|---|---|---|
-| `session.start` | non | `{ reason?: string ≤ 300 }` | `{ sessionId, grant: "once" \| "always" \| "test", already? }` |
-| `session.end` | non | `{}` | `{}` |
+| `session.start` | non | `{ reason?: string ≤ 300 }` | `{ sessionId, grant: "once" \| "always" \| "account" \| "test", already?, from? }` (`account`, `from` : révision 1.7, §18) |
+| `session.end` | non | `{ reason?: "handover" }` (1.7, ignoré avant) | `{}` |
 | `screen.info` | non | `{}` | `{ width, height, scaleFactor, displayId, displays, platform, session }` (`session` : `x11`/`wayland` sous Linux) |
 | `screen.capture` | oui | `{ format?: "jpeg"\|"png" (jpeg), maxWidth?: 64–2560 (1280), quality?: 10–95 (70) }` | `{ format, width, height, screenWidth, screenHeight, data: base64 }` |
 | `view.start` | oui | `{ maxFps?: 1–5 (3), maxWidth?: 64–1600 (1280), quality?: 10–90 (60) }` | `{ viewId, maxFps }` |
@@ -165,7 +165,7 @@ Seul `shell.run` est annulable ; le Relais répond alors normalement à `r57` av
 | `unsupported` | impossible sur cet ordinateur (ex. capture indisponible, `wmctrl` absent, application introuvable) |
 | `permission_missing` | autorisation système manquante (macOS : Enregistrement de l'écran / Accessibilité) |
 | `no_session` | pas de session de contrôle ouverte pour ce bot |
-| `busy` | un autre bot a la session |
+| `busy` | un autre bot a la session (1.7 : `holder: { id, name }` et `retryAfterMs` en plus) |
 | `locked` | l'utilisateur a appuyé sur Stop : tout est refusé jusqu'à ce qu'il réautorise sur l'ordinateur |
 | `consent_refused` | l'utilisateur a refusé la session |
 | `consent_expired` | personne n'a répondu dans les 60 s (compte comme un refus) |
@@ -205,8 +205,8 @@ Tous ont la forme `{ "type": "event", "name": "…", "ts": "ISO‑8601", … }`.
 | `relay.state` | `locked`, `session` | après `welcome` |
 | `consent.requested` | `bot`, `kind: "session"\|"command"` | une fenêtre vient de s'ouvrir sur l'ordinateur |
 | `consent.decided` | `bot`, `kind`, `decision: "once"\|"always"\|"refuse"\|"expired"\|"run"` | réponse (ou expiration) |
-| `session.started` | `bot`, `grant`, `sessionId` | session ouverte |
-| `session.ended` | `bot`, `reason`, `sessionId` | `reason` : `bot` (session.end), `user_stop`, `hotkey`, `idle`, `paused`, `disconnected`, `stopped` |
+| `session.started` | `bot`, `grant`, `sessionId`, `from?` | session ouverte (`from` : le bot qui a laissé la main, 1.7) |
+| `session.ended` | `bot`, `reason`, `sessionId`, `to?` | `reason` : `bot` (session.end), `user_stop`, `hotkey`, `idle`, `paused`, `disconnected`, `stopped`, `handover` (1.7, avec `to`) |
 | `relay.locked` | `source: "user"\|"hotkey"\|"tray"` | l'utilisateur a appuyé sur Stop |
 | `relay.unlocked` | — | l'utilisateur a réautorisé le contrôle |
 | `view.stopped` | `viewId`, `reason` | `requested`, `replaced`, `session_ended`, `no_ack`, `capture_error` |
@@ -473,3 +473,42 @@ quand l'ordinateur se reconnecte). Tests : `companion/test/unit/gpu.test.js`, `s
 ## `screen.capture` : autre écran (23/11/2026)
 
 Argument facultatif `display` (entier 0 à 15) : 0 = écran principal, puis les autres de gauche à droite. La réponse ajoute `displayIndex` et `displays` (nombre d'écrans). Un écran autre que le principal sert seulement à regarder : les clics et touches restent sur l'écran principal, et le serveur ne garde pas cette capture comme référence des clics. Un Relais plus ancien ignore `display` et renvoie l'écran principal (sans `displayIndex`).
+
+## 18. Un ordinateur pour tous les bots du compte (révision 1.7, 25/11/2026)
+
+Un ordinateur relié appartient au **compte** (tous ses bots), mais la session de contrôle reste à **un bot à la fois**.
+Ajouts compatibles (un serveur plus ancien ignore les champs nouveaux ; un Relais plus ancien continue de demander bot
+par bot) :
+
+- **Question de session** : un quatrième bouton « **Autoriser tous mes bots de ce compte** » (`decision: "all"`). Gardé
+  dans `relais.json` (`allBots`), retirable dans la liste « Bots » du Relais ; effacé si l'ordinateur change de
+  serveur, est appairé de nouveau ou si l'on « oublie ce serveur ». Tant qu'il tient, tout bot du compte obtient la
+  session sans question (`grant: "account"`). Les **commandes** gardent leurs propres règles (première commande de la
+  session, commandes sensibles et scripts demandés à chaque fois).
+- **Passage de main** : un bot B demande `session.start` pendant que A a la session.
+  - A a fait une requête il y a moins de **20 s** (`HANDOVER_IDLE_MS`), ou une commande de A tourne (au premier plan ou
+    en fond), ou une question est ouverte → `busy` avec `holder` (A) et `retryAfterMs` (le temps qui reste avant que A
+    compte comme inactif).
+  - A est inactif depuis 20 s : si B est couvert (« Toujours autoriser ce bot » ou « tous mes bots »), le Relais termine
+    la session de A (`session.ended`, `reason: "handover"`, `to: B`) puis ouvre celle de B sans question
+    (`session.started` avec `from: A`). Sinon la question s'ouvre pour B, en disant que A laissera la main ; un oui
+    fait le passage, un refus laisse A en place. Un bot qui a pris l'ordinateur pendant la question n'est jamais remplacé.
+  - Jamais deux sessions ; Stop termine tout et verrouille comme avant (`locked` l'emporte sur tout).
+- **Capacité** `session.handover` dans `hello.capabilities` : ce Relais fait le passage de main lui‑même.
+
+Côté serveur (`server/src/agent/computerqueue.ts`, `server/src/relay.ts`) : un bot qui a besoin d'un ordinateur occupé
+**attend son tour** (file par ordinateur, premier arrivé premier servi) et l'écrit dans son chat après 2 s
+(« En attente de l'ordinateur …, utilisé par A ») ; il continue tout seul quand c'est son tour, abandonne après 10 min
+en le disant. Avec un Relais **sans** `session.handover`, Sklubot envoie lui‑même `session.end` (comme A, avec
+`reason: "handover"`) quand A est inactif depuis 20 s, puis `session.start` pour B ; ce Relais pose alors sa question
+habituelle pour B. Stop dans Sklubot ou sur l'ordinateur arrête aussi l'attente des bots en file.
+
+Côté Sklubot, deux réglages vont avec (`server/src/computershare.ts`) : la carte « prendre le contrôle » offre
+« **Pour tous mes bots** » (règle du compte, retirable dans Réglages → Ordinateurs ; jamais après un contenu extérieur,
+jamais pour un bot bloqué), et « **Ordinateur de ce bot** » (réglages du bot, affiché à partir de 2 appareils reliés) :
+« Celui qui est connecté » (défaut) ou un appareil précis ; s'il n'est pas connecté, le bot le dit au lieu d'en prendre
+un autre.
+
+Tests : `companion/test/unit/handover.test.js`, `companion/test/unit/store.test.js`, `server/test/computer-share.test.ts`.
+**Non vérifié** sur un vrai Mac ou PC (fenêtre de question à quatre boutons, liste « Bots » du Relais) : la logique est
+testée en Node, l'interface du Relais n'a pas été ouverte ici.

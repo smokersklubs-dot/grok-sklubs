@@ -8,6 +8,7 @@ import { LiveWait, ViewerTools } from "../components/ComputerViewer";
 import { RealtimeVoice } from "../components/RealtimeVoice";
 import { ClickMarks } from "../components/ClickTrail";
 import { MailSignature } from "../components/MailSignature";
+import { GalleryModelVoice } from "./GalleryModelVoice"; // L150, L154
 import "../components/ComputerViewer.css";
 import type { FixtureOptions } from "./fixtures";
 
@@ -47,6 +48,7 @@ export function GalleryScreen({ o }: { o: FixtureOptions }) {
         <RealtimeVoice initial={{ realtime: { enabled: true, model: MODELS[0], voice: "marin", available: false, reason: "no key" }, models: MODELS, voices: VOICES }} />
         <RealtimeVoice initial={{ realtime: { enabled: true, model: MODELS[1], voice: "cedar", available: true, reason: "" }, models: MODELS, voices: VOICES }} />
       </div>
+      <GalleryModelVoice o={o} />
       <div className="gallery-page is-auto"><ul className="list"><li className="connector"><MailSignature accountId="acc_gallery" initial={o.long ? "Léa Martin — Responsable comptabilité et relances clients, Sklubs Distribution Europe\n06 00 00 00 00 · lea.martin@sklubs-distribution-europe.example" : "Léa Martin — Sklubs\n06 00 00 00 00"} /></li></ul></div>
     </section>
   );

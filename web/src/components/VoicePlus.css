@@ -1,0 +1,18 @@
+/* L154 voice settings (VoicePlus.tsx) and L150 small pieces (ComposerReasoning, CreditAlertField, ProjectModelPreset). */
+.voice-plus { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border); display: grid; gap: 8px; min-width: 0; }
+.voice-plus h3 { margin: 0; font-size: 15px; }
+.voice-plus-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0; }
+.voice-plus-form { display: grid; gap: 10px; max-width: 520px; min-width: 0; }
+.voice-plus-form .input { width: 100%; min-width: 0; }
+.voice-plus-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.composer-reason { max-width: min(200px, 40vw); }
+.composer-meta > .menu-wrap + .menu-wrap { margin-right: auto; }
+.credit-alert { margin-top: 10px; display: grid; gap: 4px; }
+.credit-alert-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.credit-alert-row .input { width: 96px; }
+.project-preset { display: grid; gap: 8px; margin-top: 8px; }
+.project-preset .input { width: 100%; min-width: 0; }
+/* L154 voice note: an audio message plays in the chat */
+.attach-audio { display: grid; gap: 4px; max-width: min(420px, 100%); }
+.attach-audio audio { width: 100%; min-width: 0; }
+.attach-audio figcaption { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-3); min-width: 0; }

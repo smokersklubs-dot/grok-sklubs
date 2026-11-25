@@ -74,7 +74,19 @@ function render(s) {
   show($('bots-hint'), busy);
   const list = $('bots');
   list.replaceChildren();
-  if (!s.bots.length) {
+  // « Tous mes bots de ce compte » (1.7): one line on top, revocable at any time, granted only outside a session.
+  if (s.allBots || s.bots.length) {
+    const el = document.createElement('div'); el.className = 'bot';
+    const name = document.createElement('div'); name.className = 'name'; name.textContent = t('bots.allBots');
+    const lab = document.createElement('label'); lab.className = 'toggle';
+    const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = !!s.allBots;
+    cb.disabled = busy && !s.allBots;
+    cb.onchange = async () => { const ok = await window.relais.setAllBots(cb.checked); if (!ok) cb.checked = !cb.checked; };
+    const sp = document.createElement('span'); sp.textContent = t('bots.allBotsHint');
+    lab.append(cb, sp); el.append(name, lab);
+    list.append(el);
+  }
+  if (!s.bots.length && !s.allBots) {
     const p = document.createElement('p'); p.className = 'muted small'; p.textContent = t('bots.empty'); list.append(p);
   }
   for (const b of s.bots) {

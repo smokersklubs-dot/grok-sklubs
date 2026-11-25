@@ -2,7 +2,7 @@
 const { RelayCore } = require('../../src/main/relay-core');
 
 /** Build a RelayCore with in-memory fakes. `answers` drives the fake consent UI. */
-function makeCore({ answers = {}, perms = {}, autoConfirm = false, gateOptions, active, platform = 'linux', extraCaps = {} } = {}) {
+function makeCore({ answers = {}, perms = {}, autoConfirm = false, gateOptions, active, platform = 'linux', extraCaps = {}, now, allBots = false } = {}) {
   // The window in front (guard.js): a plain text editor unless a test says otherwise; a function may change it per call.
   const fg = { current: active === undefined ? { app: 'gedit', bundle: 'gedit', pid: 42, windowId: '0x1', title: 'notes.txt - gedit', passwordField: false } : active };
   const sent = [];
@@ -10,6 +10,7 @@ function makeCore({ answers = {}, perms = {}, autoConfirm = false, gateOptions, 
   const logs = [];
   const bots = JSON.parse(JSON.stringify(perms));
   let locked = false;
+  const account = { allBots };
   const calls = [];
   const caps = new Proxy({}, {
     get: (_t, name) => async (args) => {
@@ -35,15 +36,17 @@ function makeCore({ answers = {}, perms = {}, autoConfirm = false, gateOptions, 
     setBotPerm: (bot, key, value) => { bots[bot.id] = bots[bot.id] || { name: bot.name }; if (key === 'control') bots[bot.id].control = value; else bots[bot.id].commands = value; },
     isLocked: () => locked,
     setLocked: (v) => { locked = v; },
+    getAllBots: () => account.allBots,
+    setAllBots: (v) => { account.allBots = v; },
   };
-  const core = new RelayCore({ send: (m) => { sent.push(m); return true; }, caps, ui, store, log: (e) => logs.push(e), autoConfirm, gateOptions, platform });
+  const core = new RelayCore({ send: (m) => { sent.push(m); return true; }, caps, ui, store, log: (e) => logs.push(e), autoConfirm, gateOptions, platform, ...(now ? { now } : {}) });
   let n = 0;
   const req = async (op, args = {}, bot = { id: 'bot_a', name: 'Alice' }) => {
     const id = `t${++n}`;
     await core.handleRequest({ type: 'req', id, bot, op, args });
     return sent.filter((m) => m.type === 'res' && m.id === id).pop();
   };
-  return { core, sent, prompts, logs, bots, calls, req, fg, isLocked: () => locked };
+  return { core, sent, prompts, logs, bots, calls, req, fg, account, isLocked: () => locked };
 }
 
 module.exports = { makeCore };

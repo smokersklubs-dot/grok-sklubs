@@ -26,7 +26,10 @@ async function main() {
     $('title').textContent = t('consent.session.title', { bot });
     $('text').textContent = t('consent.session.text', { key: window.I18N.hotkey });
     if (p.data.reason) { $('reason').textContent = t('consent.reason', { reason: p.data.reason }); show($('reason'), true); }
+    // Hand-over (1.7): another bot holds the session but has done nothing for a while; a yes here replaces it.
+    if (p.data.holder) { $('cwd').textContent = t('consent.session.holder', { holder: p.data.holder }); show($('cwd'), true); }
     add('consent.refuse', '', 'refuse');
+    add('consent.allBots', '', 'all');
     add('consent.always', '', 'always');
     add('consent.once', 'primary', 'once');
   } else if (p.kind === 'terminal' || p.kind === 'shortcut' || p.kind === 'gpu') {

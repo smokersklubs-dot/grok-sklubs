@@ -15,6 +15,7 @@ import { Icon } from "./Icon";
 import { listenAvailable, listenKey, listenReply, stopListening, useListen } from "../voice/listen";
 import { Markdown } from "./Markdown";
 import { canReport, ReportButton } from "./ReportSheet";
+import { LinkPreview, QuoteButton, quoteMessage } from "./ChatPlus";
 import { tap } from "./ui";
 
 export function DayDivider({ at }: { at: number }) {
@@ -72,26 +73,35 @@ export const MessageBubble = memo(function MessageBubble({ bot, row, body, mine,
   const bg = mine ? c.userBubble : c.surface;
   const fg = mine ? c.userBubbleFg : c.text;
   const sender = !mine && first && body.origin && body.origin.kind !== "voice" ? body.origin.name : !mine && first && bot.kind === "room" ? null : null;
+  // L184 « citation »: « Citer » under a reply, or a long press on any message, quotes it into the draft.
+  const canQuote = !body.streaming && !!body.text.trim() && (!bot.access || bot.access.canTalk);
+  const quotable = !mine && canQuote && body.role === "assistant";
   return (
     <View style={[styles.msgWrap, mine ? { alignItems: "flex-end" } : { alignItems: "flex-start" }, first && { marginTop: 10 }]}>
       {sender ? <Text style={[styles.sender, { color: c.text3 }]}>{sender}</Text> : null}
       {(body.text.trim() || body.streaming) ? (
-        <View
+        <Pressable
           accessible
           accessibilityLabel={`${mine ? t("common.you") : body.origin?.name ?? bot.name}, ${clockTime(row.createdAt)}: ${body.text}`}
+          accessibilityActions={canQuote ? [{ name: "longpress", label: t("quote.label") }] : undefined}
+          onAccessibilityAction={canQuote ? () => quoteMessage(bot.id, body.text) : undefined}
+          onLongPress={canQuote ? () => { tap(); quoteMessage(bot.id, body.text); } : undefined}
+          delayLongPress={450}
           style={[styles.bubble, mine ? styles.mine : [styles.theirs, { borderColor: c.border }], { backgroundColor: bg }]}
         >
           {mine ? <Text selectable style={{ color: fg, fontSize: 16, lineHeight: 22 }}>{body.text}</Text> : body.text.trim() ? <Markdown text={body.text} color={fg} /> : null}
           {body.streaming ? <View style={styles.typing}><ActivityIndicator size="small" color={c.text3} /></View> : null}
-        </View>
+        </Pressable>
       ) : null}
+      {!body.streaming && body.text.trim() ? <LinkPreview text={body.text} mine={mine} /> : null}
       {body.attachments?.length ? (
         <View style={[styles.attachments, mine && { alignItems: "flex-end" }]}>
           {body.attachments.map((a) => <AttachmentView key={a.path} botId={bot.id} file={a} mine={mine} />)}
         </View>
       ) : null}
-      {!mine && (canReport(bot, body) || (!body.streaming && body.role === "assistant" && body.text.trim() && listenAvailable)) ? (
+      {!mine && (quotable || canReport(bot, body) || (!body.streaming && body.role === "assistant" && body.text.trim() && listenAvailable)) ? (
         <View style={styles.replyActions}>
+          {quotable ? <QuoteButton botId={bot.id} text={body.text} /> : null}
           {!body.streaming && body.role === "assistant" && body.text.trim() && listenAvailable ? <ListenButton bot={bot} row={row} body={body} /> : null}
           {canReport(bot, body) ? <ReportButton row={row} /> : null}
         </View>

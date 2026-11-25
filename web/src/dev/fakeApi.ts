@@ -14,7 +14,7 @@ import { hookSignedFixture, hookTestFixture, reportsFixture } from "./trustFixtu
 import { relayGuardFixture } from "./relayGuardFixtures";
 import { routineExtrasFixture, routinePreviewFixture, researchFixture, routineRunsFixture, usageDailyFixture } from "./routineFixtures";
 import { botSecurityFixture, browserFixture, recipientsFixture, securitySettingsFixture, vaultAccessFixture } from "./securityFixtures";
-import { careGet, careSend } from "./GalleryCare"; import { channelsFixture } from "./GalleryChannels"; import { comfort6Get } from "./GalleryComfort6"; import { comfort7Get, officeFixture } from "./GalleryComfort7"; import { comfort9Get } from "./GalleryComfort9"; import { inboxFixture } from "./turnFixtures"; import { extensionsGet } from "./GalleryExtensions";
+import { careGet, careSend } from "./GalleryCare"; import { channelsFixture } from "./GalleryChannels"; import { comfort6Get } from "./GalleryComfort6"; import { comfort7Get, officeFixture } from "./GalleryComfort7"; import { comfort9Get } from "./GalleryComfort9"; import { comfort10Get } from "./GalleryComfort10"; import { inboxFixture } from "./turnFixtures"; import { extensionsGet } from "./GalleryExtensions";
 
 export interface FakeApiState extends FixtureOptions { empty: boolean; fail: boolean }
 
@@ -76,6 +76,7 @@ export function installFakeApi(get: () => FakeApiState): void {
     }
     { const care = careGet(path, s); if (care !== undefined) return json(200, care); } // L161 bot care (GalleryCare.tsx)
     { const w9 = comfort9Get(path, s); if (w9 !== undefined) return json(200, w9); } // wave 9 web rows (GalleryComfort9.tsx)
+    { const w10 = comfort10Get(path, s); if (w10 !== undefined) return json(200, w10); } // wave 10 rows (GalleryComfort10.tsx)
     { const r23 = rows23Get(path, s); if (r23 !== undefined) return json(200, r23); } // 23/11 rows (GalleryRows23.tsx)
     { const w6 = comfort6Get(path, s); if (w6 !== undefined) return json(200, w6); } // wave 6 comfort (GalleryComfort6.tsx)
     { const x7 = extensionsGet(path, s); if (x7 !== undefined) return json(200, x7); } // wave 7 extensions (GalleryExtensions.tsx)

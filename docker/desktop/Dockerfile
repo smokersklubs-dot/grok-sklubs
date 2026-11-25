@@ -70,6 +70,18 @@ RUN curl -fsSL -o /usr/local/bin/yt-dlp "$YTDLP_URL" \
     && printf '%s\n' '--js-runtimes node' > /etc/yt-dlp.conf \
     && yt-dlp --version
 
+# L164 — the app reader by accessibility (server/src/apptree.ts, agent/tools-apptree.ts): the bot reads the controls of the
+# computer's apps (text editor, file manager, dialog boxes…) and acts on one by reference instead of at pixels. Debian
+# bookworm packages, +4.7 MB in all (measured on this image): at-spi2-core (the accessibility bus launcher and registry,
+# LGPL-2.1+), gir1.2-atspi-2.0 and python3-gi (libatspi for the system python3, LGPL-2.1+). start-desktop.sh starts the
+# bus before any app; GTK apps join it by themselves, Qt 5 apps once QT_LINUX_ACCESSIBILITY_ALWAYS_ON is set
+# (read by Qt 5's own bridge, qtbase src/platformsupport/linuxaccessibility/dbusconnection.cpp; not tried with a Qt app).
+RUN apt-get update && apt-get install -y --no-install-recommends at-spi2-core gir1.2-atspi-2.0 python3-gi \
+    && rm -rf /var/lib/apt/lists/* \
+    && python3 -c "import gi; gi.require_version('Atspi', '2.0'); from gi.repository import Atspi" \
+    && test -x /usr/libexec/at-spi-bus-launcher
+ENV QT_LINUX_ACCESSIBILITY_ALWAYS_ON=1
+
 # Clients of the sound card find it here (docker/desktop/sound.sh). What the bot installs in its home folder stays (the
 # home is a volume): ~/.local/bin comes last on the PATH, so it never hides the computer's own programs.
 ENV PULSE_SERVER=unix:/tmp/pulse/native PATH=$PATH:/root/.local/bin

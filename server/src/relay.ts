@@ -89,7 +89,8 @@ export type DeviceKind = "computer" | "phone";
 const kindOf = (v: unknown): DeviceKind => (v === "phone" ? "phone" : "computer");
 export type RelayResult = { ok: true; result: Json } | { ok: false; code: string; message: string; retryAfterMs?: number };
 interface Pending { op: string; bot: RelayBot; finish: (r: RelayResult) => void }
-interface Session { botId: string; botName: string; grant: "once" | "always" | "test"; since: number; sessionId: string }
+/** `activeAt`: the last request of the bot holding the session, sent or answered (hand-over, agent/computerqueue.ts). */
+interface Session { botId: string; botName: string; grant: "once" | "always" | "test"; since: number; sessionId: string; activeAt?: number }
 interface Frame { seq: number; width: number; height: number; data: string; at: number }
 
 const connections = new Set<Conn>();
@@ -124,6 +125,8 @@ class Conn {
   lastCapture: { width: number; height: number; screenWidth: number; screenHeight: number } | null = null;
   /** The user pressed "Stop" in the web app: the next session.ended is theirs. */
   stoppedFromWeb = false;
+  /** Sklubot ended this session to hand the computer to another bot (an older relay without "session.handover"). */
+  handingTo: RelayBot | null = null;
   lastBotId = "";
   alive = true;
   floodAt = 0;
@@ -410,7 +413,8 @@ function onRes(conn: Conn, msg: Json) {
   p.finish({ ok: false, code, message: str(e.message, 500) || code, ...(retry !== null ? { retryAfterMs: retry } : {}) });
 }
 
-const grantOf = (g: unknown): Session["grant"] => (g === "always" || g === "test" ? g : "once");
+// Protocol 1.7: "account" (« all my bots » on that computer) reads as "always" here; the chat line says which.
+const grantOf = (g: unknown): Session["grant"] => (g === "always" || g === "account" ? "always" : g === "test" ? g : "once");
 
 function noteCapture(conn: Conn, r: Json) {
   if (typeof r.displayIndex === "number" && r.displayIndex > 0) return; // L159: another screen is for looking only (mycomputerplus.ts)
@@ -436,8 +440,10 @@ export function relayRequest(deviceId: string, bot: RelayBot, op: string, args: 
   const id = `r${++reqSeq}`;
   // Sklubot's own requests (the owner's safety rules) are not a bot's.
   if (bot.id !== "sklubot") conn.lastBotId = bot.id;
+  const active = () => { if (conn.session?.botId === bot.id) conn.session.activeAt = now(); };
+  active();
   return new Promise((resolve) => {
-    const finish = (r: RelayResult) => { clearTimeout(timer); opts.signal?.removeEventListener("abort", onAbort); conn.pending.delete(id); resolve(r); };
+    const finish = (r: RelayResult) => { active(); clearTimeout(timer); opts.signal?.removeEventListener("abort", onAbort); conn.pending.delete(id); resolve(r); };
     const onAbort = () => { if (op === "shell.run") conn.send({ type: "cancel", id }); finish({ ok: false, code: "stopped", message: "stopped" }); };
     const timer = setTimeout(() => { if (op === "shell.run") conn.send({ type: "cancel", id }); finish({ ok: false, code: "timeout", message: "no answer from the computer in time" }); }, opts.timeoutMs ?? 30_000);
     if (opts.signal?.aborted) return onAbort();
@@ -493,7 +499,9 @@ function onEvent(conn: Conn, msg: Json) {
       const grant = grantOf(msg.grant);
       setSession(conn, { botId: bot.id, botName: bot.name, grant, since: now(), sessionId: str(msg.sessionId, 64) });
       conn.lastBotId = bot.id;
-      const text = tr(loc, grant === "always" ? "{bot} took control of {device} (always allowed on that computer)." : "{bot} took control of {device}.", { bot: bot.name, device: label });
+      const from = botOf(msg.from);
+      const text = from ? tr(loc, "{from} handed {device} over to {bot}.", { from: from.name, bot: bot.name, device: label })
+        : tr(loc, msg.grant === "account" ? "{bot} took control of {device} (all your bots are allowed on that computer)." : grant === "always" ? "{bot} took control of {device} (always allowed on that computer)." : "{bot} took control of {device}.", { bot: bot.name, device: label });
       chatLine(user.id, bot.id, text, "info");
       audit(user.id, "computer", text, ownBotId(user.id, bot.id));
       pushLater(user.id, { kind: "computer", title: label, body: text, botId: ownBotId(user.id, bot.id) ?? undefined, tag: `relay-${conn.deviceId}` });
@@ -504,9 +512,18 @@ function onEvent(conn: Conn, msg: Json) {
       setSession(conn, null);
       const who = bot ?? (was ? { id: was.botId, name: was.botName } : null);
       if (!who) return;
-      const reason = String(msg.reason ?? "");
+      const handing = conn.handingTo;
+      conn.handingTo = null;
+      const to = botOf(msg.to) ?? handing;
+      const reason = to && (msg.reason === "handover" || (handing && msg.reason === "bot")) ? "handover" : String(msg.reason ?? "");
       const fromWeb = conn.stoppedFromWeb;
       conn.stoppedFromWeb = false;
+      if (reason === "handover" && to && !fromWeb) { // hand-over (1.7): one quiet line in the chat of the bot that let go
+        const line = tr(loc, "{bot} was doing nothing on {device}: it handed it over to {to}.", { bot: who.name, device: label, to: to.name });
+        chatLine(user.id, who.id, line, "info");
+        audit(user.id, "computer", line, ownBotId(user.id, who.id));
+        return;
+      }
       const text = fromWeb ? tr(loc, "You stopped {bot}'s control of {device} from Sklubot.", { bot: who.name, device: label })
         : tr(loc, "{bot}'s control of {device} ended: {reason}.", { bot: who.name, device: label, reason: tr(loc, REASONS[reason] ?? "it ended") });
       chatLine(user.id, who.id, text, reason === "user_stop" || reason === "hotkey" ? "warn" : "info");
@@ -775,6 +792,7 @@ export function stopSession(userId: string, deviceId: string): boolean {
   const c = online.get(deviceId);
   if (!c || c.userId !== userId) return false;
   for (const [id, p] of c.pending) if (p.op === "shell.run") c.send({ type: "cancel", id });
+  stops.set(deviceId, now()); // the bots waiting for this computer stop waiting too (agent/computerqueue.ts)
   const s = c.session;
   if (!s) return true;
   holds.set(`${s.botId}:${deviceId}`, now() + HOLD_MS);
@@ -785,6 +803,36 @@ export function stopSession(userId: string, deviceId: string): boolean {
   });
   const loc = users.localeOf(userId);
   audit(userId, "computer", tr(loc, "You stopped {bot}'s control of {device} from Sklubot.", { bot: s.botName, device: deviceLabel(devices.byId(deviceId)?.name ?? c.info.name, c.info.platform) }), ownBotId(userId, s.botId));
+  return true;
+}
+
+/** When the owner last pressed Stop for this computer in the web app: whoever waited for it before stops waiting. */
+const stops = new Map<string, number>();
+export const stoppedAt = (deviceId: string) => stops.get(deviceId) ?? 0;
+
+/**
+ * How long the bot holding the session of this computer has been quiet (ms): 0 while one of its requests is under
+ * way (a command, a screenshot…), null without a session. Hand-over and queue: agent/computerqueue.ts.
+ */
+export function holderIdleMs(deviceId: string): number | null {
+  const c = online.get(deviceId);
+  const s = c?.session;
+  if (!c || !s) return null;
+  for (const p of c.pending.values()) if (p.bot.id === s.botId) return 0;
+  return Math.max(0, now() - (s.activeAt ?? s.since));
+}
+
+/**
+ * Hand-over through an older relay (no "session.handover" capability): Sklubot ends the idle holder's session itself
+ * (session.end, as that bot) so that the next bot can ask for it; that relay then asks on its screen as before, per bot.
+ */
+export async function endForHandover(deviceId: string, to: RelayBot): Promise<boolean> {
+  const c = online.get(deviceId);
+  const s = c?.session;
+  if (!c || !s || s.botId === to.id) return false;
+  c.handingTo = to;
+  const r = await relayRequest(deviceId, { id: s.botId, name: s.botName }, "session.end", { reason: "handover" }, { timeoutMs: 10_000 });
+  if (!r.ok && c.session?.sessionId === s.sessionId) { c.handingTo = null; return false; }
   return true;
 }
 

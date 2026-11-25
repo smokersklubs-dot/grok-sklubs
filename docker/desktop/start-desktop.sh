@@ -7,6 +7,12 @@ rm -f /root/.config/sklubot-browser/Singleton* 2>/dev/null
 Xvfb :1 -screen 0 "$RES" -nolisten tcp &
 for i in $(seq 1 50); do xdpyinfo -display :1 >/dev/null 2>&1 && break; sleep 0.1; done
 xsetroot -solid "#2b3040"
+# L164 — the accessibility bus (at-spi2-core), started before any app so that every app registers on it: a private session
+# bus for its launcher, which writes the bus address on the screen (the AT_SPI_BUS property) where the apps and the app
+# reader (server/src/apptree.ts) find it. An app started before the bus never joins it.
+if [ -x /usr/libexec/at-spi-bus-launcher ]; then
+  DBUS_SESSION_BUS_ADDRESS=$(dbus-daemon --session --fork --print-address) /usr/libexec/at-spi-bus-launcher --launch-immediately >/dev/null 2>&1 &
+fi
 openbox &
 # Keyboard layout chosen on the server (DESKTOP_KEYBOARD); the US layout stays if it is unknown. It is set once
 # the desktop is up: the screen forgets a layout set while no program is connected to it, so it is tried again

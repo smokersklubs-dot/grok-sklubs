@@ -8,7 +8,7 @@ import { Hono, type Context } from "hono";
 import { deleteCookie, getCookie } from "hono/cookie";
 import { streamSSE } from "hono/streaming";
 import { registerNoticeRoutes } from "./agent/noticeroutes.js"; import { registerRoomRoutingRoutes, roomReaction } from "./agent/roomroutes.js";
-import { registerFailureRoutes } from "./agent/failureroutes.js"; import { decideForConversation, registerConversationGrantRoutes } from "./agent/conversationgrantroutes.js";
+import { registerFailureRoutes } from "./agent/failureroutes.js"; import { decideForConversation, registerConversationGrantRoutes } from "./agent/conversationgrantroutes.js"; import { decideForAllBots, registerComputerShareRoutes } from "./computershareroutes.js";
 import { registerRecruitRoutes } from "./agent/recruit.js"; import { routeAnswer } from "./agent/lateanswer.js"; import { registerTeamMdRoutes } from "./teammdroutes.js";
 import { registerCommandRoutes } from "./command.js"; import { registerRelayGuardRoutes } from "./relayguardroutes.js"; import { registerComfortRoutes } from "./comfortroutes.js"; import { registerBotCareRoutes } from "./botcareroutes.js"; import { registerChantierRoutes } from "./chantierroutes.js"; import { registerTeamGuestPublic, registerWorkRoutes } from "./workroutes.js";
 import { continueAfterStepLimit, decideApproval, enqueue, inQueue, interrupt, isPaused, noteHandBack, runningThreads, submitUserMessage, type ForcedSkill } from "./agent/loop.js"; import { sendOnce } from "./sendkeys.js"; import { relayToHelpers } from "./agent/helperrelay.js"; import { registerTurnPlus } from "./turnplusroutes.js";
@@ -29,7 +29,7 @@ import { retireBot } from "./agent/tools.js";
 import { dropSession, hashPassword, originAllowed, seal, SESSION_COOKIE, setupCodeMatches, setupCodeRequired, signupOpen, userForToken, verifyPassword } from "./auth.js";
 import { emit, getLive, subscribe } from "./bus.js";
 import { workspaceOf } from "./computer.js";
-import { attachmentAt, computerKind, computerState, isInlineImage, isInlineVideo, listFiles, listTeamFiles, mimeOf, openLibraryFile, openTeamFile, readLibraryFile, removeTeamFolder, removeWorkspace, resolveInTeam, resolveInWorkspace, screen, storeBytes, teamFolderState } from "./computer.js";
+import { attachmentAt, computerKind, computerState, isInlineAudio, isInlineImage, isInlineVideo, listFiles, listTeamFiles, mimeOf, openLibraryFile, openTeamFile, readLibraryFile, removeTeamFolder, removeWorkspace, resolveInTeam, resolveInWorkspace, screen, storeBytes, teamFolderState } from "./computer.js";
 import { checkDisk, deleteListed } from "./disk.js";
 import { registerConnectorCatalog } from "./connectorcatalogroutes.js";
 import { imageService } from "./images.js";
@@ -122,9 +122,9 @@ import { registerHostedPages, registerHostedPrivate, registerHostedPublic, suspe
 import { TodayError, todayReport, todaySettings } from "./today.js";
 import { registerBotClients, registerBotClientSettings } from "./botaccessroutes.js"; import { registerChannelRoutes } from "./channelroutes.js"; import { registerViewRoutes } from "./viewroutes.js"; import { registerChatPlusRoutes, registerMetricsRoute } from "./chatplusroutes.js"; import { registerCreationRoutes } from "./creationroutes.js";
 import { registerSentinelRoutes } from "./sentinel/routes.js"; import { registerHookRoutes, registerHookSettingsRoutes } from "./hookroutes.js"; import { registerReportRoutes } from "./reports.js";
-import { registerAnnouncementRoutes } from "./announceroutes.js"; import { registerModelHealthRoutes } from "./modelhealth.js";
+import { registerAnnouncementRoutes } from "./announceroutes.js"; import { registerModelHealthRoutes } from "./modelhealth.js"; import { registerEngineWarmupRoutes } from "./enginewarmup.js";
 import { registerSkillsLibraryRoutes } from "./skillsroutes.js";
-import { registerOpenRouterRoutes } from "./openrouterroutes.js"; import { registerExtensionRoutes, registerPhonePublic } from "./extroutes.js"; // wave 7: L172 L174 L177 L178 L179
+import { registerOpenRouterRoutes } from "./openrouterroutes.js"; import { refuseCreditless } from "./modelplusroutes.js"; import { registerExtensionRoutes, registerPhonePublic } from "./extroutes.js"; // wave 7: L172 L174 L177 L178 L179
 import { registerSubscriptionConnectRoutes } from "./subscriptionconnect.js";
 import { registerStudioMp4 } from "./studiomp4.js";
 import { registerPageApi, registerPageSite, revisionTarget } from "./pageroutes.js";
@@ -572,7 +572,7 @@ api.post("/api-providers", async (c) => {
   const b = await body(c);
   const preset = typeof b.preset === "string" && b.preset in PRESETS ? b.preset : "";
   const f = providerFields(b, false);
-  await publicProviderUrl(f.baseUrl);
+  await publicProviderUrl(f.baseUrl); await refuseCreditless(c, f.baseUrl, providerKey(b.key), preset); // L150 a key with no credit is refused (modelplusroutes.ts)
   try {
     const p = apiProviders.create(user.id, { name: f.name!, baseUrl: f.baseUrl!, key: providerKey(b.key) ?? null, models: f.models!, preset, images: f.images ?? (preset ? PRESETS[preset as keyof typeof PRESETS].images : true) });
     audit(user.id, "apps", `Model provider added: ${p.name} (${p.baseUrl})`);
@@ -583,7 +583,7 @@ api.patch("/api-providers/:id", async (c) => {
   const user = c.get("user");
   const b = await body(c);
   const f = providerFields(b, true);
-  await publicProviderUrl(f.baseUrl);
+  await publicProviderUrl(f.baseUrl); if (providerKey(b.key)) { const cur = apiProviders.get(user.id, c.req.param("id")); if (cur) await refuseCreditless(c, f.baseUrl ?? cur.baseUrl, providerKey(b.key), cur.preset ?? undefined); } // L150
   const p = apiProviders.update(user.id, c.req.param("id"), { ...f, key: providerKey(b.key) }) ?? fail(404, "That provider does not exist.");
   audit(user.id, "apps", `Model provider changed: ${p.name}`);
   return c.json({ provider: p });
@@ -941,19 +941,19 @@ api.post("/bots/:id/reset", (c) => {
 
 api.post("/approvals/:approvalId", async (c) => {
   const b = await body(c); const decision = b.decision;
-  if (!["allow", "always", "conversation", "deny"].includes(decision)) fail(400, "Unknown decision."); // "conversation": agent/conversationgrants.ts
+  if (!["allow", "always", "conversation", "allbots", "deny"].includes(decision)) fail(400, "Unknown decision."); // "conversation": agent/conversationgrants.ts ; "allbots": computershareroutes.ts
   const user = c.get("user");
   const approval = approvals.byId(c.req.param("approvalId")); if (approval && (approval.userId === user.id || botAccess(user.id, approval.botId)?.canApprove)) checkFloorApproval(approval.userId, user.id, approval, decision, b.code); // L44 (option)
   // Wave 6: an admin of the workspace answers for the owner of a shared bot, when the bot's rule allows it.
   if (approval && approval.userId !== user.id) {
     const a = botAccess(user.id, approval.botId);
     if (!a || !a.canApprove) fail(404, "That request no longer exists.");
-    if (!decideApproval(approval.userId, approval.id, decision === "conversation" ? "allow" : decision, { id: user.id, name: user.name })) fail(404, "That request no longer exists.");
+    if (!decideApproval(approval.userId, approval.id, decision === "conversation" || decision === "allbots" ? "allow" : decision, { id: user.id, name: user.name })) fail(404, "That request no longer exists.");
     wsAudit(a!.share!.workspaceId, user.id, "approval", `${a!.bot.name}: ${approval.tool} — ${decision === "deny" ? "refused" : "allowed once"}`);
     return c.json({ ok: true });
   }
   if (b.draft !== undefined && decision !== "deny") { const why = applyDraftEdit(user.id, c.req.param("approvalId"), b.draft); if (why) fail(409, why); } // L83: the words corrected on the card (agent/draftedit.ts)
-  if (!(decision === "conversation" ? decideForConversation(user.id, c.req.param("approvalId")) : decideApproval(user.id, c.req.param("approvalId"), decision))) fail(404, "That request no longer exists.");
+  if (!(decision === "conversation" ? decideForConversation(user.id, c.req.param("approvalId")) : decision === "allbots" ? decideForAllBots(user, c.req.param("approvalId")) : decideApproval(user.id, c.req.param("approvalId"), decision))) fail(404, "That request no longer exists.");
   return c.json({ ok: true });
 });
 
@@ -1289,9 +1289,9 @@ registerAutoBackupRoutes(api, googleDeps);
 // "Surveillance" (sentinel/): the Sentinelle's incidents and alert settings, for the owner and hosted operators only.
 registerSentinelRoutes(api);
 // « Annonces » (announcements.ts): readers' feed, and the owner/operators' page to write them.
-registerAnnouncementRoutes(api); registerModelHealthRoutes(api); // model health: nod 3/4, L59, L60 (modelhealth.ts)
+registerAnnouncementRoutes(api); registerModelHealthRoutes(api); registerEngineWarmupRoutes(api); // model health: nod 3/4, L59, L60 (modelhealth.ts); L145 engine warm-up (enginewarmup.ts)
 registerNoticeRoutes(api); registerRoomRoutingRoutes(api); // « Qui répond » in group chats (agent/roomrouting.ts)
-registerFailureRoutes(api); registerConversationGrantRoutes(api); // « Coordinateur d'échecs » (agent/failures.ts) ; « Autoriser pour cette conversation »
+registerFailureRoutes(api); registerConversationGrantRoutes(api); registerComputerShareRoutes(api); // « Coordinateur d'échecs » (agent/failures.ts) ; « Autoriser pour cette conversation »
 registerRecruitRoutes(api); registerHookSettingsRoutes(api); registerReportRoutes(api); // « Bot recruteur » ; webhook settings (L20) ; « Signaler cette réponse » (L31)
 registerTeamMdRoutes(api); registerRoutinePlusRoutes(api); registerConnectorPlusRoutes(api); // « Équipe Sklubot (.md) » (teammdroutes.ts): import with review, share ; routines nod 2/8/13 (routineplusroutes.ts)
 registerCommandRoutes(api); registerRelayGuardRoutes(api); registerComfortRoutes(api); registerBotCareRoutes(api); registerChantierRoutes(api); registerWorkRoutes(api); // « Chantier » (chantierroutes.ts) ; wave 7 board, flows, automations, team memory (workroutes.ts) ; « Centre de commandement » (command.ts); « Règles de sécurité » of a linked computer (relayguardroutes.ts)
@@ -1771,8 +1771,8 @@ api.get("/bots/:id/files/view", (c) => {
   const bot = ownBot(c);
   const f = libraryFileFor(bot.id, c.req.query("path") ?? "");
   const mime = mimeOf(f.full);
-  // Videos play in the chat's player; nothing else that could run as a page is ever served inline.
-  const inline = isInlineImage(mime) || isInlineVideo(mime);
+  // Videos (and, L154, voice notes) play in the chat's player; nothing else that could run as a page is ever served inline.
+  const inline = isInlineImage(mime) || isInlineVideo(mime) || isInlineAudio(mime);
   // Players ask for byte ranges to seek in a video (RFC 9110 §14): one range is served, anything else gets the whole file.
   const range = isInlineVideo(mime) ? /^bytes=(\d*)-(\d*)$/.exec(c.req.header("range") ?? "") : null;
   if (range && (range[1] || range[2]) && f.size > 0) {

@@ -3,7 +3,8 @@ import { modelForRun, modelForWork } from "../routineplus.js";
 import type { BotRecord } from "../store.js";
 import { engineOf, isEngineRef } from "./engine.js";
 import type { Trigger } from "./turn-request.js";
-import { conversationModel } from "../convs.js";
+import { conversationEffort, conversationModel } from "../convs.js";
+import { projectPreset } from "../projectpresets.js";
 import { modeModelFor } from "./modelmodes.js";
 import { boardModelForGoal } from "../workboardroles.js";
 
@@ -43,7 +44,19 @@ export function workModelFor(bot: BotRecord, trigger: Trigger): string {
 export function withWorkModel(bot: BotRecord | null | undefined, trigger: Trigger): BotRecord | null | undefined {
   if (!bot || bot.kind !== "agent") return bot;
   const model = workModelFor(bot, trigger);
-  return model === bot.model ? bot : { ...bot, model };
+  const effort = conversationEffortFor(bot, trigger);
+  return model === bot.model && effort === bot.effort ? bot : { ...bot, model, effort };
+}
+
+/**
+ * L150 « Réflexion par conversation »: the reasoning level of the owner's own work in the open conversation — the level
+ * chosen for that conversation, else its project's preset (projectpresets.ts), else the bot's own. Routines and background
+ * work no person started keep the bot's level (same split as the model above).
+ */
+export function conversationEffortFor(bot: BotRecord, trigger: Trigger): BotRecord["effort"] {
+  if (trigger.kind === "routine" || workKindOf(trigger)) return bot.effort;
+  const chosen = conversationEffort(bot.id, bot.generation) || projectPreset(bot.userId, bot.sectionId).effort;
+  return (chosen || bot.effort) as BotRecord["effort"];
 }
 
 /**
@@ -52,7 +65,7 @@ export function withWorkModel(bot: BotRecord | null | undefined, trigger: Trigge
  */
 export function conversationChoice(bot: BotRecord, trigger: Trigger): string {
   if (trigger.kind === "routine") return bot.model;
-  const ref = conversationModel(bot.id, bot.generation);
+  const ref = conversationModel(bot.id, bot.generation) || projectPreset(bot.userId, bot.sectionId).model; // L150 project preset
   if (!ref) return modeModelFor(bot, trigger); // L69 named modes (modelmodes.ts)
   if (ref === bot.model) return bot.model;
   if (isEngineRef(ref)) return isEngineRef(bot.model) && engineOf(ref) === engineOf(bot.model) ? ref : bot.model;

@@ -26,6 +26,7 @@ const path = require('node:path');
  *   locked: boolean,
  *   language: 'auto' | 'fr' | 'en',
  *   folders: SharedFolder[],
+ *   allBots?: boolean,
  * }} Settings
  * @typedef {{ available(): Promise<boolean>, encrypt(s: string): Promise<Buffer>, decrypt(b: Buffer): Promise<string> }} Crypto
  */
@@ -99,6 +100,7 @@ class Store {
       this.s.token = null;
       this.tokenPlain = null;
       this.s.serverName = '';
+      delete this.s.allBots; // another server is another account
     }
     this.save();
   }
@@ -122,6 +124,8 @@ class Store {
   }
 
   clearCredentials() {
+    // Pairing again may link this computer to another account: the account-wide grant does not follow.
+    delete this.s.allBots;
     this.s.deviceId = null;
     this.s.token = null;
     this.tokenPlain = null;
@@ -175,6 +179,15 @@ class Store {
   removeFolder(id) { this.s.folders = this.s.folders.filter((f) => f.id !== id); this.save(); }
 
   isLocked() { return this.s.locked === true; }
+
+  /**
+   * « Autoriser tous mes bots de ce compte » (protocol 1.7): any bot of the account this computer is linked to gets a
+   * control session without a new question. Commands keep their own rules. Erased with "Forget this server".
+   */
+  getAllBots() { return this.s.allBots === true; }
+
+  /** @param {boolean} v */
+  setAllBots(v) { if (v) this.s.allBots = true; else delete this.s.allBots; this.save(); }
   /** @param {boolean} v */
   setLocked(v) { this.s.locked = v; this.save(); }
   /** @param {boolean} v */

@@ -6,7 +6,7 @@
 import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
 import { Image } from "expo-image";
-import { useRef, useState, type ComponentRef } from "react";
+import { useEffect, useRef, useState, type ComponentRef } from "react";
 import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { Attachment, Bot, Live } from "../api/types";
@@ -20,6 +20,7 @@ import { ChatSources } from "./ChatSources";
 import { QueuedNotes } from "./QueuedNotes";
 import { mentionAt, replaceMention } from "../../../server/src/clientshared/chatmentions";
 import { sendKeysFor } from "../../shared/sendKey";
+import { draftWithQuote, useQuote } from "./ChatPlus";
 
 export const MAX_UPLOAD_BYTES = 1_000_000_000;
 export const MAX_ATTACHMENTS = 10;
@@ -41,6 +42,13 @@ export function Composer({ bot, live }: { bot: Bot; live: Live | undefined }) {
   const canTalk = !bot.access || bot.access.canTalk;
   const canAttach = bot.kind === "agent" && !bot.access;
   const mention = canAttach ? mentionAt(text, caret) : null;
+  // L184 « citation »: a quoted message (ChatPlus.tsx quoteMessage) lands at the top of the draft, the cursor in the box.
+  const quoted = useQuote((s) => s.pending[bot.id]);
+  useEffect(() => {
+    if (quoted === undefined) return;
+    const q = useQuote.getState().take(bot.id);
+    if (q) { setText((cur) => draftWithQuote(q, cur)); input.current?.focus(); }
+  }, [quoted, bot.id]);
 
   const upload = async (files: Picked[]) => {
     const room = MAX_ATTACHMENTS - uploads.length;

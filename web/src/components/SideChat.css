@@ -9,5 +9,26 @@
 .side-chat-composer { display: flex; gap: 6px; padding: 8px 10px 10px; border-top: 1px solid var(--border); }
 .side-chat-composer .input { flex: 1; min-width: 0; min-height: 40px; }
 .side-chat-composer .btn { min-height: 40px; }
+/* L146 2×2 grid (1 400 px and wider; App.tsx only sets has-grid there): the main chat top left, up to three others;
+   with two others the last one spans the bottom. Narrower, the grid classes do nothing. */
+@media (min-width: 1400px) {
+  .shell.has-grid { grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(0, 1fr); }
+  .shell.has-grid.has-site-banner { grid-template-rows: auto minmax(0, 1fr) minmax(0, 1fr); }
+  .shell.has-grid > .sidebar { grid-row: 1 / -1; }
+  .shell.has-grid.has-site-banner > .sidebar { grid-row: 2 / -1; }
+  .shell.has-grid > .main { margin-top: 4px; margin-bottom: 4px; min-height: 0; }
+  .shell.has-grid > .main:not(.side-chat) { margin-right: 4px; }
+  .shell.has-grid-2 > .side-chat:last-of-type { grid-column: 2 / -1; }
+  .shell.has-grid .side-chat-head { min-height: 44px; }
+}
 @media (max-width: 1099px) { .side-chat { display: none; } .shell.has-side { grid-template-columns: auto minmax(0, 1fr); } }
 @media (max-width: 1300px) { .side-chat-text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; } }
+/* L146 « Dispositions » (ChatLayouts.tsx). */
+.chat-layouts-note { display: flex; align-items: center; gap: 6px; margin: 0 0 10px; }
+.chat-layouts-list { list-style: none; margin: 0 0 12px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.chat-layouts-item { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; min-width: 0; }
+.chat-layouts-text { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow-wrap: anywhere; }
+.chat-layouts-name { font-weight: 600; }
+.chat-layouts-row { display: flex; gap: 6px; }
+.chat-layouts-row .input { flex: 1; min-width: 0; }
+.chat-layouts-item .btn, .chat-layouts-row .btn { min-height: 36px; }

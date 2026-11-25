@@ -1,3 +1,4 @@
+import { refuseCreditless } from "./modelplusroutes.js";
 import type { Context, Hono } from "hono";
 import { apiProviders } from "./apimodels.js";
 import { previewLocalImport } from "./localimport.js";
@@ -44,6 +45,7 @@ export function registerAccountNetRoutes(api: Hono<any>, ownAgent: (c: Context) 
   api.get("/api-providers/:id/keys", (c) => { const p = provider(c); return c.json({ keys: keysOf(c, p) }); });
   api.post("/api-providers/:id/keys", async (c) => {
     const p = provider(c); const b = await body(c);
+    if (typeof b.key === "string" && b.key.trim() && !/\s/.test(b.key.trim())) await refuseCreditless(c, p.baseUrl, b.key.trim(), p.preset ?? undefined); // L150 (modelplusroutes.ts)
     guard(c, () => providerKeys.add(user(c).id, p.id, b.name, b.key));
     return c.json({ keys: keysOf(c, p) });
   });

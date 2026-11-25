@@ -12,7 +12,8 @@ import { bots, clip, now, type BotRecord } from "./store.js";
  * and the conversation that was open stays in the list. Generation numbers only ever go up, so an open app sees it as a
  * new conversation and reloads it. Only when the bot is idle.
  *
- * L150 (part): a model chosen for one conversation (`model`), used for the owner's own messages in it (agent/workmodel.ts).
+ * L150 (part): a model chosen for one conversation (`model`), used for the owner's own messages in it (agent/workmodel.ts);
+ * and its reasoning level (`effort`, column added below: "" = the project's preset or the bot's own level).
  * L161 (part): « Garder l'historique » — earlier conversations not pinned and untouched for N days are deleted.
  */
 q.run(`CREATE TABLE IF NOT EXISTS conv_meta (
@@ -20,15 +21,18 @@ q.run(`CREATE TABLE IF NOT EXISTS conv_meta (
   title TEXT, pinned INTEGER NOT NULL DEFAULT 0, folder TEXT NOT NULL DEFAULT '', model TEXT NOT NULL DEFAULT '',
   updated_at INTEGER NOT NULL, PRIMARY KEY (bot_id, generation)
 )`);
+try { q.run("ALTER TABLE conv_meta ADD COLUMN effort TEXT NOT NULL DEFAULT ''"); } catch { /* already there */ }
 q.run(`CREATE TABLE IF NOT EXISTS history_retention (user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, days INTEGER NOT NULL, updated_at INTEGER NOT NULL)`);
 
 export const AUTO_ORIGINS = ["routine", "webhook", "email", "api", "nudge", "bot"] as const;
 export const RETENTION_DAYS = [0, 30, 90, 365] as const;
 export const MAX_FOLDER = 40;
 export const MAX_TITLE = 80;
+/** Reasoning levels a conversation may choose (the bot's own levels, store.ts ENUMS.effort); "" = not chosen. */
+export const CONV_EFFORTS = ["low", "medium", "high", "xhigh"] as const;
 
 export interface Conversation {
-  generation: number; title: string; autoTitle: boolean; pinned: boolean; folder: string; model: string;
+  generation: number; title: string; autoTitle: boolean; pinned: boolean; folder: string; model: string; effort: string;
   automatic: boolean; messages: number; startedAt: number; lastAt: number; current: boolean;
 }
 
@@ -41,7 +45,7 @@ export function autoTitle(text: string): string {
   return `${cut}…`;
 }
 
-interface MetaRow { generation: number; title: string | null; pinned: number; folder: string; model: string }
+interface MetaRow { generation: number; title: string | null; pinned: number; folder: string; model: string; effort?: string }
 const metaOf = (botId: string, generation: number) => q.get<MetaRow>("SELECT * FROM conv_meta WHERE bot_id = ? AND generation = ?", botId, generation);
 
 export function listConversations(bot: BotRecord, filter: { automatic?: boolean; folder?: string; q?: string } = {}): Conversation[] {
@@ -57,7 +61,7 @@ export function listConversations(bot: BotRecord, filter: { automatic?: boolean;
     const m = metas.get(g.generation);
     const auto = autoTitle(body?.text ?? "") || (body?.origin?.name ? clip(body.origin.name, 60) : "");
     return {
-      generation: g.generation, title: m?.title || auto, autoTitle: !m?.title, pinned: !!m?.pinned, folder: m?.folder ?? "", model: m?.model ?? "",
+      generation: g.generation, title: m?.title || auto, autoTitle: !m?.title, pinned: !!m?.pinned, folder: m?.folder ?? "", model: m?.model ?? "", effort: m?.effort ?? "",
       automatic, messages: g.n ?? 0, startedAt: g.first, lastAt: g.last, current: g.generation === bot.generation,
     };
   });
@@ -75,9 +79,9 @@ const exists = (bot: BotRecord, generation: number) =>
   generation === bot.generation || !!q.get("SELECT 1 FROM rows WHERE bot_id = ? AND generation = ? LIMIT 1", bot.id, generation);
 
 /** « Renommer », « Épingler », folder, model: one conversation's own choices. An empty title goes back to the automatic one. */
-export function updateConversation(bot: BotRecord, generation: number, patch: { title?: unknown; pinned?: unknown; folder?: unknown; model?: unknown }) {
+export function updateConversation(bot: BotRecord, generation: number, patch: { title?: unknown; pinned?: unknown; folder?: unknown; model?: unknown; effort?: unknown }) {
   if (!Number.isInteger(generation) || !exists(bot, generation)) throw new ConvError(404, "That conversation does not exist.");
-  const cur = metaOf(bot.id, generation) ?? { generation, title: null, pinned: 0, folder: "", model: "" };
+  const cur = metaOf(bot.id, generation) ?? { generation, title: null, pinned: 0, folder: "", model: "", effort: "" };
   const title = patch.title === undefined ? cur.title : String(patch.title ?? "").replace(/\s+/g, " ").trim().slice(0, MAX_TITLE) || null;
   const folder = patch.folder === undefined ? cur.folder : String(patch.folder ?? "").replace(/\s+/g, " ").trim().slice(0, MAX_FOLDER);
   const pinned = patch.pinned === undefined ? cur.pinned : patch.pinned === true ? 1 : 0;
@@ -86,9 +90,14 @@ export function updateConversation(bot: BotRecord, generation: number, patch: { 
     model = String(patch.model ?? "").trim();
     if (model && !/^[A-Za-z0-9._:/@+-]{1,120}$/.test(model)) throw new ConvError(400, "Choose an available model.");
   }
-  q.run(`INSERT INTO conv_meta (bot_id, generation, title, pinned, folder, model, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT (bot_id, generation) DO UPDATE SET title = excluded.title, pinned = excluded.pinned, folder = excluded.folder, model = excluded.model, updated_at = excluded.updated_at`,
-    bot.id, generation, title, pinned, folder, model, now());
+  let effort = cur.effort ?? "";
+  if (patch.effort !== undefined) {
+    effort = String(patch.effort ?? "").trim();
+    if (effort && !(CONV_EFFORTS as readonly string[]).includes(effort)) throw new ConvError(400, "Choose a reasoning level: light, normal, deep or maximum.");
+  }
+  q.run(`INSERT INTO conv_meta (bot_id, generation, title, pinned, folder, model, effort, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT (bot_id, generation) DO UPDATE SET title = excluded.title, pinned = excluded.pinned, folder = excluded.folder, model = excluded.model, effort = excluded.effort, updated_at = excluded.updated_at`,
+    bot.id, generation, title, pinned, folder, model, effort, now());
 }
 
 export function foldersOf(bot: BotRecord): string[] {
@@ -98,6 +107,11 @@ export function foldersOf(bot: BotRecord): string[] {
 /** The model chosen for the bot's open conversation ("" = the bot's own). */
 export function conversationModel(botId: string, generation: number): string {
   return metaOf(botId, generation)?.model ?? "";
+}
+
+/** The reasoning level chosen for the bot's open conversation ("" = not chosen). */
+export function conversationEffort(botId: string, generation: number): string {
+  return metaOf(botId, generation)?.effort ?? "";
 }
 
 /** Every table that holds something of one conversation (bot_id + generation), found from the schema. */

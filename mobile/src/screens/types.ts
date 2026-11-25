@@ -6,4 +6,6 @@ export type RootStack = {
   Computer: { botId: string; control?: boolean };
   /** « Chantier »: read, approve, decide, stop (screens/Chantiers.tsx). */
   Chantiers: undefined;
+  /** L184 « Tableau de bord et chiffres »: pinned views and the account's numbers (screens/Dashboard.tsx). */
+  Dashboard: undefined;
 };

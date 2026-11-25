@@ -15,7 +15,7 @@ import { pageFiles, pageVersions, type PageFile } from "./pagefiles.js";
 import { fail } from "./routeinput.js";
 import { tr } from "./i18n.js";
 import { bots, pages, publicBot, rows, type BotRecord, type UserRecord } from "./store.js";
-import { exportBot, importBot, BotFileError } from "./botfile.js"; import { registerPageKeepRoutes } from "./pagekeeproutes.js"; // L157
+import { exportBot, importBot, BotFileError } from "./botfile.js"; import { registerPageKeepRoutes } from "./pagekeeproutes.js"; import { registerModelPlusRoutes } from "./modelplusroutes.js"; // L157, L150
 
 type E = { Variables: { user: UserRecord } };
 const json = async (c: Context<E>) => (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
@@ -35,7 +35,7 @@ const guardIn = (c: Context<E>) => async <T>(run: () => T | Promise<T>): Promise
  * retention, L141 pin / delete a message. Owner only (ownBot / ownAgent), each account sees only its own things.
  */
 export function registerChatComfortRoutes(api: Hono<E>, ownBot: (c: Context<E>) => BotRecord, ownAgent: (c: Context<E>) => BotRecord) {
-  registerPageKeepRoutes(api, ownAgent); // L157 « rien de perdu », journal de design
+  registerPageKeepRoutes(api, ownAgent); registerModelPlusRoutes(api); // L157 « rien de perdu », journal de design ; L150 presets per project, OpenRouter credit alert (modelplusroutes.ts)
   // ── L144: deletion preview, trash, export / import ──
   api.get("/bots/:id/deletion-preview", (c) => c.json(deletionPreview(ownBot(c))));
   api.get("/bot-trash", (c) => c.json({ items: trashList(c.get("user").id) }));

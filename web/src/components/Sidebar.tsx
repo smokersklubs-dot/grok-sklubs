@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactNode } from "react";
-import { ReviewRulesField } from "./ReviewRules"; // L77 project review rules
+import { ReviewRulesField } from "./ReviewRules"; import { ProjectModelPresetField } from "./ProjectModelPreset"; // L77 project review rules
 import { NotifyBell } from "./NotifyBell";
 import { InboxNavRow } from "./InboxView"; import { LiveDocsNavRow } from "./LiveDocs";
 import { createPortal } from "react-dom";
@@ -222,6 +222,7 @@ function SectionActions({ section }: { section: BotSection }) {
               </label>
               <p className="muted">{t("sections.instructionsHelp")}</p>
               <ReviewRulesField sectionId={section.id} />
+              <ProjectModelPresetField sectionId={section.id} />
               {error && <p role="alert">{error}</p>}
             </div>
             <div className="modal-foot">

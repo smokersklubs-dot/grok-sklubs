@@ -222,6 +222,8 @@ function resolve(routePath: string, param: string, bot: "bot1" | "bot2"): string
     "shared-roles:rid": "a_role", "identity:docId": "a_idoc", "bot-shortcuts:sid": "a_shortcut", "capability-gaps:gid": "a_gap",
     // L161 (finishroutes.ts): a colour theme proposed by A's bot (apply, remove are the owner's alone).
     "themes:themeId": "thm_alpha",
+    // L153 « pas à pas » (stepguide.ts): a Docteur line (the card goes to the caller's own main bot).
+    "guides:checkId": "account.two_factor",
   };
   if (param === "action" && prev2 === "reach") return "login";
   if (param === "rid" && prev2 === "resources") return "a_conn";
@@ -279,6 +281,8 @@ const NOT_REVEALING: Record<string, { status: number; body?: RegExp; why: string
   "DELETE /policies/:tool": { status: 200, body: /^\{"ok":true\}$/, why: "removes the caller's own policy for that tool" },
   // The parameter is the id of a skill bundled with Sklubot (the same for everyone): it is added to the caller's own bots.
   "POST /skills-library/:id/add": { status: 200, body: /^\{"report":\{"added":\[.*\],"already":\[.*\]\}\}$/, why: "addFromLibrary(user, id): only the caller's own bots" },
+  // L153 « pas à pas » (stepguide.ts): the parameter is a Docteur line of the caller's own account; the card goes to the caller's own main bot.
+  "POST /doctor/guides/:checkId": { status: 200, body: /^\{"botId":"bot_[0-9a-f]+","seq":\d+\}$/, why: "doctorGuide(user, line): the caller's own Docteur, shown in the caller's own main bot" },
   // In-process requests have no socket, so the bots' tool endpoint answers 503 before its own token check.
   "POST /mcp/:botId": { status: 503, why: "no socket in an in-process request; the engine token check is covered in security.test.ts" },
 };

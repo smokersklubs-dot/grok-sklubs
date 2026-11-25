@@ -172,6 +172,12 @@ les applis intégrées Gmail/Outlook… restent à configurer sur le site, comme
 (voir ci-dessous), action incertaine, tâche de fond (Arrêter, répondre, autorisation), suggestion, point d’étape de
 dépense, compétence apprise (modifiable), connecteur d’API (jeton masqué), question de mémoire, e-mail reçu (Libérer).
 
+**Discussion en plus (L184).** Sous un message : l’aperçu de son premier lien (titre et description lus par le serveur,
+`GET /link-preview`, sans image) et « Citer » (ou un appui long) qui met ses mots en citation en haut de la saisie. Sous
+une vue dessinée par un bot : « Épingler au tableau de bord ». Réglages → « Tableau de bord et chiffres » : les vues
+épinglées (en texte) et les chiffres du compte (`GET /dashboard/pins`, `GET /usage-metrics`). Le thème appliqué sur le
+site (Réglages → Général → Thèmes proposés) colore aussi l’appli ; Réglages → « Thème du bot » le coupe sur ce téléphone.
+
 **Écran du bot / prise en main.** L’écran « Ordinateur de … » (Détails → Voir son ordinateur, ou « Ouvrir son écran et
 prendre la main » sur la carte) affiche l’écran du bot (`GET /bots/:id/screen`, une image par seconde) ; en prenant la
 main : toucher = clic au bon pixel, texte à taper, touches (Entrée, Effacer, Tab, Échap, flèches), défilement,

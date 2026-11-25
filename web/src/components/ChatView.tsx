@@ -12,7 +12,7 @@ import { Composer } from "./Composer";
 import { ModelHealthBanner } from "./ModelHealth";
 import { WorkContext } from "./WorkContext";
 import { Icon } from "./Icon";
-import { Transcript } from "./Transcript"; import { SideChatMenuItem } from "./SideChat"; import { SelfCheckHost, SelfCheckMenuItem } from "./BotSelfCheck"; import { PassageBar } from "./PassageComment"; import { ExportMenuItems } from "./ChatExport";
+import { Transcript } from "./Transcript"; import { SideChatMenuItem } from "./SideChat"; import { EngineWarmupLine } from "./EngineWarmup"; import { SelfCheckHost, SelfCheckMenuItem } from "./BotSelfCheck"; import { PassageBar } from "./PassageComment"; import { ExportMenuItems } from "./ChatExport";
 import { TaskLanes } from "./TaskLanes";
 import { FindBar } from "./FindBar";
 import { FilePreviewPanel } from "./SpendSkillsFiles";
@@ -162,7 +162,7 @@ export function ChatView() {
       <CallBar botId={bot.id} />
       {bot.access && !bot.access.canTalk ? (
         <div className="composer-readonly" role="note"><Icon name="eye" size={15} /> {t("ws.readOnly", { owner: bot.access.ownerName })}</div>
-      ) : <>{bot.kind === "agent" && !bot.access && <ModelHealthBanner key={bot.id + ":" + bot.model} bot={bot} />}<Composer bot={bot} live={live} /></>}
+      ) : <>{bot.kind === "agent" && !bot.access && <ModelHealthBanner key={bot.id + ":" + bot.model} bot={bot} />}{!bot.access && <EngineWarmupLine key={"w" + bot.id + ":" + bot.model} bot={bot} />/* L145 */}<Composer bot={bot} live={live} /></>}
     </section>
   );
 }

@@ -5,6 +5,10 @@ export const WAVE7_FR: Record<string, string> = {
   "press “{label}” on {device}": "appuyer sur « {label} » sur {device}",
   "These words commit something (send, pay, delete, publish, confirm…): you are asked every time.": "Ces mots engagent quelque chose (envoyer, payer, supprimer, publier, confirmer…) : on te demande à chaque fois.",
   "not available": "pas disponible", "password field": "champ mot de passe", "not found": "introuvable",
+  // L164, the bot's own Linux computer (agent/tools-apptree.ts)
+  "Listing the apps' windows": "Liste les fenêtres des applis", "Reading an app's controls": "Lit les commandes d'une appli", "Using an app": "Utilise une appli",
+  "Allow {bot} to click “{label}” in {app} on its computer?": "Autoriser {bot} à cliquer sur « {label} » dans {app} sur son ordinateur ?",
+  "click “{label}” in {app}": "cliquer sur « {label} » dans {app}", "Computer": "Ordinateur", "no such control": "commande introuvable",
   // L172
   "Allow {bot} to send this to the agent {agent} ({kind})?": "Autoriser {bot} à envoyer ceci à l'agent {agent} ({kind}) ?",
   "{bot} has read outside content. Allow it to send this to the agent {agent}?": "{bot} a lu du contenu extérieur. L'autoriser à envoyer ceci à l'agent {agent} ?",

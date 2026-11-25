@@ -4,6 +4,7 @@ import { t as tt, useT, type Key } from "../i18n";
 import type { DoctorFinding, DoctorSeverity } from "../../../server/src/doctor";
 import { pasteText } from "../../../server/src/doctor";
 import { Icon } from "./Icon";
+import { useStore } from "../store";
 import "./DoctorSection.css";
 
 /**
@@ -59,6 +60,7 @@ export function DoctorSection() {
                   <span className="doctor-title">{label(f.title)}</span>
                   {f.detail && <span className="doctor-detail">{label(f.detail)}</span>}
                   {f.remediation && <code className="doctor-fix">{f.remediation}</code>}
+                  {f.severity !== "ok" && <GuideButton checkId={f.checkId} />}
                 </span>
                 <span className="doctor-scope muted">{t(f.scope === "install" ? "doctor.scope.install" : "doctor.scope.account")}</span>
               </li>
@@ -69,4 +71,19 @@ export function DoctorSection() {
       )}
     </div>
   );
+}
+
+/** L153 « Pas à pas »: the fix for this line as a step-by-step card in the main bot's chat (server stepguide.ts). */
+function GuideButton({ checkId }: { checkId: string }) {
+  const t = useT();
+  const [busy, setBusy] = useState(false);
+  const go = async () => {
+    setBusy(true);
+    try {
+      const r = await api<{ botId?: unknown }>("POST", `/doctor/guides/${encodeURIComponent(checkId)}`);
+      const s = useStore.getState();
+      if (typeof r?.botId === "string" && s.bots[r.botId]) { s.closeAppSettings(); s.selectBot(r.botId); s.showToast(t("guide.inChat", { name: s.bots[r.botId].name })); }
+    } catch (e) { useStore.getState().showToast(errText(e)); } finally { setBusy(false); }
+  };
+  return <button type="button" className="btn btn-small doctor-guide" disabled={busy} onClick={() => void go()}><Icon name="tasks" size={13} /> {t(busy ? "common.working" : "guide.stepByStep")}</button>;
 }

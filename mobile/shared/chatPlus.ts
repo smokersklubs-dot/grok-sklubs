@@ -33,3 +33,18 @@ export function firstLink(text: string): string | null {
   const url = m[0].replace(/[.,;:!?»]+$/, "");
   try { const u = new URL(url); return u.hostname && !u.username && !u.password ? u.toString() : null; } catch { return null; }
 }
+
+/**
+ * L184 « citation » on the phone (same Markdown quote as the web's « Répondre », web/src/lib/messagecopy.ts replyDraft):
+ * the words a long press quotes — code blocks shortened to "…", Markdown marks dropped, one line, at most 280 characters.
+ */
+export function quoteOf(text: string): string {
+  return text.replace(/```[\s\S]*?```/g, "…").replace(/[#*_`>]/g, "").replace(/\s+/g, " ").trim().slice(0, 280);
+}
+
+/** The draft a reply starts with: the quoted words as a Markdown quote, then what was already typed. */
+export function replyDraft(quote: string, current: string): string {
+  const lines = quote.replace(/\r\n/g, "\n").trim().slice(0, 1200).split("\n").map((l) => `> ${l}`.trimEnd());
+  const rest = current.trim();
+  return `${lines.join("\n")}\n\n${rest ? `${rest}\n` : ""}`;
+}

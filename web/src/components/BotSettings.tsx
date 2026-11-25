@@ -5,7 +5,7 @@ import { BotDangerZone } from "./BotLifecycle"; import { BotStyleField } from ".
 import { BotReachTab } from "./KeysHealthLinks";
 import { BotCapsField } from "./UsageCaps";
 import { LocalToolsTab } from "./LocalTools"; import { PluginsPanel, RemoteAgentsPanel } from "./ExtensionsPanels";
-import { BotApiTab } from "./BotApi";
+import { BotApiTab } from "./BotApi"; import { BotRelayDevice } from "./ComputerShare";
 import { engineOfRef } from "../lib/engines";
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { api, enc, errText } from "../api";
@@ -272,7 +272,7 @@ function General({ bot, onClose }: { bot: Bot; onClose: () => void }) {
         <button type="submit" className="btn btn-primary btn-small" disabled={!dirty || !form.name.trim() || saving}>{t(saving ? "common.saving" : "common.save")}</button>
       </div>
 
-      {!isRoom && !bot.access && <ComputerChoice bot={bot} />}
+      {!isRoom && !bot.access && <ComputerChoice bot={bot} />}{!isRoom && !bot.access && <BotRelayDevice bot={bot} />}
       {!isRoom && !bot.access && <BotVoicePicker bot={bot} />}
 
       <h3 className="pane-heading">{t("bot.conversation")}</h3>

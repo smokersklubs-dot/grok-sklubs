@@ -11,6 +11,7 @@ import { twoFactorOn } from "./twofactor.js";
 import { backupView } from "./autobackup.js";
 import { bots, type UserRecord } from "./store.js";
 import { doctorFindings, doctorSummary, type DoctorFacts, type PathPerms } from "./doctor.js";
+import { registerStepGuideRoutes } from "./stepguide.js";
 
 /**
  * L153 « Docteur », registered after the session check (routes.ts):
@@ -59,6 +60,7 @@ export function doctorFacts(user: UserRecord, now = Date.now()): DoctorFacts {
 }
 
 export function registerDoctorRoutes(api: Hono<any>) {
+  registerStepGuideRoutes(api); // L153 / L145 « pas à pas » and « ce qui reste à installer » (stepguide.ts)
   api.get("/doctor", (c) => {
     const user = c.get("user") as UserRecord;
     const facts = doctorFacts(user);

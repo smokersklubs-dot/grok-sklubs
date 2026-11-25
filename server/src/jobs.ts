@@ -227,6 +227,9 @@ export async function pollJobs() {
       }
     }
     await notifyEnded();
+    // L23: a Craft Anything rebuild waiting on a question wakes its bot once, to ask the owner (agent/craft-relay.ts).
+    const live = jobs.running();
+    if (live.length) await import("./agent/craft-relay.js").then((m) => m.relayCraftQuestions(live, (botId, t) => waker(botId, { ...t, jobIds: [] }))).catch((err) => console.error("[craft-relay]", err));
     if (!jobs.running().length && !q.get("SELECT 1 FROM bot_jobs WHERE notified = 0 AND status <> 'running' LIMIT 1") && poller) { clearInterval(poller); poller = null; }
   } finally { polling = false; }
 }

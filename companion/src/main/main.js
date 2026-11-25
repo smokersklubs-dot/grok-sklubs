@@ -229,7 +229,8 @@ function startConnection() {
 }
 
 function capabilityList() {
-  return Object.keys(OPS).filter((op) => !(op === 'window.focus' && process.platform === 'linux' && !hasWmctrl()))
+  // 'session.handover' (1.7) is not an operation: it tells Sklubot this relay hands over an idle session by itself.
+  return [...Object.keys(OPS), 'session.handover'].filter((op) => !(op === 'window.focus' && process.platform === 'linux' && !hasWmctrl()))
     // The accessibility tree (L164) is offered on macOS and Windows only.
     .filter((op) => !op.startsWith('ax.') || process.platform === 'darwin' || process.platform === 'win32');
 }
@@ -253,9 +254,10 @@ function safeScreenInfo() {
 // ───────────────────────── consent UI (local only) ─────────────────────────
 
 const consentUI = {
-  /** @param {{ promptId: string, bot: { id: string, name: string }, reason: string, timeoutMs: number }} p */
+  /** @param {{ promptId: string, bot: { id: string, name: string }, reason: string, timeoutMs: number, holder?: { id: string, name: string } }} p */
   askSession(p) {
-    return openPrompt('session', p.promptId, p.bot, { reason: p.reason }, p.timeoutMs);
+    // `holder`: an idle bot that a yes here replaces (hand-over, protocol 1.7).
+    return openPrompt('session', p.promptId, p.bot, { reason: p.reason, holder: p.holder ? p.holder.name : null }, p.timeoutMs);
   },
   /** @param {{ promptId: string, bot: { id: string, name: string }, command: string, cwd: string|null, timeoutMs: number, scripts?: any[], floor?: string }} p */
   askCommand(p) {
@@ -334,7 +336,7 @@ function answerPrompt(/** @type {Electron.IpcMainInvokeEvent} */ ev, /** @type {
   if (!pr || pr.win.isDestroyed() || ev.sender.id !== pr.win.webContents.id) return false;
   // Ignore clicks in the first 700 ms (avoids answering by accident while typing/clicking elsewhere).
   if (Date.now() - pr.shownAt < 700) return false;
-  const allowed = pr.kind === 'session' ? ['once', 'always', 'refuse'] : pr.kind === 'command' ? ['run', 'refuse'] : ['allow', 'refuse'];
+  const allowed = pr.kind === 'session' ? ['once', 'always', 'all', 'refuse'] : pr.kind === 'command' ? ['run', 'refuse'] : ['allow', 'refuse'];
   if (!allowed.includes(decision)) return false;
   prompts.delete(promptId);
   if (pr.kind !== 'command') pr.resolve(decision);
@@ -536,6 +538,7 @@ function uiState() {
     session: core.session ? { botName: core.session.botName, grant: core.session.grant, startedAt: core.session.startedAt } : null,
     locked: store.isLocked(),
     bots: Object.entries(s.bots).map(([id, b]) => ({ id, name: b.name, control: b.control === 'always', commands: b.commands === true })),
+    allBots: store.getAllBots(),
     folders: store.folders().map((f) => ({ id: f.id, name: f.name, path: f.path, write: f.write === true })),
     folderError,
     autostart: s.autostart,
@@ -629,6 +632,15 @@ function registerIpc() {
     const bot = { id, name: /** @type {any} */ (store.getBot(id)).name };
     store.setBotPerm(bot, key, key === 'control' ? (granting ? 'always' : null) : granting);
     log({ kind: 'permission.changed', bot, key, value: granting });
+    pushState();
+    return true;
+  });
+  // « Tous mes bots de ce compte » (1.7): granting is refused during a session, like every other widening.
+  ipcMain.handle('relay:allbots', (ev, value) => {
+    if (!fromMain(ev) || typeof value !== 'boolean') return false;
+    if (value && (core.session || prompts.size)) return false;
+    store.setAllBots(value);
+    log({ kind: 'permission.changed', key: 'allBots', value });
     pushState();
     return true;
   });

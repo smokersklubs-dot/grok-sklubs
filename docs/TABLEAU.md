@@ -117,12 +117,18 @@ Code : `server/src/agent/memorykeep.ts`, `server/src/agent/worklessons.ts`. Test
 - **Qui exécute** : le bot épinglé du rôle ; sinon le bot choisi, sauf si c'est le chef ou s'il tient un autre rôle — alors le bot du rôle ; sinon le bot du rôle ; sinon personne (la tâche ne démarre pas). La carte dit « exécutée par … » et pourquoi. Aucun bot n'est créé tout seul.
 - **Jeux de modèles** : garde les modèles des rôles sous un nom (50 au plus) et réapplique-les d'un clic ; un modèle qui n'existe plus est sauté et nommé.
 - **Décisions qui t'attendent** : en haut du tableau, les tâches à relire, bloquées (avec la raison) ou que personne ne peut faire.
-- Pas encore : le formulaire de plan dans la discussion (T9).
+- Le choix du modèle par groupe de tâches dans le plan (T9) n'est pas fait : le modèle se règle ensuite sur la tâche ou le rôle.
+
+## Plan créé depuis la discussion et bot pour un rôle (fin de L163)
+
+- **Plan dans la discussion** : quand tu demandes « planifie ce travail », le bot montre une carte « Plan pour le tableau » (outil `board_plan_propose`, 12 tâches au plus) : chaque tâche avec son type, son bot (ou « selon le rôle »), sa priorité et les tâches qu'elle attend. Rien n'est créé avant ton clic.
+- Tu décoches ce que tu ne veux pas, tu choisis « Lancer tout de suite » ou non, puis « Mettre sur le tableau ». Tout est créé, ou rien (tableau trop plein : refus avant de créer). Une tâche qui attendait une tâche décochée ne l'attend plus.
+- **Bot pour un rôle que personne ne tient** : une carte de proposition (« Nouveau coéquipier ») arrive dans la discussion de ton bot principal, une par rôle, jamais deux fois tant qu'une attend. Le bot n'est créé que si tu appuies sur « Créer » ; il tient alors le rôle et prend le modèle du bot principal. Aussi depuis « Rôles et modèles » → « Proposer un bot ».
 
 ## Limites connues
 
 - Le rejeu d'un parcours utilise le navigateur du bot : s'il travaille en même temps dans ce navigateur, les deux se
   gênent (rien n'est cliqué si la page a changé, le rejeu s'arrête).
-- Le formulaire de plan dans la discussion (T9) n'est pas fait ; les rôles valent pour tout le tableau (pas de projets
-  séparés).
+- Le plan ne choisit pas encore « dans cette conversation / une nouvelle » ni un modèle par groupe (T9) ; les rôles valent
+  pour tout le tableau (pas de projets séparés).
 - Le tableau se rafraîchit toutes les 10 s quand il est ouvert (pas d'événement temps réel dédié).

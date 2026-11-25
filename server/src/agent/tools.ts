@@ -31,14 +31,14 @@ import { generatePassword, parseTotp, totpNow } from "../totp.js";
 import { seal } from "../auth.js";
 import { askAndWait, createRoom, deliverBotMessage, dispatchToRoom, MAX_HELPERS, MAX_HOPS, startHelper, waitsOn } from "./team.js";
 import { addressesNoBot, BREAKER_LINE, dmChannel, postBudget, roomChannel, type Verdict } from "./roombudget.js";
-import { myComputerTools } from "./mycomputer.js"; import { myUiTools } from "./myui.js"; import { liveDocTools } from "./livedoctools.js"; import { phoneTools } from "./phonetools.js"; import { remoteAgentTools } from "./remoteagenttools.js"; // wave 7: L164 L178 L177 L172 L174
+import { myComputerTools } from "./mycomputer.js"; import { myUiTools } from "./myui.js"; import { liveDocTools } from "./livedoctools.js"; import { phoneTools } from "./phonetools.js"; import { voiceNoteTools } from "../voice/voicenote.js"; import { reminderCallTools } from "../voice/remindercall.js"; import { remoteAgentTools } from "./remoteagenttools.js"; // wave 7: L164 L178 L177 L172 L174
 import { botTools, profileTools, progressTools, skillImportTools, xSearchAvailable, xTools } from "./tools-team.js"; import { roomTools } from "./tools-room.js";
 import { bgTasks, publicTask, startTask, stopTask } from "./bgtasks.js"; import { bgTaskToolSpecs, TaskLimitError } from "./bgtaskspecs.js";
 import { findCode, mailAccounts } from "../native/access.js";
 import { hideForAWhile } from "../store.js";
 import { explicitRemember, memoryVerdict } from "./sensitive.js";
 import { committingKind, probe, seenOf, seenTarget } from "./bind.js"; import { boundClick, browserDownloadTools, browserTabTools, shot, tabLine, typeSecret } from "./tools-browser.js";
-import { elementTools, openInWords } from "./tools-elements.js"; import { noteShots, sameScreen } from "./screendedup.js"; import { traceClicks } from "./clicktrail.js"; // L65/L74/L75/L81: element tools, in words; L65 same screen skipped
+import { elementTools, openInWords } from "./tools-elements.js"; import { noteShots, sameScreen } from "./screendedup.js"; import { traceClicks } from "./clicktrail.js"; import { appTreeTools } from "./tools-apptree.js"; // L65/L74/L75/L81: element tools, in words; L65 same screen skipped; L164 app reader
 import { cardLabel, cardTools } from "./payments.js";
 import { guideIndex, guideTools } from "./guides.js"; import { careTools } from "./caretools.js"; // L161 capability_gap, shortcut_note, docs_read
 import { anonymise } from "./anonymise.js"; import { evidenceFields, evidenceNote, proposalEvidence } from "../skillevidence.js";
@@ -70,7 +70,7 @@ import { mediaAvailable, mediaTools } from "../media.js";
 import { goalTools } from "./goals.js";
 import { memoryPrefs } from "./memoryprefs.js"; import { searchNotesSmart } from "./semantic.js";
 import { forgetNotes } from "./memorybook.js"; import { cleanInvisible, duplicateOf } from "./memorysave.js"; import { similar } from "./memory.js"; import { memoryKeep } from "./memorykeep.js"; import { recordable } from "./flowrecord.js"; // L66 ; L165 recorded flows
-import { recruitTools } from "./recruit.js";
+import { recruitTools } from "./recruit.js"; import { guideTools as stepGuideTools } from "../stepguide.js"; import { boardPlanTools } from "../boardplan.js"; // L153/L145 « pas à pas », L163 plan → tableau
 import { teamMdTools } from "./teamexport.js"; import { teamFolderTools } from "./tools-teamfolder.js"; import { themeTools } from "./tools-theme.js"; import { recapTools } from "./tools-recap.js"; import { shellLockRefusal } from "../teamlock.js"; /* L161 team-folder write lock */ import { stepTools } from "./tools-steps.js"; import { waitTools } from "./waitlater.js"; import { offerUndo, undoText } from "./undoable.js"; import { planTools, questionCard, QUESTION_PROPS } from "./richquestion.js"; import { viewTools } from "./viewcard.js"; import { creationTools } from "./creations.js"; import { deleteCheckAnswer } from "./deletecheck.js"; // L97 wait_until, L98 « Annuler », L79, DS-Bot item 8 show_view
 import { botPath, spillPath, spillPreview } from "./context.js"; import { condenseResult } from "./sidemodel.js"; import { codeHost, toolCodeTools } from "./toolcode.js"; import { routineFrameTools } from "./routineframe.js"; import { routineOptionTools } from "../routineoptions.js"; import { askRefusal, requestHelper, startQueuedHelpers } from "./askrules.js"; import { lt } from "./looptext.js";
 
@@ -191,7 +191,7 @@ const screenTools: BuiltinTool[] = [
 ];
 
 /** Screen actions (not looking) wait while the user drives the screen: the server refuses them, whatever the bot says. */
-const ACTS_ON_SCREEN = new Set(["browser_open", "browser_back", "code_request", "screen_click", "screen_type", "screen_key", "screen_scroll", "screen_drag", "vault_type", "card_fill", "element_click", "element_type", "element_select", "element_fill", "element_hover", "element_upload", "browser_tab", "browser_dialog"]);
+const ACTS_ON_SCREEN = new Set(["browser_open", "browser_back", "code_request", "screen_click", "screen_type", "screen_key", "screen_scroll", "screen_drag", "vault_type", "card_fill", "element_click", "element_type", "element_select", "element_fill", "element_hover", "element_upload", "browser_tab", "browser_dialog", "app_act"]);
 function respectDriver(t: BuiltinTool): BuiltinTool {
   if (!ACTS_ON_SCREEN.has(t.spec.name)) return t;
   return { ...t, run: async (a, c) => (userDriving(c.bot.id) ? { content: DRIVING, isError: true, summary: "the user is driving" } : t.run(a, c)) };
@@ -1177,7 +1177,7 @@ export function builtinTools(opts: { owner?: string; nativeSearch?: boolean; /**
 function assemble(opts: { owner?: string; nativeSearch?: boolean; modelSearch?: boolean; video?: "connector" | "api" | null; bgTasks?: boolean }): BuiltinTool[] {
   return [
     ...(browserAvailable() ? inGroup("computer", screenTools).map(respectDriver).map(noteShots).map(traceClicks).map(recordable) : []),
-    ...(computerKind() === "linux" ? inGroup("computer", [...elementTools, ...browserTabTools, ...browserDownloadTools]).map(respectDriver).map(noteShots).map(recordable) : []),
+    ...(computerKind() === "linux" ? inGroup("computer", [...elementTools, ...browserTabTools, ...browserDownloadTools, ...appTreeTools]).map(respectDriver).map(noteShots).map(recordable) : []),
     // On its own Linux computer a bot's commands are contained, so they do not need a permission card.
     // Background jobs and office documents: on the bots' own Linux computers only (shell_run starts the jobs).
     ...(computerKind() === "linux" && shellAvailable() ? [...inGroup("shell", jobTools), craftReady, openmanWorkspace] : []),
@@ -1191,7 +1191,7 @@ function assemble(opts: { owner?: string; nativeSearch?: boolean; modelSearch?: 
     ...(reachAvailable() ? inGroup("reach", reachTools) : []),
     ...(computerKind() === "linux" || reachAvailable() ? transcribeTools : []),
     githubSearch, githubRead, videoWorkflowTool, videoStudioTool, updateVideoStudio, ...(computerKind() === "linux" ? [studioMp4Tool] : []), ...publicLinkTools,
-    ...knowledgeTools, ...guideTools, ...careTools, ...guideSearchTools, ...(browserAvailable() ? contactSheetTools : []), ...ruleTools, ...pageTools, ...progressTools, ...profileTools, ...skillImportTools, ...botTools, ...recruitTools, ...inGroup("team", teamMdTools),
+    ...knowledgeTools, ...guideTools, ...careTools, ...guideSearchTools, ...(browserAvailable() ? contactSheetTools : []), ...ruleTools, ...pageTools, ...progressTools, ...profileTools, ...skillImportTools, ...botTools, ...recruitTools, ...stepGuideTools, ...boardPlanTools, ...inGroup("team", teamMdTools),
     researchTool, scholarTool, pastReportsTool, ...(xSearchAvailable(opts.owner) ? xTools : []), ...stepTools,
     ...shareTools.map((t): BuiltinTool => ({ ...t, group: "files" })), ...(imageServiceFor(opts.owner) || (opts.owner && wan2gpTarget(opts.owner)) ? [{ ...imageTool, group: "images" as const }] : []),
     ...inGroup("vault", vaultTools),
@@ -1204,7 +1204,7 @@ function assemble(opts: { owner?: string; nativeSearch?: boolean; modelSearch?: 
     ...localServerTools,
     ...(opts.video ? inGroup("video", videoTools) : []),
     // The user's own computers (Sklubot Relais): offered by newTurn only to users who linked one.
-    ...myComputerTools, ...myComputerPlusTools, ...myUiTools, ...phoneTools, ...liveDocTools, ...remoteAgentTools,
+    ...myComputerTools, ...myComputerPlusTools, ...myUiTools, ...phoneTools, ...liveDocTools, ...remoteAgentTools, ...voiceNoteTools, ...reminderCallTools, // L154
     ...inGroup("memory", [...memoryTools, ...roomMemoryTools, ...skillFeedbackTools]), ...inGroup("routines", [...routineTools, ...routineFrameTools, ...routineOptionTools]), ...inGroup("tasks", taskTools), ...(opts.bgTasks === false ? [] : inGroup("tasks", bgTaskTools)), ...goalTools, ...themeTools, ...recapTools, ...waitTools, ...planTools, ...viewTools, ...creationTools, ...inGroup("team", [...teamTools, ...roomTools]), ...userTools.filter((t) => t.spec.name !== "ask_takeover" || browserAvailable()), ...(computerKind() === "linux" ? [...codeTools, ...teamFolderTools] : []), ...(codeHost.available() ? toolCodeTools : []), ...reactTools,
   ];
 }
