@@ -31,6 +31,8 @@ Vague 10 : L157 (pages) et L161 (petits réglages) passent de ◐ à ✅ ; liste
 
 Vague 11 : L23, L145, L146, L150, L153, L154, L163, L164 passent à ✅ ; L184 avance (écrans mobiles, reste la musique). Décision n° 10 prise : garder tout le lot d'outils dans l'image du bot (lecteur d'accessibilité fait ; Lighthouse, axe, sloplint, mermaid-cli, chrome-devtools-mcp à ajouter, télémétrie coupée). Correction hors liste : un seul ordinateur pour tous les bots d'un compte (accord « tous mes bots », passage de main, ordinateur par bot ; Relais protocole 1.7).
 
+Décisions du 25/11/2026 : WebFetch retiré des bots sur abonnement quand leur navigateur est prêt (n° 8, L64) ; routines au moins toutes les 15 minutes, sans plafond en auto-hébergé (L143) ; lots en parallèle, 3 à la fois par bot (L99) ; alerte « nouvel appareil » et clés d'accès (L44) ; réseau des bots : proxy au choix, sortie par la maison, Web Bot Auth (L169) ; pas de musique pour l'instant (L184) ; langues ajoutées : espagnol, allemand, italien, portugais, chinois (L177) ; L175 « demande d'intégration GitHub » = livrer une tâche par pull request (T16), à construire.
+
 Avant la vague 8 (revue du 23/11 jusqu'à `db1f461`) : 127 ✅, 55 ◐, 2 À FAIRE.
 
 ---
