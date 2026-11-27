@@ -89,7 +89,7 @@ test("L40: on the bot's computer, a terminal showing a password and a key gets t
   for (let i = 0; i < 20 && (ocr ? boxes.length < 2 : !boxes.length); i++) { await new Promise((r) => setTimeout(r, 700)); boxes = await appSecretBoxes(bot.id); }
   const seen = ocr ? (await docker(["exec", n, "sh", "-c", "DISPLAY=:1 import -silent -window root png:- | tesseract stdin stdout -l fra+eng 2>/dev/null"])).stdout.toString().replace(/\s+/g, " ").slice(0, 300) : "";
   // When it fails, say what the window list held (wmctrl -lG): the mask only reads inside listed windows.
-  const wins = boxes.length >= 2 ? "" : (await docker(["exec", n, "sh", "-c", "DISPLAY=:1 wmctrl -lG 2>&1; echo wm=$(pgrep -c openbox)"])).stdout.toString().replace(/\s+/g, " ").slice(0, 400);
+  const wins = boxes.length >= 2 ? "" : (await docker(["exec", n, "sh", "-c", "DISPLAY=:1 wmctrl -lG 2>&1; echo wm=$(pgrep -c openbox); tail -c 300 /tmp/openbox.log 2>/dev/null"])).stdout.toString().replace(/\s+/g, " ").slice(0, 400);
   if (ocr) assert.ok(boxes.length >= 2 && boxes.length <= 6 && boxes.every((b) => b[2] < 500), `the password and the key, word by word: ${JSON.stringify(boxes)} (OCR read: ${seen}) (windows: ${wins})`);
   else assert.equal(boxes.length, 1, `no OCR: the terminal hidden whole: ${JSON.stringify(boxes)}`);
   assert.ok(boxes.every((b) => b[0] >= 30 && b[1] >= 50 && b[0] < 900 && b[1] < 400), "inside the terminal");
