@@ -38,7 +38,10 @@ MARKS_JS = """((marks) => {
     b.style.cssText = 'position:fixed;left:' + x + 'px;top:' + y + 'px;transform:translate(-50%,-50%);font:700 12px/1.1 Arial,sans-serif;color:#fff;background:#c2185b;border:1.5px solid #fff;border-radius:9px;padding:1px 5px;box-shadow:0 1px 3px rgba(0,0,0,.55);white-space:nowrap';
     root.appendChild(b);
   }
-  (document.body || document.documentElement).appendChild(host); return marks.length;
+  (document.body || document.documentElement).appendChild(host);
+  // Resolved once the numbers are painted (two frames), so the screenshot that follows shows them; a tab that draws no
+  // frame (hidden) still answers after 400 ms.
+  return new Promise((done) => { const t = setTimeout(() => done(marks.length), 400); requestAnimationFrame(() => requestAnimationFrame(() => { clearTimeout(t); done(marks.length); })); });
 })(__MARKS__)"""
 
 def op_annotate(req):
@@ -47,7 +50,8 @@ def op_annotate(req):
     T[0] = t
     marks = [[str(m[0])[:8], float(m[1]), float(m[2])] for m in (req.get("marks") or [])[:150]]
     try:
-        t.call("Runtime.evaluate", _wait=5, expression=MARKS_JS.replace("__MARKS__", json.dumps(marks)), returnByValue=True)
+        # awaitPromise (CDP Runtime.evaluate, https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#method-evaluate): wait for the paint above.
+        t.call("Runtime.evaluate", _wait=5, expression=MARKS_JS.replace("__MARKS__", json.dumps(marks)), returnByValue=True, awaitPromise=True)
         shot = t.call("Page.captureScreenshot", _wait=15, format="jpeg", quality=65)
     finally:
         try:
