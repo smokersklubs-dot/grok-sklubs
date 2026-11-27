@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { t as tr, type Key } from "../i18n";
 import { api, errText } from "../api";
 import { useStore } from "../store";
 import { ErrorNote } from "./ui";
@@ -23,18 +24,18 @@ type Detail = {
   baseSha?: string;
   publicRepository?: boolean;
 };
-const labels: Record<string, [string, string]> = {
-  prepare: ["Préparation du correctif", "Preparing patch"],
-  review: ["Relecture du correctif", "Reviewing patch"],
-  connect: ["Compte requis pour publier", "Connect an account to publish"],
-  approval: ["Ta validation est attendue", "Awaiting your approval"],
-  commit: ["Création du commit", "Creating commit"],
-  publish: ["Publication du brouillon", "Publishing draft"],
-  ci: ["Tests en cours de suivi", "Watching checks"],
-  done: ["Suivi terminé", "Checks reported"],
-  error: ["Mission interrompue", "Interrupted"],
-  declined: ["Publication refusée", "Declined"],
-  changes: ["Corrections demandées", "Changes requested"],
+const labels: Record<string, Key> = {
+  prepare: "ghIssues.phase.prepare",
+  review: "ghIssues.phase.review",
+  connect: "ghIssues.phase.connect",
+  approval: "ghIssues.phase.approval",
+  commit: "ghIssues.phase.commit",
+  publish: "ghIssues.phase.publish",
+  ci: "ghIssues.phase.ci",
+  done: "ghIssues.phase.done",
+  error: "ghIssues.phase.error",
+  declined: "ghIssues.phase.declined",
+  changes: "ghIssues.phase.changes",
 };
 export function GithubIssues({
   bot,
@@ -136,7 +137,7 @@ export function GithubIssues({
         if (e.target === e.currentTarget) setOpen(e.currentTarget.open);
       }}
     >
-      <summary hidden={launched}>GitHub · {fr ? "Missions" : "Tasks"}</summary>
+      <summary hidden={launched}>GitHub · {tr("ghIssues.tasks")}</summary>
       {cfg && (
         <form
           onSubmit={(e) => {
@@ -151,12 +152,12 @@ export function GithubIssues({
             <label>
               <span>
                 <input type="checkbox" checked={inThread} onChange={(e) => setInThread(e.target.checked)} />{" "}
-                {fr ? "Suivre dans le fil ouvert" : "Report to the open thread"}
+                {tr("ghIssues.reportOpenThread")}
               </span>
             </label>
           )}
           <label>
-            {fr ? "Lien du ticket" : "Issue URL"}
+            {tr("ghIssues.issueUrl")}
             <input
               className="input"
               type="url"
@@ -168,9 +169,9 @@ export function GithubIssues({
           </label>
           {cfg.accounts.length > 0 ? (
             <label>
-              {fr ? "Compte GitHub" : "GitHub account"}
+              {tr("board.pr.account")}
               <select className="input" value={connector || "public"} onChange={(e) => setAccount(e.target.value)}>
-                <option value="public">{fr ? "Lecture publique" : "Public read access"}</option>
+                <option value="public">{tr("ghIssues.publicReadAccess")}</option>
                 {cfg.accounts.map((a) => (
                   <option key={a.id} value={a.id}>
                     {a.name}
@@ -181,18 +182,16 @@ export function GithubIssues({
           ) : (
             <>
               <small>
-                {fr
-                  ? "Un ticket public peut être préparé et relu dès maintenant."
-                  : "Public issues can be prepared and reviewed now."}
+                {tr("ghIssues.publicIssuesCanPrepared")}
               </small>
               <button className="btn btn-small" type="button" onClick={connect}>
-                {fr ? "Connecter GitHub Code" : "Connect GitHub Code"}
+                {tr("ghIssues.connectGithubCode")}
               </button>
             </>
           )}
           {cfg.reviewers.length > 0 ? (
             <label>
-              {fr ? "Bot relecteur" : "Reviewing bot"}
+              {tr("ghIssues.reviewingBot")}
               <select className="input" value={peer} onChange={(e) => setReviewer(e.target.value)}>
                 {cfg.reviewers.map((a) => (
                   <option key={a.id} value={a.id}>
@@ -203,11 +202,11 @@ export function GithubIssues({
             </label>
           ) : (
             <small>
-              {fr ? "Ajoute un deuxième bot pour la relecture." : "Add a second bot to review changes."}
+              {tr("ghIssues.addSecondBotReview")}
             </small>
           )}
           <button className="btn btn-small" disabled={busy || !peer || !url.trim()}>
-            {fr ? "Confier le ticket" : "Assign issue"}
+            {tr("ghIssues.assignIssue")}
           </button>
         </form>
       )}
@@ -216,15 +215,15 @@ export function GithubIssues({
           <strong>
             {j.repo}#{j.issue}
           </strong>
-          <small>{labels[j.phase]?.[fr ? 0 : 1] ?? j.phase}</small>
+          <small>{labels[j.phase] ? tr(labels[j.phase]) : j.phase}</small>
           {j.note && <p>{j.note}</p>}
           <div className="studio-actions">
             <button className="btn btn-small" onClick={() => thread(j.thread)}>
-              {fr ? "Discussion" : "Conversation"}
+              {tr("ghIssues.conversation")}
             </button>
             {j.phase !== "prepare" && (
               <button className="btn btn-small" disabled={busy} onClick={() => void inspect(j)}>
-                {fr ? "Examiner les fichiers" : "Inspect files"}
+                {tr("ghIssues.inspectFiles")}
               </button>
             )}
             {j.pr && (
@@ -238,7 +237,7 @@ export function GithubIssues({
                 disabled={busy}
                 onClick={() => void post({ job: j.id, decision: "retry" })}
               >
-                {fr ? "Reprendre" : "Retry"}
+                {tr("ghIssues.retry")}
               </button>
             )}
           </div>
@@ -248,9 +247,9 @@ export function GithubIssues({
               {detail.data.changes.map((f) => (
                 <details key={f.path}>
                   <summary>{f.path}</summary>
-                  <strong>{fr ? "Avant" : "Before"}</strong>
-                  <pre>{f.before ?? (fr ? "Nouveau fichier" : "New file")}</pre>
-                  <strong>{fr ? "Après" : "After"}</strong>
+                  <strong>{tr("ghIssues.before")}</strong>
+                  <pre>{f.before ?? (tr("ghIssues.newFile"))}</pre>
+                  <strong>{tr("ghIssues.after")}</strong>
                   <pre>{f.after}</pre>
                 </details>
               ))}
@@ -258,13 +257,13 @@ export function GithubIssues({
                 (cfg.accounts.length ? (
                   <div>
                     <label>
-                      {fr ? "Compte de publication" : "Publishing account"}
+                      {tr("ghIssues.publishingAccount")}
                       <select
                         className="input"
                         value={publishAccount}
                         onChange={(e) => setPublishAccount(e.target.value)}
                       >
-                        <option value="">{fr ? "Choisir un compte" : "Choose an account"}</option>
+                        <option value="">{tr("ghIssues.chooseAccount")}</option>
                         {cfg.accounts.map((a) => (
                           <option key={a.id} value={a.id}>
                             {a.name}
@@ -284,12 +283,12 @@ export function GithubIssues({
                         })
                       }
                     >
-                      {fr ? "Associer ce compte au correctif" : "Link account to this patch"}
+                      {tr("ghIssues.linkAccountPatch")}
                     </button>
                   </div>
                 ) : (
                   <button className="btn btn-small" onClick={connect}>
-                    {fr ? "Connecter GitHub Code" : "Connect GitHub Code"}
+                    {tr("ghIssues.connectGithubCode")}
                   </button>
                 ))}
               {j.phase === "approval" && (
@@ -299,31 +298,31 @@ export function GithubIssues({
                     disabled={busy}
                     onClick={() => void post({ job: j.id, decision: "approve", revision: detail.data.revision })}
                   >
-                    {fr ? "Autoriser la PR en brouillon" : "Approve draft PR"}
+                    {tr("ghIssues.approveDraftPr")}
                   </button>
                   <button
                     className="btn btn-ghost btn-small"
                     disabled={busy}
                     onClick={() => void post({ job: j.id, decision: "decline", revision: detail.data.revision })}
                   >
-                    {fr ? "Refuser" : "Decline"}
+                    {tr("goal.decline")}
                   </button>
                 </div>
               )}
               {["connect", "approval"].includes(j.phase) && detail.data.publicRepository !== false && (
                 <details>
-                  <summary>{fr ? "Suivre une PR brouillon déjà publiée" : "Follow an existing draft PR"}</summary>
-                  <small>{fr ? "Branche attendue dans le dépôt public" : "Expected public repository branch"} · <code>{j.branch}</code></small>
-                  {detail.data.baseSha && <p>{fr ? "Base du correctif" : "Reviewed base"} · {detail.data.base} · <code>{detail.data.baseSha}</code></p>}
+                  <summary>{tr("ghIssues.followExistingDraftPr")}</summary>
+                  <small>{tr("ghIssues.expectedPublicRepositoryBranch")} · <code>{j.branch}</code></small>
+                  {detail.data.baseSha && <p>{tr("ghIssues.reviewedBase")} · {detail.data.base} · <code>{detail.data.baseSha}</code></p>}
                   <form onSubmit={e => {
                     e.preventDefault();
                     void post({ job: j.id, decision: "follow-published", revision: detail.data.revision, pr: publishedPr });
                   }}>
-                    <label>{fr ? "Numéro ou URL de la PR" : "PR number or URL"}
+                    <label>{tr("ghIssues.prNumberUrl")}
                       <input className="input" maxLength={250} required value={publishedPr}
                         onChange={e => setPublishedPr(e.target.value)} /></label>
                     <button type="submit" className="btn btn-small" disabled={busy || !publishedPr.trim()}>
-                      {fr ? "Vérifier et suivre dans la discussion" : "Verify and follow in this conversation"}
+                      {tr("ghIssues.verifyFollowConversation")}
                     </button>
                   </form>
                 </details>

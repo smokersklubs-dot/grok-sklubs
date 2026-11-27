@@ -1,0 +1,6 @@
+presentations — © 2026 Open Design contributors — Apache License 2.0, from github.com/nexu-io/open-design (commit 0725880)
+Source: https://github.com/nexu-io/open-design/tree/07258801b9e4ae80553816bb1606af7aa9a63dff — files packages/contracts/src/prompts/deck-framework.ts, design-templates/simple-deck/references/layouts.md, design-templates/simple-deck/references/checklist.md and design-templates/simple-deck/assets/template.html
+Licence: Apache License, Version 2.0 (the full text is in LICENSE.txt in this folder, copied unchanged from the root of the source repository, which has no NOTICE file).
+
+Modified for Sklubot (2026-11-18): the deck frame was rewritten (shorter, visible slide numbers and counter, swipe on phones, "#N" addresses instead of localStorage, a print rule fixed so that every slide prints, the OpenDesign viewer protocol and its hidden chrome removed); the rules (density, charts, diagrams, theme rhythm, checklist) were condensed and rewritten for Sklubot's tools (page_publish, page_edit, browser_open, screen_view) and its page sandbox; example content (company names, figures, quotes) was replaced by neutral placeholders; a French translation (SKILL.fr.md) was added.
+Only text is included; no script file, font, image or other file of the original folders is bundled.

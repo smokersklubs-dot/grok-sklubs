@@ -48,3 +48,8 @@
   overflow-wrap: anywhere;
   border: 1px solid var(--line);
 }
+/* L77 rest (PeerReviewPlus.tsx) */
+.review-plus { display: grid; gap: 0.5rem; margin-top: 0.5rem; }
+.review-plus .btn { justify-self: start; }
+.review-plus-panel ul { margin: 0.3rem 0 0; padding-inline-start: 1.2rem; }
+.review-plus-pick { display: grid; gap: 0.3rem; border: 0; padding: 0.4rem 0; margin: 0; }

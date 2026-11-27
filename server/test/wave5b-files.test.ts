@@ -194,6 +194,42 @@ test("files: every write and every trash needs its own approval (never \"Always\
   await idle(bot);
 });
 
+test("nod 9: file access switched off from the chat; a file tool then asks on a card (never Always) that turns it back on; Refuse keeps it off", async () => {
+  const dev = (await call("GET", "/relay/devices")).json.devices[0].id;
+  const filesOn = async () => (await call("GET", `/relay/devices/${dev}/guard`)).json.filesOn;
+  assert.equal(await filesOn(), true, "on by default (folders shared on the computer are already an opt-in)");
+  await say(bot, `coupe l'accès à mes fichiers : call my_file_access {"on":false}`);
+  await replied(bot, "is now off");
+  assert.equal(await filesOn(), false);
+  await idle(bot);
+  const reads = relay.reqs.filter((r) => r.op === "fs.read").length;
+  await say(bot, `lis mes notes : call my_file_read {"folder":"Documents","path":"notes.txt"}`);
+  const card = await pendingApproval(bot);
+  assert.equal(card.once, true, "never Always");
+  assert.match(card.title, /accès à tes fichiers sur portable-zoe.* est coupé/i);
+  assert.equal(relay.reqs.filter((r) => r.op === "fs.read").length, reads, "nothing read before the answer");
+  await call("POST", `/approvals/${card.approvalId}`, { decision: "deny" });
+  await idle(bot);
+  assert.equal(await filesOn(), false, "Refuse keeps it off");
+  assert.equal(relay.reqs.filter((r) => r.op === "fs.read").length, reads);
+  await say(bot, `lis mes notes : call my_file_read {"folder":"Documents","path":"notes.txt"}`);
+  const again = await pendingApproval(bot);
+  await call("POST", `/approvals/${again.approvalId}`, { decision: "allow" });
+  await replied(bot, "Liste de courses : pain, lait");
+  assert.equal(await filesOn(), true, "Allow turns it back on and the same request continues");
+  await idle(bot);
+  // Settings → Computers: the same switch.
+  const off = await call("PUT", `/relay/devices/${dev}/guard`, { filesOn: false });
+  assert.equal(off.json.filesOn, false);
+  assert.equal((await call("PUT", `/relay/devices/${dev}/guard`, { filesOn: "no" })).status, 400);
+  await say(bot, `call my_file_write {"folder":"Documents","path":"n2.txt","text":"x","user_quote":"x"}`);
+  const write = await pendingApproval(bot);
+  assert.match(write.why ?? write.note ?? JSON.stringify(write), /rallume aussi/);
+  await call("POST", `/approvals/${write.approvalId}`, { decision: "deny" });
+  await idle(bot);
+  assert.equal((await call("PUT", `/relay/devices/${dev}/guard`, { filesOn: true })).json.filesOn, true);
+});
+
 test("files: never from a routine (or any work the user did not start), and an old relay without files is told to update", async () => {
   const r = routines.create(bot.id, { name: "Lire mes notes", prompt: `call my_file_read {"folder":"Documents","path":"notes.txt"}`, trigger: "cron", schedule: "0 9 * * *", timezone: "UTC" });
   const reads = relay.reqs.filter((x) => x.op === "fs.read").length;

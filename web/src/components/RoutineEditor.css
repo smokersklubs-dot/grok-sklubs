@@ -1,0 +1,28 @@
+/* nod items 2, 8, 13: routine editor, run track, live activity, instruction approval. Tokens only (light / dark). */
+.routine-more { display: grid; gap: 6px; margin-top: 6px; min-width: 0; }
+.routine-live, .routine-track { display: flex; align-items: baseline; gap: 6px; margin: 0; color: var(--text-2); overflow-wrap: anywhere; min-width: 0; }
+.routine-live > svg, .routine-track > svg, .routine-live > span:first-child { flex: none; align-self: center; }
+.routine-more .link { display: inline-flex; align-items: center; gap: 5px; }
+.routine-live-caption { color: var(--text-3); }
+.routine-edit-form, .routine-approve-form { display: grid; gap: 10px; margin-top: 8px; padding: 12px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface-2); min-width: 0; }
+.routine-edit-form textarea { resize: vertical; min-height: 72px; }
+.routine-edit-form .mono { font-family: var(--mono); }
+.routine-preview p { margin: 0 0 2px; overflow-wrap: anywhere; }
+.routine-preview .is-error { color: var(--danger); }
+.routine-edit-form .row-end, .routine-approve-form .row-end { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.routine-approve-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.routine-approve-quote { margin: 0; padding: 6px 10px; border-left: 3px solid var(--border-strong); color: var(--text-2); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 140px; overflow: auto; }
+.work-models { display: grid; gap: 6px; margin-top: 10px; }
+.work-models p { margin: 0; }
+@media (max-width: 560px) { .routine-edit-form .form-cols, .routine-approve-form .form-cols, .work-models-cols { grid-template-columns: 1fr; } }
+/* L143: run form of a routine with parameters; the calendar feed of routines. */
+.routine-params { display: grid; gap: 8px; margin-top: 8px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--r-md, 10px); background: var(--surface-2); }
+.routine-params p { margin: 0; }
+.routine-params-fields { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
+.routine-params .field { margin: 0; }
+.routine-feed { display: grid; gap: 8px; margin-top: 16px; padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--r-md, 10px); background: var(--surface); }
+.routine-feed p { margin: 0; }
+.routine-feed-title { display: flex; align-items: center; gap: 6px; margin: 0; font-size: 14px; }
+.routine-feed-link { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.routine-feed-link .input { flex: 1 1 220px; min-width: 0; }
+.routine-feed-link p { flex-basis: 100%; }

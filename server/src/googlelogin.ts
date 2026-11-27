@@ -28,7 +28,7 @@
  * { code, verifier } and receives its session cookie (Set-Cookie), exactly like POST /api/auth/login. Another app that
  * intercepts the sklubot:// address gets the code but not the verifier, which never leaves the app that started.
  */
-import { createHash, createPublicKey, randomBytes, timingSafeEqual, verify as verifySignature, type KeyObject } from "node:crypto";
+import { createHash, createPublicKey, randomBytes, timingSafeEqual, verify as verifySignature, type KeyObject } from "node:crypto"; import { localize, pickLocale } from "./lang/index.js"; import { tr } from "./i18n.js";
 import type { Context, Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { hashPassword, originAllowed, seal, SESSION_COOKIE, setupCodeMatches, setupCodeRequired, signupOpen, unseal } from "./auth.js";
@@ -116,9 +116,9 @@ const FR: Record<string, string> = {
   "This code is wrong, used or expired. Sign in again.": "Ce code est faux, déjà utilisé ou expiré. Reconnecte-toi.",
   "The app did not send a valid code_challenge (S256).": "L'application n'a pas envoyé de code_challenge valide (S256).",
 };
-const m = (locale: Locale, english: string) => (locale === "fr" ? FR[english] ?? english : english);
-const pickLoc = (value: unknown, acceptLanguage?: string | null): Locale =>
-  value === "fr" || value === "en" ? value : /^\s*fr/i.test(acceptLanguage ?? "") ? "fr" : "en";
+const m = (locale: Locale, english: string) => localize(locale, english, FR);
+/** Before sign-in: the posted language, else the browser's (Accept-Language) among the 7, else English. */
+const pickLoc = (value: unknown, acceptLanguage?: string | null): Locale => pickLocale(value, acceptLanguage);
 
 class GoogleError extends Error { constructor(public status: 400 | 403 | 404 | 409 | 502, message: string) { super(message); } }
 
@@ -321,9 +321,7 @@ function resolveAccount(c: Context, deps: GoogleDeps, flow: Flow, claims: Google
   const first = deps.firstBotIdentity(flow.locale);
   bots.create(user.id, {
     name: first.name, label: first.label, primary: true, shape: "pebble", color: "indigo",
-    description: flow.locale === "fr"
-      ? "Ton interlocuteur principal. Garde le fil de ce qui est en cours, te prévient quand quelque chose a besoin de toi et coordonne les autres bots."
-      : "Your main point of contact. Keeps track of what is open, checks in when something needs you, and coordinates the other bots.",
+    description: tr(flow.locale, "Your main point of contact. Keeps track of what is open, checks in when something needs you, and coordinates the other bots."),
   });
   linkIdentity(user.id, claims);
   audit(user.id, "account", "Account created with Google");

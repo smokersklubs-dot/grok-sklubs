@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { Bot } from "../types";
-import { getLocale, t } from "../i18n";
+import { getLocale, t, intlTag } from "../i18n";
 
 /** Minimal typings for the Web Speech recognition API (not part of lib.dom). */
 export interface RecognitionResultEvent {
@@ -51,7 +51,7 @@ export function recognitionLang(voice: Bot["voice"]): string {
   const nav = navigator.language || "";
   const locale = getLocale();
   if (nav.toLowerCase().startsWith(locale)) return nav;
-  return locale === "fr" ? "fr-FR" : "en-US";
+  return intlTag(locale);
 }
 
 export function micErrorText(code: string): string | null {

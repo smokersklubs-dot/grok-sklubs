@@ -8,11 +8,14 @@ import { errText, useT, type Key } from "../i18n";
 import { clockTime, dayLabel, fileSize, isImage } from "../lib/format";
 import { shareLibraryFile } from "../lib/files";
 import { stepSummary } from "../state/items";
+import { requestSummary } from "../lib/requestSummary";
 import { useStore } from "../state/store";
 import { radius, useTheme } from "../theme";
 import { Icon } from "./Icon";
 import { listenAvailable, listenKey, listenReply, stopListening, useListen } from "../voice/listen";
 import { Markdown } from "./Markdown";
+import { canReport, ReportButton } from "./ReportSheet";
+import { LinkPreview, QuoteButton, quoteMessage } from "./ChatPlus";
 import { tap } from "./ui";
 
 export function DayDivider({ at }: { at: number }) {
@@ -70,25 +73,39 @@ export const MessageBubble = memo(function MessageBubble({ bot, row, body, mine,
   const bg = mine ? c.userBubble : c.surface;
   const fg = mine ? c.userBubbleFg : c.text;
   const sender = !mine && first && body.origin && body.origin.kind !== "voice" ? body.origin.name : !mine && first && bot.kind === "room" ? null : null;
+  // L184 « citation »: « Citer » under a reply, or a long press on any message, quotes it into the draft.
+  const canQuote = !body.streaming && !!body.text.trim() && (!bot.access || bot.access.canTalk);
+  const quotable = !mine && canQuote && body.role === "assistant";
   return (
     <View style={[styles.msgWrap, mine ? { alignItems: "flex-end" } : { alignItems: "flex-start" }, first && { marginTop: 10 }]}>
       {sender ? <Text style={[styles.sender, { color: c.text3 }]}>{sender}</Text> : null}
       {(body.text.trim() || body.streaming) ? (
-        <View
+        <Pressable
           accessible
           accessibilityLabel={`${mine ? t("common.you") : body.origin?.name ?? bot.name}, ${clockTime(row.createdAt)}: ${body.text}`}
+          accessibilityActions={canQuote ? [{ name: "longpress", label: t("quote.label") }] : undefined}
+          onAccessibilityAction={canQuote ? () => quoteMessage(bot.id, body.text) : undefined}
+          onLongPress={canQuote ? () => { tap(); quoteMessage(bot.id, body.text); } : undefined}
+          delayLongPress={450}
           style={[styles.bubble, mine ? styles.mine : [styles.theirs, { borderColor: c.border }], { backgroundColor: bg }]}
         >
           {mine ? <Text selectable style={{ color: fg, fontSize: 16, lineHeight: 22 }}>{body.text}</Text> : body.text.trim() ? <Markdown text={body.text} color={fg} /> : null}
           {body.streaming ? <View style={styles.typing}><ActivityIndicator size="small" color={c.text3} /></View> : null}
-        </View>
+        </Pressable>
       ) : null}
+      {!body.streaming && body.text.trim() ? <LinkPreview text={body.text} mine={mine} /> : null}
       {body.attachments?.length ? (
         <View style={[styles.attachments, mine && { alignItems: "flex-end" }]}>
           {body.attachments.map((a) => <AttachmentView key={a.path} botId={bot.id} file={a} mine={mine} />)}
         </View>
       ) : null}
-      {!mine && !body.streaming && body.role === "assistant" && body.text.trim() && listenAvailable ? <ListenButton bot={bot} row={row} body={body} /> : null}
+      {!mine && (quotable || canReport(bot, body) || (!body.streaming && body.role === "assistant" && body.text.trim() && listenAvailable)) ? (
+        <View style={styles.replyActions}>
+          {quotable ? <QuoteButton botId={bot.id} text={body.text} /> : null}
+          {!body.streaming && body.role === "assistant" && body.text.trim() && listenAvailable ? <ListenButton bot={bot} row={row} body={body} /> : null}
+          {canReport(bot, body) ? <ReportButton row={row} /> : null}
+        </View>
+      ) : null}
       {body.sources?.length ? (
         <Text style={[styles.sources, { color: c.text3 }]} numberOfLines={2}>{body.sources.map((s) => s.title || s.url.replace(/^https?:\/\//, "").split("/")[0]).join(" · ")}</Text>
       ) : null}
@@ -185,11 +202,13 @@ const ACTIVITY: Record<string, Key> = {
 };
 
 /** "Thinking it through…" under the conversation while the bot works. */
-export function ActivityLine({ live }: { live: Live | undefined }) {
+export function ActivityLine({ live, rows }: { live: Live | undefined; rows?: Row[] }) {
   const { c } = useTheme();
   const t = useT();
   if (!live?.running && !live?.awaiting) return null;
-  const phrase = live.awaiting ? t("activity.waiting") : live.caption || (live.activity ? t(ACTIVITY[live.activity.kind] ?? "activity.working") : t("activity.working"));
+  // nod item 3: at once, a one-line summary of the request, until the bot's first step or thought.
+  const asked = !live.steps && (!live.activity || live.activity.kind === "thinking") && rows ? requestSummary(rows) : "";
+  const phrase = live.awaiting ? t("activity.waiting") : live.caption || (asked ? t("activity.request", { text: asked }) : null) || (live.activity ? t(ACTIVITY[live.activity.kind] ?? "activity.working") : t("activity.working"));
   return (
     <View style={styles.activity} accessibilityLiveRegion="polite">
       {live.awaiting ? <Icon name="dot" size={14} color={c.warn} /> : <ActivityIndicator size="small" color={c.text3} />}
@@ -210,6 +229,7 @@ const styles = StyleSheet.create({
   thumb: { width: 220, height: 220, borderRadius: radius.lg },
   file: { flexDirection: "row", alignItems: "center", gap: 10, padding: 10, borderRadius: radius.md, borderWidth: StyleSheet.hairlineWidth, minWidth: 220 },
   sources: { fontSize: 12, marginTop: 4, marginHorizontal: 6 },
+  replyActions: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
   listen: { flexDirection: "row", alignItems: "center", gap: 6, minHeight: 44, minWidth: 44, paddingHorizontal: 12, marginTop: 4, borderRadius: 22, borderWidth: StyleSheet.hairlineWidth },
   lightbox: { flex: 1, backgroundColor: "#000" },
   lightboxBar: { position: "absolute", left: 12, right: 12, flexDirection: "row", justifyContent: "space-between" },

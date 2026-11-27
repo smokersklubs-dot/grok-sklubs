@@ -9,6 +9,7 @@ import { now } from "./store.js";
 import { setPriceSource } from "./usage.js";
 import { lentProviderIds } from "./hosted.js";
 import { OPENROUTER_HEADERS, OPENROUTER_PRESET, openRouterError } from "./openrouter.js";
+import { currentKey, keyOrder, providerKeys, withKeyRing } from "./providerkeys.js";
 
 /**
  * Model providers a user sets up in Settings → Models: any endpoint speaking the OpenAI chat-completions format, with
@@ -98,9 +99,11 @@ function instanceOf(r: Row): OpenAiCompatProvider {
   const keyEnc = r.key_enc;
   const models = cleanModels(safe(r.models));
   const openRouter = r.preset === "openrouter";
+  const ring = { id: r.id, userId: r.user_id, mainKeyEnc: keyEnc };
   const provider = new OpenAiCompatProvider({
     id: r.id, label: r.name, baseUrl: r.base_url, apiKeyEnv: "", models: cleanModels(safe(r.models)).map((m) => m.id),
-    apiKey: () => (keyEnc ? unseal(keyEnc) : null),
+    // L82 (providerkeys.ts): the key of the try under way, else the first one in the bot's order.
+    apiKey: () => currentKey() ?? keyOrder(ring)[0]?.value ?? (keyEnc ? unseal(keyEnc) : null),
     fetch: (url, init) => guardedFetch(url, init),
     echoReasoning: r.preset === "deepseek" || /(^|\.)deepseek\.com$/i.test(hostOf(r.base_url)),
     images: !!r.images,
@@ -111,6 +114,7 @@ function instanceOf(r: Row): OpenAiCompatProvider {
       httpError: (status: number, detail: string, retryAfterMs: number | null) => openRouterError(r.user_id, status, detail, retryAfterMs),
     } : {}),
   });
+  withKeyRing(provider, ring);
   instances.set(r.id, { at: r.updated_at, provider });
   return provider;
 }
@@ -120,7 +124,7 @@ export const apiProviders = {
   list: (userId: string): ApiProvider[] => rowsOf(userId).map(toPublic),
   get: (userId: string, id: string): ApiProvider | null => { const r = rowOf(userId, id); return r ? toPublic(r) : null; },
   /** The providers a user's turns may use (ids start with "up-"; see llm/index.ts). */
-  providersOf: (userId: string): LlmProvider[] => [...rowsOf(userId), ...lentRows(userId)].filter((r) => r.key_enc).map(instanceOf),
+  providersOf: (userId: string): LlmProvider[] => [...rowsOf(userId), ...lentRows(userId)].filter((r) => r.key_enc || providerKeys.hasExtra(r.id)).map(instanceOf),
   /** Hosted mode: the providers an operator lends to hosted accounts (by name and models only). */
   lentTo: (userId: string): { id: string; name: string; models: string[] }[] => lentRows(userId).map((r) => ({ id: r.id, name: r.name, models: cleanModels(safe(r.models)).map((m) => m.id) })),
   /** Hosted mode: whether an operator's provider is lent to hosted accounts. */
@@ -143,6 +147,7 @@ export const apiProviders = {
     // A new address never inherits the old key: the key was given for the old address.
     const moved = f.baseUrl !== undefined && f.baseUrl !== cur.base_url;
     const keyEnc = f.key === undefined ? (moved ? null : cur.key_enc) : f.key === null ? null : seal(f.key);
+    if (moved) providerKeys.forget(userId, id); // L82: the extra keys were given for the old address too
     q.run("UPDATE user_providers SET name = ?, base_url = ?, key_enc = ?, models = ?, images = ?, updated_at = ? WHERE id = ? AND user_id = ?",
       f.name ?? cur.name, f.baseUrl ?? cur.base_url, keyEnc, f.models ? JSON.stringify(f.models) : cur.models, f.images === undefined ? cur.images : f.images ? 1 : 0,
       Math.max(now(), cur.updated_at + 1), id, userId);
@@ -150,6 +155,7 @@ export const apiProviders = {
   },
   remove(userId: string, id: string): boolean {
     instances.delete(id);
+    providerKeys.forget(userId, id);
     return q.run("DELETE FROM user_providers WHERE user_id = ? AND id = ?", userId, id).changes > 0;
   },
   /** Prices of a model of this user's providers, by its bare name (the usage table records the bare model name). */

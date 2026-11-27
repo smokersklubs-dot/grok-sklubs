@@ -1,0 +1,27 @@
+#!/bin/sh
+# L115 — the computer's own Chromium for the page tools that start a browser of their own (Lighthouse, the axe runner
+# sklubot-axe, mermaid-cli's mmdc, chrome-devtools-mcp): they are pointed here (Dockerfile: CHROME_PATH, read by
+# Lighthouse's chrome-launcher — lighthouse --help, "chrome-flags"; PUPPETEER_EXECUTABLE_PATH, read by Puppeteer —
+# puppeteer-core src/common/Configuration.ts; chrome-devtools-mcp gets --executablePath, server/src/thirdpartymcp.ts), so
+# no second Chrome is ever downloaded. Like open-browser.sh (L48): as root, the browser runs as the user "browser" with
+# Chromium's own sandbox; when user namespaces are not allowed (a computer made without seccomp-chromium.json), still as
+# that user but without the sandbox; never as root. The tool's temporary profile (--user-data-dir, made by the tool as
+# root) is handed to that user first. Every argument is passed through unchanged.
+BUSER=browser
+UDD=""
+PREV=""
+for a in "$@"; do
+  case "$a" in --user-data-dir=*) UDD="${a#--user-data-dir=}";; esac
+  [ "$PREV" = "--user-data-dir" ] && UDD="$a"
+  PREV="$a"
+done
+if [ "$(id -u)" != 0 ]; then exec chromium --disable-dev-shm-usage "$@"; fi
+if ! id -u "$BUSER" >/dev/null 2>&1; then exec chromium --no-sandbox --disable-dev-shm-usage "$@"; fi
+if [ -n "$UDD" ]; then mkdir -p "$UDD" && chown -R "$BUSER:$BUSER" "$UDD"; fi
+AS="setpriv --reuid=$BUSER --regid=$BUSER --init-groups"
+ENVS="HOME=/home/$BUSER USER=$BUSER LOGNAME=$BUSER PATH=/usr/local/bin:/usr/bin:/bin LANG=${LANG:-C.UTF-8}"
+[ -n "$DISPLAY" ] && ENVS="$ENVS DISPLAY=$DISPLAY"
+SANDBOX=""
+$AS unshare --user true >/dev/null 2>&1 || SANDBOX="--no-sandbox"
+# shellcheck disable=SC2086
+exec $AS env -i $ENVS chromium $SANDBOX --disable-dev-shm-usage "$@"

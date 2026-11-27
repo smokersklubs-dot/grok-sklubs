@@ -2,6 +2,8 @@ import { useState } from "react";
 import { useT, type Key } from "../i18n";
 import { useStore, type AppSection } from "../store";
 import { Icon, type IconName } from "./Icon";
+import { listedInSimple, useSimpleMode } from "../lib/simplemode";
+import "./SimpleMode.css";
 
 type Entry = [AppSection, IconName, string?];
 const groups: { title: Key; entries: Entry[] }[] = [
@@ -20,7 +22,7 @@ const groups: { title: Key; entries: Entry[] }[] = [
     ["permissions", "shield"], ["rules", "book"], ["keys", "shield"], ["email", "mail"],
   ] },
   { title: "settings.group.owner", entries: [
-    ["account", "user"], ["usage", "chart", "facturation billing"], ["subscription", "star"], ["surveillance", "shield"], ["admin", "shield"],
+    ["account", "user"], ["doctor", "wrench", "docteur diagnostic dépannage securite security health santé"], ["usage", "chart", "facturation billing"], ["subscription", "star"], ["surveillance", "shield"], ["admin", "shield"],
   ] },
 ];
 const fold = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
@@ -33,13 +35,15 @@ export function SettingsNavigation({ section }: { section: AppSection }) {
   const [query, setQuery] = useState("");
   const label = (id: AppSection) => t(id === "subscription" && !hosted?.creditsForSale ? "settings.section.aiAccounts" : `settings.section.${id}`);
   const visible = (id: AppSection) => id === "subscription" ? !!hosted : id === "admin" ? !!hosted?.operator : id === "surveillance" ? sentinel : true;
-  const available = groups.map((group) => ({ ...group, entries: group.entries.filter(([id]) => visible(id)) }));
+  const { simple, set: setSimple } = useSimpleMode(); // L145 « mode Simple »: advanced sections step aside (a search still finds them)
   const terms = fold(query).trim().split(/\s+/);
+  const available = groups.map((group) => ({ ...group, entries: group.entries.filter(([id]) => visible(id) && listedInSimple(id, simple, !!query.trim(), section)) }));
   const matches = available.map((group) => ({ ...group, entries: group.entries.filter(([id, , aliases]) =>
     terms.every((term) => fold(`${label(id)} ${aliases ?? ""} ${t(group.title)}`).includes(term))) }));
   return <nav className="app-settings-nav" aria-label={t("settings.sections")}>
     <button className="btn btn-ghost btn-small back" type="button" onClick={closeAppSettings}><Icon name="arrowLeft" size={15} /> {t("settings.back")}</button>
     <h1>{t("settings.title")}</h1>
+    <label className="check-row settings-simple" title={t("simple.hint")}><input type="checkbox" checked={simple} onChange={(e) => setSimple(e.target.checked)} /> <span>{t("simple.label")}</span></label>
     <select className="input settings-mobile-select" value={section} aria-label={t("settings.sections")} onChange={(e) => openAppSettings(e.target.value as AppSection)}>
       {available.map((g) => <optgroup key={g.title} label={t(g.title)}>{g.entries.map(([id]) => <option key={id} value={id}>{label(id)}</option>)}</optgroup>)}
     </select>

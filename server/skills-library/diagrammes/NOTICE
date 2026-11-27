@@ -1,0 +1,8 @@
+diagrammes — adapted from CLI-Anything (© 2026 HKUDS CLI-Anything Team, Apache-2.0)
+Sources (each pinned to one commit):
+- CLI-Anything — © 2026 HKUDS CLI-Anything Team — Apache-2.0 — https://github.com/HKUDS/CLI-Anything/tree/34f519533bc175d2fe287ab8316b0dd99bb9cc43/skills/cli-anything-mermaid
+- CLI-Anything — © 2026 HKUDS CLI-Anything Team — Apache-2.0 — https://github.com/HKUDS/CLI-Anything/tree/34f519533bc175d2fe287ab8316b0dd99bb9cc43/skills/cli-anything-drawio
+Licence: Apache-2.0 — the upstream licence texts are in LICENSE.txt, unchanged.
+
+Modified for Sklubot (2026-11-22): the Python harness and the third-party online services it relied on removed; no online renderer (mermaid.ink would receive the content); diagrams drawn in Sklubot pages with a pinned library or rendered on the bot's computer with Mermaid's own CLI (installed only with the owner's agreement); draw.io files written directly; translated into French.
+Only text is included; no script, picture or other file of the original folders is bundled. Names of other products are not used as titles.

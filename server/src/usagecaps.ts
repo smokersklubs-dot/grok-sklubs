@@ -1,7 +1,8 @@
-import { emit } from "./bus.js";
+import { emit } from "./bus.js"; import { localize } from "./lang/index.js"; import { intlOf } from "./lang/index.js";
 import { isValidTimezone, localParts } from "./cron.js";
 import { q } from "./db.js";
 import type { CapMode, CapPeriod, CapSetBy, CapStateView, CapUnit, Card, Locale, UsageAmount, UsageCapsView, UsageCapView } from "./shared.js";
+import { LaneMap } from "./agent/lanemap.js";
 import { audit, bots, newId, now, rows, settings, users, type BotRecord } from "./store.js";
 
 /**
@@ -71,7 +72,7 @@ const FR: Record<string, string> = {
   "Unknown bot.": "Bot inconnu.",
 };
 export const cm = (locale: Locale | undefined, english: string, vars: Record<string, string | number> = {}) =>
-  (locale === "fr" ? FR[english] ?? english : english).replace(/\{(\w+)\}/g, (_m, k) => String(vars[k] ?? ""));
+  localize(locale, english, FR).replace(/\{(\w+)\}/g, (_m, k) => String(vars[k] ?? ""));
 
 export class CapError extends Error {
   constructor(public status: 400 | 403 | 404 | 409, public english: string) { super(english); this.name = "CapError"; }
@@ -240,7 +241,7 @@ export function moneyLeft(bot: Pick<BotRecord, "id" | "userId" | "parentId">, at
 }
 
 // ── Who started the running turn (loop.ts tells; paid tools ask) ─────────────────────────────────────────────────
-const attendedTurns = new Map<string, boolean>();
+const attendedTurns = new LaneMap<boolean>(); // lanes (agent/lanes.ts): per running turn
 export const markTurn = (botId: string, attended: boolean) => { attendedTurns.set(botId, attended); };
 export const clearTurn = (botId: string) => { attendedTurns.delete(botId); };
 /** Whether the bot's running turn was started by a person (true when no turn is known: an action of the user's own). */
@@ -248,11 +249,11 @@ export const turnAttended = (botId: string) => attendedTurns.get(botId) ?? true;
 
 // ── Words ───────────────────────────────────────────────────────────────────────────────────────────────────────
 export function amountText(unit: CapUnit, n: number, locale: Locale): string {
-  if (unit === "usd") return locale === "fr" ? `${n.toFixed(2).replace(".", ",")} $` : `${n.toFixed(2)} $`;
-  return `${Math.round(n).toLocaleString(locale === "fr" ? "fr-FR" : "en-GB")} tokens`;
+  if (unit === "usd") return `${new Intl.NumberFormat(intlOf(locale), { minimumFractionDigits: 2, maximumFractionDigits: 2, useGrouping: false }).format(n)} $`;
+  return `${Math.round(n).toLocaleString(intlOf(locale))} tokens`;
 }
 export function whenText(at: number, tz: string, locale: Locale): string {
-  const f = new Intl.DateTimeFormat(locale === "fr" ? "fr-FR" : "en-GB", { timeZone: tz, day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
+  const f = new Intl.DateTimeFormat(intlOf(locale), { timeZone: tz, day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
   return `${f.format(at)} (${tz})`;
 }
 export function capName(c: Pick<UsageCapView, "botId" | "period" | "unit" | "setBy">, locale: Locale): string {

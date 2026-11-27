@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, errText } from "../api";
-import { useLocale, type Locale } from "../i18n";
+import { sideText, useLocale, type Locale } from "../i18n";
 import { useStore } from "../store";
 import type { Bot, BotVoiceChoice, BotVoiceRow, FishVoice, KokoroVoice, PiperVoiceInfo, VoiceStatus } from "../types";
 import { Icon, Spinner } from "./Icon";
@@ -166,7 +166,7 @@ export type VoiceText = keyof typeof TX.fr;
 export function useVT() {
   const loc: Locale = useLocale();
   return (k: VoiceText, vars?: Record<string, string | number>) => {
-    const s: string = (TX[loc] ?? TX.en)[k] ?? TX.en[k];
+    const s: string = sideText("voice", TX, loc)[k] ?? TX.en[k];
     return vars ? s.replace(/\{(\w+)\}/g, (m, n: string) => (n in vars ? String(vars[n]) : m)) : s;
   };
 }

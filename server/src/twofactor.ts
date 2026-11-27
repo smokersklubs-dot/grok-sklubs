@@ -22,7 +22,7 @@
  *    an e-mail box alone does not get past two-factor. Someone who lost both the phone and the recovery codes asks the
  *    server's owner: `node server/dist/reset-password.js <email> --disable-2fa` (command line only).
  */
-import { randomBytes } from "node:crypto";
+import { randomBytes } from "node:crypto"; import { localize } from "./lang/index.js";
 import type { Context, Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { createSession, originAllowed, seal, SESSION_COOKIE, unseal, verifyPassword } from "./auth.js";
@@ -55,7 +55,7 @@ const FR: Record<string, string> = {
   "No such endpoint.": "Adresse inconnue.",
   "The saved two-factor key cannot be read (data key changed?). Ask the server's owner.": "La clé de double authentification enregistrée ne se lit plus (clé de données changée ?). Demande au propriétaire du serveur.",
 };
-const m = (locale: Locale, english: string) => (locale === "fr" ? FR[english] ?? english : english);
+const m = (locale: Locale, english: string) => localize(locale, english, FR);
 class TwoFactorError extends Error { constructor(public status: 400 | 401 | 403 | 404 | 409 | 410 | 429, message: string) { super(message); } }
 
 // ── Storage ──────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -163,17 +163,23 @@ export function regenerateRecovery(user: UserRecord, code: string): { recoveryCo
 // ── Sessions ─────────────────────────────────────────────────────────────────────────────────────────────────────
 const secure = () => config.publicUrl.startsWith("https://");
 
+/** L44: told of every session opened here (newdevice.ts: the « nouvel appareil » alert). A listener never blocks a sign-in. */
+export type SessionOpened = { c: Context; userId: string; tokenHash: string; via: string };
+const sessionListeners: ((e: SessionOpened) => void)[] = [];
+export const onSessionOpened = (fn: (e: SessionOpened) => void) => { sessionListeners.push(fn); };
+
 /** Creates the session and its cookie (the only place that does, besides the tests). */
-export function openSession(c: Context, userId: string): void {
+export function openSession(c: Context, userId: string, via = "sign-in"): void {
   const s = createSession(userId);
   setCookie(c, SESSION_COOKIE, s.token, { httpOnly: true, sameSite: "Lax", path: "/", maxAge: s.maxAgeSec, secure: secure() });
+  for (const fn of sessionListeners) { try { fn({ c, userId, tokenHash: sha256(s.token), via }); } catch (err) { console.error("[sessions]", err); } }
 }
 
 export interface SecondStep { twoFactor: { token: string; expiresIn: number } }
 
 /** A sign-in that passed its first step: a session, or — with two-factor on — a pending challenge and no session. */
 export function startSessionOrChallenge(c: Context, userId: string, via = "sign-in"): SecondStep | null {
-  if (!twoFactorOn(userId)) { openSession(c, userId); return null; }
+  if (!twoFactorOn(userId)) { openSession(c, userId, via); return null; }
   const token = randomToken(32);
   q.run("DELETE FROM login_challenges WHERE expires_at < ?", now());
   q.run("INSERT INTO login_challenges (token_hash, user_id, via, created_at, expires_at) VALUES (?, ?, ?, ?, ?)", sha256(token), userId, via, now(), now() + CHALLENGE_MS);
@@ -278,7 +284,7 @@ export function registerTwoFactorPublic(api: Hono<any>, deps: TwoFactorDeps) {
     q.run("DELETE FROM login_challenges WHERE token_hash = ?", sha256(token));
     deleteCookie(c, TWO_FACTOR_COOKIE, { path: "/api/auth" });
     audit(user.id, "account", how === "recovery" ? `Signed in (${ch.via}) with a recovery code` : `Signed in (${ch.via}) with a two-factor code`);
-    openSession(c, user.id);
+    openSession(c, user.id, ch.via);
     return c.json({ user: deps.publicUser(user), ...(how === "recovery" ? { recoveryLeft: twoFactorStatus(user).recoveryLeft } : {}) });
   }));
 }

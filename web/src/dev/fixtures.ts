@@ -2,9 +2,10 @@
  * Fake data for the dev gallery (web/src/dev/Gallery.tsx). Never shipped: the gallery is only loaded in development.
  * Every text comes in French and English (`L`), and `long` swaps in very long texts to check wrapping on a phone.
  */
-import type { AnnouncementAdminItem, AnnouncementsAdmin, AnnouncementsState, AnnouncementView, Bot, Card, Row, SentinelIncidentView, SentinelOverview, TodayReport } from "../types";
+import { viewCardFixtures } from "./viewFixtures"; import { batchCardFixtures } from "./batchFixtures"; import { trajectoryCardFixtures } from "./trajectoryFixtures"; // L158
+import type { AnnouncementAdminItem, AnnouncementsAdmin, AnnouncementsState, AnnouncementView, Bot, Card, ConversationGrantInfo, Row, SentinelIncidentView, SentinelOverview, TodayReport } from "../types";
 import { DEFAULT_MINUTES } from "../types";
-import { failureCardFixtures, failureSummaryFixture } from "./incidentsFixtures";
+import { failureCardFixtures, failureSummaryFixture } from "./incidentsFixtures"; import { turnCardFixtures, turnNoticeRows } from "./turnFixtures";
 
 export interface FixtureOptions { lang: "fr" | "en"; long: boolean }
 
@@ -36,6 +37,30 @@ type StatusOf<C> = C extends { status: infer S } ? S : C extends { state: infer 
 /** One card in one status: what the gallery lists under "Cartes". */
 export interface CardFixture { type: Card["type"]; status: string; card: Card }
 
+/** Settings → Permissions: what the owner allowed "for this conversation" (ConversationGrants.tsx). */
+/** Réglages → Mémoire: a note's history (MemoryEdit.tsx), as GET /memories/:id/history answers. */
+export function memoryHistoryFixture(o: FixtureOptions) {
+  const L = (fr: string, en: string) => (o.lang === "fr" ? fr : en);
+  const long = o.long ? L(" avec toute l'équipe commerciale, sauf pendant les vacances scolaires de la zone A", " with the whole sales team, except during the school holidays") : "";
+  return [
+    { at: NOW - 9 * 86400_000, action: "status", before: "active", after: "contested", by: "bot" },
+    { at: NOW - 8 * 86400_000, action: "edited", before: L("Préfère les réunions le matn", "Prefers meetings in the mornin"), after: L(`Préfère les réunions le matin${long}`, `Prefers meetings in the morning${long}`), by: "owner" },
+    { at: NOW - 8 * 86400_000, action: "status", before: "contested", after: "active", by: "owner" },
+    { at: NOW - 2 * 86400_000, action: "deleted", before: null, after: null, by: "owner" },
+    { at: NOW - 2 * 86400_000, action: "restored", before: null, after: null, by: "owner" },
+  ];
+}
+
+export function conversationGrantFixtures(o: FixtureOptions): ConversationGrantInfo[] {
+  const { L, LONG } = texts(o);
+  const H = 3_600_000;
+  return [
+    { id: "cgr_gallery1", botId: GALLERY_BOT_ID, botName: "Juno", thread: 0, label: LONG("CRM: create contact"), place: "CRM: create_contact", grantedAt: Date.now() - 40 * 60_000, uses: 6, lastUsedAt: Date.now() - 5 * 60_000, expiresAt: Date.now() + 11.5 * H },
+    { id: "cgr_gallery2", botId: GALLERY_BOT_ID, botName: "Max", thread: 12, label: L("Cliquer", "Clicking"), place: "click: compta.example.com", grantedAt: Date.now() - 11.4 * H, uses: 1, lastUsedAt: Date.now() - 11 * H, expiresAt: Date.now() + 0.6 * H },
+    { id: "cgr_gallery3", botId: GALLERY_BOT_ID, botName: "Nora", thread: 0, label: L("Lancer une commande", "Running a command"), place: "shell_run", grantedAt: Date.now() - 2 * H, uses: 0, lastUsedAt: null, expiresAt: Date.now() + 10 * H },
+  ];
+}
+
 export function cardFixtures(o: FixtureOptions): CardFixture[] {
   const { L, LONG } = texts(o);
   const list: CardFixture[] = [];
@@ -57,6 +82,13 @@ export function cardFixtures(o: FixtureOptions): CardFixture[] {
     type: "approval", approvalId: "ap_reversible", status, title: L("Créer le dossier « Clients 2027 »", "Create the “Clients 2027” folder"),
     detail: "", tool: "drive_create_folder", source: "Google Drive",
   }));
+  // « Autoriser pour cette conversation »: the card that offers it (three answers), and once answered that way.
+  add("approval", ["pending", "allowed"], (status) => ({
+    type: "approval", approvalId: `ap_conversation_${status}`, status, title: LONG(L("Autoriser Juno à utiliser CRM : create contact ?", "Allow Juno to use CRM: create contact?")),
+    detail: L("name: Paul Martin\ncompany: Atelier Martin", "name: Paul Martin\ncompany: Atelier Martin"), tool: "CRM: create_contact", source: "CRM",
+    why: L("Le bot n'a cité aucun de tes mots pour cette action.", "The bot did not cite any words of yours for this action."),
+    conversation: true, ...(status === "allowed" ? { grantedFor: "conversation" as const, outcome: "done" as const } : {}),
+  }));
   add("question", ["pending", "answered", "dismissed"], (status) => ({
     type: "question", status, question: LONG(L("Quel format préfères-tu pour le rapport ?", "Which format do you prefer for the report?")),
     options: [L("Un PDF d'une page", "A one-page PDF"), L("Un tableau", "A spreadsheet"), L("Un résumé dans la discussion", "A summary in the chat")],
@@ -69,6 +101,15 @@ export function cardFixtures(o: FixtureOptions): CardFixture[] {
   add("takeover", ["pending", "done", "timeout", "cancelled"], (status) => ({
     type: "takeover", takeoverId: `to_${status}`, status, reason: "captcha",
     detail: L("Le site demande de cocher « Je ne suis pas un robot ».", "The site asks to tick “I'm not a robot”."), expiresAt: NOW + 9 * MIN,
+  }));
+  // L91: « fais-le toi-même » (a password change) and the hidden code box.
+  add("takeover", ["pending", "done"], (status) => ({
+    type: "takeover", takeoverId: `to_pw_${status}`, status, reason: "password",
+    detail: LONG(L("Change le mot de passe de ton compte Free Mobile : le site l'exige avant de continuer.", "Change your Free Mobile password: the site requires it before going on.")), expiresAt: NOW + 25 * MIN,
+  }));
+  add("code", ["pending", "typed", "failed", "dismissed", "timeout"], (status) => ({
+    type: "code", codeId: `code_${status}`, status, label: L("Code reçu par SMS", "Code received by text"), host: o.long ? "espace-client.banque-exemple-tres-longue.fr" : "banque.example",
+    detail: LONG(L("La banque t'a envoyé un code par SMS pour confirmer la connexion.", "The bank texted you a code to confirm the sign-in.")), expiresAt: NOW + 8 * MIN,
   }));
   add("secret", ["pending", "saved", "dismissed"], (status) => ({
     type: "secret", status, name: "OPENWEATHER_KEY", host: "api.openweathermap.org", header: "Authorization", prefix: "Bearer",
@@ -102,11 +143,21 @@ export function cardFixtures(o: FixtureOptions): CardFixture[] {
     type: "skill", status, outside: false, name: L("Préparer un devis", "Prepare a quote"),
     when: L("Quand on me demande un devis client", "When asked for a client quote"),
     steps: L("1. Retrouver le client\n2. Reprendre le dernier devis\n3. Mettre à jour les prix", "1. Find the client\n2. Reuse the last quote\n3. Update the prices"),
+    // L131: earlier requests found in other conversations
+    evidence: [
+      { at: NOW - 3 * 24 * HOUR, where: "Juno", quote: L("Tu peux refaire le devis pour [client] avec les nouveaux prix ?", "Can you redo the quote for [client] with the new prices?") },
+      { at: NOW - 17 * 24 * HOUR, where: "Léon", quote: L("Prépare un devis comme la dernière fois, même format, livraison comprise, et envoie-le moi avant de le partager", "Prepare a quote like last time, same format, delivery included, and show it to me before sharing it") },
+    ],
   }));
   add("apiconnector", ["pending", "approved", "dismissed"], (status) => ({
     type: "apiconnector", connectorId: `ac_${status}`, status, name: "OpenWeather", baseUrl: "https://api.openweathermap.org/data/2.5",
     host: "api.openweathermap.org", secret: "OPENWEATHER_KEY", secretSaved: status !== "pending",
     endpoints: [{ method: "GET", path: "/weather", description: L("Météo actuelle d'une ville", "Current weather for a city") }],
+  }));
+  add("apiconnector", ["pending"], () => ({
+    type: "apiconnector", connectorId: "ac_preset", status: "pending", name: "Instagram", baseUrl: "https://graph.instagram.com/v27.0", preset: "instagram",
+    host: "graph.instagram.com", secret: "Instagram access token", secretSaved: false,
+    endpoints: [{ method: "GET", path: "/{id}/media", description: "The account's posts" }, { method: "POST", path: "/{id}/media_publish", description: "Publish a prepared post (creation_id): asks the owner" }],
   }));
   add("memory", ["pending", "kept", "replaced"], (status) => ({
     type: "memory", memoryId: `me_${status}`, status, oldText: L("Préfère les réunions le matin", "Prefers morning meetings"),
@@ -142,6 +193,18 @@ export function cardFixtures(o: FixtureOptions): CardFixture[] {
     evidence: status === "complete" ? L("Tableau « prospects-lyon.csv », 20 lignes.", "Sheet “prospects-lyon.csv”, 20 rows.") : undefined,
     reason: status === "blocked" || status === "paused" ? L("Le site de l'annuaire demande une connexion.", "The directory site asks for a login.") : undefined,
   }));
+  // L89: a goal with success criteria, each with its evidence, waiting for the owner's « Valider ».
+  list.push({ type: "goal", status: "review", card: {
+    type: "goal", goalId: "gl_review", status: "blocked", rounds: 4, maxRounds: 10, review: true,
+    objective: LONG(L("Mettre en ligne la page de réservation", "Put the booking page online")),
+    summary: L("La page est en ligne et testée.", "The page is online and tested."), reason: L("attend ton accord", "waiting for your approval"),
+    criteria: [
+      { text: L("La page s'ouvre sur téléphone", "The page opens on a phone"), evidence: L("Capture à 390 px, aucun défilement de côté", "Screenshot at 390 px, no side scroll") },
+      { text: L("Le formulaire envoie une demande", "The form sends a request"), evidence: L("Demande test reçue à 14 h 05", "Test request received at 2:05 PM") },
+      { text: L("Les tests passent", "The tests pass"), evidence: "12/12" },
+    ],
+  } });
+  list.push(...turnCardFixtures(o)); list.push(...viewCardFixtures(o)); list.push(...trajectoryCardFixtures(o)); list.push(...batchCardFixtures(o)); // L99 (batchFixtures.ts) // L79, L83, L139 (turnFixtures.ts); DS-Bot item 8 (viewFixtures.ts)
   return list;
 }
 
@@ -169,6 +232,7 @@ export function noticeRows(o: FixtureOptions): Row[] {
     row({ kind: "notice", tone: "warn", text: L("Ton abonnement ChatGPT est à sa limite jusqu'à 21:05. Je n'ai pas de modèle de secours : ton travail attend ici et je le reprends dès que l'abonnement revient.", "Your ChatGPT subscription is at its limit until 21:05. I have no backup model, so your work waits here and I will pick it up as soon as the subscription is back."), action: { kind: "sublimit", engine: "codex", until: NOW + 4 * HOUR, notify: false, status: "waiting" } }, at + 12),
     row({ kind: "notice", tone: "warn", text: L("Ton abonnement Claude est à sa limite jusqu'à 14:10. Je n'ai pas de modèle de secours : ton travail attend ici et je le reprends dès que l'abonnement revient.", "Your Claude subscription is at its limit until 14:10. I have no backup model, so your work waits here and I will pick it up as soon as the subscription is back."), action: { kind: "sublimit", engine: "claude-code", until: NOW - HOUR, notify: true, status: "back" } }, at + 13),
     row({ kind: "notice", tone: "info", text: L("Ton abonnement Claude est de nouveau disponible. Je reprends ce qui attendait.", "Your Claude subscription is available again. I am picking up what was waiting.") }, at + 14),
+    ...turnNoticeRows(o, row, at + 15), // L63, L72, L94, L97, L98 (turnFixtures.ts)
   ];
 }
 

@@ -2,15 +2,15 @@ import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { emit } from "./bus.js";
-import { screen } from "./computer.js";
+import { computerKind, screen } from "./computer.js";
 import { config } from "./config.js";
-import { tr } from "./i18n.js";
+import { tr } from "./i18n.js"; import { languageName } from "./clientshared/locales.js";
 import { defaultModelRef, listProviders, resolveModel, userProvidersOf, type Block } from "./llm/index.js";
 import { describeKey, MODIFIERS, type RfbEvent } from "./rfb.js";
 import type { Recording, SkillDraft } from "./shared.js";
 import { audit, bots, clip, newId, now, rows, skills, users, type BotRecord } from "./store.js";
 import { record } from "./usage.js";
-import { isEngineRef } from "./agent/engine.js";
+import { isEngineRef } from "./agent/engine.js"; import { asBoxes, blackOut, maskUrl, secretBoxesScript } from "./teachmask.js"; import { appSecretBoxes, scaleBoxes, screenWidth } from "./teachappmask.js";
 
 /**
  * "Show me how": the user performs a task on a bot's screen while the server keeps a few screenshots and a
@@ -54,8 +54,12 @@ async function capture(r: Rec, force = false) {
   if (r.capturing || r.status !== "recording" || r.frames.length >= MAX_FRAMES) return;
   r.capturing = true;
   try {
-    const shot = await screen.frame(r.botId).catch(() => null);
-    if (!shot || r.status !== "recording") return;
+    const raw = await screen.frame(r.botId).catch(() => null);
+    if (!raw || r.status !== "recording") return;
+    // L40 (teachmask.ts): secret fields and secret-looking text on the page are painted black before the picture is kept.
+    // L40 (teachappmask.ts): on the Linux computer, app windows too; boxes are in screen pixels, the picture is 960 px wide.
+    const page = asBoxes(await screen.secretBoxes(r.botId, secretBoxesScript).catch(() => null));
+    const shot = await blackOut(raw, computerKind() === "linux" ? scaleBoxes([...page, ...(await appSecretBoxes(r.botId))], 960 / screenWidth()) : page);
     const hash = createHash("sha1").update(shot).digest("hex");
     if (hash === r.lastHash && !force) return;
     r.lastHash = hash;
@@ -68,7 +72,7 @@ async function capture(r: Rec, force = false) {
     // Where the user is: window title and page address, at most every few seconds (the page's text is never kept).
     if (Date.now() - r.lastWhereAt > 4000) {
       r.lastWhereAt = Date.now();
-      r.where = await screen.where(r.botId).catch(() => r.where);
+      r.where = await screen.where(r.botId).then((w) => ({ ...w, url: maskUrl(w.url) })).catch(() => r.where); // L40: no token in a kept address
       frame.title = r.where.title; frame.url = r.where.url;
       const last = [...r.steps].reverse().find((s) => s.text.startsWith("page: "));
       const place = `page: ${clip(r.where.title || "(untitled)", 120)}${r.where.url ? ` — ${clip(r.where.url, 200)}` : ""}`;
@@ -164,7 +168,7 @@ export function noteInput(botId: string, input: { type: string; x?: number; y?: 
   else if (input.type === "type") typed(r, [...String(input.text ?? "")].length);
   else if (input.type === "key") { step(r, `pressed ${clip(String(input.key ?? ""), 20)}`); soon(r); }
   else if (input.type === "scroll") step(r, `scrolled ${(input.dy ?? 0) < 0 ? "up" : "down"} at (${Math.round(input.x ?? 0)}, ${Math.round(input.y ?? 0)})`);
-  else if (input.type === "goto") { step(r, `opened the address ${clip(String(input.url ?? ""), 200)}`); soon(r); }
+  else if (input.type === "goto") { step(r, `opened the address ${clip(maskUrl(String(input.url ?? "")), 200)}`); soon(r); }
 }
 
 const stamp = (ms: number) => `${String(Math.floor(ms / 60_000)).padStart(2, "0")}:${String(Math.floor(ms / 1000) % 60).padStart(2, "0")}`;
@@ -223,7 +227,7 @@ async function draftSkill(r: Rec) {
     text: `${r.note ? `What the user said about it: ${r.note}\n\n` : ""}Timeline of the demonstration (screen coordinates are pixels on a ${config.desktopResolution.split("x").slice(0, 2).join("×")} screen; for privacy, typed text is only counted):\n${timeline}\n\n` +
       `Write the skill as JSON only: {"name": "short name", "when": "when to use it, one line", "steps": ["step 1", "step 2", …]}. ` +
       `Steps must be concrete and reusable: name the site or program, the buttons, menus and fields by their visible labels (not coordinates), and say where the user must type something (for example "type the client's name"). ` +
-      `Never include passwords or other secrets; for a sign-in, say to use the saved login from the vault. Write in ${loc === "fr" ? "French" : "English"}.`,
+      `Never include passwords or other secrets; for a sign-in, say to use the saved login from the vault. Write in ${languageName(loc)}.`,
   });
   const res = await provider.runTurn({
     model, tools: [], effort: "low", maxTokens: 4000, signal: AbortSignal.timeout(180_000),

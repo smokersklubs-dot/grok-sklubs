@@ -74,7 +74,19 @@ function render(s) {
   show($('bots-hint'), busy);
   const list = $('bots');
   list.replaceChildren();
-  if (!s.bots.length) {
+  // « Tous mes bots de ce compte » (1.7): one line on top, revocable at any time, granted only outside a session.
+  if (s.allBots || s.bots.length) {
+    const el = document.createElement('div'); el.className = 'bot';
+    const name = document.createElement('div'); name.className = 'name'; name.textContent = t('bots.allBots');
+    const lab = document.createElement('label'); lab.className = 'toggle';
+    const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = !!s.allBots;
+    cb.disabled = busy && !s.allBots;
+    cb.onchange = async () => { const ok = await window.relais.setAllBots(cb.checked); if (!ok) cb.checked = !cb.checked; };
+    const sp = document.createElement('span'); sp.textContent = t('bots.allBotsHint');
+    lab.append(cb, sp); el.append(name, lab);
+    list.append(el);
+  }
+  if (!s.bots.length && !s.allBots) {
     const p = document.createElement('p'); p.className = 'muted small'; p.textContent = t('bots.empty'); list.append(p);
   }
   for (const b of s.bots) {
@@ -113,6 +125,13 @@ function render(s) {
     el.append(name, where, lab, rm);
     fl.append(el);
   }
+  // Android phones by USB (protocol 1.9): « {phone} utilisé par {bot} », and how to install adb when it is missing.
+  const pl = $('phones');
+  pl.replaceChildren();
+  const uses = s.phones || [];
+  if (!uses.length) { const p = document.createElement('p'); p.className = 'muted small'; p.textContent = t('phones.none'); pl.append(p); }
+  for (const u of uses) { const p = document.createElement('p'); p.className = 'name'; p.textContent = t('phones.inUse', { phone: u.model, bot: u.botName }); pl.append(p); }
+  show($('phones-guide'), !s.adbFound);
   const fe = $('folder-error');
   fe.textContent = s.folderError || '';
   show(fe, !!s.folderError);

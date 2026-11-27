@@ -5,7 +5,11 @@
  *   npm run dev -w web   →   http://localhost:5173/?dev=gallery
  *
  * Everything is in the address, so a state can be shared or screenshotted:
+ *   (tableau: « Tableau de travail », parcours, automatisations, mémoire d'équipe, bilan — GalleryWorkBoard.tsx)
+ *   (chantier: « Chantier », the article → cards example: running page, plan to approve, list — GalleryChantier.tsx)
  *   section=all|basics|cards|notices|banners|empty|today|command|incidents|recruit|salons|surveillance|announcements|landing|download
+ *   (confiance: webhooks signés ou non, réponses signalées ; view=report ouvre « Signaler cette réponse » — GalleryTrust.tsx)
+ *   (equipe: « Équipe Sklubot (.md) », its windows alone, one per page with view=review|update|choose|share — GalleryTeamMd.tsx)
  *   (chat: the real chat view on a long conversation, see GalleryChat.tsx;
  *   landing, download: the public landing page or /telecharger alone, as a signed-out visitor sees it; empty=1 = no
  *   templates, plans or files)
@@ -16,14 +20,21 @@
  * main.tsx loads this file only when `import.meta.env.DEV` is true: production builds never contain it
  * (`npm run check:bundle -w web` checks the built files).
  */
+import { GalleryRoutines } from "./GalleryRoutines"; import { GalleryReview } from "./GalleryReview"; import { GalleryChantier } from "./GalleryChantier"; import { GalleryWorkBoard } from "./GalleryWorkBoard";
+import { InboxView } from "../components/InboxView";
+import { CreateBotModal } from "../components/Modals";
+import { RelayGuardPanel } from "../components/RelayGuardPanel"; import { TelegramVoiceText } from "../components/TelegramVoiceText";
+import { RelayEventRow } from "../components/RelayEventRow";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
-import { setLocale, useT } from "../i18n";
+import { setLocale, useT, type Locale } from "../i18n";
 import { applyTheme, useStore } from "../store";
 import type { Bot } from "../types";
 import { CardView } from "../components/Cards";
+import { ConversationGrantsBlock } from "../components/ConversationGrants";
 import { buildItems, RowItems } from "../components/Transcript";
 import { PauseAllNotice, PauseBanner } from "../components/Pause";
+import { ModelHealthBannerView, ModelHealthLineView, type ModelHealth } from "../components/ModelHealth";
 import { TodayView } from "../components/TodayView";
 import { SurveillanceView } from "../components/SurveillanceView";
 import { AnnouncementsView } from "../components/AnnouncementsView";
@@ -35,22 +46,28 @@ import Landing from "../components/Landing";
 import DownloadPage from "../components/DownloadPage";
 import { announcementsState, cardFixtures, fakeBot, GALLERY_BOT_ID, noticeRows, NOW, type FixtureOptions } from "./fixtures";
 import { installFakeApi, type FakeApiState } from "./fakeApi";
-import { GalleryChat } from "./GalleryChat";
+import { GalleryLoopPlus } from "./GalleryLoopPlus"; import { GalleryCare } from "./GalleryCare"; import { GalleryFinish } from "./GalleryFinish"; import { GalleryChat } from "./GalleryChat"; import { GalleryComfort6 } from "./GalleryComfort6"; import { GalleryComfort7 } from "./GalleryComfort7"; import { GalleryComfort9 } from "./GalleryComfort9"; import { GalleryComfort10 } from "./GalleryComfort10"; import { GalleryComputerShare } from "./GalleryComputerShare"; import { GalleryAndroidUsb } from "./GalleryAndroidUsb"; import { GalleryExtensions } from "./GalleryExtensions"; import { GalleryMedia } from "./GalleryMedia"; import { GalleryMeetingBot } from "./GalleryMeetingBot";
 import { GalleryCommand } from "./GalleryCommand";
 import { IncidentsSection } from "../components/Incidents";
 import { failureCardFixtures } from "./incidentsFixtures";
 import { recruitCardFixtures } from "./recruitFixtures";
-import { GalleryRooms } from "./GalleryRooms";
+import { GalleryRooms } from "./GalleryRooms"; import { GalleryAccess, GalleryPlus } from "./GalleryWave9"; import { GalleryScreen } from "./GalleryScreen";
+import { GalleryTeamMd } from "./GalleryTeamMd";
+import { GalleryTrust } from "./GalleryTrust"; import { GallerySecurity } from "./GallerySecurity"; import { GalleryChannels } from "./GalleryChannels";
 import { SkillsLibrarySection } from "../components/SkillsLibrary";
+import { ScanFindings, SkillsCheckSection } from "../components/SkillScan";
+import { GallerySkillHealth } from "./GallerySkillHealth";
+import { scanDangerFixture } from "./skillsFixtures";
 import { PagePreview, setPagePreviewSource } from "../components/PagePreview";
 import { PageVersions } from "../components/PageVersions";
+import { MemoryEdit } from "../components/MemoryEdit"; import { GalleryMemory } from "./GalleryMemory"; import { GalleryRows23 } from "./GalleryRows23";
 import samplePage from "./sample-page.html?url";
 
 // Pages published by bots are not served by the dev server: the previews show a sample page instead.
 setPagePreviewSource(() => samplePage);
 import "./gallery.css";
 
-const SECTIONS = ["all", "basics", "cards", "notices", "banners", "empty", "today", "command", "incidents", "recruit", "salons", "surveillance", "announcements", "skills", "pages", "landing", "download", "chat"] as const;
+const SECTIONS = ["all", "basics", "cards", "notices", "inbox", "banners", "empty", "today", "command", "incidents", "recruit", "salons", "surveillance", "announcements", "skills", "skillhealth", "skillscan", "pages", "landing", "download", "chat", "equipe", "grants", "confiance", "securite", "canaux", "memoire", "relais", "routines", "createbot", "chantier", "tableau", "confort6", "confort7", "relecture", "ecran", "extensions", "boucle", "lignes23", "creation", "confort9", "confort10", "acces", "plus", "soin", "finitions", "reunion"] as const;
 type Section = (typeof SECTIONS)[number];
 
 interface GalleryState extends FakeApiState {
@@ -92,6 +109,8 @@ function toQuery(s: GalleryState, extra: Record<string, string> = {}): string {
   return `?${p.toString()}`;
 }
 
+/** `?ui=<code>`: show the interface in any language of the list (the fixtures' data stay English). */
+const UI_LANG = ((v) => (v && v !== "fr" && v !== "en" && /^[a-z]{2}$/.test(v) ? (v as Locale) : null))(new URLSearchParams(location.search).get("ui"));
 let current = readState();
 installFakeApi(() => current);
 
@@ -111,7 +130,7 @@ function Gallery() {
 
   useEffect(() => {
     applyTheme(s.theme);
-    setLocale(s.lang);
+    setLocale(UI_LANG ?? s.lang); // ?ui=es: the interface in another language (fixtures stay in English), docs/LANGUES.md
     useAnnouncements.setState({ state: announcementsState(s, s.empty) });
     if (!s.embed) history.replaceState(null, "", toQuery(s));
   }, [s]);
@@ -131,7 +150,7 @@ function Gallery() {
   return (
     <div className={`gallery ${s.embed ? "is-embed" : ""}`} data-gallery="sklubot-dev-gallery">
       {!s.embed && <Toolbar s={s} set={set} />}
-      {s.section === "chat" ? <GalleryChat key={`${s.lang}`} o={{ lang: s.lang, long: s.long }} /> : s.section === "landing" ? <Landing key={`${s.lang}:${s.empty}`} onAuth={() => undefined} /> : s.section === "download" ? <DownloadPage key={`${s.lang}:${s.empty}`} /> : <Sections key={`${s.lang}:${s.long}:${s.empty}`} s={s} />}
+      {s.section === "reunion" ? <GalleryMeetingBot key={`${s.lang}:${s.long}:${s.empty}`} o={{ lang: s.lang, long: s.long }} empty={s.empty} /> : s.section === "finitions" ? <GalleryFinish key={`${s.lang}:${s.long}:${s.empty}`} o={{ lang: s.lang, long: s.long }} empty={s.empty} /> : s.section === "soin" ? <GalleryCare key={`${s.lang}:${s.long}:${s.empty}`} o={{ lang: s.lang, long: s.long }} empty={s.empty} /> : s.section === "creation" ? <GalleryMedia key={`${s.lang}:${s.long}:${s.empty}`} o={{ lang: s.lang, long: s.long }} empty={s.empty} /> : s.section === "boucle" ? <GalleryLoopPlus key={`${s.lang}:${s.long}:${s.empty}`} o={{ lang: s.lang, long: s.long }} empty={s.empty} /> : s.section === "chat" ? <GalleryChat key={`${s.lang}`} o={{ lang: s.lang, long: s.long }} /> : s.section === "confort6" ? <GalleryComfort6 key={`${s.lang}:${s.long}`} o={{ lang: s.lang, long: s.long }} /> : s.section === "confort7" ? <GalleryComfort7 key={`${s.lang}:${s.long}`} o={{ lang: s.lang, long: s.long }} /> : s.section === "confort9" ? <GalleryComfort9 key={`${s.lang}:${s.long}`} o={{ lang: s.lang, long: s.long }} /> : s.section === "confort10" ? <GalleryComfort10 key={`${s.lang}:${s.long}`} o={{ lang: s.lang, long: s.long }} /> : s.section === "extensions" ? <GalleryExtensions key={`${s.lang}:${s.long}:${s.empty}`} o={{ lang: s.lang, long: s.long }} /> : s.section === "equipe" ? <GalleryTeamMd key={`${s.lang}:${s.long}`} o={{ lang: s.lang, long: s.long }} /> : s.section === "routines" ? <GalleryRoutines key={`${s.lang}:${s.long}:${s.empty}`} o={{ lang: s.lang, long: s.long }} empty={s.empty} /> : s.section === "confiance" ? <GalleryTrust key={`${s.lang}:${s.long}:${s.empty}`} o={{ lang: s.lang, long: s.long }} empty={s.empty} /> : s.section === "securite" ? <GallerySecurity key={`${s.lang}:${s.long}:${s.empty}`} o={{ lang: s.lang, long: s.long }} empty={s.empty} /> : s.section === "canaux" ? <GalleryChannels key={`${s.lang}:${s.long}:${s.empty}`} o={{ lang: s.lang, long: s.long }} /> : s.section === "relecture" ? <GalleryReview key={`${s.lang}:${s.long}:${s.empty}`} o={{ lang: s.lang, long: s.long }} empty={s.empty} />: s.section === "chantier" ? <GalleryChantier key={`${s.lang}:${s.long}:${s.empty}`} o={{ lang: s.lang, long: s.long }} empty={s.empty} /> : s.section === "tableau" ? <GalleryWorkBoard key={`${s.lang}:${s.long}:${s.empty}`} o={{ lang: s.lang, long: s.long }} empty={s.empty} /> : s.section === "createbot" ? <CreateBotModal key={s.lang} onClose={() => undefined} /> : s.section === "landing" ? <Landing key={`${s.lang}:${s.empty}`} onAuth={() => undefined} /> : s.section === "download" ? <DownloadPage key={`${s.lang}:${s.empty}`} /> : <Sections key={`${s.lang}:${s.long}:${s.empty}`} s={s} />}
     </div>
   );
 }
@@ -186,11 +205,24 @@ function Sections({ s }: { s: GalleryState }) {
       {show("incidents") && <Section id="incidents" title="Incidents" hint="Coordinateur d'échecs : la section « Incidents » de l'onglet Activité (interrupteur « Vide » : aucun incident), puis les cartes d'échec."><div className="gallery-page is-auto"><IncidentsSection bot={fakeBot(o)} /><div className="gallery-cards">{failureCardFixtures(o).map((c) => <figure key={c.failureId} className="gallery-figure"><figcaption><code>{c.cls} · {c.status}</code></figcaption><CardView card={c} botId={GALLERY_BOT_ID} seq={1} /></figure>)}</div></div></Section>}
       {show("recruit") && <Section id="recruit" title="Bot recruteur" hint="La carte où le bot principal propose un nouveau spécialiste : en attente (« Modifier » édite sur place), limites (offre, quota du jour), créé, refusé."><div className="gallery-cards recruit-gallery">{recruitCardFixtures(o).map((x) => <figure key={x.label} className="gallery-figure"><figcaption><code>recruit · {x.label}</code></figcaption><CardView card={x.card} botId={GALLERY_BOT_ID} seq={1} /></figure>)}</div></Section>}
       {show("salons") && <GalleryRooms o={o} />}
+      {show("acces") && <Section id="acces" title="L159 : applis par bot, sites connectés, coordonnées" hint="Réglages → Applis : « pour tous mes bots » (Zoé décochée), les sites vérifiés ; Réglages → Coffre : « Coordonnées » (« Vide » : rien)."><GalleryAccess key={`${s.lang}:${s.long}:${s.empty}`} o={o} empty={s.empty} /></Section>}
+      {show("plus") && <Section id="plus" title="L184 : sondage, tableau de bord, aperçu de lien, applis, métriques" hint="Un sondage ouvert (votes et raisons des bots) et fermé, les vues épinglées sur Aujourd'hui, l'aperçu d'un lien, les messages des applis d'un bot, les métriques (« Vide » : rien)."><GalleryPlus key={`${s.lang}:${s.long}:${s.empty}`} o={o} empty={s.empty} /></Section>}
+      {show("ecran") && <GalleryScreen o={o} />}
+      {show("relais") && <Section id="relais" title="Relais : règles de sécurité" hint="Réglages → Ordinateurs → « Règles de sécurité » d'un ordinateur : terminaux (désactivés par défaut, avertissement), listes « garder à l'écart », applis toujours refusées, raccourcis protégés (« Vide » : aucune liste)."><div className="gallery-page is-auto"><RelayGuardPanel deviceId="dev_gallery" /><div className="transcript"><RelayEventRow seq={1} warn={false} text={"$ npm test — ~/projets/site · portable-lea (macOS) · exit 0\n> site@1.0.0 test\n> vitest run\n\n ✓ src/panier.test.ts (12 tests) 41ms\n Test Files  1 passed (1)\n      Tests  12 passed (12)\n API_KEY=[secret]"} /><RelayEventRow seq={2} warn={false} botId="dev_gallery" cmd={{ ref: "gallery", running: true }} text={"$ npm run build -- --watch=false --reporter=verbose-with-a-long-name — ~/projets/site · portable-lea (macOS) · en cours\n> vite build"} /></div><div className="gallery-page is-auto"><TelegramVoiceText botId="dev_gallery" initial={{ enabled: false, provider: "whisper-cpp", cost: "local", maxSeconds: 120 }} /><TelegramVoiceText botId="dev_gallery2" initial={{ enabled: true, provider: "openai", cost: "paid", maxSeconds: 120 }} /></div></div></Section>}
+      {show("relais") && <Section id="partage-ordi" title="Un ordinateur pour tous mes bots" hint="Carte « Pour tous mes bots », la ligne dans Réglages → Ordinateurs, « Ordinateur de ce bot » (2 ordinateurs reliés, dont un pas connecté), la ligne d'un bot qui attend son tour."><GalleryComputerShare o={o} /></Section>}
+      {show("relais") && <Section id="android-usb" title="Téléphones Android (USB)" hint="Réglages → Ordinateurs : un téléphone utilisé par un bot (« Arrêter »), un téléphone pas encore autorisé, et le guide quand adb manque sur l’ordinateur (L177)."><GalleryAndroidUsb o={o} /></Section>}
+      {show("memoire") && <Section id="memoire" title="Mémoire : modifier une note" hint="Réglages → Mémoire → « Modifier » : le texte se corrige sur place, l'historique montre chaque changement (« Vide » : aucun)."><div className="gallery-page is-auto"><ul className="list"><li className="list-row is-card"><div className="list-row-text"><MemoryEdit key={`${s.lang}:${s.long}:${s.empty}`} historyOpen memory={{ id: "mem_gallery", botId: GALLERY_BOT_ID, text: o.lang === "fr" ? "Préfère les réunions le matin" : "Prefers meetings in the morning", source: "learned", createdAt: NOW - 10 * 86400_000, status: "active", quote: "", category: null, confidence: "once", confirmedAt: null, lastUsedAt: null, pinned: true, until: "2027-03-31" }} onSaved={() => undefined} onCancel={() => undefined} /></div></li></ul></div></Section>}
+      {show("lignes23") && <Section id="lignes23" title="23/11 : mémoire, réponses courtes, pourquoi, relecture, veille" hint="L67 « Retiens surtout », L88 documents et notes sur les sites, L132 « Réponses courtes », L137 « Pourquoi ? », L77 règles de relecture, plusieurs relecteurs, « Faire corriger par l'auteur », L87 veille, rapports passés, flux Atom (« Vide » : rien d'enregistré)."><GalleryRows23 key={`${s.lang}:${s.long}:${s.empty}`} o={{ ...o, empty: s.empty }} /></Section>}
+      {show("memoire") && <Section id="memoire-insight" title="Mémoire : ce que reçoit ce bot" hint="Réglages du bot → Mémoire : « Voir le résumé » (« Vide » : jamais compactée), « Ne rien retenir », « Ce que reçoit ce bot » avec le coût de la mémoire, et « Mémoire par le sens » (Réglages → Mémoire ; « Vide » : aucune clé qui le permet)."><GalleryMemory key={`${s.lang}:${s.long}:${s.empty}`} o={{ ...o, empty: s.empty }} /></Section>}
+      {show("grants") && <Section id="grants" title="Autoriser pour cette conversation" hint="Réglages → Autorisations : ce qui a été autorisé pour une conversation (« Vide » : aucune ; « Échecs » : « Retirer » échoue). En dessous, la carte qui le propose, puis une fois accordé."><div className="gallery-page is-auto"><ConversationGrantsBlock key={`${s.empty}:${s.lang}:${s.long}`} /></div><div className="gallery-cards">{cardFixtures(o).filter((c) => c.type === "approval" && c.card.type === "approval" && c.card.conversation).map((c) => <figure key={c.status} className="gallery-figure"><figcaption><code>approval · {c.status}</code></figcaption><CardView card={c.card} botId={GALLERY_BOT_ID} seq={1} /></figure>)}</div></Section>}
+      {show("inbox") && <Section id="inbox" title="À toi" hint="Toutes les cartes en attente de tous les bots (L139), avec 👍 / 👎 et compte à rebours."><div className="gallery-page"><InboxView /></div></Section>}
       {show("today") && <Section id="today" title="Aujourd'hui" hint="La vraie page, avec des données factices (interrupteur « Vide » pour la journée calme)."><div className="gallery-page"><TodayView /></div></Section>}
       {show("command") && <Section id="command" title="Centre de commandement" hint="La vraie page : toute l'équipe en direct, avec ses liens (« Vide » : équipe vide). Les connecteurs apparaissent à partir de 1100 px de large."><div className="gallery-page is-tall"><GalleryCommand o={o} empty={s.empty} /></div></Section>}
       {show("announcements") && <Announcements o={o} empty={s.empty} />}
       {show("surveillance") && <Section id="surveillance" title="Surveillance" hint="La vraie page : incidents critiques, à surveiller, acquittés, info ; historique ; santé."><div className="gallery-page"><SurveillanceView /></div></Section>}
       {show("skills") && <Section id="skills" title="Bibliothèque de compétences" hint="Réglages → Compétences : les cartes de la bibliothèque, puis l'import depuis GitHub (« Chercher » répond avec un dépôt d'exemple)."><div className="gallery-page is-auto"><SkillsLibrarySection /></div></Section>}
+      {show("skillhealth") && <Section id="skillhealth" title="Santé des compétences" hint="Onglet Compétences d'un bot (ligne de santé, « Santé et réglages » ouvert, essai avec / sans), puis Réglages → Compétences : catalogue de l'équipe et vue d'ensemble avec les propositions du curateur (empty=1 : rien encore)."><div className="gallery-page is-auto"><GallerySkillHealth s={s} /></div></Section>}
+      {show("skillscan") && <Section id="skillscan" title="Contrôle de sécurité des compétences" hint="Réglages → Compétences → « Vérifier mes compétences » : ce qui a été trouvé, où, et quoi faire (empty=1 : rien à signaler). En dessous, l'encadré montré avant un import."><div className="gallery-page is-auto"><SkillsCheckSection auto /><div className="editor" style={{ marginTop: 18 }}><ScanFindings scan={scanDangerFixture()} /></div></div></Section>}
       {show("pages") && <Section id="pages" title="Pages publiées" hint="L'aperçu d'une page dans la discussion (une page d'exemple dans le bac à sable), puis son historique (Réglages → Pages)."><div className="gallery-page is-auto"><PagePreview text={`[${s.lang === "fr" ? "Ventes de novembre" : "November sales"}](${location.origin}/p/galleryDemoPageToken0001)`} /><PageVersions page={{ token: "galleryDemoPageToken0001", botId: GALLERY_BOT_ID, title: "Ventes de novembre", url: `${location.origin}/p/galleryDemoPageToken0001`, createdAt: NOW, visibility: "link" }} defaultOpen /></div></Section>}
     </main>
   );
@@ -313,6 +345,17 @@ function Notices({ o }: { o: FixtureOptions }) {
   );
 }
 
+/** Model health (ModelHealth.tsx): a refused key, no credit, a model that does not answer (long: long names and reasons). */
+const modelHealthFixtures = (o: FixtureOptions): ModelHealth[] => {
+  const fr = o.lang === "fr";
+  const label = o.long ? "Mon fournisseur DeepSeek très long deepseek-reasoner-ultra-2026-preview" : "anthropic:claude-opus-5-5";
+  return [
+    { ref: "a", label, status: "reconnect", reason: fr ? "La clé ou le compte de ce modèle a été refusé : il faut le reconnecter." : "The key or account for this model was refused: it needs reconnecting.", ms: null, checkedAt: NOW, fix: "models" },
+    { ref: "b", label, status: "no_credit", reason: fr ? "Le compte de ce modèle n'a plus de crédit." : "This model's account has no credit left.", ms: null, checkedAt: NOW, fix: "subscription" },
+    { ref: "c", label, status: "down", reason: (fr ? "Le modèle ne répond pas : " : "The model is not answering: ") + (o.long ? "Anthropic API error 529: Overloaded — the service is temporarily overloaded, please try again in a few moments" : "Overloaded"), ms: null, checkedAt: NOW, fix: null },
+  ];
+};
+
 function Banners({ o }: { o: FixtureOptions }) {
   const t = useT();
   useEffect(() => {
@@ -330,6 +373,10 @@ function Banners({ o }: { o: FixtureOptions }) {
         <PauseBanner bot={all} />
         <PauseBanner bot={shared} />
         <div className="gallery-sidebar-sample" aria-label={t("pause.sidebarAll")}><PauseAllNotice collapsed={false} /></div>
+        {modelHealthFixtures(o).map((h) => <ModelHealthBannerView key={h.status} health={h} botId={GALLERY_BOT_ID} checking={false} onRetry={() => undefined} />)}
+        <ModelHealthLineView health={null} checking botId={GALLERY_BOT_ID} intro={t("modelHealth.onbTitle")} onRetry={() => undefined} />
+        <ModelHealthLineView health={{ ref: "anthropic:claude-opus-5-5", label: "anthropic:claude-opus-5-5", status: "ok", reason: null, ms: 1240, checkedAt: NOW, fix: null }} checking={false} botId={GALLERY_BOT_ID} intro={t("modelHealth.onbTitle")} onRetry={() => undefined} />
+        {modelHealthFixtures(o).slice(0, 1).map((h) => <ModelHealthLineView key="bad" health={h} checking={false} botId={GALLERY_BOT_ID} intro={t("modelHealth.onbTitle")} onRetry={() => undefined} />)}
       </div>
     </Section>
   );

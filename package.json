@@ -13,8 +13,11 @@
     "build": "npm run build -w web && npm run build -w server",
     "start": "npm run start -w server",
     "typecheck": "npm run typecheck -w server && npm run typecheck -w web",
-    "test": "npm run check:size && npm run test -w web && npm run test -w server",
+    "test": "npm run check:size && npm run check:i18n && npm run test -w web && npm run test -w server",
     "check:size": "node --test scripts/file-size-ratchet.test.mjs",
+    "check:docs": "node scripts/check-docs-links.mjs",
+    "check:i18n": "node --test scripts/i18n/check-languages.test.mjs",
+    "i18n:report": "node scripts/i18n/check-languages.mjs",
     "check:size:update": "node scripts/file-size-ratchet.test.mjs --update",
     "computer:build": "docker build -t sklubot-desktop docker/desktop",
     "desk:test": "npm run desk:test -w server --"

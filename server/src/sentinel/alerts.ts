@@ -1,4 +1,4 @@
-import { q } from "../db.js";
+import { q } from "../db.js"; import { colon } from "../lang/index.js";
 import type { Locale } from "../shared.js";
 import { users } from "../store.js";
 import { severityWord, word } from "./texts.js";
@@ -64,11 +64,10 @@ function compose(userId: string, loc: Locale, items: Item[], base: string): { ti
   const view = (r: IncidentRow) => toView(r, userId, loc, undefined);
   const wasOpen = (i: Item) => i.kind === "critical" && alerted(userId, [i.row.id]).has(`${i.row.id}|open`);
   let title: string;
-  if (opened.length === 1 && !closed.length) title = `${wasOpen(opened[0]) ? word("escalated", loc) : severityWord(opened[0].row.severity, loc)} : ${view(opened[0].row).title}`;
+  if (opened.length === 1 && !closed.length) title = `${wasOpen(opened[0]) ? word("escalated", loc) : severityWord(opened[0].row.severity, loc)}${colon(loc)}${view(opened[0].row).title}`;
   else if (opened.length) title = word("new_many", loc, { n: opened.length });
-  else if (closed.length === 1) title = `${word("resolved_one", loc)} : ${view(closed[0].row).title}`;
+  else if (closed.length === 1) title = `${word("resolved_one", loc)}${colon(loc)}${view(closed[0].row).title}`;
   else title = word("resolved_many", loc, { n: closed.length });
-  if (loc !== "fr") title = title.replace(" : ", ": ");
   const lines = items.map((i) => { const v = view(i.row); return i.kind === "resolved" ? `✓ ${v.title}` : `${i.row.severity === "critical" ? "‼" : "!"} ${v.title}`; });
   const body = items.length === 1 ? (items[0].kind === "resolved" ? `${word("now_ok", loc)} ${view(items[0].row).title}` : view(items[0].row).explanation) : lines.join("\n");
   const link = `${base}/?view=surveillance`;

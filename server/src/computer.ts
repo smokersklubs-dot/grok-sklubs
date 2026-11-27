@@ -13,6 +13,7 @@ import { adoptMachines, containerName, ensureBotsNetwork, holdComputer, isShared
 import { onSharedChanged, sharedOwners, sharedView } from "./sharedcomputers.js";
 import type { Attachment, ComputerState, FileEntry, TeamFolderState } from "./shared.js";
 import type { ElementRequest } from "./screen-elements.js";
+import type { PageCheckAnswer, PageCheckRequest } from "./pagecheck.js"; import { browserPageCheck } from "./pagecheck-browser.js";
 
 /**
  * Each bot gets a private "desktop": a folder of its own on disk plus a real browser with its own
@@ -130,6 +131,17 @@ async function desktop(botId: string, userId: string): Promise<Desktop> {
   try { return await attempt; } finally { opening.delete(botId); }
 }
 
+/** L114 (contactsheet.ts): one page at N moments after it starts loading, at one width, in a temporary tab (Playwright). */
+async function sheetAtMoments(d: Desktop, url: string, width: number, moments: number[]): Promise<{ width: number; data: string; at: number }[]> {
+  const own = d.page, p = await d.context.newPage(), shots: { width: number; data: string; at: number }[] = [];
+  try {
+    await p.setViewportSize({ width, height: 900 });
+    const start = Date.now();
+    await p.goto(url, { waitUntil: "commit", timeout: 40000 });
+    for (const at of moments) { const wait = start + at - Date.now(); if (wait > 0) await p.waitForTimeout(wait); shots.push({ width, at, data: (await p.screenshot({ type: "jpeg", quality: 60 })).toString("base64") }); }
+  } finally { await p.close().catch(() => {}); d.page = own; }
+  return shots;
+}
 async function withDesktop<T>(botId: string, userId: string, fn: (d: Desktop) => Promise<T>): Promise<T> {
   const d = await desktop(botId, userId);
   d.busy++;
@@ -138,7 +150,7 @@ async function withDesktop<T>(botId: string, userId: string, fn: (d: Desktop) =>
 
 const settle = (page: any, ms = 600) => page.waitForLoadState("domcontentloaded", { timeout: 8000 }).catch(() => {}).then(() => page.waitForTimeout(ms));
 
-export interface Shot { data: string; mediaType: "image/jpeg"; url: string; title: string }
+export interface Shot { data: string; mediaType: "image/jpeg"; url: string; title: string; /** A line for the bot (a dialog the action opened, a new tab…). */ notice?: string }
 
 /** What a click would hit on the page in front: the control's own words (label, text, value), what it is, and its form. */
 export interface ClickTarget { label: string; tag: string; role: string; type: string; formAction: string; formMethod: string; url: string }
@@ -230,6 +242,8 @@ const browserScreen = {
     if (!d) return null;
     try { return await d.page.screenshot({ type: "jpeg", quality: 55 }); } catch { return null; }
   },
+  /** A read-only expression in the page in front (L40 teachmask.ts); null when no browser is open or it fails. */
+  async evalExpr(botId: string, expression: string): Promise<unknown> { const d = desktops.get(botId); if (!d) return null; try { return await d.page.evaluate(expression); } catch { return null; } },
   async where(botId: string): Promise<{ title: string; url: string }> {
     const d = desktops.get(botId);
     if (!d) return { title: "", url: "" };
@@ -241,6 +255,8 @@ const browserScreen = {
 const reportedUrl = new Map<string, string>();
 export const lastKnownUrl = (botId: string) => reportedUrl.get(botId) ?? "";
 const noteUrl = <T extends { url: string }>(botId: string, r: T): T => { if (r.url) reportedUrl.set(botId, r.url); return r; };
+/** L65: an address the bot's browser reported outside screen.open/read (a page opened and read back in words). */
+export const noteReportedUrl = (botId: string, url: string) => { if (url) reportedUrl.set(botId, url); };
 
 /** The bot's screen, whichever kind of computer it has. */
 export const screen = {
@@ -258,8 +274,24 @@ export const screen = {
         } finally { await session.detach(); }
       });
   },
+  /** L56 (pagecheck.ts): a page the bot just published, rendered from its own files in a temporary tab at each size; the bot's own tab is left as it was. */
+  pageCheck: (botId: string, userId: string, req: PageCheckRequest): Promise<PageCheckAnswer> => kind === "linux" ? linuxScreen.browserOp<PageCheckAnswer>(botId, userId, workspaceOf(botId), { op: "pagecheck", ...req }, 110_000)
+    : (async () => { const was = desktops.has(botId); try { return await withDesktop(botId, userId, async (d) => { const own = d.page; try { return await browserPageCheck(d.context, req); } finally { d.page = own; } }); } finally { if (!was) await closeDesktop(botId).catch(() => {}); } })(), // a browser opened only for the check is closed again
+  /** L114 (contactsheet.ts): the first screen of `url` at each width, in a temporary tab; the bot's own tab is left as it was. */
+  sheet: async (botId: string, userId: string, url: string, widths: number[], moments: number[] = []): Promise<{ width: number; data: string; scrollWidth?: number; at?: number }[]> => {
+    await assertPublicUrl(url);
+    if (kind === "linux") return linuxScreen.sheet(botId, userId, workspaceOf(botId), url, widths, moments);
+    if (moments.length) return withDesktop(botId, userId, (d) => sheetAtMoments(d, url, widths[0], moments)); // L114: one page at N moments (contactsheet.ts)
+    return withDesktop(botId, userId, async (d) => {
+      const own = d.page, p = await d.context.newPage(), shots: { width: number; data: string; scrollWidth?: number }[] = [];
+      try {
+        for (const width of widths) { await p.setViewportSize({ width, height: 900 }); await p.goto(url, { waitUntil: "domcontentloaded", timeout: 40000 }); await settle(p, 800); shots.push({ width, data: (await p.screenshot({ type: "jpeg", quality: 60 })).toString("base64"), scrollWidth: await p.evaluate("document.documentElement.scrollWidth").catch(() => 0) }); }
+      } finally { await p.close().catch(() => {}); d.page = own; } // the "page" listener moved to the temporary tab: back to the bot's own
+      return shots;
+    });
+  },
   view: (botId: string, userId: string) => (kind === "linux" ? linuxScreen.view(botId, userId, workspaceOf(botId)) : browserScreen.view(botId, userId)),
-  open: (botId: string, userId: string, url: string) => (kind === "linux" ? linuxScreen.open(botId, userId, workspaceOf(botId), url) : browserScreen.open(botId, userId, url)).then((r) => { reportedUrl.set(botId, r.url || url); return r; }),
+  open: (botId: string, userId: string, url: string, newTab = false) => (kind === "linux" ? linuxScreen.open(botId, userId, workspaceOf(botId), url, newTab) : browserScreen.open(botId, userId, url)).then((r): Shot => { reportedUrl.set(botId, r.url || url); return r; }),
   click: (botId: string, userId: string, x: number, y: number, button: "left" | "right" | "middle" = "left", double = false) =>
     kind === "linux" ? linuxScreen.click(botId, userId, workspaceOf(botId), x, y, button, double) : browserScreen.click(botId, userId, x, y, button, double),
   type: (botId: string, userId: string, text: string) => (kind === "linux" ? linuxScreen.type(botId, userId, workspaceOf(botId), text) : browserScreen.type(botId, userId, text)),
@@ -268,7 +300,7 @@ export const screen = {
     kind === "linux" ? linuxScreen.scroll(botId, userId, workspaceOf(botId), x, y, dy) : browserScreen.scroll(botId, userId, x, y, dy),
   drag: (botId: string, userId: string, x1: number, y1: number, x2: number, y2: number) =>
     kind === "linux" ? linuxScreen.drag(botId, userId, workspaceOf(botId), x1, y1, x2, y2) : browserScreen.drag(botId, userId, x1, y1, x2, y2),
-  read: (botId: string, userId: string) => (kind === "linux" ? linuxScreen.read(botId, userId, workspaceOf(botId)) : browserScreen.read(botId, userId)).then((r) => noteUrl(botId, r)),
+  read: (botId: string, userId: string) => (kind === "linux" ? linuxScreen.read(botId, userId, workspaceOf(botId)) : browserScreen.read(botId, userId)).then((r): { url: string; title: string; text: string; notice?: string } => noteUrl(botId, r)),
   /**
    * What a click at (x, y) would hit, read in the page itself through the existing page-text helper (Linux) or the
    * browser (browser mode). null when it cannot be told (computer off, no page, not a browser window in front). Never
@@ -287,6 +319,8 @@ export const screen = {
   isOpen: (botId: string) => (kind === "linux" ? linuxScreen.isOpen(botId) : browserScreen.isOpen(botId)),
   /** A picture for a demonstration recording, only if the computer is already on (never wakes it). */
   frame: (botId: string) => (kind === "linux" ? linuxScreen.frame(botId) : kind === "browser" ? browserScreen.frame(botId) : Promise.resolve(null)),
+  /** L40: the boxes of secrets on the page in front, in the frame's coordinates (screen on Linux, page in browser mode); [] when unknown. Never wakes the computer. */
+  secretBoxes: async (botId: string, script: (fromScreen: boolean) => string): Promise<unknown> => (kind === "linux" ? (await linuxScreen.targetAt(botId, script(true)).catch(() => null))?.target ?? null : kind === "browser" ? browserScreen.evalExpr(botId, script(false)) : null),
   /** Window title and page address in front, only if the computer is already on. */
   where: (botId: string) => (kind === "linux" ? linuxScreen.where(botId) : kind === "browser" ? browserScreen.where(botId) : Promise.resolve({ title: "", url: "" })),
   /** Switches the computer on without doing anything on it (Linux computers only; a browser opens on first use). */
@@ -509,6 +543,8 @@ export const mimeOf = (name: string) => MIME[name.split(".").pop()?.toLowerCase(
 export const isInlineImage = (mime: string) => ["image/png", "image/jpeg", "image/gif", "image/webp"].includes(mime);
 /** Video formats a browser can play in the chat's player. */
 export const isInlineVideo = (mime: string) => ["video/mp4", "video/webm"].includes(mime);
+/** L154: audio the chat's player plays (a bot's voice note); never a page, never a script. */
+export const isInlineAudio = (mime: string) => ["audio/wav", "audio/mpeg", "audio/ogg"].includes(mime);
 
 /** Describes a file in the bot's library for showing it in the chat, or null if it is not a plain file there. */
 export function attachmentAt(botId: string, rel: string): Attachment | null {

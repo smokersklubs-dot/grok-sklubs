@@ -113,6 +113,12 @@ test("setup: A owns one of everything, V is a viewer of A's workspace with bot1 
   // "Surveillance" (sentinel/): an incident about A's bot1 — only the server's owner (A) may see or acknowledge it.
   ins("INSERT INTO sentinel_incidents (id, fingerprint, kind, severity, status, params, user_id, bot_id, count, peak, seen, first_at, last_at) VALUES ('a_incident', ?, 'tool_errors', 'critical', 'open', ?, ?, ?, 25, 25, 1, ?, ?)",
     `tool_errors:${ids.bot1}:alphasecret_tool`, JSON.stringify({ tool: "alphasecret_tool", failed: 25, total: 25 }), userA, ids.bot1, t, t);
+  // « Chantier » (chantierroutes.ts): A's chantier under way, with a task, an open card and a lesson — the owner's alone.
+  ins("INSERT INTO chantiers (id, user_id, title, brief, planner_bot_id, status, plan, created_at, updated_at, approved_at) VALUES ('a_chantier', ?, 'ALPHASECRET chantier', 'ALPHASECRET brief', ?, 'waiting_owner', ?, ?, ?, ?)",
+    userA, ids.bot1, JSON.stringify({ observations: [], assumptions: [], unknowns: [], requirements: [], tasks: [{ key: "a-task", title: "ALPHASECRET task", role: "build", botId: ids.bot1, reviewerBotId: "", deliverable: "", contract: { input: "x", output: "y", checks: [], criteria: [], scope: ["z"] }, resources: [] }], edges: [], maxAttempts: 3 }), t, t, t);
+  ins("INSERT INTO chantier_tasks (chantier_id, task_key, state, bot_id, thread) VALUES ('a_chantier', 'a-task', 'running', ?, 0)", ids.bot1);
+  ins("INSERT INTO chantier_decisions (id, chantier_id, task_key, kind, question, options, created_at) VALUES ('a_decision', 'a_chantier', 'a-task', 'escalation', 'ALPHASECRET question', '[\"retry\",\"stop_branch\"]', ?)", t);
+  ins("INSERT INTO chantier_lessons (id, user_id, rule, evidence, applies_to, created_at, updated_at) VALUES ('a_lesson', ?, 'ALPHASECRET rule', 'ALPHASECRET evidence', 'build', ?, ?)", userA, t, t);
   // « Annonces » (announcements.ts): one written by A (the owner) for A's account only — nobody else may read or close it.
   const ann = await A("POST", "/announcements-admin", { kind: "important", title: "ALPHASECRET notice", body: "ALPHASECRET body", audience: { type: "accounts", emails: ["alice.alphasecret@example.com"] } });
   assert.equal(ann.status, 200, ann.text);
@@ -132,6 +138,8 @@ test("setup: A owns one of everything, V is a viewer of A's workspace with bot1 
   ins("INSERT INTO user_providers (id, user_id, name, base_url, key_enc, models, preset, created_at, updated_at) VALUES ('up-alphaor', ?, 'ALPHASECRET OpenRouter', 'https://openrouter.ai/api/v1', ?, '[]', 'openrouter', ?, ?)", userA, seal("ALPHASECRET orkey"), t, t);
   ins("INSERT INTO shared_computers (id, user_id, name, created_at) VALUES ('a_shared', ?, 'ALPHASECRET shared', ?)", userA, t);
   ins("INSERT INTO policies (user_id, tool, mode) VALUES (?, 'web_fetch', 'ask')", userA);
+  // « Autoriser pour cette conversation » (agent/conversationgrants.ts): A's active grant, in bot1's current conversation.
+  ins("INSERT INTO conversation_grants (id, user_id, bot_id, generation, thread, tool, place, label, state, created_at, granted_at) VALUES ('a_convgrant', ?, ?, (SELECT generation FROM bots WHERE id = ?), 0, 'shell_run', 'shell_run', 'ALPHASECRET grant', 'active', ?, ?)", userA, ids.bot1, ids.bot1, t, t);
   // The instance's automatic backup (autobackup.ts), set by A, the owner: bucket keys sealed, owner-only routes.
   ins("INSERT INTO instance_backup (id, endpoint, region, bucket, access_key_enc, secret_key_enc, prefix, recipient, updated_at, updated_by) VALUES (1, 'https://s3.gra.io.cloud.ovh.net', 'gra', 'alphasecret-bucket', ?, ?, 'alphasecret/', 'age1zvkyg2lqzraa2lnjvqej32nkuu0ues2s82hzrye869xeexvn73equnujwj', ?, ?)", seal("ALPHASECRET-AK"), seal("ALPHASECRET-SK"), t, userA);
   // The workspace: V is a viewer, bot1 is shared with everyone of it, bot2 is not shared.
@@ -176,6 +184,8 @@ function resolve(routePath: string, param: string, bot: "bot1" | "bot2"): string
     "plan-invites:token": "not-a-real-invite", "webhook:provider": "stripe",
     // Usage caps: the card of a reached cap.
     "stops:stopId": "a_capstop",
+    // Wave 6 (accountnetroutes.ts): an extra key of a provider, an outgoing webhook (none of A's: 404 for everyone else).
+    "keys:keyId": "pk_alpha", "webhooks:hookId": "owh_alpha",
     // "Accès API" (botapi.ts): A's key of the bot, a message of A's conversation, a goal of A's bot.
     "api-keys:keyId": ids[`apikey_${b}`] ?? "bak_none", "messages:seq": "1", "tasks:taskId": ids[`goal_${b}`],
     // "Surveillance" (sentinel/): A's incident.
@@ -186,8 +196,40 @@ function resolve(routePath: string, param: string, bot: "bot1" | "bot2"): string
     "versions:id": "1", "v:id": "1", ":id:sig": "1700000000.not-a-real-signature-not-a-real", "s:sig": "1700000000.not-a-real-signature-not-a-real",
     // « Bibliothèque de compétences »: a bundled skill (adding it acts on the caller's own bots only).
     "skills-library:id": "methode-de-travail",
+    // « Santé des compétences » / « Catalogue de l'équipe » (skillhealthroutes.ts): a version of A's skill, an entry of A's catalogue.
+    "versions:vid": "a_skillversion", "skills-catalog:id": "a_catalog",
     // « Coordinateur d'échecs » (agent/failures.ts): an incident of A's bot.
     "failures:failureId": ids[`failure_${b}`],
+    // « Autoriser pour cette conversation »: A's grant (revoking it is the owner's alone).
+    "conversation-grants:grantId": "a_convgrant",
+    // « Signaler cette réponse » (reports.ts): a report id (only the server's watchers may read or close one).
+    "reports:reportId": "a_report",
+    // A command's own Stop (commandstop.ts): a command reference (only the bot's owner may stop it; 404 for anyone else).
+    "commands:ref": "a_cmdref",
+    // « Chantier » (chantierroutes.ts): A's chantier, its card, its task, A's lesson.
+    "chantiers:id": "a_chantier", "decisions:did": "a_decision", "tasks:key": "a-task", "chantier-lessons:id": "a_lesson",
+    // L162 (channelroutes.ts): someone on a bot's access list (approve, block, revoke are the owner's alone).
+    "contacts:cid": "a_contact",
+    // DS-Bot item 4 (channelroutes.ts): a group chat the bot was called in (turning it on, off or forgetting it is the owner's alone).
+    "channel-groups:gid": "a_group",
+    // Turn control (turncontrolroutes.ts, messageactionroutes.ts): a kept note, a change to undo (the owner's alone).
+    "notes:noteId": "1", "undo:undoId": "und_alpha",
+    // Wave 7 comfort (chatcomfortroutes.ts): a trashed bot, a conversation of A's bot (restore, rename, reopen are the owner's alone).
+    "bot-trash:trashId": "a_trash", "conversations:gen": "1",
+    // Wave 7 extensions (extroutes.ts): a shared document and one of its versions, a phone request, another agent, a plugin; the one-time location page.
+    "livedocs:id": "a_livedoc", "at:rev": "1", "requests:id": "a_phonereq", "remote-agents:id": "a_ragent", "plugins:pid": "a_plugin", "where:token": "not-a-real-token-for-the-location-page", "team-guest:token": "not-a-real-guest-link-token", "calendar:file": "not-a-real-calendar-token.ics", "research-feed:token": "not-a-real-feed-token.atom", "docbase:id": "a_docbaseid", "site-notes:id": "a_site-notesid", "media-keys:provider": "a_media-keysprovider", "code:codeId": "a_codecodeId", "journal:id": "a_journalid", "renders:rid": "a_rendersrid", "creations:cid": "a_creationscid", "tasks:id": "a_boardtask", "ideas:id": "a_boardidea", "files:fid": "a_boardfile", "flows:id": "a_flow", "team-memory:kind": "workspace", "workspace:id": "a_workspace", "guests:gid": "a_guest", "flow-runs:rid": "a_flowrun", "shots:n": "0", "proposals:key": "a_proposalskey", "team-notes:nid": "a_team-notesnid", "triggers:id": "a_trigger", ":botId:host": "a_:botIdhost", "sites:botId": "a_bot", "model-sets:id": "a_model-setsid", "roles:role": "a_rolesrole", "contacts:id": "a_contactsid", "questions:qid": "a_questionsqid", "pins:id": "a_pinsid", "polls:pollId": "a_pollspollId", "steps:seq": "999999", "design-journal:id": "a_designdecision", "meeting-bots:mid": "a_meetingbot",
+    // L161 (botcareroutes.ts): A's shared role, a document of A's bot, a shortcut and a missing capability noted by A's bot.
+    "shared-roles:rid": "a_role", "identity:docId": "a_idoc", "bot-shortcuts:sid": "a_shortcut", "capability-gaps:gid": "a_gap",
+    // L161 (finishroutes.ts): a colour theme proposed by A's bot (apply, remove are the owner's alone).
+    "themes:themeId": "thm_alpha",
+    // L153 « pas à pas » (stepguide.ts): a Docteur line (the card goes to the caller's own main bot).
+    "guides:checkId": "account.two_factor",
+    // L99 « lots en parallèle » (agent/batches.ts): a batch of A's bot (its cost and Stop are the owner's alone).
+    "batches:batchId": "bat_alpha",
+    // L44 (passkeys.ts, newdevice.ts): a passkey and a new-device sign-in of A's (rename, remove, « Ce n'est pas moi » are A's alone).
+    "passkeys:pkId": "a_passkey", "sign-ins:alertId": "sia_alpha",
+    // L177 iPhone Live Activity (liveactivity.ts): a Live Activity push token (removing one is its owner's alone).
+    "live-activity:token": "a1".repeat(32),
   };
   if (param === "action" && prev2 === "reach") return "login";
   if (param === "rid" && prev2 === "resources") return "a_conn";
@@ -212,7 +254,7 @@ function fill(routePath: string, bot: "bot1" | "bot2"): string {
  * token, an invitation) or they say nothing about anyone. They are still called below: with A's tokens unknown to B
  * (not-a-real-…) they must say nothing; with A's real hook token they do what a hook does (that token IS the secret).
  */
-const PUBLIC = new Set(["POST /hooks/:token", "GET /invites/:token", "GET /native/:vendor/callback", "GET /p/:token", "GET /p/:token/", "GET /p/:token/*", "GET /p/:token/s/:sig/*", "GET /p/:token/v/:id/:sig/*", "GET /l/:token", "HEAD /l/:token", "GET /plan-invites/:token", "POST /billing/webhook/:provider"]);
+const PUBLIC = new Set(["POST /hooks/:token", "GET /invites/:token", "GET /native/:vendor/callback", "GET /p/:token", "GET /p/:token/", "GET /p/:token/*", "GET /p/:token/s/:sig/*", "GET /p/:token/v/:id/:sig/*", "GET /l/:token", "HEAD /l/:token", "GET /plan-invites/:token", "POST /billing/webhook/:provider", "GET /phone/where/:token", "POST /phone/where/:token", "GET /team-guest/:token", "POST /team-guest/:token", "GET /calendar/:file", "GET /research-feed/:token", "GET /metrics"]);
 /** Whether this run is the hosted-mode one (isolation-hosted.test.ts). */
 const HOSTED = process.env.HOSTED_MODE === "1";
 /**
@@ -245,6 +287,8 @@ const NOT_REVEALING: Record<string, { status: number; body?: RegExp; why: string
   "DELETE /policies/:tool": { status: 200, body: /^\{"ok":true\}$/, why: "removes the caller's own policy for that tool" },
   // The parameter is the id of a skill bundled with Sklubot (the same for everyone): it is added to the caller's own bots.
   "POST /skills-library/:id/add": { status: 200, body: /^\{"report":\{"added":\[.*\],"already":\[.*\]\}\}$/, why: "addFromLibrary(user, id): only the caller's own bots" },
+  // L153 « pas à pas » (stepguide.ts): the parameter is a Docteur line of the caller's own account; the card goes to the caller's own main bot.
+  "POST /doctor/guides/:checkId": { status: 200, body: /^\{"botId":"bot_[0-9a-f]+","seq":\d+\}$/, why: "doctorGuide(user, line): the caller's own Docteur, shown in the caller's own main bot" },
   // In-process requests have no socket, so the bots' tool endpoint answers 503 before its own token check.
   "POST /mcp/:botId": { status: 503, why: "no socket in an in-process request; the engine token check is covered in security.test.ts" },
 };
@@ -327,7 +371,7 @@ test("without a session, every non-public route says 401 (and nothing else)", as
     const res = await call(api, null, methodOf(r.method), fill(r.path, "bot1"), {});
     if (leakIn(res.text)) problems.push(`${r.key} LEAKS`);
     // A handful of public routes have no parameter (health, me, downloads, sign-in, forgot-password status…): they must not leak either.
-    if (res.status !== 401 && !/^(GET \/(health|me|downloads|plans|public\/landing|auth\/link|connectors\/oauth\/callback|auth\/google.*|auth\/password\/status)|POST \/auth\/.*|POST \/billing\/paddle\/webhook)$/.test(r.key)) problems.push(`${r.key} → ${res.status}`);
+    if (res.status !== 401 && !/^(GET \/(health|me|downloads|plans|public\/landing|v1\/openapi\.json|auth\/link|connectors\/oauth\/callback|auth\/google.*|auth\/password\/status)|POST \/auth\/.*|POST \/billing\/paddle\/webhook)$/.test(r.key)) problems.push(`${r.key} → ${res.status}`);
   }
   assert.deepEqual(problems, []);
 });
@@ -482,8 +526,9 @@ test("Pause (agent/pause.ts): owner only — B and V get 404 on A's bots and sec
 });
 
 test("Bot API keys (botapi.ts): A's key of bot1 reaches bot1 only; B's key reaches nothing of A; every /v1 route is covered", async () => {
-  const v1 = discover().filter((r) => r.app === api && r.path.startsWith("/v1/"));
-  assert.deepEqual(v1.map((r) => r.key).sort(), ["DELETE /v1/mcp", "DELETE /v1/team/mcp", "GET /v1/bot", "GET /v1/bot/messages", "GET /v1/bot/messages/:seq/wait", "GET /v1/bot/tasks/:taskId", "GET /v1/mcp", "GET /v1/team/mcp", "POST /v1/bot/messages", "POST /v1/bot/tasks", "POST /v1/mcp", "POST /v1/team/mcp"], "a new /v1 route must be added to this test");
+  // "ALL /v1/*": the Deprecation / Sunset header middleware (botopenai.ts, L170), not a route.
+  const v1 = discover().filter((r) => r.app === api && r.path.startsWith("/v1/") && r.method !== "ALL");
+  assert.deepEqual(v1.map((r) => r.key).sort(), ["DELETE /v1/mcp", "DELETE /v1/team/mcp", "GET /v1/bot", "GET /v1/bot/memories", "GET /v1/bot/messages", "GET /v1/bot/messages/:seq/wait", "GET /v1/bot/tasks/:taskId", "GET /v1/mcp", "GET /v1/models", "GET /v1/openapi.json", "GET /v1/team/mcp", "POST /v1/bot/messages", "POST /v1/bot/tasks", "POST /v1/chat/completions", "POST /v1/mcp", "POST /v1/team/mcp"], "a new /v1 route must be added to this test");
   const withKey = (secret: string, method: string, url: string, body?: unknown) =>
     api.request(url, { method, headers: { "content-type": "application/json", authorization: `Bearer ${secret}`, accept: "application/json, text/event-stream" }, body: body === undefined || method === "GET" ? undefined : JSON.stringify(body) }).then(async (r) => ({ status: r.status, text: await r.text() }));
   // B makes a key of B's own bot.
@@ -520,6 +565,7 @@ test("A's things are all still there (nothing B or V tried changed them)", async
   assert.equal(n("SELECT COUNT(*) AS n FROM native_clients WHERE user_id = ?", userA), 1);
   assert.equal(n("SELECT COUNT(*) AS n FROM policies WHERE user_id = ?", userA), 1);
   assert.equal(n("SELECT COUNT(*) AS n FROM shared_computers WHERE id = 'a_shared'"), 1);
+  assert.equal(n("SELECT COUNT(*) AS n FROM conversation_grants WHERE id = 'a_convgrant' AND state = 'active'"), 1, "B and V could not revoke A's conversation grant");
   assert.equal(q.get<{ name: string }>("SELECT name FROM workspaces WHERE id = ?", ids.ws)!.name, "ALPHASECRET Studio");
   assert.equal(q.get<{ bucket: string }>("SELECT bucket FROM instance_backup WHERE id = 1")?.bucket, "alphasecret-bucket");
   // Usage caps: A's cap and A's card are untouched.
@@ -641,7 +687,7 @@ test("mandatory e-mail verification: an unconfirmed account gets 403 email_unver
     for (const r of discover().filter((x) => x.app === api)) {
       // Only routes behind the session check: those that answer 401 to nobody (the public ones are tested above).
       const anon = await call(api, null, methodOf(r.method), fill(r.path, "bot1"), {});
-      if (anon.status !== 401 || BOT_KEY(r.key)) continue;
+      if (anon.status !== 401 || BOT_KEY(r.key) || PUBLIC.has(r.key)) continue;
       const method = methodOf(r.method);
       if (method === "GET" && r.path === "/events") { if (ps.emailGateAllows("GET", "/events")) problems.push("events allowed"); held++; continue; }
       const res = await asU(method, fill(r.path, "bot1"));
@@ -699,4 +745,10 @@ test("dictation (POST /voice/transcribe?bot=): only someone who may talk to the 
   for (const who of ["b", "v"] as const) assert.ok(!MARK.test((await call(api, who, "POST", `/voice/transcribe?bot=${ids.bot1}`, {})).text));
   // Without a session, nothing.
   assert.equal((await call(api, null, "POST", "/voice/transcribe", {})).status, 401);
+});
+
+test("no two routes share the same method and path (a later one would be shadowed)", () => {
+  const seen = new Map<string, number>();
+  for (const r of discover()) { const k = `${r.app === api ? "api" : "site"} ${r.key}`; seen.set(k, (seen.get(k) ?? 0) + 1); }
+  assert.deepEqual([...seen].filter(([, n]) => n > 1).map(([k]) => k), []);
 });

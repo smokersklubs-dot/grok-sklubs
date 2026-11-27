@@ -1,4 +1,4 @@
-import type { Hono } from "hono";
+import type { Hono } from "hono"; import { tr } from "./i18n.js";
 import { repositoryName } from "./clientshared/chatmentions.js";
 import { githubActionsRead, githubAccounts } from "./connectors.js";
 import { q } from "./db.js";
@@ -149,7 +149,7 @@ export function registerGithubActivity(api: Hono<any>, throttle: (key: string, l
             .map((s) => String(s.name).slice(0, 180)),
         }));
       const title =
-        (user.locale === "fr" ? "Explique cet échec GitHub" : "Explain this GitHub failure") +
+        tr(user.locale, "Explain this GitHub failure") +
         " · " +
         watch.repo +
         " #" +

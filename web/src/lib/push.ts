@@ -109,9 +109,18 @@ const clientId = Math.random().toString(36).slice(2, 12);
 export function startPresence(): void {
   if (started || typeof document === "undefined") return;
   started = true;
+  // L151: the server pushes a reply to the phone only after 30 s without a key or the mouse here (server notifyrules.ts).
+  let lastInput = Date.now(), lastSent = 0;
   const report = () => {
-    void api("POST", "/presence", { clientId, visible: document.visibilityState === "visible" }).catch(() => undefined);
+    lastSent = Date.now();
+    void api("POST", "/presence", { clientId, visible: document.visibilityState === "visible", idleMs: Date.now() - lastInput }).catch(() => undefined);
   };
+  const onInput = () => {
+    const wasIdle = Date.now() - lastInput > 20_000;
+    lastInput = Date.now();
+    if (wasIdle || Date.now() - lastSent > 15_000) report();
+  };
+  for (const ev of ["keydown", "pointerdown", "pointermove", "wheel", "touchstart"]) window.addEventListener(ev, onInput, { passive: true });
   report();
   document.addEventListener("visibilitychange", report);
   window.addEventListener("pagehide", () => {

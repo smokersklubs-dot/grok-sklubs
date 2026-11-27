@@ -95,3 +95,5 @@ button.link { background: none; border: none; color: var(--muted); padding: 6px 
 ::-webkit-scrollbar { width: 10px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--line); border-radius: 10px; border: 2px solid var(--bg); }
+
+.consent .scripts pre { max-height: 220px; overflow: auto; }

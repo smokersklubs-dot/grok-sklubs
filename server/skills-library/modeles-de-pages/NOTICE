@@ -1,0 +1,6 @@
+modeles-de-pages — © 2026 Open Design contributors — Apache License 2.0, from github.com/nexu-io/open-design (commit 0725880)
+Source: https://github.com/nexu-io/open-design/tree/07258801b9e4ae80553816bb1606af7aa9a63dff/design-templates — the SKILL.md files of dashboard, finance-report, weekly-update, pm-spec, meeting-notes, team-okrs, eng-runbook, kanban-board, docs-page, pricing-page, saas-landing, invoice and live-artifact (these folders have no licence of their own and no upstream source: they fall under the repository's Apache-2.0 licence)
+Licence: Apache License, Version 2.0 (the full text is in LICENSE.txt in this folder, copied unchanged from the root of the source repository, which has no NOTICE file).
+
+Modified for Sklubot (2026-11-18): the thirteen templates were condensed into one list of recipes; instructions to generate "plausible" numbers, names and logos were replaced by "real data or to be completed"; OpenDesign's DESIGN.md injection, <artifact> output contract and data-od-id comment ids were removed; the rules were rewritten for Sklubot pages (page_publish, page_edit with files, light/dark, 360–1440 px); the keep-updated page recipe was written for Sklubot from the idea of live-artifact; a French translation (SKILL.fr.md) was added.
+Only text is included; no example.html, asset, script or image of the original folders is bundled.

@@ -1,0 +1,23 @@
+/* Settings → Keys → « Création (images et vidéos) » (MediaKeys.tsx). */
+.media-keys .list-row.media-key { align-items: flex-start; }
+.media-keys .list-row.media-key > .logo-tile { align-self: flex-start; margin-top: 2px; }
+.media-keys .media-key .list-row-text { min-width: 0; flex: 1; }
+.media-keys .media-fields { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 6px 10px; align-items: center; margin: 10px 0 4px; }
+.media-keys .media-fields .input { width: 100%; min-width: 0; }
+.media-keys .media-fields .input-small { max-width: 110px; }
+.media-keys .media-fields > p { grid-column: 1 / -1; margin: 0; }
+.media-keys .media-mode { margin: 10px 0 2px; flex-wrap: wrap; align-self: flex-start; width: fit-content; max-width: 100%; }
+.media-keys .media-mode button { border: 0; background: transparent; color: var(--text-2); padding: 6px 10px; border-radius: var(--r-sm); font: inherit; cursor: pointer; }
+.media-keys .media-mode button.is-active { background: var(--surface); color: var(--text); box-shadow: var(--shadow-sm, none); }
+.media-keys .media-cmd { display: block; margin: 4px 0 8px; padding: 8px 10px; border-radius: var(--r-sm); background: var(--surface-2); font-size: 12px; overflow-wrap: anywhere; white-space: pre-wrap; }
+.media-keys .logo-tile.is-free { color: var(--ok, var(--accent)); }
+.media-keys .note-line.is-ok { color: var(--ok, inherit); }
+.media-keys .note-line.is-warn { color: var(--warn, inherit); }
+.media-keys .media-runs .list-row { gap: 8px; flex-wrap: wrap; font-size: 13px; }
+.media-keys .media-key .action-row { display: flex; justify-content: flex-start; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+.media-keys .media-key .action-row .btn-ghost-danger { margin-left: auto; }
+@media (max-width: 520px) {
+  .media-keys .list-row.media-key > .logo-tile { display: none; }
+  .media-keys .media-fields { grid-template-columns: minmax(0, 1fr); }
+  .media-keys .action-row { flex-wrap: wrap; }
+}

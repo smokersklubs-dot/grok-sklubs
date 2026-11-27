@@ -8,6 +8,7 @@ import { FishError, fishVoice, fishVoices, validVoiceId } from "./fish.js";
 import { fishBulkProposals } from "./fishbulk.js";
 import { kokoroVoices } from "./kokoro.js";
 import { availablePiperVoices, PIPER_MODELS, piperModelsNow, piperVoice } from "./piper.js";
+import { REALTIME_MODELS, REALTIME_VOICES, realtimeSettings, realtimeStatus } from "./realtime.js";
 import { autoVoices, botVoiceFor, botVoiceRow, fishKey, kokoroEndpoint, piperEndpoint, ttsFor, voiceSettings, voiceStatus } from "./providers.js";
 
 /**
@@ -27,6 +28,8 @@ import { autoVoices, botVoiceFor, botVoiceRow, fishKey, kokoroEndpoint, piperEnd
  *  POST /voice/fish/bulk/propose                                 → { proposals: FishBulkProposal[] } (reads the library only)
  *  POST /voice/fish/bulk/apply { items: [{ botId, voiceId, name?, author?, language? }] } → { applied, bots }
  *    (the caller's own agent bots only; any other id is skipped, never an error that would tell it exists)
+ *  GET  /voice/realtime                                          → L167 { realtime: RealtimeStatus, models, voices }
+ *  PUT  /voice/realtime { enabled?, model?, voice? }              → the same (the caller's own setting; off by default)
  * `provider` is "fish" | "kokoro" | "piper" wherever a voice is named.
  */
 
@@ -55,6 +58,18 @@ const SAMPLES: Record<string, string> = {
 export const sampleText = (lang: string, name: string) => (SAMPLES[lang.slice(0, 2).toLowerCase()] ?? SAMPLES.en).replace("{name}", name.slice(0, 40));
 
 export function registerVoiceRoutes(api: Hono<Env>) {
+  // L167: the real-time voice model option (voice/realtime.ts). It never shows or takes a key: it uses the one already saved.
+  const realtimeView = (userId: string) => ({ realtime: realtimeStatus(userId), models: REALTIME_MODELS, voices: REALTIME_VOICES });
+  api.get("/voice/realtime", (c) => c.json(realtimeView(c.get("user").id)));
+  api.put("/voice/realtime", async (c) => {
+    const user = c.get("user");
+    const b = await json(c);
+    if (b.enabled !== undefined && typeof b.enabled !== "boolean") return err(c, 400, "enabled must be true or false.");
+    const next = realtimeSettings.set(user.id, b);
+    audit(user.id, "account", `Real-time voice model ${next.enabled ? `on (${next.model}, ${next.voice})` : "off"}`);
+    return c.json(realtimeView(user.id));
+  });
+
   api.get("/voice/fish/voices", async (c) => {
     const key = fishKey(c.get("user").id);
     if (!key) return err(c, 409, "Add your Fish Audio API key in Settings → Voice first.", "no_key");

@@ -7,6 +7,7 @@ import { accentStyle } from "../lib/colors";
 import { Icon } from "./Icon";
 import { ActivityLine, buildItems, RowItems } from "./Transcript";
 import { IconButton } from "./ui";
+import { sendKeysFor } from "../../../mobile/shared/sendKey";
 
 const EMPTY: Row[] = [];
 
@@ -14,7 +15,10 @@ const EMPTY: Row[] = [];
 export function ThreadPanel({ botId, seq }: { botId: string; seq: number }) {
   const bot = useStore((s) => s.bots[botId]);
   const rows = useStore((s) => s.threads[botId]?.rows ?? EMPTY);
-  const live = useStore((s) => s.live[botId]) ?? IDLE_LIVE;
+  const botLive = useStore((s) => s.live[botId]) ?? IDLE_LIVE;
+  // Lanes (server agent/lanes.ts): while several tasks run, this thread's own task state is in `tasks`.
+  const lane = botLive.tasks?.find((x) => x.thread === seq);
+  const live = lane && botLive.thread !== seq ? { ...botLive, running: lane.running, activity: lane.activity, awaiting: lane.awaiting, startedAt: lane.startedAt, thread: seq, caption: null } : botLive;
   const closeThread = useStore((s) => s.closeThread);
   const t = useT();
   const [text, setText] = useState("");
@@ -51,7 +55,9 @@ export function ThreadPanel({ botId, seq }: { botId: string; seq: number }) {
     setSending(true);
     setError(null);
     try {
-      const r = await api<{ row: Row }>("POST", `/bots/${botId}/messages`, { text: words, thread: seq });
+      const keys = sendKeysFor(`${botId}/thread/${seq}`); // the same key if this reply is sent again after a lost answer
+      const r = await api<{ row: Row }>("POST", `/bots/${botId}/messages`, { text: words, thread: seq, clientKey: keys.keyFor(words) });
+      keys.done();
       useStore.getState().addRows(botId, [r.row]);
       setText("");
     } catch (e) {

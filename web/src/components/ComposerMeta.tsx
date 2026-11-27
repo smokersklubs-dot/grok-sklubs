@@ -1,0 +1,93 @@
+import { useEffect, useState } from "react";
+import { api, enc, errText } from "../api";
+import { useT } from "../i18n";
+import { prettyModel } from "../lib/engines";
+import { orderModels, parseFavs, retiredRefs, toggleFav } from "../lib/modelfavs";
+import { useStore } from "../store";
+import type { Bot, Live, ModelOption } from "../types";
+import type { PromptView } from "../types";
+import { Gloss } from "./Gloss";
+import { Icon } from "./Icon";
+import { Menu, MenuItem } from "./ui";
+import "./Comfort7.css";
+import { ComposerReasoning } from "./ComposerReasoning"; // L150 reasoning per conversation
+
+/**
+ * Above the composer (backlog A-FAIRE L150 / L138): the model of this conversation, changed in two clicks (the bot's own
+ * model stays its default), and how full the conversation's context is, with « Compacter » one tap away in the bot's
+ * memory settings. Both read from the server; nothing is guessed: an unknown value shows « — », never 0 %.
+ */
+const FAVS_KEY = "sklubot.models.favs";
+
+export function ComposerMeta({ bot, live }: { bot: Bot; live: Live }) {
+  const t = useT();
+  const [models, setModels] = useState<ModelOption[] | null>(null);
+  const [chosen, setChosen] = useState<string>("");
+  const [percent, setPercent] = useState<number | null>(null);
+  const [menu, setMenu] = useState(false);
+  // L150: starred models first (kept in this browser), and a model no longer offered shown greyed (lib/modelfavs.ts).
+  const [favs, setFavs] = useState<string[]>(() => { try { return parseFavs(localStorage.getItem(FAVS_KEY)); } catch { return []; } });
+  const star = (ref: string) => setFavs((f) => { const next = toggleFav(f, ref); try { localStorage.setItem(FAVS_KEY, JSON.stringify(next)); } catch { /* not kept */ } return next; });
+  const running = live.running;
+  useEffect(() => {
+    let dead = false;
+    api<{ conversations: { generation: number; model: string; current: boolean }[] }>("GET", `/bots/${enc(bot.id)}/conversations`)
+      .then((r) => !dead && setChosen(r.conversations.find((c) => c.current)?.model ?? ""), () => !dead && setChosen(""));
+    return () => { dead = true; };
+  }, [bot.id, bot.generation]);
+  useEffect(() => {
+    if (running) return;
+    let dead = false;
+    api<PromptView>("GET", `/bots/${enc(bot.id)}/prompt-view`).then((r) => !dead && setPercent(Number.isFinite(r.context?.percent) ? r.context.percent : null), () => !dead && setPercent(null));
+    return () => { dead = true; };
+  }, [bot.id, bot.generation, running]);
+  const openMenu = () => {
+    setMenu((v) => !v);
+    if (!models) api<{ models: ModelOption[] }>("GET", `/models?bot=${enc(bot.id)}`).then((r) => setModels(r.models.filter((m) => !m.ref.startsWith("demo:"))), () => setModels([]));
+  };
+  const pick = async (ref: string) => {
+    setMenu(false);
+    try {
+      await api("PATCH", `/bots/${enc(bot.id)}/conversations/${bot.generation}`, { model: ref });
+      setChosen(ref);
+      useStore.getState().showToast(ref ? t("c7.model.set", { model: prettyModel(ref.split(":").slice(1).join(":")) }) : t("c7.model.reset"));
+    } catch (e) { useStore.getState().showToast(errText(e)); }
+  };
+  const label = (ref: string) => { const m = ref.split(":").slice(1).join(":") || ref; return m === "default" ? t("c7.model.default") : prettyModel(m); };
+  const current = chosen || bot.model;
+  const level = percent === null ? "unknown" : percent >= 85 ? "high" : percent >= 60 ? "mid" : "low";
+  return (
+    <div className="composer-meta">
+      <div className="menu-wrap">
+        <button type="button" className={`chip chip-button composer-model${chosen ? " is-chosen" : ""}`} aria-haspopup="menu" aria-expanded={menu} onClick={openMenu}
+          title={t("c7.model.title")} aria-label={t("c7.model.aria", { model: current ? label(current) : t("c7.model.default") })}>
+          <Icon name="brain" size={13} /> <span className="truncate">{current ? label(current) : t("c7.model.default")}</span>{chosen && <span className="composer-model-tag">{t("c7.model.thisChat")}</span>}
+          <Icon name="chevronDown" size={12} />
+        </button>
+        <Menu open={menu} onClose={() => setMenu(false)} side="top" label={t("c7.model.title")}>
+          <MenuItem icon={chosen ? "refresh" : "check"} onClick={() => void pick("")}>{t("c7.model.botDefault", { model: bot.model ? label(bot.model) : t("c7.model.default") })}</MenuItem>
+          {models === null && <MenuItem icon="clock" onClick={() => {}}>{t("common.loading")}</MenuItem>}
+          {models && orderModels(models, favs).map((m) => (
+            <div key={m.ref} className="model-row">
+              <MenuItem icon={m.ref === chosen ? "check" : "brain"} hint={m.provider} onClick={() => void pick(m.ref)}>{prettyModel(m.model)}</MenuItem>
+              <button type="button" className={`icon-btn model-fav${favs.includes(m.ref) ? " is-on" : ""}`} aria-pressed={favs.includes(m.ref)} aria-label={t(favs.includes(m.ref) ? "c7.model.unstar" : "c7.model.star", { model: prettyModel(m.model) })} title={t(favs.includes(m.ref) ? "c7.model.unstar" : "c7.model.star", { model: prettyModel(m.model) })} onClick={() => star(m.ref)}><Icon name="star" size={14} /></button>
+            </div>
+          ))}
+          {retiredRefs(models, [chosen, bot.model]).map((ref) => (
+            <MenuItem key={ref} icon="eyeOff" hint={t("c7.model.retired")} disabled onClick={() => {}}>{label(ref)}</MenuItem>
+          ))}
+        </Menu>
+      </div>
+      {bot.kind === "agent" && <ComposerReasoning bot={bot} />}
+      <span className="composer-gauge" data-level={level}>
+        <Gloss term="context" />
+        <span className="gauge-bar" role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent ?? undefined} aria-valuetext={percent === null ? t("c7.ctx.unknown") : `${percent} %`} aria-label={t("c7.ctx.label")}>
+          <span style={{ width: `${Math.min(100, percent ?? 0)}%` }} />
+        </span>
+        <button type="button" className="link small" onClick={() => useStore.getState().openBotSettings(bot.id, "memories")} title={t("c7.ctx.open")}>
+          {percent === null ? "—" : `${percent} %`}
+        </button>
+      </span>
+    </div>
+  );
+}

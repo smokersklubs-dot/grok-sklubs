@@ -1,0 +1,7 @@
+/* L137 « Pourquoi ? » under a line of the detailed journal (JournalWhy.tsx) */
+.journal-why-btn { margin-inline-start: 4px; padding: 2px 8px; font-size: 12px; }
+.journal-why { padding: 10px 14px; border-bottom: 1px solid var(--border); background: var(--surface-2); font-size: 13px; overflow-wrap: anywhere; }
+.journal-why p { margin: 0 0 6px; }
+.journal-why summary { cursor: pointer; margin: 4px 0; }
+.journal-why-notes { margin: 6px 0; padding-inline-start: 18px; }
+.journal-why-notes li { margin: 2px 0; }

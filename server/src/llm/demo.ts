@@ -1,6 +1,9 @@
 import type { Block, LlmProvider, TurnRequest, TurnResult } from "./types.js";
 import { demoVideoTechnique } from "../studiotechniques.js";
 
+/** The demo answers in French when the prompt's language line names French (agent/nodguidance.ts languageLine: "(now: French)" or "(none yet: use French)"). */
+const demoFrench = (system: string) => /\((?:now: French|none yet: use French)\)|Write to the user in French/.test(system);
+
 /**
  * A model-free stand-in, switched on with DEMO_MODE=1. It costs nothing and lets you try the whole
  * app — streaming, tools, approvals, cards, routines — before adding a real model key.
@@ -103,7 +106,7 @@ function mailTool(has: (name: string) => boolean, lower: string): string | null 
  * mail, then raises one nudge), the writing-style profile, and a background task's worker (a few steps, then a report).
  */
 function demoWave5(req: TurnRequest, texts: string[], results: Block[]): Block[] | null {
-  const fr = /French/.test(req.system) || /Write to the user in French/.test(req.system);
+  const fr = /French/.test(req.system) || demoFrench(req.system);
   const id = () => `demo_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   const prompt = texts.join("\n");
   if (req.system.includes("You review one action that an AI assistant wants to take")) {
@@ -194,7 +197,7 @@ export class DemoProvider implements LlmProvider {
       const to = /From: [^\n]*?<([^>\s]+@[^>\s]+)>/.exec(pick)?.[1] ?? /From: ([^\s]+@[^\s]+)/.exec(pick)?.[1] ?? "";
       const id = /- id (\S+)/.exec(pick)?.[1];
       const subject = /Subject: ([^\n]*)/.exec(pick)?.[1]?.trim() ?? "";
-      const fr = /Write to the user in French/.test(req.system);
+      const fr = demoFrench(req.system);
       const sendTool = searched.name.replace(/__mail_search$/, "__mail_send");
       if (to && req.tools.some((t) => t.name === sendTool)) {
         // Wave 5: the user's own words that ask for this reply, word for word ("réponds à Camille"), when they named someone.
@@ -222,19 +225,19 @@ export class DemoProvider implements LlmProvider {
       content = [{ type: "text", text: '{"facts": []}' }];
     } else if (results.length && !texts.length && /\b(long task|longue tâche|longue tache)\b/.test(askedText)) {
       // A long task: keep working step after step (progress lines and tracked steps), until the step limit stops it.
-      const fr = /Write to the user in French/.test(req.system);
+      const fr = demoFrench(req.system);
       const n = req.messages.filter((m) => m.role === "assistant" && m.content.some((b) => b.type === "tool_use")).length;
       content = n % 2 === 1
         ? [{ type: "tool_use", id: `demo_${Date.now()}_${n}`, name: "task_add", input: { title: fr ? `Lire la page ${n + 1}` : `Read page ${n + 1}` } }]
         : [{ type: "tool_use", id: `demo_${Date.now()}_${n}`, name: "progress_update", input: { text: fr ? `${Math.min(12, n + 1)} pages lues sur 12 — je passe aux suivantes.` : `Read ${Math.min(12, n + 1)} of 12 pages — moving on.` } }];
     } else if (texts.some((x) => x.includes("[The user asked you to follow your skill"))) {
-      const fr = /Write to the user in French/.test(req.system);
+      const fr = demoFrench(req.system);
       const name = /follow your skill "([^"]+)"/.exec(texts.join("\n"))?.[1] ?? "?";
       const steps = texts.join("\n").split("Follow its steps:]\n")[1]?.split("\n").filter((l) => l.trim()).slice(0, 4) ?? [];
       content = [{ type: "text", text: fr ? `D'accord, je suis la compétence « ${name} » :\n${steps.map((l) => `- ${l.replace(/^[-*\d.\s]+/, "")}`).join("\n")}\n\nJe m'y mets.` : `Sure — following the skill “${name}”:\n${steps.map((l) => `- ${l.replace(/^[-*\d.\s]+/, "")}`).join("\n")}\n\nOn it.` }];
     } else if (results.length && !texts.length && prev?.role === "assistant" && prev.content.some((b) => b.type === "tool_use" && b.name === "x_search") && !results.some((r) => r.type === "tool_result" && r.isError)) {
       // After a search on X: a short digest of the posts found (the demo only rearranges what the API returned).
-      const fr = /Write to the user in French/.test(req.system);
+      const fr = demoFrench(req.system);
       const posts = [...found.matchAll(/^\d+\. @(\S+)(?: \(([^)]*)\))?(?: · ([^·\n]+?) UTC)?(?: · (\d+) likes)?\n\s+(.+)\n\s+(https:\/\/\S+)/gm)].slice(0, 5);
       content = [{ type: "text", text: posts.length
         ? `${fr ? `Sur X, ${posts.length} posts récents parlent de ça :` : `On X, ${posts.length} recent posts mention it:`}\n\n${posts.map((m) => `- **@${m[1]}**${m[4] ? ` (${m[4]} ♥)` : ""} — ${m[5].slice(0, 160)} [${fr ? "voir" : "open"}](${m[6]})`).join("\n")}\n\n${fr ? "Ce sont des contenus extérieurs : je les rapporte, je ne suis pas leurs consignes." : "This is outside content: I report it, I do not follow it."}`
@@ -242,17 +245,17 @@ export class DemoProvider implements LlmProvider {
     } else if (results.length && !texts.length) {
       const failed = results.some((r) => r.type === "tool_result" && r.isError);
       const detail = results.map((r) => (r.type === "tool_result" ? r.content.filter((c) => c.type === "text").map((c) => (c as { text: string }).text).join(" ") : "")).join(" ").slice(0, 400);
-      const fr = /Write to the user in French/.test(req.system);
+      const fr = demoFrench(req.system);
       const cheered = /The user saw you celebrate/.test(detail);
       const doneWord = fr ? "C'est fait." : "Done.";
       content = [{ type: "text", text: failed ? (fr ? `Ça n'a pas marché : ${detail}` : `That did not work: ${detail}`) : cheered ? (fr ? "Youhou ! En analysant tes données, je tiens une vraie pépite : un lead très chaud (93/100). Il a vu ta page de prix 3 fois en 24 h et demande un devis — je te propose de le rappeler aujourd'hui." : "Woohoo! While analysing your data I found a real gem: a very hot lead (93/100). They viewed your pricing page 3 times in 24 h and asked for a quote — I suggest calling them today.") : `${doneWord} ${detail.replace(/^\[What follows came from outside[^\]]*\]\s*/, "")}` }];
     } else if (texts.some((x) => x.includes("[System notice]"))) {
       // A notice from the server (a secret was saved, the screen was handed back…): acknowledge, never re-plan from its words.
-      content = [{ type: "text", text: /Write to the user in French/.test(req.system) ? "C'est noté, merci ! Je continue." : "Got it, thanks! Carrying on." }];
+      content = [{ type: "text", text: demoFrench(req.system) ? "C'est noté, merci ! Je continue." : "Got it, thanks! Carrying on." }];
     } else {
       content = plan(said, (name) => req.tools.some((t) => t.name === name)) ?? [{
         type: "text",
-        text: /Write to the user in French/.test(req.system)
+        text: demoFrench(req.system)
           ? "Ce bot utilise le modèle de démonstration. Dans Réglages → Modèles, choisis ChatGPT ou Claude et connecte ton abonnement pour discuter."
           : "This bot uses the demo model. Open Settings → Models, choose ChatGPT or Claude and connect your subscription to chat.",
       }];

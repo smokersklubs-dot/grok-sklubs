@@ -1,0 +1,14 @@
+/* Wave 6 owner panels (OpenAccess.tsx): provider keys, network access, outgoing webhooks, local import. */
+.open-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.open-row .input { flex: 1 1 160px; min-width: 0; }
+.open-keys .list { margin: 4px 0 8px; }
+.open-net-modes { margin: 4px 0 10px; flex-wrap: wrap; }
+.open-hook { align-items: flex-start; flex-wrap: wrap; }
+.open-hook .list-row-text { min-width: 0; flex: 1 1 220px; }
+.open-hook-actions { display: flex; flex-wrap: wrap; gap: 4px; }
+.open-secret code { display: block; word-break: break-all; margin: 6px 0; }
+.open-local { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border); }
+.open-local-pick { display: inline-flex; gap: 6px; align-items: center; cursor: pointer; }
+.open-excluded ul { margin: 6px 0 0; padding-left: 18px; word-break: break-all; }
+.open-dir { word-break: break-all; }
+.open-warn { margin: 10px 0 6px; }

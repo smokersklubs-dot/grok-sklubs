@@ -10,6 +10,7 @@
  *  4. sent: the link is on its way.
  * Links keep working: ?auth=login|signup and ?plan= open step 1, ?invite= (a workspace) and ?plan_invite= are noted, a
  * workspace invitation opens step 3 with its address, ?second=1 is the two-factor step, ?link=expired a notice.
+ * L44: step 1 also offers « Se connecter avec une clé d'accès » where the browser has passkeys (Passkeys.tsx).
  */
 import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { api, ApiError, errText } from "../api";
@@ -22,6 +23,7 @@ import { ErrorNote } from "./ui";
 import { GoogleSignInButton } from "./GoogleLogin";
 import { ForgotPassword } from "./AccountRecovery";
 import { SecondStep } from "./TwoFactor";
+import { PasskeySignInButton } from "./Passkeys";
 import { TurnstileWidget } from "./Turnstile";
 import { HostedLinks, HostedSignupFields, type HostedSignup } from "./Hosted";
 import { useA } from "./authText";
@@ -203,6 +205,7 @@ export function SignIn({ initialMode, onBack }: { initialMode?: "login" | "signu
         </div>
         <ErrorNote>{error}</ErrorNote>
         <button type="submit" className={`btn btn-block auth-btn ${google ? "" : "btn-primary"}`}>{a("continue")}</button>
+        <PasskeySignInButton onDone={(u) => done({ user: u })} onError={setError} />{/* L44: a passkey saved on this device (Passkeys.tsx) */}
         {!canCreate && <p className="signin-switch">{t("signin.closed")}</p>}
       </form>,
     );

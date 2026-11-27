@@ -124,6 +124,8 @@ class TestRelay {
     "screen.capture": () => ({ result: { format: "jpeg", width: 640, height: 400, screenWidth: 1280, screenHeight: 800, data: JPEG } }),
     "view.start": () => ({ result: { viewId: "v1", maxFps: 3 } }),
     "view.stop": (a) => { setTimeout(() => this.event("view.stopped", { viewId: a.viewId ?? "v1", reason: "requested" }), 5); return { result: {} }; },
+    // Protocol 1.3 (§14): the window in front, read before each click or key.
+    "window.active": () => ({ result: { active: { app: "gedit", bundle: "gedit", pid: 1, windowId: "0x1", title: "facture.txt - gedit", passwordField: false } } }),
     "shell.run": (a) => ({ result: { exitCode: 0, signal: null, stdout: `ran: ${a.command}\n`, stderr: "", truncated: false, timedOut: false, cancelled: false, durationMs: 12 } }),
   };
 
@@ -137,7 +139,7 @@ class TestRelay {
     this.send({
       type: "hello", v: 1, auth, app: { name: "sklubot-relais", version: "0.1.0" },
       device: { name: "portable-lea", platform: "linux", arch: "x64", osRelease: "6.1", locale: "fr-FR" },
-      capabilities: ["session.start", "session.end", "screen.info", "screen.capture", "view.start", "view.stop", "mouse.move", "mouse.click", "mouse.drag", "mouse.scroll", "keyboard.type", "keyboard.press", "app.open", "url.open", "window.list", "window.focus", "shell.run"],
+      capabilities: ["session.start", "session.end", "screen.info", "screen.capture", "view.start", "view.stop", "mouse.move", "mouse.click", "mouse.drag", "mouse.scroll", "keyboard.type", "keyboard.press", "app.open", "url.open", "window.list", "window.focus", "shell.run", "window.active", "script.peek", "guard.set"],
       screen: { width: 1280, height: 800, scaleFactor: 1 }, limits: { maxInboundBytes: 262144, maxViewFps: 5 }, state: { locked: false }, ...hello,
     });
     return this;
@@ -151,7 +153,8 @@ class TestRelay {
     if (m.type === "token.rotate") { if (this.ackRotation) { this.token = m.token; this.send({ type: "token.ack", deviceId: this.deviceId }); } else this.pendingToken = m.token; }
     if (m.type === "welcome") this.event("relay.state", { locked: false, session: null });
     if (m.type === "req") {
-      this.reqs.push(m);
+      // The owner's safety rules sent on connection (guard.set, relay-guard.test.ts) are not a bot's request.
+      if (m.op !== "guard.set") this.reqs.push(m);
       const h = this.handlers[m.op];
       const a = await (h ? h(m.args, m) : { result: {} });
       if (a) this.send({ type: "res", id: m.id, ok: !a.error, ...(a.error ? { error: a.error } : { result: a.result ?? {} }) });
@@ -316,11 +319,12 @@ test("a click inside the session: no new card, coordinates scaled from the scree
   await idle(bot);
 });
 
-test("a command: the app's approval card, then the computer's own answer; 'Always' works until outside content", async () => {
+test("a command: the app's approval card (command, folder, computer), then the computer's own answer; 'Always' scoped to the command, until outside content", async () => {
+  // Commands are on by default on the owner's own computer (relayguard.ts); each one is shown on a card.
   let from = relay.reqs.length;
   await say(bot, 'call my_command {"command":"ls ~/Documents"}');
   const card = await pendingApproval(bot);
-  assert.equal(card.tool, `mycomputer: command: ${bot.name}`);
+  assert.equal(card.tool, `mycomputer: command: ${bot.name} | ls @ ~`);
   assert.match(card.detail, /ls ~\/Documents/);
   assert.equal(relay.reqs.slice(from).filter((r) => r.op === "shell.run").length, 0);
   await decide(card.approvalId, "always");
@@ -331,25 +335,45 @@ test("a command: the app's approval card, then the computer's own answer; 'Alway
   const audit = (await call("GET", "/audit")).json.entries.map((e: any) => e.text).join("\n");
   assert.match(audit, /commande ls ~\/Documents/);
 
-  // Allowed always, in a fresh turn: no card.
+  // The same command prefix in the same folder, in a fresh turn: no card.
   from = relay.reqs.length;
-  await say(bot, 'call my_command {"command":"pwd"}');
+  await say(bot, 'call my_command {"command":"ls -la"}');
   await relay.waitReq("shell.run", from);
-  await replied(bot, "ran: pwd");
+  await replied(bot, "ran: ls -la");
   await idle(bot);
 
   // After outside content (its own screenshot), every command asks again, and "Always" is not offered.
   from = relay.reqs.length;
-  await say(bot, 'chain my_screen {} >> my_command {"command":"whoami"}');
+  await say(bot, 'chain my_screen {} >> my_command {"command":"ls"}');
   const strict = await pendingApproval(bot);
   assert.equal(strict.once, true);
   assert.match(strict.title, /a lu du contenu extérieur/);
   await decide(strict.approvalId, "always"); // counts as once
   await relay.waitReq("shell.run", from);
-  await replied(bot, "ran: whoami");
+  await replied(bot, "ran: ls");
   await idle(bot);
-  const policy = (await call("GET", "/policies")).json.policies.find((p: any) => p.tool === `mycomputer: command: ${bot.name}`);
+  const policy = (await call("GET", "/policies")).json.policies.find((p: any) => p.tool === `mycomputer: command: ${bot.name} | ls @ ~`);
   assert.equal(policy.mode, "always_allow", "the earlier 'Always' stays as it was, nothing more");
+});
+
+test("Relais report limit: each running command's line has its own Stop; it cancels that command only (relay gets cancel), the turn goes on", async () => {
+  const keep = relay.handlers["shell.run"];
+  relay.handlers["shell.run"] = () => null as unknown as Answer; // never answers: a long command
+  const from = relay.reqs.length;
+  await say(bot, 'call my_command {"command":"ls -R /"}'); // "Always" for ls @ ~ (test above): no card
+  const run = await relay.waitReq("shell.run", from);
+  const line = await until(async () => (await rowsOf(bot.id)).find((r) => r.body.kind === "event" && r.body.event === "relay" && r.body.text.startsWith("$ ls -R /") && r.body.cmd?.running), "command line with its Stop");
+  const ref = line.body.kind === "event" ? line.body.cmd!.ref : "";
+  assert.equal((await call("POST", `/bots/${bot.id}/commands/nope/stop`)).json.stopped, false);
+  assert.equal((await call("POST", `/bots/${bot.id}/commands/${ref}/stop`)).json.stopped, true);
+  await relay.waitFor((m) => m.type === "cancel" && m.id === run.id, "cancel sent for that request");
+  await replied(bot, "stopped this command from the chat");
+  await idle(bot);
+  const after = (await rowsOf(bot.id)).find((r) => r.seq === line.seq)!;
+  assert.equal(after.body.kind === "event" && after.body.cmd?.running, false, "no Stop once it ended");
+  assert.match(after.body.kind === "event" ? after.body.text : "", /arrêté par toi/);
+  assert.equal((await call("POST", `/bots/${bot.id}/commands/${ref}/stop`)).json.stopped, false, "already ended");
+  relay.handlers["shell.run"] = keep;
 });
 
 test("a refusal on the computer is surfaced to the bot and the user, and never retried automatically", async () => {
@@ -462,7 +486,7 @@ test("a session that ended under the bot: reopened only when the app allows it w
   await say(bot, 'call my_click {"x":10,"y":10}');
   await replied(bot, "Clicked at (10, 10)");
   await idle(bot);
-  const ops = relay.reqs.slice(from).map((r) => r.op);
+  const ops = relay.reqs.slice(from).map((r) => r.op).filter((op) => op !== "window.active" && op !== "guard.set");
   assert.deepEqual(ops.slice(0, 3), ["mouse.click", "session.start", "mouse.click"], "no_session → session.start with a reason → the click once more");
   delete relay.handlers["mouse.click"];
 });

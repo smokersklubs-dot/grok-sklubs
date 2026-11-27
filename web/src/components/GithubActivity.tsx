@@ -1,4 +1,5 @@
 import "./GithubActivity.css";
+import { t as tr, intlLocale } from "../i18n";
 import { GithubIssues } from "./GithubIssues";
 import { useEffect, useState } from "react";
 import { api, errText } from "../api";
@@ -99,7 +100,7 @@ export function GithubActivity({ bot }: { bot: string }) {
         }}
       >
         <label>
-          {fr ? "Dépôt à suivre" : "Repository to watch"}
+          {tr("ghActivity.repositoryWatch")}
           <input
             className="input"
             placeholder="organisation/dépôt"
@@ -115,7 +116,7 @@ export function GithubActivity({ bot }: { bot: string }) {
             value={account}
             onChange={(e) => setAccount(e.target.value)}
           >
-            <option value="">{fr ? "Accès public" : "Public access"}</option>
+            <option value="">{tr("ghActivity.publicAccess")}</option>
             {settings.accounts.map((a) => (
               <option key={a.id} value={a.id}>
                 {a.name}
@@ -124,7 +125,7 @@ export function GithubActivity({ bot }: { bot: string }) {
           </select>
         )}
         <button className="btn btn-small" disabled={busy || !repo.trim()}>
-          {fr ? "Suivre le dépôt" : "Watch repository"}
+          {tr("ghActivity.watchRepository")}
         </button>
       </form>
       {groups.map((g) => (
@@ -137,13 +138,13 @@ export function GithubActivity({ bot }: { bot: string }) {
               disabled={busy}
               onClick={() => void change(g.repo, true)}
             >
-              {fr ? "Retirer" : "Remove"}
+              {tr("connector.remove")}
             </button>
           </div>
           {g.error ? (
             <ErrorNote>{g.error}</ErrorNote>
           ) : !g.events.length ? (
-            <small>{fr ? "Aucun échec récent." : "No recent failures."}</small>
+            <small>{tr("ghActivity.noRecentFailures")}</small>
           ) : (
             <ul>
               {g.events.map((ev) => (
@@ -153,7 +154,7 @@ export function GithubActivity({ bot }: { bot: string }) {
                   </a>
                   <small>
                     {ev.pr ? "PR #" + ev.pr : ev.branch} ·{" "}
-                    {new Date(ev.at).toLocaleDateString(fr ? "fr-FR" : "en")}
+                    {new Date(ev.at).toLocaleDateString(intlLocale())}
                   </small>
                   <button
                     type="button"
@@ -161,7 +162,7 @@ export function GithubActivity({ bot }: { bot: string }) {
                     disabled={busy}
                     onClick={() => void explain(ev)}
                   >
-                    {fr ? "Expliquer cet échec" : "Explain failure"}
+                    {tr("ghActivity.explainFailure")}
                   </button>
                 </li>
               ))}

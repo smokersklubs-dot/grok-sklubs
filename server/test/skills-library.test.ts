@@ -93,7 +93,7 @@ gh.setGithubFetch(async (url) => {
 
 test("the bundled pack loads each skill with its licence and notice and marks adapted skills", () => {
   const entries = lib.libraryEntries();
-  assert.deepEqual(entries.map((e) => e.id).sort(), ["brouillon-email", "canvas-design", "cartes-de-suivi", "conversation-courte", "design-de-marque", "frontend-design", "methode-de-travail", "pages-soignees", "studio-animation", "theme-factory", "video-github"]);
+  assert.deepEqual(entries.map((e) => e.id).sort(), ["accessibilite-mesuree", "audio-ffmpeg", "avant-un-rendez-vous", "brouillon-email", "cahier-des-charges", "canvas-design", "carte-du-depot", "cartes-de-suivi", "clarifier-avant-d-agir", "code-sobre", "colis-et-retours", "comparer-a-et-b", "conseil-a-trois-voix", "contenus-par-reseau", "conversation-courte", "design-de-marque", "diagrammes", "douane", "ecrire-comme-un-humain", "ecrire-un-article-avec-toi", "entretien-de-marque", "etude-de-marche", "explique-simplement", "fiche-de-charte", "figure-explicative", "frontend-design", "guides-composants-web", "idee-tient-elle", "illustration-animee", "installer-un-outil-cli", "jumeau-numerique", "lecons-de-mon-travail", "livres-numeriques", "methode-de-travail", "metier-du-design", "modeles-de-pages", "modeles-statiques", "nettoyer-des-donnees", "notes-obsidian", "opendesign-outil", "page-commerce-par-metier", "pages-soignees", "passation-et-bilan", "petit-outil-cli", "preciser-une-demande-de-page", "presentations", "professeur-particulier", "publier-une-appli", "questionnaire-a-envoyer", "regles-de-mise-en-page", "relecture-de-code", "retouche-d-images", "salons-avec-des-clients", "seo-boutique-et-comparatifs", "seo-contenu", "seo-donnees-structurees", "seo-local", "seo-methode-et-audit", "seo-surveillance", "seo-visibilite-ia", "signaux-d-embauche", "site-en-plusieurs-passes", "sous-titres", "stocks-et-reassort", "studio-animation", "styles-de-base", "tdd-et-debogage", "testeur-de-site", "theme-factory", "themes-sans-marque", "verifier-avant-de-livrer", "video-github", "visite-guidee-video"]);
   const dir = new URL("../skills-library/", import.meta.url);
   for (const e of entries) {
     const lic = readFileSync(new URL(`${e.id}/LICENSE.txt`, dir), "utf8");
@@ -111,6 +111,34 @@ test("the bundled pack loads each skill with its licence and notice and marks ad
       assert.match(notice, /Modified for Sklubot/);
       assert.match(e.source, /^https:\/\/github\.com\/thomasbek3\/hermes-bot-kit\/tree\/[0-9a-f]{40}\//);
       assert.ok(e.text.fr && e.text.en);
+    } else if (e.origin === "opendesign") {
+      assert.match(lic, /Apache License\s+Version 2\.0/);
+      assert.match(lic, /Copyright 2026 Open Design contributors/, "the repository's licence, unchanged");
+      assert.ok(e.notice.startsWith(`${e.id} — `), e.notice);
+      for (const part of ["© 2026 Open Design contributors", "Apache License 2.0", "github.com/nexu-io/open-design", "commit 0725880"]) assert.ok(e.notice.includes(part), `${e.id}: ${part}`);
+      assert.match(notice, /tree\/07258801b9e4ae80553816bb1606af7aa9a63dff/, "pinned to one commit");
+      assert.match(notice, /Modified for Sklubot \(2026-11-18\)/);
+      assert.equal(e.licence, "Apache-2.0");
+      assert.match(e.source, /^https:\/\/github\.com\/nexu-io\/open-design\/tree\/07258801b9e4ae80553816bb1606af7aa9a63dff(\/|$)/);
+      assert.ok(e.text.fr && e.text.en, `${e.id} has French and English`);
+      for (const t of Object.values(e.text)) assert.match(t!.body, /^> .*© 2026 Open Design contributors.*Apache License 2\.0.*commit 0725880.*Modified for Sklubot/);
+    } else if (e.origin === "community") {
+      // Adapted from another open-source repository: its licence text(s) unchanged, the holder, the source pinned to one
+      // commit, the changes, and the first line of each text saying where it comes from and that it was modified.
+      for (const part of e.licence.split(" AND ")) assert.ok(["MIT", "Apache-2.0", "CC-BY-4.0"].includes(part), `${e.id}: ${e.licence}`);
+      if (e.licence.includes("MIT")) assert.match(lic, /Permission is hereby granted, free of charge/, e.id);
+      if (e.licence.includes("Apache-2.0")) assert.match(lic, /Apache License\s+Version 2\.0/, e.id);
+      if (e.licence.includes("CC-BY-4.0")) assert.match(lic, /Creative Commons Attribution 4\.0[\s\S]*creativecommons\.org\/licenses\/by\/4\.0/, e.id);
+      assert.ok(e.notice.startsWith(`${e.id} — adapted from `) && e.notice.includes("©"), e.notice);
+      assert.match(notice, /Modified for Sklubot \(2026-11-22\): /);
+      assert.match(e.source, /^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/tree\/[0-9a-f]{40}(\/|$)/, e.id);
+      for (const url of notice.match(/https:\/\/github\.com\/\S+/g) ?? []) assert.match(url, /\/tree\/[0-9a-f]{40}/, `${e.id}: ${url}`);
+      assert.ok(e.text.fr && e.text.en, `${e.id} has French and English`);
+      assert.match(e.text.en!.body, /^> Adapted from .*©.*Modified for Sklubot \(2026-11-22\)/, e.id);
+      assert.match(e.text.fr!.body, /^> Adaptée d(?:e |es |u |').*©.*Modifiée pour Sklubot \(22\/11\/2026\)/, e.id);
+      // No source product's name as a title, and nothing that sends the owner's data to a third-party service.
+      for (const t of [e.title.fr, e.title.en]) assert.doesNotMatch(t, /stitch|ponytail|hallmark|claude|anatomy|noodle|spec kit|google|vercel|alibaba|flow|mattpocock|ECC|CLI-Anything|stick-scene/i, `${e.id}: ${t}`);
+      for (const t of Object.values(e.text)) assert.doesNotMatch(t!.body, /CLAUDE_PLUGIN_ROOT|mermaid\.ink\/|pip install|DataForSEO MCP|Powered by|cookies? (?:from|of) (?:the|your) browser/i, e.id);
     } else {
       assert.match(lic, /^MIT License/);
       assert.match(notice, /original Sklubot skill/);
@@ -123,10 +151,54 @@ test("the bundled pack loads each skill with its licence and notice and marks ad
   }
   // No executable, font, picture or PDF is bundled: only texts.
   for (const e of entries) for (const f of ["scripts", "canvas-fonts", "theme-showcase.pdf", "themes"]) assert.equal(existsSync(new URL(`${e.id}/${f}`, dir)), false);
+  // OpenDesign: the MIT notice of the work its craft rules came from travels with them; no brand look-alike is bundled.
+  assert.match(readFileSync(new URL("metier-du-design/LICENSE.txt", dir), "utf8"), /Copyright \(c\) Refero Design[\s\S]*Permission is hereby granted, free of charge/);
+  for (const e of entries.filter((x) => x.origin === "opendesign")) {
+    for (const t of Object.values(e.text)) {
+      // Real companies' design systems shipped by OpenDesign may only be named as what not to use.
+      for (const line of t!.body.split("\n").filter((l) => /\b(stripe|airbnb|spotify|tesla|linear-app|notion)\b/i.test(l))) assert.match(line, /never|jamais|imitate|imitent/i, `${e.id}: ${line}`);
+      assert.doesNotMatch(t!.body, /data-od-id|<artifact|DESIGN\.md injected|lorem ipsum dolor/i);
+    }
+    for (const f of ["tokens.css", "components.html", "example.html", "assets", "preview", "manifest.json"]) assert.equal(existsSync(new URL(`${e.id}/${f}`, dir)), false);
+  }
+  const deck = entries.find((e) => e.id === "presentations")!;
+  for (const t of [deck.text.en!, deck.text.fr!]) {
+    assert.match(t.body, /```html\n<!doctype html>[\s\S]*\.slide-no\{[\s\S]*@media print[\s\S]*location\.hash[\s\S]*<\/html>\n```/, "the deck frame: numbers, print, #N addresses");
+    assert.doesNotMatch(t.body, /localStorage\.(get|set)Item/, "pages cannot use storage");
+    assert.match(t.body, /page_publish/);
+  }
+  assert.match(entries.find((e) => e.id === "opendesign-outil")!.text.en!.body, /git rev-parse HEAD[^\n]*07258801b9e4ae80553816bb1606af7aa9a63dff/);
+
   // The working method (the owner's extra request) is there in both languages.
   const m = entries.find((e) => e.id === "methode-de-travail")!;
   assert.match(m.text.fr!.body, /Vérifier avant de dire « c'est fait »/);
   assert.match(m.text.en!.body, /Check before saying "done"/);
+});
+
+test("community skills: licence check refuses other licences, unpinned sources and missing changes; every skill has a theme and passes the safety check", async () => {
+  const MIT = "MIT License\n\nPermission is hereby granted, free of charge, to any person";
+  const ok = { notice: "x — adapted from y (© z)\nhttps://github.com/o/r/tree/0123456789abcdef0123456789abcdef01234567\nModified for Sklubot (2026-11-22): condensed.", source: "https://github.com/o/r/tree/0123456789abcdef0123456789abcdef01234567/skills/x" };
+  assert.equal(lib.licenceOk("MIT", MIT, ok.notice, ok.source), true);
+  assert.equal(lib.licenceOk("MIT AND Apache-2.0", MIT, ok.notice, ok.source), false, "the Apache text is missing");
+  assert.equal(lib.licenceOk("GPL-3.0", "GNU GENERAL PUBLIC LICENSE", ok.notice, ok.source), false);
+  assert.equal(lib.licenceOk("CC-BY-NC-4.0", "Creative Commons Attribution-NonCommercial 4.0", ok.notice, ok.source), false);
+  assert.equal(lib.licenceOk("MIT", MIT, ok.notice, "https://github.com/o/r/tree/main/skills/x"), false, "a moving branch is not a pinned source");
+  assert.equal(lib.licenceOk("MIT", MIT, ok.notice.replace("Modified for Sklubot (2026-11-22)", "Copied"), ok.source), false, "the changes must be stated");
+  const { scanSkill } = await import("../src/skillscan.js");
+  const { LIBRARY_CATEGORIES } = await import("../src/skillstypes.js");
+  for (const e of lib.libraryEntries()) {
+    assert.ok(LIBRARY_CATEGORIES.includes(e.category), `${e.id}: ${e.category}`);
+    for (const t of Object.values(e.text)) assert.notEqual(scanSkill({ name: e.title.en, description: t!.description, body: t!.body }).worst, "danger", e.id);
+  }
+  const by = (c: string) => lib.libraryEntries().filter((e) => e.category === c).map((e) => e.id);
+  assert.ok(by("seo").includes("seo-local") && by("method").includes("clarifier-avant-d-agir") && by("animation").includes("illustration-animee") && by("tools").includes("diagrammes"));
+  // The brand sheet the brand interview writes is what "Brand design" reads first.
+  const brand = lib.libraryEntries().find((e) => e.id === "design-de-marque")!;
+  assert.match(brand.text.en!.body, /~\/team\/charte\.md/); assert.match(brand.text.fr!.body, /~\/team\/charte\.md/);
+  assert.match(lib.libraryEntries().find((e) => e.id === "entretien-de-marque")!.text.en!.body, /~\/team\/charte\.md/);
+  // Tools fetched on demand are pinned to one commit, checked after checkout.
+  assert.match(lib.libraryEntries().find((e) => e.id === "illustration-animee")!.text.en!.body, /git checkout ca84311177a020c2dff7dfd9cb2e7b786288c1ab && git rev-parse HEAD/);
+  assert.match(lib.libraryEntries().find((e) => e.id === "figure-explicative")!.text.en!.body, /git checkout 1482e8469b0a9e0d8cc18ea2740a01423d29ae80 && git rev-parse HEAD/);
 });
 
 test("adding from the library: in the account's language, idempotent, on its own bots only", async () => {
@@ -138,6 +210,13 @@ test("adding from the library: in the account's language, idempotent, on its own
   assert.equal(list.status, 200, list.text);
   assert.equal(list.json.skills.length, lib.libraryEntries().length);
   const animation = list.json.skills.find((s: any) => s.id === "studio-animation");
+  assert.ok(list.json.skills.every((s: any) => typeof s.category === "string" && s.category), "every card has a theme");
+  const clar = list.json.skills.find((s: any) => s.id === "clarifier-avant-d-agir");
+  assert.equal(clar.origin, "community"); assert.equal(clar.category, "method"); assert.equal(clar.title, "Clarifier avant d'agir"); assert.equal(clar.language, "fr");
+  assert.match(clar.notice, /^clarifier-avant-d-agir — adapted from agent-skills/);
+  const addedClar = await A("POST", "/skills-library/clarifier-avant-d-agir/add", { target: ids.a2 });
+  assert.equal(addedClar.status, 200, addedClar.text);
+  assert.equal(skills.list(ids.a2).find((k) => k.name === "Clarifier avant d'agir")?.draft, false, "a bundled adapted skill passes the safety check");
   for (const id of ["brouillon-email", "cartes-de-suivi", "conversation-courte"]) {
     const card = list.json.skills.find((s: any) => s.id === id);
     assert.equal(card.origin, "hermes");
@@ -207,15 +286,19 @@ test("GitHub preview: licences, flags, path tricks left out; import as drafts; a
   assert.equal(by.beta.licence, "none"); assert.equal(by.beta.permissive, false);
   assert.equal(by.closed.licence, "restrictive"); assert.equal(by.closed.permissive, false);
   assert.equal(by.keyed.mentionsKey, true);
-  assert.equal(by.big.tooLarge, true);
+  assert.equal(by.big.tooLarge, false); assert.equal(by.big.parts, 2, "L130: a long skill is split, not refused");
   assert.equal(JSON.stringify(p.json).includes("rm -rf"), false);
   assert.equal(JSON.stringify(p.json).includes("Should never be read"), false);
   // The body is not sent in the preview; B cannot commit A's preview.
   assert.equal((await B("POST", "/skills-library/github/commit", { previewId: p.json.preview.previewId, paths: ["skills/beta/SKILL.md"], target: "all" })).status, 400);
   const c = await A("POST", "/skills-library/github/commit", { previewId: p.json.preview.previewId, paths: ["skills/alpha/SKILL.md", "skills/big/SKILL.md", "../escape/SKILL.md"], target: ids.a2 });
   assert.equal(c.status, 200, c.text);
-  assert.deepEqual(c.json.report.imported, ["alpha skill"]);
-  assert.deepEqual(c.json.report.skipped, ["big"]);
+  assert.deepEqual(c.json.report.imported, ["alpha skill", "big"]);
+  assert.deepEqual(c.json.report.skipped, []);
+  const parts = skills.list(ids.a2).filter((s) => s.name.startsWith("big ("));
+  assert.deepEqual(parts.map((s) => s.name), ["big (1/2)", "big (2/2)"]);
+  assert.ok(parts.every((s) => s.draft && s.body.length <= 20_000 + 400), "each part fits and stays a draft");
+  assert.match(parts[0].body, /^> Part 1 of 2 of the skill "big"[^\n]*big \(2\/2\)/);
   const imported = skills.list(ids.a2).find((s) => s.name === "alpha skill")!;
   assert.equal(imported.draft, true, "pending the owner's review");
   assert.equal(imported.outside, true);
@@ -251,6 +334,33 @@ test("GitHub download: other hosts refused, private/missing repositories, oversi
   assert.equal((await A("POST", "/skills-library/github/preview", { url: "https://github.com/acme/none" })).status, 404);
 });
 
+test("GitHub import: files a skill cites are either joined as annexes (small texts of its folder) or named as not imported; size said", async () => {
+  const refsBody = "Read [the format](./MISSION-FORMAT.md) first, then `references/eeat.md`.\nRun `scripts/check.py` and see references/missing.md.\nIgnore https://example.com/guide.md and ../outside.md.";
+  served = { "https://github.com/acme/refs/archive/HEAD.zip": { status: 200, body: zip({
+    "refs-main/LICENSE": "MIT License\n\nPermission is hereby granted, free of charge, to any person",
+    "refs-main/teach/SKILL.md": skillMd("teach", "Teaches", refsBody),
+    "refs-main/teach/MISSION-FORMAT.md": "# Mission format\nWhy, for whom, by when.",
+    "refs-main/teach/references/eeat.md": "# E-E-A-T\nExperience, expertise.",
+    "refs-main/teach/scripts/check.py": "print('x')",
+    "refs-main/long/SKILL.md": skillMd("long", "Long", "y".repeat(21_000)),
+  }) } };
+  const p = await A("POST", "/skills-library/github/preview", { url: "https://github.com/acme/refs" });
+  assert.equal(p.status, 200, p.text);
+  const by = Object.fromEntries(p.json.preview.skills.map((s: any) => [s.name, s]));
+  assert.deepEqual(by.teach.annexes, ["MISSION-FORMAT.md", "references/eeat.md"]);
+  assert.deepEqual(by.teach.referencedFiles, ["scripts/check.py", "references/missing.md"]);
+  // L130: a skill over 20 000 characters is no longer refused: it is imported as numbered parts.
+  assert.equal(by.long.tooLarge, false);
+  assert.equal(by.long.parts, 2);
+  assert.ok(by.long.chars > 20_000, "the size is given so the card can say by how much");
+  const c = await A("POST", "/skills-library/github/commit", { previewId: p.json.preview.previewId, paths: ["teach/SKILL.md"], target: ids.a2 });
+  assert.equal(c.status, 200, c.text);
+  const k = skills.list(ids.a2).find((s) => s.name === "teach")!;
+  assert.match(k.body, /## Annex: MISSION-FORMAT\.md\n+# Mission format/);
+  assert.match(k.body, /## Annex: references\/eeat\.md/);
+  assert.match(k.body, /not imported[^\n]*scripts\/check\.py, references\/missing\.md/);
+});
+
 test("licence detection", () => {
   assert.equal(gh.classifyLicence(APACHE), "Apache-2.0");
   assert.equal(gh.classifyLicence("GNU GENERAL PUBLIC LICENSE\nVersion 3"), "GPL");
@@ -278,4 +388,64 @@ test("hosted mode: operators and paid plans may import from GitHub, a free plan 
     hosted.subscriptions.update(ids.b, { planId: "pro-test", status: "active" });
     assert.equal(gh.githubImportAllowed(ids.b), true);
   } finally { delete process.env.HOSTED_MODE; }
+});
+
+test("L130: companion files (templates, styles, neighbour pages) are kept beside an imported skill as text, read with skill_read, never run", async () => {
+  const { skillFiles } = await import("../src/skillfiles.js");
+  const { skillReadOutput } = await import("../src/agent/skilltools.js");
+  served = { "https://github.com/acme/comp/archive/HEAD.zip": { status: 200, body: zip({
+    "comp-main/LICENSE": "MIT License\n\nPermission is hereby granted, free of charge, to any person",
+    "comp-main/page/SKILL.md": skillMd("page kit", "Builds a page", "Start from templates/base.html and style.css. Read GUIDE.md for the voice."),
+    "comp-main/page/templates/base.html": "<!doctype html><title>x</title><p>REPLACE</p>",
+    "comp-main/page/style.css": ":root { --accent: #2a5bd7; }",
+    "comp-main/page/app.js": "document.title = 'ok';",
+    "comp-main/page/GUIDE.md": "# Guide\n" + "Plain words. ".repeat(2_000),
+    "comp-main/page/run.sh": "echo never kept",
+    "comp-main/page/pic.png": Buffer.from([0x89, 0x50, 0x4e, 0x47, 0, 1]),
+  }) } };
+  const p = await B("POST", "/skills-library/github/preview", { url: "https://github.com/acme/comp" });
+  assert.equal(p.status, 200, p.text);
+  const s = p.json.preview.skills[0];
+  assert.deepEqual([...s.companionFiles].sort(), ["app.js", "style.css", "templates/base.html"].concat(s.annexes.includes("GUIDE.md") ? [] : ["GUIDE.md"]).sort());
+  assert.equal(s.referencedFiles.includes("style.css"), false, "a kept file is no longer said missing");
+  assert.equal(JSON.stringify(p.json).includes("echo never kept"), false, "a shell script is never kept");
+  const c = await B("POST", "/skills-library/github/commit", { previewId: p.json.preview.previewId, paths: ["page/SKILL.md"], target: ids.bBot });
+  assert.equal(c.status, 200, c.text);
+  const k = skills.list(ids.bBot).find((x) => x.name === "page kit")!;
+  assert.ok(skillFiles.list(k.id).some((f) => f.path === "templates/base.html"));
+  const found = { ...k, own: true, botName: "Capucine" };
+  const whole = skillReadOutput(found, undefined);
+  assert.match(String(whole.content), /Files kept with this skill[\s\S]*templates\/base\.html/);
+  const file = skillReadOutput(found, undefined, "templates/base.html");
+  assert.notEqual(file.isError, true);
+  assert.match(String(file.content), /never run[\s\S]*<p>REPLACE<\/p>/);
+  assert.equal(file.outside, true, "a file from outside is outside content, like its skill");
+  const none = skillReadOutput(found, undefined, "../../etc/passwd");
+  assert.equal(none.isError, true);
+  assert.match(String(none.content), /has no file/);
+});
+
+test("L130/L111: library skills carry their files/ (templates, themes) and adding one copies them; every file passes the safety check", async () => {
+  const { skillFiles, scanCompanions } = await import("../src/skillfiles.js");
+  const tpl = lib.libraryEntries().find((e) => e.id === "modeles-statiques")!;
+  assert.deepEqual(tpl.files.map((f) => f.path), ["assistant-etapes.html", "kanban.html", "tableau-de-bord.html", "tableau-filtrable.html"]);
+  for (const f of tpl.files) {
+    assert.match(f.content, /min-height: 100dvh/, f.path);
+    assert.match(f.content, /prefers-reduced-motion: reduce/, f.path);
+    assert.match(f.content, /prefers-color-scheme: dark/, f.path);
+    assert.match(f.content, /:focus-visible/, f.path);
+    if (f.path !== "assistant-etapes.html") assert.match(f.content, /class="empty"/, f.path); else assert.match(f.content, /role="alert"/, "the wizard says what is missing instead");
+    assert.match(f.content, /REPLACE/, f.path);
+    assert.match(f.content, /Astryx[\s\S]{0,200}commit fa22c93[^\n]*MIT/, f.path);
+    assert.doesNotMatch(f.content, /<script[^>]+src=|<link[^>]+href="http|localStorage|sessionStorage|fetch\(/, `${f.path}: no outside resource, no storage`);
+  }
+  for (const t of Object.values(tpl.text)) assert.match(t!.body, /REPLACE[\s\S]*Reread|REPLACE[\s\S]*Relis/);
+  const themes = lib.libraryEntries().find((e) => e.id === "themes-sans-marque")!;
+  assert.equal(themes.files.length, 10);
+  for (const f of themes.files) { assert.match(f.content, /:root \{/, f.path); assert.match(f.content, /Hallmark[^\n]*MIT/, f.path); assert.doesNotMatch(f.content, /scripts\/|pictured:/, f.path); }
+  for (const e of lib.libraryEntries().filter((x) => x.files.length)) assert.notEqual(scanCompanions(e.id, e.files).worst, "danger", e.id);
+  const r = await A("POST", "/skills-library/modeles-statiques/add", { target: ids.a2 });
+  assert.equal(r.status, 200, r.text);
+  const made = skills.list(ids.a2).find((x) => x.name === "Modèles statiques de pages")!;
+  assert.equal(skillFiles.list(made.id).length, 4);
 });

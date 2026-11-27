@@ -3,7 +3,8 @@ import { emit } from "./bus.js";
 import { accessOf, hostedMode, suspended } from "./hosted.js";
 import { guardedFetch } from "./net.js";
 import { mentionsKey, readZip } from "./projectimport.js";
-import { splitSkill } from "./skillslibrary.js";
+import { scanSkill } from "./skillscan.js";
+import { splitSkill } from "./skillslibrary.js"; import { COMPANION, MAX_COMPANION_FILE, keepCompanions, scanCompanions, skillFiles, splitLongSkill, type CompanionFile } from "./skillfiles.js";
 import type { GithubImportReport, GithubPreview, GithubSkillFound, LicenceKind } from "./skillstypes.js";
 import { audit, bots, clip, now, skills, type BotRecord } from "./store.js";
 import { q } from "./db.js";
@@ -15,12 +16,15 @@ import { q } from "./db.js";
  * archive from GitHub (https://docs.github.com/en/repositories/working-with-files/using-files/downloading-source-code-archives
  * — /archive/refs/heads/<branch>.zip, /archive/refs/tags/<tag>.zip, /archive/<commit>.zip; HEAD.zip for the default
  * branch), through the network guard (guardedFetch: public addresses only), following redirects only to github.com and
- * codeload.github.com, 15 MB at most. Nothing in it is run: only SKILL.md files and licence/README texts are read out of
+ * codeload.github.com, 15 MB at most. Nothing in it is run: only SKILL.md files, small texts (annexes) and licence/README texts are read out of
  * the zip (the zip reader of projectimport.ts: no links, no "..", no absolute paths); every other file is counted and
  * left out.
  *
  * The preview lists each SKILL.md with its licence (its folder's LICENSE, else its front matter, else the repository's
- * LICENSE, else its README), and flags: a key-like string, too long (over 20 000 characters), files left out. Nothing is
+ * LICENSE, else its README), and flags: a key-like string, too long (over 20 000 characters, with the count), files left
+ * out. Files the text cites (citedFiles: links and paths of its own folder) are joined at the end as "Annex: …" sections
+ * when they are small texts and the whole stays under the limit; anything else it cites is named in the preview and in
+ * the imported text, so neither the owner nor the bot believes a missing file is there (backlog L26). Nothing is
  * saved until the owner picks skills; they arrive as DRAFTS (the bot does not get them until the owner activates each one
  * in the bot's Skills tab), marked as coming from outside, with their source and licence at the end of their text.
  *
@@ -144,13 +148,39 @@ function readmeLicence(text: string): LicenceKind {
 }
 
 // ── Preview and import ───────────────────────────────────────────────────────────────────────────────────────────
-interface Found extends GithubSkillFound { body: string }
+interface Found extends GithubSkillFound { body: string; companions: CompanionFile[] }
 interface Pending { userId: string; repo: string; ref: string; path: string; skills: Found[]; until: number }
 const pending = new Map<string, Pending>();
 const sweep = () => { for (const [k, v] of pending) if (v.until < now()) pending.delete(k); };
 const LICENCE_FILE = /^(LICEN[CS]E|COPYING)(\.(md|txt|rst))?$/i;
 const README_FILE = /^README(\.(md|txt|rst))?$/i;
 export const MAX_SKILL_CHARS = 20_000;
+/** Texts that can be joined to a skill as annexes (L26/L130): Markdown or plain text of its own folder, 60 KB at most. */
+const ANNEX_FILE = /\.(md|markdown|txt)$/i;
+const MAX_ANNEX = 60_000;
+
+/**
+ * The files of its own folder a skill's text cites: Markdown links ("[format](./FORMAT.md)") and file paths written in
+ * the text ("references/eeat.md", "`scripts/check.py`"), relative to the skill's folder, in order, once each. Web
+ * addresses, absolute paths, "..", and the skill's own SKILL.md are left out (an import never reads outside the folder).
+ */
+export function citedFiles(body: string): string[] {
+  const out: string[] = [];
+  const add = (raw: string) => {
+    let p = raw.trim().replace(/^<|>$/g, "").split("#")[0].split("?")[0];
+    if (!p || /^[a-z][a-z0-9+.-]*:/i.test(p) || p.startsWith("/") || p.startsWith("~") || p.includes("\\")) return;
+    p = p.replace(/^(\.\/)+/, "");
+    const parts = p.split("/");
+    if (parts.some((x) => !x || x === "." || x === "..") || !/\.[A-Za-z0-9]{1,8}$/.test(p) || /^skill\.md$/i.test(p)) return;
+    if (!out.includes(p)) out.push(p);
+  };
+  for (const m of body.matchAll(/\]\(\s*([^)\s]+)(?:\s+"[^"]*")?\s*\)/g)) add(m[1]);
+  const FILE = /(?<![\w./:@-])((?:\.\/)?(?:[\w-][\w.-]*\/)*[\w-][\w.-]*\.(?:md|markdown|txt|py|sh|bash|js|mjs|cjs|ts|json|ya?ml|html?|css|csv|toml|xml|svg|png|jpe?g|pdf))(?![\w/-])/g;
+  for (const m of body.replace(/\]\([^)]*\)/g, "]").replace(/https?:\/\/\S+/g, " ").matchAll(FILE)) {
+    add(m[1]);
+  }
+  return out;
+}
 
 /** Who may import from GitHub: anyone on a self-hosted server; in hosted mode, operators and accounts on a paid plan. */
 export function githubImportAllowed(userId: string): boolean {
@@ -180,6 +210,10 @@ export async function previewGithub(userId: string, address: string, signal: Abo
         // The repository's own licence and README are read even outside the chosen folder.
         if (!rel.includes("/") && (LICENCE_FILE.test(base) || README_FILE.test(base))) return size <= 300_000;
         if (!inScope) return false;
+        // Small texts of the folder are read too: a skill's annexes (see citedFiles).
+        if (ANNEX_FILE.test(base) && size <= MAX_ANNEX) return true;
+        // L130: templates, styles and scripts of the folder are kept as text beside the skill (never run here).
+        if (COMPANION.test(base) && size <= MAX_COMPANION_FILE) return true;
         return (/^skill\.md$/i.test(base) || LICENCE_FILE.test(base)) && size <= 300_000;
       },
     }).map((f) => ({ path: strip(f.path), data: f.data }));
@@ -191,9 +225,9 @@ export async function previewGithub(userId: string, address: string, signal: Abo
   const readmeKind = readme ? readmeLicence(readme.data.toString("utf8")) : "unknown";
   const existing = new Set(q.all<{ name: string }>("SELECT s.name FROM skills s JOIN bots b ON b.id = s.bot_id WHERE b.user_id = ?", userId).map((x) => x.name.toLowerCase()));
 
-  const skillFiles = all.filter((f) => (!prefix || f.path.startsWith(prefix)) && /(^|\/)skill\.md$/i.test(f.path));
+  const skillFileList = all.filter((f) => (!prefix || f.path.startsWith(prefix)) && /(^|\/)skill\.md$/i.test(f.path));
   const found: Found[] = [];
-  for (const f of skillFiles.slice(0, 100)) {
+  for (const f of skillFileList.slice(0, 100)) {
     const dir = f.path.includes("/") ? f.path.slice(0, f.path.lastIndexOf("/")) : "";
     const raw = text(f.path);
     const parsed = raw === null ? { name: "", description: "", body: "" } : splitSkill(raw);
@@ -207,11 +241,32 @@ export async function previewGithub(userId: string, address: string, signal: Abo
     else if (rootLicence !== "none") { licence = rootLicence; licenceFrom = "repository"; }
     else if (readmeKind !== "unknown") { licence = readmeKind; licenceFrom = "readme"; }
     const ignoredFiles = all.filter((x) => (dir ? x.path.startsWith(`${dir}/`) : true) && x.path !== f.path && !LICENCE_FILE.test(x.path.split("/").pop()!) && !README_FILE.test(x.path.split("/").pop()!) && !/(^|\/)NOTICE(\.txt)?$/i.test(x.path)).length;
-    const body = parsed.body;
+    // Files its text cites: small texts of its own folder are joined as annexes while the whole stays under the limit;
+    // anything else it cites (scripts, pictures, missing or too large files) is named so the owner knows it is not there.
+    const annexes: string[] = [], referencedFiles: string[] = [];
+    let body = parsed.body;
+    for (const ref of citedFiles(parsed.body)) {
+      const full = dir ? `${dir}/${ref}` : ref;
+      const data = ANNEX_FILE.test(ref) ? text(full) : null;
+      const annex = data === null ? "" : `\n\n## Annex: ${ref}\n\n${data.replace(/\r\n/g, "\n").trim()}`;
+      if (data !== null && body.length + annex.length <= MAX_SKILL_CHARS) { body += annex; annexes.push(ref); }
+      else referencedFiles.push(ref);
+    }
+    // L130: the other text files of its own folder (not its licence, README or notice, not the annexes already joined)
+    // are kept beside it; a too-long text is imported in numbered parts instead of being refused.
+    const ownDir = dir ? `${dir}/` : "";
+    const companions = keepCompanions(files.filter((x) => dir && x.path.startsWith(ownDir) && x.path !== f.path && !/(^|\/)(LICEN[CS]E|COPYING|README|NOTICE)(\.\w+)?$/i.test(x.path) && !annexes.includes(x.path.slice(ownDir.length)) && !/(^|\/)skill\.md$/i.test(x.path))
+      .map((x) => ({ path: x.path.slice(ownDir.length), content: x.data.toString("utf8") }))).kept;
+    for (const c of companions) { const i = referencedFiles.indexOf(c.path); if (i >= 0) referencedFiles.splice(i, 1); }
+    const parts = raw === null ? 1 : splitLongSkill(name, body, MAX_SKILL_CHARS).length;
+    const scan = scanSkill({ name, description: clip(parsed.description, 300), body });
+    const fileScan = scanCompanions(name, companions);
+    if (fileScan.worst === "danger" && scan.worst !== "danger") scan.worst = "danger";
     found.push({
       path: f.path, name, description: clip(parsed.description, 300), size: f.size, licence, licenceFrom, permissive: isPermissive(licence),
-      mentionsKey: mentionsKey(raw ?? ""), tooLarge: raw === null || body.length > MAX_SKILL_CHARS, ignoredFiles: dir ? ignoredFiles : 0,
-      exists: existing.has(name.toLowerCase()), body: raw === null ? "" : body,
+      mentionsKey: mentionsKey(raw ?? "") || companions.some((c) => mentionsKey(c.content)), tooLarge: raw === null, parts, companionFiles: companions.map((c) => c.path), chars: raw === null ? f.size : body.length, annexes, referencedFiles, ignoredFiles: dir ? Math.max(0, ignoredFiles - annexes.length - companions.length) : 0,
+      exists: existing.has(name.toLowerCase()), body: raw === null ? "" : body, companions,
+      scan,
     });
   }
   if (!found.length) throw new GithubError(404, "No SKILL.md file was found at this address.");
@@ -219,7 +274,7 @@ export async function previewGithub(userId: string, address: string, signal: Abo
   for (const [k, v] of pending) if (v.userId === userId) pending.delete(k);
   const previewId = randomBytes(18).toString("base64url");
   pending.set(previewId, { userId, repo: `${r.owner}/${r.repo}`, ref: r.ref, path: r.path, skills: found, until: now() + 15 * 60_000 });
-  return { previewId, repo: `${r.owner}/${r.repo}`, ref: r.ref, path: r.path, skills: found.map(({ body: _b, ...s }) => s), truncated: skillFiles.length > found.length };
+  return { previewId, repo: `${r.owner}/${r.repo}`, ref: r.ref, path: r.path, skills: found.map(({ body: _b, companions: _c, ...s }) => s), truncated: skillFileList.length > found.length };
 }
 
 /** Imports the skills the owner picked, as drafts, on every assistant bot ("all") or one of them. */
@@ -231,22 +286,29 @@ export function commitGithub(userId: string, previewId: string, paths: string[],
   if (target === "all") targets = bots.list(userId).filter((b) => b.kind === "agent");
   else { const b = bots.owned(userId, target); if (!b || b.kind !== "agent" || b.hidden) throw new GithubError(404, "That bot does not exist."); targets = [b]; }
   if (!targets.length) throw new GithubError(400, "Create a bot first.");
-  const report: GithubImportReport = { imported: [], skipped: [], bots: targets.length };
+  const report: GithubImportReport = { imported: [], skipped: [], bots: targets.length, flagged: [] };
   const tree = p.ref || "HEAD";
   for (const s of p.skills) {
     if (!paths.includes(s.path)) continue;
     if (s.tooLarge || !s.body) { report.skipped.push(s.name); continue; }
     const dir = s.path.includes("/") ? s.path.slice(0, s.path.lastIndexOf("/")) : "";
     const source = `https://github.com/${p.repo}/tree/${tree}${dir ? `/${dir}` : ""}`;
-    const footer = `\n\n---\nSource: ${source} — licence: ${s.licence === "none" ? "none found" : s.licence} (${s.licenceFrom}). Imported from GitHub: check it before activating it.`;
+    const missing = s.referencedFiles.length ? `\nFiles this skill refers to were not imported (you cannot open them): ${s.referencedFiles.join(", ")}.` : "";
+    const footer = `\n\n---\nSource: ${source} — licence: ${s.licence === "none" ? "none found" : s.licence} (${s.licenceFrom}). Imported from GitHub: check it before activating it.${missing}`;
     let any = false;
+    // L130: a long skill arrives as numbered parts (each a draft); its companion files go with the first part.
+    const pieces = splitLongSkill(s.name, s.body, MAX_SKILL_CHARS - footer.length);
     for (const b of targets) {
-      if (skills.list(b.id).some((k) => k.name.toLowerCase() === s.name.toLowerCase())) continue;
-      skills.create(b.id, s.name, s.description, s.body.slice(0, MAX_SKILL_CHARS) + footer, false, { outside: true, draft: true });
+      if (skills.list(b.id).some((k) => k.name.toLowerCase() === pieces[0].name.toLowerCase())) continue;
+      pieces.forEach((piece, i) => {
+        const made = skills.create(b.id, piece.name, s.description, piece.body + footer, false, { outside: true, draft: true });
+        if (i === 0 && s.companions.length) skillFiles.save(made.id, s.companions);
+      });
       emit(userId, { type: "memories", botId: b.id });
       any = true;
     }
     (any ? report.imported : report.skipped).push(s.name);
+    if (any && s.scan.worst === "danger") report.flagged.push(s.name);
   }
   pending.delete(previewId);
   audit(userId, "account", `Skills imported from GitHub (${p.repo}${p.path ? `/${p.path}` : ""}): ${report.imported.length} as drafts, ${report.skipped.length} skipped`);

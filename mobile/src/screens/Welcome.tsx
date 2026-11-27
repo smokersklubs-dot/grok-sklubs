@@ -4,7 +4,8 @@ import { KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Text, View, Te
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { normalizeOrigin, DEFAULT_SERVER } from "../api/origin";
 import { Logo } from "../components/Character";
-import { Button, ErrorNote, Field, Segmented } from "../components/ui";
+import { LanguageChoice } from "../components/LanguageChoice";
+import { Button, ErrorNote, Field } from "../components/ui";
 import { errText, useT } from "../i18n";
 import { usePrefs } from "../state/prefs";
 import { useStore } from "../state/store";
@@ -37,7 +38,7 @@ function Brand() {
 function LanguagePicker() {
   const t = useT();
   const set = usePrefs((p) => p.set);
-  return <Segmented label="Language / Langue" value={t.locale} options={[{ id: "fr", label: "Français" }, { id: "en", label: "English" }]} onChange={(l) => set({ locale: l })} />;
+  return <LanguageChoice label="Language / Langue / Idioma" value={t.locale} onChange={(l) => set({ locale: l })} />;
 }
 
 export function ServerScreen() {
@@ -165,6 +166,7 @@ export function SignInScreen() {
         ) : null}
         <ErrorNote>{error}</ErrorNote>
         <Button label={t(busy ? (creating ? "signin.creating" : "signin.signingIn") : creating ? "signin.createBtn" : "signin.signIn")} busy={busy} onPress={submit} />
+        {!creating ? <Text style={{ color: c.text3, fontSize: 13, lineHeight: 18 }}>{t("signin.passkeyNote")}</Text> : null}{/* L44: passkeys are web-only for now */}
         {signupOpen ? (
           <Pressable accessibilityRole="button" onPress={() => { setMode(creating ? "login" : "signup"); setError(null); }} style={{ alignSelf: "center", padding: 8 }}>
             <Text style={{ color: c.text2 }}>{t(creating ? "signin.haveAccount" : "signin.newHere")} <Text style={{ color: c.info, fontWeight: "600" }}>{t(creating ? "signin.signIn" : "signin.createLink")}</Text></Text>

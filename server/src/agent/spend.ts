@@ -4,6 +4,7 @@ import { tr } from "../i18n.js";
 import { runs } from "../routines.js";
 import type { Card, SpendScope } from "../shared.js";
 import { audit, bots, clip, newId, now, rows, settings, users, type BotRecord } from "../store.js";
+import { LaneMap } from "./lanemap.js";
 
 /**
  * Spend checkpoints (spec 07 A5). Each piece of work a bot does is a "scope": a chat (or one thread) since the user's
@@ -18,7 +19,7 @@ import { audit, bots, clip, newId, now, rows, settings, users, type BotRecord } 
  */
 
 /** The scope each bot's running turn bills to (in memory: a restart begins a new turn anyway). */
-const active = new Map<string, string>();
+const active = new LaneMap<string>(); // lanes.ts: per running turn (a bare bot id means the calling turn's lane)
 
 export const scopeKey = {
   chat: (thread: number) => `chat:${thread || 0}`,

@@ -126,7 +126,55 @@ streamers, personnages de dessins animés, de jeux ou de films, titres du type �
 (ASMR, cris, chant…). Sont préférées : les voix marquées conversation, professionnelle, narration, assistant, calme,
 chaleureuse…
 
+## Un appel qui ne laisse jamais dans le silence (L154)
+
+Pendant un appel (mode serveur, `server/src/voice/callflow.ts` et `session.ts`) :
+
+- **Accusé oral** : si le bot n'a pas commencé à répondre au bout de 0,8 s, l'appel dit « D'accord, je regarde. » (ou une
+  phrase proche). Une réponse rapide n'en a pas besoin.
+- **« Je travaille encore. »** toutes les 30 s tant que le bot travaille et que rien n'a été dit (trois phrases qui
+  tournent). Jamais pendant qu'un accord attend : c'est toi qu'on attend.
+- **Réponse longue** : les 3 premières phrases (420 caractères au plus) sont lues, puis « La suite est écrite dans le
+  chat. ». Le texte entier est toujours dans la discussion.
+- **Accord à la voix** : quand le bot demande ton accord, l'appel le dit. Pour une action ordinaire, un **« oui » ou
+  « non » net** répond à la carte (« oui merci », « non, pas maintenant » comptent ; « oui mais… », « peut-être » non).
+  Deux réponses pas claires : la carte reste à l'écran. Ne se valident **jamais à la voix** : le plancher (une action
+  qu'on ne peut pas défaire, comme un message envoyé, une publication ; une carte « toujours demandé »), un **paiement**,
+  une **suppression**, une carte privée (carte bancaire, coffre, code, ton propre ordinateur), et tout appel d'un membre
+  de l'espace qui n'est pas le propriétaire du bot. L'appel dit alors « celui-là se valide à l'écran ». Chaque accord
+  donné à la voix est noté dans le journal.
+
+Reste à faire (L154) : boîte d'envoi locale de la transcription, compte rendu gardé au redémarrage, rappel sortant, mot de
+réveil, note vocale envoyée par le bot, choix du micro.
+
+## Modèle vocal temps réel (option, L167)
+
+Réglages → Voix → **« Modèle vocal temps réel »**, **désactivé par défaut**. Allumé, un appel parle à l'API Realtime
+d'OpenAI : la réponse arrive en une fraction de seconde. Le modèle vocal **ne fait rien lui-même** : pour tout ce qui
+demande le bot (outils, fichiers, mémoire, web, accords), il appelle une seule fonction, `ask_bot`, qui écrit la demande
+dans la discussion du bot comme un message vocal ; le bot travaille comme d'habitude (accords et plancher inchangés : les
+cartes se valident **à l'écran**) et sa réponse est lue par le modèle vocal.
+
+- **Clé** : seulement celle que ton compte a déjà — la clé OpenAI enregistrée pour la voix (OpenAI choisi pour la
+  transcription ou la voix), ou un fournisseur ajouté pour `api.openai.com` dans Réglages → Modèles. En mode hébergé,
+  jamais la clé de l'opérateur. La clé reste sur le serveur : le navigateur envoie son micro au serveur, qui relaie.
+- **Modèles** : `gpt-realtime-2.1-mini` (par défaut, le moins cher), `gpt-realtime-2.1`, `gpt-realtime-mini`,
+  `gpt-realtime` ; 10 voix (`marin` par défaut).
+- **Coût** : chaque réponse est comptée dans ton suivi des dépenses (« openai realtime <modèle> »), au prix publié
+  (par million de jetons audio : 10 $ en entrée / 20 $ en sortie pour les « mini », 32 $ / 64 $ pour les autres).
+- Sans clé : le réglage le dit, et l'appel garde la chaîne habituelle (transcription → bot → voix).
+
+Sources (lues le 23/11/2026) : https://developers.openai.com/api/docs/guides/realtime-websocket,
+https://developers.openai.com/api/docs/guides/realtime-conversations,
+https://developers.openai.com/api/docs/guides/realtime-transcription, https://developers.openai.com/api/docs/pricing.
+Code : `server/src/voice/realtime.ts`, `realtimecall.ts` ; routes `GET/PUT /api/voice/realtime`. Test :
+`server/test/voice-realtime.test.ts` (faux serveur Realtime).
+
 ## API
 
-Voir [API.md](API.md#server-mediated-voice-servervoice) : `GET /voice/bots`, `GET /voice/piper/voices`,
+Voir [API.md](API.md#server-mediated-voice-serversrcvoice) : `GET /voice/bots`, `GET /voice/piper/voices`,
 `POST /voice/fish/bulk/propose`, `POST /voice/fish/bulk/apply`, et `provider: "piper"` dans les routes de voix par bot.
+
+## Choix du micro (23/11/2026)
+
+Pendant un appel, si ton ordinateur a plusieurs micros, un menu « Micro de l'appel » apparaît dans la barre d'appel. Ton choix est gardé dans ce navigateur. Si le micro se débranche, l'appel reprend tout seul avec le micro par défaut et te le dit.

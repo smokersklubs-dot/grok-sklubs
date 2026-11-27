@@ -9,6 +9,7 @@ Compétence originale de Sklubot.
 
 ## Retrouver la marque (dans cet ordre)
 
+0. **La charte** : ~/team/charte.md sur ton ordinateur (écrite avec le patron grâce aux compétences « Entretien de marque » et « Fiche de charte (design) »). Quand elle existe, c'est la référence : lis-la en premier.
 1. **Le profil partagé** (la section « À propos de l'utilisateur » de ton contexte) : entreprise, préférences.
 2. **Tes souvenirs** : memory_search avec « marque », « couleurs », « logo », « charte », « police », le nom de l'entreprise.
 3. **Les fichiers** : la charte graphique, le logo ou un ancien document que l'utilisateur t'a donnés (ta bibliothèque, ~/team sur ton ordinateur, ou un dossier qu'il partage avec Sklubot Relais — seulement s'il te l'a demandé).

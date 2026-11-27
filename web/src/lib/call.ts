@@ -2,7 +2,8 @@
  * Browser-only voice calls: continuous speech recognition → each final utterance is sent as a
  * voice-origin message → the bot's next finished replies are read aloud with speech synthesis.
  */
-import { api, errText } from "../api";
+import { api, ApiError } from "../api";
+import { createOutbox, resultOf, type OutboxItem } from "./calloutbox";
 import { t } from "../i18n";
 import { useStore, type CallLine, type CallState, type Thread } from "../store";
 import type { Row } from "../types";
@@ -49,16 +50,47 @@ function beginTrace(botId: string): void {
   );
 }
 
+/* ---------- L154 outbox: nothing said in a call is lost when the network drops (calloutbox.ts) ---------- */
+
+const outbox = createOutbox({
+  storage: () => (typeof window !== "undefined" ? window.localStorage : null),
+  send: async (item: OutboxItem) => {
+    try {
+      const r = await api<{ row?: Row }>("POST", item.path, item.body);
+      if (item.kind === "utterance" && r?.row) utteranceSaved(item.path.split("/")[2] ?? "", r.row);
+      return "ok";
+    } catch (e) {
+      return resultOf(e instanceof ApiError ? e.status : 0);
+    }
+  },
+});
+let outboxTimer: number | undefined;
+function flushOutbox(): void {
+  void outbox.flush().then(() => {
+    window.clearTimeout(outboxTimer);
+    if (outbox.pending().length) outboxTimer = window.setTimeout(flushOutbox, 15_000);
+  });
+}
+if (typeof window !== "undefined") {
+  window.addEventListener("online", flushOutbox);
+  window.setTimeout(flushOutbox, 3000); // what an earlier page could not send
+}
+const newKey = () => (typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `k${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`);
+
 function sendEnd(tr: Trace, beacon: boolean): void {
   if (!tr.callId) return;
   const path = `/bots/${tr.botId}/calls/${tr.callId}/end`;
   const body = { transcript: tr.lines ?? [] };
-  if (beacon && typeof navigator.sendBeacon === "function") {
-    const sent = navigator.sendBeacon(`/api${path}`, new Blob([JSON.stringify(body)], { type: "application/json" }));
-    if (sent) return;
+  const item = { id: `end:${tr.callId}`, path, body, kind: "end" as const };
+  if (beacon) {
+    // The page is going away: kept in the outbox too (sent again at the next load; the server answers « duplicate »).
+    outbox.queue(item);
+    if (typeof navigator.sendBeacon === "function") navigator.sendBeacon(`/api${path}`, new Blob([JSON.stringify(body)], { type: "application/json" }));
+    return;
   }
-  api("POST", path, body).catch(() => undefined);
+  void outbox.send(item).then((r) => { if (r === "retry") flushLater(); });
 }
+const flushLater = () => { window.clearTimeout(outboxTimer); outboxTimer = window.setTimeout(flushOutbox, 15_000); };
 
 /** Close the server's record of the current call, once. `beacon` is for when the page is going away. */
 function endTrace(beacon = false): void {
@@ -118,14 +150,19 @@ function fail(message: string, voiceSettings = false): void {
   stopListening();
 }
 
+function utteranceSaved(botId: string, row: Row): void {
+  useStore.getState().addRows(botId, [row]);
+  if (getCall()?.botId === botId && spokenUpTo === null) spokenUpTo = row.seq;
+}
+
 async function sendUtterance(botId: string, text: string): Promise<void> {
-  try {
-    const r = await api<{ row: Row }>("POST", `/bots/${botId}/messages`, { text, origin: "voice" });
-    useStore.getState().addRows(botId, [r.row]);
-    if (getCall()?.botId === botId && spokenUpTo === null) spokenUpTo = r.row.seq;
-  } catch (e) {
-    useStore.getState().showToast(t("call.sendFailed", { error: errText(e) }));
-  }
+  const key = newKey();
+  const item = { id: `say:${key}`, path: `/bots/${botId}/messages`, body: { text, origin: "voice", clientKey: key }, kind: "utterance" as const };
+  // Something said earlier still waits: this one goes after it, in order.
+  if (outbox.pending().length) { outbox.queue(item); flushOutbox(); return; }
+  const r = await outbox.send(item);
+  if (r === "retry") { useStore.getState().showToast(t("call.kept")); flushLater(); }
+  else if (r === "drop") useStore.getState().showToast(t("call.sendFailed", { error: t("call.refused") }));
 }
 
 function onFinal(text: string): void {

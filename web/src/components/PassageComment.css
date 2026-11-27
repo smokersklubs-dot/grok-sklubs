@@ -1,0 +1,23 @@
+/* L140 passage bar and L106 « Explique plus simplement ». Tokens only (light / dark). */
+.passage-bar {
+  position: fixed; z-index: 60; transform: translateX(-50%);
+  display: flex; flex-wrap: wrap; gap: 4px; justify-content: center;
+  width: max-content; max-width: min(calc(100vw - 24px), 580px); padding: 5px;
+  border: 1px solid var(--border-strong); border-radius: var(--r-md);
+  background: var(--surface); color: var(--text); box-shadow: var(--shadow-md);
+}
+.passage-bar.is-above { transform: translate(-50%, -100%); }
+.passage-btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  min-height: 32px; padding: 4px 10px; border: 0; border-radius: var(--r-sm);
+  background: var(--surface-2); color: var(--text); font: inherit; font-size: 13px; cursor: pointer; white-space: nowrap;
+}
+.passage-btn:hover { background: var(--surface-3); }
+.passage-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.passage-btn:disabled { opacity: 0.6; cursor: default; }
+.passage-remark { display: flex; gap: 6px; width: min(86vw, 460px); }
+.passage-remark .input { flex: 1; min-width: 0; min-height: 34px; }
+/* L147 « NOUVEAU »: where the unread replies start (a red-accent line across the chat). */
+.divider.is-new { align-items: center; gap: 10px; }
+.divider.is-new::before, .divider.is-new::after { content: ""; flex: 1; height: 1px; background: var(--danger); opacity: 0.55; }
+.divider.is-new span { color: var(--danger); letter-spacing: 0.06em; text-transform: uppercase; }

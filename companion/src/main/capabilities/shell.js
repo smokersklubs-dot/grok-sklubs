@@ -11,7 +11,8 @@ const os = require('node:os');
 const fs = require('node:fs');
 
 /**
- * @param {{ command: string, timeoutMs: number, maxOutputBytes: number, cwd: string|null, signal?: AbortSignal }} a
+ * `onChunk`: each piece of output as it comes (streamed to Sklubot as `shell.output` events by RelayCore).
+ * @param {{ command: string, timeoutMs: number, maxOutputBytes: number, cwd: string|null, signal?: AbortSignal, onChunk?: (stream: 'stdout'|'stderr', text: string) => void }} a
  * @returns {Promise<{ exitCode: number|null, signal: string|null, stdout: string, stderr: string, truncated: boolean, timedOut: boolean, cancelled: boolean, durationMs: number }>}
  */
 function runShell(a) {
@@ -47,8 +48,9 @@ function runShell(a) {
         try { process.kill(-child.pid, 'SIGKILL'); } catch { try { child.kill('SIGKILL'); } catch { /* gone */ } }
       }
     };
-    /** @param {Buffer[]} bucket */
-    const collect = (bucket) => (/** @type {Buffer} */ chunk) => {
+    /** @param {Buffer[]} bucket @param {'stdout'|'stderr'} stream */
+    const collect = (bucket, stream) => (/** @type {Buffer} */ chunk) => {
+      if (a.onChunk) { try { a.onChunk(stream, chunk.toString('utf8')); } catch { /* the stream is best effort */ } }
       if (size >= a.maxOutputBytes) { truncated = true; return; }
       const room = a.maxOutputBytes - size;
       const part = chunk.length > room ? chunk.subarray(0, room) : chunk;
@@ -56,8 +58,8 @@ function runShell(a) {
       bucket.push(part);
       size += part.length;
     };
-    child.stdout.on('data', collect(out));
-    child.stderr.on('data', collect(err));
+    child.stdout.on('data', collect(out, 'stdout'));
+    child.stderr.on('data', collect(err, 'stderr'));
 
     const timer = setTimeout(() => { timedOut = true; kill(); }, a.timeoutMs);
     const onAbort = () => { cancelled = true; kill(); };

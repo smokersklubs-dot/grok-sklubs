@@ -49,10 +49,10 @@ Authentication is an HTTP-only session cookie; every route except the auth route
 | POST | `/bots/:id/uploads/start` | JSON `{ name, size }`, up to 1,000,000,000 bytes per file | `{ id, partBytes }` |
 | POST | `/bots/:id/uploads/:idOfUpload?offset=N` | Original bytes in order, exactly `partBytes` per request except the last. Retry a lost response at the same offset. | `{ received }` or the final `{ attachment }`. Sessions expire after two hours of inactivity. |
 | DELETE | `/bots/:id/uploads/:idOfUpload` | Cancel an unfinished transfer | 204 |
-| POST | `/bots/:id/messages` | `{ text, origin?: "voice", attachments?: string[] }` | `{ row }` — `attachments` are `path` values returned by uploads; `text` may be empty when there is at least one |
+| POST | `/bots/:id/messages` | `{ text, origin?: "voice", attachments?: string[], clientKey?: string }` | `{ row }` — `clientKey` (or the `Idempotency-Key` header; 8–100 letters, digits, `-`, `_`) is a send key: the same key again within 24 h, for the same account and bot, answers `{ row, duplicate: true }` with the first message and starts nothing (`server/src/sendkeys.ts`) — `attachments` are `path` values returned by uploads; `text` may be empty when there is at least one |
 | POST | `/bots/:id/stop` | – | `{ ok }` |
 | POST | `/bots/:id/reset` | – | `{ generation }` |
-| POST | `/approvals/:approvalId` | `{ decision: "allow" \| "always" \| "deny" }` | `{ ok }` |
+| POST | `/approvals/:approvalId` | `{ decision: "allow" \| "always" \| "conversation" \| "deny" }` — `"conversation"`: yes for this action, and a grant for the rest of the conversation when the card offered it (`conversation: true`), else it counts as `"allow"` | `{ ok }` |
 | POST | `/bots/:id/cards/:seq/answer` | `{ answer }` | `{ ok }` |
 | POST | `/bots/:id/cards/:seq/dismiss` | – | `{ ok }` |
 
@@ -63,16 +63,35 @@ Authentication is an HTTP-only session cookie; every route except the auth route
 | POST | `/bots/:id/skills` | `{ name, description?, body }` | `{ skill }` |
 | PATCH | `/skills/:id` | partial skill | `{ skill }` |
 | DELETE | `/skills/:id` | – | `{ ok }` |
-| DELETE | `/memories/:id` | – | `{ ok }` |
+| DELETE | `/memories/:id` | – | `{ ok }` — into the bin for 30 days (`POST /memories/:id/restore` brings the same note back) |
 | POST | `/bots/:id/consolidate` | – | `{ added: string[], considered: number }` |
 | POST | `/bots/:id/compact` | – | `{ before, after, changed }` |
 | GET | `/bots/:id/routines` | – | `{ routines: Routine[] }` |
 | PATCH | `/routines/:id` | `{ enabled }` | `{ routine }` |
 | POST | `/routines/:id/run` | – | `{ ok }` |
 | DELETE | `/routines/:id` | – | `{ ok }` |
+| GET / PUT | `/routines/:id/options` | `{ announce?: "thread" \| "chat", condition?, heavy? }` | `{ announce, condition, heavy }` — vague 6 : où voir son travail (L54), condition vérifiée par un petit modèle (L86), travail lourd placé à la remise à zéro du quota (L183) |
+| GET | `/bots/:id/notes` | – | `{ notes: [{ id, text, thread }] }` — messages tapés pendant le travail, pas encore lus (L58) |
+| DELETE | `/bots/:id/notes/:noteId` | – | `{ ok, notes }` — « Retirer » ; 404 si le bot l'a déjà lu |
+| GET / PUT | `/team/ask-policy` | `{ mode: "open" \| "hierarchy" }` | `{ mode }` — « qui peut demander à qui » (L96) |
+| PUT | `/sections/:id/lead` | `{ botId }` | `{ lead }` — le chef d'une section (L96) |
+| POST | `/bots/:id/notes/:noteId/send-now` | – | `{ ok, state: "sent" \| "idle", notes }` — « Envoyer maintenant » : arrête l'étape en cours, ce qui est fait est gardé (L58) ; 404 si déjà lu |
+| GET / PUT | `/bots/:id/plan-mode` | `{ on, thread? }` | `{ on }` — mode Plan d'une conversation (L79) ; aussi « /plan <demande> », « /plan off » |
+| POST | `/bots/:id/rows/:seq/plan-review` | – | `{ review: { verdict, missing, extra, note } }` — « Relire mon plan contre ma demande » (L79) ; 400 si ce n'est pas une carte de plan |
+| GET / PUT | `/bots/:id/model-mode` | `{ mode: "balanced" \| "fast" \| "strongest" \| "free" \| "auto" }` | `{ mode, models }` — modes nommés (L69) ; seulement les modèles du compte au prix connu ; 400 pour un bot sur abonnement |
+| GET / PUT | `/team/helper-inherit` | `{ on }` | `{ on }` — les assistants reçoivent les consignes du bot parent (L96, activé par défaut) |
+| GET | `/team/section-leads` | – | `{ leads: { [sectionId]: botId \| null } }` — le chef de chaque section (L96) |
 | GET | `/tasks` | – | `{ tasks: Task[] }` (all bots) |
 | GET | `/bots/:id/tasks` | – | `{ tasks: Task[] }` |
-| POST | `/hooks/:token` | any JSON | `{ ok }` — fires a webhook routine (no session needed) |
+| POST | `/hooks/:token` | any JSON | `{ ok }` — fires a webhook routine (no session needed). L20 (`hookroutes.ts`, `hooktrust.ts`): a repeated delivery id (`webhook-id`, `X-GitHub-Delivery`, `X-Gitlab-Event-UUID`, `Idempotency-Key`, `X-Delivery-Id`, Stripe's event id) answers `{ ok, duplicate: true }` without running (7 days); with a signing secret, a call must carry a valid HMAC-SHA256 signature (GitHub `X-Hub-Signature-256`, Stripe `Stripe-Signature`, Standard Webhooks `webhook-signature`; timestamps ±5 min) or gets 401 (logged, not counted in the hook's rate); with grouping on, `{ ok, grouped: true }` and one run per window. A webhook without a secret works as before ("non signé") |
+| GET | `/routines/:id/hook` | – | `{ signed, secretSetAt, previousUntil, groupSec, refusals[], pending }` — owner only, webhook routines only |
+| POST | `/routines/:id/hook/secret` | `{ secret? }` | the same, plus `{ secret }` **once** when Sklubot created it (a pasted secret, 8–300 chars, is never returned); sealed with the data key (`routine_hooks.secret_enc`); the previous secret stays valid 24 h |
+| DELETE | `/routines/:id/hook/secret` | – | back to unsigned |
+| PUT | `/routines/:id/hook` | `{ groupSec }` | 0, 10, 30, 60, 300 or 600; 0 runs what waited at once |
+| POST | `/routines/:id/hook/test` | – | « Envoyer un exemple » dry run: `{ wouldRun, grouped, checks[{ id: address\|active\|signature\|bot, ok }], sample, headers, preview }` — nothing is recorded or run |
+| POST | `/bots/:id/rows/:seq/report` | `{ reason: wrong\|harmful\|offensive\|private\|other, note? }` | `{ ok, reportId }` — L31 « Signaler cette réponse » (`reports.ts`): the caller's own bot, a finished bot reply; stores a masked copy of the reply and of the 4 messages before it; reporting again updates it |
+| GET | `/reports` | – | `{ reports: MessageReport[], open }` — server owner and hosted operators only (404 otherwise); nothing is sent outside the server |
+| POST | `/reports/:reportId/done` | `{ done }` | the same list — « Marquer comme traité » / « Rouvrir » |
 | GET | `/bots/:id/api-keys` | – | `BotApiKeysView` `{ keys: BotApiKeyView[], max, baseUrl, mcpUrl }` — owner only ("Accès API", botapi.ts) |
 | POST | `/bots/:id/api-keys` | `{ name, scopes: ("read"\|"write"\|"tasks")[] }` | `{ key: BotApiKeyView, secret, …BotApiKeysView }` — `secret` (`sk_bot_…`) is returned this once only; 409 `too_many_keys` |
 | DELETE | `/bots/:id/api-keys/:keyId` | – | `BotApiKeysView` — revokes the key at once; 404 if unknown or already revoked |
@@ -108,6 +127,8 @@ Authentication is an HTTP-only session cookie; every route except the auth route
 | DELETE | `/vault/:id` | – | `{ ok }` |
 | GET | `/policies` | – | `{ policies: Policy[] }` |
 | DELETE | `/policies/:tool` | – | `{ ok }` |
+| GET | `/conversation-grants` | – | `{ grants: ConversationGrantInfo[] }` — what the owner allowed "for this conversation" and still holds |
+| DELETE | `/conversation-grants/:grantId` | – | `{ ok }` — ends it now; 404 for another account's grant |
 
 **OAuth sign-in for connectors** follows the MCP authorization spec through the SDK's `auth()`: protected-resource
 metadata (RFC 9728) and authorization-server metadata discovery, PKCE (S256), dynamic client registration (RFC 7591)
@@ -145,9 +166,9 @@ any route. Tokens are refreshed before they expire and on a 401; when the refres
 |---|---|---|---|
 | POST | `/bots/:id/calls` | – | `{ callId }` — a voice call starts; writes a "call started" event row |
 | POST | `/bots/:id/calls/:callId/end` | `{ transcript: {role:"user"\|"assistant", text}[] }` | `{ ok }` — writes a "call ended" event row with `call` (duration, transcript); a one-line summary is added to it shortly after |
-| GET | `/search?q=` | – | `{ hits: SearchHit[] }` — message search across all the user's bots, including earlier conversations (max 40, newest first; `q` needs 2+ characters) |
+| GET | `/search?q=` | – | `{ hits: SearchHit[] }` — message search across all the user's bots, including earlier conversations (max 40, best match first — accents and plurals folded, then newest; `q` needs 2+ characters) |
 | GET | `/bots/:id/history/:generation` | – | `{ rows: Row[] }` — read-only rows of an earlier conversation of that bot |
-| POST | `/bots/:id/memories` | `{ text }` | `{ memory }` — add (or restore) a memory |
+| POST | `/bots/:id/memories` | `{ text }` | `{ memory }` — add a memory |
 | GET | `/routines/:id/runs` | – | `{ runs: RoutineRun[] }` — newest first, max 30 |
 | GET | `/audit?before=&limit=` | – | `{ entries: AuditEntry[] }` — newest first; `before` is an entry id |
 | GET | `/bots/:id/telegram` | – | `TelegramStatus` |
@@ -261,6 +282,13 @@ reactions ask only a careful bot; send, label/archive, create/update/delete, upl
 write (a trusted bot may go ahead) and always ask once the turn is tainted. Permission keys are per account:
 `"Gmail — pro: mail_send"`.
 
+**Attachments, Bcc, signature (L83).** `mail_draft`, `mail_draft_update` and `mail_send` take `bcc` (addresses),
+`attachments` (files of the bot's library, 10 at most, 3 MB in all — Gmail: multipart/mixed raw message; Outlook:
+`fileAttachment` / `bccRecipients`; an Outlook reply with files or Bcc is refused with a plain sentence) and
+`signature` (default true: the owner's signature for that account is added after `-- `). The signature is set by the
+owner only: `GET` / `PUT /api/native/accounts/:id/signature` `{ text }` (2000 characters at most, `""` removes it; 404 for
+another account's mailbox). The L29 proof compares the wire text, signature included, with what was approved.
+
 **Triggers.** `Routine.trigger` can be `email`, `slack` or `calendar`, with `Routine.native` (account, query, channel,
 mentionsOnly, leadMin, everyMin, lastCheckedAt, accountStatus). Each check asks only for what came after the previous
 one (Gmail `after:<epoch>`, Outlook mail delta link, Slack `conversations.history?oldest=`), so items that arrived
@@ -300,8 +328,11 @@ A subscription answered 404/410 by its push service is deleted.
 | Method | Path | Body | Returns |
 |---|---|---|---|
 | POST | `/bots/:id/takeover/:takeoverId/done` | – | `{ ok }` — "I'm done, hand it back": the waiting `ask_takeover` call returns; after a restart a new turn is started instead |
-| POST | `/bots/:id/desktop/control` | `{ on: boolean }` | `{ ok }` — the viewer is in control mode (renew every 30 s; lease 75 s) |
-| POST | `/bots/:id/desktop/handback` | – | `{ ok }` — also ends the control lease |
+| POST | `/bots/:id/desktop/control` | `{ on: true }` · `{ on: true, epoch }` · `{ on: false, epoch? }` | `{ ok, epoch? }` — L149 numbered lease: `{ on: true }` takes a new lease (`epoch`), a renewal names it (every 30 s; lease 75 s) and gets `ok: false` once that number is no longer the lease (handed back, lapsed, restart) |
+| POST | `/bots/:id/desktop/handback` | `{ epoch? }` | `{ ok }` — hands the screen back; with `epoch`, only that lease (an older hand-back never ends a newer one) |
+| GET / PUT | `/bots/:id/limits` | PUT `{ botId, minutes: 1–240 \| null }` | `{ limits: { botId: minutes }, min, max, held: [botId] }` — L155, a group's time limit per member and the members on hold (« stop @Bot ») |
+| POST | `/bots/:id/rows/:seq/archive` | `{ archived: boolean }` | `{ action }` — L155 « Archiver » / « Restaurer » a routed task of a group (`status: "archived"`); `/rows/:seq/reroute` (« Réassigner ») works on open and rerouted tasks |
+| GET / PUT | `/voice/realtime` | PUT `{ enabled?, model?, voice? }` | `{ realtime: { enabled, model, voice, available, reason }, models, voices }` — L167 real-time voice model option (off by default; uses the account's own OpenAI key; never returns it) |
 
 Card `{ type: "takeover", takeoverId, reason: TakeoverReason, detail, status, expiresAt }`. The tool waits up to 30 min
 (`TAKEOVER_TIMEOUT_MS` overrides it). While the user drives the screen — a live screen open in control mode (counted in
@@ -457,9 +488,13 @@ each screenshot a bot takes as a `still` frame.
 - **Cut by the output limit.** Continued automatically up to `maxContinuations` times; the pieces are written into the same chat message.
 - **Empty reply.** Nudged once (only when the turn has neither spoken nor run a tool), then a notice.
 - **Step limit (`MAX_STEPS`).** The notice carries `action: { kind: "continue" }`; a routine's turn carries on once by itself (`resumeOf: "steps"`).
-- **Anti-loop.** On top of the identical-call limit: the same tool failing `LOOP_FAIL_STREAK` times in a row (default 4), or returning exactly the same result `LOOP_SAME_RESULT` times in a row (default 4), stops the turn with an explanatory notice. Subscription turns get a "stop now" tool error instead.
+- **Anti-loop.** On top of the identical-call limit: the same tool failing `LOOP_FAIL_STREAK` times in a row (default 4), or returning exactly the same result `LOOP_SAME_RESULT` times in a row (default 4), stops the turn with an explanatory notice. Subscription turns get a "stop now" tool error instead. The model is warned first: from the second failure or identical result in a row, a `[Loop guard: …]` note is added to the tool's result. Tools made for polling (`screen_view`, `my_screen`, `job_output`, `job_list`, `page_read`, `element_snapshot`, `task_list`, `reach_status`, and app tools named `…_status`, `wait_…`, `poll_…`) have a higher, bounded limit: `LOOP_POLL_SAME_RESULT` identical results (default 12, at most 30), which is also how many times the very same call may be made in one turn for them (4 for every other tool).
+- **Silent model call.** Every API model call is cut on our side (`server/src/llm/timeouts.ts`): no first byte within `MODEL_CONNECT_TIMEOUT_SEC` (default 180), no byte for `MODEL_IDLE_TIMEOUT_SEC` in the middle of an answer (default 180), or longer than `MODEL_CALL_TIMEOUT_MIN` in all (default 30); 0 switches one off. The call fails with a transient `ProviderError` (code `timeout`): new tries with backoff, then the backup model, then the failure card (class `timeout`).
+- **Model health** (`server/src/modelhealth.ts`). `GET /api/bots/:id/model-health[?fresh=1]` and `POST /api/models/check { ref?, botId? }` answer `{ health: { ref, label, status: "ok" | "reconnect" | "no_credit" | "down" | "none" | "skipped", reason, ms, checkedAt, fix: "models" | "subscription" | "bot" | null } }` after one tiny real request (kept 10 min when ok, 2 min otherwise, per account and model; subscription engines: `skipped`). A 401/403 is `reconnect`. Checked at start-up for the models in use (`MODEL_HEALTH_AT_START=0` to turn off). A turn's call silent for `MODEL_WAIT_NOTICE_SEC` (default 60) sets the live caption "Waiting for the model (…)…".
+- **Prompt caching and tool search** (`server/src/llm/cachelayout.ts`, `llm/toolsearch.ts`). The system prompt's per-turn part (after "## For this turn only") rides in front of the turn's message; Anthropic gets one cache breakpoint on the fixed system part and up to three in the history. With 30 tools or more, the model gets a core set plus `tool_search` (others listed by name; Anthropic: `defer_loading` + `tool_reference`); `TOOL_SEARCH=off` sends everything. `run_steps` runs up to 8 read-only calls in one step, each through `authorize`.
+- **A crashing turn.** An error that escapes a turn's own handling, or an uncaught error raised from inside a turn (a timer or event callback), stops that turn only: what it held is released, the failure coordinator records it and shows its card, and the bot's queue goes on (`server/src/agent/crashguard.ts`).
 - **Stuck work.** Every minute the scheduler (`remindStuck`, `server/src/agent/stuck.ts`) sends one reminder (chat line + push of kind `needs`) for an approval left pending, a turn running, or a bot waiting on the user for more than `STUCK_REMINDER_HOURS` (default 4). Reminders already sent are kept in `stuck_reminders`.
-- **Approvals inside subscription turns** lapse after `APPROVAL_EXPIRE_MIN` (default 30) and at once when the user sends a new message to that bot.
+- **Approvals never lapse because the owner is away or wrote something** (`server/src/agent/approval-wait.ts`). A message that arrives while a card waits — the owner's, a member's, a routine, a teammate — is kept and handled after the decision; typed words are never an approval. On an API model the turn stays parked on disk with no clock. Inside a subscription turn the call waits `APPROVAL_EXPIRE_MIN` (default 25), then the request is *parked*: the card stays `pending` with `parked: true`, and the owner's later answer starts a turn in which the exact same call runs on that approval, once.
 
 | Method | Path | Body | Returns |
 |---|---|---|---|
@@ -529,11 +564,15 @@ Messages starting with `/skill <name>` make the bot follow that skill (its own o
   the engine's `mcp__<server>__` prefix removed). The row shows "waiting for your OK" during an approval and the
   result our side knows (done + summary, denied "not allowed" / "skipped", error + message ≤ 200 characters), which
   wins over a guess from the raw output when the stream's result arrives. A call with no row still runs.
-- Approvals inside an engine call lapse on: a new message from the user (not a routine, a bot's message or a system
-  notice), "restart the engine", stopping or deleting the bot, 25 minutes without an answer (`APPROVAL_EXPIRE_MIN`),
-  and a server restart (pending ones are marked expired at start-up; a click on such a card expires it). The tool
-  timeout given to the engines is 30 minutes (Claude Code: per-server `timeout` in its MCP config; Codex:
-  `mcp_servers.sklubot.tool_timeout_sec`).
+- Approvals inside an engine call lapse on: "restart the engine", stopping the turn or deleting the bot. They no longer
+  lapse on a new message from the user, after 25 minutes without an answer (`APPROVAL_EXPIRE_MIN`) or at a server
+  restart: the call stops waiting (the engine is told to end its turn and wait) and the request is parked — kept in
+  `parked_approvals`, card still pending with `parked: true`. Its answer then starts a system turn ("your owner
+  ALLOWED / REFUSED the action …"); the same call with the same arguments finds its approval (same action hash,
+  single use) and runs without a second card. Requests that cannot be picked up again (the credential relay, a Bot
+  API or workspace-member conversation, a conversation reset since) still expire; the web card then offers
+  "Relancer". The tool timeout given to the engines is 30 minutes (Claude Code: per-server `timeout` in its MCP
+  config; Codex: `mcp_servers.sklubot.tool_timeout_sec`).
 
 ### Computer
 - Before each engine turn the screen is checked (computer on — re-checked with Docker at most every 120 s —, look
@@ -611,11 +650,16 @@ Tool `task_start { title, goal }` (also `task_list`, `task_stop`): a hidden help
 
 | Method | Path | Body | Returns |
 |---|---|---|---|
-| PATCH | `/memories/:id` | `{ status }` | `{ memory }` |
+| PATCH | `/memories/:id` | `{ text?, status?, confidence? }` | `{ memory }` — a new text is kept in the note's history; 400 for an empty text or a secret |
+| POST | `/memories/:id/restore` | – | `{ memory }` — the deleted note back, same id and dates; 404 when it is not in the bin (or not yours), 409 when it is already back |
+| GET | `/memories/:id/history` | – | `{ history: { at, action: edited\|status\|confidence\|deleted\|restored\|forgotten, before, after, by: owner\|bot }[] }` |
 | GET | `/bots/:id/memories/export?format=md\|json` | – | a download |
 | POST | `/bots/:id/memories/import` | `{ text }` → preview; `{ text, commit: true, chosen?: string[], allowSensitive? }` | `{ candidates: { text, skip: duplicate\|secret\|sensitive\|null, category }[] }` / `{ imported, skipped }` |
-| GET / PUT | `/memory-settings` | `{ autoCapture?, allowSensitive?: { <category>: bool }, style?: { enabled?, clear? } }` | `{ settings: MemorySettings }` — emits `{ type: "memorySettings" }` |
+| GET / PUT | `/memory-settings` | `{ autoCapture?, autoRecall?, allowSensitive?: { <category>: bool }, style?: { enabled?, clear? } }` | `{ settings: MemorySettings }` — emits `{ type: "memorySettings" }` |
 | POST | `/memory-settings/style/learn` | – | `{ settings, source: "mail" \| "chat", samples }` — writing style from the user's sent mail (Gmail `in:sent`, Outlook `sentitems`; quoted replies and signatures stripped), else from their chat messages; no quotes, names or facts; replaced each time; injected into prompts when enabled |
+
+#### Ranked recall (`server/src/agent/recall.ts`, docs/MEMOIRE.md)
+`memory_search` ranks a bot's own non-archived notes by keywords (BM25, French + English tokeniser, then recency and confidence); each line reads `- [(confirmed) |(uncertain — …) ]text (date; matched: words)`. Before a turn the user started by typing in this conversation (the running `bot_queue` job is a `user` trigger without `member`, `api` or `continuation`; never routines, webhooks, group chats, teammates, system notices or resumes), `recallForTurn` adds to the "What you remember" section of the prompt the notes that match that message and did not fit there (each prompt note ends with `(noted YYYY-MM-DD)`) (at most `RECALL_TOP_K` = 4, relevance ≥ `RECALL_MIN_RELEVANCE` = 0.3, `RECALL_CHAR_BUDGET` = 600 characters), with no model call. Off when `MemorySettings.autoRecall` is false (default true) or the bot's `memory` tool group is disabled; sensitive notes of a category not allowed and secret-looking notes are never recalled. One `system` activity-log line per message lists the recalled notes. Keyword-based: no synonyms. `memory_forget { query }` archives at most 3 matching notes, only in a turn of the user's whose last typed message asks to forget; a notice in the chat and an activity-log line show it. `conversation_search` (and `GET /search`) fold accents and plurals with the same tokeniser and rank by BM25.
 
 ### Private verification codes and masked access emails (`server/src/native/access.ts`)
 - Mail reads (`mail_search`, `mail_read`, `mail_thread`, and the email trigger's snippet) replace the body of an email that grants account access (one-time codes, magic links, password resets, temporary passwords, backup codes, API keys) by `[contenu masqué : accès à un compte]` / `[content hidden: account access]`; the subject stays.
@@ -750,3 +794,38 @@ All routes are under `/api` and need the session cookie.
 ### Temporary public links (`server/src/publiclinks.ts`)
 - Tool `file_public_link { path, minutes? }` (group `files`; asks first, `once`, after outside content): images, audio, video ≤ 50 MB, 60 min by default, 1 440 at most. Public `GET|HEAD /l/<id>.<hmac>` (HMAC-SHA256 of id and expiry with `SESSION_SECRET`; only a hash of the token stored; read through the library guard; `no-store`, `noindex`; 410 once expired or removed).
 - `GET /public-links` (active), `POST /bots/:id/public-links { path, minutes? }` → `{ link }` (with `url`, shown once), `DELETE /public-links/:id`. Creation, downloads and removal are audited. Server event `{ type: "publicLinks" }`.
+
+## Wave 6 — open API, accounts, network, import (A-FAIRE L82, L169, L170, L181)
+
+### OpenAI-compatible chat (`server/src/botopenai.ts`)
+One bot per key. Use the bot's API key (`sk_bot_…`, permissions `read` + `write`) as the "API key" and `https://<your Sklubot>/api/v1` as the "base URL" of any OpenAI client. Shapes follow the official reference (https://platform.openai.com/docs/api-reference/chat/create, …/chat/streaming, …/models/list).
+- `POST /api/v1/chat/completions` `{ model?, messages, stream? }` → `{ id, object: "chat.completion", created, model, choices: [{ index: 0, message: { role: "assistant", content }, finish_reason: "stop" }], usage }`. With `stream: true`: `chat.completion.chunk` server-sent events, then `data: [DONE]`.
+- `GET /api/v1/models` → `{ object: "list", data: [{ id: "sklubot-<bot name>", object: "model", owned_by: "sklubot" }] }`.
+- Differences, on purpose: the bot keeps its own conversation, so only the LAST `user` message is sent (earlier messages and `system` are ignored: a program cannot rewrite the bot's instructions); `model` is echoed, never used to pick a model; the stream sends the whole reply in one chunk once it is complete; token counts are 0 (the owner's usage page has the real cost). A reply that takes more than 5 minutes, or that waits for the owner's approval, answers `409` with `code: "still_working"` / `"needs_approval"` and the message's `seq` (read it later with `GET /api/v1/bot/messages/{seq}/wait`). Errors use OpenAI's `{ error: { message, type, code } }`. The message is outside content, like every API message (approvals, caps, Pause and the plan apply).
+
+### Memory (`GET /api/v1/bot/memories`)
+Permission `memory` (new). The bot's active and contested notes, newest first (`limit`, 200 by default, 500 at most): `{ memories: [{ id, text, status, confidence, createdAt }] }`. Never archived, binned or sensitive notes (health, religion… stay in the app); every text goes through the secret mask. Read only.
+
+### OpenAPI file and deprecations (`server/src/openapi.ts`)
+`GET /api/v1/openapi.json` (no key): OpenAPI 3.1 of every `/api/v1` route, generated from the route table `PUBLIC_ROUTES`; `server/test/wave6-open.test.ts` fails if a registered route is missing from it (or the other way round). A route that will go away keeps working and carries `deprecated: true` in the file and the headers `Deprecation: @<unix time>` (RFC 9745), `Sunset: <date>` (RFC 8594) and `Link: <successor>; rel="successor-version"`. Rule: at least 6 months between the two dates. No route is deprecated today.
+
+### Headless command (`scripts/sklubot.mjs`)
+Node 22+, nothing to install: `SKLUBOT_URL=https://… SKLUBOT_KEY=sk_bot_… node scripts/sklubot.mjs ask "Résume ma journée"`. Commands: `ask` (send and print the reply), `send`, `messages`, `task`, `task-status`, `memories`, `whoami`, `openapi`. Exit codes: 0 done, 1 refused (the server's sentence on stderr), 2 wrong usage, 3 still working or waiting for the owner (the seq on stdout).
+
+### Outgoing webhooks (`server/src/outwebhooks.ts`)
+Bot settings → Accès API → « Webhooks sortants » (owner, session): `GET/POST /bots/:id/webhooks { url, events }` (the signing secret is in the POST answer, once), `PATCH /bots/:id/webhooks/:hookId { active }`, `DELETE …`, `POST …/test`. At most 5 per bot.
+- Events: `message.created` (a finished reply: `{ seq, thread, text }`), `task.finished` (`{ taskId, status, objective, summary }`), `approval.pending` (`{ approvalId, title }` — never the card's detail; the answer is only given in the app).
+- Body: `{ type, id, timestamp, bot: { id, name }, data }`. Headers (Standard Webhooks, like the incoming webhooks): `webhook-id`, `webhook-timestamp`, `webhook-signature: v1,<base64 HMAC-SHA256 of "id.timestamp.body">`, key = the base64 after `whsec_`.
+- Delivery: through the outbound guard (no private address), 10 s timeout, no redirect followed; a 2xx delivers, anything else is tried again after 10 s, 1 min, 5 min, 30 min, 2 h, 6 h, then "failed". One event is never queued twice. The log keeps the last 100 deliveries per webhook (status, tries, HTTP answer). Texts go through the secret mask.
+
+### Several keys per provider (`server/src/providerkeys.ts`)
+`GET/POST /api-providers/:id/keys { name, key }`, `PATCH /api-providers/:id/keys/:keyId { name?, position? }`, `DELETE …` — names only, a key is never sent back; `GET /bots/:id/provider-keys`, `PUT /bots/:id/provider-keys { providerId, keyId | null }`. Only the account's own API providers (`up-…`); never a consumer subscription. Order of a call: the bot's chosen key, then the main key, then the others; 401/403/402/429 or "out of credit" makes the key rest (Retry-After, else 1 min for 429 and 1 h otherwise) and the same call goes on with the next key; the switch is in the account journal by name.
+
+### Network policy (`server/src/netpolicy.ts`)
+`GET/PUT /bots/:id/network { mode: "all" | "list" | "none", hosts }`, `GET/PUT /network/blocked-sites { hosts }` (the owner's sites blocked for all their bots; 200 at most). Coverage: see docs/SECURITE.md « Accès à Internet par bot ».
+
+### Import from a local setup (`server/src/localimport.ts`)
+`POST /import/local/preview { files: [{ path, text }], source? }` (`source`: `claude-code`, `codex`, `openclaw`, `hermes`, else detected) → the Grok preview (`GrokImportPreview`) plus `source`, `excluded: [{ path, why }]`, `read`. Commit with `POST /import/grok/commit` and the same `previewId`. Files never read: `.env*`, `auth.json`, `.credentials.json`, `credentials*`, keys, tokens, SQLite; settings that may hold keys (`config.toml`, `config.yaml`, `openclaw.json`, `settings*.json`, `.claude.json`, `.mcp.json`). 300 files, 200 KB each, 2 MB in all.
+
+### Wave 7 comfort (`server/src/chatcomfortroutes.ts`)
+Owner only. `GET /bots/:id/deletion-preview`, `GET /bot-trash`, `POST /bot-trash/:id/restore`, `DELETE /bot-trash/:id`, `GET /bots/:id/export`, `POST /bots/import` (bottrash.ts, botfile.ts) · `GET /bots/:id/conversations?automatic=1|0&folder=&q=`, `PATCH /bots/:id/conversations/:gen` (`title`, `pinned`, `folder`, `model`), `POST /bots/:id/conversations/:gen/open` (convs.ts) · `GET /bell`, `POST /bell/read`, `DELETE /bell` (notifyrules.ts; `POST /presence` now takes `idleMs`) · `GET|PUT /bots/:id/style`, `GET|PUT /history-retention` · `POST /bots/:id/rows/:seq/pin`, `DELETE /bots/:id/rows/:seq` · `GET /bots/:id/files/office-preview?path=` (officepreview.ts) · `GET /pages/:token/diff?from=&to=`, `GET /pages/:token/standalone`, `GET /pages/:token/a4`, `POST /pages/:token/capture` (`selector`, `width`, `dark`; pageextras.ts).

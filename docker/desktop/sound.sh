@@ -6,7 +6,8 @@
 command -v pulseaudio >/dev/null 2>&1 || exit 0
 pactl list short sinks 2>/dev/null | grep -q sklubot && exit 0
 pulseaudio --kill >/dev/null 2>&1
-rm -rf /tmp/pulse; mkdir -p /tmp/pulse; chmod 700 /tmp/pulse
+# 711: the browser user (open-browser.sh, L48) reaches the socket inside, without listing the folder.
+rm -rf /tmp/pulse; mkdir -p /tmp/pulse; chmod 711 /tmp/pulse
 # Options of PulseAudio 16 (pulseaudio --help, pulse-cli-syntax): -n skips the default script, so only these two modules
 # load; no realtime or high priority (the computer has no such privilege), never exits when idle.
 pulseaudio --daemonize=yes --exit-idle-time=-1 --disallow-exit=yes --realtime=no --high-priority=no -n \

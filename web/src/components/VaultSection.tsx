@@ -6,7 +6,7 @@ import type { VaultImportResult, VaultItem, VaultKind } from "../types";
 import { Icon, type IconName } from "./Icon";
 import { ConfirmButton, Empty, ErrorNote, IconButton, Loading, Menu, MenuItem } from "./ui";
 import { CardVaultEditor, cardSub, PaymentsList } from "./SpendSkillsFiles";
-import { HealthBadge, useHealth } from "./KeysHealthLinks";
+import { ContactCards } from "./AccessPanels"; import { HealthBadge, useHealth } from "./KeysHealthLinks"; import { VaultAccessBlock } from "./SecurityLot1"; import { VaultLivePanel } from "./ExtensionsPanels";
 
 const KIND_ICON: Record<VaultKind, IconName> = { login: "key", secret: "lock", totp: "clock", card: "bolt" };
 
@@ -283,7 +283,7 @@ export function VaultSection() {
           {items.map((item) =>
             editing === item.id ? (
               <li key={item.id}>
-                {item.kind === "card" ? <CardVaultEditor item={item} onSaved={saved} onCancel={() => setEditing(null)} /> : <VaultEditor item={item} kind={item.kind} onSaved={saved} onCancel={() => setEditing(null)} />}
+                {item.kind === "card" ? <CardVaultEditor item={item} onSaved={saved} onCancel={() => setEditing(null)} /> : <VaultEditor item={item} kind={item.kind} onSaved={saved} onCancel={() => setEditing(null)} />}<VaultAccessBlock item={item} />
               </li>
             ) : (
               <li key={item.id} className="list-row is-card vault-row">
@@ -307,7 +307,7 @@ export function VaultSection() {
           )}
         </ul>
       )}
-      <PaymentsList />
+      <ContactCards /><PaymentsList /><VaultLivePanel />{/* L179 1Password / Bitwarden live (ExtensionsPanels.tsx) */}
     </>
   );
 }

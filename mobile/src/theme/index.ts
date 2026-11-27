@@ -1,5 +1,8 @@
+import { useMemo } from "react";
 import { useColorScheme } from "react-native";
 import { usePrefs } from "../state/prefs";
+import { withBotTheme } from "../../shared/botTheme";
+import { useBotTheme } from "./botTheme";
 
 /** Sklubot's design tokens (web/src/styles/tokens.css), light and dark. */
 const light = {
@@ -40,6 +43,10 @@ export function useTheme(): { c: Colors; dark: boolean } {
   const system = useColorScheme();
   const pref = usePrefs((p) => p.theme);
   const isDark = pref === "dark" || (pref === "system" && system === "dark");
-  return { c: isDark ? dark : light, dark: isDark };
+  // L184: the owner's applied bot theme on top (off with « Thème du bot » in Réglages).
+  const useIt = usePrefs((p) => p.botTheme);
+  const applied = useBotTheme((s) => s.applied);
+  const c = useMemo(() => (useIt && applied ? withBotTheme(isDark ? dark : light, isDark ? applied.dark : applied.light) : isDark ? dark : light), [useIt, applied, isDark]);
+  return { c, dark: isDark };
 }
 export const themes = { light, dark };

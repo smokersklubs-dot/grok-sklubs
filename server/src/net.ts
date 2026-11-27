@@ -2,6 +2,7 @@ import dns from "node:dns";
 import http from "node:http";
 import https from "node:https";
 import net from "node:net";
+import tls from "node:tls";
 import { Readable } from "node:stream";
 import zlib from "node:zlib";
 
@@ -80,9 +81,29 @@ export async function assertPublicUrl(raw: string): Promise<void> {
   if (list.some((a) => isPrivateAddress(a.address))) throw new BlockedAddressError(url.hostname);
 }
 
-interface Hop { method: string; headers: Headers; body: Buffer | undefined; signal: AbortSignal | undefined }
+/**
+ * L169: how to reach a site through the bot's chosen exit (a proxy, botroute.ts) — a plain TCP tunnel to host:port. The
+ * site's name is resolved by the proxy, so it is checked here before (assertPublicUrl) instead of at connection time.
+ */
+export type Tunnel = (host: string, port: number, signal?: AbortSignal) => Promise<net.Socket>;
+interface Hop { method: string; headers: Headers; body: Buffer | undefined; signal: AbortSignal | undefined; tunnel?: Tunnel }
 
-function once(url: URL, hop: Hop): Promise<Response> {
+/** The tunnel, with TLS on top for an https site (certificate checked against the site's name as usual). */
+async function tunnelSocket(url: URL, hop: Hop): Promise<net.Socket> {
+  const host = bare(url.hostname);
+  const port = Number(url.port) || (url.protocol === "https:" ? 443 : 80);
+  const raw = await hop.tunnel!(host, port, hop.signal); // handed back paused (proxyconnect.ts): resumed by its reader
+  if (url.protocol !== "https:") return raw;
+  return new Promise((resolve, reject) => {
+    const s = tls.connect({ socket: raw, servername: net.isIP(host) ? undefined : host, ALPNProtocols: ["http/1.1"] });
+    raw.resume();
+    s.once("secureConnect", () => resolve(s));
+    s.once("error", (e) => { raw.destroy(); reject(e); });
+  });
+}
+
+async function once(url: URL, hop: Hop): Promise<Response> {
+  const via = hop.tunnel ? await tunnelSocket(url, hop) : null;
   return new Promise((resolve, reject) => {
     const headers: Record<string, string> = {};
     hop.headers.forEach((v, k) => { headers[k] = v; });
@@ -90,7 +111,8 @@ function once(url: URL, hop: Hop): Promise<Response> {
     const req = (url.protocol === "https:" ? https : http).request({
       protocol: url.protocol, hostname: bare(url.hostname), port: url.port || undefined, path: `${url.pathname}${url.search}`,
       // A fresh connection every time (no pool), so every request goes through the address check.
-      method: hop.method, headers, lookup: guardedLookup, signal: hop.signal, agent: false,
+      method: hop.method, headers: via ? { ...headers, host: url.host } : headers, lookup: guardedLookup, signal: hop.signal,
+      ...(via ? { createConnection: () => via } : { agent: false }),
     }, (res) => {
       const out = new Headers();
       for (const [k, v] of Object.entries(res.headers)) {
@@ -110,24 +132,26 @@ function once(url: URL, hop: Hop): Promise<Response> {
       resolve(response);
     });
     req.on("error", reject);
+    if (via) req.once("socket", (sock) => sock.resume()); // the tunnel's socket was paused until a reader was attached
     req.end(hop.body);
   });
 }
 
 /** fetch(), restricted to public addresses (see above). Accepts what the MCP SDK and our callers pass. */
-export async function guardedFetch(input: string | URL | Request, init: RequestInit = {}): Promise<Response> {
+export async function guardedFetch(input: string | URL | Request, init: RequestInit & { tunnel?: Tunnel } = {}): Promise<Response> {
   // Let the platform normalise method, headers and body exactly as fetch would.
   const request = new Request(input, init);
   const mode = init.redirect ?? (input instanceof Request ? input.redirect : "follow");
   let url = new URL(request.url);
   const hop: Hop = {
     method: request.method, headers: new Headers(request.headers),
-    body: request.body ? Buffer.from(await request.arrayBuffer()) : undefined, signal: init.signal ?? undefined,
+    body: request.body ? Buffer.from(await request.arrayBuffer()) : undefined, signal: init.signal ?? undefined, tunnel: init.tunnel,
   };
   if (!hop.headers.has("accept")) hop.headers.set("accept", "*/*");
   if (!hop.headers.has("user-agent")) hop.headers.set("user-agent", "sklubot");
   for (let hops = 0; hops <= 10; hops++) {
     checkUrl(url);
+    if (hop.tunnel) await assertPublicUrl(url.toString());
     const res = await once(url, hop);
     const location = res.headers.get("location");
     if (![301, 302, 303, 307, 308].includes(res.status) || !location || mode === "manual") return res;

@@ -8,7 +8,7 @@ import { CreditsSection } from "./Credits";
 import { AdminRevokeSessions } from "./TwoFactor";
 import { useEffect, useId, useState, type ReactNode } from "react";
 import { api, enc, errText } from "../api";
-import { useStore } from "../store";
+import { useStore } from "../store"; import { colon, euros, sideText, intlTag, t as tr, type Locale } from "../i18n";
 import type { AdminAuditEntry, AdminCustomer, HostedAccountView, HostedNoticeAction, HostedPlan, HostedSettings, PlanInviteView, SubscriptionStatus } from "../types";
 import { Icon } from "./Icon";
 import { CopyButton, ErrorNote, Loading, Toggle } from "./ui";
@@ -150,13 +150,13 @@ const TEXT = {
 type TextKey = keyof typeof TEXT.fr;
 function useH() {
   const locale = useStore((s) => s.locale);
-  return (k: TextKey, vars: Record<string, string | number> = {}) => (TEXT[locale === "fr" ? "fr" : "en"][k] as string).replace(/\{(\w+)\}/g, (_m, n) => String(vars[n] ?? ""));
+  return (k: TextKey, vars: Record<string, string | number> = {}) => (sideText("hosted", TEXT, locale)[k] as string).replace(/\{(\w+)\}/g, (_m, n) => String(vars[n] ?? ""));
 }
-const useLoc = () => (useStore((s) => s.locale) === "fr" ? "fr" : "en");
-const eur = (n: number, loc: "fr" | "en") => n.toLocaleString(loc === "fr" ? "fr-FR" : "en-GB", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
-const day = (ts: number, loc: "fr" | "en") => new Date(ts).toLocaleDateString(loc === "fr" ? "fr-FR" : "en-GB", { day: "numeric", month: "long", year: "numeric" });
+const useLoc = () => useStore((s) => s.locale);
+const eur = (n: number, loc: Locale) => n.toLocaleString(intlTag(loc), { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+const day = (ts: number, loc: Locale) => new Date(ts).toLocaleDateString(intlTag(loc), { day: "numeric", month: "long", year: "numeric" });
 const gb = (bytes: number) => (bytes >= 1e9 ? `${(bytes / 1e9).toFixed(1)} GB` : bytes >= 1e6 ? `${Math.round(bytes / 1e6)} MB` : `${Math.max(0, Math.round(bytes / 1e3))} kB`);
-const planName = (p: HostedPlan | null | undefined, loc: "fr" | "en") => (p ? (loc === "fr" ? p.nameFr : p.nameEn) : "—");
+const planName = (p: HostedPlan | null | undefined, loc: Locale) => (p ? (loc === "fr" ? p.nameFr : p.nameEn) : "—");
 const pct = (a: number, b: number | null) => (b === null || b <= 0 ? null : Math.min(100, Math.round((a / b) * 100)));
 
 function StatusBadge({ status }: { status: SubscriptionStatus | null }) {
@@ -244,7 +244,7 @@ function CustomerView({ view }: { view: HostedAccountView }) {
             <p className="muted small">{h("plan")}</p>
             <p className="hosted-plan-name">{planName(plan, loc)}</p>
           </div>
-          <div className="hosted-plan-price">{loc === "fr" ? `${eur(plan.priceEur, loc)} €` : `€${eur(plan.priceEur, loc)}`} <span className="muted small">{h("perMonth")}</span></div>
+          <div className="hosted-plan-price">{euros(plan.priceEur, loc)} <span className="muted small">{h("perMonth")}</span></div>
         </div>
         <div className="hosted-plan-meta">
           <StatusBadge status={view.status} />
@@ -287,11 +287,11 @@ function CustomerView({ view }: { view: HostedAccountView }) {
   );
 }
 
-function planFacts(p: HostedPlan, h: ReturnType<typeof useH>, loc: "fr" | "en", trialDays?: number): string[] {
+function planFacts(p: HostedPlan, h: ReturnType<typeof useH>, loc: Locale, trialDays?: number): string[] {
   return [
     p.kind === "byok" ? h("ownKeys") : h("budgetIncluded", { budget: eur(p.aiBudgetEur, loc) }),
-    `${h("lBots")} : ${p.maxBots ?? "∞"} · ${h("lRoutines")} : ${p.maxRoutines ?? "∞"}`.replace(" :", loc === "fr" ? " :" : ":"),
-    `${h("lStorage")} : ${p.storageGb === null ? "∞" : `${eur(p.storageGb, loc)} ${loc === "fr" ? "Go" : "GB"}`}`.replace(" :", loc === "fr" ? " :" : ":"),
+    `${h("lBots")}${colon(loc)}${p.maxBots ?? "∞"} · ${h("lRoutines")}${colon(loc)}${p.maxRoutines ?? "∞"}`,
+    `${h("lStorage")}${colon(loc)}${p.storageGb === null ? "∞" : tr("hosted.gbAmount", { n: eur(p.storageGb, loc) })}`,
     ...(trialDays && p.kind !== "free" ? [h("trial", { days: trialDays })] : []),
   ];
 }
@@ -305,7 +305,7 @@ function PlanCards({ plans, current, selected, onSelect, trialDays, name }: { pl
         const body = (
           <>
             <span className="hosted-plans-name">{planName(p, loc)}{current === p.id && <Icon name="check" size={14} />}</span>
-            <span className="hosted-plans-price">{loc === "fr" ? `${eur(p.priceEur, loc)} € ${h("perMonth")}` : `€${eur(p.priceEur, loc)} ${h("perMonth")}`}</span>
+            <span className="hosted-plans-price">{`${euros(p.priceEur, loc)} ${h("perMonth")}`}</span>
             <span className="hosted-plans-facts">{planFacts(p, h, loc, trialDays).map((f) => <span key={f}>{f}</span>)}</span>
           </>
         );
@@ -461,7 +461,7 @@ function CustomersTab({ data, onChange, onError }: { data: Overview; onChange: (
   );
 }
 
-function CustomerRows({ c, plan, data, open, onToggle, onChange, onError, loc, h }: { c: AdminCustomer; plan: HostedPlan | undefined; data: Overview; open: boolean; onToggle: () => void; onChange: (d: Partial<Overview>) => void; onError: (e: string | null) => void; loc: "fr" | "en"; h: ReturnType<typeof useH> }) {
+function CustomerRows({ c, plan, data, open, onToggle, onChange, onError, loc, h }: { c: AdminCustomer; plan: HostedPlan | undefined; data: Overview; open: boolean; onToggle: () => void; onChange: (d: Partial<Overview>) => void; onError: (e: string | null) => void; loc: Locale; h: ReturnType<typeof useH> }) {
   const over = !c.operator && c.budgetEur > 0 && c.spentEur >= c.budgetEur;
   return (
     <>
@@ -807,7 +807,7 @@ function AuditList({ entries }: { entries: AdminAuditEntry[] }) {
         <tbody>
           {entries.map((e) => (
             <tr key={e.id}>
-              <td className="muted small">{new Date(e.at).toLocaleString(loc === "fr" ? "fr-FR" : "en-GB", { dateStyle: "short", timeStyle: "short" })}</td>
+              <td className="muted small">{new Date(e.at).toLocaleString(intlTag(loc), { dateStyle: "short", timeStyle: "short" })}</td>
               <td className="small">{e.actorLabel === "scheduler" ? h("system") : e.actorLabel}</td>
               <td><code className="small">{e.action}</code></td>
               <td className="small">{e.targetEmail ?? ""}</td>

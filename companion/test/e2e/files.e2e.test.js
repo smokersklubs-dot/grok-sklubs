@@ -34,7 +34,7 @@ test(`files end-to-end (${MODE})`, { timeout: 180_000 }, async (t) => {
   t.after(async () => { await h.stop(relay); await server.close(); fs.rmSync(homeDir, { recursive: true, force: true }); });
 
   const hello = await server.waitFor((m) => m.type === 'hello', 30000, 'hello');
-  assert.equal(hello.protocol, '1.1');
+  assert.ok(Number(hello.protocol) >= 1.1, hello.protocol); // 1.1 added files; later revisions keep them
   for (const op of ['fs.roots', 'fs.list', 'fs.read', 'fs.write', 'fs.trash']) assert.ok(hello.capabilities.includes(op), op);
   await until(() => !!server.pairCode, 10000, 'pair code');
   assert.ok(server.confirmPairing(server.pairCode));

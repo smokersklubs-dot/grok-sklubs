@@ -1,13 +1,13 @@
-import { AsyncLocalStorage } from "node:async_hooks";
+import { AsyncLocalStorage } from "node:async_hooks"; import { oneLine } from "./displayname.js"; import { isLocale } from "./clientshared/locales.js";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { q } from "./db.js";
+import { q } from "./db.js"; import { isAssumed } from "./policyassume.js";
 import { pauses } from "./pauses.js";
 import { emit } from "./bus.js";
 import { tr } from "./i18n.js";
 import type { ChatMessage } from "./llm/types.js";
 import {
   AVATAR_COLORS, AVATAR_SHAPES,
-  ACCESSORIES, CHARACTER_TYPES, DEFAULT_CHARACTER, DEFAULT_NUDGES, SENSITIVE_CATEGORIES, type NudgeSettings, type MemorySettings, type MemoryStatus, type SensitiveCategory, EYE_STYLES, IDLE_MOTIONS, TOOL_GROUPS, type AuditEntry, type Character, type Bot, type Card, type CheckinSettings, type Locale, type Memory, type SearchHit, type SharedPage, type VaultItem, type VaultKind, type BotSection, type Policy, type Reaction, type Row, type RowBody, type Skill, type SkillExtras, SKILL_EXTRA_KEYS, type SkillRef, type Task, type User, type Profile, type ReliabilitySettings, RELIABILITY_LIMITS, DEFAULT_SPEND_CHECKPOINT_USD, type SpendSettings,
+  ACCESSORIES, CHARACTER_TYPES, DEFAULT_CHARACTER, DEFAULT_NUDGES, SENSITIVE_CATEGORIES, type NudgeSettings, type MemorySettings, type MemoryStatus, type SensitiveCategory, EYE_STYLES, IDLE_MOTIONS, TOOL_GROUPS, type AuditEntry, type Character, type Bot, type Card, type CheckinSettings, type Locale, type Memory, type SharedPage, type VaultItem, type VaultKind, type BotSection, type Policy, type Reaction, type Row, type RowBody, type Skill, type SkillExtras, SKILL_EXTRA_KEYS, type SkillRef, type Task, type User, type Profile, type ReliabilitySettings, RELIABILITY_LIMITS, DEFAULT_SPEND_CHECKPOINT_USD, type SpendSettings,
 } from "./shared.js";
 
 export const now = () => Date.now();
@@ -20,22 +20,22 @@ export const clip = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1) 
 
 // ── Users ────────────────────────────────────────────────────────────────────
 export interface UserRecord extends User { passHash: string }
-const toUser = (r: any): UserRecord => ({ id: r.id, email: r.email, name: r.name, locale: r.locale === "fr" ? "fr" : "en", passHash: r.pass_hash });
+const toUser = (r: any): UserRecord => ({ id: r.id, email: r.email, name: r.name, locale: isLocale(r.locale) ? r.locale : "en", passHash: r.pass_hash });
 
 export const users = {
   count: () => q.get<{ n: number }>("SELECT COUNT(*) AS n FROM users")!.n,
   byId: (id: string) => { const r = q.get("SELECT * FROM users WHERE id = ?", id); return r ? toUser(r) : null; },
   byEmail: (email: string) => { const r = q.get("SELECT * FROM users WHERE email = ?", email.trim()); return r ? toUser(r) : null; },
   all: () => q.all("SELECT * FROM users").map(toUser),
-  localeOf: (id: string): Locale => (q.get<{ locale: string }>("SELECT locale FROM users WHERE id = ?", id)?.locale === "fr" ? "fr" : "en"),
+  localeOf: (id: string): Locale => { const l = q.get<{ locale: string }>("SELECT locale FROM users WHERE id = ?", id)?.locale; return isLocale(l) ? l : "en"; },
   setPrefs(id: string, f: { locale?: Locale; name?: string }) {
     if (f.locale) q.run("UPDATE users SET locale = ? WHERE id = ?", f.locale, id);
-    if (f.name?.trim()) q.run("UPDATE users SET name = ? WHERE id = ?", f.name.trim().slice(0, 80), id);
+    if (f.name?.trim()) q.run("UPDATE users SET name = ? WHERE id = ?", oneLine(f.name).slice(0, 80) || f.name.trim().slice(0, 80), id);
   },
   create(email: string, name: string, passHash: string, locale: Locale = "en"): UserRecord {
     const id = newId("usr");
     const clean = email.trim().toLowerCase();
-    q.run("INSERT INTO users (id, email, name, pass_hash, locale, created_at) VALUES (?, ?, ?, ?, ?, ?)", id, clean, name.trim() || clean.split("@")[0], passHash, locale, now());
+    q.run("INSERT INTO users (id, email, name, pass_hash, locale, created_at) VALUES (?, ?, ?, ?, ?, ?)", id, clean, oneLine(name).slice(0, 80) || clean.split("@")[0], passHash, locale, now());
     q.run("INSERT INTO settings (user_id) VALUES (?)", id);
     return users.byId(id)!;
   },
@@ -51,7 +51,7 @@ function previewOf(body: RowBody, locale: Locale): string {
     const c = body.card;
     if (c.type === "approval") return tr(locale, "Waiting for you: {title}", { title: c.title });
     if (c.type === "question") return c.question;
-    if (c.type === "takeover") return tr(locale, "Needs you on its screen");
+    if (c.type === "takeover") return tr(locale, "Needs you on its screen"); if (c.type === "code") return tr(locale, "Needs a code from you"); // L91
     if (c.type === "secret") return tr(locale, "Asks for a secret: {name}", { name: c.name });
     if (c.type === "uncertain") return tr(locale, "Did it go through? {title}", { title: c.title });
     if (c.type === "task") return tr(locale, "Background task: {title}", { title: c.title });
@@ -66,7 +66,7 @@ function previewOf(body: RowBody, locale: Locale): string {
     if (c.type === "pastedsecret") return tr(locale, "A secret was masked in your message");
     if (c.type === "files") return tr(locale, "Files changed: {n}", { n: c.files.length + c.more });
     if (c.type === "goal") return tr(locale, "Goal: {objective}", { objective: c.objective });
-    if (c.type === "failure") return tr(locale, "A problem needs you");
+    if (c.type === "failure") return tr(locale, "A problem needs you"); if (c.type === "view" || c.type === "trajectory") return c.title; if (c.type === "poll") return c.question; if (c.type === "pageloss") return tr(locale, "Parts of a page disappeared: {title}", { title: c.title }); if (c.type === "stepguide" || c.type === "boardplan" || c.type === "batch") return c.title; // DS-Bot item 8, L158, L184 polls, L157, L99 batches
     return tr(locale, "Connect {name}", { name: c.name });
   }
   return "";
@@ -199,7 +199,7 @@ export const bots = {
   create(userId: string, input: Partial<Bot> & { hidden?: boolean; parentId?: string | null }): BotRecord {
     if ((input.kind ?? "agent") === "agent" && !input.hidden) { bots.assertRoom(); botGuard(userId); }
     const id = newId("bot");
-    const name = (input.name ?? "").trim().slice(0, 60) || "New bot";
+    const name = oneLine(input.name ?? "").slice(0, 60) || "New bot"; // L37: one line (displayname.ts)
     const shape = AVATAR_SHAPES.includes(input.shape as any) ? input.shape! : stablePick(id + "s", AVATAR_SHAPES);
     const color = AVATAR_COLORS.includes(input.color as any) ? input.color! : stablePick(id + "c", AVATAR_COLORS.filter((c) => c !== "ink"));
     const t = now();
@@ -213,7 +213,7 @@ export const bots = {
     q.run(
       `INSERT INTO bots (id, user_id, kind, name, label, description, instructions, shape, color, mode, effort, model, autonomy, hidden, parent_id, members, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      id, userId, input.kind ?? "agent", name, (input.label ?? "").slice(0, 60), (input.description ?? "").slice(0, 500),
+      id, userId, input.kind ?? "agent", name, oneLine(input.label ?? "").slice(0, 60), (input.description ?? "").slice(0, 500),
       (input.instructions ?? "").slice(0, 8000), shape, color, input.mode === "teammate" ? "teammate" : "personal",
       ENUMS.effort.includes(input.effort ?? "") ? input.effort! : "medium", model ?? "",
       ENUMS.autonomy.includes(input.autonomy ?? "") ? input.autonomy! : "careful",
@@ -232,7 +232,7 @@ export const bots = {
       const v = patch[key];
       if (typeof v !== "string") continue;
       if (ENUMS[key] && !ENUMS[key].includes(v)) continue;
-      const value = LIMITS[key] ? v.slice(0, LIMITS[key]) : v;
+      const value = key === "name" || key === "label" ? oneLine(v).slice(0, LIMITS[key] ?? 60) : LIMITS[key] ? v.slice(0, LIMITS[key]) : v;
       if (key === "name" && !value.trim()) continue;
       sets.push(`${col} = ?`);
       vals.push(key === "name" ? value.trim() : value);
@@ -337,7 +337,7 @@ export const bots = {
   remove(id: string) { q.run("DELETE FROM bots WHERE id = ? OR parent_id = ?", id, id); pauses.forget("bot", id); },
   resetConversation(id: string): number {
     q.run("UPDATE bots SET generation = generation + 1, next_seq = 1, unread = 0, updated_at = ? WHERE id = ?", now(), id);
-    q.run("DELETE FROM paused WHERE bot_id = ?", id);
+    q.run("DELETE FROM paused WHERE bot_id = ?", id); paused.clearLanes(id);
     return bots.byId(id)!.generation;
   },
   announce(b: BotRecord | null) { if (b && !b.hidden) emit(b.userId, { type: "bot", bot: publicBot(bots.byId(b.id)!) }); },
@@ -379,6 +379,11 @@ const toRow = (r: any): Row => ({ botId: r.bot_id, generation: r.generation, seq
  */
 export const rowScope = new AsyncLocalStorage<{ botId: string; thread: number }>();
 const scopedThread = (botId: string) => { const s = rowScope.getStore(); return s && s.botId === botId ? s.thread : 0; };
+/** Lanes (agent/lanes.ts): a bot runs up to 3 turns at once, one per thread. `bot~thread` names one; inside a turn, a bare bot id means the turn's own lane. */
+export const laneKey = (botId: string, thread: number) => `${botId}~${thread || 0}`;
+export const turnKey = (botId: string) => (botId.includes("~") ? botId : laneKey(botId, scopedThread(botId)));
+/** The key a lane has on disk (paused, active_turns): the main chat keeps the bare bot id, so rows written before lanes read the same. */
+export const laneDbKey = (botId: string) => turnKey(botId).replace(/~0$/, "");
 
 /** What a rewrite keeps from the stored row unless it sets it itself: reactions and the thread summary live alongside the text. */
 function keepMeta(cur: RowBody, next: RowBody): RowBody {
@@ -446,8 +451,9 @@ export const rows = {
   recentMessages(botId: string, generation: number, limit: number, thread = 0): Row[] {
     return q.all("SELECT * FROM rows WHERE bot_id = ? AND generation = ? AND thread = ? AND kind = 'message' ORDER BY seq DESC LIMIT ?", botId, generation, thread, limit).reverse().map(toRow);
   },
+  /** The FIRST `limit` messages written after `after` (a time), oldest first: learning reads a long chat in order (memory.ts). */
   messagesAfter(botId: string, generation: number, after: number, limit: number): Row[] {
-    return q.all("SELECT * FROM rows WHERE bot_id = ? AND generation = ? AND kind = 'message' AND created_at > ? ORDER BY seq DESC LIMIT ?", botId, generation, after, limit).reverse().map(toRow);
+    return q.all("SELECT * FROM rows WHERE bot_id = ? AND generation = ? AND kind = 'message' AND created_at > ? ORDER BY created_at, seq LIMIT ?", botId, generation, after, limit).map(toRow);
   },
   updateCard(bot: { id: string; userId: string }, generation: number, seq: number, change: (card: Card) => Card): Row | null {
     const row = rows.get(bot.id, generation, seq);
@@ -505,16 +511,20 @@ export const history = {
 };
 
 // ── Memories, skills, tasks ──────────────────────────────────────────────────
+// Audit DS-Bot #81 / #82: a note can be pinned (the automatic passes never touch it) and have a last day (`until`, YYYY-MM-DD,
+// after which it leaves the prompt and the tidy archives it: agent/memorymarks.ts). Columns added here, at load.
+for (const col of ["pinned INTEGER NOT NULL DEFAULT 0", "until_day TEXT"]) { try { q.run(`ALTER TABLE memories ADD COLUMN ${col}`); } catch { /* already there */ } }
 const toMemory = (r: any): Memory => ({
   id: r.id, botId: r.bot_id, text: r.text, source: r.source === "learned" || r.source === "import" ? r.source : "chat", createdAt: r.created_at,
   status: r.status === "archived" || r.status === "contested" ? r.status : "active", quote: r.quote ?? "",
   category: (SENSITIVE_CATEGORIES as readonly string[]).includes(r.category) ? r.category : null,
   confidence: r.confidence === "confirmed" ? "confirmed" : "once", confirmedAt: r.confirmed_at ?? null, lastUsedAt: r.last_used_at ?? null,
+  pinned: !!r.pinned, until: typeof r.until_day === "string" ? r.until_day : null,
 });
 export const memories = {
   list: (botId: string, limit = 500) => q.all("SELECT * FROM memories WHERE bot_id = ? ORDER BY created_at DESC, rowid DESC LIMIT ?", botId, limit).map(toMemory),
   /** Notes a bot may use: active ones, then contested ones (used with caution); archived ones never. */
-  usable: (botId: string, limit = 500) => q.all("SELECT * FROM memories WHERE bot_id = ? AND status != 'archived' ORDER BY created_at DESC, rowid DESC LIMIT ?", botId, limit).map(toMemory),
+  usable: (botId: string, limit = 500) => q.all("SELECT * FROM memories WHERE bot_id = ? AND status != 'archived' AND (until_day IS NULL OR until_day >= ?) ORDER BY created_at DESC, rowid DESC LIMIT ?", botId, new Date().toISOString().slice(0, 10), limit).map(toMemory),
   add(botId: string, text: string, source: Memory["source"] = "chat", extra: { quote?: string; category?: SensitiveCategory | null; status?: MemoryStatus } = {}): Memory {
     const id = newId("mem");
     q.run("INSERT INTO memories (id, bot_id, text, source, created_at, status, quote, category) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", id, botId, text.trim(), source, now(), extra.status ?? "active", clip(extra.quote ?? "", 500), extra.category ?? null);
@@ -555,10 +565,16 @@ export function skillText(s: Pick<Skill, "description" | "body"> & Partial<Skill
     s.output ? `What to hand back at the end: ${s.output}` : "",
   ].filter(Boolean).join("\n");
 }
+/** Set by skillscan.ts: runs after a skill's text is saved (a flagged text stays a draft until its owner accepts it). */
+let skillGuard: (id: string) => void = () => {};
+export const setSkillGuard = (fn: (id: string) => void) => { skillGuard = fn; };
+/** Set by skillhealth.ts (L131/L133): archived skills and shared skills out of scope are not given; a version is kept before each change. */
+let skillHooks: { visible: (viewerBotId: string, list: any[]) => any[]; beforeSave: (id: string) => void } = { visible: (_b, l) => l, beforeSave: () => {} };
+export const setSkillHooks = (h: typeof skillHooks) => { skillHooks = h; };
 export const skills = {
   list: (botId: string) => q.all("SELECT * FROM skills WHERE bot_id = ? ORDER BY created_at", botId).map(toSkill),
   /** The skills a bot is given (its prompt, skill_read): its own, without the drafts the user has not activated yet. */
-  usable: (botId: string) => q.all("SELECT * FROM skills WHERE bot_id = ? AND draft = 0 ORDER BY created_at", botId).map(toSkill),
+  usable: (botId: string): Skill[] => skillHooks.visible(botId, q.all("SELECT * FROM skills WHERE bot_id = ? AND draft = 0 ORDER BY created_at", botId).map(toSkill)),
   owned(userId: string, id: string) {
     const r = q.get("SELECT s.* FROM skills s JOIN bots b ON b.id = s.bot_id WHERE s.id = ? AND b.user_id = ?", id, userId);
     return r ? toSkill(r) : null;
@@ -571,20 +587,23 @@ export const skills = {
     const t = now();
     q.run("INSERT INTO skills (id, bot_id, name, description, body, shared, learned, outside, draft, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", id, botId, name, description, body, shared ? 1 : 0, origin.learned ? 1 : 0, origin.outside ? 1 : 0, origin.draft ? 1 : 0, t, t);
     saveSkillExtras(id, extras);
+    skillGuard(id);
     return toSkill(q.get("SELECT * FROM skills WHERE id = ?", id));
   },
   /** A structured part left undefined keeps its value; an empty string clears it. */
   update(id: string, f: { name: string; description: string; body: string; shared?: boolean; draft?: boolean } & Partial<SkillExtras>) {
+    skillHooks.beforeSave(id);
     q.run("UPDATE skills SET name = ?, description = ?, body = ?, updated_at = ? WHERE id = ?", f.name, f.description, f.body, now(), id);
     saveSkillExtras(id, f);
     if (typeof f.shared === "boolean") q.run("UPDATE skills SET shared = ? WHERE id = ?", f.shared ? 1 : 0, id);
     if (typeof f.draft === "boolean") q.run("UPDATE skills SET draft = ? WHERE id = ?", f.draft ? 1 : 0, id);
+    skillGuard(id);
     return toSkill(q.get("SELECT * FROM skills WHERE id = ?", id));
   },
   /** Skills other bots of the same user shared (never this bot's own). */
   sharedWith(botId: string): (Skill & { botName: string })[] {
-    return q.all("SELECT s.*, b.name AS bot_name FROM skills s JOIN bots b ON b.id = s.bot_id WHERE s.shared = 1 AND s.draft = 0 AND s.bot_id != ? AND b.user_id = (SELECT user_id FROM bots WHERE id = ?) ORDER BY s.created_at", botId, botId)
-      .map((r: any) => ({ ...toSkill(r), botName: r.bot_name }));
+    return skillHooks.visible(botId, q.all("SELECT s.*, b.name AS bot_name FROM skills s JOIN bots b ON b.id = s.bot_id WHERE s.shared = 1 AND s.draft = 0 AND s.bot_id != ? AND b.user_id = (SELECT user_id FROM bots WHERE id = ?) ORDER BY s.created_at", botId, botId)
+      .map((r: any) => ({ ...toSkill(r), botName: r.bot_name })));
   },
   /** Every skill a bot can follow: its own first, then the ones its teammates shared (an own skill wins on a name clash). */
   available(botId: string): (Skill & { botName: string; own: boolean })[] {
@@ -645,21 +664,34 @@ export const approvals = {
 
 export const policies = {
   list: (userId: string) => q.all<Policy>("SELECT tool, mode FROM policies WHERE user_id = ? ORDER BY tool", userId),
-  get: (userId: string, tool: string) => q.get<{ mode: Policy["mode"] }>("SELECT mode FROM policies WHERE user_id = ? AND tool = ?", userId, tool)?.mode ?? null,
+  /** Inside a conversation grant's probe (policyassume.ts), a key the user has not decided reads as "always allow". */
+  get: (userId: string, tool: string) => q.get<{ mode: Policy["mode"] }>("SELECT mode FROM policies WHERE user_id = ? AND tool = ?", userId, tool)?.mode ?? (isAssumed(userId, tool) ? "always_allow" as const : null),
   set: (userId: string, tool: string, mode: Policy["mode"]) =>
     q.run("INSERT INTO policies (user_id, tool, mode) VALUES (?, ?, ?) ON CONFLICT(user_id, tool) DO UPDATE SET mode = excluded.mode", userId, tool, mode),
   remove: (userId: string, tool: string) => q.run("DELETE FROM policies WHERE user_id = ? AND tool = ?", userId, tool),
 };
 
 // ── Paused turns ─────────────────────────────────────────────────────────────
+// Lanes (agent/lanes.ts): a turn in a thread other than the main chat keeps its paused state and its "under way" mark in
+// these tables (keyed "bot~thread"); the main chat keeps the original tables, so rows written before lanes read the same.
+q.run("CREATE TABLE IF NOT EXISTS lane_paused (lane TEXT PRIMARY KEY, bot_id TEXT NOT NULL REFERENCES bots(id) ON DELETE CASCADE, state TEXT NOT NULL)");
+q.run("CREATE TABLE IF NOT EXISTS lane_active_turns (lane TEXT PRIMARY KEY, bot_id TEXT NOT NULL REFERENCES bots(id) ON DELETE CASCADE, started_at INTEGER NOT NULL, acted INTEGER NOT NULL DEFAULT 0)");
+const laneBot = (key: string) => key.split("~")[0];
 export const paused = {
   get<T>(botId: string): T | null {
-    const r = q.get<{ state: string }>("SELECT state FROM paused WHERE bot_id = ?", botId);
+    const k = laneDbKey(botId);
+    const r = k.includes("~") ? q.get<{ state: string }>("SELECT state FROM lane_paused WHERE lane = ?", k) : q.get<{ state: string }>("SELECT state FROM paused WHERE bot_id = ?", k);
     return r ? (JSON.parse(r.state) as T) : null;
   },
-  set: (botId: string, state: unknown) =>
-    q.run("INSERT INTO paused (bot_id, state) VALUES (?, ?) ON CONFLICT(bot_id) DO UPDATE SET state = excluded.state", botId, JSON.stringify(state)),
-  clear: (botId: string) => q.run("DELETE FROM paused WHERE bot_id = ?", botId),
+  set: (botId: string, state: unknown) => {
+    const k = laneDbKey(botId);
+    if (k.includes("~")) q.run("INSERT INTO lane_paused (lane, bot_id, state) VALUES (?, ?, ?) ON CONFLICT(lane) DO UPDATE SET state = excluded.state", k, laneBot(k), JSON.stringify(state));
+    else q.run("INSERT INTO paused (bot_id, state) VALUES (?, ?) ON CONFLICT(bot_id) DO UPDATE SET state = excluded.state", k, JSON.stringify(state));
+  },
+  clear: (botId: string) => { const k = laneDbKey(botId); q.run(k.includes("~") ? "DELETE FROM lane_paused WHERE lane = ?" : "DELETE FROM paused WHERE bot_id = ?", k); },
+  /** Every lane of this bot that waits on an approval: its key ("bot" for the main chat, else "bot~thread") and its state. */
+  lanes: <T>(botId: string) => [...q.all<{ k: string; state: string }>("SELECT bot_id AS k, state FROM paused WHERE bot_id = ?", botId), ...q.all<{ k: string; state: string }>("SELECT lane AS k, state FROM lane_paused WHERE bot_id = ?", botId)].map((r) => ({ key: r.k, state: JSON.parse(r.state) as T })),
+  clearLanes: (botId: string) => q.run("DELETE FROM lane_paused WHERE bot_id = ?", botId),
 };
 
 // ── Per-user settings ────────────────────────────────────────────────────────
@@ -703,6 +735,7 @@ export const settings = {
     const st = (raw.style && typeof raw.style === "object" ? raw.style : {}) as Record<string, unknown>;
     return {
       autoCapture: raw.autoCapture !== false,
+      autoRecall: raw.autoRecall !== false,
       allowSensitive: Object.fromEntries(SENSITIVE_CATEGORIES.map((c) => [c, allow[c] === true])) as Record<SensitiveCategory, boolean>,
       style: {
         enabled: st.enabled === true, profile: typeof st.profile === "string" ? st.profile.slice(0, 3000) : "",
@@ -711,10 +744,11 @@ export const settings = {
       },
     };
   },
-  saveMemory(userId: string, f: { autoCapture?: boolean; allowSensitive?: Partial<Record<SensitiveCategory, boolean>>; style?: Partial<MemorySettings["style"]> }): MemorySettings {
+  saveMemory(userId: string, f: { autoCapture?: boolean; autoRecall?: boolean; allowSensitive?: Partial<Record<SensitiveCategory, boolean>>; style?: Partial<MemorySettings["style"]> }): MemorySettings {
     const cur = settings.memory(userId);
     const next: MemorySettings = {
       autoCapture: typeof f.autoCapture === "boolean" ? f.autoCapture : cur.autoCapture,
+      autoRecall: typeof f.autoRecall === "boolean" ? f.autoRecall : cur.autoRecall,
       allowSensitive: { ...cur.allowSensitive, ...Object.fromEntries(Object.entries(f.allowSensitive ?? {}).filter(([k, v]) => (SENSITIVE_CATEGORIES as readonly string[]).includes(k) && typeof v === "boolean")) },
       style: { ...cur.style, ...(f.style ?? {}) },
     };
@@ -880,26 +914,7 @@ export function auditList(userId: string, before?: number, limit = 50): AuditEnt
   return found.map((r: any) => ({ id: r.id, at: r.at, botId: r.bot_id, kind: r.kind, text: r.text }));
 }
 
-// ── Search across every conversation, current and earlier ────────────────────
-export function searchMessages(userId: string, query: string, opts: { botId?: string; limit?: number } = {}): SearchHit[] {
-  const words = query.toLowerCase().split(/\s+/).filter((w) => w.length > 1).slice(0, 6);
-  if (!words.length) return [];
-  const like = words.map(() => "LOWER(json_extract(r.body, '$.text')) LIKE ? ESCAPE '\\'").join(" AND ");
-  const params = words.map((w) => `%${w.replace(/[\\%_]/g, (c) => "\\" + c)}%`);
-  const found = q.all<any>(
-    `SELECT r.bot_id, r.generation, r.seq, r.thread, r.created_at, r.body, b.name, b.generation AS cur FROM rows r JOIN bots b ON b.id = r.bot_id
-     WHERE b.user_id = ? AND b.hidden = 0 ${opts.botId ? "AND b.id = ?" : ""} AND r.kind = 'message' AND ${like} ORDER BY r.created_at DESC LIMIT ?`,
-    userId, ...(opts.botId ? [opts.botId] : []), ...params, Math.min(opts.limit ?? 40, 40));
-  return found.map((r) => {
-    const body = JSON.parse(r.body);
-    const text: string = body.text ?? "";
-    const at = Math.max(0, text.toLowerCase().indexOf(words[0]));
-    return {
-      botId: r.bot_id, botName: r.name, generation: r.generation, current: r.generation === r.cur, seq: r.seq, at: r.created_at, role: body.role, ...(r.thread ? { thread: r.thread } : {}),
-      snippet: (at > 80 ? "…" : "") + text.slice(Math.max(0, at - 80), at + 220).replace(/\s+/g, " ") + (text.length > at + 220 ? "…" : ""),
-    };
-  });
-}
+// ── Search across every conversation: convsearch.ts (accents folded, ranked) ──
 
 // ── Pages published at a public address ──────────────────────────────────────
 export interface PageRecord extends SharedPage { userId: string; path: string }
@@ -956,10 +971,15 @@ export const botQueue = {
 };
 
 export const activeTurns = {
-  begin: (botId: string) => q.run("INSERT INTO active_turns (bot_id, started_at) VALUES (?, ?) ON CONFLICT(bot_id) DO UPDATE SET started_at = excluded.started_at, acted = 0", botId, now()),
-  acted: (botId: string) => q.run("UPDATE active_turns SET acted = 1 WHERE bot_id = ?", botId),
-  end: (botId: string) => q.run("DELETE FROM active_turns WHERE bot_id = ?", botId),
-  leftover: () => q.all<{ bot_id: string; acted: number }>("SELECT bot_id, acted FROM active_turns"),
+  begin: (botId: string) => {
+    const k = laneDbKey(botId);
+    if (k.includes("~")) q.run("INSERT INTO lane_active_turns (lane, bot_id, started_at) VALUES (?, ?, ?) ON CONFLICT(lane) DO UPDATE SET started_at = excluded.started_at, acted = 0", k, laneBot(k), now());
+    else q.run("INSERT INTO active_turns (bot_id, started_at) VALUES (?, ?) ON CONFLICT(bot_id) DO UPDATE SET started_at = excluded.started_at, acted = 0", k, now());
+  },
+  acted: (botId: string) => { const k = laneDbKey(botId); q.run(k.includes("~") ? "UPDATE lane_active_turns SET acted = 1 WHERE lane = ?" : "UPDATE active_turns SET acted = 1 WHERE bot_id = ?", k); },
+  end: (botId: string) => { const k = laneDbKey(botId); q.run(k.includes("~") ? "DELETE FROM lane_active_turns WHERE lane = ?" : "DELETE FROM active_turns WHERE bot_id = ?", k); },
+  /** Turns under way (after a restart: the ones it cut off). `bot_id` is the lane key: "bot" for the main chat, else "bot~thread". */
+  leftover: () => [...q.all<{ bot_id: string; acted: number }>("SELECT bot_id, acted FROM active_turns"), ...q.all<{ bot_id: string; acted: number }>("SELECT lane AS bot_id, acted FROM lane_active_turns")],
 };
 
 // ── A bot's changes to its own settings (self_update), for undo ─────────────

@@ -1,9 +1,10 @@
-import { apiProviders } from "../apimodels.js";
+import { apiProviders } from "../apimodels.js"; import type { Locale } from "../shared.js";
 import { config } from "../config.js";
 import { tr } from "../i18n.js";
 import type { Block, ChatMessage, LlmProvider, TextBlock, ToolSpec } from "../llm/index.js";
 import { clip, history, newId, rows, type BotRecord } from "../store.js";
 import { record } from "../usage.js";
+import { userWordsBlock } from "./compactlines.js";
 
 /**
  * Keeping long API turns inside the model's context window (Sklubot's own loop only; Claude Code and Codex manage their
@@ -180,7 +181,7 @@ const CHECKPOINT_PREAMBLE = "[Automatic checkpoint: an earlier part of this turn
 
 export interface CompactionTarget {
   bot: BotRecord; generation: number; thread: number; system: string; tools: ToolSpec[];
-  provider: LlmProvider; model: string; signal: AbortSignal; locale?: "fr" | "en";
+  provider: LlmProvider; model: string; signal: AbortSignal; locale?: Locale;
 }
 
 /**
@@ -199,7 +200,8 @@ export async function compactHistory(t: CompactionTarget, retainChars: number): 
   const summary = res.content.filter((b): b is TextBlock => b.type === "text").map((b) => b.text).join("").trim();
   if (!summary) return false;
   if (history.count(t.bot.id, t.generation, t.thread) !== all.length) return false;
-  const checkpoint: ChatMessage = { role: "user", content: [{ type: "text", text: `${CHECKPOINT_PREAMBLE}\n${SUMMARY_OPEN}\n${clip(summary, 60_000)}\n${SUMMARY_CLOSE}` }] };
+  // Audit DS-Bot #74: the user's own messages of the condensed part follow the checkpoint word for word (compactlines.ts).
+  const checkpoint: ChatMessage = { role: "user", content: [{ type: "text", text: `${CHECKPOINT_PREAMBLE}\n${SUMMARY_OPEN}\n${clip(summary, 60_000)}\n${SUMMARY_CLOSE}${userWordsBlock({ id: t.bot.id, generation: t.generation }, all.slice(cut), t.thread)}` }] };
   history.replace(t.bot.id, t.generation, [checkpoint, ...all.slice(cut)], t.thread);
   rows.append(t.bot, { kind: "notice", tone: "info", text: tr(t.locale, "This work was getting too long for my model's memory, so I summarised its earlier steps to carry on.") }, t.thread || undefined);
   return true;

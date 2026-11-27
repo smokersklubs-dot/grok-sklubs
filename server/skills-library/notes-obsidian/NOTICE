@@ -1,0 +1,7 @@
+notes-obsidian — adapted from CLI-Anything (© 2026 HKUDS CLI-Anything Team, Apache-2.0)
+Sources (each pinned to one commit):
+- CLI-Anything — © 2026 HKUDS CLI-Anything Team — Apache-2.0 — https://github.com/HKUDS/CLI-Anything/tree/34f519533bc175d2fe287ab8316b0dd99bb9cc43/skills/cli-anything-obsidian
+Licence: Apache-2.0 — the upstream licence texts are in LICENSE.txt, unchanged.
+
+Modified for Sklubot (2026-11-22): the Python harness and the third-party online services it relied on removed; the Obsidian Local REST API plugin replaced by Sklubot Relais shared folders (my_files, my_file_read, my_file_write); note deletion removed; every write approved by the owner; translated into French.
+Only text is included; no script, picture or other file of the original folders is bundled. Names of other products are not used as titles.

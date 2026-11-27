@@ -39,3 +39,21 @@ test('changing server drops credentials', async () => {
   s.setServer('https://b.com');
   assert.equal(s.getAuth(), null);
 });
+
+test('« all my bots » (1.7): kept across restarts, dropped with another server, a new pairing or "forget"', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'relais-'));
+  const s = await new Store(path.join(dir, 'p'), fakeCrypto).load();
+  s.setServer('https://ex.com');
+  assert.equal(s.getAllBots(), false);
+  s.setAllBots(true);
+  assert.equal((await new Store(path.join(dir, 'p'), fakeCrypto).load()).getAllBots(), true);
+  s.setServer('https://other.example');
+  assert.equal(s.getAllBots(), false);
+  s.setAllBots(true);
+  s.clearCredentials();
+  assert.equal(s.getAllBots(), false);
+  s.setAllBots(true);
+  s.forgetServer();
+  assert.equal(s.getAllBots(), false);
+  fs.rmSync(dir, { recursive: true, force: true });
+});

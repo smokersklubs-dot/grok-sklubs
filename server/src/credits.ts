@@ -22,7 +22,7 @@
  *        which are not re-credited automatically: the owner decides, with "Add AI credits").
  *    The older address POST /api/billing/webhook/paddle is the same handler once Paddle is configured (501 before).
  */
-import type { Context, Hono } from "hono";
+import type { Context, Hono } from "hono"; import { localize } from "./lang/index.js"; import { tr } from "./i18n.js";
 import { config } from "./config.js";
 import { q } from "./db.js";
 import { adminLog, addPrepaid, creditEur, HostedError, hostedMode, hostedSettings, isOperator, monthBounds, operatorKeysAllowed, planBaseEur, prepaidLeftEur, prepaidUseByMonth, removePrepaid, spentEur, subscriptionEnginesFor } from "./hosted.js";
@@ -43,7 +43,7 @@ const FR: Record<string, string> = {
   "Invalid signature.": "Signature invalide.",
 };
 const m = (loc: Locale | undefined, english: string, vars: Record<string, string | number> = {}) =>
-  (loc === "fr" ? FR[english] ?? english : english).replace(/\{(\w+)\}/g, (_x, k) => String(vars[k] ?? ""));
+  localize(loc, english, FR).replace(/\{(\w+)\}/g, (_x, k) => String(vars[k] ?? ""));
 class CreditsError extends HostedError {
   constructor(status: 400 | 403 | 404 | 409 | 429 | 502 | 503, english: string, code: string, vars: Record<string, string | number> = {}) { super(status, english, vars, code); this.name = "CreditsError"; }
   override text(locale: Locale | undefined) { return m(locale, this.english, this.vars); }
@@ -113,7 +113,6 @@ export async function startCheckout(user: UserRecord, pack: unknown): Promise<{ 
   if (!operatorKeysAllowed(user.id)) throw new CreditsError(409, "Your plan uses your own API keys only: credits for the service's keys would not be used. Change plan first.", "byok");
   throttleCheckout(user.id);
   const cents = Math.round(chosen.amountEur * 100);
-  const fr = user.locale === "fr";
   let txn;
   try {
     // https://developer.paddle.com/api-reference/transactions/create-transaction (fields cited in billing/paddle.ts).
@@ -123,7 +122,7 @@ export async function startCheckout(user: UserRecord, pack: unknown): Promise<{ 
         price: {
           product_id: keys.productId,
           description: `Sklubot prepaid AI credits ${chosen.id}`,
-          name: fr ? `Crédits IA — ${chosen.amountEur} €` : `AI credits — €${chosen.amountEur}`,
+          name: tr(user.locale, "AI credits — €{amount}", { amount: chosen.amountEur }),
           unit_price: { amount: String(cents), currency_code: "EUR" },
           // The pack's price is what the person pays, tax included (Paddle works out the tax inside it).
           tax_mode: "internal",

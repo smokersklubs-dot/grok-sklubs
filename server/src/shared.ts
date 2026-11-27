@@ -3,7 +3,7 @@ export * from "./failuretypes.js"; export type * from "./recruittypes.js"; expor
  * Wire contract between the Sklubot server and web app.
  * Type-only: the web app imports this file with `import type`.
  */
-import type { TodayKind } from "./todayminutes.js"; import type { RecruitCard } from "./recruittypes.js"; import type { RouteNoticeAction } from "./roomroutingtypes.js";
+import type { TodayKind } from "./todayminutes.js"; import type { RecruitCard } from "./recruittypes.js"; import type { RouteNoticeAction } from "./roomroutingtypes.js"; import { EXTRA_SECRET_FORMATS } from "./secretformats.js"; import type { PeerReviewResult } from "./peerreviewtypes.js"; import type { ViewCard } from "./viewtypes.js"; import type { TrajectoryCard } from "./creationtypes.js"; import type { CodeCard } from "./codecardtypes.js"; import type { PollCard } from "./polltypes.js"; import type { BatchCard } from "./batchtypes.js"; import type { PageLossCard } from "./pagekeeptypes.js"; export type * from "./pagekeeptypes.js";
 
 export const AVATAR_SHAPES = ["pebble", "egg", "mochi", "bean", "cloud", "cat", "bear", "ghost", "circle", "squircle", "hexagon", "diamond", "shield", "drop", "arch", "star", "clover", "pill", "triangle", "octagon"] as const;
 export const AVATAR_COLORS = ["ink", "clay", "ember", "amber", "moss", "teal", "sky", "indigo", "plum", "rose", "slate"] as const;
@@ -67,7 +67,7 @@ export const AUTONOMIES = ["careful", "balanced", "trusted", "auto"] as const;
  * ("auto" mode); "approval" — the user said yes on a card; "retry" — the user asked to retry an action whose outcome
  * was uncertain. `quote`: the user's exact words; `reason`: the reviewer's or the server's short reason.
  */
-export interface Grant { by: "words" | "reviewer" | "approval" | "retry"; quote?: string; reason?: string }
+export interface Grant { by: "words" | "reviewer" | "approval" | "retry" | "conversation"; quote?: string; reason?: string; /** "conversation": the grant the owner gave for this conversation (agent/conversationgrants.ts). */ grantId?: string }
 
 /**
  * A rule in the user's own words ("ne jamais envoyer d'e-mail à un client sans me demander"). `botId` null: every bot.
@@ -92,6 +92,8 @@ export type SensitiveCategory = (typeof SENSITIVE_CATEGORIES)[number];
  */
 export interface MemorySettings {
   autoCapture: boolean;
+  /** Automatic recall (agent/recall.ts): before each turn, the notes that match the user's new message are added to the prompt. */
+  autoRecall: boolean;
   allowSensitive: Record<SensitiveCategory, boolean>;
   style: { enabled: boolean; profile: string; updatedAt: number | null; source: "mail" | "chat" | null; samples: number };
 }
@@ -131,7 +133,7 @@ export interface ApiConnector { id: string; name: string; baseUrl: string; host:
  */
 export interface JournalEntry {
   id: number; at: number; botId: string; botName: string; tool: string; label: string;
-  decision: "words" | "reviewer" | "approval" | "retry" | "policy" | "free" | "denied";
+  decision: "words" | "reviewer" | "approval" | "retry" | "conversation" | "policy" | "free" | "denied";
   quote: string; reason: string; status: "done" | "failed" | "uncertain" | "denied"; costUsd: number; origin: string;
 }
 
@@ -141,7 +143,7 @@ export interface Payment { id: string; botId: string; cardId: string; cardName: 
 /** A first task the user could give a bot (spec 07 A19). */
 export interface TaskIdea { title: string; prompt: string; kind: "once" | "recurring"; why: string }
 
-export type Locale = "fr" | "en";
+import type { Locale } from "./clientshared/locales.js"; export type { Locale }; // the languages: server/src/clientshared/locales.ts (docs/LANGUES.md)
 /**
  * `emailUnverified` / `onboarding` (publicsignup.ts): only present, and true, on a new public account that has them pending.
  * `emailVerifyDeadline`: with `emailUnverified`, when the account is deleted if its address is still not confirmed (ms).
@@ -250,7 +252,7 @@ export type ActivityKind =
 
 export interface Live {
   running: boolean;
-  activity: { kind: ActivityKind; detail?: string; since: number } | null;
+  activity: { kind: ActivityKind; detail?: string; since: number; /** L149: where the bot just clicked on its screen (0–1 of its width and height). */ point?: { x: number; y: number; at: number } } | null;
   awaiting: { reason: string; since: number } | null;
   startedAt: number | null;
   /** Messages typed while the bot was busy, waiting to be folded into the running turn. */
@@ -266,6 +268,7 @@ export interface Live {
    * do not count). Reset to 0 at the start of each turn; updated on each new call, even while the bot waits for the user.
    */
   steps?: number;
+  /** Lanes (server agent/lanes.ts): every task of the bot while two or more run at once (the main chat is thread 0). */ tasks?: { thread: number; running: boolean; activity: Live["activity"]; awaiting: Live["awaiting"]; startedAt: number | null }[];
 }
 
 /** `nudge`: the user pressed "Do it" on a nudge (the words come from a preparation pass, so they never authorise anything). */
@@ -282,7 +285,7 @@ export interface Origin { kind: "bot" | "routine" | "voice" | "webhook" | "nudge
  * replies only). `write`: send it a message. `tasks`: give it a goal (goal mode). No scope reaches approvals, deletion,
  * settings, the vault, connectors or another bot.
  */
-export const BOT_API_SCOPES = ["read", "write", "tasks"] as const;
+export const BOT_API_SCOPES = ["read", "write", "tasks", "memory"] as const; // L170: "memory" reads the bot's notes (botopenai.ts)
 export type BotApiScope = (typeof BOT_API_SCOPES)[number];
 /** A key as its owner sees it in the bot's settings: never the key itself (shown once, at creation), only its start. */
 export interface BotApiKeyView { id: string; name: string; prefix: string; scopes: BotApiScope[]; createdAt: number; lastUsedAt: number | null; revokedAt: number | null }
@@ -299,12 +302,12 @@ export interface Replies { count: number; lastAt: number }
 
 export interface PeerReviewState {
   state: "none" | "working" | "ready" | "failed";
-  review?: {reviewer:string;verdict:"approved"|"changes"|"inconclusive";reason:string;partial:boolean;at:number};
+  review?: PeerReviewResult;
   error?: string;
 }
 
 export type RowBody =
-  | { kind: "message"; role: "user" | "assistant"; text: string; page?: { token: string; title: string; open?: boolean }; streaming?: boolean; origin?: Origin; sources?: { url: string; title?: string }[]; attachments?: Attachment[]; reactions?: Reaction[]; replies?: Replies }
+  | { kind: "message"; role: "user" | "assistant"; text: string; page?: { token: string; title: string; open?: boolean }; streaming?: boolean; origin?: Origin; sources?: { url: string; title?: string }[]; attachments?: Attachment[]; reactions?: Reaction[]; replies?: Replies; /** L136 (agent/editmessage.ts): this is an edited version of message `editOf`; `editedTo`: a newer version of this one exists */ editOf?: number; editedTo?: number; /** L141 (chatcomfortroutes.ts): pinned at the top of the chat; deleted: hidden, text emptied */ pinned?: boolean; deleted?: boolean }
   /** `grant`: what allowed this state-changing action (the user's quote, the reviewer's reason, a card). */
   | { kind: "step"; callId: string; tool: string; label: string; status: "running" | "done" | "error" | "waiting" | "denied"; args: Record<string, unknown>; summary?: string; grant?: Grant }
   | { kind: "card"; card: Card }
@@ -313,14 +316,14 @@ export type RowBody =
    * `progress`: a short interim update the bot posted during long work (progress_update); a light line, not its reply.
    * `selfupdate`: the bot changed its own settings (self_update); `undo` offers to put them back.
    */
-  | { kind: "event"; event: "routine" | "task" | "bot" | "reset" | "computer" | "call" | "members" | "cheer" | "relay" | "progress" | "selfupdate"; text: string; call?: CallRecord; gem?: Gem; tone?: "info" | "warn"; undo?: { revisionId: string; status: "available" | "undone" } }
+  | { kind: "event"; event: "routine" | "task" | "bot" | "reset" | "computer" | "call" | "members" | "cheer" | "relay" | "progress" | "selfupdate"; text: string; call?: CallRecord; gem?: Gem; tone?: "info" | "warn"; undo?: { revisionId: string; status: "available" | "undone" }; /** A command on the owner's computer: its Stop button while it runs (commandstop.ts). */ cmd?: { ref: string; running: boolean } }
   /**
    * `action`: a button under the notice. "continue": the bot stopped at its step limit — or, `reason: "timeout"`, a turn on
    * a subscription tool reached its time limit; `reason: "busy"`, its computer could not start, every one being busy — and can
    * pick the work back up; `reason: "gone"`, the subscription tool's process ended without finishing the turn.
    * "watch": the turn watch (agent/watch.ts), see WatchNoticeAction.
    */
-  | { kind: "notice"; tone: "info" | "warn" | "error"; text: string; action?: { kind: "continue"; status: "pending" | "done"; reason?: "timeout" | "busy" | "gone" } | { kind: "settings"; section: string } | HostedNoticeAction | WatchNoticeAction | SubLimitNoticeAction | RouteNoticeAction };
+  | { kind: "notice"; tone: "info" | "warn" | "error"; text: string; action?: { kind: "continue"; status: "pending" | "done"; reason?: "timeout" | "busy" | "gone" | "restart"; /** L72: "continue on my own until done" is offered too */ auto?: boolean } | { kind: "settings"; section: string } | HostedNoticeAction | WatchNoticeAction | SubLimitNoticeAction | RouteNoticeAction | /** L94 */ { kind: "note"; noteId: number; status: "pending" | "done" } | /** L98 */ { kind: "undo"; undoId: string; status: "pending" | "done" | "expired"; expiresAt: number } };
 
 /**
  * The turn watch's notice (agent/watch.ts), at most one of each per turn. `watch`: "silent" — the AI has sent nothing yet
@@ -361,7 +364,7 @@ export type Card =
    * form confirmed…), as the server decided from the tool and its arguments (agent/irreversible.ts); `irreversibleReason`
    * says why, in the user's language. Such a card is always `once`: "Always" is never offered for it.
    */
-  | { type: "approval"; approvalId: string; title: string; detail: string; tool: string; source: string; status: "pending" | "allowed" | "always" | "denied" | "expired"; once?: boolean; why?: string; quote?: string; outcome?: "done" | "failed" | "uncertain"; irreversible?: boolean; irreversibleReason?: string }
+  | { type: "approval"; approvalId: string; title: string; detail: string; tool: string; source: string; status: "pending" | "allowed" | "always" | "denied" | "expired"; once?: boolean; why?: string; quote?: string; outcome?: "done" | "failed" | "uncertain"; irreversible?: boolean; irreversibleReason?: string; /** The card offers "for this conversation"; `grantedFor`: it was answered that way (agent/conversationgrants.ts). */ conversation?: boolean; grantedFor?: "conversation"; /** The bot stopped waiting for the answer; answering still works (agent/approval-wait.ts). */ parked?: boolean; /** L83: the words the owner may correct on the card (agent/draftedit.ts); `edited`: they did */ draft?: Record<string, string>; edited?: boolean; /** L139 countdown: the card lapses at `expiresAt`; at `parksAt` the bot stops waiting (the answer still counts) */ expiresAt?: number; parksAt?: number }
   /**
    * An action whose outcome is unknown (the server stopped, or the call timed out, while it ran). It is never replayed on
    * its own: the user says it went through, asks the bot to check, or retries it once.
@@ -374,8 +377,8 @@ export type Card =
   | { type: "task"; taskId: string; helperId: string; title: string; state: BgTaskState; steps: number; now?: string; result?: string; question?: string; approval?: { approvalId: string; title: string; detail: string; /** Why the action it waits on cannot be undone (see the approval card). */ irreversible?: string } }
   /** A nudge from a quiet preparation pass: "Do it", "Later" (snoozed) or "Never for this" (the matter never comes back). */
   | { type: "nudge"; nudgeId: string; title: string; body: string; status: "pending" | "doing" | "later" | "never" }
-  | { type: "question"; question: string; options: string[]; status: "pending" | "answered" | "dismissed"; answer?: string }
-  | { type: "connect"; name: string; hint: string; reason: string; status: "pending" | "connected" | "skipped" }
+  | { type: "question"; question: string; options: string[]; status: "pending" | "answered" | "dismissed"; answer?: string; /** L79 rich card (agent/richquestion.ts) */ why?: string; recommended?: string; irreversible?: boolean; multiple?: boolean; images?: string[]; questions?: { question: string; options: string[]; recommended?: string; multiple?: boolean; why?: string }[]; plan?: { steps: string[]; version: number; added?: string[]; removed?: string[] } }
+  | { type: "connect"; name: string; hint: string; reason: string; status: "pending" | "connected" | "skipped" } | /** L99 lots en parallèle (agent/batches.ts) */ BatchCard | /** DS-Bot item 8: data drawn in the chat (agent/viewcard.ts) */ ViewCard | /** L158 « Créations » (agent/creations.ts) */ TrajectoryCard | /** L91 hidden code box (agent/codebox.ts) */ CodeCard | /** L184 polls (polls.ts) */ PollCard | /** L157 « rien de perdu » (pagekeep.ts) */ PageLossCard | /** L153/L145 « pas à pas » (stepguide.ts) */ import("./guidetypes.js").StepGuideCard | /** L163 plan → tableau (boardplan.ts) */ import("./boardplantypes.js").BoardPlanCard
   /** The bot needs the user on its screen (CAPTCHA, 2FA code, login, payment…) and waits until they hand it back, or `expiresAt`. */
   | { type: "takeover"; takeoverId: string; reason: TakeoverReason; detail: string; status: "pending" | "done" | "timeout" | "cancelled"; expiresAt: number }
   /**
@@ -393,13 +396,13 @@ export type Card =
    * A procedure the bot learned from a task it just did (skill_propose), anonymised, for the user to review before it
    * is saved. `outside`: the task read outside content, so the skill is kept as outside content (it never authorises).
    */
-  | { type: "skill"; name: string; when: string; steps: string; outside: boolean; status: "pending" | "saved" | "dismissed" }
+  | { type: "skill"; name: string; when: string; steps: string; outside: boolean; status: "pending" | "saved" | "dismissed"; /** L131: earlier requests seen in other conversations */ evidence?: { at: number; where: string; quote: string }[] }
   /** An API connector the bot proposed (api_connector_propose): the user reviews it, gives the token if needed, and approves. */
   /** The user said something that contradicts a note (wave 5b): which is right? "old" keeps the note, "new" replaces it. */
   | { type: "memory"; memoryId: string; oldText: string; newText: string; quote: string; status: "pending" | "kept" | "replaced" }
   /** Wave 6: a mail received at the bot's own address. `held`: kept out of the bot's reach (sender not allowed, failed DMARC, spam). */
   | { type: "mail"; mailId: string; from: string; subject: string; snippet: string; auth: MailAuth; spam: number; status: "delivered" | "held" | "released" | "replied" }
-  | { type: "apiconnector"; connectorId: string; name: string; baseUrl: string; host: string; secret: string; secretSaved: boolean; endpoints: ApiEndpoint[]; status: "pending" | "approved" | "dismissed" }
+  | { type: "apiconnector"; connectorId: string; name: string; baseUrl: string; host: string; secret: string; secretSaved: boolean; endpoints: ApiEndpoint[]; status: "pending" | "approved" | "dismissed"; preset?: string }
   /**
    * Wave 8: the disk of the bot's computer is nearly full (`usedPct` of the disk its home folder is on). `items`: the
    * biggest files and folders of its own home (/root) and library (/root/files), largest first. The user ticks some and
@@ -427,7 +430,7 @@ export type Card =
    * right now ("approval", "user": a question or a card, "checkpoint": a spend checkpoint). `summary`: the latest status
    * line the bot gave (goal_update); `evidence`: what proves it is done; `reason`: why it paused or is blocked.
    */
-  | { type: "goal"; goalId: string; objective: string; status: GoalStatus; rounds: number; maxRounds: number; summary?: string; evidence?: string; reason?: string; waiting?: GoalWaiting } | RecruitCard
+  | { type: "goal"; goalId: string; objective: string; status: GoalStatus; rounds: number; maxRounds: number; summary?: string; evidence?: string; reason?: string; waiting?: GoalWaiting; /** L89: success criteria (with evidence) and « attend ton accord » */ criteria?: { text: string; evidence?: string }[]; review?: boolean } | RecruitCard
   | { type: "disk"; checkId: string; usedPct: number; totalBytes: number; freeBytes: number; items: { path: string; bytes: number }[]; status: "pending" | "cleaned" | "dismissed"; deleted?: string[]; freedBytes?: number }
   /**
    * A usage cap is reached (usagecaps.ts): one card per cap, period and limit. `cap`: which one (scope, period, unit,
@@ -452,7 +455,7 @@ export type GoalWaiting = "" | "approval" | "user" | "checkpoint";
 export interface BotJob { id: string; botId: string; command: string; status: "running" | "done" | "failed" | "stopped" | "lost"; exitCode: number | null; startedAt: number; endedAt: number | null; log: string; note: string }
 
 /** Why a bot hands its screen to the user. */
-export const TAKEOVER_REASONS = ["captcha", "2fa", "login", "payment", "other"] as const;
+export const TAKEOVER_REASONS = ["captcha", "2fa", "login", "payment", "password", "other"] as const; // L91 "password": a password change the user does themselves
 export type TakeoverReason = (typeof TAKEOVER_REASONS)[number];
 
 export interface CallRecord { id: string; phase: "started" | "ended"; durationMs?: number; summary?: string; transcript?: { role: "user" | "assistant"; text: string }[] }
@@ -471,7 +474,7 @@ export type MemoryStatus = "active" | "archived" | "contested";
  * quote of their own words) or confirmed it. Confirmed notes come first in the prompt; a "once" note neither confirmed
  * nor used for 90 days drops in priority (never deleted). `lastUsedAt`: last time it was found relevant.
  */
-export interface Memory { id: string; botId: string; text: string; source: "chat" | "learned" | "import"; createdAt: number; status: MemoryStatus; quote: string; category: SensitiveCategory | null; confidence: "once" | "confirmed"; confirmedAt: number | null; lastUsedAt: number | null }
+export interface Memory { id: string; botId: string; text: string; source: "chat" | "learned" | "import"; createdAt: number; status: MemoryStatus; quote: string; category: SensitiveCategory | null; confidence: "once" | "confirmed"; confirmedAt: number | null; lastUsedAt: number | null; /** Audit DS-Bot #81/#82: never touched by the automatic passes; last day it holds (YYYY-MM-DD). */ pinned?: boolean; until?: string | null }
 /** `shared`: every bot of the user can read and follow it (it shows in their skill index). */
 /**
  * `learned`: proposed by the bot after a task and approved by the user (spec 07 A9). `outside`: it came from a turn that
@@ -541,7 +544,7 @@ export interface Routine {
 }
 
 /** `skipped`: nothing new in its inputs, or still running from the previous due time: no model call. */
-export interface RoutineRun { id: string; routineId: string; at: number; status: "running" | "done" | "quiet" | "error" | "skipped"; note: string; costUsd: number }
+export interface RoutineRun { id: string; routineId: string; at: number; status: "running" | "done" | "quiet" | "error" | "skipped"; note: string; costUsd: number; durationMs?: number }
 
 /** One line of the account's activity log. Never edited or deleted. */
 export interface AuditEntry { id: number; at: number; botId: string | null; kind: "tool" | "approval" | "account" | "apps" | "vault" | "routine" | "channel" | "system" | "computer"; text: string }
@@ -587,7 +590,7 @@ export interface LocalToolsState { available: boolean; reason: string | null; se
 // ── Built-in apps ("native" integrations through the vendors' own REST APIs) ──────────────────────────
 /** Who issues the OAuth client the user creates in their own console. */
 export type NativeVendor = "google" | "microsoft" | "slack";
-export type NativeAppId = "gmail" | "gcalendar" | "gdrive" | "outlook" | "slack";
+export type NativeAppId = "gmail" | "gcalendar" | "gdrive" | "outlook" | "slack" | "searchconsole";
 /** What a built-in app offers, and how to create the OAuth client it needs (steps verified against the vendor's docs). */
 export interface NativeApp {
   id: NativeAppId; vendor: NativeVendor; name: string; category: string; description: string;
@@ -698,8 +701,8 @@ export interface SharedComputerView {
   power: "running" | "asleep" | "absent";
   /** The bot driving it right now (null: free). */
   busyWith: string | null;
-  /** Bots that used it last (most recent first). */
-  lastBots: string[];
+  /** Bots that used it last (most recent first). L161: `waiting`, the account's bots waiting for one, first in line first. */
+  lastBots: string[]; waiting?: string[];
   lastUsedAt: number | null;
 }
 
@@ -1000,7 +1003,7 @@ export interface PublicLink { id: string; botId: string; botName: string; path: 
 
 /** Preview of a project import (spec 08 A6): names and guessed hosts only, never a value. */
 export interface ImportVariable { name: string; isSecret: boolean; provider: string | null; hosts: string[]; header: string; prefix: string; exists: boolean; reason: string }
-export interface ImportSkill { name: string; description: string; path: string; mentionsKey: boolean; exists: boolean }
+export interface ImportSkill { name: string; description: string; path: string; mentionsKey: boolean; exists: boolean; scan?: import("./skillscantypes.js").SkillScan }
 export interface ImportPreview { previewId: string; variables: ImportVariable[]; skills: ImportSkill[]; ignored: string[] }
 export interface ImportReport { created: string[]; updated: string[]; skipped: string[]; toComplete: string[]; skills: string[]; health: { name: string; state: HealthState; detail: string }[] }
 
@@ -1061,7 +1064,7 @@ ${EXPORT_SHAPE}
 4. An empty section stays empty: [] or "". Do not make anything up.
 5. NEVER put in the export: passwords, API keys, tokens, cookies, verification codes, sign-in details, card or bank account numbers, or any private data about other people (their contact details, their messages). If a text contains any, replace that part with [REMOVED].`;
 
-export interface GrokImportSkill { name: string; when: string; steps: string }
+export interface GrokImportSkill { name: string; when: string; steps: string; scan?: import("./skillscantypes.js").SkillScan }
 /** `cron`: a valid 5-field expression, or "" (the routine then needs one before it can be created); `describe`: when it runs, in words. */
 export interface GrokImportRoutine { name: string; schedule: string; cron: string; timezone: string; task: string; describe: string }
 /** `flagged`: something that looked like a secret was taken out of it. */
@@ -1178,7 +1181,7 @@ const SECRET_FORMATS: { kind: "key" | "token" | "password" | "private-key"; re: 
   {
     kind: "password", group: 2,
     re: /(?<![\p{L}\p{N}_])(password|passwd|pwd|passcode|mot de passe|mdp|api[_ -]?key|cl[eé] (?:d'|de l'|d')?api|access[_ -]?token|auth[_ -]?token|bearer token|secret|token)\s*(?:[:=]|=>)\s*["'«]?\s*([^\s"'»]{4,300})/giu,
-  },
+  }, ...EXTRA_SECRET_FORMATS, // L46: patterns adapted from ECC (secretformats.ts)
 ];
 /** Values that are clearly not a secret even after "password:" (a placeholder, stars, an earlier mask). */
 const NOT_A_SECRET = /^(?:\*+|x+|\.+|•+|<[^>]*>?|\[.*|\{\{.*|null|none|undefined|aucun|vide|empty|changeme|example|exemple)$/i;

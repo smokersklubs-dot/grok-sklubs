@@ -1,0 +1,51 @@
+/* L161 bot care (BotCare.tsx, TeamCare.tsx, BotPhoto.tsx). Tokens only: light and dark come from tokens.css. */
+
+/* A bot's photo in place of its character */
+.bot-photo { position: relative; display: inline-flex; flex: none; border-radius: 50%; }
+.bot-photo > img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: block; background: var(--surface-3); }
+.bot-photo.is-ring { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--accent); }
+
+/* In a bot's settings */
+.bot-care { display: flex; flex-direction: column; gap: 14px; margin: 14px 0; }
+.care-block { display: flex; flex-direction: column; gap: 6px; padding: 12px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); min-width: 0; }
+.care-block > .muted, .care-section > .muted { margin: 0; }
+.care-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
+.care-photo { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.care-photo-img, .care-photo-empty { width: 64px; height: 64px; border-radius: 50%; flex: none; object-fit: cover; }
+.care-photo-empty { background: var(--surface-3); border: 1px dashed var(--border-strong); }
+.care-photo-side { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.care-photo-side .muted { margin: 0; }
+.care-select { max-width: 100%; width: min(360px, 100%); min-height: 40px; }
+.care-quote { margin: 0; padding: 8px 10px; border-left: 3px solid var(--border-strong); background: var(--surface-2); border-radius: var(--r-sm); color: var(--text-2); overflow-wrap: anywhere; }
+.care-sub { margin: 4px 0 0; font-size: 13px; font-weight: 600; }
+.care-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.care-chips .chip { min-height: 36px; cursor: pointer; font: inherit; font-size: 13px; }
+.care-chips .chip:focus-visible, .care-disclose:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.care-docs { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.care-doc { padding: 10px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface-2); min-width: 0; }
+.care-doc.is-due { border-color: var(--warn); }
+.care-doc-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 6px; min-width: 0; }
+.care-doc-title { min-width: 0; overflow-wrap: anywhere; display: inline-flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.care-doc-body { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text-2); font-size: 14px; line-height: 1.45; }
+.care-meta { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 6px 0 0; color: var(--text-2); }
+.care-editor { display: flex; flex-direction: column; gap: 8px; }
+.care-label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; font-weight: 600; }
+.care-label .input, .care-section textarea.input { width: 100%; box-sizing: border-box; font-weight: 400; }
+.care-tag { display: inline-block; padding: 1px 7px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; background: var(--surface-3); color: var(--text); }
+.care-tag.is-read { background: var(--info-soft); color: var(--info); }
+.care-tag.is-act { background: var(--ok-soft); color: var(--ok); }
+.care-tag.is-ask, .care-tag.is-warn { background: var(--warn-soft); color: var(--warn); }
+.care-disclose { all: unset; display: flex; justify-content: space-between; align-items: center; gap: 8px; min-height: 36px; cursor: pointer; border-radius: var(--r-sm); }
+.care-disclose .action-title { margin: 0; }
+.care-reach-body { display: flex; flex-direction: column; gap: 8px; }
+.care-reach-body p { margin: 0; }
+.care-fams { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.care-fam { display: flex; flex-direction: column; gap: 3px; padding: 8px 10px; border-radius: var(--r-sm); background: var(--surface-2); min-width: 0; }
+.care-fam p { margin: 0; overflow-wrap: anywhere; }
+.care-tools { font-family: var(--mono); font-size: 12px; color: var(--text-2); overflow-wrap: anywhere; }
+.care-aside-on { padding: 8px 10px; border-radius: var(--r-sm); background: var(--warn-soft); }
+
+/* Settings → Team */
+.care-section { display: flex; flex-direction: column; gap: 8px; margin-top: 22px; min-width: 0; }
+.care-ok { color: var(--ok); }
+.care-empty { padding: 10px; border: 1px dashed var(--border); border-radius: var(--r-md); }

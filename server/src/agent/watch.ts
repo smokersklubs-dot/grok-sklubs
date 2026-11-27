@@ -5,7 +5,8 @@ import { modelLabel } from "../llm/index.js";
 import { tr } from "../i18n.js";
 import { pauses } from "../pauses.js";
 import type { Engine, Locale, RowBody, WatchNoticeAction } from "../shared.js";
-import { audit, bots, paused, rows, type BotRecord } from "../store.js";
+import { audit, bots, paused, rows, turnKey, type BotRecord } from "../store.js";
+import { LaneMap } from "./lanemap.js";
 import { goals } from "./goals.js";
 import { checkpoints } from "./spend.js";
 import { noteSignal } from "../sentinel/signals.js";
@@ -83,10 +84,12 @@ interface Watch {
   callCtl: AbortController | null;
   switchTo: string | null;
   nextModel: () => string | undefined;
+  /** Its lane (lanes.ts): "bot~thread". */
+  key: string;
   waitsUser: () => boolean;
 }
 
-const watches = new Map<string, Watch>();
+const watches = new LaneMap<Watch>(); // lanes.ts: one watch per running turn (a bare bot id means the calling turn's lane)
 
 /** The handle a turn keeps to end its watch (endWatch). */
 export interface WatchHandle { botId: string }
@@ -110,7 +113,8 @@ function tickMs(): number {
 
 /** Starts watching a bot's turn (one per bot: a new one ends the old). */
 export function watchTurn(o: WatchStart): WatchHandle {
-  const old = watches.get(o.bot.id);
+  const key = turnKey(o.bot.id);
+  const old = watches.get(key);
   if (old) finish(old);
   const now = Date.now();
   const w: Watch = {
@@ -118,11 +122,11 @@ export function watchTurn(o: WatchStart): WatchHandle {
     quietSince: now, output: false, tools: new Set(), waits: 0, rescue: null, rescueDone: false, stall: null, stallDone: false,
     timer: setInterval(() => { try { tick(w); } catch (err) { console.error(`[watch ${o.bot.id}]`, err); } }, tickMs()),
     execing: false, nextSample: 0, sampling: false, cpuMs: null, goneLooks: 0, callCtl: null, switchTo: null,
-    nextModel: () => undefined, waitsUser: o.waitsUser ?? (() => false),
+    nextModel: () => undefined, waitsUser: o.waitsUser ?? (() => false), key,
   };
   w.timer.unref?.();
-  watches.set(o.bot.id, w);
-  return { botId: o.bot.id };
+  watches.set(key, w);
+  return { botId: key };
 }
 
 const current = (botId: string): Watch | null => watches.get(botId) ?? null;
@@ -135,7 +139,7 @@ export function endWatch(h: WatchHandle | null) {
 
 function finish(w: Watch) {
   clearInterval(w.timer);
-  if (watches.get(w.bot.id) === w) watches.delete(w.bot.id);
+  if (watches.get(w.key) === w) watches.delete(w.key);
   if (w.rescue && openStatus(w, w.rescue.seq)) setNotice(w, "silent", w.rescue.seq, "over");
   if (w.stall && openStatus(w, w.stall.seq)) setNotice(w, "stalled", w.stall.seq, "over");
 }
@@ -238,14 +242,14 @@ function legitimateWait(w: Watch): boolean {
   const live = getLive(id);
   // An approval, the user's hand on the screen, an answer on one of their devices, another bot asked and waited for.
   if (live.awaiting || live.activity?.kind === "waiting") return true;
-  if (paused.get(id) || checkpoints.pendingFor(id) || w.waitsUser()) return true;
+  if (paused.get(w.key) || checkpoints.pendingFor(id) || w.waitsUser()) return true;
   const bot = bots.byId(id);
   if (!bot || pauses.of(bot)) return true;
   return !!goals.activeFor(bot, w.thread)?.waiting;
 }
 
 function tick(w: Watch) {
-  if (watches.get(w.bot.id) !== w) return;
+  if (watches.get(w.key) !== w) return;
   const now = Date.now();
   if (legitimateWait(w)) w.quietSince = now;
   const quiet = now - w.quietSince;
@@ -260,7 +264,7 @@ function sample(w: Watch) {
   void look(w.bot.id).catch(() => null).then((s) => {
     w.sampling = false;
     w.nextSample = Date.now() + config.engineSampleMs;
-    if (watches.get(w.bot.id) !== w || !w.execing || !s || w.controller.signal.aborted) return;
+    if (watches.get(w.key) !== w || !w.execing || !s || w.controller.signal.aborted) return;
     if (s.gone) {
       if (++w.goneLooks >= GONE_LOOKS) {
         audit(w.bot.userId, "system", `${w.bot.name}: the subscription tool's process ended while its turn still waited on it; turn stopped`, w.bot.id);
@@ -339,7 +343,7 @@ export class WatchChoiceRefused extends Error {}
  * with the next model), "stop" (the stall notice: stopped, and a continuation queued by the turn's end, loop.ts).
  */
 export function chooseWatch(bot: BotRecord, seq: number, choice: "wait" | "switch" | "stop") {
-  const w = current(bot.id);
+  const w = watches.lanesOf(bot.id).map(([, , x]) => x).find((x) => x.rescue?.seq === seq || x.stall?.seq === seq) ?? current(bot.id);
   const which = w?.rescue?.seq === seq ? "silent" : w?.stall?.seq === seq ? "stalled" : null;
   const action = w && which ? openStatus(w, seq) : null;
   if (!w || !which || !action) {
@@ -391,4 +395,4 @@ export function closeLeftOpenWatchNotices(): number {
 }
 
 /** For tests: whether a bot's turn is being watched. */
-export const watching = (botId: string) => watches.has(botId);
+export const watching = (botId: string) => (botId.includes("~") ? watches.has(botId) : watches.lanesOf(botId).length > 0);

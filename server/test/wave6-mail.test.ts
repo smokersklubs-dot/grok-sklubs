@@ -99,7 +99,9 @@ async function until<T>(probe: () => Promise<T | undefined | false | null> | T |
   for (let i = 0; i < 1600; i++) { const v = await probe(); if (v) return v; await new Promise((r) => setTimeout(r, 25)); }
   throw new Error(`timed out waiting for ${label}`);
 }
-const rowsOf = async (botId: string): Promise<Row[]> => (await call("GET", `/bots/${botId}/rows?limit=500`)).json.rows;
+const mainRowsOf = async (botId: string): Promise<Row[]> => (await call("GET", `/bots/${botId}/rows?limit=500`)).json.rows;
+// Owner decision (22/11/2026): a routine runs in its own thread (agent/routinethread.ts): its rows are read there too.
+const rowsOf = async (botId: string): Promise<Row[]> => { const main = await mainRowsOf(botId); const out = [...main]; for (const p of main) if (p.body.kind === "message" && p.body.origin?.kind === "routine") out.push(...(await call("GET", `/bots/${botId}/rows?limit=500&thread=${p.seq}`)).json.rows); return out; };
 const cardsOf = (list: Row[], type: Card["type"]) => list.filter((r) => r.body.kind === "card" && r.body.card.type === type).map((r) => (r.body as { card: Card }).card);
 const mails = async (botId: string): Promise<InboundMail[]> => (await call("GET", `/bots/${botId}/email`)).json.mails;
 
@@ -228,6 +230,8 @@ test("sending grounded in the owner's words (no outside content read) runs witho
   // A fresh chat turn, nothing outside read: the owner's words name the recipient.
   const before = relayed.length;
   await call("POST", `/bots/${bot.id}/reset`);
+  // L42: a bot writes only to its owner unless the owner listed the address (botmailrecipients.ts).
+  assert.equal((await call("PUT", `/bots/${bot.id}/email/recipients`, { recipients: ["bob@example.org"] })).status, 200);
   await call("POST", `/bots/${bot.id}/messages`, { text: 'envoie un email à bob@example.org pour dire bonjour call bot_email_send {"to":["bob@example.org"],"subject":"Bonjour","body":"Bonjour Bob","user_quote":"envoie un email à bob@example.org"}' });
   await until(() => relayed.length > before, "grounded send");
   assert.equal(cardsOf(await rowsOf(bot.id), "approval").length, 0);

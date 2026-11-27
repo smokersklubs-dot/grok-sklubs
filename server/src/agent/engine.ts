@@ -12,13 +12,16 @@ import type { Attachment, Engine, EngineRuntime, EngineStatus } from "../shared.
 import { bots, clip, rows, type BotRecord } from "../store.js";
 import { noteSubscription, record } from "../usage.js";
 import { activity, Caption, expireEngineApprovals, interrupt, StreamingRow, type Turn } from "./loop.js";
+import { sessionLost } from "./session-rebuild.js";
 import { getLive, setLive } from "../bus.js";
 import { buildSystemPrompt } from "./prompt.js";
 import { imageService } from "../images.js";
-import { browserAvailable } from "../computer.js";
+import { browserAvailable } from "../computer.js"; import { browserReadyFor, claudeToolList, NO_WEBFETCH_NOTE } from "./enginetools.js";
 import { collectSideReply } from "./sidereply.js";
 import { noteDiskTrouble } from "../disk.js";
 import { claudeLimitFrom, claudeLimitFromText, codexLimitFrom, noteEngineLimit, type LimitHit } from "./sublimit.js";
+import { CODEX_TOOLS_MISSING, claudeErrorText, claudeFailureClass, claudeSessionMissing, claudeTurnTokens, sklubotToolsMissing } from "./engine-failure.js";
+import type { FailureClass } from "../failuretypes.js";
 import { callSignal, EngineGone, setEngineSampler, SwitchModel, watchExec, watchOutput, watchProgress, watchTool, watchToolsDone, watchWait, type EngineSample } from "./watch.js";
 
 /**
@@ -216,6 +219,8 @@ export interface EngineHost {
   ready(bot: BotRecord): Promise<void>;
   /** Whether the computer is on right now (never wakes it). */
   awake(botId: string): boolean;
+  /** L64: whether the bot's browser answers right now (never wakes it). Optional: a host without it counts as "not ready". */
+  browserAnswers?(bot: BotRecord): Promise<boolean>;
   /**
    * Marks the computer busy while a turn (or a side request) runs in it, so it is never put to sleep meanwhile; returns
    * the release. Optional: a host without it (a test's fake) has nothing to keep awake.
@@ -257,6 +262,7 @@ const dockerHost: EngineHost = {
   kill: (botId) => killEngineProcesses(botId),
   ready: (bot) => screen.ready(bot.id, bot.userId),
   awake: (botId) => screen.isOpen(botId),
+  browserAnswers: (bot) => screen.browserAnswers(bot.id),
   hold: (bot) => screen.holdTurn(bot.id, bot.userId),
   machineOf: (botId) => machineOf(botId),
   async probe(botId, args, timeoutMs) {
@@ -573,6 +579,10 @@ class Transcript {
   failed = false;
   /** The tool itself ended on this failure (not a passing error item): a backup model may take the turn over. */
   fatal = false;
+  /** What the failure is, from the stream's structured fields (engine-failure.ts); null: only its words are known. */
+  failureClass: FailureClass | null = null;
+  /** Set by watchedExec while the tool runs: stops it at once (Sklubot's tools did not join, L24). */
+  stopRun: (() => void) | null = null;
   /** The user moved this message to the next model before the tool said anything ("Switch AI", watch.ts). */
   switched = false;
   lastFailure = "";
@@ -608,7 +618,7 @@ function runInComputer(bot: BotRecord, args: string[], env: Record<string, strin
     void docker(["exec", name, "sh", "-c", "kill -INT $(cat /tmp/sklubot-engine.pid) 2>/dev/null"], { timeoutMs: 10_000 });
     // A process already gone (its helpers may still hold the output open) or a tool that never said a word and whose
     // message goes to another model: nothing to save, so no grace (watch.ts).
-    const quick = signal.reason instanceof EngineGone || signal.reason instanceof SwitchModel || signal.reason instanceof EngineFinished;
+    const quick = signal.reason instanceof EngineGone || signal.reason instanceof SwitchModel || signal.reason instanceof EngineFinished || signal.reason instanceof EngineToolsMissing;
     escalate = setTimeout(() => { void killEngineProcesses(bot.id).finally(() => { if (child.exitCode === null) child.kill("SIGKILL"); }); }, quick ? 1000 : ENGINE_KILL_GRACE_MS);
   };
   signal.addEventListener("abort", stop, { once: true });
@@ -654,6 +664,10 @@ export class EngineTimeout extends Error {
 export class EngineFinished extends Error {
   constructor() { super("the tool reported the end of its turn but did not exit"); this.name = "EngineFinished"; }
 }
+/** Why a tool's process is stopped before it did anything: Sklubot's own tool server did not join it (L24). */
+export class EngineToolsMissing extends Error {
+  constructor() { super("Sklubot's tools did not join the engine"); this.name = "EngineToolsMissing"; }
+}
 export const isEngineTimeout = (reason: unknown): reason is EngineTimeout => reason instanceof EngineTimeout;
 
 /**
@@ -664,6 +678,8 @@ export interface EngineOutcome {
   failure: string; steps: number[]; /** The user moved this message to the next model before the tool said anything (watch.ts). */ switched?: boolean;
   /** The subscription is at its usage limit until `until` (sublimit.ts): the turn did not finish because of it. */
   limited?: { until: number; engine: Engine };
+  /** The failure's class from the stream's structured fields (engine-failure.ts), for the failure coordinator. */
+  failureClass?: FailureClass;
 }
 
 export async function runEngineTurn(turn: Turn, prompt: string, attachments: Attachment[]): Promise<EngineOutcome> {
@@ -717,8 +733,10 @@ async function engineTurnOn(turn: Turn, prompt: string, attachments: Attachment[
   try { await host.ready(bot); } catch (err) { console.error(`[screen ready ${bot.id}]`, (err as Error)?.message ?? err); }
   if (turn.signal.aborted) throw new Error("aborted");
   const engine = engineOf(bot.model);
+  // L64 (owner decision n° 8): Claude Code loses WebFetch for this turn only when the browser answers (enginetools.ts).
+  const noFetch = engine === "claude-code" && await browserReadyFor(browserAvailable(), host.browserAnswers ? () => host.browserAnswers!(bot) : undefined);
   const files = await desktopAttachmentNotes(bot.id, attachments, (dest, data) => host.writeFile(bot.id, dest, data, "base64"));
-  const system = buildSystemPrompt(bot, turn.user, { connectorNames: [...new Set([...turn.remote.values()].map((r) => r.connectorName))], browser: browserAvailable(), shell: true, linux: true, images: !!imageService(), engine });
+  const system = buildSystemPrompt(bot, turn.user, { connectorNames: [...new Set([...turn.remote.values()].map((r) => r.connectorName))], browser: browserAvailable(), shell: true, linux: true, images: !!imageService(), engine }) + (noFetch ? NO_WEBFETCH_NOTE : "");
   await writeFile(bot.id, "/root/.sklubot/engine-prompt.md", system);
   const t = new Transcript(turn);
   runningTurns.set(bot.id, turn);
@@ -727,7 +745,7 @@ async function engineTurnOn(turn: Turn, prompt: string, attachments: Attachment[
   let threw = false;
   ready();
   try {
-    if (engine === "claude-code") await claudeTurn(turn, t, prompt + files, token);
+    if (engine === "claude-code") await claudeTurn(turn, t, prompt + files, token, claudeToolList(noFetch));
     else await codexTurn(turn, t, prompt + files, system, token);
   } catch (err) { threw = true; throw err; } finally {
     revokeEngineToken(bot.id);
@@ -745,7 +763,7 @@ async function engineTurnOn(turn: Turn, prompt: string, attachments: Attachment[
   if (!t.fatal && !t.switched && !turn.signal.aborted && t.awaitingReport && needsWorkReport(turn)) {
     noteMissingReport(turn);
   }
-  return { failure: t.fatal ? t.lastFailure || "the tool failed" : "", steps: t.steps.map((s) => s.seq), ...(t.switched ? { switched: true } : {}), ...(t.limited ? { limited: t.limited } : {}) };
+  return { failure: t.fatal ? t.lastFailure || "the tool failed" : "", steps: t.steps.map((s) => s.seq), ...(t.switched ? { switched: true } : {}), ...(t.limited ? { limited: t.limited } : {}), ...(t.fatal && t.failureClass ? { failureClass: t.failureClass } : {}) };
 }
 
 /**
@@ -759,6 +777,7 @@ async function watchedExec(turn: Turn, t: Transcript, args: string[], env: Recor
   const finished = new AbortController();
   let exitTimer: NodeJS.Timeout | null = null;
   t.onEnded = () => { exitTimer ??= setTimeout(() => finished.abort(new EngineFinished()), config.engineExitGraceMs); };
+  t.stopRun = () => { if (!finished.signal.aborted) finished.abort(new EngineToolsMissing()); };
   const signal = AbortSignal.any([callSignal(bot.id, turn.signal), finished.signal]);
   setEngineSampler(sampleEngine);
   watchExec(bot.id, true);
@@ -767,6 +786,7 @@ async function watchedExec(turn: Turn, t: Transcript, args: string[], env: Recor
   } finally {
     if (exitTimer) clearTimeout(exitTimer);
     t.onEnded = null;
+    t.stopRun = null;
     watchExec(bot.id, false);
     if (!turn.signal.aborted && signal.aborted && signal.reason instanceof SwitchModel) t.switched = true;
   }
@@ -781,7 +801,7 @@ async function watchedExec(turn: Turn, t: Transcript, args: string[], env: Recor
  */
 const TOOL_TIMEOUT_MS = 30 * 60_000;
 
-async function claudeTurn(turn: Turn, t: Transcript, prompt: string, token: string, retried = false) {
+async function claudeTurn(turn: Turn, t: Transcript, prompt: string, token: string, tools: string, retried = false) {
   const { bot } = turn;
   const mcp = { mcpServers: { sklubot: { type: "http", url: `${botBaseUrl()}/mcp/${encodeURIComponent(bot.id)}`, headers: { Authorization: `Bearer ${token}` }, timeout: TOOL_TIMEOUT_MS } } };
   await writeFile(bot.id, "/root/.sklubot/mcp.json", JSON.stringify(mcp));
@@ -793,30 +813,47 @@ async function claudeTurn(turn: Turn, t: Transcript, prompt: string, token: stri
     // The computer is the bot's own sandbox: tools run without per-call prompts there. Sklubot's own
     // tools still ask the user where they must (apps that change things, saved logins…).
     "--permission-mode", "bypassPermissions",
-    "--tools", "Bash,Read,Write,Edit,WebFetch,WebSearch,Task,NotebookEdit",
+    "--tools", tools, // L64: without WebFetch once the bot's browser is ready (enginetools.ts)
     "--strict-mcp-config", "--mcp-config", "/root/.sklubot/mcp.json",
     "--append-system-prompt-file", "/root/.sklubot/engine-prompt.md",
     ...(model && model !== "default" ? ["--model", model] : []),
     ...effortArgs("claude-code", bot.effort),
     ...(resume ? ["--resume", resume] : []),
   ];
-  let failure = "", sawResult = false, missingSession = false;
+  let failure = "", sawResult = false, missingSession = false, sawInit = false, toolsMissing = false;
   let limit: LimitHit | null = null;
+  // The assistant's own error code (SDKAssistantMessage.error), the structured cause of a failed turn (engine-failure.ts).
+  let assistantError: string | null = null;
   const res = await watchedExec(turn, t, args, { IS_SANDBOX: "1", MCP_TOOL_TIMEOUT: String(TOOL_TIMEOUT_MS) }, "/root/files", prompt, (line) => {
+    // Sklubot's tools did not join (L24): the run is being stopped and nothing more it prints is shown or counted.
+    if (toolsMissing) return;
     let e: any;
     try { e = JSON.parse(line); } catch { return; }
     // The model's own stream (words, thinking, a tool call or its result) is its answer starting (watch.ts).
     if (e.type === "stream_event" || e.type === "assistant" || e.type === "user") watchOutput(bot.id);
-    if (e.type === "system" && e.subtype === "init" && e.session_id) saveSession(bot.id, turn.generation, scope, e.session_id);
-    else if (e.type === "stream_event") {
+    if (e.type === "system" && e.subtype === "init") {
+      sawInit = true;
+      // L24: without Sklubot's own tool server the bot would work with no memory, vault or approvals and answer as if
+      // nothing were wrong. Stop the tool at once, before any step, and say so (a server fault, never retried on its own).
+      const status = sklubotToolsMissing(e);
+      if (status) {
+        toolsMissing = true;
+        t.failureClass = "server_fault";
+        failure = tr(turn.user.locale, "My Sklubot tools (memory, vault, approvals) did not join {engine} (status: {status}), so I stopped before doing anything without them. Try again in a moment; if it happens again, restart my computer from the engine panel.", { engine: "Claude Code", status });
+        t.stopRun?.();
+        return;
+      }
+      if (e.session_id) saveSession(bot.id, turn.generation, scope, e.session_id);
+    } else if (e.type === "stream_event") {
       const d = e.event?.delta;
       if (e.parent_tool_use_id) return; // a helper's own words stay inside its step
       if (d?.type === "text_delta") t.text(d.text);
       else if (d?.type === "thinking_delta") t.caption.push(d.thinking);
     } else if (e.type === "assistant" && !e.parent_tool_use_id) {
+      if (typeof e.error === "string") assistantError = e.error;
       for (const b of e.message?.content ?? []) {
         if (b.type === "tool_use") t.stepStart(b.id, b.name, b.input ?? {});
-        else if (b.type === "text" && !t.stream.started && b.text) t.message(b.text);
+        else if (b.type === "text" && !t.stream.started && b.text && !e.error) t.message(b.text);
       }
       if (e.message?.content?.some((b: any) => b.type === "text")) t.endMessage();
     } else if (e.type === "user" && !e.parent_tool_use_id) {
@@ -829,22 +866,32 @@ async function claudeTurn(turn: Turn, t: Transcript, prompt: string, token: stri
       if (hit) { limit = hit; failure = tr(turn.user.locale, "Your Claude subscription has reached its usage limit for now. I will be able to continue once it resets."); }
     } else if (e.type === "result") {
       sawResult = true;
+      // Structured first (engine-failure.ts): the assistant's error code, then the result's HTTP status.
+      const cls = e.is_error ? claudeFailureClass(assistantError, e) : null;
+      // The words decide only when the tool gave no structured cause (an older CLI): "not signed in" on a non-error reply.
+      const wordsSaySignIn = !cls && typeof e.result === "string" && NOT_SIGNED_IN.test(e.result);
       if (!e.is_error && !limit && !turn.signal.aborted) {
-        if (typeof e.result === "string" && e.result.trim() && !NOT_SIGNED_IN.test(e.result) && (t.awaitingReport || !turn.spoke)) t.message(e.result);
+        if (typeof e.result === "string" && e.result.trim() && !wordsSaySignIn && (t.awaitingReport || !turn.spoke)) t.message(e.result);
         t.turnEnded();
       }
-      const u = e.usage ?? {};
-      record(turn.user.id, bot.id, bot.model, { inputTokens: (u.input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0), outputTokens: u.output_tokens ?? 0, cachedTokens: u.cache_read_input_tokens ?? 0 });
-      if (e.is_error || (typeof e.result === "string" && NOT_SIGNED_IN.test(e.result) && !turn.spoke)) {
-        const msg = String(e.result ?? e.subtype ?? "");
-        if (/no conversation found|session.*not found/i.test(msg)) missingSession = true;
+      // L17: `usage` is this invocation's own; total_cost_usd / modelUsage are the session's running totals (never read).
+      record(turn.user.id, bot.id, bot.model, claudeTurnTokens(e));
+      if (e.is_error || (wordsSaySignIn && !turn.spoke)) {
+        const msg = claudeErrorText(e);
+        if (claudeSessionMissing(e, !!resume, sawInit)) missingSession = true;
         else if (limit || claudeLimitFromText(msg)) { limit ??= claudeLimitFromText(msg); failure ||= clip(msg, 300); }
-        else failure = NOT_SIGNED_IN.test(msg) ? signInHint(turn, "claude-code") : clip(msg, 300);
+        else {
+          t.failureClass = cls;
+          const signIn = cls === "auth_expired" || (!cls && NOT_SIGNED_IN.test(msg));
+          failure = signIn ? signInHint(turn, "claude-code") : clip(msg, 300);
+        }
       }
     }
   });
   if (turn.signal.aborted || t.switched) return;
-  if (missingSession && !retried) { dropSession(bot.id, turn.generation, scope); return claudeTurn(turn, t, prompt, token, true); }
+  if (toolsMissing) { t.notice(failure); t.fatal = true; return; }
+  // The saved session is gone: a new one starts from a compact copy of the stored conversation, and the chat says so (session-rebuild.ts).
+  if (missingSession && !retried) { dropSession(bot.id, turn.generation, scope); return claudeTurn(turn, t, sessionLost(turn, "claude-code", prompt) + prompt, token, tools, true); }
   if (!sawResult && !failure) failure = NOT_SIGNED_IN.test(res.stderr) ? signInHint(turn, "claude-code") : clip(res.stderr.trim() || `Claude Code stopped (code ${res.code}).`, 300);
   if (failure && limit) t.limit(limit, failure);
   else if (failure) { t.notice(failure); t.fatal = true; }
@@ -885,6 +932,12 @@ async function codexTurn(turn: Turn, t: Transcript, prompt: string, system: stri
     "-c", `mcp_servers.sklubot.url="${botBaseUrl()}/mcp/${encodeURIComponent(bot.id)}"`,
     "-c", 'mcp_servers.sklubot.bearer_token_env_var="SKLUBOT_MCP_TOKEN"',
     "-c", `mcp_servers.sklubot.tool_timeout_sec=${TOOL_TIMEOUT_MS / 1000}`,
+    // L24: Codex refuses to start without our tool server rather than working without memory, vault or approvals:
+    // `required` "Require this enabled server to be ready at startup"; `startup_timeout_sec` "Override the default 10s
+    // startup timeout for an MCP server" (Codex configuration reference, learn.chatgpt.com/docs/config-file/config-reference;
+    // both in codex-cli 0.169.0, checked live: see engine-failure.ts CODEX_TOOLS_MISSING).
+    "-c", "mcp_servers.sklubot.required=true",
+    "-c", "mcp_servers.sklubot.startup_timeout_sec=30",
     ...(model && model !== "default" ? ["-m", model] : []),
     ...effortArgs("codex", bot.effort),
   ];
@@ -934,12 +987,16 @@ async function codexTurn(turn: Turn, t: Transcript, prompt: string, system: stri
   if (t.switched) return;
   if (resume && !retried && !turn.signal.aborted && !produced && !turn.spoke && (missingSession || CODEX_LOST_SESSION.test(res.stderr))) {
     dropSession(bot.id, turn.generation, scope);
-    const recent = turn.engineCaller ? [] : rows.recentMessages(bot.id, turn.generation, 10, turn.thread).flatMap(({ body }) =>
-      body.kind === "message" && body.text && !body.streaming ? [{ role: body.role, text: clip(body.text, 800) }] : []);
-    const context = recent.length ? `Recent messages for context only. Answer the current request below.\n${JSON.stringify(recent)}\n\n` : "";
-    return codexTurn(turn, t, context + prompt, system, token, true);
+    return codexTurn(turn, t, sessionLost(turn, "codex", prompt) + prompt, system, token, true);
   }
   if (turn.signal.aborted) return;
+  // L24: Codex did not start because our tool server did not answer (nothing was done): a server fault, said plainly.
+  if (!produced && CODEX_TOOLS_MISSING.test(res.stderr)) {
+    t.failureClass = "server_fault";
+    t.notice(tr(turn.user.locale, "My Sklubot tools (memory, vault, approvals) did not join {engine} (status: {status}), so I stopped before doing anything without them. Try again in a moment; if it happens again, restart my computer from the engine panel.", { engine: "Codex", status: "failed" }));
+    t.fatal = true;
+    return;
+  }
   if (!sawEnd && !failure) { limit ??= codexLimitFrom(res.stderr); failure = NOT_SIGNED_IN.test(res.stderr) ? signInHint(turn, "codex") : clip(res.stderr.trim() || `Codex stopped (code ${res.code}).`, 300); }
   if (failure && limit) t.limit(limit, failure);
   else if (failure) { t.notice(failure); t.fatal = true; }
@@ -1006,8 +1063,7 @@ export async function engineLogin(bot: BotRecord, engine: Engine) {
     return;
   }
   await ensureComputer(bot);
-  const fr = (await import("../store.js")).users.localeOf(bot.userId) === "fr";
-  const done = fr ? "Connexion terminée. Tu peux fermer cette fenêtre et rendre la main." : "Signed in. You can close this window and hand back.";
+  const done = tr((await import("../store.js")).users.localeOf(bot.userId), "Signed in. You can close this window and hand back.");
   const cmd = `${SUBSCRIPTION_ENV}; ${engine === "codex" ? "codex login" : "claude auth login --claudeai"}`;
   const title = engine === "codex" ? "ChatGPT" : "Claude";
   const r = await docker(["exec", "-d", containerName(bot.id), "xterm", "-T", title, "-geometry", "100x24+80+60", "-e", "sh", "-c", `${cmd} && echo && echo '${done}'; sleep 3600`], { timeoutMs: 20_000 });

@@ -1,9 +1,12 @@
 import { emit } from "../bus.js";
 import { tr } from "../i18n.js";
 import { bots, clip, newId, rows, users, type BotRecord, type UserRecord } from "../store.js";
-import { enqueue, isPaused } from "./loop.js";
-import { postBudget, roomChannel } from "./roombudget.js";
-import { answerOffer, noteBotPost, roomRouting, routeAuto } from "./roomrouting.js";
+import { enqueue, isPaused } from "./loop.js"; import { laneCap } from "./lanes.js";
+import { BREAKER_LINE, dmChannel, postBudget, roomChannel } from "./roombudget.js";
+import "./budgetstore.js"; // L53: the anti-loop state survives a restart
+import { gt } from "./guardtext.js"; import { scrubHandoff } from "./handoffscrub.js"; // L46
+import { answerOffer, noteBotPost, roomRouting, routeAuto } from "./roomrouting.js"; import { roomNotesText } from "./roommemory.js";
+import { applyHolds, roomHolds, watchMemberTurn } from "./roomholds.js"; // L155
 
 export const MAX_HOPS = 3;
 export const MAX_HELPERS = 4;
@@ -12,9 +15,26 @@ export const MAX_HELPERS = 4;
  * Puts a message from one bot into another bot's chat and wakes the recipient. `tainted`: the sender had
  * read outside content, so the recipient's turn is careful from the start (the message may carry it).
  */
-export function deliverBotMessage(from: BotRecord, to: BotRecord, text: string, depth: number, tainted = false) {
-  rows.append(to, { kind: "message", role: "user", text, origin: { kind: "bot", id: from.id, name: from.name } });
-  enqueue(to.id, { kind: "bot", fromName: from.name, text, depth: depth + 1, tainted });
+export function deliverBotMessage(from: BotRecord, to: BotRecord, raw: string, depth: number, tainted = false, request = false) {
+  const text = scrubHandoff(from.userId, raw); const row = rows.append(to, { kind: "message", role: "user", text, origin: { kind: "bot", id: from.id, name: from.name } });
+  // Lanes (lanes.ts): where the bot runs several tasks at once, a teammate's REQUEST is worked on in the thread under its
+  // message, so it never holds the owner's main chat. A report coming back (a helper's, an answer) stays in the main chat:
+  // the bot passes it on to the owner there.
+  enqueue(to.id, { kind: "bot", fromName: from.name, text, depth: depth + 1, tainted, ...(request && laneCap(to.id) > 1 && !to.parentId ? { thread: row.seq } : {}) });
+}
+
+/**
+ * L53 — a bot-to-bot delivery that no tool counted (a helper's last words going back to its parent, an answer that
+ * arrives after its wait ended) goes through the same anti-loop limits as bot_message (roombudget.ts, channel
+ * "dm:<a>:<b>"), so the breaker applies outside group chats too. Refused: nothing is delivered and the recipient's chat
+ * says why, once. Returns whether it was delivered.
+ */
+export function deliverCounted(from: BotRecord, to: BotRecord, text: string, depth: number, tainted = false): boolean {
+  const v = postBudget.attempt(to.userId, { channel: dmChannel(from.id, to.id), botId: from.id, text, now: Date.now() });
+  if (v.allow) { deliverBotMessage(from, to, text, depth, tainted); return true; }
+  const loc = users.localeOf(to.userId);
+  if (v.opened || v.rule === "bounce") rows.append(to, { kind: "notice", tone: "warn", text: v.rule === "bounce" ? gt(loc, "{from} handed back a request {to} had already passed on: stopped, so they do not pass it around in circles.", { from: from.name, to: to.name }) : `${tr(loc, BREAKER_LINE)} ${gt(loc, "Loop between bots stopped: {from} kept sending work back and forth with {to}. Write to {to} to get it going again.", { from: from.name, to: to.name })}` });
+  return false;
 }
 
 // ── Ask another bot and wait for its answer (bot_message with wait: true) ───
@@ -36,6 +56,9 @@ export type AskOutcome =
   | { kind: "failed"; reason: string };
 
 const askWaiters = new Map<string, (o: AskOutcome) => void>();
+/** L63: the teammates' threads working right now on a question a bot asked with wait (asking bot → [teammate, thread]). */
+const askLanes = new Map<string, { fromId: string; toId: string; thread: number }>();
+export const teammateLanes = (fromId: string) => [...askLanes.values()].filter((l) => l.fromId === fromId);
 /** Who waits on whom right now (asking bot → bots it waits on, with a count for parallel waits). */
 const waitEdges = new Map<string, Map<string, number>>();
 
@@ -73,7 +96,7 @@ export function settleAsk(to: BotRecord, route: AskRoute, o: { lastText: string;
   if (waiter) { askWaiters.delete(route.id); waiter(outcome); return; }
   const from = bots.byId(route.fromId);
   // Only ever back to a bot of the same account.
-  if (from && from.kind === "agent" && from.userId === to.userId && text) deliverBotMessage(to, from, text, o.depth, o.tainted);
+  if (from && from.kind === "agent" && from.userId === to.userId && text) deliverCounted(to, from, text, o.depth, o.tainted);
 }
 
 export type WaitResult = AskOutcome | { kind: "timeout" } | { kind: "stopped" };
@@ -95,11 +118,13 @@ export async function askAndWait(from: BotRecord, to: BotRecord, text: string, d
       onAbort = () => resolve({ kind: "stopped" });
       if (signal.aborted) onAbort(); else signal.addEventListener("abort", onAbort, { once: true });
     });
-    rows.append(to, { kind: "message", role: "user", text, origin: { kind: "bot", id: from.id, name: from.name } });
-    enqueue(to.id, { kind: "bot", fromName: from.name, text, depth: depth + 1, tainted, ask: route });
+    const row = rows.append(to, { kind: "message", role: "user", text, origin: { kind: "bot", id: from.id, name: from.name } });
+    const thread = laneCap(to.id) > 1 && !to.parentId ? row.seq : 0;
+    if (thread) askLanes.set(route.id, { fromId: from.id, toId: to.id, thread });
+    enqueue(to.id, { kind: "bot", fromName: from.name, text, depth: depth + 1, tainted, ask: route, ...(thread ? { thread } : {}) });
     return await answer;
   } finally {
-    askWaiters.delete(route.id);
+    askWaiters.delete(route.id); askLanes.delete(route.id);
     if (timer) clearTimeout(timer);
     if (onAbort) signal.removeEventListener("abort", onAbort);
     addEdge(from.id, to.id, -1);
@@ -141,7 +166,13 @@ export function dispatchToRoom(room: BotRecord, user: UserRecord, text: string, 
   const all = room.memberIds.map((id) => bots.byId(id)).filter((b): b is BotRecord => !!b && b.kind === "agent" && b.userId === room.userId);
   // "Pause": a paused member is skipped and the room goes on with the others. One that was called by name says so in the
   // room (once per message), so whoever wrote knows not to wait for it.
-  const members = all.filter((m) => !isPaused(m));
+  // L155: « stop @Léa » / « reprends @Léa » (roomholds.ts): a member on hold in this group is woken by none of its messages.
+  let members = all.filter((m) => !isPaused(m));
+  if (!fromBot) {
+    const h = applyHolds(room, text, members, mentioned(text, all).map((m) => m.id), thread);
+    if (h.consumed) return;
+    members = h.awake;
+  } else { const held = new Set(roomHolds.list(room.id)); members = members.filter((m) => !held.has(m.id)); }
   const asleep = mentioned(text, all).filter((m) => m.id !== fromBot?.id && isPaused(m));
   if (asleep.length && depth < MAX_HOPS) {
     const loc = users.localeOf(room.userId);
@@ -181,12 +212,13 @@ export function wakeInRoom(room: BotRecord, user: UserRecord, text: string, from
   const quiet = roomRouting.get(room.id).discreet
     ? "\nThis group is set to discreet: answer only what you were asked or what is clearly for you; never add unprompted remarks. When the message is not for you, call stay_quiet." : "";
   for (const target of targets) {
-    if (target.userId !== room.userId || target.kind !== "agent") continue;
+    if (target.userId !== room.userId || target.kind !== "agent" || roomHolds.held(room.id, target.id)) continue;
+    watchMemberTurn(room, target, thread); // L155: its time limit in this group, if it has one
     const note = notes?.get(target.id);
     enqueue(target.id, {
       kind: "system", depth: depth + 1, tainted: !!fromBot && tainted, unattended: !!fromBot || undefined,
       text: `New message in the group chat "${room.name}" (members: ${roster}).\n${about}${fromBot ? fromBot.name : user.name} wrote: ${text}\n\n` +
-        `If you have something useful to add, answer in the group with room_post (room "${room.name}"${thread ? `, thread ${thread}` : ""}). Mention a teammate with @Name to bring them in. If there is nothing worth saying, call stay_quiet.${quiet}${note ? `\n${note}` : ""}`,
+        `If you have something useful to add, answer in the group with room_post (room "${room.name}"${thread ? `, thread ${thread}` : ""}). Mention a teammate with @Name to bring them in. If there is nothing worth saying, call stay_quiet.${quiet}${note ? `\n${note}` : ""}${roomNotesText(room)}`, // audit DS-Bot #58: the group's own notes (roommemory.ts)
     });
   }
 }

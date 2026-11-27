@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld('relais', {
   unlock: () => ipcRenderer.invoke('relay:unlock'),
   setBot: (/** @type {string} */ id, /** @type {string} */ key, /** @type {boolean} */ value) => ipcRenderer.invoke('bot:set', id, key, value),
   removeBot: (/** @type {string} */ id) => ipcRenderer.invoke('bot:remove', id),
+  setAllBots: (/** @type {boolean} */ value) => ipcRenderer.invoke('relay:allbots', value),
   setAutostart: (/** @type {boolean} */ on) => ipcRenderer.invoke('autostart:set', on),
   addFolder: () => ipcRenderer.invoke('folder:add'),
   setFolderWrite: (/** @type {string} */ id, /** @type {boolean} */ on) => ipcRenderer.invoke('folder:write', id, on),

@@ -1,0 +1,30 @@
+{
+  "cli": {
+    "version": ">= 16.0.0",
+    "appVersionSource": "local"
+  },
+  "build": {
+    "preview": {
+      "distribution": "internal",
+      "environment": "preview",
+      "env": { "SKLUBOT_VARIANT": "store" },
+      "android": { "buildType": "apk" }
+    },
+    "production": {
+      "distribution": "store",
+      "environment": "production",
+      "env": { "SKLUBOT_VARIANT": "store", "SKLUBOT_APS_ENV": "production" },
+      "android": { "buildType": "app-bundle" }
+    }
+  },
+  "submit": {
+    "preview": {
+      "android": { "track": "internal", "releaseStatus": "draft" },
+      "ios": { "language": "fr-FR" }
+    },
+    "production": {
+      "android": { "track": "internal", "releaseStatus": "draft" },
+      "ios": { "language": "fr-FR" }
+    }
+  }
+}

@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Fake meeting</title>
+<!-- L177 test page (meeting-bot.test.ts): a made-up meeting with a guest name field, a join button, a lobby, a chat
+     box and an audio element. Not modelled on any real service's page. Query: ?lobby=1 ?login=1 ?browser=1 ?nochat=1 -->
+<style>
+  body { font: 15px system-ui, sans-serif; margin: 20px; }
+  .hidden { display: none; }
+  #panel { border: 1px solid #888; padding: 8px; margin-top: 12px; }
+  #log p { margin: 4px 0; }
+</style>
+</head>
+<body>
+<main>
+  <section id="choose" class="hidden"><p>How do you want to join?</p><button id="web">Continue on this browser</button><button>Open the app</button></section>
+  <section id="login" class="hidden"><h1>Sign in to join this meeting</h1><input type="email" aria-label="Email"><input type="password" aria-label="Password"></section>
+  <section id="pre" class="hidden">
+    <h1>Ready to join?</h1>
+    <label for="who">Your name</label> <input id="who" type="text">
+    <button id="mic" aria-label="Turn off microphone" aria-pressed="false">Mic</button>
+    <button id="ask">Ask to join</button>
+  </section>
+  <section id="wait" class="hidden"><p>Asking to join… Someone in the meeting should let you in soon.</p></section>
+  <section id="room" class="hidden">
+    <h1>Team meeting</h1>
+    <audio id="sound" loop></audio>
+    <button id="leave" aria-label="Leave call">✆</button>
+    <button id="chatbtn" aria-label="Chat with everyone" aria-expanded="false">💬</button>
+    <div id="panel" class="hidden"><div id="log" role="log"></div><textarea id="say" aria-label="Send a message to everyone"></textarea></div>
+  </section>
+  <section id="bye" class="hidden"><p>You left the meeting.</p></section>
+  <section id="over" class="hidden"><p>The meeting has ended.</p></section>
+</main>
+<script>
+  const q = new URLSearchParams(location.search);
+  const $ = (id) => document.getElementById(id);
+  const only = (id) => { for (const s of document.querySelectorAll("main > section")) s.classList.toggle("hidden", s.id !== id); };
+  window.state = { name: "", sent: [], left: false, micClicked: false, trusted: [] };
+  window.fakeSay = (who, text) => { const p = document.createElement("p"); p.textContent = who + ": " + text; $("log").append(p); };
+  window.fakeEnd = () => only("over");
+  only(q.get("login") ? "login" : q.get("browser") ? "choose" : "pre");
+  $("web").onclick = (e) => { window.state.trusted.push(e.isTrusted); only("pre"); };
+  $("mic").onclick = () => { window.state.micClicked = true; $("mic").setAttribute("aria-pressed", "true"); };
+  $("ask").onclick = (e) => {
+    window.state.trusted.push(e.isTrusted);
+    window.state.name = $("who").value;
+    if (q.get("lobby")) { only("wait"); setTimeout(enter, 150); } else enter();
+  };
+  function enter() {
+    only("room");
+    if (q.get("nochat")) { $("chatbtn").remove(); $("panel").remove(); }
+    // A one-second tone, made here (no file): the audio element plays it in a loop, like a meeting's sound.
+    const rate = 8000, n = rate, buf = new ArrayBuffer(44 + n * 2), v = new DataView(buf);
+    const w = (o, s) => [...s].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
+    w(0, "RIFF"); v.setUint32(4, 36 + n * 2, true); w(8, "WAVEfmt "); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+    v.setUint32(24, rate, true); v.setUint32(28, rate * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true); w(36, "data"); v.setUint32(40, n * 2, true);
+    for (let i = 0; i < n; i++) v.setInt16(44 + i * 2, Math.round(8000 * Math.sin(2 * Math.PI * 440 * i / rate)), true);
+    $("sound").src = URL.createObjectURL(new Blob([buf], { type: "audio/wav" }));
+    $("sound").play().catch(() => {});
+  }
+  $("chatbtn").onclick = () => { $("panel").classList.remove("hidden"); $("chatbtn").setAttribute("aria-expanded", "true"); };
+  $("say").addEventListener("keydown", (e) => {
+    if (e.key !== "Enter" || !e.isTrusted) return;
+    e.preventDefault();
+    const text = $("say").value.trim();
+    if (!text) return;
+    window.state.sent.push(text);
+    window.fakeSay(window.state.name || "Guest", text);
+    $("say").value = "";
+  });
+  $("leave").onclick = () => { window.state.left = true; only("bye"); };
+</script>
+</body>
+</html>

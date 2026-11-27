@@ -5,6 +5,7 @@
 import { AppState } from "react-native";
 import { create } from "zustand";
 import { ApiClient, checkHealth } from "../api/client";
+import { phoneRequestsEvent } from "../lib/phoneRequests";
 import { EventStream } from "../api/sse";
 import type { Attachment, Bot, BotBundle, Live, MeResponse, Row, ServerEvent, Task, User } from "../api/types";
 import { errText, getLocale, setLocale, t } from "../i18n";
@@ -52,9 +53,11 @@ interface State {
   loadTasks(): Promise<void>;
   setOpenBot(botId: string | null): void;
   markRead(botId: string): Promise<void>;
-  send(botId: string, text: string, attachments: Attachment[]): Promise<void>;
-  stop(botId: string): Promise<void>;
-  decide(approvalId: string, decision: "allow" | "always" | "deny"): Promise<void>;
+  /** `clientKey`: the send key of this message (shared/sendKey.ts): the same again when the send is retried. */
+  send(botId: string, text: string, attachments: Attachment[], clientKey?: string): Promise<void>;
+  /** Lanes (server agent/lanes.ts): `thread` stops that task only; without it every task of the bot stops. */
+  stop(botId: string, thread?: number): Promise<void>;
+  decide(approvalId: string, decision: "allow" | "always" | "conversation" | "deny"): Promise<void>;
   answer(botId: string, seq: number, answer: string): Promise<void>;
   dismissCard(botId: string, seq: number): Promise<void>;
   continueRow(botId: string, seq: number): Promise<void>;
@@ -117,6 +120,7 @@ function startStream() {
       if (!ev || typeof ev !== "object") return;
       if (ev.type === "hello") { stream?.resetBackoff(); return; }
       if (ev.type === "ping") return;
+      if (phoneRequestsEvent(ev as { type?: unknown })) return; // L177 (lib/phoneRequests.ts)
       useStore.getState().applyEvent(ev);
     },
   });
@@ -314,14 +318,14 @@ export const useStore = create<State>((set, get) => ({
     try { await needClient().post(`/bots/${encodeURIComponent(botId)}/read`); } catch { /* the next bot event restores the count */ }
   },
 
-  async send(botId, text, attachments) {
-    const r = await needClient().post<{ row: Row }>(`/bots/${encodeURIComponent(botId)}/messages`, { text, attachments: attachments.map((a) => a.path) });
+  async send(botId, text, attachments, clientKey) {
+    const r = await needClient().post<{ row: Row }>(`/bots/${encodeURIComponent(botId)}/messages`, { text, attachments: attachments.map((a) => a.path), ...(clientKey ? { clientKey } : {}) });
     const th = get().threads[botId];
     if (th && r.row && r.row.generation === th.generation) set((s) => ({ threads: { ...s.threads, [botId]: applyRowsPage(s.threads[botId], { generation: th.generation, rows: [r.row] }) } }));
   },
 
-  async stop(botId) {
-    await needClient().post(`/bots/${encodeURIComponent(botId)}/stop`);
+  async stop(botId, thread) {
+    await needClient().post(`/bots/${encodeURIComponent(botId)}/stop`, thread === undefined ? {} : { thread });
   },
 
   async decide(approvalId, decision) {

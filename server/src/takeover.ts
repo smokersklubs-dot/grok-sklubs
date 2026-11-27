@@ -16,6 +16,13 @@ import { bots } from "./store.js";
 const sockets = new Map<string, number>();
 const leases = new Map<string, number>();
 const LEASE_MS = 75_000;
+/**
+ * L149 — the numbered lease: each control session of the viewer gets a number (epoch); a renewal names it and « Rendre la
+ * main » releases that number only. A renewal that arrives after the hand-back (an old number) is refused, so it never
+ * takes control again; a hand-back from an older session never ends a newer one. Old viewers without numbers still work.
+ */
+const epochs = new Map<string, number>();
+let lastEpoch = 0;
 
 export const DRIVING = "The user is driving your screen right now (they took control of it). Your screen actions are refused until they hand it back. Wait, or ask them in the chat; you can still look with screen_view.";
 
@@ -50,11 +57,32 @@ export function holdControl(botId: string) {
   announce(botId, before);
 }
 
-/** The user handed the screen back. Open control streams still count until they close. */
-export function releaseControl(botId: string) {
+/** The user handed the screen back (`epoch`: the lease it ends; absent: any). Open control streams still count until they close. */
+export function releaseControl(botId: string, epoch?: unknown) {
+  if (typeof epoch === "number" && epochs.has(botId) && epochs.get(botId) !== epoch) return;
   const before = userDriving(botId);
   leases.delete(botId);
+  epochs.delete(botId);
   announce(botId, before);
+}
+
+/**
+ * POST /bots/:id/desktop/control (L149): `{ on: true }` takes a new numbered lease (answer `{ ok, epoch }`); `{ on: true,
+ * epoch }` renews it — refused (`ok: false`) when that number is no longer the bot's lease (handed back, lapsed, or a
+ * restart); `{ on: false, epoch? }` hands back.
+ */
+export function controlRequest(botId: string, body: Record<string, unknown>): { ok: boolean; epoch?: number } {
+  if (body.on === false) { releaseControl(botId, body.epoch); return { ok: true }; }
+  if (typeof body.epoch === "number") {
+    const live = epochs.get(botId) === body.epoch && (leases.get(botId) ?? 0) > Date.now();
+    if (!live) return { ok: false, epoch: body.epoch };
+    holdControl(botId);
+    return { ok: true, epoch: body.epoch };
+  }
+  holdControl(botId);
+  const epoch = ++lastEpoch;
+  epochs.set(botId, epoch);
+  return { ok: true, epoch };
 }
 
 // ── The bot asks for the user and waits ──────────────────────────────────────

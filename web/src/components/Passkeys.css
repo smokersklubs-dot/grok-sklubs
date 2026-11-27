@@ -1,0 +1,30 @@
+/* L44 passkeys and new-device sign-ins (Passkeys.tsx): Settings → Security, the sign-in button, the floor card button. */
+.pk-block { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; margin-top: 20px; min-width: 0; }
+.pk-block > p { margin: 0; line-height: 1.45; }
+.pk-heading { display: flex; align-items: center; gap: 6px; margin: 0; font-size: 14px; font-weight: 650; color: var(--text); }
+.pk-heading svg { color: var(--brand); flex: none; }
+.pk-list { margin: 0; }
+.pk-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.pk-row > svg { flex: none; color: var(--text-2); align-self: center; }
+.pk-row .list-row-text { flex: 1 1 160px; min-width: 0; }
+.pk-row > .pk-actions, .pk-row > .btn { flex: 0 1 auto; margin-left: auto; }
+.pk-row .list-row-title { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.pk-row .list-row-sub { overflow-wrap: anywhere; }
+.pk-row .error-note, .pk-row .error { flex-basis: 100%; }
+.pk-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.row-end.pk-actions { justify-content: flex-end; }
+.pk-actions .btn { min-height: 44px; }
+.pk-rename { display: grid; gap: 6px; width: 100%; }
+.pk-panel { display: flex; flex-direction: column; gap: 12px; padding: 14px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface-2); }
+.pk-panel > p { margin: 0; line-height: 1.45; }
+.pk-note { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 12px; border-radius: var(--r-md); background: var(--surface-2); border: 1px solid var(--border); color: var(--text); font-size: 13px; line-height: 1.45; margin: 0; }
+.pk-note > svg { flex: none; color: var(--info, var(--brand)); }
+.pk-note > span { flex: 1 1 200px; min-width: 0; }
+.pk-note.is-warn { background: var(--warn-soft); border-color: transparent; }
+.pk-note.is-warn > svg { color: var(--warn); }
+.pk-foot { display: flex; gap: 6px; align-items: flex-start; }
+.pk-foot > svg { flex: none; margin-top: 2px; }
+.pk-signin { gap: 6px; }
+.pk-proof { min-height: 44px; }
+.floor-passkey { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 8px 0; }
+.floor-passkey .chip { display: inline-flex; align-items: center; gap: 4px; }

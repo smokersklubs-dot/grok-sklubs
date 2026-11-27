@@ -1,0 +1,25 @@
+/* L99 « lots en parallèle »: the batch card (BatchCard.tsx). Reuses the task card's chips and approval box. */
+.batch-card .card-head { align-items: center; }
+.task-state.is-stopped { background: var(--surface-2); color: var(--text-2); }
+.batch-bar { height: 6px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
+.batch-bar > span { display: block; height: 100%; border-radius: inherit; background: var(--accent, var(--info)); transition: width 0.3s ease; }
+.batch-card.is-done .batch-bar > span { background: var(--ok); }
+.batch-card.is-stopped .batch-bar > span { background: var(--text-3); }
+.batch-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 4px; margin: 0; }
+.batch-items { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; max-height: 340px; overflow-y: auto; overscroll-behavior: contain; }
+.batch-item { display: flex; flex-direction: column; gap: 6px; padding: 7px 4px; border-top: 1px solid var(--border); }
+.batch-item:first-child { border-top: 0; }
+.batch-item-head { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 13.5px; }
+.batch-item-title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.batch-item-state { flex: none; font-size: 12px; color: var(--text-2); }
+.batch-item-more { flex: none; font-size: 12.5px; }
+.batch-dot { flex: none; display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 999px; background: var(--surface-2); color: var(--text-2); }
+.batch-dot.is-running { background: var(--info-soft); color: var(--info); }
+.batch-dot.is-waiting { background: var(--warn-soft); color: var(--warn); }
+.batch-dot.is-done { background: var(--ok-soft); color: var(--ok); }
+.batch-dot.is-failed { background: var(--danger-soft); color: var(--danger); }
+.batch-item.is-running .batch-dot svg { animation: batch-spin 1.6s linear infinite; }
+@keyframes batch-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .batch-item.is-running .batch-dot svg { animation: none; } .batch-bar > span { transition: none; } }
+.batch-item-result { margin: 0 0 0 30px; font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text-2); }
+@media (max-width: 480px) { .batch-item-result { margin-left: 0; } }

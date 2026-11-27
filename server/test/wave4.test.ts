@@ -79,8 +79,9 @@ const { registerProvider, ProviderError, retryAfterOf } = await import("../src/l
 const { OpenAiCompatProvider } = await import("../src/llm/openai-compat.js");
 const { api } = await import("../src/routes.js");
 const { backoffDelay, LoopGuard, modelChain } = await import("../src/agent/reliability.js");
+const { resetBackupChecks, verifyBackup } = await import("../src/agent/backupmodels.js");
 const { remindStuck } = await import("../src/agent/stuck.js");
-const { newTurn, submitUserMessage, waitForApproval } = await import("../src/agent/loop.js");
+const { expireAllApprovals, newTurn, submitUserMessage, waitForApproval } = await import("../src/agent/loop.js");
 const { parseSkillMarkdown } = await import("../src/agent/tools-team.js");
 const { setLive, clearLive } = await import("../src/bus.js");
 const { bots, users, history, approvals, policies } = await import("../src/store.js");
@@ -179,7 +180,9 @@ async function call(method: string, url: string, body?: unknown) {
   let json: any = null; try { json = JSON.parse(text); } catch { /* not JSON */ }
   return { status: res.status, json, text };
 }
-const rowsOf = async (botId: string): Promise<Row[]> => (await call("GET", `/bots/${botId}/rows?limit=500`)).json.rows;
+const mainRowsOf = async (botId: string): Promise<Row[]> => (await call("GET", `/bots/${botId}/rows?limit=500`)).json.rows;
+// Owner decision (22/11/2026): a routine runs in its own thread (agent/routinethread.ts): its rows are read there too.
+const rowsOf = async (botId: string): Promise<Row[]> => { const main = await mainRowsOf(botId); const out = [...main]; for (const p of main) if (p.body.kind === "message" && p.body.origin?.kind === "routine") out.push(...(await call("GET", `/bots/${botId}/rows?limit=500&thread=${p.seq}`)).json.rows); return out; };
 async function until<T>(probe: () => Promise<T | undefined | false | null> | T | undefined | false | null, label: string): Promise<T> {
   for (let i = 0; i < 1600; i++) { const v = await probe(); if (v) return v; await new Promise((r) => setTimeout(r, 25)); }
   throw new Error(`timed out waiting for ${label}`);
@@ -254,14 +257,18 @@ test("fallbacks: an ordered list (account, then per bot), unavailable models ski
   assert.deepEqual(saved.json.fallbackModels, ["dead:m", "absent:m", "script:script-1"], "deduplicated, invalid refs dropped");
   const b = await fresh("Olga", { model: "overloaded:m" });
   assert.deepEqual(modelChain(bots.byId(b.id)!), ["overloaded:m", "dead:m", "script:script-1"], "the absent provider is left out");
+  // L60: a backup is checked before it is used (agent/backupmodels.ts). Known results first, so the path is deterministic:
+  // "dead:m" fails its check, so the chain goes straight from the failing model to the next WORKING backup.
+  resetBackupChecks();
+  assert.equal((await verifyBackup({ id: userId }, "dead:m")).ok, false, "the dead backup fails its check");
   overloadedCalls = 0;
   await say(b, "still there?");
   await replied(b, "Echo: still there?");
   assert.equal(overloadedCalls, 2, "one new try (maxRetries 1), then the next model");
   const lines = notices(await rowsOf(b.id));
-  assert.equal(lines.length, 2);
-  assert.match(lines[0], /overloaded:m ne répond pas \(overloaded\).*dead:m/);
-  assert.match(lines[1], /dead:m ne répond pas.*script:script-1/);
+  assert.equal(lines.length, 1, lines.join(" | "));
+  assert.match(lines[0], /overloaded:m ne répond pas \(overloaded\).*script:script-1/);
+  resetBackupChecks();
   // A bot's own list wins over the account's.
   const own = (await call("PATCH", `/bots/${b.id}`, { fallbackModels: ["script:script-1"] })).json.bot;
   assert.deepEqual(own.fallbackModels, ["script:script-1"]);
@@ -336,15 +343,16 @@ test("step limit: a Continue button resumes the work once; a routine carries on 
   assert.equal(((await rowsOf(b.id)).find((r) => r.seq === notice.seq)!.body as any).action.status, "done");
   assert.equal((await call("POST", `/bots/${b.id}/rows/${notice.seq}/continue`)).status, 409, "only once");
 
-  // A routine: at the limit it goes on once by itself, and only once.
+  // A routine: at the limit it goes on by itself while the work moves forward (L72, agent/autocontinue.ts: up to 3 times;
+  // here the continuation finishes, so once).
   const routine = routines.create(b.id, { name: "Gros travail", prompt: `chain ${chain}`, trigger: "webhook" });
   const before = (await rowsOf(b.id)).length;
   assert.equal((await call("POST", `/routines/${routine.id}/run`)).status, 200);
-  await until(async () => (await rowsOf(b.id)).slice(before).some((x) => x.body.kind === "notice" && /encore une fois de moi-même/.test((x.body as any).text)), "auto-continue notice");
+  await until(async () => (await rowsOf(b.id)).slice(before).some((x) => x.body.kind === "notice" && /le travail avance : je continue tout seul/.test((x.body as any).text)), "auto-continue notice");
   await until(async () => { const l = (await rowsOf(b.id)).slice(before); return l.some((x) => x.body.kind === "message" && /Echo: You stopped/.test((x.body as any).text)); }, "routine resumed");
   queue.length = 0;
   await idle(b);
-  assert.equal((await rowsOf(b.id)).slice(before).filter((x) => x.body.kind === "notice" && /encore une fois/.test((x.body as any).text)).length, 1);
+  assert.equal((await rowsOf(b.id)).slice(before).filter((x) => x.body.kind === "notice" && /je continue tout seul/.test((x.body as any).text)).length, 1);
 });
 
 test("progress_update: a light line, rate-limited, not a step and not the reply", async () => {
@@ -402,23 +410,32 @@ test("stuck work: an approval left waiting 4 h and a turn running 4 h get one re
   clearLive(userId, b.id);
 });
 
-test("subscription turns: an unanswered approval lapses after APPROVAL_EXPIRE_MIN, and at once on a new user message", async () => {
+// Since the core-reliability work (agent/approval-wait.ts): an unanswered approval no longer lapses, and a new message
+// from the user no longer cancels it. The call stops waiting after APPROVAL_EXPIRE_MIN and the request stays open on its
+// card ("parked"); it lapses only when the bot is deleted or its task cancelled. See test/core-engine.test.ts.
+test("subscription turns: an unanswered approval is parked after APPROVAL_EXPIRE_MIN, and a new user message does not cancel it", async () => {
   const b = bots.byId((await fresh("Engi")).id)!;
   const user = users.byId(userId)!;
   const ctl = new AbortController();
   const turn = await newTurn(b, user, 0, ctl.signal);
   const verdict = { kind: "ask" as const, policyKey: "test_tool", title: "Allow it?", reason: "test", source: "Test" };
   const t0 = Date.now();
-  assert.equal(await waitForApproval(turn, { type: "tool_use", id: "c1", name: "x", input: {} }, verdict), "expired");
-  assert.ok(Date.now() - t0 >= 500, "waited for the expiry (0.6 s here, 30 min by default)");
+  assert.equal(await waitForApproval(turn, { type: "tool_use", id: "c1", name: "x", input: {} }, verdict), "parked");
+  assert.ok(Date.now() - t0 >= 500, "waited for the limit (0.6 s here, 25 min by default)");
   const waiting = waitForApproval(turn, { type: "tool_use", id: "c2", name: "x", input: {} }, verdict);
   await new Promise((r) => setTimeout(r, 50));
+  const t1 = Date.now();
   submitUserMessage(b, "never mind");
-  assert.equal(await waiting, "expired");
-  const cards = (await rowsOf(b.id)).filter((r) => r.body.kind === "card" && r.body.card.type === "approval").map((r) => (r.body as any).card.status);
-  assert.deepEqual(cards, ["expired", "expired"]);
-  assert.equal(approvals.pendingForUser(userId).filter((a) => a.botId === b.id).length, 0);
+  assert.equal(await waiting, "parked");
+  assert.ok(Date.now() - t1 >= 400, "the message did not cut the wait short");
+  const cardsNow = async () => (await rowsOf(b.id)).filter((r) => r.body.kind === "card" && r.body.card.type === "approval").map((r) => (r.body as any).card);
+  assert.deepEqual((await cardsNow()).map((c) => [c.status, c.parked]), [["pending", true], ["pending", true]]);
+  assert.equal(approvals.pendingForUser(userId).filter((a) => a.botId === b.id).length, 2);
   await idle(bots.byId(b.id) as unknown as Bot);
+  // The bot is deleted (or its task cancelled): what was parked lapses, and the cards say so.
+  expireAllApprovals(b.id);
+  assert.deepEqual((await cardsNow()).map((c) => c.status), ["expired", "expired"]);
+  assert.equal(approvals.pendingForUser(userId).filter((a) => a.botId === b.id).length, 0);
 });
 
 // ── 2. Team ──────────────────────────────────────────────────────────────────

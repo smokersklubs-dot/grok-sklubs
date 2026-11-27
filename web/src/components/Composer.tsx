@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { ComposerMeta } from "./ComposerMeta";
 import { api, errText } from "../api";
 import { t, useT } from "../i18n";
 import { useStore, type Upload } from "../store";
@@ -11,8 +12,12 @@ import { canRecord, useDictation } from "../lib/dictation";
 import { Icon, Spinner } from "./Icon";
 import { ErrorNote, Menu, MenuItem, useEscape } from "./ui";
 import { PauseBanner } from "./Pause";
-import { useComposerMentions } from "./ComposerMentions";
-import { MeetingRecorder } from "./MeetingRecorder";
+import { useComposerMentions } from "./ComposerMentions"; import { useSlashCommands } from "./ComposerSlash";
+import { MeetingRecorder } from "./MeetingRecorder"; import { openChantiers } from "../lib/chantiers"; import { MeetingBotDialog } from "./MeetingBotDialog"; // L177 bot in an online meeting
+import { sendKeysFor } from "../../../mobile/shared/sendKey";
+import "./Comfort.css";
+import { ownMessages, recallStep, type RecallState } from "../lib/recall";
+import { openPollCreator, PollCreatorHost } from "./ChatPlus";
 
 const NO_UPLOADS: Upload[] = [];
 
@@ -81,8 +86,8 @@ export function Composer({ bot, live }: { bot: Bot; live: Live }) {
   const [stopping, setStopping] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [menu, setMenu] = useState(false);
-  const [meetingBot, setMeetingBot] = useState<string | null>(null);
-  useEffect(() => setMeetingBot(null), [bot.id]);
+  const [meetingBot, setMeetingBot] = useState<string | null>(null); const [meetingOnline, setMeetingOnline] = useState<string | null>(null);
+  useEffect(() => { setMeetingBot(null); setMeetingOnline(null); }, [bot.id]);
   const [confirmNew, setConfirmNew] = useState(false);
   const [dragging, setDragging] = useState(false);
   // Goal mode ("Objectif"): the next message becomes an objective the bot keeps working on until it is done.
@@ -91,6 +96,8 @@ export function Composer({ bot, live }: { bot: Bot; live: Live }) {
   const picker = useRef<HTMLInputElement>(null);
   const dragDepth = useRef(0);
   const pressStarted = useRef<{ at: number; started: boolean } | null>(null);
+  const recall = useRef<RecallState | null>(null); // L136: ↑ / ↓ bring back your earlier messages (lib/recall.ts)
+  useEffect(() => { recall.current = null; }, [bot.id]);
 
   const insertAtCaret = useCallback(
     (text: string) => {
@@ -117,7 +124,7 @@ export function Composer({ bot, live }: { bot: Bot; live: Live }) {
   const [micUnavailable, setMicUnavailable] = useState(false);
   const dictation = useDictation(bot.id, recognitionLang(bot.voice), insertAtCaret, (m) => { setMicUnavailable(false); setError(m); }, () => { setError(null); setMicUnavailable(true); });
   const skillCmd = useSkillCommand(bot.id, draft, bot.kind === "agent");
-  const mentions = useComposerMentions(bot, draft, area, anyModal || menu || skillCmd.open);
+  const mentions = useComposerMentions(bot, draft, area, anyModal || menu || skillCmd.open); const slash = useSlashCommands(bot, draft, (text) => { setDraft(bot.id, text); requestAnimationFrame(() => { const el = area.current; if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } }); }, anyModal || menu || skillCmd.open || mentions.open); // L152
   const pickSkill = (name: string) => {
     setDraft(bot.id, `/skill ${name} `);
     requestAnimationFrame(() => { const el = area.current; if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } });
@@ -162,18 +169,25 @@ export function Composer({ bot, live }: { bot: Bot; live: Live }) {
     area.current?.focus();
   };
 
+  // Lot 4 / L58 (UI part): sent while the bot works → a short « Noté » under the box, so you know it was taken.
+  const [noted, setNoted] = useState(false);
   const send = async () => {
     if (!canSend) return;
     const sent = ready;
+    const busy = live.running;
     setSending(true);
     setError(null);
     try {
       const paths = sent.map((u) => u.attachment?.path).filter((p): p is string => !!p);
-      const r = await api<{ row: Row }>("POST", `/bots/${bot.id}/messages`, { text, ...(paths.length ? { attachments: paths } : {}), ...(goalMode ? { goal: true } : {}) });
+      // One key per message, the same again if this send is retried after a lost reply: never two messages (sendKey.ts).
+      const keys = sendKeysFor(bot.id);
+      const r = await api<{ row: Row }>("POST", `/bots/${bot.id}/messages`, { text, ...(paths.length ? { attachments: paths } : {}), ...(goalMode ? { goal: true } : {}), clientKey: keys.keyFor(JSON.stringify([text, paths, goalMode])) });
+      keys.done();
       setGoalMode(false);
       addRows(bot.id, [r.row]);
       clearUploads(bot.id, sent.map((u) => u.id));
       if ((useStore.getState().drafts[bot.id] ?? "").trim() === text) setDraft(bot.id, "");
+      if (busy) { setNoted(true); setTimeout(() => setNoted(false), 5000); }
     } catch (e) {
       setError(errText(e));
     } finally {
@@ -185,7 +199,7 @@ export function Composer({ bot, live }: { bot: Bot; live: Live }) {
   const stop = async () => {
     setStopping(true);
     try {
-      await api("POST", `/bots/${bot.id}/stop`);
+      await api("POST", `/bots/${bot.id}/stop`, live.tasks?.length ? { thread: live.thread ?? 0 } : undefined); // lanes: the task shown here; the others go on
     } catch (e) {
       setError(errText(e));
     } finally {
@@ -279,6 +293,7 @@ export function Composer({ bot, live }: { bot: Bot; live: Live }) {
         </div>
       )}
       {bot.pause && !live.running && <PauseBanner bot={bot} />}
+      {noted && live.running && <div className="composer-noted" role="status"><Icon name="check" size={14} /> {t("composer.noted", { name: bot.name })}</div>}
       {looksSecret && (
         <div className="secret-warn" role="status">
           <Icon name="lock" size={15} />
@@ -300,7 +315,7 @@ export function Composer({ bot, live }: { bot: Bot; live: Live }) {
           ))}
         </ul>
       )}
-      {mentions.view}
+      {mentions.view}{slash.view}
       {skillCmd.open && (
         <div className="skill-picker" role="listbox" aria-label={t("composer.skills")}>
           <div className="skill-picker-head"><Icon name="book" size={13} /> {t("composer.skillsHint")}</div>
@@ -316,13 +331,14 @@ export function Composer({ bot, live }: { bot: Bot; live: Live }) {
           ))}
         </div>
       )}
+      {bot.kind === "agent" && !bot.access && <ComposerMeta bot={bot} live={live} />}{/* L150 model per conversation, L138 context gauge */}
       <div className="composer">
         <div className="menu-wrap">
           <button type="button" className="icon-btn composer-plus" aria-label={t("composer.more")} title={t("composer.more")} aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu((v) => !v)}>
             <Icon name="plus" size={20} />
           </button>
           <Menu open={menu} onClose={() => setMenu(false)} side="top" label={t("composer.more")}>
-            {bot.kind === "agent" && !bot.access && <MenuItem icon="record" onClick={() => { setMenu(false); setMeetingBot(bot.id); }}>{t("composer.meeting")}</MenuItem>}
+            {bot.kind === "agent" && !bot.access && <MenuItem icon="record" onClick={() => { setMenu(false); setMeetingBot(bot.id); }}>{t("composer.meeting")}</MenuItem>}{bot.kind === "agent" && !bot.access && <MenuItem icon="users" onClick={() => { setMenu(false); setMeetingOnline(bot.id); }}>{t("meetingbot.menu")}</MenuItem>}
             <MenuItem
               icon="clip"
               onClick={() => {
@@ -341,14 +357,16 @@ export function Composer({ bot, live }: { bot: Bot; live: Live }) {
             {bot.kind === "agent" && !bot.access && !bot.disabledTools.includes("web") && <MenuItem icon="search" onClick={()=>{
               setMenu(false);
               const state = useStore.getState();
-              state.showArtifact({kind:"research",token:"research-"+bot.id,botId:bot.id,title:state.locale === "fr" ? "Recherche approfondie" : "Deep research"});
-            }}>{useStore.getState().locale === "fr" ? "Recherche approfondie" : "Deep research"}</MenuItem>}
+              state.showArtifact({kind:"research",token:"research-"+bot.id,botId:bot.id,title:t("research.deepResearch")});
+            }}>{t("research.deepResearch")}</MenuItem>}
             {bot.kind === "agent" && !bot.access && <MenuItem icon="play" onClick={()=>{setMenu(false);openModal({kind:"videoStudio"});}}>{t("studio.create")}</MenuItem>}
+            {!bot.access && <MenuItem icon="chart" onClick={() => { setMenu(false); openPollCreator(bot.id); }}>{t("poll.new")}</MenuItem>}{/* L184 polls (ChatPlus.tsx) */}
             {bot.kind === "agent" && (
               <MenuItem icon="target" onClick={() => { setMenu(false); setGoalMode((v) => !v); area.current?.focus(); }}>
                 {t(goalMode ? "composer.goalOff" : "composer.goal")}
               </MenuItem>
             )}
+            {bot.kind === "agent" && !bot.access && <MenuItem icon="tasks" onClick={() => { setMenu(false); openChantiers({ kind: "new", botId: bot.id, brief: draft }); }}>{t("chantier.new.button")}</MenuItem>}
             <MenuItem icon="edit" danger={confirmNew} onClick={() => void newConversation()}>
               {t(confirmNew ? "chat.confirmNew" : "chat.newConversation")}
             </MenuItem>
@@ -362,7 +380,8 @@ export function Composer({ bot, live }: { bot: Bot; live: Live }) {
               {t("sidebar.connectApps")}
             </MenuItem>
           </Menu>
-          {meetingBot === bot.id && <MeetingRecorder key={bot.id} botId={bot.id} close={() => setMeetingBot(null)} />}
+          <PollCreatorHost botId={bot.id} thread={live.thread ?? 0} />
+          {meetingBot === bot.id && <MeetingRecorder key={bot.id} botId={bot.id} close={() => setMeetingBot(null)} />}{meetingOnline === bot.id && <MeetingBotDialog key={bot.id} botId={bot.id} close={() => setMeetingOnline(null)} />}
           <input
             ref={picker}
             type="file"
@@ -393,7 +412,7 @@ export function Composer({ bot, live }: { bot: Bot; live: Live }) {
             addFiles(files);
           }}
           onKeyDown={(e) => {
-            if (e.nativeEvent.isComposing || e.keyCode === 229 || mentions.keyDown(e)) return;
+            if (e.nativeEvent.isComposing || e.keyCode === 229 || mentions.keyDown(e) || slash.keyDown(e)) return;
             if (skillCmd.open && skillCmd.matches.length) {
               if (e.key === "ArrowDown" || e.key === "ArrowUp") {
                 e.preventDefault();
@@ -407,8 +426,15 @@ export function Composer({ bot, live }: { bot: Bot; live: Live }) {
                 return;
               }
             }
+            if ((e.key === "ArrowUp" || e.key === "ArrowDown") && !e.shiftKey && !e.altKey && !e.metaKey && !e.ctrlKey) {
+              const el = e.currentTarget;
+              const edge = e.key === "ArrowUp" ? !el.value.slice(0, el.selectionStart).includes("\n") : !el.value.slice(el.selectionEnd).includes("\n");
+              const step = edge ? recallStep(ownMessages(useStore.getState().threads[bot.id]?.rows ?? []), recall.current, draft, e.key === "ArrowUp" ? "up" : "down") : null;
+              if (step) { e.preventDefault(); recall.current = step.state; setDraft(bot.id, step.text); return; }
+            }
             if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
               e.preventDefault();
+              recall.current = null;
               void send();
             }
           }}

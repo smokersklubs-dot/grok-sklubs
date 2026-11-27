@@ -1,0 +1,7 @@
+douane — adapted from ECC (© 2026 Affaan Mustafa and ECC contributors, Apache-2.0 (skill front matter))
+Sources (each pinned to one commit):
+- ECC — © 2026 Affaan Mustafa and ECC contributors — Apache-2.0 (skill front matter) — https://github.com/affaan-m/ECC/tree/4adeee6732a12d1540f49a4d50a38ce8c97f9a53/skills/customs-trade-compliance
+Licence: Apache-2.0 — the upstream licence texts are in LICENSE.txt, unchanged.
+
+Modified for Sklubot (2026-11-22): condensed for a small online shop (parcels and small B2B shipments) instead of a multinational's trade compliance team; the official sources named for each step; the owner's decisions made explicit; translated into French.
+Only text is included; no script, picture or other file of the original folders is bundled. Names of other products are not used as titles.

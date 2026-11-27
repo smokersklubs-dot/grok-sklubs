@@ -1,6 +1,6 @@
-import { q } from "./db.js";
+import { q } from "./db.js"; import { intlOf } from "./lang/index.js";
 import { config } from "./config.js";
-import { describeCron, nextRun } from "./cron.js";
+import { describeCron, nextRun } from "./cron.js"; import { belowFloor, floorNote, nextFlooredRun } from "./routinefloor.js";
 import { defaultModelRef } from "./llm/index.js";
 import { costOf } from "./usage.js";
 import { newId, now, randomToken } from "./store.js";
@@ -18,16 +18,18 @@ export const ROUTINE_FAIL_PAUSE = 5;
 /** A run still "running" after this long was cut off (a restart): it no longer blocks the next one. */
 const STALE_RUN_MS = 2 * 3600_000;
 
-// A subscription can be limited longer than the timeout for abandoned runs.
+// A subscription can be limited longer than the timeout for abandoned runs; so can a run that waits behind an approval (deferred).
+// L142: when each run ended, so the routine's history shows how long it took (a table of its own, created at load).
+q.run("CREATE TABLE IF NOT EXISTS routine_run_ends (run_id TEXT PRIMARY KEY, ended_at INTEGER NOT NULL)");
 const queuedRun = `EXISTS (SELECT 1 FROM bot_queue b
   WHERE b.bot_id = (SELECT bot_id FROM routines WHERE id = routine_runs.routine_id)
-    AND b.status IN ('pending', 'running', 'limited', 'held')
+    AND b.status IN ('pending', 'running', 'limited', 'held', 'deferred')
     AND CASE WHEN json_valid(b.trigger) THEN json_extract(b.trigger, '$.runId') END = routine_runs.id)`;
 function hasActiveRun(id: string): boolean {
   return !!q.get(`SELECT 1 FROM routine_runs WHERE routine_id = ? AND status = 'running' AND (at > ? OR ${queuedRun})`, id, now() - STALE_RUN_MS);
 }
 export const isNativeTrigger = (t: string): t is NativeTrigger => (NATIVE_TRIGGERS as readonly string[]).includes(t);
-const APP_NAMES: Record<string, string> = { gmail: "Gmail", gcalendar: "Google Calendar", gdrive: "Google Drive", outlook: "Outlook", slack: "Slack" };
+const APP_NAMES: Record<string, string> = { gmail: "Gmail", gcalendar: "Google Calendar", gdrive: "Google Drive", outlook: "Outlook", slack: "Slack", searchconsole: "Search Console" };
 
 export function describeRoutine(r: { trigger: string; schedule: string; runAt: number | null; timezone: string; native?: Routine["native"] }, locale?: Locale): string {
   if (r.trigger === "webhook") return tr(locale, "When its web address is called");
@@ -40,8 +42,8 @@ export function describeRoutine(r: { trigger: string; schedule: string; runAt: n
   if (r.native && r.trigger === "calendar") return tr(locale, "{n} minutes before each event in {account}", { n: r.native.leadMin, account: r.native.account });
   if (r.trigger === "watch") return tr(locale, "When what it watches changes");
   if (r.trigger === "once")
-    return r.runAt ? tr(locale, "Once on {date}", { date: new Date(r.runAt).toLocaleString(locale === "fr" ? "fr-FR" : "en-US", { timeZone: r.timezone, dateStyle: "medium", timeStyle: "short" }) }) : tr(locale, "Once");
-  return describeCron(r.schedule, locale);
+    return r.runAt ? tr(locale, "Once on {date}", { date: new Date(r.runAt).toLocaleString(intlOf(locale, "en-US"), { timeZone: r.timezone, dateStyle: "medium", timeStyle: "short" }) }) : tr(locale, "Once");
+  return describeCron(r.schedule, locale) + floorNote(r.schedule, locale); // L143: an older, more frequent schedule is slowed down
 }
 
 function nativeOf(r: any): Routine["native"] {
@@ -74,7 +76,7 @@ function runsPerMonth(r: any): number | null {
     let t = now();
     const end = t + 30 * 86400_000;
     // Counted one by one, up to a cap; a very frequent schedule is extrapolated from the cap.
-    while (n < 3000) { const next = nextRun(r.schedule, r.timezone, t); if (!next || next > end) break; n++; t = next; }
+    while (n < 3000) { const next = nextRun(r.schedule, r.timezone, belowFloor(r.schedule) ? t + 14 * 60_000 : t); if (!next || next > end) break; n++; t = next; } // L143 floor
     return n >= 3000 ? Math.round((n * (end - now())) / Math.max(1, t - now())) : n;
   }
   if (r.trigger === "once") return r.last_run_at ? 0 : 1;
@@ -103,7 +105,7 @@ function toRoutine(r: any): RoutineRecord {
   const native = nativeOf(r);
   let nativeState: NativeState = {};
   try { nativeState = JSON.parse(r.native_state || "{}"); } catch { /* start over */ }
-  const next = !enabled ? null : r.trigger === "cron" ? nextRun(r.schedule, r.timezone, now()) : r.trigger === "once" && r.run_at > now() ? r.run_at : null;
+  const next = !enabled ? null : r.trigger === "cron" ? nextFlooredRun({ id: r.id, schedule: r.schedule, timezone: r.timezone, lastRunAt: r.last_run_at ?? null }, now()) : r.trigger === "once" && r.run_at > now() ? r.run_at : null;
   return {
     id: r.id, botId: r.bot_id, name: r.name, prompt: r.prompt, trigger: r.trigger, schedule: r.schedule, timezone: r.timezone,
     runAt: r.run_at, hookToken: r.hook_token, watchHash: r.watch_hash ?? null,
@@ -171,7 +173,9 @@ export const routines = {
     if (f.enabled === true && !cur.enabled) q.run("UPDATE routines SET failures = 0, paused_reason = NULL WHERE id = ?", id);
     q.run("UPDATE routines SET name = ?, prompt = ?, schedule = ?, timezone = ?, run_at = ?, enabled = ? WHERE id = ?",
       f.name ?? cur.name, f.prompt ?? cur.prompt, f.schedule ?? cur.schedule, f.timezone ?? cur.timezone, f.runAt === undefined ? cur.runAt : f.runAt, (f.enabled ?? cur.enabled) ? 1 : 0, id);
-    return routines.byId(id)!;
+    const next = routines.byId(id)!;
+    for (const fn of updateListeners) { try { fn(next); } catch (err) { console.error("[routine update]", err); } }
+    return next;
   },
   markRun: (id: string, at: number) => q.run("UPDATE routines SET last_run_at = ? WHERE id = ?", at, id),
   /** Atomically claims a due slot: false when that slot already fired (two timers, a catch-up and a tick…). */
@@ -191,11 +195,13 @@ export const runs = {
     q.run("INSERT INTO routine_runs (id, routine_id, at) VALUES (?, ?, ?)", id, routineId, now());
     // Keep the newest 30 per routine.
     q.run(`DELETE FROM routine_runs WHERE routine_id = ? AND id NOT IN (SELECT id FROM routine_runs WHERE routine_id = ? ORDER BY at DESC, rowid DESC LIMIT 30) AND (status != 'running' OR NOT ${queuedRun})`, routineId, routineId);
+    q.run("DELETE FROM routine_run_ends WHERE run_id NOT IN (SELECT id FROM routine_runs)");
     return id;
   },
   finish(id: string, status: RoutineRun["status"], note: string, finishWork?: () => void) {
     q.tx(() => {
       q.run("UPDATE routine_runs SET status = ?, note = ? WHERE id = ?", status, note.slice(0, 300), id);
+      q.run("INSERT OR REPLACE INTO routine_run_ends (run_id, ended_at) VALUES (?, ?)", id, now());
       finishWork?.();
     });
     const r = q.get<{ routine_id: string }>("SELECT routine_id FROM routine_runs WHERE id = ?", id);
@@ -212,8 +218,13 @@ export const runs = {
   /** Whether a run of this routine is still under way (not one a restart left behind). */
   active: hasActiveRun,
   list: (routineId: string): RoutineRun[] =>
-    q.all<any>("SELECT * FROM routine_runs WHERE routine_id = ? ORDER BY at DESC, rowid DESC LIMIT 30", routineId).map((r) => ({ id: r.id, routineId: r.routine_id, at: r.at, status: r.status, note: r.note, costUsd: r.cost_usd ?? 0 })),
+    q.all<any>("SELECT x.*, e.ended_at FROM routine_runs x LEFT JOIN routine_run_ends e ON e.run_id = x.id WHERE x.routine_id = ? ORDER BY x.at DESC, x.rowid DESC LIMIT 30", routineId)
+      .map((r) => ({ id: r.id, routineId: r.routine_id, at: r.at, status: r.status, note: r.note, costUsd: r.cost_usd ?? 0, ...(r.ended_at ? { durationMs: Math.max(0, r.ended_at - r.at) } : {}) })),
 };
+
+/** Who wants to hear that a routine changed (routineplus.ts: an approved instruction lapses when it changes). */
+const updateListeners: ((r: RoutineRecord) => void)[] = [];
+export const onRoutineUpdated = (fn: (r: RoutineRecord) => void) => { updateListeners.push(fn); };
 
 /** Who wants to hear how a run ended (the scheduler: failures in a row, push, auto-pause). */
 const runListeners: ((r: RoutineRecord, status: RoutineRun["status"], note: string) => void)[] = [];

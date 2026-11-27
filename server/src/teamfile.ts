@@ -4,7 +4,7 @@ import { emit } from "./bus.js";
 import { describeCron, isValidTimezone } from "./cron.js";
 import { CREDENTIAL_KEY, freeName, GrokImportError, scrub, teamFullAt, validCron, type Cleaner } from "./grokimport.js";
 import { planLimitError, planRoom } from "./hosted.js";
-import { tr } from "./i18n.js";
+import { tr } from "./i18n.js"; import { localize } from "./lang/index.js";
 import { fetchProblem, guardedFetch } from "./net.js";
 import { routines } from "./routines.js";
 import {
@@ -15,6 +15,7 @@ import {
   type TeamFileLook, type TeamFileMeta, type TeamFilePreview, type TeamFileRemoved, type TeamFileReport, type TeamFileSource,
   type TemplateCategory, type TemplateIcon, type TemplateSummary,
 } from "./shared.js";
+import { withScan } from "./skillscan.js";
 import { audit, bots, cleanCharacter, clip, now, rows, sections, settings, skills, type BotRecord, type UserRecord } from "./store.js";
 import { q } from "./db.js";
 
@@ -69,13 +70,14 @@ const SUB_KINDS: { kind: "personality" | "instructions" | "skill" | "routine"; r
 /** A field line under a heading: "- key: value" with a one-word key. */
 const FIELD_LINE = /^\s*[-*]\s+([\p{L}][\p{L}\p{N}_-]{0,23})\s*:\s?(.*)$/u;
 
-const LABELS: Record<string, { fr: string; en: string }> = {
-  file: { fr: "en-tête", en: "header" }, skill: { fr: "compétence", en: "skill" }, routine: { fr: "routine", en: "routine" },
-  section: { fr: "section", en: "section" }, look: { fr: "apparence", en: "look" }, role: { fr: "rôle", en: "role" },
-  personality: { fr: "personnalité", en: "personality" }, instructions: { fr: "consignes", en: "instructions" }, app: { fr: "appli", en: "app" },
-  name: { fr: "nom", en: "name" },
+const LABELS: Record<string, string> = {
+  file: "header", skill: "skill", routine: "routine",
+  section: "section", look: "look", role: "role",
+  personality: "personality", instructions: "instructions", app: "app",
+  name: "name",
 };
-const label = (k: string, l: Locale) => (l === "fr" ? LABELS[k]?.fr : LABELS[k]?.en) ?? k;
+const TEAMLABEL_FR: Record<string, string> = { "header": "en-tête", "skill": "compétence", "look": "apparence", "role": "rôle", "personality": "personnalité", "instructions": "consignes", "app": "appli", "name": "nom" };
+const label = (k: string, l: Locale) => (LABELS[k] ? localize(l, LABELS[k], TEAMLABEL_FR) : k);
 const tidy = (s: string, n: number) => clip(s.replace(/\r\n?/g, "\n").replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "").replace(/\n{3,}/g, "\n\n").trim(), n);
 const oneLine = (s: string, n: number) => tidy(s.replace(/\s*\n\s*/g, " "), n);
 
@@ -168,7 +170,7 @@ export function parseTeamFile(raw: string, opts: { locale?: Locale; timezone?: s
 
   const removed: TeamFileRemoved[] = [];
   const warnings: GrokImportWarning[] = [];
-  const cx: Cleaner = { stripped: [], placeholder: locale === "fr" ? "[secret retiré]" : "[secret removed]" };
+  const cx: Cleaner = { stripped: [], placeholder: tr(locale, "[secret removed]") };
   const drop = (where: string, field: string) => removed.push({ where, field: clip(field, 60), reason: CREDENTIAL_KEY.test(norm(field)) ? "secret" : forbidden(field) ? "forbidden" : "unknown" });
 
   // Front matter.
@@ -311,7 +313,7 @@ export function parseTeamFile(raw: string, opts: { locale?: Locale; timezone?: s
 }
 
 /** "shape=pebble color=teal type=mascot eyes=round": known keys and values only; anything else is reported. */
-function parseLook(raw: string, unknown: (k: string) => void): TeamFileLook {
+export function parseLook(raw: string, unknown: (k: string) => void): TeamFileLook {
   const c: Record<string, unknown> = {};
   let shape: AvatarShape | null = null, color: AvatarColor | null = null;
   for (const tok of raw.split(/[\s,;]+/).filter(Boolean)) {
@@ -420,7 +422,7 @@ export function exportTeam(user: UserRecord, opts: { botIds?: unknown; sectionId
   list = list.slice(0, MAX_BOTS);
 
   let masked = 0;
-  const mask = (s: string) => { const r = maskSecrets(s, locale === "fr" ? "[secret retiré]" : "[secret removed]"); masked += r.secrets.length; return r.text; };
+  const mask = (s: string) => { const r = maskSecrets(s, tr(locale, "[secret removed]")); masked += r.secrets.length; return r.text; };
   const str = (v: unknown, n: number) => (typeof v === "string" ? oneLine(v, n) : "");
   const title = mask(str(opts.title, 80) || sectionName || (list.length === 1 ? list[0].name : tr(locale, "My team")));
   const input: TeamFileInput = {
@@ -559,7 +561,7 @@ export async function previewTeamFile(user: UserRecord, input: { template?: unkn
   const apps: string[] = [];
   for (const b of parsed.bots) for (const a of b.apps) if (!apps.some((x) => x.toLowerCase() === a.toLowerCase())) apps.push(a);
   return {
-    previewId, source, meta: parsed.meta, bots: parsed.bots.map((b) => ({ ...b, nameTaken: !!bots.byName(user.id, b.name) })), apps,
+    previewId, source, meta: parsed.meta, bots: parsed.bots.map((b) => ({ ...b, skills: b.skills.map(withScan), nameTaken: !!bots.byName(user.id, b.name) })), apps,
     masked: parsed.masked, removed: parsed.removed, warnings, room: { bots: room.bots, activeRoutines: room.activeRoutines },
   };
 }

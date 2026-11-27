@@ -1,9 +1,12 @@
 import * as Application from "expo-application";
 import * as WebBrowser from "expo-web-browser";
-import { useEffect, useState } from "react";
+import { useFocusEffect, useNavigation } from "@react-navigation/native";
+import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import { useCallback, useEffect, useState } from "react";
 import { Alert, KeyboardAvoidingView, Linking, Modal, ScrollView, Switch, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Logo } from "../components/Character";
+import { LanguageChoice } from "../components/LanguageChoice";
 import { Icon } from "../components/Icon";
 import { Button, Card, ErrorNote, Field, Row, Segmented, SectionTitle, tap, text } from "../components/ui";
 import { errText, useT } from "../i18n";
@@ -14,6 +17,8 @@ import { loadToken } from "../state/session";
 import { usePrefs, type ThemePref } from "../state/prefs";
 import { useStore } from "../state/store";
 import { useTheme } from "../theme";
+import { loadBotTheme, useBotTheme } from "../theme/botTheme";
+import type { RootStack } from "./types";
 
 function DeleteAccount({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { c } = useTheme();
@@ -53,6 +58,9 @@ export function SettingsScreen() {
   const prefs = usePrefs();
   const [denied, setDenied] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const nav = useNavigation<NativeStackNavigationProp<RootStack>>();
+  const botTheme = useBotTheme((s) => s.applied);
+  useFocusEffect(useCallback(() => { void loadBotTheme(useStore.getState().call); }, [])); // L184: a theme applied on the web shows here
   useEffect(() => { if (prefs.notify) void ensurePermission(false).then((s) => setDenied(s === "blocked")); }, [prefs.notify]);
   const toggleNotify = async (on: boolean) => {
     tap();
@@ -95,10 +103,20 @@ export function SettingsScreen() {
       </Card>
 
       <SectionTitle>{t("settings.language")}</SectionTitle>
-      <Segmented label={t("settings.language")} value={t.locale} onChange={(l) => prefs.set({ locale: l })} options={[{ id: "fr", label: "Français" }, { id: "en", label: "English" }]} />
+      <LanguageChoice label={t("settings.language")} value={t.locale} onChange={(l) => prefs.set({ locale: l })} />
 
       <SectionTitle>{t("settings.theme")}</SectionTitle>
       <Segmented<ThemePref> label={t("settings.theme")} value={prefs.theme} onChange={(v) => prefs.set({ theme: v })} options={[{ id: "system", label: t("settings.theme.system") }, { id: "light", label: t("settings.theme.light") }, { id: "dark", label: t("settings.theme.dark") }]} />
+      {botTheme ? (
+        <Card style={{ padding: 0, marginTop: 10 }}>
+          <Row title={t("settings.botTheme")} subtitle={t("settings.botThemeHint")} right={<Switch value={prefs.botTheme} onValueChange={(v) => { tap(); prefs.set({ botTheme: v }); }} accessibilityLabel={t("settings.botTheme")} />} />
+        </Card>
+      ) : null}
+
+      <SectionTitle>{t("dash.title")}</SectionTitle>
+      <Card style={{ padding: 0 }}>
+        <Row icon="chart" title={t("dash.open")} subtitle={t("dash.openHint")} onPress={() => { tap(); nav.navigate("Dashboard"); }} right={<Icon name="chevron" size={18} color={c.text3} />} />
+      </Card>
 
       <SectionTitle>{t("settings.notifications")}</SectionTitle>
       <Card style={{ padding: 0 }}>

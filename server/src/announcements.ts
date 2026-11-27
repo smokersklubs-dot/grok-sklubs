@@ -1,4 +1,4 @@
-import { mailConfigured, sendSystemMail } from "./accountmail.js";
+import { mailConfigured, sendSystemMail } from "./accountmail.js"; import { byLocale, colon, localize, type LocaleTexts } from "./lang/index.js"; import { tr } from "./i18n.js";
 import {
   ANNOUNCE_KINDS, ANNOUNCE_LIMITS, safeHttpsUrl,
   type AnnounceAudience, type AnnounceKind, type AnnouncementAdminItem, type AnnouncementsAdmin, type AnnouncementsState, type AnnouncementView, type AnnounceStatus,
@@ -81,7 +81,7 @@ const FR: Record<string, string> = {
   "Too many requests. Wait a minute and try again.": "Trop de requêtes. Attends une minute puis réessaie.",
 };
 export const announceText = (loc: Locale, en: string, vars: Record<string, string | number> = {}) =>
-  (loc === "fr" ? FR[en] ?? en : en).replace(/\{(\w+)\}/g, (_m, k: string) => String(vars[k] ?? ""));
+  localize(loc, en, FR).replace(/\{(\w+)\}/g, (_m, k: string) => String(vars[k] ?? ""));
 
 // ── Rows ─────────────────────────────────────────────────────────────────────────────────────────────────────────
 export interface AnnRow {
@@ -370,17 +370,20 @@ export interface AnnounceSender {
 }
 export interface AnnounceSend { id: string; userId: string; channel: "push" | "email"; status: "sent" | "skipped" | "failed" }
 
-const KIND_WORD: Record<Locale, Record<AnnounceKind, string>> = {
+const KIND_WORD: LocaleTexts<Record<AnnounceKind, string>> = {
   fr: { info: "Info", new: "Nouveauté", maintenance: "Maintenance", important: "Important" },
   en: { info: "Info", new: "New", maintenance: "Maintenance", important: "Important" },
+  es: { info: "Info", new: "Novedad", maintenance: "Mantenimiento", important: "Importante" },
+  de: { info: "Info", new: "Neu", maintenance: "Wartung", important: "Wichtig" },
+  it: { info: "Info", new: "Novità", maintenance: "Manutenzione", important: "Importante" },
+  pt: { info: "Info", new: "Novidade", maintenance: "Manutenção", important: "Importante" },
+  zh: { info: "信息", new: "新功能", maintenance: "维护", important: "重要" },
 };
 export function mailFor(r: AnnRow, loc: Locale, base: string): { subject: string; text: string } {
   const open = `${base.replace(/\/$/, "")}/?view=today`;
-  const link = r.link_url ? `\n\n${r.link_label || (loc === "fr" ? "Lien" : "Link")}${loc === "fr" ? " : " : ": "}${r.link_url}` : "";
-  const foot = loc === "fr"
-    ? `Ouvrir Sklubot : ${open}\n\n— Sklubot\nTu reçois cette annonce parce que tu as un compte sur ce serveur. Pour ne plus la recevoir par e-mail : Réglages → Notifications.`
-    : `Open Sklubot: ${open}\n\n— Sklubot\nYou get this announcement because you have an account on this server. To stop getting announcements by e-mail: Settings → Notifications.`;
-  return { subject: `[Sklubot] ${KIND_WORD[loc][r.kind]} · ${r.title}`, text: `${r.title}\n\n${r.body}${link}\n\n${foot}\n` };
+  const link = r.link_url ? `\n\n${r.link_label || tr(loc, "Link")}${colon(loc)}${r.link_url}` : "";
+  const foot = tr(loc, "Open Sklubot: {open}\n\n— Sklubot\nYou get this announcement because you have an account on this server. To stop getting announcements by e-mail: Settings → Notifications.", { open });
+  return { subject: `[Sklubot] ${byLocale(loc, KIND_WORD)[r.kind]} · ${r.title}`, text: `${r.title}\n\n${r.body}${link}\n\n${foot}\n` };
 }
 
 /** One send per announcement, reader and channel: the row is written first, so a crash or a second pass never resends. */
@@ -420,7 +423,7 @@ export async function dispatchAnnouncements(t: number, send: AnnounceSender, bas
         const devices = q.get<{ n: number }>("SELECT COUNT(*) AS n FROM push_subscriptions WHERE user_id = ? AND enabled = 1", userId)?.n ?? 0;
         if (!ps.kinds.announce || !devices) { if (claim(r.id, userId, "push", "skipped", t)) out.push({ id: r.id, userId, channel: "push", status: "skipped" }); }
         else if (claim(r.id, userId, "push", "sending", t)) {
-          const n = await send.push(userId, `${KIND_WORD[loc][r.kind]} · ${r.title}`, r.body || r.title, r.id).catch(() => 0);
+          const n = await send.push(userId, `${byLocale(loc, KIND_WORD)[r.kind]} · ${r.title}`, r.body || r.title, r.id).catch(() => 0);
           settle(r.id, userId, "push", n > 0 ? "sent" : "failed");
           out.push({ id: r.id, userId, channel: "push", status: n > 0 ? "sent" : "failed" });
         }

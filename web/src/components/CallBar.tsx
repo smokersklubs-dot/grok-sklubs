@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { MicPicker } from "./MicPicker"; // L154
 import { useT } from "../i18n";
 import { IDLE_LIVE, useStore } from "../store";
 import { bargeIn, endCall, setMuted } from "../lib/call";
@@ -73,6 +74,7 @@ export function CallBar({ botId }: { botId: string }) {
               </button>
             )}
             <IconButton icon={call.muted ? "micOff" : "mic"} label={t(call.muted ? "call.unmute" : "call.mute")} active={call.muted} onClick={() => setMuted(!call.muted)} />
+            {call.pipeline === "server" && <MicPicker />}
             <IconButton icon="phoneOff" label={t("call.hangUp")} className="is-hangup" onClick={endCall} />
           </div>
         )}

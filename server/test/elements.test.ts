@@ -68,7 +68,9 @@ test("type, select and click by reference; a far element is scrolled into view",
   const text = String((await tool("element_snapshot").run({}, ctx())).content);
   const typed = await tool("element_type").run({ ref: refOf(text, "Name"), text: "Zoé €", clear: true }, ctx());
   assert.ok(!typed.isError, String(typed.content));
-  assert.ok(Array.isArray(typed.content) && typed.content.some((b) => b.type === "image"), "a screenshot follows the action");
+  // L65/L74: the action answers in words (no screenshot unless asked), with the field read back.
+  assert.equal(typeof typed.content, "string", "no screenshot by default");
+  assert.match(String(typed.content), /verified: the field now reads “Zoé €”/);
   const chose = await tool("element_select").run({ ref: refOf(text, "City"), option: "lyon" }, ctx());
   assert.ok(!chose.isError && /Chose “Lyon”/.test(JSON.stringify(chose.content)));
   const none = await tool("element_select").run({ ref: refOf(text, "City"), option: "Rome" }, ctx());
@@ -82,11 +84,12 @@ test("type, select and click by reference; a far element is scrolled into view",
   assert.ok(disabled.isError && /disabled/.test(String(disabled.content)));
 });
 
-test("stale references fail clearly and do nothing: older snapshot, unknown, new page", async () => {
+test("stale references fail clearly and do nothing: unknown, new page; on the same page they stay valid (L74)", async () => {
   const first = String((await tool("element_snapshot").run({}, ctx())).content);
   const second = String((await tool("element_snapshot").run({}, ctx())).content);
+  assert.equal(refOf(first, "Next"), refOf(second, "Next"), "the same element keeps its reference on the same page");
   const old = await tool("element_click").run({ ref: refOf(first, "Next") }, ctx());
-  assert.ok(old.isError && /older snapshot/.test(String(old.content)));
+  assert.ok(!old.isError, String(old.content));
   assert.ok((await tool("element_click").run({ ref: "zz" }, ctx())).isError);
   assert.ok("error" in resolveRef(B, `${refOf(second, "Next").split(".")[0]}.999`));
   // The page is loaded again: same address, new document. Nothing is clicked.

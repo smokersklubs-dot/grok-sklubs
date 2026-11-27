@@ -1,5 +1,9 @@
 # Protocole Sklubot Relais — version 1 (révision 1.2)
 
+> **Révision 1.9 (compatible, 25/11/2026)** : `android.*` — un **téléphone Android branché en USB** sur cet ordinateur, piloté avec `adb` (§20). Annoncé dans `capabilities` ; un serveur plus ancien ne l'envoie jamais, un Relais plus ancien répond `unknown_op`. `hello.protocol` vaut `"1.9"`.
+
+> **Révision 1.8 (compatible, 25/11/2026)** : `net.fetch` — une demande web d'un bot du propriétaire part de la connexion de cet ordinateur (« sortir par la maison », §19). Annoncée dans `capabilities` ; un serveur plus ancien ne l'envoie jamais, un Relais plus ancien répond `unknown_op` (Sklubot dit alors « mets Sklubot à jour »). `hello.v` reste `1`, `hello.protocol` vaut `"1.8"`.
+
 > **Révision 1.2 (compatible)** : un **téléphone** peut être un Relais (l'appli Sklubot pour Android, §13). Son `hello` porte `"device": { …, "kind": "phone", "platform": "android" }` et `"protocol": "1.2"`, et il annonce ses propres opérations. Un serveur 1.1 le voit comme un ordinateur sans souris ; un serveur 1.2 lui envoie les opérations du §13.
 
 > **Révision 1.1 (compatible)** : ajoute les opérations de fichiers `fs.*` (§12). `hello.v` reste `1` ; le Relais envoie en plus `"protocol": "1.1"` et liste les nouvelles opérations dans `capabilities`. Un serveur 1.0 les ignore ; un serveur 1.1 ne les utilise que si elles sont annoncées.
@@ -127,8 +131,8 @@ Coordonnées logiques de l'**écran principal** (points/DIP), origine en haut à
 
 | `op` | Session requise | `args` | `result` |
 |---|---|---|---|
-| `session.start` | non | `{ reason?: string ≤ 300 }` | `{ sessionId, grant: "once" \| "always" \| "test", already? }` |
-| `session.end` | non | `{}` | `{}` |
+| `session.start` | non | `{ reason?: string ≤ 300 }` | `{ sessionId, grant: "once" \| "always" \| "account" \| "test", already?, from? }` (`account`, `from` : révision 1.7, §18) |
+| `session.end` | non | `{ reason?: "handover" }` (1.7, ignoré avant) | `{}` |
 | `screen.info` | non | `{}` | `{ width, height, scaleFactor, displayId, displays, platform, session }` (`session` : `x11`/`wayland` sous Linux) |
 | `screen.capture` | oui | `{ format?: "jpeg"\|"png" (jpeg), maxWidth?: 64–2560 (1280), quality?: 10–95 (70) }` | `{ format, width, height, screenWidth, screenHeight, data: base64 }` |
 | `view.start` | oui | `{ maxFps?: 1–5 (3), maxWidth?: 64–1600 (1280), quality?: 10–90 (60) }` | `{ viewId, maxFps }` |
@@ -165,7 +169,7 @@ Seul `shell.run` est annulable ; le Relais répond alors normalement à `r57` av
 | `unsupported` | impossible sur cet ordinateur (ex. capture indisponible, `wmctrl` absent, application introuvable) |
 | `permission_missing` | autorisation système manquante (macOS : Enregistrement de l'écran / Accessibilité) |
 | `no_session` | pas de session de contrôle ouverte pour ce bot |
-| `busy` | un autre bot a la session |
+| `busy` | un autre bot a la session (1.7 : `holder: { id, name }` et `retryAfterMs` en plus) |
 | `locked` | l'utilisateur a appuyé sur Stop : tout est refusé jusqu'à ce qu'il réautorise sur l'ordinateur |
 | `consent_refused` | l'utilisateur a refusé la session |
 | `consent_expired` | personne n'a répondu dans les 60 s (compte comme un refus) |
@@ -205,8 +209,8 @@ Tous ont la forme `{ "type": "event", "name": "…", "ts": "ISO‑8601", … }`.
 | `relay.state` | `locked`, `session` | après `welcome` |
 | `consent.requested` | `bot`, `kind: "session"\|"command"` | une fenêtre vient de s'ouvrir sur l'ordinateur |
 | `consent.decided` | `bot`, `kind`, `decision: "once"\|"always"\|"refuse"\|"expired"\|"run"` | réponse (ou expiration) |
-| `session.started` | `bot`, `grant`, `sessionId` | session ouverte |
-| `session.ended` | `bot`, `reason`, `sessionId` | `reason` : `bot` (session.end), `user_stop`, `hotkey`, `idle`, `paused`, `disconnected`, `stopped` |
+| `session.started` | `bot`, `grant`, `sessionId`, `from?` | session ouverte (`from` : le bot qui a laissé la main, 1.7) |
+| `session.ended` | `bot`, `reason`, `sessionId`, `to?` | `reason` : `bot` (session.end), `user_stop`, `hotkey`, `idle`, `paused`, `disconnected`, `stopped`, `handover` (1.7, avec `to`) |
 | `relay.locked` | `source: "user"\|"hotkey"\|"tray"` | l'utilisateur a appuyé sur Stop |
 | `relay.unlocked` | — | l'utilisateur a réautorisé le contrôle |
 | `view.stopped` | `viewId`, `reason` | `requested`, `replaced`, `session_ended`, `no_ack`, `capture_error` |
@@ -349,3 +353,281 @@ Règles imposées par le téléphone (en plus de celles du §7, reprises à l'id
 - Stop : bandeau rouge en haut de l'écran (fenêtre d'accessibilité), bouton de la notification permanente, vignette des réglages rapides « Stop Sklubot ».
 
 Nouveaux codes d'erreur : `blocked_app`, `screen_locked`.
+
+
+## 14. Règles de sécurité (révision 1.3)
+
+Backlog L19 / L32. Le serveur refuse d'abord (`server/src/relayguard.ts`) ; le Relais vérifie encore les mêmes règles
+(`companion/src/main/guard.js`, `relay-core.js`). Les deux listes sont identiques (test `server/test/relay-guard.test.ts`).
+Un Relais 1.3 annonce `window.active`, `script.peek` et `guard.set` dans `capabilities`. Pour un ordinateur sans
+`window.active`, le serveur n'envoie plus aucun clic, défilement, saisie ni touche (« mets l'appli à jour »).
+
+| `op` | Session requise | `args` | `result` |
+|---|---|---|---|
+| `window.active` | oui | `{}` | `{ active: { app, bundle?, pid?, windowId?, title, passwordField: true \| false \| null } \| null }` |
+| `script.peek` | oui | `{ path ≤ 1024, cwd? }` — lit, n'exécute jamais | `{ sha256, size, lines: [≤ 40 lignes de ≤ 200 car.], more, binary }` |
+| `guard.set` | non | `{ keepApps: [≤ 50], keepFolders: [≤ 50], terminal: bool }` — envoyé par le serveur à chaque connexion et à chaque changement (bot `sklubot`) ; n'ajoute que des refus | `{ keepApps, keepFolders, terminal }` (nombres) |
+
+Nouveaux arguments : `expect: { app, pid?, windowId? }` sur `mouse.move/click/drag/scroll` et `keyboard.type/press`
+(la fenêtre vue par le serveur ; le Relais refuse si une autre est devant) ; `force: bool` sur `keyboard.press`
+(raccourci protégé accepté sur une carte ; le Relais redemande sur l'ordinateur) ; `scripts: [{ path, sha256 }]` (≤ 3)
+sur `shell.run` (les scripts montrés sur la carte du serveur).
+
+Le Relais, avant chaque `mouse.click/drag/scroll` et `keyboard.type/press`, relit la fenêtre au premier plan (macOS :
+System Events, sous-rôle `AXSecureTextField` ; Windows : `GetForegroundWindow` + UI Automation `IsPassword` ; Linux X11 :
+`xprop`, champ mot de passe inconnu) et refuse :
+
+| Code | Quand |
+|---|---|
+| `foreground_unknown` | la fenêtre au premier plan ne peut pas être lue (refus par défaut) |
+| `window_changed` | ce n'est pas la fenêtre `expect` |
+| `blocked_app` | appli toujours refusée (fenêtres de terminal, outils de scripts, réglages et outils du système, mots de passe et portefeuilles, Sklubot ; un titre contenant « Sklubot ») ; aussi pour `app.open` et `window.focus` par nom. Depuis 1.4, une fenêtre de terminal est toujours refusée : les commandes passent par `shell.run` |
+| `keep_out` | appli ou dossier de la liste « garder à l'écart » (nom de l'appli ou mot du titre ; dossier dans le titre) ; `script.peek` dans un tel dossier |
+| `password_field` | saisie ou touche (hors Tab, Échap, flèches, Origine, Fin, Page) alors qu'un champ mot de passe a le focus, ou focus inconnu dans une fenêtre dont le titre ressemble à une connexion |
+| `blocked_shortcut` | raccourci protégé (liste `DANGEROUS_SHORTCUTS`, par système) sans `force`, ou refusé sur l'ordinateur. Alt+F4 / Cmd+Q / Ctrl+Q (Linux) permis sur une appli ouverte par le bot dans la session |
+| `script_unreadable` | chemin de script que seul le shell résoudrait (`$VAR`, jokers…), plus de 3 scripts, script hors du dossier de la commande et du dossier personnel, fichier à secrets, plus de 1 Mio |
+| `script_changed` | le script n'a pas l'empreinte de `scripts`, ou a changé entre la question et le clic |
+
+Une commande qui lance un script est **toujours** demandée sur l'ordinateur, avec les 40 premières lignes et
+l'empreinte. Fin de session, Stop, déconnexion : toutes
+les touches de modification et tous les boutons de souris sont relâchés (`releaseAll`), et `keyboard.press` relâche ses
+touches de modification même en cas d'erreur.
+
+## 15. Terminal sous contrôle et coffre (révision 1.4)
+
+Décision du propriétaire : les commandes sont **activées par défaut** sur son ordinateur (interrupteur pour les couper).
+
+- `guard.set` ajoute `projectFolders: [≤ 50]` ; `terminal` vaut `true` sauf `false` explicite (un serveur ancien qui
+  n'envoie rien laisse les commandes actives).
+- `shell.run` : refus `terminal_off` si le propriétaire a coupé les commandes ; dossier par défaut = premier dossier de
+  projet ; dossier ou commande qui touche un dossier « garder à l'écart » → `keep_out`. Question sur l'ordinateur : la
+  première commande ordinaire d'une session (le oui vaut pour la session), puis **à chaque fois** pour une commande du
+  plancher (`commandFloor` : liste `DESTRUCTIVE_COMMAND` de `server/src/agent/irreversible.ts` reprise telle quelle +
+  `FLOOR_EXTRA` : git réécrit, administrateur, installations globales, disques, droits récursifs hors projet,
+  `curl | sh`, écoute réseau/tunnels, fichiers de démarrage, écriture hors du dossier ; dossier hors des dossiers de
+  projet) et pour une commande qui lance un script. La question indique `floor` (le motif).
+- `streamRef` (≤ 64) sur `shell.run` / `shell.start` : la sortie est envoyée au fil de l'eau en événements
+  `{ type: "event", name: "shell.output", ref, stream: "stdout" | "stderr", text }`, groupés toutes les 400 ms, 64 Kio par
+  commande au plus. Le serveur l'affiche dans la discussion (repliée, 8 Kio, secrets masqués).
+- `shell.start` (mêmes arguments que `shell.run`) → `{ jobId, cwd }` aussitôt ; `shell.read { jobId }` →
+  `{ running, exitCode, stdout, stderr, truncated, durationMs }` (256 Kio gardés par flux, la fin) ; `shell.stop
+  { jobId }`. 5 commandes de fond au plus ; toutes arrêtées à la fin de la session. Délai maximal : 60 min.
+- `vault.type { text ≤ 2000, field: "username" | "password" | "code", site, expect }` : le Relais relit la fenêtre au
+  premier plan (et, pour un navigateur, l'adresse de la page : `url` dans `window.active`), puis refuse si
+  `window_changed`, `keep_out`, `blocked_app`, `host_unknown` (adresse illisible), `host_mismatch` (pas le site ni un
+  sous-domaine), `app_mismatch` (appli hors navigateur différente de l'élément), `not_password_field` (mot de passe
+  ailleurs que dans un champ mot de passe), `password_field` (identifiant ou code dans un champ mot de passe). Le texte
+  n'est jamais écrit dans le journal local (seulement le champ, le site, la longueur) et la variable est vidée après la
+  frappe. Le serveur vérifie les mêmes règles avant d'envoyer (`vaultVerdict`, identique des deux côtés).
+
+## 16. Arbre d'accessibilité (révision 1.5, L164)
+
+Sur **macOS et Windows seulement** (le Relais ne liste pas ces opérations sous Linux), le bot lit les commandes d'une
+appli (boutons, champs, cases, listes…) et agit **par référence** au lieu de viser un pixel. Code :
+`companion/src/main/capabilities/accessibility.js` (tables de rôles reprises de vercel-labs/agent-desktop, Apache-2.0),
+règles dans `relay-core.js` ; côté serveur, outils `my_ui_tree` / `my_ui_act` (`server/src/agent/myui.ts`).
+
+- `ax.tree { app? }` (session de contrôle) : lit l'appli nommée, ou celle au premier plan. Réponse :
+  `{ snapshotId, app, complete, dialogs: [{ role, name }], elements: [{ ref, role, name, value?, secure?, enabled, depth, inDialog? }], text }`.
+  Une référence ressemble à `@s1a2b3:e8` ; elle n'est valable que pour cette lecture (les 3 dernières sont gardées, toutes
+  oubliées à la fin de la session). Les boîtes ouvertes (dialogue, feuille, alerte) sont listées en premier.
+- `ax.act { ref, action, text?, background?, expect? }` : `press`, `set_value`, `focus`, `toggle`, `select`, `expand`.
+  `background: true` : l'action passe par l'API d'accessibilité sans bouger le pointeur ni amener l'appli devant.
+- Refus décidés **sur l'ordinateur**, quoi que demande le serveur : appli toujours refusée ou « garder à l'écart » (même pas
+  lue) → `blocked_app` / `keep_out` ; champ mot de passe (AXSecureTextField, IsPassword) jamais rempli ni lu →
+  `password_field` (seul `focus` passe : l'utilisateur tape lui-même) ; sans `background`, l'appli doit encore être au
+  premier plan, relue juste avant → `window_changed` / `foreground_unknown` ; action qui ne va pas au rôle →
+  `invalid_args` ; référence nue, ancienne ou commande qui a changé (rôle et nom revérifiés par le script juste avant)
+  → `stale_ref`.
+- Côté serveur, en plus : la carte de prise de contrôle habituelle ; appuyer sur une commande dont les mots engagent
+  (envoyer, payer, supprimer, publier, confirmer… `committingKind`) demande une carte à usage unique, sans « Toujours ».
+- Lecture : macOS par `osascript -l JavaScript` (System Events, permission « Accessibilité » déjà demandée pour la
+  souris) ; Windows par PowerShell (System.Windows.Automation), le texte d'un `set_value` passe par l'entrée standard.
+
+**Non vérifié sur une vraie machine** : les deux scripts (JXA et PowerShell) n'ont pas pu tourner ici (pas de Mac ni de
+PC Windows) ; le découpage, les références et toutes les règles sont testés (`companion/test/unit/accessibility.test.js`,
+`server/test/relay-guard.test.ts`).
+
+## 17. Wan2GP sur la carte graphique du propriétaire (révision 1.6)
+
+Le Relais peut joindre **Wan2GP** (vidéos et images gratuites) que le propriétaire a installé et démarré sur **ce même
+ordinateur**, avec son serveur MCP (`python wgp.py --mcp --mcp-api-version 1 --mcp-transport streamable-http --mcp-host
+127.0.0.1 --mcp-port 7866`). Une seule opération :
+
+| `op` | Session requise | `args` | `result` |
+|---|---|---|---|
+| `gpu.http` | non | `{ port, method: "GET"\|"POST"\|"PUT", path, headers?, body? }` ou `{ port, read: { token, offset } }` | `{ status, headers, size, offset, data, token }` |
+
+Règles imposées par le Relais (`companion/src/main/capabilities/gpu.js`, `relay-core.js`) :
+
+- l'hôte est toujours `127.0.0.1` ; le serveur ne donne qu'un port (1024–65535) et un **chemin** (jamais une adresse
+  complète, jamais `//`) ; en-têtes gardés : `content-type`, `accept`, `mcp-protocol-version`, `mcp-session-id` (ni cookie
+  ni `Authorization`) ; réponse : `content-type` et `mcp-session-id` seulement ;
+- corps envoyé : 180 Kio au plus (le serveur réduit l'image de départ pour tenir) ; réponse en morceaux de 2 Mio (`data`
+  en base64 ; `token` tant qu'il en reste, relu avec `read`), gardée 5 minutes au plus, 300 Mio au plus ;
+- la **première** demande d'un bot pour un port ouvre une question sur l'ordinateur (« {bot} veut utiliser Wan2GP sur ta
+  carte graphique », Autoriser / Refuser) ; l'accord vaut jusqu'à Stop ou la fermeture du Relais ; Stop verrouille comme
+  le reste (`locked`) ;
+- pas de souris, pas de clavier : pas de session de contrôle.
+
+Côté serveur : `server/src/wan2gptarget.ts` (`relayFetch`), `server/src/mediajobs.ts` (un travail en cours est repris
+quand l'ordinateur se reconnecte). Tests : `companion/test/unit/gpu.test.js`, `server/test/media-open-gen.test.ts`.
+**Non vérifié** avec un vrai Wan2GP ni une vraie carte graphique (faux serveur MCP dans les tests).
+
+## `screen.capture` : autre écran (23/11/2026)
+
+Argument facultatif `display` (entier 0 à 15) : 0 = écran principal, puis les autres de gauche à droite. La réponse ajoute `displayIndex` et `displays` (nombre d'écrans). Un écran autre que le principal sert seulement à regarder : les clics et touches restent sur l'écran principal, et le serveur ne garde pas cette capture comme référence des clics. Un Relais plus ancien ignore `display` et renvoie l'écran principal (sans `displayIndex`).
+
+## 18. Un ordinateur pour tous les bots du compte (révision 1.7, 25/11/2026)
+
+Un ordinateur relié appartient au **compte** (tous ses bots), mais la session de contrôle reste à **un bot à la fois**.
+Ajouts compatibles (un serveur plus ancien ignore les champs nouveaux ; un Relais plus ancien continue de demander bot
+par bot) :
+
+- **Question de session** : un quatrième bouton « **Autoriser tous mes bots de ce compte** » (`decision: "all"`). Gardé
+  dans `relais.json` (`allBots`), retirable dans la liste « Bots » du Relais ; effacé si l'ordinateur change de
+  serveur, est appairé de nouveau ou si l'on « oublie ce serveur ». Tant qu'il tient, tout bot du compte obtient la
+  session sans question (`grant: "account"`). Les **commandes** gardent leurs propres règles (première commande de la
+  session, commandes sensibles et scripts demandés à chaque fois).
+- **Passage de main** : un bot B demande `session.start` pendant que A a la session.
+  - A a fait une requête il y a moins de **20 s** (`HANDOVER_IDLE_MS`), ou une commande de A tourne (au premier plan ou
+    en fond), ou une question est ouverte → `busy` avec `holder` (A) et `retryAfterMs` (le temps qui reste avant que A
+    compte comme inactif).
+  - A est inactif depuis 20 s : si B est couvert (« Toujours autoriser ce bot » ou « tous mes bots »), le Relais termine
+    la session de A (`session.ended`, `reason: "handover"`, `to: B`) puis ouvre celle de B sans question
+    (`session.started` avec `from: A`). Sinon la question s'ouvre pour B, en disant que A laissera la main ; un oui
+    fait le passage, un refus laisse A en place. Un bot qui a pris l'ordinateur pendant la question n'est jamais remplacé.
+  - Jamais deux sessions ; Stop termine tout et verrouille comme avant (`locked` l'emporte sur tout).
+- **Capacité** `session.handover` dans `hello.capabilities` : ce Relais fait le passage de main lui‑même.
+
+Côté serveur (`server/src/agent/computerqueue.ts`, `server/src/relay.ts`) : un bot qui a besoin d'un ordinateur occupé
+**attend son tour** (file par ordinateur, premier arrivé premier servi) et l'écrit dans son chat après 2 s
+(« En attente de l'ordinateur …, utilisé par A ») ; il continue tout seul quand c'est son tour, abandonne après 10 min
+en le disant. Avec un Relais **sans** `session.handover`, Sklubot envoie lui‑même `session.end` (comme A, avec
+`reason: "handover"`) quand A est inactif depuis 20 s, puis `session.start` pour B ; ce Relais pose alors sa question
+habituelle pour B. Stop dans Sklubot ou sur l'ordinateur arrête aussi l'attente des bots en file.
+
+Côté Sklubot, deux réglages vont avec (`server/src/computershare.ts`) : la carte « prendre le contrôle » offre
+« **Pour tous mes bots** » (règle du compte, retirable dans Réglages → Ordinateurs ; jamais après un contenu extérieur,
+jamais pour un bot bloqué), et « **Ordinateur de ce bot** » (réglages du bot, affiché à partir de 2 appareils reliés) :
+« Celui qui est connecté » (défaut) ou un appareil précis ; s'il n'est pas connecté, le bot le dit au lieu d'en prendre
+un autre.
+
+Tests : `companion/test/unit/handover.test.js`, `companion/test/unit/store.test.js`, `server/test/computer-share.test.ts`.
+**Non vérifié** sur un vrai Mac ou PC (fenêtre de question à quatre boutons, liste « Bots » du Relais) : la logique est
+testée en Node, l'interface du Relais n'a pas été ouverte ici.
+
+## 19. Sortir par la maison : `net.fetch` (révision 1.8, 25/11/2026, A-FAIRE L169)
+
+Le propriétaire peut faire sortir les lectures de pages d'un bot par **sa propre connexion** (les sites voient l'adresse
+de sa maison, pas celle du serveur) : Réglages du bot → Sécurité → « Sortie Internet » → « Maison · Relais ». Sklubot
+envoie alors chaque demande web du bot (lire une page, télécharger un fichier, « Tester ») au Relais de l'ordinateur
+choisi. Le serveur n'envoie `net.fetch` qu'à un appareil **du même compte que le bot** (`devices.owned`).
+
+| Opération | Session ? | Arguments | Résultat |
+|---|---|---|---|
+| `net.fetch` | non | `{ url, method?: "GET"\|"HEAD"\|"POST", headers?: {…}, body?: base64 ≤ 180 Kio }` | `{ status, headers, data: base64, truncated }` |
+
+- `url` : `http://` ou `https://`, 4 096 caractères au plus, sans nom ni mot de passe dedans.
+- `headers` : seuls `accept`, `accept-language`, `content-type`, `user-agent` et les trois en-têtes Web Bot Auth
+  (`signature`, `signature-input`, `signature-agent`) passent ; jamais de cookie ni d'`authorization`.
+- Réponse : 2,5 Mio au plus (le reste est coupé, `truncated: true`), 30 s au plus ; en-têtes rendus : `content-type`,
+  `content-length`, `content-language`, `location`, `last-modified`, `etag`, `retry-after`, `cache-control`.
+- **Redirections non suivies** par le Relais : il rend le 3xx et `location` ; Sklubot suit lui-même et vérifie la
+  politique réseau du bot à chaque étape.
+
+Règles imposées **par le Relais** (`companion/src/main/capabilities/netexit.js`, `relay-core.js`), quoi que demande le
+serveur :
+
+1. **Accord sur l'ordinateur** : la première demande de chaque bot ouvre une question (« {bot} veut sortir sur Internet
+   par ta connexion », `kind: "net"`) ; le oui vaut pour ce bot jusqu'à **Stop** ou la fermeture du Relais. Refus :
+   `consent_refused`. Stop verrouille tout (`locked`), comme pour le reste.
+2. **Jamais le réseau de la maison** : chaque adresse que le nom résout est vérifiée au moment de la connexion ; box,
+   imprimante, NAS, cet ordinateur lui-même et toutes les plages privées ou réservées (la même liste que le serveur,
+   `server/src/net.ts`) sont refusés → `blocked_address` (nouveau code d'erreur).
+3. **Visible** : chaque demande est écrite dans le journal du Relais (méthode, site, chemin — jamais la requête ni le corps).
+4. **Débit à part** : 20 demandes d'un coup, puis 2 par seconde (`rate_limited` au-delà), en plus de la limite générale (§2).
+5. L'ordinateur doit **rester allumé** avec Sklubot ouvert : sinon `offline`, et Sklubot dit au propriétaire de l'ouvrir.
+
+Pas couvert par ce chemin : le **navigateur** du bot (il ouvre des tunnels chiffrés que ce protocole ne transporte pas) ;
+il reste en direct, et l'écran le dit. Pour que le navigateur sorte aussi par la maison, utiliser Tailscale
+(docs/ORDINATEUR.md, « Sortir par la maison »).
+
+Signature Web Bot Auth : jamais ajoutée à une demande qui part de la maison, sauf si le propriétaire a coché « Signer
+aussi quand il sort par la maison » (sinon un site pourrait relier l'adresse de sa maison à ce serveur).
+
+Tests : `companion/test/unit/netexit.test.js` (accord, refus, Stop, débit, réseau de la maison, redirections, réponses
+coupées) ; `server/test/l169-egress.test.ts` (un faux Relais qui répond avec le code du Relais).
+**Non vérifié** sur un vrai Mac ou PC : la fenêtre de question « net » n'a pas été ouverte ici.
+
+
+
+## 20. Un téléphone Android branché en USB (révision 1.9, 25/11/2026, A-FAIRE L177)
+
+Le propriétaire branche son téléphone Android sur l'ordinateur où tourne le Relais ; ses bots l'utilisent à travers le
+Relais, avec **`adb`**, l'outil officiel de Google (« Android SDK Platform-Tools »), que **le propriétaire installe
+lui-même** : le Relais ne télécharge jamais rien. S'il ne trouve pas `adb` (dans le `PATH`, `ANDROID_HOME` /
+`ANDROID_SDK_ROOT`, ou les dossiers habituels `platform-tools`), `android.devices` répond `adb.found: false` et la
+fenêtre du Relais comme Réglages → Ordinateurs affichent le guide d'installation
+(https://developer.android.com/tools/releases/platform-tools, Options pour les développeurs, Débogage USB, « Autoriser »).
+
+Le téléphone lui-même doit d'abord avoir accepté l'ordinateur (sa fenêtre « Autoriser le débogage USB ? », clé RSA,
+https://developer.android.com/tools/adb) : avant, `adb devices -l` le montre `unauthorized`, sans modèle, et rien ne lui
+est envoyé (`phone_unauthorized`).
+
+Commandes `adb` utilisées (toutes documentées, aucune inventée ; liste des sources dans
+`companion/src/main/capabilities/adb.js`) : `adb version`, `adb devices -l`, `adb -s <série> shell getprop …`,
+`adb -s <série> exec-out screencap -p`, `input tap | swipe | text | keyevent`, `monkey -p <paquet> -c
+android.intent.category.LAUNCHER 1`, `uiautomator dump`, `dumpsys window`. Arguments passés en liste (jamais par un
+shell local) ; ce qui part dans le shell du téléphone est un nombre, un nom de paquet vérifié, ou un texte entre
+apostrophes.
+
+| `op` | Session de l'ordinateur ? | `args` | `result` |
+|---|---|---|---|
+| `android.devices` | non | `{}` | `{ adb: { found, version? }, devices: [{ serial, state: "device" \| "unauthorized" \| "offline"…, usb, model?, android?, sdk?, inUse }] }` — modèle et version **seulement** pour un téléphone qui a autorisé l'ordinateur |
+| `android.screenshot` | non | `{ serial, maxWidth?: 64–2560 (1080) }` | `{ format: "jpeg" \| "png", width, height, screenWidth, screenHeight, data: base64 }` |
+| `android.ui` | non | `{ serial, maxNodes?: 1–400 (200) }` | `{ app: { package }, nodes: [{ text?, desc?, id?, class?, bounds: [x, y, w, h], click?, edit?, password?, focused?, checked? }], truncated }` — texte d'un champ mot de passe remplacé par `••••` |
+| `android.tap` | non | `{ serial, x, y, long?: bool }` (pixels réels de l'écran) | `{}` |
+| `android.swipe` | non | `{ serial, fromX, fromY, toX, toY, durationMs?: 50–3000 (300) }` | `{}` |
+| `android.type` | non | `{ serial, text ≤ 500 (ASCII imprimable), force?: bool }` | `{ typed }` |
+| `android.key` | non | `{ serial, key: "back" \| "home" \| "recents" \| "enter" \| "delete" \| "tab" \| "escape" }` | `{}` |
+| `android.open` | non | `{ serial, package }` | `{ launched, package }` |
+| `android.release` | non | `{ serial? }` | `{ released }` — un bot rend le téléphone ; envoyé par Sklubot (bot `sklubot`), le Relais oublie aussi tous les accords pour ce téléphone |
+
+**Aucune opération d'installation** : rien n'est installé par ce chemin.
+
+Règles imposées **par le Relais** (`companion/src/main/phone-usb.js`), quoi que demande le serveur :
+
+1. **Accord sur l'ordinateur** : la première demande de chaque bot pour chaque téléphone ouvre une question (« {bot} veut
+   utiliser ton téléphone Android branché en USB », `kind: "phone"`, avec modèle, version et numéro de série) ; le oui
+   vaut pour ce bot et ce téléphone jusqu'à Stop ou la fermeture du Relais. Lister les téléphones ne demande rien.
+2. **Un bot à la fois par téléphone** : un autre bot reçoit `busy` (avec `holder`, `retryAfterMs`) tant que le premier a
+   agi il y a moins de 20 s. « {téléphone} utilisé par {bot} » est affiché sur l'ordinateur (bandeau rouge, fenêtre,
+   icône) et envoyé à Sklubot : événements `phone.started { bot, serial, model }` et `phone.ended { bot, serial, model,
+   reason }` (`reason` : `bot`, `stopped`, `idle` après 2 min, `unplugged`, `handover`, `user_stop`, `hotkey`,
+   `disconnected`, `paused`).
+3. **Stop gagne** : il termine toutes les utilisations, coupe les commandes `adb` en cours, oublie tous les accords et
+   verrouille le Relais (`locked`, comme pour l'ordinateur).
+4. **Jamais** dans Sklubot lui-même, l'installateur d'applis (`packageinstaller`, `permissioncontroller`) ni les
+   réglages (`com.android.settings`) → `blocked_app` ; ni dans une appli de la liste « garder à l'écart » (`guard.set
+   keepApps`, comparée au nom du paquet) → `keep_out`. L'appli au premier plan est relue juste avant chaque capture,
+   lecture, appui, glissement, saisie ou Entrée ; illisible → `foreground_unknown`.
+5. **Mot de passe** : avant `android.type`, le champ qui a le focus est relu ; un champ mot de passe est refusé
+   (`password_field`) sauf `force: true` (seulement depuis le coffre, `phone_vault_fill`, après une carte Sklubot) **et** un
+   nouveau oui sur l'ordinateur (`kind: "phone_password"`). Le journal local ne garde que la longueur du texte.
+
+Nouveaux codes d'erreur : `adb_missing`, `phone_unauthorized`, `phone_offline`.
+
+Côté serveur : outils `phone_devices`, `phone_screen`, `phone_ui_tree`, `phone_tap`, `phone_swipe`, `phone_type`,
+`phone_key`, `phone_open`, `phone_vault_fill` (`server/src/agent/phoneusb.ts`) ; carte « Utiliser le téléphone » la première fois (stricte
+après un contenu extérieur) ; carte à usage unique pour un appui sur une commande qui engage (envoyer, payer, supprimer,
+publier, confirmer, **installer / désinstaller / mettre à jour**), lue dans le dernier `android.ui` et relue avant l'appui ;
+jamais de mot de passe écrit par le bot : `phone_type` est refusé dans un champ mot de passe ; `phone_vault_fill`
+(identifiant, mot de passe ou code enregistré au coffre, règles du coffre) montre une carte à usage unique (élément,
+champ, appli, « •••• (N caractères) ») puis envoie `force` ; le secret n'est jamais dans les arguments d'un outil, donc
+jamais dans la carte, la discussion, les étapes ou le journal. Réglages → Ordinateurs : `GET /api/relay/devices/:id/android`, `POST /api/relay/devices/:id/android/stop`
+(`server/src/androidusbroutes.ts`, « Arrêter » tient le bot à l'écart 10 min, jusqu'à ce que le propriétaire lui
+écrive). Tests : `companion/test/unit/android-usb.test.js` (faux `adb`), `server/test/android-usb.test.ts` (faux Relais
+qui répond avec le code du Relais et le faux `adb`).
+**Non vérifié** avec un vrai téléphone ni un vrai `adb` : les formats de sortie (`adb devices -l`, `uiautomator dump`,
+`dumpsys window`) viennent de la documentation et sont joués par un faux programme.

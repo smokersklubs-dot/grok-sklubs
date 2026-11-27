@@ -1,4 +1,6 @@
-import { useEffect, useId, useMemo, useState, type FormEvent } from "react";
+import { Fragment, useEffect, useId, useMemo, useState, type FormEvent } from "react";
+import { OFFICE_FILE, OfficeView, SheetTable } from "./OfficeView";
+import { JournalWhy, WhyButton } from "./JournalWhy"; // L137
 import { create } from "zustand";
 import { api, enc, errText } from "../api";
 import { useT, type Key } from "../i18n";
@@ -7,6 +9,7 @@ import { relTime, shortDate } from "../lib/format";
 import { renderMarkdown } from "../lib/markdown";
 import type { Attachment, Bot, Card, JournalEntry, Payment, Routine, Rule, RulesState, SharedPage, TaskIdea, VaultItem } from "../types";
 import { Icon } from "./Icon";
+import { TextScan } from "./SkillScan";
 import { ErrorNote, IconButton, Loading, Toggle } from "./ui";
 
 /* Wave 5b: spend checkpoints, learned skills, API connectors, memory questions, the usage journal, first-task ideas,
@@ -81,8 +84,15 @@ export function SkillCardView({ card, botId, seq }: { card: Extract<Card, { type
           <label className="field-label" htmlFor={`sk-n-${seq}`}>{t("skillCard.name")}</label>
           <input id={`sk-n-${seq}`} className="input" value={name} onChange={(e) => setName(e.target.value)} maxLength={80} />
           {card.when && <p className="card-sub">{t("skillCard.when", { when: card.when })}</p>}
+          {card.evidence && card.evidence.length > 0 && (
+            <div className="card-sub skill-evidence">
+              <p className="note-line"><Icon name="history" size={13} /> <span>{t("skillCard.evidence", { n: card.evidence.length })}</span></p>
+              <ul>{card.evidence.map((e) => <li key={e.at}><span className="muted">{shortDate(e.at)} · {e.where}</span> — « {e.quote} »</li>)}</ul>
+            </div>
+          )}
           <label className="field-label" htmlFor={`sk-s-${seq}`}>{t("skillCard.steps")}</label>
           <textarea id={`sk-s-${seq}`} className="input skill-steps" rows={6} value={steps} onChange={(e) => setSteps(e.target.value)} />
+          <TextScan name={name} when={card.when} steps={steps} />
           <p className="card-sub note-line"><Icon name="shield" size={13} /> <span>{t("skillCard.anonymised")}</span></p>
           <div className="card-actions">
             <button type="button" className="btn btn-ghost" disabled={busy !== null} onClick={() => void run("no", () => api("POST", `/bots/${botId}/cards/${seq}/skill`, { action: "dismiss" }))}>{t("skillCard.dismiss")}</button>
@@ -120,6 +130,7 @@ export function ApiConnectorCardView({ card, botId, seq }: { card: Extract<Card,
         ))}
       </ul>
       <p className="card-sub note-line"><Icon name="key" size={13} /> <span>{t("apiCard.secret", { secret: card.secret, host: card.host })}</span></p>
+      {card.preset && ["x", "instagram", "trello"].includes(card.preset) ? <p className="card-sub note-line"><Icon name="info" size={13} /> <span>{t(`apiCard.preset.${card.preset as "x" | "instagram" | "trello"}`)}</span></p> : null}
       {card.status === "pending" ? (
         <form className="secret-form" autoComplete="off" onSubmit={(e) => { e.preventDefault(); void run("ok", () => api("POST", `/bots/${botId}/cards/${seq}/apiconnector`, { action: "approve", token: token || undefined })); }}>
           {!card.secretSaved && (
@@ -177,7 +188,7 @@ export function ConfidenceBadge({ confidence }: { confidence: "once" | "confirme
 
 /* ---------- Settings → Activity: the detailed usage journal ---------- */
 
-const DECISIONS: JournalEntry["decision"][] = ["words", "reviewer", "approval", "retry", "policy", "free", "denied"];
+const DECISIONS: JournalEntry["decision"][] = ["words", "reviewer", "approval", "retry", "conversation", "policy", "free", "denied"];
 
 export function JournalView() {
   const t = useT();
@@ -188,6 +199,7 @@ export function JournalView() {
   const [days, setDays] = useState("7");
   const [data, setData] = useState<{ entries: JournalEntry[]; totals: { lines: number; costUsd: number; byDecision: Record<string, number> } } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [why, setWhy] = useState<number | null>(null); // L137 « Pourquoi ? » (JournalWhy.tsx)
   const query = useMemo(() => new URLSearchParams({ ...(bot ? { bot } : {}), ...(decision ? { decision } : {}), ...(tool.trim() ? { tool: tool.trim() } : {}), ...(days ? { days } : {}) }).toString(), [bot, decision, tool, days]);
   useEffect(() => {
     let dead = false;
@@ -222,15 +234,16 @@ export function JournalView() {
               <div className="journal-row is-head" role="row">
                 <span role="columnheader">{t("journal.when")}</span><span role="columnheader">{t("journal.bot")}</span><span role="columnheader">{t("journal.action")}</span><span role="columnheader">{t("journal.decision")}</span><span role="columnheader">{t("journal.cost")}</span>
               </div>
-              {data.entries.map((e) => (
-                <div key={e.id} className={`journal-row is-${e.status}`} role="row">
+              {data.entries.map((e) => (<Fragment key={e.id}>
+                <div className={`journal-row is-${e.status}`} role="row">
                   <span role="cell" className="muted">{relTime(e.at)}</span>
                   <span role="cell">{e.botName}</span>
                   <span role="cell" className="journal-action"><code>{e.tool}</code> <span className="truncate">{e.label}</span>{e.origin && e.origin !== "user" ? <span className="chip chip-quiet">{t(`journal.o.${e.origin}` as Key) || e.origin}</span> : null}</span>
-                  <span role="cell"><span className={`chip journal-decision is-${e.decision}`}>{t(`journal.d.${e.decision}` as Key)}</span>{e.quote ? <span className="journal-quote"> « {e.quote} »</span> : e.reason ? <span className="journal-quote muted"> {e.reason}</span> : null}</span>
+                  <span role="cell"><span className={`chip journal-decision is-${e.decision}`}>{t(`journal.d.${e.decision}` as Key)}</span>{e.quote ? <span className="journal-quote"> « {e.quote} »</span> : e.reason ? <span className="journal-quote muted"> {e.reason}</span> : null} <WhyButton open={why === e.id} onToggle={() => setWhy(why === e.id ? null : e.id)} /></span>
                   <span role="cell" className="muted">{e.costUsd > 0 ? `${e.costUsd.toFixed(3)} $` : "—"}</span>
                 </div>
-              ))}
+                {why === e.id && <JournalWhy id={e.id} />}
+              </Fragment>))}
             </div>
           )}
         </>
@@ -335,8 +348,8 @@ export const usePreview = create<PreviewState>((set) => ({ file: null, open: (bo
 const viewUrl = (botId: string, path: string) => `/api/bots/${encodeURIComponent(botId)}/files/view?path=${encodeURIComponent(path)}`;
 const downloadUrl = (botId: string, path: string) => `/api/bots/${encodeURIComponent(botId)}/files/download?path=${encodeURIComponent(path)}`;
 
-const EXT_MIME: Record<string, string> = { pdf: "application/pdf", png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp", gif: "image/gif", csv: "text/csv", txt: "text/plain", md: "text/markdown", json: "application/json", html: "text/html", log: "text/plain" };
-export const previewable = (mime: string, name: string) => /^image\//.test(mime) || mime === "application/pdf" || /^text\//.test(mime) || mime === "application/json" || /\.(csv|txt|md|json|log|pdf)$/i.test(name);
+const EXT_MIME: Record<string, string> = { docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation", pdf: "application/pdf", png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp", gif: "image/gif", csv: "text/csv", txt: "text/plain", md: "text/markdown", json: "application/json", html: "text/html", log: "text/plain" };
+export const previewable = (mime: string, name: string) => /^image\//.test(mime) || mime === "application/pdf" || /^text\//.test(mime) || mime === "application/json" || /\.(csv|txt|md|json|log|pdf)$/i.test(name) || OFFICE_FILE.test(name); // L148: Word / Excel / PowerPoint (OfficeView.tsx)
 
 /** Library files a message mentions as ~/files/<path>, as attachments the panel can open. */
 export function mentionedFiles(text: string): Attachment[] {
@@ -350,11 +363,11 @@ export function mentionedFiles(text: string): Attachment[] {
   return out.slice(0, 6);
 }
 
-/** CSV → rows (RFC 4180 quoting), first 50 lines. */
-function parseCsv(text: string): string[][] {
+/** CSV → rows (RFC 4180 quoting), up to `max` lines (L148: the whole file, capped at 5000). */
+export function parseCsv(text: string, max = 5000): string[][] {
   const rows: string[][] = [];
   let row: string[] = [], cell = "", quoted = false;
-  for (let i = 0; i < text.length && rows.length < 50; i++) {
+  for (let i = 0; i < text.length && rows.length < max; i++) {
     const c = text[i];
     if (quoted) { if (c === '"' && text[i + 1] === '"') { cell += '"'; i++; } else if (c === '"') quoted = false; else cell += c; continue; }
     if (c === '"') quoted = true; else if (c === "," || c === ";") { row.push(cell); cell = ""; } else if (c === "\n") { row.push(cell.replace(/\r$/, "")); rows.push(row); row = []; cell = ""; } else cell += c;
@@ -372,17 +385,17 @@ export function FilePreviewPanel() {
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const f = preview?.file;
-  const kind = !f ? null : /^image\//.test(f.mime) ? "image" : f.mime === "application/pdf" || /\.pdf$/i.test(f.name) ? "pdf" : /\.csv$/i.test(f.name) || f.mime === "text/csv" ? "csv" : /\.md$/i.test(f.name) ? "md" : "text";
+  const kind = !f ? null : OFFICE_FILE.test(f.name) ? "office" : /^image\//.test(f.mime) ? "image" : f.mime === "application/pdf" || /\.pdf$/i.test(f.name) ? "pdf" : /\.csv$/i.test(f.name) || f.mime === "text/csv" ? "csv" : /\.md$/i.test(f.name) ? "md" : "text";
   useEffect(() => {
     setText(null); setError(null);
-    if (!preview || !f || kind === "image") return;
+    if (!preview || !f || kind === "image" || kind === "office") return;
     let dead = false;
     let url: string | null = null;
     // Downloaded with the user's session and shown here: a PDF as a blob forced to application/pdf (the browser's viewer), text as text (never as a page).
     fetch(downloadUrl(preview.botId, f.path), { credentials: "same-origin" }).then(async (r) => {
       if (!r.ok) throw new Error(`${r.status}`);
       if (kind === "pdf") { const b = await r.blob(); url = URL.createObjectURL(new Blob([b], { type: "application/pdf" })); if (!dead) setBlobUrl(url); }
-      else { const s = await r.text(); if (!dead) setText(s.slice(0, 200_000)); }
+      else { const s = await r.text(); if (!dead) setText(s.slice(0, kind === "csv" ? 5_000_000 : 200_000)); }
     }).catch((e) => !dead && setError(String(e?.message ?? e)));
     return () => { dead = true; if (url) URL.revokeObjectURL(url); setBlobUrl(null); };
   }, [preview, f, kind]);
@@ -400,12 +413,11 @@ export function FilePreviewPanel() {
         {kind === "image" && <img src={viewUrl(preview.botId, f.path)} alt={f.name} />}
         {/* An iframe rather than <object>: the app's Content-Security-Policy has object-src 'none'; frame-src allows blob: (our own PDF only). */}
         {kind === "pdf" && blobUrl && <iframe src={blobUrl} className="preview-pdf" title={f.name} />}
-        {kind === "csv" && text !== null && (() => { const rows = parseCsv(text); return (
-          <div className="md"><div className="md-table"><table><thead><tr>{(rows[0] ?? []).map((h, i) => <th key={i}>{h}</th>)}</tr></thead><tbody>{rows.slice(1).map((r, i) => <tr key={i}>{r.map((c, j) => <td key={j}>{c}</td>)}</tr>)}</tbody></table></div></div>
-        ); })()}
+        {kind === "csv" && text !== null && (() => { const rows = parseCsv(text); return <><SheetTable rows={rows} label={f.name} /><p className="muted small">{t(rows.length >= 5000 ? "c7.office.csvCap" : "c7.office.rows", { n: rows.length })}</p></>; })()}
+        {kind === "office" && <OfficeView botId={preview.botId} path={f.path} name={f.name} />}
         {kind === "md" && text !== null && <div className="md preview-md" dangerouslySetInnerHTML={{ __html: renderMarkdown(text) }} />}
         {kind === "text" && text !== null && <pre className="preview-text">{text}</pre>}
-        {!error && text === null && kind !== "image" && !blobUrl && <Loading />}
+        {!error && text === null && kind !== "image" && kind !== "office" && !blobUrl && <Loading />}
       </div>
     </aside>
   );

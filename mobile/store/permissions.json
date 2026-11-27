@@ -1,0 +1,22 @@
+{
+  "_comment": "L160 — pourquoi la variante store demande chaque permission, en mots simples, pour les relecteurs Google Play / Apple et la page « Sécurité des données ». npm run store:check vérifie que chaque permission déclarée par l'appli (manifestes du dépôt, ou la liste aapt2 passée avec --permissions) a sa ligne ici, et que chaque texte iOS est là.",
+  "android": [
+    { "permission": "android.permission.INTERNET", "why": "Parler au serveur Sklubot dont tu as tapé l'adresse (messages, fichiers, appels).", "when": "Toujours ; aucune autre adresse n'est contactée." },
+    { "permission": "android.permission.POST_NOTIFICATIONS", "why": "Te prévenir qu'un bot a répondu ou attend ton accord, et afficher la notification d'un appel en cours.", "when": "Demandée la première fois que l'appli veut te prévenir ; tu peux refuser." },
+    { "permission": "android.permission.VIBRATE", "why": "Faire vibrer le téléphone avec une notification.", "when": "Seulement avec une notification." },
+    { "permission": "android.permission.RECEIVE_BOOT_COMPLETED", "why": "Reprogrammer la vérification en arrière-plan (nouveaux messages) après un redémarrage du téléphone.", "when": "Au démarrage du téléphone, sans rien afficher ni envoyer d'autre." },
+    { "permission": "android.permission.ACCESS_NETWORK_STATE", "why": "Ne lancer la vérification en arrière-plan que quand le téléphone a du réseau.", "when": "Pendant la vérification en arrière-plan." },
+    { "permission": "android.permission.WAKE_LOCK", "why": "Laisser la vérification en arrière-plan finir quelques secondes (bibliothèque WorkManager d'Android).", "when": "Pendant la vérification en arrière-plan." },
+    { "permission": "android.permission.CAMERA", "why": "Prendre une photo à joindre à un message, ou à envoyer quand un bot te la demande.", "when": "Seulement quand tu touches « Prendre une photo » ; le système demande ton accord." },
+    { "permission": "android.permission.RECORD_AUDIO", "why": "Parler à un bot pendant un appel vocal.", "when": "Demandée au premier appel ; le micro ne sert que pendant l'appel." },
+    { "permission": "android.permission.MODIFY_AUDIO_SETTINGS", "why": "Passer le son d'un appel du haut-parleur à l'écouteur.", "when": "Pendant un appel." },
+    { "permission": "android.permission.FOREGROUND_SERVICE", "why": "Garder un appel vocal actif quand l'écran est verrouillé.", "when": "Seulement pendant un appel, avec une notification visible « Appel avec … »." },
+    { "permission": "android.permission.FOREGROUND_SERVICE_MICROPHONE", "why": "Type du service d'appel : le micro reste actif écran verrouillé pendant un appel que tu as lancé.", "when": "Seulement pendant un appel ; s'arrête quand tu raccroches." }
+  ],
+  "ios": [
+    { "key": "NSCameraUsageDescription", "why": "Prendre une photo à joindre à un message pour un bot." },
+    { "key": "NSPhotoLibraryUsageDescription", "why": "Choisir une photo à joindre à un message." },
+    { "key": "NSMicrophoneUsageDescription", "why": "Parler à un bot pendant un appel vocal." }
+  ],
+  "neverInStore": ["android.permission.BIND_ACCESSIBILITY_SERVICE", "android.permission.FOREGROUND_SERVICE_SPECIAL_USE", "android.permission.SYSTEM_ALERT_WINDOW", "android.permission.ACCESS_FINE_LOCATION", "android.permission.ACCESS_COARSE_LOCATION", "android.permission.READ_CONTACTS", "android.permission.READ_EXTERNAL_STORAGE", "android.permission.WRITE_EXTERNAL_STORAGE"]
+}

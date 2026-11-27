@@ -1,3 +1,4 @@
+import { TaskCostLine } from "./StepDetail";
 import { useEffect, useId, useMemo, useState } from "react";
 import { api, enc, errText } from "../api";
 import { useT, type Key } from "../i18n";
@@ -7,6 +8,7 @@ import type { Bot, Card, Grant, MemorySettings, ModelOption, NudgeSettings, Rule
 import { Icon } from "./Icon";
 import { ConfirmButton, ErrorNote, Loading, Toggle } from "./ui";
 import { RuleChanges, RuleScopeChip } from "./SpendSkillsFiles";
+import { SemanticRow } from "./MemoryInsight"; // L71 « Mémoire par le sens » (off by default)
 
 const RULE_TRIGGER_LIST = ["email", "slack", "calendar", "cron", "watch", "webhook", "once"] as const;
 
@@ -21,6 +23,7 @@ export function GrantLine({ grant }: { grant: Grant }) {
       {grant.by === "words" && grant.quote ? <span>{t("grant.words", { quote: grant.quote })}</span>
         : grant.by === "reviewer" ? <span>{t("grant.reviewer", { reason: grant.reason ?? "" })}{grant.quote ? ` · ${t("grant.words", { quote: grant.quote })}` : ""}</span>
         : grant.by === "approval" ? <span>{t("grant.approval")}</span>
+        : grant.by === "conversation" ? <span>{t("grant.conversation")}</span>
         : <span>{t("grant.retry")}</span>}
     </span>
   );
@@ -112,6 +115,7 @@ export function TaskCardView({ card, botId }: { card: TaskCard; botId: string })
           </button>
         )}
       </div>
+      <TaskCostLine botId={botId} taskId={card.taskId} state={card.state} />{/* L142 */}
       {running && now && <p className="task-now"><span className="dot-inline dot-step-running" /> {now}</p>}
       {card.approval && (
         <div className="task-approval">
@@ -405,7 +409,7 @@ function ImportExport() {
           {agents.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
         </select>
         <a className="btn btn-small" href={`/api/bots/${enc(botId)}/memories/export?format=md`} download><Icon name="download" size={14} /> Markdown</a>
-        <a className="btn btn-small" href={`/api/bots/${enc(botId)}/memories/export?format=json`} download><Icon name="download" size={14} /> JSON</a>
+        <a className="btn btn-small" href={`/api/bots/${enc(botId)}/memories/export?format=json`} download><Icon name="download" size={14} /> JSON</a><a className="btn btn-small" href={`/api/bots/${enc(botId)}/notes.zip`} download><Icon name="download" size={14} /> {t("memset.notesZip")}</a>
       </div>
       <textarea className="input" rows={4} value={text} onChange={(e) => setText(e.target.value)} placeholder={t("memset.importPlaceholder")} aria-label={t("memset.importLabel")} />
       <div className="row-end">
@@ -465,6 +469,14 @@ export function MemorySettingsSection() {
             </div>
             <Toggle checked={s.autoCapture} label={t("memset.auto")} onChange={(on) => void save({ autoCapture: on })} />
           </div>
+          <div className="action-row">
+            <div>
+              <p className="action-title">{t("memset.recall")}</p>
+              <p className="muted small">{t("memset.recallHint")}</p>
+            </div>
+            <Toggle checked={s.autoRecall} label={t("memset.recall")} onChange={(on) => void save({ autoRecall: on })} />
+          </div>
+          <SemanticRow />
 
           <h3 className="pane-heading">{t("memset.sensitive")}</h3>
           <p className="muted small">{t("memset.sensitiveHint")}</p>

@@ -267,6 +267,7 @@ a.btn { text-decoration: none; }
 .logo-tile.native-gdrive { background: color-mix(in srgb, #1f9d61 16%, var(--surface-3)); color: #1a7f4f; }
 .logo-tile.native-outlook { background: color-mix(in srgb, #1b6fc2 16%, var(--surface-3)); color: #1760a8; }
 .logo-tile.native-slack { background: color-mix(in srgb, #7a3f86 16%, var(--surface-3)); color: #6b3576; }
+.logo-tile.native-searchconsole { background: color-mix(in srgb, #c26a12 16%, var(--surface-3)); color: #9a520b; }
 @media (max-width: 640px) { .oauth-client .form-cols, .native-setup .form-cols, .native-trigger-form .form-cols { grid-template-columns: 1fr; } }
 
 /* ---------- Wave 3: organising bots ---------- */
@@ -526,6 +527,13 @@ a.btn { text-decoration: none; }
 .memory-text.is-contested { color: var(--warn); }
 .memory-status.is-contested { background: var(--warn-soft); color: var(--warn); }
 .memory-status-select { width: auto; align-self: center; }
+.memory-edit { display: flex; flex-direction: column; gap: 6px; width: 100%; }
+.memory-edit textarea { width: 100%; min-height: 64px; resize: vertical; font: inherit; }
+.memory-edit-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.memory-edit-marks { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.memory-edit-until { display: inline-flex; align-items: center; gap: 6px; }
+.room-notes .list { margin-top: 6px; }
+.memory-history { margin: 2px 0 0; padding-left: 18px; font-size: 12.5px; color: var(--text-2); display: flex; flex-direction: column; gap: 3px; overflow-wrap: anywhere; }
 .style-box { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
 .style-profile { padding: 10px 12px; border-radius: var(--r-md); background: var(--surface-2); font-family: var(--font); font-size: 13px; white-space: pre-wrap; }
 .import-export { display: flex; flex-direction: column; gap: 8px; }
@@ -552,6 +560,14 @@ a.btn { text-decoration: none; }
 .chip.journal-decision.is-reviewer { background: var(--info-soft); color: var(--info); }
 .chip.journal-decision.is-approval, .chip.journal-decision.is-retry { background: var(--warn-soft); color: var(--warn); }
 .chip.journal-decision.is-denied { background: var(--danger-soft); color: var(--danger); }
+.chip.journal-decision.is-conversation, .chip.state-conversation { background: var(--info-soft); color: var(--info); }
+/* Settings → Permissions: what was allowed "for this conversation" (ConversationGrants.tsx). */
+.conv-grants { margin-top: 26px; }
+.conv-grants h3 { margin: 0 0 4px; font-size: 15px; }
+.conv-grants > .list { margin-top: 10px; }
+.conv-grants-none { margin: 8px 0 0; font-size: 13px; color: var(--text-2); }
+.conv-grant-row { flex-wrap: wrap; }
+.conv-grant-row .list-row-text { flex-basis: 220px; }
 @media (max-width: 760px) { .journal-row { grid-template-columns: 1fr 1fr; } .journal-row.is-head { display: none; } }
 .routine-extras { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 2px 0 6px; }
 .routine-rules { width: 100%; }
@@ -750,6 +766,11 @@ a.btn { text-decoration: none; }
 .goal-line.is-waiting { color: var(--warn); }
 .goal-done { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border-radius: var(--r-md); background: var(--ok-soft); font-size: 13.5px; overflow-wrap: anywhere; white-space: pre-wrap; }
 .goal-evidence { font-size: 13px; }
+/* L89: success criteria of a goal, with their evidence */
+.goal-criteria { font-size: 13px; color: var(--text-2); overflow-wrap: anywhere; }
+.goal-criteria ol { margin: 4px 0 0; padding-left: 20px; display: flex; flex-direction: column; gap: 3px; }
+.goal-criteria li.is-met { color: var(--text); }
+.goal-criterion-evidence { color: var(--text-2); }
 .goal-card .card-actions .btn svg { margin-right: 2px; }
 .goal-chip { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: 10px; border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); background: color-mix(in srgb, var(--accent) 8%, var(--surface)); font-size: 13px; line-height: 1.35; }
 .goal-chip > span { flex: 1; min-width: 0; }
@@ -829,6 +850,9 @@ a.btn { text-decoration: none; }
 .caps-explain summary { cursor: pointer; font-weight: 600; color: var(--text); }
 .caps-explain ul { margin: 6px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
 .caps-admin { grid-column: 1 / -1; }
+/* L95 computer hours (ComputerHours.tsx) */
+.chours-line { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 10px; }
+.chours-line .caps-line-limit .input { width: 110px; }
 .cap-card .cap-raise { margin-top: 8px; }
 @media (max-width: 720px) {
   .caps-editor-head { display: none; }
@@ -838,3 +862,21 @@ a.btn { text-decoration: none; }
 
 .voice-disclosure > summary { cursor: pointer; font-weight: 650; color: var(--text-2); min-height: 44px; align-content: center; }
 .voice-disclosure[open] > summary { margin-bottom: 8px; }
+
+/* L149: where the bot just clicked on its screen (ClickTrail.tsx): a ring in the bot's colour that fades out. */
+.click-trail { position: absolute; inset: 0; z-index: 2; pointer-events: none; overflow: hidden; }
+.click-mark { position: absolute; width: 28px; height: 28px; margin: -14px 0 0 -14px; border-radius: 50%; border: 2.5px solid var(--accent); background: color-mix(in srgb, var(--accent) 22%, transparent); box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.85), 0 2px 10px rgba(0, 0, 0, 0.35); animation: click-mark 2.4s ease-out forwards; }
+@keyframes click-mark { 0% { transform: scale(0.4); opacity: 1; } 15% { transform: scale(1); opacity: 1; } 100% { transform: scale(1.5); opacity: 0; } }
+.click-mark.is-still { animation: none; }
+@media (prefers-reduced-motion: reduce) { .click-mark:not(.is-still) { animation: click-mark-still 2.4s step-end forwards; } @keyframes click-mark-still { to { opacity: 0; } } }
+
+/* L83 mail signature (MailSignature.tsx) */
+.mail-signature.connector-note { display: block; }
+.mail-signature summary { cursor: pointer; font-size: 13px; font-weight: 600; min-height: 32px; align-content: center; }
+.mail-signature textarea { width: 100%; min-width: 0; margin-top: 4px; resize: vertical; }
+.mail-signature-actions { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+
+/* L91 hidden code box (CodeBox.tsx) */
+.code-form { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+.code-row { display: flex; align-items: center; gap: 6px; }
+.code-input { width: 14ch; min-width: 0; font-size: 18px; letter-spacing: 0.2em; font-variant-numeric: tabular-nums; }

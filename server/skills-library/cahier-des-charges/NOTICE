@@ -1,0 +1,10 @@
+cahier-des-charges — adapted from Spec Kit (© GitHub, Inc., MIT)
+Sources (each pinned to one commit):
+- Spec Kit — © GitHub, Inc. — MIT — https://github.com/github/spec-kit/tree/a4d571229e164e440f8950cac034607bae7b7518/templates/commands/specify.md
+- Spec Kit — © GitHub, Inc. — MIT — https://github.com/github/spec-kit/tree/a4d571229e164e440f8950cac034607bae7b7518/templates/commands/analyze.md
+- Spec Kit — © GitHub, Inc. — MIT — https://github.com/github/spec-kit/tree/a4d571229e164e440f8950cac034607bae7b7518/templates/commands/converge.md
+- Spec Kit — © GitHub, Inc. — MIT — https://github.com/github/spec-kit/tree/a4d571229e164e440f8950cac034607bae7b7518/templates/spec-template.md
+Licence: MIT — the upstream licence texts are in LICENSE.txt, unchanged.
+
+Modified for Sklubot (2026-11-22): rewritten for non-technical projects: a one- or two-screen brief (scenarios by priority, measurable success criteria, out of scope, at most three open questions, choices made), approval through ask_user and goal mode, a read-only check of the plan against the brief, and a final tick of each criterion with its proof; scripts, branches, hooks and code analysis removed; translated into French.
+Only text is included; no script, picture or other file of the original folders is bundled. Names of other products are not used as titles.

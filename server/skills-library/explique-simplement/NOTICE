@@ -1,0 +1,7 @@
+explique-simplement — adapted from claude-mem (© 2026 Alex Newman, Apache-2.0)
+Sources (each pinned to one commit):
+- claude-mem — © 2026 Alex Newman — Apache-2.0 — https://github.com/thedotmack/claude-mem/tree/79d33254e5570b43175c639c2a2ce58bd1e221b9/plugin/skills/what-the
+Licence: Apache-2.0 — the upstream licence texts are in LICENSE.txt, unchanged. The claude-mem NOTICE file reads: "Claude-Mem / Copyright 2026 Alex Newman / This product includes software developed for the Claude-Mem project. / Licensed under the Apache License, Version 2.0."
+
+Modified for Sklubot (2026-11-22): the one-line prompt (who, what, where, why, when) expanded into a method for non-specialists: one-sentence opening, an everyday example, what it changes for the person, a 'simpler, please' step and a fact check for legal or money matters; translated into French.
+Only text is included; no script, picture or other file of the original folders is bundled. Names of other products are not used as titles.

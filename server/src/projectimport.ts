@@ -3,6 +3,7 @@ import { inflateRawSync } from "node:zlib";
 import { seal } from "./auth.js";
 import { emit } from "./bus.js";
 import { checkSecret, recordHealth } from "./health.js";
+import { scanSkill } from "./skillscan.js";
 import type { ImportPreview, ImportReport, ImportSkill, ImportVariable } from "./shared.js";
 import { audit, bots, clip, now, skills, vault } from "./store.js";
 import { q } from "./db.js";
@@ -154,7 +155,7 @@ export function previewImport(userId: string, envText: string, zip: Buffer | nul
   pending.set(previewId, { userId, vars, skills: found, until: now() + 15 * 60_000 });
   const existingSkills = new Set(q.all<{ name: string }>("SELECT s.name FROM skills s JOIN bots b ON b.id = s.bot_id WHERE b.user_id = ?", userId).map((r) => r.name.toLowerCase()));
   const variables: ImportVariable[] = vars.map((v) => ({ ...guessVariable(v.name), exists: !!vault.byName(userId, v.name) }));
-  const skillList: ImportSkill[] = found.map((s) => ({ name: s.name, description: s.description, path: s.path, mentionsKey: mentionsKey(s.body), exists: existingSkills.has(s.name.toLowerCase()) }));
+  const skillList: ImportSkill[] = found.map((s) => ({ name: s.name, description: s.description, path: s.path, mentionsKey: mentionsKey(s.body), exists: existingSkills.has(s.name.toLowerCase()), scan: scanSkill(s) }));
   return { previewId, variables, skills: skillList, ignored: variables.filter((v) => !v.isSecret).map((v) => v.name) };
 }
 

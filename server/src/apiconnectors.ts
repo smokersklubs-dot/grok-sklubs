@@ -1,11 +1,11 @@
-import { unseal } from "./auth.js";
+import { unseal } from "./auth.js"; import { noteHost } from "./netjournal.js"; import { netGate } from "./netpolicy.js";
 import { emit } from "./bus.js";
 import { q } from "./db.js";
 import type { ToolSpec } from "./llm/types.js";
 import { fetchProblem, guardedFetch } from "./net.js";
 import type { ApiConnector, ApiEndpoint } from "./shared.js";
 import { audit, bots, clip, newId, now, rows, vault, type VaultRecord } from "./store.js";
-import type { BuiltinTool, ToolContext } from "./agent/tools.js";
+import type { BuiltinTool, ToolContext } from "./agent/tools.js"; import { API_PRESETS, presetOf } from "./apipresets.js";
 
 /**
  * HTTP API connectors created on demand (spec 07 A16). For a service that is not in the catalogue, the bot describes
@@ -118,6 +118,8 @@ async function callApi(c: ToolContext, a: Record<string, any>, method: string): 
   if (body && body.length > 1_000_000) return { content: "That body is too large (1 MB at most).", isError: true };
   if (body) headers.set("content-type", /^\s*[[{]/.test(body) ? "application/json" : "text/plain");
   let res: Response;
+  const net = netGate(c.bot, conn.host, "api_connector"); if (net) return { content: net, isError: true, summary: "blocked" }; // L169 (netpolicy.ts)
+  noteHost(c.bot, conn.host, "api", { tainted: c.tainted }); // L39
   try { res = await guardedFetch(url.toString(), { method, headers, body, redirect: "manual", signal: AbortSignal.any([c.signal, AbortSignal.timeout(30_000)]) }); }
   catch (err) { const why = fetchProblem(err); if (why) return { content: `Could not reach ${conn.host}: ${why}`, isError: true, summary: "not reached" }; throw err; }
   const type = res.headers.get("content-type") ?? "";
@@ -137,11 +139,14 @@ export const apiTools: BuiltinTool[] = [
         header: str("The header the token goes in (default Authorization)"), prefix: str("Text before the token in that header (default \"Bearer \" for Authorization)"),
         endpoints: { type: "array", description: "The endpoints you need: [{\"method\": \"GET\", \"path\": \"/contacts/{id}\", \"description\": \"…\"}]", items: { type: "object", properties: { method: { type: "string" }, path: { type: "string" }, description: { type: "string" } } } },
         openapi: str("Optional: a small OpenAPI document (JSON) whose paths list the endpoints"),
+        preset: { type: "string", enum: API_PRESETS.map((p) => p.id), description: "Optional: a ready official API (x, instagram, trello): fills the address, header and endpoints from the vendor's documentation; the user types their own token on the card" },
         reason: str("Why, in one sentence"),
-      }, ["name", "base_url", "secret"]),
+      }, ["name"]),
     },
     activity: "waiting", label: "Proposing an API connector", group: "apps", audited: true, detail: (a) => clip(String(a.name ?? ""), 40),
-    run: async (a, c) => {
+    run: async (raw, c) => {
+      const pr = presetOf(raw.preset); // L175 (apipresets.ts): the vendor's documented address, header and endpoints
+      const a = pr ? { ...raw, name: String(raw.name ?? "").trim() || pr.name, base_url: pr.baseUrl, secret: pr.secret, header: pr.header, prefix: pr.prefix, endpoints: pr.endpoints, openapi: undefined } : raw;
       const name = clip(String(a.name ?? "").trim(), 60);
       const base = cleanBase(String(a.base_url ?? ""));
       const secret = clip(String(a.secret ?? "").trim(), 80);
@@ -154,7 +159,7 @@ export const apiTools: BuiltinTool[] = [
       const existing = vault.byName(c.user.id, secret);
       const header = String(a.header ?? "").trim() || existing?.header || "Authorization";
       const prefix = typeof a.prefix === "string" ? a.prefix.slice(0, 40) : existing?.prefix ?? (header.toLowerCase() === "authorization" ? "Bearer " : "");
-      rows.append(c.bot, { kind: "card", card: { type: "apiconnector", connectorId: conn.id, name, baseUrl: base.baseUrl, host: base.host, secret, secretSaved: !!(existing?.kind === "secret" && existing.hasPassword && coversHost(existing.hosts, base.host)), endpoints, status: "pending" } });
+      rows.append(c.bot, { kind: "card", card: { type: "apiconnector", connectorId: conn.id, name, baseUrl: base.baseUrl, host: base.host, secret, secretSaved: !!(existing?.kind === "secret" && existing.hasPassword && coversHost(existing.hosts, base.host)), endpoints, status: "pending", ...(pr ? { preset: pr.id } : {}) } });
       // The header and prefix to use if the user types a new token on the card.
       pendingHeaders.set(conn.id, { header, prefix });
       bots.bumpUnread(c.bot.id);

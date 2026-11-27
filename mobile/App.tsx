@@ -6,12 +6,14 @@ import * as Notifications from "expo-notifications";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useMemo } from "react";
-import { View } from "react-native";
+import { Alert, View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { Icon } from "./src/components/Icon";
-import { useT } from "./src/i18n";
+import { t, useT } from "./src/i18n";
 import { ensurePermission, setBackgroundCheck } from "./src/notify";
 import { useLive } from "./src/live";
+import { liveActivities } from "./src/liveActivity";
+import { parseStopUrl } from "../server/src/clientshared/taskactivity";
 import { openRelay } from "./src/relay";
 import { BotsScreen } from "./src/screens/Bots";
 import { ChatScreen } from "./src/screens/Chat";
@@ -19,6 +21,10 @@ import { ComputerScreen } from "./src/screens/Computer";
 import { DetailsScreen } from "./src/screens/Details";
 import { SettingsScreen } from "./src/screens/Settings";
 import { TasksScreen } from "./src/screens/Tasks";
+import { InboxScreen, useInbox } from "./src/screens/Inbox";
+import { ChantiersScreen } from "./src/screens/Chantiers";
+import { DashboardScreen } from "./src/screens/Dashboard";
+import { clearBotTheme, loadBotTheme } from "./src/theme/botTheme";
 import type { RootStack } from "./src/screens/types";
 import { ServerScreen, SignInScreen } from "./src/screens/Welcome";
 import { usePrefs } from "./src/state/prefs";
@@ -38,9 +44,11 @@ function MainTabs() {
   const t = useT();
   const waiting = useStore((s) => Object.values(s.bots).reduce((n, b) => n + (b.unread > 0 || s.live[b.id]?.awaiting ? 1 : 0), 0));
   const openTasks = useStore((s) => s.tasks?.filter((x) => x.state === "needs_input").length ?? 0);
+  const inbox = useInbox().items?.length ?? 0; // « À toi » (L139 on the phone)
   return (
     <Tabs.Navigator screenOptions={{ headerShown: false, tabBarActiveTintColor: c.text, tabBarInactiveTintColor: c.text3, tabBarStyle: { backgroundColor: c.surface, borderTopColor: c.border }, tabBarLabelStyle: { fontSize: 12, fontWeight: "600" } }}>
       <Tabs.Screen name="Bots" component={BotsScreen} options={{ title: t("tabs.bots"), tabBarIcon: ({ color }) => <Icon name="bots" color={color} />, tabBarBadge: waiting || undefined, tabBarBadgeStyle: { backgroundColor: c.brand } }} />
+      <Tabs.Screen name="Inbox" component={InboxScreen} options={{ title: t("tabs.inbox"), tabBarIcon: ({ color }) => <Icon name="hand" color={color} />, tabBarBadge: inbox || undefined, tabBarBadgeStyle: { backgroundColor: c.warn } }} />
       <Tabs.Screen name="Tasks" component={TasksScreen} options={{ title: t("tabs.tasks"), tabBarIcon: ({ color }) => <Icon name="tasks" color={color} />, tabBarBadge: openTasks || undefined, tabBarBadgeStyle: { backgroundColor: c.warn } }} />
       <Tabs.Screen name="Settings" component={SettingsScreen} options={{ title: t("tabs.settings"), tabBarIcon: ({ color }) => <Icon name="settings" color={color} /> }} />
     </Tabs.Navigator>
@@ -53,8 +61,36 @@ function handleUrl(url: string | null) {
   const parsed = Linking.parse(url);
   if (parsed.scheme !== "sklubot") return;
   if (parsed.hostname === "relay") { openRelay(); return; }
+  // L177: « Stop » on the iPhone Live Activity — opens the chat and asks before stopping (never stops on the tap alone).
+  const stop = parseStopUrl(url);
+  if (stop) { askStop(stop.botId, stop.thread); return; }
   const id = parsed.hostname === "bot" ? parsed.path?.split("/")[0] : null;
   if (id && navRef.isReady() && useStore.getState().bots[id]) navRef.navigate("Chat", { botId: id });
+}
+
+function askStop(botId: string, thread: number) {
+  const bot = useStore.getState().bots[botId];
+  if (!bot || !navRef.isReady()) return;
+  navRef.navigate("Chat", { botId });
+  Alert.alert(t("liveActivity.stopTitle", { name: bot.name }), t("liveActivity.stopBody"), [
+    { text: t("common.cancel"), style: "cancel" },
+    { text: t("liveActivity.stop"), style: "destructive", onPress: () => void useStore.getState().stop(botId, thread).catch(() => undefined) },
+  ]);
+}
+
+/** L177: the iPhone Live Activities follow the bots' live state (src/liveActivity.ts; off unless built and enabled). */
+function useLiveActivities(boot: string) {
+  useEffect(() => {
+    if (boot !== "ready") { void liveActivities.reset(); return; }
+    const texts = { stop: t("liveActivity.stop"), running: t("liveActivity.running"), waiting: t("activity.waiting"), label: (k: string) => t(`activity.${k}` as Parameters<typeof t>[0]) };
+    let alive = true;
+    void liveActivities.connect(useStore.getState().call).then((on) => {
+      if (!alive || !on) return;
+      void liveActivities.sync(useStore.getState().bots, useStore.getState().live, texts);
+    });
+    const unsub = useStore.subscribe((s, prev) => { if (s.live !== prev.live || s.bots !== prev.bots) void liveActivities.sync(s.bots, s.live, texts); });
+    return () => { alive = false; unsub(); };
+  }, [boot]);
 }
 
 export default function App() {
@@ -62,11 +98,14 @@ export default function App() {
   const boot = useStore((s) => s.boot);
   const notify = usePrefs((p) => p.notify);
   const liveOn = useLive((l) => l.enabled);
+  useLiveActivities(boot);
 
   useEffect(() => { void useStore.getState().init(); }, []);
   useEffect(() => { if (boot !== "loading") SplashScreen.hideAsync().catch(() => undefined); }, [boot]);
   // Signed out (or the session lost): a call in progress ends.
   useEffect(() => { if (boot !== "ready") endCall(); }, [boot]);
+  // L184: the owner's applied bot theme (a theme belongs to an account: cleared when signed out).
+  useEffect(() => { if (boot === "ready") void loadBotTheme(useStore.getState().call); else clearBotTheme(); }, [boot]);
   useEffect(() => {
     if (boot !== "ready") return;
     // With the background connection on (complet build), the service notifies at once: no periodic check on top.
@@ -113,6 +152,8 @@ export default function App() {
                 <Stack.Screen name="Chat" component={ChatScreen} />
                 <Stack.Screen name="Details" component={DetailsScreen} />
                 <Stack.Screen name="Computer" component={ComputerScreen} />
+                <Stack.Screen name="Chantiers" component={ChantiersScreen} />
+                <Stack.Screen name="Dashboard" component={DashboardScreen} />
               </>
             )}
         </Stack.Navigator>

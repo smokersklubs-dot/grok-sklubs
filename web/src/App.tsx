@@ -16,17 +16,19 @@ import { ConnectorsModal, CreateBotModal, CreateRoomModal } from "./components/M
 import { CommandPalette } from "./components/CommandPalette";
 import { DuplicateBotModal } from "./components/DuplicateBotModal";
 import { ExportTemplateModal, TemplatesModal } from "./components/TeamTemplates";
+import { TeamMdImportModal, TeamMdShareModal } from "./components/TeamMarkdown";
 import { Sidebar } from "./components/Sidebar";
 import { SignIn } from "./components/SignIn";
 import { EmailConfirmPage, ResetPasswordPage, takeLinkAction } from "./components/AccountRecovery";
-import { TasksView } from "./components/TasksView";
+import { TasksView } from "./components/TasksView"; import { InboxView } from "./components/InboxView"; import { LiveDocsView } from "./components/LiveDocs";
 import { TodayView } from "./components/TodayView";
 import { SurveillanceView } from "./components/SurveillanceView";
 import { CommandView } from "./components/CommandView";
 import { AnnouncementsView } from "./components/AnnouncementsView";
 import { SiteAnnouncementBanner } from "./components/AnnouncementCard";
 import { useAnnouncements } from "./lib/announcements";
-import { ThreadPanel } from "./components/ThreadPanel";
+import { ThreadPanel } from "./components/ThreadPanel"; import { SideChat, useSideBots } from "./components/SideChat"; import { ChatLayoutsHost } from "./components/ChatLayouts"; import { layoutClass } from "./lib/sidechat";
+import { ChantierOverlay } from "./components/Chantier"; import { WorkBoardOverlay } from "./components/WorkBoard";
 import { isDownloadPath } from "./lib/platform";
 import { useDesktopBadge } from "./lib/desktop";
 import { takeVerifyLink, VerifyEmailGate, VerifyEmailPage } from "./components/VerifyEmail";
@@ -140,16 +142,18 @@ function Shell() {
   const openThread = useStore((s) => (s.openThread && s.openThread.botId === s.selectedId ? s.openThread : null));
   const artifact = useStore(s=>s.artifact);
   const activeArtifact = view === "chat" && hasBot ? artifact : null;
-  const showThread = !activeArtifact && view === "chat" && hasBot && !!openThread;
-  const showDetails = !activeArtifact && view === "chat" && hasBot && detailsOpen && !showThread;
+  const sideBots = useSideBots(); const showSide = !activeArtifact && view === "chat" && hasBot && sideBots.length > 0; // L146 chats beside, a 2×2 grid from 1 400 px (SideChat.tsx)
+  const showThread = !activeArtifact && !showSide && view === "chat" && hasBot && !!openThread;
+  const showDetails = !activeArtifact && !showSide && view === "chat" && hasBot && detailsOpen && !showThread;
 
   return (
-    <div className={`shell ${activeArtifact ? "has-artifact" : ""} ${showDetails || showThread ? "has-details" : ""} ${siteBanner ? "has-site-banner" : ""}`}>
+    <div className={`shell ${activeArtifact ? "has-artifact" : ""} ${showDetails || showThread ? "has-details" : ""} ${showSide ? layoutClass(sideBots.length) : ""} ${siteBanner ? "has-site-banner" : ""}`}>
       <SiteAnnouncementBanner />
       <Sidebar />
-      {view === "tasks" ? <TasksView /> : view === "today" ? <TodayView /> : view === "command" ? <CommandView /> : view === "surveillance" && sentinel ? <SurveillanceView /> : view === "announcements" && author ? <AnnouncementsView /> : <ChatView />}
+      {view === "tasks" ? <TasksView /> : view === "inbox" ? <InboxView /> : view === "docs" ? <LiveDocsView /> : view === "today" ? <TodayView /> : view === "command" ? <CommandView /> : view === "surveillance" && sentinel ? <SurveillanceView /> : view === "announcements" && author ? <AnnouncementsView /> : <ChatView />}
       {activeArtifact && <WorkspaceDock active={activeArtifact}/>}
       {modal?.kind === "videoStudio" && <VideoStudio onClose={close}/>}
+      {showSide && sideBots.map((id) => <SideChat key={id} botId={id} />)}<ChatLayoutsHost />
       {showDetails && <DetailsPanel />}
       {showThread && openThread && <ThreadPanel key={`${openThread.botId}:${openThread.seq}`} botId={openThread.botId} seq={openThread.seq} />}
 
@@ -160,6 +164,8 @@ function Shell() {
       {modal?.kind === "search" && <CommandPalette onClose={close} />}
       {modal?.kind === "templates" && <TemplatesModal onClose={close} tab={modal.tab} />}
       {modal?.kind === "exportTemplate" && <ExportTemplateModal onClose={close} sectionId={modal.sectionId} botIds={modal.botIds} />}
+      {modal?.kind === "teamMdImport" && <TeamMdImportModal onClose={close} />}
+      {modal?.kind === "teamMdShare" && <TeamMdShareModal onClose={close} sectionId={modal.sectionId} botIds={modal.botIds} />}
       {modal?.kind === "duplicate" && <DuplicateBotModal key={modal.botId} botId={modal.botId} onClose={close} />}
       {modal?.kind === "connectors" && <ConnectorsModal key={modal.prefill ? `${modal.prefill.botId}:${modal.prefill.seq}` : "all"} onClose={close} prefill={modal.prefill} catalogId={modal.catalogId} />}
       {viewerBotId && <ComputerViewer key={viewerBotId} botId={viewerBotId} />}
@@ -167,6 +173,7 @@ function Shell() {
 
       {history && <HistoryViewer key={`${history.botId}:${history.generation}:${history.seq}`} target={history} />}
 
+      <ChantierOverlay /><WorkBoardOverlay />
       <Onboarding />
       <ToastView toast={toast} />
     </div>

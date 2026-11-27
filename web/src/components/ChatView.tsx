@@ -1,4 +1,6 @@
-import { useState } from "react";
+import { MuteMenuItems } from "./ChatMute";
+import { ConversationsModal } from "./Conversations"; import { PinnedStrip } from "./MessagePinDelete";
+import { useEffect, useState } from "react"; import { trackUnread } from "../lib/chatreading";
 import { useT } from "../i18n";
 import { IDLE_LIVE, useStore } from "../store";
 import { accentStyle } from "../lib/colors";
@@ -7,9 +9,11 @@ import { BotAvatar } from "./Avatar";
 import { CallBar } from "./CallBar";
 import { CallHeadButton } from "./CallHeadButton";
 import { Composer } from "./Composer";
+import { ModelHealthBanner } from "./ModelHealth";
 import { WorkContext } from "./WorkContext";
 import { Icon } from "./Icon";
-import { Transcript } from "./Transcript";
+import { Transcript } from "./Transcript"; import { SideChatMenuItem } from "./SideChat"; import { EngineWarmupLine } from "./EngineWarmup"; import { SelfCheckHost, SelfCheckMenuItem } from "./BotSelfCheck"; import { PassageBar } from "./PassageComment"; import { ExportMenuItems } from "./ChatExport";
+import { TaskLanes } from "./TaskLanes";
 import { FindBar } from "./FindBar";
 import { FilePreviewPanel } from "./SpendSkillsFiles";
 import { PausedBadge, resumeWidest, setPaused } from "./Pause";
@@ -27,8 +31,9 @@ export function ChatView() {
   const finding = useStore((s) => !!s.find && s.find.botId === s.selectedId);
   const [menu, setMenu] = useState(false);
   const [confirmNew, setConfirmNew] = useState(false);
+  const [convs, setConvs] = useState(false); // L146 « Conversations » (Conversations.tsx)
   const t = useT();
-  useReadAloud(bot, thread);
+  useReadAloud(bot, thread); useEffect(() => trackUnread(useStore.subscribe), []); // L147 « NOUVEAU »
 
   if (!bot) {
     return (
@@ -54,7 +59,7 @@ export function ChatView() {
   };
 
   return (
-    <section className="main chat" style={accentStyle(bot.color, bot.character?.customColor)} aria-label={t("chat.with", { name: bot.name })}>
+    <section className="main chat" data-chat-bot={bot.id} style={accentStyle(bot.color, bot.character?.customColor)} aria-label={t("chat.with", { name: bot.name })}>
       <header className="chat-head">
         <IconButton icon="menu" label={t("common.openMenu")} className="only-mobile" onClick={() => setMobileNav(true)} />
         <div className="menu-wrap chat-head-center">
@@ -103,7 +108,9 @@ export function ChatView() {
             >
               {t(confirmNew ? "chat.confirmNew" : "chat.newConversation")}
             </MenuItem>}
+            {!bot.access && <MenuItem icon="history" onClick={() => { close(); setConvs(true); }}>{t("c7.conv.menu")}</MenuItem>}<SideChatMenuItem onDone={close} />{/* L146 */}<SelfCheckMenuItem bot={bot} onDone={close} />{/* L153 */}
             <ReadAloudMenuItem bot={bot} onDone={close} />
+            <MuteMenuItems bot={bot} onDone={close} />
             <MenuItem
               icon="search"
               onClick={() => {
@@ -112,7 +119,7 @@ export function ChatView() {
               }}
             >
               {t("find.inChat")}
-            </MenuItem>
+            </MenuItem><ExportMenuItems bot={bot} onDone={close} />
             {!bot.access && bot.kind === "agent" && (
               bot.pause
                 ? <MenuItem icon="play" onClick={() => { close(); void resumeWidest(bot); }}>{t(bot.pause.by === "all" ? "pause.resumeAll" : bot.pause.by === "section" ? "pause.resumeSection" : "pause.resumeBot")}</MenuItem>
@@ -131,6 +138,7 @@ export function ChatView() {
         </div>
         <span className="chat-head-right">
           <SharedBadge bot={bot} />
+          {bot.kind === "agent" && !bot.access && <TaskLanes bot={bot} live={live} />}
           <ReadAloudChip bot={bot} />
           <CallHeadButton bot={bot} />
           {recording && recording.status !== "error" && (
@@ -145,14 +153,16 @@ export function ChatView() {
       </header>
       {bot.kind === "agent" && !bot.access && <WorkContext key={bot.id + ":" + bot.model} bot={bot} />}
       {finding && <FindBar key={bot.id} botId={bot.id} />}
+      <PinnedStrip rows={thread?.rows ?? []} />
+      {convs && <ConversationsModal bot={bot} onClose={() => setConvs(false)} />}<SelfCheckHost />
       <div className="chat-body-row">
-        <Transcript bot={bot} thread={thread} live={live} />
+        <Transcript bot={bot} thread={thread} live={live} /><PassageBar bot={bot} />
         <FilePreviewPanel />
       </div>
       <CallBar botId={bot.id} />
       {bot.access && !bot.access.canTalk ? (
         <div className="composer-readonly" role="note"><Icon name="eye" size={15} /> {t("ws.readOnly", { owner: bot.access.ownerName })}</div>
-      ) : <Composer bot={bot} live={live} />}
+      ) : <>{bot.kind === "agent" && !bot.access && <ModelHealthBanner key={bot.id + ":" + bot.model} bot={bot} />}{!bot.access && <EngineWarmupLine key={"w" + bot.id + ":" + bot.model} bot={bot} />/* L145 */}<Composer bot={bot} live={live} /></>}
     </section>
   );
 }

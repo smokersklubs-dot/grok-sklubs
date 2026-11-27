@@ -1,0 +1,39 @@
+/* Bot settings → "Canaux" (BotChannels.tsx, L162). */
+.bot-channels { gap: 18px; }
+.channels-section { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.channels-card { padding-top: 4px; }
+.channels-section .pane-heading { display: flex; align-items: center; gap: 7px; }
+.channels-section p { margin: 0; line-height: 1.5; }
+.channels-sub { margin: 4px 0 0; font-size: 13px; font-weight: 650; color: var(--text-2); }
+.channels-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.channels-item { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-top: 1px solid var(--border); min-width: 0; }
+.channels-item:first-child { border-top: 0; }
+.channels-item.is-muted { opacity: 0.7; }
+.channels-item-main { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; flex: 1; min-width: 0; }
+.channels-item-actions { display: flex; flex-wrap: wrap; gap: 6px; flex: none; }
+.channels-name { font-weight: 600; max-width: 100%; }
+.channels-code { font-family: var(--mono, ui-monospace, monospace); font-size: 13px; font-weight: 650; letter-spacing: 0.08em; padding: 2px 7px; border-radius: 6px; background: var(--surface-2); border: 1px solid var(--border); }
+.channels-inline { display: flex; flex-direction: column; gap: 5px; }
+.channels-inline-row { display: flex; gap: 8px; align-items: center; }
+.channels-code-input { max-width: 170px; font-family: var(--mono, ui-monospace, monospace); letter-spacing: 0.08em; text-transform: uppercase; }
+.channels-details summary { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--text-2); padding: 4px 0; }
+.channels-details[open] summary { margin-bottom: 8px; }
+.channels-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; }
+.channels-port { max-width: 220px; }
+.channels-toggle { display: flex; align-items: center; gap: 12px; padding: 8px 10px; border-radius: var(--r-md); background: var(--surface-2); }
+.channels-toggle .grow { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.channels-toggle-title { font-weight: 600; font-size: 13.5px; }
+.channels-error { color: var(--danger); overflow-wrap: anywhere; }
+.channels-actions { flex-wrap: wrap; }
+@media (max-width: 560px) {
+  .channels-item { flex-direction: column; align-items: stretch; }
+  .channels-item > .btn, .channels-item-actions { align-self: flex-start; }
+  .channels-port { max-width: none; }
+}
+
+/* Groups (ChannelGroups.tsx): the two settings of an active group wrap under its name on a phone. */
+.channels-group { flex-wrap: wrap; }
+.channels-group-settings { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 10px; align-items: center; flex: 1 1 auto; width: 100%; min-width: 0; }
+.channels-group-settings .field-hint { grid-column: 1 / -1; margin: 0; }
+.channels-group-settings select { min-width: 0; max-width: 100%; }
+@media (max-width: 480px) { .channels-group-settings { grid-template-columns: minmax(0, 1fr); gap: 4px; } .channels-group-settings select + .field-label { margin-top: 6px; } }

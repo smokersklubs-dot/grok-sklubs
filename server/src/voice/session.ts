@@ -3,14 +3,16 @@ import type { Duplex } from "node:stream";
 import { WebSocketServer, type WebSocket } from "ws";
 import { originAllowed, parseCookies, SESSION_COOKIE, userForToken } from "../auth.js";
 import { getLive, subscribe } from "../bus.js";
-import { callEnded, callStarted } from "../calls.js";
-import { interrupt, submitMemberMessage, submitUserMessage } from "../agent/loop.js";
+import { callEnded, callProgress, callStarted } from "../calls.js";
+import { decideApproval, interrupt, isPaused, runningThreads, submitMemberMessage, submitUserMessage } from "../agent/loop.js"; import { relayToHelpers } from "../agent/helperrelay.js";
 import { holdAndOffer, screen as screenSecrets } from "../pastedsecrets.js";
-import { bots, rows, type BotRecord, type UserRecord } from "../store.js";
+import { audit, bots, laneKey, rows, type BotRecord, type UserRecord } from "../store.js";
 import { botAccess } from "../workspaces.js";
 import { Vad, wavDurationMs, wavOf } from "./vad.js";
 import { sttFor, ttsFor, voiceSettings, voiceStatus, type Stt, type Tts } from "./providers.js";
 import { emailGateBlocks } from "../publicsignup.js";
+import { realtimeStatus } from "./realtime.js"; import { startRealtimeCall, type RealtimeCall } from "./realtimecall.js"; // L167
+import { ACK_AFTER_MS, callPhrases, clearYesNo, voiceApprovable, shortUtterance, SPOKEN_CHARS, SPOKEN_SENTENCES, STILL_WORKING_MS, type CallPhrases } from "./callflow.js";
 
 /**
  * Server-mediated voice calls (wave 6). The browser streams the microphone as 16 kHz 16-bit mono PCM (from an
@@ -89,7 +91,18 @@ export interface SessionDeps {
   botBusy(): boolean;
   partials: boolean;
   bargeIn: { enabled: boolean; minSpeechMs: number };
+  /**
+   * L154 (voice/callflow.ts): the call's own short sentences — an acknowledgement when the bot has not started answering
+   * after ACK_AFTER_MS, « je travaille encore » every STILL_WORKING_MS while it works, the rest of a long answer left in the
+   * chat. Absent: none of that (the bare protocol, as in the oldest tests).
+   */
+  phrases?: CallPhrases;
+  /** L154: answers an approval card from a clear spoken « oui » / « non » (only cards voiceApprovable allowed). */
+  decide?(approvalId: string, allow: boolean): void;
 }
+
+/** An approval card the call is waiting on: `voice`: it may be answered by voice; `tries`: unclear answers so far. */
+interface PendingApproval { id: string; voice: boolean; tries: number }
 
 export interface TranscriptLine { role: "user" | "assistant"; text: string }
 
@@ -115,6 +128,14 @@ export class VoiceSession {
   private partialBusy = false;
   closed = false;
   bargeIns = 0;
+  /** L154 timing: when the last request was posted, whether the bot's answer (or an acknowledgement) was heard since. */
+  private askedAt = 0;
+  private answered = true;
+  private lastSpokeAt = 0;
+  private said = 0;
+  /** Per assistant row: sentences and characters already read (a long answer stops after SPOKEN_SENTENCES). */
+  private spoken = new Map<number, { n: number; chars: number }>();
+  approval: PendingApproval | null = null;
 
   constructor(private d: SessionDeps) {}
 
@@ -180,9 +201,60 @@ export class VoiceSession {
     if (this.closed) return;
     this.transcript.push({ role: "user", text });
     this.json({ type: "final", text });
+    if (this.answerApproval(text)) return;
     this.awaitingReply = true;
+    this.askedAt = Date.now();
+    this.answered = false;
     this.d.submit(text);
   }
+
+  /**
+   * L154: an approval waits and may be answered by voice. A clear « oui » / « non » answers it (and is not sent to the
+   * bot); a few unclear words are asked again (twice at most, then the card is left to the screen); anything longer is a
+   * new request, sent to the bot as usual.
+   */
+  private answerApproval(text: string): boolean {
+    const a = this.approval;
+    if (!a || !a.voice || !this.d.decide || !this.d.phrases) return false;
+    const yn = clearYesNo(text);
+    if (yn) {
+      this.approval = null;
+      this.d.decide(a.id, yn === "yes");
+      this.say(this.d.phrases.say(yn));
+      return true;
+    }
+    if (!shortUtterance(text)) return false;
+    a.tries++;
+    if (a.tries >= 2) { a.voice = false; this.say(this.d.phrases.say("giveUp")); } else this.say(this.d.phrases.say("unclear"));
+    return true;
+  }
+
+  /** L154: an approval card of this conversation is waiting (or was answered: `gone`). The call says it once. */
+  approvalAsked(id: string, title: string, voice: boolean) {
+    if (this.closed || this.approval?.id === id || !this.d.phrases) return;
+    this.approval = { id, voice: voice && !!this.d.decide, tries: 0 };
+    this.answered = true; // the bot waits for the user: no « je travaille encore » meanwhile
+    const t = speakableText(title).slice(0, 160);
+    this.say(this.d.phrases.say(this.approval.voice ? "ask" : "onScreen", { title: t }));
+  }
+  approvalGone(id: string) {
+    if (this.approval?.id !== id) return;
+    this.approval = null;
+    if (this.awaitingReply) { this.answered = false; this.askedAt = Date.now(); }
+  }
+
+  /**
+   * L154, called about every 400 ms by the call (and directly by tests): the acknowledgement when the bot is slow to
+   * start answering, then « je travaille encore » every 30 s while it works and nothing was said.
+   */
+  tick(now = Date.now()) {
+    const p = this.d.phrases;
+    if (!p || this.closed || this.approval || !this.awaitingReply || this.speaking) return;
+    if (!this.answered && now - this.askedAt >= ACK_AFTER_MS) { this.answered = true; this.say(p.ack(this.said)); return; }
+    if (this.answered && this.d.botBusy() && now - Math.max(this.lastSpokeAt, this.askedAt) >= STILL_WORKING_MS) this.say(p.waiting(this.said));
+  }
+
+  private say(text: string) { this.said++; this.lastSpokeAt = Date.now(); this.speak(text); }
 
   /** A bot reply row was written or grew. Complete sentences go to speech as they appear. */
   botText(seq: number, text: string, streaming: boolean) {
@@ -195,9 +267,24 @@ export class VoiceSession {
     this.buffers.set(seq, rest);
     for (const s of sentences) {
       const say = speakableText(s);
-      if (say) this.speak(say);
+      if (!say) continue;
+      this.answered = true;
+      this.lastSpokeAt = Date.now();
+      // L154: a long answer is read in short; the whole of it is in the chat already.
+      const done = this.spoken.get(seq) ?? { n: 0, chars: 0 };
+      if (this.d.phrases && done.n > 0 && (done.n >= SPOKEN_SENTENCES || done.chars + say.length > SPOKEN_CHARS)) {
+        this.say(this.d.phrases.say("rest"));
+        this.silenced.add(seq);
+        this.buffers.delete(seq);
+        this.cursor.delete(seq);
+        this.spoken.delete(seq);
+        if (!streaming) this.awaitingReply = false;
+        return;
+      }
+      this.spoken.set(seq, { n: done.n + 1, chars: done.chars + say.length });
+      this.speak(say);
     }
-    if (!streaming) { this.buffers.delete(seq); this.silenced.add(seq); this.cursor.delete(seq); }
+    if (!streaming) { this.buffers.delete(seq); this.silenced.add(seq); this.cursor.delete(seq); this.spoken.delete(seq); }
   }
 
   /**
@@ -276,6 +363,8 @@ function runCall(ws: WebSocket, bot: BotRecord, user: UserRecord, member: { role
   let stt: Stt | null = null;
   let tts: Tts | null = null;
   let session: VoiceSession | null = null;
+  let rt: RealtimeCall | null = null;
+  let rtMuted = false;
   let callId = "";
   const startSeq = (bots.byId(bot.id)?.nextSeq ?? 1) - 1;
   let frames = 0;
@@ -284,17 +373,28 @@ function runCall(ws: WebSocket, bot: BotRecord, user: UserRecord, member: { role
   const off = subscribe(user.id, (e) => {
     if (!session || e.type !== "rows" || e.botId !== bot.id) return;
     for (const r of e.rows) {
-      if (r.seq <= startSeq || (r.thread ?? 0) !== 0 || r.body.kind !== "message" || r.body.role !== "assistant") continue;
+      if ((r.thread ?? 0) !== 0) continue;
+      // L154: an approval card of the main chat is said out loud (and answered by voice when voiceApprovable allows it).
+      if (r.body.kind === "card" && r.body.card.type === "approval") {
+        const c = r.body.card;
+        if (c.status === "pending") session.approvalAsked(c.approvalId, c.title, voiceApprovable(c, !member));
+        else session.approvalGone(c.approvalId);
+        continue;
+      }
+      if (r.seq <= startSeq || r.body.kind !== "message" || r.body.role !== "assistant") continue;
       session.botText(r.seq, r.body.text, !!r.body.streaming);
     }
   });
   const limit = setTimeout(() => ws.close(4000, "call too long"), MAX_CALL_MS);
+  const ticker = setInterval(() => { session?.tick(); if (callId) callProgress(callId, session?.transcript ?? rt?.bridge.transcript ?? []); }, 400); // L154: kept across a restart (calls.ts)
   const finish = () => {
     clearTimeout(limit);
+    clearInterval(ticker);
     off();
     session?.close();
+    rt?.close();
     const fresh = bots.byId(bot.id);
-    if (callId && fresh) callEnded(fresh, callId, session?.transcript ?? [], user.locale);
+    if (callId && fresh) callEnded(fresh, callId, session?.transcript ?? rt?.bridge.transcript ?? [], user.locale);
     callId = "";
   };
   ws.on("close", finish);
@@ -305,16 +405,45 @@ function runCall(ws: WebSocket, bot: BotRecord, user: UserRecord, member: { role
     if (Date.now() - windowAt > 1000) { windowAt = Date.now(); frames = 0; }
     if (frames > 400) { ws.close(4008, "too fast"); return; }
     if (isBinary) {
-      if (!session) return;
+      if (!session && !rt) return;
       const buf = data as Buffer;
       if (buf.length % 2 || buf.length > 32 * 1024) return;
-      session.onAudio(new Int16Array(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.length)));
+      const pcm = new Int16Array(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.length));
+      if (rt) { if (!rtMuted) rt.bridge.onAudio(pcm); } else session!.onAudio(pcm);
       return;
     }
     let msg: Record<string, unknown>;
     try { msg = JSON.parse(String(data)); } catch { ws.close(4400, "bad message"); return; }
-    if (msg.type === "hello" && !session) {
+    // The words the caller said, posted in the bot's chat as their voice message (classic call and real-time delegation).
+    const post = (said: string): number => {
+      const b = bots.byId(bot.id);
+      if (!b) return Number.MAX_SAFE_INTEGER;
+      // A secret spoken aloud (a password read out) is masked like a typed one; only the owner is offered the vault.
+      const screened = screenSecrets(said, user.locale);
+      const text = screened.text;
+      if (member) {
+        const row = rows.append(b, { kind: "message", role: "user", text, origin: { kind: "member", id: user.id, name: user.name } });
+        submitMemberMessage(b, text, { id: user.id, name: user.name, role: member.role, workspace: member.workspace }, true);
+        return row.seq;
+      }
+      const row = rows.append(b, { kind: "message", role: "user", text, origin: { kind: "voice", id: "", name: "Voice" } });
+      if (screened.secrets.length) holdAndOffer(b, user.id, screened.secrets);
+      relayToHelpers(b, text, runningThreads, isPaused); // L25: spoken words reach a helper at work too (helperrelay.ts)
+      submitUserMessage(b, text, true);
+      return row.seq;
+    };
+    if (msg.type === "hello" && !session && !rt) {
       if (Number(msg.sampleRate) !== SAMPLE_RATE) { ws.close(4400, "16 kHz PCM only"); return; }
+      // L167: the real-time voice model, when the owner turned it on and has a key for it (voice/realtime.ts).
+      const live = realtimeStatus(bot.userId);
+      if (live.available) {
+        rt = startRealtimeCall({ bot, user, send, post });
+        if (rt) {
+          callId = callStarted(bots.byId(bot.id)!, user.locale, "server");
+          send(JSON.stringify({ type: "ready", callId, stt: "realtime", tts: "realtime", realtime: live.model, voice: `${live.model} · ${live.voice}` }));
+          return;
+        }
+      }
       stt = sttFor(bot.userId, typeof msg.lang === "string" ? msg.lang : undefined);
       // The bot speaks with its own voice when it has one (voice/botvoice.ts), else the account's.
       tts = ttsFor(bot.userId, { botId: bot.id });
@@ -322,28 +451,26 @@ function runCall(ws: WebSocket, bot: BotRecord, user: UserRecord, member: { role
       const current = bots.byId(bot.id)!;
       session = new VoiceSession({
         send, stt, tts, partials: settings.stt.provider === "whisper-cpp", bargeIn: settings.bargeIn,
-        submit: (said) => {
-          const b = bots.byId(bot.id);
-          if (!b) return;
-          // A secret spoken aloud (a password read out) is masked like a typed one; only the owner is offered the vault.
-          const screened = screenSecrets(said, user.locale);
-          const text = screened.text;
-          if (member) {
-            rows.append(b, { kind: "message", role: "user", text, origin: { kind: "member", id: user.id, name: user.name } });
-            submitMemberMessage(b, text, { id: user.id, name: user.name, role: member.role, workspace: member.workspace }, true);
-          } else {
-            rows.append(b, { kind: "message", role: "user", text, origin: { kind: "voice", id: "", name: "Voice" } });
-            if (screened.secrets.length) holdAndOffer(b, user.id, screened.secrets);
-            submitUserMessage(b, text, true);
-          }
-        },
-        interrupt: () => interrupt(bot.id),
+        submit: (said) => { post(said); },
+        interrupt: () => interrupt(laneKey(bot.id, 0)), // a voice call is the main chat: only its turn stops (lanes.ts)
         botBusy: () => getLive(bot.id).running,
+        phrases: callPhrases(user.locale),
+        // Only the owner's own call answers by voice (voiceApprovable checks it again); the card is updated as from the app.
+        decide: member ? undefined : (approvalId, allow) => {
+          if (decideApproval(bot.userId, approvalId, allow ? "allow" : "deny")) audit(bot.userId, "channel", `${bot.name}: approval answered by voice during a call (${allow ? "yes" : "no"})`, bot.id);
+        },
       });
-      callId = callStarted(current, user.locale);
+      callId = callStarted(current, user.locale, "server");
       const st = voiceStatus(bot.userId, bot.id);
       // `voice`: the name of the voice the bot speaks with (its own, or the free one it was given), shown in the call bar.
       send(JSON.stringify({ type: "ready", callId, stt: settings.stt.provider, tts: st.tts ?? settings.tts.provider, ...(st.voice ? { voice: st.voice } : {}) }));
+      return;
+    }
+    if (rt) {
+      if (msg.type === "played") rt.bridge.played(Number(msg.id));
+      else if (msg.type === "interrupt") rt.bridge.bargeIn();
+      else if (msg.type === "mute") rtMuted = msg.on === true;
+      else if (msg.type === "bye") ws.close(1000, "bye");
       return;
     }
     if (!session) return;

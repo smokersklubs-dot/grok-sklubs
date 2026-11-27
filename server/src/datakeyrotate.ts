@@ -21,6 +21,7 @@ import type { UserRecord } from "./store.js";
 /** The sealed columns known when this was written (documentation and report; the scan below finds every *_enc). */
 export const KNOWN_SEALED: Record<string, string> = {
   "bots.telegram_token_enc": "Telegram bot token",
+  "bot_channels.secret_enc": "bot channel secrets: Slack bot and app tokens, Discord bot token, IMAP mailbox password (L162)",
   "connectors.token_enc": "connector (MCP) access token",
   "connectors.oauth_enc": "connector OAuth tokens and client",
   "oauth_pending.verifier_enc": "PKCE verifier of a connector sign-in in progress (10 min)",
@@ -40,6 +41,8 @@ export const KNOWN_SEALED: Record<string, string> = {
   "google_login.secret_enc": "\"Continuer avec Google\" client secret",
   "two_factor.secret_enc": "two-factor sign-in seed",
   "two_factor.pending_enc": "two-factor seed being set up (30 min)",
+  "routine_hooks.secret_enc": "webhook signing secret (L20)",
+  "routine_hooks.prev_secret_enc": "previous webhook signing secret, valid 24 h after a change",
 };
 /** Sealed values inside JSON columns: table, column, keys of the object that hold sealed strings. */
 export const JSON_FIELDS: { table: string; column: string; keys: string[]; label: string }[] = [

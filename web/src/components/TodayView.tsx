@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useId, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useMemo, useState, type ReactNode } from "react"; import { GlobalRecapBlock } from "./GlobalRecap";
+import { PinnedDashboard } from "./ChatPlus";
 import { FailureSummaryLine } from "./Incidents";
 import { PushPromptBanner } from "./PushPromptBanner";
 import { api, errText } from "../api";
@@ -132,6 +133,7 @@ export function TodayView() {
         <TodayAnnouncements />
         {/* "Active les notifications", skipped during the first run: asked once more, here (PushPromptBanner.tsx). */}
         <PushPromptBanner />
+        <PinnedDashboard />{/* L184 views pinned from the chat (ChatPlus.tsx) */}
         <ErrorNote onDismiss={() => setError(null)}>{error}</ErrorNote>
         {!report && !error && <Loading label={t("today.loading")} />}
         {report && (
@@ -172,6 +174,7 @@ export function TodayView() {
             <Block icon="chart" title={t("today.cost.title")}>
               <CostBlock report={report} onMore={() => openAppSettings("usage")} />
             </Block>
+            <GlobalRecapBlock />{/* L161 one recap of every bot (GlobalRecap.tsx) */}
           </div>
         )}
       </div>

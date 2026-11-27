@@ -207,6 +207,10 @@ export function botVoiceRow(userId: string, bot: { id: string; name: string }, a
 }
 
 /** What a call will use. With `botId`: that bot's own voice counts as its text-to-speech (it speaks with it). */
+/** L167: whether the real-time voice model is on and has a key (set by voice/realtime.ts, which imports this module). */
+let realtimeReady: (userId: string) => boolean = () => false;
+export const setRealtimeProbe = (fn: (userId: string) => boolean) => { realtimeReady = fn; };
+
 export function voiceStatus(userId: string, botId?: string | null): VoiceStatus {
   const s = voiceSettings(userId);
   // One-shot dictation (POST /voice/transcribe) only needs speech-to-text, whatever the call mode: the app uses it when
@@ -217,6 +221,8 @@ export function voiceStatus(userId: string, botId?: string | null): VoiceStatus 
   const own = botVoiceFor(userId, botId);
   const tts = own ? true : endpoint(userId, "tts");
   const ttsName = own ? own.provider : s.tts.provider;
+  // L167: the real-time voice model (voice/realtime.ts) carries a call on its own, without the two services.
+  if ((!stt || !tts) && realtimeReady(userId)) return { mode: "server", stt: stt ? s.stt.provider : null, tts: tts ? ttsName : null, reason: "", dictation };
   if (!stt || !tts) return { mode: "browser", stt: stt ? s.stt.provider : null, tts: tts ? ttsName : null, reason: !stt && !tts ? "no speech service configured" : !stt ? "no speech-to-text service" : "no text-to-speech service", dictation };
   const bot = botId ? bots.byId(botId) : null;
   const voice = bot ? botVoiceRow(userId, bot).voiceName : "";
@@ -325,4 +331,34 @@ export function ttsFor(userId: string, opts: TtsFor = {}): Tts | null {
     if (e.operatorKey) meterOperatorUse(userId, null, "voice:text-to-speech", (text.length / 1000) * unitEstimate("ttsUsdPer1kChars"));
     return Buffer.from(await res.arrayBuffer());
   };
+}
+
+/**
+ * Which speech-to-text runs for the account, and whether it costs anything (shown next to the Telegram voice-note
+ * transcription switch, telegramvoice.ts): "local" = the whisper.cpp bundled with this server (free); "own-server" = a
+ * free server whose address the account typed (whisper.cpp or an OpenAI-compatible one without a key); "paid" = OpenAI
+ * with a key, or Fish Audio (billed per minute by them); "none" = nothing set up.
+ */
+export function sttCost(userId: string): { provider: SttProvider | null; cost: "local" | "own-server" | "paid" | "none" } {
+  const s = voiceSettings(userId);
+  const e = endpoint(userId, "stt");
+  if (!e) return { provider: null, cost: "none" };
+  const p = s.stt.provider;
+  if (p === "fish") return { provider: p, cost: "paid" };
+  if (p === "openai") return { provider: p, cost: e.key ? "paid" : "own-server" };
+  return { provider: p, cost: e.trusted ? "local" : "own-server" };
+}
+
+/**
+ * L167: the account's OWN OpenAI key, as saved for its OpenAI speech services (never the server's OPENAI_API_KEY, never a
+ * key given for another address). null when it saved none.
+ */
+export function ownOpenAiKey(userId: string): string | null {
+  const s = voiceSettings(userId);
+  const stored = read(userId);
+  for (const which of ["stt", "tts"] as const) {
+    const enc = stored[which === "stt" ? "sttKeyEnc" : "ttsKeyEnc"];
+    if (enc && s[which].provider === "openai" && !s[which].url) { try { return unseal(enc); } catch { /* unreadable: skip */ } }
+  }
+  return null;
 }

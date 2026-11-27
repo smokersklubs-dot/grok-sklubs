@@ -1,0 +1,36 @@
+/* L177 « Envoyer le bot dans une réunion » (MeetingBotDialog.tsx). Colours from tokens.css (light and dark). */
+.mb-body { display: grid; gap: 14px; padding: 16px 20px 20px; min-width: 0; }
+.mb-body p, .mb-body h3 { margin: 0; }
+.mb-body h3 { font-size: 15px; }
+.mb-form, .mb-review, .mb-past { display: grid; gap: 12px; min-width: 0; }
+.mb-num { max-width: 9rem; }
+.mb-check { display: flex; gap: 8px; align-items: flex-start; line-height: 1.4; }
+.mb-check input { margin-top: 3px; flex: none; }
+.mb-warning { background: var(--warn-soft); color: var(--text); border-left: 3px solid var(--warn); border-radius: var(--r-sm); padding: 10px 12px; line-height: 1.45; }
+.mb-error { color: var(--danger); }
+.mb-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.mb-review { border: 1px solid var(--border-strong); border-radius: var(--r-md); padding: 14px; }
+.mb-facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 12px; margin: 0; }
+.mb-facts dt { color: var(--text-2); font-weight: 600; }
+.mb-facts dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.mb-url { font-family: var(--mono); font-size: 13px; }
+.mb-rules { margin: 0; padding-left: 20px; list-style: disc; display: grid; gap: 4px; line-height: 1.4; }
+.mb-session > .btn { justify-self: start; }
+.mb-session { display: grid; gap: 6px; border: 1px solid var(--border); border-radius: var(--r-md); padding: 10px 12px; min-width: 0; }
+.mb-session.is-active { border-color: var(--ok); background: var(--ok-soft); }
+.mb-session-head { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
+.mb-when { color: var(--text-2); font-size: 13px; margin-left: auto; }
+.mb-badge { font-size: 12px; font-weight: 600; border-radius: 999px; padding: 2px 8px; background: var(--hover); color: var(--text); }
+.mb-badge.mb-live { background: var(--surface); color: var(--ok); box-shadow: inset 0 0 0 1px currentColor; }
+.mb-badge.mb-lobby, .mb-badge.mb-joining, .mb-badge.mb-leaving { background: var(--info-soft); color: var(--text); }
+.mb-badge.mb-failed { background: var(--danger-soft); color: var(--text); }
+.mb-file { font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere; }
+.mb-settings { border-top: 1px solid var(--border); padding-top: 10px; display: grid; gap: 10px; }
+.mb-settings[open] { gap: 12px; }
+.mb-settings summary { cursor: pointer; font-weight: 600; min-height: 32px; display: flex; align-items: center; }
+@media (max-width: 480px) {
+  .mb-body { padding: 14px 16px 18px; }
+  .mb-facts { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+  .mb-facts dd { margin-bottom: 6px; }
+  .mb-when { margin-left: 0; flex-basis: 100%; }
+}

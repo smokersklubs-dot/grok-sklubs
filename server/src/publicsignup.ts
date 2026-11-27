@@ -34,7 +34,7 @@
  *  - First run: new public accounts get onboarding_pending; POST /onboarding/commit uses the team-file import
  *    (teamfile.ts: careful autonomy, draft skills, paused routines, the account's default model) within the plan's room.
  */
-import { randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto"; import { localize } from "./lang/index.js"; import { isLocale } from "./clientshared/locales.js"; import { byLocale } from "./lang/index.js";
 import type { Context, Hono } from "hono";
 import { mailConfigured, sendSystemMail } from "./accountmail.js";
 import { originAllowed } from "./auth.js";
@@ -89,7 +89,7 @@ const FR: Record<string, string> = {
     "Les inscriptions par e-mail sont fermées tant que les e-mails du serveur ne sont pas réglés — utilise « Continuer avec Google ».",
 };
 const m = (loc: Locale | undefined, english: string, vars: Record<string, string | number> = {}) =>
-  (loc === "fr" ? FR[english] ?? english : english).replace(/\{(\w+)\}/g, (_x, k) => String(vars[k] ?? ""));
+  localize(loc, english, FR).replace(/\{(\w+)\}/g, (_x, k) => String(vars[k] ?? ""));
 
 /** A refusal with its French text (routes.ts's onError treats it as a HostedError: status, text, code). */
 export class PublicSignupError extends HostedError {
@@ -219,6 +219,11 @@ const hoursLeft = (ms: number) => Math.max(1, Math.round(ms / 3_600_000));
 const MAIL = {
   fr: (link: string, h: number) => ({ subject: "Sklubot : confirme ton adresse e-mail", text: `Bonjour,\n\nBienvenue sur Sklubot ! Pour confirmer ton adresse et pouvoir utiliser Sklubot, ouvre ce lien (une seule fois) :\n${link}\n\nSans confirmation dans les ${h} heure(s), le compte et ses données sont supprimés automatiquement.\nSi tu n'as pas créé de compte, ignore cet e-mail.\n\n— Sklubot (${config.publicUrl})` }),
   en: (link: string, h: number) => ({ subject: "Sklubot: confirm your e-mail address", text: `Hello,\n\nWelcome to Sklubot! To confirm your address and start using Sklubot, open this link (once):\n${link}\n\nWithout confirmation within ${h} hour(s), the account and its data are deleted automatically.\nIf you did not create an account, ignore this e-mail.\n\n— Sklubot (${config.publicUrl})` }),
+  es: (link: string, h: number) => ({ subject: "Sklubot: confirma tu dirección de correo", text: `Hola:\n\n¡Te damos la bienvenida a Sklubot! Para confirmar tu dirección y empezar a usar Sklubot, abre este enlace (una sola vez):\n${link}\n\nSi no la confirmas en ${h} hora(s), la cuenta y sus datos se borrarán automáticamente.\nSi no has creado ninguna cuenta, ignora este correo.\n\n— Sklubot (${config.publicUrl})` }),
+  de: (link: string, h: number) => ({ subject: "Sklubot: Bestätige deine E-Mail-Adresse", text: `Hallo,\n\nwillkommen bei Sklubot! Um deine Adresse zu bestätigen und Sklubot zu nutzen, öffne diesen Link (nur einmal):\n${link}\n\nOhne Bestätigung innerhalb von ${h} Stunde(n) werden das Konto und seine Daten automatisch gelöscht.\nWenn du kein Konto erstellt hast, ignoriere diese E-Mail.\n\n— Sklubot (${config.publicUrl})` }),
+  it: (link: string, h: number) => ({ subject: "Sklubot: conferma il tuo indirizzo email", text: `Ciao,\n\nbenvenuto su Sklubot! Per confermare il tuo indirizzo e iniziare a usare Sklubot, apri questo link (una sola volta):\n${link}\n\nSenza conferma entro ${h} ora/e, l'account e i suoi dati vengono eliminati automaticamente.\nSe non hai creato un account, ignora questa email.\n\n— Sklubot (${config.publicUrl})` }),
+  pt: (link: string, h: number) => ({ subject: "Sklubot: confirme seu endereço de e-mail", text: `Olá,\n\nBoas-vindas ao Sklubot! Para confirmar seu endereço e começar a usar o Sklubot, abra este link (uma vez só):\n${link}\n\nSem confirmação em ${h} hora(s), a conta e os dados dela são excluídos automaticamente.\nSe você não criou nenhuma conta, ignore este e-mail.\n\n— Sklubot (${config.publicUrl})` }),
+  zh: (link: string, h: number) => ({ subject: "Sklubot：确认你的邮箱地址", text: `你好，\n\n欢迎使用 Sklubot！要确认你的地址并开始使用 Sklubot，请打开这个链接（只能用一次）：\n${link}\n\n如果 ${h} 小时内没有确认，账号及其数据会被自动删除。\n如果你没有创建账号，请忽略这封邮件。\n\n— Sklubot（${config.publicUrl}）` }),
 };
 function sendVerification(user: UserRecord) {
   const token = randomToken(32);
@@ -228,7 +233,7 @@ function sendVerification(user: UserRecord) {
     q.run("DELETE FROM email_verifications WHERE user_id = ? OR expires_at < ?", user.id, now());
     q.run("INSERT INTO email_verifications (token_hash, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)", sha256(token), user.id, now(), expires);
   });
-  const mail = MAIL[user.locale](`${config.publicUrl}/?verify_email=${encodeURIComponent(token)}`, hoursLeft(expires - now()));
+  const mail = byLocale(user.locale, MAIL)(`${config.publicUrl}/?verify_email=${encodeURIComponent(token)}`, hoursLeft(expires - now()));
   audit(user.id, "account", "E-mail verification link sent");
   // Sent after answering; the token is never logged.
   setImmediate(() => { void sendSystemMail(user.email, mail.subject, mail.text).catch((err) => console.error(`[account-mail] verification e-mail not sent: ${(err as Error).message}`)); });
@@ -295,7 +300,7 @@ export function ensureFirstBot(userId: string): BotRecord | null {
   if (!r || r.first_bot === null) return null;
   const existing = bots.primary(userId);
   if (existing) { q.run("UPDATE users SET first_bot = NULL WHERE id = ?", userId); return existing; }
-  const locale: Locale = r.locale === "fr" ? "fr" : "en";
+  const locale: Locale = isLocale(r.locale) ? r.locale : "en";
   let chosen: { name?: string; label?: string } | null = null;
   try { chosen = JSON.parse(r.first_bot); } catch { /* the defaults */ }
   const name = chosen?.name || config.firstBotName || "Juno";

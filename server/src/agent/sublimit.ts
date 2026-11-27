@@ -1,4 +1,4 @@
-import { q } from "../db.js";
+import { q } from "../db.js"; import { intlOf } from "../lang/index.js";
 import { tr } from "../i18n.js";
 import { modelLabel } from "../llm/index.js";
 import { pushLater } from "../push.js";
@@ -8,6 +8,7 @@ import { overBudget } from "../usage.js";
 import { userTimezone } from "../usagecaps.js";
 import { runAgain, type Trigger } from "./loop.js";
 import { modelChain } from "./reliability.js";
+import { probing, sweepProbes } from "./quotaprobe.js";
 
 /**
  * Back to the subscription after its limit resets.
@@ -139,9 +140,10 @@ export function activeLimit(userId: string, engine: Engine): LimitRow | null {
 }
 
 /** The bot runs on a subscription engine that is at its limit now: until when. */
-export function subLimitFor(bot: Pick<BotRecord, "userId" | "model">): { until: number; engine: Engine } | null {
+export function subLimitFor(bot: Pick<BotRecord, "userId" | "model"> & { id?: string }): { until: number; engine: Engine } | null {
   const engine = engineOfRef(bot.model);
   const lim = engine ? activeLimit(bot.userId, engine) : null;
+  if (lim && engine && "id" in bot && typeof bot.id === "string" && probing(bot.userId, engine, bot.id)) return null; // L60: the probe job runs on the subscription (quotaprobe.ts)
   return lim && engine ? { until: lim.until, engine } : null;
 }
 
@@ -154,7 +156,7 @@ export function limitBackup(bot: BotRecord): string | undefined {
 /** The time a notice shows: HH:MM in the user's time zone, with the day when it is not today. */
 export function untilText(userId: string, locale: Locale | undefined, until: number): string {
   const tz = userTimezone(userId);
-  const lang = locale === "fr" ? "fr-FR" : "en-GB";
+  const lang = intlOf(locale);
   const day = (t: number) => new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(t);
   const hm = new Intl.DateTimeFormat(lang, { timeZone: tz, hour: "2-digit", minute: "2-digit", hour12: false }).format(until);
   if (day(until) === day(nowMs())) return hm;
@@ -274,6 +276,12 @@ export function sweepLimits(): number {
   return due.length;
 }
 
+/** L60 (quotaprobe.ts): a probe went through, so the account's engine is back now: lifted with the usual notices, and what waited runs. */
+export function liftLimit(userId: string, engine: Engine): void {
+  q.run("UPDATE subscription_limits SET until = ? WHERE user_id = ? AND engine = ?", nowMs(), userId, engine);
+  sweepLimits();
+}
+
 /** Work waiting for a subscription runs again, for every bot whose engine is no longer limited (or that left it). */
 function releaseWaiting() {
   for (const { bot_id } of botQueue.limitedBots()) {
@@ -292,7 +300,7 @@ let next: NodeJS.Timeout | null = null;
 /** The sweep, every 30 s, plus one timer at the earliest T (started with the server). */
 export function startLimitWatch() {
   if (timer) return;
-  const run = () => { try { sweepLimits(); } catch (err) { console.error("[subscription limits]", err); } };
+  const run = () => { try { sweepLimits(); sweepProbes(nowMs(), runAgain, liftLimit); } catch (err) { console.error("[subscription limits]", err); } }; // L60 probes (quotaprobe.ts)
   run();
   timer = setInterval(run, SWEEP_MS);
   timer.unref?.();

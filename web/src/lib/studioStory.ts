@@ -20,6 +20,8 @@ export interface Story {
   audio: string;
   offset: number;
   muted: boolean;
+  /** L30: « Généré par IA » shown on every frame (preview and export), in this language. */
+  aiLabel?: "fr" | "en";
 }
 export type Visual = HTMLImageElement | HTMLVideoElement;
 export const shotDuration = (s: Story) => s.scenes.reduce((n, c) => n + c.seconds, 0);
@@ -67,7 +69,8 @@ export function validStory(s: Story): boolean {
     (s.audio === "" || validUpload(s.audio) || (typeof s.audio === "string" && /^audio\/[^/\\]{1,180}\.(wav|mp3|m4a|aac|ogg|flac|opus)$/i.test(s.audio))) &&
     Number.isFinite(s.offset) &&
     s.offset >= 0 &&
-    s.offset <= 300
+    s.offset <= 300 &&
+    (s.aiLabel === undefined || s.aiLabel === "fr" || s.aiLabel === "en")
   );
 }
 export const mediaUrl = (bot: string, file: string) =>
@@ -215,4 +218,26 @@ export function drawFrame(canvas: HTMLCanvasElement, story: Story, assets: Map<s
   ctx.globalAlpha = 1;
   ctx.fillStyle = accent;
   ctx.fillRect(pad, h * 0.95, ((w - 2 * pad) * (index + p)) / story.scenes.length, Math.max(2, h * 0.005));
+  if (story.aiLabel) drawAiLabel(ctx, story.aiLabel, w, h);
+}
+
+/** The visible « Généré par IA » mention: a small dark pill in the top-right corner, readable on any picture. */
+export const AI_LABEL_TEXT = { fr: "Généré par IA", en: "AI-generated" } as const;
+export function drawAiLabel(ctx: CanvasRenderingContext2D, lang: "fr" | "en", w: number, h: number) {
+  const text = AI_LABEL_TEXT[lang];
+  const size = Math.max(11, Math.round(Math.min(w, h) * 0.034));
+  ctx.save();
+  ctx.font = "600 " + size + "px system-ui, sans-serif";
+  ctx.textBaseline = "middle";
+  const tw = ctx.measureText(text).width, padX = size * 0.6, bh = size * 1.7, m = Math.round(Math.min(w, h) * 0.03);
+  const x = w - m - tw - padX * 2, y = m;
+  ctx.globalAlpha = 0.82;
+  ctx.fillStyle = "#000000";
+  ctx.beginPath();
+  if (typeof ctx.roundRect === "function") ctx.roundRect(x, y, tw + padX * 2, bh, bh / 2); else ctx.rect(x, y, tw + padX * 2, bh);
+  ctx.fill();
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = "#ffffff";
+  ctx.fillText(text, x + padX, y + bh / 2);
+  ctx.restore();
 }

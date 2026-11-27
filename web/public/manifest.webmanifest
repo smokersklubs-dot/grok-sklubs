@@ -7,6 +7,9 @@
   "scope": "/",
   "display": "standalone",
   "orientation": "any",
+  "categories": ["productivity", "business"],
+  "launch_handler": { "client_mode": "focus-existing" },
+  "prefer_related_applications": false,
   "background_color": "#f4f2ee",
   "theme_color": "#f4f2ee",
   "icons": [

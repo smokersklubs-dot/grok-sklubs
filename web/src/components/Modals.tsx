@@ -1,9 +1,10 @@
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from "react";
+import { ConnectedSites, ConnectorBots } from "./AccessPanels";
 import { api, enc, errText } from "../api";
 import { tn, useT } from "../i18n";
 import { sortedBots, useStore } from "../store";
 import { DEFAULT_CHARACTER } from "../types";
-import type { AvatarColor, AvatarShape, Bot, BotMode, ModelOption, CatalogApp, Character as CharacterLook, Connector, SearchHit } from "../types";
+import type { Autonomy, AvatarColor, AvatarShape, Bot, BotMode, ModelOption, CatalogApp, Character as CharacterLook, Connector, SearchHit } from "../types";
 import { botTitle, relTime } from "../lib/format";
 import { connectorError } from "../lib/connectorError";
 import { openSignInWindow, onSignInDone, startSignIn } from "../lib/oauth";
@@ -17,6 +18,8 @@ import { ConfirmButton, Empty, ErrorNote, IconButton, Loading, Modal, useTick } 
 
 /** Titles and descriptions are `mode.<id>.title` / `mode.<id>.text` in the dictionaries. */
 export const MODE_IDS: BotMode[] = ["personal", "teammate"];
+/** Owner decision (22/11/2026): a new bot is "balanced" unless its creator picks otherwise (server botdefaults.ts). */
+const NEW_AUTONOMY_IDS: Autonomy[] = ["careful", "balanced", "trusted"];
 
 /* ---------- Create bot ---------- */
 
@@ -28,6 +31,7 @@ export function CreateBotModal({ onClose }: { onClose: () => void }) {
   const [color, setColor] = useState<AvatarColor>("ember");
   const [character, setCharacter] = useState<CharacterLook>(DEFAULT_CHARACTER);
   const [mode, setMode] = useState<BotMode>("personal");
+  const [autonomy, setAutonomy] = useState<Autonomy>("balanced");
   const [model, setModel] = useState("");
   const [models, setModels] = useState<ModelOption[]>([]);
   const main = useStore((s) => Object.values(s.bots).find((b) => b.primary && !b.access));
@@ -47,7 +51,7 @@ export function CreateBotModal({ onClose }: { onClose: () => void }) {
     setBusy(true);
     setError(null);
     try {
-      const r = await api<{ bot: Bot }>("POST", "/bots", { name: n, shape, color, mode, character, model: model || undefined });
+      const r = await api<{ bot: Bot }>("POST", "/bots", { name: n, shape, color, mode, character, autonomy, model: model || undefined });
       upsertBot(r.bot);
       selectBot(r.bot.id);
       onClose();
@@ -105,6 +109,18 @@ export function CreateBotModal({ onClose }: { onClose: () => void }) {
               </button>
             ))}
           </div>
+        </div>
+        <div className="field">
+          <span className="field-label">{t("createBot.autonomy")}</span>
+          <div className="choice-list" role="radiogroup" aria-label={t("createBot.autonomy")}>
+            {NEW_AUTONOMY_IDS.map((a) => (
+              <button key={a} type="button" role="radio" aria-checked={autonomy === a} className={`choice ${autonomy === a ? "is-selected" : ""}`} onClick={() => setAutonomy(a)}>
+                <span className="choice-title">{t(`autonomy.${a}.title`)}{a === "balanced" ? ` · ${t("createBot.recommended")}` : ""}</span>
+                <span className="choice-text">{t(`autonomy.${a}.text`)}</span>
+              </button>
+            ))}
+          </div>
+          <p className="field-hint">{t("createBot.autonomyHint")}</p>
         </div>
         <ErrorNote>{error}</ErrorNote>
         <div className="modal-foot">
@@ -273,6 +289,12 @@ function ConnectorRow({ c }: { c: Connector }) {
   const [clientSecret, setClientSecret] = useState("");
   const oauth = c.auth === "oauth";
   const needsAuth = c.status === "needs_auth";
+  const [renaming, setRenaming] = useState<string | null>(null); // nod item 10: rename an app added by hand
+  const rename = async () => {
+    if (!renaming?.trim()) return;
+    setError(null);
+    try { await api("PATCH", `/connectors/${c.id}`, { name: renaming.trim() }); setRenaming(null); await loadConnectors(); } catch (e) { setError(errText(e)); }
+  };
 
   useEffect(() => {
     if (c.status === "ready") setWaiting(false);
@@ -349,11 +371,19 @@ function ConnectorRow({ c }: { c: Connector }) {
           <IconButton icon="refresh" size={16} label={t("connector.reconnect", { name: c.name })} className={busy ? "is-spinning" : ""} disabled={busy} onClick={() => void refresh()} />
         )}
         {oauth && c.oauth?.signedIn && <button type="button" className="btn btn-small btn-ghost" onClick={() => void signOut()}>{t("connector.signOut")}</button>}
+        <IconButton icon="edit" size={15} label={t("connector.rename", { name: c.name })} onClick={() => setRenaming(renaming === null ? c.name : null)} />
         <ConfirmButton className="btn btn-small btn-ghost-danger" label={t("connector.remove")} confirmLabel={t("connector.confirmRemove")} busyLabel={t("connector.removing")} onConfirm={remove} />
       </div>
+      {renaming !== null && (
+        <form className="field-inline connector-rename" onSubmit={(e) => { e.preventDefault(); void rename(); }}>
+          <input className="input input-small" value={renaming} maxLength={60} autoFocus aria-label={t("connector.rename", { name: c.name })} onChange={(e) => setRenaming(e.target.value)} onKeyDown={(e) => { if (e.key === "Escape") setRenaming(null); }} />
+          <button type="submit" className="btn btn-small" disabled={!renaming.trim()}>{t("connector.renameSave")}</button>
+        </form>
+      )}
       {needsAuth && !waiting && clientForm === null && <p className="field-hint connector-note">{t("connector.needsAuthHint")}</p>}
       {waiting && needsAuth && <p className="field-hint connector-note"><Spinner size={12} /> {t("connector.waitingSignIn")}</p>}
       {clientForm !== null && <OAuthClientFields redirectUri={clientForm} clientId={clientId} setClientId={setClientId} clientSecret={clientSecret} setClientSecret={setClientSecret} />}
+      {!needsAuth && <ConnectorBots connectorId={c.id} name={c.name} />}{/* L159 « pour tous mes bots » (AccessPanels.tsx) */}
       {!needsAuth && (
         <button type="button" className="connector-tools" onClick={() => setOpen((v) => !v)} aria-expanded={open} disabled={c.tools.length === 0}>
           <Icon name="chevronRight" size={13} className={open ? "is-rotated" : ""} />
@@ -578,6 +608,8 @@ export function ConnectorsModal({ onClose, prefill, catalogId }: { catalogId?: s
   const [name, setName] = useState(prefill?.name ?? "");
   const [url, setUrl] = useState("");
   const [token, setToken] = useState("");
+  const [privateNet, setPrivateNet] = useState(false); // nod item 17: typed by the user, self-hosted only
+  const selfHosted = useStore((s) => s.hosted === null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [formOpen, setFormOpen] = useState(!!prefill);
@@ -601,6 +633,7 @@ export function ConnectorsModal({ onClose, prefill, catalogId }: { catalogId?: s
         name: name.trim(),
         url: url.trim(),
         ...(token.trim() ? { token: token.trim() } : {}),
+        ...(privateNet && selfHosted ? { privateNetwork: true } : {}),
         ...(prefill ? { botId: prefill.botId, seq: prefill.seq } : {}),
       });
       await loadConnectors();
@@ -642,6 +675,7 @@ export function ConnectorsModal({ onClose, prefill, catalogId }: { catalogId?: s
             </ul>
           </section>
         )}
+        <ConnectedSites />{/* L159 verified sites (AccessPanels.tsx) */}
         {connectors && connectors.length + nativeAccounts.length === 0 && !prefill && <Empty icon="plug" title={t("connectors.emptyTitle")}>{t("connectors.emptyText")}</Empty>}
 
         <Catalog catalogId={catalogId} connectors={connectors} prefill={prefill} onClose={onClose} />
@@ -669,6 +703,12 @@ export function ConnectorsModal({ onClose, prefill, catalogId }: { catalogId?: s
                 <input id={ids.token} className="input" type="password" value={token} onChange={(e) => setToken(e.target.value)} autoComplete="off" placeholder={t("manual.tokenPlaceholder")} />
                 <p className="field-hint">{t("catalog.tokenStored")}</p>
               </div>
+              {selfHosted && (
+                <label className="check-row">
+                  <input type="checkbox" checked={privateNet} onChange={(e) => setPrivateNet(e.target.checked)} />
+                  <span>{t("manual.private")}<span className="field-hint" style={{ display: "block" }}>{t("manual.privateHint")}</span></span>
+                </label>
+              )}
               <ErrorNote>{error}</ErrorNote>
               <div className="modal-foot">
                 <span className="spacer" />

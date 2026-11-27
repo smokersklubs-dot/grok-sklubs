@@ -24,6 +24,7 @@ export const BODY_LIMITS: { test: RegExp; max: number }[] = [
   { test: /^\/egress\//, max: 21 * MB },
   { test: /^\/mcp\//, max: 21 * MB },
   { test: /^\/api\/hooks\//, max: 256 * 1024 },
+  { test: /^\/api\/board\/(tasks|ideas)\/[^/]+\/files$/, max: 16 * MB }, // L163 board attachments (15 MB each, checked again in workboard.ts)
   // The Bot API (botapi.ts): a message or an objective (20,000 characters), an MCP request.
   { test: /^\/api\/v1\//, max: 256 * 1024 },
 ];

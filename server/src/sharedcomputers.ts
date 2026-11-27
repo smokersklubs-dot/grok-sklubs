@@ -3,6 +3,7 @@ import { q } from "./db.js";
 import { machineInfo, setComputerAllocator, type ComputerAllocator } from "./linux.js";
 import type { SharedComputerView } from "./shared.js";
 import { bots, newId, now } from "./store.js";
+import { QueueNotice } from "./sharedqueue.js";
 
 /**
  * Part B: shared computers. Besides each bot's own Linux computer, an account has one or more shared computers (one to
@@ -70,6 +71,8 @@ const lastOf = new Map<string, string>();
 const recent = new Map<string, string[]>();
 /** Waiting callers are woken as soon as a computer comes free (checked again every `step` anyway). */
 const waiters = new Set<() => void>();
+/** L161: per account, the bots waiting for a shared computer, in the order they came. */
+const queues = new Map<string, string[]>();
 const wakeWaiters = () => { for (const w of [...waiters]) w(); };
 
 const sharedBot = (botId: string) => {
@@ -107,22 +110,37 @@ export async function acquireShared(botId: string, userId: string): Promise<{ ke
   const held = byBot.get(botId);
   if (held) { held.depth++; return { key: held.key, release: once(held) }; }
   const deadline = Date.now() + leaseTiming.waitMs;
-  for (;;) {
-    // Read each time: the owner may add a computer while bots wait.
-    const list = sharedComputers.ensure(userId).filter((c) => c.userId === userId);
-    const last = lastOf.get(botId);
-    const order = [...list.filter((c) => c.id === last), ...list.filter((c) => c.id !== last)];
-    const free = order.find((c) => !byKey.has(c.id));
-    if (free) { const lease = take(botId, userId, free.id); return { key: free.id, release: once(lease) }; }
-    const left = deadline - Date.now();
-    if (left <= 0) throw new SharedComputersBusyError(list.length);
-    await new Promise<void>((resolve) => {
-      const done = () => { waiters.delete(done); clearTimeout(timer); resolve(); };
-      const timer = setTimeout(done, Math.min(leaseTiming.stepMs, left));
-      waiters.add(done);
-    });
+  // L161: waiters of an account take the computers that come free in the order they arrived, and say so (sharedqueue.ts).
+  const line = queues.get(userId) ?? []; queues.set(userId, line);
+  let notice: QueueNotice | null = null;
+  try {
+    for (;;) {
+      // Read each time: the owner may add a computer while bots wait.
+      const list = sharedComputers.ensure(userId).filter((c) => c.userId === userId);
+      const last = lastOf.get(botId);
+      const order = [...list.filter((c) => c.id === last), ...list.filter((c) => c.id !== last)];
+      const free = order.filter((c) => !byKey.has(c.id));
+      const pos = line.indexOf(botId);
+      if (free.length > (pos === -1 ? line.length : pos)) { const lease = take(botId, userId, free[0].id); notice?.got(); return { key: free[0].id, release: once(lease) }; }
+      if (pos === -1) { line.push(botId); try { changed(userId); } catch { /* the app's view only */ } }
+      const left = deadline - Date.now();
+      if (left <= 0) { notice?.gaveUp(); throw new SharedComputersBusyError(list.length); }
+      notice ??= new QueueNotice(botId);
+      notice.waiting(list.map((c) => byKey.get(c.id)?.botId).filter((b): b is string => !!b), line.slice(0, line.indexOf(botId)));
+      await new Promise<void>((resolve) => {
+        const done = () => { waiters.delete(done); clearTimeout(timer); resolve(); };
+        const timer = setTimeout(done, Math.min(leaseTiming.stepMs, left));
+        waiters.add(done);
+      });
+    }
+  } finally {
+    const i = line.indexOf(botId);
+    if (i !== -1) { line.splice(i, 1); wakeWaiters(); try { changed(userId); } catch { /* the app's view only */ } }
   }
 }
+
+/** L161: the bots of an account waiting for a shared computer, first in line first. */
+export const sharedQueue = (userId: string): string[] => [...(queues.get(userId) ?? [])];
 
 /** The bots set to "shared" in the computer's account: the libraries it mounts and who may use its socket. */
 export function membersOf(key: string): string[] {
@@ -165,7 +183,7 @@ export const sharedHolder = (key: string) => byKey.get(key)?.botId ?? null;
 export function sharedView(userId: string): SharedComputerView[] {
   return sharedComputers.list(userId).map((c) => {
     const m = machineInfo(c.id);
-    return { id: c.id, name: c.name, power: m?.power ?? "absent", busyWith: sharedHolder(c.id), lastBots: recent.get(c.id) ?? [], lastUsedAt: m?.lastUsedAt ?? null };
+    return { id: c.id, name: c.name, power: m?.power ?? "absent", busyWith: sharedHolder(c.id), lastBots: recent.get(c.id) ?? [], waiting: sharedQueue(userId), lastUsedAt: m?.lastUsedAt ?? null };
   });
 }
 
@@ -173,6 +191,6 @@ export function sharedView(userId: string): SharedComputerView[] {
 export const sharedOwners = () => new Map(sharedComputers.all().map((c) => [c.id, c.userId] as [string, string]));
 
 /** For tests: forget who holds what. */
-export function resetLeases() { byKey.clear(); byBot.clear(); lastOf.clear(); recent.clear(); wakeWaiters(); }
+export function resetLeases() { byKey.clear(); byBot.clear(); lastOf.clear(); recent.clear(); queues.clear(); wakeWaiters(); }
 
 setComputerAllocator(sharedAllocator);

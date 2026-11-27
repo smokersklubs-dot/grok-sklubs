@@ -1,5 +1,7 @@
 import { marked } from "marked";
 import DOMPurify from "dompurify";
+import { extractMath, restoreMath } from "./mathtex";
+import { t as tr, type Key } from "../i18n";
 
 marked.setOptions({ gfm: true, breaks: true });
 
@@ -14,8 +16,9 @@ DOMPurify.addHook("afterSanitizeAttributes", (node) => {
 /** Markdown → sanitised HTML. Tables are wrapped so they can scroll sideways. */
 export function renderMarkdown(src: string): string {
   let html: string;
+  const math = extractMath(src); // L147: formulas set aside before Markdown, put back as spans after sanitising (mathtex.ts)
   try {
-    html = marked.parse(src, { async: false });
+    html = marked.parse(math.text, { async: false });
   } catch {
     html = "";
   }
@@ -24,7 +27,7 @@ export function renderMarkdown(src: string): string {
     FORBID_TAGS: ["style", "form", "button", "textarea", "select", "iframe", "object", "embed", "video", "audio"],
     FORBID_ATTR: ["style", "id", "class", "name"],
   });
-  return callouts(remoteImagesAsLinks(clean)).replace(/<table>/g, '<div class="md-table"><table>').replace(/<\/table>/g, "</table></div>");
+  return restoreMath(callouts(remoteImagesAsLinks(clean)).replace(/<table>/g, '<div class="md-table"><table>').replace(/<\/table>/g, "</table></div>"), math.items);
 }
 
 /**
@@ -47,9 +50,8 @@ export function remoteImagesAsLinks(html: string): string {
     const safe = /^https?:/i.test(src.trim()) || /^\/\//.test(src.trim());
     if (safe) { link.setAttribute("href", src); link.setAttribute("target", "_blank"); link.setAttribute("rel", "noopener noreferrer"); }
     link.className = "md-remote-img";
-    const fr = document.documentElement.lang === "fr";
     const alt = (img.getAttribute("alt") ?? "").trim();
-    link.textContent = `🖼 ${alt || (fr ? "Image d'un autre site" : "Image from another site")} — ${fr ? "cliquer pour l'ouvrir" : "click to open"}`;
+    link.textContent = tr("md.remoteImageLink", { alt: alt || tr("md.remoteImage") });
     img.replaceWith(link);
   }
   return box.innerHTML;
@@ -65,7 +67,5 @@ function callouts(html: string): string {
     `<blockquote class="md-callout is-${CALLOUTS[kind]}"><p><strong class="md-callout-title">${calloutLabel(kind)}</strong><br>`);
 }
 function calloutLabel(kind: string): string {
-  const fr = typeof document !== "undefined" && document.documentElement.lang === "fr";
-  const labels: Record<string, [string, string]> = { NOTE: ["Note", "Note"], TIP: ["Tip", "Astuce"], IMPORTANT: ["Important", "Important"], WARNING: ["Warning", "Attention"], CAUTION: ["Caution", "Prudence"] };
-  return labels[kind][fr ? 1 : 0];
+  return tr(`md.callout.${kind}` as Key);
 }

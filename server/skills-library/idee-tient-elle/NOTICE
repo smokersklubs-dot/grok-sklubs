@@ -1,0 +1,9 @@
+idee-tient-elle — adapted from agent-skills, ECC, Spec Kit (© 2025 Addy Osmani, MIT; © 2026 Affaan Mustafa and ECC contributors, MIT; © GitHub, Inc., MIT)
+Sources (each pinned to one commit):
+- agent-skills — © 2025 Addy Osmani — MIT — https://github.com/addyosmani/agent-skills/tree/8c99fa36d90068c82d547f7c12a9d67a3e95f4ee/skills/idea-refine
+- ECC — © 2026 Affaan Mustafa and ECC contributors — MIT — https://github.com/affaan-m/ECC/tree/4adeee6732a12d1540f49a4d50a38ce8c97f9a53/skills/product-lens
+- Spec Kit — © GitHub, Inc. — MIT — https://github.com/github/spec-kit/tree/a4d571229e164e440f8950cac034607bae7b7518/extensions/assess
+Licence: MIT — the upstream licence texts are in LICENSE.txt, unchanged.
+
+Modified for Sklubot (2026-11-22): merged into one method for small-business owners (restate, 5-8 variations, 2-3 directions stress-tested, a five-line scorecard and a go / needs work / stop verdict, a one-page summary); code, repository, script and founder-review steps removed; output as a Sklubot page or file; translated into French.
+Only text is included; no script, picture or other file of the original folders is bundled. Names of other products are not used as titles.

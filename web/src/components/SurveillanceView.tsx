@@ -7,6 +7,7 @@ import type { SentinelHealth, SentinelIncidentView, SentinelLink, SentinelOvervi
 import { Icon, type IconName } from "./Icon";
 import { ErrorNote, IconButton, Loading, Toggle, useTick } from "./ui";
 import { SubLimitList } from "./SubLimit";
+import { ReportsSection } from "./ReportsSection";
 import "../styles/surveillance.css";
 
 /**
@@ -71,7 +72,7 @@ export function SurveillanceView() {
           <h1>{t("surv.title")}</h1>
           <p className="today-date">{data?.lastScan ? t("surv.lastScan", { when: relTime(data.lastScan.at, now) }) : t("surv.noScanYet")}</p>
         </div>
-        <button type="button" className={`btn btn-small surv-scan ${busy ? "is-spinning" : ""}`} onClick={() => void scanNow()} disabled={busy}>
+        <button type="button" className={`btn btn-small surv-scan ${busy ? "is-spinning" : ""}`} onClick={() => void scanNow()} disabled={busy} aria-label={t("surv.scanNow")}>
           <Icon name="refresh" size={14} /> <span className="surv-scan-label">{t("surv.scanNow")}</span>
         </button>
         <IconButton icon="settings" label={t("surv.settings")} onClick={() => openAppSettings("surveillance")} />
@@ -103,6 +104,8 @@ export function SurveillanceView() {
                 <ul className="surv-list">{open.map((i) => <IncidentCard key={i.id} incident={i} now={now} onAck={() => void ack(i.id)} busy={busy} />)}</ul>
               )}
             </Block>
+
+            <ReportsSection />
 
             <Block icon="history" title={t("surv.history.title")} count={data.history.length} id="surveillance-history">
               {data.history.length === 0 ? (

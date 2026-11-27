@@ -1,0 +1,15 @@
+/* L175 « Livrer par demande d'intégration » on a board card (BoardDelivery.tsx). */
+.wb-pr { display: flex; flex-direction: column; gap: 6px; padding: 7px 8px; border: 1px solid var(--border); border-radius: var(--r-sm, 6px); background: var(--surface-2, transparent); min-width: 0; }
+.wb-pr-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
+.wb-pr-repo { font-size: 12px; overflow-wrap: anywhere; }
+.wb-pr-chip { margin-left: 6px; }
+.wb-pr-ask { display: flex; flex-direction: column; gap: 6px; padding: 8px; border-radius: var(--r-sm, 6px); background: var(--warn-soft); color: var(--text); }
+/* Kanban columns can be narrow (about 190 px at 1440): each fact on its own lines, never a squeezed second column. */
+.wb-pr-facts { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1px; margin: 0; font-size: 12.5px; }
+.wb-pr-facts dt { font-weight: 600; margin-top: 4px; }
+.wb-pr-facts dd { margin: 0; overflow-wrap: anywhere; min-width: 0; }
+.wb-pr-form label { display: flex; flex-direction: column; gap: 3px; font-size: 12.5px; min-width: 0; }
+.wb-pr-form input, .wb-pr-form select { min-height: 36px; max-width: 100%; }
+.wb-pr-more summary { cursor: pointer; font-size: 12.5px; padding: 4px 0; min-height: 24px; }
+.wb-pr-head a { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; }
+.wb-pr .btn { white-space: normal; max-width: 100%; text-align: center; height: auto; min-height: 32px; padding-block: 5px; line-height: 1.25; }

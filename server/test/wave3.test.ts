@@ -12,6 +12,7 @@ process.env.NO_SCHEDULER = "1";
 // The fake push service and API of these tests listen on this machine; outside tests such addresses are refused.
 process.env.ALLOW_PRIVATE_FETCH = "1";
 process.env.SHELL_ENABLED = "1";
+process.env.PUSH_MIN_WORK_SEC = "0"; // L151 (notifyrules.ts): these scripted replies are instant; the « only if the work took time » rule has its own test (comfort-wave7)
 process.env.COMPUTER = "browser";
 process.env.PUBLIC_URL = "https://sklubot.example";
 
@@ -370,7 +371,9 @@ test("totp: RFC 6238 test vectors, otpauth URIs, and totp_code only on the bound
   await say(bot, 'call totp_code {"item": "Acme 2FA"}');
   const r = await replied(bot, "Current code for Acme 2FA");
   const code = /: (\d{6}) /.exec((r.body as any).text)![1];
-  assert.equal(code, totpNow(parseTotp("GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ")).code);
+  // The code changes every 30 s: under load the reply and this check can fall on either side of a change.
+  const seedNow = parseTotp("GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ");
+  assert.ok([totpNow(seedNow).code, totpNow(seedNow, Date.now() - 30_000).code].includes(code), code);
 
   screen.read = async () => ({ title: "Evil", url: "https://evil.example/", text: "" });
   await say(bot, 'call totp_code {"item": "Acme 2FA"}');

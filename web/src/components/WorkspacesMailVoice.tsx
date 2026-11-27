@@ -1,4 +1,6 @@
 import { useEffect, useId, useState, type FormEvent } from "react";
+import { RealtimeVoice } from "./RealtimeVoice"; // L167
+import { VoicePlus } from "./VoicePlus"; // L154 wake word, reminder calls
 import { api, enc, errText } from "../api";
 import { useT } from "../i18n";
 import { useStore } from "../store";
@@ -7,7 +9,7 @@ import { money, relTime } from "../lib/format";
 import { Icon } from "./Icon";
 import { ConfirmButton, CopyButton, ErrorNote, Loading, Toggle } from "./ui";
 import { useVT } from "./VoicePicker";
-import { BotVoicesSection } from "./BotVoices";
+import { BotVoicesSection } from "./BotVoices"; import { BotRecipientsBlock } from "./SecurityLot1";
 
 /* =====================================================================================
  * Workspaces: members, roles, invitations, shared bots, usage per member, export (wave 6)
@@ -419,6 +421,8 @@ export function VoiceSection() {
         <label className="field-label">{t("voice.sensitivity", { ms: s.bargeIn.minSpeechMs })}</label>
         <input type="range" min={100} max={1000} step={50} value={s.bargeIn.minSpeechMs} onChange={(e) => set({ bargeIn: { ...s.bargeIn, minSpeechMs: Number(e.target.value) } })} aria-label={t("voice.sensitivityAria")} />
       </div>
+      <RealtimeVoice />
+      <VoicePlus />
       <ErrorNote onDismiss={() => setError(null)}>{error}</ErrorNote>
       <div className="row-end">
         <button type="button" className="btn btn-small" onClick={() => void runTest()}>{t("voice.test")}</button>
@@ -568,7 +572,7 @@ export function BotEmailTab({ bot }: { bot: Bot }) {
                 <textarea className="input mono" rows={3} value={allowed} onChange={(ev) => setAllowed(ev.target.value)} placeholder={"camille@exemple.fr\n@client.fr"} />
                 <p className="field-hint">{t("mail.allowedHint")}</p>
                 <div className="row-end"><button type="button" className="btn btn-small" onClick={() => void save({ allowedSenders: allowed })}>{t("common.save")}</button></div>
-              </div>
+              </div><BotRecipientsBlock bot={bot} />
               {!data.routine && (
                 <div className="action-row">
                   <div><p className="action-title">{t("mail.routine")}</p><p className="muted small">{t("mail.routineHint")}</p></div>

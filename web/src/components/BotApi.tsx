@@ -5,6 +5,7 @@ import { relTime, shortDate } from "../lib/format";
 import { BOT_API_SCOPES, type Bot, type BotApiKeysView, type BotApiKeyView, type BotApiScope } from "../types";
 import { Icon } from "./Icon";
 import { ConfirmButton, CopyButton, Empty, ErrorNote, Loading } from "./ui";
+import { BotWebhooksBlock } from "./OpenAccess";
 import "./BotApi.css";
 
 /**
@@ -198,6 +199,7 @@ export function BotApiTab({ bot }: { bot: Bot }) {
             {!fresh && <span className="muted small">{t("botApi.placeholderNote")}</span>}
           </div>
           <p className="muted small">{t("botApi.docs")}</p>
+          <BotWebhooksBlock bot={bot} />{/* L170 (OpenAccess.tsx) */}
         </>
       )}
     </div>

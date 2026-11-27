@@ -15,6 +15,10 @@ test('normalizeServer: https → wss, path kept, http refused except loopback', 
 test('validateArgs: clamps and rejects', () => {
   assert.deepEqual(validateArgs('screen.capture', {}), { format: 'jpeg', maxWidth: 1280, quality: 70 });
   assert.throws(() => validateArgs('screen.capture', { maxWidth: 99999 }), /out of range/);
+  // L159: another screen only when asked; 0 = main, up to 16 screens.
+  assert.deepEqual(validateArgs('screen.capture', { display: 1 }), { format: 'jpeg', maxWidth: 1280, quality: 70, display: 1 });
+  assert.throws(() => validateArgs('screen.capture', { display: 16 }), /out of range/);
+  assert.throws(() => validateArgs('screen.capture', { display: -1 }), /out of range/);
   assert.throws(() => validateArgs('mouse.move', { x: 'a', y: 1 }));
   assert.throws(() => validateArgs('url.open', { url: 'file:///etc/passwd' }), /only http/);
   assert.throws(() => validateArgs('url.open', { url: 'javascript:alert(1)' }));

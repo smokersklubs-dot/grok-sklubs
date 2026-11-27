@@ -1,19 +1,23 @@
+import { ModelHealthLine } from "./ModelHealth";
+import { MemoryFocusField } from "./MemoryFocus"; import { MemoryPlaces } from "./MemoryPlaces";
+import { ShortRepliesField } from "./ShortReplies"; import { ModelModesField } from "./ModelModes";
+import { BotDangerZone } from "./BotLifecycle"; import { BotStyleField } from "./BotStyle"; import { BotCareFields } from "./BotCare";
 import { BotReachTab } from "./KeysHealthLinks";
 import { BotCapsField } from "./UsageCaps";
-import { LocalToolsTab } from "./LocalTools";
-import { BotApiTab } from "./BotApi";
+import { LocalToolsTab } from "./LocalTools"; import { PluginsPanel, RemoteAgentsPanel } from "./ExtensionsPanels";
+import { BotApiTab } from "./BotApi"; import { BotRelayDevice } from "./ComputerShare";
 import { engineOfRef } from "../lib/engines";
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { api, enc, errText } from "../api";
 import { tn, useT } from "../i18n";
 import { useStore, type BotSettingsTab } from "../store";
-import { BotEmailTab, BotSharingTab } from "./WorkspacesMailVoice";
+import { BotEmailTab, BotSharingTab } from "./WorkspacesMailVoice"; import { BotSecurityTab } from "./SecurityLot1";
 import { DEFAULT_CHARACTER, TOOL_GROUPS } from "../types";
 import { BotSpendField, ConfidenceBadge, RoutineExtras } from "./SpendSkillsFiles";
-import { RoomWhoAnswers } from "./RoomRouting";
+import { RoomWhoAnswers } from "./RoomRouting"; import { RoomNotes } from "./RoomNotes"; import { RoomLimits } from "./RoomLimits";
 import type { Autonomy, AvatarColor, AvatarShape, Bot, BotBundle, Character as CharacterLook, BotMode, Effort, Memory, MemoryStatus, ModelOption, NativeTrigger, RoomRule, Routine, RoutineRun, Skill, SkillExtras, SkillRef, TelegramStatus, ToolGroup } from "../types";
 import { useNative } from "./NativeApps";
-import { dateTime, nextRunLabel, relTime, shortDate } from "../lib/format";
+import { dateTime, money, nextRunLabel, relTime, shortDate, workDuration } from "../lib/format";
 import { BotAvatar } from "./Avatar";
 import { Character } from "./Character";
 import { CharacterEditor } from "./CharacterEditor";
@@ -22,10 +26,16 @@ import { BotFallbacks } from "./Reliability";
 import { routineWhen, TriggerChip } from "./DetailsPanel";
 import { Icon, Spinner } from "./Icon";
 import { MODE_IDS } from "./Modals";
+import { SkillImportForm, SkillRowCheck, useBotScans } from "./SkillScan"; import { CuratorCard, DuplicateHint, SkillHealthLine, SkillHealthPanel, useSkillHealth } from "./SkillHealth";
 import { ConfirmButton, CopyButton, copyText, Empty, ErrorNote, IconButton, Loading, Modal, Toggle, useTick } from "./ui";
 import { BotRulesAndNudges } from "./RulesAndNudges";
+import { NoLearnRow, PromptInspector, SummaryView, ToProfileButton } from "./MemoryInsight"; // L80, L88, L137, L138
 import { runNote } from "./Pause";
 import { BotVoicePicker } from "./VoicePicker";
+import { HookSecurity } from "./HookSecurity";
+import { RoutineMore, WorkModels } from "./RoutineEditor"; import { RoutineCalendarFeed } from "./RoutineParams";
+import { MemoryEdit } from "./MemoryEdit";
+import { TelegramVoiceText } from "./TelegramVoiceText"; import { BotChannelsTab } from "./BotChannels";
 
 const EFFORT_IDS: Effort[] = ["low", "medium", "high", "xhigh"];
 const AUTONOMY_IDS: Autonomy[] = ["careful", "balanced", "trusted", "auto"];
@@ -204,7 +214,9 @@ function General({ bot, onClose }: { bot: Bot; onClose: () => void }) {
             <p className="field-hint">{t("bot.instructionsHint")}</p>
           </div>
           <BrainPicker bot={bot} value={form.model} onChange={(ref) => set("model", ref)} models={models} />
+          <ModelHealthLine key={bot.model} botId={bot.id} model={bot.model} fresh={false} />
           <BotFallbacks botId={bot.id} value={bot.fallbackModels ?? null} ownModel={form.model || models?.defaultRef || ""} />
+          {bot.kind === "agent" && <WorkModels bot={bot} />}
           <div className="field">
             <span className="field-label">{t("bot.thinking")}</span>
             <ChoiceList label={t("bot.thinking")} value={form.effort} options={efforts} onChange={(v) => set("effort", v)} />
@@ -252,7 +264,7 @@ function General({ bot, onClose }: { bot: Bot; onClose: () => void }) {
         </>
       )}
 
-      {isRoom && <RoomWhoAnswers room={bot} value={form.roomRule} onChange={(v) => set("roomRule", v)} />}
+      {isRoom && <RoomWhoAnswers room={bot} value={form.roomRule} onChange={(v) => set("roomRule", v)} />}{isRoom && <RoomNotes room={bot} />}{isRoom && <RoomLimits room={bot} />}
 
       <div className={`save-bar ${dirty || note ? "is-visible" : ""}`}>
         <span className={`save-note ${note?.tone === "error" ? "is-error" : ""}`} role="status">{note ? note.text : dirty ? t("bot.unsaved") : ""}</span>
@@ -260,7 +272,7 @@ function General({ bot, onClose }: { bot: Bot; onClose: () => void }) {
         <button type="submit" className="btn btn-primary btn-small" disabled={!dirty || !form.name.trim() || saving}>{t(saving ? "common.saving" : "common.save")}</button>
       </div>
 
-      {!isRoom && !bot.access && <ComputerChoice bot={bot} />}
+      {!isRoom && !bot.access && <ComputerChoice bot={bot} />}{!isRoom && !bot.access && <BotRelayDevice bot={bot} />}
       {!isRoom && !bot.access && <BotVoicePicker bot={bot} />}
 
       <h3 className="pane-heading">{t("bot.conversation")}</h3>
@@ -309,32 +321,8 @@ function General({ bot, onClose }: { bot: Bot; onClose: () => void }) {
         </div>
       )}
 
-      <h3 className="pane-heading is-danger">{t("bot.danger")}</h3>
-      <div className="action-row">
-        <div>
-          <p className="action-title">{t(isRoom ? "bot.deleteRoom" : "bot.deleteBot")}</p>
-          <p className="muted small">
-            {t(bot.primary ? "bot.deletePrimaryHint" : "bot.deleteHint")}
-          </p>
-        </div>
-        <ConfirmButton
-          label={t("common.delete")}
-          confirmLabel={t("common.confirmDelete")}
-          busyLabel={t("common.deleting")}
-          className="btn btn-small btn-danger"
-          disabled={bot.primary}
-          onConfirm={async () => {
-            setActionError(null);
-            try {
-              await api("DELETE", `/bots/${bot.id}`);
-              onClose();
-              await loadBots();
-            } catch (e) {
-              setActionError(errText(e));
-            }
-          }}
-        />
-      </div>
+      <BotStyleField bot={bot} /><ShortRepliesField bot={bot} /><ModelModesField bot={bot} /><BotCareFields bot={bot} /> {/* L69 named modes (ModelModes.tsx) ; L161 photo, shared role, identity, set aside, what it can read and write (BotCare.tsx) */}
+      <BotDangerZone bot={bot} isRoom={isRoom} onDeleted={() => { onClose(); void loadBots(); }} /> {/* L144: export, what goes, trash (BotLifecycle.tsx) */}
       <ErrorNote>{actionError}</ErrorNote>
     </form>
   );
@@ -382,8 +370,9 @@ function SkillEditor({ botId, skill, onDone }: { botId: string; skill: Skill | n
     setError(null);
     const payload = { name: name.trim(), description: description.trim(), body, ...extras };
     try {
-      if (skill) await api("PATCH", `/skills/${skill.id}`, payload);
-      else await api("POST", `/bots/${botId}/skills`, payload);
+      const r = skill ? await api<{ skill: Skill }>("PATCH", `/skills/${skill.id}`, payload) : await api<{ skill: Skill }>("POST", `/bots/${botId}/skills`, payload);
+      // The safety check keeps a flagged text as a draft: say so (its findings show under the skill).
+      if (r.skill?.draft && !skill?.draft) useStore.getState().showToast(t("scan.keptDraft", { name: r.skill.name }));
       await loadBundle(botId);
       onDone();
     } catch (err) {
@@ -418,7 +407,7 @@ function SkillEditor({ botId, skill, onDone }: { botId: string; skill: Skill | n
         ))}
         </div>
       </details>
-      <ErrorNote>{error}</ErrorNote>
+      <DuplicateHint name={name} description={description} body={body} exceptId={skill?.id} /><ErrorNote>{error}</ErrorNote>
       <div className="row-end">
         <button type="button" className="btn btn-ghost btn-small" onClick={onDone}>{t("common.cancel")}</button>
         <button type="submit" className="btn btn-primary btn-small" disabled={!name.trim() || !body.trim() || busy}>{t(busy ? "common.saving" : "skill.save")}</button>
@@ -427,46 +416,6 @@ function SkillEditor({ botId, skill, onDone }: { botId: string; skill: Skill | n
   );
 }
 
-/** Import a skill from a public markdown file (the user's own action, so no approval card). */
-function SkillImport({ bot, onDone }: { bot: Bot; onDone: () => void }) {
-  const t = useT();
-  const loadBundle = useStore((s) => s.loadBundle);
-  const showToast = useStore((s) => s.showToast);
-  const [url, setUrl] = useState("");
-  const [shared, setShared] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const submit = async (e: FormEvent) => {
-    e.preventDefault();
-    setBusy(true);
-    setError(null);
-    try {
-      const r = await api<{ skill: Skill; replaced: boolean }>("POST", `/bots/${bot.id}/skills/import`, { url: url.trim(), shared });
-      await loadBundle(bot.id);
-      showToast(t(r.replaced ? "skill.importReplaced" : "skill.imported", { name: r.skill.name }));
-      onDone();
-    } catch (err) {
-      setError(errText(err));
-    } finally {
-      setBusy(false);
-    }
-  };
-  return (
-    <form className="editor skill-import" onSubmit={submit}>
-      <div className="field">
-        <label className="field-label" htmlFor={`imp-${bot.id}`}>{t("skill.importUrl")}</label>
-        <input id={`imp-${bot.id}`} className="input" type="url" required value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://raw.githubusercontent.com/…/skill.md" autoFocus />
-        <p className="field-hint">{t("skill.importHint")}</p>
-      </div>
-      <label className="check-row"><input type="checkbox" checked={shared} onChange={(e) => setShared(e.target.checked)} /> <span>{t("skill.shareWithTeam")}</span></label>
-      <ErrorNote onDismiss={() => setError(null)}>{error}</ErrorNote>
-      <div className="row-end">
-        <button type="button" className="btn btn-small" onClick={onDone}>{t("common.cancel")}</button>
-        <button type="submit" className="btn btn-primary btn-small" disabled={busy || !url.trim()}>{t(busy ? "common.working" : "skill.import")}</button>
-      </div>
-    </form>
-  );
-}
 
 /** Skills other bots shared with the whole team (read-only here). */
 function TeamSkills({ bot, tick }: { bot: Bot; tick: unknown }) {
@@ -504,6 +453,8 @@ function Skills({ bot, bundle }: { bot: Bot; bundle: BotBundle | undefined }) {
   const [editing, setEditing] = useState<Skill | "new" | "import" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const skills = bundle?.skills;
+  const { scans, reload } = useBotScans(bot.id, skills); // « Contrôle de sécurité des compétences » (SkillScan.tsx)
+  const { report: health, reload: reloadHealth } = useSkillHealth(bundle); const healthOf = (id: string) => health?.skills.find((h) => h.skillId === id); const healthChanged = () => { reloadHealth(); void loadBundle(bot.id); }; // « Santé des compétences » (SkillHealth.tsx)
   const share = async (s: Skill, on: boolean) => {
     setError(null);
     try {
@@ -517,9 +468,10 @@ function Skills({ bot, bundle }: { bot: Bot; bundle: BotBundle | undefined }) {
   const activate = async (s: Skill) => {
     setError(null);
     try {
-      await api("PATCH", `/skills/${s.id}`, { draft: false });
+      const r = await api<{ skill: Skill }>("PATCH", `/skills/${s.id}`, { draft: false });
       await loadBundle(bot.id);
-      showToast(t("skill.activated", { name: s.name }));
+      reload();
+      showToast(t(r.skill?.draft ? "scan.keptDraft" : "skill.activated", { name: s.name }));
     } catch (e) {
       setError(errText(e));
     }
@@ -542,11 +494,11 @@ function Skills({ bot, bundle }: { bot: Bot; bundle: BotBundle | undefined }) {
           </div>
         )}
       </div>
-      {editing === "import" && <SkillImport bot={bot} onDone={() => setEditing(null)} />}
+      {editing === "import" && <SkillImportForm bot={bot} onDone={() => setEditing(null)} />}
       {editing === "new" && <SkillEditor botId={bot.id} skill={null} onDone={() => setEditing(null)} />}
       {!skills && <Loading />}
       {skills && skills.length === 0 && editing === null && <Empty icon="book" title={t("skill.emptyTitle")}>{t("skill.emptyText", { name: bot.name })}</Empty>}
-      <ErrorNote>{error}</ErrorNote>
+      <ErrorNote>{error}</ErrorNote>{health && <CuratorCard suggestions={health.suggestions.filter((x) => skills?.some((k) => k.id === x.skillId))} onChanged={healthChanged} />}
       {skills && skills.length > 0 && (
         <ul className="list">
           {skills.map((s) =>
@@ -559,9 +511,10 @@ function Skills({ bot, bundle }: { bot: Bot; bundle: BotBundle | undefined }) {
                 <div className="list-row-text">
                   <span className="list-row-title">{s.name}{s.shared && <span className="pill is-shared">{t("skill.shared")}</span>}{s.draft && <span className="chip">{t("skill.draft")}</span>}</span>
                   <span className="list-row-sub">{s.description || s.body.split("\n").find((l) => l.trim()) || ""}</span>
-                  {s.draft && <span className="list-row-sub warn-text">{t("skill.draftHint")}</span>}
+                  {s.draft && !scans[s.id]?.blocked && <span className="list-row-sub warn-text">{t("skill.draftHint")}</span>}
+                  <SkillRowCheck skill={s} state={scans[s.id]} onChanged={reload} /><SkillHealthLine h={healthOf(s.id)} onChanged={healthChanged} />
                 </div>
-                {s.draft && (
+                {s.draft && !scans[s.id]?.blocked && (
                   <button type="button" className="btn btn-small btn-primary" onClick={() => void activate(s)}>
                     <Icon name="check" size={14} /> {t("skill.activate")}
                   </button>
@@ -594,7 +547,7 @@ function Skills({ bot, bundle }: { bot: Bot; bundle: BotBundle | undefined }) {
                     }
                   }}
                 />
-                <SkillParts skill={s} />
+                <SkillParts skill={s} /><SkillHealthPanel h={healthOf(s.id)} skill={s} onChanged={healthChanged} />
               </li>
             ),
           )}
@@ -615,6 +568,8 @@ function Memories({ bot, bundle }: { bot: Bot; bundle: BotBundle | undefined }) 
   const [note, setNote] = useState<string | null>(null);
   const [busy, setBusy] = useState<"consolidate" | "compact" | null>(null);
   const [filter, setFilter] = useState<"all" | MemoryStatus>("all");
+  const [editing, setEditing] = useState<string | null>(null);
+  const [noLearn, setNoLearn] = useState<boolean | null>(null);
   const memories = bundle?.memories;
   const status = bundle?.memoryStatus;
   const needle = q.trim().toLowerCase();
@@ -634,7 +589,8 @@ function Memories({ bot, bundle }: { bot: Bot; bundle: BotBundle | undefined }) 
       showToast(t("memory.forgotten"), {
         label: t("common.undo"),
         run: async () => {
-          const r = await api<{ memory: Memory }>("POST", `/bots/${bot.id}/memories`, { text: m.text });
+          // The very same note comes back (same id, date, excerpt and confidence), from the bin (memorybook.ts).
+          const r = await api<{ memory: Memory }>("POST", `/memories/${m.id}/restore`);
           if (r?.memory) mutateBundle(bot.id, (b) => (b.memories.some((x) => x.id === r.memory.id) ? b : { ...b, memories: [...b.memories, r.memory].sort((a, c) => c.createdAt - a.createdAt) }));
           else await loadBundle(bot.id);
           showToast(t("memory.restored"));
@@ -689,7 +645,7 @@ function Memories({ bot, bundle }: { bot: Bot; bundle: BotBundle | undefined }) 
             </button>
           ))}
           <span className="spacer" />
-          <a className="link small" href={`/api/bots/${bot.id}/memories/export?format=md`} download>{t("memory.export")}</a>
+          <a className="link small" href={`/api/bots/${bot.id}/memories/export?format=md`} download>{t("memory.export")}</a> <a className="link small" href={`/api/bots/${enc(bot.id)}/notes.zip`} download>{t("memory.notesZip")}</a>
         </div>
       )}
       {memories && memories.length > 6 && (
@@ -707,19 +663,21 @@ function Memories({ bot, bundle }: { bot: Bot; bundle: BotBundle | undefined }) 
         <ul className="list">
           {shown.map((m) => (
             <li key={m.id} className="list-row is-card">
-              <div className="list-row-text">
+              {editing === m.id ? <div className="list-row-text"><MemoryEdit memory={m} onCancel={() => setEditing(null)} onSaved={(x) => { mutateBundle(bot.id, (b) => ({ ...b, memories: b.memories.map((y) => (y.id === x.id ? x : y)) })); setEditing(null); }} /></div> : <div className="list-row-text">
                 <span className={`memory-text ${m.status !== "active" ? `is-${m.status}` : ""}`}>{m.text}</span>
                 {m.quote && <span className="memory-quote">« {m.quote} »</span>}
                 <span className="list-row-sub">
                   <span className="chip">{t(m.source === "learned" ? "memory.source.learned" : m.source === "import" ? "memory.source.import" : "memory.source.chat")}</span>
-                  <ConfidenceBadge confidence={m.confidence ?? "once"} />
+                  <ConfidenceBadge confidence={m.confidence ?? "once"} />{m.pinned && <span className="chip">{t("memory.pinnedChip")}</span>}{m.until && <span className="chip chip-quiet">{t("memory.untilChip", { day: m.until })}</span>}
                   {m.status !== "active" && <span className={`chip memory-status is-${m.status}`}>{t(`memory.filter.${m.status}`)}</span>}
                   {m.category && <span className="chip chip-quiet">{t(`memset.cat.${m.category}`)}</span>} {shortDate(m.createdAt)}
                 </span>
-              </div>
+              </div>}
               <select className="input input-small memory-status-select" value={m.status} onChange={(e) => void setStatus(m, e.target.value as MemoryStatus)} aria-label={t("memory.statusLabel")}>
                 {(["active", "contested", "archived"] as const).map((st) => <option key={st} value={st}>{t(`memory.filter.${st}`)}</option>)}
               </select>
+              {editing !== m.id && <button type="button" className="btn btn-small btn-ghost" onClick={() => setEditing(m.id)} aria-label={t("memory.editLabelFor", { text: m.text.slice(0, 60) })}>{t("memory.edit")}</button>}
+              {editing !== m.id && m.status !== "archived" && <ToProfileButton memory={m} onDone={setNote} />}
               <button type="button" className="btn btn-small btn-ghost" onClick={() => void forget(m)} aria-label={t("memory.forgetLabel", { text: m.text.slice(0, 60) })}>{t("memory.forget")}</button>
             </li>
           ))}
@@ -741,10 +699,13 @@ function Memories({ bot, bundle }: { bot: Bot; bundle: BotBundle | undefined }) 
             {status.lastCompactedAt ? t("memory.lastSummarised", { date: shortDate(status.lastCompactedAt) }) : t("memory.notSummarised")}
             {status.lastConsolidatedAt ? ` ${t("memory.lastReviewed", { date: shortDate(status.lastConsolidatedAt) })}` : ""}
           </p>
+          <SummaryView bot={bot} tick={status.lastCompactedAt} />
         </div>
       ) : (
         <Loading />
       )}
+      <NoLearnRow bot={bot} initial={noLearn} /><MemoryFocusField bot={bot} /><MemoryPlaces bot={bot} />
+      <PromptInspector bot={bot} tick={(memories?.length ?? 0) + (status?.lastCompactedAt ?? 0)} onView={(v) => setNoLearn(v.noLearn)} />
     </div>
   );
 }
@@ -754,7 +715,7 @@ function Memories({ bot, bundle }: { bot: Bot; bundle: BotBundle | undefined }) 
 const RUN_STATE: Record<RoutineRun["status"], string> = { running: "state-working", done: "state-done", quiet: "", error: "state-error", skipped: "" };
 
 /** The last runs of one routine; reloads whenever the server says this bot's routines changed. */
-function RoutineHistory({ r }: { r: Routine }) {
+export function RoutineHistory({ r }: { r: Routine }) {
   const tick = useStore((s) => s.routineTicks[r.botId] ?? 0);
   const t = useT();
   const [runs, setRuns] = useState<RoutineRun[] | null>(null);
@@ -784,7 +745,7 @@ function RoutineHistory({ r }: { r: Routine }) {
             <li key={run.id} className="run">
               <time className="run-time" dateTime={new Date(run.at).toISOString()}>{dateTime(run.at, r.timezone || undefined)}</time>
               <span className={`chip ${RUN_STATE[run.status] ?? ""}`}>{t(`routine.run.${run.status}`)}</span>
-              {run.note && <span className="run-note">{runNote(run.note)}</span>}
+              {(run.durationMs !== undefined || run.costUsd > 0) && <span className="run-cost muted small">{[run.durationMs !== undefined ? workDuration(run.durationMs) : "", run.costUsd > 0 ? money(run.costUsd) : ""].filter(Boolean).join(" · ")}</span>}{run.note && <span className="run-note">{runNote(run.note)}</span>}
             </li>
           ))}
         </ul>
@@ -827,7 +788,7 @@ function RoutineItem({ r, onNote, onError }: { r: Routine; onNote: (t: string) =
         />
       </div>
       <p className="routine-prompt">{r.prompt}</p>
-      <RoutineExtras r={r} />
+      <RoutineExtras r={r} /><RoutineMore r={r} onNote={onNote} onError={onError} />
       {r.trigger === "webhook" && r.hookUrl && (
         <div className="hook">
           <code className="truncate" title={r.hookUrl}>{r.hookUrl}</code>
@@ -845,6 +806,7 @@ function RoutineItem({ r, onNote, onError }: { r: Routine; onNote: (t: string) =
           </button>
         </div>
       )}
+      {r.trigger === "webhook" && r.hookUrl && <HookSecurity routineId={r.id} />}
       {r.trigger === "watch" && r.watch && (
         <div className="watch">
           <Icon name={r.watch.kind === "url" ? "globe" : "file"} size={15} />
@@ -1064,6 +1026,7 @@ function Routines({ bot, bundle }: { bot: Bot; bundle: BotBundle | undefined }) 
           ))}
         </ul>
       )}
+      <RoutineCalendarFeed />
     </div>
   );
 }
@@ -1229,6 +1192,7 @@ function Telegram({ bot }: { bot: Bot }) {
               <Icon name="send" size={15} /> {link} <Icon name="external" size={13} />
             </a>
           )}
+          <TelegramVoiceText botId={bot.id} />
           <ErrorNote>{error}</ErrorNote>
           <div className="action-row">
             <div>
@@ -1315,7 +1279,7 @@ export function BotSettings({ botId, tab }: { botId: string; tab: BotSettingsTab
   if (!bot) return null;
 
   const isRoom = bot.kind === "room";
-  const tabs: { id: BotSettingsTab; label: string; icon: "settings" | "book" | "brain" | "clock" | "send" | "mail" | "users" | "globe" | "wrench" | "key"; count?: number }[] = isRoom
+  const tabs: { id: BotSettingsTab; label: string; icon: "settings" | "book" | "brain" | "clock" | "send" | "mail" | "users" | "globe" | "wrench" | "key" | "shield" | "chat"; count?: number }[] = isRoom
     ? [{ id: "general", label: t("botSettings.tab.general"), icon: "settings" }]
     : [
         { id: "general", label: t("botSettings.tab.general"), icon: "settings" },
@@ -1325,11 +1289,11 @@ export function BotSettings({ botId, tab }: { botId: string; tab: BotSettingsTab
         // Local tool servers run on the bot's computer: its owner manages them (a shared bot's members do not see the tab).
         ...(bot.access ? [] : [{ id: "localTools" as const, label: t("botSettings.tab.localTools"), icon: "wrench" as const }]),
         { id: "reach", label: t("botSettings.tab.reach"), icon: "globe" },
-        { id: "telegram", label: t("botSettings.tab.telegram"), icon: "send" },
+        { id: "telegram", label: t("botSettings.tab.telegram"), icon: "send" }, ...(bot.access ? [] : [{ id: "channels" as const, label: t("botSettings.tab.channels"), icon: "chat" as const }]), // L162: Slack, Discord, IMAP, access
         { id: "email", label: t("botSettings.tab.email"), icon: "mail" },
         { id: "sharing", label: t("botSettings.tab.sharing"), icon: "users" },
         // "Accès API" (BotApi.tsx): the owner's keys of this bot (a shared bot's members do not see the tab).
-        ...(bot.access ? [] : [{ id: "api" as const, label: t("botSettings.tab.api"), icon: "key" as const }]),
+        ...(bot.access ? [] : [{ id: "api" as const, label: t("botSettings.tab.api"), icon: "key" as const }, { id: "security" as const, label: t("botSettings.tab.security"), icon: "shield" as const }]),
       ];
   const active = tabs.some((x) => x.id === tab) ? tab : "general";
 
@@ -1367,12 +1331,12 @@ export function BotSettings({ botId, tab }: { botId: string; tab: BotSettingsTab
           {active === "skills" && <Skills bot={bot} bundle={bundle} />}
           {active === "memories" && <Memories bot={bot} bundle={bundle} />}
           {active === "routines" && <Routines bot={bot} bundle={bundle} />}
-          {active === "localTools" && <LocalToolsTab key={bot.id} bot={bot} />}
+          {active === "localTools" && <><LocalToolsTab key={bot.id} bot={bot} /><div className="settings-pane"><PluginsPanel bot={bot} /><RemoteAgentsPanel /></div></>}{/* L174 plugins, L172 other agents */}
           {active === "reach" && <BotReachTab key={bot.id} bot={bot} />}
-          {active === "telegram" && <Telegram key={bot.id} bot={bot} />}
+          {active === "telegram" && <Telegram key={bot.id} bot={bot} />}{active === "channels" && <BotChannelsTab key={bot.id} bot={bot} />}
           {active === "email" && <BotEmailTab key={bot.id} bot={bot} />}
           {active === "sharing" && <BotSharingTab key={bot.id} bot={bot} />}
-          {active === "api" && <BotApiTab key={bot.id} bot={bot} />}
+          {active === "api" && <BotApiTab key={bot.id} bot={bot} />}{active === "security" && <BotSecurityTab key={bot.id} bot={bot} />}
         </div>
       </div>
     </Modal>

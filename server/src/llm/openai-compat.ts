@@ -1,3 +1,6 @@
+import { cacheLayout } from "./cachelayout.js";
+import { toolsForCall } from "./toolsearch.js";
+import { repairJson } from "./jsonrepair.js";
 import { isContextTooLong, isTransientStatus, ProviderError, retryAfterOf, type Block, type ChatMessage, type LlmProvider, type StopReason, type TurnRequest, type TurnResult } from "./types.js";
 
 interface WireMessage {
@@ -102,15 +105,59 @@ export class OpenAiCompatProvider implements LlmProvider {
     return this.opts.apiKey ? this.opts.apiKey() : process.env[this.opts.apiKeyEnv] ?? null;
   }
 
+  /**
+   * A POST with this provider's own key, to a path on its own origin only (nativesearch.ts: the provider's documented
+   * search features). The key never leaves this class and never goes to another host.
+   */
+  async postOwn(path: string, body: unknown, signal?: AbortSignal): Promise<Response> {
+    const key = this.key();
+    if (!key) throw new Error(`${this.label}: no key`);
+    const base = new URL(`${this.opts.baseUrl.replace(/\/+$/, "")}/`);
+    const url = new URL(path, path.startsWith("/") ? base.origin : base);
+    if (url.origin !== base.origin) throw new Error(`${this.label}: refused, not its own address`);
+    return (this.opts.fetch ?? fetch)(url.toString(), { method: "POST", headers: { ...this.opts.headers, "content-type": "application/json", authorization: `Bearer ${key}` }, body: JSON.stringify(body), signal });
+  }
+
+  /** Whether this model reads images (imagetext.ts reads pictures for one that does not). */
+  readsImages(model: string): boolean { return this.opts.imagesFor?.(model) ?? this.opts.images !== false; }
+
+  /** The endpoint's address (L71: which embeddings model it offers is decided from its host, agent/semantic.ts). */
+  get baseUrl(): string { return this.opts.baseUrl; }
+
+  /**
+   * L71 « Mémoire par le sens »: turns texts into vectors with the endpoint's embeddings API, POST {base}/embeddings with
+   * { model, input: [texts] }, answer { data: [{ index, embedding }], usage: { prompt_tokens } } — OpenAI
+   * (https://platform.openai.com/docs/api-reference/embeddings/create) and Mistral (https://docs.mistral.ai/api/#tag/embeddings)
+   * use this same shape. Only called when the account's owner switched the option on.
+   */
+  async embed(model: string, input: string[], signal?: AbortSignal): Promise<{ vectors: number[][]; inputTokens: number }> {
+    const key = this.key();
+    if (!key) throw new Error(`${this.label}: no key`);
+    const res = await (this.opts.fetch ?? fetch)(`${this.opts.baseUrl.replace(/\/$/, "")}/embeddings`, {
+      method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${key}`, ...(this.opts.headers ?? {}) },
+      body: JSON.stringify({ model, input }), signal: signal ?? AbortSignal.timeout(30_000),
+    });
+    if (!res.ok) throw new Error(`${this.label} embeddings: HTTP ${res.status}`);
+    const json = (await res.json()) as { data?: { index?: number; embedding?: number[] }[]; usage?: { prompt_tokens?: number } };
+    const data = [...(json.data ?? [])].sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
+    if (data.length !== input.length || data.some((d) => !Array.isArray(d.embedding))) throw new Error(`${this.label} embeddings: unexpected answer`);
+    return { vectors: data.map((d) => d.embedding as number[]), inputTokens: json.usage?.prompt_tokens ?? 0 };
+  }
+
   async runTurn(req: TurnRequest): Promise<TurnResult> {
+    // L57: fixed system prompt first, the turn's changing context with the turn's message — OpenAI caches the longest
+    // unchanged prefix by itself (platform.openai.com/docs/guides/prompt-caching; no parameter is sent). Tool search:
+    // the core tools plus those loaded this turn (llm/toolsearch.ts; no documented deferred loading on this API).
+    const laid = cacheLayout(req.system, req.messages);
+    const tools = toolsForCall(req.tools, req.messages);
     const body: Record<string, unknown> = {
       model: req.model,
       stream: true,
       stream_options: { include_usage: true },
-      messages: toWire(req.system, req.messages, { providerId: this.id, echoReasoning: !!this.opts.echoReasoning, images: this.opts.imagesFor?.(req.model) ?? this.opts.images !== false }),
+      messages: toWire(laid.system, laid.messages, { providerId: this.id, echoReasoning: !!this.opts.echoReasoning, images: this.opts.imagesFor?.(req.model) ?? this.opts.images !== false }),
     };
-    if (req.tools.length)
-      body.tools = req.tools.map((t) => ({ type: "function", function: { name: t.name, description: t.description, parameters: t.inputSchema } }));
+    if (tools.length)
+      body.tools = tools.map((t) => ({ type: "function", function: { name: t.name, description: t.description, parameters: t.inputSchema } }));
     if (this.opts.sendsEffort) body.reasoning_effort = req.effort === "low" ? "low" : req.effort === "medium" ? "medium" : "high";
 
     let res: Response;
@@ -126,6 +173,7 @@ export class OpenAiCompatProvider implements LlmProvider {
       // The request never got an answer (DNS, refused, reset, timeout): worth another try.
       throw new ProviderError(`${this.label} could not be reached: ${(err as Error)?.message ?? err}`, { transient: true });
     }
+    req.onActivity?.(); // the answer has started (its headers are in)
     if (!res.ok || !res.body) {
       const detail = (await res.text().catch(() => "")).slice(0, 400);
       const own = this.opts.httpError?.(res.status, detail, retryAfterOf(res.headers));
@@ -142,6 +190,7 @@ export class OpenAiCompatProvider implements LlmProvider {
     const decoder = new TextDecoder();
     let buffer = "";
     for await (const chunk of res.body as unknown as AsyncIterable<Uint8Array>) {
+      req.onActivity?.();
       buffer += decoder.decode(chunk, { stream: true });
       let nl: number;
       while ((nl = buffer.indexOf("\n")) >= 0) {
@@ -192,7 +241,7 @@ export class OpenAiCompatProvider implements LlmProvider {
     if (text) content.push({ type: "text", text });
     for (const c of calls.values()) {
       let input: Record<string, unknown>;
-      try { input = c.args ? JSON.parse(c.args) : {}; } catch { input = { INVALID_JSON: c.args }; }
+      try { input = c.args ? JSON.parse(c.args) : {}; } catch { input = repairJson(c.args) ?? { INVALID_JSON: c.args }; } // L75 (jsonrepair.ts)
       content.push({ type: "tool_use", id: c.id, name: c.name, input });
     }
     const stopReason: StopReason = calls.size ? "tool_use" : finish === "length" ? "max_tokens" : finish === "content_filter" ? "refusal" : "end";

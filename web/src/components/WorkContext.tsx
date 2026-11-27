@@ -2,13 +2,32 @@ import { useEffect, useState } from "react";
 import { api, enc } from "../api";
 import type { Bot, Engine } from "../types";
 import { useStore } from "../store";
+import { sideText, useLocale } from "../i18n";
 import { ENGINE_BRAND, prettyModel } from "../lib/engines";
 import "./WorkContext.css";
 
 interface Context { label: string; engine: Engine | null; state: string; target: string; shared?: string; limited: boolean; until: number | null }
 
+/** French and English here; other languages in their dictionary file, `side.work` (docs/LANGUES.md). */
+const TEXT = {
+  fr: {
+    checking: "Vérification…", unknown: "Connexion à vérifier", connected: "Abonnement connecté", personal: "Abonnement personnel connecté",
+    missing: "Abonnement à connecter", demo: "Mode démo", configured: "API configurée", unavailable: "Modèle indisponible",
+    own: "Bureau de {name}", shared: "Bureau partagé", pool: "Bureau temporaire", browser: "Navigateur du bot", none: "Aucun bureau",
+    unverified: "Bureau à vérifier", defaultModel: "modèle par défaut", aria: "Contexte de travail", quota: " · quota signalé", models: "Modèles", check: "Vérifier",
+  },
+  en: {
+    checking: "Checking…", unknown: "Connection unverified", connected: "Subscription connected", personal: "Personal subscription connected",
+    missing: "Sign-in required", demo: "Demo mode", configured: "API configured", unavailable: "Model unavailable",
+    own: "{name}'s desktop", shared: "Shared desktop", pool: "Temporary desktop", browser: "Bot browser", none: "No desktop",
+    unverified: "Desktop unverified", defaultModel: "default model", aria: "Work context", quota: " · quota reported", models: "Models", check: "Check",
+  },
+};
+const STATES = new Set(["checking", "unknown", "connected", "personal", "missing", "demo", "configured", "unavailable"]);
+const TARGETS = new Set(["own", "shared", "pool", "browser", "none"]);
+
 export function WorkContext({bot}: {bot: Bot}) {
-  const fr = useStore(s => s.locale === "fr");
+  const w = sideText("work", TEXT, useLocale());
   const relay = useStore(s => s.relay)?.find(d => d.session?.botId === bot.id && !d.locked && d.status === "online");
   const [data, setData] = useState<Context | null>(null);
   const [state, setState] = useState("checking");
@@ -30,19 +49,13 @@ export function WorkContext({bot}: {bot: Bot}) {
     void check();
     return () => controller.abort();
   }, [bot.id, bot.model, bot.computerMode, attempt]);
-  const labels: Record<string, [string,string]> = {
-    checking:["Vérification…","Checking…"], unknown:["Connexion à vérifier","Connection unverified"],
-    connected:["Abonnement connecté","Subscription connected"], personal:["Abonnement personnel connecté","Personal subscription connected"],
-    missing:["Abonnement à connecter","Sign-in required"], demo:["Mode démo","Demo mode"],
-    configured:["API configurée","API configured"], unavailable:["Modèle indisponible","Model unavailable"]
-  };
-  const target = relay?.name ?? data?.shared ?? ({own:fr?"Bureau de "+bot.name:bot.name+"'s desktop", shared:fr?"Bureau partagé":"Shared desktop",
-    pool:fr?"Bureau temporaire":"Temporary desktop",browser:fr?"Navigateur du bot":"Bot browser", none:fr?"Aucun bureau":"No desktop"} as Record<string,string>)[data?.target ?? ""] ?? (fr?"Bureau à vérifier":"Desktop unverified");
-  const model = data?.engine ? ENGINE_BRAND[data.engine] + " · " + (data.label.endsWith(":default") ? (fr?"modèle par défaut":"default model") : prettyModel(data.label.split(":").slice(1).join(":"))) : data?.label ?? bot.model;
-  return <div className="work-context" aria-label={fr?"Contexte de travail":"Work context"}>
+  const t = data?.target ?? "";
+  const target = relay?.name ?? data?.shared ?? (TARGETS.has(t) ? w[t as keyof typeof w].replace("{name}", bot.name) : w.unverified);
+  const model = data?.engine ? ENGINE_BRAND[data.engine] + " · " + (data.label.endsWith(":default") ? w.defaultModel : prettyModel(data.label.split(":").slice(1).join(":"))) : data?.label ?? bot.model;
+  return <div className="work-context" aria-label={w.aria}>
     <span>{model}</span><span>{target}</span>
-    <span role="status">{labels[state]?.[fr?0:1]}{data?.limited && (fr?" · quota signalé":" · quota reported")}</span>
-    {["missing","unavailable","demo"].includes(state) && <button className="link" onClick={() => useStore.getState().openAppSettings("models")}>{fr?"Modèles":"Models"}</button>}
-    <button className="link" disabled={state==="checking"} onClick={() => refresh(n=>n+1)}>{fr?"Vérifier":"Check"}</button>
+    <span role="status">{STATES.has(state) ? w[state as keyof typeof w] : ""}{data?.limited && w.quota}</span>
+    {["missing","unavailable","demo"].includes(state) && <button className="link" onClick={() => useStore.getState().openAppSettings("models")}>{w.models}</button>}
+    <button className="link" disabled={state==="checking"} onClick={() => refresh(n=>n+1)}>{w.check}</button>
   </div>;
 }

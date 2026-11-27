@@ -18,6 +18,9 @@ services:
       dockerfile: Dockerfile.production
     image: sklubot-server
     restart: unless-stopped
+    # L95 : plafond de mémoire du serveur (les ordinateurs des bots ont le leur : DESKTOP_MEMORY). Assez large pour ne
+    # jamais gêner un usage normal ; il empêche seulement Sklubot d'emporter toute la machine. Voir docs/DEPLOIEMENT.md.
+    mem_limit: "${SKLUBOT_MEM_LIMIT:-3g}"
     depends_on:
       desktop-image:
         condition: service_completed_successfully
@@ -168,6 +171,7 @@ services:
       dockerfile: Dockerfile.production
     command: ["node", "server/dist/dockerproxy.js"]
     restart: unless-stopped
+    mem_limit: "${SKLUBOT_PROXY_MEM_LIMIT:-192m}" # L95
     environment:
       DESKTOP_IMAGE: "sklubot-desktop"
       # Réseaux où un ordinateur peut être créé. Avec SKLUBOT_BOT_LINK=network (l'ancienne façon), mets
@@ -310,6 +314,7 @@ services:
   caddy:
     image: "${CADDY_IMAGE:-caddy:2}"
     restart: unless-stopped
+    mem_limit: "${CADDY_MEM_LIMIT:-256m}" # L95
     depends_on:
       - sklubot
     ports:

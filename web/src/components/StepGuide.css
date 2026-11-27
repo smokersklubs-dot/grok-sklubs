@@ -1,0 +1,33 @@
+/* L153 « pas à pas » / L145 « ce qui reste à installer » (StepGuide.tsx). Tokens only (light / dark). */
+.stepguide-list { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.stepguide-step { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; min-width: 0; }
+.stepguide-step.is-current { border-color: var(--accent); }
+.stepguide-step.is-ok { opacity: 0.8; }
+.stepguide-mark { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; font-size: 12px; font-weight: 650; background: var(--surface-2, var(--bg)); color: var(--text-2); border: 1px solid var(--border); }
+.stepguide-mark.is-ok { background: var(--ok-soft, var(--accent-soft)); color: var(--ok, var(--accent)); border-color: transparent; }
+.stepguide-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.stepguide-title { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
+.stepguide-detail { margin: 0; color: var(--text-2); font-size: 13px; overflow-wrap: anywhere; }
+.stepguide-command { display: block; max-width: 100%; overflow-x: auto; white-space: pre; padding: 4px 8px; border-radius: 6px; background: var(--surface-2, var(--bg)); font-size: 12.5px; }
+.stepguide-hint { margin: 0; font-size: 12.5px; color: var(--text-2); overflow-wrap: anywhere; }
+.stepguide-hint.is-notyet { color: var(--warn); }
+.stepguide-hint > .icon { vertical-align: -2px; }
+.stepguide-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
+.stepguide-actions .btn { min-height: 36px; }
+/* Engine warm-up line above the composer (EngineWarmup.tsx). */
+.warmup-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 0 12px 6px; padding: 6px 10px; border-radius: 10px; font-size: 13px; color: var(--text-2); background: var(--surface-2, var(--bg)); border: 1px solid var(--border); min-width: 0; }
+.warmup-line.is-failed { color: var(--warn); background: var(--warn-soft); }
+.warmup-line.is-ready { color: var(--text-2); }
+.warmup-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.warmup-line .btn { min-height: 32px; }
+.warmup-spin { animation: warmup-spin 1.2s linear infinite; }
+@keyframes warmup-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .warmup-spin { animation: none; } }
+/* « Ce qui reste à installer » in the main bot's empty chat (SetupGuideOffer). */
+.setup-offer { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 auto 12px; max-width: 640px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+.setup-offer-text { flex: 1; min-width: 180px; display: flex; flex-direction: column; gap: 2px; }
+.setup-offer .btn { min-height: 36px; }
+.boardplan-check { flex: none; width: 18px; height: 18px; margin: 3px 3px 0; }
+.stepguide-step.is-off { opacity: 0.55; }
+.boardplan-meta { margin: 0; display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; }
+.boardplan-launch { margin-top: 8px; }

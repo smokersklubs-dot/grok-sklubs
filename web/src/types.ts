@@ -2,6 +2,25 @@
 export type * from "../../server/src/shared";
 /** « Bibliothèque de compétences »: the bundled skills and the GitHub import. */
 export type * from "../../server/src/skillstypes";
+/** « Équipe Sklubot (.md) »: a whole team in one Markdown file (import with review, share). */
+export type * from "../../server/src/teammdtypes";
+/** « Autoriser pour cette conversation »: the owner's active grants (Settings → Permissions). */
+export type * from "../../server/src/conversationgranttypes";
+/** « Contrôle de sécurité des compétences »: what the check found in a skill's text. */
+export type * from "../../server/src/skillscantypes";
+/** « Santé des compétences », « Catalogue de l'équipe », banc d'essai (skillhealth.ts, skillcatalog.ts). */
+export type * from "../../server/src/skillhealthtypes";
+/** L162 « Canaux »: Slack, Discord, IMAP and who besides the owner may talk to a bot (channelroutes.ts). */
+export type * from "../../server/src/channeltypes";
+export type * from "../../server/src/channelgrouptypes";
+export type * from "../../server/src/viewtypes";
+export type * from "../../server/src/creationtypes";
+/** L184 « sondages » (polls.ts). */
+export type * from "../../server/src/polltypes";
+/** L99 « lots en parallèle » (agent/batches.ts). */
+export type * from "../../server/src/batchtypes";
+/** Mémoire : « Ce que reçoit ce bot », « Voir le résumé », « Mémoire par le sens », « Messages autour » (L71–L138). */
+export type * from "../../server/src/memorytypes";
 export { AVATAR_SHAPES, AVATAR_COLORS, TOOL_GROUPS, EYE_STYLES, ACCESSORIES, IDLE_MOTIONS, CHARACTER_TYPES, DEFAULT_CHARACTER, REACTIONS, GROK_EXPORT_PROMPT_FR, GROK_EXPORT_PROMPT_EN, TEMPLATE_ICONS, TEMPLATE_CATEGORIES, BOT_API_SCOPES } from "../../server/src/shared";
 /** "Aujourd'hui": the time-saved table (kinds, default minutes, how research and file edits are counted). */
 export type { TodayKind } from "../../server/src/todayminutes";
@@ -12,3 +31,8 @@ export { TODAY_KINDS, DEFAULT_MINUTES, FILES_PER_TURN, RESEARCH_MIN_READS, RESEA
 /** « Centre de commandement » (server command.ts): the wire types and the state rule. */
 export type * from "../../server/src/commandtypes";
 export { COMMAND_STATES, commandStateOf } from "../../server/src/commandtypes";
+export type * from "../../server/src/peerreviewtypes";
+export type { ResearchWindow, ResearchExtra, SourceState } from "../../server/src/researchsignals";
+/** L161 « thèmes créés par le bot » and « récapitulatif global » (botthemes.ts, globalrecap.ts). */
+export type * from "../../server/src/botthemetypes";
+export type * from "../../server/src/globalrecaptypes";

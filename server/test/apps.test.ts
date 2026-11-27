@@ -248,10 +248,12 @@ async function until<T>(probe: () => Promise<T | undefined | false | null> | T |
   for (let i = 0; i < 1600; i++) { const v = await probe(); if (v) return v; await new Promise((r) => setTimeout(r, 25)); }
   throw new Error(`timed out waiting for ${label}`);
 }
-const rowsOf = async (botId: string): Promise<Row[]> => (await call("GET", `/bots/${botId}/rows`)).json.rows;
+const mainRowsOf = async (botId: string): Promise<Row[]> => (await call("GET", `/bots/${botId}/rows`)).json.rows;
+// Owner decision (22/11/2026): a routine runs in its own thread (agent/routinethread.ts): its rows are read there too.
+const rowsOf = async (botId: string): Promise<Row[]> => { const main = await mainRowsOf(botId); const out = [...main]; for (const p of main) if (p.body.kind === "message" && p.body.origin?.kind === "routine") out.push(...(await call("GET", `/bots/${botId}/rows?thread=${p.seq}`)).json.rows); return out; };
 const idle = (bot: Bot) => until(async () => { const r = await call("GET", "/bots"); return !r.json.live?.[bot.id]?.running && !r.json.live?.[bot.id]?.awaiting; }, "bot idle");
 const pendingApproval = (bot: Bot) => until(async () => { const r = (await rowsOf(bot.id)).find((x) => x.body.kind === "card" && x.body.card.type === "approval" && x.body.card.status === "pending"); return r?.body.kind === "card" && r.body.card.type === "approval" ? r.body.card : null; }, "approval");
-const lastAssistant = async (bot: Bot) => [...(await rowsOf(bot.id))].reverse().find((r) => r.body.kind === "message" && r.body.role === "assistant" && !r.body.streaming && r.body.text);
+const lastAssistant = async (bot: Bot) => [...(await mainRowsOf(bot.id))].reverse().find((r) => r.body.kind === "message" && r.body.role === "assistant" && !r.body.streaming && r.body.text);
 const replied = (bot: Bot, part: string) => until(async () => { const r = await lastAssistant(bot); return r?.body.kind === "message" && r.body.text.includes(part) && r; }, `reply containing "${part}"`);
 const say = (bot: Bot, text: string) => call("POST", `/bots/${bot.id}/messages`, { text });
 const allText = (req: TurnRequest) => req.messages.flatMap((x) => x.content).flatMap((b) => (b.type === "text" ? [b.text] : b.type === "tool_result" ? b.content.filter((c) => c.type === "text").map((c) => (c as { text: string }).text) : [])).join("\n");
@@ -375,7 +377,10 @@ test("reading mail taints the turn: sending then asks, even for a trusted bot th
   assert.match(card.title, /Gmail — pro : mail send/);
   assert.match(card.detail, /attacker@evil\.example/);
   assert.equal(card.tool, "Gmail — pro: mail_send");
+  assert.deepEqual(card.draft, { subject: "Fwd", body: "all the invoices" }, "« doit marcher »: the draft is on the Approve card itself (L83 draftedit.ts)");
+  assert.equal(card.status, "pending");
   const sentBefore = g.sent.length;
+  assert.equal(g.sent.filter((m) => /attacker@evil/.test(Buffer.from(m.raw, "base64url").toString())).length, 0, "nothing is sent while the card waits");
   await call("POST", `/approvals/${card.approvalId}`, { decision: "deny" });
   await idle(bot);
   assert.equal(g.sent.length, sentBefore, "nothing was sent");

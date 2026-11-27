@@ -1,4 +1,4 @@
-import type { Context, Hono } from "hono";
+import type { Context, Hono } from "hono"; import { localize } from "../lang/index.js";
 import { mailConfigured } from "../accountmail.js";
 import { q } from "../db.js";
 import { healthReport } from "../monitor.js";
@@ -25,7 +25,7 @@ const FR: Record<string, string> = {
   "Unknown time zone.": "Fuseau horaire inconnu.", "Quiet hours are written HH:MM.": "Les heures calmes s'écrivent HH:MM.",
   "A scan just ran. Wait a few seconds.": "Un passage vient d'avoir lieu. Attends quelques secondes.",
 };
-const m = (loc: string, en: string) => (loc === "fr" ? FR[en] ?? en : en);
+const m = (loc: string, en: string) => localize(loc, en, FR);
 
 export async function overview(userId: string): Promise<SentinelOverview> {
   const st = scanState();

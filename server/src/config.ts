@@ -133,6 +133,16 @@ export const config = {
   stallNoticeMs: Math.max(0, num("STALL_NOTICE_MIN", 5)) * 60_000,
   engineSampleMs: Math.max(0.05, num("ENGINE_CPU_SAMPLE_SEC", 15)) * 1000,
   /**
+   * Model calls by API (llm/timeouts.ts), cut on our side so a silent provider never holds a turn or a bot's queue.
+   * MODEL_CONNECT_TIMEOUT_SEC: longest wait for the first byte of an answer (180 s). MODEL_IDLE_TIMEOUT_SEC: longest
+   * silence in the middle of a stream (180 s). MODEL_CALL_TIMEOUT_MIN: longest one call may last in all (30 min).
+   * 0 switches one off. A call cut this way is a passing error: tried again with backoff, then the backup model, then the
+   * failure card (agent/reliability.ts, agent/failures.ts). Fractions are accepted (tests use small values).
+   */
+  modelConnectTimeoutMs: Math.max(0, num("MODEL_CONNECT_TIMEOUT_SEC", 180)) * 1000,
+  modelIdleTimeoutMs: Math.max(0, num("MODEL_IDLE_TIMEOUT_SEC", 180)) * 1000,
+  modelCallTimeoutMs: Math.max(0, num("MODEL_CALL_TIMEOUT_MIN", 30)) * 60_000,
+  /**
    * bot_message with wait: true (ask another bot and wait for its answer in the same turn). The default wait, and the
    * most a bot may ask for, in seconds. Past it the answer still arrives later, as a message, like an ordinary bot_message.
    */
@@ -201,6 +211,11 @@ export const config = {
   /** Anti-loop: stop after this many failures in a row of the same tool, or this many identical results in a row. */
   loopFailStreak: num("LOOP_FAIL_STREAK", 4),
   loopSameResult: num("LOOP_SAME_RESULT", 4),
+  /**
+   * The same limit for tools made to be looked at again while nothing changes yet (the screen, a job's output, a page…):
+   * LOOP_POLL_SAME_RESULT identical results in a row (12), never under LOOP_SAME_RESULT and never over 30.
+   */
+  loopPollSameResult: Math.min(30, Math.max(num("LOOP_SAME_RESULT", 4), num("LOOP_POLL_SAME_RESULT", 12))),
   /** x_search: the X API v2 (with X_BEARER_TOKEN) and xAI's API (with XAI_API_KEY). Base URLs can point elsewhere for tests. */
   xApiBaseUrl: (process.env.X_API_BASE_URL ?? "https://api.x.com").replace(/\/$/, ""),
   xaiSearchModel: process.env.XAI_SEARCH_MODEL ?? "grok-4.7",

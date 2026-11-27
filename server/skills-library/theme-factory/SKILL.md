@@ -4,7 +4,7 @@ description: Toolkit for styling artifacts with a theme. These artifacts can be 
 license: Complete terms in LICENSE.txt
 ---
 
-> theme-factory — © Anthropic, PBC — Apache License 2.0, from github.com/anthropics/skills (commit e4bb5d9). Modified for Sklubot: the PDF showcase (not included) is replaced by a list or a private preview page; the ten theme files of themes/ are included inline under "Theme files"; a section "Using this skill in Sklubot" was added at the end.
+> theme-factory — © Anthropic, PBC — Apache License 2.0, from github.com/anthropics/skills (commit e4bb5d9). Modified for Sklubot: the PDF showcase (not included) is replaced by a list or a private preview page; the ten theme files of themes/ are included inline under "Theme files"; a section "Using this skill in Sklubot" was added at the end; a pointer to the brand-free themes was added (2026-11-22).
 
 # Theme Factory Skill
 
@@ -262,6 +262,8 @@ A dramatic and cosmic theme with deep purples and mystical tones for impactful p
 Entertainment industry, gaming presentations, nightlife venues, luxury brands, creative agencies.
 
 ## Using this skill in Sklubot
+
+- More directions without any brand name: the skill « Thèmes sans marque » (ten complete materials kept as files, chosen by the subject's words). Use it when none of the ten themes here fits.
 
 - On a web page, a theme's fonts may not be on the visitor's device: name a fallback stack (for example DejaVu Sans → system-ui, sans-serif) or load an open-licence web font over https.
 - Check the contrast of text on the theme's colours (4.5:1 for body text) and adjust a shade when it fails.

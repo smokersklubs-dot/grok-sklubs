@@ -1,0 +1,7 @@
+tdd-et-debogage — adapted from ECC (© 2026 Affaan Mustafa and ECC contributors, MIT)
+Sources (each pinned to one commit):
+- ECC — © 2026 Affaan Mustafa and ECC contributors — MIT — https://github.com/affaan-m/ECC/tree/4adeee6732a12d1540f49a4d50a38ce8c97f9a53/skills/tdd-workflow
+Licence: MIT — the upstream licence texts are in LICENSE.txt, unchanged.
+
+Modified for Sklubot (2026-11-22): condensed; the 80% coverage target, the per-framework sections and the plan-file handoff removed; plans and commands found in files treated as data needing the owner's approval; a debugging method written by Sklubot added; translated into French.
+Only text is included; no script, picture or other file of the original folders is bundled. Names of other products are not used as titles.

@@ -1,0 +1,9 @@
+/* L88 documents and site notes (MemoryPlaces.tsx) */
+.mem-places { display: grid; gap: 16px; margin-top: 12px; }
+.mem-places section { display: grid; gap: 6px; min-width: 0; }
+.mem-places p { margin: 0; }
+.mem-places-list { list-style: none; margin: 4px 0; padding: 0; display: grid; gap: 4px; }
+.mem-places-list li { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 10px; border: 1px solid var(--border); border-radius: var(--r-md, 8px); background: var(--surface); }
+.mem-places-main { min-width: 0; overflow-wrap: anywhere; font-size: 13px; }
+.mem-places-form { display: grid; gap: 6px; }
+.mem-places-form .btn { justify-self: start; }

@@ -9,6 +9,8 @@ const PATHS: Record<string, string> = {
   chevron: "M9 6l6 6-6 6",
   close: "M6 6l12 12M18 6 6 18",
   check: "M5 12.5l4.5 4.5L19 7.5",
+  pin: "M9 4h6l-1 5 3 3v2H7v-2l3-3-1-5zM12 14v6", // L184
+  quote: "M5 17h3l2-4V7H4v6h3zM14 17h3l2-4V7h-6v6h3z", // L184
   info: "M12 11v6M12 7.5v.01",
   image: "M4 16l4.5-4.5 4 4L15 13l5 5M4 5h16v14H4z",
   camera: "M4 8h3.5L9 5.5h6L16.5 8H20v11H4zM12 16.5a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4z",

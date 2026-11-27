@@ -7,9 +7,10 @@
  *    bot's browser and shows that screen live here (server subscriptionconnect.ts); the status is polled until signed in.
  * Passwords are typed on the provider's page only, never in Sklubot; keys are write-only (never shown again).
  */
+import { CreditAlertField } from "./CreditAlertField"; // L150 OpenRouter credit alert
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, enc, errText } from "../api";
-import { useStore } from "../store";
+import { useStore } from "../store"; import { intlLocale, sideText } from "../i18n";
 import type { ApiProvider, Engine } from "../types";
 import { Icon } from "./Icon";
 import { LiveScreen } from "./LiveScreen";
@@ -73,7 +74,7 @@ const TEXT = {
 type K = keyof typeof TEXT.fr;
 function useA() {
   const locale = useStore((s) => s.locale);
-  return (k: K, vars: Record<string, string | number> = {}) => (TEXT[locale === "fr" ? "fr" : "en"][k] as string).replace(/\{(\w+)\}/g, (_m, n) => String(vars[n] ?? ""));
+  return (k: K, vars: Record<string, string | number> = {}) => (sideText("aiAccounts", TEXT, locale)[k] as string).replace(/\{(\w+)\}/g, (_m, n) => String(vars[n] ?? ""));
 }
 const usePrimary = () => useStore((s) => Object.values(s.bots).find((b) => b.kind === "agent" && b.primary) ?? null);
 const money = (n: number) => (n === 0 ? "0" : n < 0.01 ? n.toPrecision(2) : n < 10 ? n.toFixed(2).replace(/\.?0+$/, "") : String(Math.round(n * 10) / 10));
@@ -88,7 +89,7 @@ interface OrState { provider: ApiProvider | null; links: { keys: string; credits
 export function OpenRouterModels({ chosen, onSaved, onClose }: { chosen: string[]; onSaved: (p: ApiProvider) => void; onClose: () => void }) {
   const a = useA();
   const fr = useStore((s) => s.locale === "fr");
-  const dec = (v: string | number) => (fr ? String(v).replace(".", ",") : String(v));
+  const dec = (v: string | number) => String(v).replace(".", (1.5).toLocaleString(intlLocale()).charAt(1)); // the reader's decimal mark
   const [cat, setCat] = useState<Catalog | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -221,6 +222,7 @@ export function OpenRouterCard({ onChanged }: { onChanged?: () => void }) {
         {note && <p className="provider-check is-ok" role="status"><Icon name="check" size={14} /> {note}</p>}
         {connected && p && !picking && <p className="muted small">{a("orModelsN", { n: p.models.length })}{p.models.length ? ` : ${p.models.slice(0, 4).map((m) => m.id).join(", ")}${p.models.length > 4 ? "…" : ""}` : ""}</p>}
       </form>
+      {connected && !picking && <CreditAlertField />}
       {picking && p && <OpenRouterModels chosen={p.models.map((m) => m.id)} onClose={() => setPicking(false)} onSaved={(np) => { setSt({ ...st, provider: np }); setPicking(false); onChanged?.(); }} />}
       <ErrorNote onDismiss={() => setError(null)}>{error}</ErrorNote>
     </article>

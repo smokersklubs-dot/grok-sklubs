@@ -89,6 +89,14 @@ if [ "$mode" = diff ]; then
   git diff --no-color --no-ext-diff --no-renames "refs/sk/$1" "refs/sk/$2" -- "$3" 2>/dev/null | head -c "$4"
   exit 0
 fi
+if [ "$mode" = show ]; then
+  git cat-file blob "refs/sk/$1:$2" 2>/dev/null | head -c "$3"
+  exit 0
+fi
+if [ "$mode" = grep ]; then
+  git grep -n -I -F --no-color -e "$2" "refs/sk/$1" 2>/dev/null | head -c "$3"
+  exit 0
+fi
 if [ "$mode" = restore ]; then
   BASE="$1"; END="$2"; FORCE="$3"; shift 3
   git rev-parse -q --verify "refs/sk/$BASE^{tree}" >/dev/null 2>&1 || { echo "MISSING"; exit 0; }
@@ -246,6 +254,24 @@ export async function fileDiff(bot: BotRecord, card: Extract<Card, { type: "file
   if (!r || r.code !== 0) return null;
   const s = r.stdout.toString("utf8");
   return { diff: s.slice(0, DIFF_MAX_BYTES), truncated: r.stdout.length > DIFF_MAX_BYTES };
+}
+
+/** L77: one file as it was in a snapshot (read-only look-up for the peer reviewer); null when absent. */
+export async function fileAt(bot: BotRecord, snapId: string, path: string, maxBytes = DIFF_MAX_BYTES): Promise<string | null> {
+  if (!listedPathOk(path)) return null;
+  const r = await snapRunner.any(bot.id, ["show", snapId, path, String(maxBytes)], 30);
+  return r && r.code === 0 && r.stdout.length ? r.stdout.toString("utf8") : null;
+}
+
+/** L77: exact-text search in a snapshot's files: lines "path:line:text" (git grep, read-only). */
+export async function searchSnapshot(bot: BotRecord, snapId: string, query: string, maxBytes = 16_000): Promise<{ path: string; line: number; text: string }[]> {
+  const r = await snapRunner.any(bot.id, ["grep", snapId, query, String(maxBytes)], 30);
+  if (!r || r.code !== 0) return [];
+  const prefix = `refs/sk/${snapId}:`;
+  return r.stdout.toString("utf8").split("\n").flatMap((l) => {
+    const m = /^(.+?):(\d+):(.*)$/.exec(l.startsWith(prefix) ? l.slice(prefix.length) : l);
+    return m && listedPathOk(m[1]) ? [{ path: m[1], line: +m[2], text: m[3].slice(0, 300) }] : [];
+  });
 }
 
 export interface UndoResult { restored: string[]; changedSince: string[]; failed: string[]; missing: boolean }

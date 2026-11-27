@@ -3,6 +3,7 @@ import { computerKind, workspaceOf } from "./computer.js";
 import { q } from "./db.js";
 import { tr } from "./i18n.js";
 import { linuxExec } from "./linux.js";
+import { nativeRoute, nativeSearch } from "./nativesearch.js";
 import { guardedFetch } from "./net.js";
 import { reachAvailable, reachSubtitles, reachWebSearch } from "./reach.js";
 import { unseal } from "./auth.js";
@@ -161,6 +162,8 @@ export function searchProviders(): Provider<SearchArgs, WebHit[]>[] {
   return [
     { id: "brave-mine", label: "Brave (ta clé)", tier: "owned", estimateUsd: () => 0, available: (c) => !!braveVaultKey(c.bot.userId), run: (a, c) => brave(a.query, braveVaultKey(c.bot.userId)!, c.signal), empty: hits },
     { id: "brave", label: "Brave", tier: "owned", estimateUsd: () => 0, available: () => !!process.env.BRAVE_API_KEY, run: (a, c) => brave(a.query, process.env.BRAVE_API_KEY!, c.signal), empty: hits },
+    // Audit DS-Bot #146: the documented search of the bot's own model provider, with its own key (nativesearch.ts).
+    { id: "model-search", label: "Recherche du modèle du bot", tier: "owned", estimateUsd: () => 0, available: (c) => !!nativeRoute(c.bot) && !c.bot.disabledTools.includes("web"), run: (a, c) => nativeSearch(c.bot, a.query, c.signal), empty: hits },
     {
       id: "searxng", label: "SearXNG", tier: "free", estimateUsd: () => 0, available: () => !!process.env.SEARXNG_URL, empty: hits,
       run: async (a, c) => {

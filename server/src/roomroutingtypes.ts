@@ -22,6 +22,11 @@ export type RouteBy = "name" | "keywords" | "model" | "lead" | "none" | "reroute
  * The light line under a message the automatic mode routed (« → Léa (Compta) a pris la question »), with the
  * « Plutôt demander à… » button. `messageSeq`: the message routed; `botId` / `botName`: who took it ("" with by "none");
  * `why`: one short reason, in the owner's language; `status`: "open" (can still be re-routed), "rerouted" (the owner
- * chose another member; botId is the new one).
+ * chose another member; botId is the new one), "archived" (L155: the owner archived the task; « Restaurer » brings it back).
+ * L155: `botId` is the task's owner (« Responsable »): « Réassigner » hands it to another member (open or rerouted), as
+ * many times as needed; `archivedFrom`: the status it had before being archived.
  */
-export interface RouteNoticeAction { kind: "route"; messageSeq: number; thread: number; botId: string; botName: string; by: RouteBy; why: string; status: "open" | "rerouted" }
+export interface RouteNoticeAction { kind: "route"; messageSeq: number; thread: number; botId: string; botName: string; by: RouteBy; why: string; status: "open" | "rerouted" | "archived"; archivedFrom?: "open" | "rerouted" }
+
+/** L155: GET/PUT /bots/:id/limits — each member's time limit in this group, in minutes (absent: none). */
+export interface RoomMemberLimits { limits: Record<string, number>; min: number; max: number; held: string[] }

@@ -1,0 +1,29 @@
+/* DS-Bot item 8: a view card in the chat (ViewCard.tsx). Tokens only, so light and dark both work. */
+.view-card { max-width: 560px; }
+.view-card-icon { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; flex: none; border-radius: var(--r-md); background: var(--brand-soft); color: var(--brand); }
+.view-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.view-stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; margin: 0; }
+.view-stat { padding: 9px 11px; border-radius: var(--r-md); background: var(--surface-2); min-width: 0; }
+.view-stat dt { font-size: 12px; color: var(--text-2); overflow-wrap: anywhere; }
+.view-stat dd { margin: 2px 0 0; font-size: 18px; font-weight: 650; color: var(--text); overflow-wrap: anywhere; }
+.view-stat-hint { font-size: 12px; color: var(--text-2); }
+.view-table-wrap { max-width: 100%; max-height: 320px; overflow: auto; border: 1px solid var(--border); border-radius: var(--r-md); }
+.view-table-wrap:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.view-table { border-collapse: collapse; width: 100%; font-size: 13px; }
+.view-table th, .view-table td { padding: 6px 9px; text-align: left; border-bottom: 1px solid var(--border); vertical-align: top; overflow-wrap: anywhere; min-width: 60px; }
+.view-table th { position: sticky; top: 0; background: var(--surface-2); color: var(--text-2); font-weight: 600; }
+.view-table tr:last-child td { border-bottom: 0; }
+.view-chart { margin: 0; }
+.view-chart svg { width: 100%; height: auto; display: block; }
+.view-axis { stroke: var(--border-strong); stroke-width: 1; }
+.view-tick { fill: var(--text-2); font-size: 10px; font-family: var(--font); }
+.view-legend { display: flex; flex-wrap: wrap; gap: 10px; font-size: 12px; color: var(--text-2); margin-top: 4px; }
+.view-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+.view-progress-top { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; color: var(--text-2); flex-wrap: wrap; }
+.view-progress-bar { height: 8px; margin-top: 5px; border-radius: 99px; background: var(--surface-3); overflow: hidden; }
+.view-progress-bar span { display: block; height: 100%; background: var(--brand); border-radius: inherit; }
+.view-form { display: flex; flex-direction: column; gap: 10px; }
+.view-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.view-field .input { width: 100%; max-width: 100%; }
+.view-check { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+.view-fallback { margin: 0; padding: 9px 11px; border-radius: var(--r-md); background: var(--surface-2); font-family: var(--font); font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 320px; overflow: auto; }

@@ -1,6 +1,7 @@
 import http, { type IncomingMessage, type ServerResponse } from "node:http";
 import net from "node:net";
 import type { Duplex } from "node:stream";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 /**
@@ -36,7 +37,21 @@ export interface ProxyPolicy {
   label: string;
   /** Names a new container may be given. */
   names: RegExp;
+  /**
+   * L48: the seccomp profiles a computer may be created with, compacted JSON — exactly what the docker CLI sends for
+   * `--security-opt seccomp=<file>` (it reads the file and sends "seccomp=" + the compacted JSON). Only Sklubot's own
+   * profile (docker/desktop/seccomp-chromium.json, browsersandbox.ts); "unconfined" and any other profile stay refused.
+   */
+  seccompProfiles: string[];
 }
+
+/** Each readable profile among these files, compacted (a missing or broken file is left out: that option stays refused). */
+export function loadSeccompProfiles(paths: string[]): string[] {
+  const out: string[] = [];
+  for (const p of paths) { try { out.push(JSON.stringify(JSON.parse(readFileSync(p, "utf8")))); } catch { /* left out */ } }
+  return out;
+}
+const SHIPPED_SECCOMP = fileURLToPath(new URL("../../docker/desktop/seccomp-chromium.json", import.meta.url));
 
 const list = (v: string | undefined, fallback: string[]) => {
   const out = (v ?? "").split(",").map((s) => s.trim()).filter(Boolean);
@@ -54,6 +69,7 @@ export function policyFromEnv(env: NodeJS.ProcessEnv = process.env): ProxyPolicy
     runtimes: list(env.PROXY_RUNTIMES ?? env.DESKTOP_RUNTIME, []),
     label: "sklubot",
     names: /^sklubot-[A-Za-z0-9_-]{1,128}$/,
+    seccompProfiles: loadSeccompProfiles(list(env.PROXY_SECCOMP_PROFILES, [SHIPPED_SECCOMP])),
   };
 }
 
@@ -103,7 +119,18 @@ export function checkCreate(body: any, query: URLSearchParams, p: ProxyPolicy): 
   for (const c of h.CapAdd ?? []) if (!allowedCaps.has(normCap(c))) return `capability ${c} is not allowed`;
   const sec: string[] = Array.isArray(h.SecurityOpt) ? h.SecurityOpt : [];
   if (!sec.some((s) => NO_NEW_PRIVS.has(String(s)))) return "SecurityOpt must include no-new-privileges";
-  for (const s of sec) if (!NO_NEW_PRIVS.has(String(s))) return `security option ${s} is not allowed`;
+  for (const s of sec) {
+    if (NO_NEW_PRIVS.has(String(s))) continue;
+    // L48: Sklubot's own seccomp profile, compared as JSON (never "unconfined", never another profile).
+    const m = /^seccomp[=:]([\s\S]*)$/.exec(String(s));
+    if (m && m[1].trim().startsWith("{")) {
+      let compact = "";
+      try { compact = JSON.stringify(JSON.parse(m[1])); } catch { /* not JSON */ }
+      if (compact && p.seccompProfiles.includes(compact)) continue;
+      return "security option seccomp=<profile> is not Sklubot's browser profile";
+    }
+    return `security option ${String(s).slice(0, 80)} is not allowed`;
+  }
   if (h.Runtime && !p.runtimes.includes(String(h.Runtime))) return `runtime ${h.Runtime} is not allowed`;
   if (h.OomScoreAdj && Number(h.OomScoreAdj) < 0) return "a negative OomScoreAdj is not allowed";
   if (h.RestartPolicy && !["", "no"].includes(String(h.RestartPolicy.Name ?? ""))) return "restart policies are not allowed";

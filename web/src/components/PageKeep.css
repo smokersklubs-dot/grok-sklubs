@@ -1,0 +1,17 @@
+/* L157 « rien de perdu » card and « Journal de design » (PageKeep.tsx). Tokens only: light and dark come from tokens.css. */
+.pageloss-list { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.pageloss-item { display: grid; grid-template-columns: 16px auto minmax(0, 1fr); gap: 6px; align-items: baseline; font-size: 13.5px; color: var(--text); }
+.pageloss-item > svg { color: var(--text-3); align-self: center; }
+.pageloss-kind { font-size: 12px; font-weight: 600; color: var(--text-2); white-space: nowrap; }
+.pageloss-text { min-width: 0; overflow-wrap: anywhere; }
+
+.design-journal { margin-top: 24px; display: flex; flex-direction: column; gap: 10px; }
+.dj-group { display: flex; flex-direction: column; gap: 6px; }
+.dj-topic { margin: 0; font-size: 12.5px; font-weight: 650; color: var(--text-2); text-transform: uppercase; letter-spacing: .04em; }
+.dj-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.dj-item { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); min-width: 0; }
+.dj-text { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: 14px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.dj-swatch { display: inline-block; width: 16px; height: 16px; border-radius: 4px; border: 1px solid var(--border-strong); flex: none; }
+.dj-item .btn { flex: none; }
+.dj-form { display: grid; grid-template-columns: auto minmax(0, 12rem) auto minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+@media (max-width: 640px) { .dj-form { grid-template-columns: minmax(0, 1fr); } .dj-form .btn { justify-self: start; } }

@@ -1,4 +1,7 @@
 import { useMemo, useState, type ReactNode } from "react";
+import { ReviewRulesField } from "./ReviewRules"; import { ProjectModelPresetField } from "./ProjectModelPreset"; // L77 project review rules
+import { NotifyBell } from "./NotifyBell";
+import { InboxNavRow } from "./InboxView"; import { LiveDocsNavRow } from "./LiveDocs";
 import { createPortal } from "react-dom";
 import { api, errText } from "../api";
 import { IDLE_LIVE, primaryBot, sortedBots, useStore } from "../store";
@@ -10,7 +13,8 @@ import { Icon } from "./Icon";
 import { IconButton, Menu, MenuItem, Modal, modKey } from "./ui";
 import { PauseAllNotice, PausedBadge, setPaused } from "./Pause";
 import { AnnouncementBell } from "./AnnouncementCard";
-import { useAnnouncements } from "../lib/announcements";
+import { BotActivityFilter, useActivityFilter } from "./BotActivityFilter"; import { FILTER_FROM, matches } from "../lib/botactivity"; // L146
+import { useAnnouncements } from "../lib/announcements"; import { StopCauseChip, WorkingBar, useStopCauseSync } from "./SidebarStatus";
 
 function statusOf(bot: Bot, live: Live): "attention" | "working" | "unread" | null {
   if (live.awaiting) return "attention";
@@ -70,6 +74,7 @@ function BotMenu({ bot, open, onClose }: { bot: Bot; open: boolean; onClose: () 
           <MenuItem icon="folder" onClick={() => setMoving(true)}>{t("sidebar.moveTo")}…</MenuItem>
           {bot.kind === "agent" && <MenuItem icon="copy" onClick={() => { close(); openModal({ kind: "duplicate", botId: bot.id }); }}>{t("sidebar.duplicate")}…</MenuItem>}
           {bot.kind === "agent" && !bot.access && <MenuItem icon="download" onClick={() => { close(); openModal({ kind: "exportTemplate", botIds: [bot.id] }); }}>{t("tpl.export")}…</MenuItem>}
+          {bot.kind === "agent" && !bot.access && <MenuItem icon="file" onClick={() => { close(); openModal({ kind: "teamMdShare", botIds: [bot.id] }); }}>{t("tmd.menuShare")}…</MenuItem>}
           {bot.unread === 0 && <MenuItem icon="ring" onClick={() => { close(); void markUnread(bot.id); }}>{t("sidebar.markUnread")}</MenuItem>}
           {bot.kind === "agent" && (
             bot.pause?.self
@@ -119,7 +124,7 @@ function BotRow({ bot, live, active, collapsed }: { bot: Bot; live: Live; active
               {bot.access && <Icon name="users" size={12} className="bot-row-kind" aria-label={bot.access.workspaceName} />}
               <PausedBadge bot={bot} />
             </span>
-            <span className={`bot-row-preview truncate ${status === "attention" ? "is-attention" : ""}`}>{previewOf(bot, live)}</span>
+            <span className={`bot-row-preview truncate ${status === "attention" ? "is-attention" : ""}`}><StopCauseChip bot={bot} />{previewOf(bot, live)}</span>
           </span>
         )}
         {!collapsed && bot.unread > 0 && <span className="count-badge" aria-label={tn("sidebar.unread", bot.unread)}>{bot.unread > 99 ? "99+" : bot.unread}</span>}
@@ -204,6 +209,7 @@ function SectionActions({ section }: { section: BotSection }) {
           : <MenuItem icon="pause" onClick={() => { setOpen(false); void setPaused({ kind: "section", section }, true); }}>{t("pause.pauseSection")}</MenuItem>}
         <MenuItem icon="download" onClick={() => { setOpen(false); useStore.getState().openModal({ kind: "exportTemplate", sectionId: section.id }); }}>{t("tpl.export")}…</MenuItem>
         <MenuItem icon="edit" onClick={() => { setOpen(false); setInstructions(section.instructions ?? ""); setError(""); }}>{t("sections.instructions")}</MenuItem>
+        <MenuItem icon="file" onClick={() => { setOpen(false); useStore.getState().openModal({ kind: "teamMdShare", sectionId: section.id }); }}>{t("tmd.menuShare")}…</MenuItem>
         <MenuItem icon="edit" onClick={() => void rename()}>{t("sections.rename")}</MenuItem>
         <MenuItem icon="trash" danger onClick={() => void remove()}>{t("sections.delete")}</MenuItem>
       </Menu>
@@ -215,6 +221,8 @@ function SectionActions({ section }: { section: BotSection }) {
                 <textarea className="input" rows={6} maxLength={4000} value={instructions} onChange={e => setInstructions(e.target.value)} />
               </label>
               <p className="muted">{t("sections.instructionsHelp")}</p>
+              <ReviewRulesField sectionId={section.id} />
+              <ProjectModelPresetField sectionId={section.id} />
               {error && <p role="alert">{error}</p>}
             </div>
             <div className="modal-foot">
@@ -245,7 +253,7 @@ export function Sidebar() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [primaryProjects, setPrimaryProjects] = useState(false);
-  const t = useT();
+  const t = useT(); useStopCauseSync(); // L142
 
   const collapsed = collapsedPref && !mobileNav;
   const primary = useMemo(() => primaryBot(bots), [bots]);
@@ -266,9 +274,10 @@ export function Sidebar() {
   const team = visible.filter((b) => !b.pinned && (!b.sectionId || !known.has(b.sectionId)));
   const hiddenBots = others.filter((b) => b.listHidden && !b.access);
   const { organise } = useStore.getState();
+  const [activity, setActivity] = useActivityFilter(); const filtering = !collapsed && others.length >= FILTER_FROM && activity !== "all";
   const rowsOf = (list: Bot[]) => (
     <ul className="bot-list">
-      {list.map((b) => <BotRow key={b.id} bot={b} live={live[b.id] ?? IDLE_LIVE} active={chatActive && selectedId === b.id} collapsed={collapsed} />)}
+      {(filtering ? list.filter((b) => matches(b, live[b.id], activity)) : list).map((b) => <BotRow key={b.id} bot={b} live={live[b.id] ?? IDLE_LIVE} active={chatActive && selectedId === b.id} collapsed={collapsed} />)}
     </ul>
   );
   const addSection = async () => {
@@ -294,7 +303,7 @@ export function Sidebar() {
           <span className="sidebar-top-actions">
             {!collapsed && (
               <>
-                <AnnouncementBell />
+                <AnnouncementBell /><NotifyBell />
                 <IconButton icon="search" label={t("palette.open")} title={`${t("palette.open")} (${modKey}K)`} onClick={() => openModal({ kind: "search" })} />
                 <span className="menu-wrap">
                   <IconButton icon="plus" label={t("sidebar.newBot")} onClick={() => setAddOpen((v) => !v)} active={addOpen} />
@@ -303,6 +312,7 @@ export function Sidebar() {
                     <MenuItem icon="folder" onClick={() => { setAddOpen(false); void addSection(); }}>{t("sections.newProject")}</MenuItem>
                     <MenuItem icon="star" onClick={() => { setAddOpen(false); openModal({ kind: "templates" }); }}>{t("tpl.open")}…</MenuItem>
                     <MenuItem icon="upload" onClick={() => { setAddOpen(false); openModal({ kind: "templates", tab: "file" }); }}>{t("tpl.importFile")}…</MenuItem>
+                    <MenuItem icon="users" onClick={() => { setAddOpen(false); openModal({ kind: "teamMdImport" }); }}>{t("tmd.menuImport")}…</MenuItem>
                   </Menu>
                 </span>
               </>
@@ -380,6 +390,7 @@ export function Sidebar() {
         )}
         {collapsed && <AnnouncementBell row />}
 
+        <InboxNavRow collapsed={collapsed} /><LiveDocsNavRow collapsed={collapsed} />{/* L139 « À toi » (InboxView.tsx) */}
         <button
           type="button"
           className={`nav-row ${view === "tasks" ? "is-active" : ""}`}
@@ -396,7 +407,7 @@ export function Sidebar() {
           {!collapsed && waiting > 0 && <span className="count-badge is-attention" aria-label={tn("sidebar.tasksWaiting", waiting)}>{waiting}</span>}
         </button>
 
-        <div className="sidebar-scroll">
+        <div className="sidebar-scroll"><WorkingBar collapsed={collapsed} />
           {primary && (
             <div className="primary-project-wrap">
             <button
@@ -431,6 +442,7 @@ export function Sidebar() {
             </div>
           )}
 
+          {!collapsed && others.length >= FILTER_FROM && <BotActivityFilter bots={others.filter((b) => !b.listHidden)} live={live} value={activity} onChange={setActivity} />}
           {collapsed ? (
             rowsOf([...pinned, ...sections.flatMap((sec) => bySection(sec.id)), ...team, ...sharedBots])
           ) : (

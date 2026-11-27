@@ -89,6 +89,8 @@ export class ApiClient {
       if (extra.raw.filename) headers["X-Sklubot-Filename"] = encodeURIComponent(extra.raw.filename);
     } else if (body !== undefined) {
       headers["Content-Type"] = "application/json";
+      // L92: the phone's time zone rides along, so "tomorrow" means tomorrow where the user is (server agent/turnstamp.ts).
+      try { const tz = Intl.DateTimeFormat().resolvedOptions().timeZone; if (tz) headers["X-Time-Zone"] = tz; } catch { /* no Intl time zone */ }
       payload = JSON.stringify(body);
     }
     const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;

@@ -1,0 +1,54 @@
+/* « Santé des compétences » (SkillHealth.tsx). Tokens only: light and dark from tokens.css. */
+.skh-line { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-top: 4px; font-size: 12.5px; color: var(--text-2); min-width: 0; }
+.skh-stat.is-quiet { color: var(--text-3); }
+.skh-stat.is-warn { color: var(--warn); font-weight: 600; }
+.skh-chip { font-size: 11px; }
+.skh-chip.is-archived { background: var(--surface-3); color: var(--text-2); }
+.skh-chip.is-stale, .skh-chip.is-warn { background: var(--warn-soft); color: var(--warn); max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.skh-update { border: 1px solid var(--info); background: var(--info-soft); color: var(--info); cursor: pointer; font: inherit; font-size: 11.5px; font-weight: 600; }
+.skh-update:hover:not(:disabled) { filter: brightness(0.97); }
+.skh-update:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.skh-error { color: var(--danger); font-size: 12px; flex-basis: 100%; }
+
+.skh-curator { border: 1px solid var(--border); background: var(--surface-2); border-radius: var(--r-lg); padding: 12px 14px; margin: 10px 0 14px; }
+.skh-curator-title { display: flex; align-items: center; gap: 6px; margin: 0 0 2px; font-size: 14px; }
+.skh-suggestions { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }
+.skh-suggestion { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 8px 10px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); }
+.skh-suggestion-text { display: grid; gap: 2px; min-width: 0; flex: 1 1 220px; overflow-wrap: anywhere; }
+.skh-suggestion-name { font-weight: 600; }
+.skh-suggestion-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+
+.skh-panel { flex-basis: 100%; margin-top: 6px; }
+.skh-panel > summary { cursor: pointer; font-size: 12.5px; color: var(--text-2); font-weight: 600; width: fit-content; }
+.skh-panel > summary:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 4px; }
+.skh-panel-body { display: grid; gap: 10px; padding: 10px 0 2px; }
+.skh-failure { margin: 0; color: var(--warn); font-size: 13px; overflow-wrap: anywhere; }
+.skh-toggles { display: grid; gap: 8px; }
+.skh-toggle { display: flex; align-items: flex-start; gap: 10px; font-size: 13px; }
+.skh-toggle > span:last-child { display: grid; gap: 1px; min-width: 0; }
+.skh-toggle small { font-size: 12px; }
+.skh-panel-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.skh-sub { margin: 4px 0 0; font-size: 13px; }
+.skh-scope { border: 1px solid var(--border); border-radius: var(--r-md); padding: 8px 10px; margin: 0; min-width: 0; }
+.skh-scope .filter-chips { flex-wrap: wrap; }
+.skh-excluded { text-decoration: line-through; color: var(--danger); }
+.skh-versions { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.skh-version { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.skh-version > details { flex: 1 1 200px; min-width: 0; font-size: 13px; }
+.skh-version summary { cursor: pointer; }
+.skh-version-body { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 220px; overflow: auto; background: var(--surface-2); border-radius: var(--r-sm); padding: 8px; font-size: 12px; margin: 6px 0 0; }
+
+.skh-bench { display: grid; gap: 8px; }
+.skh-bench-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; }
+.skh-bench-col { margin: 0; border: 1px solid var(--border); border-radius: var(--r-md); padding: 8px 10px; background: var(--surface); min-width: 0; }
+.skh-bench-col.is-with { border-color: var(--ok); }
+.skh-bench-col figcaption { font-weight: 600; font-size: 12.5px; margin-bottom: 4px; }
+.skh-bench-text { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; max-height: 320px; overflow: auto; }
+
+.skh-dup { display: flex; align-items: center; gap: 6px; margin: 0; padding: 6px 10px; border-radius: var(--r-md); background: var(--warn-soft); color: var(--warn); font-size: 13px; overflow-wrap: anywhere; }
+
+.skh-owner, .skh-catalog { margin-top: 22px; }
+.skh-table { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 4px; }
+.skh-row { padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); min-width: 0; }
+.skh-row-name { font-weight: 600; font-size: 13.5px; overflow-wrap: anywhere; }
+.skh-cat-empty { display: flex; align-items: center; gap: 6px; }

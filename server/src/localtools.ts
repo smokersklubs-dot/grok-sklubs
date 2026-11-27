@@ -6,7 +6,7 @@ import { tr } from "./i18n.js";
 import { audit, clip, newId, now } from "./store.js";
 import { computerKind, workspaceOf } from "./computer.js";
 import { ComputersBusyError, computerReady, containerName, docker, holdMachine, onComputerStopping } from "./linux.js";
-import { destructiveHint, looksReadOnly, slug } from "./connectors.js";
+import { destructiveHint, looksReadOnly, slug } from "./connectors.js"; import { classifyTool, hardenCommand } from "./thirdpartymcp.js";
 import type { ToolSpec } from "./llm/types.js";
 import type { Locale, LocalToolServer, LocalToolsState } from "./shared.js";
 
@@ -94,9 +94,15 @@ export const dockerLauncher: Launcher = {
 let launcher: Launcher = dockerLauncher;
 /** Tests only: run the command some other way (null: back to the bot's computer). */
 export const setLauncher = (l: Launcher | null) => { launcher = l ?? dockerLauncher; };
+/** The launcher in use (remoteagents.ts starts ACP agents in the bot's computer the same way). */
+export const currentLauncher = (): Launcher => launcher;
+/** L174 plugins (plugins.ts): narrows a server's listed tools to what its plugin declared (never widens). */
+type ToolFilter = (serverId: string, tools: CachedTool[]) => CachedTool[];
+let toolFilter: ToolFilter = (_id, tools) => tools;
+export const setToolFilter = (f: ToolFilter | null) => { toolFilter = f ?? ((_id, tools) => tools); };
 
 // ── Records ──────────────────────────────────────────────────────────────────
-interface CachedTool { name: string; description: string; readOnly: boolean; destructive: boolean; schema: ToolSpec["inputSchema"] }
+export interface CachedTool { name: string; description: string; readOnly: boolean; destructive: boolean; schema: ToolSpec["inputSchema"] }
 interface Rec { id: string; userId: string; botId: string; name: string; command: string; args: string[]; tools: CachedTool[]; createdAt: number }
 const parse = <T,>(s: unknown, fallback: T): T => { try { const v = JSON.parse(String(s)); return v ?? fallback; } catch { return fallback; } };
 const toRec = (r: any): Rec => ({ id: r.id, userId: r.user_id, botId: r.bot_id, name: r.name, command: r.command, args: parse<string[]>(r.args, []), tools: parse<CachedTool[]>(r.tools, []), createdAt: r.created_at });
@@ -187,10 +193,10 @@ async function start(rec: Rec, e: Entry) {
     const listed = await c.listTools(undefined, { timeout: timeouts.start });
     const tools: CachedTool[] = listed.tools.slice(0, 100).map((t) => ({
       name: t.name, description: (t.description ?? "").slice(0, 1000),
-      readOnly: looksReadOnly(t.name, t.annotations?.readOnlyHint), destructive: destructiveHint(t.annotations),
+      ...classifyTool(rec.command, rec.args, { name: t.name, readOnly: looksReadOnly(t.name, t.annotations?.readOnlyHint), destructive: destructiveHint(t.annotations) }), // L49
       schema: { type: "object", properties: (t.inputSchema?.properties ?? {}) as Record<string, unknown>, required: t.inputSchema?.required },
     }));
-    q.run("UPDATE local_tool_servers SET tools = ? WHERE id = ?", JSON.stringify(tools), rec.id);
+    q.run("UPDATE local_tool_servers SET tools = ? WHERE id = ?", JSON.stringify(toolFilter(rec.id, tools)), rec.id);
     e.status = "ready"; e.failures = 0; e.retryAt = 0; e.error = null; e.vars = undefined;
     changed(rec.userId, rec.botId);
   } catch (err) {
@@ -244,7 +250,7 @@ export const localTools = {
     const why = launcher.unavailable();
     if (why) throw new Error(why);
     const problem = checkCommand(f.command, f.args);
-    if (problem) throw new Error(problem);
+    if (problem) throw new Error(problem); f = { ...f, ...hardenCommand(f.command, f.args) }; // L49: known third-party servers: telemetry off, version pinned (thirdpartymcp.ts)
     if (recsOf(bot.id).length >= MAX_PER_BOT) throw new Error("A bot can have 10 local tool servers at most."); // MAX_PER_BOT
     const name = clip(String(f.name ?? "").trim(), 40) || f.command;
     const id = newId("lts");

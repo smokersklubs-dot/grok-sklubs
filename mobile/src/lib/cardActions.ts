@@ -6,13 +6,15 @@ const enc = encodeURIComponent;
 export interface Req { path: string; body?: Record<string, unknown> }
 
 export const cardReq = {
-  decide: (approvalId: string, decision: "allow" | "always" | "deny"): Req => ({ path: `/approvals/${enc(approvalId)}`, body: { decision } }),
+  decide: (approvalId: string, decision: "allow" | "always" | "conversation" | "deny"): Req => ({ path: `/approvals/${enc(approvalId)}`, body: { decision } }),
   answer: (botId: string, seq: number, answer: string): Req => ({ path: `/bots/${enc(botId)}/cards/${seq}/answer`, body: { answer } }),
   /** Skips a question, a "connect" card or a secret request (the server tells the bot it was not given). */
   dismiss: (botId: string, seq: number): Req => ({ path: `/bots/${enc(botId)}/cards/${seq}/dismiss` }),
   /** The secret goes in the body of this one request, to the server's vault; the host may be corrected by the user. */
   secret: (botId: string, seq: number, value: string, host: string): Req => ({ path: `/bots/${enc(botId)}/cards/${seq}/secret`, body: { value, host } }),
   takeoverDone: (botId: string, takeoverId: string): Req => ({ path: `/bots/${enc(botId)}/takeover/${enc(takeoverId)}/done` }),
+  /** L91: the hidden code box's answer (the code goes straight into the page's field; never kept on the phone). */
+  code: (botId: string, codeId: string, body: { code?: string; dismiss?: true }): Req => ({ path: `/bots/${enc(botId)}/code/${enc(codeId)}`, body }),
   uncertain: (executionId: string, action: "done" | "check" | "retry"): Req => ({ path: `/executions/${enc(executionId)}`, body: { action } }),
   taskStop: (botId: string, taskId: string): Req => ({ path: `/bots/${enc(botId)}/bgtasks/${enc(taskId)}/stop` }),
   taskReply: (botId: string, taskId: string, text: string): Req => ({ path: `/bots/${enc(botId)}/bgtasks/${enc(taskId)}/reply`, body: { text } }),

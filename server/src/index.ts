@@ -1,3 +1,5 @@
+// L50: first of all, the « un seul serveur » lock on the data folder (datalock.ts), before the database opens.
+import "./datalockboot.js"; import { tr } from "./i18n.js";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { serve } from "@hono/node-server";
@@ -28,12 +30,17 @@ import { startAnnouncements } from "./announcements.js";
 import { installErrorCounter, noteSignal } from "./sentinel/signals.js";
 import { attachLiveScreens } from "./vnc.js";
 import { relayUpgrade } from "./relay.js";
+import { registerWebBotAuthDirectory } from "./botrouteroutes.js"; import "./botforward.js"; // L169: key directory, browser tunnel
 import { closeLeftOpenWatchNotices } from "./agent/watch.js";
-import { expireOrphanApprovals, recoverInterruptedTurns, startJobWatch } from "./agent/loop.js";
+import { expireOrphanApprovals, interrupt, recoverInterruptedTurns, startJobWatch } from "./agent/loop.js";
+import { startMediaJobs } from "./mediajobs.js";
+import { gracefulStop } from "./agent/restartguard.js";
+import { crashedTurn, TurnCrashed } from "./agent/crashguard.js";
+import { rowScope } from "./store.js";
 import { startLimitWatch } from "./agent/sublimit.js";
 import { startResearchWorker } from "./researchreports.js";
 import { sweepUncertain } from "./agent/executions.js";
-import { telegram } from "./telegram.js";
+import { telegram } from "./telegram.js"; import { channels } from "./channelroutes.js";
 import { closeSlackSockets } from "./native/triggers.js";
 import { receiving, startMailReceiver, stopMailReceiver } from "./botmail.js";
 import { voiceUpgrade } from "./voice/session.js";
@@ -57,6 +64,7 @@ app.use("*", limitBodies);
 app.route("/api", api);
 app.all("/api/*", (c) => c.json({ error: "No such endpoint." }, 404));
 
+registerWebBotAuthDirectory(app);
 app.route("/", site);
 
 // In production the server also serves the built web app; unknown paths fall back to its index page.
@@ -77,8 +85,7 @@ setLookSource((key) => {
     const shared = sharedComputers.byId(key);
     const owner = shared ? users.byId(shared.userId) : null;
     if (!shared || !owner) return null;
-    const fr = owner.locale === "fr";
-    return { name: `${fr ? "Ordinateur partagé" : "Shared computer"} ${shared.name}`, label: fr ? "Partagé entre tes bots" : "Shared by your bots", color: "slate", locale: owner.locale, owner: owner.name };
+    return { name: tr(owner.locale, "Shared computer {name}", { name: shared.name }), label: tr(owner.locale, "Shared by your bots"), color: "slate", locale: owner.locale, owner: owner.name };
   }
   const owner = users.byId(bot.userId);
   // A custom character colour also tints the bot's computer.
@@ -97,7 +104,7 @@ if (computerKind() === "linux") await startFreeComputers().catch((err) => consol
 
 // Approvals a subscription turn was waiting on lived in memory: after a restart nobody waits for them any more.
 const lapsed = expireOrphanApprovals();
-if (lapsed) console.log(`${lapsed} approval(s) left from before the restart are marked expired.`);
+if (lapsed) console.log(`${lapsed} approval(s) left from before the restart could not be kept open: marked expired.`);
 // Actions that were running when the server stopped: their outcome is unknown. They are never replayed; the user gets a card.
 // Notices of the turn watch that still asked something belong to turns the restart ended: they are history now.
 closeLeftOpenWatchNotices();
@@ -110,14 +117,14 @@ startUploadSweep();
 if (process.env.NO_SCHEDULER !== "1") startGithubIssueWorker();
 if (computerKind() === "linux") startStudioExports();
 startAutoBackup();
-startHealthChecks();
+startHealthChecks(); startMediaJobs(); // Wan2GP runs left open by a restart (mediajobs.ts)
 // The Sentinelle (sentinel/): a read-only scan every SENTINEL_EVERY_MIN minutes, incidents and alerts to the owner/operators.
 startSentinel();
 // « Annonces » (announcements.ts): push and e-mail of announcements, once per reader, every minute.
 startAnnouncements();
 // M2: the disk watchdog (DISK_FREE_MIN_MB; Linux computers only).
 startDiskWatchdog();
-if (!config.schedulerOff) { telegram.start(); recoverInterruptedTurns(); startJobWatch(); startLimitWatch(); }
+if (!config.schedulerOff) { telegram.start(); channels.start(); recoverInterruptedTurns(); startJobWatch(); startLimitWatch(); }
 if (!config.schedulerOff) startResearchWorker();
 const server = serve({ fetch: app.fetch, port: config.port }, () => {
   const ready = listProviders().filter((p) => p.available()).map((p) => p.label);
@@ -126,17 +133,29 @@ const server = serve({ fetch: app.fetch, port: config.port }, () => {
   console.log(computerNote);
   // From here on the server is up: one bad request or a stray failure in the background is logged, never
   // allowed to stop the whole server. Start-up failures above still stop it, as they should.
-  process.on("uncaughtException", (err) => { noteSignal("uncaught", "exception"); console.error("[uncaught]", err); });
-  process.on("unhandledRejection", (err) => console.error("[unhandled rejection]", err));
+  // An error raised from inside a bot's turn (a timer or an event callback of one of its tools) stops that turn only: it
+  // ends with a failure card and its queue goes on (agent/crashguard.ts). A rejected promise nobody awaited is logged with
+  // the turn it came from; it stops nothing (the turn's own awaits are caught by the turn).
+  process.on("uncaughtException", (err) => {
+    noteSignal("uncaught", "exception"); console.error("[uncaught]", err);
+    try { const botId = crashedTurn(err); if (botId) interrupt(botId, new TurnCrashed(err)); } catch (e) { console.error("[uncaught] turn", e); }
+  });
+  process.on("unhandledRejection", (err) => console.error("[unhandled rejection]", rowScope.getStore()?.botId ? `(turn of ${rowScope.getStore()!.botId})` : "", err));
 });
 
 attachLiveScreens(server as unknown as import("node:http").Server, [relayUpgrade, voiceUpgrade]);
 // The bots' own email addresses (wave 6): the embedded receiver, only when the operator set MAIL_DOMAIN and MAIL_SMTP_PORT.
 if (receiving()) startMailReceiver().then((port) => console.log(`Receiving mail for @${config.mailDomain} on port ${port}.`), (err) => console.error(`[mail] receiver not started: ${(err as Error).message}`));
 
+let closing = false;
 async function shutdown() {
+  if (closing) return; closing = true;
+  // L18: running turns finish the step they are in and wait at the next step boundary (at most GRACEFUL_STOP_SEC, 20 s),
+  // so the restart picks them up cleanly instead of cutting an action in half (agent/restartguard.ts).
+  const left = await gracefulStop().catch(() => -1);
+  if (left > 0) console.log(`${left} turn(s) were still in the middle of a step when the server stopped.`);
   server.close();
-  telegram.stopAll();
+  telegram.stopAll(); channels.stopAll();
   closeSlackSockets();
   await stopMailReceiver().catch(() => {});
   await Promise.all([closeAllDesktops(), connectors.closeAll(), localTools.closeAll()]).catch(() => {});

@@ -29,3 +29,13 @@ L’interface React ouvre l’atelier depuis le message qui contient l’artefac
 Pour demander une création, décris simplement son usage dans la conversation. Sklubot choisit le guide et l’outil utiles. Un calculateur devient un artefact privé. Une demande de montage ouvre le studio vidéo. L’étude d’une référence utilise les mesures de mise en page de Craft Anything. Chaque compte conserve ses propres fichiers et autorisations.
 
 Craft Anything 0.6.1 est fourni dans l’image des nouveaux ordinateurs Linux. Sur un ordinateur plus ancien, le bot prépare automatiquement la même version lors de la première utilisation. Les archives officielles amd64 et arm64 sont vérifiées par SHA-256. Pour une création web avec le générateur Craft et l’abonnement Codex du bot, le choix de pile est `Plain HTML and CSS`. Le fichier HTML autonome généré peut être ouvert directement comme artefact dans la conversation. La source, les modifications et les versions restent liées au même bot.
+
+Craft Anything travaille toujours en **salle blanche** : rien de l’intérieur du site d’origine n’est lu. Le mode « profond » (`--deep`, `deep_mode`) est refusé par l’ordinateur du bot et par Sklubot, même si une page lue essaie de le demander. Pendant une construction, Craft Anything tranche seul ses petites questions (premier choix) et refuse tout ce qui sortirait du projet : à la fin, le bot affiche dans le chat la liste de ces choix, pour que tu puisses en demander un autre. Les rondes de contrôle (« ressemble à 86 % ») ne sont faites que si tu as dit, avec tes mots, que la référence est **ton propre site**.
+
+## Commenter une page dans la discussion (L140)
+
+Sous l'aperçu d'une page publiée par ton bot, **« Commenter la page »** : clique un élément de la page (un titre, un bouton, une image), il est entouré ; écris ce qu'il faut changer, puis **Envoyer**. Ton bot reçoit l'adresse de la page, l'emplacement de l'élément et ses mots, avec ta remarque.
+
+Sécurité : la page reste dans son bac à sable (aucun accès à l'appli, à tes cookies ni à ton compte). L'aperçu demande la page avec `?sklubot-comment=1`, qui ajoute seulement un petit script de commentaire, inactif tant que tu n'appuies pas sur « Commenter ». L'appli ne croit que les messages venus de cet aperçu et revérifie chaque champ ; rien ne part sans ton clic. Le lien public de la page, lui, ne change pas.
+
+Au même endroit de la discussion : **« Annoter »** une image (repères numérotés, stylo), **« Montrer »** un endroit de l'écran du bot, et **« Remarque sur ce fichier »** dans « Fichiers modifiés ».

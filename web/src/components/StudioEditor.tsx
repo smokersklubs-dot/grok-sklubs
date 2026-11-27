@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { t as tr, intlLocale } from "../i18n";
 import { api, apiUpload, errText } from "../api";
 import { duration, locate, shotDuration, styles, validStory, type Scene, type Story } from "../lib/studioStory";
 import { techniqueLabels } from "../lib/studioTechniques";
@@ -14,6 +15,7 @@ import { StudioLibraryAudio } from "./StudioLibraryAudio";
 import { StudioSubtitles } from "./StudioSubtitles";
 import { ErrorNote, Loading } from "./ui";
 import "./VideoStudio.css";
+import "./Comfort.css";
 
 export function StudioEditor({
   bot,
@@ -46,7 +48,7 @@ export function StudioEditor({
       .then(async (r) => {
         if (!r.ok) throw Error("Studio " + r.status);
         const s = await r.json();
-        if (!validClips(s?.clips) || !validStory(s)) throw Error(fr ? "Projet illisible." : "Invalid project.");
+        if (!validClips(s?.clips) || !validStory(s)) throw Error(tr("studio.invalidProject"));
         if (active) setStory(s);
       })
       .catch((e) => {
@@ -84,7 +86,7 @@ export function StudioEditor({
   };
   const save = async () => {
     if (!validClips(model.clips) || !validStory(model)) {
-      setError(fr ? "Vérifie les durées et les plans." : "Check the shots and timings.");
+      setError(tr("studio.checkShotsTimings"));
       return;
     }
     setError("");
@@ -115,16 +117,14 @@ export function StudioEditor({
       setBusy(false);
     }
   }
-  const labels = fr
-    ? ["Éditorial", "Capture produit", "Dessin progressif", "Schéma", "Titres animés"]
-    : ["Editorial", "Product capture", "Drawing", "Diagram", "Kinetic type"];
+  const labels = (["editorial", "product", "drawing", "diagram", "kinetic"] as const).map((k) => tr(`studio.style.${k}`));
   return (
     <section className="studio-editor">
       <StudioPlayback solo={speakers.includes(solo) ? solo : ""} story={story} bot={bot} time={time} onTime={setTime} fr={fr} />
       <StudioSubtitles story={story} fr={fr} />
       {mp4 && <StudioMp4 key={name + "/" + version} bot={bot} name={name} version={version} dirty={dirty || busy} fr={fr} thread={thread} />}
-      <div className="studio-tracks" aria-label={fr ? "Pistes de montage" : "Timeline tracks"}>
-        {(["Image", fr ? "Titres" : "Titles", "Audio"] as const).map((label, i) => (
+      <div className="studio-tracks" aria-label={tr("studio.timelineTracks")}>
+        {(["Image", tr("studio.titles"), "Audio"] as const).map((label, i) => (
           <div className="studio-track" key={label}>
             <strong>{label}</strong>
             <div className={"studio-clips track-" + i}>
@@ -145,9 +145,7 @@ export function StudioEditor({
                 <span style={{ marginLeft: Math.min(85, (100 * model.offset) / total) + "%" }}>
                   {model.audio
                     ? (model.muted ? "◦ " : "♫ ") + model.audio.split("/").pop()
-                    : fr
-                      ? "Aucune bande-son"
-                      : "No soundtrack"}
+                    : tr("studio.noSoundtrack")}
                 </span>
               )}
               {i < 2 && total > baseSeconds && <span aria-hidden="true" style={{flex: total-baseSeconds,visibility:"hidden"}} />}
@@ -155,7 +153,7 @@ export function StudioEditor({
           </div>
         ))}
         {speakers.map(speaker=><div className="studio-track" key={speaker}>
-          <button type="button" className="btn btn-small" aria-pressed={solo===speaker} title={fr?"Écouter seulement cette voix":"Solo this voice"} onClick={()=>setSolo(solo===speaker?"":speaker)}>{speaker} · Solo</button>
+          <button type="button" className="btn btn-small" aria-pressed={solo===speaker} title={tr("studio.soloVoice")} onClick={()=>setSolo(solo===speaker?"":speaker)}>{speaker} · Solo</button>
           <div className="studio-clips track-1">{model.scenes.map((c,i)=>c.speech?.speaker===speaker ?
             <button type="button" key={i} style={{flex:c.seconds}} onClick={()=>seek(i)}>{c.speech.text || speaker}</button> :
             <span key={i} aria-hidden="true" style={{flex:c.seconds,visibility:"hidden"}}/>)}
@@ -166,10 +164,10 @@ export function StudioEditor({
       {editable && (
         <fieldset className="studio-controls" disabled={busy}>
           <legend>
-            {fr ? "Plan" : "Shot"} {shot.index + 1} / {model.scenes.length}
+            {tr("studio.shot")} {shot.index + 1} / {model.scenes.length}
           </legend>
           <label>
-            {fr ? "Titre affiché" : "Caption"}
+            {tr("studio.caption")}
             <input
               className="input"
               maxLength={300}
@@ -183,7 +181,7 @@ export function StudioEditor({
           }}/>
           <div className="studio-pair">
             <label>
-              {fr ? "Durée (s)" : "Duration (s)"}
+              {tr("studio.durationS")}
               <input
                 className="input"
                 type="number"
@@ -214,23 +212,23 @@ export function StudioEditor({
             </label>
           </div>
           <label>
-            {fr ? "Animation du plan" : "Shot animation"}
+            {tr("studio.shotAnimation")}
             <select className="input" value={s.technique ?? ""}
               onChange={e => patch({technique: (e.target.value || undefined) as Scene["technique"]})}>
-              <option value="">{fr ? "Utiliser le style du plan" : "Use shot style"}</option>
-              {studioTechniques.map(id => <option key={id} value={id}>{techniqueLabels[id][fr ? 0 : 1]}</option>)}
+              <option value="">{tr("studio.useShotStyle")}</option>
+              {studioTechniques.map(id => <option key={id} value={id}>{tr(techniqueLabels[id])}</option>)}
             </select>
           </label>
           <div className="studio-actions">
             <button className="btn btn-small" disabled={!shot.index} onClick={() => move(-1)}>
-              ← {fr ? "Avancer" : "Earlier"}
+              ← {tr("studio.earlier")}
             </button>
             <button
               className="btn btn-small"
               disabled={shot.index === model.scenes.length - 1}
               onClick={() => move(1)}
             >
-              {fr ? "Reculer" : "Later"} →
+              {tr("studio.later")} →
             </button>
             <button
               className="btn btn-small"
@@ -243,19 +241,19 @@ export function StudioEditor({
                 setTime(total);
               }}
             >
-              {fr ? "Ajouter un plan" : "Add shot"}
+              {tr("studio.addShot")}
             </button>
             <button
               className="btn btn-small"
               disabled={model.scenes.length === 1}
               onClick={() => update({ ...model, scenes: model.scenes.filter((_, i) => i !== shot.index) })}
             >
-              {fr ? "Retirer le plan" : "Remove shot"}
+              {tr("studio.removeShot")}
             </button>
           </div>
           <div className="studio-pair">
             <label>
-              {fr ? "Média du plan" : "Shot media"}
+              {tr("studio.shotMedia")}
               <input
                 type="file"
                 accept=".png,.jpg,.jpeg,.gif,.webp,.mp4,.webm,.mov"
@@ -266,7 +264,7 @@ export function StudioEditor({
               />
             </label>
             <label>
-              {fr ? "Bande-son" : "Soundtrack"}
+              {tr("studio.soundtrack")}
               <input
                 key={model.audio}
                 type="file"
@@ -279,10 +277,21 @@ export function StudioEditor({
             </label>
           </div>
           <StudioLibraryAudio key={bot} bot={bot} value={model.audio} fr={fr} onPick={audio => update({ ...model, audio })} />
+          <label className="studio-ai-label">
+            <input
+              type="checkbox"
+              checked={!!model.aiLabel}
+              onChange={(e) => {
+                const { aiLabel: _drop, ...rest } = model;
+                update(e.target.checked ? { ...rest, aiLabel: fr ? "fr" : "en" } : rest);
+              }}
+            />
+            {tr("studio.showAiGeneratedVideo")}
+          </label>
           {model.audio && (
             <div className="studio-pair">
               <label>
-                {fr ? "Début de la bande-son (s)" : "Soundtrack start (s)"}
+                {tr("studio.soundtrackStartS")}
                 <input
                   className="input"
                   type="number"
@@ -302,12 +311,12 @@ export function StudioEditor({
                   checked={model.muted}
                   onChange={(e) => update({ ...model, muted: e.target.checked })}
                 />
-                {fr ? "Couper le son" : "Mute soundtrack"}
+                {tr("studio.muteSoundtrack")}
               </label>
             </div>
           )}
           <button className="btn btn-primary" disabled={!dirty} onClick={() => void save()}>
-            {fr ? "Enregistrer une version" : "Save version"}
+            {tr("studio.saveVersion")}
           </button>
         </fieldset>
       )}

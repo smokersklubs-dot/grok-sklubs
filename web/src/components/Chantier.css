@@ -1,0 +1,126 @@
+/* « Chantier » (Chantier.tsx): the list, the form, one chantier's page. Colours are the design tokens (both themes). */
+.chantier-modal { max-width: min(1080px, calc(100vw - 32px)); }
+.chantier-body { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.chantier-page, .chantier-plan, .chantier-list, .chantier-new { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.chantier-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.chantier-head-text { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
+.chantier-head-text h3 { margin: 0; font-size: 17px; overflow-wrap: anywhere; }
+.chantier-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.chantier-actions .btn { display: inline-flex; align-items: center; gap: 5px; }
+.chantier-plan-actions { justify-content: flex-end; padding-top: 10px; border-top: 1px solid var(--border); }
+.chantier-small { font-size: 12px; }
+.chantier-note { margin: 0; padding: 8px 10px; border-radius: var(--r-md); background: var(--info-soft); color: var(--text); font-size: 13px; overflow-wrap: anywhere; }
+.chantier-section { border: 1px solid var(--border); border-radius: var(--r-lg); padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; min-width: 0; background: var(--surface); }
+.chantier-section h4 { margin: 0; font-size: 14px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; overflow-wrap: anywhere; }
+.chantier-section h5 { margin: 6px 0 0; font-size: 12.5px; color: var(--text-2); text-transform: none; }
+.chantier-section ul, .chantier-section ol { margin: 0; padding-left: 18px; }
+.chantier-section p { margin: 0; overflow-wrap: anywhere; }
+.chantier-understanding summary { cursor: pointer; font-weight: 600; font-size: 14px; }
+
+/* states */
+.ch-tone-ok { --tone: var(--ok); --tone-soft: var(--ok-soft); }
+.ch-tone-info { --tone: var(--info); --tone-soft: var(--info-soft); }
+.ch-tone-warn { --tone: var(--warn); --tone-soft: var(--warn-soft); }
+.ch-tone-danger { --tone: var(--danger); --tone-soft: var(--danger-soft); }
+.ch-tone-muted { --tone: var(--text-2); --tone-soft: var(--surface-2); }
+.chip.ch-tone-ok, .chip.ch-tone-info, .chip.ch-tone-warn, .chip.ch-tone-danger, .chip.ch-tone-muted { background: var(--tone-soft); color: var(--tone); }
+.ch-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--tone, var(--text-3)); flex: none; }
+.chantier-wait { color: var(--warn); }
+
+/* list */
+.chantier-row-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.chantier-row-head p { margin: 0; flex: 1 1 240px; }
+.chantier-items { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.chantier-item { width: 100%; display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; text-align: left; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); color: var(--text); cursor: pointer; font: inherit; }
+.chantier-item:hover { background: var(--surface-2); }
+.chantier-item-title { font-weight: 600; overflow-wrap: anywhere; min-width: 0; }
+.chantier-item-sub { grid-column: 1 / -1; font-size: 12.5px; }
+.chantier-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 12px; border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface); margin-bottom: 12px; }
+.chantier-strip-text { flex: 1 1 160px; font-size: 13.5px; }
+
+/* form */
+.chantier-new .field { display: flex; flex-direction: column; gap: 4px; }
+.chantier-plan .field, .chantier-page .field { display: flex; flex-direction: column; gap: 4px; }
+.chantier-new .chantier-actions { justify-content: space-between; }
+
+/* metrics */
+.chantier-metrics { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 8px; }
+.chantier-metrics li { border: 1px solid var(--border); border-radius: var(--r-md); padding: 8px 10px; display: flex; flex-direction: column; gap: 2px; background: var(--surface-2); }
+.chantier-metrics strong { font-size: 17px; }
+.chantier-metrics span { font-size: 12px; color: var(--text-2); }
+
+/* owner's cards */
+.chantier-card { border: 1px solid var(--warn); background: var(--warn-soft); border-radius: var(--r-md); padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+.chantier-card-kind { font-weight: 650; color: var(--warn); font-size: 12.5px; }
+.chantier-card p { color: var(--text); }
+
+/* graph */
+.chantier-legend { list-style: none; display: flex; flex-wrap: wrap; gap: 6px 14px; padding: 0 !important; font-size: 12px; color: var(--text-2); }
+.chantier-legend li { display: inline-flex; align-items: center; gap: 5px; }
+.chantier-graph-svg { overflow-x: auto; display: none; }
+.chantier-graph-svg svg { display: block; margin: 0 auto; max-width: 100%; height: auto; }
+.chantier-edge { fill: none; stroke: var(--border-strong); stroke-width: 1.6; }
+.chantier-arrow { fill: var(--border-strong); }
+.chantier-edge-label-bg { fill: var(--surface); stroke: var(--border); }
+.chantier-edge-label { font-size: 11px; fill: var(--text-2); }
+.chantier-node { cursor: pointer; }
+.chantier-node rect { fill: var(--tone-soft); stroke: var(--tone); stroke-width: 1.4; }
+.chantier-node.is-selected rect { stroke-width: 3; }
+.chantier-node:focus-visible { outline: none; }
+.chantier-node:focus-visible rect { stroke: var(--focus); stroke-width: 3; }
+.chantier-node-title { font-size: 13px; font-weight: 600; fill: var(--text); }
+.chantier-node-state { font-size: 11.5px; fill: var(--tone); }
+.chantier-graph-list { list-style: none; padding: 0 !important; margin: 0; display: flex; flex-direction: column; gap: 6px; }
+.chantier-step-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.chantier-step { flex: 1 1 140px; min-width: 0; text-align: left; display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: var(--r-md); border: 1.4px solid var(--tone); background: var(--tone-soft); color: var(--text); font: inherit; cursor: pointer; }
+.chantier-step.is-selected { box-shadow: 0 0 0 2px var(--tone); }
+.chantier-step-title { font-weight: 600; font-size: 13px; overflow-wrap: anywhere; }
+.chantier-step-state { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--tone); }
+.chantier-step-edge { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--text-2); padding-left: 8px; }
+@media (min-width: 720px) {
+  .chantier-graph-svg { display: block; }
+  .chantier-graph-list { display: none; }
+}
+
+/* task */
+.chantier-contract, .chantier-report { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; margin: 0; font-size: 13px; }
+.chantier-contract dt, .chantier-report dt { font-weight: 600; color: var(--text-2); }
+.chantier-contract dd, .chantier-report dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.chantier-report { padding: 8px 10px; border-radius: var(--r-md); background: var(--danger-soft); }
+.chantier-report dt { color: var(--danger); }
+@media (max-width: 520px) {
+  .chantier-contract, .chantier-report { grid-template-columns: 1fr; }
+  .chantier-contract dd, .chantier-report dd { margin-bottom: 4px; }
+}
+.chantier-attempts { list-style: none; padding: 0 !important; display: flex; flex-direction: column; gap: 8px; }
+.chantier-attempt { border: 1px solid var(--border); border-radius: var(--r-md); padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.chantier-attempt-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.chantier-checks { list-style: none; padding: 0 !important; display: flex; flex-direction: column; gap: 3px; }
+.chantier-check { display: flex; gap: 6px; align-items: flex-start; overflow-wrap: anywhere; }
+.chantier-check > svg { flex: none; margin-top: 2px; }
+.chantier-check.is-pass > svg { color: var(--ok); }
+.chantier-check.is-fail > svg { color: var(--danger); }
+.chantier-check.is-unsure > svg { color: var(--warn); }
+.chantier-nudge { display: flex; flex-direction: column; gap: 6px; }
+.chantier-history { font-size: 13px; display: flex; flex-direction: column; gap: 4px; }
+.chantier-lessons { list-style: none; padding: 0 !important; display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
+.chantier-lessons li { border-left: 3px solid var(--info); padding: 4px 10px; display: flex; flex-direction: column; gap: 3px; align-items: flex-start; }
+.chantier-lessons li.is-retired { opacity: 0.6; border-left-color: var(--border-strong); }
+
+/* plan editor */
+.chantier-problems { border: 1px solid var(--danger); background: var(--danger-soft); color: var(--text); border-radius: var(--r-md); padding: 8px 12px; font-size: 13px; }
+.chantier-problems p, .chantier-problems ul { margin: 0; }
+.chantier-problems ul { padding-left: 18px; }
+.chantier-grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px; }
+.chantier-inline { display: inline-block; width: auto; min-width: 0; flex: 1 1 180px; font-weight: 600; }
+.chantier-edges { list-style: none; padding: 0 !important; display: flex; flex-direction: column; gap: 6px; }
+.chantier-edges li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.chantier-edge-ends { font-size: 12.5px; color: var(--text-2); flex: 1 1 200px; overflow-wrap: anywhere; }
+.chantier-edges .input { flex: 2 1 220px; min-width: 0; }
+.chantier-check-edit { list-style: none; padding: 0 !important; display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+.chantier-check-edit li { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.chantier-check-edit li > span { min-width: 0; overflow-wrap: anywhere; }
+.chantier-json { font-family: var(--mono); font-size: 12px; }
+.chantier-attempts-field { max-width: 240px; }
+.chantier-reqs { font-size: 13px; }
+.chantier-note > svg { display: inline-block; vertical-align: -2px; }

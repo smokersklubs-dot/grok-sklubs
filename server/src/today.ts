@@ -1,4 +1,4 @@
-import { isValidTimezone, localParts } from "./cron.js";
+import { isValidTimezone, localParts } from "./cron.js"; import { localize } from "./lang/index.js";
 import { q } from "./db.js";
 import { hostedMode, hostedSettings, isOperator, operatorBlock, subscriptions, budgetEur, spentEur } from "./hosted.js";
 import { pauses } from "./pauses.js";
@@ -123,14 +123,14 @@ export const todaySettings = {
 };
 
 // ── Who is in scope ─────────────────────────────────────────────────────────────────────────────────────────────
-interface Scope {
+export interface Scope {
   /** Every own bot id (helpers included) → the bot it shows under (a helper: the bot it works for). */
   own: Map<string, BotRecord>;
   /** Top-level own bots (not helpers). */
   top: BotRecord[];
   shared: BotAccess[];
 }
-function scopeOf(userId: string): Scope {
+export function scopeOf(userId: string): Scope {
   const all = bots.list(userId, true);
   const byId = new Map(all.map((b) => [b.id, b]));
   const own = new Map<string, BotRecord>();
@@ -204,7 +204,7 @@ export function cardNeeds(bot: BotRecord, opts: { approveOnly: boolean; shared: 
   return out;
 }
 
-function needsOf(userId: string, scope: Scope, t: number): TodayNeed[] {
+export function needsOf(userId: string, scope: Scope, t: number): TodayNeed[] {
   const out: TodayNeed[] = [];
   for (const b of scope.top) out.push(...cardNeeds(b, { approveOnly: false, shared: false }));
   for (const a of scope.shared) if (a.canApprove) out.push(...cardNeeds(a.bot, { approveOnly: true, shared: true }));
@@ -265,14 +265,14 @@ export function journalKind(tool: string): TodayKind | "read" | null {
   return null;
 }
 
-interface Collected { top: BotRecord; shared: boolean; item: Omit<TodayDone, "minutes"> }
+export interface Collected { top: BotRecord; shared: boolean; item: Omit<TodayDone, "minutes"> }
 
 function rowLink(bot: BotRecord, generation: number | null, seq: number | null, thread = 0): TodayLink | null {
   if (seq === null || seq === undefined || generation !== bot.generation) return { kind: "bot", botId: bot.id };
   return { kind: "row", botId: bot.id, seq, ...(thread ? { thread } : {}) };
 }
 
-function doneOf(userId: string, scope: Scope, start: number, end: number): Collected[] {
+export function doneOf(userId: string, scope: Scope, start: number, end: number): Collected[] {
   const out: Collected[] = [];
   const add = (top: BotRecord, shared: boolean, kind: TodayKind, at: number, title: string, detail: string, link: TodayLink | null, count = 1, counted = count) =>
     out.push({ top, shared, item: { kind, at, title: clip(title.replace(/\s+/g, " ").trim(), 200), detail: clip(detail.replace(/\s+/g, " ").trim(), 280), count, counted, link } });
@@ -423,7 +423,7 @@ const FR: Record<string, string> = {
     "Le temps gagné est une estimation : pour chaque type de résultat, le nombre fait × les minutes qu'il prend d'habitude à la main (Réglages → Aujourd'hui).",
   "Cost": "Coût", "Open Sklubot": "Ouvrir Sklubot", "and {n} more": "et {n} de plus",
 };
-const tx = (loc: Locale, en: string, vars: Record<string, string | number> = {}) => (loc === "fr" ? FR[en] ?? en : en).replace(/\{(\w+)\}/g, (_m, k) => String(vars[k] ?? ""));
+const tx = (loc: Locale, en: string, vars: Record<string, string | number> = {}) => localize(loc, en, FR).replace(/\{(\w+)\}/g, (_m, k) => String(vars[k] ?? ""));
 export const durationText = (min: number) => (min < 60 ? `${min} min` : `${Math.floor(min / 60)} h${min % 60 ? ` ${pad(min % 60)}` : ""}`);
 
 export interface Digest { title: string; body: string; text: string; report: TodayReport }

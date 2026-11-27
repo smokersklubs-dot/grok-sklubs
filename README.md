@@ -35,9 +35,9 @@ Sklubot a été reconstruit **en salle blanche** : voir [docs/CLEANROOM.md](docs
 | **Artefacts web** | Créer un prototype privé dans le chat, le modifier, consulter ses versions et télécharger ses fichiers. [Guide des artefacts](docs/ARTEFACTS.md) |
 | **Méthodes de travail** | Claude Code, Codex et Grok disposent de 60 procédures françaises consultables par titre avec `guide_read` et d’un index de 169 ressources OpenDesign. [Manuel portable](server/templates/methodes/manuel.md) · [Répertoire OpenDesign](server/templates/methodes/opendesign.md) |
 | **Mise en ligne** | **Installation sur un VPS en une commande** (Docker, HTTPS automatique, mises à jour, sauvegarde) — voir [docs/INSTALLATION-VPS.md](docs/INSTALLATION-VPS.md) ; ou Coolify — voir [docs/DEPLOIEMENT.md](docs/DEPLOIEMENT.md) |
-| **Mémoire** | Souvenirs enregistrés par le bot, **apprentissage automatique** après les conversations (avec dédoublonnage), sélection des souvenirs pertinents à chaque tour, **résumé automatique** des longues conversations |
+| **Mémoire** | Souvenirs enregistrés par le bot, **apprentissage automatique** après les conversations (avec dédoublonnage), sélection des souvenirs pertinents à chaque tour, **recherche classée et rappel automatique par mots-clés** (sans modèle, [docs/MEMOIRE.md](docs/MEMOIRE.md)), **résumé automatique** des longues conversations |
 | **Compétences** | Procédures rédigées par toi, injectées dans le bot |
-| **Automatisation** | Routines créées en discutant : planifiées (cron + fuseau), ponctuelles, ou **déclenchées par webhook** ; points réguliers proactifs du bot principal |
+| **Automatisation** | Routines créées en discutant : planifiées (cron + fuseau), ponctuelles, ou **déclenchées par webhook** ; chaque exécution travaille **dans son propre fil** (le chat principal ne reçoit que le résultat) ; **un modèle au choix par routine** (ou pour toutes les routines, pour le travail de fond) ; points réguliers proactifs du bot principal |
 | **Équipe** | Messages entre bots, assistants temporaires en parallèle (4 max, compte rendu automatique), discussions de groupe avec @mentions |
 | **Tâches** | Suivi du travail en cours, en attente de toi, terminé |
 | **Voix** | Appel vocal et dictée sur tous les navigateurs (iPhone compris) : reconnaissance et synthèse vocales du serveur (whisper.cpp + Piper, auto-hébergés et actifs par défaut), sinon celles du navigateur ; **chaque bot a sa propre voix, automatiquement et gratuitement** (Kokoro + Piper, [docs/VOIX.md](docs/VOIX.md)), ou une voix Fish Audio en un clic ; vitesse / langue par bot |
@@ -100,7 +100,11 @@ ne dit encore rien au bout de `FIRST_REPLY_RESCUE_SEC` (20 s) reçoit une ligne 
 Changer d'IA pour ce message, Vérifier la connexion) ; sans aucun progrès pendant `STALL_NOTICE_MIN` (5 min), une ligne
 « … semble bloqué » (Continuer d'attendre, Arrêter et reprendre). Une approbation, une question, une pause ou un outil
 en cours ne comptent jamais comme un silence ; un outil Claude Code / Codex dont le processus a disparu de l'ordinateur
-arrête le tour aussitôt, avec « Continuer ». La liste des modèles Codex proposés est lue
+arrête le tour aussitôt, avec « Continuer ». Un appel à un modèle par API qui ne répond pas (rien en
+`MODEL_CONNECT_TIMEOUT_SEC`, 180 s) ou qui se tait en cours de réponse (`MODEL_IDLE_TIMEOUT_SEC`, 180 s) est coupé et
+relancé tout seul, puis passe au modèle de secours ; s'il échoue encore, une carte dit quoi faire. Une demande d'accord
+n'expire plus : la carte attend ta réponse, même après un redémarrage, et un message tapé entre-temps est gardé pour
+après. La liste des modèles Codex proposés est lue
 dans Codex lui-même (`codex debug models`, gardée 10 min) ; `CODEX_MODELS` sert de secours.
 
 Sur la page du navigateur, un bot peut agir par **références d'éléments** plutôt que par pixels : `element_snapshot` liste
@@ -144,6 +148,17 @@ sinon), le début du tour est résumé et la fin gardée telle quelle ; un « tr
 un résumé puis un nouvel essai avant de passer au modèle de secours. Les anciens résultats d'outils très longs sont
 raccourcis à l'envoi, seules les 8 dernières captures d'écran d'un tour sont renvoyées (`KEEP_SCREENSHOTS`), et les
 lectures sans effet (pages, recherches, mémoire…) d'une même étape partent en parallèle (`PARALLEL_TOOLS`, 4).
+
+**Jusqu'à 3 tâches en même temps par bot** (`server/src/agent/lanes.ts`). Chaque tâche travaille dans sa conversation :
+le chat principal, le fil d'une routine, le fil sous la demande d'un coéquipier, un fil que tu as ouvert. Ton chat
+principal ne fait jamais la queue derrière une autre tâche ; les autres se partagent les places qui restent (une
+4ᵉ tâche attend qu'une se termine). Chaque tâche a son bouton Arrêter, ses cartes d'accord et son état ; l'en-tête du
+chat affiche « 3 tâches en cours » et permet d'ouvrir ou d'arrêter chacune (« Tout arrêter » aussi, web et téléphone).
+Deux tâches ne changent jamais la même chose en même temps : l'écran et le navigateur du bot, l'écran de ton ordinateur,
+un fichier de la bibliothèque, une page publiée ont un seul utilisateur à la fois (`agent/turnlocks.ts`) ; l'autre tâche
+attend au plus `LOCK_WAIT_SEC` (60 s, état « Attend l'autre tâche »), puis fait autre chose. Une seule tâche à la fois
+(comme avant, dans l'ordre) pour un bot sur abonnement Claude Code / Codex (une session par bot), l'offre hébergée
+« Gratuit », ou `BOT_PARALLEL_TASKS=1` (3 par défaut, 3 au plus). Budgets, plafonds et usage comptent toutes les tâches.
 
 Sans Docker, Sklubot se rabat sur un simple navigateur par bot (`npm i playwright && npx playwright install chromium`),
 et sinon sur la lecture de pages, la ligne de commande et les connecteurs.
@@ -204,7 +219,17 @@ Elle s'active dès qu'une clé `OPENAI_API_KEY` ou `XAI_API_KEY` est présente, 
   169.254.169.254…), redirections comprises. Pour tester avec des serveurs locaux : `ALLOW_PRIVATE_FETCH=1`.
 - Trois niveaux d'autonomie par bot : **prudent** (demande avant les commandes et les écritures dans les
   applications), **équilibré** (demande seulement avant les écritures dans les applications), **confiance**
-  (ne demande jamais).
+  (ne demande jamais). Un nouveau bot est **équilibré** par défaut (le choix est proposé à la création) ; les bots
+  existants gardent leur réglage, et payer, supprimer ou envoyer quelque chose d'irréversible demande toujours.
+- **Répondre à une demande d'un bot** : « Autoriser » (cette fois), « Toujours autoriser » (une règle, visible dans
+  Réglages → Autorisations) ou **« Autoriser pour cette conversation »**. Cette troisième réponse vaut pour ce bot,
+  cette action au même endroit (la même application, le même site…) et cette conversation seulement. Elle
+  s'arrête toute seule : quand tu effaces la conversation, après 12 h sans message de ta part, ou quand tu la
+  retires (Réglages → Autorisations → « Pour une conversation »). Elle ne sert jamais à une routine, à un autre
+  bot ni à un autre compte, et seul ton clic la crée : un bot ne peut ni la demander ni la prolonger. Un
+  paiement, un achat, une suppression, un envoi ou une publication te sont **toujours** demandés, même avec elle ;
+  après du contenu extérieur, elle ne vaut que pour le destinataire que tu avais sous les yeux. Chaque action
+  faite grâce à elle est notée dans le journal (« pour cette conversation », avec son numéro).
 - Les jetons des connecteurs sont chiffrés dans la base et ne sont jamais renvoyés au navigateur ni au modèle.
 - Les mots de passe sont hachés (scrypt) ; seules les empreintes des sessions sont stockées.
 - Mets `PUBLIC_URL` en `https://…` si tu exposes le serveur, et place-le derrière un proxy TLS.

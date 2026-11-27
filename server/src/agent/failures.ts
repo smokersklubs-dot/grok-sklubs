@@ -51,7 +51,8 @@ export const HANDOFF_CLASSES: ReadonlySet<FailureClass> = new Set(["provider_dow
 const TASK_LEVEL: ReadonlySet<FailureClass> = new Set(["tool_error", "loop_detected", "bad_input"]);
 
 // ── 1. Classification ───────────────────────────────────────────────────────────────────────────────────────────
-export interface FailureInput { err?: unknown; text?: string; status?: number | null; code?: string | null; loopStop?: LoopStop | null; tool?: string }
+export interface FailureInput { err?: unknown; text?: string; status?: number | null; code?: string | null; loopStop?: LoopStop | null; tool?: string;
+  /** The class read from structured fields (engine-failure.ts): it wins over every guess from words. */ cls?: FailureClass | null }
 export interface Classified { cls: FailureClass; tool: string; status: number | null }
 
 /** Claude Code / Codex / the turn's own words for "sign in again" (engine.ts signInHint, both languages). */
@@ -64,6 +65,8 @@ const COMPUTER_DOWN = /no such container|container\b.{0,80}\bis not running|cann
 const TIMEOUT = /timed? ?out|timeout|took too long|ETIMEDOUT|UND_ERR_(HEADERS|BODY|CONNECT)_TIMEOUT|time limit/i;
 /** The service itself (Codex's "stream disconnected before completion", a 5xx page, a dropped connection). */
 const PROVIDER_DOWN = /stream disconnected|error sending request|connection (reset|closed|refused|error)|service unavailable|bad gateway|internal server error|overloaded|api_error|could not be reached/i;
+/** Node / SQLite error codes of this server itself running out of something (nodejs.org/api/errors.html, sqlite.org/rescode.html). */
+const SERVER_CODES = new Set(["ENOMEM", "EMFILE", "ENFILE", "SQLITE_FULL", "SQLITE_NOMEM", "SQLITE_IOERR"]);
 const BAD_INPUT = /invalid_request_error|invalid request|bad request|unsupported (image|file|media|format)|could not process (the )?(image|file)|malformed|validation error/i;
 
 /** The HTTP status in an error's words ("API error 503: …", "API Error: 529 {…}", "unexpected status 401"). */
@@ -83,6 +86,9 @@ export function classifyFailure(i: FailureInput): Classified {
   const code = i.code ?? pe?.code ?? null;
   const tool = i.tool ?? "";
   const out = (cls: FailureClass): Classified => ({ cls, tool, status });
+  if (i.cls) return out(i.cls);
+  // Sklubot's own server out of memory, files or database room (structured error codes, never words): a server fault.
+  if (names.some((n) => SERVER_CODES.has(n))) return out("server_fault");
   if (names.includes("EngineTimeout") || names.includes("TimeoutError")) return out("timeout");
   if (names.includes("ComputersBusyError") || names.includes("EngineGone") || COMPUTER_DOWN.test(text)) return out("computer_down");
   if (isHostedStop(e)) return out("out_of_budget");
@@ -137,6 +143,8 @@ export function remediesFor(cls: FailureClass, o: { engine?: Engine | null; team
     out_of_budget: ["connect_account", "switch_model"],
     tool_error: ["retry", "continue_without"], loop_detected: ["continue_without", "retry"],
     computer_down: ["restart_computer", "retry"], bad_input: ["retry", "switch_model"], unknown: ["retry", "switch_model"],
+    // Sklubot itself failed (its tools did not join the engine, the server is out of memory…): fixed on this side, never retried on its own.
+    server_fault: ["retry", "switch_model"],
   };
   const list = [...base[cls]];
   if (o.teammate && (HANDOFF_CLASSES.has(cls) || cls === "unknown" || cls === "subscription_limit")) list.push("handoff");
@@ -149,6 +157,8 @@ export function decideFailure(d: DecideInput): Decision {
   if (d.cls === "subscription_limit") return { auto: d.fallback ? "fallback" : "wait", remedies, card: false, notify: false };
   // A notice with its own way forward is already there (Continue after the time limit, a computer that stopped…).
   if (d.existingRemedy) return { auto: null, remedies, card: false, notify: false };
+  // A fault of Sklubot itself (L27): never tried again, handed over or retried behind a breaker — one card for the owner.
+  if (d.cls === "server_fault") return { auto: null, remedies, card: true, notify: true };
   if (d.fallback && !TASK_LEVEL.has(d.cls) && d.cls !== "computer_down") return { auto: "fallback", remedies, card: false, notify: false };
   const safe = !d.uncertain;
   if (TRANSIENT.has(d.cls) && safe && d.breakerOpen) return { auto: "provider_wait", delayMs: timing.breakerOpenMs, remedies, card: false, notify: false };
@@ -296,7 +306,7 @@ function handTo(bot: BotRecord, mate: BotRecord, cls: FailureClass, task: string
   // Only the task travels: the owner's words (vault values and pasted secrets masked), never the bot's memory or vault.
   const clean = maskSecrets(redactSecrets(bot.userId, clip(task, 2000)), "[secret]").text;
   const text = tr(locale, "{from} could not finish this work ({why}) and hands it to you. Do it yourself and answer {owner} in your own chat — do not send it back to {from}, whose brain is not working right now.\n\nThe request:\n{task}", { from: bot.name, why: tr(locale, CLASS_TITLES[cls]), owner: users.byId(bot.userId)?.name ?? "", task: clean });
-  deliverBotMessage(bot, mate, text, 0, true);
+  deliverBotMessage(bot, mate, text, 0, true, true); // a request: its own thread (lanes.ts)
   audit(bot.userId, "system", `${bot.name}: work handed to ${mate.name} after a failure (${cls})`, bot.id);
 }
 
@@ -305,7 +315,7 @@ export const CLASS_TITLES: Record<FailureClass, string> = {
   provider_down: "The AI service is not answering", rate_limited: "Too many requests for now", subscription_limit: "The subscription is at its limit",
   auth_expired: "The account needs signing in again", out_of_budget: "No credit left for the AI", tool_error: "A step failed",
   computer_down: "The computer is not working", timeout: "It took too long", loop_detected: "It was going round in circles",
-  bad_input: "The AI could not take this request", unknown: "Something went wrong",
+  bad_input: "The AI could not take this request", server_fault: "Sklubot itself had a problem", unknown: "Something went wrong",
 };
 
 // ── 3. The coordinator ──────────────────────────────────────────────────────────────────────────────────────────

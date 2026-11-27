@@ -15,6 +15,7 @@ import type { ApprovalCard, Bot, Card, QuestionCard } from "../api/types";
 import { useT, type Key } from "../i18n";
 import { cardReq, type Req } from "../lib/cardActions";
 import type { RootStack } from "../screens/types";
+import { PollCard } from "./PollCard"; import { PinButton } from "./ChatPlus"; // L184
 import { useStore } from "../state/store";
 import { radius, useTheme } from "../theme";
 import { SecretInput, useBusy } from "./cardKit";
@@ -67,7 +68,7 @@ function Approval({ card, bot }: { card: ApprovalCard; bot: Bot }) {
   const t = useT();
   const { busy, error, run } = useBusy();
   const canDecide = !bot.access || bot.access.canApprove;
-  const decide = (d: "allow" | "always" | "deny") => run(d, async () => {
+  const decide = (d: "allow" | "always" | "conversation" | "deny") => run(d, async () => {
     await useStore.getState().decide(card.approvalId, d);
     void Haptics.notificationAsync(d === "deny" ? Haptics.NotificationFeedbackType.Warning : Haptics.NotificationFeedbackType.Success).catch(() => undefined);
   });
@@ -80,6 +81,7 @@ function Approval({ card, bot }: { card: ApprovalCard; bot: Bot }) {
       {card.quote ? <Text style={{ color: c.text2, fontSize: 13 }}>{t("approval.quote", { quote: card.quote })}</Text> : null}
       {card.why ? <Text style={{ color: c.text2, fontSize: 13 }}>{t("approval.why", { why: card.why })}</Text> : null}
       {!done && card.once ? <Text style={{ color: c.text3, fontSize: 13 }}>{t("approval.onceOnly")}</Text> : null}
+      {!done && card.parked ? <Text style={{ color: c.text3, fontSize: 13 }}>{t("approval.parked")}</Text> : null}
       {!done && !canDecide ? <Text style={{ color: c.text3, fontSize: 13 }}>{t("approval.ownerOnly", { name: bot.access?.ownerName ?? "" })}</Text> : null}
       {!done && canDecide ? (
         <View style={styles.actions}>
@@ -89,9 +91,16 @@ function Approval({ card, bot }: { card: ApprovalCard; bot: Bot }) {
           <Button small variant="primary" label={t("approval.allow")} busy={busy === "allow"} disabled={!!busy} onPress={() => void decide("allow")} />
         </View>
       ) : null}
+      {/* « Autoriser pour cette conversation »: offered by the server on this card, to the bot's owner only (its own line: the label is long). */}
+      {!done && canDecide && card.conversation && !card.once && !bot.access ? (
+        <View style={styles.actions}>
+          <Spacer />
+          <Button small variant="ghost" label={t("approval.conversationBtn")} busy={busy === "conversation"} disabled={!!busy} onPress={() => void decide("conversation")} />
+        </View>
+      ) : null}
       {done ? (
         <Outcome ok={card.status === "denied" ? false : card.status === "expired" ? null : true} icon={card.status === "denied" ? "close" : card.status === "expired" ? "clock" : "check"}
-          label={`${t(`approval.${card.status}` as Key)}${card.outcome && (card.status === "allowed" || card.status === "always") ? ` · ${t(`approval.outcome.${card.outcome}` as Key)}` : ""}`} />
+          label={`${t(card.status === "allowed" && card.grantedFor === "conversation" ? "approval.grantedConversation" : `approval.${card.status}` as Key)}${card.outcome && (card.status === "allowed" || card.status === "always") ? ` · ${t(`approval.outcome.${card.outcome}` as Key)}` : ""}`} />
       ) : null}
       <ErrorNote>{error}</ErrorNote>
     </Shell>
@@ -181,16 +190,45 @@ function Takeover({ card, bot }: { card: Of<"takeover">; bot: Bot }) {
   const done = () => run("done", () => post(cardReq.takeoverDone(bot.id, card.takeoverId)));
   return (
     <Shell accent={pending ? c.warn : undefined}>
-      <Head icon="hand" title={t("takeover.title", { name: bot.name })} sub={`${t(`takeover.reason.${card.reason}` as Key)}${pending ? ` · ${t("takeover.left", { n: minutesLeft(card.expiresAt, now) })}` : ""}`} tone={pending ? c.warn : undefined} />
+      <Head icon="hand" title={t(card.reason === "password" ? "takeover.selfTitle" : "takeover.title", { name: bot.name })} sub={`${t(`takeover.reason.${card.reason}` as Key)}${pending ? ` · ${t("takeover.left", { n: minutesLeft(card.expiresAt, now) })}` : ""}`} tone={pending ? c.warn : undefined} />
       {card.detail ? <Reason text={card.detail} /> : null}
       {pending ? (
         <>
-          <Text style={{ color: c.text3, fontSize: 13 }}>{t("takeover.hint")}</Text>
+          <Text style={{ color: c.text3, fontSize: 13 }}>{t(card.reason === "password" ? "takeover.selfHint" : "takeover.hint")}</Text>
           <Button small variant="ghost" icon="monitor" label={t("takeover.open")} disabled={!!busy} onPress={() => nav.navigate("Computer", { botId: bot.id, control: true })} />
-          <Button small variant="accent" icon="check" label={t("takeover.done")} busy={busy === "done"} disabled={!!busy} onPress={() => void done()} />
+          <Button small variant="accent" icon="check" label={t(card.reason === "password" ? "takeover.selfDone" : "takeover.done")} busy={busy === "done"} disabled={!!busy} onPress={() => void done()} />
         </>
       ) : (
-        <Outcome ok={card.status === "done" ? true : card.status === "timeout" ? null : false} icon={card.status === "done" ? "check" : card.status === "timeout" ? "clock" : "close"} label={t(`takeover.status.${card.status}` as Key)} />
+        <Outcome ok={card.status === "done" ? true : card.status === "timeout" ? null : false} icon={card.status === "done" ? "check" : card.status === "timeout" ? "clock" : "close"} label={t(card.reason === "password" && card.status === "done" ? "takeover.selfStatusDone" : (`takeover.status.${card.status}` as Key))} />
+      )}
+      <ErrorNote>{error}</ErrorNote>
+    </Shell>
+  );
+}
+
+/* ---------- L91: a one-time code typed into a hidden box, straight into the page's field (server agent/codebox.ts) ---------- */
+
+function CodeBox({ card, bot }: { card: Of<"code">; bot: Bot }) {
+  const { c } = useTheme();
+  const t = useT();
+  const [code, setCode] = useState("");
+  const pending = card.status === "pending";
+  const now = useNow(15_000, pending);
+  const { busy, error, run } = useBusy();
+  const send = (body: { code?: string; dismiss?: true }) => run(body.dismiss ? "dismiss" : "send", async () => { await post(cardReq.code(bot.id, card.codeId, body)); setCode(""); });
+  return (
+    <Shell accent={pending ? c.warn : undefined}>
+      <Head icon="key" title={t("codebox.title", { name: bot.name })} sub={`${card.host || "?"} · ${t("codebox.field", { field: card.label })}${pending ? ` · ${t("takeover.left", { n: minutesLeft(card.expiresAt, now) })}` : ""}`} tone={pending ? c.warn : undefined} />
+      {card.detail ? <Reason text={card.detail} /> : null}
+      {pending ? (
+        <>
+          <Text style={{ color: c.text3, fontSize: 13 }}>{t("codebox.hint")}</Text>
+          <SecretInput value={code} onChangeText={setCode} placeholder="123456" label={t("codebox.title", { name: bot.name })} />
+          <Button small variant="ghost" label={t("codebox.dismiss")} busy={busy === "dismiss"} disabled={!!busy} onPress={() => void send({ dismiss: true })} />
+          <Button small variant="accent" icon="send" label={t("codebox.send")} busy={busy === "send"} disabled={!!busy || !code.trim()} onPress={() => void send({ code: code.trim() })} />
+        </>
+      ) : (
+        <Outcome ok={card.status === "typed" ? true : card.status === "timeout" ? null : false} icon={card.status === "typed" ? "check" : card.status === "timeout" ? "clock" : "close"} label={t(`codebox.status.${card.status}` as Key)} />
       )}
       <ErrorNote>{error}</ErrorNote>
     </Shell>
@@ -497,12 +535,41 @@ function Mail({ card, bot }: { card: Of<"mail">; bot: Bot }) {
   );
 }
 
+/** DS-Bot item 8: a view card (chart, table, form…) as the plain text the server keeps for the phone; a form is answered in the web app. */
+function ViewText({ card, bot, seq }: { card: Of<"view">; bot: Bot; seq: number }) {
+  const { c } = useTheme();
+  const t = useT();
+  return (
+    <Shell>
+      <Head icon="chart" title={card.title} />
+      <Text selectable style={[styles.detail, { backgroundColor: c.surface2, color: c.text }]}>{card.fallback}</Text>
+      {card.status === "pending" ? <Reason text={t("view.answerOnWeb")} /> : card.status === "answered" && card.answer ? <Reason text={t("view.answered", { answer: card.answer })} /> : null}
+      {!bot.access && card.status !== "pending" ? <PinButton botId={bot.id} seq={seq} /> : null}
+    </Shell>
+  );
+}
+
+/** L158 « Créations »: the trajectory in words (stage, renders, no change / no progress); previews are on the website. */
+function TrajectoryText({ card }: { card: Of<"trajectory"> }) {
+  const t = useT();
+  const last = card.renders[card.renders.length - 1];
+  return (
+    <Shell>
+      <Head icon="image" title={card.title} />
+      <Reason text={t("trajectory.summary", { n: card.total, stage: t(`trajectory.stage.${card.stage}`) })} />
+      {card.stalled ? <Reason text={t("trajectory.stalled")} /> : last?.unchanged ? <Reason text={t("trajectory.unchanged")} /> : null}
+      <Reason text={t("trajectory.onWeb")} />
+    </Shell>
+  );
+}
+
 export function CardView({ card, bot, seq }: { card: Card; bot: Bot; seq: number }) {
   switch (card.type) {
     case "approval": return <Approval card={card} bot={bot} />;
     case "question": return <Question card={card} bot={bot} seq={seq} />;
     case "connect": return <Connect card={card} bot={bot} seq={seq} />;
     case "takeover": return <Takeover card={card} bot={bot} />;
+    case "code": return <CodeBox card={card} bot={bot} />; // L91
     case "secret": return <Secret card={card} bot={bot} seq={seq} />;
     case "uncertain": return <Uncertain card={card} />;
     case "task": return <TaskCard card={card} bot={bot} />;
@@ -512,6 +579,9 @@ export function CardView({ card, bot, seq }: { card: Card; bot: Bot; seq: number
     case "apiconnector": return <ApiConnector card={card} bot={bot} seq={seq} />;
     case "memory": return <Memory card={card} bot={bot} seq={seq} />;
     case "mail": return <Mail card={card} bot={bot} />;
+    case "view": return <ViewText card={card} bot={bot} seq={seq} />; // L184: « Épingler »
+    case "trajectory": return <TrajectoryText card={card} />; // L158
+    case "poll": return <PollCard card={card} />; // L184
     default: return null;
   }
 }

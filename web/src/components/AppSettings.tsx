@@ -1,5 +1,6 @@
-import { useEffect, useId, useRef, useState, type FormEvent } from "react";
-import { UsageCapsBlock } from "./UsageCaps";
+import { useEffect, useId, useRef, useState, type FormEvent } from "react"; import { BotTrash } from "./BotLifecycle"; import { TeamCare } from "./TeamCare"; import { HistoryRetention } from "./HistoryRetention"; import { BotThemes } from "./BotThemes";
+import { PersonalCommandsSection } from "./ComposerSlash"; import { DoctorSection } from "./DoctorSection"; // L152, L153
+import { UsageCapsBlock } from "./UsageCaps"; import { UsageMetricsPanel } from "./ChatPlus"; import { UsageChart } from "./UsageChart"; import { ComputerHoursBlock } from "./ComputerHours"; // L142 30 days ; L95 computer hours
 import { api, ApiError, enc, errText } from "../api";
 import { LOCALES, tn, useT, type Key } from "../i18n";
 import { useStore, type AppSection, type Theme } from "../store";
@@ -28,9 +29,10 @@ import { TwoFactorSettings } from "./TwoFactor";
 import { AdminSection, SubscriptionSection } from "./Hosted";
 import { BackupSettings } from "./BackupSettings";
 import { SurveillanceSettingsSection } from "./SurveillanceView";
+import { TeamAskPolicy } from "./TeamAskPolicy";
 import { SkillsLibrarySection } from "./SkillsLibrary";
 import { SettingsNavigation, KeyboardShortcuts } from "./SettingsNavigation";
-import { PageVersions } from "./PageVersions";
+import { PageVersions } from "./PageVersions"; import { DesignJournal } from "./PageKeep"; import { ConversationGrantsBlock } from "./ConversationGrants"; import { SecuritySettingsBlock } from "./SecurityLot1";
 
 /* ---------- General ---------- */
 
@@ -64,7 +66,7 @@ function GeneralSection() {
           </button>
         ))}
       </div>
-      <p className="muted small">{t("general.themeHint")}</p>
+      <p className="muted small">{t("general.themeHint")}</p><BotThemes />{/* L161 themes proposed by the bots (BotThemes.tsx) */}
 
       <h3 className="pane-heading">{t("general.language")}</h3>
       <div className="choice-list lang-choices" role="radiogroup" aria-label={t("general.language")}>
@@ -238,7 +240,7 @@ function SharedComputers({ computer, onError }: { computer: ComputerState; onErr
     <div className="shared-computers">
       <h3 className="pane-heading">{t("shared.heading")}</h3>
       <p className="muted small">{t("shared.intro")}</p>
-      <p className="muted small">{sharing.length ? t("shared.usedBy", { names: sharing.map((b) => b.name).join(", ") }) : t("shared.nobody")}</p>
+      <p className="muted small">{sharing.length ? t("shared.usedBy", { names: sharing.map((b) => b.name).join(", ") }) : t("shared.nobody")}</p>{list[0]?.waiting?.length ? <p className="muted small" role="status">{t("shared.queue", { names: names(list[0].waiting) })}</p> : null}{/* L161 queue */}
       {list.length === 0 ? (
         <p className="muted small">{t("shared.none")}</p>
       ) : (
@@ -409,6 +411,7 @@ function PermissionsSection() {
           })}
         </ul>
       )}
+      <ConversationGrantsBlock /><SecuritySettingsBlock />
     </>
   );
 }
@@ -593,8 +596,8 @@ function UsageSection() {
               <span>{t("usage.unknownCost", { tokens: compactNumber(usage.totals.unknownTokens), models: (usage.unknownModels ?? []).join(", "), estimate: money(usage.totals.estimatedUsd) })}</span>
             </div>
           )}
-          {/* The monthly budget's bar is with the caps (UsageCapsBlock): one place for every limit. */}
-          <UsageCapsBlock />
+          <UsageChart /><UsageMetricsPanel />{/* L184 metrics (ChatPlus.tsx). L142. The monthly budget's bar is with the caps (UsageCapsBlock): one place for every limit. */}
+          <UsageCapsBlock /><ComputerHoursBlock />
           {(usage.subscriptions ?? []).length > 0 && <SubscriptionUsageBlock subs={usage.subscriptions} />}
           <h3 className="pane-heading">{t("usage.byBot")}</h3>
           {usage.byBot.length === 0 ? (
@@ -846,7 +849,7 @@ function PagesSection() {
           })}
         </ul>
       )}
-      <PublicLinksBlock />
+      <DesignJournal /><PublicLinksBlock />
     </>
   );
 }
@@ -1060,6 +1063,7 @@ function TeamSection() {
         </div>
         <GrokImportButton />
       </div>
+      <TeamAskPolicy /> {/* L96 « qui peut demander à qui », helpers inherit (TeamAskPolicy.tsx) */}
       <ErrorNote onDismiss={() => setError(null)}>{error}</ErrorNote>
       {note && (
         <div className="callout is-ok" role="status">
@@ -1228,7 +1232,7 @@ export function AppSettings({ section }: { section: AppSection }) {
         <IconButton icon="close" label={t("settings.close")} className="app-settings-close" onClick={closeAppSettings} />
         <div className={`app-settings-content settings-pane ${section === "admin" ? "is-wide" : ""}`}>
           {section === "general" && <GeneralSection />}
-          {section === "shortcuts" && <KeyboardShortcuts />}
+          {section === "shortcuts" && <><KeyboardShortcuts /><PersonalCommandsSection /></>}{section === "doctor" && <DoctorSection />}
           {section === "today" && <TodaySettingsSection />}
           {section === "surveillance" && sentinel && <SurveillanceSettingsSection />}
           {section === "profile" && <ProfileSection />}
@@ -1238,14 +1242,14 @@ export function AppSettings({ section }: { section: AppSection }) {
           {section === "devices" && <DevicesSection />}
           {section === "permissions" && <PermissionsSection />}
           {section === "rules" && <RulesSection />}
-          {section === "memory" && <MemorySettingsSection />}
+          {section === "memory" && <><MemorySettingsSection /><HistoryRetention /></>}
           {section === "skills" && <SkillsLibrarySection />}
           {section === "connectors" && <ConnectorsSection />}
           {section === "vault" && <VaultSection />}
           {section === "keys" && <KeysSection />}
           {section === "pages" && <PagesSection />}
           {section === "activity" && <ActivitySection />}
-          {section === "team" && <TeamSection />}
+          {section === "team" && <><TeamSection /><BotTrash /><TeamCare /></>}
           {section === "workspaces" && <WorkspacesSection />}
           {section === "voice" && <VoiceSection />}
           {section === "email" && <MailSection />}

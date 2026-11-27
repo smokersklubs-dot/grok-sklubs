@@ -1,12 +1,12 @@
 import { useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type RefObject } from "react";
+import { t as tr, useT } from "../i18n";
 import { isGithubConnector, mentionAt, replaceMention } from "../../../server/src/clientshared/chatmentions";
-import { useT } from "../i18n";
 import { useStore } from "../store";
 import type { Bot } from "../types";
 import { Icon, type IconName } from "./Icon";
 import { GithubIssues } from "./GithubIssues";
 import { Modal } from "./ui";
-import { RepositoryPicker } from "./RepositoryPicker";
+import { RepositoryPicker } from "./RepositoryPicker"; import { fileMention, useBotFiles } from "./ComposerSlash";
 
 interface Choice { id: string; label: string; detail: string; icon: IconName; pick: () => void }
 type Range = { start: number; end: number };
@@ -26,6 +26,7 @@ export function useComposerMentions(bot: Bot, draft: string, area: RefObject<HTM
   const current = useRef<HTMLButtonElement>(null);
   const own = bot.kind === "agent" && !bot.access;
   const range = own && !disabled && !dismissed && !repository ? mentionAt(draft, caret) : null;
+  const files = useBotFiles(bot.id, !!range);
   const sync = (el: HTMLTextAreaElement, changed = false) => {
     const next = el.selectionStart === el.selectionEnd ? el.selectionStart : -1;
     if (changed || next !== caret) { dismiss(false); setActive(0); }
@@ -44,7 +45,7 @@ export function useComposerMentions(bot: Bot, draft: string, area: RefObject<HTM
   const choices: Choice[] = [];
   if (range) {
     choices.push({ id: "github", label: "GitHub", detail: t("mention.github"), icon: "plug", pick: () => setRepository({ range, draft, botId: bot.id }) });
-    choices.push({ id: "github-code", label: "GitHub Code", detail: fr ? "Confier un ticket à deux bots" : "Assign an issue to two bots", icon: "plug", pick: () => {
+    choices.push({ id: "github-code", label: "GitHub Code", detail: tr("composerMentions.assignIssueTwoBots"), icon: "plug", pick: () => {
       const url = draft.match(/https:\/\/github\.com\/[^\s/]+\/[^\s/]+\/issues\/[1-9]\d*/i)?.[0] ?? "";
       replace(range, ""); setMission({bot:bot.id,url});
     } });
@@ -69,6 +70,7 @@ export function useComposerMentions(bot: Bot, draft: string, area: RefObject<HTM
       } });
     }
   }
+  if (range) choices.unshift(...files.filter(f => f.name.toLowerCase().includes(range.query)).slice(0, range.query ? 6 : 3).map((f): Choice => ({ id: "file-" + f.name, label: f.name, detail: t("mention.file"), icon: "file", pick: () => replace(range, fileMention(f.name)) }))); // L152 @fichier
   const matches = choices.filter(c => c.label.toLowerCase().includes(range!.query)).slice(0, 12);
   const active = Math.min(activeIndex, matches.length - 1);
   const open = matches.length > 0;
@@ -89,7 +91,7 @@ export function useComposerMentions(bot: Bot, draft: string, area: RefObject<HTM
         <Icon name={c.icon} size={16} /><strong>{c.label}</strong><small>{c.detail}</small>
       </button>)}
     </div>}
-    {own && mission?.bot === bot.id && <Modal title={fr ? "Mission GitHub" : "GitHub task"} onClose={() => setMission(null)}><div className="modal-body"><GithubIssues bot={bot.id} launched initialUrl={mission.url} close={() => setMission(null)} /></div></Modal>}
+    {own && mission?.bot === bot.id && <Modal title={tr("composerMentions.githubTask")} onClose={() => setMission(null)}><div className="modal-body"><GithubIssues bot={bot.id} launched initialUrl={mission.url} close={() => setMission(null)} /></div></Modal>}
     {own && repository?.botId === bot.id && <RepositoryPicker connected={githubReady} close={() => { setRepository(null); dismiss(true); }}
       attach={name => { if (draft === repository.draft) replace(repository.range, "@GitHub https://github.com/" + name); setRepository(null); }}
       connect={() => { setRepository(null); dismiss(true); openModal({ kind: "connectors", catalogId: "github-repositories" }); }} />}

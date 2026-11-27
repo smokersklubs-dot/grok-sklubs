@@ -25,6 +25,8 @@ ne nommer que les faits publics de fournisseurs tiers.
 | Documentation publique `docs.x.ai/grok-bot` (31 pages) | pages publiques | `04-public-docs.md` |
 | `nickvasilescu/bot-hq` | MIT | `05-successor-deltas.md` |
 
+**Décision du propriétaire du 22/11/2026 :** `n8n-io/nod` et `elie222/rakazo` sont sous licence Apache-2.0 ; leur code peut être réutilisé avec attribution (en-tête dans chaque fichier adapté, avis dans `THIRD_PARTY_NOTICES.md`). La salle blanche reste totale pour le produit propriétaire d'origine.
+
 Non utilisés : `morluto/rea` (outil d'analyse de binaires, sans objet ici puisque les sources sont ouvertes) ;
 `Le-SAS-la-r-tro-ing-nierie` (a servi de règle de méthode, pas de source). Aucun fichier de l'application
 propriétaire d'origine, aucun code décompilé, aucune fuite n'est entré dans le projet.

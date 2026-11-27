@@ -1,4 +1,5 @@
 import { useStore } from "../store";
+import { t as tr } from "../i18n";
 import { useScreen } from "../lib/screen";
 import { ArtifactPanel } from "./ArtifactPanel";
 import { SignInSite } from "./SignInSite";
@@ -12,13 +13,13 @@ function Desktop({ bot, active, fr }: { bot: string; active: boolean; fr: boolea
     open = useStore((s) => s.openViewer);
   return (
     <section className="dock-reader">
-      {shot.url && <img className="dock-screen" src={shot.url} alt={fr ? "Bureau du bot" : "Bot desktop"} />}
+      {shot.url && <img className="dock-screen" src={shot.url} alt={tr("webws.botDesktop")} />}
       <div className="studio-actions">
         <button className="btn" onClick={() => open(bot)}>
-          {fr ? "Ouvrir le bureau" : "Open desktop"}
+          {tr("webws.openDesktop")}
         </button>
         <button className="btn" onClick={() => open(bot, { control: true })}>
-          {fr ? "Prendre la main" : "Take control"}
+          {tr("viewer.take")}
         </button>
       </div>
       <SignInSite botId={bot} name={useStore.getState().bots[bot]?.name ?? ""} />
@@ -34,11 +35,11 @@ export function WorkspaceDock({ active }: { active: Tab }) {
     show({
       botId: active.botId,
       token: kind === "web" ? crypto.randomUUID() : "desktop-" + active.botId,
-      title: kind === "web" ? "Web" : fr ? "Bureau" : "Desktop",
+      title: kind === "web" ? "Web" : tr("webws.desktop"),
       kind,
     });
   return (
-    <aside className="artifact-dock" aria-label={fr ? "Espace de travail" : "Workspace"}>
+    <aside className="artifact-dock" aria-label={tr("webws.workspace")}>
       <div className="dock-bar">
         <div role="tablist" className="dock-tabs">
           {tabs.map((t, i) => (
@@ -70,8 +71,8 @@ export function WorkspaceDock({ active }: { active: Tab }) {
         </div>
         <button
           className="btn btn-small"
-          title={fr ? "Nouvel onglet web" : "New web tab"}
-          aria-label={fr ? "Nouvel onglet web" : "New web tab"}
+          title={tr("webws.newWebTab")}
+          aria-label={tr("webws.newWebTab")}
           onClick={() => open("web")}
         >
           <Icon name="globe" size={15} />
@@ -79,7 +80,7 @@ export function WorkspaceDock({ active }: { active: Tab }) {
         {!useStore.getState().bots[active.botId]?.access && (
           <button
             className="btn btn-small"
-            aria-label={fr ? "Onglet bureau" : "Desktop tab"}
+            aria-label={tr("webws.desktopTab")}
             onClick={() => open("desktop")}
           >
             <Icon name="monitor" size={15} />
@@ -87,7 +88,7 @@ export function WorkspaceDock({ active }: { active: Tab }) {
         )}
         <button
           className="btn btn-small"
-          aria-label={fr ? "Fermer l’onglet actif" : "Close active tab"}
+          aria-label={tr("webws.closeActiveTab")}
           onClick={() => show(null)}
         >
           <Icon name="close" size={15} />

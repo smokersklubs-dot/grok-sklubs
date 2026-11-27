@@ -70,6 +70,48 @@ RUN curl -fsSL -o /usr/local/bin/yt-dlp "$YTDLP_URL" \
     && printf '%s\n' '--js-runtimes node' > /etc/yt-dlp.conf \
     && yt-dlp --version
 
+# L164 — the app reader by accessibility (server/src/apptree.ts, agent/tools-apptree.ts): the bot reads the controls of the
+# computer's apps (text editor, file manager, dialog boxes…) and acts on one by reference instead of at pixels. Debian
+# bookworm packages, +4.7 MB in all (measured on this image): at-spi2-core (the accessibility bus launcher and registry,
+# LGPL-2.1+), gir1.2-atspi-2.0 and python3-gi (libatspi for the system python3, LGPL-2.1+). start-desktop.sh starts the
+# bus before any app; GTK apps join it by themselves, Qt 5 apps once QT_LINUX_ACCESSIBILITY_ALWAYS_ON is set
+# (read by Qt 5's own bridge, qtbase src/platformsupport/linuxaccessibility/dbusconnection.cpp; not tried with a Qt app).
+RUN apt-get update && apt-get install -y --no-install-recommends at-spi2-core gir1.2-atspi-2.0 python3-gi \
+    && rm -rf /var/lib/apt/lists/* \
+    && python3 -c "import gi; gi.require_version('Atspi', '2.0'); from gi.repository import Atspi" \
+    && test -x /usr/libexec/at-spi-bus-launcher
+ENV QT_LINUX_ACCESSIBILITY_ALWAYS_ON=1
+
+# L115 (owner decision n° 10) — page audits and diagrams with the computer's own Chromium, never a second Chrome:
+# Lighthouse 13.6.0 (Apache-2.0), axe-core 4.14.1 (MPL-2.0, unmodified) run by sklubot-axe through puppeteer-core 25.18.1
+# (Apache-2.0), mermaid-cli 12.2.0 (MIT, `mmdc`) and chrome-devtools-mcp 1.14.0 (Apache-2.0). The whole npm tree is pinned
+# by web-tools/package-lock.json and installed with `npm ci --ignore-scripts` (puppeteer's only install script downloads
+# a browser; PUPPETEER_SKIP_DOWNLOAD says the same, puppeteer-core src/common/Configuration.ts). Every tool starts
+# /opt/sklubot/headless-chromium (CHROME_PATH for Lighthouse's chrome-launcher, `lighthouse --help`; PUPPETEER_EXECUTABLE_PATH
+# for Puppeteer and mmdc; chrome-devtools-mcp gets --executablePath, server/src/thirdpartymcp.ts). Telemetry off:
+# chrome-devtools-mcp's usage statistics and update checks by its documented variables (its README, "Usage statistics",
+# "Update checks"); Lighthouse's error reporting is off for non-interactive runs and page_audit also passes
+# --no-enable-error-reporting (lighthouse docs/error-reporting.md); its Sentry SDK, imported only when reporting is on
+# (lighthouse core/lib/sentry.js, inside a try), is removed, so reporting cannot be switched on at all (-61 MB); so are the
+# musl builds of two native modules this glibc image never loads (-31 MB). axe-core and mermaid-cli send nothing. `sloplint` is
+# not here: no such package is published with a licence (the npm name was unpublished; Hallmark's sloplint.mjs is a
+# script inside its repository, already adapted in server/src/pagecheck.ts). +588 MB on this image, mostly mermaid-cli (~420 MB);
+# details in docs/ORDINATEUR.md.
+ENV CHROME_PATH=/opt/sklubot/headless-chromium PUPPETEER_EXECUTABLE_PATH=/opt/sklubot/headless-chromium \
+    PUPPETEER_SKIP_DOWNLOAD=true CHROME_DEVTOOLS_MCP_NO_USAGE_STATISTICS=1 CHROME_DEVTOOLS_MCP_NO_UPDATE_CHECKS=1
+COPY web-tools/package.json web-tools/package-lock.json /opt/sklubot/web-tools/
+COPY headless-chromium sklubot-axe /opt/sklubot/
+RUN cd /opt/sklubot/web-tools && npm ci --ignore-scripts --omit=dev --no-audit --no-fund --no-update-notifier \
+    && npm cache clean --force \
+    && rm -rf node_modules/@sentry node_modules/sentry node_modules/@napi-rs/canvas-linux-x64-musl \
+       node_modules/@oxc-parser/binding-linux-x64-musl \
+    && chmod 755 /opt/sklubot/headless-chromium /opt/sklubot/sklubot-axe \
+    && ln -sf /opt/sklubot/web-tools/node_modules/.bin/lighthouse /usr/local/bin/lighthouse \
+    && ln -sf /opt/sklubot/web-tools/node_modules/.bin/mmdc /usr/local/bin/mmdc \
+    && ln -sf /opt/sklubot/web-tools/node_modules/.bin/chrome-devtools-mcp /usr/local/bin/chrome-devtools-mcp \
+    && ln -sf /opt/sklubot/sklubot-axe /usr/local/bin/sklubot-axe \
+    && lighthouse --version && mmdc --version && chrome-devtools-mcp --version
+
 # Clients of the sound card find it here (docker/desktop/sound.sh). What the bot installs in its home folder stays (the
 # home is a volume): ~/.local/bin comes last on the PATH, so it never hides the computer's own programs.
 ENV PULSE_SERVER=unix:/tmp/pulse/native PATH=$PATH:/root/.local/bin
@@ -83,6 +125,18 @@ RUN chmod +x /opt/sklubot/*.sh /opt/sklubot/page-text.py /usr/local/bin/sklubot-
 
 COPY install-craft.sh /opt/sklubot/install-craft.sh
 RUN sh /opt/sklubot/install-craft.sh
+
+# L48 — Chromium with its own sandbox. The bot keeps its root shell; only the browser drops to the user "browser"
+# (open-browser.sh, with setpriv), since Chromium's sandbox refuses to run as root. Debian's chromium has no setuid
+# helper (and no-new-privileges would neutralise one), so the sandbox is the user-namespace one: Sklubot creates the
+# computer with docker/desktop/seccomp-chromium.json (Docker's default profile plus user namespaces, see linux.ts). The
+# browser's home is in the image (caches); its profile and downloads stay in the bot's home volume
+# (/root/.config/sklubot-browser, /root/Downloads), given to the browser user before each start. The label tells
+# Sklubot this image is ready for it: an older image keeps its root browser and the owner sees a notice.
+RUN useradd --uid 1001 --user-group --create-home --shell /usr/sbin/nologin browser \
+    && ln -s /root/Downloads /home/browser/Downloads \
+    && command -v setpriv >/dev/null
+LABEL sklubot.browser-sandbox="1"
 
 WORKDIR /root
 CMD ["/opt/sklubot/start-desktop.sh"]

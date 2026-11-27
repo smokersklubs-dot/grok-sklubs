@@ -11,7 +11,7 @@ import type { RecruitCard, RecruitLimit, RecruitRoutine, RecruitSkill } from "..
 import { addFromLibrary, libraryEntries } from "../skillslibrary.js";
 import { audit, bots, clip, newId, publicBot, rows, settings, TeamFullError, type BotRecord, type UserRecord } from "../store.js";
 import { enqueue, isPaused } from "./loop.js";
-import type { BuiltinTool } from "./tools.js";
+import type { BuiltinTool } from "./tools.js"; import { roles as boardRoles } from "../workboardroles.js"; import { gt } from "../guidei18n.js"; // L163 a bot for a board role (boardplan.ts)
 
 /**
  * « Bot recruteur »: the main bot (primary) proposes ONE new specialist when a substantial or recurring request fits no
@@ -53,7 +53,7 @@ const brainLabel = (brain: RecruitCard["brain"], primary: BotRecord, userId: str
 function pickSkills(raw: unknown, locale: UserRecord["locale"]): RecruitSkill[] {
   const ids = Array.isArray(raw) ? raw.map((x) => String(x).trim()) : [];
   const out: RecruitSkill[] = [];
-  for (const e of libraryEntries()) if (ids.includes(e.id) && out.length < MAX_SKILLS) out.push({ id: e.id, title: e.title[locale] });
+  for (const e of libraryEntries()) if (ids.includes(e.id) && out.length < MAX_SKILLS) out.push({ id: e.id, title: (e.title[locale] ?? e.title.en) });
   return out;
 }
 
@@ -70,7 +70,7 @@ function pickRoutines(raw: unknown, locale: UserRecord["locale"]): RecruitRoutin
 }
 
 export function libraryLines(locale: UserRecord["locale"]): string[] {
-  return libraryEntries().map((e) => `  - ${e.id} — ${e.title[locale]}: ${e.summary[locale]}`);
+  return libraryEntries().map((e) => `  - ${e.id} — ${(e.title[locale] ?? e.title.en)}: ${(e.summary[locale] ?? e.summary.en)}`);
 }
 
 export const recruitTools: BuiltinTool[] = [
@@ -162,6 +162,8 @@ export function createRecruit(primary: BotRecord, user: UserRecord, seq: number,
     rows.append(primary, { kind: "message", role: "assistant", text: tr(loc, "{name} is ready, but its section is paused: resume it, then ask me to hand it the request.", { name: created.name }) }, 0);
     return { ok: true, bot: now };
   }
+  // L163 (boardplan.ts): a bot proposed for a role of the work board holds that role; the board gives it its tasks.
+  if (card.boardRole) { boardRoles.set(user.id, card.boardRole, { botId: created.id }); rows.append(primary, { kind: "message", role: "assistant", text: gt(loc, "{name} now holds its role on the work board.", { name: created.name }) }, 0); return { ok: true, bot: now }; }
   const handover = tr(loc, "{user} asked for this, and I am handing it to you: {task}\nWhen it is done, answer with the result: I will pass it on.", { user: user.name, task: card.task });
   rows.append(now, { kind: "message", role: "user", text: handover, origin: { kind: "bot", id: primary.id, name: primary.name } }, 0);
   enqueue(now.id, { kind: "bot", fromName: primary.name, text: handover, depth: 1, ask: { id: newId("ask"), fromId: primary.id } });

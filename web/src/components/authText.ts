@@ -2,7 +2,7 @@
  * Texts of the "Connexion ou inscription" screen (SignIn.tsx) and the steps reached from a link (AuthLinks.tsx), in
  * French and English. Our own words: one screen for both signing in and signing up, e-mail first.
  */
-import { useStore } from "../store";
+import { useStore } from "../store"; import { sideText } from "../i18n";
 
 const TEXT = {
   fr: {
@@ -100,5 +100,5 @@ const TEXT = {
 export type AuthKey = keyof typeof TEXT.fr;
 export function useA() {
   const locale = useStore((s) => s.locale);
-  return (k: AuthKey, vars: Record<string, string | number> = {}) => (TEXT[locale === "fr" ? "fr" : "en"][k] as string).replace(/\{(\w+)\}/g, (_m, n) => String(vars[n] ?? ""));
+  return (k: AuthKey, vars: Record<string, string | number> = {}) => (sideText("auth", TEXT, locale)[k] as string).replace(/\{(\w+)\}/g, (_m, n) => String(vars[n] ?? ""));
 }

@@ -105,6 +105,19 @@ hexadécimaux). `DATA_KEY=<clé>` seule marche aussi (identifiant tiré de l'emp
 est réservé à la clé dérivée de `SESSION_SECRET`. Une valeur scellée commence par `v2:<id>:` ; une valeur sans ce
 préfixe date d'avant et s'ouvre avec la clé `s0`. La sauvegarde chiffrée emporte `DATA_KEYS` (docs/SAUVEGARDE.md).
 
+### Un seul serveur par dossier de données
+
+Au démarrage, Sklubot pose un verrou dans son dossier de données (`DATA_DIR/server.lock`). Si un deuxième serveur
+est lancé par erreur sur le même dossier (deux conteneurs sur le même volume, un `npm run dev` oublié…), il refuse de
+démarrer avec un message clair : « Un autre serveur Sklubot utilise déjà ce dossier de données… », le numéro du
+processus et la machine. Arrête l'autre serveur, ou choisis un autre dossier avec `DATA_DIR`.
+
+Après un arrêt brutal (coupure, `kill -9`, conteneur relancé), le verrou laissé derrière est repris tout seul : le
+processus n'existe plus (vérifié avec son heure de démarrage sous Linux), ou, sur un disque partagé entre machines,
+il ne donne plus signe de vie depuis 1 minute (le serveur réécrit le verrou toutes les 10 s). Rien à faire à la main.
+Si un serveur découvre que son verrou a été repris par un autre, il s'arrête : deux serveurs ne tournent jamais
+ensemble sur les mêmes données (`server/src/datalock.ts`).
+
 ### Comptes : double authentification et sessions
 
 - **Double authentification** (Réglages → Compte) : chacun peut l'activer avec une appli comme Google Authenticator,
@@ -134,6 +147,28 @@ gardés ; ce qui avait été installé hors de `/root` est à réinstaller, comm
 Le réseau `sklubot_bots` est créé tout seul. Si quelque chose ne va pas, `SKLUBOT_BOT_LINK=network` (et
 `SKLUBOT_PROXY_NETWORKS=sklubot_bots,sklubot_net`) remet l'ancienne façon le temps de regarder.
 
+### Mise à jour : bac à sable du navigateur des bots (L48, 2026-11-22)
+
+Le navigateur des ordinateurs des bots tourne désormais avec un utilisateur à part et son propre bac à sable
+(docs/SECURITE.md, « Navigateur des bots »). Il faut **reconstruire les deux images** : celle de l'ordinateur
+(`sklubot-desktop`, qui crée l'utilisateur `browser`) et celle de l'application (qui contient le profil seccomp
+`docker/desktop/seccomp-chromium.json`, lu par le serveur et par son proxy Docker).
+
+- **VPS** : `bash deploy/update.sh` (il fait `docker compose -f docker-compose.vps.yml up -d --build`, qui reconstruit
+  aussi `desktop-image`). À la main : `docker compose -f docker-compose.vps.yml build desktop-image sklubot docker-proxy`
+  puis `docker compose -f docker-compose.vps.yml up -d`.
+- **Coolify** : redéploie (le service `desktop-image` est reconstruit avec le reste).
+- **Sans Docker Compose** : `npm run computer:build`, puis redémarre le serveur.
+
+Ensuite rien à faire : chaque ordinateur fait avec l'ancienne image est **refait tout seul** la prochaine fois qu'il ne
+sert pas (dossier personnel, connexions et bibliothèque gardés ; paquets Debian remis par `sklubot-install`). Tant
+qu'il ne l'est pas, il marche comme avant. Réglages → Autorisations → Sécurité dit où on en est : « Bac à sable du
+navigateur : actif », ou combien d'ordinateurs sont encore sur l'ancienne image, ou s'il a fallu démarrer un navigateur
+sans bac à sable (hôte qui interdit les espaces de noms utilisateur : sur Ubuntu 23.10 ou plus récent, vérifie que
+`sysctl kernel.apparmor_restrict_unprivileged_userns` ne bloque pas les conteneurs ; le navigateur reste alors utilisable,
+sans bac à sable mais pas en root). Pour vérifier un ordinateur : `docker exec sklubot-<bot> cat /tmp/sklubot-browser-sandbox`
+doit répondre `on`.
+
 ### Isoler encore plus les ordinateurs des bots (facultatif, sur l'hôte)
 
 Coolify ne laisse pas une application toucher au pare-feu de la machine. Sans règle de pare-feu, un ordinateur de
@@ -152,6 +187,25 @@ Coolify passe par Traefik, pas par Caddy : pour limiter aussi la taille des requ
 service `sklubot` un middleware Traefik « buffering » (`maxRequestBodyBytes`, ex. 31457280) dans ses étiquettes ;
 l'application applique de toute façon ses propres limites.
 
+### Mémoire : limites par conteneur, échange et arrêt préventif (L95)
+
+- Chaque service qui tourne en continu a un plafond de mémoire dans `docker-compose.vps.yml` et `docker-compose.coolify.yml` : Sklubot `SKLUBOT_MEM_LIMIT` (3 Go par défaut), le proxy Docker `SKLUBOT_PROXY_MEM_LIMIT` (192 Mo), Caddy `CADDY_MEM_LIMIT` (256 Mo), les voix comme avant (`WHISPER_MEM_LIMIT`, `PIPER_MEM_LIMIT`, `KOKORO_MEM_LIMIT`). Les ordinateurs des bots ont le leur (`DESKTOP_MEMORY`, 2 Go, sans swap en plus). Le plafond ne gêne pas un usage normal : il empêche seulement un service d'emporter toute la machine. À changer dans `.env` (ou les variables de Coolify).
+- Sur un VPS installé avec `deploy/install.sh`, le fichier d'échange et **earlyoom** sont posés tout seuls (`deploy/memory-guard.sh`, voir INSTALLATION-VPS.md). **Sous Coolify** ou sur un serveur installé autrement, fais-le une fois : `sudo bash deploy/memory-guard.sh` (fichier d'échange de 2 à 4 Go s'il n'y en a pas, `vm.swappiness=10`, earlyoom qui arrête d'abord les navigateurs des bots, jamais en priorité Sklubot, Caddy, SSH ni Docker). Vérifie avec `free -h` et `journalctl -u earlyoom`.
+- Chrome en root : le navigateur des bots ne tourne jamais en root (`open-browser.sh` le lance sous un compte à part, avec son propre bac à sable) ; s'il refuse de démarrer, `docker/desktop/open-browser.sh` le relance sans bac à sable et Réglages → Sécurité le dit (L48).
+- Pas fait ici : un plafond « heures d'ordinateur » séparé, l'arrêt automatique des conteneurs sans bot (voir A-FAIRE L95).
+
+### Mises à jour automatiques (option, éteinte par défaut — L168)
+
+Pour un Sklubot installé chez toi (VPS) seulement. `deploy/auto-update.sh` ne fait **rien** tant que tu ne l'as pas allumé, et n'installe que des versions **signées** :
+
+1. Mets dans `.env` : `SKLUBOT_AUTO_UPDATE=1` et, si tu veux, `SKLUBOT_UPDATE_WINDOW=03:00-05:00` (le créneau calme, heure du serveur).
+2. Dis qui a le droit de signer une version : le fichier `deploy/allowed_signers` (format « allowed signers » de `ssh-keygen`), ou bien `SKLUBOT_UPDATE_GNUPGHOME=<dossier>`, un trousseau GnuPG qui ne contient que les clés publiques autorisées. Sans signataire : rien n'est installé.
+3. Installe le minuteur : `sudo bash deploy/auto-update.sh install` (essai toutes les heures, rien hors du créneau). `bash deploy/auto-update.sh status` dit ce qui s'est passé ; `sudo bash deploy/auto-update.sh remove` l'enlève.
+
+À chaque essai : la plus récente étiquette `v*` **signée par un signataire autorisé** (`git verify-tag`) et plus récente que la version qui tourne (jamais de retour en arrière par ce chemin) → **sauvegarde complète d'abord** (`deploy/backup.sh` ; si elle échoue, rien ne change) → passage à cette version, reconstruction → vérification de santé (`/api/health`, 6 essais sur 3 minutes) → si la santé ne répond pas : **retour automatique** à la version d'avant ; si elle ne répond toujours pas, la sauvegarde faite juste avant est remise (`deploy/restore.sh`). Journal : `/var/log/sklubot-auto-update.log`, état : `auto-update-status.json`.
+
+**Mode hébergé** (`SKLUBOT_HOSTED_MODE=1`) : jamais de mise à jour sans l'opérateur. Le script dit seulement « version disponible » ; l'opérateur l'applique lui-même avec `deploy/update.sh`. Sous Coolify, les mises à jour restent celles de Coolify (ce script ne s'en occupe pas).
+
 ### Ordinateurs partagés entre les bots
 
 Dans les réglages d'un bot (section Ordinateur), « Ordinateur : le sien / partagé ». Les bots réglés sur
@@ -160,6 +214,13 @@ Dans les réglages d'un bot (section Ordinateur), « Ordinateur : le sien / part
 Claude / ChatGPT. Un seul bot à la fois s'en sert ; un autre attend qu'il se libère (puis un message clair « occupé »).
 Chaque bot garde sa bibliothèque à `~/files` (toutes celles des bots partageant l'ordinateur y sont montées sous
 `~/libraries/`, donc lisibles entre eux). Un ordinateur partagé n'appartient qu'à un compte.
+
+## Métriques pour un outil de surveillance (L184)
+
+`GET /api/metrics` donne les chiffres du serveur au format Prometheus (bots, groupes, applis, messages, jetons, coût
+estimé, accords en attente, passages des routines) : des nombres seulement, aucun nom ni texte. Fermé par défaut :
+mets `METRICS_TOKEN` (32 caractères ou plus) dans l'environnement du serveur, et fais lire la page avec l'en-tête
+`Authorization: Bearer <METRICS_TOKEN>`. Les chiffres de ton compte sont aussi dans Réglages → Usage → « Métriques ».
 
 ## Télécharger les applications : la page `/telecharger`
 

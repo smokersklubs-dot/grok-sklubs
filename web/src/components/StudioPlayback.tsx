@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { t as tr } from "../i18n";
 import { drawFrame, duration, visualSources, visualTimes, mediaUrl, type Story, type Visual } from "../lib/studioStory";
 import { timelineAudio } from "../lib/studioAudio";
 import { ErrorNote } from "./ui";
@@ -44,7 +45,7 @@ export function StudioPlayback({
         el.addEventListener(el instanceof HTMLImageElement ? "load" : "loadeddata", done, { once: true });
         el.addEventListener(
           "error",
-          () => reject(new Error((fr ? "Média illisible : " : "Cannot read media: ") + path.split("/").pop())),
+          () => reject(new Error(tr("studio.cannotReadMediaName", { name: path.split("/").pop() ?? "" }))),
           { once: true },
         );
         if (el instanceof HTMLMediaElement) el.preload = "auto";
@@ -142,7 +143,7 @@ export function StudioPlayback({
       let mime = "";
       if (exporting) {
         if (typeof MediaRecorder === "undefined" || !canvas.current.captureStream)
-          throw Error(fr ? "Ce navigateur ne permet pas l’export vidéo." : "This browser cannot export video.");
+          throw Error(tr("studio.browserCannotExportVideo"));
         mime =
           ["video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/mp4", "video/webm"].find((s) =>
             MediaRecorder.isTypeSupported(s),
@@ -156,7 +157,7 @@ export function StudioPlayback({
         exporting ? "" : solo,
         () => {
           if (!finished) {
-            setError(fr ? "Lecture de la piste audio impossible." : "Cannot play audio.");
+            setError(tr("studio.cannotPlayAudio"));
             reset();
           }
         },
@@ -185,7 +186,7 @@ export function StudioPlayback({
           setTimeout(() => URL.revokeObjectURL(url), 60000);
         };
         recorder.onerror = () => {
-          setError(fr ? "L’export a été interrompu." : "Export interrupted.");
+          setError(tr("studio.exportInterrupted"));
           reset();
         };
       }
@@ -225,7 +226,7 @@ export function StudioPlayback({
           disabled={!ready || mode === "export"}
           onClick={() => (mode ? stop.current() : void start(false))}
         >
-          {mode === "play" ? (fr ? "Pause" : "Pause") : fr ? "Lire" : "Play"}
+          {mode === "play" ? (tr("goal.pause")) : tr("studio.play")}
         </button>
         <input
           type="range"
@@ -233,7 +234,7 @@ export function StudioPlayback({
           max={total}
           step=".05"
           value={Math.min(time, total)}
-          aria-label={fr ? "Tête de lecture" : "Playhead"}
+          aria-label={tr("studio.playhead")}
           onChange={(e) => {
             stop.current();
             onTime(+e.target.value);
@@ -249,12 +250,8 @@ export function StudioPlayback({
           onClick={() => (mode === "export" ? stop.current() : void start(true))}
         >
           {mode === "export"
-            ? fr
-              ? "Annuler l’export"
-              : "Cancel export"
-            : fr
-              ? "Exporter la vidéo"
-              : "Export video"}
+            ? tr("studio.cancelExport")
+            : tr("studio.exportVideo")}
         </button>
       </div>
       <ErrorNote>{error}</ErrorNote>

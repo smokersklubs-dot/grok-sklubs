@@ -129,6 +129,11 @@ Bots, routines actives, ordinateurs allumés en même temps (l'ordinateur inacti
 stockage (bibliothèques des bots et dossier d'équipe sur le serveur). Au-delà : refus clair en français ou en anglais
 (`code: "plan_limit"`, `limit`), avec la façon d'avancer (supprimer, mettre en pause, changer d'offre).
 
+Tâches en même temps par bot (`server/src/agent/lanes.ts`) : une offre de type `free` (Gratuit) fait une tâche à la
+fois par bot (la file d'avant, dans l'ordre) ; les offres `included` et `byok` et les opérateurs en font jusqu'à 3
+(`BOT_PARALLEL_TASKS`, 3 au plus). Choix fait d'après le type d'offre, sans nouvelle colonne : le serveur gratuit garde
+la même charge qu'avant, et une offre payante a le bénéfice entier.
+
 ## Paiement
 
 ### Crédits payés par Paddle (revendeur officiel)

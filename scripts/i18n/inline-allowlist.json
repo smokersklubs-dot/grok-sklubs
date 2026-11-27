@@ -1,0 +1,109 @@
+{
+  "_doc": "Inline French/English text branches (`x === \"fr\" ? … : …`, `fr ? … : …`) still allowed, per file, with why. scripts/i18n/check-languages.mjs (inlineBranches) counts them; the test fails when a file goes over its count or a new file has one. A new text goes in a dictionary instead (docs/LANGUES.md). Lower a count when you remove one.",
+  "files": {
+    "mobile/src/lib/format.ts": {
+      "max": 1,
+      "why": "French size units (o, Ko, Mo) versus B, KB, MB"
+    },
+    "server/src/agent/guidesearch.ts": {
+      "max": 1,
+      "why": "the web guides exist in French and English only"
+    },
+    "server/src/cron.ts": {
+      "max": 1,
+      "why": "clock format: French 24-hour « 8 h 05 », English 12-hour"
+    },
+    "server/src/hosted.ts": {
+      "max": 1,
+      "why": "plan names are typed by the operator in French and English only (nameFr / nameEn)"
+    },
+    "server/src/hostedpages.ts": {
+      "max": 46,
+      "why": "public legal pages (pricing, terms, legal notice, payment) served at a French and an English address; legal text is not machine-translated"
+    },
+    "server/src/hostedroutes.ts": {
+      "max": 2,
+      "why": "French or English address of the legal pages"
+    },
+    "server/src/llm/demo.ts": {
+      "max": 27,
+      "why": "replies of the demo model (stands in for an AI model in demo mode), not product texts"
+    },
+    "server/src/meetingbot/links.ts": {
+      "max": 2,
+      "why": "meeting bot written in parallel (fr/en announcement to the participants): convert when it is finished"
+    },
+    "server/src/meetingbot/session.ts": {
+      "max": 2,
+      "why": "meeting bot written in parallel (fr/en): convert when it is finished"
+    },
+    "server/src/notesarchive.ts": {
+      "max": 5,
+      "why": "file and folder names of the notes export stay French or English (docs/LANGUES.md)"
+    },
+    "server/src/pagewebgl.ts": {
+      "max": 1,
+      "why": "script embedded in pages the bots make: picks its fallback message from the page's own language"
+    },
+    "server/src/privacy.ts": {
+      "max": 3,
+      "why": "privacy page served at a French and an English address (/confidentialite, /privacy)"
+    },
+    "server/src/publicsignup.ts": {
+      "max": 1,
+      "why": "French or English address of the legal pages"
+    },
+    "server/src/routes.ts": {
+      "max": 1,
+      "why": "French or English address of the legal pages"
+    },
+    "server/src/studiomp4.ts": {
+      "max": 2,
+      "why": "local Piper narration voices exist for French and English only"
+    },
+    "server/src/teamfile.ts": {
+      "max": 4,
+      "why": "team file headings, read back on import (French or English)"
+    },
+    "server/src/teammd.ts": {
+      "max": 12,
+      "why": "TEAM.md headings, read back on import (French or English)"
+    },
+    "server/src/viewroutes.ts": {
+      "max": 1,
+      "why": "French patterns for templated messages; the other languages go through localize()"
+    },
+    "server/src/voice/callflow.ts": {
+      "max": 1,
+      "why": "a spoken yes/no is recognised in French and English only"
+    },
+    "web/src/components/DownloadPage.tsx": {
+      "max": 1,
+      "why": "French or English address of the privacy page"
+    },
+    "web/src/components/GrokImport.tsx": {
+      "max": 3,
+      "why": "the Grok export prompt is offered in French or English on purpose (the user picks)"
+    },
+    "web/src/components/Hosted.tsx": {
+      "max": 1,
+      "why": "plan names are typed by the operator in French and English only (nameFr / nameEn)"
+    },
+    "web/src/components/Landing.tsx": {
+      "max": 1,
+      "why": "French or English address of the privacy page"
+    },
+    "web/src/components/StudioEditor.tsx": {
+      "max": 1,
+      "why": "the « AI-generated » video label exists in French and English (server accepts fr/en)"
+    },
+    "web/src/lib/reportexport.ts": {
+      "max": 1,
+      "why": "node-tested plain module (report export headings fr/en): convert through i18n/lookup.ts"
+    },
+    "web/src/lib/selfcheck.ts": {
+      "max": 1,
+      "why": "instruction message sent to the bot (the model), not shown as product text"
+    }
+  }
+}

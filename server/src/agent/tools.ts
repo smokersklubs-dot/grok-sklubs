@@ -1,13 +1,13 @@
-import { htmlToText } from "../webreading.js";
+import { htmlToMarkdown, isMarkdown, MARKDOWN_ACCEPT, markdownExtras } from "./webfetchmd.js"; import { codeTools } from "./codebox.js"; // L75 web_fetch in Markdown, llms.txt ; L91 hidden code box
+import { routeQuestion } from "./delegatedask.js";
 import { unseal } from "../auth.js";
 import { emit, getLive, setLive } from "../bus.js";
 import { attachmentAt, botPathOf, browserAvailable, computerKind, isInlineImage, lastKnownUrl, readLibraryFile, readsTeamFolder, runShell, saveFile, screen, shellAvailable, storeBytes, teamEnabledFor, type Shot } from "../computer.js";
 import { noteDiskTrouble } from "../disk.js";
-import { generateImage, imageService } from "../images.js";
-import { generateVideo, videoService } from "../video.js";
+import { imageTool, videoTools } from "./tools-media.js"; import { imageServiceFor } from "../mediakeys.js"; import { wan2gpTarget } from "../wan2gptarget.js";
 import { connectors, slug } from "../connectors.js";
 import { config } from "../config.js";
-import { isValidTimezone, parseCron } from "../cron.js";
+import { isValidTimezone, parseCron } from "../cron.js"; import { belowFloor, floorRefusalForBot, ROUTINE_FLOOR_MIN } from "../routinefloor.js";
 import { tr } from "../i18n.js";
 import type { ImageBlock, TextBlock, ToolSpec } from "../llm/types.js";
 import { describeRoutine, routines, type RoutineInput } from "../routines.js";
@@ -16,10 +16,11 @@ import { appOf } from "../native/vendors.js";
 import { schedule, unschedule } from "../scheduler.js";
 import { GEM_KINDS, GEMS_PER_DAY, REACTIONS, TAKEOVER_REASONS, type TakeoverReason, type ActivityKind, type Connector, type Gem, type GemKind, type ReactionEmoji, type Row, type ToolGroup, type SkillExtras, SKILL_EXTRA_KEYS } from "../shared.js";
 import { q } from "../db.js";
-import { searchConfigured, searchWeb } from "../search.js";
-import { fetchProblem, guardedFetch } from "../net.js";
+import { searchConfigured, searchWeb } from "../search.js"; import { cleanDay, setMarks } from "./memorymarks.js"; import { roomMemoryTools } from "./roommemory.js";
+import { fetchProblem, guardedFetch } from "../net.js"; import { botFetch, exitProblem } from "../botroute.js"; // L169 the bot's exit
 import { config as appConfig } from "../config.js";
-import { audit, bots, clip, memories, newId, pages, rows, searchMessages, settings, skills, skillText, tasks, vault, type BotRecord, type UserRecord } from "../store.js";
+import { audit, bots, clip, memories, newId, pages, rows, settings, skills, skillText, tasks, vault, type BotRecord, type UserRecord } from "../store.js";
+import { conversationSearchAnswer } from "../convsearch.js";
 import { record as recordUsage } from "../usage.js";
 import { meterOperatorUse, operatorBlock, toolRefusal, unitEstimate } from "../hosted.js";
 import { interrupt, isPaused, tell } from "./loop.js";
@@ -30,26 +31,26 @@ import { generatePassword, parseTotp, totpNow } from "../totp.js";
 import { seal } from "../auth.js";
 import { askAndWait, createRoom, deliverBotMessage, dispatchToRoom, MAX_HELPERS, MAX_HOPS, startHelper, waitsOn } from "./team.js";
 import { addressesNoBot, BREAKER_LINE, dmChannel, postBudget, roomChannel, type Verdict } from "./roombudget.js";
-import { myComputerTools } from "./mycomputer.js";
+import { myComputerTools } from "./mycomputer.js"; import { myUiTools } from "./myui.js"; import { liveDocTools } from "./livedoctools.js"; import { phoneTools } from "./phonetools.js"; import { phoneUsbTools } from "./phoneusb.js"; import { voiceNoteTools } from "../voice/voicenote.js"; import { reminderCallTools } from "../voice/remindercall.js"; import { remoteAgentTools } from "./remoteagenttools.js"; // wave 7: L164 L178 L177 L172 L174
 import { botTools, profileTools, progressTools, skillImportTools, xSearchAvailable, xTools } from "./tools-team.js"; import { roomTools } from "./tools-room.js";
-import { bgTasks, bgTaskToolSpecs, publicTask, startTask, stopTask, TaskLimitError } from "./bgtasks.js";
+import { bgTasks, publicTask, startTask, stopTask } from "./bgtasks.js"; import { batchTools } from "./batches.js"; import { bgTaskToolSpecs, TaskLimitError } from "./bgtaskspecs.js";
 import { findCode, mailAccounts } from "../native/access.js";
 import { hideForAWhile } from "../store.js";
 import { explicitRemember, memoryVerdict } from "./sensitive.js";
-import { committingKind, probe, seenOf, seenTarget } from "./bind.js";
-import { refusal, rememberSnapshot, resolveRef } from "./elements.js";
-import type { ElementAnswer } from "../screen-elements.js";
+import { committingKind, probe, seenOf, seenTarget } from "./bind.js"; import { boundClick, browserDownloadTools, browserTabTools, shot, tabLine, typeSecret } from "./tools-browser.js";
+import { elementTools, openInWords } from "./tools-elements.js"; import { noteShots, sameScreen } from "./screendedup.js"; import { traceClicks } from "./clicktrail.js"; import { appTreeTools } from "./tools-apptree.js"; import { pageAuditTools } from "./tools-pageaudit.js"; // L65/L74/L75/L81: element tools, in words; L65 same screen skipped; L164 app reader; L115 page_audit
 import { cardLabel, cardTools } from "./payments.js";
-import { guideIndex, guideTools } from "./guides.js";
-import { anonymise } from "./anonymise.js";
+import { guideIndex, guideTools } from "./guides.js"; import { careTools } from "./caretools.js"; // L161 capability_gap, shortcut_note, docs_read
+import { anonymise } from "./anonymise.js"; import { evidenceFields, evidenceNote, proposalEvidence } from "../skillevidence.js";
 import { apiTools, scrubSecret } from "../apiconnectors.js";
-import { botMailTools } from "../botmail.js";
+import { botMailTools } from "../botmail.js"; import { guardVault } from "../vaultaccess.js"; import { noteLoginTyped } from "../siteregistry.js"; import { contactTools } from "../vaultcontacts.js"; import { pollTools } from "../polls.js"; import { noteHost } from "../netjournal.js"; import { applyBrowserPolicy, netGate } from "../netpolicy.js"; import { offensiveRefusal } from "../offensive.js"; import { decodedText } from "../textdecode.js"; import { afterClick, hostBeforeClick } from "./clickhosts.js";
 import { ruleTools } from "./ruletools.js";
+import { botNote } from "../skillscan.js"; import { extractSeoTags, seoTagsReport } from "../seotags.js"; import { guideSearchTools } from "./guidesearch.js"; import { contactSheetTools } from "../contactsheet.js"; import { afterSave, saveRefusal, skillFeedbackTools, skillReadOutput, skillSectionParam } from "./skilltools.js";
 import { pageTools } from "./pagetools.js";
-import { researchTool } from "../researchroutes.js";
-import { craftReady } from "./creative-tools.js";
+import { pastReportsTool, researchTool } from "../researchroutes.js"; import { scholarTool } from "../researchscholar.js"; import { placeTools, withSiteNotes } from "./memoryplaces.js"; import { myComputerPlusTools } from "./mycomputerplus.js";
+import { craftReady } from "./creative-tools.js"; import { craftCommandRefusal } from "./craft-run.js";
 import { openmanWorkspace } from "./openman-tool.js";
-import { meetingTranscribe } from "../meetings.js";
+import { meetingTranscribe } from "../meetings.js"; import { meetingBotTools } from "../meetingbot/tools.js"; // L177 bot in a meeting
 import { videoStudioTool, updateVideoStudio } from "../videostudio.js";
 import { studioMp4Tool } from "../studiomp4.js";
 import { videoWorkflowTool } from "../videoworkflows.js";
@@ -67,8 +68,11 @@ import { JobLimitError, jobLine, jobOutput, jobs, runCommand, stopJob } from "..
 import { officeAvailable, officeTools } from "../office.js";
 import { mediaAvailable, mediaTools } from "../media.js";
 import { goalTools } from "./goals.js";
-import { recruitTools } from "./recruit.js";
-import { botPath, spillPath, spillPreview } from "./context.js";
+import { memoryPrefs } from "./memoryprefs.js"; import { searchNotesSmart } from "./semantic.js";
+import { forgetNotes } from "./memorybook.js"; import { cleanInvisible, duplicateOf } from "./memorysave.js"; import { similar } from "./memory.js"; import { memoryKeep } from "./memorykeep.js"; import { recordable } from "./flowrecord.js"; // L66 ; L165 recorded flows
+import { recruitTools } from "./recruit.js"; import { guideTools as stepGuideTools } from "../stepguide.js"; import { boardPlanTools } from "../boardplan.js"; // L153/L145 « pas à pas », L163 plan → tableau
+import { teamMdTools } from "./teamexport.js"; import { teamFolderTools } from "./tools-teamfolder.js"; import { themeTools } from "./tools-theme.js"; import { recapTools } from "./tools-recap.js"; import { shellLockRefusal } from "../teamlock.js"; /* L161 team-folder write lock */ import { stepTools } from "./tools-steps.js"; import { waitTools } from "./waitlater.js"; import { offerUndo, undoText } from "./undoable.js"; import { planTools, questionCard, QUESTION_PROPS } from "./richquestion.js"; import { viewTools } from "./viewcard.js"; import { creationTools } from "./creations.js"; import { deleteCheckAnswer } from "./deletecheck.js"; // L97 wait_until, L98 « Annuler », L79, DS-Bot item 8 show_view
+import { botPath, spillPath, spillPreview } from "./context.js"; import { condenseResult } from "./sidemodel.js"; import { codeHost, toolCodeTools } from "./toolcode.js"; import { routineFrameTools } from "./routineframe.js"; import { routineOptionTools } from "../routineoptions.js"; import { askRefusal, requestHelper, startQueuedHelpers } from "./askrules.js"; import { lt } from "./looptext.js";
 
 export interface ToolContext {
   bot: BotRecord; user: UserRecord; depth: number; signal: AbortSignal;
@@ -82,6 +86,8 @@ export interface ToolContext {
   origin?: string;
   /** Tool calls already run in this turn (a learned skill needs real multi-step work behind it). */
   toolsRun?: number;
+  /** The turn itself, for the tools that work on its tool list (tool_search, run_steps: tools-steps.ts). */
+  turn?: unknown;
 }
 export interface ToolOutput {
   content: string | Array<TextBlock | ImageBlock>;
@@ -128,25 +134,17 @@ const obj = (properties: Record<string, unknown>, required: string[] = []): Tool
 const str = (description: string) => ({ type: "string", description });
 const int = (description: string) => ({ type: "integer", description });
 
-const shot = (s: Shot, caption: string): ToolOutput => ({
-  content: [
-    { type: "text", text: `${caption}\n${s.url ? `Page: ${s.title || "(untitled)"} — ${s.url}` : `Window in front: ${s.title || "(the desktop)"}`}\nThe screenshot is ${config.desktopResolution.split("x").slice(0, 2).join("×")}; coordinates start at the top-left corner.` },
-    { type: "image", mediaType: s.mediaType, data: s.data },
-  ],
-  summary: clip(s.title || s.url || "screen", 80),
-});
-
 const tool = (name: string, description: string, schema: ToolSpec["inputSchema"], rest: Omit<BuiltinTool, "spec">): BuiltinTool =>
   ({ spec: { name, description, inputSchema: schema }, ...rest });
 
 const screenTools: BuiltinTool[] = [
-  tool("screen_view", "Take a screenshot of your screen to see what is on it right now.", obj({}), {
+  tool("screen_view", "Take a screenshot of your screen to see what is on it right now. If nothing changed since your last screenshot in this task, you are told so instead of getting the same picture again (fresh: true always sends it).", obj({ fresh: { type: "boolean", description: "Send the picture even if it is the same as your last one (default false)" } }), {
     activity: "computer", label: "Looking at the screen",
-    run: async (_a, c) => shot(await screen.view(c.bot.id, c.user.id), "Current screen."),
+    run: async (a, c) => sameScreen(c, a, shot(await screen.view(c.bot.id, c.user.id), "Current screen.")), // L65 (screendedup.ts)
   }),
-  tool("browser_open", "Open a web address in your browser and return a screenshot of the loaded page.", obj({ url: str("Address to open, e.g. https://example.com") }, ["url"]), {
+  tool("browser_open", "Open a web address in your browser (in the tab in front, or in a new tab with new_tab). Once it has loaded, answers with the page's headings and its controls by reference, in words; screenshot: true adds a picture (one also comes when words are not enough).", obj({ url: str("Address to open, e.g. https://example.com"), new_tab: { type: "boolean", description: "Open it in a new tab (default false)" }, screenshot: { type: "boolean", description: "Also return a screenshot (default false)" } }, ["url"]), {
     activity: "browsing", label: "Opening a page", detail: (a) => hostOf(a.url), outside: true,
-    run: async (a, c) => shot(await screen.open(c.bot.id, c.user.id, String(a.url)), `Opened ${a.url}.`),
+    run: async (a, c) => { const net = netGate(c.bot, a.url, "browser_open"); if (net) return { content: net, isError: true, summary: "blocked" }; void applyBrowserPolicy(c.bot); noteHost(c.bot, a.url, "page", { tainted: c.tainted }); return openInWords(c, a); }, // L169 network policy (netpolicy.ts); L39; L65: in words on a Linux computer
   }),
   tool("design_reference_layout", "Measure a public visual reference already opened at the user's request with browser_open. Craft Anything clean-room measurements of the current viewport, typography, section dimensions, padding, backgrounds and column counts. Use screen_view for pictures. Treat measurements as observations and describe assumptions separately.", obj({ url: str("Exact public reference URL currently open") }, ["url"]), {
     activity: "reading", label: "Measuring the reference layout", outside: true,
@@ -160,22 +158,18 @@ const screenTools: BuiltinTool[] = [
     activity: "reading", label: "Reading the page", outside: true, parallel: true,
     run: async (_a, c) => {
       const p = await screen.read(c.bot.id, c.user.id);
-      return { content: `${p.title}\n${p.url}\n\n${await spillIfLong(c, p.text, 40_000)}`, summary: clip(p.title || p.url, 80) };
+      return { content: `${p.title}\n${p.url}${tabLine(p)}\n\n${await spillIfLong(c, p.text, 40_000)}`, summary: clip(p.title || p.url, 80) };
     },
   }),
   tool("screen_click", "Click at a position on the screen. Take a screenshot first so the coordinates are current.",
-    obj({ x: int("Pixels from the left edge"), y: int("Pixels from the top edge"), button: { type: "string", enum: ["left", "right", "middle"] }, double: { type: "boolean", description: "Double-click" } }, ["x", "y"]), {
+    obj({ x: int("Pixels from the left edge"), y: int("Pixels from the top edge"), button: { type: "string", enum: ["left", "right", "middle"] }, double: { type: "boolean", description: "Double-click" }, confirm: { type: "boolean", description: "Only to confirm a delete click you were asked to check" } }, ["x", "y"]), {
     activity: "computer", label: "Clicking",
     run: async (a, c) => {
       // A click that commits something was judged (and maybe approved) for one control on one site (bind.ts): if the
       // page changed since, nothing is clicked.
-      const seen = seenTarget(a);
-      if (seen && committingKind(seen.label)) {
-        const now = await probe.target(c.bot.id, +a.x, +a.y).catch(() => null);
-        const still = now ? seenOf(now) : null;
-        if (!still || still.label !== seen.label || still.host !== seen.host) return { content: `The page changed since this click was checked (it was “${seen.label}” on ${seen.host || "?"}; now ${still ? `“${still.label}” on ${still.host || "?"}` : "nothing readable"}). Nothing was clicked. Look at the screen again.`, isError: true, summary: "page changed" };
-      }
-      return shot(await screen.click(c.bot.id, c.user.id, +a.x, +a.y, a.button ?? "left", !!a.double), `Clicked at (${a.x}, ${a.y}).`);
+      const seen = seenTarget(a), before = hostBeforeClick(c.bot.id); const check = deleteCheckAnswer(a); if (check) return check; // L33; DS-Bot item 10: a delete click is checked first (deletecheck.ts): a click to another site after outside content is reported (clickhosts.ts)
+      if (seen && committingKind(seen.label)) return afterClick(c, before, await boundClick(c, a, seen));
+      return afterClick(c, before, shot(await screen.click(c.bot.id, c.user.id, +a.x, +a.y, a.button ?? "left", !!a.double), `Clicked at (${a.x}, ${a.y}).`));
     },
   }),
   tool("screen_type", "Type text into whatever currently has keyboard focus.", obj({ text: str("Text to type") }, ["text"]), {
@@ -196,60 +190,8 @@ const screenTools: BuiltinTool[] = [
   }),
 ];
 
-/**
- * Element references (wave 8, item 6): the page's interactive elements by role and name, and actions on one of them by
- * its reference — sturdier than pixels when the browser is in front. Linux computers only (the desktop browser's
- * debugging port, see screen-elements.ts). A click whose words commit something is bound and judged exactly like
- * screen_click (bind.ts, authorize.ts); typing and choosing in a list are like screen_type.
- */
-const elementResult = (botId: string, r: { answer: ElementAnswer; shot: Shot | null }, caption: string): ToolOutput =>
-  r.shot ? shot(r.shot, caption) : { content: refusal(botId, r.answer), isError: true, summary: r.answer.stale ? "stale reference" : "not done" };
-const REF = str("An element reference from your latest element_snapshot, e.g. 3f9a.12");
-const elementTools: BuiltinTool[] = [
-  tool("element_snapshot", "List the interactive elements (links, buttons, fields, lists, checkboxes…) of the page in front of your browser, each with a short reference, its role, its name and its state. Prefer this and element_click / element_type / element_select over pixel coordinates when the browser is in front.", obj({ limit: int("At most this many elements (default 150, max 300)") }), {
-    activity: "reading", label: "Listing the page's controls", outside: true,
-    run: async (a, c) => {
-      const snap = await screen.elements(c.bot.id, c.user.id, Math.min(300, Math.max(1, Number(a.limit) || 150)));
-      return { content: rememberSnapshot(c.bot.id, snap), summary: `${snap.elements.length} · ${clip(snap.title || snap.url, 60)}` };
-    },
-  }),
-  tool("element_click", "Click an element of the page by its reference (from element_snapshot). It is scrolled into view first. Fails, doing nothing, when the reference is stale.", obj({ ref: REF }, ["ref"]), {
-    activity: "computer", label: "Clicking",
-    run: async (a, c) => {
-      const found = resolveRef(c.bot.id, a.ref);
-      if ("error" in found) return { content: found.error, isError: true, summary: "no such element" };
-      // As screen_click: a click that commits something was judged for this control on this site; if it changed since, nothing is clicked.
-      const seen = seenTarget(a);
-      if (seen && committingKind(seen.label)) {
-        const live = await probe.element(c.bot.id, String(a.ref)).catch(() => null);
-        const still = live ? seenOf(live) : null;
-        if (!still || still.label !== seen.label || still.host !== seen.host) return { content: `The page changed since this click was checked (it was “${seen.label}” on ${seen.host || "?"}; now ${still ? `“${still.label}” on ${still.host || "?"}` : "nothing readable"}). Nothing was clicked. Take a new element_snapshot.`, isError: true, summary: "page changed" };
-      }
-      return elementResult(c.bot.id, await screen.elementAct(c.bot.id, c.user.id, { ...found.req, action: "click" }), `Clicked ${found.element.role} “${clip(found.element.name, 80)}”.`);
-    },
-  }),
-  tool("element_type", "Type text into a field of the page by its reference (from element_snapshot): it is focused first. clear: replace what is in it. submit: press Enter afterwards.", obj({ ref: REF, text: str("Text to type"), clear: { type: "boolean", description: "Replace the field's content (default false)" }, submit: { type: "boolean", description: "Press Enter afterwards (default false)" } }, ["ref", "text"]), {
-    activity: "computer", label: "Typing",
-    run: async (a, c) => {
-      const found = resolveRef(c.bot.id, a.ref);
-      if ("error" in found) return { content: found.error, isError: true, summary: "no such element" };
-      const text = String(a.text ?? "");
-      return elementResult(c.bot.id, await screen.elementAct(c.bot.id, c.user.id, { ...found.req, action: "type", text, clear: a.clear === true, submit: a.submit === true }), `Typed ${text.length} characters into “${clip(found.element.name, 80)}”.`);
-    },
-  }),
-  tool("element_select", "Choose an option in a drop-down list (<select>) of the page by its reference (from element_snapshot), by the option's label or value.", obj({ ref: REF, option: str("The option's label (or value)") }, ["ref", "option"]), {
-    activity: "computer", label: "Choosing in a list",
-    run: async (a, c) => {
-      const found = resolveRef(c.bot.id, a.ref);
-      if ("error" in found) return { content: found.error, isError: true, summary: "no such element" };
-      const r = await screen.elementAct(c.bot.id, c.user.id, { ...found.req, action: "select", value: String(a.option ?? "") });
-      return elementResult(c.bot.id, r, `Chose “${clip(r.answer.chosen ?? String(a.option), 80)}” in “${clip(found.element.name, 80)}”.`);
-    },
-  }),
-];
-
 /** Screen actions (not looking) wait while the user drives the screen: the server refuses them, whatever the bot says. */
-const ACTS_ON_SCREEN = new Set(["browser_open", "screen_click", "screen_type", "screen_key", "screen_scroll", "screen_drag", "vault_type", "card_fill", "element_click", "element_type", "element_select"]);
+const ACTS_ON_SCREEN = new Set(["browser_open", "browser_back", "code_request", "screen_click", "screen_type", "screen_key", "screen_scroll", "screen_drag", "vault_type", "card_fill", "element_click", "element_type", "element_select", "element_fill", "element_hover", "element_upload", "browser_tab", "browser_dialog", "app_act"]);
 function respectDriver(t: BuiltinTool): BuiltinTool {
   if (!ACTS_ON_SCREEN.has(t.spec.name)) return t;
   return { ...t, run: async (a, c) => (userDriving(c.bot.id) ? { content: DRIVING, isError: true, summary: "the user is driving" } : t.run(a, c)) };
@@ -269,30 +211,33 @@ export const readsKeptOutput = (command: string) => /\.sklubot\/outputs/.test(co
  */
 async function spillIfLong(c: ToolContext, text: string, fallback: number): Promise<string> {
   if (text.length <= appConfig.spillChars) return text;
+  const gist = await condenseResult(c.bot, text, c.signal); // L69: a few lines by a small model first, for thrifty modes only (sidemodel.ts)
   if (computerKind() === "linux" && screen.isOpen(c.bot.id)) {
     const path = spillPath();
     try {
       await writeComputerFile(c.bot.id, c.user.id, workspaceOf(c.bot.id), path, text, "600");
-      return spillPreview(text, botPath(path));
+      return gist + spillPreview(text, botPath(path));
     } catch (err) { console.error("[spill]", (err as Error).message); }
   }
-  return clip(text, fallback);
+  return gist + clip(text, fallback);
 }
 
 const workTools: BuiltinTool[] = [
-  tool("web_fetch", "Download a web page or text file and return its readable text. No browser needed.", obj({ url: str("http(s) address") }, ["url"]), {
+  tool("web_fetch", "Download a web page or text file and return it as Markdown (headings, links with their address, lists), or the site's own Markdown when it serves one. No browser needed. With tags: true, a web page's SEO tags (title, description, robots, canonical, hreflang, social, headings, JSON-LD, images without alt) come first. llms: true also reads the site's llms.txt (its index for AI); markdown_copy: true tries the page's own .md copy first (docs sites).", obj({ url: str("http(s) address"), tags: { type: "boolean", description: "Also list the page's SEO tags (for a page check or an SEO audit)" }, llms: { type: "boolean", description: "Also read the site's /llms.txt first (an index of the site written for AI), when it has one" }, markdown_copy: { type: "boolean", description: "Try the page's own Markdown copy (its address + .md) first" } }, ["url"]), {
     activity: "reading", label: "Reading a page", detail: (a) => hostOf(a.url), outside: true, parallel: true,
     run: async (a, c) => {
       const url = String(a.url);
-      if (!/^https?:\/\//i.test(url)) return { content: "Only http and https addresses can be fetched.", isError: true };
+      if (!/^https?:\/\//i.test(url)) return { content: "Only http and https addresses can be fetched.", isError: true }; const net = netGate(c.bot, url, "web_fetch"); if (net) return { content: net, isError: true, summary: "blocked" }; noteHost(c.bot, url, "fetch", { tainted: c.tainted }); // L169, L39
       // Public addresses only, every redirect checked: a page must not steer the bot into this server's own network.
-      let res: Response;
-      try { res = await guardedFetch(url, { signal: AbortSignal.any([c.signal, AbortSignal.timeout(30_000)]), headers: { "user-agent": "Mozilla/5.0 (compatible; assistant)" }, redirect: "follow" }); }
-      catch (err) { const why = fetchProblem(err); if (why) return { content: `Could not fetch ${url}: ${why}`, isError: true, summary: "not fetched" }; throw err; }
+      let res: Response; const get = (u: string, accept: string) => botFetch(c.bot, u, { signal: AbortSignal.any([c.signal, AbortSignal.timeout(30_000)]), headers: { "user-agent": "Mozilla/5.0 (compatible; assistant)", accept }, redirect: "follow" });
+      const extra = await markdownExtras(url, a, get); if (extra.copy) return { content: `Status 200 (the page's own Markdown copy: ${extra.copy.url})\n\n${extra.prefix}${await spillIfLong(c, extra.copy.text, 40_000)}`, summary: `200 · ${hostOf(url) ?? ""} · md` }; // L75 (webfetchmd.ts)
+      try { res = await get(url, MARKDOWN_ACCEPT); }
+      catch (err) { const why = exitProblem(err) ?? fetchProblem(err); if (why) return { content: `Could not fetch ${url}: ${why}`, isError: true, summary: "not fetched" }; throw err; }
       const type = res.headers.get("content-type") ?? "";
       if (!/text|json|xml|javascript/.test(type)) return { content: `Fetched ${url} (status ${res.status}) but it is ${type || "binary"} content, not text.`, isError: !res.ok };
-      const body = await res.text();
-      return { content: `Status ${res.status}\n\n${await spillIfLong(c, /html/.test(type) ? htmlToText(body) : body, 40_000)}`, summary: `${res.status} · ${hostOf(url) ?? ""}`, isError: !res.ok };
+      const body = await decodedText(res); // « doit marcher »: any charset, broken bytes never fail (textdecode.ts)
+      const tags = a.tags === true && /html/.test(type) ? `${seoTagsReport(extractSeoTags(body, res.url || url))}\n\n` : ""; // L117 (seotags.ts)
+      return { content: `Status ${res.status}${isMarkdown(type, res.url || url) ? " (the site served Markdown)" : ""}\n\n${extra.prefix}${tags}${await spillIfLong(c, /html/.test(type) ? htmlToMarkdown(body, res.url || url) : body, 40_000)}`, summary: `${res.status} · ${hostOf(url) ?? ""}`, isError: !res.ok };
     },
   }),
   tool("shell_run", "Run a shell command on your computer and return its exit code and output. A command still running at its time limit is not killed: it goes on as a background job (you get its id; check it with job_output, stop it with job_stop, and you get a message when it ends). For long work (builds, downloads, servers, long scripts) pass background: true to start it as a job straight away.",
@@ -300,7 +245,7 @@ const workTools: BuiltinTool[] = [
     activity: "shell", label: "Running a command", sensitive: true, audited: true, detail: (a) => clip(String(a.command ?? ""), 60),
     run: async (a, c) => {
       const timeout = Math.min(290, Math.max(1, Number(a.timeout_seconds) || 120));
-      const command = String(a.command);
+      const command = String(a.command); const craftRefused = craftCommandRefusal(command); if (craftRefused) return { content: craftRefused, isError: true, summary: "refused" }; const offensive = offensiveRefusal(c.bot.id, command); if (offensive) return { content: offensive, isError: true, summary: "refused" }; const teamHeld = shellLockRefusal(c.bot, command); if (teamHeld) return { content: teamHeld, isError: true, summary: "locked" }; // L23: Craft Anything stays in clean-room mode; L38: no security test of a system that is not the owner's (offensive.ts)
       // Wave 7 (spec 08 A1): with the credential relay on, the computer gets the relay's address and its token (never a
       // key), and the relay knows whether this command's turn read outside content while it runs.
       if (c.bot.relayEnabled) await provisionRelay(c.bot).catch((err) => console.error("[relay]", (err as Error).message));
@@ -360,141 +305,9 @@ const shareTools: BuiltinTool[] = [
       return { content: "The user can see it in the chat now.", summary: att.name };
     },
   }),
-  tool("image_generate", "Create a picture from a description. It is saved in your library and shown to the user in the chat.", obj({ prompt: str("What the picture should show, in detail: subject, style, colours, framing"), filename: str("Short file name without extension") }, ["prompt"]), {
-    activity: "saving", label: "Creating an image", audited: true,
-    run: async (a, c) => {
-      // Hosted mode: pictures are made with the server's key — the plan must let it pay (counted at the operator's estimate).
-      const held = operatorBlock(c.user.id);
-      if (held) return { content: toolRefusal(held), isError: true };
-      const img = await generateImage(String(a.prompt), c.signal);
-      meterOperatorUse(c.user.id, c.bot.id, "image_generate", unitEstimate("imageUsd"));
-      const ext = img.mime === "image/jpeg" ? "jpg" : img.mime === "image/webp" ? "webp" : "png";
-      const att = storeBytes(c.bot.id, "images", `${String(a.filename ?? "image").trim() || "image"}.${ext}`, img.bytes);
-      rows.append(c.bot, { kind: "message", role: "assistant", text: "", attachments: [att] });
-      bots.bumpUnread(c.bot.id);
-      return { content: `Created and shown to the user. Saved as ${botPathOf(att.path)}.`, summary: att.name };
-    },
-  }),
 ];
 
-/** The user's Higgsfield app, when it is connected and signed in (see catalog.ts). Video work then goes through it. */
-export function higgsfieldFor(userId: string): Connector | null {
-  return connectors.list(userId).find((k) => isHiggsfield(k) && k.status === "ready" && k.tools.length > 0) ?? null;
-}
-export const isHiggsfield = (k: { name: string; url: string }) => {
-  try { if (new URL(k.url).hostname === "mcp.higgsfield.ai") return true; } catch { /* not a URL */ }
-  return k.name.trim().toLowerCase() === "higgsfield";
-};
-/** How this user's bots make videos: through Higgsfield, through a video API, or not at all. */
-export function videoRoute(userId: string): "connector" | "api" | null {
-  return higgsfieldFor(userId) ? "connector" : videoService() ? "api" : null;
-}
-/** The Higgsfield tools that look like they create or follow media, as the bot sees them (app_<app>__<tool>). Read at run time, never hard-coded. */
-function higgsfieldTools(k: Connector): string[] {
-  const prefix = `app_${slug(k.name)}__`;
-  const names = k.tools.map((t) => t.name);
-  const media = names.filter((n) => /video|image|generat|job|status|wait|result|media|model|animat|motion/i.test(n));
-  return (media.length ? media : names).slice(0, 25).map((n) => (prefix + n).replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 64));
-}
-
-const mediaKind = (mime: string) => (mime.startsWith("video/") ? "video" : mime.startsWith("image/") ? "image" : null);
-const EXT: Record<string, string> = { "video/mp4": "mp4", "video/webm": "webm", "video/quicktime": "mov", "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "image/gif": "gif" };
-
-const videoTools: BuiltinTool[] = [
-  tool("video_generate", "Create a short video from a description (a few seconds). It is saved in your library and shown to the user in the chat with a player. It costs money: make one only when the user wants a video, and one at a time.",
-    obj({
-      prompt: str("What the video should show, in detail: subject, action, camera movement, style, light, sound"),
-      duration_seconds: int("Length in seconds (usually 3 to 15; default about 8)"),
-      aspect_ratio: { type: "string", enum: ["16:9", "9:16", "1:1"], description: "16:9 landscape (default), 9:16 portrait, 1:1 square" },
-      reference_image: str("Optional: path of a picture in your library to start from"),
-      filename: str("Short file name without extension"),
-    }, ["prompt"]), {
-    activity: "filming", label: "Creating a video", audited: true, detail: () => "0",
-    // A paid action: asked the first time for each bot, and "Always" lets that bot go on without asking.
-    gate: (_a, ctx) => {
-      const owner = bots.byId(ctx.botId);
-      if (!owner || videoRoute(owner.userId) !== "api") return null;
-      // Spec 08 A4: the cost is announced on the card when it is known (VIDEO_PRICE_USD), else the card says it is not.
-      const est = videoPriceEstimate();
-      return { key: `video_generate: ${owner.name}`, title: "Allow {bot} to create a video? Each video is billed by {provider}.", reason: "create a video", source: "Paid video", vars: { provider: videoServices().map((v) => v.label).join(", ") || (videoService()?.label ?? ""), cost: est ? est.toFixed(2) : "" },
-        note: est ? "Estimated cost: {cost} $ per video, reserved before the call and settled at the real cost." : "The price of a video is not known in advance; the real cost is recorded after." };
-    },
-    run: async (a, c) => {
-      const via = higgsfieldFor(c.user.id);
-      if (via) {
-        // The user's Higgsfield subscription is the preferred route: the bot works with that app's own tools.
-        return {
-          content: `Videos are made through the user's Higgsfield app (it spends their Higgsfield credits, so make one video at a time and only what they asked for). Use its tools for this: ${higgsfieldTools(via).join(", ")}. Start a generation with the tool that creates videos, follow it until it is finished, then call media_save with the finished video's address so the user can watch it here.`,
-          summary: "via Higgsfield",
-        };
-      }
-      if (!videoService()) return { content: "No video service is set up on this server. Tell the user they can connect Higgsfield in Settings → Apps, or ask the server's admin to add a video API key.", isError: true };
-      // Hosted mode: the video APIs run on the server's keys — the plan must let them pay.
-      const held = operatorBlock(c.user.id);
-      if (held) return { content: toolRefusal(held), isError: true };
-      let image: { mime: string; data: Buffer } | undefined;
-      if (typeof a.reference_image === "string" && a.reference_image.trim()) {
-        const att = attachmentAt(c.bot.id, libraryPath(a.reference_image));
-        if (!att || !isInlineImage(att.mime)) return { content: `There is no picture at ${a.reference_image} in your library (PNG, JPEG or WebP).`, isError: true };
-        if (att.size > 15_000_000) return { content: "That picture is too large (15 MB at most).", isError: true };
-        image = { mime: att.mime, data: readLibraryFile(c.bot.id, att.path) };
-      }
-      const show = (pct: number | null) => setLive(c.user.id, c.bot.id, { running: true, activity: { kind: "filming", detail: pct === null ? undefined : String(Math.round(pct)), since: Date.now() }, awaiting: null });
-      const aspect = a.aspect_ratio === "9:16" || a.aspect_ratio === "1:1" ? a.aspect_ratio : a.aspect_ratio === "16:9" ? "16:9" : undefined;
-      // Spec 08 A3/A4: the configured video APIs in order; each paid call reserves its cost first and settles the real
-      // cost after (no double charge for the same request sent again); a provider error moves on to the next one, but a
-      // job that may still finish is never doubled with another paid provider.
-      const est = videoPriceEstimate();
-      const reqArgs = { prompt: String(a.prompt), duration: Number(a.duration_seconds) || null, aspect: aspect ?? null, image: a.reference_image ?? null };
-      const tried: string[] = [];
-      for (const svc of videoServices()) {
-        const r = reserve({ userId: c.user.id, botId: c.bot.id, tool: "video", provider: svc.id, maxUsd: est ?? (c.bot.thirdPartyDailyCapUsd !== null ? Math.min(DEFAULT_MAX_COST_USD, c.bot.thirdPartyDailyCapUsd) : 0), idemKey: idemKeyOf(c.bot.id, "video", svc.id, reqArgs, typeof a.request_id === "string" ? a.request_id : undefined) });
-        if (r.kind === "refused") return { content: r.message, isError: true, summary: tr(c.user.locale, "budget refused") };
-        if (r.kind === "busy") return { content: "This same video is still being made. Wait for it; do not start another.", isError: true, summary: tr(c.user.locale, "in progress") };
-        if (r.kind === "replay") return { content: `${r.result}\n(This is the same request as a moment ago: it was not made or charged again.)`, summary: tr(c.user.locale, "same request, not charged again") };
-        let v: Awaited<ReturnType<typeof generateVideo>>;
-        try { v = await generateVideo({ prompt: String(a.prompt), duration: Number(a.duration_seconds) || undefined, aspect, image, signal: c.signal, onProgress: show }, svc); }
-        catch (err) {
-          release(r.id);
-          if (c.signal.aborted || /timed out|took too long/i.test(String((err as Error)?.message))) throw err;
-          tried.push(`${svc.label}: ${clip(String((err as Error)?.message ?? err), 120)}`);
-          continue;
-        }
-        const att = storeBytes(c.bot.id, "videos", `${String(a.filename ?? "video").trim() || "video"}.${EXT[v.mime] ?? "mp4"}`, v.bytes);
-        rows.append(c.bot, { kind: "message", role: "assistant", text: "", attachments: [att] });
-        bots.bumpUnread(c.bot.id);
-        const content = `Created and shown to the user with a player. Saved as ${botPathOf(att.path)}.${v.costUsd ? ` It cost $${v.costUsd.toFixed(2)}.` : ""}${tried.length ? ` (Served by ${svc.label}; tried first: ${tried.join("; ")}.)` : ""}`;
-        settle(r.id, v.costUsd ?? est ?? unitEstimate("videoUsd"), content, v.model);
-        return { content, summary: `${att.name}${v.costUsd ? ` · $${v.costUsd.toFixed(2)}` : ""}${tried.length ? ` · ${tr(c.user.locale, "served by {who}", { who: svc.label })}` : ""}` };
-      }
-      return { content: `No video service could make it: ${tried.join("; ") || "none is configured"}. Nothing was charged.`, isError: true, summary: tr(c.user.locale, "nobody answered") };
-    },
-  }),
-  tool("media_save", "Download a finished video or picture from its address (for example one an app such as Higgsfield just made) into your library and show it to the user in the chat, with a player for videos.",
-    obj({ url: str("The http(s) address of the video or picture"), filename: str("Short file name without extension"), caption: str("A line to go with it") }, ["url"]), {
-    activity: "saving", label: "Saving a video", audited: true, detail: (a) => hostOf(a.url),
-    run: async (a, c) => {
-      const url = String(a.url);
-      if (!/^https?:\/\//i.test(url)) return { content: "Only http and https addresses can be saved.", isError: true };
-      let res: Response;
-      try { res = await guardedFetch(url, { signal: AbortSignal.any([c.signal, AbortSignal.timeout(300_000)]), redirect: "follow" }); }
-      catch (err) { const why = fetchProblem(err); if (why) return { content: `Could not download ${url}: ${why}`, isError: true, summary: "not saved" }; throw err; }
-      if (!res.ok) return { content: `Could not download it (status ${res.status}).`, isError: true, summary: `${res.status}` };
-      const type = (res.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
-      const fromName = /\.(mp4|webm|mov|png|jpe?g|webp|gif)(?:$|\?)/i.exec(new URL(url).pathname)?.[1]?.toLowerCase();
-      const mime = mediaKind(type) ? type : fromName ? ({ mp4: "video/mp4", webm: "video/webm", mov: "video/quicktime", png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp", gif: "image/gif" } as Record<string, string>)[fromName] : "";
-      if (!mime || !mediaKind(mime)) { await res.body?.cancel().catch(() => {}); return { content: `That address is not a video or a picture (${type || "unknown type"}).`, isError: true }; }
-      if (Number(res.headers.get("content-length") ?? 0) > 200_000_000) { await res.body?.cancel().catch(() => {}); return { content: "That file is too large (200 MB at most).", isError: true }; }
-      const bytes = Buffer.from(await res.arrayBuffer());
-      if (bytes.length > 200_000_000) return { content: "That file is too large (200 MB at most).", isError: true };
-      const kind = mediaKind(mime)!;
-      const att = storeBytes(c.bot.id, kind === "video" ? "videos" : "images", `${String(a.filename ?? kind).trim() || kind}.${EXT[mime] ?? (kind === "video" ? "mp4" : "png")}`, bytes);
-      rows.append(c.bot, { kind: "message", role: "assistant", text: typeof a.caption === "string" ? a.caption : "", attachments: [att] });
-      bots.bumpUnread(c.bot.id);
-      return { content: `Saved as ${botPathOf(att.path)} and shown to the user${kind === "video" ? " with a player" : ""}.`, summary: att.name };
-    },
-  }),
-];
+export { higgsfieldFor, isHiggsfield, videoRoute } from "./tools-media.js"; // audit OGAI: the media tools live in tools-media.ts
 
 /** Recent messages a bot may react to: in its own chat (or the thread it answers in), or in a group chat. */
 function reactable(list: Row[], words: string, role: "user" | "any"): Row | null {
@@ -545,7 +358,7 @@ const allowHttp = () => process.env.ALLOW_PRIVATE_FETCH === "1" || process.env.A
  * Vault tools that do not need a screen. The model never sees a value: secrets are typed by the user into a card
  * (secret_request), used by the server inside one request (secret_use), and generated passwords go straight in.
  */
-const vaultTools: BuiltinTool[] = [
+const vaultTools: BuiltinTool[] = guardVault([ // L41: per-item allowed bots, "ask every time", history (vaultaccess.ts)
   tool("vault_list", "List what the user saved in the vault for you: logins (name, site, username), secrets such as API keys (name and the hosts they may be sent to), two-factor code generators (name and site) and payment cards (name, network, last 4 digits). Values are never shown to you.", obj({}), {
     activity: "remembering", label: "Checking saved logins",
     run: async (_a, c) => {
@@ -619,7 +432,7 @@ const vaultTools: BuiltinTool[] = [
       try { url = new URL(String(a.url)); } catch { return { content: "That is not a full address.", isError: true }; }
       if (url.protocol !== "https:" && !(allowHttp() && url.protocol === "http:")) return { content: "Secrets are only sent over https.", isError: true };
       const host = url.hostname.toLowerCase().replace(/^www\./, "");
-      if (!item.hosts.some((h) => sameSite(host, h))) return { content: `The secret "${item.name}" may only be sent to ${item.hosts.join(", ") || "(no host)"}, not ${host}. It was not sent.`, isError: true };
+      if (!item.hosts.some((h) => sameSite(host, h))) return { content: `The secret "${item.name}" may only be sent to ${item.hosts.join(", ") || "(no host)"}, not ${host}. It was not sent.`, isError: true }; const net = netGate(c.bot, host, "secret_use"); if (net) return { content: net, isError: true, summary: "blocked" }; noteHost(c.bot, host, "secret", { tainted: c.tainted }); // L169, L39
       const headers = new Headers();
       if (a.headers && typeof a.headers === "object") for (const [k, v] of Object.entries(a.headers as Record<string, unknown>)) {
         if (typeof v !== "string" || !HEADER_NAME.test(k) || FORBIDDEN_HEADERS.has(k.toLowerCase()) || k.toLowerCase() === item.header.toLowerCase()) continue;
@@ -642,18 +455,19 @@ const vaultTools: BuiltinTool[] = [
       return { content: scrubSecret(`Status ${res.status}${where ? ` (redirect to ${where}, not followed)` : ""}\n\n${clip(text, 40_000)}`, value), summary: `${res.status} · ${host}`, isError: res.status >= 400 };
     },
   }),
-];
+]);
 
 /** How email_code_type reads the page in front and types (replaceable in tests); how long it waits for the email. */
 export const codeScreen = {
   pageUrl: async (botId: string, userId: string) => (await screen.read(botId, userId)).url,
-  type: async (botId: string, userId: string, text: string) => { await screen.type(botId, userId, text); },
+  // Into the focused field of the active tab, only if that tab (and each frame down to the field) is on the code's site.
+  type: async (botId: string, userId: string, text: string, host = "") => { const r = await typeSecret(botId, userId, text, host, "code"); if ("refused" in r) throw new Error(`The code was not typed: ${r.refused}.`); },
   waitMs: () => Number(process.env.CODE_WAIT_MS ?? 60_000),
   everyMs: () => Number(process.env.CODE_POLL_MS ?? 5_000),
 };
 
 /** Vault tools that work on the bot's screen: they check the page in front against the item's site. */
-export const screenVaultTools: BuiltinTool[] = [
+export const screenVaultTools: BuiltinTool[] = guardVault([ // L41: per-item allowed bots, "ask every time", history (vaultaccess.ts)
   tool("vault_type", "Type a saved username or password into the field that has keyboard focus on your screen. Click the field first. You never see the password; the user is asked before it is used.",
     obj({ item: str("Name of the saved login"), field: { type: "string", enum: ["username", "password"] } }, ["item", "field"]), {
     activity: "computer", label: "Typing a saved login", audited: true, detail: (a) => String(a.item ?? ""),
@@ -674,15 +488,11 @@ export const screenVaultTools: BuiltinTool[] = [
       if (!item) return { content: `No saved login is called "${a.item}". Use vault_list to see the names.`, isError: true };
       const value = a.field === "username" ? item.username : item.passwordEnc ? unseal(item.passwordEnc) : null;
       if (!value) return { content: `That login has no ${a.field} saved.`, isError: true };
-      // A saved login only goes into the site it was saved for.
+      // A saved login only goes into the site it was saved for: checked on the very tab, frame and field it goes into (tools-browser.ts).
       const wanted = siteHost(item.site);
-      if (wanted) {
-        const here = await screen.read(c.bot.id, c.user.id).then((p) => siteHost(p.url)).catch(() => "");
-        if (!here) return { content: `I could not tell which page is open, so the login for ${item.site} was not typed. Open ${item.site} in the browser first.`, isError: true };
-        if (here !== wanted && !here.endsWith("." + wanted)) return { content: `This login is saved for ${item.site}, but the page in front is ${here}. It was not typed. Do not try to enter it anywhere else.`, isError: true };
-      }
-      const s = await screen.type(c.bot.id, c.user.id, value);
-      return { ...shot(s, `Typed the saved ${a.field} into the focused field.`), summary: `${item.name} · ${a.field}` };
+      const r = wanted ? await typeSecret(c.bot.id, c.user.id, value, wanted, a.field === "username" ? "username" : "password") : { shot: await screen.type(c.bot.id, c.user.id, value) };
+      if ("refused" in r) return { content: `This login is saved for ${item.site}, but it was not typed: ${r.refused}. Open ${item.site} and click its ${a.field} field first; do not try to enter it anywhere else.`, isError: true }; if (wanted && a.field !== "username") noteLoginTyped(c.user.id, c.bot.id, wanted, item.name); // L159 siteregistry.ts
+      return { ...shot(r.shot, `Typed the saved ${a.field} into the focused field.`), summary: `${item.name} · ${a.field}` };
     },
   }),
   tool("email_code_type", "When a site you are signing in to sends a verification code by email, this fetches it from the user's connected mailbox (Gmail or Outlook) and types it into the field that has keyboard focus on your screen. You never see the code. Click the code field first. It waits up to a minute for the email.",
@@ -708,7 +518,7 @@ export const screenVaultTools: BuiltinTool[] = [
       if (!found) return { content: `No email with a code from ${wanted} arrived in the last minute. Ask the site to send it again, or use ask_takeover so the user types it.`, isError: true };
       // From here on the code is hidden from anything a model sees (page text, tool output…).
       hideForAWhile(c.user.id, found.code);
-      await codeScreen.type(c.bot.id, c.user.id, found.code);
+      await codeScreen.type(c.bot.id, c.user.id, found.code, wanted);
       return { content: `Typed the code from the email "${found.subject}" (${found.from}, ${new Date(found.at).toISOString().slice(11, 16)} UTC, ${found.account}) into the focused field. The code itself is kept from you. Submit the form if the site needs it, then check the result.`, summary: `${wanted} · ${found.account}` };
     },
   }),
@@ -734,25 +544,21 @@ export const screenVaultTools: BuiltinTool[] = [
       return { content: `Current code for ${item.name}: ${now.code} (valid for ${now.remaining} more seconds). Type it into the code field now.`, summary: `${item.name} · ${now.remaining}s` };
     },
   }),
-];
+]);
 
 const knowledgeTools: BuiltinTool[] = [
   tool("conversation_search", "Search what was said before — in this chat, in your earlier conversations (before a reset), or in every bot's chat. Use it instead of asking the user to repeat themselves.",
-    obj({ query: str("Words to look for"), scope: { type: "string", enum: ["mine", "everyone"], description: "mine (default): your own chats, current and earlier. everyone: all the user's bots." } }, ["query"]), {
+    obj({ query: str("Words to look for (any of them; accents do not matter)"), scope: { type: "string", enum: ["mine", "everyone"], description: "mine (default): your own chats, current and earlier. everyone: all the user's bots." }, since: str("Optional first day, YYYY-MM-DD"), until: str("Optional last day, YYYY-MM-DD"), around_seq: int("Optional: instead of searching, show the messages around this message number (#N from a result) in your current chat"), count: int("With around_seq: messages before and after (default 3, at most 10)") }, ["query"]), {
     activity: "remembering", label: "Searching conversations", group: "memory",
-    run: async (a, c) => {
-      const hits = searchMessages(c.user.id, String(a.query), { botId: a.scope === "everyone" ? undefined : c.bot.id, limit: 12 });
-      if (!hits.length) return { content: "Nothing matching was said.", summary: "0" };
-      return { content: hits.map((h) => `[${new Date(h.at).toISOString().slice(0, 16)} · ${h.role === "user" ? "user" : h.botName}${h.current ? "" : " · earlier conversation"}${a.scope === "everyone" ? ` · in ${h.botName}'s chat` : ""}] ${h.snippet}`).join("\n"), summary: `${hits.length}` };
-    },
+    run: async (a, c) => conversationSearchAnswer(c.user.id, c.bot.id, a), // L73: full-text index, date filter, « messages autour » (convsearch.ts)
   }),
-  tool("skill_read", "Read the full steps of one of your skills, or of a skill a teammate shared. Your prompt lists skill names; read one before following it.", obj({ name: str("Name of the skill") }, ["name"]), {
+  tool("skill_read", "Read the full steps of one of your skills, or of a skill a teammate shared. Your prompt lists skill names; read one before following it. A long skill gives its index first: then read the section you need.", obj({ name: str("Name of the skill"), ...skillSectionParam }, ["name"]), {
     activity: "remembering", label: "Reading a skill", group: "memory",
     run: async (a, c) => {
       const s = skills.find(c.bot.id, String(a.name));
       if (!s) return { content: `You have no skill called "${a.name}", and no teammate shared one by that name.`, isError: true };
-      // A skill learned in a turn that had read outside content is itself outside content: a page may have shaped it.
-      return { content: `# ${s.name}${s.own ? "" : ` (shared by ${s.botName})`}${s.learned ? " (learned from an earlier task)" : ""}\n${skillText(s)}`, summary: s.name, outside: s.outside };
+      // Counted, long ones by index then section, outside content kept as such (skilltools.ts, L131-L132).
+      return skillReadOutput(s, a.section, a.file);
     },
   }),
   tool("skill_save", "Save a way of doing something as a skill, so you do it the same way next time. Use it when the user says to remember how to do a task, or after working out a procedure worth keeping. Fill in, whenever you know them: what the task needs first (accounts, access, files), which steps need the user's approval (sending, paying, deleting, publishing, confirming a form…), how to check that it worked, and what to hand back at the end. Saving under an existing name replaces that skill (a part you leave out keeps its current text).",
@@ -773,9 +579,11 @@ const knowledgeTools: BuiltinTool[] = [
       // Only the parts the bot gave: one it leaves out keeps what the skill already says (the user may have written it).
       const extras: Partial<SkillExtras> = {};
       for (const k of SKILL_EXTRA_KEYS) if (typeof a[k] === "string") extras[k] = clip(a[k].trim(), 2000);
-      if (existing) skills.update(existing.id, { name, description: when, body, shared, ...extras }); else skills.create(c.bot.id, name, when, body, !!shared, {}, extras);
-      emit(c.user.id, { type: "memories", botId: c.bot.id });
-      return { content: existing ? "Skill updated." : "Skill saved.", summary: name };
+      const refused = saveRefusal(existing, body); if (refused) return { content: refused, isError: true, summary: name }; // locked, or too much lost (skilltools.ts)
+      const saved = existing ? skills.update(existing.id, { name, description: when, body, shared, ...extras }) : skills.create(c.bot.id, name, when, body, !!shared, {}, extras);
+      offerUndo(c.bot, { kind: "skill", ref: saved.id, before: existing ? { name: existing.name, description: existing.description, body: existing.body } : null, text: undoText.skill(c.bot, name, !existing), thread: c.thread }); // L98 « Annuler » (undoable.ts)
+      emit(c.user.id, { type: "memories", botId: c.bot.id }); // A flagged text stays a draft the bot cannot use until its owner accepts it (skillscan.ts).
+      return { content: `${existing ? "Skill updated." : "Skill saved."}${botNote(c.bot.id, name)}${afterSave(c.user.id, c.bot.id, name, !!existing)}`, summary: name };
     },
   }),
   tool("skill_propose", "After finishing a task that took several steps (or a workaround), offer to keep the procedure as a learned skill for next time: the steps on the site or app, the pitfalls, the final check. Names, addresses, contact details, order or account numbers, amounts and message contents are replaced by placeholders before the user sees it; the user reviews and edits it before it is saved. Do not use it when the user said not to remember this task.",
@@ -789,9 +597,10 @@ const knowledgeTools: BuiltinTool[] = [
       const steps = anonymise(String(a.steps ?? "").trim(), known).slice(0, 8000);
       const when = clip(anonymise(String(a.when ?? "").trim(), known), 300);
       if (!name || !steps) return { content: "A skill needs a name and steps.", isError: true };
-      rows.append(c.bot, { kind: "card", card: { type: "skill", name, when, steps, outside: !!c.tainted, status: "pending" } });
+      const evidence = proposalEvidence(c.user.id, name, when, known); // L131: the same task asked in other conversations (skillevidence.ts)
+      rows.append(c.bot, { kind: "card", card: { type: "skill", name, when, steps, outside: !!c.tainted, status: "pending", ...evidenceFields(evidence) } });
       bots.bumpUnread(c.bot.id);
-      return { content: "The user has the proposed skill in front of them (anonymised) and decides whether to keep it. Do not save it yourself.", summary: name };
+      return { content: `The user has the proposed skill in front of them (anonymised) and decides whether to keep it. Do not save it yourself.${evidenceNote(evidence)}`, summary: name };
     },
   }),
 ];
@@ -855,28 +664,34 @@ const transcribeTools: BuiltinTool[] = [
 ];
 
 const memoryTools: BuiltinTool[] = [
-  tool("memory_save", "Remember a lasting fact or preference. Write one short, self-contained sentence.", obj({ text: str("The fact to remember") }, ["text"]), {
+  tool("memory_save", "Remember a lasting fact or preference. Write one short, self-contained sentence.", obj({ text: str("The fact to remember"), until: str("Optional: the last day it holds, YYYY-MM-DD, when the user says it is only until a date") }, ["text"]), {
     activity: "remembering", label: "Saving a note",
     run: async (a, c) => {
-      const text = clip(String(a.text).trim(), 500);
+      const text = clip(cleanInvisible(String(a.text)), 500); // L67 invisible characters removed (memorysave.ts)
       if (!text) return { content: "Nothing to remember.", isError: true };
       // Sensitive topics (health, religion, politics…) and anything that looks like a secret are not kept, unless the user
       // turned that topic on or explicitly asked, in their own last message, to remember (sensitive.ts).
-      const v = memoryVerdict(c.user.id, text, explicitRemember(c.bot, c.thread ?? 0));
+      const asked = explicitRemember(c.bot, c.thread ?? 0), v = memoryVerdict(c.user.id, text, asked);
       if (!v.ok) return { content: v.reason, isError: true, summary: "not kept" };
-      memories.add(c.bot.id, text, "chat", { category: v.category });
+      if (!asked && memoryPrefs.noLearn(c.bot.id)) return { content: "Not kept: the user switched on « Ne rien retenir » for you. Only what they explicitly ask you to remember is kept.", isError: true, summary: "not kept" }; // L88
+      if (asked) memoryKeep.unbury(c.bot.id, text); else if (memoryKeep.buried(c.bot.id, text)) return { content: "Not kept: the user removed this from your memory before. It is kept again only if they ask you to remember it, in their own words.", isError: true, summary: "not kept" }; // L66 (memorykeep.ts)
+      const dup = duplicateOf(c.bot.id, text, similar); if (dup) return { content: `Already remembered, nothing added: "${dup.text}" (note of ${new Date(dup.createdAt).toISOString().slice(0, 10)}). To change it, the user edits it in Settings → Memory.`, summary: "already known" }; // L67
+      const note = memories.add(c.bot.id, text, "chat", { category: v.category }); const until = cleanDay(a.until); if (until) setMarks(c.user.id, note, { until }, "bot"); // audit DS-Bot #82
       emit(c.user.id, { type: "memories", botId: c.bot.id });
       return { content: "Remembered.", summary: clip(text, 80) };
     },
   }),
-  tool("memory_search", "Search everything you have remembered. Returns the most recent matches.", obj({ query: str("Words to look for") }, ["query"]), {
+  tool("memory_forget", "Forget notes, only when the user asks you to in their own message (\"oublie que…\", \"forget that…\"): the closest notes to the words you give are set aside (archived; the user sees it and can bring them back in Settings → Memory). Never to tidy up on your own.", obj({ query: str("Words of the note to forget") }, ["query"]), {
+    activity: "remembering", label: "Forgetting a note",
+    run: async (a, c) => forgetNotes(c.bot, c.user, String(a.query ?? ""), { origin: c.origin, thread: c.thread }),
+  }),
+  tool("memory_search", "Search everything you have remembered, by keywords (French or English; no synonyms). Returns the best matches first.", obj({ query: str("Words to look for") }, ["query"]), {
     activity: "remembering", label: "Checking notes",
     run: async (a, c) => {
-      const terms = String(a.query).toLowerCase().split(/\s+/).filter((w) => w.length > 2);
-      const all = memories.list(c.bot.id, 2000);
-      const hits = (terms.length ? all.filter((m) => terms.some((t) => m.text.toLowerCase().includes(t))) : all).slice(0, 20);
-      if (terms.length) memories.touch(hits.map((m) => m.id));
-      return { content: hits.length ? hits.map((m) => `- ${m.text} (${new Date(m.createdAt).toISOString().slice(0, 10)})`).join("\n") : "No matching memories.", summary: `${hits.length} found` };
+      // Ranked by keywords, recency and confidence (recall.ts); archived notes are never returned.
+      const found = await searchNotesSmart(c.bot, String(a.query ?? "")); // L71: fused with meaning when the owner switched it on (semantic.ts)
+      memories.touch(found.ids);
+      return { content: found.content || "No matching memories.", summary: `${found.count} found` };
     },
   }),
 ];
@@ -886,8 +701,8 @@ function announceRoutine(c: ToolContext, text: string) {
   emit(c.user.id, { type: "routines", botId: c.bot.id });
 }
 
-function checkSchedule(scheduleExpr: string, tz: string): string | null {
-  try { parseCron(scheduleExpr); } catch (e) { return `Invalid schedule: ${(e as Error).message}.`; }
+function checkSchedule(scheduleExpr: string, tz: string, floor = true): string | null {
+  try { parseCron(scheduleExpr); } catch (e) { return `Invalid schedule: ${(e as Error).message}.`; } if (floor && belowFloor(scheduleExpr)) return floorRefusalForBot(scheduleExpr); // L143 (routinefloor.ts)
   return isValidTimezone(tz) ? null : `Unknown timezone "${tz}". Use an IANA name such as Europe/Paris.`;
 }
 
@@ -904,7 +719,7 @@ const routineTools: BuiltinTool[] = [
       lead_minutes: int("For calendar: minutes before the event (1 to 1440, default 10)"),
       watch_url: str("For watch: a web address to check regularly; the routine runs when its content changes"),
       watch_file: str("For watch: instead of a web address, a file in your library to check"),
-      every_minutes: int("For watch: minutes between checks (5 to 1440, default 30). For email, slack and calendar: 2 to 1440, default 5"),
+      every_minutes: int("For watch: minutes between checks (15 to 1440, default 30). For email, slack and calendar: 2 to 1440, default 5"),
       schedule: str("For cron: five fields — minute hour day-of-month month day-of-week, e.g. '0 9 * * 1-5'"),
       only_if_new: { type: "array", items: { type: "string" }, description: "For cron routines that wait for something new (a reply, a new email, a page change): the mail accounts (exact names) or web addresses to check first. When nothing changed since the last run, the run is skipped without calling the model. Not for reminders or summaries, which must run every time." },
       run_at: str("For once: ISO 8601 date and time with offset, e.g. 2030-01-31T09:00:00+01:00"),
@@ -936,7 +751,7 @@ const routineTools: BuiltinTool[] = [
         runAt = Date.parse(String(a.run_at ?? ""));
         if (!Number.isFinite(runAt) || runAt <= Date.now()) return { content: "run_at must be a valid date and time in the future.", isError: true };
       } else if (kind === "watch") {
-        const everyMin = Math.min(1440, Math.max(5, Number(a.every_minutes) || 30));
+        const everyMin = Math.min(1440, Math.max(ROUTINE_FLOOR_MIN, Number(a.every_minutes) || 30)); // L143 floor
         if (a.watch_url) {
           if (!/^https?:\/\//i.test(String(a.watch_url))) return { content: "watch_url must be an http(s) address.", isError: true };
           watch = { kind: "url", target: String(a.watch_url), everyMin };
@@ -961,7 +776,7 @@ const routineTools: BuiltinTool[] = [
       schedule(r.id);
       const cost = r.projectedMonthlyUsd ? tr(c.user.locale, " · about {usd} $ a month", { usd: r.projectedMonthlyUsd.toFixed(2) }) : "";
       announceRoutine(c, tr(c.user.locale, "Routine created: {name} — {when}", { name: r.name, when: describeRoutine(r, c.user.locale) }) + (r.skipUnchanged ? tr(c.user.locale, " (skipped when nothing is new)") : "") + cost);
-      return { content: JSON.stringify({ id: r.id, when: describeRoutine(r), webhook_url: r.hookUrl ?? undefined, projected_monthly_usd: r.projectedMonthlyUsd ?? undefined, skips_when_unchanged: r.skipUnchanged || undefined }), summary: r.name };
+      return { content: JSON.stringify({ id: r.id, when: describeRoutine(r), webhook_url: r.hookUrl ?? undefined, projected_monthly_usd: r.projectedMonthlyUsd ?? undefined, skips_when_unchanged: r.skipUnchanged || undefined, note: watch && Number(a.every_minutes) > 0 && Number(a.every_minutes) < ROUTINE_FLOOR_MIN ? `Checks were set to every ${ROUTINE_FLOOR_MIN} minutes, the minimum: tell the user.` : undefined }), summary: r.name };
     },
   }),
   tool("routine_list", "List your routines with their ids, schedules and state.", obj({}), {
@@ -978,11 +793,11 @@ const routineTools: BuiltinTool[] = [
       const cur = routines.byId(String(a.id));
       if (!cur || cur.botId !== c.bot.id) return { content: "No routine of yours has that id.", isError: true };
       if (cur.trigger === "cron") {
-        const problem = checkSchedule(a.schedule ?? cur.schedule, a.timezone ?? cur.timezone);
+        const problem = checkSchedule(a.schedule ?? cur.schedule, a.timezone ?? cur.timezone, a.schedule !== undefined); // an older frequent schedule is kept
         if (problem) return { content: problem, isError: true };
       }
       const r = routines.update(cur.id, { name: a.name, prompt: a.prompt, schedule: cur.trigger === "cron" ? a.schedule : undefined, timezone: a.timezone, enabled: typeof a.enabled === "boolean" ? a.enabled : undefined })!;
-      schedule(r.id);
+      schedule(r.id); offerUndo(c.bot, { kind: "routine", ref: r.id, before: { name: cur.name, prompt: cur.prompt, schedule: cur.schedule, timezone: cur.timezone, enabled: cur.enabled }, text: undoText.routine(c.bot, r.name, cur.enabled && !r.enabled), thread: c.thread }); // L98
       announceRoutine(c, tr(c.user.locale, "Routine updated: {name} — {when}", { name: r.name, when: r.enabled ? describeRoutine(r, c.user.locale) : tr(c.user.locale, "paused") }));
       return { content: "Updated.", summary: r.name };
     },
@@ -1041,7 +856,7 @@ const bgTaskTools: BuiltinTool[] = [
     run: async (a, c) => {
       if (!String(a.goal ?? "").trim()) return { content: "Describe the goal of the task.", isError: true };
       try {
-        const t = startTask(c.bot, String(a.title ?? ""), String(a.goal), c.depth, c.tainted);
+        const t = startTask(c.bot, String(a.title ?? ""), String(a.goal), c.depth, c.tainted, a.level); // L69 « modèle par tâche » (modelmodes.ts)
         return { content: JSON.stringify({ id: t.id, note: "Started. The user follows it on its card; its report will reach you when it is done. Tell the user in one line that you started it, then carry on." }), summary: t.title };
       } catch (err) { return { content: (err as Error).message, isError: true }; }
     },
@@ -1088,6 +903,7 @@ const teamTools: BuiltinTool[] = [
       if (!target) return { content: `No bot is called "${a.bot}". The team: ${names.join(", ") || "nobody else yet"}.`, isError: true };
       if (target.id === c.bot.id) return { content: "That is you.", isError: true };
       if (target.kind === "room") return { content: "That is a group chat; use room_post.", isError: true };
+      const notMine = askRefusal(c.bot, target); if (notMine) return { content: notMine, isError: true, summary: tr(c.user.locale, "not allowed") }; // L96 who may ask whom (askrules.ts)
       // "Pause": nothing is sent to a paused bot; the sender is told, and not to route around it.
       if (isPaused(target)) return { content: pausedLine(target), isError: true, summary: tr(c.user.locale, "{bot} is paused", { bot: target.name }) };
       if (c.depth >= MAX_HOPS) return { content: "This exchange has bounced between bots too many times. Wrap up and report to the user instead.", isError: true };
@@ -1097,7 +913,7 @@ const teamTools: BuiltinTool[] = [
       const verdict = postBudget.attempt(c.user.id, { channel, botId: c.bot.id, text: String(a.message), now: Date.now() });
       if (!verdict.allow) return loopRefusal(verdict, c.bot, c);
       if (a.wait !== true) {
-        deliverBotMessage(c.bot, target, String(a.message), c.depth, c.tainted);
+        deliverBotMessage(c.bot, target, String(a.message), c.depth, c.tainted, true); // a request: its own thread (lanes.ts)
         return { content: `Delivered to ${target.name}. Their reply will reach you as a new message.`, summary: `to ${target.name}` };
       }
       // Waiting on a bot that waits (directly or through others) for you would never end: refused, nothing is sent.
@@ -1121,8 +937,11 @@ const teamTools: BuiltinTool[] = [
     activity: "messaging", label: "Starting a helper",
     run: async (a, c) => {
       if (c.bot.parentId || c.depth >= 2) return { content: "Helpers cannot start further helpers.", isError: true };
-      if (bots.children(c.bot.id).length >= MAX_HELPERS) return { content: `You already have ${MAX_HELPERS} helpers. Stop one first.`, isError: true };
-      const h = startHelper(c.bot, String(a.goal), a.label ? String(a.label) : undefined, c.depth, c.tainted);
+      // L96 (askrules.ts): beyond MAX_HELPERS at work the request waits in a queue instead of being refused.
+      const got = requestHelper(c.bot, String(a.goal), a.label ? String(a.label) : undefined, c.depth, !!c.tainted);
+      if ("refused" in got) return { content: got.refused, isError: true };
+      if ("queued" in got) return { content: `Queued (number ${got.queued}): ${MAX_HELPERS} helpers are already at work. It starts on its own when one of them finishes, and reports back to you like the others.`, summary: lt(c.user.locale, "Helper queued: {label} (starts when one of the {max} running helpers finishes)", { label: String(a.label ?? a.goal).slice(0, 40), max: MAX_HELPERS }) };
+      const h = got.started;
       return { content: JSON.stringify({ id: h.id, name: h.name, note: "It will report back when finished." }), summary: h.name };
     },
   }),
@@ -1151,7 +970,7 @@ const teamTools: BuiltinTool[] = [
     run: async (a, c) => {
       const h = bots.byId(String(a.id));
       if (!h || h.parentId !== c.bot.id) return { content: "No helper of yours has that id.", isError: true };
-      await retireBot(h);
+      await retireBot(h); startQueuedHelpers(c.bot.id); // L96: a queued helper takes the free place
       return { content: "Stopped and removed.", summary: h.name };
     },
   }),
@@ -1200,11 +1019,12 @@ const GEM_LABEL: Record<GemKind, string> = { lead: "New lead", seo: "SEO", data:
 
 const userTools: BuiltinTool[] = [
   tool("ask_user", "Ask the user a question that only they can answer. Offer a few ready-made answers. This ends your turn; their answer arrives as their next message.",
-    obj({ question: str("The question"), options: { type: "array", items: { type: "string" }, description: "Up to six suggested answers" } }, ["question"]), {
+    obj({ question: str("The question"), options: { type: "array", items: { type: "string" }, description: "Up to six suggested answers" }, ...QUESTION_PROPS }, ["question"]), {
     activity: "waiting", label: "Asking you",
     run: async (a, c) => {
-      const options = (Array.isArray(a.options) ? a.options.map(String) : []).slice(0, 6);
-      rows.append(c.bot, { kind: "card", card: { type: "question", question: String(a.question), options, status: "pending" } });
+      const routed = await routeQuestion(a, c); if (routed) return routed; // L25: the bot that gave the work answers first (delegatedask.ts)
+      const card = questionCard(a); if ("error" in card) return { content: card.error, isError: true }; // L79: why, recommended, irreversible, several answers, pictures, 2-4 questions (richquestion.ts)
+      rows.append(c.bot, { kind: "card", card });
       return { content: "The question is in front of the user. Stop here and wait for their answer.", summary: clip(String(a.question), 80), endTurn: true };
     },
   }),
@@ -1215,8 +1035,8 @@ const userTools: BuiltinTool[] = [
       return { content: "The user has been asked to connect it. Stop here; you will be told when it is connected or skipped.", summary: String(a.app), endTurn: true };
     },
   }),
-  tool("ask_takeover", "Ask the user to take over your screen for something only a human can do: a CAPTCHA, a two-factor code sent to their phone, a login with their own credentials, a payment confirmation. They get a card and a notification; you wait (up to 30 minutes) until they hand the screen back, then look at it again before carrying on.",
-    obj({ reason: { type: "string", enum: [...TAKEOVER_REASONS], description: "captcha, 2fa, login, payment or other" }, detail: str("What exactly they should do, in one or two sentences") }, ["reason", "detail"]), {
+  tool("ask_takeover", "Ask the user to take over your screen for something only a human can do: a CAPTCHA, a two-factor code sent to their phone, a login with their own credentials, a payment confirmation, or changing a password on a site (reason password: never change one yourself — they do it and you never see it). They get a card and a notification; you wait (up to 30 minutes) until they hand the screen back, then look at it again before carrying on.",
+    obj({ reason: { type: "string", enum: [...TAKEOVER_REASONS], description: "captcha, 2fa, login, payment, password (a password change they do themselves) or other" }, detail: str("What exactly they should do, in one or two sentences") }, ["reason", "detail"]), {
     activity: "waiting", label: "Waiting for you on the screen", group: "computer",
     run: async (a, c) => {
       const reason: TakeoverReason = (TAKEOVER_REASONS as readonly string[]).includes(String(a.reason)) ? (String(a.reason) as TakeoverReason) : "other";
@@ -1350,33 +1170,33 @@ const jobTools: BuiltinTool[] = [
   }),
 ];
 
-export function builtinTools(opts: { owner?: string; nativeSearch?: boolean; disabled?: readonly string[]; video?: "connector" | "api" | null; bgTasks?: boolean } = {}): BuiltinTool[] {
-  return assemble(opts).filter((t) => !t.group || !(opts.disabled ?? []).includes(t.group));
+export function builtinTools(opts: { owner?: string; nativeSearch?: boolean; /** The bot's own model offers a documented web search (nativesearch.ts). */ modelSearch?: boolean; disabled?: readonly string[]; video?: "connector" | "api" | null; bgTasks?: boolean } = {}): BuiltinTool[] {
+  return [...assemble(opts), ...placeTools].map(withSiteNotes).filter((t) => !t.group || !(opts.disabled ?? []).includes(t.group)); // L88 site notes, documents, project memory (memoryplaces.ts)
 }
 
-function assemble(opts: { owner?: string; nativeSearch?: boolean; video?: "connector" | "api" | null; bgTasks?: boolean }): BuiltinTool[] {
+function assemble(opts: { owner?: string; nativeSearch?: boolean; modelSearch?: boolean; video?: "connector" | "api" | null; bgTasks?: boolean }): BuiltinTool[] {
   return [
-    ...(browserAvailable() ? inGroup("computer", screenTools).map(respectDriver) : []),
-    ...(computerKind() === "linux" ? inGroup("computer", elementTools).map(respectDriver) : []),
+    ...(browserAvailable() ? inGroup("computer", screenTools).map(respectDriver).map(noteShots).map(traceClicks).map(recordable) : []),
+    ...(computerKind() === "linux" ? inGroup("computer", [...elementTools, ...browserTabTools, ...browserDownloadTools, ...appTreeTools]).map(respectDriver).map(noteShots).map(recordable) : []), ...(computerKind() === "linux" ? inGroup("computer", pageAuditTools) : []),
     // On its own Linux computer a bot's commands are contained, so they do not need a permission card.
     // Background jobs and office documents: on the bots' own Linux computers only (shell_run starts the jobs).
     ...(computerKind() === "linux" && shellAvailable() ? [...inGroup("shell", jobTools), craftReady, openmanWorkspace] : []),
     ...(officeAvailable() ? officeTools : []),
     // Listening, watching a video, downloading one, OCR: on the bots' own Linux computers only (media.ts).
-    ...(mediaAvailable() ? inGroup("computer", [...mediaTools, meetingTranscribe]) : []),
+    ...(mediaAvailable() ? inGroup("computer", [...mediaTools, meetingTranscribe, ...meetingBotTools]) : []),
     ...workTools.filter((t) => t.spec.name !== "shell_run" || shellAvailable())
       .map((t): BuiltinTool => ({ ...t, group: t.spec.name === "shell_run" ? "shell" : t.spec.name === "web_fetch" ? "web" : "files", sensitive: t.spec.name === "shell_run" && computerKind() === "linux" ? false : t.sensitive })),
-    ...(searchChainAvailable() && !opts.nativeSearch ? searchTools : []),
+    ...((searchChainAvailable() || opts.modelSearch) && !opts.nativeSearch ? searchTools : []),
     // Wave 7: Agent Reach (read-only) on the bot's Linux computer, transcription, temporary public links.
     ...(reachAvailable() ? inGroup("reach", reachTools) : []),
     ...(computerKind() === "linux" || reachAvailable() ? transcribeTools : []),
     githubSearch, githubRead, videoWorkflowTool, videoStudioTool, updateVideoStudio, ...(computerKind() === "linux" ? [studioMp4Tool] : []), ...publicLinkTools,
-    ...knowledgeTools, ...guideTools, ...ruleTools, ...pageTools, ...progressTools, ...profileTools, ...skillImportTools, ...botTools, ...recruitTools,
-    researchTool, ...(xSearchAvailable(opts.owner) ? xTools : []),
-    ...shareTools.filter((t) => t.spec.name !== "image_generate" || imageService()).map((t): BuiltinTool => ({ ...t, group: t.spec.name === "image_generate" ? "images" : "files" })),
+    ...knowledgeTools, ...guideTools, ...careTools, ...guideSearchTools, ...(browserAvailable() ? contactSheetTools : []), ...ruleTools, ...pageTools, ...progressTools, ...profileTools, ...skillImportTools, ...botTools, ...recruitTools, ...stepGuideTools, ...boardPlanTools, ...inGroup("team", teamMdTools),
+    researchTool, scholarTool, pastReportsTool, ...(xSearchAvailable(opts.owner) ? xTools : []), ...stepTools,
+    ...shareTools.map((t): BuiltinTool => ({ ...t, group: "files" })), ...(imageServiceFor(opts.owner) || (opts.owner && wan2gpTarget(opts.owner)) ? [{ ...imageTool, group: "images" as const }] : []),
     ...inGroup("vault", vaultTools),
-    ...(browserAvailable() ? inGroup("vault", screenVaultTools).map(respectDriver) : []),
-    ...(browserAvailable() ? inGroup("vault", cardTools).map(respectDriver) : []),
+    ...(browserAvailable() ? inGroup("vault", screenVaultTools).map(respectDriver).map(recordable) : []),
+    ...(browserAvailable() ? inGroup("vault", cardTools).map(respectDriver).map(recordable) : []), ...contactTools, ...pollTools, // L159 vaultcontacts.ts, L184 polls.ts
     ...inGroup("apps", apiTools),
     // A bot's own email address (wave 6): offered by newTurn only to bots that have one.
     ...inGroup("apps", botMailTools),
@@ -1384,7 +1204,7 @@ function assemble(opts: { owner?: string; nativeSearch?: boolean; video?: "conne
     ...localServerTools,
     ...(opts.video ? inGroup("video", videoTools) : []),
     // The user's own computers (Sklubot Relais): offered by newTurn only to users who linked one.
-    ...myComputerTools,
-    ...inGroup("memory", memoryTools), ...inGroup("routines", routineTools), ...inGroup("tasks", taskTools), ...(opts.bgTasks === false ? [] : inGroup("tasks", bgTaskTools)), ...goalTools, ...inGroup("team", [...teamTools, ...roomTools]), ...userTools.filter((t) => t.spec.name !== "ask_takeover" || browserAvailable()), ...reactTools,
+    ...myComputerTools, ...myComputerPlusTools, ...myUiTools, ...phoneTools, ...phoneUsbTools, ...liveDocTools, ...remoteAgentTools, ...voiceNoteTools, ...reminderCallTools, // L154
+    ...inGroup("memory", [...memoryTools, ...roomMemoryTools, ...skillFeedbackTools]), ...inGroup("routines", [...routineTools, ...routineFrameTools, ...routineOptionTools]), ...inGroup("tasks", taskTools), ...(opts.bgTasks === false ? [] : inGroup("tasks", [...bgTaskTools, ...batchTools])), ...goalTools, ...themeTools, ...recapTools, ...waitTools, ...planTools, ...viewTools, ...creationTools, ...inGroup("team", [...teamTools, ...roomTools]), ...userTools.filter((t) => t.spec.name !== "ask_takeover" || browserAvailable()), ...(computerKind() === "linux" ? [...codeTools, ...teamFolderTools] : []), ...(codeHost.available() ? toolCodeTools : []), ...reactTools,
   ];
 }

@@ -139,6 +139,7 @@
 .card-detail { max-height: 180px; padding: 9px 11px; border-radius: var(--r-md); background: var(--surface-2); font-family: var(--mono); font-size: 12px; white-space: pre-wrap; overflow: auto; overflow-wrap: anywhere; }
 .card-reason { font-size: 13.5px; color: var(--text-2); overflow-wrap: anywhere; }
 .card-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+.card-actions.is-more { padding-top: 10px; border-top: 1px solid var(--border); }
 .card-outcome { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 550; color: var(--text-2); }
 .card-outcome.is-allowed, .card-outcome.is-always { color: var(--ok); }
 .card-outcome.is-denied { color: var(--text-2); }
@@ -374,6 +375,7 @@ button.captions:hover { box-shadow: 0 0 0 1px var(--border-strong); }
 .skill-review-head p { font-size: 12.5px; margin-top: 2px; }
 .skill-review-body { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding: 4px 18px 10px; }
 .skill-steps { font-family: var(--font); line-height: 1.5; resize: vertical; min-height: 160px; }
+.skill-evidence ul { margin: 4px 0 0; padding-left: 18px; display: grid; gap: 4px; overflow-wrap: anywhere; }
 .skill-review-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 18px 16px; border-top: 1px solid rgba(255, 255, 255, 0.12); }
 .choice-text.is-note { color: var(--warn); }
 
@@ -424,8 +426,8 @@ button.captions:hover { box-shadow: 0 0 0 1px var(--border-strong); }
 .thinking-body { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1; }
 .thinking-caption { font-size: 13.5px; color: var(--text-2); animation: thinking-caption 0.32s ease both; }
 .thinking.is-waiting .thinking-caption { color: var(--warn); font-weight: 550; }
-.thinking-meta { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-3); font-variant-numeric: tabular-nums; }
-.thinking-queued { margin-left: 4px; }
+.thinking-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; font-size: 12px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.thinking-queued { margin-left: 4px; max-width: 100%; white-space: normal; }
 @keyframes thinking-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
 @keyframes thinking-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
 @keyframes thinking-glow { 0%, 100% { box-shadow: 0 0 0 2px var(--bg), 0 0 6px 1px rgba(255, 205, 60, 0.55); } 50% { box-shadow: 0 0 0 2px var(--bg), 0 0 14px 4px rgba(255, 205, 60, 0.85); } }
@@ -563,3 +565,29 @@ button.captions:hover { box-shadow: 0 0 0 1px var(--border-strong); }
   .thread-panel { top: calc(8px + env(safe-area-inset-top)); bottom: calc(8px + env(safe-area-inset-bottom)); }
   .md pre { padding: 10px 11px; }
 }
+/* Lanes (TaskLanes.tsx): several tasks of the bot at once, listed from the chat header */
+.lanes-wrap { position: relative; margin-right: 6px; }
+.lanes-chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 999px; border: 1px solid var(--border-strong); background: var(--info-soft); color: var(--text); font-size: 12.5px; font-weight: 600; white-space: nowrap; cursor: pointer; }
+.lanes-chip:hover { background: var(--hover); }
+.lanes-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--info); animation: lanes-pulse 1.6s ease-in-out infinite; }
+@keyframes lanes-pulse { 50% { opacity: 0.35; } }
+@media (prefers-reduced-motion: reduce) { .lanes-dot { animation: none; } }
+.lanes-panel { width: min(360px, calc(100vw - 32px)); padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+.lanes-head { font-size: 12.5px; font-weight: 650; color: var(--text); padding: 2px 4px; }
+.lanes-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.lanes-item { display: flex; align-items: center; gap: 6px; padding: 6px; border-radius: var(--r-md); background: var(--hover); min-width: 0; }
+.lanes-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.lanes-name { font-size: 13px; font-weight: 600; color: var(--text); }
+.lanes-phrase { font-size: 12px; }
+.lanes-stopall { align-self: flex-end; }
+@media (max-width: 720px) { .lanes-chip { padding: 0 8px; font-size: 12px; } .lanes-panel { position: fixed; left: 16px; right: 16px; top: 56px; width: auto; } }
+
+/* L58: messages typed during the work, waiting for the bot's next step (QueuedNotes.tsx) */
+.queued-notes { margin: 6px 0 0; padding: 8px 10px; border: 1px dashed var(--border-strong); border-radius: var(--r-md); background: var(--surface-2); font-size: 13px; min-width: 0; }
+.queued-notes-title { display: flex; align-items: center; gap: 5px; margin: 0; color: var(--text-2); font-weight: 600; }
+.queued-notes-hint { margin: 2px 0 6px; font-size: 12.5px; }
+.queued-notes ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.queued-notes li { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.queued-notes-text { flex: 1; min-width: 0; overflow-wrap: anywhere; color: var(--text); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.queued-notes li .btn { flex: none; }
+.queued-notes-actions { display: inline-flex; gap: 6px; flex: none; flex-wrap: wrap; justify-content: flex-end; } /* L58 « Envoyer maintenant » */

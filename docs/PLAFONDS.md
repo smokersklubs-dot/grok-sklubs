@@ -56,6 +56,21 @@ marge restante du plafond en dollars.
 | **Budget IA de l'offre** (mode hébergé) | compte client | mois civil UTC | € sur les clés du service | les appels sur les clés du service |
 | **Plafond quotidien des outils tiers** | bot | jour UTC | $ des outils payants | l'appel d'outil |
 
+### Heures d'ordinateur (L95)
+
+Un plafond **séparé** sur le temps où les ordinateurs Linux des bots sont allumés, par compte et par mois (mois UTC),
+dans **Réglages → Consommation → Heures d'ordinateur** (vide ou 0 : pas de plafond ; entre 0,5 et 744 h). En mode
+hébergé, l'opérateur peut fixer `COMPUTER_HOURS_MONTH` (heures par mois et par compte client ; les opérateurs n'y sont
+pas soumis) : le plus bas des deux compte. Chaque minute, le temps de chaque ordinateur allumé est ajouté à son
+compte. Plafond atteint : aucun ordinateur endormi n'est rallumé (le bot reçoit une phrase claire : relever le plafond
+ou attendre le 1er), ceux qui ne font rien s'endorment, une action en cours se termine ; un seul avis par mois.
+Code : `server/src/computerhours.ts`, `computerhoursroutes.ts` (`GET/PUT /api/usage/computer-hours`),
+`web/src/components/ComputerHours.tsx` ; test : `server/test/computer-hours.test.ts`.
+
+**Ordinateurs sans bot** : un ordinateur (conteneur `sklubot=desktop`) qui tourne depuis plus d'une heure alors
+qu'aucun bot, ordinateur partagé ou ordinateur gratuit de ce serveur ne lui correspond est **arrêté** au démarrage puis
+toutes les heures — jamais supprimé (son disque reste).
+
 Le budget mensuel n'a pas été transformé en plafond : son comportement (mois UTC, tout s'arrête) est conservé tel
 quel, et sa barre est affichée avec celles des plafonds.
 
@@ -70,3 +85,15 @@ quel, et sa barre est affichée avec celles des plafonds.
 
 Un webhook d'une routine sautée répond `200 { ok: true, skipped: "usage_cap" }` (pas d'erreur : un expéditeur qui
 réessaie ne s'emballe pas).
+
+## Rythme des routines et lots en parallèle (25/11/2026)
+
+- **Au plus une fois toutes les 15 minutes** pour une routine à horaire : un horaire plus serré est refusé avec un message
+  clair (« Une routine tourne au plus une fois toutes les 15 minutes… »). Une surveillance de page ou de fichier est vérifiée
+  au plus toutes les 15 minutes. Une routine plus ancienne et plus fréquente est gardée, mais ralentie à 15 minutes (sa
+  description le dit). Les routines lancées par un évènement (adresse web, e-mail, Slack, agenda) et « Lancer maintenant »
+  ne sont pas concernées. Pas de limite au nombre de routines en auto-hébergé ; l'offre hébergée garde celle du forfait.
+- **Lots en parallèle** : un bot peut lancer d'un coup 2 à 20 tâches indépendantes (par exemple dix recherches). Elles
+  tournent au plus 3 à la fois (1 à la fois pour un bot sur abonnement), avec ses autres tâches de fond ; une carte montre
+  l'avancement, le coût et un bouton « Arrêter » qui annule ce qui n'a pas commencé ; un seul résumé arrive à la fin.
+

@@ -76,7 +76,10 @@ export function RoomWhoAnswers({ room, value, onChange }: { room: Bot; value: Ro
   );
 }
 
-/** « Plutôt demander à… » under a routed message's line: the other available members of the group. */
+/**
+ * Under a routed message's line (L155): the task's owner (« Responsable : Léa »), « Réassigner » to another available member
+ * (as often as needed), « Archiver » to close the task, and « Restaurer » on an archived one.
+ */
 export function RouteNoticeActions({ action, botId, seq, readOnly }: { action: RouteNoticeAction; botId: string; seq: number; readOnly: boolean }) {
   const t = useT();
   const room = useStore((s) => s.bots[botId]);
@@ -84,24 +87,39 @@ export function RouteNoticeActions({ action, botId, seq, readOnly }: { action: R
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
-  // A mark only (the line keeps its quiet look) once there is nothing to choose.
+  // A mark only (the line keeps its quiet look) when nobody took it, or in a read-only view.
+  if (readOnly || !action.botId) return <i className="route-mark" hidden />;
   const others = (room?.memberIds ?? []).map((id) => all[id]).filter((b): b is Bot => !!b && b.kind === "agent" && b.id !== action.botId && !b.pause);
-  if (readOnly || action.status !== "open" || !others.length) return <i className="route-mark" hidden />;
-  const pick = async (id: string) => {
+  const run = async (path: string, body: unknown) => {
     setOpen(false);
     setBusy(true);
     setFailed(null);
-    try { await api("POST", `/bots/${botId}/rows/${seq}/reroute`, { botId: id }); } catch (e) { setFailed(errText(e)); }
+    try { await api("POST", `/bots/${botId}/rows/${seq}/${path}`, body); } catch (e) { setFailed(errText(e)); }
     setBusy(false);
   };
+  const archived = action.status === "archived";
   return (
-    <div className="notice-actions route-actions">
-      <button type="button" className="btn btn-ghost btn-small route-ask" aria-haspopup="menu" aria-expanded={open} disabled={busy} onClick={() => setOpen((v) => !v)}>
-        {t("roomRouting.askInstead")} <Icon name="chevronDown" size={12} />
-      </button>
-      <Menu open={open} onClose={() => setOpen(false)} label={t("roomRouting.askInstead")} align="center">
-        {others.map((b) => <MenuItem key={b.id} onClick={() => void pick(b.id)}>{b.label ? `${b.name} (${b.label})` : b.name}</MenuItem>)}
-      </Menu>
+    <div className={`notice-actions route-actions ${archived ? "is-archived" : ""}`}>
+      <span className="route-owner">{t(archived ? "roomTask.archivedOwner" : "roomTask.owner", { name: action.botName })}</span>
+      {archived ? (
+        <button type="button" className="btn btn-ghost btn-small route-ask" disabled={busy} onClick={() => void run("archive", { archived: false })}>
+          <Icon name="refresh" size={12} /> {t("roomTask.restore")}
+        </button>
+      ) : (
+        <>
+          {others.length > 0 && (
+            <button type="button" className="btn btn-ghost btn-small route-ask" aria-haspopup="menu" aria-expanded={open} disabled={busy} onClick={() => setOpen((v) => !v)}>
+              {t("roomTask.reassign")} <Icon name="chevronDown" size={12} />
+            </button>
+          )}
+          <Menu open={open} onClose={() => setOpen(false)} label={t("roomTask.reassign")} align="center">
+            {others.map((b) => <MenuItem key={b.id} onClick={() => void run("reroute", { botId: b.id })}>{b.label ? `${b.name} (${b.label})` : b.name}</MenuItem>)}
+          </Menu>
+          <button type="button" className="btn btn-ghost btn-small route-ask" disabled={busy} onClick={() => void run("archive", { archived: true })}>
+            <Icon name="folder" size={12} /> {t("roomTask.archive")}
+          </button>
+        </>
+      )}
       {failed && <span className="notice-error" role="alert">{failed}</span>}
     </div>
   );

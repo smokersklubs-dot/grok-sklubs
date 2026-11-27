@@ -7,6 +7,7 @@ import type { Bot } from "../api/types";
 import { Character, stateOf } from "../components/Character";
 import { Icon } from "../components/Icon";
 import { RelayOffBanner } from "../components/RelayOffBanner";
+import { PhoneRequestCard } from "../components/PhoneRequestCard";
 import { Empty, ErrorNote, Loading, tap, text } from "../components/ui";
 import { useT } from "../i18n";
 import { listTime } from "../lib/format";
@@ -71,6 +72,7 @@ export function BotsScreen() {
         <Text accessibilityRole="header" style={[text.h1, { color: c.text }]}>{t("bots.title")}</Text>
         {!online ? <View style={styles.offline}><Icon name="wifiOff" size={16} color={c.warn} /><Text style={{ color: c.warn, fontSize: 13 }}>{t("api.offline")}</Text></View> : null}
       </View>
+      <PhoneRequestCard />
       <RelayOffBanner />
       {error && !Object.keys(bots).length ? <View style={{ padding: 16 }}><ErrorNote>{error}</ErrorNote></View> : null}
       {!loaded ? <Loading /> : (

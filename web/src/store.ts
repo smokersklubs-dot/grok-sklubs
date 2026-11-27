@@ -20,9 +20,10 @@ export type ModalState =
   | { kind: "duplicate"; botId: string }
   | { kind: "templates"; tab?: "gallery" | "file" | "url" }
   | { kind: "exportTemplate"; sectionId?: string; botIds?: string[] }
+  | { kind: "teamMdImport" } | { kind: "teamMdShare"; sectionId?: string; botIds?: string[] }
   | { kind: "connectors"; catalogId?: string; prefill?: { name: string; botId: string; seq: number } };
-export type BotSettingsTab = "general" | "skills" | "memories" | "routines" | "localTools" | "reach" | "telegram" | "email" | "sharing" | "api";
-export type AppSection = "shortcuts" | "general" | "today" | "surveillance" | "profile" | "models" | "notifications" | "computer" | "devices" | "permissions" | "rules" | "memory" | "skills" | "connectors" | "vault" | "keys" | "pages" | "usage" | "checkins" | "activity" | "team" | "workspaces" | "voice" | "email" | "account" | "subscription" | "admin";
+export type BotSettingsTab = "general" | "skills" | "memories" | "routines" | "localTools" | "reach" | "telegram" | "channels" | "email" | "sharing" | "api" | "security";
+export type AppSection = "shortcuts" | "general" | "today" | "surveillance" | "profile" | "models" | "notifications" | "computer" | "devices" | "permissions" | "rules" | "memory" | "skills" | "connectors" | "vault" | "keys" | "pages" | "usage" | "checkins" | "activity" | "team" | "workspaces" | "voice" | "email" | "account" | "subscription" | "admin" | "doctor";
 /** Hosted mode (server/src/hosted.ts): only present when the server runs with HOSTED_MODE=1. */
 export interface HostedInfo { operator: boolean; /** The owner sells Sklubot credits (off by default: "Mes comptes IA"). */ creditsForSale?: boolean; links: { pricing: string; terms: string; legal: string; privacy: string } }
 
@@ -198,7 +199,7 @@ interface Store {
   history: HistoryTarget | null;
 
   selectedId: string | null;
-  view: "chat" | "tasks" | "today" | "surveillance" | "announcements" | "command";
+  view: "chat" | "tasks" | "today" | "surveillance" | "announcements" | "command" | "inbox" | "docs"; // "inbox": « À toi » (L139)
   detailsOpen: boolean;
   sidebarCollapsed: boolean;
   mobileNav: boolean;
@@ -259,7 +260,7 @@ interface Store {
   removeUpload(botId: string, id: string): void;
   clearUploads(botId: string, ids: string[]): void;
   setTheme(theme: Theme): void;
-  setView(view: "chat" | "tasks" | "today" | "surveillance" | "announcements" | "command"): void;
+  setView(view: "chat" | "tasks" | "today" | "surveillance" | "announcements" | "command" | "inbox" | "docs"): void;
   toggleDetails(open?: boolean): void;
   toggleSidebar(): void;
   setMobileNav(open: boolean): void;
@@ -432,10 +433,12 @@ export const useStore = create<Store>((set, get) => ({
     // Opened from the daily digest (/?view=today): the Today page; from a Sentinelle alert (/?view=surveillance): Surveillance.
     const wantedView = new URLSearchParams(window.location.search).get("view");
     // « Centre de commandement »: /?view=command.
-    if (wantedView === "today" || wantedView === "surveillance" || wantedView === "command") {
+    if (wantedView === "today" || wantedView === "surveillance" || wantedView === "command" || wantedView === "docs") { // "docs": L178 shared documents
       get().setView(wantedView);
       window.history.replaceState(null, "", window.location.pathname);
     }
+    // L44: a security notification (/?view=security) opens Settings → Permissions → Sécurité; « Ce n'est pas moi » (/?view=account) the password.
+    if (wantedView === "security" || wantedView === "account") { get().openAppSettings(wantedView === "security" ? "permissions" : "account"); window.history.replaceState(null, "", window.location.pathname); }
     // Wave 6: opened from a workspace invitation while signed in: join, then show the bots shared there.
     const invite = new URLSearchParams(window.location.search).get("invite");
     if (invite) {
@@ -756,7 +759,7 @@ export const useStore = create<Store>((set, get) => ({
         set((s) => ({ live: { ...s.live, [ev.botId]: ev.live } }));
         if (!was && ev.live.awaiting && document.visibilityState !== "visible") {
           const bot = get().bots[ev.botId];
-          if (bot) notifyBot(bot.id, bot.name, firstWords(ev.live.awaiting.reason || t("notify.waiting")), () => get().selectBot(bot.id));
+          if (bot) notifyBot(bot.id, bot.name, firstWords(ev.live.awaiting.reason || t("notify.waiting")), () => get().selectBot(bot.id), "needs");
         }
         break;
       }

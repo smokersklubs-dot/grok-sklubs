@@ -5,7 +5,10 @@ import { config } from "./config.js";
 import { now } from "./store.js";
 import { noteSignal } from "./sentinel/signals.js";
 import type { ClickTarget } from "./computer.js";
-import { ELEMENTS_PY, type ElementAnswer, type ElementRequest, type ElementSnapshot } from "./screen-elements.js";
+import type { ElementAnswer, ElementRequest, ElementSnapshot } from "./screen-elements.js";
+import type { HeldDownload } from "./browser-downloads.js";
+import { BROWSER_PY, browserTrouble, dialogWords, tabNote, type BrowserAnswer, type GuardedClick } from "./browser-cdp.js";
+import { refreshImageSandbox, sandboxRunArgs, sandboxSpec } from "./browsersandbox.js";
 
 /**
  * A real Linux computer per bot: one container each, with a graphical desktop, a browser, a terminal
@@ -196,7 +199,8 @@ export const SPEC_LABEL = "sklubot.spec";
 const specOf = (key: string) => {
   const link = config.botLink === "socket" ? `socket:${config.botsNetwork}` : `net:${config.desktopNetwork || "host"}`;
   const libs = allocator.isShared(key) ? `;libs:${[...allocator.members(key)].sort().join(",")}` : "";
-  return `${link};rt:${config.desktopRuntime || "default"}${libs}`;
+  // L48: `;sb:<profile hash>` once the image runs its browser sandboxed (browsersandbox.ts).
+  return `${link};rt:${config.desktopRuntime || "default"}${libs}${sandboxSpec()}`;
 };
 /** Each computer's team label, by container name, in one call (for the library view). */
 export async function teamLabels(): Promise<Map<string, string>> {
@@ -324,6 +328,9 @@ async function sleepMachine(key: string) {
 /** Hosted mode (hosted.ts): how many computers an account may keep awake, and the error when they are all busy. */
 let awakeLimitOf: (userId: string) => { max: number; error: () => Error } | null = () => null;
 export const setAwakeLimit = (fn: typeof awakeLimitOf) => { awakeLimitOf = fn; };
+/** L95 (computerhours.ts): an account past its computer hours gets this error instead of a computer that is asleep. */
+let wakeGate: (userId: string) => Error | null = () => null;
+export const setWakeGate = (fn: typeof wakeGate) => { wakeGate = fn; };
 /** Computers allowed to start under an account's own limit, not running yet (key → account). */
 const accountReserved = new Map<string, string>();
 
@@ -403,6 +410,8 @@ export function computerRunArgs(key: string, o: { libraries: { dir: string; dst:
     // Chromium, x11vnc, apt-get, sudo, su all work with these). No device nodes, raw sockets, chroot or
     // file capabilities, and no way to gain privileges through setuid programs.
     "--cap-drop", "ALL", ...COMPUTER_CAPS.flatMap((cap) => ["--cap-add", cap]), "--security-opt", "no-new-privileges",
+    // L48: the seccomp profile that lets Chromium's own sandbox start, for an image that uses it (browsersandbox.ts).
+    ...sandboxRunArgs(),
     ...(config.desktopRuntime ? ["--runtime", config.desktopRuntime] : []),
     ...o.quota,
     "-e", `SCREEN_RES=${config.desktopResolution}`,
@@ -420,6 +429,7 @@ export function computerRunArgs(key: string, o: { libraries: { dir: string; dst:
 /** Makes sure the computer is on. Only a few may run at once; the least recently used idle one goes to sleep. */
 async function wake(key: string, userId: string, workspace?: string): Promise<Machine> {
   const known = machines.get(key);
+  await refreshImageSandbox(docker, config.desktopImage);
   const spec = specOf(key);
   // A computer believed on is checked with Docker at most every 120 s: one removed or stopped behind our back is started
   // again. One not checked in this server run yet, or made with other settings since, goes through the full path below.
@@ -456,6 +466,8 @@ async function wake(key: string, userId: string, workspace?: string): Promise<Ma
         if (power !== "absent") madeWith.set(key, labels[SPEC_LABEL] ?? "");
       }
       if (power !== "running") {
+        const refused = wakeGate(userId);
+        if (refused) throw refused;
         // Hosted mode: the account's plan may allow fewer computers awake at once than the server (its own idle one goes
         // to sleep first, like below; all of them busy → a plan-limit error with the way forward).
         const account = awakeLimitOf(userId);
@@ -588,7 +600,7 @@ async function x(name: string, ...args: string[]) {
   return r.stdout.toString("utf8").trim();
 }
 
-export interface LinuxShot { data: string; mediaType: "image/jpeg"; url: string; title: string }
+export interface LinuxShot { data: string; mediaType: "image/jpeg"; url: string; title: string; /** A line for the bot: a dialog the action opened, a tab it opened… */ notice?: string }
 async function grab(name: string): Promise<Buffer> {
   const r = await docker(["exec", name, "import", "-silent", "-window", "root", "-quality", "70", "jpeg:-"], { timeoutMs: 20_000 });
   if (r.code !== 0 || r.stdout.length < 200) throw new Error(`could not capture the screen: ${r.stderr.trim().slice(0, 200)}`);
@@ -667,23 +679,36 @@ finally:
     keymap([(code, "NoSymbol") for code in free])
 `;
 
-/** Runs the page-elements helper (screen-elements.ts) in a computer that is on, with its request on standard input. */
-async function runElements<T>(name: string, req: object): Promise<T> {
-  const r = await docker(["exec", "-i", name, "python3", "-c", ELEMENTS_PY], { timeoutMs: 40_000, input: JSON.stringify(req), maxBytes: 2_000_000 });
-  try { return JSON.parse(r.stdout.toString("utf8")) as T; } catch { throw new Error(`could not read the page's elements: ${r.stderr.trim().slice(0, 200) || `exit ${r.code}`}`); }
+/**
+ * Runs the browser helper (browser-cdp.ts) in a computer that is on, with its request on standard input: it reads and
+ * acts on the bot's active tab, and never leaves a Python traceback for the model (an unreadable answer is said plainly).
+ */
+async function runBrowser<T = BrowserAnswer>(name: string, req: object, timeoutMs = 40_000): Promise<T> {
+  const r = await docker(["exec", "-i", name, "python3", "-c", BROWSER_PY], { timeoutMs, input: JSON.stringify(req), maxBytes: 2_000_000 });
+  try { return JSON.parse(r.stdout.toString("utf8")) as T; } catch { throw new Error(r.timedOut ? "the browser did not answer in time. Look at the screen (screen_view): a dialog or a busy page may be in the way." : `the browser could not be reached (exit ${r.code}). Look at the screen (screen_view).`); }
+}
+/** The helper's answer for a read: a dialog, a refusal or an error becomes an Error in plain words. */
+function readable(a: BrowserAnswer): BrowserAnswer {
+  const trouble = browserTrouble(a);
+  if (trouble) throw new Error(trouble);
+  return a;
 }
 
 export const linuxScreen = {
   layout: (botId: string, userId: string, ws: string, expression: string) =>
-    onMachine(botId, userId, ws, (name) => runElements<{ error?: string }>(name, { op: "layout", expression })),
+    onMachine(botId, userId, ws, (name) => runBrowser<{ error?: string }>(name, { op: "layout", expression })),
+  /** L114: one screenshot per width of `url`, in a temporary tab (browser-cdp.ts op_sheet). */
+  sheet: (botId: string, userId: string, ws: string, url: string, widths: number[], moments: number[] = []) =>
+    onMachine(botId, userId, ws, async (name) => { const r = await runBrowser<{ error?: string; shots?: { width: number; data: string; scrollWidth?: number; at?: number }[] }>(name, { op: "sheet", url, widths, moments }, 120_000); if (r.error) throw new Error(r.error); return r.shots ?? []; }),
   view: (botId: string, userId: string, ws: string) => onMachine(botId, userId, ws, async (n) => { await pause(300); return capture(n); }),
-  open: (botId: string, userId: string, ws: string, url: string) => onMachine(botId, userId, ws, async (n) => {
+  open: (botId: string, userId: string, ws: string, url: string, newTab = false) => onMachine(botId, userId, ws, async (n) => {
     const target = /^[a-z][a-z0-9+.-]*:/i.test(url) ? url : `https://${url}`;
     if (!/^https?:/i.test(target)) throw new Error("only http and https addresses can be opened");
-    const r = await docker(["exec", "-d", n, "/opt/sklubot/open-browser.sh", target], { timeoutMs: 20_000 });
-    if (r.code !== 0) throw new Error(`could not start the browser: ${r.stderr.trim().slice(0, 200)}`);
-    await pause(4000);
-    return capture(n);
+    // The running browser is reused (the active tab, or a new tab): never a second Chromium on the same profile.
+    const a = await runBrowser(n, { op: "open", url: target, newTab }, 60_000);
+    if (a.error) throw new Error(a.error);
+    const s = await capture(n);
+    return { ...s, url: a.url ?? "", title: a.title || s.title, notice: a.dialog ? dialogWords(a.dialog) : tabNote(a.ctx) };
   }),
   click: (botId: string, userId: string, ws: string, px: number, py: number, button: "left" | "right" | "middle" = "left", double = false) =>
     onMachine(botId, userId, ws, async (n) => {
@@ -717,37 +742,38 @@ export const linuxScreen = {
     return capture(n);
   }),
   read: (botId: string, userId: string, ws: string) => onMachine(botId, userId, ws, async (n) => {
-    const r = await docker(["exec", n, "python3", "/opt/sklubot/page-text.py"], { timeoutMs: 30_000 });
-    let parsed: { error?: string; url?: string; title?: string; text?: string } = {};
-    try { parsed = JSON.parse(r.stdout.toString("utf8")); } catch { throw new Error(`could not read the page: ${r.stderr.trim().slice(0, 200)}`); }
-    if (parsed.error) throw new Error(parsed.error);
-    return { url: parsed.url ?? "", title: parsed.title ?? "", text: parsed.text ?? "" };
+    const a = readable(await runBrowser(n, { op: "read" }));
+    return { url: a.url ?? "", title: a.title ?? "", text: a.text ?? "", notice: tabNote(a.ctx) };
   }),
   /** The interactive elements of the browser's front tab (wakes the computer if needed, like page_read). */
   elements: (botId: string, userId: string, ws: string, limit: number) => onMachine(botId, userId, ws, async (n) => {
-    const r = await runElements<ElementSnapshot & { error?: string }>(n, { op: "snapshot", limit });
-    if (r.error) throw new Error(r.error);
+    const r = await runBrowser<ElementSnapshot & BrowserAnswer>(n, { op: "snapshot", limit });
+    readable(r);
     return r;
   }),
-  /** Acts on one element of a snapshot; then a screenshot, like the pixel tools (`shot` null when the helper refused). */
+  /** Acts on one element of a snapshot; then a screenshot, like the pixel tools (`shot` null when the helper refused, or, L65, when it sent the page back in words: `after`). */
   elementAct: (botId: string, userId: string, ws: string, req: ElementRequest) => onMachine(botId, userId, ws, async (n) => {
-    const answer = await runElements<ElementAnswer>(n, req);
-    if (!answer.ok) return { answer, shot: null };
-    await pause(req.action === "click" ? 700 : 300);
-    return { answer, shot: await capture(n) };
+    // The helper already waited for a page load and a quiet network (capped) after the action.
+    const answer = await runBrowser<ElementAnswer>(n, req);
+    if (!answer.ok || req.after) return { answer, shot: null };
+    await pause(150);
+    const s = await capture(n);
+    return { answer, shot: answer.dialog ? { ...s, notice: dialogWords(answer.dialog) } : s };
   }),
+  /** L65/L75/L81/L56: one request to the browser helper (wakes the computer like page_read); its answer as it is. */
+  browserOp: <T = BrowserAnswer & ElementAnswer>(botId: string, userId: string, ws: string, req: object, timeoutMs = 40_000) =>
+    onMachine(botId, userId, ws, (n) => runBrowser<T>(n, req, timeoutMs)),
   /** What an element of a snapshot is (its words, its form) if the computer is on; null otherwise. Never wakes it. */
   async elementInfo(botId: string, req: ElementRequest): Promise<ElementAnswer | null> {
     const key = allocator.current(botId);
     if (machines.get(key)?.power !== "running") return null;
-    try { return await runElements<ElementAnswer>(nameOf(key), { ...req, action: "info" }); } catch { return null; }
+    try { return await runBrowser<ElementAnswer>(nameOf(key), { ...req, action: "info" }); } catch { return null; }
   },
   /** What is under a point of the screen, read in the browser's front tab (null: computer off, no browser, nothing there). Never wakes it. */
   async targetAt(botId: string, expression: string): Promise<{ url: string; target: ClickTarget | null } | null> {
     const key = allocator.current(botId);
     if (machines.get(key)?.power !== "running") return null;
-    const r = await docker(["exec", nameOf(key), "python3", "/opt/sklubot/page-text.py", "--eval", expression], { timeoutMs: 15_000 });
-    try { const p = JSON.parse(r.stdout.toString("utf8")) as { url?: string; target?: ClickTarget | null; error?: string }; return p.error ? null : { url: p.url ?? "", target: p.target ?? null }; } catch { return null; }
+    try { const p = await runBrowser(nameOf(key), { op: "target", expression }, 20_000); return p.error || p.dialog !== undefined ? null : { url: p.url ?? "", target: (p.target as ClickTarget | null) ?? null }; } catch { return null; }
   },
   /** For the live viewer: a picture of the screen if the computer is on. Never wakes it. (A shared computer shows whoever drives it.) */
   async peek(botId: string): Promise<Buffer | null> {
@@ -756,6 +782,55 @@ export const linuxScreen = {
     try { return await grab(nameOf(key)); } catch { return null; }
   },
   isOpen: (botId: string) => machines.get(allocator.current(botId))?.power === "running",
+  /** The bot's browser tabs (browser_tabs). */
+  tabs: (botId: string, userId: string, ws: string) => onMachine(botId, userId, ws, async (n) => readable(await runBrowser(n, { op: "tabs" }))),
+  /** Brings one tab to the front (it becomes the active tab), or closes one; then a screenshot. */
+  tab: (botId: string, userId: string, ws: string, action: "switch" | "close", tab: string) => onMachine(botId, userId, ws, async (n) => {
+    const a = readable(await runBrowser(n, { op: action === "switch" ? "tab_switch" : "tab_close", tab }));
+    await pause(250);
+    return { answer: a, shot: await capture(n) };
+  }),
+  /** DS-Bot item 10 (browser-downloads.ts): the downloads held until approved (null: the computer is off). Never wakes it. */
+  async heldDownloads(botId: string): Promise<HeldDownload[] | null> {
+    const key = allocator.current(botId);
+    if (machines.get(key)?.power !== "running") return null;
+    try { const a = await runBrowser<{ downloads?: HeldDownload[]; error?: string }>(nameOf(key), { op: "downloads" }, 20_000); return a.downloads ?? null; } catch { return null; }
+  },
+  /** Saves an approved held download into files/downloads, or deletes it. */
+  downloadAct: (botId: string, userId: string, ws: string, action: "release" | "discard", id: string) =>
+    onMachine(botId, userId, ws, (n) => runBrowser<{ ok?: boolean; error?: string; path?: string; size?: number; name?: string }>(n, { op: "download", action, id }, 30_000)),
+  /** The dialog the active tab shows, if the computer is on (null: none, or it cannot be told). Never wakes it. */
+  async dialogInfo(botId: string): Promise<BrowserAnswer | null> {
+    const key = allocator.current(botId);
+    if (machines.get(key)?.power !== "running") return null;
+    try { return await runBrowser(nameOf(key), { op: "dialog_info" }, 20_000); } catch { return null; }
+  },
+  /** Answers the active tab's dialog, only if it is still the one that was approved (`expect`); then a screenshot. */
+  dialogAnswer: (botId: string, userId: string, ws: string, accept: boolean, text: string | undefined, expect: { type: string; message: string } | null) => onMachine(botId, userId, ws, async (n) => {
+    const a = await runBrowser(n, { op: "dialog_answer", accept, text, expect });
+    if (!a.ok) return { answer: a, shot: null };
+    await pause(150);
+    const s = await capture(n);
+    return { answer: a, shot: a.dialog ? { ...s, notice: dialogWords(a.dialog) } : s };
+  }),
+  /** Types a secret into the focused field of the active tab, after checking that tab's site down to the field (browser-cdp.ts). */
+  secretType: (botId: string, userId: string, ws: string, text: string, host: string, field: string) => onMachine(botId, userId, ws, async (n) => {
+    const a = await runBrowser(n, { op: "secret_type", text, host, field });
+    return { answer: a, shot: a.ok ? await capture(n) : null };
+  }),
+  /** A pixel click bound to what was approved: checked on the active tab right before xdotool clicks (browser-cdp.ts). */
+  guardedClick: (botId: string, userId: string, ws: string, c: GuardedClick) => onMachine(botId, userId, ws, async (n) => {
+    const a = await runBrowser(n, { op: "click", ...c });
+    if (!a.ok) return { answer: a, shot: null };
+    await pause(150);
+    const s = await capture(n);
+    return { answer: a, shot: a.dialog ? { ...s, notice: dialogWords(a.dialog) } : s };
+  }),
+  /** Types with the keyboard after checking the active tab's site (card fields inside a payment provider's frame). */
+  guardedKeys: (botId: string, userId: string, ws: string, text: string, host: string) => onMachine(botId, userId, ws, async (n) => {
+    const a = await runBrowser(n, { op: "keys", text, host, typer: TYPER }, 30_000 + text.length * 40);
+    return { answer: a };
+  }),
   /** A smaller picture of the screen for a demonstration recording (960 px wide). Never wakes the computer. */
   async frame(botId: string): Promise<Buffer | null> {
     const key = allocator.current(botId);
@@ -771,8 +846,7 @@ export const linuxScreen = {
     const win = await docker(["exec", name, "sh", "-c", "xdotool getactivewindow getwindowname 2>/dev/null || true"], { timeoutMs: 8000 });
     const title = win.stdout.toString("utf8").trim();
     if (!/chrom/i.test(title)) return { title, url: "" };
-    const page = await docker(["exec", name, "python3", "/opt/sklubot/page-text.py"], { timeoutMs: 15_000 });
-    try { const p = JSON.parse(page.stdout.toString("utf8")) as { url?: string; title?: string }; return { title: p.title || title, url: p.url ?? "" }; } catch { return { title, url: "" }; }
+    try { const p = await runBrowser(name, { op: "where" }, 20_000); return { title: p.title || title, url: p.url ?? "" }; } catch { return { title, url: "" }; }
   },
   /**
    * The bot was renamed, relabelled or got a new shape or colour (U-005): a computer that is on is dressed again now;

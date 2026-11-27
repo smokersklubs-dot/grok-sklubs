@@ -1,0 +1,11 @@
+verifier-avant-de-livrer — adapted from ECC, Spec Kit, agent-skills (© 2026 Affaan Mustafa and ECC contributors, MIT; © GitHub, Inc., MIT; © 2025 Addy Osmani, MIT)
+Sources (each pinned to one commit):
+- ECC — © 2026 Affaan Mustafa and ECC contributors — MIT — https://github.com/affaan-m/ECC/tree/4adeee6732a12d1540f49a4d50a38ce8c97f9a53/skills/santa-method
+- ECC — © 2026 Affaan Mustafa and ECC contributors — MIT — https://github.com/affaan-m/ECC/tree/4adeee6732a12d1540f49a4d50a38ce8c97f9a53/skills/agent-self-evaluation
+- ECC — © 2026 Affaan Mustafa and ECC contributors — MIT — https://github.com/affaan-m/ECC/tree/4adeee6732a12d1540f49a4d50a38ce8c97f9a53/skills/email-ops
+- Spec Kit — © GitHub, Inc. — MIT — https://github.com/github/spec-kit/tree/a4d571229e164e440f8950cac034607bae7b7518/templates/commands/checklist.md
+- agent-skills — © 2025 Addy Osmani — MIT — https://github.com/addyosmani/agent-skills/tree/8c99fa36d90068c82d547f7c12a9d67a3e95f4ee/skills/shipping-and-launch
+Licence: MIT — the upstream licence texts are in LICENSE.txt, unchanged.
+
+Modified for Sklubot (2026-11-22): merged into one skill: a checklist made for the deliverable (examples for pages, mass emails, quotes, launches), two independent reviewers as Sklubot helpers with a three-round cap, a five-point self-score with evidence, proof that a sent message is in Sent, and a repair procedure; code, deployment and script parts removed; approvals kept; translated into French.
+Only text is included; no script, picture or other file of the original folders is bundled. Names of other products are not used as titles.

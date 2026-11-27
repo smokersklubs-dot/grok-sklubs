@@ -8,6 +8,8 @@ import { CardView } from "../components/Cards";
 import { ActivityLine, DayDivider, EventRow, MessageBubble, NoticeRow, StepGroup } from "../components/Chat";
 import { Character, stateOf } from "../components/Character";
 import { Composer } from "../components/Composer";
+import { ModelHealthBanner } from "../components/ModelHealthBanner";
+import { TaskLanes } from "../components/TaskLanes";
 import { Icon } from "../components/Icon";
 import { Button, Empty, ErrorNote, Loading, tap } from "../components/ui";
 import { useT } from "../i18n";
@@ -103,12 +105,12 @@ export function ChatScreen() {
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="interactive"
             contentContainerStyle={{ paddingVertical: 8, flexGrow: 1 }}
-            ListHeaderComponent={<ActivityLine live={live} />}
+            ListHeaderComponent={<ActivityLine live={live} rows={thread?.rows} />}
             ListFooterComponent={thread.loadingEarlier ? <ActivityIndicator style={{ margin: 12 }} color={c.text3} /> : undefined}
           />
         )}
         <View style={{ paddingBottom: insets.bottom }}>
-          {inCall ? <CallPanel bot={bot} /> : <Composer bot={bot} live={live} />}
+          {inCall ? <CallPanel bot={bot} /> : <><ModelHealthBanner bot={bot} /><TaskLanes bot={bot} live={live} rows={thread?.rows} /><Composer bot={bot} live={live} /></>}
         </View>
       </KeyboardAvoidingView>
     </View>

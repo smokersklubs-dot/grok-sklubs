@@ -1,0 +1,21 @@
+/* L142: stop-cause chip on a bot's line, « qui travaille » bar above the list. Tokens only (light / dark). */
+.stop-chip {
+  display: inline-block; vertical-align: top; max-width: 9.5em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  margin-right: 5px; padding: 0 6px; border-radius: 999px; font-size: 10.5px; font-weight: 600; line-height: 16px; margin-top: 1px;
+  background: var(--warn-soft); color: var(--warn);
+}
+.stop-chip.is-error { background: var(--danger-soft); color: var(--danger); }
+.stop-chip.is-info { background: var(--surface-2); color: var(--text-2); }
+.working-bar {
+  display: flex; align-items: center; gap: 8px; margin: 4px 10px 6px; padding: 6px 8px;
+  border-radius: var(--r-md); background: var(--surface-2); color: var(--text-2); font-size: 12.5px;
+}
+.working-bar-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); animation: working-pulse 1.6s ease-in-out infinite; flex: none; }
+@keyframes working-pulse { 50% { opacity: 0.35; } }
+@media (prefers-reduced-motion: reduce) { .working-bar-dot { animation: none; } }
+.working-bar-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.working-bar-faces { display: flex; align-items: center; }
+.working-bar-face { display: inline-flex; padding: 0; margin-left: -6px; border: 2px solid var(--surface-2); border-radius: 50%; background: none; cursor: pointer; min-width: 28px; min-height: 28px; align-items: center; justify-content: center; }
+.working-bar-face:first-child { margin-left: 0; }
+.working-bar-face:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.working-bar-more { margin-left: 4px; font-size: 11.5px; }

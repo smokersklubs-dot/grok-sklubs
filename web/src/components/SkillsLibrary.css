@@ -5,6 +5,13 @@
 .skl-card-head { display: flex; gap: 10px; align-items: flex-start; }
 .skl-mark { flex: none; display: grid; place-items: center; width: 36px; height: 36px; border-radius: var(--r-md); background: var(--brand-soft); color: var(--brand); }
 .skl-mark.is-anthropic { background: var(--info-soft); color: var(--info); }
+.skl-mark.is-opendesign { background: var(--surface-2); color: var(--text); }
+.skl-mark.is-community { background: var(--ok-soft); color: var(--ok); }
+.skl-filters { margin-top: 12px; }
+.skl-filter-n { font-weight: 500; opacity: 0.75; }
+.skl-theme { margin-top: 18px; }
+.skl-theme-title { margin: 0; font-size: 14px; font-weight: 650; color: var(--text); }
+.skl-theme .skl-grid { margin-top: 8px; }
 .skl-card-title { min-width: 0; }
 .skl-card-title h3 { margin: 0; font-size: 15px; line-height: 1.3; color: var(--text); overflow-wrap: anywhere; }
 .skl-meta { display: flex; flex-wrap: wrap; gap: 4px 10px; margin: 3px 0 0; font-size: 12.5px; color: var(--text-2); }
@@ -38,5 +45,7 @@
 .skl-licence, .skl-flag { display: inline-flex; gap: 5px; align-items: center; font-size: 12.5px; font-weight: 600; }
 .skl-licence.is-ok { color: var(--ok); }
 .skl-licence.is-warn, .skl-flag { color: var(--warn); }
+.skl-flag { overflow-wrap: anywhere; }
+.skl-flag.is-info { color: var(--text-2); }
 .skl-warn { display: flex; gap: 6px; align-items: flex-start; margin: 0; color: var(--text-2); }
 .skl-report { display: flex; gap: 6px; align-items: center; color: var(--ok); font-weight: 600; }

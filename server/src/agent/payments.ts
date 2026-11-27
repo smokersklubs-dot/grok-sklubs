@@ -1,5 +1,5 @@
-import { seal, unseal } from "../auth.js";
-import { screen } from "../computer.js";
+import { seal, unseal } from "../auth.js"; import { guardVault } from "../vaultaccess.js";
+import { boundCard } from "./tools-browser.js";
 import { q } from "../db.js";
 import type { ToolSpec } from "../llm/types.js";
 import type { Payment } from "../shared.js";
@@ -95,8 +95,9 @@ export const payments = {
 
 /** Replaceable in tests: clicking and typing on the bot's screen. */
 export const cardScreen = {
-  click: async (botId: string, userId: string, x: number, y: number) => { await screen.click(botId, userId, x, y); },
-  type: async (botId: string, userId: string, text: string) => { await screen.type(botId, userId, text); },
+  // Bound to the approved page: checked on the bot's active tab right before each click and each field (tools-browser.ts).
+  click: (botId: string, userId: string, x: number, y: number, host = "") => boundCard.click(botId, userId, x, y, host),
+  type: (botId: string, userId: string, text: string, host = "") => boundCard.type(botId, userId, text, host),
 };
 
 const FIELDS = ["number", "expiry", "exp_month", "exp_year", "cvc", "name"] as const;
@@ -106,7 +107,7 @@ const valueOf = (c: CardSecret, f: Field) => (f === "number" ? c.number : f === 
 const obj = (properties: Record<string, unknown>, required: string[] = []): ToolSpec["inputSchema"] => ({ type: "object", properties, required });
 const str = (description: string) => ({ type: "string", description });
 
-export const cardTools: BuiltinTool[] = [{
+export const cardTools: BuiltinTool[] = guardVault([{ // L41 (vaultaccess.ts)
   spec: {
     name: "card_fill",
     description: "Pay with one of the user's saved cards: types the card's fields into the payment form on the page in front of you (positions from your last screenshot), and can press the pay button. You never see the card (only its name, network and last 4 digits, from vault_list). Every payment is asked to the user, bound to this amount, merchant, card and page: fill the cart first, open the payment page, then call this once. A filled card is not a payment: read the page afterwards and tell the user what it says.",
@@ -145,11 +146,11 @@ export const cardTools: BuiltinTool[] = [{
     audit(c.user.id, "vault", `${c.bot.name}: ${cardLabel(item)} — ${amount} ${String(a.currency ?? "")} → ${clip(String(a.merchant ?? ""), 80)} (${here})`, c.bot.id);
     try {
       for (const f of fields) {
-        await cardScreen.click(c.bot.id, c.user.id, Math.round(Number(f.x)), Math.round(Number(f.y)));
-        await cardScreen.type(c.bot.id, c.user.id, valueOf(card, f.field));
+        await cardScreen.click(c.bot.id, c.user.id, Math.round(Number(f.x)), Math.round(Number(f.y)), here);
+        await cardScreen.type(c.bot.id, c.user.id, valueOf(card, f.field), here);
       }
       const submit = a.submit && Number.isFinite(Number(a.submit.x)) && Number.isFinite(Number(a.submit.y)) ? a.submit : null;
-      if (submit) await cardScreen.click(c.bot.id, c.user.id, Math.round(Number(submit.x)), Math.round(Number(submit.y)));
+      if (submit) await cardScreen.click(c.bot.id, c.user.id, Math.round(Number(submit.x)), Math.round(Number(submit.y)), here);
       payments.set(payId, submit ? "submitted" : "filled");
       void loc;
       return {
@@ -162,4 +163,4 @@ export const cardTools: BuiltinTool[] = [{
       throw err;
     }
   },
-}];
+}]);

@@ -1,17 +1,36 @@
 import { getLocales } from "expo-localization";
 import { useSyncExternalStore } from "react";
+import { LOCALE_LABELS, localeFromTag, pluralForm, type Locale } from "../../../server/src/clientshared/locales";
 import { en } from "./en";
+import { de, serverDe } from "./de";
+import { es, serverEs } from "./es";
+import { it, serverIt } from "./it";
+import { pt, serverPt } from "./pt";
+import { zh, serverZh } from "./zh";
 import { fr, type Key } from "./fr";
 
-export type { Key };
-export type Locale = "fr" | "en";
-const DICTS: Record<Locale, Record<Key, string>> = { fr, en };
+/**
+ * The app's texts. Languages come from server/src/clientshared/locales.ts (one list for the server, web and mobile);
+ * a language is offered once it has a dictionary here. A text missing in a language shows in English, never as a raw
+ * key. How to add a language: docs/LANGUES.md.
+ */
+export type { Key, Locale };
+const DICTS: Partial<Record<Locale, Partial<Record<Key, string>>>> = { fr, en, es, de, it, pt, zh };
 
-/** French by default; English when the phone is set to English (and nothing else was chosen). */
+/** The languages offered in the pickers (those with a dictionary), with their own names. */
+export const LANGUAGES: { id: Locale; label: string }[] = (Object.keys(LOCALE_LABELS) as Locale[])
+  .filter((id) => DICTS[id])
+  .map((id) => ({ id, label: LOCALE_LABELS[id] }));
+const offered = (l: Locale | null): l is Locale => !!l && !!DICTS[l];
+
+/** The phone's language when the app has it (es-MX → es); French otherwise (the owner's default). */
 export function deviceLocale(): Locale {
   try {
-    const code = getLocales()[0]?.languageCode;
-    return code === "en" ? "en" : "fr";
+    for (const l of getLocales()) {
+      const code = localeFromTag(l.languageTag ?? l.languageCode);
+      if (offered(code)) return code;
+    }
+    return "fr";
   } catch {
     return "fr";
   }
@@ -22,22 +41,22 @@ const listeners = new Set<() => void>();
 
 export const getLocale = () => current;
 export function setLocale(l: Locale) {
+  if (!offered(l)) l = "en";
   if (l === current) return;
   current = l;
   for (const fn of listeners) fn();
 }
 
 export function translate(locale: Locale, key: Key, vars?: Record<string, string | number>): string {
-  const s = DICTS[locale][key] ?? DICTS.fr[key] ?? key;
+  const s = DICTS[locale]?.[key] ?? en[key] ?? key;
   return vars ? s.replace(/\{(\w+)\}/g, (m, k: string) => (vars[k] !== undefined ? String(vars[k]) : m)) : s;
 }
 
 export const t = (key: Key, vars?: Record<string, string | number>) => translate(current, key, vars);
 
-/** Plural forms: "<key>_one" / "<key>_other" (French counts 0 and 1 as singular). */
+/** Plural forms: "<key>_one" / "<key>_other" (French counts 0 and 1 as singular; Chinese has no singular form). */
 export function tn(base: string, n: number, locale: Locale = current): string {
-  const one = locale === "fr" ? n <= 1 : n === 1;
-  return translate(locale, `${base}_${one ? "one" : "other"}` as Key, { n });
+  return translate(locale, `${base}_${pluralForm(locale, n)}` as Key, { n });
 }
 
 /** Re-renders the component when the language changes. */
@@ -69,11 +88,13 @@ const SERVER_FR: Record<string, string> = {
   "This address is not allowed to create an account on this server.": "Cette adresse ne peut pas créer de compte sur ce serveur.",
 };
 
+const SERVER_TEXT: Partial<Record<Locale, Record<string, string>>> = { fr: SERVER_FR, es: serverEs, de: serverDe, it: serverIt, pt: serverPt, zh: serverZh };
+
 /** A readable message for any error thrown by the API client. */
 export function errText(e: unknown): string {
   const err = e as { status?: number; serverMessage?: string | null; message?: string };
   if (err && err.status === 0) return t("api.unreachable");
-  if (err && err.serverMessage) return current === "fr" ? SERVER_FR[err.serverMessage] ?? err.serverMessage : err.serverMessage;
+  if (err && err.serverMessage) return SERVER_TEXT[current]?.[err.serverMessage] ?? err.serverMessage;
   if (err && typeof err.status === "number") return t("api.failed", { status: err.status });
   return t("api.generic");
 }

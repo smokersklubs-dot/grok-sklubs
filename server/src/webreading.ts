@@ -3,6 +3,7 @@ import { guardedFetch } from "./net.js";
 import { RateWindow } from "./hardening.js";
 
 import { bots } from "./store.js";
+import { publishedDate } from "./researchsignals.js";
 
 const searches = new RateWindow(12, 60000);
 const budget = new RateWindow(35, 60000);
@@ -118,6 +119,8 @@ export async function readPublicPage(rawUrl: string, parent: AbortSignal) {
       title: htmlToText(/<title[^>]*>([\s\S]{1,300}?)<\/title>/i.exec(raw)?.[1] ?? url.hostname),
       text: (type.includes("html") ? htmlToText(raw) : raw).slice(0, 45000),
       links,
+      /** L87: the publication date the page declares (deep research time window), when it declares one. */
+      published: type.includes("html") ? publishedDate(raw) : undefined,
     };
   }
   throw new ReaderError('Trop de redirections.', 400);

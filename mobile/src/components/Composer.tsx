@@ -6,7 +6,7 @@
 import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
 import { Image } from "expo-image";
-import { useRef, useState, type ComponentRef } from "react";
+import { useEffect, useRef, useState, type ComponentRef } from "react";
 import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { Attachment, Bot, Live } from "../api/types";
@@ -17,7 +17,10 @@ import { radius, useTheme } from "../theme";
 import { Icon } from "./Icon";
 import { tap } from "./ui";
 import { ChatSources } from "./ChatSources";
+import { QueuedNotes } from "./QueuedNotes";
 import { mentionAt, replaceMention } from "../../../server/src/clientshared/chatmentions";
+import { sendKeysFor } from "../../shared/sendKey";
+import { draftWithQuote, useQuote } from "./ChatPlus";
 
 export const MAX_UPLOAD_BYTES = 1_000_000_000;
 export const MAX_ATTACHMENTS = 10;
@@ -39,6 +42,13 @@ export function Composer({ bot, live }: { bot: Bot; live: Live | undefined }) {
   const canTalk = !bot.access || bot.access.canTalk;
   const canAttach = bot.kind === "agent" && !bot.access;
   const mention = canAttach ? mentionAt(text, caret) : null;
+  // L184 « citation »: a quoted message (ChatPlus.tsx quoteMessage) lands at the top of the draft, the cursor in the box.
+  const quoted = useQuote((s) => s.pending[bot.id]);
+  useEffect(() => {
+    if (quoted === undefined) return;
+    const q = useQuote.getState().take(bot.id);
+    if (q) { setText((cur) => draftWithQuote(q, cur)); input.current?.focus(); }
+  }, [quoted, bot.id]);
 
   const upload = async (files: Picked[]) => {
     const room = MAX_ATTACHMENTS - uploads.length;
@@ -91,7 +101,10 @@ export function Composer({ bot, live }: { bot: Bot; live: Live | undefined }) {
     const body = text.trim();
     setSending(true);
     try {
-      await useStore.getState().send(bot.id, body, ready);
+      // One key per message, the same again if this send is retried after a lost reply: never two messages.
+      const keys = sendKeysFor(bot.id);
+      await useStore.getState().send(bot.id, body, ready, keys.keyFor(JSON.stringify([body, ready.map((a) => a.path)])));
+      keys.done();
       setText("");
       setUploads([]);
     } catch (e) {
@@ -104,7 +117,7 @@ export function Composer({ bot, live }: { bot: Bot; live: Live | undefined }) {
   const stop = async () => {
     tap();
     setStopping(true);
-    try { await useStore.getState().stop(bot.id); } catch (e) { Alert.alert("", errText(e)); } finally { setStopping(false); }
+    try { await useStore.getState().stop(bot.id, live?.tasks?.length ? live.thread ?? 0 : undefined); } catch (e) { Alert.alert("", errText(e)); } finally { setStopping(false); }
   };
 
   if (!canTalk) return <Text style={[styles.readOnly, { color: c.text3, borderColor: c.border }]}>{t("chat.readOnly")}</Text>;
@@ -143,6 +156,7 @@ export function Composer({ bot, live }: { bot: Bot; live: Live | undefined }) {
         </ScrollView>
       ) : null}
       {live?.queued ? <Text style={{ color: c.text3, fontSize: 12, marginLeft: 16, marginBottom: 4 }}>{t.n("composer.queued", live.queued)}</Text> : null}
+      {live?.queued ? <QueuedNotes botId={bot.id} queued={live.queued} /> : null}
       {mention && <ChatSources botId={bot.id} query={mention.query} insert={value => {
         const next = replaceMention(text, mention, value);
         setText(next.text); setCaret(next.caret);

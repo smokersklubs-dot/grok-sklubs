@@ -1,3 +1,4 @@
+import { intlLocale, t as tr } from "../i18n";
 import { useEffect, useRef, useState } from "react";
 import { MAX_UPLOAD_BYTES } from "../../../server/src/uploadlimits";
 import { pickRecorderType } from "../lib/dictationPlan";
@@ -49,7 +50,7 @@ export function MeetingRecorder({ botId, close }: { botId: string; close: () => 
       const release = () => rec.stream.getTracks().forEach(track => track.stop());
       if (!mounted.current) { release(); return; }
       const now = Date.now();
-      const record: SavedRecording = { id: scope + "/" + crypto.randomUUID(), title: (fr ? "Réunion " : "Meeting ") + new Date(now).toLocaleString(fr ? "fr-FR" : "en-US"), mime: rec.mimeType, startedAt: now, savedAt: now, state: "recording", chunks: 0, bytes: 0 };
+      const record: SavedRecording = { id: scope + "/" + crypto.randomUUID(), title: tr("meetingRec.titleAt", { date: new Date(now).toLocaleString(intlLocale()) }), mime: rec.mimeType, startedAt: now, savedAt: now, state: "recording", chunks: 0, bytes: 0 };
       await saveRecording(record);
       if (!mounted.current) { release(); return; }
       let writes = Promise.resolve(), seq = 0, bytes = 0;
@@ -57,7 +58,7 @@ export function MeetingRecorder({ botId, close }: { botId: string; close: () => 
         if (!event.data.size) return;
         bytes += event.data.size;
         if (bytes > MAX_UPLOAD_BYTES) {
-          showError(fr ? "Limite de 1 Go atteinte. La partie enregistrée peut être jointe." : "1 GB limit reached. You can attach the saved portion.");
+          showError(tr("meetingRec.gbLimitReachedCan"));
           if (rec.state === "recording") rec.stop();
           return;
         }
@@ -66,7 +67,7 @@ export function MeetingRecorder({ botId, close }: { botId: string; close: () => 
           showError(err); if (rec.state === "recording") rec.stop();
         });
       };
-      rec.onerror = () => { showError(fr ? "Le micro a été interrompu." : "Microphone interrupted."); if (rec.state === "recording") rec.stop(); };
+      rec.onerror = () => { showError(tr("meetingRec.microphoneInterrupted")); if (rec.state === "recording") rec.stop(); };
       rec.onstop = () => {
         release(); recorder.current = null;
         if (mounted.current) setPhase("saving");
@@ -86,7 +87,7 @@ export function MeetingRecorder({ botId, close }: { botId: string; close: () => 
     if (state.user?.id !== owner || state.selectedId !== botId) return;
     const problem = state.attachFiles(botId, [file]);
     if (problem) { setError(problem); return; }
-    const brief = fr ? "Transcris cette réunion, puis prépare un compte rendu avec les décisions et les actions. Indique le responsable et l’échéance quand ils sont mentionnés." : "Transcribe this meeting, then prepare minutes with the decisions and action items. Include owners and deadlines when stated.";
+    const brief = tr("meetingRec.transcribeMeetingThenPrepare");
     const draft = state.drafts[botId]?.trimEnd();
     state.setDraft(botId, draft ? draft + "\n\n" + brief : brief);
     close();
@@ -100,18 +101,18 @@ export function MeetingRecorder({ botId, close }: { botId: string; close: () => 
     } catch (err) { showError(err); }
     finally { if (mounted.current) setBusy(false); }
   }
-  return <Modal title={fr ? "Réunion" : "Meeting"} onClose={close} size="sm">
+  return <Modal title={tr("composer.meeting")} onClose={close} size="sm">
     <div className="meeting-body">
-      <p>{fr ? "Enregistre les échanges captés par ton micro ou importe un fichier audio ou vidéo. Tu pourras relire la demande avant de l’envoyer au bot." : "Record what your microphone hears or import an audio or video file. Review the request before sending it to your bot."}</p>
-      {phase === "recording" ? <button className="btn" onClick={() => recorder.current?.stop()}>{fr ? "Arrêter et conserver" : "Stop and save"} · {Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2,"0")}</button> :
-        <button className="btn" disabled={!supported || phase !== "idle" || busy} onClick={() => void start()}>{phase === "saving" ? (fr ? "Enregistrement…" : "Saving…") : (fr ? "Enregistrer au micro" : "Record microphone")}</button>}
-      <button className="btn" disabled={phase !== "idle" || busy} onClick={() => picker.current?.click()}>{fr ? "Importer un enregistrement" : "Import a recording"}</button>
+      <p>{tr("meetingRec.recordWhatMicrophoneHears")}</p>
+      {phase === "recording" ? <button className="btn" onClick={() => recorder.current?.stop()}>{tr("meetingRec.stopSave")} · {Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2,"0")}</button> :
+        <button className="btn" disabled={!supported || phase !== "idle" || busy} onClick={() => void start()}>{phase === "saving" ? (tr("common.saving")) : (tr("meetingRec.recordMicrophone"))}</button>}
+      <button className="btn" disabled={phase !== "idle" || busy} onClick={() => picker.current?.click()}>{tr("meetingRec.importRecording")}</button>
       <input ref={picker} type="file" accept="audio/*,video/*,.m4a,.webm,.mkv" hidden onChange={e => { const file = e.target.files?.[0]; if (file) attach(file); e.target.value = ""; }} />
       {error && <p role="alert">{error}</p>}
-      {saved.length > 0 && <h3>{fr ? "Enregistrements sur cet appareil" : "Recordings on this device"}</h3>}
+      {saved.length > 0 && <h3>{tr("meetingRec.recordingsDevice")}</h3>}
       {saved.map(r => <div className="meeting-saved" key={r.id}><span>{r.title}</span>
-        <button className="btn" disabled={phase !== "idle" || busy} onClick={() => void attachRecording(r)}>{fr ? "Joindre" : "Attach"}</button>
-        <button className="btn" disabled={phase !== "idle" || busy} onClick={() => { if (window.confirm(fr ? "Effacer cet enregistrement de cet appareil ?" : "Remove this recording from this device?")) void deleteRecording(r.id).then(refresh).catch(showError); }}>{fr ? "Effacer" : "Remove"}</button></div>)}
+        <button className="btn" disabled={phase !== "idle" || busy} onClick={() => void attachRecording(r)}>{tr("meetingRec.attach")}</button>
+        <button className="btn" disabled={phase !== "idle" || busy} onClick={() => { if (window.confirm(tr("meetingRec.removeRecordingFromDevice"))) void deleteRecording(r.id).then(refresh).catch(showError); }}>{tr("meetingRec.remove")}</button></div>)}
     </div>
   </Modal>;
 }

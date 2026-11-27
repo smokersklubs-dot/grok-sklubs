@@ -41,6 +41,7 @@ export function RecruitCardView({ card, botId, seq }: { card: RecruitCard; botId
         <div className="card-head-text">
           <p className="card-title">{t("recruit.title", { name: shown })}</p>
           <p className="card-sub">{pending ? role || card.role : card.role}</p>
+          {card.boardRole && <p className="card-sub">{t("recruit.boardRole")}</p>}{/* L163 (boardplan.ts) */}
         </div>
       </div>
       <p className="card-reason recruit-why"><Icon name="bulb" size={14} /> <span>{card.why}</span></p>

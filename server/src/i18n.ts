@@ -1,4 +1,4 @@
-import type { Locale } from "./shared.js";
+import type { Locale } from "./shared.js"; import { localizeVars, pickLocale } from "./lang/index.js"; import { SECURITY_FR } from "./securityi18n.js"; import { COMFORT_FR } from "./comforti18n.js"; import { TURN_FR } from "./turni18n.js"; import { COMFORT7_FR } from "./comfort7i18n.js"; import { WAVE7_FR } from "./wave7i18n.js"; import { LOOPPLUS_FR } from "./loopplusi18n.js"; import { MEDIA_FR } from "./mediai18n.js"; import { BOTCARE_FR } from "./botcarei18n.js"; import { FINISH_FR } from "./finishi18n.js"; import { MODELVOICE_FR } from "./modelvoicei18n.js"; import { COMPUTERSHARE_FR } from "./computersharei18n.js"; import { ANDROIDUSB_FR } from "./androidusbi18n.js"; import { PACE_FR } from "./pacei18n.js"; import { MEETINGBOT_FR } from "./meetingbot/i18n.js"; import { INLINE_FR } from "./inlinei18n.js";
 
 /**
  * Texts the server itself writes into a chat (notices, event lines, step labels, approval titles).
@@ -19,6 +19,9 @@ const FR: Record<string, string> = {
   "A program asked for this through the Bot API: an action that cannot be undone needs your own yes.": "Un programme l'a demandé par l'API du bot : une action irréversible demande ton propre oui.",
   "Allow {bot} to do this? A program asked for it through the Bot API.": "Autoriser {bot} à faire ceci ? Un programme l'a demandé par l'API du bot.",
   "Bot API": "API du bot",
+  // Memory: notes set aside by memory_forget (agent/memorybook.ts).
+  "1 note set aside at your request. It stays in Settings → Memory (Archived), where you can bring it back.": "1 note mise de côté à ta demande. Elle reste dans Réglages → Mémoire (Archivées), d'où tu peux la remettre.",
+  "{n} notes set aside at your request. They stay in Settings → Memory (Archived), where you can bring them back.": "{n} notes mises de côté à ta demande. Elles restent dans Réglages → Mémoire (Archivées), d'où tu peux les remettre.",
   // "Pause" (agent/pause.ts, loop.ts, team.ts, telegram.ts).
   "its bot is paused": "son bot est en pause", "the section “{name}”": "la section « {name} »",
   "{bot} is paused: this message is kept and will be handled when it is resumed.": "{bot} est en pause : ce message est gardé et sera traité à la reprise.",
@@ -167,6 +170,16 @@ const FR: Record<string, string> = {
   "Work in {bot}'s chat": "Travail dans la discussion de {bot}",
   "Spend checkpoint: {spent} $ spent on this work. Continue?": "Point d'étape de dépense : {spent} $ dépensés sur ce travail. On continue ?",
   "Allow {bot} to click “{label}” on {host}?": "Autoriser {bot} à cliquer sur « {label} » sur {host} ?",
+  "Allow {bot} to answer OK to the page's question on {host}?": "Autoriser {bot} à répondre OK à la question de la page sur {host} ?",
+  "answer OK to the page's question on {host}": "répondre OK à la question de la page sur {host}", "Browser": "Navigateur",
+  "Allow {bot} to save the file “{file}” downloaded from {host}?": "Autoriser {bot} à garder le fichier « {file} » téléchargé depuis {host} ?",
+  "save the file “{file}” downloaded from {host}": "garder le fichier « {file} » téléchargé depuis {host}",
+  "The file ({size}) goes into the bot's files (files/downloads), where it can open it. Refuse if you do not expect it.": "Le fichier ({size}) va dans les fichiers du bot (files/downloads), où il pourra l'ouvrir. Refuse si tu ne l'attends pas.",
+  "Saving a download": "Garde un téléchargement", "Listing downloads": "Liste les téléchargements",
+  "Allow {bot} to attach the file {file} on {host}?": "Autoriser {bot} à joindre le fichier {file} sur {host} ?", // L75 element_upload
+  "attach the file {file} on {host}": "joindre le fichier {file} sur {host}", "The file will be sent to {host} when the form is sent.": "Le fichier partira vers {host} quand le formulaire sera envoyé.",
+  "The page asks: “{message}”. OK confirms it.": "La page demande : « {message} ». OK le confirme.",
+  "The page asks: “{message}”. OK may confirm something or leave the page; Cancel is always safe.": "La page demande : « {message} ». OK peut confirmer quelque chose ou quitter la page ; Annuler est toujours sans risque.",
   "click “{label}”": "cliquer sur « {label} »",
   "This click commits something (its words: “{label}”).": "Ce clic engage quelque chose (son libellé : « {label} »).",
   "Form: {form}": "Formulaire : {form}",
@@ -311,6 +324,10 @@ const FR: Record<string, string> = {
   "type the sign-in code for {site}": "saisir le code de connexion de {site}",
   "start a background task": "lancer une tâche de fond",
   "Stopped.": "Arrêté.",
+  "Waits for the other task": "Attend l'autre tâche",
+  "waiting for your answer": "en attente de ta réponse",
+  "Your message is kept: I will read it as soon as you have answered the request above with its buttons. Typed words never count as a yes or a no.": "Ton message est gardé : je le lis dès que tu as répondu à la demande ci-dessus avec ses boutons. Un mot tapé ne compte jamais comme un oui ou un non.",
+  "My session with {tool} was lost, so I started a new one. I picked the thread back up from our last messages here; older details may be missing — tell me if I forgot something.": "Ma session avec {tool} a été perdue : j'en ai ouvert une nouvelle. J'ai repris le fil à partir de nos derniers messages ici ; des détails plus anciens peuvent manquer, dis-le-moi si j'ai oublié quelque chose.",
   "Allow {bot} to create a video? Each video is billed by {provider}.": "Autoriser {bot} à créer une vidéo ? Chaque vidéo est facturée par {provider}.",
   "create a video": "créer une vidéo", "Paid video": "Vidéo payante",
   "Creating a video": "Crée une vidéo", "Saving a video": "Enregistre une vidéo", "Reacting": "Réagit",
@@ -322,9 +339,22 @@ const FR: Record<string, string> = {
   "Your {brand} subscription is available again. I am picking up what was waiting.": "Ton abonnement {brand} est de nouveau disponible. Je reprends ce qui attendait.",
   "Choose an available model.": "Choisis un modèle disponible.",
   "I am not signed in to ChatGPT on this desktop. Open Settings → Models and check my connection.": "Je ne suis pas encore connecté à ChatGPT sur ce bureau. Ouvre Réglages → Modèles puis clique sur « Vérifier la connexion » à côté de mon nom.",
+  // L24 / L27 (agent/engine.ts, engine-failure.ts, failures.ts).
+  "My Sklubot tools (memory, vault, approvals) did not join {engine} (status: {status}), so I stopped before doing anything without them. Try again in a moment; if it happens again, restart my computer from the engine panel.": "Mes outils Sklubot (mémoire, coffre, accords) ne se sont pas joints à {engine} (état : {status}), alors je me suis arrêté avant de faire quoi que ce soit sans eux. Réessaie dans un instant ; si ça recommence, redémarre mon ordinateur depuis le panneau du moteur.",
+  "Sklubot itself had a problem": "Sklubot lui-même a eu un souci",
+  // L23 (agent/craft-run.ts, creative-tools.ts).
+  "Craft Anything answered these questions on its own (first choice):": "Craft Anything a répondu seul à ces questions (premier choix) :",
+  "It refused these requests on its own (nothing outside the project was done):": "Il a refusé seul ces demandes (rien n'a été fait hors du projet) :",
+  "Resemblance with your site after check {n}: {pct} %.": "Ressemblance avec ton site après le contrôle {n} : {pct} %.",
+  "Tell me if you want another choice: I will redo that part.": "Dis-moi si tu veux un autre choix : je referai cette partie.",
+  "{n} choices made automatically": "{n} choix faits automatiquement",
   "I am not signed in to Claude on this desktop. Open Settings → Models and check my connection.": "Je ne suis pas encore connecté à Claude sur ce bureau. Ouvre Réglages → Modèles puis clique sur « Vérifier la connexion » à côté de mon nom.",
   "Reading a file": "Lit un fichier", "Planning": "Planifie", "Working": "Travaille",
   "failed": "échec", "allowed once": "autorisé une fois", "always allowed": "toujours autorisé", "refused": "refusé",
+  // « Autoriser pour cette conversation » (agent/conversationgrants.ts): the audit log and the step's line.
+  "allowed for this conversation": "autorisé pour cette conversation", "you allowed it for this conversation ({place}, {id})": "tu l'as autorisé pour cette conversation ({place}, {id})",
+  "permission for this conversation": "autorisation pour cette conversation", "revoked by you": "retirée par toi", "ended after {hours} h without a message from you": "terminée après {hours} h sans message de ta part",
+  "ended: the conversation was cleared": "terminée : la conversation a été effacée", "ended: the bot is gone": "terminée : le bot n'existe plus",
   "My usual model is not answering ({detail}). I am finishing this on the backup model.": "Mon modèle habituel ne répond pas ({detail}). Je termine avec le modèle de secours.",
   "The server restarted while I was working. I am picking this back up.": "Le serveur a redémarré pendant que je travaillais. Je reprends là où j'en étais.",
   "You have used 80% of this month's budget.": "Tu as utilisé 80 % du budget de ce mois.",
@@ -385,7 +415,7 @@ const FR: Record<string, string> = {
   "Looking at the screen": "Regarde l'écran", "Opening a page": "Ouvre une page", "Reading the page": "Lit la page", "Clicking": "Clique",
   "Typing": "Saisit du texte", "Pressing keys": "Appuie sur des touches", "Scrolling": "Fait défiler", "Dragging": "Fait glisser",
   "Reading a page": "Lit une page", "Running a command": "Exécute une commande", "Saving a file": "Enregistre un fichier",
-  "Saving a note": "Mémorise une information", "Checking notes": "Consulte sa mémoire", "Setting up a routine": "Prépare une routine",
+  "Saving a note": "Mémorise une information", "Checking notes": "Consulte sa mémoire", "Forgetting a note": "Oublie une information", "Setting up a routine": "Prépare une routine",
   "Checking routines": "Consulte ses routines", "Updating a routine": "Modifie une routine", "Removing a routine": "Supprime une routine",
   "Adjusting check-ins": "Règle les points réguliers", "Tracking a task": "Suit une tâche", "Updating a task": "Met à jour une tâche",
   "Messaging a teammate": "Écrit à un coéquipier", "Starting a helper": "Lance un assistant", "Checking on helpers": "Fait le point avec ses assistants",
@@ -393,11 +423,12 @@ const FR: Record<string, string> = {
   "Handing over in a group": "Passe la main dans un groupe", "@{to}, I'm handing this over to you: {note}": "@{to}, je te passe la main : {note}",
   "Posting to a group": "Écrit dans un groupe", "Asking you": "Te pose une question", "Asking to connect an app": "Demande à connecter une application",
   "Nothing to report": "Rien à signaler", "Using {app}": "Utilise {app}", "an app": "une application",
+  "Writing the team file": "Écrit le fichier d'équipe",
   "Sending a file": "Envoie un fichier", "Creating an image": "Crée une image", "Checking saved logins": "Consulte le coffre", "Typing a saved login": "Saisit un identifiant enregistré",
   "not allowed": "non autorisé", "skipped": "ignoré", "stopped": "arrêté",
   // Built-in apps
   "{bot} has read outside content. Allow it to use {app}: {action}?": "{bot} a lu du contenu extérieur. L'autoriser à utiliser {app} : {action} ?",
-  "Searching mail": "Cherche dans les e-mails", "Reading an email": "Lit un e-mail", "Reading a conversation": "Lit une conversation", "Writing a draft": "Écrit un brouillon",
+  "Searching mail": "Cherche dans les e-mails", "Reading an email": "Lit un e-mail", "Reading a conversation": "Lit une conversation", "Writing a draft": "Écrit un brouillon", "Updating a draft": "Met à jour un brouillon",
   "Sending an email": "Envoie un e-mail", "Organizing an email": "Range un e-mail", "Checking the calendar": "Consulte l'agenda", "Checking availability": "Vérifie les disponibilités",
   "Creating an event": "Crée un événement", "Changing an event": "Modifie un événement", "Cancelling an event": "Annule un événement",
   "Searching Drive": "Cherche dans Drive", "Reading a Drive file": "Lit un fichier Drive", "Uploading to Drive": "Envoie vers Drive",
@@ -470,6 +501,14 @@ const FR: Record<string, string> = {
   // Wave 4: reliability
   "The reply was interrupted. Trying again…": "La réponse a été interrompue. Je réessaie…",
   "The model is busy ({detail}). New try in {s} s…": "Le modèle est occupé ({detail}). Nouvel essai dans {s} s…",
+  "{model} failed ({detail}). New try {n}/{max} in {s} s…": "{model} a échoué ({detail}). Nouvel essai {n}/{max} dans {s} s…",
+  // Model health and the activity line (modelhealth.ts, nod items 3 and 4, L59, L60).
+  "Waiting for the model ({model})…": "En attente du modèle ({model})…",
+  "The key or account for this model was refused: it needs reconnecting.": "La clé ou le compte de ce modèle a été refusé : il faut le reconnecter.",
+  "This model's account has no credit left.": "Le compte de ce modèle n'a plus de crédit.",
+  "No model is set up yet.": "Aucun modèle n'est encore configuré.",
+  "The model did not answer in time.": "Le modèle n'a pas répondu à temps.",
+  "The model is not answering: {detail}": "Le modèle ne répond pas : {detail}",
   "My model {model} is not answering ({detail}). I am carrying on with the backup model {next}.": "Mon modèle {model} ne répond pas ({detail}). Je continue avec le modèle de secours {next}.",
   "The model stopped after a step without giving a final report. Completion is unconfirmed. Ask me to check the result and report what remains.": "Le modèle s’est arrêté après une étape sans rendre son bilan. La fin du travail reste à vérifier. Demande-moi de vérifier le résultat et de te dire ce qui reste à faire.",
   "Interrupted while resuming. Check the last action and tell me what to continue.": "La reprise a été interrompue. Vérifie la dernière action et indique-moi où reprendre.",
@@ -552,6 +591,8 @@ const FR: Record<string, string> = {
   "That server could not be reached.": "Ce serveur ne répond pas.",
   "That template does not exist.": "Ce modèle n'existe pas.",
   "This preview has expired. Open the template or the file again.": "Cet aperçu a expiré. Rouvre le modèle ou le fichier.",
+  // « Équipe Sklubot (.md) » (teammdimport.ts).
+  "Pasted text": "Texte collé", "Created from the team file “{name}”.": "Créé à partir du fichier d'équipe « {name} ».", "Updated from the team file “{name}”.": "Mis à jour à partir du fichier d'équipe « {name} ».",
   "Created from the template “{name}”.": "Créé à partir du modèle « {name} ».", "Created from a team file ({name}).": "Créé à partir d'un fichier d'équipe ({name}).",
   "It starts careful: it asks before acting.": "Il démarre en mode prudent : il demande avant d'agir.",
   // « Bot recruteur » (agent/recruit.ts)
@@ -566,12 +607,55 @@ const FR: Record<string, string> = {
   "A group chat cannot do that.": "Un groupe ne peut pas faire ça.", "This was already answered.": "Tu as déjà répondu.", "Unknown action.": "Action inconnue.",
   "That is not a proposed teammate.": "Ce n'est pas une proposition de coéquipier.", "Only the main bot can set up a new teammate.": "Seul le bot principal peut installer un nouveau coéquipier.",
   "Sunday": "dimanche", "Monday": "lundi", "Tuesday": "mardi", "Wednesday": "mercredi", "Thursday": "jeudi", "Friday": "vendredi", "Saturday": "samedi",
+  // Safety rules on the user's own computer (relayguard.ts, agent/mycomputer.ts; backlog L19 / L32).
+  "{bot} was stopped on {device}: {what} is off-limits.": "{bot} a été arrêté sur {device} : {what} est interdit.",
+  "{bot} wanted a terminal or a command on {device}: terminals are off for this computer.": "{bot} voulait un terminal ou une commande sur {device} : les terminaux sont désactivés pour cet ordinateur.",
+  "{bot} was stopped on {device}: “{what}” is on your keep-out list.": "{bot} a été arrêté sur {device} : « {what} » est dans ta liste « garder à l'écart ».",
+  "{bot} did not type on {device}: a password field had the focus.": "{bot} n'a rien tapé sur {device} : un champ mot de passe était actif.",
+  "{bot} needs a newer Sklubot app on {device} (safety checks).": "{bot} a besoin d'une appli Sklubot plus récente sur {device} (contrôles de sécurité).",
+  "The script changed before it ran on {device}: nothing was run.": "Le script a changé avant de se lancer sur {device} : rien n'a été lancé.",
+  "app off-limits": "appli interdite", "terminals off": "terminaux désactivés", "kept out": "gardé à l'écart", "password field": "champ mot de passe", "sign-in window": "fenêtre de connexion",
+  "window changed": "fenêtre changée", "look first": "regarder d'abord", "window unknown": "fenêtre inconnue", "app too old": "appli trop ancienne", "protected shortcut": "raccourci protégé",
+  "script changed": "script modifié", "script not shown": "script non affiché", "script to show": "script à montrer",
+  "a terminal": "un terminal", "a script tool": "un outil de scripts", "system settings or a system tool": "les réglages ou un outil du système", "a password manager or wallet": "un gestionnaire de mots de passe ou un portefeuille", "Sklubot itself": "Sklubot lui-même",
+  "this app": "cette appli", "this app or folder": "cette appli ou ce dossier", "this shortcut": "ce raccourci",
+  "it closes an app": "il ferme une appli", "it locks the session or logs out": "il verrouille la session ou te déconnecte", "it opens a system screen or switches console": "il ouvre un écran du système ou change de console",
+  "it opens a launcher that can start any program": "il ouvre un lanceur qui peut démarrer n'importe quel programme", "it switches app or desktop out of sight": "il change d'appli ou de bureau sans que le bot le voie", "it deletes for good": "il supprime définitivement",
+  "it can close an app, lock the session or open a launcher": "il peut fermer une appli, verrouiller la session ou ouvrir un lanceur",
+  "Allow {bot} to press {keys} on {device}?": "Autoriser {bot} à appuyer sur {keys} sur {device} ?", "press a protected shortcut on {device}": "appuyer sur un raccourci protégé sur {device}",
+  "This shortcut is protected because {why}. The computer will ask you too.": "Ce raccourci est protégé car {why}. L'ordinateur te demandera aussi.",
+  "Allow {bot} to run a command and its script on {device}?": "Autoriser {bot} à lancer une commande et son script sur {device} ?",
+  "{bot} has read outside content. Allow it to run this command and its script on {device}?": "{bot} a lu du contenu extérieur. L'autoriser à lancer cette commande et son script sur {device} ?",
+  "Folder: {cwd}. The command runs this script (its first lines and fingerprint below). If the script changes before your click, nothing runs. The computer will also ask.\n\n{scripts}": "Dossier : {cwd}. La commande lance ce script (ses premières lignes et son empreinte ci-dessous). S'il change avant ton clic, rien ne se lance. L'ordinateur te demandera aussi.\n\n{scripts}",
+  "Allow {bot} to run this sensitive command on {device}?": "Autoriser {bot} à lancer cette commande sensible sur {device} ?",
+  "Always asked, whatever you allowed before: {why}. Folder: {cwd}. The computer will ask too.": "Toujours demandé, quoi que tu aies autorisé avant : {why}. Dossier : {cwd}. L'ordinateur te demandera aussi.",
+  "Allow {bot} to run this command on {device}?": "Autoriser {bot} à lancer cette commande sur {device} ?",
+  "Folder: {cwd}. After outside content, every command on your computer is asked here, and on the computer itself.": "Dossier : {cwd}. Après du contenu extérieur, chaque commande sur ton ordinateur est demandée ici, et sur l'ordinateur lui-même.",
+  "Folder: {cwd}. “Always” or “for this conversation” would cover only “{prefix}” in this folder.": "Dossier : {cwd}. « Toujours » ou « pour cette conversation » ne couvrirait que « {prefix} » dans ce dossier.",
+  "it deletes or overwrites data": "elle supprime ou écrase des données", "it rewrites git history": "elle réécrit l'historique git", "it asks for administrator rights": "elle demande les droits administrateur",
+  "it installs or removes software for the whole computer": "elle installe ou retire un logiciel pour tout l'ordinateur", "it touches disks": "elle touche aux disques", "it changes file permissions outside the project": "elle change les droits de fichiers hors du projet",
+  "it runs a script downloaded from the internet": "elle lance un script téléchargé sur Internet", "it opens your computer to the network": "elle ouvre ton ordinateur au réseau",
+  "it touches the files that run when your computer or shell starts": "elle touche aux fichiers lancés au démarrage de l'ordinateur ou du terminal", "it works outside your project folders": "elle travaille hors de tes dossiers de projet",
+  "started in the background (job {job})": "lancée en arrière-plan (tâche {job})", "background job {job}": "tâche de fond {job}",
+  "background command stopped": "commande de fond arrêtée", "saved login filled": "identifiant enregistré rempli", "code": "code",
+  "Allow {bot} to fill the saved {field} of {item} on {device}?": "Autoriser {bot} à remplir le {field} enregistré de {item} sur {device} ?", "fill a saved login on {device}": "remplir un identifiant enregistré sur {device}",
+  "Saved for: {site}. In front on your computer: {app} — {place}. The secret goes only to your computer, never to the bot. “Always” covers this item on {place} only.": "Enregistré pour : {site}. Au premier plan sur ton ordinateur : {app} — {place}. Le secret va seulement à ton ordinateur, jamais au bot. « Toujours » ne couvre que cet élément sur {place}.",
+  "{bot} wanted to run a command on {device}: commands are off for this computer.": "{bot} voulait lancer une commande sur {device} : les commandes sont désactivées pour cet ordinateur.", "commands off": "commandes désactivées",
+  "{bot} did not type a saved login on {device}: the page is not its site.": "{bot} n'a pas tapé l'identifiant enregistré sur {device} : la page n'est pas son site.",
+  "wrong site": "mauvais site", "address unknown": "adresse inconnue", "wrong app": "mauvaise appli", "not a password field": "pas un champ mot de passe",
+  "Commands allowed on {device}": "Commandes autorisées sur {device}", "Commands turned off on {device}": "Commandes désactivées sur {device}", "Project folders or command time changed on {device}": "Dossiers de projet ou durée des commandes modifiés sur {device}",
+  "Keep-out list changed on {device}": "Liste « garder à l'écart » modifiée sur {device}", "At most {n} entries.": "{n} éléments au plus.",
+  "Give a number of hours between 0 and 744 (0: no cap).": "Donne un nombre d'heures entre 0 et 744 (0 : pas de plafond).", // L95 computerhoursroutes.ts
+  "That account does not exist.": "Ce compte n'existe pas.", "A signature has {n} characters at most.": "Une signature fait {n} caractères au plus.", // L83 native/mailsignatureroutes.ts
+  "Needs a code from you": "A besoin d'un code de ta part", // L91 agent/codebox.ts
+  "no code": "pas de code", "code typed": "code saisi", // L91 agent/codebox.ts
+  "A code has 1 to 16 letters, digits, spaces or dashes.": "Un code fait de 1 à 16 lettres, chiffres, espaces ou tirets.", "The bot no longer waits for this code (it was stopped or restarted). Ask it again if it still needs one.": "Le bot n'attend plus ce code (il a été arrêté ou redémarré). Redemande-lui s'il en a encore besoin.", // L91 codeboxroutes.ts
+  "That request no longer exists.": "Cette demande n'existe plus.", // L91 codeboxroutes.ts
 };
 
-export function tr(locale: Locale | undefined, english: string, vars: Record<string, string | number> = {}): string {
-  const template = locale === "fr" ? FR[english] ?? english : english;
-  return template.replace(/\{(\w+)\}/g, (_m, k) => String(vars[k] ?? ""));
+Object.assign(FR, { ...INLINE_FR, ...FR }, SECURITY_FR, COMFORT_FR, TURN_FR, COMFORT7_FR, WAVE7_FR, LOOPPLUS_FR, MEDIA_FR, FINISH_FR, BOTCARE_FR, MODELVOICE_FR, COMPUTERSHARE_FR, PACE_FR, MEETINGBOT_FR, ANDROIDUSB_FR); // Lot 1 security texts (securityi18n.ts); comfort batch (comforti18n.ts); turn control (turni18n.ts)
+export function tr(locale: Locale | string | undefined | null, english: string, vars: Record<string, string | number> = {}): string {
+  return localizeVars(locale, english, FR, vars); // other languages: lang/<code>.ts (docs/LANGUES.md)
 }
 
-export const pickLocale = (value: unknown, acceptLanguage?: string | null): Locale =>
-  value === "fr" || value === "en" ? value : /^\s*fr/i.test(acceptLanguage ?? "") ? "fr" : "en";
+export { pickLocale };

@@ -110,6 +110,13 @@ test(`relay end-to-end (${MODE})`, { timeout: 240_000 }, async (t) => {
   });
 
   await t.test('mouse click, keyboard type, shortcut, scroll, right click', async () => {
+    // Safety rules (guard.js): the window in front is read for real (xprop). While Sklubot's own window is in front,
+    // nothing is clicked; the target window is brought forward first.
+    const active = await server.request('window.active', {}, ALICE);
+    assert.equal(active.ok, true, JSON.stringify(active));
+    if (/sklubot/i.test(`${active.result.active?.app} ${active.result.active?.title}`)) assert.equal((await server.request('mouse.click', { x: 200, y: 380 }, ALICE)).error.code, 'blocked_app');
+    assert.equal((await server.request('window.focus', { title: 'Cible de test' }, ALICE)).ok, true);
+    await until(async () => /Cible de test/.test((await server.request('window.active', {}, ALICE)).result.active?.title || ''), 5000, 'target in front');
     const r1 = await server.request('mouse.click', { x: 200, y: 380 }, ALICE);
     assert.equal(r1.ok, true, JSON.stringify(r1));
     await until(() => h.readTarget(targetLog).some((e) => e.type === 'mousedown' && e.button === 0), 5000, 'click received');

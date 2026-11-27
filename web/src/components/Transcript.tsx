@@ -1,4 +1,6 @@
 import { createContext, memo, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { QueuedNotes } from "./QueuedNotes";
+import { RelayEventRow } from "./RelayEventRow";
 import { api, enc, errText } from "../api";
 import { t, tn, useT, type Key } from "../i18n";
 import { useStore, type AppSection, type Thread } from "../store";
@@ -7,8 +9,8 @@ import { isHumanSummary } from "../lib/callSummary";
 import { callClock, clockTime, dividerLabel, elapsed, fileSize, hostName, liveDuration, workDuration } from "../lib/format";
 import { accentStyle } from "../lib/colors";
 import { renderMarkdown } from "../lib/markdown";
-import { PagePreview } from "./PagePreview";
-import { FirstTaskIdeas, MentionedFiles, previewable, usePreview } from "./SpendSkillsFiles";
+import { PagePreview } from "./PagePreview"; import { AnnotateButton } from "./ImageAnnotate"; import { StepDetailButton } from "./StepDetail";
+import { FirstTaskIdeas, MentionedFiles, previewable, usePreview } from "./SpendSkillsFiles"; import { BotWelcome } from "./BotWelcome"; import { SetupGuideOffer } from "./StepGuide";
 import { Avatar, BotAvatar } from "./Avatar";
 import { CardView } from "./Cards";
 import { GrantLine } from "./RulesAndNudges";
@@ -19,6 +21,8 @@ import { PlanNoticeActions } from "./Hosted";
 import { SubLimitNoticeActions } from "./SubLimit";
 import { RouteNoticeActions } from "./RoomRouting";
 import { ENGINE_BRAND } from "../lib/engines";
+import { ReportAction } from "./ReportMessage";
+import { ReplyAction, useMessageEnhance } from "./ReplyAction"; import { SimplerAction } from "./PassageComment"; import { TurnDebugAction } from "./ChatExport"; import { stableMarkdown, useNewLineSeq, withNewLine } from "../lib/chatreading"; import { MessageMore } from "./MessageMore"; import { LinkPreview } from "./ChatPlus"; import { TurnNoticeActions } from "./TurnCards"; import { requestSummary } from "../lib/requestSummary"; import { AudioAttachment } from "./AudioAttachment"; // L154
 
 type MessageBody = Extract<RowBody, { kind: "message" }>;
 type StepBody = Extract<RowBody, { kind: "step" }>;
@@ -153,8 +157,8 @@ export function buildItems(all: Row[], running: boolean, thread = 0, viewer?: st
 /* ---------- Messages ---------- */
 
 const Markdown = memo(function Markdown({ text }: { text: string }) {
-  const html = useMemo(() => renderMarkdown(text), [text]);
-  return <div className="md" dangerouslySetInnerHTML={{ __html: html }} />;
+  const html = useMemo(() => renderMarkdown(text), [text]); const ref = useMessageEnhance(html); // nod item 6: Copier, quotes
+  return <><div className="md" ref={ref} dangerouslySetInnerHTML={{ __html: html }} /><LinkPreview text={text} /></>; // L184 link preview (ChatPlus.tsx)
 });
 
 function SenderLabel({ origin, role }: { origin: Origin; role: "user" | "assistant" }) {
@@ -227,6 +231,7 @@ function Lightbox({ botId, file, onClose }: { botId: string; file: Attachment; o
     <div className="lightbox" ref={root} role="dialog" aria-modal="true" aria-label={t("attach.viewer")} tabIndex={-1} onMouseDown={closeOnBackdrop}>
       <header className="lightbox-bar">
         <span className="lightbox-name truncate">{file.name}</span>
+        <AnnotateButton botId={botId} src={viewUrl(botId, file.path)} name={file.name} />{/* L140 */}
         <a className="btn btn-small" href={downloadUrl(botId, file.path)} download={file.name}>
           <Icon name="download" size={14} /> {t("attach.download")}
         </a>
@@ -244,7 +249,7 @@ function Attachments({ botId, files }: { botId: string; files: Attachment[] }) {
   const t = useT();
   const images = files.filter((f) => f.mime.startsWith("image/"));
   const videos = files.filter((f) => f.mime === "video/mp4" || f.mime === "video/webm");
-  const others = files.filter((f) => !f.mime.startsWith("image/") && !videos.includes(f));
+  const others = files.filter((f) => !f.mime.startsWith("image/") && !videos.includes(f) && !f.mime.startsWith("audio/")); // L154 audio plays inline (AudioAttachment.tsx)
   return (
     <div className="attachments">
       {videos.map((f) => (
@@ -260,6 +265,7 @@ function Attachments({ botId, files }: { botId: string; files: Attachment[] }) {
           </figcaption>
         </figure>
       ))}
+      {files.filter((f) => f.mime.startsWith("audio/")).map((f) => <AudioAttachment key={f.path} file={f} src={viewUrl(botId, f.path)} download={downloadUrl(botId, f.path)} />)}
       {images.map((f) => (
         <button key={f.path} type="button" className="attach-image" onClick={() => setOpen(f)} aria-label={t("attach.open", { name: f.name })} title={f.name}>
           <img src={viewUrl(botId, f.path)} alt={f.name} loading="lazy" />
@@ -321,7 +327,7 @@ function ReactionBar({ row, reactions }: { row: Row; reactions: Reaction[] }) {
   );
 }
 
-function MessageActions({ row, canThread, canListen }: { row: Row; canThread: boolean; canListen?: boolean }) {
+function MessageActions({ row, canThread, canListen, mine = false }: { row: Row; canThread: boolean; canListen?: boolean; mine?: boolean }) {
   const [open, setOpen] = useState(false);
   const t = useT();
   const pick = (emoji: ReactionEmoji) => {
@@ -339,6 +345,7 @@ function MessageActions({ row, canThread, canListen }: { row: Row; canThread: bo
           <Icon name="thread" size={15} />
         </button>
       )}
+      <ReplyAction row={row} /><SimplerAction row={row} /><MessageMore row={row} mine={mine} /><TurnDebugAction row={row} /><ReportAction row={row} />
       {open && (
         <div className="emoji-pick" role="menu" aria-label={t("react.add")} onKeyDown={(e) => { if (e.key === "Escape") setOpen(false); }}>
           {REACTIONS.map((e) => (
@@ -392,18 +399,18 @@ function MessageGroup({ item }: { item: Extract<Item, { t: "msgs" }> }) {
         const b = row.body as MessageBody;
         const pos = n === 1 ? "only" : i === 0 ? "first" : i === n - 1 ? "last" : "mid";
         return (
-          <div key={row.seq} className={`msg is-${pos}`} data-seq={row.seq}>
+          <div key={row.seq} className={`msg is-${pos}${b.pinned ? " is-pinned" : ""}`} data-seq={row.seq}>
             {b.attachments && b.attachments.length > 0 && <Attachments botId={row.botId} files={b.attachments} />}
-            {(b.text.trim() || b.streaming) && (
+            {b.deleted ? <p className="msg-deleted muted small">{t("c7.msg.deleted")}</p> : (b.text.trim() || b.streaming) && (
               <div className={`bubble ${b.streaming ? "is-streaming" : ""}`}>
-                {item.mine ? <p className="plain">{b.text}</p> : <Markdown text={b.text} />}
+                {item.mine ? <p className="plain">{b.text}</p> : <Markdown text={b.streaming ? stableMarkdown(b.text) : b.text} />}
                 {b.streaming && <span className="stream-dots" aria-label={t("msg.stillWriting")}><i /><i /><i /></span>}
               </div>
             )}
             {!item.mine && !b.streaming && b.text.includes("~/files/") && <MentionedFiles botId={row.botId} text={b.text} />}
             {!item.mine && !b.streaming && (b.page || b.text.includes("/p/")) && <PagePreview text={b.text} page={b.page} botId={row.botId} thread={row.thread} readOnly={mode === "readonly"} />}
             <time className="msg-time" dateTime={new Date(row.createdAt).toISOString()}>{clockTime(row.createdAt)}</time>
-            {mode !== "readonly" && !b.streaming && <MessageActions row={row} canThread={mode === "main"} canListen={!item.mine && b.role === "assistant" && !!b.text.trim()} />}
+            {mode !== "readonly" && !b.streaming && <MessageActions row={row} canThread={mode === "main"} canListen={!item.mine && b.role === "assistant" && !!b.text.trim()} mine={item.mine} />}
             {!item.mine && b.role === "assistant" && <ListenPlayer row={row} />}
             {b.reactions && b.reactions.length > 0 && <ReactionBar row={row} reactions={b.reactions} />}
             {b.replies && b.replies.count > 0 && <RepliesLink row={row} count={b.replies.count} lastAt={b.replies.lastAt} />}
@@ -434,7 +441,7 @@ function MessageGroup({ item }: { item: Extract<Item, { t: "msgs" }> }) {
 
 const STEP_MARK: Partial<Record<StepBody["status"], Key>> = { error: "step.mark.error", denied: "step.mark.denied", waiting: "step.mark.waiting", running: "step.mark.running" };
 
-function StepLine({ seq, body }: { seq: number; body: StepBody }) {
+function StepLine({ seq, body, botId, generation }: { seq: number; body: StepBody; botId?: string; generation?: number }) {
   const t = useT();
   const mark = STEP_MARK[body.status];
   return (
@@ -443,7 +450,7 @@ function StepLine({ seq, body }: { seq: number; body: StepBody }) {
       <div className="step-text">
         <span className="step-label">
           {body.label || body.tool}
-          {mark && <span className={`step-mark is-${body.status}`}>{t(mark)}</span>}
+          {mark && <span className={`step-mark is-${body.status}`}>{t(mark)}</span>}<StepDetailButton botId={botId} seq={seq} generation={generation} />{/* L142 */}
         </span>
         {body.summary && <span className="step-summary">{body.summary}</span>}
         {body.grant && <GrantLine grant={body.grant} />}
@@ -518,7 +525,7 @@ function WorkGroup({ item }: { item: Extract<Item, { t: "work" }> }) {
         <ol className="steps-list">
           {item.rows.map((r) => {
             const b = r.body;
-            if (b.kind === "step") return <StepLine key={r.seq} seq={r.seq} body={b} />;
+            if (b.kind === "step") return <StepLine key={r.seq} seq={r.seq} body={b} botId={r.botId} generation={r.generation} />;
             if (b.kind !== "message") return null;
             return (
               <li key={r.seq} className="step work-note" data-seq={r.seq}>
@@ -560,13 +567,13 @@ function NoticeRow({ body, botId, seq, readOnly }: { body: NoticeBody; botId: st
       ) : action.status === "done" ? <em className="notice-done">{t("notice.continued")}</em> : null)}
       {action?.kind === "settings" && !readOnly && (
         <button type="button" className="btn btn-small notice-action" onClick={() => useStore.getState().openAppSettings(action.section as AppSection)}>
-          {action.section === "usage" ? <><Icon name="chart" size={13} /> {t("caps.openUsage")}</> : <><Icon name="key" size={13} /> {t("health.openKeys")}</>}
+          {action.section === "usage" ? <><Icon name="chart" size={13} /> {t("caps.openUsage")}</> : action.section === "team" ? <>{t("care.openTeam")}</> : <><Icon name="key" size={13} /> {t("health.openKeys")}</>}
         </button>
       )}
       {action?.kind === "plan" && !readOnly && <PlanNoticeActions action={action} />}
       {action?.kind === "watch" && <WatchNoticeActions action={action} botId={botId} seq={seq} readOnly={readOnly} />}
       {action?.kind === "sublimit" && <SubLimitNoticeActions action={action} botId={botId} seq={seq} readOnly={readOnly} />}
-      {action?.kind === "route" && <RouteNoticeActions action={action} botId={botId} seq={seq} readOnly={readOnly} />}
+      {action?.kind === "route" && <RouteNoticeActions action={action} botId={botId} seq={seq} readOnly={readOnly} />}{action && <TurnNoticeActions action={action} botId={botId} seq={seq} readOnly={readOnly} />}
       {failed && <span className="notice-error" role="alert">{failed}</span>}
     </div>
   );
@@ -675,14 +682,8 @@ function EventRow({ body, botName, botId, seq }: { body: EventBody; botName: str
       </div>
     );
   }
-  if (body.event === "relay") {
-    // Something happened on the user's own computer (Sklubot Relais): control taken or ended, Stop, a refusal there.
-    return (
-      <div className={`event is-relay ${body.tone === "warn" ? "is-warn" : ""}`} data-seq={seq}>
-        <span className="event-line"><Icon name={body.tone === "warn" ? "alert" : "monitor"} size={13} /> <span>{body.text}</span></span>
-      </div>
-    );
-  }
+  // Something happened on the user's own computer (Sklubot Relais): control, Stop, a refusal, a command and its output.
+  if (body.event === "relay") return <RelayEventRow text={body.text} warn={body.tone === "warn"} seq={seq} botId={botId} cmd={body.cmd} />;
   if (body.event !== "call") {
     return (
       <div className="event" data-seq={seq}>
@@ -731,7 +732,7 @@ export function RowItems({ items, bot, readOnly, mode, all, openSteps }: { items
       {items.map((item) => {
         switch (item.t) {
           case "divider":
-            return <div key={item.key} className="divider"><span>{item.label}</span></div>;
+            return <div key={item.key} className={`divider ${item.key === "new" ? "is-new" : ""}`}><span>{item.label}</span></div>;
           case "msgs":
             return <MessageGroup key={item.key} item={item} />;
           case "steps":
@@ -843,7 +844,8 @@ export function ActivityLine({ bot, live, rows, stepsShownAbove = false }: { bot
   const t = useT();
   const waiting = !!live.awaiting;
   const since = waiting ? live.awaiting!.since : live.startedAt ?? live.activity?.since ?? now;
-  const caption = (live.awaiting?.reason || live.caption || activityPhrase(live, rows, now)).replace(/\s+/g, " ").trim();
+  const asked = !live.steps && (!live.activity || live.activity.kind === "thinking") ? requestSummary(rows) : ""; // nod item 3
+  const caption = (live.awaiting?.reason || live.caption || (asked && t("activity.request", { text: asked })) || activityPhrase(live, rows, now)).replace(/\s+/g, " ").trim();
   const kind: ActivityKind = waiting ? "waiting" : live.activity?.kind ?? "thinking";
   const status = kind === "connector" && live.activity?.detail && !/_|^[a-z0-9-]+$/.test(live.activity.detail) ? t("thinking.status.connectorIn", { name: live.activity.detail }) : t(STATUS[kind]);
   const steps = live.steps ?? 0;
@@ -888,7 +890,7 @@ function EmptyChat({ bot }: { bot: Bot }) {
       <p>{bot.description || fallback}</p>
       {imageGeneration && bot.kind !== "room" && <p className="chat-empty-hint">{t("empty.images")}</p>}
       {bot.kind !== "room" && <p className="chat-empty-hint">{t(video.higgsfield ? "empty.videoHiggsfield" : video.provider ? "empty.video" : "empty.videoOff")}</p>}
-      {bot.kind === "agent" && bot.primary && <FirstTaskIdeas bot={bot} />}
+      {bot.kind === "agent" && (bot.primary ? <>{!bot.access && <SetupGuideOffer bot={bot} />}<FirstTaskIdeas bot={bot} /></> : !bot.access && <BotWelcome bot={bot} />)}{/* L145 (BotWelcome.tsx) */}
     </div>
   );
 }
@@ -907,7 +909,7 @@ export function Transcript({ bot, thread, live }: { bot: Bot; thread: Thread | u
   // `t` changes with the language, so the date dividers are rebuilt when it does.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const viewer = useStore((s) => (bot.access ? s.user?.id : undefined));
-  const items = useMemo(() => buildItems(rows, live.running && !live.thread, 0, viewer, bot.access?.ownerName), [rows, live.running, live.thread, t, viewer, bot.access?.ownerName]);
+  const built = useMemo(() => buildItems(rows, live.running && !live.thread, 0, viewer, bot.access?.ownerName), [rows, live.running, live.thread, t, viewer, bot.access?.ownerName]); const newSeq = useNewLineSeq(bot.id, rows); const items = useMemo(() => withNewLine(built, newSeq, t("chat.newLine")), [built, newSeq, t]); // L147 « NOUVEAU »
   const mainRows = useMemo(() => rows.filter((r) => !r.thread), [rows]);
   const lastBody = mainRows.length ? mainRows[mainRows.length - 1].body : null;
   const streaming = lastBody?.kind === "message" && !!lastBody.streaming;
@@ -1023,6 +1025,7 @@ export function Transcript({ bot, thread, live }: { bot: Bot; thread: Thread | u
             </button>
           )}
           {loaded && showActivity && <ActivityLine bot={bot} live={live} rows={rows} stepsShownAbove={!!openSteps} />}
+          {loaded && live.queued > 0 && <QueuedNotes botId={bot.id} queued={live.queued} />}
           {loaded && !showActivity && live.queued > 0 && (
             <div className="activity"><span className="chip">{tn("count.queued", live.queued)}</span></div>
           )}

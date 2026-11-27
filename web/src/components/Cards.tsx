@@ -1,18 +1,21 @@
 import { useState } from "react";
 import { CapCardView } from "./UsageCaps";
-import { useTick } from "./ui";
+import { useTick } from "./ui"; import { FloorCodeField, useFloorCode } from "./SecurityLot1";
 import { api, errText } from "../api";
 import { useT } from "../i18n";
 import { useStore } from "../store";
 import type { Card } from "../types";
 import { Icon } from "./Icon";
 import { NudgeCardView, TaskCardView, Uncertain } from "./RulesAndNudges";
+import { BatchCardView } from "./BatchCard";
 import { ApiConnectorCardView, MemoryCardView, SkillCardView, SpendCardView } from "./SpendSkillsFiles";
 import { DiskCardView } from "./DiskAndTeamFolder";
 import { FilesCardView, PastedSecretCardView } from "./SecretsFilesProviders";
 import { GoalCardView } from "./GoalsAndJobs";
 import { FailureCardView } from "./Incidents";
-import { RecruitCardView } from "./RecruitCard";
+import { PollCardView } from "./ChatPlus"; import { PageLossCardView } from "./PageKeep"; import { StepGuideCardView } from "./StepGuide"; import { BoardPlanCardView } from "./BoardPlan"; import { RecruitCardView } from "./RecruitCard"; import { ViewCardView } from "./ViewCard"; import { TrajectoryCardView } from "./TrajectoryCard"; import { CodeBoxCard } from "./CodeBox";
+import { sendKeysFor } from "../../../mobile/shared/sendKey";
+import { CardCountdown, detailWithout, DraftEditor, isRichQuestion, RichQuestion } from "./TurnCards";
 
 type ApprovalCard = Extract<Card, { type: "approval" }>;
 type QuestionCard = Extract<Card, { type: "question" }>;
@@ -32,11 +35,26 @@ function Approval({ card, botId }: { card: ApprovalCard; botId: string }) {
   const canDecide = !access || access.canApprove;
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const decide = async (decision: "allow" | "always" | "deny") => {
+  const floorCode = useFloorCode(card); const [code, setCode] = useState(""); // L44 (option): the approver's two-factor code on a floor card
+  const [draft, setDraft] = useState<Record<string, string>>(() => card.draft ?? {}); const edited = !!card.draft && Object.keys(draft).some((k) => draft[k] !== card.draft![k]); // L83 (TurnCards.tsx)
+  const decide = async (decision: "allow" | "always" | "conversation" | "allbots" | "deny") => {
     setBusy(decision);
     setError(null);
     try {
-      await api("POST", `/approvals/${encodeURIComponent(card.approvalId)}`, { decision });
+      await api("POST", `/approvals/${encodeURIComponent(card.approvalId)}`, { decision, ...(floorCode && decision !== "deny" ? { code } : {}), ...(edited && decision !== "deny" ? { draft } : {}) });
+    } catch (e) {
+      setError(errText(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+  /** "Relancer" under a request that expired: an ordinary message of the user's, asking for that request again. */
+  const retry = async () => {
+    setBusy("retry");
+    setError(null);
+    try {
+      const keys = sendKeysFor(`${botId}/retry/${card.approvalId}`);
+      await api("POST", `/bots/${botId}/messages`, { text: t("approval.retryMessage", { title: card.title }), clientKey: keys.keyFor(card.approvalId) });
     } catch (e) {
       setError(errText(e));
     } finally {
@@ -48,6 +66,10 @@ function Approval({ card, botId }: { card: ApprovalCard; botId: string }) {
   const vault = card.source === "Vault";
   // The user's own computer (Sklubot Relais): tool "mycomputer: control|command|url: <bot>".
   const relay = card.tool.startsWith("mycomputer:");
+  // « Autoriser pour cette conversation » (server agent/conversationgrants.ts): offered by the server, to the owner only.
+  const scoped = !!card.conversation && !card.once && !access;
+  // « Pour tous mes bots » (server computershare.ts): on the card that asks to take control of a computer, owner only.
+  const allBots = card.tool.startsWith("mycomputer: control: ") && !card.once && !access;
   return (
     <div className="card">
       <div className="card-head">
@@ -67,7 +89,10 @@ function Approval({ card, botId }: { card: ApprovalCard; botId: string }) {
           <p className="card-sub">{vault ? t("settings.section.vault") : source}{card.tool && card.tool !== source ? <> · <code>{card.tool}</code></> : null}</p>
         </div>
       </div>
-      {card.detail && <pre className="card-detail">{card.detail}</pre>}
+      {card.detail && !(card.draft && card.status === "pending" && canDecide && !access) && <pre className="card-detail">{card.detail}</pre>}
+      {card.draft && card.status === "pending" && canDecide && !access && <><pre className="card-detail">{detailWithout(card.detail, Object.keys(card.draft))}</pre><DraftEditor value={draft} onChange={setDraft} disabled={busy !== null} /></>}
+      {card.edited && card.status !== "pending" && <p className="card-note"><Icon name="edit" size={13} /> {t("draft.edited")}</p>}
+      {card.status === "pending" && <CardCountdown until={card.expiresAt ?? (card.parked ? undefined : card.parksAt)} parks={!card.expiresAt} />}
       {(card.why || card.quote) && (
         <div className="approval-why">
           {card.quote && <p className="approval-quote"><Icon name="chat" size={13} /> <span>{t("approval.quote", { quote: card.quote })}</span></p>}
@@ -81,16 +106,17 @@ function Approval({ card, botId }: { card: ApprovalCard; botId: string }) {
         </p>
       )}
       {card.once && card.status === "pending" && <p className="card-note">{t(card.irreversible ? "approval.irreversibleOnce" : "approval.onceOnly")}</p>}
+      {card.parked && card.status === "pending" && <p className="card-note"><Icon name="clock" size={13} /> {t("approval.parked")}</p>}
       {card.status === "pending" && !canDecide ? (
         <p className="card-note"><Icon name="users" size={13} /> {t("ws.approvalOwner", { name: access?.ownerName ?? "" })}</p>
       ) : card.status === "pending" ? (
-        <>
+        <>{floorCode && <FloorCodeField value={code} onChange={setCode} purpose={`floor:${card.approvalId}`} />}
           <div className="card-actions">
             <button type="button" className="btn btn-ghost" disabled={busy !== null} onClick={() => void decide("deny")}>
               {t(busy === "deny" ? "approval.denying" : "approval.deny")}
             </button>
             <span className="spacer" />
-            {!card.once && !access && (
+            {!card.once && !access && !scoped && (
               <button type="button" className="btn" disabled={busy !== null} onClick={() => void decide("always")} title={t("approval.alwaysTitle")}>
                 {t(busy === "always" ? "common.saving" : "approval.alwaysBtn")}
               </button>
@@ -99,14 +125,42 @@ function Approval({ card, botId }: { card: ApprovalCard; botId: string }) {
               {t(busy === "allow" ? "approval.allowing" : "approval.allow")}
             </button>
           </div>
+          {scoped && (
+            // Three ways to say yes: the two that spare the next card sit on their own line, under "once".
+            <div className="card-actions is-more">
+              <button type="button" className="btn btn-small" disabled={busy !== null} onClick={() => void decide("conversation")} title={t("approval.conversationTitle")}>
+                {t(busy === "conversation" ? "approval.allowing" : "approval.conversationBtn")}
+              </button>
+              <button type="button" className="btn btn-small" disabled={busy !== null} onClick={() => void decide("always")} title={t("approval.alwaysTitle")}>
+                {t(busy === "always" ? "common.saving" : "approval.alwaysBtn")}
+              </button>
+            </div>
+          )}
+          {allBots && (
+            <div className="card-actions is-more">
+              <button type="button" className="btn btn-small" disabled={busy !== null} onClick={() => void decide("allbots")} title={t("approval.allBotsTitle")}>
+                <Icon name="users" size={14} /> {t(busy === "allbots" ? "approval.allowing" : "approval.allBotsBtn")}
+              </button>
+            </div>
+          )}
           {error && <p className="card-error" role="alert">{error}</p>}
         </>
       ) : (
-        <p className={`card-outcome is-${card.status}`}>
-          <Icon name={card.status === "allowed" || card.status === "always" ? "check" : card.status === "denied" ? "close" : "clock"} size={14} />
-          {t(`approval.${card.status}`)}
-          {card.outcome && (card.status === "allowed" || card.status === "always") && <span className={`approval-outcome is-${card.outcome}`}> · {t(`approval.outcome.${card.outcome}`)}</span>}
-        </p>
+        <>
+          <p className={`card-outcome is-${card.status}`}>
+            <Icon name={card.status === "allowed" || card.status === "always" ? "check" : card.status === "denied" ? "close" : "clock"} size={14} />
+            {t(card.status === "allowed" && card.grantedFor === "conversation" ? "approval.grantedConversation" : `approval.${card.status}`)}
+            {card.outcome && (card.status === "allowed" || card.status === "always") && <span className={`approval-outcome is-${card.outcome}`}> · {t(`approval.outcome.${card.outcome}`)}</span>}
+          </p>
+          {card.status === "expired" && canDecide && (
+            // Nothing was done and nothing waits any more: one press asks the bot to make the same request again.
+            <div className="card-actions">
+              <span className="spacer" />
+              <button type="button" className="btn" disabled={busy !== null} onClick={() => void retry()}>{t(busy === "retry" ? "approval.retrying" : "approval.retry")}</button>
+            </div>
+          )}
+          {error && <p className="card-error" role="alert">{error}</p>}
+        </>
       )}
     </div>
   );
@@ -227,12 +281,13 @@ function Takeover({ card, botId }: { card: TakeoverCard; botId: string }) {
     }
   };
   const pending = card.status === "pending";
+  const self = card.reason === "password"; // L91 « fais-le toi-même »: a password change the user does, the bot never sees it
   return (
     <div className={`card takeover-card ${pending ? "is-pending" : ""}`}>
       <div className="card-head">
         <span className="logo-tile is-takeover" aria-hidden="true"><Icon name="hand" size={18} /></span>
         <div className="card-head-text">
-          <p className="card-title">{t("takeover.title", { name: bot?.name ?? "" })}</p>
+          <p className="card-title">{t(self ? "takeover.selfTitle" : "takeover.title", { name: bot?.name ?? "" })}</p>
           <p className="card-sub">
             <span className="chip">{t(`takeover.reason.${card.reason}`)}</span>
             {pending && <> · {t("takeover.left", { n: minutesLeft(card.expiresAt, now) })}</>}
@@ -242,14 +297,14 @@ function Takeover({ card, botId }: { card: TakeoverCard; botId: string }) {
       {card.detail && <p className="card-reason">{card.detail}</p>}
       {pending ? (
         <>
-          <p className="card-sub">{t("takeover.hint")}</p>
+          <p className="card-sub">{t(self ? "takeover.selfHint" : "takeover.hint")}</p>
           <div className="card-actions">
             <button type="button" className="btn" disabled={busy} onClick={() => useStore.getState().openViewer(botId, { control: true })}>
               <Icon name="monitor" size={15} /> {t(viewing ? "takeover.opened" : "takeover.open")}
             </button>
             <span className="spacer" />
             <button type="button" className="btn btn-accent" disabled={busy} onClick={() => void done()}>
-              <Icon name="check" size={15} /> {t(busy ? "common.working" : "takeover.done")}
+              <Icon name="check" size={15} /> {t(busy ? "common.working" : self ? "takeover.selfDone" : "takeover.done")}
             </button>
           </div>
           {error && <p className="card-error" role="alert">{error}</p>}
@@ -257,7 +312,7 @@ function Takeover({ card, botId }: { card: TakeoverCard; botId: string }) {
       ) : (
         <p className={`card-outcome is-${card.status === "done" ? "allowed" : card.status === "timeout" ? "expired" : "denied"}`}>
           <Icon name={card.status === "done" ? "check" : card.status === "timeout" ? "clock" : "close"} size={14} />
-          {t(`takeover.status.${card.status}`)}
+          {t(self && card.status === "done" ? "takeover.selfStatusDone" : `takeover.status.${card.status}`)}
         </p>
       )}
     </div>
@@ -337,7 +392,7 @@ export function CardView({ card, botId, seq }: { card: Card; botId: string; seq:
     case "approval":
       return <Approval card={card} botId={botId} />;
     case "question":
-      return <Question card={card} botId={botId} seq={seq} />;
+      return isRichQuestion(card) ? <RichQuestion card={card} botId={botId} seq={seq} /> : <Question card={card} botId={botId} seq={seq} />; // L79 (TurnCards.tsx)
     case "connect":
       return <Connect card={card} botId={botId} seq={seq} />;
     case "takeover":
@@ -374,6 +429,22 @@ export function CardView({ card, botId, seq }: { card: Card; botId: string; seq:
       return <FailureCardView card={card} botId={botId} />;
     case "recruit":
       return <RecruitCardView card={card} botId={botId} seq={seq} />;
+    case "view":
+      return <ViewCardView card={card} botId={botId} seq={seq} />; // DS-Bot item 8
+    case "poll":
+      return <PollCardView card={card} />; // L184 (ChatPlus.tsx)
+    case "trajectory":
+      return <TrajectoryCardView card={card} botId={botId} />; // L158 « Créations »
+    case "code":
+      return <CodeBoxCard card={card} botId={botId} />; // L91 hidden code box
+    case "pageloss":
+      return <PageLossCardView card={card} botId={botId} seq={seq} />; // L157 « rien de perdu »
+    case "stepguide":
+      return <StepGuideCardView card={card} botId={botId} seq={seq} />; // L153 / L145 « pas à pas »
+    case "boardplan":
+      return <BoardPlanCardView card={card} botId={botId} seq={seq} />; // L163 plan → tableau
+    case "batch":
+      return <BatchCardView card={card} botId={botId} />; // L99 lots en parallèle
     default:
       return null;
   }

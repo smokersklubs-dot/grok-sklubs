@@ -6,7 +6,7 @@
  */
 import { useEffect, useState, type ReactNode } from "react";
 import { api, ApiError, errText } from "../api";
-import { useStore } from "../store";
+import { useStore } from "../store"; import { sideText, intlTag, type Locale } from "../i18n";
 import type { CreditsView } from "../types";
 import { Icon, type IconName } from "./Icon";
 import { AiAccountCards } from "./AiAccounts";
@@ -82,11 +82,11 @@ const TEXT = {
 type K = keyof typeof TEXT.fr;
 function useC() {
   const locale = useStore((s) => s.locale);
-  return (k: K, vars: Record<string, string | number> = {}) => (TEXT[locale === "fr" ? "fr" : "en"][k] as string).replace(/\{(\w+)\}/g, (_m, n) => String(vars[n] ?? ""));
+  return (k: K, vars: Record<string, string | number> = {}) => (sideText("credits", TEXT, locale)[k] as string).replace(/\{(\w+)\}/g, (_m, n) => String(vars[n] ?? ""));
 }
-const money = (n: number, loc: "fr" | "en") => n.toLocaleString(loc === "fr" ? "fr-FR" : "en-GB", { style: "currency", currency: "EUR", minimumFractionDigits: Number.isInteger(n) ? 0 : 2, maximumFractionDigits: 2 });
-const date = (ts: number, loc: "fr" | "en") => new Date(ts).toLocaleDateString(loc === "fr" ? "fr-FR" : "en-GB", { day: "numeric", month: "short", year: "numeric" });
-const monthName = (m: string, loc: "fr" | "en") => new Date(Date.UTC(Number(m.slice(0, 4)), Number(m.slice(5, 7)) - 1, 1)).toLocaleDateString(loc === "fr" ? "fr-FR" : "en-GB", { month: "long", year: "numeric", timeZone: "UTC" });
+const money = (n: number, loc: Locale) => n.toLocaleString(intlTag(loc), { style: "currency", currency: "EUR", minimumFractionDigits: Number.isInteger(n) ? 0 : 2, maximumFractionDigits: 2 });
+const date = (ts: number, loc: Locale) => new Date(ts).toLocaleDateString(intlTag(loc), { day: "numeric", month: "short", year: "numeric" });
+const monthName = (m: string, loc: Locale) => new Date(Date.UTC(Number(m.slice(0, 4)), Number(m.slice(5, 7)) - 1, 1)).toLocaleDateString(intlTag(loc), { month: "long", year: "numeric", timeZone: "UTC" });
 
 /** Back from the Paddle checkout (/?credits=success|cancel): read once, removed from the address. */
 function takeReturn(): "success" | "cancel" | null {
@@ -112,7 +112,7 @@ function WayCard({ icon, title, text, children }: { icon: IconName; title: strin
 
 export function CreditsSection() {
   const c = useC();
-  const loc = useStore((s) => (s.locale === "fr" ? "fr" : "en"));
+  const loc = useStore((s) => s.locale);
   const tick = useStore((s) => s.usageTick);
   const openAppSettings = useStore((s) => s.openAppSettings);
   const openBotSettings = useStore((s) => s.openBotSettings);

@@ -9,10 +9,13 @@ import { clip } from "../store.js";
 import { tr } from "../i18n.js";
 import { DECLINED, runReserved, waitForApproval, type Turn } from "./loop.js";
 import { authorize } from "./authorize.js";
+import { forgetCall, PARKED, parkedGrant } from "./approval-wait.js";
+import { approvals } from "../store.js";
 import { bindCall } from "./bind.js";
 import { actionHash } from "./executions.js";
 import type { Grant } from "../shared.js";
 import { LoopGuard, loopStopText } from "./reliability.js";
+import { handleCodeMcp } from "./toolcode.js";
 
 /**
  * Sklubot's tools for bots that run on a subscription tool (Claude Code, Codex) inside their computer.
@@ -31,10 +34,11 @@ function authorised(botId: string, header: string | undefined): boolean {
  */
 const turnFor = (botId: string): Turn | null => engineTurnOf(botId);
 
-/** What the engine is told when an approval lapsed: a new message from the user, or no answer in time. */
-export const EXPIRED = "This was not approved: the user sent a new message, or did not answer in time. Do not retry it unless they ask.";
+/** What the engine is told when an approval lapsed (the turn was stopped, or the request could not be kept open). */
+export const EXPIRED = "This was not approved: the request was cancelled or could not be kept open. Do not retry it unless the user asks.";
 
 export async function handleMcp(botId: string, req: IncomingMessage, res: ServerResponse, body: unknown) {
+  if (bots.byId(botId) && await handleCodeMcp(botId, req, res, body)) return; // L174: a run_code script's call, with its run's own token (toolcode.ts)
   if (!bots.byId(botId) || !authorised(botId, req.headers.authorization)) {
     res.writeHead(401, { "content-type": "application/json" }).end(JSON.stringify({ error: "unauthorised" }));
     return;
@@ -64,17 +68,22 @@ export async function handleMcp(botId: string, req: IncomingMessage, res: Server
     if (verdict.kind === "block") { markStep(botId, step, "denied", verdict.reason ? clip(verdict.reason, 200) : tr(loc, "not allowed")); return { content: [{ type: "text", text: verdict.reason ? `${DECLINED} Why: ${verdict.reason}` : DECLINED }], isError: true }; }
     let grant: Grant | undefined = verdict.kind === "allow" ? verdict.grant : undefined;
     const asked: { approvalId?: string } = {};
-    if (verdict.kind === "ask") {
+    // A request the owner answered "yes" to after its call had stopped waiting (approval-wait.ts): this exact action
+    // — same tool, same arguments — runs on that approval, once. Anything else is asked again, as always.
+    const hash = actionHash(call.name, call.input);
+    const earlier = verdict.kind === "ask" ? parkedGrant(botId, hash) : null;
+    if (earlier && approvals.consume(earlier, hash)) { forgetCall(earlier); asked.approvalId = earlier; grant = { by: "approval" }; }
+    else if (verdict.kind === "ask") {
       markStep(botId, step, "waiting");
       const status = await waitForApproval(turn, call, verdict, asked);
       if (status !== "allowed" && status !== "always") {
-        markStep(botId, step, "denied", tr(loc, status === "expired" ? "skipped" : "not allowed"));
-        return { content: [{ type: "text", text: status === "expired" ? EXPIRED : DECLINED }], isError: true };
+        markStep(botId, step, "denied", tr(loc, status === "parked" ? "waiting for your answer" : status === "expired" ? "skipped" : "not allowed"));
+        return { content: [{ type: "text", text: status === "parked" ? PARKED : status === "expired" ? EXPIRED : DECLINED }], isError: true };
       }
       grant = { by: "approval" };
     }
     // Reserved, executed once, logged with what allowed it; an unknown outcome becomes an "uncertain" card (runReserved).
-    const out = await runReserved(turn, call, grant, asked.approvalId ?? "", actionHash(call.name, call.input), (status, summary) => {
+    const out = await runReserved(turn, call, grant, asked.approvalId ?? "", hash, (status, summary) => {
       if (status === "running") markStep(botId, step, "running");
       else markStep(botId, step, status, summary ?? (status === "error" ? tr(loc, "failed") : undefined));
     });

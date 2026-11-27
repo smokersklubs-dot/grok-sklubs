@@ -2,8 +2,8 @@ import { createHash } from "node:crypto";
 import { q } from "./db.js";
 import type { ThirdPartySpend } from "./shared.js";
 import { bots, newId, now, settings } from "./store.js";
-import { record as recordUsage, spentThisMonth } from "./usage.js";
-import { operatorBlock, toolRefusal } from "./hosted.js";
+import { record as recordUsage, recordServiceCost, spentThisMonth } from "./usage.js";
+import { hostedMode, operatorBlock, toolRefusal } from "./hosted.js";
 import { capName, moneyLeft, turnAttended } from "./usagecaps.js";
 
 /**
@@ -59,7 +59,7 @@ export type Reservation =
 export const idemKeyOf = (botId: string, tool: string, provider: string, args: unknown, given?: string) => hash(given ? `given|${botId}|${given}` : `${botId}|${tool}|${provider}|${stableJson(args)}`);
 
 /** Reserves the most a paid call can cost, or refuses it in words the bot can act on. */
-export function reserve(f: { userId: string; botId: string; tool: string; provider: string; maxUsd: number; idemKey: string }): Reservation {
+export function reserve(f: { userId: string; botId: string; tool: string; provider: string; maxUsd: number; idemKey: string; /** Paid with the account's own key (mediakeys.ts): the operator's plan budget does not apply. */ ownKey?: boolean }): Reservation {
   const max = Math.max(0, toMicros(f.maxUsd));
   return q.tx((): Reservation => {
     const prev = q.get<{ id: string; status: string; result: string | null; created_at: number; settled_at: number | null }>("SELECT id, status, result, created_at, settled_at FROM tool_spend WHERE user_id = ? AND idem_key = ?", f.userId, f.idemKey);
@@ -91,7 +91,7 @@ export function reserve(f: { userId: string; botId: string; tool: string; provid
     }
     // Hosted mode: paid third-party calls run on the service's keys; the plan's monthly AI budget must cover the most this
     // call can cost on top of what is spent and reserved (nothing for an operator, or with hosted mode off).
-    const held = max > 0 ? operatorBlock(f.userId, fromMicros(reservedForUser(f.userId) + max)) : null;
+    const held = max > 0 && !f.ownKey ? operatorBlock(f.userId, fromMicros(reservedForUser(f.userId) + max)) : null;
     if (held) return { kind: "refused", reason: "budget", message: toolRefusal(held) };
     if (prev) {
       q.run("UPDATE tool_spend SET status = 'reserved', reserved_micros = ?, actual_micros = 0, result = NULL, created_at = ?, settled_at = NULL, tool = ?, provider = ? WHERE id = ?", max, now(), f.tool, f.provider, prev.id);
@@ -104,12 +104,14 @@ export function reserve(f: { userId: string; botId: string; tool: string; provid
 }
 
 /** The call went through: its real cost is recorded (usage, checkpoint, journal) and the rest of the reservation freed. */
-export function settle(id: string, actualUsd: number, result: string, model?: string) {
+export function settle(id: string, actualUsd: number, result: string, model?: string, ownKey = false) {
   const r = q.get<{ user_id: string; bot_id: string; tool: string; provider: string; status: string }>("SELECT user_id, bot_id, tool, provider, status FROM tool_spend WHERE id = ?", id);
   if (!r || r.status !== "reserved") return;
   const micros = Math.max(0, toMicros(actualUsd));
   q.run("UPDATE tool_spend SET status = 'settled', actual_micros = ?, result = ?, settled_at = ? WHERE id = ?", micros, result.slice(0, 200_000), now(), id);
-  recordUsage(r.user_id, r.bot_id, model ?? `${r.tool}:${r.provider}`, { inputTokens: 0, outputTokens: 0, cachedTokens: 0 }, fromMicros(micros));
+  // The account's own key (mediakeys.ts) pays: a "reported" line paid by the account, never the operator's (hosted mode).
+  if (ownKey) recordServiceCost(r.user_id, r.bot_id, model ?? `${r.tool}:${r.provider}`, fromMicros(micros), hostedMode() ? "own" : "");
+  else recordUsage(r.user_id, r.bot_id, model ?? `${r.tool}:${r.provider}`, { inputTokens: 0, outputTokens: 0, cachedTokens: 0 }, fromMicros(micros));
 }
 
 /** The call failed and the provider does not bill failures: nothing is spent. */

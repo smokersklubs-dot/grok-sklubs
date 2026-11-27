@@ -1,4 +1,5 @@
 import { useEffect, useId, useState, type FormEvent } from "react";
+import { MailSignature } from "./MailSignature";
 import { api, errText } from "../api";
 import { useT } from "../i18n";
 import { openSignInWindow, onSignInDone } from "../lib/oauth";
@@ -279,6 +280,7 @@ export function NativeAccountRow({ acc }: { acc: NativeAccount }) {
         </div>
       )}
       {needs && <p className="field-hint connector-note">{acc.identity ? t("native.needsAuthHint") : t("native.pendingHint")}</p>}
+      {(acc.app === "gmail" || acc.app === "outlook") && <MailSignature accountId={acc.id} />}{/* L83 */}
       <ErrorNote>{error}</ErrorNote>
     </li>
   );

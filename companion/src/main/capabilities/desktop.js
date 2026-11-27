@@ -18,6 +18,7 @@ const crypto = require('node:crypto');
 const { execFile } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
+const { readForeground } = require('./foreground');
 
 /** @param {typeof import('electron')} electron @param {(action: string) => void} [showPointer]
  * @param {() => object|null} [getSession] */
@@ -67,10 +68,22 @@ function createDesktopCaps(electron, showPointer = () => {}, getSession) {
     };
   }
 
-  /** @param {number} maxWidth */
-  async function grab(maxWidth) {
+  /** L159: the screens in order — the main one first, then the others from left to right. */
+  const displaysInOrder = () => {
+    const main = primary();
+    return [main, ...screen.getAllDisplays().filter((x) => x.id !== main.id).sort((a, b) => a.bounds.x - b.bounds.x || a.bounds.y - b.bounds.y)];
+  };
+
+  /** @param {number} maxWidth @param {number} [display] */
+  async function grab(maxWidth, display = 0) {
     if (process.platform === 'darwin' && ['denied', 'restricted'].includes(systemPreferences.getMediaAccessStatus('screen'))) throw missing('Screen Recording');
-    const d = primary();
+    const list = displaysInOrder();
+    if (display >= list.length) {
+      const e = new Error(`there is no screen number ${display + 1} (${list.length} connected)`);
+      /** @type {any} */ (e).code = 'invalid_args';
+      throw e;
+    }
+    const d = list[display];
     const physW = Math.round(d.size.width * d.scaleFactor);
     const physH = Math.round(d.size.height * d.scaleFactor);
     const w = Math.min(maxWidth, physW);
@@ -85,12 +98,12 @@ function createDesktopCaps(electron, showPointer = () => {}, getSession) {
     return { image: src.thumbnail, display: d };
   }
 
-  /** @param {{ format: 'jpeg'|'png', maxWidth: number, quality: number }} a */
+  /** @param {{ format: 'jpeg'|'png', maxWidth: number, quality: number, display?: number }} a */
   async function capture(a) {
-    const { image, display } = await grab(a.maxWidth);
+    const { image, display } = await grab(a.maxWidth, a.display ?? 0);
     const size = image.getSize();
     const data = a.format === 'png' ? image.toPNG() : image.toJPEG(a.quality);
-    return { format: a.format, width: size.width, height: size.height, screenWidth: display.size.width, screenHeight: display.size.height, data };
+    return { format: a.format, width: size.width, height: size.height, screenWidth: display.size.width, screenHeight: display.size.height, data, displayIndex: a.display ?? 0, displays: screen.getAllDisplays().length };
   }
 
   /** @param {{ maxWidth: number, quality: number }} a */
@@ -159,12 +172,37 @@ function createDesktopCaps(electron, showPointer = () => {}, getSession) {
     return { typed: a.text.length };
   }
 
-  /** @param {{ key: string, modifiers: string[] }} a */
+  /**
+   * A key or a combination. robotjs keyTap presses the modifiers, the key, and releases them; whatever happens, the
+   * modifiers are released again afterwards so none can stay held (fail closed, backlog L19).
+   * @param {{ key: string, modifiers: string[] }} a
+   */
   function keyPress(a) {
     const r = getRobot();
-    if (a.modifiers.length) r.keyTap(a.key, a.modifiers);
-    else r.keyTap(a.key);
+    try {
+      if (a.modifiers.length) r.keyTap(a.key, a.modifiers);
+      else r.keyTap(a.key);
+    } finally {
+      for (const m of a.modifiers) { try { r.keyToggle(m, 'up'); } catch { /* not held */ } }
+    }
     return {};
+  }
+
+  /**
+   * Releases every modifier key and mouse button the relay could have pressed (robotjs keyToggle / mouseToggle "up"):
+   * called when a control session ends, on Stop and when the connection is lost. Releasing a key that is not held
+   * does nothing.
+   */
+  function releaseAll() {
+    if (!robot) return {};
+    for (const m of ['shift', 'control', 'alt', 'command']) { try { robot.keyToggle(m, 'up'); } catch { /* ignore */ } }
+    for (const b of ['left', 'right', 'middle']) { try { robot.mouseToggle('up', b); } catch { /* ignore */ } }
+    return {};
+  }
+
+  /** The window in front and whether a password field has focus (foreground.js). Null when it cannot be read. */
+  async function activeWindow() {
+    return readForeground();
   }
 
   /** shell.openExternal: https://www.electronjs.org/docs/latest/api/shell @param {{ url: string }} a */
@@ -227,7 +265,7 @@ function createDesktopCaps(electron, showPointer = () => {}, getSession) {
     throw e;
   }
 
-  return { screenInfo, capture, captureFrame, mouseMove, mouseClick, mouseDrag, mouseScroll, keyType, keyPress, openUrl, openApp, listWindows, focusWindow };
+  return { screenInfo, capture, captureFrame, mouseMove, mouseClick, mouseDrag, mouseScroll, keyType, keyPress, releaseAll, activeWindow, openUrl, openApp, listWindows, focusWindow };
 }
 
 /** @param {string} s */

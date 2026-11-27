@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { t as tr } from "../i18n";
 import { MAX_CLIPS, MAX_PROJECT_SECONDS, validClips, type StudioClip } from "../../../server/src/studioclips";
 import { apiUpload, errText } from "../api";
 import { duration, mediaUrl, type Story } from "../lib/studioStory";
@@ -22,12 +23,11 @@ async function sourceSeconds(bot: string, path: string): Promise<number> {
 
 export function StudioClips({ bot, story, time, fr, editable, busy, onSeek, onChange, onBusy }: Props) {
   const [selected, select] = useState(""), [error, setError] = useState("");
-  const t = (local: string, en: string) => fr ? local : en;
   const clips = story.clips ?? [], current = clips.find(c => c.id === selected), total = duration(story);
   const sources = [...new Set([...story.scenes.flatMap(s => [s.media, s.speech?.path]), story.audio, ...clips.map(c => c.path)].filter((p): p is string => !!p))];
   const apply = (next: StudioClip[]) => {
     if (!validClips(next)) {
-      setError(t("Vérifie le placement et les points d’entrée et de sortie. Un clip dure au moins 0,04 s et se termine avant 5 minutes.", "Check the placement and source points. Each clip must last at least 0.04 s and end within 5 minutes."));
+      setError(tr("studio.checkPlacementSourcePoints"));
       return false;
     }
     setError(""); onChange(next); return true;
@@ -47,7 +47,7 @@ export function StudioClips({ bot, story, time, fr, editable, busy, onSeek, onCh
   }
   async function reuse(path: string) {
     onBusy(true); setError("");
-    try { await add(path); } catch { setError(t("Impossible de lire la durée de ce média.", "Could not read the duration of this media.")); }
+    try { await add(path); } catch { setError(tr("studio.couldNotReadDuration")); }
     finally { onBusy(false); }
   }
   const edit = (patch: Partial<StudioClip>) => apply(clips.map(c => c.id === selected ? {...c, ...patch} : c));
@@ -77,8 +77,8 @@ export function StudioClips({ bot, story, time, fr, editable, busy, onSeek, onCh
       }} onKeyDown={e => { if (e.key === "Enter") e.currentTarget.blur(); }} /></label>;
   };
   if (!editable && !clips.length) return null;
-  return <section className="studio-free-clips" aria-label={t("Pistes libres", "Independent tracks")}>
-    <h4>{t("Pistes libres", "Independent tracks")}</h4>
+  return <section className="studio-free-clips" aria-label={tr("studio.independentTracks")}>
+    <h4>{tr("studio.independentTracks")}</h4>
     {clips.map(c => <div className="studio-track" key={c.id}>
       <span title={c.name}>{c.kind === "audio" ? "♫" : "▣"} {c.name}</span>
       <div className="studio-layer-lane">
@@ -89,33 +89,33 @@ export function StudioClips({ bot, story, time, fr, editable, busy, onSeek, onCh
     </div>)}
     {editable && <fieldset disabled={busy} className="studio-free-fields">
       <div className="studio-layer-actions">
-        <label className="btn btn-small">{t("Importer un clip", "Import a clip")}
+        <label className="btn btn-small">{tr("studio.importClip")}
           <input type="file" disabled={clips.length >= MAX_CLIPS} accept=".png,.jpg,.jpeg,.webp,.gif,.mp4,.webm,.mov,.mp3,.wav,.m4a,.aac,.ogg,.flac,.opus"
             onChange={e => { const file=e.target.files?.[0]; e.target.value=""; if (file) void upload(file); }} /></label>
-        {sources.length > 0 && <select className="input" aria-label={t("Réutiliser un média", "Reuse media")} value="" disabled={clips.length >= MAX_CLIPS}
-          onChange={e => { if (e.target.value) void reuse(e.target.value); }}><option value="">{t("Réutiliser un média…", "Reuse media…")}</option>
+        {sources.length > 0 && <select className="input" aria-label={tr("studio.reuseMedia")} value="" disabled={clips.length >= MAX_CLIPS}
+          onChange={e => { if (e.target.value) void reuse(e.target.value); }}><option value="">{tr("studio.reuseMedia2")}</option>
           {sources.map(p => <option key={p} value={p}>{p.split("/").pop()}</option>)}</select>}
       </div>
       {current && <div>
-        <label>{t("Nom de piste", "Track name")}<input className="input" key={current.id + current.name} defaultValue={current.name} maxLength={100}
+        <label>{tr("studio.trackName")}<input className="input" key={current.id + current.name} defaultValue={current.name} maxLength={100}
           onBlur={e => { if (e.target.value !== current.name && !edit({name: e.target.value.trim()})) e.target.value=current.name; }} /></label>
         <div className="studio-layer-fields">
-          {number("start", t("Début du clip (s)", "Timeline start (s)"), 0, MAX_PROJECT_SECONDS)}
-          {number("inPoint", t("Entrée source (s)", "Source in (s)"), 0, 86400)}
-          {number("outPoint", t("Sortie source (s)", "Source out (s)"), 4, 86400)}
-          {current.kind === "audio" ? number("volume", t("Volume (0–1)", "Volume (0–1)"), 1, 1) : <>
-            {number("x", t("Position X (0–1)", "X position (0–1)"), .5, 1)}
-            {number("y", t("Position Y (0–1)", "Y position (0–1)"), .5, 1)}
-            {number("scale", t("Échelle (0–1)", "Scale (0–1)"), .5, 1, .02)}
-            {number("opacity", t("Opacité (0–1)", "Opacity (0–1)"), 1, 1)}</>}
+          {number("start", tr("studio.timelineStartS"), 0, MAX_PROJECT_SECONDS)}
+          {number("inPoint", tr("studio.sourceS"), 0, 86400)}
+          {number("outPoint", tr("studio.sourceOutS"), 4, 86400)}
+          {current.kind === "audio" ? number("volume", tr("studio.volume"), 1, 1) : <>
+            {number("x", tr("studio.xPosition"), .5, 1)}
+            {number("y", tr("studio.yPosition"), .5, 1)}
+            {number("scale", tr("studio.scale"), .5, 1, .02)}
+            {number("opacity", tr("studio.opacity"), 1, 1)}</>}
         </div>
         <div className="studio-layer-actions">
           <button type="button" className="btn btn-small" disabled={clips.length >= MAX_CLIPS || time - current.start < .04 || current.start + current.outPoint - current.inPoint - time < .04}
-            onClick={split}>{t("Scinder à la tête de lecture", "Split at playhead")}</button>
+            onClick={split}>{tr("studio.splitAtPlayhead")}</button>
           {current.kind === "visual" && <>
-            <button type="button" className="btn btn-small" disabled={clips.indexOf(current) === 0} onClick={() => reorder(-1)}>{t("Reculer", "Move back")}</button>
-            <button type="button" className="btn btn-small" disabled={clips.indexOf(current) === clips.length-1} onClick={() => reorder(1)}>{t("Avancer", "Move forward")}</button></>}
-          <button type="button" className="btn btn-small" onClick={() => { apply(clips.filter(c => c.id !== selected)); select(""); }}>{t("Retirer le clip", "Remove clip")}</button>
+            <button type="button" className="btn btn-small" disabled={clips.indexOf(current) === 0} onClick={() => reorder(-1)}>{tr("studio.moveBack")}</button>
+            <button type="button" className="btn btn-small" disabled={clips.indexOf(current) === clips.length-1} onClick={() => reorder(1)}>{tr("studio.moveForward")}</button></>}
+          <button type="button" className="btn btn-small" onClick={() => { apply(clips.filter(c => c.id !== selected)); select(""); }}>{tr("studio.removeClip")}</button>
         </div>
       </div>}
     </fieldset>}

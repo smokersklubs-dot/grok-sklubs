@@ -1,5 +1,5 @@
-import { body, fail, HttpError } from "./routeinput.js";
-import { registerSectionRoutes } from "./sectionroutes.js";
+import { body, fail, HttpError } from "./routeinput.js"; import { isLocale } from "./clientshared/locales.js"; import type { Locale } from "./shared.js";
+import { registerSectionRoutes } from "./sectionroutes.js"; import { registerChatComfortRoutes } from "./chatcomfortroutes.js"; import { putInTrash } from "./bottrash.js"; import { registerStopCauseRoutes } from "./stopcauseroutes.js"; import { registerPersonalCommandRoutes } from "./personalcommandroutes.js"; import { registerDoctorRoutes } from "./doctorroutes.js"; import { registerComputerHoursRoutes } from "./computerhoursroutes.js"; import { registerMailSignatureRoutes } from "./native/mailsignatureroutes.js"; import { registerCodeBoxRoutes } from "./codeboxroutes.js"; import { registerLiveActivityRoutes } from "./liveactivity.js";
 import { createHash } from "node:crypto";
 import { closeSync, createReadStream } from "node:fs";
 import path from "node:path";
@@ -8,14 +8,14 @@ import { Hono, type Context } from "hono";
 import { deleteCookie, getCookie } from "hono/cookie";
 import { streamSSE } from "hono/streaming";
 import { registerNoticeRoutes } from "./agent/noticeroutes.js"; import { registerRoomRoutingRoutes, roomReaction } from "./agent/roomroutes.js";
-import { registerFailureRoutes } from "./agent/failureroutes.js";
-import { registerRecruitRoutes } from "./agent/recruit.js";
-import { registerCommandRoutes } from "./command.js";
-import { continueAfterStepLimit, decideApproval, enqueue, inQueue, interrupt, noteHandBack, submitUserMessage, type ForcedSkill } from "./agent/loop.js";
+import { registerFailureRoutes } from "./agent/failureroutes.js"; import { decideForConversation, registerConversationGrantRoutes } from "./agent/conversationgrantroutes.js"; import { decideForAllBots, registerComputerShareRoutes } from "./computershareroutes.js"; import { registerAndroidUsbRoutes } from "./androidusbroutes.js"; import { phoneUserSpoke } from "./androidusb.js";
+import { registerRecruitRoutes } from "./agent/recruit.js"; import { routeAnswer } from "./agent/lateanswer.js"; import { registerTeamMdRoutes } from "./teammdroutes.js";
+import { registerCommandRoutes } from "./command.js"; import { registerRelayGuardRoutes } from "./relayguardroutes.js"; import { registerComfortRoutes } from "./comfortroutes.js"; import { registerBotCareRoutes } from "./botcareroutes.js"; import { registerChantierRoutes } from "./chantierroutes.js"; import { registerTeamGuestPublic, registerWorkRoutes } from "./workroutes.js";
+import { continueAfterStepLimit, decideApproval, enqueue, inQueue, interrupt, isPaused, noteHandBack, runningThreads, submitUserMessage, type ForcedSkill } from "./agent/loop.js"; import { sendOnce } from "./sendkeys.js"; import { relayToHelpers } from "./agent/helperrelay.js"; import { registerTurnPlus } from "./turnplusroutes.js";
 import { cleanProfile, fetchSkillMarkdown, saveImportedSkill, undoRevision } from "./agent/tools-team.js";
 import { xSearchProvider } from "./xsearch.js";
 import { registerResearch } from "./researchroutes.js";
-import { cleanModelList, TeamFullError } from "./store.js";
+import { cleanModelList, laneKey, TeamFullError } from "./store.js"; import { newBotAutonomy } from "./botdefaults.js";
 import { localTools } from "./localtools.js";
 import { RELIABILITY_LIMITS, SKILL_EXTRA_KEYS, type RowBody, type SkillExtras } from "./shared.js";
 import { ask, compactIfNeeded, consolidate, memoryStatus } from "./agent/memory.js";
@@ -29,7 +29,7 @@ import { retireBot } from "./agent/tools.js";
 import { dropSession, hashPassword, originAllowed, seal, SESSION_COOKIE, setupCodeMatches, setupCodeRequired, signupOpen, userForToken, verifyPassword } from "./auth.js";
 import { emit, getLive, subscribe } from "./bus.js";
 import { workspaceOf } from "./computer.js";
-import { attachmentAt, computerKind, computerState, isInlineImage, isInlineVideo, listFiles, listTeamFiles, mimeOf, openLibraryFile, openTeamFile, readLibraryFile, removeTeamFolder, removeWorkspace, resolveInTeam, resolveInWorkspace, screen, storeBytes, teamFolderState } from "./computer.js";
+import { attachmentAt, computerKind, computerState, isInlineAudio, isInlineImage, isInlineVideo, listFiles, listTeamFiles, mimeOf, openLibraryFile, openTeamFile, readLibraryFile, removeTeamFolder, removeWorkspace, resolveInTeam, resolveInWorkspace, screen, storeBytes, teamFolderState } from "./computer.js";
 import { checkDisk, deleteListed } from "./disk.js";
 import { registerConnectorCatalog } from "./connectorcatalogroutes.js";
 import { imageService } from "./images.js";
@@ -38,20 +38,21 @@ import { connectors, NeedsClientIdError, oauthRedirectUri } from "./connectors.j
 import { isValidTimezone } from "./cron.js";
 import { pickLocale, tr } from "./i18n.js";
 import { defaultModelRef, listProviders, modelAvailable } from "./llm/index.js";
-import { publicRoutine, routines, runs } from "./routines.js";
+import { publicRoutine, routines, runs } from "./routines.js"; import { registerRoutinePlusRoutes, runNowGuard } from "./routineplusroutes.js"; import { privateOption, registerConnectorPlusRoutes } from "./connectorplusroutes.js";
 import { fireCheckin, fireRoutine, schedule, unschedule } from "./scheduler.js";
 import { REACTIONS, type CheckinSettings, type ReactionEmoji, type ServerEvent, type VideoStatus } from "./shared.js";
 import { videoService } from "./video.js";
-import { higgsfieldFor } from "./agent/tools.js";
+import { higgsfieldFor } from "./agent/tools.js"; import { registerMediaRoutes } from "./mediaroutes.js"; import { imageServiceFor } from "./mediakeys.js"; // audit OGAI: own media keys, Wan2GP
 import { dropRecording, noteInput, recording, retryRecording, saveRecording, startRecording, stopRecording } from "./teach.js";
-import { approvals } from "./store.js";
-import { account, audit, auditList, bots, clip, feedback, history, memories, pages, policies, publicBot, publicVault, rows, searchMessages, sections, settings, sha256, skills, skillText, tasks, users, vault, type BotRecord, type UserRecord, type VaultFields } from "./store.js";
-import { finishTakeover, holdControl, releaseControl } from "./takeover.js";
+import { dayBound, searchMessages } from "./convsearch.js";
+import { registerMemoryNoteRoutes } from "./memoryroutes.js";
+import { approvals, account, audit, auditList, bots, clip, feedback, history, memories, pages, policies, publicBot, publicVault, rows, sections, settings, sha256, skills, skillText, tasks, users, vault, type BotRecord, type UserRecord, type VaultFields } from "./store.js";
+import { controlRequest, finishTakeover, holdControl, releaseControl } from "./takeover.js";
 import { deskRun, deskShot, startDeskTest } from "./desktest.js";
 import { notePresence, push, pushSettings, savePushSettings, sendPush } from "./push.js";
 import { parseTotp } from "./totp.js";
-import { registerEmailLinkPublic } from "./emaillink.js";
-import { registerTwoFactorPrivate, registerTwoFactorPublic, startSessionOrChallenge } from "./twofactor.js";
+import { registerEmailLinkPublic } from "./emaillink.js"; import { registerRoutineIcalPublic } from "./routineical.js";
+import { registerTwoFactorPrivate, registerTwoFactorPublic, startSessionOrChallenge } from "./twofactor.js"; import { registerPasskeyPrivate, registerPasskeyPublic } from "./passkeys.js"; import { registerNewDevicePrivate, registerNewDevicePublic } from "./newdevice.js"; // L44
 import { registerDataKeyRoutes } from "./datakeyrotate.js";
 import { detectMapping, loginsFrom, parseCsv, type Mapping } from "./vault-import.js";
 import { PUSH_KINDS, VAULT_KINDS, type VaultKind } from "./shared.js";
@@ -96,12 +97,11 @@ import { adminView, approversOf, botAccess, exportWorkspace, invites, resources,
 import { invalidateAudience } from "./bus.js";
 import { registerGithubIssueRoutes } from "./githubissues.js";
 import { registerGithubActivity } from "./githubactivity.js";
-import { registerWorkContext } from "./workcontext.js";
+import { registerWorkContext } from "./workcontext.js"; import { registerFinishRoutes } from "./finishroutes.js";
 import { registerPeerReview } from "./peerreviewroutes.js";
 import { listedPathOk, undoFiles } from "./snapshots.js";
 import { forgetHeld, holdAndOffer, screen as screenSecrets, takeHeld } from "./pastedsecrets.js";
 import { assertPublicUrl, BlockedAddressError, clientAddress } from "./net.js";
-import { hookLimits } from "./hardening.js";
 import { apiProviders, cleanBaseUrl, cleanModels, fetchModels, PRESETS, testProvider } from "./apimodels.js";
 import { botEmail, mailFor, MailError, receiving as mailReceiving, relays, releaseMail } from "./botmail.js";
 import { onTurnEvent, submitMemberMessage } from "./agent/loop.js";
@@ -120,11 +120,11 @@ import { healthReport } from "./monitor.js";
 import { accountCreated, HostedError, hostedMode, hostedSettings, isOperator, isPlanLimit, lentProviderIds, planInviteOpens, signupChoice, subscriptionEnginesFor, suspended, type SignupChoice } from "./hosted.js";
 import { registerHostedPages, registerHostedPrivate, registerHostedPublic, suspendedText } from "./hostedroutes.js";
 import { TodayError, todayReport, todaySettings } from "./today.js";
-import { registerBotClients, registerBotClientSettings } from "./botaccessroutes.js";
-import { registerSentinelRoutes } from "./sentinel/routes.js";
-import { registerAnnouncementRoutes } from "./announceroutes.js";
+import { registerBotClients, registerBotClientSettings } from "./botaccessroutes.js"; import { registerChannelRoutes } from "./channelroutes.js"; import { registerViewRoutes } from "./viewroutes.js"; import { registerChatPlusRoutes, registerMetricsRoute } from "./chatplusroutes.js"; import { registerCreationRoutes } from "./creationroutes.js";
+import { registerSentinelRoutes } from "./sentinel/routes.js"; import { registerHookRoutes, registerHookSettingsRoutes } from "./hookroutes.js"; import { registerReportRoutes } from "./reports.js";
+import { registerAnnouncementRoutes } from "./announceroutes.js"; import { registerModelHealthRoutes } from "./modelhealth.js"; import { registerEngineWarmupRoutes } from "./enginewarmup.js";
 import { registerSkillsLibraryRoutes } from "./skillsroutes.js";
-import { registerOpenRouterRoutes } from "./openrouterroutes.js";
+import { registerOpenRouterRoutes } from "./openrouterroutes.js"; import { refuseCreditless } from "./modelplusroutes.js"; import { registerExtensionRoutes, registerPhonePublic } from "./extroutes.js"; import { registerMeetingBotRoutes } from "./meetingbot/routes.js"; // wave 7: L172 L174 L177 L178 L179
 import { registerSubscriptionConnectRoutes } from "./subscriptionconnect.js";
 import { registerStudioMp4 } from "./studiomp4.js";
 import { registerPageApi, registerPageSite, revisionTarget } from "./pageroutes.js";
@@ -134,8 +134,8 @@ import { accountFlags, accountOpened, assertEmailSignupPossible, PublicSignupErr
 import { answerCapCard, amountText, CapError, capName, caps as usageCaps, capsView, cleanCapInput, cm } from "./usagecaps.js";
 
 import { MAX_ATTACHMENTS } from "./uploadlimits.js";
-import { registerUploadRoutes } from "./uploads.js";
-import { personalResponses } from "./personalresponses.js";
+import { registerUploadRoutes } from "./uploads.js"; import { noteBrowserTimezone } from "./agent/turnstamp.js"; import { registerTurnControl, typedControl } from "./turncontrolroutes.js"; import { registerMessageActions } from "./messageactionroutes.js"; import { registerInbox } from "./inboxroutes.js"; import { grantAuto } from "./agent/autocontinue.js"; import { applyDraftEdit } from "./agent/draftedit.js";
+import { personalResponses } from "./personalresponses.js"; import { checkFloorApproval } from "./floorapproval.js"; import { registerSecurityRoutes } from "./securityroutes.js"; // Lot 1 security
 type Env = { Variables: { user: UserRecord } };
 export const api = new Hono<Env>();
 
@@ -257,7 +257,7 @@ api.get("/health", async (c) => {
   return c.json({ ok: r.status !== "down", status: r.status, code: r.code }, r.status === "down" ? 503 : 200, { "cache-control": "no-store" });
 });
 // The download page (/telecharger) is public: it is linked from the sign-in page.
-api.get("/downloads", (c) => c.json(appDownloads(undefined, releasedDesktopFiles())));
+api.get("/downloads", (c) => c.json(appDownloads(undefined, releasedDesktopFiles()))); registerMetricsRoute(api); // L184 Prometheus, METRICS_TOKEN (chatplusroutes.ts)
 
 api.get("/me", (c) => {
   const user = userForToken(getCookie(c, SESSION_COOKIE));
@@ -267,7 +267,7 @@ api.get("/me", (c) => {
   const hosted = hostedMode() ? { operator: !!user && isOperator(user.id), creditsForSale: hostedSettings.get().creditsForSale, links: locale === "fr" ? { pricing: "/tarifs", terms: "/cgu", legal: "/mentions-legales", privacy: "/confidentialite" } : { pricing: "/pricing", terms: "/terms", legal: "/legal-notice", privacy: "/privacy" } } : undefined;
   // `sentinel`: the signed-in person watches this server (the owner, or a hosted operator): the Surveillance page is theirs.
   const sentinel = !!user && sentinelWatcher(user.id);
-  return c.json({ user: user ? publicUser(user) : null, signupOpen: signupOpen(), setupCodeRequired: setupCodeRequired(), imageGeneration: !!imageService(), video, firstBot: firstBotIdentity(locale), ...(hosted ? { hosted } : {}), ...(sentinel ? { sentinel } : {}), ...publicSignupInfo() });
+  return c.json({ user: user ? publicUser(user) : null, signupOpen: signupOpen(), setupCodeRequired: setupCodeRequired(), imageGeneration: !!imageServiceFor(user?.id), video, firstBot: firstBotIdentity(locale), ...(hosted ? { hosted } : {}), ...(sentinel ? { sentinel } : {}), ...publicSignupInfo() });
 });
 
 // Slows down password guessing: a handful of attempts per account, and a few dozen per client address,
@@ -301,7 +301,7 @@ let dummyHash: string | null = null;
 const dummyCheck = (password: string) => { dummyHash ??= hashPassword("not-a-real-password"); verifyPassword(password, dummyHash); };
 
 /** The first bot's name and role: chosen at sign-up, else the server's settings, else "Juno" / "Chief of staff". */
-export function firstBotIdentity(locale: "fr" | "en", name?: unknown, label?: unknown): { name: string; label: string } {
+export function firstBotIdentity(locale: Locale, name?: unknown, label?: unknown): { name: string; label: string } {
   const pick = (v: unknown) => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, 60) : "");
   return {
     name: pick(name) || config.firstBotName || "Juno",
@@ -396,26 +396,7 @@ api.post("/auth/logout", (c) => {
   return c.json({ ok: true });
 });
 
-/** Outside systems call this address to set a webhook routine in motion. The token is the credential. */
-api.post("/hooks/:token", async (c) => {
-  // L7: a client trying addresses, or a sender flooding one hook (each call starts a turn of the bot), is slowed down.
-  if (hookLimits.perAddress.over(clientIp(c))) fail(429, "Too many requests. Wait a minute and try again.");
-  const r = routines.byHook(c.req.param("token"));
-  if (!r || !r.enabled) fail(404, "Unknown or paused hook.");
-  if (hookLimits.perHook.over(r!.id)) fail(429, "Too many requests. Wait a minute and try again.");
-  const raw = await c.req.text();
-  if (raw.length > 200_000) fail(413, "Payload too large.");
-  let payload: unknown = raw || undefined;
-  try { payload = raw ? JSON.parse(raw) : undefined; } catch { /* keep the raw text */ }
-  // Whoever holds the hook's address can send anything: the payload is outside content for the turn it starts.
-  // "Pause": a paused bot's webhook is recorded as skipped (like any routine run), and the sender is told so — with a
-  // 2xx, so senders that retry on errors do not pile calls up while it is paused.
-  const fired = fireRoutine(r!, payload, { outside: true });
-  if (fired === "paused") return c.json({ ok: true, skipped: "paused" });
-  // A usage cap stops the bot's unattended work: recorded as skipped (usagecaps.ts), told with a 2xx for the same reason.
-  if (fired === "capped") return c.json({ ok: true, skipped: "usage_cap" });
-  return c.json({ ok: true });
-});
+registerHookRoutes(api, clientIp); registerRoutineIcalPublic(api); /* L143 routines calendar feed */ registerTeamGuestPublic(api, clientIp); registerPhonePublic(api); /* L177 « Partager ma position » page (extroutes.ts) */ // L171 team memory guest links (workroutes.ts) ; Webhooks: POST /hooks/:token — signature, repeats, bursts, refusals (hookroutes.ts, L20)
 
 /**
  * "Accès API" (botapi.ts, docs/API-BOT.md): the Bot API and its MCP control server, under /api/v1, authenticated by a
@@ -450,7 +431,7 @@ api.get("/connectors/oauth/callback", async (c) => {
 });
 
 /** The page the browser lands on after an app's sign-in: says how it went, tells the app's other tabs, then closes. */
-function signInPage(c: Context, locale: "fr" | "en", ok: boolean, message: string) {
+function signInPage(c: Context, locale: Locale, ok: boolean, message: string) {
   const back = tr(locale, "Back to Sklubot");
   // Tell the app (any open tab, via BroadcastChannel; the opener when it still exists), then close or go back to the app.
   const script = `try{new BroadcastChannel("sklubot-oauth").postMessage({ok:${ok}})}catch(e){}try{window.opener&&window.opener.postMessage({type:"sklubot-oauth",ok:${ok}},${JSON.stringify(config.publicUrl)})}catch(e){}${ok ? 'setTimeout(function(){window.close();setTimeout(function(){location.replace("/")},400)},1200)' : ""}`;
@@ -496,7 +477,7 @@ registerPublicSignupPublic(api, googleDeps);
 // "Recevoir un lien de connexion par e-mail" (emaillink.ts): passwordless sign-in and sign-up, through the same 2FA gate.
 registerEmailLinkPublic(api, googleDeps);
 // The second step of a sign-in with two-factor on (twofactor.ts).
-registerTwoFactorPublic(api, googleDeps);
+registerTwoFactorPublic(api, googleDeps); registerPasskeyPublic(api, googleDeps); registerNewDevicePublic(api, site, googleDeps); // L44 passkeys, « Ce n'est pas moi »
 
 // ── Everything below needs a session ─────────────────────────────────────────
 api.use("*", async (c, next) => {
@@ -519,9 +500,9 @@ registerHostedPrivate(api);
 registerConnectorCatalog(api);
 registerGithubActivity(api,throttle);
 registerGithubIssueRoutes(api,throttle);
-registerWorkContext(api);
+registerWorkContext(api); registerFinishRoutes(api); // L161 bot themes, global recap, notes archive (finishroutes.ts)
 registerPublicSignupPrivate(api);
-registerTwoFactorPrivate(api, googleDeps);
+registerTwoFactorPrivate(api, googleDeps); registerPasskeyPrivate(api, googleDeps); registerNewDevicePrivate(api); // L44
 registerDataKeyRoutes(api);
 
 api.get("/events", (c) =>
@@ -546,7 +527,7 @@ api.get("/events", (c) =>
 
 api.put("/prefs", async (c) => {
   const b = await body(c);
-  users.setPrefs(c.get("user").id, { locale: b.locale === "fr" || b.locale === "en" ? b.locale : undefined, name: typeof b.name === "string" ? b.name : undefined });
+  users.setPrefs(c.get("user").id, { locale: isLocale(b.locale) ? b.locale : undefined, name: typeof b.name === "string" ? b.name : undefined });
   return c.json({ user: publicUser(users.byId(c.get("user").id)!) });
 });
 
@@ -591,7 +572,7 @@ api.post("/api-providers", async (c) => {
   const b = await body(c);
   const preset = typeof b.preset === "string" && b.preset in PRESETS ? b.preset : "";
   const f = providerFields(b, false);
-  await publicProviderUrl(f.baseUrl);
+  await publicProviderUrl(f.baseUrl); await refuseCreditless(c, f.baseUrl, providerKey(b.key), preset); // L150 a key with no credit is refused (modelplusroutes.ts)
   try {
     const p = apiProviders.create(user.id, { name: f.name!, baseUrl: f.baseUrl!, key: providerKey(b.key) ?? null, models: f.models!, preset, images: f.images ?? (preset ? PRESETS[preset as keyof typeof PRESETS].images : true) });
     audit(user.id, "apps", `Model provider added: ${p.name} (${p.baseUrl})`);
@@ -602,7 +583,7 @@ api.patch("/api-providers/:id", async (c) => {
   const user = c.get("user");
   const b = await body(c);
   const f = providerFields(b, true);
-  await publicProviderUrl(f.baseUrl);
+  await publicProviderUrl(f.baseUrl); if (providerKey(b.key)) { const cur = apiProviders.get(user.id, c.req.param("id")); if (cur) await refuseCreditless(c, f.baseUrl ?? cur.baseUrl, providerKey(b.key), cur.preset ?? undefined); } // L150
   const p = apiProviders.update(user.id, c.req.param("id"), { ...f, key: providerKey(b.key) }) ?? fail(404, "That provider does not exist.");
   audit(user.id, "apps", `Model provider changed: ${p.name}`);
   return c.json({ provider: p });
@@ -649,7 +630,7 @@ api.post("/bots", async (c) => {
   if (!String(b.name ?? "").trim()) fail(400, "Give the bot a name.");
   const userId = c.get("user").id;
   if (b.model !== undefined && (typeof b.model !== "string" || (b.model && !(await availableModels(userId)).some((m) => m.ref === b.model)))) fail(400, tr(c.get("user").locale, "Choose an available model."));
-  const bot = bots.create(userId, { model: b.model, name: b.name, label: b.label, description: b.description, instructions: b.instructions, shape: b.shape, color: b.color, mode: b.mode, primary: !!b.primary, character: b.character });
+  const bot = bots.create(userId, { model: b.model, name: b.name, label: b.label, description: b.description, instructions: b.instructions, shape: b.shape, color: b.color, mode: b.mode, primary: !!b.primary, character: b.character, autonomy: newBotAutonomy(b.autonomy) });
   emit(bot.userId, { type: "roster" });
   return c.json({ bot: publicBot(bot) });
 });
@@ -686,10 +667,10 @@ api.delete("/bots/:id", async (c) => {
   const bot = ownBot(c);
   if (bot.primary) fail(409, "Make another bot your main contact before deleting this one.");
   // Interrupt, routines and triggers, engine, screen, files, then the record: each failure logged, none blocking (U-003).
-  await retireBot(bot);
+  const trashId = putInTrash(bot); await retireBot(bot); // L144: a copy goes to the trash first (bottrash.ts)
   usageCaps.forgetBot(bot.id);
   emit(bot.userId, { type: "roster" });
-  return c.json({ ok: true });
+  return c.json({ ok: true, trashId });
 });
 
 api.post("/bots/:id/primary", (c) => {
@@ -727,14 +708,14 @@ api.post("/bots/:id/duplicate", async (c) => {
 });
 
 // ── Sidebar sections ─────────────────────────────────────────────────────────
-registerSectionRoutes(api);
+registerSectionRoutes(api); registerChatComfortRoutes(api, ownBot, ownAgent); registerStopCauseRoutes(api); registerPersonalCommandRoutes(api); registerDoctorRoutes(api); registerComputerHoursRoutes(api); registerMailSignatureRoutes(api); registerCodeBoxRoutes(api, ownAgent); registerLiveActivityRoutes(api, ownBot); // L177 iPhone Live Activity push (liveactivity.ts) ; L91 hidden code box (codeboxroutes.ts) ; L95 computer hours (computerhoursroutes.ts) ; L83 mail signature (native/mailsignatureroutes.ts) ; L142 stop-cause chips (stopcauseroutes.ts) ; L152 personal / commands ; L153 « Docteur » (doctorroutes.ts)
 
 // ── Pause (agent/pause.ts) ───────────────────────────────────────────────────
 // Owner only: pausing decides about the owner's bots, spend and subscriptions. Someone of a workspace a bot is shared
 // with — viewer, member or admin — cannot pause or resume it (ownAgent / sections.owned answer 404, as for any other
 // account's thing); a stranger's call to "everything" pauses only their own bots. Each change is an audit line.
 // "Accès API" (botapi.ts): the owner's API keys of one bot — owner only (a workspace member never manages them).
-registerBotClientSettings(api, (c) => ownAgent(c as Context<Env>));
+registerBotClientSettings(api, (c) => ownAgent(c as Context<Env>)); registerChannelRoutes(api, (c) => ownAgent(c as Context<Env>)); registerViewRoutes(api, (c) => ownBot(c as Context<Env>)); registerChatPlusRoutes(api, (c) => ownBot(c as Context<Env>)); /* L184 */ registerCreationRoutes(api, (c) => ownBot(c as Context<Env>)); // DS-Bot item 8 view forms; L162: Slack, Discord, IMAP, access requests
 
 api.get("/pauses", (c) => c.json(pauses.state(c.get("user").id)));
 api.post("/bots/:id/pause", (c) => { const bot = ownAgent(c); return c.json(setPause(c.get("user"), "bot", bot.id, true, bot.name)); });
@@ -818,9 +799,9 @@ api.post("/bots/:id/rows/:seq/reactions", async (c) => {
   return c.json({ reactions: list });
 });
 
-api.post("/bots/:id/messages", async (c) => {
+api.post("/bots/:id/messages", (c) => sendOnce(c, accessBot(c, "talk").bot.id, async () => { // one message per send key (sendkeys.ts)
   const access = accessBot(c, "talk");
-  const b = await body(c);
+  const b = await body(c); noteBrowserTimezone(c.get("user").id, c.req.header("x-time-zone")); // L92 (agent/turnstamp.ts)
   if (!access.owner) return memberMessage(c, access, b);
   const bot = access.bot;
   // A pasted secret (a key, a token, a password) is masked before anything is stored or sent to a model; the owner
@@ -830,8 +811,8 @@ api.post("/bots/:id/messages", async (c) => {
   let agentText = text;
   if (b.artifact !== undefined) {
     const target = typeof b.artifact === "string" && revisionTarget(c.get("user").id, bot.id, b.artifact);
-    if (!target) return c.json({ error: c.get("user").locale === "fr" ? "Outil introuvable." : "Tool not found." }, 404);
-    if (b.artifactVersion !== target.version) return c.json({ error: c.get("user").locale === "fr" ? "Cet outil vient de changer. Rouvre sa dernière version." : "This tool has changed. Reopen its latest version." }, 409);
+    if (!target) return c.json({ error: tr(c.get("user").locale, "Tool not found.") }, 404);
+    if (b.artifactVersion !== target.version) return c.json({ error: tr(c.get("user").locale, "This tool has changed. Reopen its latest version.") }, 409);
     agentText = `${target.instruction}\n\n${text}`;
   }
   // Only files this bot already holds under uploads/ can be attached; anything else is ignored.
@@ -854,10 +835,11 @@ api.post("/bots/:id/messages", async (c) => {
   if (objective !== null && bot.kind === "agent") {
     goalId = createGoal(bot, { objective, thread, origin: "user", maxRounds: Number(b.goalMaxRounds) || undefined }).id;
   }
+  if (bot.kind === "agent" && !attachments.length && objective === null && await typedControl(bot, c.get("user"), text, thread)) return c.json({ row }); // L63 typed stop, L78 /btw and /apres
   if (bot.kind === "room") dispatchToRoom(bot, c.get("user"), text, null, 0, false, thread);
-  else { relayUserSpoke(bot.id); submitUserMessage(bot, agentText, voice, attachments, undefined, thread, skillCommand(bot, text), goalId); }
+  else { relayUserSpoke(bot.id); phoneUserSpoke(bot.id); relayToHelpers(bot, agentText, runningThreads, isPaused); submitUserMessage(bot, agentText, voice, attachments, undefined, thread, skillCommand(bot, text), goalId); } // L25: also to a helper at work (helperrelay.ts)
   return c.json({ row });
-});
+}));
 
 /**
  * "/skill <name> …" at the start of a message: the bot is told to follow that skill (its own, or one a teammate shared).
@@ -896,8 +878,9 @@ api.post("/bots/:id/jobs/:jobId/stop", async (c) => {
 });
 
 /** "Continue" under a notice that says the bot stopped at its step limit. */
-api.post("/bots/:id/rows/:seq/continue", (c) => {
-  const bot = ownAgent(c);
+api.post("/bots/:id/rows/:seq/continue", async (c) => {
+  const bot = ownAgent(c); const row = rows.get(bot.id, bot.generation, Number(c.req.param("seq")));
+  if ((await body(c)).auto === true && row?.body.kind === "notice" && row.body.action?.kind === "continue" && row.body.action.status === "pending") grantAuto(bot.id, row.thread ?? 0); // L72 « Continuer seul jusqu'au bout »
   if (!continueAfterStepLimit(bot, Number(c.req.param("seq")))) fail(409, "There is nothing to continue here.");
   return c.json({ ok: true });
 });
@@ -944,7 +927,8 @@ registerResearch(api);
 
 registerUploadRoutes(api, ownAgent);
 
-api.post("/bots/:id/stop", (c) => { interrupt(ownBot(c).id); return c.json({ ok: true }); });
+registerTurnControl(api, ownBot); registerTurnPlus(api, ownBot); // L58 send now, L79 plan mode and review, L96 inheritance (turnplusroutes.ts); L63 "Stop" (cascade) and "Tout arrêter", L94 « Reprendre ma note » (turncontrolroutes.ts)
+registerMessageActions(api, ownAgent); registerInbox(api); // L136 edit / write again / branch, L98 « Annuler », L139 « À toi »
 
 api.post("/bots/:id/reset", (c) => {
   const bot = ownBot(c);
@@ -956,19 +940,20 @@ api.post("/bots/:id/reset", (c) => {
 });
 
 api.post("/approvals/:approvalId", async (c) => {
-  const decision = (await body(c)).decision;
-  if (!["allow", "always", "deny"].includes(decision)) fail(400, "Unknown decision.");
+  const b = await body(c); const decision = b.decision;
+  if (!["allow", "always", "conversation", "allbots", "deny"].includes(decision)) fail(400, "Unknown decision."); // "conversation": agent/conversationgrants.ts ; "allbots": computershareroutes.ts
   const user = c.get("user");
-  const approval = approvals.byId(c.req.param("approvalId"));
+  const approval = approvals.byId(c.req.param("approvalId")); if (approval && (approval.userId === user.id || botAccess(user.id, approval.botId)?.canApprove)) checkFloorApproval(approval.userId, user.id, approval, decision, b.code); // L44 (option)
   // Wave 6: an admin of the workspace answers for the owner of a shared bot, when the bot's rule allows it.
   if (approval && approval.userId !== user.id) {
     const a = botAccess(user.id, approval.botId);
     if (!a || !a.canApprove) fail(404, "That request no longer exists.");
-    if (!decideApproval(approval.userId, approval.id, decision, { id: user.id, name: user.name })) fail(404, "That request no longer exists.");
+    if (!decideApproval(approval.userId, approval.id, decision === "conversation" || decision === "allbots" ? "allow" : decision, { id: user.id, name: user.name })) fail(404, "That request no longer exists.");
     wsAudit(a!.share!.workspaceId, user.id, "approval", `${a!.bot.name}: ${approval.tool} — ${decision === "deny" ? "refused" : "allowed once"}`);
     return c.json({ ok: true });
   }
-  if (!decideApproval(user.id, c.req.param("approvalId"), decision)) fail(404, "That request no longer exists.");
+  if (b.draft !== undefined && decision !== "deny") { const why = applyDraftEdit(user.id, c.req.param("approvalId"), b.draft); if (why) fail(409, why); } // L83: the words corrected on the card (agent/draftedit.ts)
+  if (!(decision === "conversation" ? decideForConversation(user.id, c.req.param("approvalId")) : decision === "allbots" ? decideForAllBots(user, c.req.param("approvalId")) : decideApproval(user.id, c.req.param("approvalId"), decision))) fail(404, "That request no longer exists.");
   return c.json({ ok: true });
 });
 
@@ -983,10 +968,10 @@ api.post("/bots/:id/cards/:seq/answer", async (c) => {
   rows.updateCard(bot, row!.generation, row!.seq, (k) => (k.type === "question" ? { ...k, status: "answered", answer } : k));
   // A question asked in a thread is answered in that thread.
   const thread = row!.thread ?? 0;
-  rows.append(bot, { kind: "message", role: "user", text: answer }, thread);
+  const shown = rows.append(bot, { kind: "message", role: "user", text: answer }, thread);
   if (screened.secrets.length) holdAndOffer(bot, c.get("user").id, screened.secrets, thread);
-  submitUserMessage(bot, `(Answering your question "${card?.type === "question" ? card.question : ""}")\n${answer}`, false, [], undefined, thread);
-  return c.json({ ok: true });
+  const fate = routeAnswer(bot, row!, shown.seq, card?.type === "question" ? card.question : "", answer, () => submitUserMessage(bot, `(Answering your question "${card?.type === "question" ? card.question : ""}")\n${answer}`, false, [], undefined, thread)); // L161 late answer (agent/lateanswer.ts)
+  return c.json({ ok: true, fate });
 });
 
 api.post("/bots/:id/cards/:seq/dismiss", (c) => {
@@ -1157,7 +1142,7 @@ api.post("/bots/:id/memories", async (c) => {
   emit(bot.userId, { type: "memories", botId: bot.id });
   return c.json({ memory });
 });
-api.delete("/memories/:id", (c) => { memories.removeOwned(c.get("user").id, c.req.param("id")); return c.json({ ok: true }); });
+registerMemoryNoteRoutes(api); // edit (with history), « Oublier » into the bin, « Annuler », history: memoryroutes.ts
 
 api.post("/bots/:id/consolidate", async (c) => {
   const bot = ownAgent(c);
@@ -1208,9 +1193,9 @@ api.patch("/routines/:id", async (c) => {
 });
 api.get("/routines/:id/runs", (c) => c.json({ runs: runs.list(ownRoutine(c).id) }));
 // "Run now" does not move the next due time and does not turn a paused routine back on; a run under way is not doubled.
-api.post("/routines/:id/run", (c) => {
-  // "Run now" is the user's own: only a usage cap set to stop everything refuses it.
-  const r = fireRoutine(ownRoutine(c), undefined, { byHand: true });
+api.post("/routines/:id/run", async (c) => {
+  // "Run now" is the user's own: only a usage cap set to stop everything refuses it. nod item 8: not on an unreviewed change after a failure.
+  const routine = ownRoutine(c); const params = await runNowGuard(c, routine); const r = fireRoutine(routine, undefined, { byHand: true, params });
   if (r === "paused") fail(409, tr(c.get("user").locale, "This routine's bot is paused. Resume it to run the routine."));
   if (r === "capped") fail(409, cm(c.get("user").locale, "This usage cap still stops this work. Raise it (Settings → Usage) or wait until it resets."));
   return r === "busy" ? fail(409, "This routine is already running.") : c.json({ ok: true });
@@ -1253,7 +1238,7 @@ api.post("/bots/:id/calls/:callId/end", async (c) => {
 
 api.get("/search", (c) => {
   const query = (c.req.query("q") ?? "").trim();
-  return c.json({ hits: query.length >= 2 ? searchMessages(c.get("user").id, query) : [] });
+  return c.json({ hits: query.length >= 2 ? searchMessages(c.get("user").id, query, { since: dayBound(c.req.query("since")), until: dayBound(c.req.query("until"), true) }) : [] }); // L73: date filter
 });
 api.get("/bots/:id/history/:generation", (c) => {
   const bot = ownBot(c);
@@ -1304,13 +1289,14 @@ registerAutoBackupRoutes(api, googleDeps);
 // "Surveillance" (sentinel/): the Sentinelle's incidents and alert settings, for the owner and hosted operators only.
 registerSentinelRoutes(api);
 // « Annonces » (announcements.ts): readers' feed, and the owner/operators' page to write them.
-registerAnnouncementRoutes(api);
+registerAnnouncementRoutes(api); registerModelHealthRoutes(api); registerEngineWarmupRoutes(api); // model health: nod 3/4, L59, L60 (modelhealth.ts); L145 engine warm-up (enginewarmup.ts)
 registerNoticeRoutes(api); registerRoomRoutingRoutes(api); // « Qui répond » in group chats (agent/roomrouting.ts)
-registerFailureRoutes(api); // « Coordinateur d'échecs » (agent/failures.ts)
-registerRecruitRoutes(api); // « Bot recruteur »: « Créer » / « Non merci » on a proposed teammate
-registerCommandRoutes(api); // « Centre de commandement » (command.ts): GET /command, read-only
-registerSkillsLibraryRoutes(api); // « Bibliothèque de compétences » (skillsroutes.ts)
-registerOpenRouterRoutes(api); registerSubscriptionConnectRoutes(api); // OpenRouter, « Connecter mon compte ChatGPT / Claude »
+registerFailureRoutes(api); registerConversationGrantRoutes(api); registerComputerShareRoutes(api); registerAndroidUsbRoutes(api); // « Coordinateur d'échecs » (agent/failures.ts) ; « Autoriser pour cette conversation »
+registerRecruitRoutes(api); registerHookSettingsRoutes(api); registerReportRoutes(api); // « Bot recruteur » ; webhook settings (L20) ; « Signaler cette réponse » (L31)
+registerTeamMdRoutes(api); registerRoutinePlusRoutes(api); registerConnectorPlusRoutes(api); // « Équipe Sklubot (.md) » (teammdroutes.ts): import with review, share ; routines nod 2/8/13 (routineplusroutes.ts)
+registerCommandRoutes(api); registerRelayGuardRoutes(api); registerComfortRoutes(api); registerBotCareRoutes(api); registerChantierRoutes(api); registerWorkRoutes(api); // « Chantier » (chantierroutes.ts) ; wave 7 board, flows, automations, team memory (workroutes.ts) ; « Centre de commandement » (command.ts); « Règles de sécurité » of a linked computer (relayguardroutes.ts)
+registerSkillsLibraryRoutes(api); registerSecurityRoutes(api); registerMediaRoutes(api); // « Bibliothèque de compétences » (skillsroutes.ts) ; Lot 1 security (securityroutes.ts)
+registerOpenRouterRoutes(api); registerSubscriptionConnectRoutes(api); registerExtensionRoutes(api); registerMeetingBotRoutes(api); /* wave 7 (extroutes.ts); L177 meeting bot (meetingbot/routes.ts) */ // OpenRouter, « Connecter mon compte ChatGPT / Claude »
 api.put("/account/password", async (c) => {
   const user = c.get("user");
   const b = await body(c);
@@ -1566,12 +1552,12 @@ api.post("/bots/:id/teach/save", async (c) => {
   try { return c.json(saveRecording(bot, { name: String(b.name ?? ""), when: String(b.when ?? ""), steps: String(b.steps ?? "") })); } catch (err) { return fail(400, (err as Error).message); }
 });
 api.post("/bots/:id/teach/discard", (c) => { dropRecording(ownAgent(c).id); return c.json({ ok: true }); });
-api.post("/bots/:id/desktop/handback", (c) => { const bot = ownAgent(c); releaseControl(bot.id); noteHandBack(bot.id); return c.json({ ok: true }); });
+api.post("/bots/:id/desktop/handback", async (c) => { const bot = ownAgent(c); releaseControl(bot.id, (await body(c)).epoch); noteHandBack(bot.id); return c.json({ ok: true }); });
 /** The viewer is in control mode ({ on: true }, renewed every 30 s) or left it: the bot's screen actions wait meanwhile. */
 api.post("/bots/:id/desktop/control", async (c) => {
   const bot = ownAgent(c);
-  if ((await body(c)).on === false) releaseControl(bot.id); else holdControl(bot.id);
-  return c.json({ ok: true });
+  // L149: a numbered lease (takeover.ts controlRequest); a renewal with an old number is refused.
+  return c.json(controlRequest(bot.id, await body(c)));
 });
 api.get("/bots/:id/engine", async (c) => {
   const bot = ownAgent(c);
@@ -1785,8 +1771,8 @@ api.get("/bots/:id/files/view", (c) => {
   const bot = ownBot(c);
   const f = libraryFileFor(bot.id, c.req.query("path") ?? "");
   const mime = mimeOf(f.full);
-  // Videos play in the chat's player; nothing else that could run as a page is ever served inline.
-  const inline = isInlineImage(mime) || isInlineVideo(mime);
+  // Videos (and, L154, voice notes) play in the chat's player; nothing else that could run as a page is ever served inline.
+  const inline = isInlineImage(mime) || isInlineVideo(mime) || isInlineAudio(mime);
   // Players ask for byte ranges to seek in a video (RFC 9110 §14): one range is served, anything else gets the whole file.
   const range = isInlineVideo(mime) ? /^bytes=(\d*)-(\d*)$/.exec(c.req.header("range") ?? "") : null;
   if (range && (range[1] || range[2]) && f.size > 0) {
@@ -2097,7 +2083,7 @@ api.post("/push/test", async (c) => {
 /** Open app windows say whether they are visible, so a finished reply is pushed only when nobody is looking. */
 api.post("/presence", async (c) => {
   const b = await body(c);
-  notePresence(c.get("user").id, String(b.clientId ?? "default"), b.visible === true);
+  notePresence(c.get("user").id, String(b.clientId ?? "default"), b.visible === true, typeof b.idleMs === "number" ? b.idleMs : null); // L151 idleMs (notifyrules.ts)
   return c.json({ ok: true });
 });
 
@@ -2145,7 +2131,7 @@ api.post("/connectors", async (c) => {
   const opts = b.auth === "oauth"
     ? { auth: "oauth" as const, clientId: b.clientId ? String(b.clientId) : undefined, clientSecret: b.clientSecret ? String(b.clientSecret) : undefined }
     : { token: b.token ? String(b.token) : undefined };
-  try { connector = await connectors.add(user.id, String(b.name ?? ""), String(b.url ?? ""), { ...opts, catalogId: b.catalogId }); }
+  try { connector = await connectors.add(user.id, String(b.name ?? ""), String(b.url ?? ""), { ...opts, catalogId: b.catalogId, ...privateOption(b) }); } // nod 17: private address typed by the user
   catch (err) { return fail(400, (err as Error).message); }
   emit(user.id, { type: "connectors" });
   audit(user.id, "apps", connector.status === "needs_auth" ? `App added, waiting for sign-in: ${connector.name}` : `App ${connector.status === "ready" ? "connected" : "connection failed"}: ${connector.name}`);
@@ -2185,7 +2171,7 @@ api.post("/connectors/:id/oauth/disconnect", async (c) => c.json({ connector: (a
 
 // ── Built-in apps (Gmail, Google Calendar, Google Drive, Outlook, Slack) ─────
 const vendorParam = (c: Context<Env>): NativeVendor => { const v = c.req.param("vendor") as NativeVendor; return VENDORS.includes(v) ? v : fail(404, "Unknown app vendor."); };
-function vendorSetup(userId: string, locale: "fr" | "en", vendor: NativeVendor): NativeVendorSetup {
+function vendorSetup(userId: string, locale: Locale, vendor: NativeVendor): NativeVendorSetup {
   const client = nativeClients.get(userId, vendor);
   return {
     vendor, name: VENDOR_NAMES[vendor], redirectUri: nativeRedirectUri(vendor), steps: setupSteps(vendor, locale), docs: setupDocs(vendor),
@@ -2520,11 +2506,11 @@ api.post("/bots/:id/cards/:seq/skill", async (c) => {
   const existing = skills.list(bot.id).find((k) => k.name.toLowerCase() === name.toLowerCase());
   if (existing) fail(409, "A skill with this name already exists.");
   // Kept as outside content when the task had read outside content: it then never authorises anything.
-  skills.create(bot.id, name, when, steps, false, { learned: true, outside: card.outside });
+  const saved = skills.create(bot.id, name, when, steps, false, { learned: true, outside: card.outside });
   rows.updateCard(bot, row!.generation, row!.seq, (k) => (k.type === "skill" ? { ...k, name, when, steps, status: "saved" } : k));
   audit(c.get("user").id, "account", `${bot.name}: learned skill saved — ${name}${card.outside ? " (outside content)" : ""}`, bot.id);
   emit(c.get("user").id, { type: "memories", botId: bot.id });
-  return c.json({ ok: true });
+  return c.json({ ok: true, draft: saved.draft }); // draft: the safety check flagged it (skillscan.ts)
 });
 
 // A contradicted note (memory confidence): the user says which is right. "old" keeps the note (confirmed), "new"
@@ -2639,20 +2625,7 @@ api.post("/bots/:id/nudges/:nudgeId", async (c) => {
   return c.json({ nudge: actOnNudge(bot, n, action as "do" | "later" | "never") });
 });
 
-// Memory: statuses, import / export, settings (sensitive topics, writing style).
-api.patch("/memories/:id", async (c) => {
-  const user = c.get("user");
-  const m = memories.owned(user.id, c.req.param("id")) ?? fail(404, "That memory does not exist.");
-  const b = await body(c);
-  // The user confirms a note themselves (or takes the confirmation back).
-  if (b.confidence === "confirmed" || b.confidence === "once") memories.setConfidence(m.id, b.confidence);
-  if (b.status !== undefined) {
-    if (!["active", "archived", "contested"].includes(b.status)) fail(400, "Unknown status.");
-    memories.setStatus(m.id, b.status);
-  } else if (b.confidence === undefined) fail(400, "Unknown status.");
-  emit(user.id, { type: "memories", botId: m.botId });
-  return c.json({ memory: memories.owned(user.id, m.id) });
-});
+// Memory: import / export, settings (sensitive topics, writing style). One note (statuses, text, bin): memoryroutes.ts.
 api.get("/bots/:id/memories/export", (c) => {
   const bot = ownAgent(c);
   const format = c.req.query("format") === "json" ? "json" : "md";
@@ -2677,6 +2650,7 @@ api.put("/memory-settings", async (c) => {
   const b = await body(c);
   const next = settings.saveMemory(user.id, {
     autoCapture: typeof b.autoCapture === "boolean" ? b.autoCapture : undefined,
+    autoRecall: typeof b.autoRecall === "boolean" ? b.autoRecall : undefined,
     allowSensitive: b.allowSensitive && typeof b.allowSensitive === "object" ? b.allowSensitive : undefined,
     style: b.style && typeof b.style === "object" ? { ...(typeof b.style.enabled === "boolean" ? { enabled: b.style.enabled } : {}), ...(b.style.clear === true ? { profile: "", updatedAt: null, source: null, samples: 0 } : {}) } : undefined,
   });

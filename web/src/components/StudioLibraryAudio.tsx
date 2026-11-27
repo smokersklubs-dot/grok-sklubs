@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { t as tr, intlLocale } from "../i18n";
 import { api, errText } from "../api";
 import type { FileEntry } from "../types";
 import { ErrorNote } from "./ui";
@@ -20,13 +21,13 @@ export function StudioLibraryAudio({ bot, value, onPick, fr }: {
     return () => request.abort();
   }, [bot, open]);
   return <details onToggle={e => setOpen(e.currentTarget.open)}>
-    <summary>{fr ? "Audio du bureau du bot" : "Bot workspace audio"}</summary>
-    {open && (error ? <ErrorNote>{error}</ErrorNote> : !files ? <p role="status">{fr ? "Chargement…" : "Loading…"}</p> :
-      files.length === 0 ? <p className="muted">{fr ? "Les enregistrements du dossier audio apparaîtront ici." : "Recordings in the audio folder will appear here."}</p> :
-      <label>{fr ? "Choisir un enregistrement" : "Choose a recording"}
+    <summary>{tr("studio.botWorkspaceAudio")}</summary>
+    {open && (error ? <ErrorNote>{error}</ErrorNote> : !files ? <p role="status">{tr("common.loading")}</p> :
+      files.length === 0 ? <p className="muted">{tr("studio.recordingsAudioFolderWill")}</p> :
+      <label>{tr("studio.chooseRecording")}
         <select className="input" value={value.startsWith("audio/") ? value : ""} onChange={e => onPick(e.target.value)}>
-          <option value="" disabled>{fr ? "Enregistrements" : "Recordings"}</option>
-          {files.map(f => <option key={f.name} value={"audio/" + f.name}>{f.name} · {new Date(f.modifiedAt).toLocaleString(fr ? "fr-FR" : "en")}</option>)}
+          <option value="" disabled>{tr("studio.recordings")}</option>
+          {files.map(f => <option key={f.name} value={"audio/" + f.name}>{f.name} · {new Date(f.modifiedAt).toLocaleString(intlLocale())}</option>)}
         </select>
       </label>)}
   </details>;

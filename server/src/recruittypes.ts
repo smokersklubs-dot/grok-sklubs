@@ -22,4 +22,6 @@ export interface RecruitCard {
   skills: RecruitSkill[]; routines: RecruitRoutine[]; brain: "same" | "default"; brainLabel: string; task: string;
   status: RecruitStatus; limit?: RecruitLimit; /** The limit's number (plan bots, bots a day, team size). */ limitN?: number;
   botId?: string; botName?: string;
+  /** L163 (boardplan.ts): proposed for this role of the work board, which it holds once created (no request handed over). */
+  boardRole?: import("./workboardtypes.js").TaskKind;
 }

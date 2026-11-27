@@ -1,0 +1,8 @@
+fiche-de-charte — adapted from google-labs-code/stitch-skills (© 2026 Google LLC, Apache-2.0)
+Sources (each pinned to one commit):
+- google-labs-code/stitch-skills — © 2026 Google LLC — Apache-2.0 — https://github.com/google-labs-code/stitch-skills/tree/62fdcd679747aca0792e5dd6591b10ddfad56825/plugins/stitch-utilities/skills/design-md
+- google-labs-code/stitch-skills — © 2026 Google LLC — Apache-2.0 — https://github.com/google-labs-code/stitch-skills/tree/62fdcd679747aca0792e5dd6591b10ddfad56825/plugins/stitch-design/skills/extract-design-md
+Licence: Apache-2.0 — the upstream licence texts are in LICENSE.txt, unchanged.
+
+Modified for Sklubot (2026-11-22): the original design tool's server, project lookups and generation notes removed; analysis from a page in the bot's browser, a screenshot or a site's source files read but never run; output written as the 'Look' part of the Sklubot brand sheet; translated into French.
+Only text is included; no script, picture or other file of the original folders is bundled. Names of other products are not used as titles.

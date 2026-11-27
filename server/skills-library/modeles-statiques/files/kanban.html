@@ -1,0 +1,79 @@
+<!doctype html>
+<!-- Sklubot static template "kanban" (skill « Modèles statiques »). Layout adapted from the Astryx page template
+     "kanban-board" (github.com/meta/astryx, commit fa22c93d4370d9081f0ff426f034ceaf1447c8c6, © Meta Platforms, Inc., MIT);
+     rewritten as one HTML file without libraries for Sklubot. Every value marked REPLACE is an example: put the real one. -->
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tableau kanban</title>
+<style>
+:root {
+  color-scheme: light dark;
+  --paper: #f7f7f5; --surface: #ffffff; --surface-2: #f0f0ec; --ink: #1d1d1b; --ink-2: #4a4a46; --muted: #6b6b66;
+  --rule: #deded8; --accent: #2a5bd7; --accent-ink: #ffffff; --good: #1d7a46; --bad: #b3261e; --warn: #8a5a00;
+  --radius: 10px; --gap: 16px; --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --dur: 160ms; --ease: cubic-bezier(.2,.7,.3,1);
+}
+@media (prefers-color-scheme: dark) {
+  :root { --paper: #141413; --surface: #1c1c1a; --surface-2: #262623; --ink: #f1f1ec; --ink-2: #c9c9c2; --muted: #a3a39b;
+    --rule: #34342f; --accent: #8fb0ff; --accent-ink: #10131a; --good: #6fd19a; --bad: #ff8a80; --warn: #f2c66d; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100dvh; background: var(--paper); color: var(--ink); font: 16px/1.5 var(--font); }
+a { color: var(--accent); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button, input, select { font: inherit; color: inherit; }
+.btn { min-height: 44px; padding: 0 16px; border-radius: var(--radius); border: 1px solid var(--rule); background: var(--surface); cursor: pointer; transition: background var(--dur) var(--ease); }
+.btn:hover { background: var(--surface-2); }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+.wrap { max-width: 1200px; margin: 0 auto; padding: 24px 16px 48px; }
+.empty { padding: 32px 16px; text-align: center; color: var(--muted); border: 1px dashed var(--rule); border-radius: var(--radius); }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+h1 { margin: 0 0 16px; font-size: clamp(1.4rem, 1.1rem + 1.2vw, 2rem); }
+.board { display: grid; gap: var(--gap); grid-template-columns: repeat(3, minmax(240px, 1fr)); overflow-x: auto; padding-bottom: 8px; }
+@media (max-width: 760px) { .board { grid-template-columns: repeat(3, 85%); scroll-snap-type: x mandatory; } .lane { scroll-snap-align: start; } }
+.lane { background: var(--surface-2); border-radius: var(--radius); padding: 12px; min-height: 240px; }
+.lane h2 { margin: 0 0 12px; font-size: 1rem; display: flex; justify-content: space-between; }
+.lane h2 span { color: var(--muted); font-weight: 400; }
+.lane ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; min-height: 60px; }
+.lane.over { outline: 2px dashed var(--accent); }
+.item { background: var(--surface); border: 1px solid var(--rule); border-radius: var(--radius); padding: 12px; cursor: grab; }
+.item p { margin: 0 0 8px; } .item .moves { display: flex; gap: 6px; }
+.item .moves button { min-height: 36px; min-width: 44px; border: 1px solid var(--rule); border-radius: 8px; background: var(--surface-2); cursor: pointer; }
+</style>
+</head>
+<body>
+<main class="wrap">
+  <h1>Suivi des commandes<!-- REPLACE --></h1>
+  <div class="board" id="board"></div>
+</main>
+<script>
+// Each column is a state: moving a card IS the change of state. Drag with a mouse, or use the ← → buttons (keyboard, phone).
+// REPLACE: the real columns and cards. The page keeps nothing once closed: the owner's file stays the reference.
+const LANES = ["À faire", "En cours", "Fait"];
+const CARDS = [ { id: 1, text: "Commande #1042 — préparer", lane: 0 }, { id: 2, text: "Commande #1039 — emballer", lane: 1 }, { id: 3, text: "Commande #1031 — envoyée", lane: 2 } ];
+const board = document.getElementById("board");
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+function move(id, lane) { const c = CARDS.find((x) => x.id === id); if (c && lane >= 0 && lane < LANES.length) { c.lane = lane; render(id); } }
+function render(focusId) {
+  board.innerHTML = LANES.map((name, i) => {
+    const cards = CARDS.filter((c) => c.lane === i);
+    return `<section class="lane" data-lane="${i}" aria-labelledby="l${i}"><h2 id="l${i}">${esc(name)} <span>${cards.length}</span></h2><ul>${
+      cards.map((c) => `<li class="item" draggable="true" data-id="${c.id}"><p>${esc(c.text)}</p><div class="moves">
+        <button type="button" data-move="-1" aria-label="Vers ${esc(LANES[i - 1] ?? "")}" ${i === 0 ? "disabled" : ""}>←</button>
+        <button type="button" data-move="1" aria-label="Vers ${esc(LANES[i + 1] ?? "")}" ${i === LANES.length - 1 ? "disabled" : ""}>→</button></div></li>`).join("")
+    }</ul>${cards.length ? "" : '<p class="empty">Rien ici pour l\'instant.</p>'}</section>`;
+  }).join("");
+  if (focusId) board.querySelector(`[data-id="${focusId}"] button:not([disabled])`)?.focus();
+}
+board.addEventListener("click", (e) => { const b = e.target.closest("[data-move]"); if (!b) return; const li = b.closest("[data-id]"); const c = CARDS.find((x) => x.id === +li.dataset.id); move(c.id, c.lane + +b.dataset.move); });
+board.addEventListener("dragstart", (e) => { const li = e.target.closest("[data-id]"); if (li) e.dataTransfer.setData("text/plain", li.dataset.id); });
+board.addEventListener("dragover", (e) => { const lane = e.target.closest(".lane"); if (lane) { e.preventDefault(); lane.classList.add("over"); } });
+board.addEventListener("dragleave", (e) => e.target.closest(".lane")?.classList.remove("over"));
+board.addEventListener("drop", (e) => { const lane = e.target.closest(".lane"); if (!lane) return; e.preventDefault(); move(+e.dataTransfer.getData("text/plain"), +lane.dataset.lane); });
+render();
+</script>
+</body>
+</html>

@@ -1,0 +1,9 @@
+clarifier-avant-d-agir — adapted from agent-skills, mattpocock/skills, Spec Kit (© 2025 Addy Osmani, MIT; © 2026 Matt Pocock, MIT; © GitHub, Inc., MIT)
+Sources (each pinned to one commit):
+- agent-skills — © 2025 Addy Osmani — MIT — https://github.com/addyosmani/agent-skills/tree/8c99fa36d90068c82d547f7c12a9d67a3e95f4ee/skills/interview-me
+- mattpocock/skills — © 2026 Matt Pocock — MIT — https://github.com/mattpocock/skills/tree/abeeaf95660ba9e8b7c753eb38f441ca707a8823/skills/productivity/grilling
+- Spec Kit — © GitHub, Inc. — MIT — https://github.com/github/spec-kit/tree/a4d571229e164e440f8950cac034607bae7b7518/templates/commands/clarify.md
+Licence: MIT — the upstream licence texts are in LICENSE.txt, unchanged.
+
+Modified for Sklubot (2026-11-22): the three methods were merged into one short skill (hypothesis with confidence, one question at a time with a recommended answer, at most five, restatement with 'what we will not do', a real yes, answers kept in a note); tool names replaced by Sklubot's (ask_user, memory_search, conversation_search, file_save); code-repository, sub-agent and spec-file steps removed; rule added that it is never used in an unattended turn; translated into French (SKILL.fr.md).
+Only text is included; no script, picture or other file of the original folders is bundled. Names of other products are not used as titles.

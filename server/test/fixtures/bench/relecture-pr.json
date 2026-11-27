@@ -1,0 +1,171 @@
+{
+ "about": "L180 — banc de relecture de PR : diffs annotés à la main (où est le vrai problème, et sa catégorie) et la réponse enregistrée d'un relecteur, rejouée en CI à travers toute la chaîne Sklubot (sélection, lots, ancrage aux lignes, passe de vérification, verdict). Mesure : précision, rappel, ancrage. Code fictif.",
+ "cases": [
+  {
+   "name": "pagination off-by-one",
+   "goal": "Ajoute la pagination à la liste des commandes (20 par page).",
+   "files": [
+    {
+     "path": "src/orders/pagination.ts",
+     "diff": "diff --git a/src/orders/pagination.ts b/src/orders/pagination.ts\n--- a/src/orders/pagination.ts\n+++ b/src/orders/pagination.ts\n@@ -1,3 +1,9 @@\n export const PAGE_SIZE = 20;\n+export function pageOf<T>(items: T[], page: number): T[] {\n+  const start = page * PAGE_SIZE;\n+  const out: T[] = [];\n+  for (let i = start; i <= start + PAGE_SIZE; i++) out.push(items[i]);\n+  return out;\n+}\n export const FIRST_PAGE = 0;\n"
+    },
+    {
+     "path": "package-lock.json",
+     "diff": "diff --git a/package-lock.json b/package-lock.json\n@@ -1,1 +1,1 @@\n-  \"version\": \"1.0.0\"\n+  \"version\": \"1.0.1\"\n"
+    }
+   ],
+   "annotations": [
+    {
+     "path": "src/orders/pagination.ts",
+     "start": 5,
+     "end": 5,
+     "category": "bug",
+     "note": "<= donne 21 éléments et des undefined en fin de liste"
+    }
+   ],
+   "answer": {
+    "verdict": "changes",
+    "summary": "La boucle prend un élément de trop.",
+    "files": [
+     {
+      "path": "src/orders/pagination.ts",
+      "status": "reviewed"
+     }
+    ],
+    "findings": [
+     {
+      "path": "src/orders/pagination.ts",
+      "code": "  for (let i = start; i <= start + PAGE_SIZE; i++)   out.push(items[i]);",
+      "category": "bug",
+      "severity": "high",
+      "text": "`<=` renvoie 21 éléments, et des undefined sur la dernière page."
+     },
+     {
+      "path": "src/orders/pagination.ts",
+      "code": "export const FIRST_PAGE = 0;",
+      "category": "bug",
+      "severity": "medium",
+      "text": "FIRST_PAGE n'est jamais utilisé."
+     }
+    ]
+   },
+   "reflection_remove": [
+    1
+   ],
+   "expectVerdict": "changes",
+   "expectSkipped": {
+    "package-lock.json": "generated"
+   }
+  },
+  {
+   "name": "search SQL injection and missing test",
+   "goal": "Permettre de chercher un produit par nom.",
+   "files": [
+    {
+     "path": "server/search.ts",
+     "diff": "diff --git a/server/search.ts b/server/search.ts\n--- a/server/search.ts\n+++ b/server/search.ts\n@@ -10,4 +10,8 @@ import { db } from './db';\n export function all() {\n   return db.all('SELECT * FROM products');\n }\n+export function byName(name: string) {\n+  return db.all(`SELECT * FROM products WHERE name LIKE '%${name}%'`);\n+}\n+\n export const VERSION = 2;\n"
+    }
+   ],
+   "annotations": [
+    {
+     "path": "server/search.ts",
+     "start": 14,
+     "end": 14,
+     "category": "risk",
+     "note": "injection SQL par le nom"
+    },
+    {
+     "path": "server/search.ts",
+     "start": 13,
+     "end": 15,
+     "category": "test",
+     "note": "aucun test pour byName"
+    }
+   ],
+   "answer": {
+    "verdict": "changes",
+    "summary": "Injection SQL possible, et pas de test.",
+    "files": [
+     {
+      "path": "server/search.ts",
+      "status": "reviewed"
+     }
+    ],
+    "findings": [
+     {
+      "path": "server/search.ts",
+      "code": "return db.all(`SELECT * FROM products WHERE name LIKE '%${name}%'`);",
+      "category": "risk",
+      "severity": "critical",
+      "text": "Le nom est collé dans la requête : injection SQL. Utiliser un paramètre."
+     },
+     {
+      "path": "server/search.ts",
+      "code": "export function byName(name: string) {",
+      "category": "test",
+      "severity": "medium",
+      "text": "Aucun test ne couvre byName (nom vide, caractères spéciaux)."
+     }
+    ]
+   },
+   "reflection_remove": [],
+   "expectVerdict": "changes"
+  },
+  {
+   "name": "unbounded requests in a loop (missed by the recorded reviewer)",
+   "goal": "Synchroniser les prix de tous les produits.",
+   "files": [
+    {
+     "path": "jobs/prices.ts",
+     "diff": "diff --git a/jobs/prices.ts b/jobs/prices.ts\n--- a/jobs/prices.ts\n+++ b/jobs/prices.ts\n@@ -1,2 +1,7 @@\n import { products } from './store';\n+export async function syncPrices() {\n+  for (const p of products.all()) {\n+    await fetch(`https://api.example.test/price/${p.id}`).then((r) => r.json()).then((v) => products.setPrice(p.id, v.price));\n+  }\n+}\n export {};\n"
+    }
+   ],
+   "annotations": [
+    {
+     "path": "jobs/prices.ts",
+     "start": 3,
+     "end": 4,
+     "category": "load",
+     "note": "une requête par produit sans limite ni délai, et aucune gestion d'erreur"
+    }
+   ],
+   "answer": {
+    "verdict": "approved",
+    "summary": "Simple et lisible.",
+    "files": [
+     {
+      "path": "jobs/prices.ts",
+      "status": "reviewed"
+     }
+    ],
+    "findings": []
+   },
+   "reflection_remove": [],
+   "expectVerdict": "approved"
+  },
+  {
+   "name": "clean change",
+   "goal": "Corrige la faute dans le message d'accueil.",
+   "files": [
+    {
+     "path": "web/welcome.ts",
+     "diff": "diff --git a/web/welcome.ts b/web/welcome.ts\n--- a/web/welcome.ts\n+++ b/web/welcome.ts\n@@ -1,1 +1,1 @@\n-export const WELCOME = 'Bienvenu !';\n+export const WELCOME = 'Bienvenue !';\n"
+    }
+   ],
+   "annotations": [],
+   "answer": {
+    "verdict": "approved",
+    "summary": "Correction de texte, rien à signaler.",
+    "files": [
+     {
+      "path": "web/welcome.ts",
+      "status": "reviewed"
+     }
+    ],
+    "findings": []
+   },
+   "reflection_remove": [],
+   "expectVerdict": "approved"
+  }
+ ]
+}

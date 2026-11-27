@@ -26,16 +26,40 @@ async function main() {
     $('title').textContent = t('consent.session.title', { bot });
     $('text').textContent = t('consent.session.text', { key: window.I18N.hotkey });
     if (p.data.reason) { $('reason').textContent = t('consent.reason', { reason: p.data.reason }); show($('reason'), true); }
+    // Hand-over (1.7): another bot holds the session but has done nothing for a while; a yes here replaces it.
+    if (p.data.holder) { $('cwd').textContent = t('consent.session.holder', { holder: p.data.holder }); show($('cwd'), true); }
     add('consent.refuse', '', 'refuse');
+    add('consent.allBots', '', 'all');
     add('consent.always', '', 'always');
     add('consent.once', 'primary', 'once');
+  } else if (['terminal', 'shortcut', 'gpu', 'net', 'phone', 'phone_password'].includes(p.kind)) {
+    // guard.js: a terminal for this session, or a protected shortcut the owner approved in Sklubot; gpu: Wan2GP on 127.0.0.1.
+    $('title').textContent = t(`consent.${p.kind}.title`, { bot });
+    $('text').textContent = t(`consent.${p.kind}.text`);
+    $('command').textContent = p.data.detail;
+    show($('command'), true);
+    add('consent.refuse', 'primary', 'refuse');
+    add(`consent.${p.kind}.allow`, '', 'allow');
   } else {
     $('title').textContent = t('consent.command.title', { bot });
     $('text').textContent = t('consent.command.text');
     $('command').textContent = p.data.command;
     show($('command'), true);
     if (p.data.cwd) { $('cwd').textContent = t('consent.command.cwd', { cwd: p.data.cwd }); show($('cwd'), true); }
-    show($('always-wrap'), true);
+    // L32: each script the command launches, its first 40 lines and its fingerprint (refused if it changes before the click).
+    const scripts = p.data.scripts || [];
+    for (const sc of scripts) {
+      const head = document.createElement('p');
+      head.className = 'small';
+      head.textContent = t('consent.script.head', { path: sc.path, hash: sc.sha256.slice(0, 16) });
+      const pre = document.createElement('pre');
+      pre.textContent = sc.binary ? t('consent.script.binary') : sc.lines.join('\n') + (sc.more ? `\n${t('consent.script.more', { n: sc.more })}` : '');
+      $('scripts').append(head, pre);
+    }
+    if (scripts.length) { $('scripts-note').textContent = t('consent.script.note'); show($('scripts'), true); }
+    // A command on the floor is asked every time; the first ordinary one also covers the rest of the session.
+    $('reason').textContent = p.data.floor ? t('consent.command.floor', { why: t(`consent.floor.${p.data.floor}`) }) : scripts.length ? '' : t('consent.command.session');
+    show($('reason'), !!$('reason').textContent);
     add('consent.refuse', '', 'refuse');
     add('consent.command.run', 'primary', 'run');
   }

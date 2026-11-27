@@ -39,7 +39,8 @@ Tant que l'application n'est pas signée et notarisée par Apple, macOS refuse d
    - sinon, fermer la fenêtre quitte l'application sur Windows et Linux ; sur macOS, l'application reste dans le Dock comme les autres applications Mac (⌘ Q pour quitter).
 9. **Lancer au démarrage** est désactivé par défaut.
 10. **Mises à jour** : l'application regarde (au démarrage, puis via le menu) s'il existe une version plus récente sur la page des versions GitHub et te propose de **la télécharger** ; elle ne s'installe jamais toute seule. (Une mise à jour automatique n'est sûre qu'avec des fichiers signés : sans certificat de signature, ce n'est pas activé.)
-11. Une seule fenêtre Sklubot à la fois : relancer l'application ramène la fenêtre déjà ouverte.
+11. **Ordinateur gardé éveillé** : pendant qu'un bot pilote ton ordinateur, l'écran ne s'éteint pas ; pendant qu'une commande tourne, l'ordinateur ne se met pas en veille. C'est relâché dès que c'est fini.
+12. Une seule fenêtre Sklubot à la fois : relancer l'application ramène la fenêtre déjà ouverte.
 
 L'application **dans le navigateur** n'est pas touchée : tout reste utilisable aussi depuis Chrome, Firefox, Safari…
 
@@ -59,6 +60,7 @@ Menu **Sklubot › Relais…** (ou l'icône de la barre › **Relais…**) ouvre
 - Un bandeau rouge reste affiché tant qu'un bot a la main. **Stop** (ou **Ctrl + Alt + Maj + S**, **⌘ ⌥ ⇧ S** sur Mac) arrête tout tout de suite et bloque le Relais jusqu'à ce que tu le réautorises.
 - Tout ce que font les bots est noté dans un journal sur ton ordinateur (bouton « Ouvrir le journal »).
 - « Mettre en pause » coupe la connexion : rien n'est envoyé pendant la pause.
+- **Règles de sécurité** (vérifiées par le serveur, puis encore ici) : fenêtres de terminal, réglages du système, gestionnaires de mots de passe et Sklubot lui-même sont refusés aux clics et à la frappe ; jamais de saisie dans un champ mot de passe, sauf un identifiant de ton coffre rempli par Sklubot sur le bon site ; la fenêtre au premier plan est relue juste avant chaque clic ou touche ; raccourcis dangereux refusés ; touches toujours relâchées à la fin. **Commandes** : activées par défaut (désactivables dans Sklubot, Réglages → Ordinateurs → Règles de sécurité) ; chacune est montrée sur une carte dans Sklubot, et ici la première de chaque session ; les commandes sensibles (supprimer, sudo, installer, `curl | sh`…) et celles qui lancent un script (40 premières lignes + empreinte) sont demandées ici à chaque fois. Détails : `docs/ORDINATEUR.md`.
 
 ### Relier le Relais à ton serveur Sklubot
 
@@ -81,6 +83,14 @@ Au premier lancement, Sklubot reprend une fois les réglages de l'ancien Relais 
 - **Windows** : l'accès est repris tel quel, rien à refaire.
 - **macOS et Linux** : l'accès de l'ancien Relais était chiffré par le trousseau du système au nom de « Sklubot Relais » ; la nouvelle application (« Sklubot ») ne peut pas le relire. Le Relais affiche alors un nouveau code : tape‑le dans **Réglages › Ordinateurs** (et retire l'ancien ordinateur de la liste). Les autorisations des bots et les dossiers partagés sont conservés.
 - **Désinstalle l'ancien « Sklubot Relais »** ensuite (et décoche son démarrage automatique) : deux Relais avec le même accès se renverraient la connexion.
+
+### Lire une appli au lieu de viser des pixels (Mac et Windows)
+
+Sur Mac et Windows, un bot peut lire les boutons et les champs d'une appli (son « arbre d'accessibilité ») et agir sur
+l'un d'eux directement, même en arrière-plan sans bouger ta souris. Les mêmes règles s'appliquent : les applis refusées
+et ta liste « garder à l'écart » ne sont même pas lues, un champ mot de passe n'est jamais rempli ni lu, et appuyer sur
+un bouton qui envoie, paie ou supprime te demande ton accord dans Sklubot. Sur Mac, c'est la même autorisation
+« Accessibilité » que pour la souris.
 
 ## Autorisations à donner selon ton système (pour le Relais)
 
